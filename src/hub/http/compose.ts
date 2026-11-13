@@ -61,6 +61,8 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js",
   // Hub rooms (hub-rooms-ux.md §§2,5): the rooms words (#3850) then the presence helper (pure, no DOM).
   "hub-room-strings.js", "hub-room-presence.js",
+  // Hub rooms §12: unread counts and the Fleet desktop-notify rule (lazy; screens load it).
+  "hub-room-unread.js",
   // Hub rooms, track U2 (dev-claude2; hub-rooms-split.md section 3): new room, room settings, members rail, invitations,
   // 管理 → 房間.
   "hub-room-new.js", "hub-room-new-strings.js", "hub-room-settings.js", "hub-room-settings-strings.js", "hub-room-members.js", "hub-room-members-strings.js", "hub-invitations.js", "hub-invitations-strings.js", "hub-admin-rooms.js", "hub-admin-rooms-strings.js"]);
