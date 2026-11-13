@@ -6,6 +6,7 @@ import { ha } from "./hub-assistant-admin-strings.js";
 const fields = value => ({ enabled: value.enabled === true, backend: value.backend, account: value.account ?? null, cap: Number(value.cap), idleMinutes: Number(value.idleMinutes) });
 const validLimits = value => Number.isInteger(Number(value?.cap)) && Number(value.cap) >= 1 && Number(value.cap) <= 16 && Number.isInteger(Number(value?.idleMinutes)) && Number(value.idleMinutes) >= 1 && Number(value.idleMinutes) <= 240;
 const accountWord = row => row.state === "signed-in" ? hroom("signedIn") : row.state === "needs-sign-in" ? hroom("needsSignIn") : ha("unknown");
+const accountHelp = row => ha(row?.state === "signed-in" ? "accountSignedIn" : row?.state === "needs-sign-in" ? "accountNeedsSignIn" : "accountUnknown");
 const stateWord = state => state === "idle" ? hroom("stIdle") : state === "working" ? hroom("stWorking") : ha(["starting", "stopping", "failed"].includes(state) ? state : "unknown");
 const quotaWord = band => band === "available" ? hroom("quotaPlenty") : band === "near_limit" ? hroom("quotaLow") : band === "exhausted" ? hroom("quotaGone") : ha("unknown");
 
@@ -66,7 +67,7 @@ export function HubAssistantAdmin({ client }) {
           ${backends.map(row => html`<option key=${row.id} value=${row.id}>${row.name}</option>`)}</select></label>
         <label class="field"><span>${ha("account")}</span><select aria-label=${ha("account")} value=${form.account ?? ""} disabled=${busy || !accounts.length} onChange=${e => edit({ account: e.target.value || null })}>
           ${accounts.map(row => html`<option key=${row.id ?? "default"} value=${row.id ?? ""} disabled=${row.state === "needs-sign-in"}>${row.id === null ? ha("defaultAccount") : row.name} · ${accountWord(row)}</option>`)}</select></label>
-      </div><p class="note">${selected ? accountWord(selected) : ha("unknown")} · ${hroom("signInHow")}</p><p class="note">${hroom("assistantQuota")}</p></div>
+      </div><p class="note">${accountHelp(selected)}</p><p class="note">${hroom("assistantQuota")}</p></div>
       <div class="grid2"><label class="field"><span>${hroom("cap")}</span><input aria-label=${hroom("cap")} type="number" inputmode="numeric" min="1" max="16" step="1" required value=${form.cap} disabled=${busy} onInput=${e => edit({ cap: e.target.value })} /></label>
         <label class="field"><span>${hroom("idleMinutes")}</span><input aria-label=${hroom("idleMinutes")} type="number" inputmode="numeric" min="1" max="240" step="1" required value=${form.idleMinutes} disabled=${busy} onInput=${e => edit({ idleMinutes: e.target.value })} /></label></div>
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}${saved ? html`<p class="note" role="status">${ha("saved")}</p>` : null}
