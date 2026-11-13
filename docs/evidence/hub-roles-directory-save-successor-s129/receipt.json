@@ -1,0 +1,173 @@
+{
+  "sourceAndTestCheckpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+  "sourceCheckpoint": "bcd2953d09405679cb7becf84fca750906b7c169",
+  "parent": "4a64372c33a9107aca6042893073b6a13c8036b6",
+  "parentPR": 3843,
+  "scope": "Private role-marked directory Save successor-release composition and optional actual mounted projection; no public HTTP preparation producer or activation",
+  "failFirst": {
+    "checkpoint": "3e802c619ab8870cdd5b2590385ff3358ed7e6e6",
+    "semanticOrchestrationReds": 6,
+    "existingRootControls": 2,
+    "filterExcluded": 27,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "meaning": "Inert proof/mount/lease contract, not authentication of forged opaque tags or a deployed auxiliary route vulnerability"
+  },
+  "checks": {
+    "focusedPassed": 124,
+    "files": 3,
+    "skipped": 0,
+    "actualMountedProjectionSelected": 3,
+    "projectionFilterExcluded": 141,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "compiler": "native TypeScript7.0.2/GOMAXPROCS2",
+    "compilingSemanticReversals": 10,
+    "originalSaveCasesRetained": 29,
+    "newSaveCases": 18,
+    "changelog": "changelog-assemble: 458 fragment(s) OK"
+  },
+  "suites": [
+    {
+      "file": "hub-directory-response-owner.test.ts",
+      "passed": 20
+    },
+    {
+      "file": "hub-directory-save.test.ts",
+      "passed": 47
+    },
+    {
+      "file": "hub-roles-directory-session-s129.test.ts",
+      "passed": 57
+    }
+  ],
+  "bindings": [
+    {
+      "path": "src/hub/settings-directory-save.ts",
+      "sha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27"
+    },
+    {
+      "path": "src/hub/settings-directory-runtime.ts",
+      "sha256": "6b396769ab6035ebf1212856690a2a39d1b893e9f14205682ea3b59492c6cde7"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "c05dfd64f2c5b056a76524f804bfe5b0bf8ed67e5f4ad3dbf1d30581c371a5e3"
+    },
+    {
+      "path": "src/hub/session-directory-transition.ts",
+      "sha256": "b0fc16e1501acae5c6ed4b09ee1d39423ee8df87e061aa8b405d42a45c4d48a7"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "fb0c811c37742242c5c94297a2b80e532adcc0309fb41049b6818fb70ef3bca2"
+    },
+    {
+      "path": "src/hub/directory-response-owner.ts",
+      "sha256": "e3067854054c8e9c414cc1bb7f5f05f75a4094786c2f9622e6e80d18afae0651"
+    },
+    {
+      "path": "src/hub/settings-directory-proof.ts",
+      "sha256": "efa8702c958584f351da9ffec4271a23009615f7889b18e4bfa197b535299b21"
+    },
+    {
+      "path": "src/hub/roles/authority.ts",
+      "sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "path": "src/hub/roles/directory-authority.ts",
+      "sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18"
+    },
+    {
+      "path": "src/hub/settings-directory-decision.ts",
+      "sha256": "a7be86d307e22adc25cd9724aefee3ca5ed0db3aa951b15bc22cd7ae9acebf20"
+    },
+    {
+      "path": "tests/hub-directory-save.test.ts",
+      "sha256": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802"
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "sha256": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    {
+      "path": "tests/hub-directory-response-owner.test.ts",
+      "sha256": "23c3b35db4c1f81e4448947772e9521a874db5f14901c8b80b40da91a5bfc5c7"
+    },
+    {
+      "path": "tests/hub-roles-directory-session-s129.test.ts",
+      "sha256": "20ce70852e7587b40fef733f55dd06a04d4c5f2211c6f26a2cd0d31d7494ed0f"
+    },
+    {
+      "path": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28"
+    }
+  ],
+  "privateLogBindings": [
+    {
+      "path": "before.log",
+      "sha256": "d519c3987f248ed9eaca25ee4b28171dd077cf1ba7fe12551daf5912483da179"
+    },
+    {
+      "path": "before.json",
+      "sha256": "02b56b13008e401ae11f92812a5fbfed40f9eb67642264d719b714c5ec5b46fd"
+    },
+    {
+      "path": "before-source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "before-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "restored-final.log",
+      "sha256": "131c9eca4d7b6abaf61fdf11fcaa8568530d6f50d51858dddd33f382ec67368c"
+    },
+    {
+      "path": "restored-final.json",
+      "sha256": "8aa6719e983ec34289325df1b341de4cc8e8b263eb383eda94f67c95a898573c"
+    },
+    {
+      "path": "restored-projection.log",
+      "sha256": "a7c00cc32bf58517b479b6e7d46f76f66da7e9193d481ec7c7adc0e6b7be8ca7"
+    },
+    {
+      "path": "restored-projection.json",
+      "sha256": "60e959ad7a65102ec2a310080d8fe1d7bd34e293b5515a7f237ca6e64106132b"
+    },
+    {
+      "path": "restored-source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "restored-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "changelog.log",
+      "sha256": "7217727d6a1634a5fb000647481491ba59697fd7abb5a690b24efaa5d69d6dcf"
+    },
+    {
+      "path": "mutations.log",
+      "sha256": "670fe7f960f0b446c013f603246faf9ff33938ceac12532f84f6af110ae5054f"
+    }
+  ],
+  "disclosures": [
+    "Coordinator fixture proof is inert and opaque context tags are not authenticated; actual parent helper proof is separately exercised in the SQL/Core/Sessions suite.",
+    "Mounted initialized/sealed Hub adapter dispatch uses a spy-refused HubSessions method; no successful role authorization or auxiliary Save/cookie delivery is claimed.",
+    "Initial expanded119/120 run had an obsolete test injection: replacing the deps.mounted property did not replace the coordinator snapshot. Corrected fixture uses a mutable return pointer; product unchanged.",
+    "A later provider fixture cast had a native test-type diagnostic; fixed by retaining and invoking its typed original provider. No product change and excluded from semantic outcomes.",
+    "S02 initial classifier missed a real Vitest promise-resolved rejection assertion; raw intended failure inspected, metadata retains correction. No product/test input edit or re-execution."
+  ],
+  "limits": "Owned in-memory SQL/fictional directory for parent helper; inert Save orchestration; separate owned loopback response-owner and initialized/sealed Hub dispatch fixtures. No successful auxiliary HTTP Save, physical file install/floor/crash, live AD/account/Fleet/backend CLI/browser/container/pilot/native-OS run; no UI/assets/protocol/config or PNG/SKEW change. FullS1290/4.",
+  "gate": "Draft parent-first plain alpha sync/resolution/current-head CI/readiness; coordinator alone gates. Before activation scoped code revert only, never database/floor rewind."
+}

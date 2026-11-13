@@ -1,0 +1,379 @@
+[
+  {
+    "id": "S01",
+    "file": "src/hub/settings-directory-save.ts",
+    "before": "const roleSuccessor = context.administration !== undefined || context.preparation !== undefined;",
+    "after": "const roleSuccessor = false;",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "mutantSha256": "8142e8d0399e3414487cd260f1a90745c74f2d2a040d506a1dd0b6e14cd6d546",
+    "load1": 3.95166015625,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 Save successor release acquires after mount completion and releases only inside the originating administration response",
+      "S129 Save successor release acquires after mount completion and releases only inside the originating preparation response",
+      "S129 Save successor release refuses a missing role adapter without a legacy completion fallback",
+      "S129 Save successor release keeps a committed ready directory after fresh successor authorization refuses",
+      "S129 Save successor release holds the response until fresh successor acquisition settles",
+      "S129 Save successor release withholds a cookie when authority changes before packet construction",
+      "S129 Save successor release withholds a cookie when authority changes after packet construction",
+      "S129 Save successor release drains a held successor acquisition on close before finishing cleanup",
+      "S129 Save successor release retires an awaited successor acquisition after its mount changes",
+      "S129 Save successor release retires an awaited successor acquisition after its provider changes",
+      "S129 Save successor release retires an awaited successor acquisition after its view changes",
+      "S129 Save successor release retires an awaited successor acquisition after its method changes",
+      "S129 Save successor release refuses a non-void final assertion instead of accepting it as authority",
+      "S129 Save successor release refuses a mutable release object",
+      "S129 Save successor release still cleans rotation and response when successor discard reports an error"
+    ],
+    "caught": true,
+    "restoredSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "elapsedSeconds": 59.43,
+    "privateLogs": [
+      {
+        "path": "mutants/S01-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S01-tests.log",
+        "sha256": "74229d4ddf1439b81b7c7b75abf3080c18b6d1f878aa0c78aaa1fe61d4ba3e7c"
+      },
+      {
+        "path": "mutants/S01-tests.json",
+        "sha256": "581941777314090fd3a25db712c1d6a2a195fa44042eb392fd4c01b6a51ebb98"
+      }
+    ]
+  },
+  {
+    "id": "S02",
+    "file": "src/hub/settings-directory-save.ts",
+    "before": "ready(exact) !== mounted || mounted.sessions !== provider",
+    "after": "mounted.sessions !== provider",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "mutantSha256": "1782e493ee13e0c948d2d7328467138bcf1278c332778941f4dd219599d97343",
+    "load1": 2.7041015625,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 Save successor release retires an awaited successor acquisition after its mount changes"
+    ],
+    "caught": true,
+    "restoredSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "elapsedSeconds": 6.76,
+    "initialClassifierCaught": false,
+    "classifierCorrection": "Original classifier missed Vitest rejection assertion: promise resolved instead of rejecting. Exact failing mount-identity assertion/raw JSON inspected; no product or test edit and no second execution.",
+    "privateLogs": [
+      {
+        "path": "mutants/S02-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S02-tests.log",
+        "sha256": "28bbfdb0a41939a108609f641db612a80181f235197578626885d3c78e314c5f"
+      },
+      {
+        "path": "mutants/S02-tests.json",
+        "sha256": "0133004693d02cebe387219deb39547ac051f177a8aa329f23cf5c727e4dfb09"
+      }
+    ]
+  },
+  {
+    "id": "S03",
+    "file": "src/hub/settings-directory-save.ts",
+    "before": "mounted.sessions !== provider || provider.call(mounted) !== sessions",
+    "after": "provider.call(mounted) !== sessions",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "mutantSha256": "21c10269cd4ec58f2154a2d91803227de2e59dd0ad7649d7d2123622f02e7c42",
+    "load1": 1.31494140625,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 Save successor release retires an awaited successor acquisition after its provider changes"
+    ],
+    "caught": true,
+    "restoredSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "elapsedSeconds": 3.65,
+    "privateLogs": [
+      {
+        "path": "mutants/S03-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S03-tests.log",
+        "sha256": "6aa4ad8cca67aec2a44baf807cebdacef419ddfbff420b5eef86ee40a6eea19d"
+      },
+      {
+        "path": "mutants/S03-tests.json",
+        "sha256": "acfc1b03eb2fa015269ec7d03a3af88b4bac379d9d2c6f773eba358dcd3c4978"
+      }
+    ]
+  },
+  {
+    "id": "S04",
+    "file": "src/hub/settings-directory-save.ts",
+    "before": "provider.call(mounted) !== sessions",
+    "after": "false",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "mutantSha256": "c06b100102826754bbd772d8a9b9a4bdb39be857b3180073d09e4247584dcc8b",
+    "load1": 1.20947265625,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 Save successor release retires an awaited successor acquisition after its view changes"
+    ],
+    "caught": true,
+    "restoredSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "elapsedSeconds": 3.45,
+    "privateLogs": [
+      {
+        "path": "mutants/S04-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S04-tests.log",
+        "sha256": "0f1b72850f074b4811dd98493eedd854a12736b0118a2e6efea66927a28be2cf"
+      },
+      {
+        "path": "mutants/S04-tests.json",
+        "sha256": "5b49d67ee3d2bba4884d3c5134b39ef069bd37db048ab75b7a6503db821a4259"
+      }
+    ]
+  },
+  {
+    "id": "S05",
+    "file": "src/hub/settings-directory-save.ts",
+    "before": "sessions.prepareRoleDirectoryRotationRelease !== prepare",
+    "after": "false",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "mutantSha256": "573bfd1a7752d16327244daebde8344f27915fe091a659eaea87754ee6a5764b",
+    "load1": 1.20947265625,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 Save successor release retires an awaited successor acquisition after its method changes"
+    ],
+    "caught": true,
+    "restoredSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "elapsedSeconds": 3.09,
+    "privateLogs": [
+      {
+        "path": "mutants/S05-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S05-tests.log",
+        "sha256": "6b678fd60de8bb91b3ce4ab674299a97309d23a08c116c0bc000421a88685359"
+      },
+      {
+        "path": "mutants/S05-tests.json",
+        "sha256": "f5e6601f81a7e41e178625c35f96e041863ff8765d649458be418550f6cbf646"
+      }
+    ]
+  },
+  {
+    "id": "S06",
+    "file": "src/hub/settings-directory-save.ts",
+    "before": "const answer: unknown = assert.call(successor);",
+    "after": "const answer: unknown = undefined;",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "mutantSha256": "cd5ad856bfa015b9a061d8b4e754b32a1080b1b20b3d3158af5b72b8e0314d96",
+    "load1": 1.1923828125,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 Save successor release withholds a cookie when authority changes after packet construction",
+      "S129 Save successor release refuses a non-void final assertion instead of accepting it as authority"
+    ],
+    "caught": true,
+    "restoredSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "elapsedSeconds": 3.04,
+    "privateLogs": [
+      {
+        "path": "mutants/S06-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S06-tests.log",
+        "sha256": "bf69cb877931b39f1ccf204f7c0965db0260cd2514302633b8949cd803abb20e"
+      },
+      {
+        "path": "mutants/S06-tests.json",
+        "sha256": "0b4a8133c3c2b2aac64c6a4d1308e6155865f1c01ef6ed4f4a534116f5875ce5"
+      }
+    ]
+  },
+  {
+    "id": "S07",
+    "file": "src/hub/settings-directory-save.ts",
+    "before": "!Object.isFrozen(successor)",
+    "after": "false",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "mutantSha256": "771183dbcd778256b6508c932f25d5525fdf969b440d2dc008adf9ffc3e3b097",
+    "load1": 1.1923828125,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 Save successor release refuses a mutable release object"
+    ],
+    "caught": true,
+    "restoredSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "elapsedSeconds": 3.19,
+    "privateLogs": [
+      {
+        "path": "mutants/S07-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S07-tests.log",
+        "sha256": "f7dbf9978db053301bb35eaa028bef26b08e38158890245fb25238ac6ba736a5"
+      },
+      {
+        "path": "mutants/S07-tests.json",
+        "sha256": "07c6a05018e047c610f80b4f0b998f5b5a8a2aa37f0652e153d96b2f214b7a24"
+      }
+    ]
+  },
+  {
+    "id": "S08",
+    "file": "src/hub/settings-directory-save.ts",
+    "before": "if (answer !== undefined) fail(\"unavailable\");",
+    "after": "if (answer !== undefined && false) fail(\"unavailable\");",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "mutantSha256": "948033f176c5dfb758256f4e2e87dccd33af639c7e7a9d2deeedb19fc28ab6fe",
+    "load1": 1.1767578125,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 Save successor release refuses a non-void final assertion instead of accepting it as authority"
+    ],
+    "caught": true,
+    "restoredSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "elapsedSeconds": 3.19,
+    "privateLogs": [
+      {
+        "path": "mutants/S08-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S08-tests.log",
+        "sha256": "ec6ccf16c898e3a087e59445d7e0b59176a6b5ac6df4e8f95addb2311460a551"
+      },
+      {
+        "path": "mutants/S08-tests.json",
+        "sha256": "825989752ad6dcd9c177c7f17339bdabf786ba496769689f7cee193ec2f624f8"
+      }
+    ]
+  },
+  {
+    "id": "S10",
+    "file": "src/hub/settings-directory-save.ts",
+    "before": "context.administration !== undefined || context.preparation !== undefined",
+    "after": "context.administration !== undefined",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "mutantSha256": "a4961c224825fcfebfeb207a00893161c687155f7e5a515693ac860323cadb5c",
+    "load1": 1.16259765625,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 Save successor release acquires after mount completion and releases only inside the originating preparation response"
+    ],
+    "caught": true,
+    "restoredSha256": "ea19f2498788006cadafe44b538818de999a55f14a776b567cedfa542e495c27",
+    "elapsedSeconds": 3.21,
+    "privateLogs": [
+      {
+        "path": "mutants/S10-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S10-tests.log",
+        "sha256": "4fd140cd57d31a0197a5effa585fc98540efe4fd53a5658fb8b7e289f8bd3ebe"
+      },
+      {
+        "path": "mutants/S10-tests.json",
+        "sha256": "df2169ab5c06fd4e1fa7d4590f24659b73498c65e2d139fa31ace70654cab8c7"
+      }
+    ]
+  },
+  {
+    "id": "S09",
+    "file": "src/hub/http/compose.ts",
+    "before": "      prepareRoleDirectoryRotationRelease: (rotation, operationId) => sessions.prepareRoleDirectoryRotationRelease(rotation, operationId),\n",
+    "after": "",
+    "checkpoint": "9497dbe65e71363a0f353bed9ee7aca0d096c6c4",
+    "inputs": {
+      "tests/hub-directory-save.test.ts": "52a21f026fe1c7bd77831aa4a38fd81e4bb061e3aaa1a4c58344a67d6638a802",
+      "tests/hub-compose.test.ts": "84365896787294376ed2b9a2f1beaf55aaa62917f775ca202ca263a2b12c9fc8"
+    },
+    "baseSha256": "c05dfd64f2c5b056a76524f804bfe5b0bf8ed67e5f4ad3dbf1d30581c371a5e3",
+    "mutantSha256": "a899c095c086579c2193d2b5e60addafd8f138be34d1600bb310872537cd622a",
+    "load1": 1.16259765625,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 mounted preparation sessions forwards exact arguments through the mounted successor-release adapter"
+    ],
+    "caught": true,
+    "restoredSha256": "c05dfd64f2c5b056a76524f804bfe5b0bf8ed67e5f4ad3dbf1d30581c371a5e3",
+    "elapsedSeconds": 7.26,
+    "privateLogs": [
+      {
+        "path": "mutants/S09-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S09-tests.log",
+        "sha256": "d242afb8c8d1c80feb55a082305d4bc137b6496c9ccd64dbb00521a3568f2216"
+      },
+      {
+        "path": "mutants/S09-tests.json",
+        "sha256": "9fabb81bd915c5c2eef6b46006c2312059863f6c5bd5eb7bb70f515536444c9b"
+      }
+    ]
+  }
+]
