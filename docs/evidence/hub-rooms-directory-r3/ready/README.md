@@ -9,3 +9,5 @@ Both native TypeScript programs exit 0. Current combined acceptance passes 96/96
 Merge order still requires #3869's alpha UI-gate repair and green post-merge, then #3863, then this exact candidate with Fable's final ordinary approval and current CI. The coordinator owns merging. Full S142 remains open for concrete Team integration and the remaining complete UX walk.
 
 The new directory component retains pre-sign-in room labels separately from hub_people and sessions. Rollback uses a compatible correction while retaining the DB, floors, keys and membership history; older registries deliberately refuse the new schema component. Nothing in this slice alters the direct-chat grant or answer path.
+
+The additional five-file skill/changelog/room-string/client/vocabulary run passes 166/166. It is disjoint from the 13-file 96-case run. Both programs retain their own counts and commands in the receipt; neither is a full repository suite.

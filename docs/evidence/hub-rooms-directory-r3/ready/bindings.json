@@ -71,5 +71,12 @@
       "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
       "exitCode": 0
     }
-  ]
+  ],
+  "additionalAcceptance": {
+    "command": "nice -n10 node_modules/.bin/vitest run tests/hub-skill.test.ts tests/changelog-fragments.test.ts tests/hub-room-strings.test.ts tests/hub-rooms-client-3092.test.ts tests/hub-u3-vocabulary-gate-2933.test.ts --maxWorkers=2",
+    "passed": 166,
+    "files": 5,
+    "exitCode": 0,
+    "inputCheckpoint": "381451e87 / 08dac793d (evidence-only commit; product/tests unchanged)"
+  }
 }
