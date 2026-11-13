@@ -206,6 +206,9 @@ try {
         await ctx.close();
         await wait(() => reconciliations > seen);
         check(`${m.lang}: the connected Fleet reconnects with identical credential and pins`, readFileSync(profilePath).equals(profileBefore));
+        // #3797: the connected Fleet learned the new address from the Hub itself; its links to the Hub's pages follow it.
+        await wait(() => pairing.view().state === "paired" && pairing.view().hub.webOrigin === m.to);
+        check(`${m.lang}: the connected Fleet's links follow the new address`, pairing.view().hub.webOrigin === m.to);
         await hp.goto(m.to + "/ui/hub");
         await hp.locator("#hubLogin").waitFor();
         check(`${m.lang}: the old Hub sign-in ended`, await hp.evaluate(async () => (await (await fetch("/hub/v1/session")).json()).signedIn === false));
