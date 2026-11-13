@@ -101,6 +101,21 @@ describe("Hub room assistant host-Fleet ownership", () => {
     w.sessions[2].answer(); await c;
   });
 
+  it("does not evict another warm room while an existing eviction is still draining", async () => {
+    const w = world({ cap: 2 }), a = w.ask(input("a")), b = w.ask(input("b")); await flush();
+    w.sessions[0].answer(); await a; vi.setSystemTime(100);
+    w.sessions[1].answer(); await b;
+    const stopped = deferred<void>(); w.sessions[0].stop.mockImplementation(() => stopped.promise);
+    const c = w.ask(input("c")); await flush();
+    const d = w.ask(input("d")); await flush();
+    expect(w.sessions[0].stop).toHaveBeenCalledTimes(1);
+    expect(w.sessions[1].stop).not.toHaveBeenCalled();
+    expect(w.start.mock.calls.map(([value]) => value.roomId)).toEqual(["a", "b"]);
+    stopped.resolve(); await flush();
+    expect(w.start.mock.calls.map(([value]) => value.roomId)).toEqual(["a", "b", "c", "d"]);
+    w.sessions[2].answer(); w.sessions[3].answer(); await Promise.all([c, d]);
+  });
+
   it("stops exactly at the configured idle boundary, measured from the latest completed answer", async () => {
     const w = world({ idleMinutes: 1 }), first = w.ask(input("a")); await flush();
     w.sessions[0].answer(); await first;
