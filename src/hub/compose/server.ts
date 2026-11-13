@@ -56,7 +56,9 @@ import { createHubWebAddressDecision, HUB_WEB_ADDRESS_MIGRATION, type HubWebAddr
 import { createHubDirectoryNotices, HUB_DIRECTORY_HOST_NOTICE_SINK, type HubDirectoryNotices } from "../settings-directory-notices.js";
 import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
 import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
-import { collectPolicyDirectoryGroups, parseCanonicalPolicy } from "../roles/read.js";
+import { collectPolicyDirectoryGroups, createHubManagementPolicyReader, parseCanonicalPolicy } from "../roles/read.js";
+import { createHubManagementAuthority } from "../roles/authority.js";
+import { createHubRoleAuthorizationClock } from "../roles/clock.js";
 import type { HubDirectoryResponse, HubDirectoryResponseListener, HubDirectoryResponseOwner } from "../directory-response-owner.js";
 import { createHubDirectoryAdmission } from "../directory/admission.js";
 
@@ -337,9 +339,19 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const identity = readHubIdentity({ home: options.home, memberOrigin: settings.memberOrigin });
       if (identity.hubId !== settings.hubId) throw new HubStateError("hub-state-mismatch", "the Hub keys belong to another Hub");
       const issuerKey = createPrivateKey(readPrivateFile(options.home, "hub/keys/issuer-key.pem"));
+      // No cutover is registered here. Legacy images remain configured-root-only; a future
+      // committed role image must prove the real persisted clock before any named management use.
+      const roleClock = createHubRoleAuthorizationClock({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
+        generation: groupGeneration, root: settings.administrator, transport: store, current: live, now });
+      teardown.add("role authorization clock", () => roleClock.close());
+      const management = createHubManagementAuthority({ root: settings.administrator, directory, reads: directoryReads,
+        policy: createHubManagementPolicyReader({ db, hubId: settings.hubId, realm: resolvedDirectory.realm, generation: groupGeneration, current: live }),
+        current: live, version: () => store.read().revocationVersion, assertAuthorizationTime: roleClock.assertAuthorizationTime, now });
+      teardown.add("management authorization", () => management.close());
       let groupPolicy: HubGroupPolicyStore | undefined;
       const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
-        generation: groupGeneration, directory, audit, current: live, now, reads: directoryReads });
+        generation: groupGeneration, directory, audit, current: live, now, reads: directoryReads,
+        roles: { root: settings.administrator, assertAuthorizationTime: roleClock.assertAuthorizationTime } });
       const directoryNotices = createHubDirectoryNotices({ db, transport: store, hubId: settings.hubId,
         hostSink: HUB_DIRECTORY_HOST_NOTICE_SINK, audit, current: live, now });
       teardown.add("directory security notices", () => directoryNotices.close());
@@ -361,7 +373,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       });
       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
       const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,
-        policy, binding,
+        policy, binding, management,
         audit, current: live, now, version: () => store.read().revocationVersion,
         advanceAuthorization: (database, resource) => {
           if (database !== db || !db.inTransaction) throw new HubStateError("service-unavailable", "the group authorization transaction is unavailable");
@@ -378,12 +390,14 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const companyIdentity = { hubId: identity.hubId, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey,
         webOrigin: settings.webOrigin, memberOrigin: settings.memberOrigin };
       const companyJoin = new HubCompanyJoin({ home: options.home, db, store, audit, groups, notices: pairingNotices, name: settings.name,
+        management,
         refreshAuthorization: () => memberServer?.refreshAuthorization(),
         identity: companyIdentity, connected: fleetId => memberServer?.features(fleetId) !== null && memberServer?.features(fleetId) !== undefined, signInvitation: claims => signCompanyInvitation(claims, issuerKey), descriptor: signCompanyDescriptor(companyIdentity, issuerKey),
         certificatePem: readPrivateFile(options.home, "hub/keys/tls-cert.pem"), administrator: settings.administrator,
         eventDays: settings.retention.eventDays, current: live, now });
       const pairing = new HubPairingService({
         store,
+        management,
         identity: { hubId: identity.hubId, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey },
         directory,
         directoryReads,
@@ -431,6 +445,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         pairing,
         companyJoin,
         groups,
+        management,
         groupHttp: { control: groupControl, welcome: groupWelcome },
         grantDirectory: { policy, binding },
         pairingNotices,
