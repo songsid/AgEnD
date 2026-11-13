@@ -141,6 +141,10 @@
       "pass": true
     },
     {
+      "name": "zh-TW: the connected Fleet's links follow the new address",
+      "pass": true
+    },
+    {
       "name": "zh-TW: the old Hub sign-in ended",
       "pass": true
     },
@@ -174,6 +178,10 @@
     },
     {
       "name": "en: the connected Fleet reconnects with identical credential and pins",
+      "pass": true
+    },
+    {
+      "name": "en: the connected Fleet's links follow the new address",
       "pass": true
     },
     {
@@ -328,7 +336,7 @@
     }
   ],
   "reconciliations": 3,
-  "profileSha256": "ad662b0326a20cb0d605c3bfb41b4bbc001d632dbf538ec2ad958357a8684966",
+  "profileSha256": "3b039e4fe99fd15f1bb9efe750b24b448d303f352c8043e21cad592d51c5234e",
   "ready": true,
   "cleaned": true
 }
