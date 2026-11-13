@@ -113,6 +113,20 @@ describe("Hub room members panel (section 5)", () => {
     expect(wu.querySelector(".dot").className).toBe("dot off");
   });
 
+  it("people: me first, then online, then offline and never signed in; no agents: 「還沒有 Agent。…」 instead of a zero count", async () => {
+    const { pg, client } = await fixture();
+    const d = await detailOf(client, "room-weekly");
+    const byId = (id: string) => d.members.find((m: any) => m.id === id);
+    d.members = [{ ...byId("person-wu") }, { id: "person-new", kind: "person", name: "張新人", role: "member", presence: "offline", signedIn: false },
+      { ...byId("person-chen") }, { ...byId(FIXTURE_ME.id), presence: "offline" }];
+    await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: d })); await settle(20);
+    const people = [...pg.root.querySelectorAll(".hub-member")].map((li: any) => li.querySelector(".hub-member-name").textContent);
+    expect(people).toEqual(["王經理 你 管理", "陳主任", "吳小安", "張新人"]);
+    expect(heads(pg)).toEqual(["成員 · 4（線上 1）", "Agent", "誰看得到"]);
+    expect(pg.root.querySelector(".hub-room-no-agents .note").textContent).toBe("還沒有 Agent。房間管理可以在房間設定加入或邀請。");
+    expect(pg.root.textContent).not.toContain("線上 0");
+  });
+
   it("no detail yet: an empty, busy rail", async () => {
     const { pg, client } = await fixture("en");
     await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly" })); await settle(10);
