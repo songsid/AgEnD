@@ -1,0 +1,105 @@
+{
+  "testCommit": "398bdb78cbc9efebd8d285e36c6adfa1c1e27f2d",
+  "productSourceUnchangedFrom": "23f1a4a15e57619794c669e979b50e7c478f3248",
+  "scope": "Reviewer D2 pin only: successful callback return, SQL serialization unchanged, new same-DB transactions, inspect and permit both unavailable.",
+  "nativeTestTypes": {
+    "version": "7.0.2",
+    "command": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+    "exit": 0
+  },
+  "restored": {
+    "command": "nice -n 10 node_modules/.bin/vitest run tests/hub-roles-directory-transition-s129.test.ts --maxWorkers=2",
+    "passed": 49,
+    "failed": 0,
+    "skipped": 0
+  },
+  "equivalence": "The entry active check and the later active check enforce the same retirement. Removing only the entry occurrence stays green because the later guard remains. Removing both is semantic red; original T04 also removed both.",
+  "variants": [
+    {
+      "mode": "entry-only",
+      "removed": 1,
+      "typeExit": 0,
+      "testExit": 0,
+      "passed": 49,
+      "failed": 0,
+      "failedAssertions": [],
+      "originalSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "mutantSha256": "fa728fa46c24b7e95f36233d04160dc2e6a7fa811d39abbfa8dd97632055bf8c"
+    },
+    {
+      "mode": "both-active-checks",
+      "removed": 2,
+      "typeExit": 0,
+      "testExit": 1,
+      "passed": 46,
+      "failed": 3,
+      "failedAssertions": [
+        {
+          "name": "S129 exact synchronous decision frames refuses inspection and permit use after a successful frame returns with every SQL row unchanged",
+          "firstLine": "AssertionError: expected null to be 'unavailable' // Object.is equality"
+        },
+        {
+          "name": "S129 exact synchronous decision frames retires the frame on throw and rolls back the operation",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 exact synchronous decision frames retires the frame on thenable and rolls back the operation",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "originalSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "mutantSha256": "451f392c8127d44185cf32d9b6d6934d42ec1a47b9f278790416c4f885ff3240"
+    }
+  ],
+  "unchangedProductBindings": [
+    {
+      "file": "src/hub/directory-decision-proof.ts",
+      "sha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861"
+    },
+    {
+      "file": "src/hub/settings-directory-decision.ts",
+      "sha256": "a7be86d307e22adc25cd9724aefee3ca5ed0db3aa951b15bc22cd7ae9acebf20"
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "sha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746"
+    },
+    {
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "e46c9d80d96f220552c9813061346d77684d388e705784c444d95892669c2584"
+    },
+    {
+      "file": "src/hub/roles/directory-authority.ts",
+      "sha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c"
+    },
+    {
+      "file": "src/hub/settings-directory-proof.ts",
+      "sha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05"
+    },
+    {
+      "file": "src/hub/settings-commit.ts",
+      "sha256": "778284b011dd741414db9cf233ce646f506d8195993a0afdd051f650a88d0357"
+    },
+    {
+      "file": "src/hub/session-directory-transition.ts",
+      "sha256": "130bfb9882ad2365f44c8659b6fdc37c0da7ab4dd9327215ff49c39e84c60428"
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "115f24436cb77e35ebdfd9bd0c8d37c1f34d3040e39725af80efa963c58d0e2c"
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760"
+    }
+  ],
+  "updatedTestBinding": {
+    "file": "tests/hub-roles-directory-transition-s129.test.ts",
+    "sha256": "74af41493b351c1dda47e38e3b0ea4b6196d5d8aed908f2d185bf5d9a71d0dc1"
+  },
+  "limits": "Prior 292/six-suite and other mutation receipts remain historical at their bound source/test commits. R1 reruns only the scoped 49 tests and types/two guard variants. Parent-first plain sync, resolution review, current CI/readiness, alpha.3 freeze and full-S129 holds remain; no live activation."
+}
