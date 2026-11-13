@@ -31,6 +31,7 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | Allow someone to ask, AD group, name search, how long, Revoke, Recent questions | [Who may ask](#who-may-ask) |
 | New chat, asking someone's agent, Waiting / Answered | [Asking an agent](#asking-an-agent) |
 | Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
+| Room assistant, backend/account, cap, idle stop, answer counts | [Room assistant administration](#room-assistant-administration) |
 | Connected fleets, Revoke, Individual invitations, pairing code, Notices | [Administration](#administration) |
 | `hub`, `hub_member` in fleet.yaml | [Config keys](#config-keys) |
 | how many, how long | [Limits](#limits) |
@@ -43,8 +44,10 @@ A **Fleet** is one person's AgEnD: their agents, on their computer. A **Hub** is
 connect to, so colleagues can ask each other's agents. People sign in on the Hub with their **company account** (the
 Active Directory account they use at work).
 
-- The Hub runs no agents. A shared agent answers inside its own conversation on its owner's Fleet, with its own folder
-  and the tools its Settings allow. Actions that need approval still go to the owner.
+- A shared agent answers inside its own conversation on its owner's Fleet, with its own folder and allowed tools.
+  Actions that need approval still go to the owner.
+  Separately, the optional room-assistant pilot runs on the Hub computer, under the Hub owner's selected account,
+  with no shell, file or other tools. It receives only the supplied room conversation.
 - Every agent is private unless its owner shares it, and sharing alone lets nobody ask: the owner also allows each
   person or an AD security group.
 - The Hub administrator manages who may connect and sees connected Fleets, not chats ("You cannot read anyone's chats
@@ -314,6 +317,28 @@ approval or a join code.
 - What a colleague sees on the Hub welcome page: cards **Chat with an agent** and **Connect your fleet**, on or off
   with the reason ("Connecting a fleet is not included in your access.", "Paused by your Hub admin.", "Your account
   can sign in, but no actions are allowed yet.").
+
+## Room assistant administration
+
+On a Hub that offers the room-assistant pilot, a Hub administrator opens **Administration → Room assistant**
+(房間助理). An older Hub or cached client without this capability leaves these cards out.
+
+- **Enable the room assistant** (啟用房間助理), **Backend**, **Account**: the pilot offers only a qualified tools-off
+  Claude backend and existing accounts on the Hub computer. Sign in there under AgEnD Settings first; a colleague
+  connecting their own Fleet does not provide the assistant's login. It uses the selected account's quota.
+- **At most this many at once** defaults to 3 (range 1–16); **Stop after this many idle minutes** defaults to 15
+  (range 1–240). Extra asks queue in arrival order, with one answer at a time per room. The oldest idle room
+  controller may be retired to free capacity. A fresh worker answers each ask and then closes.
+- **Now** (現在) lists answering or idle room controllers and their last use. **Stop** stops that room's current
+  assistant; a later ask can start it again. It does not remove the assistant from the room.
+- **Usage** (用量) shows seven UTC calendar days of answer counts and the selected account's coarse quota band.
+  It is not a per-person billing report. A counter-storage warning does not mean an answer was lost.
+- **Save** applies changed settings after old workers stop; saving unchanged settings leaves current answers alone.
+  A failed save leaves the form's edits in place for another try.
+
+Each answer uses the latest 30 supplied room messages, plus a replied-to message when it is older. The assistant
+keeps no earlier model conversation, sees no other room and has no tools. Room membership, mentions and delivery
+are supplied by the rooms-server integration; these admin cards alone do not add a chat room or enable an account.
 
 ## Administration
 

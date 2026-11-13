@@ -402,6 +402,12 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     fetchDirectoryCa(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/ca/fetch", input, signal); },
     /** This client has the group permissions calls (a cached older client does not: the pages then hide them). */
     groupPolicyV1: true,
+    // Track A (Sentinel): the room assistant's admin page.
+    assistantAdminV1: true,
+    assistantSettings() { return call("GET", "/hub/v1/admin/assistant"); },
+    saveAssistantSettings(input) { return call("PUT", "/hub/v1/admin/assistant", input); },
+    assistantUsage() { return call("GET", "/hub/v1/admin/assistant/usage"); },
+    stopRoomAssistant(roomId) { return call("POST", `/hub/v1/admin/assistant/rooms/${id(roomId)}/stop`); },
   };
 }
 
