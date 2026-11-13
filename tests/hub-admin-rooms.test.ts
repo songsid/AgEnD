@@ -53,7 +53,7 @@ describe("Hub Administration → Rooms (section 11)", () => {
     expect(rows(pg)).toEqual([["研一主管週會", "3", "12", "王經理", "time", "使用中"], ["研發例會", "2", "4", "陳主任", "time", "使用中"], ["去年專案", "2", "1", "王經理", "time", "已封存"]]);
     const el = pg.root.querySelector("#hubRoomCreators"); el.value = "研一"; fire(el, "input"); await wait(260); await settle(10);
     fire([...pg.root.querySelectorAll(".hub-room-result")].find((b: any) => b.textContent.startsWith("研一")), "click"); await settle(30);
-    expect(tags(pg)).toEqual(["王經理", "研一（2 人）"]);
+    expect(tags(pg)).toEqual(["王經理", "研一 · 2 人"]);
     fire(pg.root.querySelectorAll(".hub-room-tags button")[0], "click"); await settle(30);
     fire(pg.root.querySelectorAll(".hub-room-tags button")[0], "click"); await settle(30);
     expect(pg.root.textContent).toContain("目前只有 Hub 管理員可以開房間。");

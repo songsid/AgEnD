@@ -10,6 +10,9 @@
 .hub-room-result:hover, .hub-room-result:focus-visible { background: var(--surface-2); }
 .hub-room-new .form, .hub-room-settings section.form { display: flex; flex-direction: column; gap: var(--s-3); }
 .hub-room-settings section + section { margin-top: var(--s-4); }
+/* Room settings → Name: the label above, then the input and 儲存 on one line, the input taking the rest of it. */
+.hub-room-name-row .field-row > input { flex: 1; min-width: 0; }
+.hub-room-name-row .field-row > .btn { flex: none; min-height: 40px; }
 .hub-room-settings h4, .hub-room-members h4, .hub-agent-rooms h4 { margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
 .hub-room-settings fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--s-1); }
 .hub-settings-people, .hub-settings-agents, .hub-settings-invited, .hub-agent-rooms ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
