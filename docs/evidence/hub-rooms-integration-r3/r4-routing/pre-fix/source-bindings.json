@@ -1,0 +1,19 @@
+{
+  "sourceHead": "ee9b222fd5ab5c3aade20bc3cd500c7b9f1ec8d9",
+  "sha256": {
+    "scripts/manual/hub-rooms/routing.mts": "d39be46cf53ed6c63e673f64b4140a76ca4175a20b2f1559732f24ddfa5c6a62",
+    "src/hub/protocol.ts": "0f61a27e699c0d2613c88df047adca11518749b250a8fcd45ac765370765513c",
+    "src/hub/server.ts": "7bf80bbeea018c3dbfd01c1baacfa7d8d29505322aa5802932e646ed6e43a128",
+    "src/hub/client.ts": "0e3c0755d24273172d997361787d76772e6d6bd9fb45b4870bbe60964b0ad6ad",
+    "src/hub/http/compose.ts": "0cb41071e33cc758f061bdece3191b84f700edd29a38e28d89f29d765af14ae5",
+    "src/hub/rooms/agents.ts": "0539ee9a0c3d819b0b24a66b855fde906d10427cc9c3c61e3c94ed642ab3eb64",
+    "src/hub/rooms/service.ts": "2ad90b5d2f5877ae2e06936665d6c291e9b67134343275b39890bfd94116fa9f",
+    "src/hub/member/room-ask.ts": "36d930616bb9fdd6dc35c726271bf5a406270699127e0ab96ffc01a512c4b581",
+    "src/ui/hub-room-thread.js": "cc36cce57842a8b917ecbfda50bcf4c26972cc19e69f8f419c3d3caa548c3c4f",
+    "src/ui/hub-room-members.js": "6412d130351d049dcad325732b3f3cbbc42e24eb2655ca9f7c7cc109eaf085e3",
+    "src/ui/shared/app.css": "225a5f1860d7476597af1c7ffc4c6fdfedec663b92f9c8c712bcda149d3b67e7",
+    "tests/helpers/hub-rig.ts": "32882f2454335f6cd463881afa5633519ddf8c825affe496c27dbbd7427983e7",
+    "tests/helpers/hub-s3b-rig.ts": "db4ccc3b2424d487c8c5e94da49fc4dced7fc0c6f6d6f41671bf45e5f1f8d03a",
+    "tests/hub-room-rc-integration-r3.test.ts": "66d01cdecf39200501609e115cd7fb9b147db5682e0df06489628948f5b3a1f7"
+  }
+}
