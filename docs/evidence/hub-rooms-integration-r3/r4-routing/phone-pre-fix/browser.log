@@ -1,0 +1,20 @@
+PASS phone-zh-TW-dark Notes 待命 dot
+PASS phone-zh-TW-dark Planner 待命 dot
+PASS phone-zh-TW-dark plain message has no agent deliveries
+PASS phone-zh-TW-dark @agent routes only to Notes
+PASS phone-zh-TW-dark Notes 處理中 dot
+PASS phone-zh-TW-dark C answer is acknowledged durably
+PASS phone-zh-TW-dark Planner 離線 dot
+PASS phone-zh-TW-dark @all preflight describes one online and one later
+PASS phone-zh-TW-dark Notes 處理中 dot
+PASS phone-zh-TW-dark offline Fleet retains exactly one queued delivery
+PASS phone-zh-TW-dark Planner 處理中 dot
+PASS phone-zh-TW-dark Planner 待命 dot
+PASS phone-zh-TW-dark both @all answers persisted exactly once
+PASS phone-zh-TW-dark Notes 暫停 dot
+FAIL phone-zh-TW-dark quota reason uses viewer language in live panel
+PASS phone-zh-TW-dark quota reason reaches real HTTP projection
+PASS phone-zh-TW-dark live SSE carries state reason and completed progress
+PASS phone-zh-TW-dark no browser error
+PASS phone-zh-TW-dark no horizontal document overflow
+{"checks":19,"failed":1,"pictures":7}
