@@ -12,17 +12,20 @@
  *   (bare https origin, not the member address). It keeps the statement verbatim in `hub-member/<hubId>/web-origin.json`,
  *   beside — never inside — `pairing.json`: the profile's digest is an identity key (link state, retired binding,
  *   company-join settlement), so the profile stays byte-identical.
+ * - Each decision is recorded once in the member's own audit, committed before the kept file is written.
  * - Every read re-verifies the kept statement; one that does not verify, or names another Hub or Fleet, is ignored and the
  *   profile's address applies. A lower revision never replaces a higher one; the same revision never names two addresses.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { createPublicKey, sign, verify, type KeyObject } from "node:crypto";
+import { createPublicKey, randomUUID, sign, verify, type KeyObject } from "node:crypto";
+import type Database from "better-sqlite3";
+import type { HubAuditStore } from "./audit/index.js";
 import type { z } from "zod";
 import { atomicWriteFileSync } from "../atomic-write.js";
 import { ensurePrivateDirectory, readPrivateFile } from "./private-files.js";
 import { hubOrigin } from "./tls.js";
-import { issuerKeyId } from "./identity.js";
+import { canonicalArguments, issuerKeyId, sha256 } from "./identity.js";
 import { uuid, validated, parseStrictJson, HubProtocolError } from "./validation.js";
 import { webOriginStatementSchema } from "./protocol.js";
 import type { HubMemberProfile } from "./profile.js";
@@ -100,18 +103,38 @@ export class HubMemberWebOriginStore {
   }
 }
 
+/** One audit record per statement and decision: the statement's own digest is its request id, so a retry never adds another. */
+export type HubWebOriginAuditEntry = { requestId: string; action: "web-origin.updated" | "web-origin.refused"; result: "completed" | "denied"; reasonCode: string };
+const statementDigest = (statement: unknown): string => {
+  try { return `web-origin:${sha256(canonicalArguments(statement))}`; } catch { return `web-origin:${randomUUID()}`; }
+};
+
+/**
+ * The member's own audit for these decisions: committed in its own transaction, at most once per request id and action
+ * (a retry after a failed write or a lost process finds it and adds nothing).
+ */
+export function createHubWebOriginRecorder(deps: { db: Database.Database; audit: Pick<HubAuditStore, "appendInTransaction">; now(): number;
+  fleetId: string; policyVersion(): number }): (entry: HubWebOriginAuditEntry) => void {
+  return entry => deps.db.transaction(() => {
+    if (deps.db.prepare("SELECT 1 FROM hub_audit WHERE request_id = ? AND action = ? LIMIT 1").get(entry.requestId, entry.action)) return;
+    deps.audit.appendInTransaction({ id: randomUUID(), sequence: 0, at: deps.now(), requestId: entry.requestId, actor: { kind: "local-host" },
+      action: entry.action, result: entry.result, fleetId: deps.fleetId, policyVersion: deps.policyVersion(), reasonCode: entry.reasonCode }, deps.db);
+  }).immediate();
+}
+
 /**
  * The member's step for one welcome statement: verify it against the pinned profile, decide it against the kept one, and
- * keep it — each decision recorded in the member's own audit log, the write inside that record's transaction ("updated":
- * nothing is kept without its record). A refusal changes nothing and the link goes on. Returns what was decided.
+ * keep it. The record commits FIRST, the kept file is written after: a failure between them leaves "recorded, not applied"
+ * (the address is unchanged — never a changed address without its record), and the next welcome's same statement finds its
+ * record and writes the file. A refusal changes nothing and the link goes on. Returns what was decided.
  */
 export function learnHubWebOrigin(deps: {
   home: string; profile: HubMemberProfile; current(): boolean;
-  /** Append one audit record in a transaction; `inTransaction` runs inside it, before it commits. */
-  record(entry: { action: "web-origin.updated" | "web-origin.refused"; result: "completed" | "denied"; reasonCode: string }, inTransaction: () => void): void;
+  /** Commit one audit record (idempotent per requestId + action); throws if it did not commit. */
+  record(entry: HubWebOriginAuditEntry): void;
   log(level: "info" | "warn", message: string, fields: Record<string, unknown>): void;
 }, statement: unknown): "updated" | "unchanged" | "refused" {
-  const store = new HubMemberWebOriginStore(deps.home, deps.profile.hub.hubId);
+  const store = new HubMemberWebOriginStore(deps.home, deps.profile.hub.hubId), requestId = statementDigest(statement);
   let verified: HubWebOriginStatement, plan: ReturnType<HubMemberWebOriginStore["plan"]>;
   try {
     const { binding, key } = memberWebOriginBinding(deps.profile);
@@ -120,12 +143,12 @@ export function learnHubWebOrigin(deps: {
   } catch (error) {
     const reason = error instanceof HubProtocolError && error.code === "stale" ? "stale" : "unverified";
     deps.log("warn", "Hub web address statement refused", { reason });
-    deps.record({ action: "web-origin.refused", result: "denied", reasonCode: reason }, () => {});
+    deps.record({ requestId, action: "web-origin.refused", result: "denied", reasonCode: reason });
     return "refused";
   }
   if (plan.kind === "unchanged") return "unchanged";
-  deps.record({ action: "web-origin.updated", result: "completed", reasonCode: `revision:${verified.revision}` },
-    () => store.save(deps.profile, verified, deps.current));
+  deps.record({ requestId, action: "web-origin.updated", result: "completed", reasonCode: `revision:${verified.revision}` });
+  store.save(deps.profile, verified, deps.current);
   deps.log("info", "The Hub's web address changed", { from: plan.from, to: verified.webOrigin, revision: verified.revision });
   return "updated";
 }

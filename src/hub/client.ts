@@ -133,7 +133,7 @@ export class HubMemberClient implements HubMemberTransport {
       this.view = view;
       // Do not await reconciliation on the receive queue: its RPC response arrives on that queue.
       const statement = features.has(HUB_WEB_ORIGIN_CAPABILITY) ? frame.payload.webOrigin : undefined, learn = this.options.webOrigin;
-      const learned = statement && learn ? Promise.resolve().then(() => learn(statement, view)).catch(() => undefined) : Promise.resolve();
+      const learned = statement && learn ? Promise.resolve().then(() => view.current() ? learn(statement, view) : undefined).catch(() => undefined) : Promise.resolve();
       void learned.then(() => this.options.reconcile(view)).then(async () => {
         if (!view.current()) return;
         this.ready = true; this.attempt = 0; this.firstResolve?.(); this.firstReject = this.firstResolve = null;

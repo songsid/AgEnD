@@ -9,7 +9,9 @@
  *   source of the member's three links to the Hub's pages) then names the new address. An older Hub or member: nothing.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPrivateKey, generateKeyPairSync, randomUUID, sign } from "node:crypto";
+import { createPrivateKey, generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto";
+import { applyHubMigrations, HUB_INSTANCE_MIGRATION, openHubDatabase } from "../src/hub/db.js";
+import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { hubRig } from "./helpers/hub-rig.js";
@@ -18,7 +20,7 @@ import { HUB_OPTIONAL_CAPABILITIES } from "../src/hub/protocol.js";
 import { readPrivateFile } from "../src/hub/private-files.js";
 import { issuerKeyId } from "../src/hub/identity.js";
 import { createHubMemberPairingApi } from "../src/hub/member/pairing-api.js";
-import { HUB_WEB_ORIGIN_CAPABILITY, HubMemberWebOriginStore, learnHubWebOrigin, signHubWebOrigin, verifyHubWebOrigin, memberWebOriginBinding,
+import { HUB_WEB_ORIGIN_CAPABILITY, HubMemberWebOriginStore, createHubWebOriginRecorder, learnHubWebOrigin, signHubWebOrigin, verifyHubWebOrigin, memberWebOriginBinding,
   validHubWebOrigin, type HubWebOriginStatement } from "../src/hub/web-origin.js";
 import type { HubMemberProfile } from "../src/hub/profile.js";
 
@@ -100,20 +102,16 @@ describe("M-2901 the member's kept statement", () => {
 
 describe("M-2901 the member's step: verify, decide, keep — each recorded", () => {
   const step = (r: Rig, p: HubMemberProfile) => {
-    const records: Array<{ action: string; result: string; reasonCode: string; wrote: boolean }> = [], logs: string[] = [];
-    const run = (statement: unknown) => learnHubWebOrigin({ home: r.memberHome, profile: p, current: () => true,
-      log: (_l, m) => logs.push(m),
-      record: (entry, inTransaction) => {
-        const before = existsSync(keptFile(r, p)) ? readFileSync(keptFile(r, p), "utf8") : null;
-        inTransaction();
-        records.push({ ...entry, wrote: (existsSync(keptFile(r, p)) ? readFileSync(keptFile(r, p), "utf8") : null) !== before });
-      } }, statement);
-    return { records, logs, run };
+    const records: Array<{ action: string; result: string; reasonCode: string; requestId: string; keptBefore: boolean }> = [];
+    const run = (statement: unknown) => learnHubWebOrigin({ home: r.memberHome, profile: p, current: () => true, log: () => {},
+      record: entry => { records.push({ ...entry, keptBefore: existsSync(keptFile(r, p)) }); } }, statement);
+    return { records, run };
   };
-  it("a new address: kept and recorded as updated; pairing.json is byte-identical; the same again: nothing", async () => {
+  it("a new address: recorded first, then kept; pairing.json is byte-identical; the same again: nothing", async () => {
     const r = await rig(), p = await r.pair(), before = readFileSync(pairingFile(r, p)), s = step(r, p);
     expect(s.run(statementFor(r, p, NEW, 1))).toBe("updated");
-    expect(s.records).toEqual([{ action: "web-origin.updated", result: "completed", reasonCode: "revision:1", wrote: true }]);
+    expect(s.records).toEqual([{ action: "web-origin.updated", result: "completed", reasonCode: "revision:1", requestId: expect.stringMatching(/^web-origin:[a-f0-9]{64}$/), keptBefore: false }]);
+    expect(existsSync(keptFile(r, p))).toBe(true);
     expect(readFileSync(pairingFile(r, p)).equals(before)).toBe(true);
     expect(s.run(statementFor(r, p, NEW, 1))).toBe("unchanged");
     expect(s.records).toHaveLength(1);
@@ -124,12 +122,61 @@ describe("M-2901 the member's step: verify, decide, keep — each recorded", () 
     const forged = signHubWebOrigin({ ...memberWebOriginBinding(p).binding, issuerKeyId: issuerKeyId(other) }, NEW, 5, other);
     expect(s.run(forged)).toBe("refused");
     expect(s.run({ v: 1, webOrigin: NEW, revision: 5 })).toBe("refused");                                     // unsigned
-    expect(s.records.map(x => [x.action, x.result, x.reasonCode, x.wrote])).toEqual([["web-origin.refused", "denied", "unverified", false], ["web-origin.refused", "denied", "unverified", false]]);
+    expect(s.records.map(x => [x.action, x.result, x.reasonCode])).toEqual([["web-origin.refused", "denied", "unverified"], ["web-origin.refused", "denied", "unverified"]]);
     expect(existsSync(keptFile(r, p))).toBe(false);
     expect(s.run(statementFor(r, p, NEW, 3))).toBe("updated");
     expect(s.run(statementFor(r, p, "https://hub3.example.test", 2))).toBe("refused");
-    expect(s.records.at(-1)).toMatchObject({ action: "web-origin.refused", reasonCode: "stale", wrote: false });
+    expect(s.records.at(-1)).toMatchObject({ action: "web-origin.refused", reasonCode: "stale" });
     expect(new HubMemberWebOriginStore(r.memberHome, p.hub.hubId).effective(p)).toBe(NEW);
+  });
+});
+
+describe("M-2901 (#3797 r1, Prism P2): the record commits before the kept file — never a changed address without its record", () => {
+  /** The member's own audit, as compose/member.ts opens it, with the production recorder. */
+  async function audited() {
+    const r = await rig(), p = await r.pair();
+    const db = openHubDatabase(r.memberHome, "hub-member/audit-test.sqlite", { create: true });
+    applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION]);
+    const audit = createHubAudit({ db, contentKey: randomBytes(32) });
+    const record = createHubWebOriginRecorder({ db, audit, now: Date.now, fleetId: p.fleetId, policyVersion: () => 0 });
+    const rows = (action: string) => (db.prepare("SELECT count(*) n FROM hub_audit WHERE action = ?").get(action) as { n: number }).n;
+    const effective = () => new HubMemberWebOriginStore(r.memberHome, p.hub.hubId).effective(p);
+    const learn = (statement: unknown, current = () => true) => learnHubWebOrigin({ home: r.memberHome, profile: p, current, log: () => {}, record }, statement);
+    return { r, p, db, rows, effective, learn };
+  }
+  it("the record does not commit (SQLite aborts it): nothing kept, the address unchanged; the retry records once and keeps it", async () => {
+    const { r, p, db, rows, effective, learn } = await audited(), before = readFileSync(pairingFile(r, p));
+    db.exec("CREATE TEMP TRIGGER fail_audit BEFORE INSERT ON hub_audit BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+    expect(() => learn(statementFor(r, p, NEW, 1))).toThrow(/disk full/);
+    expect(rows("web-origin.updated")).toBe(0);
+    expect(existsSync(keptFile(r, p))).toBe(false);
+    expect(effective()).toBe(p.hub.webOrigin);
+    db.exec("DROP TRIGGER fail_audit");
+    expect(learn(statementFor(r, p, NEW, 1))).toBe("updated");
+    expect(rows("web-origin.updated")).toBe(1);
+    expect(effective()).toBe(NEW);
+    expect(readFileSync(pairingFile(r, p)).equals(before)).toBe(true);
+    db.close();
+  });
+  it("the kept file is not written after the record committed: the address unchanged; the retry adds no second record and keeps it", async () => {
+    const { r, p, db, rows, effective, learn } = await audited();
+    expect(() => learn(statementFor(r, p, NEW, 1), () => false)).toThrow();                // the link went away before the write
+    expect(rows("web-origin.updated")).toBe(1);
+    expect(effective()).toBe(p.hub.webOrigin);
+    expect(learn(statementFor(r, p, NEW, 1))).toBe("updated");
+    expect(rows("web-origin.updated")).toBe(1);                                                   // the same statement: its one record
+    expect(effective()).toBe(NEW);
+    expect(learn(statementFor(r, p, NEW, 1))).toBe("unchanged");
+    expect(rows("web-origin.updated")).toBe(1);
+    db.close();
+  });
+  it("the same forged statement on every reconnect is one record, not one per link", async () => {
+    const { r, p, db, rows, learn } = await audited();
+    const other = generateKeyPairSync("ed25519").privateKey;
+    const forged = signHubWebOrigin({ ...memberWebOriginBinding(p).binding, issuerKeyId: issuerKeyId(other) }, NEW, 5, other);
+    for (let i = 0; i < 3; i++) expect(learn(forged)).toBe("refused");
+    expect(rows("web-origin.refused")).toBe(1);
+    db.close();
   });
 });
 
@@ -144,7 +191,7 @@ describe("M-2901 over the real pinned link (welcome, web-origin-v1)", () => {
     const got: HubWebOriginStatement[] = [];
     let profile!: HubMemberProfile;
     const r = await rig({ ...(opts.server ? { serverCapabilities: opts.server } : {}), serverWebOrigin: fleetId => signer!(fleetId),
-      clientWebOrigin: statement => { got.push(statement); learnHubWebOrigin({ home: r.memberHome, profile, current: () => true, log: () => {}, record: (_e, inTx) => inTx() }, statement); } });
+      clientWebOrigin: statement => { got.push(statement); learnHubWebOrigin({ home: r.memberHome, profile, current: () => true, log: () => {}, record: () => {} }, statement); } });
     profile = await r.pair();
     signer = fleetId => statementFor(r, profile, NEW, 1, issuer(r), fleetId);
     return { r, profile, got };
