@@ -102,7 +102,10 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
   const unsubscribe = typeof client.subscribeRooms === "function" ? client.subscribeRooms({
     "message.added": on((d) => upsert(d.message)),
     "message.updated": on((d) => { upsert(d.message); if (d.parent) { const p = st.messages.find((x) => x.id === d.parent.id); if (p) p.ask = d.parent.ask; } }),
-    "presence.changed": on((d) => { const m = st.detail?.members?.find((x) => x.id === d.memberId); if (m) { m.presence = d.presence; if (d.presenceNote) m.presenceNote = d.presenceNote; else delete m.presenceNote; } }),
+    // The member's live state as sent: presence, and its note and reason only while the event carries them (a reason
+    // alone updates it; an event without one clears it — never a stale reason).
+    "presence.changed": on((d) => { const m = st.detail?.members?.find((x) => x.id === d.memberId); if (m) { m.presence = d.presence;
+      for (const k of ["presenceNote", "presenceReason"]) { if (d[k]) m[k] = d[k]; else delete m[k]; } } }),
     "member.changed": on(() => { void readDetail().then(changed); }),
     "room.changed": on((d) => { if (d.removed) st.removed = true; else if (d.room && st.detail) st.detail = { ...st.detail, room: { ...st.detail.room, ...d.room } }; }),
   }) : () => {};
