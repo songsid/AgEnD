@@ -1,0 +1,37 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/needs-you-hub-1386.test.ts (32 tests | 1 failed) 104ms
+   × restored model incidents list quietly; one new switch notifies once and recovery removes it 16ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 31 passed (32)
+   Start at  17:03:34
+   Duration  834ms (transform 186ms, setup 93ms, import 478ms, tests 104ms, environment 0ms)
+
+(node:27832) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/needs-you-hub-1386.test.ts > restored model incidents list quietly; one new switch notifies once and recovery removes it
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "dm 100 needs.dm_header(1) | • alpha — needs.model_switch.safeguards(claude-opus-5-5,claude-opus-4-8,needs.model_switch.session) · https://discord.com/channels/111111/700001",
++ ]
+
+ ❯ tests/needs-you-hub-1386.test.ts:129:54
+    127|   r.state.instances = [{ name: "alpha", modelSwitch: { ...incident, ba…
+    128|   expect(r.hub.webItems()[0]).toMatchObject({ quiet: true, modelSwitch…
+    129|   expect(r.A.calls.filter(c => c.startsWith("dm "))).toEqual([]);
+       |                                                      ^
+    130|   r.state.instances = [{ name: "alpha", modelSwitch: { ...incident, id…
+    131|   expect(r.A.calls.filter(c => c.startsWith("dm "))).toHaveLength(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

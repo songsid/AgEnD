@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/office-card-2661.test.ts (19 tests | 1 failed) 548ms
+     × observations appear only on the authenticated card, never the Office share 12ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 passed (19)
+   Start at  17:03:51
+   Duration  1.39s (transform 824ms, setup 118ms, import 544ms, tests 548ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/office-card-2661.test.ts > the card's content > observations appear only on the authenticated card, never the Office share
+AssertionError: expected 'Model switched by safeguards: Opus 5.…' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ Model switched by safeguards: Opus 5.5 → Opus 4.8 · session
+
+ ❯ tests/office-card-2661.test.ts:111:98
+    109|     expect(C.cardModel({ ...base, node: n, lv: full(), levels: null })…
+    110|     expect(C.cardModel({ ...base, node: n, lv: full(), levels: null })…
+    111|     expect(C.cardModel({ ...base, node: n, lv: full(), levels: null, s…
+       |                                                                                                  ^
+    112|   });
+    113|   it("the dashboard with the numbers: two XP lines over the bar; model…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

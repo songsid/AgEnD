@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/web-log-tab-1218.test.ts (21 tests | 1 failed) 2605ms
+   × model pairs and served values live in wrapping Log text, not the ellipsized heading 69ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 20 passed (21)
+   Start at  17:03:43
+   Duration  3.00s (transform 400ms, setup 96ms, import 152ms, tests 2.61s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-log-tab-1218.test.ts > model pairs and served values live in wrapping Log text, not the ellipsized heading
+AssertionError: expected [ 'Last served model: Opus 4.8', …(1) ] to include 'Model switched by safeguards: Opus 5.…'
+ ❯ tests/web-log-tab-1218.test.ts:81:17
+     79|   const pg = await app("/ui/log/web-dev");
+     80|   const lines = pg.root.querySelectorAll(".p-log .log-text").map((el: …
+     81|   expect(lines).toContain("Model switched by safeguards: Opus 5.5 → Op…
+       |                 ^
+     82|   expect(lines).toContain("Last served model: Opus 4.8");
+     83| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

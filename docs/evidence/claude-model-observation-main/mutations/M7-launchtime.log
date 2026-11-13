@@ -1,0 +1,44 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (55 tests | 1 failed) 88ms
+     × rejects bootstrap history even within the old 5-second alarm skew window 14ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 54 passed (55)
+   Start at  17:03:21
+   Duration  542ms (transform 189ms, setup 122ms, import 148ms, tests 88ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > active hook + append source ownership > rejects bootstrap history even within the old 5-second alarm skew window
+AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "at": 1794560601221,
++     "cause": "safeguards",
++     "id": "notice:notice-A",
++     "kind": "switch",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "sessionId": "session-A",
++   },
++ ]
+
+ ❯ tests/claude-model-switch.test.ts:185:126
+    183|   });
+    184|   it("rejects bootstrap history even within the old 5-second alarm ske…
+    185|     const r = rig(); r.m.processEntry({ ...notice(), timestamp: new Da…
+       |                                                                                                                              ^
+    186|   });
+    187|   it("baselines a resumed file, observes only appends, and does not re…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

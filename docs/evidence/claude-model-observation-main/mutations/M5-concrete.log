@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (55 tests | 1 failed) 93ms
+     × serving a concrete unexpected model proves a difference, not its cause 10ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 54 passed (55)
+   Start at  17:03:09
+   Duration  712ms (transform 224ms, setup 161ms, import 160ms, tests 93ms, environment 1ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > serving a concrete unexpected model proves a difference, not its cause
+AssertionError: expected null to match object { cause: 'observed', scope: 'unknown' }
+
+- Expected:
+{
+  "cause": "observed",
+  "scope": "unknown",
+}
+
++ Received:
+null
+
+ ❯ tests/claude-model-switch.test.ts:99:33
+     97|   it("serving a concrete unexpected model proves a difference, not its…
+     98|     const o = new ClaudeModelObserver("claude-opus-5-5", "claude-opus-…
+     99|     expect(o.snapshot().active).toMatchObject({ cause: "observed", sco…
+       |                                 ^
+    100|   });
+    101|   it("next-spawn failover is a launch selection, not a detected provid…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

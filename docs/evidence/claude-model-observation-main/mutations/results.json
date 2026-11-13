@@ -1,0 +1,156 @@
+[
+  {
+    "name": "M1-sidechain",
+    "file": "src/claude-model-observation.ts",
+    "before": "e.isSidechain !== true",
+    "after": "true",
+    "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+    "mutantDigest": "42493106ab2f3a9069913664500ddee26946d0fb8a0349957e29e6fb5fff5103",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M2-apierror",
+    "file": "src/claude-model-observation.ts",
+    "before": "e.isApiErrorMessage !== true",
+    "after": "true",
+    "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+    "mutantDigest": "dadb77a2b09fa51cd13b6711ce216208923d0c98950a367daa0b6195c7dbc93f",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M3-dedupe",
+    "file": "src/claude-model-observation.ts",
+    "before": "if (this.seen.has(key)) return false;",
+    "after": "if (false) return false;",
+    "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+    "mutantDigest": "542e219b1ecbfc5a077ce7b78ecfb9dd61c7d03fa0ea5d0748370dafa408d23c",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M4-recovery",
+    "file": "src/claude-model-observation.ts",
+    "before": "if (returnsTo && normalizeClaudeModel(record.served) === normalizeClaudeModel(returnsTo)) this.state.active = null;",
+    "after": "if (returnsTo && normalizeClaudeModel(record.served) === normalizeClaudeModel(returnsTo)) {}",
+    "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+    "mutantDigest": "2dbe5615bf9a99d2aef3554fdc65f0dabb807a32d79f4f1c1588a7aed60fc88a",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M5-concrete",
+    "file": "src/claude-model-observation.ts",
+    "before": "this.expected = claudeModelId(launch);",
+    "after": "this.expected = null;",
+    "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+    "mutantDigest": "8e21e4415ff329dbec3d9c7132ba70b3cf13317769fe0eddf6057e8295d2d485",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M6-hookowner",
+    "file": "src/transcript-monitor.ts",
+    "before": "hook._agendLaunchId === launch.id",
+    "after": "true",
+    "baseDigest": "95a5616fd60bf2268719743f364aa66dc0c576df8477d7845fb1db49ae0881c3",
+    "mutantDigest": "230b05c3168f9369ce7cdff7b9048eae986b2a933763037395553dc7aba8db8a",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M7-launchtime",
+    "file": "src/transcript-monitor.ts",
+    "before": "observation.at >= launch.startedAt",
+    "after": "true",
+    "baseDigest": "95a5616fd60bf2268719743f364aa66dc0c576df8477d7845fb1db49ae0881c3",
+    "mutantDigest": "ac442b26ef0198a99d9b62c46e95e9659d6d62bfaa73ce653fec7df133bce7b2",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M8-daemonfence",
+    "file": "src/daemon.ts",
+    "before": "owner !== launchIdentity(this.interactionOwner())",
+    "after": "false",
+    "baseDigest": "e44f49228d9e0252935c19b9c5ca5e7631357722a790ba54feb1fb0dd0616453",
+    "mutantDigest": "a524873dc08a7f95c1cf7adb5e6cc42626b5a0642917af1e9c3b30c42b427082",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M9-resumequiet",
+    "file": "src/needs-you-hub.ts",
+    "before": "!i.quiet && !seen.has(i.id)",
+    "after": "!seen.has(i.id)",
+    "baseDigest": "7e1cb01e73efb600e7187c7d713ff71762ab35dff6001c8bda3cdde12ccc8184",
+    "mutantDigest": "0be440289df175c37cefd7ea4f1bdaa71ec06d8ca5754025f1b380fa1f8a5693",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M11-commandprefix",
+    "file": "src/claude-model-observation.ts",
+    "before": "/^(?:<command-name>\\/|<command-message>)/",
+    "after": "/^<command-name>\\//",
+    "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+    "mutantDigest": "3f20d2f4dae636b307289e3a48a4ab7c92409cdf7197911f662f759731f33b5e",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M12-logpair",
+    "file": "src/ui/panel-log.js",
+    "before": "${text(modelSwitchText(x.modelSwitch))}",
+    "after": "${null}",
+    "baseDigest": "2ad06ad223bbe26616c0d52e041810550fb36068ddd85651ff3c7b8a1315aa1b",
+    "mutantDigest": "20baf7d100ebff0caaa2be3de5b2d7f0faaf22613d1d160a9ddbbce5922b9cc9",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M13-officeshare",
+    "file": "src/ui/fleet-office-card.js",
+    "before": "modelSwitch: !share ? modelSwitchText(it.model_observation?.active) : \"\"",
+    "after": "modelSwitch: modelSwitchText(it.model_observation?.active)",
+    "baseDigest": "0523431fa73d3c79c52ac464dbd2d131e9cfe26753b1e383a47fbf874129e9cc",
+    "mutantDigest": "9cb3e255a5430ff1e0ccb92d92819956ed362da393a64e702bed6e1d5fdba345",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M14-nofallback",
+    "file": "src/claude-model-observation.ts",
+    "before": "e.subtype === \"model_refusal_fallback\" || e.subtype === \"model_fallback\"",
+    "after": "e.subtype === \"model_refusal_fallback\" || e.subtype === \"model_fallback\" || e.subtype === \"model_refusal_no_fallback\"",
+    "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+    "mutantDigest": "1302b93398fe3952954275d97d1b033277a8658b3fb53211b320ad3cc43a338b",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M10-original",
+    "file": "src/claude-model-observation.ts",
+    "before": "original = claudeModelId(e.originalModel)",
+    "after": "original = claudeModelId(e.fallbackModel)",
+    "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+    "mutantDigest": "4c99d6be3df0823622360968c0a141a95c1132ed1141caa8e4fd33512ed59a76",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  }
+]

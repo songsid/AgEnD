@@ -1,0 +1,104 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (55 tests | 3 failed) 110ms
+     × excludes sidechain notice 9ms
+     × excludes sidechain response 2ms
+   × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 7ms
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 52 passed (55)
+   Start at  17:02:47
+   Duration  866ms (transform 434ms, setup 167ms, import 371ms, tests 110ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > excludes sidechain notice
+AssertionError: expected { kind: 'switch', …(7) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "at": 1794560568204,
+  "cause": "safeguards",
+  "id": "notice:notice-A",
+  "kind": "switch",
+  "original": "claude-opus-5-5",
+  "scope": "session",
+  "served": "claude-opus-4-8",
+  "sessionId": "session-A",
+}
+
+ ❯ tests/claude-model-switch.test.ts:65:80
+     63|     ["unreadable time", { ...notice(), timestamp: "invalid" }],
+     64|     ["SDK snake case", { ...notice(), originalModel: undefined, fallba…
+     65|   ])("excludes %s", (_label, record) => expect(parseClaudeModelRecord(…
+       |                                                                                ^
+     66|   it("main-thread Haiku is a valid served model", () => expect(parse(s…
+     67|   it("recognizes the producer's command-message prefix as intent, neve…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > excludes sidechain response
+AssertionError: expected { kind: 'served', …(4) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "at": 1794560568204,
+  "id": "response:response-A:opus-4.8",
+  "kind": "served",
+  "served": "claude-opus-4-8",
+  "sessionId": "session-A",
+}
+
+ ❯ tests/claude-model-switch.test.ts:65:80
+     63|     ["unreadable time", { ...notice(), timestamp: "invalid" }],
+     64|     ["SDK snake case", { ...notice(), originalModel: undefined, fallba…
+     65|   ])("excludes %s", (_label, record) => expect(parseClaudeModelRecord(…
+       |                                                                                ^
+     66|   it("main-thread Haiku is a valid served model", () => expect(parse(s…
+     67|   it("recognizes the producer's command-message prefix as intent, neve…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records
+AssertionError: expected [ { …(6) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "id": "model:session-A:notice:notice-A",
++     "kind": "state",
++     "modelSwitch": {
++       "cause": "safeguards",
++       "id": "notice:notice-A",
++       "original": "claude-opus-5-5",
++       "scope": "session",
++       "served": "claude-opus-4-8",
++       "since": 1794560568255,
++     },
++     "note": "Model switched: claude-opus-5-5 → claude-opus-4-8",
++     "ts": 1794560568255,
++     "turn": "",
++   },
++ ]
+
+ ❯ tests/claude-model-switch.test.ts:159:75
+    157|   expect(steps[0]).toMatchObject({ kind: "state", note: "Model switche…
+    158|   expect(JSON.stringify(steps)).not.toContain("NEVER EXPOSE");
+    159|   expect(p.push(JSON.stringify({ ...notice(), isSidechain: true }), 20…
+       |                                                                           ^
+    160|   expect(p.push(JSON.stringify({ ...notice(), subtype: "model_refusal_…
+    161|   const response = served(); response.message.content = [{ type: "text…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+

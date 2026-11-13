@@ -1,0 +1,269 @@
+{
+  "sourceHead": "29d3a5142d8f462798c6976f629b49f375419764",
+  "baseline": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
+  "sourceInputs": [
+    {
+      "digest": "bd5df81c11b885d6436cd5d6958777191ca0cc22367ec27efa3b8a3956d5746a",
+      "paths": [
+        "changes/3812-claude-model-observations.md"
+      ]
+    },
+    {
+      "digest": "3e23424092325e5607ac6e0ecd874c06337a7377f63ae2458ca59565e0f9702c",
+      "paths": [
+        "changes/3812-claude-model-observations.zh-TW.md"
+      ]
+    },
+    {
+      "digest": "f15bbede5182171ab274b1b10fb6db227ea40be425681a9bb2fba14fab713a1c",
+      "paths": [
+        "docs/design/claude-model-observation.md"
+      ]
+    },
+    {
+      "digest": "655f7779c4925449abe19336bf0a60e04492a2294bc1eede9d4fdc8d43181ca6",
+      "paths": [
+        "scripts/manual/claude-model-observation-browser.mts"
+      ]
+    },
+    {
+      "digest": "5b249b27ec31fa4d476a8d29b8aa04d05acd68af8861b57b4a1c4ae8365fc75a",
+      "paths": [
+        "src/auth-api.ts"
+      ]
+    },
+    {
+      "digest": "451787ab5afb6c0edfcda6cb637513da910a718a078705fa0c43a0c157f48d75",
+      "paths": [
+        "src/backend/claude-code.ts"
+      ]
+    },
+    {
+      "digest": "fb66df670dc60a8ec61f5749f81d1a60597a41c686f99df7c36c5d0af9eb8409",
+      "paths": [
+        "src/backend/types.ts"
+      ]
+    },
+    {
+      "digest": "90107e39061c985814e488567b4dd6943ed4b3a70f0f9c893adfa7e08a10bca0",
+      "paths": [
+        "src/channel/mcp-tools.ts"
+      ]
+    },
+    {
+      "digest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+      "paths": [
+        "src/claude-model-observation.ts"
+      ]
+    },
+    {
+      "digest": "e44f49228d9e0252935c19b9c5ca5e7631357722a790ba54feb1fb0dd0616453",
+      "paths": [
+        "src/daemon.ts"
+      ]
+    },
+    {
+      "digest": "f12e6f8637e68af3784fe1915714ac4ed993a89d03f00e6032c17b880f17f0d0",
+      "paths": [
+        "src/fleet-manager.ts"
+      ]
+    },
+    {
+      "digest": "af6b6b50debf61c89d651a40173814a499de1b6d0d700498a93b4c4989023de5",
+      "paths": [
+        "src/general-knowledge/skills/concepts/SKILL.md"
+      ]
+    },
+    {
+      "digest": "b30f7281821ee9cdf6128af0f380e1e65920a8d26fd5b1c1a8efc50b64cd79b8",
+      "paths": [
+        "src/general-knowledge/skills/web-dashboard/SKILL.md"
+      ]
+    },
+    {
+      "digest": "ea87fd79e940615c3fbdcc6bc0679f19c0c0c1fdef4fd285a8ce43372047b9b3",
+      "paths": [
+        "src/instance-lifecycle.ts"
+      ]
+    },
+    {
+      "digest": "19791ccf5fc61862321868d8c8e7687250f2e37fffb80c0cb61d8b20b541207f",
+      "paths": [
+        "src/locale.ts"
+      ]
+    },
+    {
+      "digest": "3f06c5b459f281519e4ff1138f845b1feba68090e979455455c5509b1a41f57e",
+      "paths": [
+        "src/log-steps.ts"
+      ]
+    },
+    {
+      "digest": "7e1cb01e73efb600e7187c7d713ff71762ab35dff6001c8bda3cdde12ccc8184",
+      "paths": [
+        "src/needs-you-hub.ts"
+      ]
+    },
+    {
+      "digest": "ce114eb18016a32ca64646ab49f1bb2db6780ada545aa935776a4c95e80a9803",
+      "paths": [
+        "src/needs-you.ts"
+      ]
+    },
+    {
+      "digest": "7a6e478644f8b4d3c8073debe1a89be2027f5ea7635b675205d41efd957d2117",
+      "paths": [
+        "src/office-share-page.ts"
+      ]
+    },
+    {
+      "digest": "2a8866383a61939e9b352639b49389074eb927327dd5333791ccd6738da685b8",
+      "paths": [
+        "src/outbound-handlers.ts"
+      ]
+    },
+    {
+      "digest": "7546a763e2beceeee0a750692bd183b8f64b6d3c6aedd19da23c0976b03b8046",
+      "paths": [
+        "src/outbound-schemas.ts"
+      ]
+    },
+    {
+      "digest": "95a5616fd60bf2268719743f364aa66dc0c576df8477d7845fb1db49ae0881c3",
+      "paths": [
+        "src/transcript-monitor.ts"
+      ]
+    },
+    {
+      "digest": "898817ba61a5cf8d1a94dc488a384687e50c1d510474a11e6c9ef9da99777d48",
+      "paths": [
+        "src/ui/fleet-canvas.js"
+      ]
+    },
+    {
+      "digest": "0523431fa73d3c79c52ac464dbd2d131e9cfe26753b1e383a47fbf874129e9cc",
+      "paths": [
+        "src/ui/fleet-office-card.js"
+      ]
+    },
+    {
+      "digest": "7ab4ee299c0f3a4641bca0d7f2a863ee74cd8ab1208040784a449b1e9fd4476e",
+      "paths": [
+        "src/ui/fleet-org.js"
+      ]
+    },
+    {
+      "digest": "0ea00968bbbb566bc0e0300fc259830be6b4e6cf175aca522c032f15d9250ceb",
+      "paths": [
+        "src/ui/panel-details.js"
+      ]
+    },
+    {
+      "digest": "2ad06ad223bbe26616c0d52e041810550fb36068ddd85651ff3c7b8a1315aa1b",
+      "paths": [
+        "src/ui/panel-log.js"
+      ]
+    },
+    {
+      "digest": "a5bf15c42f5b8ddb0f0034d9cbb5a61e78cacc586fb54e50a67c982d598f12e0",
+      "paths": [
+        "src/ui/panel-needs.js"
+      ]
+    },
+    {
+      "digest": "57f50595575ed3749c5b68b1c930a13f3fd6f3d1807b7a5071e6b62384a84407",
+      "paths": [
+        "src/ui/shared/app-i18n.js"
+      ]
+    },
+    {
+      "digest": "47fdfcbd3dd53d6d2ef90943ce3cdd2aabb5178454f01a6c90968497a805c8c2",
+      "paths": [
+        "src/ui/shared/app-needs.js"
+      ]
+    },
+    {
+      "digest": "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef",
+      "paths": [
+        "src/ui/shared/model-observation.js"
+      ]
+    },
+    {
+      "digest": "0b2c1281e812aebf629a8090e1a5232eaf520a59e8ca0084cb63e5216b6fa612",
+      "paths": [
+        "src/web-api.ts"
+      ]
+    },
+    {
+      "digest": "841c72520055a42efd122729e339d79e137c7d922d6bf110842c70d8089fd246",
+      "paths": [
+        "tests/claude-model-switch-daemon.test.ts"
+      ]
+    },
+    {
+      "digest": "6a26a6ef166aabc10f8483539484cb03d4de246858531453c11a0b55b4fb9df7",
+      "paths": [
+        "tests/claude-model-switch.test.ts"
+      ]
+    },
+    {
+      "digest": "450ef9e8c433953d3d08a1d457c02564dc541b3af41e6e369446df6fc0d58865",
+      "paths": [
+        "tests/needs-you-hub-1386.test.ts"
+      ]
+    },
+    {
+      "digest": "76dee648c7ca3636939c1bd35974dcd01ebd40a9cd7353f5c63cbf76da692ad7",
+      "paths": [
+        "tests/office-card-2661.test.ts"
+      ]
+    },
+    {
+      "digest": "d9336da0676b0609b3f6005df172a854999d00f8919761501920f1c3a91ebe8a",
+      "paths": [
+        "tests/web-details-n2.test.ts"
+      ]
+    },
+    {
+      "digest": "456cd25f3e6b1942a34da410e76047706822216054b08a1919c5f5571cc26443",
+      "paths": [
+        "tests/web-log-tab-1218.test.ts"
+      ]
+    },
+    {
+      "digest": "093ffa63dfc310116eb146deb121657581ef3b30577ba0f80832993a1f4195cc",
+      "paths": [
+        "tests/web-needs-1408.test.ts"
+      ]
+    }
+  ],
+  "focused": {
+    "files": 17,
+    "passed": 390,
+    "workers": 2,
+    "log": "checks/final-17-controls.log"
+  },
+  "types": {
+    "compiler": "native TypeScript7.0.2",
+    "source": 0,
+    "tests": 0
+  },
+  "mutations": {
+    "caught": 14,
+    "isolated": true,
+    "allRestored": true,
+    "record": "mutations/results.json"
+  },
+  "browser": {
+    "captureHead": "29d3a5142d8f462798c6976f629b49f375419764",
+    "cases": 15,
+    "pngs": 53,
+    "checkpoints": 61,
+    "receipt": "browser/receipt.json",
+    "cleanup": "owned browser/listeners/home closed"
+  },
+  "liveVendorCalls": 0,
+  "liveTranscriptReads": 0,
+  "livePaneWrites": 0,
+  "modelOrPolicyActions": 0
+}

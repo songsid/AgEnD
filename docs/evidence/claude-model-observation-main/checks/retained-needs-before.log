@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/web-needs-1408.test.ts (29 tests | 1 failed | 28 skipped) 689ms
+   × a fresh panel formats model switches when the retained shell knows only plain detail 31ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-needs-1408.test.ts > a fresh panel formats model switches when the retained shell knows only plain detail
+AssertionError: expected 'Needs you1 waitingworkerClaude model …' to contain 'Model switched by safeguards: Opus 5.…'
+
+Expected: "Model switched by safeguards: Opus 5.5 → Opus 4.8 · session"
+Received: "Needs you1 waitingworkerClaude model switchedjust nowclaude-opus-5-5 → claude-opus-4-8Open chatNotify me on this deviceThis browser cannot show notifications."
+
+ ❯ tests/web-needs-1408.test.ts:65:32
+     63|       detail: "claude-opus-5-5 → claude-opus-4-8", modelSwitch: { orig…
+     64|     await mount(); await settle(4);
+     65|     expect(p.root.textContent).toContain("Model switched by safeguards…
+       |                                ^
+     66|   } finally { legacy.mockRestore(); }
+     67| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 28 skipped (29)
+   Start at  16:49:33
+   Duration  1.12s (transform 700ms, setup 102ms, import 169ms, tests 689ms, environment 0ms)
+

@@ -1,0 +1,467 @@
+[
+  {
+    "digest": "044b227eef3ba41a1595ea7b8eb52adbafa884114a172cae162e45abc3f31b62",
+    "paths": [
+      "README.md"
+    ]
+  },
+  {
+    "digest": "05ee16d981bd36116d40ce897ec8b8c23a191e6cfb9ada50a1f74262ac2c3921",
+    "paths": [
+      "browser/after-desk-dark-en-card.png"
+    ]
+  },
+  {
+    "digest": "e0af8ffc5b43bee119272c7d680180fe9f20517aeffa9f44df366d1c905de8a5",
+    "paths": [
+      "browser/after-desk-dark-en-details.png"
+    ]
+  },
+  {
+    "digest": "660db4e7d74687f3026a26b1cdfc11fa2b172b19f49b3442937a1704f5b9d2e3",
+    "paths": [
+      "browser/after-desk-dark-en-log.png"
+    ]
+  },
+  {
+    "digest": "ba4095ce8c8428feb2c28ecd2f63678dd1d519730580daf5c4606233902e98db",
+    "paths": [
+      "browser/after-desk-dark-en-needs.png"
+    ]
+  },
+  {
+    "digest": "6c14a6d879afc7570cb86dd09bfdfe3b4ef24e4ca4e70ab2ac77fabf870ea4bf",
+    "paths": [
+      "browser/after-desk-dark-en-office-card.png"
+    ]
+  },
+  {
+    "digest": "eb53c8cc013a1e97443747d4de1ac215d0ac0fd2a4254e3914d17ff7e7d9841b",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-card.png"
+    ]
+  },
+  {
+    "digest": "2e900c15a359a0f4c286e87c1b1a2c54d6d802f98f46ee9626f6607bbf14e37d",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "bbf6807491b3da104b11d9bae5f6f4fe8bea05b0ce54e7b317858261a061f8bb",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "b36043bfd4f8a03e8ce593025dddeab00325232ddfad2378289d0809d9d5bae5",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "d807cf46ed80495d47d846817c7cd2bb59fd8d43b71d2da0954abd577d66057a",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "0564c309ca58cdb8e5a857c1fcd8c2bba5e1ca88a4e13830fa358ef1233abf75",
+    "paths": [
+      "browser/after-desk-light-en-card.png"
+    ]
+  },
+  {
+    "digest": "522051b23a10e105dac9143ba7f24abe72d2ebbaefeb8990f295f4a49d8e8714",
+    "paths": [
+      "browser/after-desk-light-en-details.png"
+    ]
+  },
+  {
+    "digest": "1286779fef3477bfad06e2ced101586a236a05fe0d87a9de2bb2964280507fed",
+    "paths": [
+      "browser/after-desk-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "94132de7f85e680f3fe9e668c488a32c7b66512f115eaad3845ef36443700e9d",
+    "paths": [
+      "browser/after-desk-light-en-needs.png"
+    ]
+  },
+  {
+    "digest": "a51afa033409a86523713336afc111e58b366355e1c0e8bda2ef74d04886980e",
+    "paths": [
+      "browser/after-desk-light-en-office-card.png"
+    ]
+  },
+  {
+    "digest": "5e86a99397f05b23634a8f3f3b2c6f5df802b531dfbd5f146fcce58aecf798a6",
+    "paths": [
+      "browser/after-desk-light-zh-TW-card.png"
+    ]
+  },
+  {
+    "digest": "1b03fe946dc58afebb535064fdaf965e8c264f627fc1ecb066917974563ac93d",
+    "paths": [
+      "browser/after-desk-light-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "9d1135cc273d564d5c7848cc40af7e67656ccdce372454db695829d43346946d",
+    "paths": [
+      "browser/after-desk-light-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "b56e9bb5cb1de1a18d3a5993de3e908fb2e86dedba405eafcf13c4a825f53f4b",
+    "paths": [
+      "browser/after-desk-light-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "bdd59217d42cc91eb95ba14cf296ad5812236dc2d962ca974565c103451742ae",
+    "paths": [
+      "browser/after-desk-light-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "196239d2da70343e0181f02341619b98208e9b9837adc24e73932fa8c1d9a1b4",
+    "paths": [
+      "browser/after-phone-dark-en-details.png"
+    ]
+  },
+  {
+    "digest": "c6aee805d9f98ce58cb55869852ae67894d44866d13121255bcad66834ce759c",
+    "paths": [
+      "browser/after-phone-dark-en-log.png"
+    ]
+  },
+  {
+    "digest": "79f233faca625bc1ba75151d474e2d8f2f9b1c7eaec951a992889e45c231ca30",
+    "paths": [
+      "browser/after-phone-dark-en-needs.png"
+    ]
+  },
+  {
+    "digest": "b187cba0a3d042f5eb7e9e40b263b15f1100d8736a04627d42e6e213fb4a5c16",
+    "paths": [
+      "browser/after-phone-dark-en-office-card.png"
+    ]
+  },
+  {
+    "digest": "70a6fdbfcf5530ebf1a773209efc7d14862da3dd8d894c04ff3871d780451faf",
+    "paths": [
+      "browser/after-phone-dark-zh-TW-details.png",
+      "browser/retained-shell-phone-dark-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "b798cf238a1d78026dd09f666042ff92f739fe99ab006314ce3b23e841d6784c",
+    "paths": [
+      "browser/after-phone-dark-zh-TW-log.png",
+      "browser/retained-shell-phone-dark-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "97a37774b7b5b16d1dba287c6469dba697b196b152d9cccb7f3c47f82d21a155",
+    "paths": [
+      "browser/after-phone-dark-zh-TW-needs.png",
+      "browser/retained-shell-phone-dark-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "844be99b3bcd8820120cc9a66a41de5c56d254fc2e2da44a8b2c934fa9f829eb",
+    "paths": [
+      "browser/after-phone-dark-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "3abfb419cdd592695bd1bbba2379ac5c3a496c1b40d079d28cc67362db32bcf5",
+    "paths": [
+      "browser/after-phone-light-en-details.png",
+      "browser/retained-shell-phone-light-en-details.png"
+    ]
+  },
+  {
+    "digest": "2377820ca40f182f69f0e743f20be870306478714e9381fec4909a3e8b33fe86",
+    "paths": [
+      "browser/after-phone-light-en-log.png",
+      "browser/retained-shell-phone-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "bc3aa6e9e0ec23b5d61cd43d8c1672d0db59cdf9cedd408182faf8604ddbcc81",
+    "paths": [
+      "browser/after-phone-light-en-needs.png",
+      "browser/retained-shell-phone-light-en-needs.png"
+    ]
+  },
+  {
+    "digest": "4e3ffd938e7ac7d66cf35388840f954c1c21698b45450bee217e4afb92e528cd",
+    "paths": [
+      "browser/after-phone-light-en-office-card.png"
+    ]
+  },
+  {
+    "digest": "f2323d332ba845b27ba1aa31b4dc3430625627e58e03d9fd751526730941a013",
+    "paths": [
+      "browser/after-phone-light-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "ede622532273f5b02e72ddffaa689a67726e5c73f0f37749594c85636d5a7aaf",
+    "paths": [
+      "browser/after-phone-light-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "f19f7f33bc14628e5bdb3b1774ac4c12d7dd622dedbfeec677b09a20b5449deb",
+    "paths": [
+      "browser/after-phone-light-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "defc0c92c3b978e2ba9b8889bced35955060d20e4d9cbcb7cb017375509d15aa",
+    "paths": [
+      "browser/after-phone-light-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "7b72454dc74f3a0bbd087224f6fdf49633169aba4f5e4978c1ef4bf6d48496c9",
+    "paths": [
+      "browser/availability-desk-dark-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "3e23162805ed85e157bb4dac0594795e408c16c5df80f356ad7c65670650229c",
+    "paths": [
+      "browser/availability-desk-dark-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "a22f841dcfdc1f18630b5f6722b563f3781d719daa7db23d75f61322444a3776",
+    "paths": [
+      "browser/availability-desk-dark-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "6ecac9932c0baa4890a2acc60d5dbf0c9b406b5fe7bb23c3ce628edc82b16988",
+    "paths": [
+      "browser/availability-desk-light-en-details.png"
+    ]
+  },
+  {
+    "digest": "28d2026d2fd62b13758fce7c6073e1227e0566e22b34c995dddd89e6e7c7e25c",
+    "paths": [
+      "browser/availability-desk-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "ac615d413f024f5d1f1c9b13c7d628c726924070975fc8280f246d76c6e608b5",
+    "paths": [
+      "browser/availability-desk-light-en-needs.png"
+    ]
+  },
+  {
+    "digest": "25a3f82c602177b7334dbb062072275d1aa514e1378a86147efcfcbc61dfe3be",
+    "paths": [
+      "browser/before-desk-dark-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "b0dd890a784bca9758a988d0daa033b61f7f7e6c88bd1e8cb6efad4da098f809",
+    "paths": [
+      "browser/before-desk-light-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "9df887d38c9edd89bbe47017b9267951836e3920323b83b3b029abbcda82ba1d",
+    "paths": [
+      "browser/receipt.json"
+    ]
+  },
+  {
+    "digest": "de848215e847d754cbd5791276d1d7455d90dafc6b5e58e1bfea68cbb31b93dd",
+    "paths": [
+      "browser/retained-panels-desk-light-en-details.png"
+    ]
+  },
+  {
+    "digest": "3c1ab7e526bf1c068392913a06ee5dd43c5aa9fd7b434c6901867e3a6247e4bd",
+    "paths": [
+      "browser/retained-panels-desk-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "fa9381315b0c165ed5d76e4a5724595fea89e6421c801a63bef8fe21573b0a85",
+    "paths": [
+      "browser/retained-panels-desk-light-en-needs.png"
+    ]
+  },
+  {
+    "digest": "46b4a4ebd529288e9a1e3ac12339ff445fd9f2e2da40655c33c6624abfd82022",
+    "paths": [
+      "checks/baseline-monitor-red.log"
+    ]
+  },
+  {
+    "digest": "6e05595ef6c7d34124d3226aefafe0260cde9204374ce1b9906690b64ea5cf5a",
+    "paths": [
+      "checks/browser-final-readable.log"
+    ]
+  },
+  {
+    "digest": "d0d7d1c1ab1b7b67f9c78e86eda04744b7eb728b743ae7cd1b7816a63f947473",
+    "paths": [
+      "checks/changelog-check.log"
+    ]
+  },
+  {
+    "digest": "977818fb40df4b1462369ddbe06e18a105a01e44470f88654221f2de1989d005",
+    "paths": [
+      "checks/early-record-before.log"
+    ]
+  },
+  {
+    "digest": "e8e20edd94d16860fbb599ab43b3f18bc90cbf66dbd4739ce563fa04062079a7",
+    "paths": [
+      "checks/final-17-controls.log"
+    ]
+  },
+  {
+    "digest": "8bf2da0a66b12f54b661e9316cb8dbf272f512d102e8c2b28710a5277adc96b5",
+    "paths": [
+      "checks/retained-needs-before.log"
+    ]
+  },
+  {
+    "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "paths": [
+      "checks/source-types-final.log",
+      "checks/test-types-final.log",
+      "mutations/M1-sidechain-types.log",
+      "mutations/M10-original-types.log",
+      "mutations/M11-commandprefix-types.log",
+      "mutations/M12-logpair-types.log",
+      "mutations/M13-officeshare-types.log",
+      "mutations/M14-nofallback-types.log",
+      "mutations/M2-apierror-types.log",
+      "mutations/M3-dedupe-types.log",
+      "mutations/M4-recovery-types.log",
+      "mutations/M5-concrete-types.log",
+      "mutations/M6-hookowner-types.log",
+      "mutations/M7-launchtime-types.log",
+      "mutations/M8-daemonfence-types.log",
+      "mutations/M9-resumequiet-types.log"
+    ]
+  },
+  {
+    "digest": "c2c0d3ebd236d8287967bfba76a698b130bf8c741621ebe05d7ff2322f28aba2",
+    "paths": [
+      "checks/visual-prefix-before.log"
+    ]
+  },
+  {
+    "digest": "950091baded53af0e759ddd2380efeaad44f2728d03b51a7be8845a91ce95fe7",
+    "paths": [
+      "checks.json"
+    ]
+  },
+  {
+    "digest": "8fcf6d63ac217761704bc706ca099fcb83007328a7deae4a997e829fd7c250ec",
+    "paths": [
+      "mutations/M1-sidechain.log"
+    ]
+  },
+  {
+    "digest": "510223b1c731621615f7d37f0dd941056fd5086f47335f6208835e522ace44be",
+    "paths": [
+      "mutations/M10-original.log"
+    ]
+  },
+  {
+    "digest": "019dcbc197818139b6d42c9c4539fb6f0604630e32405ac64282981bc371750b",
+    "paths": [
+      "mutations/M11-commandprefix.log"
+    ]
+  },
+  {
+    "digest": "01a8540978e731a3d245a14b894ea5a91ce98ac56c3bb69cdab7a27c4561c0a8",
+    "paths": [
+      "mutations/M12-logpair.log"
+    ]
+  },
+  {
+    "digest": "bb1b8b8e85f8bb4f2513a5a7dd07140b6b6c6b6bf1d620d91c33a37e60184bcd",
+    "paths": [
+      "mutations/M13-officeshare.log"
+    ]
+  },
+  {
+    "digest": "3012228c92fb03a6324c67bf6f0f0aec9a539d074f9d99d49a246399d788835f",
+    "paths": [
+      "mutations/M14-nofallback.log"
+    ]
+  },
+  {
+    "digest": "fb6661fc315910adc8d98d02fdd303d20e7128e5f5db517b9529b63c792797fc",
+    "paths": [
+      "mutations/M2-apierror.log"
+    ]
+  },
+  {
+    "digest": "9dd0349684f2c030fa5da6b4a91073b6e600ee203f68f582df8797131943bbeb",
+    "paths": [
+      "mutations/M3-dedupe.log"
+    ]
+  },
+  {
+    "digest": "ee8538664d6d1f3b513d2531294b02cd451715c6dd61d121f1dad661f5c048fe",
+    "paths": [
+      "mutations/M4-recovery.log"
+    ]
+  },
+  {
+    "digest": "f69c08fd2b6e41d6fcf538f94edbf25ec8aec3454aa4c0def7b872d0864d88e3",
+    "paths": [
+      "mutations/M5-concrete.log"
+    ]
+  },
+  {
+    "digest": "a80a9fb22d29221a6b6869f81e94f3c2953d93850691ccbc0d9f78bd42913906",
+    "paths": [
+      "mutations/M6-hookowner.log"
+    ]
+  },
+  {
+    "digest": "2783a8a88d41c89a18eea50e08aceaa600a36e553088c3b81e1eed4cfef323c7",
+    "paths": [
+      "mutations/M7-launchtime.log"
+    ]
+  },
+  {
+    "digest": "d4fe9068d83d4f6e316a2c7acbbfa4d90aaa376b0ca5c1e0495faa693c1e5199",
+    "paths": [
+      "mutations/M8-daemonfence.log"
+    ]
+  },
+  {
+    "digest": "e362757eea0e187a768d0f29b74a9909a1fbcb31e5fb7ead8934b3b87aaf252c",
+    "paths": [
+      "mutations/M9-resumequiet.log"
+    ]
+  },
+  {
+    "digest": "3aa77106278866ee887711268d793d324e26141b0f512fe0b14084916d0c91b7",
+    "paths": [
+      "mutations/results.json"
+    ]
+  },
+  {
+    "digest": "e6c4a72c9b86e294235c169ad82c018f1f25e22a5bdfa80a59004c6dddd09334",
+    "paths": [
+      "mutations/run.py"
+    ]
+  }
+]

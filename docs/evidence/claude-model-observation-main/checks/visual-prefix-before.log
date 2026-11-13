@@ -1,0 +1,90 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (55 tests | 1 failed) 112ms
+     × recognizes the producer's command-message prefix as intent, never as confirmation 19ms
+ ❯ tests/web-details-n2.test.ts (25 tests | 1 failed) 3124ms
+   × Claude's observed model line follows the live frame and recovery without reloading Details 129ms
+ ❯ tests/web-log-tab-1218.test.ts (21 tests | 1 failed) 3629ms
+   × model pairs and served values live in wrapping Log text, not the ellipsized heading 82ms
+ ❯ tests/office-card-2661.test.ts (19 tests | 1 failed) 151ms
+     × observations appear only on the authenticated card, never the Office share 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > recognizes the producer's command-message prefix as intent, never as confirmation
+AssertionError: expected null to match object { kind: 'intent', …(1) }
+
+- Expected:
+{
+  "kind": "intent",
+  "served": "claude-sonnet-5-5[1m]",
+}
+
++ Received:
+null
+
+ ❯ tests/claude-model-switch.test.ts:70:39
+     68|     const e = { type: "user", uuid: "command-prefixed", sessionId: "se…
+     69|       message: { role: "user", content: "<command-message>model</comma…
+     70|     expect(parseClaudeModelRecord(e)).toMatchObject({ kind: "intent", …
+       |                                       ^
+     71|     expect(parseClaudeModelRecord({ ...e, message: { ...e.message, con…
+     72|     expect(parseClaudeModelRecord({ ...e, isMeta: true })).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/office-card-2661.test.ts > the card's content > observations appear only on the authenticated card, never the Office share
+AssertionError: expected [ 'Office', 'Model', 'Backend', …(2) ] to include 'Session model'
+ ❯ tests/office-card-2661.test.ts:110:105
+    108|     const n = node({ model_observation });
+    109|     expect(C.cardModel({ ...base, node: n, lv: full(), levels: null })…
+    110|     expect(C.cardModel({ ...base, node: n, lv: full(), levels: null })…
+       |                                                                                                         ^
+    111|     expect(C.cardModel({ ...base, node: n, lv: full(), levels: null, s…
+    112|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/web-details-n2.test.ts > Claude's observed model line follows the live frame and recovery without reloading Details
+AssertionError: expected [ 'Model', 'Configured model', …(2) ] to deeply equal [ 'Session model', …(2) ]
+
+- Expected
++ Received
+
+  [
++   "Model",
++   "Configured model",
+    "Session model",
+-   "Configured model",
+    "Last served model",
+  ]
+
+ ❯ tests/web-details-n2.test.ts:113:6
+    111|   expect(pg.root.textContent).toContain("Configured model"); expect(pg…
+    112|   expect(pg.root.querySelectorAll(".p-details .kv .k").map((el: any) =…
+    113|     .toEqual(["Session model", "Configured model", "Last served model"…
+       |      ^
+    114|   applyStatus({ instances: [live("web-dev", { model_observation: { ...…
+    115|   expect(pg.root.querySelector(".model-switch")).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/web-log-tab-1218.test.ts > model pairs and served values live in wrapping Log text, not the ellipsized heading
+AssertionError: expected [ 'fixture' ] to include 'Model switched by safeguards: Opus 5.…'
+ ❯ tests/web-log-tab-1218.test.ts:81:17
+     79|   const pg = await app("/ui/log/web-dev");
+     80|   const lines = pg.root.querySelectorAll(".p-log .log-text").map((el: …
+     81|   expect(lines).toContain("Model switched by safeguards: Opus 5.5 → Op…
+       |                 ^
+     82|   expect(lines).toContain("Last served model: Opus 4.8");
+     83| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  4 failed (4)
+      Tests  4 failed | 116 passed (120)
+   Start at  16:57:26
+   Duration  4.77s (transform 2.45s, setup 401ms, import 944ms, tests 7.02s, environment 1ms)
+

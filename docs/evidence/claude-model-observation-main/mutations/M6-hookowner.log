@@ -1,0 +1,75 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (55 tests | 2 failed) 109ms
+     × rejects old marker 15ms
+     × rejects missing marker 6ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 53 passed (55)
+   Start at  17:03:15
+   Duration  653ms (transform 226ms, setup 141ms, import 165ms, tests 109ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > active hook + append source ownership > rejects old marker
+AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "at": 1794560595980,
++     "cause": "safeguards",
++     "id": "notice:notice-A",
++     "kind": "switch",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "sessionId": "session-A",
++   },
++ ]
+
+ ❯ tests/claude-model-switch.test.ts:182:60
+    180|     if (kind === "other path") r.m.transcriptPath = join(r.dir, "other…
+    181|     if (kind === "missing marker") delete r.hook._agendLaunchId;
+    182|     r.save(); r.m.processEntry(notice()); expect(r.events).toEqual([]);
+       |                                                            ^
+    183|   });
+    184|   it("rejects bootstrap history even within the old 5-second alarm ske…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > active hook + append source ownership > rejects missing marker
+AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "at": 1794560596002,
++     "cause": "safeguards",
++     "id": "notice:notice-A",
++     "kind": "switch",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "sessionId": "session-A",
++   },
++ ]
+
+ ❯ tests/claude-model-switch.test.ts:182:60
+    180|     if (kind === "other path") r.m.transcriptPath = join(r.dir, "other…
+    181|     if (kind === "missing marker") delete r.hook._agendLaunchId;
+    182|     r.save(); r.m.processEntry(notice()); expect(r.events).toEqual([]);
+       |                                                            ^
+    183|   });
+    184|   it("rejects bootstrap history even within the old 5-second alarm ske…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
