@@ -182,9 +182,9 @@ try {
       }
       await until(async () => (await web!.call(admin, "GET", `/hub/v1/rooms/${batchRoom}/messages`)).json.messages.filter((m: any) => m.stage === "answered").length === 4, "four answers committed");
       const expand = page.getByRole("button", { name: lang === "en" ? "Show the other 1" : "展開其餘 1 則", exact: true }); await expand.waitFor();
-      check(tag + " fourth answer starts collapsed", await page.locator(".msg.agent").filter({ hasText: "Four-answer" }).count() === 3); await shot("four-answers-collapsed");
+      check(tag + " fourth answer starts collapsed", await page.locator(".msg.agent:visible").filter({ hasText: "Four-answer" }).count() === 3); await shot("four-answers-collapsed");
       await expand.click(); await page.getByText("Four-answer 4 " + device, { exact: true }).waitFor();
-      const answerRows = page.locator(".msg.agent").filter({ hasText: "Four-answer" });
+      const answerRows = page.locator(".msg.agent:visible").filter({ hasText: "Four-answer" });
       check(tag + " expanding shows all four answers", await answerRows.count() === 4);
       check(tag + " interleaved answers all quote the original question", (await answerRows.locator(".msg-quote .quote-text").allTextContents()).every((text: string) => text.includes(batchQuestion)));
       await shot("four-answers-expanded");
