@@ -1,0 +1,81 @@
+PASS desktop-en-light list reads real room and private assistant
+PASS desktop-en-light New room opens from the actual sidebar
+PASS desktop-en-light complete direct group preview shows singular count
+PASS desktop-en-light create persists complete group and never-signed-in state
+PASS desktop-en-light system sentence follows viewer language without message actions
+PASS desktop-en-light members toggle uses a shared SVG icon
+PASS desktop-en-light human message uses actual SQL
+PASS desktop-en-light room settings is mounted by the actual shell
+PASS desktop-en-light Name Save button aligns with the input
+PASS desktop-en-light settings rename persists through actual HTTP
+PASS desktop-en-light settings all-mention switch persists through actual HTTP
+PASS desktop-en-light localized room assistant mention reaches actual A service
+PASS desktop-en-light private assistant composer uses its direct prompt
+PASS desktop-en-light plain private ask reaches actual A service
+PASS desktop-en-light assistant label follows viewer language
+PASS desktop-en-light consent room created
+PASS desktop-en-light C invitation created by actual HTTP
+PASS desktop-en-light actual owner page discloses the room and people count
+PASS desktop-en-light invitation page has one plural title
+PASS desktop-en-light invitation explains the recent room context
+PASS desktop-en-light invitation is a normal nav row with count badge
+PASS desktop-en-light owner acceptance persisted exact agent membership
+PASS desktop-en-light consent did not add owner as person
+PASS desktop-en-light owner room list names the accepted room
+PASS desktop-en-light owner lead distinguishes one-to-one from room reach
+PASS desktop-en-light Who may ask explains room reach
+PASS desktop-en-light agent rooms sit directly after Who may ask
+PASS desktop-en-light owner count comes from the section's single real read
+PASS desktop-en-light owner removal persisted through actual route
+PASS desktop-en-light owner lead follows zero rooms after Leave
+PASS desktop-en-light manager can invite again after owner removal
+PASS desktop-en-light decline persisted without re-adding agent
+PASS desktop-en-light no page errors
+PASS desktop-en-light no horizontal document overflow
+PASS desktop-en-light admin room card uses named creator projection
+PASS desktop-en-light admin room table contains actual created room
+PASS desktop-en-light signed-in assistant account omits sign-in instructions
+PASS desktop-en-light admin cards keep rooms-assistant-fleets-pairing order
+PASS desktop-en-light admin view has no horizontal document overflow
+PASS phone-zh-TW-dark list reads real room and private assistant
+PASS phone-zh-TW-dark New room opens from the actual sidebar
+PASS phone-zh-TW-dark complete direct group preview shows singular count
+PASS phone-zh-TW-dark create persists complete group and never-signed-in state
+PASS phone-zh-TW-dark system sentence follows viewer language without message actions
+PASS phone-zh-TW-dark members toggle uses a shared SVG icon
+PASS phone-zh-TW-dark human message uses actual SQL
+PASS phone-zh-TW-dark room settings is mounted by the actual shell
+PASS phone-zh-TW-dark Name Save button aligns with the input
+PASS phone-zh-TW-dark settings rename persists through actual HTTP
+PASS phone-zh-TW-dark settings all-mention switch persists through actual HTTP
+PASS phone-zh-TW-dark localized room assistant mention reaches actual A service
+PASS phone-zh-TW-dark private assistant composer uses its direct prompt
+PASS phone-zh-TW-dark plain private ask reaches actual A service
+PASS phone-zh-TW-dark assistant label follows viewer language
+PASS phone-zh-TW-dark consent room created
+PASS phone-zh-TW-dark C invitation created by actual HTTP
+PASS phone-zh-TW-dark actual owner page discloses the room and people count
+PASS phone-zh-TW-dark invitation page has one plural title
+PASS phone-zh-TW-dark invitation explains the recent room context
+PASS phone-zh-TW-dark invitation actions meet the 44px touch target
+PASS phone-zh-TW-dark invitation is a normal nav row with count badge
+PASS phone-zh-TW-dark owner acceptance persisted exact agent membership
+PASS phone-zh-TW-dark consent did not add owner as person
+PASS phone-zh-TW-dark owner room list names the accepted room
+PASS phone-zh-TW-dark owner lead distinguishes one-to-one from room reach
+PASS phone-zh-TW-dark Who may ask explains room reach
+PASS phone-zh-TW-dark agent rooms sit directly after Who may ask
+PASS phone-zh-TW-dark owner count comes from the section's single real read
+PASS phone-zh-TW-dark owner removal persisted through actual route
+PASS phone-zh-TW-dark owner lead follows zero rooms after Leave
+PASS phone-zh-TW-dark manager can invite again after owner removal
+PASS phone-zh-TW-dark decline persisted without re-adding agent
+PASS phone-zh-TW-dark no page errors
+PASS phone-zh-TW-dark no horizontal document overflow
+PASS phone-zh-TW-dark admin room card uses named creator projection
+PASS phone-zh-TW-dark admin room table contains actual created room
+PASS phone-zh-TW-dark signed-in assistant account omits sign-in instructions
+PASS phone-zh-TW-dark admin cards keep rooms-assistant-fleets-pairing order
+PASS phone-zh-TW-dark admin view has no horizontal document overflow
+PASS phone-zh-TW-dark internal room-table scroll exposes row actions
+{"checks":80,"failed":0,"pictures":22}
