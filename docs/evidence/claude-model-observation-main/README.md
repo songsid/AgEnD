@@ -8,7 +8,7 @@ Source and capture pin: `29d3a5142` (full SHA in [checks.json](checks.json)). Ma
 
 ## Verification
 
-- **390/390, 17 focused files**, `vitest run --maxWorkers=2`; [command/results](checks/final-17-controls.log).
+- **390/390, 17 focused files**, `vitest run --maxWorkers=2`; [commands](checks/commands.txt), [results](checks/final-17-controls.log).
 - Native TypeScript **7.0.2** source and test projects exit 0; changelog validation passes.
 - **14 isolated reversals caught**, with native compilation and JS syntax checks where applicable; every source restored. [Cases, exact substitutions and digests](mutations/results.json), [runner](mutations/run.py).
 - Fail-first: original monitor emits no observation ([baseline red](checks/baseline-monitor-red.log)); a response before monitor construction is lost ([early-record red](checks/early-record-before.log)); retained formatter loses localized detail ([retained-shell red](checks/retained-needs-before.log)); command-message prefix and three visual contracts each fail ([four semantic reds](checks/visual-prefix-before.log)). Final controls are green.

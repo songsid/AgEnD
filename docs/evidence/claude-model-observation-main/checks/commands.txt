@@ -1,0 +1,6 @@
+vitest run tests/claude-model-switch.test.ts tests/claude-model-switch-daemon.test.ts tests/claude-transcript-limits-2834.test.ts tests/transcript-monitor-generation-1218.test.ts tests/log-steps-1218.test.ts tests/needs-you-derive-1386.test.ts tests/needs-you-hub-1386.test.ts tests/office-card-2661.test.ts tests/office-share-page-2636.test.ts tests/web-details-n2.test.ts tests/web-app-modules-1408.test.ts tests/outbound-instance-identity.test.ts tests/backend/claude-code.test.ts tests/model-persist-runtime.test.ts tests/statusline-once-1956.test.ts tests/web-needs-1408.test.ts tests/web-log-tab-1218.test.ts --maxWorkers=2
+tsc --noEmit --pretty false
+tsc --noEmit -p tsconfig.test.json --pretty false
+node scripts/changelog-assemble.mjs --check
+python3 docs/evidence/claude-model-observation-main/mutations/run.py
+REPO=<checkout> OUT=<output> BASELINE_REF=3e4c2b657b86d343a5f70ab9d6f47e844fddeb46 PW_DIR=<playwright-core-prefix> CHROME=<chromium> HP=<free-port> tsx scripts/manual/claude-model-observation-browser.mts

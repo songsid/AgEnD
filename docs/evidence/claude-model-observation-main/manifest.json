@@ -1,6 +1,6 @@
 [
   {
-    "digest": "044b227eef3ba41a1595ea7b8eb52adbafa884114a172cae162e45abc3f31b62",
+    "digest": "75f4659d27607d45773fd2ab1fe29f067152691a03e9258bccfac5c54e6341e2",
     "paths": [
       "README.md"
     ]
@@ -315,6 +315,12 @@
     "digest": "d0d7d1c1ab1b7b67f9c78e86eda04744b7eb728b743ae7cd1b7816a63f947473",
     "paths": [
       "checks/changelog-check.log"
+    ]
+  },
+  {
+    "digest": "dc21d82ff97e9b40e46bd16e76c5b46757f8d86c0ef476123684ff11fcf45969",
+    "paths": [
+      "checks/commands.txt"
     ]
   },
   {
