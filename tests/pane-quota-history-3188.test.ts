@@ -30,6 +30,8 @@ function setup(kind: "codex" | "grok", pane: string) {
   mkdirSync(instance); mkdirSync(join(home, "sessions"), { recursive: true });
   vi.stubEnv("CODEX_HOME", home);
   const backend = kind === "codex" ? new CodexBackend(instance) : new GrokBackend(instance);
+  // #3810: quota-history owns pane evidence, not installed-CLI capability discovery. Never probe a host backend here.
+  if (kind === "grok") vi.spyOn(backend as GrokBackend, "prepareLaunch").mockResolvedValue(undefined);
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const d = new Daemon("quota-fixture", { working_directory: root, backend: kind, lightweight: true,
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },

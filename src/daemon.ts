@@ -1,4 +1,5 @@
 import { ClaudeModelObserver, type ModelObservation } from "./claude-model-observation.js";
+import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import type { SubagentSource } from "./subagent-service.js";
 import { codexMetadataHomes } from "./backend/codex-metadata.js";
 import { claudeMinimumError, cliVersionBelow } from "./claude-model-minimum.js";
@@ -860,7 +861,7 @@ type DurableDeliveryAttempt = {
   /** sha256 of the text as this daemon received it, before formatting (#856). */
   contentSha256?: string;
 };
-type DeliveryTranscriptCheckpoint = { backend: string; path: string; offset: number; ownedCodex?: {
+type DeliveryTranscriptCheckpoint = { backend: string; path: string; offset: number; ownedGrok?: GrokDeliveryProof; ownedCodex?: {
   identity: { dev: number; ino: number }; current(): boolean; validate(): Promise<boolean>; retire(): void;
 } };
 type DeliveryVerdict = {
@@ -2562,15 +2563,19 @@ export class Daemon extends EventEmitter {
   /**
    * #1201: a steer or a native-queue hand-off was accepted into the CLI's input (or may have been) — not read. Watch
    * the transcript from this attempt's checkpoint for the moment the CLI takes it, and record that on the delivery;
-   * an `uncertain` row becomes `delivered` then. Only claude-code and codex write a transcript AgEnD can read. The
+   * an `uncertain` row becomes `delivered` then. Grok idle submissions use only their exact launch-UUID lease (#3810). The
    * watch belongs to this CLI: a stop, pause or respawn ends it (restart reconciliation owns the row after that).
    */
   private startConsumedWatch(delivery: { deliveryId: string; attemptNo: number }, verdict: DeliveryVerdict): void {
     const checkpoint = verdict.transcriptCheckpoint;
     const outbox = this.deliveryOutbox;
     if (!checkpoint || !outbox?.markConsumed) return;
-    if (verdict.submissionMode !== "steer" && verdict.submissionMode !== "native_queue_handoff") return;
-    if (!["claude-code", "codex"].includes(checkpoint.backend)) return;
+    const grok = checkpoint.backend === "grok" ? checkpoint.ownedGrok : undefined;
+    if (grok) { if (verdict.submissionMode !== "idle_submit") return; }
+    else {
+      if (verdict.submissionMode !== "steer" && verdict.submissionMode !== "native_queue_handoff") return;
+      if (!["claude-code", "codex"].includes(checkpoint.backend)) return;
+    }
     const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, boot = this.bootId;
     consumedWatches.start({
       deliveryId: delivery.deliveryId,
@@ -2578,7 +2583,8 @@ export class Daemon extends EventEmitter {
       backend: checkpoint.backend,
       path: checkpoint.path,
       offset: checkpoint.offset,
-      current: () => !this.deliveryWritesStopping && spawn === this.spawnGeneration && fence === this.launchFenceEpoch,
+      ...(grok ? { grokSessionId: grok.sessionId, readChunk: grok.readChunk } : {}),
+      current: () => !this.deliveryWritesStopping && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && (grok?.current() ?? true),
       consumed: (via, evidence) => {
         try {
           const result = outbox.markConsumed!(delivery.deliveryId, boot, delivery.attemptNo, via, evidence);
@@ -10308,12 +10314,21 @@ export class Daemon extends EventEmitter {
         };
         const codexCheckpoint = rawPaste && attemptEvidence.backend === "codex" && windowId
           ? await this.bindCodexRawPaste(windowId, steerCurrent) : null;
+        const grokCheckpoint = !rawPaste && attemptEvidence.backend === "grok" && attemptEvidence.submissionMode === "idle_submit"
+          ? await checkpointGrokDelivery({ cwd: this.config.working_directory,
+            sessionId: this.backend?.getDeliverySessionId?.() ?? null,
+            current: () => steerCurrent() && sameInteractionOwner(proofOwner, this.interactionOwner()) }) : null;
+        if (grokCheckpoint) {
+          attemptEvidence.transcriptPath = grokCheckpoint.path;
+          attemptEvidence.transcriptOffset = grokCheckpoint.offset;
+          attemptEvidence.transcriptSessionId = grokCheckpoint.sessionId;
+        }
         if (codexCheckpoint) {
           attemptEvidence.transcriptPath = codexCheckpoint.path;
           attemptEvidence.transcriptOffset = codexCheckpoint.offset;
           attemptEvidence.transcriptSessionId = codexCheckpoint.sessionId;
         }
-        if ((stillCurrent && !stillCurrent()) || (rawPaste && attemptEvidence.backend === "codex"
+        if ((stillCurrent && !stillCurrent()) || ((grokCheckpoint || (rawPaste && attemptEvidence.backend === "codex"))
           && (!sameInteractionOwner(proofOwner, this.interactionOwner()) || !steerCurrent()))) {
           verdict.fenced = true; return false;
         }
@@ -10331,6 +10346,7 @@ export class Daemon extends EventEmitter {
             path: attemptEvidence.transcriptPath,
             offset: attemptEvidence.transcriptOffset,
             ...(codexCheckpoint ? { ownedCodex: codexCheckpoint.ownedCodex } : {}),
+            ...(grokCheckpoint ? { ownedGrok: grokCheckpoint.ownedGrok } : {}),
           };
           // From here every proof of this write may also ask the CLI's transcript (the pane can lose the echo to the
           // reply, or still be painting the paste) — this delivery's exact marker only, or a raw paste's exact text (#1647).
