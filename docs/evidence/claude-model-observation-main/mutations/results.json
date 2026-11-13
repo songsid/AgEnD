@@ -77,17 +77,6 @@
     "semanticRed": true
   },
   {
-    "name": "M8-daemonfence",
-    "file": "src/daemon.ts",
-    "before": "owner !== launchIdentity(this.interactionOwner())",
-    "after": "false",
-    "baseDigest": "e44f49228d9e0252935c19b9c5ca5e7631357722a790ba54feb1fb0dd0616453",
-    "mutantDigest": "a524873dc08a7f95c1cf7adb5e6cc42626b5a0642917af1e9c3b30c42b427082",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
     "name": "M9-resumequiet",
     "file": "src/needs-you-hub.ts",
     "before": "!i.quiet && !seen.has(i.id)",
@@ -160,6 +149,17 @@
     "after": "original = claudeModelId(e.fallbackModel)",
     "baseDigest": "d161b8a9ad7430416d75acb64ce1a6baa24ba1868890b02ee7e37d693446fee1",
     "mutantDigest": "dc123ef37e81cbf07ce6e133fd3d0698754f50aa8b26ed304fef3f7474ad4653",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M8-daemonfence",
+    "file": "src/daemon.ts",
+    "before": "owner !== launchIdentity(this.interactionOwner())",
+    "after": "false",
+    "baseDigest": "3191614c5160967dba903d437835bae81657e5976a581f6f013fd2aae8da7fe0",
+    "mutantDigest": "4465f6faa2b03b9d3262757c727aa18e267ddb05f4cfa33a1936bfdc9e5579ed",
     "types": 0,
     "testExit": 1,
     "semanticRed": true

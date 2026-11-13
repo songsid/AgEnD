@@ -1,13 +1,13 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch-daemon.test.ts (3 tests | 1 failed) 102ms
-   × the actual daemon wires metadata to read-only presentation, persists it, and fences replaced monitors/launches 13ms
+ ❯ tests/claude-model-switch-daemon.test.ts (3 tests | 1 failed) 121ms
+   × the actual daemon wires metadata to read-only presentation, persists it, and fences replaced monitors/launches 24ms
 
  Test Files  1 failed (1)
       Tests  1 failed | 2 passed (3)
-   Start at  17:30:56
-   Duration  2.46s (transform 1.63s, setup 105ms, import 2.09s, tests 102ms, environment 0ms)
+   Start at  17:56:26
+   Duration  2.98s (transform 1.98s, setup 110ms, import 2.57s, tests 121ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯

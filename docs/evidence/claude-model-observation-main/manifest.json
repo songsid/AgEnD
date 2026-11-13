@@ -1,6 +1,6 @@
 [
   {
-    "digest": "e7c40410055ef3420281df14869f043c5420bce57eaf2c3c3a60f400f58524d5",
+    "digest": "ba496f26a58d1a240bca155244e0f77dbc1b1791d3c604a75b49ff6b5ce141ea",
     "paths": [
       "README.md"
     ]
@@ -331,6 +331,8 @@
       "checks/r2-source-types.log",
       "checks/r2-test-types.log",
       "checks/source-types-final.log",
+      "checks/sync-source-types.log",
+      "checks/sync-test-types.log",
       "checks/test-types-final.log",
       "mutations/M1-sidechain-types.log",
       "mutations/M10-original-types.log",
@@ -350,7 +352,7 @@
     ]
   },
   {
-    "digest": "4ee49b7e5191cf15b561703fc3beb4382a5172f0c0161616c88193872847748f",
+    "digest": "a89722ef020fe1d52c342a1de9aadd27f3259aa8e1c9077ba44ffe5d28d79cef",
     "paths": [
       "checks/commands.txt"
     ]
@@ -416,13 +418,19 @@
     ]
   },
   {
+    "digest": "a7036c0ab2693188fc8d59b74df85192b03f77b749d30360dfe059393da528a7",
+    "paths": [
+      "checks/sync-claude-grok-controls.log"
+    ]
+  },
+  {
     "digest": "c2c0d3ebd236d8287967bfba76a698b130bf8c741621ebe05d7ff2322f28aba2",
     "paths": [
       "checks/visual-prefix-before.log"
     ]
   },
   {
-    "digest": "3e78f0249fbd3d8be278fe3102d924199066089e73b1f4057391630a33a2f628",
+    "digest": "e1bd462b0a268b7d7aeff6a4b191dfac00c0add01fc90172f273ca99dd4e3a65",
     "paths": [
       "checks.json"
     ]
@@ -506,7 +514,7 @@
     ]
   },
   {
-    "digest": "eb719a8d4cbca6a1e8573fb33716cd666b6ecb74ac1dbb26aace355367b79c98",
+    "digest": "519b57659487c0b0843181bfc84c11b4ede5874d8454e52a415c4abdfce94440",
     "paths": [
       "mutations/M8-daemonfence.log"
     ]
@@ -518,7 +526,7 @@
     ]
   },
   {
-    "digest": "a8706e2783ae8f5bdd5c0dcf3e9a802e904734c9cf0bbd6a5f707057e2c71580",
+    "digest": "4d52ceb099a6277f51ed7bcad2a05dac08cc9ba1cde4c28db8e8f1e962016a4e",
     "paths": [
       "mutations/results.json"
     ]
@@ -527,6 +535,12 @@
     "digest": "09e56dce0503f14be4bf7bd3b7a0358715bc20b094729226ccf755c14a9f67ea",
     "paths": [
       "mutations/run.py"
+    ]
+  },
+  {
+    "digest": "2fef48cfaae1f833f48fbf376ac7a49b5596e42f2d0aae6df8a117c1b712d927",
+    "paths": [
+      "sync-main3814.json"
     ]
   }
 ]

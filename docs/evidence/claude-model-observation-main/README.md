@@ -4,7 +4,7 @@ AgEnD previously discarded the typed fallback notices and assistant model metada
 
 This is detection only: separate configured/launch/session/served values, typed safeguards/availability notices, one quiet Needs-you incident with recovery, localized runtime cards/details and Log, and compact `describe_instance` output (`detail:true` for bounded metadata). No automatic model, policy, restart or permission operation is added.
 
-Final source/docs pin: `8ac9d764e`; functional source pin: `409472f13`; browser capture pin: `29d3a5142` (full SHAs in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. Later corrections isolate metadata startup recovery and accept a return to the configured model after launch failover. UI, FleetManager and capture harness are byte-identical to the capture. Its observer cases have configured = launch = original, where old/new recovery conditions agree. No later browser execution is claimed.
+Final source pin: `ad488fb11`; browser capture pin: `29d3a5142` (full SHAs in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. Later corrections isolate metadata startup recovery and accept a return to the configured model after launch failover. UI, FleetManager and capture harness are byte-identical to the capture. Its observer cases have configured = launch = original, where old/new recovery conditions agree. No later browser execution is claimed.
 
 ## Verification
 
@@ -31,6 +31,10 @@ A self-found [semantic red](checks/configured-recovery-before.log) pins next-spa
 ## R3 launch contracts and concepts mirror
 
 **847/847 across all49 `claude-*` suites plus concepts sync (50 files)**, native test types exit0. The new `AGEND_CLAUDE_LAUNCH_ID=<UUID>` is an intentional, non-secret observational environment marker inherited by the CLI/statusline child. It grants no authority and selects no model/account/policy. Credential, cache TTL and memory fixtures pin that marker and preserve all remaining legacy command bytes. The marker prevents a late old hook from claiming the next launch after its script is rewritten. `docs/concepts.md` now mirrors the builtin skill exactly. Functional source is unchanged from R2; the backend comment and design explain the marker contract.
+
+## R4 main sync
+
+Plain merge of main `6148c52f` (#3814) into `f773dc990`, parents recorded in [sync receipt](sync-main3814.json). Only daemon import lines conflicted; both Claude observer and Grok proof imports remain. The Grok checkpoint, deliverySessionId and idle-submit consumed watch auto-merge intact. All disjoint incoming blobs match main; only daemon and backend types overlap. **888/888 across all Claude suites, concepts and Grok (51 files)**; both native types exit0. M8 owner-fence reversal refreshed/caught/restored; all15 mutation baseline bindings match the merged source. UI/observer/FleetManager/harness/PNGs are unchanged, with no new browser claim.
 
 ## PNGs
 

@@ -1,5 +1,5 @@
 {
-  "sourceHead": "8ac9d764eae2e205981cf89d1543d9e8f7d9af92",
+  "sourceHead": "ad488fb1173565f1083a3f19a3fdf6d1c18e9e68",
   "baseline": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
   "sourceInputs": [
     {
@@ -45,7 +45,7 @@
       ]
     },
     {
-      "digest": "fb66df670dc60a8ec61f5749f81d1a60597a41c686f99df7c36c5d0af9eb8409",
+      "digest": "c2d0d0e7fe7063a9215e2d8b95d704c587c136d37bda0021a140442b7bccf284",
       "paths": [
         "src/backend/types.ts"
       ]
@@ -63,7 +63,7 @@
       ]
     },
     {
-      "digest": "e44f49228d9e0252935c19b9c5ca5e7631357722a790ba54feb1fb0dd0616453",
+      "digest": "3191614c5160967dba903d437835bae81657e5976a581f6f013fd2aae8da7fe0",
       "paths": [
         "src/daemon.ts"
       ]
@@ -287,13 +287,13 @@
     "cleanup": "owned browser/listeners/home closed",
     "continuity": {
       "captureSourceHead": "29d3a5142d8f462798c6976f629b49f375419764",
-      "finalSourceHead": "409472f13166a674327f776ec931e951de8e47d0",
+      "finalSourceHead": "ad488fb1173565f1083a3f19a3fdf6d1c18e9e68",
       "unchanged": [
         "src/ui/",
         "src/fleet-manager.ts",
         "scripts/manual/claude-model-observation-browser.mts"
       ],
-      "laterDelta": "Monitor-only startup isolation, credential tests/docs, and configured-return recovery after launch failover. UI/FleetManager/harness bytes unchanged; capture observer fixtures have configured=launch=original, where both recovery conditions agree. No later browser execution claimed."
+      "laterDelta": "Monitor-only startup isolation, credential tests/docs, and configured-return recovery after launch failover. UI/FleetManager/harness bytes unchanged; capture observer fixtures have configured=launch=original, where both recovery conditions agree. No later browser execution claimed. Plain merge of main3814 retains its Grok delivery proof, with only an import conflict; all UI/observer/FM/harness bytes unchanged from f773."
     }
   },
   "liveVendorCalls": 0,
@@ -337,5 +337,16 @@
     "log": "checks/full-claude-controls.log",
     "testTypes": 0,
     "fixtureScope": "Credential/memory/cache TTL compare all legacy bytes after explicitly pinning the inherited marker; concepts doc mirrors skill. Product behavior unchanged from e3a19c912."
+  },
+  "r4Sync": {
+    "merge": "ad488fb1173565f1083a3f19a3fdf6d1c18e9e68",
+    "main": "6148c52f4ad395b0a77b8f2be92af0bb7c2efc2d",
+    "passed": 888,
+    "files": 51,
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "refreshedMutation": "M8-daemonfence",
+    "receipt": "sync-main3814.json",
+    "log": "checks/sync-claude-grok-controls.log"
   }
 }
