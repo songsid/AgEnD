@@ -60,7 +60,9 @@ it("code join → refused share → reconnect keeps the member online without gr
   let snapshot: HubExposureSnapshot = { revision: 0, exposures: [] };
   const sender = exposureSnapshotSender({ snapshot: () => snapshot });
   const frames: HubServerFrame[] = [], logs = vi.fn(), holds = vi.fn();
-  const receive = createMemberReceive({ admission: { admit: vi.fn(), fence: vi.fn() }, journal: { acknowledge: vi.fn() }, live: () => true, log: logs });
+  // M-3007: the refusal is recorded on the sender (what the owner's Settings shows), as member.ts wires it.
+  const receive = createMemberReceive({ admission: { admit: vi.fn(), fence: vi.fn() }, journal: { acknowledge: vi.fn() }, live: () => true, log: logs,
+    publicationRefused: (requestId, code) => sender.refused(requestId, code) });
   let link!: HubMemberLink;
   const barrier = (l: HubMemberLink) => l.exchange({ v: 1, type: "reconcile", requestId: randomUUID(), linkEpoch: l.linkEpoch,
     payload: { afterReceiptSequence: 0, messages: [] } }, "reconcile");
@@ -78,10 +80,12 @@ it("code join → refused share → reconnect keeps the member online without gr
   expect.soft(link.current()).toBe(true);
   expect.soft(frames).toContainEqual(expect.objectContaining({ type: "error", payload: { code: "denied", retryable: false } }));
   expect(r.db.prepare("SELECT * FROM hub_exposures").all()).toEqual([]);
+  expect(sender.isRefused()).toBe(true);                                   // M-3007: the owner's row says "not allowed"
   expect(r.deps.store.read().fleets).toMatchObject([{ status: "active", generation: 1 }]);
   await first.close(); holds.mockClear();
   const second = connect();
   expect.soft(await bounded(second.start())).toBeUndefined();
+  expect(sender.isRefused()).toBe(true);                                   // the reconnect's resend is refused again
   expect.soft(link.current()).toBe(true);
   expect.soft(holds).not.toHaveBeenCalled();
   expect(r.db.prepare("SELECT count(*) n FROM hub_group_resources WHERE source='code'").get()).toEqual({ n: 1 });
@@ -97,6 +101,7 @@ it("code join → refused share → reconnect keeps the member online without gr
   const third = connect(); expect(await bounded(third.start())).toBeUndefined();
   expect(link.current()).toBe(true); expect(holds).not.toHaveBeenCalled(); expect(frames).toEqual([]);
   expect(r.db.prepare("SELECT state,display_name FROM hub_exposures").all()).toEqual([{ state: "published", display_name: "probe" }]);
+  expect(sender.isRefused()).toBe(false);                                  // allowed: the next accepted snapshot clears it
   expect(r.db.prepare("SELECT source FROM hub_group_resources WHERE json_extract(body,'$.kind')='exposure'").get()).toEqual({ source: "group" });
   expect(r.db.prepare("SELECT uses FROM hub_enrolment_codes").get()).toEqual({ uses: 1 });
   // Membership uncertainty is retryable feedback, with no replacement of previously accepted material.
@@ -104,6 +109,7 @@ it("code join → refused share → reconnect keeps the member online without gr
   snapshot = { revision: 2, exposures: [{ ...snapshot.exposures[0]!, revision: 2 }] };
   await sender.afterCommit(); expect(await bounded(barrier(link))).toMatchObject({ type: "reconcile" });
   expect(frames).toContainEqual(expect.objectContaining({ type: "error", payload: { code: "unavailable", retryable: true } }));
+  expect(sender.isRefused()).toBe(false);                                  // retryable uncertainty is not a policy refusal
   expect(link.current()).toBe(true);
   expect(r.db.prepare("SELECT revision FROM hub_exposures").all()).toEqual([{ revision: 1 }]);
   expect(r.db.prepare("SELECT revision FROM hub_catalog_cursor").get()).toEqual({ revision: 1 });
