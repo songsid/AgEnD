@@ -5,19 +5,22 @@ import { HubSettingsError } from "../src/hub/settings-commit.js";
 import { HubProtocolError } from "../src/hub/validation.js";
 import { createHubDirectorySaveCoordinator, type HubDirectorySaveDeps } from "../src/hub/settings-directory-save.js";
 import type { HubDirectorySettingsDecision, HubDirectorySettingsOperation } from "../src/hub/settings-directory-decision.js";
-import type { HubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
+import type { HubDirectorySettingsProof, HubDirectoryProofContext } from "../src/hub/settings-directory-proof.js";
 import type { HubDirectoryResponse } from "../src/hub/directory-response-owner.js";
 import type { HubDirectorySettingsWriter } from "../src/hub/settings-commit.js";
 import type { HubMountedDirectory } from "../src/hub/settings-directory-runtime.js";
 
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; }
-function fixture() {
+function fixture(roleMode = false) {
   const hubId = randomUUID(), id = randomUUID(), compensation = randomUUID(), events: string[] = [];
   let time = 1000, live = true, owner = true, connected = true, active = true, failure = false, failRestore = false;
   let deadline: void | number;
   let proofGate: (() => Promise<void>) | undefined, mountGate: (() => Promise<void>) | undefined;
+  let releaseGate: (() => Promise<void>) | undefined, beforeBuild: (() => void) | undefined, afterBuild: (() => void) | undefined;
+  let permitted = true, released = false;
   const actor = { kind: "hub-administrator" as const, person: { realm: "fictional", objectId: randomUUID() }, sessionId: "owned-session", requestId: randomUUID() };
-  const context = { actor, current: () => live };
+  const context: HubDirectoryProofContext = { actor, current: () => live,
+    ...(roleMode ? { administration: { directoryAdministration: true as const } } : {}) };
   const expected = { operationId: null, directoryEpoch: 0, transportRevision: 0, authorizationVersion: 0, policySha: "a".repeat(64) };
   const head = { ...expected } as Omit<typeof expected, "operationId"> & { operationId: string | null };
   const original = { id, kind: "directory", compensates: null, actor: structuredClone(actor), expected, directoryEpoch: 1, recovery: { v: 1, expiresAt: 301_000 } } as unknown as HubDirectorySettingsOperation;
@@ -26,11 +29,19 @@ function fixture() {
   const settled = vi.fn(() => { events.push("mount-ready"); mountReady = true; });
   const decision = { hubId, inspect: () => ({ ...head }), operation: vi.fn(() => structuredClone(original)), mountRecovery: intent, completeMount: settled } as unknown as HubDirectorySettingsDecision;
   const complete = vi.fn(() => ({ token: "fixture-opaque-token", maxAgeMs: 10_000 }));
+  const assertRole = vi.fn(() => { if (!permitted) throw new HubProtocolError("denied"); });
+  const release = Object.freeze({ assertCurrent: assertRole,
+    release: vi.fn(() => { assertRole(); if (released) throw new HubProtocolError("revoked"); released = true;
+      events.push("role-release"); return { token: "fixture-role-token", maxAgeMs: 10_000 }; }), discard: vi.fn() });
+  const prepareRole = vi.fn(async () => { events.push("role-acquire"); await releaseGate?.(); assertRole(); return release; });
+  const helpers = { completeDirectoryRotation: complete, ...(roleMode ? { prepareRoleDirectoryRotationRelease: prepareRole } : {}) };
   const old = { decision, current: () => live } as unknown as HubMountedDirectory;
-  const mounted = { decision, current: () => active, sessions: () => ({ completeDirectoryRotation: complete }) } as unknown as HubMountedDirectory;
+  const mounted = { decision, current: () => active, sessions: () => helpers } as unknown as HubMountedDirectory;
   const rotation = { discard: vi.fn() }, packets: Array<{ status: number; json: string; cookie?: string }> = [];
   const response: HubDirectoryResponse = { current: () => connected, discard: vi.fn(async () => { connected = false; }),
-    reply: vi.fn(async (build, current) => { expect(current()).toBe(true); packets.push(build()); expect(current()).toBe(true); connected = false; }) };
+    reply: vi.fn(async (build, current) => { expect(current()).toBe(true); beforeBuild?.();
+      if (roleMode) events.push("role-response");
+      const packet = build(); afterBuild?.(); expect(current()).toBe(true); packets.push(packet); connected = false; }) };
   const capture = vi.fn(() => { events.push("capture"); return response; });
   const proof = { close: vi.fn(), apply: vi.fn<HubDirectorySettingsProof["apply"]>(async (_ref, _input, ctx, _rotation, beforeCommit) => {
     await proofGate?.();
@@ -50,10 +61,58 @@ function fixture() {
   const coordinator = createHubDirectorySaveCoordinator(deps);
   const save = () => coordinator.apply("owned-draft", {}, context, { capture, rotation });
   return { coordinator, context, deps, proof, rotation, response, packets, events, capture, save, id, compensation, head, original, complete,
+    helpers, mounted, prepareRole, release, loseRole: () => { permitted = false; },
+    releaseGate: (gate: () => Promise<void>) => { releaseGate = gate; }, beforeBuild: (hook: () => void) => { beforeBuild = hook; }, afterBuild: (hook: () => void) => { afterBuild = hook; },
     compensate, remount, intent, settled, decision, get deadline() { return deadline; }, tick: (n: number) => { time += n; }, stop: () => { owner = false; }, disconnect: () => { connected = false; },
     fail: (restore = false) => { failure = true; failRestore = restore; }, proofGate: (gate: () => Promise<void>) => { proofGate = gate; },
     mountGate: (gate: () => Promise<void>) => { mountGate = gate; } };
 }
+
+describe("S129 Save successor release", () => {
+  it("acquires after mount completion and releases only inside the originating response", async () => {
+    const r = fixture(true);
+    try {
+      await expect(r.save()).resolves.toMatchObject({ state: "ready" });
+      expect(r.prepareRole).toHaveBeenCalledOnce(); expect(r.complete).not.toHaveBeenCalled();
+      expect(r.events).toEqual(["capture", "decision", "remount", "mount-ready", "role-acquire", "role-response", "role-release"]);
+      expect(r.packets[0]?.cookie).toContain("fixture-role-token"); expect(r.release.discard).toHaveBeenCalledOnce();
+    } finally { await r.coordinator.close(); }
+  });
+  it("refuses a missing role adapter without a legacy completion fallback", async () => {
+    const r = fixture(true); delete r.helpers.prepareRoleDirectoryRotationRelease;
+    try {
+      await expect(r.save()).rejects.toMatchObject({ code: "unavailable" });
+      expect(r.complete).not.toHaveBeenCalled(); expect(r.packets).toEqual([]);
+      expect(r.compensate).not.toHaveBeenCalled(); expect(r.head.operationId).toBe(r.id);
+    } finally { await r.coordinator.close(); }
+  });
+  it("keeps a committed ready directory after fresh successor authorization refuses", async () => {
+    const r = fixture(true); r.prepareRole.mockRejectedValue(new HubProtocolError("denied"));
+    try {
+      await expect(r.save()).rejects.toMatchObject({ code: "denied" });
+      expect(r.complete).not.toHaveBeenCalled(); expect(r.packets).toEqual([]);
+      expect(r.compensate).not.toHaveBeenCalled(); expect(r.head.operationId).toBe(r.id);
+      expect(r.settled).toHaveBeenCalledOnce();
+    } finally { await r.coordinator.close(); }
+  });
+  it("holds the response until fresh successor acquisition settles", async () => {
+    const r = fixture(true), entered = deferred(), held = deferred();
+    r.releaseGate(async () => { entered.resolve(); await held.promise; });
+    const saving = r.save(); void saving.catch(() => {});
+    try {
+      const boundary = await Promise.race([entered.promise.then(() => "acquiring"), saving.then(() => "finished", () => "refused")]);
+      expect(boundary).toBe("acquiring"); expect(r.response.reply).not.toHaveBeenCalled();
+      held.resolve(); await expect(saving).resolves.toMatchObject({ state: "ready" });
+    } finally { held.resolve(); await Promise.allSettled([saving]); await r.coordinator.close(); }
+  });
+  it.each(["before", "after"] as const)("withholds a cookie when authority changes %s packet construction", async phase => {
+    const r = fixture(true); r[phase === "before" ? "beforeBuild" : "afterBuild"](r.loseRole);
+    try {
+      await expect(r.save()).rejects.toThrow(); expect(r.packets).toEqual([]); expect(r.complete).not.toHaveBeenCalled();
+      expect(r.compensate).not.toHaveBeenCalled(); expect(r.head.operationId).toBe(r.id);
+    } finally { await r.coordinator.close(); }
+  });
+});
 
 describe("private directory Save coordinator", () => {
   it("closes the durable mount intent before releasing any successor cookie", async () => {
