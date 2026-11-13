@@ -203,8 +203,7 @@ class ClaudeAssistantSession implements RoomAssistantSession {
     const content = JSON.stringify({ room: { id: input.roomId, name: input.roomName }, messageId: input.messageId,
       asker: input.asker.name, recentMessages: roomAssistantContext(input.context), request: input.text });
     if (Buffer.byteLength(content) > LIMIT) this.fail("Room assistant input exceeded its limit");
-    else this.child.stdin.end(JSON.stringify({ type: "user", message: { role: "user", content }, parent_tool_use_id: null }) + "\n",
-      error => { if (error) this.fail("Room assistant input failed"); });
+    else this.child.stdin.end(JSON.stringify({ type: "user", message: { role: "user", content }, parent_tool_use_id: null }) + "\n");
     return pending.promise.finally(() => signal.removeEventListener("abort", abort));
   }
 
