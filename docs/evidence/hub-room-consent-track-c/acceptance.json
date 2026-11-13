@@ -24,6 +24,26 @@
     "compilingAssertionReds": 6,
     "exactRestore": true
   },
-  "browser": "pending; no claim yet",
+  "browser": {
+    "state": "partial; phone fails44px",
+    "desktopCompletedCases": 4,
+    "desktopPictures": 8,
+    "freshPhoneDiagnostic": {
+      "cases": 1,
+      "pictures": 1,
+      "buttonHeights": [
+        36,
+        36
+      ],
+      "stylesheetReady": true
+    },
+    "ownedCleanup": "both browser processes exited through finally; HTTPS listeners closed, rig closed, temporary key directories absent; slot released",
+    "noClaim": [
+      "phone acceptance",
+      "full8case gallery",
+      "real AD/Fleet/input",
+      "production migration composition"
+    ]
+  },
   "scope": "Actual R HTTP/SQLite, C factory/storage, inert directory/transport; U mini-DOM and actual pinned TLS/WSS ACK recovery use their existing bounded scopes. No real AD/Fleet/account/input. Factory remains optional until R composes it."
 }
