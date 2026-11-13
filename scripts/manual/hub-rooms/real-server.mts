@@ -131,9 +131,12 @@ try {
     await shot("consent-pending");
     const invitationNav = p.locator('#sidebar .side-nav a.side-row[href="/ui/hub?view=invitations"]');
     if (!await invitationNav.isVisible()) await p.locator("#sbOpen").click();
+    if (device === "phone") await p.waitForFunction(() => {
+      const box = document.getElementById("sidebar")?.getBoundingClientRect(); return !!box && box.left >= -0.5 && box.right <= innerWidth + 0.5;
+    });
     const navBox = await invitationNav.boundingBox(), firstNav = await p.locator("#sidebar .side-nav a.side-row").first().boundingBox();
     check(tag + " invitation is a normal nav row with count badge", (await invitationNav.locator(".grow").innerText()) === invitationTitle
-      && (await invitationNav.locator(".nav-count").innerText()) === "1" && !!navBox && !!firstNav && Math.abs(navBox.height - firstNav.height) <= 2
+      && (await invitationNav.locator(".nav-count").innerText()) === "1" && !!navBox && !!firstNav && navBox.x >= -0.5 && navBox.x + navBox.width <= (device === "phone" ? 390 : 1366) + 0.5 && Math.abs(navBox.height - firstNav.height) <= 2
       && await p.locator("#sidebar .hub-invitations-row").count() === 0);
     await shot("consent-nav"); await invitationNav.click();
 
