@@ -2240,7 +2240,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         webAddressDecision: () => this.hubRuntime?.webAddressDecision() ?? null,
         memberAddressDecision: () => this.hubRuntime?.memberAddressDecision() ?? null,
         saveHub: patches => this.saveFleetConfig(patches) });
+      const { createFleetRoomAssistant } = await import("./hub/assistant/fleet-host.js");
       const runtime = new HubRuntime({
+        roomAssistant: () => createFleetRoomAssistant({
+          fleetHome: this.dataDir,
+          instanceHome: process.env.AGEND_HUB_ASSISTANT_HOME || join(this.dataDir, "hub-assistant", "instances"),
+          environment: process.env,
+          version: (backend, binary) => this.availabilityProbes.version(backend, binary),
+          facts: () => {
+            const cli = this.backendAvailabilityRows().find(row => row.backend === "claude-code");
+            const accounts: import("./hub/assistant/admin-types.js").AssistantBackendChoice["accounts"] = [{ id: null, name: "Default",
+              state: this.claudeSignInEnded("claude-code", null) || cli?.auth === "invalid" ? "needs-sign-in" : cli?.auth === "valid" ? "signed-in" : "unknown" }];
+            for (const profile of profilesOnDisk(this.dataDir, "claude-code")) {
+              let state: "signed-in" | "needs-sign-in" | "unknown" = "unknown";
+              try { const login = credentialProfileLogin(this.dataDir, "claude-code", profile).state;
+                state = login === "logged-in" && !this.claudeSignInEnded("claude-code", profile) ? "signed-in" : login === "signed-out" || this.claudeSignInEnded("claude-code", profile) ? "needs-sign-in" : "unknown"; } catch { /* no credential fallback */ }
+              accounts.push({ id: profile, name: profile, state });
+            }
+            return { binary: cli?.path ?? null, version: cli?.version ?? null, accounts };
+          },
+          quota: async config => {
+            const { quotaBand } = await import("./hub/member/quota.js");
+            const id = config.account ? `claude:${config.account}` : "claude";
+            const snapshot = await getUsageSnapshot(false, new Set([id]), { allowStale: true });
+            return quotaBand(snapshot.providers.find(row => row.id === id)).band;
+          },
+        }),
         home: this.dataDir,
         settingsWriter: this.hubSettingsWriter,
         directorySettings: () => this.hubDirectorySettings(),

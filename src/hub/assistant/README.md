@@ -57,3 +57,26 @@ one-shot refinement was accepted by Lumen at `ea4e347be`.
 Tests use fake sessions, explicit completion gates and a fake clock. No vendor binary, account, tmux or Hub
 pilot is involved. The parent feature is decision 38e2ea2d, Track A in `docs/design/hub-rooms-split.md` and
 section 10 of `docs/design/hub-rooms-ux.md` on `docs/hub-ux-review-m2902`.
+
+## Host administration and mount ownership
+
+`RoomAssistantService` supplies the stable room and admin ports. Configuration is off by default, with Claude as
+its first eligible backend. Only the host availability snapshot's supported tools-off version is offered; reading
+the admin view never runs a CLI. A launch rechecks the binary and version using the existing disk-first/netless port.
+The chosen named account is not substituted with the default account if it disappears or needs sign-in.
+
+The host Fleet supplies a provider factory to `HubRuntime`, which calls it only while mounting the Hub server.
+The same instance becomes `HubHttpDeps.roomAssistant` and `assistantAdmin`. Hub fencing immediately closes its
+admission; the mount teardown owns its physical drain before any replacement. An absent factory stays disabled.
+The rooms track owns the authenticated HTTP routes; this service slice adds no routes or visible controls.
+
+Settings and seven UTC days of answer counters are stored atomically in the Fleet's private
+`hub-assistant/assistant-state.json`, never in credential files or fleet.yaml. No room text is stored there. A failed
+counter write preserves a completed answer and reports `usage-not-saved`; a settings write failure restores the
+previous drained configuration. A failed physical stop keeps its owner and prevents replacement.
+
+The default worker root is `hub-assistant/instances` under this Fleet home. Deployments may set
+`AGEND_HUB_ASSISTANT_HOME` to another absolute directory without moving credentials. Each ask still gets an empty
+private scratch directory and removes only that directory after its worker closes. Administration reports room
+controller state, last use, seven daily counts and the selected account's coarse cached quota. It exposes no PID,
+credential path or message content. The separate UI slice adds the Hub admin controls and updates the Hub skill.

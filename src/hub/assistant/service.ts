@@ -14,7 +14,7 @@ export interface RoomAssistantServiceOptions {
   store: AssistantStateStore;
   /** Already-cached host facts. Only proven native-tools-off backends belong in this list. */
   backends(): AssistantBackendChoice[];
-  quota?(config: RoomAssistantConfig): AssistantQuotaBand;
+  quota?(config: RoomAssistantConfig): AssistantQuotaBand | Promise<AssistantQuotaBand>;
   now?: () => number;
 }
 
@@ -107,7 +107,11 @@ export class RoomAssistantService implements RoomAssistant, RoomAssistantAdmin {
 
   async usage(): Promise<AssistantUsage> {
     await this.ready;
-    return { days: this.dailyAnswers(), quota: { band: this.options.quota?.(this.config) ?? "unknown" },
+    const config = this.config;
+    let band: AssistantQuotaBand = "unknown";
+    try { band = await this.options.quota?.(config) ?? "unknown"; } catch { /* cached quota may be unavailable */ }
+    if (this.config !== config) band = "unknown";
+    return { days: this.dailyAnswers(), quota: { band },
       ...(this.persistenceFailed ? { note: "usage-not-saved" } : {}) };
   }
 

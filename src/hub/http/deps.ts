@@ -29,6 +29,8 @@ export interface HubContentStore {
   get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
+  roomAssistant?: import("../assistant/types.js").RoomAssistant;
+  assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   uow: HubUnitOfWork;
   audit: HubAuditSink;

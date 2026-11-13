@@ -29,3 +29,6 @@ export interface RoomAssistantAdmin {
   usage(): Promise<AssistantUsage>;
   stopRoom(roomId: string): Promise<void>;
 }
+
+/** Created only for a mounted Hub; its physical workers drain before that mount can be replaced. */
+export type ManagedRoomAssistant = import("./types.js").RoomAssistant & RoomAssistantAdmin & { close(): Promise<void> };

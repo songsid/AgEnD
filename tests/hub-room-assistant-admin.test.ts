@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomAssistantService, type AssistantSavedState } from "../src/hub/assistant/service.js";
 import { assistantStateStore } from "../src/hub/assistant/store.js";
+import { createFleetRoomAssistant } from "../src/hub/assistant/fleet-host.js";
 import type { RoomAssistantAsk, RoomAssistantConfig } from "../src/hub/assistant/types.js";
+import type { AssistantQuotaBand } from "../src/hub/assistant/admin-types.js";
 
 const config = (patch: Partial<RoomAssistantConfig> = {}): RoomAssistantConfig => ({ enabled: true, backend: "claude-code", account: null, cap: 3, idleMinutes: 15, ...patch });
 const ask = (roomId = "room-a"): RoomAssistantAsk => ({ roomId, roomName: "Planning", messageId: "m-1", asker: { name: "Han" }, text: "Private room request", context: [] });
@@ -30,8 +32,9 @@ function world(saved: AssistantSavedState | null = null) {
   });
   const backends = vi.fn(() => [{ id: "claude-code", name: "Claude", accounts: [{ id: null as string | null, name: "Default", state: "signed-in" as const }] }]);
   let now = Date.UTC(2026, 10, 14, 12);
-  const service = new RoomAssistantService({ host: { start }, store, backends, now: () => now }); services.push(service);
-  return { service, store, start, turns, backends, time: (value: number) => { now = value; } };
+  const quota = vi.fn(async (_config: RoomAssistantConfig): Promise<AssistantQuotaBand> => "unknown");
+  const service = new RoomAssistantService({ host: { start }, store, backends, quota, now: () => now }); services.push(service);
+  return { service, store, start, turns, backends, quota, time: (value: number) => { now = value; } };
 }
 
 describe("Hub assistant admin service (fake host, no accounts)", () => {
@@ -131,6 +134,27 @@ describe("Hub assistant admin service (fake host, no accounts)", () => {
     const second = w.service.ask(ask()); await flush(); w.turns[1].done.resolve({ text: "Two" }); await second;
     expect(w.start).toHaveBeenCalledTimes(2);
   });
+
+  it("does not publish a previous account's quota after a configuration change", async () => {
+    const w = world({ config: config(), answers: [] }); await w.service.settings();
+    const held = deferred<AssistantQuotaBand>(); w.quota.mockImplementationOnce(() => held.promise);
+    const usage = w.service.usage(); await flush();
+    await w.service.configure(config({ enabled: false })); held.resolve("exhausted");
+    expect((await usage).quota.band).toBe("unknown");
+    w.quota.mockResolvedValue("near_limit"); expect((await w.service.usage()).quota.band).toBe("near_limit");
+  });
+
+  it("refuses settings replacement when a worker stop fails, retaining the failed owner", async () => {
+    const w = world({ config: config(), answers: [] }); await w.service.settings();
+    const turn = w.service.ask(ask()), rejected = expect(turn).rejects.toThrow(); await flush();
+    w.turns[0].stop.mockRejectedValue(new Error("physical worker still owned"));
+    await expect(w.service.configure(config({ cap: 1 }))).rejects.toThrow("did not stop");
+    await rejected;
+    expect(w.service.available()).toMatchObject({ state: "paused", note: "instance-stop-failed" });
+    expect(w.store.save).not.toHaveBeenCalled();
+    await expect(w.service.ask(ask("room-b"))).rejects.toThrow();
+    expect(w.start).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("Hub assistant non-secret state store", () => {
@@ -152,5 +176,17 @@ describe("Hub assistant non-secret state store", () => {
     await symlink(target, join(root, "assistant-state.json"));
     await expect(assistantStateStore(root).load()).rejects.toThrow("Invalid");
     expect(await readFile(target, "utf8")).toBe("sentinel");
+  });
+  it("offers only a version-qualified backend and reads its account facts without a CLI probe", async () => {
+    const root = await home(), version = vi.fn(async () => "2.1.316");
+    let installed = "2.1.315";
+    const service = createFleetRoomAssistant({ fleetHome: root, instanceHome: join(root, "workers"), version,
+      facts: () => ({ binary: join(root, "not-executed"), version: installed, accounts: [{ id: "team", name: "Team", state: "signed-in" }] }) });
+    services.push(service);
+    expect((await service.settings()).backends).toEqual([]);
+    installed = "2.1.316";
+    expect((await service.settings()).backends).toEqual([{ id: "claude-code", name: "Claude", accounts: [{ id: "team", name: "Team", state: "signed-in" }] }]);
+    expect(version).not.toHaveBeenCalled();
+    expect(await readdir(root)).toEqual([]);
   });
 });
