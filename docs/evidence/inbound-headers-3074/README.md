@@ -125,3 +125,10 @@ carried from main: exact actor tags, escaped metadata and command-reset fields,
 with all existing authority/fence assertions retained. Main slice255/255.
 
 The same8 CI contract files pass255/255 on alpha after the sync and R5 pin.
+
+Prism receiptless-fallback P2 is fixed on alpha with the identical shared helper
+and FM→daemon tests: fresh bot metadata/body escaped, owned persisted wire and
+historical wire-less rendering retained, foreign handoff no exemption. Main
+fail-first3red, fixed80/80, three semantic reversals caught. Alpha receipt and
+formatter80/80 plus source/test nativeTS7 pass on the final helper. No authority,
+ACL, proof, deadline or retry change; optional closure-cleanup P3 left scoped out.
