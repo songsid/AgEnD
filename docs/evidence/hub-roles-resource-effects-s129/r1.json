@@ -14,8 +14,9 @@
     "originalAssertionLinesRetained": 92,
     "parentFixtureBlobEqualsChild": true,
     "before": "e12edc7622d57f7a3b06e4658adebd38b0fa176b1c7c8319ec724abe5a52778e",
-    "after": "f264d18e2a468a86b55a00401d9ba535e51577d045fa5f4e13b064a98e03d03a",
-    "changes": "complete exact admin actor/session/current/identity contexts; separate owner confirmation; stable directory method with injectable answer closure, no authority/assertion weakening"
+    "after": "db0869c33f1ed0837cfc090826c5c1a3547ba4370f49a5707661208d95625e16",
+    "changes": "complete exact admin actor/session/current/identity contexts; separate owner confirmation; stable directory method with injectable answer closure, no authority/assertion weakening",
+    "stage": "final typed fixture, including deny-only owner requireAdmin"
   },
   "parentSessionCorrection": "docs/evidence/hub-roles-management-s129/session-r2.json",
   "resourceProductBlobsUnchanged": true,
