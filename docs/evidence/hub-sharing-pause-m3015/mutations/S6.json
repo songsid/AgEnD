@@ -1,0 +1,13 @@
+{
+  "id": "S6",
+  "path": "src/hub/http/core.ts",
+  "test": "tests/hub-sharing-pause-m3015.test.ts",
+  "selector": "retires a pre-pause operation",
+  "caught": true,
+  "nativeCompilerExit": 0,
+  "typeLogDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "exit": 1,
+  "sourceDigest": "475e8188b85c8ca72fd46148b193d42c4cbf204b46fc199d3602fab6be7d090f",
+  "logDigest": "916dc08709adf57807300f0519cc6e6df3f64a10b05f39ead8c3b8cd33c8f55f",
+  "restored": true
+}

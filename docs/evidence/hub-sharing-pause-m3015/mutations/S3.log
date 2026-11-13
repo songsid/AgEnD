@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (14 tests | 1 failed | 13 skipped) 172ms
+     × Resume never bypasses independent operational group suspension 169ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > Resume never bypasses independent operational group suspension
+AssertionError: expected 200 to be 403 // Object.is equality
+
+- Expected
++ Received
+
+- 403
++ 200
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:124:47
+    122|     });
+    123|     w.r.httpDeps.groups = { check: async () => { throw new HubProtocol…
+    124|     expect((await w.change(false, 1)).status).toBe(403);
+       |                                               ^
+    125|     expect(w.r.db.prepare("SELECT sharing_paused,sharing_epoch FROM hu…
+    126|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  14:16:08
+   Duration  7.03s (transform 5.21s, setup 299ms, import 6.35s, tests 172ms, environment 0ms)
+
