@@ -1,4 +1,4 @@
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -153,7 +153,8 @@ it("actual LogService initial→poll never replays old steps beyond a long unfin
   const initial: any = await service.steps("worker", {});
   let current: any = await service.steps("worker", { after: initial.after, key: initial.key, skip: initial.skip });
   expect(current.steps).toEqual([]);
-  expect(initial.after).toBe(Buffer.byteLength(old));
+  // #3809's bounded Log read keeps an interior EOF cursor and skips the unfinished record on forward polling.
+  expect(initial).toMatchObject({ after: statSync(path).size, skip: true });
   appendFileSync(path, '"}\n' + line(user("new-user", "new user")) + line(answer("new-answer", "new answer")));
   const steps: any[] = [];
   for (let i = 0; i < 16; i++) {

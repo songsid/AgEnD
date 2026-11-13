@@ -4,8 +4,8 @@
  * logSource) sets it for each backend, the feed takes the answer, the page composes the thread — one case per backend:
  *
  *   claude-code   a transcript with only the prompt (the thought not written yet): the empty live group of the turn (no statusOnly)
- *   codex         `supported: false` from the SERVICE, which returns before it looks at the file (#3709 R6: no activity
- *                 projection until a real fixture): the status line only — the transcript is never stat'ed or read
+ *   codex         a rollout with only the prompt (the first step not written yet): the empty live group of the turn, as for claude
+ *                 (#3787: the chat's block reads Codex's rollout now; before, the service answered `supported: false`)
  *   muse, opencode, kiro-cli, antigravity/grok (on this line, which has no parser for them)   no transcript format: status line only
  *
  * The line says how long (the working bar's clock, else the last prompt), and the counter-proofs: not busy → no line; the
@@ -67,21 +67,23 @@ describe("claude-code: the transcript has the prompt and no thought yet", () => 
   });
 });
 
-describe("codex: R6 holds — the status line, and the transcript is never read", () => {
-  it("the service answers unsupported without looking at the file; the line is there while busy", async () => {
+describe("codex: the rollout has the prompt and no step yet", () => {
+  const rollout = [
+    { timestamp: new Date(NOW - 20_000).toISOString(), type: "event_msg", payload: { type: "task_started", turn_id: "t1" } },
+    { timestamp: new Date(NOW - 19_000).toISOString(), type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "(message_id: w-u1 | verification_id: v)\ndo it" }], internal_chat_message_metadata_passthrough: { turn_id: "t1", content_item_kinds: ["user.text"] } } },
+  ].map((r) => JSON.stringify(r)).join("\n") + "\n";
+  it("busy: the turn's empty live group (not status-only: the service reads the rollout); not busy: nothing", async () => {
     const d = mkdtempSync(join(tmpdir(), "agend-live-")); dirs.push(d);
-    const f = join(d, "rollout.jsonl"); writeFileSync(f, promptOnly);
-    const before = statSync(f).atimeMs;
-    const feed = await feedFor({ backend: "codex", path: f, format: "codex" });
-    expect(feed.info()).toMatchObject({ supported: false, reason: "unsupported" });
-    expect(statSync(f).atimeMs).toBe(before);                              // not even opened by the service
-    expect(shape(compose("w", true))).toBe("user act:live:status:0");
+    const f = join(d, "rollout.jsonl"); writeFileSync(f, rollout);
+    await feedFor({ backend: "codex", path: f, format: "codex" });
+    expect(act.activityInfo("w")).toMatchObject({ supported: true, backend: "codex" });
+    expect(shape(compose("w", true))).toBe("user act:live:0");
     expect(shape(compose("w", false))).toBe("user");
   });
-  it("the service never stat's a path that cannot be read: a codex path that does not exist answers the same", async () => {
+  it("a rollout that cannot be found yet: supported, nothing to read — the turn's empty live line while busy (not the status-only one)", async () => {
     await feedFor({ backend: "codex", path: "/nonexistent/rollout.jsonl", format: "codex" });
-    expect(act.activityInfo("w")).toMatchObject({ supported: false, reason: "unsupported" });
-    expect(shape(compose("w", true))).toBe("user act:live:status:0");
+    expect(act.activityInfo("w")).toMatchObject({ supported: true });
+    expect(shape(compose("w", true))).toBe("user act:live:0");
   });
 });
 

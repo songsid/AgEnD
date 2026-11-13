@@ -13,8 +13,8 @@ import { parseClaudeModelRecord, type ModelSwitch } from "./claude-model-observa
  *
  * File reads are async: `readTailRecords` for Log/backfill, `readStartupTailRecords` for a bounded metadata look.
  */
-import { open, stat, type FileHandle } from "node:fs/promises";
-import { LINE_MAX_BYTES, LONG_HEAD_BYTES, lastLineBoundary, type LongLine } from "./transcript-jsonl.js";
+import { open, type FileHandle } from "node:fs/promises";
+import { LINE_MAX_BYTES, LONG_HEAD_BYTES, boundaryBefore, openTranscript, type LongLine } from "./transcript-jsonl.js";
 import { redactSecrets, shellProgramName, type ToolProgressLevel } from "./tool-progress.js";
 
 export type StepKind = "user" | "assistant" | "thinking" | "tool" | "error" | "turn_end" | "state";
@@ -531,6 +531,38 @@ export class ClaudeStepParser extends StepParser {
   }
 }
 
+/** An `exec` script that sends a reply (`tools.mcp__agend__reply(...)`): its turn has said something. */
+const REPLY_IN_SCRIPT = /\btools\.(?:mcp__agend[\w-]*__|agend[\w-]*:)?reply\s*\(/;
+/**
+ * A codex `user` message that is a person's prompt. 0.15x+ names what each message holds (`content_item_kinds`): `user.text` is
+ * the prompt; `agents_md.instructions`, `environments.environment_context` and the like are Codex's own context — one of them
+ * is first in every turn and would be taken for the turn's prompt (and the turn would lose its anchor). A rollout without the
+ * kinds (older) is judged by its text.
+ */
+function isPrompt(payload: Record<string, unknown>, text: string): boolean {
+  const kinds = (payload.internal_chat_message_metadata_passthrough as Record<string, unknown> | undefined)?.content_item_kinds;
+  if (Array.isArray(kinds) && kinds.length) return kinds.includes("user.text");
+  return !/^(?:<(?:environment_context|user_instructions|permissions)|# AGENTS\.md instructions)/.test(text.trim());
+}
+/** A command's argv as the one command it runs: `["/bin/bash", "-lc", "<script>"]` (or powershell's `-Command`) is `<script>`. */
+function commandText(cmd: unknown): string {
+  if (!Array.isArray(cmd)) return String(cmd ?? "");
+  const argv = cmd.map(String);
+  const shell = /(?:^|[\\/])(?:bash|sh|zsh|fish|pwsh|powershell)(?:\.exe)?$/i.test(argv[0] ?? "");
+  const last = argv[argv.length - 1] ?? "";
+  return shell && argv.length >= 3 && /^-[A-Za-z]+$/.test(argv[argv.length - 2] ?? "") ? last : argv.join(" ");
+}
+/** The command of an `exec` script that runs exactly one `exec_command` (`tools.exec_command({cmd:"npm test"})`), else undefined. */
+function scriptCommand(script: string): string | undefined {
+  const tools = new Set([...script.matchAll(/\btools\.(\w+)\s*\(/g)].map((m) => m[1]!));
+  if (tools.size !== 1 || !tools.has("exec_command")) return undefined;
+  const lit = /\btools\.exec_command\s*\(\s*\{\s*["']?cmd["']?\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\$]|\\.)*`)/.exec(script)?.[1];
+  if (!lit) return undefined;
+  try { return lit.startsWith('"') ? JSON.parse(lit) as string : lit.slice(1, -1).replace(/\\(['`\\])/g, "$1").replace(/\\n/g, "\n"); } catch { return undefined; }
+}
+/** A `file:///C:/x/y.png` item path as the path it names. */
+const filePath = (u: unknown): string => String(u ?? "").replace(/^file:\/\/\/?(?=[A-Za-z]:|\/)/, "").replace(/^file:\/\//, "");
+
 const CODEX_EXIT = /Process exited with code (-?\d+)/;
 const CODEX_WALL = /Wall time: ([\d.]+) seconds/;
 /**
@@ -538,25 +570,64 @@ const CODEX_WALL = /Wall time: ([\d.]+) seconds/;
  * `local_shell_call` (running, by `call_id`) and their `*_output` (exec_command's output says its exit code and wall
  * time); `event_msg`: `task_started` (a turn), `task_complete` / `turn_aborted` (its end), and — on versions that
  * write them — `item_completed` items: CommandExecution (a command, with exit code and duration), McpToolCall,
- * FileChange. Their AgentMessage / UserMessage duplicate the response items and are not shown twice; reasoning never.
+ * FileChange, Extension (web search). Their AgentMessage / UserMessage duplicate the response items and are not shown twice;
+ * reasoning never (only a summary the model chose to write — `encrypted_content` is not read).
+ *
+ * Codex 0.153–0.167 (real rollouts, #3787) runs every tool through one `exec` custom tool call — a script driving `tools.*` —
+ * and writes each tool it ran as an `item_completed` item of its own, with an id that is not the call's. Shown both, an action
+ * would be two steps: the item (the thing that was done, with its output) takes over the running `exec` call's step, so there is
+ * one step per action (`wrapper`). Further items of the same script are steps of their own.
+ *
+ * The turn is the `turn_id` every record of it carries, not only `task_started`: a read that begins inside a turn (the newest
+ * window after a long `compacted` record, or a poll that picks up mid-turn — each with a fresh parser) still names it, so its
+ * steps hang on the same turn as the ones read before.
  */
 export class CodexStepParser extends StepParser {
   private started = new Map<string, number>();
   /** The reasoning texts of this turn already shown: `reasoning` and `agent_reasoning` say the same thing twice. */
   private reasoned = new Set<string>();
+  /** The `exec` script call of this turn still running whose first tool item has not come yet (that item takes over its step). */
+  private wrapper = "";
+  /** Script calls whose step an item has taken over: their `custom_tool_call_output` adds nothing. */
+  private adopted = new Set<string>();
+  /** This turn has said something (a message or a `reply` call): `task_complete` with no last message then is not a failure. */
+  private spoke = false;
+  /**
+   * When a `compacted` record was read while the turn was still unknown (it carries no `turn_id`, and this read began inside the
+   * turn: its first record): its time. The note is made once a record names the turn — a step with no turn between two runs of
+   * one turn would cut the turn in two for the page.
+   */
+  private compactedAt: number | null = null;
+  /** A compaction happened at `ts`: a `state` step on the turn, or — the turn not known yet — as soon as it is. */
+  private compacted(ts: number): Emission {
+    if (this.turn) return [this.add({ kind: "state", ts, note: "compacted" })];
+    this.compactedAt = ts;
+    return [];
+  }
   protected record(e: Record<string, unknown>): Emission {
-    const ts = tsOf(e.timestamp);
     const p = e.payload as Record<string, unknown> | undefined;
     if (!p) return [];
-    if (e.type === "compacted") return [this.add({ kind: "state", ts, note: "compacted" })];
+    // The turn this record belongs to, when this read has not met its `task_started`.
+    if (!this.turn) {
+      const tid = p.turn_id ?? (p.internal_chat_message_metadata_passthrough as Record<string, unknown> | undefined)?.turn_id;
+      if (typeof tid === "string" && tid) this.turn = tid;
+    }
+    const lead: Emission = this.compactedAt !== null && this.turn ? [this.add({ kind: "state", ts: this.compactedAt, note: "compacted" })] : [];
+    if (lead.length) this.compactedAt = null;
+    const out = this.codexRecord(e, p);
+    return lead.length ? [...lead, ...out] : out;
+  }
+  private codexRecord(e: Record<string, unknown>, p: Record<string, unknown>): Emission {
+    const ts = tsOf(e.timestamp);
+    if (e.type === "compacted") return this.compacted(ts);
     if (e.type === "event_msg") {
-      if (p.type === "task_started") { this.reasoned.clear(); return this.newTurn(String(p.turn_id ?? "")); }
+      if (p.type === "task_started") { this.reasoned.clear(); this.wrapper = ""; this.adopted.clear(); this.spoke = false; return this.newTurn(String(p.turn_id ?? "")); }
       if (p.type === "agent_reasoning" && typeof p.text === "string") return this.reasoning(p.text, ts);
       if (p.type === "task_complete" || p.type === "turn_aborted") {
         const out = this.endOpen("interrupted");
         const s = this.add({ kind: "turn_end", ts, ...(typeof p.duration_ms === "number" ? { durationMs: p.duration_ms } : {}) });
         if (p.type === "turn_aborted") { s.status = "interrupted"; if (typeof p.reason === "string") s.note = p.reason; }
-        else if (p.last_agent_message == null) s.status = "failed";
+        else if (p.last_agent_message == null && !this.spoke) s.status = "failed";
         out.push(s);
         return out;
       }
@@ -570,7 +641,8 @@ export class CodexStepParser extends StepParser {
         const role = p.role;
         if (role !== "user" && role !== "assistant") return [];
         const text = resultText(p.content);
-        if (!text.trim() || (role === "user" && /^<(environment_context|user_instructions|permissions)/.test(text.trim()))) return [];
+        if (!text.trim() || (role === "user" && !isPrompt(p, text))) return [];
+        if (role === "assistant") this.spoke = true;
         const out: LogStep[] = [];
         const anchor = role === "user" ? promptAnchor(text) : undefined;
         const s = this.add({ kind: role, ts, ...(anchor ? { anchor } : {}) }); bodyOf(s, text, TEXT_MAX); out.push(s);
@@ -591,27 +663,50 @@ export class CodexStepParser extends StepParser {
           input = { ...(input as object), command: cmd.map(String).join(" ") };
         }
         const anchor = isReplyTool(name) ? replyAnchor(input) : undefined;
-        const s = this.add({ ...(id ? { id } : {}), kind: "tool", ts, tool: name, ...describeTool(name, input), status: "running", ...(anchor ? { anchor } : {}) });
+        if (isReplyTool(name) || (typeof input === "string" && REPLY_IN_SCRIPT.test(input))) this.spoke = true;
+        const described = describeTool(name, input);
+        // A script that runs one command: the step names the command while it runs (the item that finishes it says the same).
+        const one = name === "exec" && typeof input === "string" ? scriptCommand(input) : undefined;
+        const s = this.add({ ...(id ? { id } : {}), kind: "tool", ts, tool: name, ...described, ...(one ? { subject: subjectOf(one) } : {}), status: "running", ...(anchor ? { anchor } : {}) });
         inputOf(s, input);
-        if (ts && id) this.started.set(id, ts);
+        this.called(id, p.type, name, ts);
         return [s];
       }
-      case "function_call_output": case "custom_tool_call_output": {
-        const id = String(p.call_id ?? "");
-        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts, tool: "", cat: "other", status: "done" });
-        const text = resultText(p.output);
-        const exit = CODEX_EXIT.exec(text), wall = CODEX_WALL.exec(text);
-        s.status = (exit && exit[1] !== "0") || /^failed to /.test(text) ? "failed" : "done";
-        if (exit) s.exitCode = Number(exit[1]);
-        const t0 = this.started.get(id); this.started.delete(id);
-        if (wall) s.durationMs = Math.round(Number(wall[1]) * 1000);
-        else if (t0 && ts >= t0) s.durationMs = ts - t0;
-        const out = /\nOutput:\n([\s\S]*)$/.exec(text);
-        if (text) { bodyOf(s, out ? out[1]! : text, RESULT_MAX); replyResult(s, text); }
-        return [{ ...s }];
-      }
+      case "function_call_output": case "custom_tool_call_output":
+        return this.answered(String(p.call_id ?? ""), resultText(p.output), ts);
     }
     return [];
+  }
+
+  /**
+   * What a call leaves behind for its output and for the items that may take it over — the one place both the whole record and a
+   * long one (`long()`) go through, so a call over the line limit is bookkept exactly as a short one: its start time, and an `exec`
+   * script call as the `wrapper` the first item takes over.
+   */
+  private called(id: string, type: string, name: string, ts: number): void {
+    if (ts && id) this.started.set(id, ts);
+    if (id && type === "custom_tool_call" && name === "exec") this.wrapper = id;
+  }
+
+  /**
+   * A call's output (`text`: all of it, or the start of one too long to parse; `bytes`: its size then). An item already took the
+   * script's step over (it has the command, its output and its exit code): nothing to add, and above all not a second, nameless
+   * step of the same id — the page would lay it over the item's.
+   */
+  private answered(id: string, text: string, ts: number, bytes?: number): Emission {
+    if (id && this.wrapper === id) this.wrapper = "";
+    if (id && this.adopted.delete(id)) { this.started.delete(id); return []; }
+    const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts, tool: "", cat: "other", status: "done" });
+    const exit = CODEX_EXIT.exec(text), wall = CODEX_WALL.exec(text);
+    s.status = (exit && exit[1] !== "0") || /^failed to /.test(text) ? "failed" : "done";
+    if (exit) s.exitCode = Number(exit[1]);
+    const t0 = this.started.get(id); this.started.delete(id);
+    if (wall) s.durationMs = Math.round(Number(wall[1]) * 1000);
+    else if (t0 && ts >= t0) s.durationMs = ts - t0;
+    if (bytes !== undefined) s.bodyBytes = bytes;
+    const out = /\nOutput:\n([\s\S]*)$/.exec(text);
+    if (text) { bodyOf(s, out ? out[1]! : text, RESULT_MAX); replyResult(s, text); }
+    return [{ ...s }];
   }
 
   /** AGEND-181: a reasoning summary as a `thinking` step (none unless asked for, empty, or already shown this turn). */
@@ -622,35 +717,73 @@ export class CodexStepParser extends StepParser {
     return [s];
   }
 
+  /**
+   * A tool item is the action itself. While an `exec` script call is running with no item yet, the first item takes over its step
+   * (same id, the call's start time): one step for the action, not the call and the item. Otherwise it is a step of its own.
+   */
+  private place(fields: Omit<LogStep, "id" | "turn"> & { id: string }): LogStep {
+    const w = this.wrapper && !this.adopted.has(this.wrapper) ? this.openTool(this.wrapper) : undefined;
+    if (!w) return this.add(fields);
+    this.close(w.id);
+    this.adopted.add(w.id);
+    this.started.delete(w.id);
+    delete w.input; delete w.inputCut; delete w.body; delete w.bodyCut; delete w.bodyBytes; delete w.exitCode; delete w.durationMs; delete w.subject; delete w.anchor;
+    // The page merges a later answer over the step it already holds (`{ ...held, ...new }`): a key the item does not say is kept
+    // from the script's step. So the keys the script's step had are always said here (empty when the item has none).
+    Object.assign(w, { input: "", subject: "" }, fields, { id: w.id, ts: w.ts || fields.ts });
+    return w;
+  }
+
   private item(it: Record<string, unknown> | undefined, ts: number): Emission {
     if (!it || typeof it.id !== "string") return [];
     const dur = it.duration as { secs?: number; nanos?: number } | undefined;
     const durationMs = dur && typeof dur.secs === "number" ? dur.secs * 1000 + Math.round((dur.nanos ?? 0) / 1e6) : undefined;
     const failed = it.status === "failed" || (typeof it.exit_code === "number" && it.exit_code !== 0);
     const base = { id: it.id, kind: "tool" as const, ts, status: (failed ? "failed" : "done") as StepStatus, ...(durationMs !== undefined ? { durationMs } : {}) };
+    const put = (fields: Omit<LogStep, "id" | "turn"> & { id: string }): LogStep => this.place(fields);
+    const out = (s: LogStep): Emission => [this.adopted.has(s.id) ? { ...s } : s];
     switch (it.type) {
       case "CommandExecution": {
-        const cmd = Array.isArray(it.command) ? it.command.map(String).join(" ") : String(it.command ?? "");
-        const s = this.add({ ...base, tool: "command", cat: "run", subject: subjectOf(cmd), ...(typeof it.exit_code === "number" ? { exitCode: it.exit_code } : {}) });
+        const cmd = commandText(it.command);
+        // codex classifies what it ran (`parsed_cmd`): one read of a file / one search is a read / a search, the rest a command.
+        const parsed = Array.isArray(it.parsed_cmd) && it.parsed_cmd.length === 1 ? it.parsed_cmd[0] as Record<string, unknown> : undefined;
+        const kind = parsed?.type === "read" && typeof (parsed.path ?? parsed.name) === "string" ? "read"
+          : parsed?.type === "search" ? "search" : parsed?.type === "list_files" ? "read" : "run";
+        const subject = kind === "read" ? subjectOf(parsed?.path ?? parsed?.name ?? parsed?.cmd) : kind === "search" ? subjectOf(parsed?.query ?? parsed?.cmd) : subjectOf(cmd);
+        const s = put({ ...base, tool: "command", cat: kind, subject: subject ?? subjectOf(cmd), ...(typeof it.exit_code === "number" ? { exitCode: it.exit_code } : {}) });
         const text = String(it.aggregated_output ?? it.formatted_output ?? "");
         if (text) bodyOf(s, text, RESULT_MAX);
-        return [s];
+        inputOf(s, cmd);
+        return out(s);
       }
       case "McpToolCall": {
         const tool = `${it.server}:${it.tool}`;
         const anchor = isReplyTool(tool) ? replyAnchor(it.arguments) : undefined;
-        const s = this.add({ ...base, tool, cat: /^agend/.test(String(it.server)) ? "message" : "mcp", subject: subjectOf(tool), ...(anchor ? { anchor } : {}) });
+        if (isReplyTool(tool)) this.spoke = true;
+        const s = put({ ...base, tool, cat: /^agend/.test(String(it.server)) ? "message" : "mcp", subject: subjectOf(tool), ...(anchor ? { anchor } : {}) });
         inputOf(s, it.arguments);
         const text = resultText((it.result as Record<string, unknown> | undefined)?.content);
         if (text) { bodyOf(s, text, RESULT_MAX); replyResult(s, text); }
-        return [s];
+        return out(s);
       }
       case "FileChange": {
         const files = Object.keys((it.changes as Record<string, unknown>) ?? {});
-        const s = this.add({ ...base, tool: "file_change", cat: "edit", subject: subjectOf(files.join(", ")) });
+        const s = put({ ...base, tool: "file_change", cat: "edit", subject: subjectOf(files.join(", ")) });
         const text = [it.stdout, it.stderr].filter((x) => typeof x === "string" && x).join("\n");
         if (text) bodyOf(s, text, RESULT_MAX);
-        return [s];
+        return out(s);
+      }
+      case "Extension": {
+        // web search / page open (`kind: "web.search"`): what was asked or opened; the results are not kept.
+        if (it.kind !== "web.search") return [];
+        const action = it.action as Record<string, unknown> | undefined;
+        const queries = Array.isArray(action?.queries) ? (action!.queries as unknown[]).map(String).join(" · ") : "";
+        const s = put({ ...base, tool: "web.search", cat: "web", subject: subjectOf(action?.url ?? it.query ?? (queries || undefined)) });
+        return out(s);
+      }
+      case "ImageView": {
+        const s = put({ ...base, tool: "view_image", cat: "read", subject: subjectOf(filePath(it.path)) });
+        return out(s);
       }
     }
     return [];
@@ -658,20 +791,20 @@ export class CodexStepParser extends StepParser {
 
   /** A long rollout line: an output completes its call with the start of its text; a call starts by its name. */
   protected override long(head: string, bytes: number): Emission {
+    // `compacted` carries the whole replacement history (megabytes): it is a long line, and its type is all that is read of it.
+    if (/^\{[^{}]{0,200}"type":"compacted"/.test(head)) return this.compacted(tsOf(/"timestamp":"([^"]{10,40})"/.exec(head)?.[1]));
     if (!head.includes('"type":"response_item"')) return [];
     const type = /"payload":\{[^{}]{0,400}?"type":"(function_call|custom_tool_call|function_call_output|custom_tool_call_output)"/.exec(head)?.[1];
     const id = /"call_id":"([^"]{1,200})"/.exec(head)?.[1];
     if (!type || !id) return [];
     const ts = tsOf(/"timestamp":"([^"]{10,40})"/.exec(head)?.[1]);
-    if (type.endsWith("_output")) {
-      const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "done" });
-      s.status = "done"; s.bodyBytes = bytes;
-      const text = headString(head, "text") ?? headString(head, "output");
-      if (text) bodyOf(s, text, RESULT_MAX);
-      return [{ ...s }];
-    }
+    if (type.endsWith("_output")) return this.answered(id, headString(head, "text") ?? headString(head, "output") ?? "", ts, bytes);
     const name = /"name":"([^"]{1,200})"/.exec(head)?.[1] ?? "tool";
-    return [this.add({ id, kind: "tool", ts, tool: name, ...describeTool(name, undefined), status: "running", bodyBytes: bytes })];
+    // Its input is not read (too long): the head can still say it sends a reply.
+    if (isReplyTool(name) || REPLY_IN_SCRIPT.test(head)) this.spoke = true;
+    const s = this.add({ id, kind: "tool", ts, tool: name, ...describeTool(name, undefined), status: "running", bodyBytes: bytes });
+    this.called(id, type, name, ts);
+    return [s];
   }
 }
 
@@ -852,15 +985,60 @@ const BACKFILL_CHUNK = 256 * 1024;
 /** A record and where it starts in the file (its byte offset). */
 export interface TailRecord { record: string | LongLine; at: number }
 
-/** Existing Log/backfill cursor semantics; startup metadata uses the separately bounded reader below. */
-export async function readTailRecords(path: string, opts: { maxBytes?: number; maxLines?: number; end?: number } = {}): Promise<{ records: TailRecord[]; truncated: boolean; end: number }> {
+export async function readTailRecords(path: string, opts: { maxBytes?: number; maxLines?: number; end?: number } = {}): Promise<{ records: TailRecord[]; truncated: boolean; end: number; skip?: true }> {
   const maxBytes = Math.max(1, opts.maxBytes ?? BACKFILL_MAX_BYTES);
   const maxLines = Math.max(1, opts.maxLines ?? 2000);
-  const end = opts.end !== undefined ? Math.min(opts.end, await lastLineBoundary(path)) : await lastLineBoundary(path);
-  if (end === 0) return { records: [], truncated: false, end };
-  const fh = await open(path, "r");
-  try { return await readTailAtBoundary(path, fh, end, maxBytes, maxLines); }
-  finally { await fh.close(); }
+  const out: TailRecord[] = [];
+  const KEEP = LINE_MAX_BYTES + LONG_HEAD_BYTES;
+  const fh = await openTranscript(path);
+  try {
+    // The last complete record ends at a line boundary. Finding it is part of the read, so it is inside the budget too: an
+    // unfinished record after it (a record being written, or one of megabytes) is never scanned past `maxBytes`.
+    // `end` (a record start from an earlier read: a boundary) is where the look begins — the older records before it — and
+    // nothing after it is read; with none, the file's end.
+    const size = (await fh.stat()).size;
+    const from = opts.end !== undefined ? Math.min(opts.end, size) : size;
+    const found = await boundaryBefore(fh, path, from, maxBytes);
+    // No line end within the budget: an unfinished record longer than it. Complete lines only — none is returned. The cursor of a
+    // read from the file's end is inside that record (`skip`: the next forward read drops through its end), not a boundary.
+    if (found.at === null) return { records: out, truncated: true, end: from, ...(opts.end === undefined ? { skip: true as const } : {}) };
+    const end = found.at;
+    if (end === 0) return { records: out, truncated: false, end };
+    let pos = end - 1;                 // the last record's line end (excluded); records lie between line ends
+    let recEnd = end - 1;              // where the record being assembled ends (its line end)
+    let acc: Buffer = Buffer.alloc(0); // its bytes after the current chunk: its first KEEP bytes at most
+    let read = found.read;             // the boundary search's reads count against the budget
+    const emit = (bytes: Buffer, total: number, at: number) => { if (total > 0) out.push({ record: toRecord(bytes, total, at), at }); };
+    while (pos > 0 && read < maxBytes && out.length < maxLines) {
+      const length = Math.min(BACKFILL_CHUNK, pos, maxBytes - read);
+      const start = pos - length;
+      const buf = Buffer.alloc(length);
+      for (let filled = 0; filled < length;) {
+        const { bytesRead } = await fh.read(buf, filled, length - filled, start + filled);
+        if (bytesRead <= 0) throw new Error(`readTailRecords: no progress reading ${path} at ${start + filled}`);
+        filled += bytesRead;
+      }
+      read += length;
+      let segEnd = length;
+      for (let i = length - 1; i >= 0 && out.length < maxLines; i--) {
+        if (buf[i] !== 0x0a) continue;
+        const total = recEnd - (start + i + 1);
+        emit(Buffer.concat([buf.subarray(i + 1, segEnd), acc]), total, start + i + 1);
+        acc = Buffer.alloc(0);
+        recEnd = start + i;
+        segEnd = i;
+      }
+      if (out.length >= maxLines) { pos = start + segEnd; break; }
+      acc = Buffer.concat([buf.subarray(0, segEnd), acc]);
+      if (acc.length > KEEP) acc = acc.subarray(0, KEEP);
+      pos = start;
+    }
+    // The first record of the file, when the read reached it.
+    if (pos === 0 && out.length < maxLines) { emit(acc, recEnd, 0); recEnd = 0; }
+    return { records: out.reverse(), truncated: recEnd > 0, end };
+  } finally {
+    await fh.close();
+  }
 }
 
 /** Metadata-only startup look. No forward cursor is exposed when a boundary does not fit the read budget. */
