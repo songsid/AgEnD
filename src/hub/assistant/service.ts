@@ -1,12 +1,6 @@
 import { RoomAssistantRunner } from "./runner.js";
 import { ROOM_ASSISTANT_DEFAULTS, type RoomAssistant, type RoomAssistantAsk, type RoomAssistantConfig, type RoomAssistantHost } from "./types.js";
-
-export type AssistantQuotaBand = "available" | "near_limit" | "exhausted" | "unknown";
-export interface AssistantBackendChoice {
-  id: string;
-  name: string;
-  accounts: Array<{ id: string | null; name: string; state: "signed-in" | "needs-sign-in" | "unknown" }>;
-}
+import type { AssistantQuotaBand, AssistantBackendChoice, AssistantAdminSettings, AssistantUsage, RoomAssistantAdmin } from "./admin-types.js";
 export interface AssistantSavedState {
   config: RoomAssistantConfig;
   answers: Array<{ day: string; count: number }>;
@@ -40,7 +34,7 @@ export function assistantConfig(value: unknown): RoomAssistantConfig {
 }
 
 /** Stable seam-4 provider owned by the Hub host Fleet, with separately mounted admin operations. */
-export class RoomAssistantService implements RoomAssistant {
+export class RoomAssistantService implements RoomAssistant, RoomAssistantAdmin {
   private config = initialConfig();
   private runner?: RoomAssistantRunner;
   private readonly ready: Promise<void>;
@@ -79,9 +73,9 @@ export class RoomAssistantService implements RoomAssistant {
     this.runner?.forget(roomId);
   }
 
-  async settings() {
+  async settings(): Promise<AssistantAdminSettings> {
     await this.ready;
-    return { ...this.config, backends: this.options.backends(), instances: this.runner?.instances() ?? [] };
+    return { ...this.config, backends: this.options.backends(), running: this.runner?.instances() ?? [] };
   }
 
   async configure(value: unknown) {
@@ -111,7 +105,7 @@ export class RoomAssistantService implements RoomAssistant {
     await this.runner?.stopRoom(roomId);
   }
 
-  async usage() {
+  async usage(): Promise<AssistantUsage> {
     await this.ready;
     return { days: this.dailyAnswers(), quota: { band: this.options.quota?.(this.config) ?? "unknown" },
       ...(this.persistenceFailed ? { note: "usage-not-saved" } : {}) };
