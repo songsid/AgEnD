@@ -10,7 +10,9 @@ const repo=process.env.REPO??process.cwd(), out=process.env.OUT!, mode=process.e
 mkdirSync(out,{recursive:true});const home=mkdtempSync(join(tmpdir(),'hub-group-ask-m3016-'));process.env.AGEND_HOME=home;
 const digest=(s:any)=>createHash('sha256').update(s).digest('hex'),git=(...args:string[])=>execFileSync('git',['-C',repo,...args],{encoding:'utf8'}).trim();
 const result:any={head:git('rev-parse','HEAD'),tree:git('rev-parse','HEAD^{tree}'),trackedDirty:git('status','--porcelain','--untracked-files=no'),mode,base,inputDigests:{},servedDigests:{},substitutions:[],cases:[],checks:[],errors:[],requests:[],scope:'Production HTTPS/cookie/CSRF/SQLite/owner UI. Inert directory GUID facts and authenticated member boundary. Real fixture grant writes/revokes, no real AD/account/Fleet/model execution. Before is retained base panel on candidate server, not a baseline server execution.'};
-for(const p of ['src/hub/catalog.ts','src/hub/grant-access.ts','src/hub/grant-search.ts','src/hub/http/schema.ts','src/ui/panel-hub.js','src/ui/hub-grant-picker.js','src/ui/hub-client.js','src/ui/hub-group-search.js','tests/helpers/hub-s3b-rig.ts','scripts/manual/hub-group-ask-m3016/browser.mts']){const hash=digest(readFileSync(join(repo,p)));(result.inputDigests[hash]??=[]).push(p);}
+const inputs=[...new Set([...git('diff','--name-only',base,'HEAD','--','src/hub','src/ui','src/general-knowledge/skills/hub').split('\n').filter(Boolean),'tests/helpers/hub-s3b-rig.ts','scripts/manual/hub-group-ask-m3016/browser.mts'])];
+result.font=execFileSync('fc-match',['sans:lang=zh-tw'],{encoding:'utf8'}).trim();
+for(const p of inputs){const hash=digest(readFileSync(join(repo,p)));(result.inputDigests[hash]??=[]).push(p);}
 const check=(name:string,ok:unknown)=>{result.checks.push({name,ok:!!ok});if(!ok)throw Error(name);};
 let rig:any,browser:any;
 const server=createServer((q,p)=>{if(!rig?.http.handle(q,p)){p.writeHead(404);p.end();}});
