@@ -122,3 +122,11 @@ Three isolated reversals (fresh escape, stored-wire return, historical rendering
 each fail semantically, exact source restored. Both nativeTS7 checks pass.
 No receipt authority, ACL, forwarding, proof, deadline or retry change.
 The optional unwritten-preparation cleanup P3 remains outside this scoped fix.
+
+Fable reset-path pins: an actual TranscriptSource poll now drives the real
+monitor and attached daemon listener, emitting context_reset once and retiring
+the old stamp while the next quiet poll preserves its successor. Actual
+resetOffset invalidates only the attached monitor stamp; a detached monitor
+cannot reset it. Listener14/14; isolated M5 (drop monitor reset) and M6 (drop
+source event bridge) each fail1semantic case, restored exactly. Production
+unchanged by these pins.
