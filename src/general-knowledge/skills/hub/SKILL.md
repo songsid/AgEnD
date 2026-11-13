@@ -20,6 +20,7 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 |---|---|
 | what a Hub is, Hub vs Fleet, who can see what | [What the Hub is](#what-the-hub-is) |
 | `agend hub init`, Set up a Hub, first administrator | [Setting up a Hub](#setting-up-a-hub) |
+| move the Hub to another address or port, Hub address (Hub 位址) on the Hub's computer | [Changing the Hub's address](#changing-the-hubs-address) |
 | the Hub's sign-in page, which account, wrong password | [Signing in to the Hub](#signing-in-to-the-hub) |
 | Let colleagues join, 讓同仁加入, which groups, the sentence to send | [Letting colleagues join](#letting-colleagues-join) |
 | join codes, 加入碼, create, end, used up, limits | [Join codes](#join-codes) |
@@ -69,6 +70,27 @@ account.
 - The Hub and a Fleet's dashboard must have **different host names**; a different port is not enough.
 - A generated browser certificate causes a browser warning until people trust it; its fingerprint is shown before the
   Hub is created.
+
+## Changing the Hub's address
+
+On the computer that runs the Hub, its own dashboard: **Settings → Hub**, card **Hub address** (Hub 位址), below **Run
+this Hub**. Only that computer's own sign-in sees it, as with **Set up a Hub**.
+
+- It shows the address, where the Hub listens and its certificate's fingerprint. **Change address** (變更位址) → **New
+  address** (`hub.example.com` is enough, without `https://`; add `:port` if it isn't 443) → **Check** (檢查) → "Change the Hub's
+  address?" → **Confirm change** (確認變更). **Back** changes nothing.
+- The Hub listens on the address's own port. The current certificate is kept when the host name stays the same;
+  another host name gets a new self-signed one (browsers warn until it's trusted; compare the fingerprint shown).
+  **Advanced** (進階) sets the listening interface and port (for a router or proxy that forwards another port), or **Use
+  my own certificate** (paste the certificate and private key as PEM).
+- After the change everyone, the administrator too, signs in to the Hub's pages again, and the old address stops
+  working. Connected Fleets stay connected. Tell colleagues the new address: it's the one they type in Settings → Hub,
+  and **Tell colleagues how to join** shows it.
+- Messages: "Another program on this computer is using that port." → another port under **Advanced**; "That address or
+  port is the one Fleets connect to." → another port; "Another change is still finishing, or a device is finishing its
+  sign-in." → try again in a moment; "Saved, but the Hub doesn't answer at the new address yet…" → free that port, then
+  turn **Run this Hub** off and on.
+- The address Fleets connect to (the member address) is separate and isn't changed here.
 
 ## Signing in to the Hub
 
@@ -285,7 +307,7 @@ Two keys in `fleet.yaml`, both off unless something turned them on. Prefer the p
 
 | Key | Meaning |
 |---|---|
-| `hub.enabled` | This installation runs a Hub. Set by `agend hub init` or **Set up a Hub**. The Hub's own settings (addresses, directory, administrator) are written by setup and changed on the Hub's Administration page, not by hand. |
+| `hub.enabled` | This installation runs a Hub. Set by `agend hub init` or **Set up a Hub**. The Hub's own settings are written by setup and changed on the pages, not by hand: its address in **Settings → Hub → Hub address** on the Hub's computer, its directory and name on the Hub's Administration page. |
 | `hub_member.enabled` | This Fleet may connect to a Hub. Connecting with the Hub address box turns it on by itself; the switch is **Allow this fleet to connect to a Hub**. |
 
 ## Limits
