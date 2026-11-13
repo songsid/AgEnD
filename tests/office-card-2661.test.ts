@@ -107,6 +107,7 @@ describe("the card's content", () => {
     const model_observation = { active: { original: "claude-opus-5-5", served: "claude-opus-4-8", cause: "safeguards", scope: "session" } };
     const n = node({ model_observation });
     expect(C.cardModel({ ...base, node: n, lv: full(), levels: null }).modelSwitch).toBe("Model switched by safeguards: Opus 5.5 → Opus 4.8 · session");
+    expect(C.cardModel({ ...base, node: n, lv: full(), levels: null }).rows.map((r: string[]) => r[0])).toContain("Session model");
     expect(C.cardModel({ ...base, node: n, lv: full(), levels: null, share: true }).modelSwitch).toBe("");
   });
   it("the dashboard with the numbers: two XP lines over the bar; model and backend as two rows; today and first seen", () => {

@@ -64,6 +64,13 @@ try {
       await page.goto(fx.base + path); await page.waitForTimeout(650); if (prepare) await prepare(); await page.evaluate(() => document.fonts.ready);
       const word = c.lang === "en" ? c.variant === "availability" ? "Model switched due to availability" : "Model switched by safeguards" : c.variant === "availability" ? "模型因供應狀況而切換" : "安全機制已切換模型";
       if (expectLine && !(await page.locator("body").innerText()).includes(word)) throw Error(`${c.variant}/${label}: missing ${word}`);
+      if (label === "details" && expectLine && c.device === "phone") await page.locator(".p-details .model-switch").scrollIntoViewIfNeeded();
+      if (label === "log" && expectLine) {
+        const pair = page.locator(".log-text").filter({ hasText: "Opus 5.5 → Opus 4.8" });
+        if (await pair.count() !== 1) throw Error("model pair must be in wrapping Log text");
+        const fits = await pair.evaluate((el: HTMLElement) => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1);
+        if (!fits) throw Error("model pair is clipped");
+      }
       const geometry = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - innerWidth,
         lines: [...document.querySelectorAll(".model-switch, .needs-item, .log-row")].map(el => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height, text: el.textContent }; }) }));
       if (geometry.overflow > 1) throw Error(`overflow ${JSON.stringify(geometry)}`);

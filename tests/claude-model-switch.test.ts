@@ -64,6 +64,13 @@ describe("redacted Claude Code 2.1.323 record shapes", () => {
     ["SDK snake case", { ...notice(), originalModel: undefined, fallbackModel: undefined, original_model: "claude-opus-5-5", fallback_model: "claude-opus-4-8" }],
   ])("excludes %s", (_label, record) => expect(parseClaudeModelRecord(record)).toBeNull());
   it("main-thread Haiku is a valid served model", () => expect(parse(served("claude-haiku-4-5")).served).toBe("claude-haiku-4-5"));
+  it("recognizes the producer's command-message prefix as intent, never as confirmation", () => {
+    const e = { type: "user", uuid: "command-prefixed", sessionId: "session-A", timestamp: new Date().toISOString(),
+      message: { role: "user", content: "<command-message>model</command-message>\n<command-name>/model</command-name>\n<command-args>claude-sonnet-5-5[1m]</command-args>" } };
+    expect(parseClaudeModelRecord(e)).toMatchObject({ kind: "intent", served: "claude-sonnet-5-5[1m]" });
+    expect(parseClaudeModelRecord({ ...e, message: { ...e.message, content: "Quoted XML: " + e.message.content } })).toBeNull();
+    expect(parseClaudeModelRecord({ ...e, isMeta: true })).toBeNull();
+  });
   it.each([
     ["CLAUDE-OPUS-5-5[1m]", "opus-5.5"], ["claude-sonnet-4-5-20250929", "sonnet-4.5"],
     ["claude-3-5-sonnet-20241022", "sonnet-3.5"], ["claude-opus-4", "opus-4.0"],

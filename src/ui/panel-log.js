@@ -411,14 +411,15 @@ function Row({ x, prev }) {
       ${x.screen ? html`<button type="button" class="link-btn log-toggle log-screen-toggle" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>${open ? tl("hideScreen") : tl("showScreen")}</button>` : null}
       ${x.screen && open ? html`<div class="log-detail"><div class="log-text mono log-screen">${x.screen}</div></div>` : null}`;
   } else if (x.kind === "user" || x.kind === "assistant") {
-    row = html`${head(KIND_ICON[x.kind], x.servedModel ? `${tl(x.kind)} · ${observationLabel("served")}: ${modelName(x.servedModel)}` : tl(x.kind))}${text(x.body, x.bodyCut)}`;
+    row = html`${head(KIND_ICON[x.kind], tl(x.kind))}${x.servedModel ? text(`${observationLabel("served")}: ${modelName(x.servedModel)}`) : null}${text(x.body, x.bodyCut)}`;
   } else if (x.kind === "error") {
     row = html`${head(KIND_ICON.error, x.note ? tl("errorCode", x.note) : tl("error"))}${text(x.body, x.bodyCut)}`;
   } else if (x.kind === "turn_end") {
     row = head(KIND_ICON.turn_end, x.durationMs ? tl("turnEndIn", duration(x.durationMs)) : tl("turnEnd"),
       x.status && x.status !== "done" ? html`<span class=${`log-status ${x.status}`}>${tl(x.status)}</span>` : null);
   } else if (x.kind === "state") {
-    row = head(KIND_ICON.state, x.modelSwitch ? modelSwitchText(x.modelSwitch) : x.note === "compacted" ? tl("compacted") : x.note || "");
+    row = x.modelSwitch ? html`${head(KIND_ICON.state, observationLabel("title"))}${text(modelSwitchText(x.modelSwitch))}`
+      : head(KIND_ICON.state, x.note === "compacted" ? tl("compacted") : x.note || "");
   } else {
     const cat = x.cat || "other";
     const subject = cat === "plan" && x.subject ? tl("plan_items", x.subject) : x.subject || "";

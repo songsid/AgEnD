@@ -109,6 +109,8 @@ it("Claude's observed model line follows the live frame and recovery without rel
   applyStatus({ instances: [live("web-dev", { model_observation: observation })] }); await settle(5);
   expect(pg.root.textContent).toContain("Model switched by safeguards: Opus 5.5 → Opus 4.8 · turn");
   expect(pg.root.textContent).toContain("Configured model"); expect(pg.root.textContent).toContain("Last served model");
+  expect(pg.root.querySelectorAll(".p-details .kv .k").map((el: any) => el.textContent).filter((text: string) => /^(Model|Configured model|Session model|Last served model)$/.test(text)))
+    .toEqual(["Session model", "Configured model", "Last served model"]);
   applyStatus({ instances: [live("web-dev", { model_observation: { ...observation, lastServed: "claude-opus-5-5", active: null } })] }); await settle(5);
   expect(pg.root.querySelector(".model-switch")).toBeNull();
   expect(calls.filter(c => c === "GET /ui/instance/web-dev")).toHaveLength(1);

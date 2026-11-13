@@ -27,7 +27,7 @@ AgEnD home (`~/.agend`).
 
 For Claude Code these are different facts: configured is the saved selection; session is this launch's statusline selection; last served is the model in a main-thread response's metadata. A typed safeguards or availability fallback notice keeps the original and fallback model plus its turn/session scope. A response observation does not attest to the final retained answer.
 
-AgEnD detects and displays a switch; it never changes a model or policy in response. One Needs-you item stays quiet through repeated blocks and resume, and clears when a fresh response returns to the configured/original model. Intentional `/model`, next-spawn failover, synthetic/API-error and child/auxiliary records do not become provider-switch alerts. Unresolved aliases/default/opusplan are not guessed. Main-thread Haiku is included. Missing or unchanged vendor metadata can make a substitution undetectable.
+AgEnD detects and displays a switch; it never changes a model or policy in response. One Needs-you item stays quiet through repeated blocks and resume, and clears when a fresh response returns to the configured/original model. Intentional `/model`, next-spawn failover, synthetic/API-error and marked child/auxiliary records do not become provider-switch alerts. Unresolved aliases/default/opusplan are not guessed. Main-thread Haiku is included. Missing or unchanged vendor metadata can make a substitution undetectable.
 
 - Code: `src/claude-model-observation.ts`, `src/transcript-monitor.ts`, `src/needs-you.ts`.
 - Read: `describe_instance(name)` has a compact active-switch summary; `detail:true` adds bounded configured/launch/session/last-served metadata.

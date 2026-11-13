@@ -61,7 +61,7 @@ export function cardModel({ node, lv, levels, share = false, state, now, where }
   const detail = !share && !!e && e.workTokens !== undefined;
   const xp = showLevel && detail ? xpOf(e.level, e.workTokens, lv.unit) : null;
   const rows = [[tc("office"), where]];
-  if (!share && it.model) rows.push([tc("model"), modelText(it)]);
+  if (!share && it.model) rows.push(it.model_observation ? [observationLabel("selection"), modelName(it.model_observation.session) || observationLabel("unresolved")] : [tc("model"), modelText(it)]);
   if (!share && it.backend) rows.push([tc("backend"), backendLabel(it.backend)]);
   if (detail) rows.push([tc("today"), tc("todayN", tokens(e.today.workTokens), e.today.requests)]);
   if (detail && e.firstSeen) rows.push([tc("firstSeen"), tc("day", dayOf(e.firstSeen))]);
@@ -90,7 +90,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   return html`<div ref=${box} class=${`oo-card${sheet ? " sheet" : ""}`} role="dialog" aria-modal="false" aria-label=${tc("card", m.name)}
       onPointerDown=${down} onPointerUp=${up} onPointerCancel=${() => { swipe.current = null; }}>
     ${sheet ? html`<div class="oo-card-grip" aria-hidden="true"></div>` : null}
-    ${m.modelSwitch ? html`<p class="note model-switch" role="status">${m.modelSwitch}</p>` : null}
+    ${m.modelSwitch ? html`<p class="oo-card-now model-switch" role="status"><strong>${m.modelSwitch}</strong></p>` : null}
     <div class="oo-card-head">
       <div class="oo-card-avatar"><canvas ref=${canvas} width="56" height="56" aria-hidden="true"></canvas>
         ${m.badge ? html`<span class=${`oo-badge tier-${m.badge.tier}${m.badge.mark ? " mark" : ""}`} aria-hidden="true">${m.badge.mark ? "" : m.badge.text}</span>` : null}</div>

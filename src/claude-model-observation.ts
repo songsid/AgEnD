@@ -69,7 +69,8 @@ export function parseClaudeModelRecord(e: any): ClaudeModelRecord | null {
   }
   // A command marker says intent, never that the picker applied a change. No arbitrary command text is retained.
   if (e.type === "user" && uuid && typeof e.message?.content === "string"
-    && /^<command-name>\/model<\/command-name>/.test(e.message.content)) {
+    && /^(?:<command-name>\/|<command-message>)/.test(e.message.content)
+    && /<command-name>\/model<\/command-name>/.test(e.message.content)) {
     const requested = /<command-args>([^<]{1,100})<\/command-args>/.exec(e.message.content)?.[1];
     return { kind: "intent", id: `intent:${uuid}`, sessionId, at, served: claudeModelId(requested) ?? "" };
   }
