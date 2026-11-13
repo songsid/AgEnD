@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { personKeyString } from "../src/hub/identity.js";
 import { HubPairingNotices, HUB_PAIRING_NOTICES_MIGRATION } from "../src/hub/pairing-notices.js";
+import { HubGroupReadOverload } from "../src/hub/group-policy/errors.js";
 
 let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; });
@@ -183,6 +184,28 @@ it("unrelated room traffic does not fill a viewer's SSE queue behind a held elig
     let text = ""; while (!text.includes("own final marker")) { const chunk = await reader.read(); if (chunk.done) throw new Error("stream ended"); text += new TextDecoder().decode(chunk.value); }
     expect(text).not.toContain("unrelated-");
   } finally { holding = false; release(); clearTimeout(deadline); stop.abort(); }
+});
+
+it.each([false, true])("room streams retry temporary read contention and bound persistent overload: %s", async persistent => {
+  const w = await world(), own = await r!.call(w.admin, "POST", "/hub/v1/rooms", { name: "Cara stream", people: [personKeyString(w.cara)] });
+  const stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 3000);
+  try {
+    const response = await fetch(`${r!.base}/hub/v1/rooms/events`, { headers: { Cookie: w.c.cookie }, signal: stop.signal }), reader = response.body!.getReader();
+    const eligibility = r!.directory.checkEligibility.bind(r!.directory); let overloads = 0;
+    r!.directory.checkEligibility = async key => {
+      if (key.objectId === w.cara.objectId && (persistent || overloads === 0)) { overloads++; throw new HubGroupReadOverload(); }
+      return eligibility(key);
+    };
+    await r!.call(w.admin, "POST", `/hub/v1/rooms/${own.json.room.id}/messages`, { text: "after temporary contention", idempotencyKey: randomUUID() });
+    let text = "", ended = false;
+    while (!text.includes("after temporary contention")) { const chunk = await reader.read(); if (chunk.done) { ended = true; break; } text += new TextDecoder().decode(chunk.value); }
+    if (persistent) { expect(ended).toBe(true); expect(overloads).toBe(4); }
+    else {
+      expect(ended).toBe(false); expect(overloads).toBe(1);
+      await r!.call(w.admin, "POST", `/hub/v1/rooms/${own.json.room.id}/messages`, { text: "same stream stays live", idempotencyKey: randomUUID() });
+      while (!text.includes("same stream stays live")) { const chunk = await reader.read(); if (chunk.done) throw Error("stream ended after recovery"); text += new TextDecoder().decode(chunk.value); }
+    }
+  } finally { clearTimeout(deadline); stop.abort(); }
 });
 
 it("keeps direct-chat grants, receipts and old history shapes alongside seam-1 messages", async () => {
