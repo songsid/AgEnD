@@ -154,7 +154,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${rail ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => setRail(!rail)}>👥</button>` : null}
       </header>
-      <${Thread} store=${store} name=${room.name || ""} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra} />
+      <${Thread} store=${store} name=${room.name || ""} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
+        emptyView=${room.assistant ? html`<p class="note hub-assistant-empty">${hroom("hubAssistantEmpty")}</p>`
+          : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />
       <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} />
     </section>
     ${rail && Panel && group && detail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>

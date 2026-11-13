@@ -686,7 +686,7 @@ function HubWorkBar({ name, since }) {
 }
 
 /** The thread: the fleet chat's own (createThread), fed by the room's store. */
-function HubThread({ store, name, panelKey, threadRef, extra = null }) {
+function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView = null }) {
   const scroller = useRef(null), host = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
@@ -735,7 +735,8 @@ function HubThread({ store, name, panelKey, threadRef, extra = null }) {
     ${!loaded && !store.error() && !store.closed() ? html`<${Skeleton} variant="rows" lines=${5} />` : null}
     ${store.error() === "backpressure" ? html`<p class="hub-banner warn" role="status">${hr("busy")}</p>`
       : !loaded && store.error() ? html`<${ErrorState} message=${errText({ code: store.error() })} onRetry=${() => store.refresh()} />` : null}
-    ${empty && loaded && !store.closed() ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
+    ${empty && loaded && !store.closed() && emptyView ? html`<div class="center hub-room-empty">${emptyView}</div>` : null}
+    ${empty && loaded && !store.closed() && !emptyView ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
     <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
   </div>`;
