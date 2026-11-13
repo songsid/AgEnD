@@ -316,7 +316,7 @@ jobs:
           PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-composer-width.mts
       - name: Save verified CJK archive (best effort, after the gate)
         if: always() && needs.detect-changes.outputs.text-only != 'true' && steps.cjk-fonts.outcome == 'success' && steps.cjk-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         timeout-minutes: 1
         continue-on-error: true
         with:
