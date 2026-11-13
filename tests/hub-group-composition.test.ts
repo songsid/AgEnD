@@ -181,6 +181,7 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
         isIdentityCurrent: (who: DirectoryPerson["key"], session: string) => who.realm === ADMIN.key.realm && who.objectId === ADMIN.key.objectId && session === "test-local-authority",
         requireAdmin: async () => ({ kind: "directory" as const, person: ADMIN.key, sessionId: "test-local-authority" }) };
       const ownerCtx = { requestId: randomUUID(), isCurrent: () => true,
+        requireAdmin: async () => { throw Error("owner has no administrator authority"); },
         current: async () => ({ kind: "directory" as const, person: owner, sessionId: "test-owner-authority" }), requirePerson: async () => owner };
       const offer = await r.deps.pairing.create(ctx, owner), pending = r.deps.pairing.pair({ code: offer.code });
       await r.deps.pairing.confirmOwner(ownerCtx, pending.pairingId, pending.fingerprint);
