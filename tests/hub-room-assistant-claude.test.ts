@@ -166,10 +166,10 @@ describe("Hub host Fleet tools-off Claude adapter (inert process only)", () => {
     const rejected = expect(result).rejects.toThrow("stopped");
     await flush();
     const stop = a.session.stop(), done = vi.fn(); void stop.then(done);
-    await rejected; await Promise.resolve();
+    await flush();
     expect(done).not.toHaveBeenCalled();
     expect(await readdir(a.child.options.cwd)).toEqual([]);
-    a.child.close(); await stop;
+    a.child.close(); await Promise.all([stop, rejected]);
     await expect(readdir(a.child.options.cwd)).rejects.toThrow();
     expect(await readFile(w.binary, "utf8")).toContain("inert fixture");
   });
