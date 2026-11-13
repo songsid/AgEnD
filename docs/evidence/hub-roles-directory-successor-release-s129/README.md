@@ -7,3 +7,9 @@ The typed missing-capability baseline has five semantic assertion reds and two e
 Actual in-memory SQLite/cutover/clock/Core/HubSessions/pool with fictional directory answers. No HTTP/response write, physical floor/install, live directory/account/Fleet/backend CLI/browser/container/native/pilot or crash run. Native TypeScript checks are Linux-host compiler checks, not native Windows execution. Raw logs remain private; exact digests and mutation inputs are exported for source review. No UI/config/asset/protocol changes or PNG/SKEW claim.
 
 Parent-first plain alpha sync, resolution review and new-head CI remain required; coordinator alone gates. Full S-129 acceptance is not claimed. Before activation rollback is a code revert; never restore old policy, database or floor images after activation.
+
+## R1: synchronous release ownership
+
+Review 5893532957 found that the original completion flag was set after clock/proof callbacks. The actual existing SQL/Core/Sessions fixture reproduces one nested disclosure before the fix (one semantic red and one stable control; 55 filter exclusions). A private admission claim now precedes those callbacks. Nested and sequential duplicates refuse without cancelling the outer owner, and the original post-release proof remains valid.
+
+The R1 receipt records the fresh 172/172 in five suites, both native compiler checks and one isolated compiling reversal with exact restoration and a 57/57 restored changed-file run. The original eight mutation results and 171-test receipt remain historical evidence at their named inputs. This delta changes only the release claim and its additive regression; all mounted/activation and parent-first limits above remain.
