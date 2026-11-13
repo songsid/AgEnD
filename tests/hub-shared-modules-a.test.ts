@@ -43,8 +43,11 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
     expect([...HUB_UI_MODULES]).toEqual(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
       "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",   // #3298 S-89/S-90
       "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js",
-      // Hub rooms and the optional assistant admin UI.
-      "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js", "hub-room-list.js", "hub-room-strings.js", "hub-room-thread.js", "hub-room-composer.js", "hub-room-new.js", "hub-room-new-strings.js", "hub-room-settings.js", "hub-room-settings-strings.js", "hub-room-members.js", "hub-room-members-strings.js", "hub-invitations.js", "hub-invitations-strings.js", "hub-admin-rooms.js", "hub-admin-rooms-strings.js", "hub-assistant-admin.js", "hub-assistant-admin-strings.js", "hub-room-presence.js"]);
+      "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js",   // Hub UX U2 (M-2932)
+      "hub-room-strings.js", "hub-room-presence.js",   // Hub rooms §§2,5: words (#3850) + presence helper (pure, no DOM)
+      "hub-room-unread.js",   // Hub rooms §12
+      "hub-room-new.js", "hub-room-new-strings.js", "hub-room-settings.js", "hub-room-settings-strings.js", "hub-room-members.js", "hub-room-members-strings.js", "hub-invitations.js", "hub-invitations-strings.js", "hub-admin-rooms.js", "hub-admin-rooms-strings.js",   // Hub rooms, track U2
+      "hub-room-list.js", "hub-room-thread.js", "hub-room-composer.js", "hub-assistant-admin.js", "hub-assistant-admin-strings.js"]);   // M-3092 (Hub rooms, track U)
   });
 });
 

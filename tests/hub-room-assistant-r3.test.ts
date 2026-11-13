@@ -2,6 +2,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { personKeyString } from "../src/hub/identity.js";
+const assistantSettings = () => ({ enabled: false, backend: "claude-code", account: null, cap: 3, idleMinutes: 15, backends: [], running: [] });
+const assistantUsage = () => ({ days: [], quota: { band: "unknown" as const } });
 let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; });
 async function world() {
@@ -61,7 +63,7 @@ it("stops the active call and queued room inputs before the admin stop response"
   const w = await world(); let release!: () => void, entered!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
   r!.httpDeps.roomAssistant!.ask = async input => { w.calls.push(input); entered(); await held; return { text: "Stopped output" }; };
-  r!.httpDeps.assistantAdmin = { settings: async () => ({ enabled: false, backend: "claude-code", account: null, cap: 3, idleMinutes: 15, backends: [], running: [] }), configure: async () => ({ enabled: false, backend: "claude-code", account: null, cap: 3, idleMinutes: 15, backends: [], running: [] }), usage: async () => ({ days: [], quota: { band: "unknown" } }), stopRoom: async () => { release(); } };
+  r!.httpDeps.assistantAdmin = { settings: async () => assistantSettings(), configure: async () => assistantSettings(), usage: async () => assistantUsage(), stopRoom: async () => { release(); } };
   await r!.restartHttp();
   const list = await r!.call(w.a, "GET", "/hub/v1/rooms?v=2"), id = list.json.rooms.find((x: any) => x.assistant).id;
   const post = (text: string) => r!.call(w.a, "POST", `/hub/v1/rooms/${id}/messages`, { text, mentions: [], idempotencyKey: randomUUID() });

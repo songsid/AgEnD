@@ -172,6 +172,17 @@ describe("Hub room members panel (section 5)", () => {
     expect(owners(pg)[1]).toEqual(["project-helper", "· 林小華's agent"]);
   });
 
+  it("a Latin owner name takes a space before 的 in zh (「Alex 的 Agent」); a CJK one does not; English is unchanged", () => {
+    i18n.setLang("zh-TW", { store: false });
+    expect(panel.ownerAgent("Alex")).toBe("Alex 的 Agent");
+    expect(panel.ownerAgent("ops2")).toBe("ops2 的 Agent");
+    expect(panel.ownerAgent("林小華")).toBe("林小華的 Agent");
+    expect(panel.ownerAgent("陳 Alex 主任")).toBe("陳 Alex 主任的 Agent");
+    i18n.setLang("en", { store: false });
+    expect(panel.ownerAgent("Alex")).toBe("Alex's agent");
+    expect(panel.ownerAgent("林小華")).toBe("林小華's agent");
+  });
+
   it("no detail yet: an empty, busy rail", async () => {
     const { pg, client } = await fixture("en");
     await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly" })); await settle(10);
