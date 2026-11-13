@@ -78,3 +78,7 @@ The configured root succeeds through each same valid operation. Removing only
 that guard compiles and makes all five refusal assertions fail; exact source
 restoration passes all 37 selected tests in three files and native test types.
 Production bytes are unchanged; see the R1 evidence receipt.
+
+## Parent landed and conflict sync
+
+#3795 merged at `d82bbc4d3283d353a2b598d9d5827fbf3b30b16c`. A plain merge of that alpha tip creates `8d46c4e183c13d1e01eca6b45428d3f8ea655476`, with parents `e0fbb2b3c` and `d82bbc4d3`. The two conflicts are `roles/authority.ts` and `group-policy/authorization.ts`: their incoming blobs exactly equal the approved canonical parent `a1f0f141f`, so the resolution preserves the existing named issuer additions. All ten original issuer product added/removed-line sequences match relative to the new alpha base; four cleared test/helper files remain byte-identical. The sync introduces no extra product delta. Later factory composition and activation remain separate.
