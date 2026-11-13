@@ -29,7 +29,7 @@ const keyOf = (item) => `${item.kind}:${item.id}`;
  *   result stands for "invite every member's agents" (kind "team-agents").
  * - picked, onChange(next), exclude: keys ("kind:id") never offered, e.g. members already in the room.
  * - note: a refusal the owner shows under the field (the 100-person limit, a group the directory could not read).
- * A picked AD group is read first (client.roomGroupPreview): its tag shows its head count, and a group the directory cannot
+ * A picked AD group is read first (client.roomGroup): its tag shows its head count, and a group the directory cannot
  * read whole is not added — the other picks stay.
  */
 export function RoomPicker({ client, kinds, picked, onChange, placeholder, label, id, exclude = [], fixed = null, note = "" } = {}) {
@@ -56,8 +56,8 @@ export function RoomPicker({ client, kinds, picked, onChange, placeholder, label
   const offer = (results ?? []).filter(c => !taken.has(keyOf(c)));
   const pick = async (item) => {
     setQ(""); setResults(null); setGroupNote("");
-    if (item.kind !== "group" || typeof client.roomGroupPreview !== "function") { onChange([...latest.current, item]); return; }
-    const r = await client.roomGroupPreview(item.id);
+    if (item.kind !== "group" || typeof client.roomGroup !== "function") { onChange([...latest.current, item]); return; }
+    const r = await client.roomGroup(item.id);
     if (!live.current || latest.current.some(x => keyOf(x) === keyOf(item))) return;
     if (!r?.ok) { setGroupNote(hn("groupUnavailable", item.name)); return; }
     onChange([...latest.current, { ...item, ...(typeof r.name === "string" && r.name ? { name: r.name } : {}), ...(Number.isSafeInteger(r.people) ? { people: r.people } : {}) }]);

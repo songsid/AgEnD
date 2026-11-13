@@ -467,7 +467,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
      * groups not followed; creating the room or adding the group reads the list again). 503 group-unavailable when the
      * directory cannot read the whole list.
      */
-    roomGroupPreview(groupId) { return call("GET", `/hub/v1/rooms/candidates/group/${id(groupId)}`); },
+    roomGroup(groupId) { return call("GET", `/hub/v1/rooms/candidates/group/${id(groupId)}`); },
     /** 設為房間管理 / 改為成員. */
     setRoomMemberRole(roomId, memberId, role) { return call("PATCH", `/hub/v1/rooms/${id(roomId)}/members/${id(memberId)}`, { role }); },
     /** A room manager withdraws a pending (or clears an expired) invitation; 重新邀請 is a new inviteToRoom(). */

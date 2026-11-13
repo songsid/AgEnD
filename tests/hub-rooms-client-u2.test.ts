@@ -21,7 +21,7 @@ async function live() {
 }
 
 describe("rooms client, track U2", () => {
-  it("roomCandidates: a GET with q and an optional kind; people and teams carry counts (a group's comes from roomGroupPreview); agents say whether they are mine", async () => {
+  it("roomCandidates: a GET with q and an optional kind; people and teams carry counts (a group's comes from roomGroup); agents say whether they are mine", async () => {
     const { client, calls } = await live();
     const all = await client.roomCandidates("");
     expect(new Set(all.candidates.map((c: any) => c.kind))).toEqual(new Set(["person", "team", "group", "agent"]));
@@ -55,11 +55,11 @@ describe("rooms client, track U2", () => {
     expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/exposures/exp-02/rooms" });
   });
 
-  it("roomGroupPreview: a chosen AD group's count; a refused room write carries people/limit (409 people-limit) or group (503 group-unavailable)", async () => {
+  it("roomGroup: a chosen AD group's count; a refused room write carries people/limit (409 people-limit) or group (503 group-unavailable)", async () => {
     const { client, calls } = await live();
-    expect(await client.roomGroupPreview("group-rd1")).toEqual({ ok: true, kind: "group", id: "group-rd1", name: "研發一部", people: 20 });
+    expect(await client.roomGroup("group-rd1")).toEqual({ ok: true, kind: "group", id: "group-rd1", name: "研發一部", people: 20 });
     expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/rooms/candidates/group/group-rd1" });
-    expect(await client.roomGroupPreview("group-rd2")).toMatchObject({ ok: false, status: 503, code: "group-unavailable", group: "group-rd2" });
+    expect(await client.roomGroup("group-rd2")).toMatchObject({ ok: false, status: 503, code: "group-unavailable", group: "group-rd2" });
     expect(await client.createRoom({ name: "R", groups: ["group-all"] })).toMatchObject({ ok: false, status: 409, code: "people-limit", people: 133, limit: 100 });
     expect(await client.addRoomMember("room-rd", { kind: "group", id: "group-rd2" })).toMatchObject({ ok: false, status: 503, code: "group-unavailable", group: "group-rd2" });
     expect(await client.removeRoomMember("room-rd", "nobody")).not.toHaveProperty("people");   // other refusals carry nothing extra
