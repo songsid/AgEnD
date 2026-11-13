@@ -4596,6 +4596,7 @@ export interface AppShellContext {
   /** Display only: AD editing routes reauthorize local D3 on every request. */
   hubDirectorySettings?(): Promise<unknown>;
   hubWebAddress?(): Promise<unknown>;
+  hubMemberAddress?(): Promise<unknown>;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -4771,7 +4772,10 @@ function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
       && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-notices="1"' : "")
     // M-2901 (#3428): Settings → Hub's "Hub address" card, for the same host owner on a fleet whose Hub is set up.
     + (setup && !gatewayRequestContext(req) && typeof ctx.hubWebAddress === "function"
-      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-web-address="1"' : "");
+      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-web-address="1"' : "")
+    // #3429: Settings → Hub's "Fleet connection address" card, for the same host owner on a fleet whose Hub is set up.
+    + (setup && !gatewayRequestContext(req) && typeof ctx.hubMemberAddress === "function"
+      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-member-address="1"' : "");
 }
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);

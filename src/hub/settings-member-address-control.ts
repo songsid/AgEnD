@@ -149,7 +149,11 @@ export function createHubMemberAddressControl(deps: {
             // Never repeat the write after the decision. A bind race is saved-but-unavailable; old sessions are not restored.
             await deps.settle();
             proof(ctx);
-            return { ok: true, ...result, origin: p.candidate.origin, state: obj(source()).enabled === false ? "off" : deps.running(source()) ? "ready" : "saved_unavailable" };
+            // #3429 B: who followed on their own and who must reconnect (by label; the card names them).
+            const kept = new Set((relocation?.kept ?? []).map(k => k.id));
+            const reconnect = p.summary.fleets.filter(f => !kept.has(f.id)).map(f => ({ id: f.id, ...(f.label === undefined ? {} : { label: f.label }) }));
+            return { ok: true, ...result, origin: p.candidate.origin, followed: kept.size, reconnect,
+                state: obj(source()).enabled === false ? "off" : deps.running(source()) ? "ready" : "saved_unavailable" };
         },
     };
 }

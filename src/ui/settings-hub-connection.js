@@ -162,6 +162,7 @@ export function HubConnectionSettings({ onMode } = {}) {
         <button type="button" class=${`btn ${paused ? "btn-primary" : "btn-ghost"}`} disabled=${busy || !!error} onClick=${() => change(paused)}>${hc(paused ? "resume" : "pause")}</button>${removeLink}</div>${removeAsk}
       ${paused ? html`<details class="s-ui-disclosure"><summary>${hc("settings")}</summary><p class="note">${hc("pausedSettings")}</p></details>` : connected}`
       : view ? html`${p.state === "held" && !joinWait ? html`<div class="hub-held"><strong>${hubName}</strong>${owner}
+          ${reconnectable && p.hold === "revoked" && j1("revokedHint") !== "joinOne.revokedHint" ? html`<p class="note hub-revoked-hint">${j1("revokedHint")}</p>` : null}
           ${reconnectable || removable ? html`<div class="field-row">${reconnectable ? display ? html`<button type="button" class="btn btn-primary" disabled=${busy} onClick=${() => card("reconnect")}>${j1("reconnect")}</button>`
             : html`<button type="button" class="btn btn-primary" onClick=${() => setManualOpen(true)}>${j1("reconnect")}</button>` : null}${removeLink}</div>${removeAsk}` : null}</div>` : null}
       ${p.state === "unpaired" || joinWait ? Company ? html`<${Company} embedded=${true} memberEnabled=${view.enabled} onSaved=${read} onPairingCode=${v => { setPrefill(v); setManualOpen(true); }} />` : html`<${Skeleton} variant="form" lines=${3} />`
