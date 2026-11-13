@@ -81,7 +81,7 @@ export interface HubHttpDeps {
   pairing: HubPairingService;
   companyJoin?: HubCompanyJoin;
   groups?: HubGroupAuthorization;
-  management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require">;
+  management?: import("../http/deps.js").HubHttpDeps["management"];
   roleSessionMode?(): boolean;
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   grantDirectory?: import("../http/deps.js").HubHttpDeps["grantDirectory"];
@@ -319,7 +319,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       let fenced = false;
       const owned = () => !fenced && current();
       let responseListener: HubDirectoryResponseListener | null = null;
-      const directoryDecision = createHubDirectorySettingsDecision({ db, transport: store, hubId: settings.hubId });
+      const directoryDecision = createHubDirectorySettingsDecision({ db, transport: store, hubId: settings.hubId, roleProofs: true });
       const directoryBarrier = createHubDirectoryMountBarrier({ home: options.home, hub: cfg, decision: directoryDecision, current: owned });
       teardown.add("directory material barrier", () => directoryBarrier.close());
       const addressDecision = createHubWebAddressDecision({ db, home: options.home, hubId: settings.hubId, initial: settings.webTls, audit });
@@ -350,7 +350,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       teardown.add("role authorization clock", () => roleClock.close());
       const management = createHubManagementAuthority({ root: settings.administrator, directory, reads: directoryReads,
         policy: createHubManagementPolicyReader({ db, hubId: settings.hubId, realm: resolvedDirectory.realm, generation: groupGeneration, current: live }),
-        current: live, version: () => store.read().revocationVersion, assertAuthorizationTime: roleClock.assertAuthorizationTime, now });
+        current: live, version: () => store.read().revocationVersion, assertAuthorizationTime: roleClock.assertAuthorizationTime,
+        directoryDecision: { db, hubId: settings.hubId, assertAuthorizationTime: roleClock.assertDirectoryDecision }, now });
       teardown.add("management authorization", () => management.close());
       let groupPolicy: HubGroupPolicyStore | undefined;
       const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
@@ -364,10 +365,11 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         current: live,
         source: () => db.transaction(() => {
           const stamp = directoryBarrier.capture();
-          const previous = directoryDecision.proofBasis()?.policy ?? parseCanonicalPolicy(
-            (db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body).policy;
+          const document = parseCanonicalPolicy((db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body);
+          const previous = directoryDecision.proofBasis()?.policy ?? document.policy;
           return { directory, config: structuredClone(directoryConfig), bindPassword, administrator: { ...settings.administrator },
-            groups: collectPolicyDirectoryGroups(previous), ...stamp, current: live };
+            groups: collectPolicyDirectoryGroups(previous), ...stamp, current: live,
+            ...(document.kind === "roles" ? { decisionProof: directoryDecision.administrationProof } : {}) };
         })(),
         sessions() {
           if (!live() || !http.directorySessions) throw new HubStateError("service-unavailable", "The directory session adapter is unavailable");

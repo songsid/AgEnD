@@ -2217,6 +2217,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.hubSettingsWriter ??= createHubSettingsWriter({ home: this.dataDir,
         readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub,
         directoryDecision: () => this.hubRuntime?.directoryDecision() ?? null,
+        directoryAdministration: () => !this.shuttingDown && this.hubEffectsReady ? this.hubRuntime?.directoryAdministration?.() ?? null : null,
         webAddressDecision: () => this.hubRuntime?.webAddressDecision() ?? null,
         saveHub: patches => this.saveFleetConfig(patches) });
       const runtime = new HubRuntime({

@@ -204,7 +204,24 @@ export class HubRuntime {
   /** Physical completion retains its owning participant after logical epoch revocation, until the DB closes. */
   directoryDecision(): HubDirectorySettingsDecision | null { return this.recoveryDirectory ?? this.coldDirectory?.decision ?? this.mountedDirectory?.decision ?? null; }
   /** Private role-writer selection; no cold or inferred administrator authority. */
-  directoryAdministration(): ReturnType<NonNullable<import("./settings-commit.js").HubSettingsWriterDeps["directoryAdministration"]>> { return null; }
+  directoryAdministration(): ReturnType<NonNullable<import("./settings-commit.js").HubSettingsWriterDeps["directoryAdministration"]>> {
+    const mounted = this.mountedDirectory, ticket = this.admissionTicket, directoryTicket = this.directoryAdmissionTicket;
+    if (!mounted || mounted.recoveryMode !== undefined) return null;
+    const { decision, current, source } = mounted, frame = decision.administrationProof;
+    const owned = () => !this.stopped && this.mountedDirectory === mounted && this.admissionTicket === ticket
+      && this.directoryAdmissionTicket === directoryTicket && this.directoryDecision() === decision
+      && mounted.decision === decision && mounted.current === current && mounted.source === source
+      && decision.administrationProof === frame;
+    try {
+      if (!owned() || current.call(mounted) !== true || !owned()) return null;
+      const view = source.call(mounted);
+      if (!owned() || typeof frame !== "function" || view.decisionProof !== frame || view.current !== current
+        || current.call(mounted) !== true || !owned()) return null;
+      // Deliberately narrower than the LDAP proof source: no service credentials or candidate configuration.
+      return Object.freeze({ decision, source: Object.freeze({ directory: view.directory,
+        administrator: Object.freeze({ ...view.administrator }), image: view.image, epoch: view.epoch, decisionProof: frame }) });
+    } catch { return null; }
+  }
   webAddressDecision():HubWebAddressDecision|null{return this.recoveryWebAddress??this.mountedWebAddress;}
   /** Borrow only existing state; cold access creates no listener, directory client, migration or session. */
   async withWebAddressDecision<T>(work:(decision:HubWebAddressDecision)=>T,ownerCurrent:()=>boolean):Promise<T>{

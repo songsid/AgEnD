@@ -2380,10 +2380,20 @@ describe.skipIf(process.platform === "win32")("S129 mounted directory source", (
       expect(selected!.source).not.toHaveProperty("bindPassword");
     } finally { await r.runtime.close(); }
   });
-  it("retains a real session's named proof through the mounted writer's own SQL decision", async () => {
-    const r = await directoryRuntimeRig(undefined, { beforeHttp: roles });
+  it.each([ADMIN, NOTICE_READER])("retains $login's real named proof through the mounted writer's own SQL decision", async who => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], beforeHttp(hub, deps, entry) {
+      roles(hub, deps, entry);
+      deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx), policy = parseRolePolicy(JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body));
+        policy.revision++;
+        policy.assignments.push({ id: "extra-administrator", roleId: policy.roles.find(r => r.kind === "admin")!.id,
+          subject: { kind: "person", person: NOTICE_READER.key }, scope: { kind: "hub" }, maxFleets: null,
+          startsAt: 0, expiresAt: null, assignedAt: 0, assignedBy: ADMIN.key });
+        db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(parseRolePolicy(policy)));
+      });
+    } });
     try {
-      const signed = await noticeSignIn(r, ADMIN); expect(signed.status).toBe(200);
+      const signed = await noticeSignIn(r, who); expect(signed.status).toBe(200);
       const token = signed.cookie.slice(signed.cookie.indexOf("=") + 1);
       const core = new HubCore(r.deps, hubTxDatabase), sessions = new HubSessions(core);
       const ctx = sessions.context({ headers: { cookie: signed.cookie } } as import("node:http").IncomingMessage);
@@ -2400,6 +2410,7 @@ describe.skipIf(process.platform === "win32")("S129 mounted directory source", (
       expect(saved).toMatchObject({ receiptId: expect.any(String), directoryEpoch: 1 });
       expect(r.runtime.directoryDecision()!.operation(saved!.receiptId).actor).toEqual(actor);
       expect(r.hub.config.hub.administrator).toEqual(ADMIN.key);
+      expect(actor.person).toEqual(who.key);
       expect(sessions.session(token)).toBeNull();
     } finally { await r.runtime.close(); }
   });
@@ -2415,5 +2426,25 @@ describe.skipIf(process.platform === "win32")("S129 mounted directory source", (
     const r = await directoryRuntimeRig(undefined, { beforeHttp: roles });
     try { r.runtime.fence(); expect(r.runtime.directoryAdministration()).toBeNull(); }
     finally { await r.runtime.close(); }
+  });
+  it("refuses a changed source image with no decision and no replacement of the sealed root", async () => {
+    const r = await directoryRuntimeRig(undefined, { beforeHttp: roles });
+    try {
+      const signed = await noticeSignIn(r, ADMIN), core = new HubCore(r.deps, hubTxDatabase), sessions = new HubSessions(core);
+      const ctx = sessions.context({ headers: { cookie: signed.cookie } } as import("node:http").IncomingMessage);
+      const permit = await core.management(ctx, "hub.admin");
+      if (!("permission" in permit)) throw Error("fixture named proof");
+      const actor = { kind: "hub-administrator" as const, person: permit.actor.person, sessionId: permit.actor.sessionId, requestId: ctx.requestId };
+      const mounted = r.runtime.directorySettings()!, witness = bindHubDirectoryAdministration(permit, actor, mounted.source());
+      const candidate = r.candidate(), prepared = r.writer.directory!.prepare({ ...candidate, changes: [...candidate.changes] }, actor, mounted.current, witness);
+      // A real canonical row change changes both the permit and the source's policy image.
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx), p = parseRolePolicy(JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body));
+        p.revision++; db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(p));
+      });
+      expect(() => r.writer.directory!.commit(prepared.ref, actor, mounted.current, undefined, undefined, witness)).toThrow();
+      expect(r.runtime.directoryDecision()!.inspect().operationId).toBeNull();
+      expect(r.hub.config.hub.administrator).toEqual(ADMIN.key);
+    } finally { await r.runtime.close(); }
   });
 });
