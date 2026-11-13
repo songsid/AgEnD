@@ -1,6 +1,6 @@
 {
   "sha256": {
-    "eac44a3dcc3c293725c3f15bb6e32f62b50d9a22f373b3a3f7f646664ad80cc6": [
+    "a89855765ff5135201d74929293c3081679c99404d8f956cba80c02c64d90f2b": [
       "README.md"
     ],
     "0eed5ebd5fd446ac16f802016b2e601a228f652cf6c8e7844d568df7bda6405b": [
@@ -18,12 +18,14 @@
     "3f1b676a9c554c5ad1c3e5414292b33bf824edc8cc08f9ccadd7b59dad311f9b": [
       "browser-before/before-desk-light-en-allowed.png",
       "browser-current/old-server-desk-light-en-allowed.png",
-      "browser-initial/old-server-desk-light-en-allowed.png"
+      "browser-initial/old-server-desk-light-en-allowed.png",
+      "r1/browser-current/old-server-desk-light-en-allowed.png"
     ],
     "88fee16fa407df281664e9a54b0ff39393fabbc63ba0c7c8eb78019c83c0856c": [
       "browser-before/before-desk-light-en-empty.png",
       "browser-current/old-server-desk-light-en-empty.png",
-      "browser-initial/old-server-desk-light-en-empty.png"
+      "browser-initial/old-server-desk-light-en-empty.png",
+      "r1/browser-current/old-server-desk-light-en-empty.png"
     ],
     "ee8a3ea20d09b0cf0bc9b5473997176014325e76ca82633169e5e3133e0fcd97": [
       "browser-before/before-desk-light-zh-TW-allowed.png"
@@ -40,12 +42,14 @@
     "c27b8b45688fb56cc06209f16df77294ceb972a952b449ce975c2bc5e80f27ac": [
       "browser-before/before-phone-dark-zh-TW-allowed.png",
       "browser-current/old-client-phone-dark-zh-TW-allowed.png",
-      "browser-initial/old-client-phone-dark-zh-TW-allowed.png"
+      "browser-initial/old-client-phone-dark-zh-TW-allowed.png",
+      "r1/browser-current/old-client-phone-dark-zh-TW-allowed.png"
     ],
     "c2eacf2aec703f7b44373fd74255d52b661f8c8f9e88255ae2984932d0e55146": [
       "browser-before/before-phone-dark-zh-TW-empty.png",
       "browser-current/old-client-phone-dark-zh-TW-empty.png",
-      "browser-initial/old-client-phone-dark-zh-TW-empty.png"
+      "browser-initial/old-client-phone-dark-zh-TW-empty.png",
+      "r1/browser-current/old-client-phone-dark-zh-TW-empty.png"
     ],
     "6d7d8fbfe24194b6f52d3a787669c972579d8f8c9607f664539ab8470bbb94e3": [
       "browser-before/before-phone-light-en-allowed.png"
@@ -64,51 +68,63 @@
     ],
     "c8885e426f85bb44e7a9630ec500e5803620983a1108b840ab38abe127b51eba": [
       "browser-current/current-desk-dark-en-allowed.png",
-      "browser-initial/current-desk-dark-en-allowed.png"
+      "browser-initial/current-desk-dark-en-allowed.png",
+      "r1/browser-current/current-desk-dark-en-allowed.png"
     ],
     "c65b67ff3343e6cd371afc1a317c94f4d40add24ada5247968301e0a9a3d54fc": [
       "browser-current/current-desk-dark-en-empty.png",
-      "browser-initial/current-desk-dark-en-empty.png"
+      "browser-initial/current-desk-dark-en-empty.png",
+      "r1/browser-current/current-desk-dark-en-empty.png"
     ],
     "c2d75b2ae16504ca378abca401027ec1838636b06cecb9b8e8c58a01fc2cb315": [
       "browser-current/current-desk-dark-en-group-selected.png",
-      "browser-initial/current-desk-dark-en-group-selected.png"
+      "browser-initial/current-desk-dark-en-group-selected.png",
+      "r1/browser-current/current-desk-dark-en-group-selected.png"
     ],
     "9fcb704a1b188521b6b4ba6688c1b328e36c1634b71aba30bd58b662c2a1477b": [
       "browser-current/current-desk-dark-en-groups.png",
-      "browser-initial/current-desk-dark-en-groups.png"
+      "browser-initial/current-desk-dark-en-groups.png",
+      "r1/browser-current/current-desk-dark-en-groups.png"
     ],
     "45c147b096c6d4870557fae5ee0b9cb78694afdfad4a76e18b19630f4c56b2fd": [
       "browser-current/current-desk-dark-en-people.png",
-      "browser-initial/current-desk-dark-en-people.png"
+      "browser-initial/current-desk-dark-en-people.png",
+      "r1/browser-current/current-desk-dark-en-people.png"
     ],
     "be02629a978f73e7201c2e80010a515e8f7c29081c212190f8175dcf026eab77": [
       "browser-current/current-desk-dark-en-person-selected.png",
-      "browser-initial/current-desk-dark-en-person-selected.png"
+      "browser-initial/current-desk-dark-en-person-selected.png",
+      "r1/browser-current/current-desk-dark-en-person-selected.png"
     ],
     "a8c9107898bed9105798df12ff0b04e1c36c436adab51ebb7efb1c75d94e89d4": [
       "browser-current/current-desk-dark-zh-TW-allowed.png",
-      "browser-initial/current-desk-dark-zh-TW-allowed.png"
+      "browser-initial/current-desk-dark-zh-TW-allowed.png",
+      "r1/browser-current/current-desk-dark-zh-TW-allowed.png"
     ],
     "dd761961075e9444865504cf50e85af5ca79c3de5abde7142700632dd99a6608": [
       "browser-current/current-desk-dark-zh-TW-empty.png",
-      "browser-initial/current-desk-dark-zh-TW-empty.png"
+      "browser-initial/current-desk-dark-zh-TW-empty.png",
+      "r1/browser-current/current-desk-dark-zh-TW-empty.png"
     ],
     "c81daf7e51efc298993116d049d4313467669be9be36cc17c50b2a493750eba2": [
       "browser-current/current-desk-dark-zh-TW-group-selected.png",
-      "browser-initial/current-desk-dark-zh-TW-group-selected.png"
+      "browser-initial/current-desk-dark-zh-TW-group-selected.png",
+      "r1/browser-current/current-desk-dark-zh-TW-group-selected.png"
     ],
     "e3eb3bb83152e01beb25ea9826e58bd6a34df02492a75a6819d80f46ae58177c": [
       "browser-current/current-desk-dark-zh-TW-groups.png",
-      "browser-initial/current-desk-dark-zh-TW-groups.png"
+      "browser-initial/current-desk-dark-zh-TW-groups.png",
+      "r1/browser-current/current-desk-dark-zh-TW-groups.png"
     ],
     "b9645a73e98d4d95a80ca9140233406c4bb9dd30f347858ecac0335a2c2876ae": [
       "browser-current/current-desk-dark-zh-TW-people.png",
-      "browser-initial/current-desk-dark-zh-TW-people.png"
+      "browser-initial/current-desk-dark-zh-TW-people.png",
+      "r1/browser-current/current-desk-dark-zh-TW-people.png"
     ],
     "7ef5ba717bb89f1288a6398caf5b613a7f945deba396d89c27ad80b484a5762c": [
       "browser-current/current-desk-dark-zh-TW-person-selected.png",
-      "browser-initial/current-desk-dark-zh-TW-person-selected.png"
+      "browser-initial/current-desk-dark-zh-TW-person-selected.png",
+      "r1/browser-current/current-desk-dark-zh-TW-person-selected.png"
     ],
     "0d95bc38d074ff696abe8e182b006f53e04cdbabe77234236e12774ebb893563": [
       "browser-current/current-desk-light-en-allowed.png",
@@ -116,7 +132,10 @@
       "browser-current/old-words-desk-light-en-allowed.png",
       "browser-initial/current-desk-light-en-allowed.png",
       "browser-initial/old-group-search-desk-light-en-allowed.png",
-      "browser-initial/old-words-desk-light-en-allowed.png"
+      "browser-initial/old-words-desk-light-en-allowed.png",
+      "r1/browser-current/current-desk-light-en-allowed.png",
+      "r1/browser-current/old-group-search-desk-light-en-allowed.png",
+      "r1/browser-current/old-words-desk-light-en-allowed.png"
     ],
     "939705d397079f8576b022d1caad93a9830a1ac6e477566206ea0543282a69da": [
       "browser-current/current-desk-light-en-empty.png",
@@ -124,7 +143,10 @@
       "browser-current/old-words-desk-light-en-empty.png",
       "browser-initial/current-desk-light-en-empty.png",
       "browser-initial/old-group-search-desk-light-en-empty.png",
-      "browser-initial/old-words-desk-light-en-empty.png"
+      "browser-initial/old-words-desk-light-en-empty.png",
+      "r1/browser-current/current-desk-light-en-empty.png",
+      "r1/browser-current/old-group-search-desk-light-en-empty.png",
+      "r1/browser-current/old-words-desk-light-en-empty.png"
     ],
     "43b572ffdf49a79c4464c0c4a0aaec1c803752804a7c5e32a4116fafb1dc3712": [
       "browser-current/current-desk-light-en-group-selected.png",
@@ -132,7 +154,10 @@
       "browser-current/old-words-desk-light-en-group-selected.png",
       "browser-initial/current-desk-light-en-group-selected.png",
       "browser-initial/old-group-search-desk-light-en-group-selected.png",
-      "browser-initial/old-words-desk-light-en-group-selected.png"
+      "browser-initial/old-words-desk-light-en-group-selected.png",
+      "r1/browser-current/current-desk-light-en-group-selected.png",
+      "r1/browser-current/old-group-search-desk-light-en-group-selected.png",
+      "r1/browser-current/old-words-desk-light-en-group-selected.png"
     ],
     "aab67da61bb8332a0dc2f0121c622e7a98279cc1d15ce6c0d253c049475fb0af": [
       "browser-current/current-desk-light-en-groups.png",
@@ -140,7 +165,10 @@
       "browser-current/old-words-desk-light-en-groups.png",
       "browser-initial/current-desk-light-en-groups.png",
       "browser-initial/old-group-search-desk-light-en-groups.png",
-      "browser-initial/old-words-desk-light-en-groups.png"
+      "browser-initial/old-words-desk-light-en-groups.png",
+      "r1/browser-current/current-desk-light-en-groups.png",
+      "r1/browser-current/old-group-search-desk-light-en-groups.png",
+      "r1/browser-current/old-words-desk-light-en-groups.png"
     ],
     "49016441f440982f1ee5517992a34d84d845da410b6b6e8a6cb698412991642f": [
       "browser-current/current-desk-light-en-people.png",
@@ -148,7 +176,10 @@
       "browser-current/old-words-desk-light-en-people.png",
       "browser-initial/current-desk-light-en-people.png",
       "browser-initial/old-group-search-desk-light-en-people.png",
-      "browser-initial/old-words-desk-light-en-people.png"
+      "browser-initial/old-words-desk-light-en-people.png",
+      "r1/browser-current/current-desk-light-en-people.png",
+      "r1/browser-current/old-group-search-desk-light-en-people.png",
+      "r1/browser-current/old-words-desk-light-en-people.png"
     ],
     "6c2fd07375790a99f4bc142e23f435a0bcf39d6237db4e9dd9c01865f2c41add": [
       "browser-current/current-desk-light-en-person-selected.png",
@@ -156,35 +187,45 @@
       "browser-current/old-words-desk-light-en-person-selected.png",
       "browser-initial/current-desk-light-en-person-selected.png",
       "browser-initial/old-group-search-desk-light-en-person-selected.png",
-      "browser-initial/old-words-desk-light-en-person-selected.png"
+      "browser-initial/old-words-desk-light-en-person-selected.png",
+      "r1/browser-current/current-desk-light-en-person-selected.png",
+      "r1/browser-current/old-group-search-desk-light-en-person-selected.png",
+      "r1/browser-current/old-words-desk-light-en-person-selected.png"
     ],
     "7f09c143330753feaa7c00766cb807b8a5c955d545489c6798043dfb95b89c72": [
       "browser-current/current-desk-light-zh-TW-allowed.png",
-      "browser-initial/current-desk-light-zh-TW-allowed.png"
+      "browser-initial/current-desk-light-zh-TW-allowed.png",
+      "r1/browser-current/current-desk-light-zh-TW-allowed.png"
     ],
     "7851183e03dbfca1595142907e42393e0425bda0290c151d2ef84e136f0c85c1": [
       "browser-current/current-desk-light-zh-TW-empty.png",
-      "browser-initial/current-desk-light-zh-TW-empty.png"
+      "browser-initial/current-desk-light-zh-TW-empty.png",
+      "r1/browser-current/current-desk-light-zh-TW-empty.png"
     ],
     "36abf8048ee12ca8726bcceeb322412041f64e920b1d3e3da5503967d75615fd": [
       "browser-current/current-desk-light-zh-TW-group-selected.png",
-      "browser-initial/current-desk-light-zh-TW-group-selected.png"
+      "browser-initial/current-desk-light-zh-TW-group-selected.png",
+      "r1/browser-current/current-desk-light-zh-TW-group-selected.png"
     ],
     "1eb0cd31597d9604886d7cd10cc14d9729efa2fd48ac3b423ea249ba89f7f1fc": [
       "browser-current/current-desk-light-zh-TW-groups.png",
-      "browser-initial/current-desk-light-zh-TW-groups.png"
+      "browser-initial/current-desk-light-zh-TW-groups.png",
+      "r1/browser-current/current-desk-light-zh-TW-groups.png"
     ],
     "bdddb94132c063c3d5dedd5d188d8fe73db0105ce6ca81b80dba5ea0aeb5202e": [
       "browser-current/current-desk-light-zh-TW-people.png",
-      "browser-initial/current-desk-light-zh-TW-people.png"
+      "browser-initial/current-desk-light-zh-TW-people.png",
+      "r1/browser-current/current-desk-light-zh-TW-people.png"
     ],
     "0ea09d0bf667e9b2b110887dc0df7074776506d1a893c6469159902d696c7827": [
       "browser-current/current-desk-light-zh-TW-person-selected.png",
-      "browser-initial/current-desk-light-zh-TW-person-selected.png"
+      "browser-initial/current-desk-light-zh-TW-person-selected.png",
+      "r1/browser-current/current-desk-light-zh-TW-person-selected.png"
     ],
     "fd239a92a438ffc6952c3735ea6de6c7de0fd9475191efe3da7c617c7998c40a": [
       "browser-current/current-phone-dark-en-allowed.png",
-      "browser-initial/current-phone-dark-en-allowed.png"
+      "browser-initial/current-phone-dark-en-allowed.png",
+      "r1/browser-current/current-phone-dark-en-allowed.png"
     ],
     "2c218dc16c5b9ec09195bfc734f93c68070e21d3d21a8053fc83e2458cabdc14": [
       "browser-current/current-phone-dark-en-empty.png",
@@ -206,7 +247,8 @@
     ],
     "ab9d6c96cb9d7c9cd0f7dea94f131300a21d352c72a9fa118e0c4dcf7ed26b07": [
       "browser-current/current-phone-dark-zh-TW-allowed.png",
-      "browser-initial/current-phone-dark-zh-TW-allowed.png"
+      "browser-initial/current-phone-dark-zh-TW-allowed.png",
+      "r1/browser-current/current-phone-dark-zh-TW-allowed.png"
     ],
     "d08ae0d9e76b4c4c095e7261962d39a2d29d0792a94942b8476950e26eab35db": [
       "browser-current/current-phone-dark-zh-TW-empty.png",
@@ -229,11 +271,13 @@
     ],
     "82639c4529cc84e4f31470a5202b17e2083d9db15416396f76c324158d7be758": [
       "browser-current/current-phone-light-en-allowed.png",
-      "browser-initial/current-phone-light-en-allowed.png"
+      "browser-initial/current-phone-light-en-allowed.png",
+      "r1/browser-current/current-phone-light-en-allowed.png"
     ],
     "96139c4d4e8567941d584c0c21a919247efe7bd4b2ba352c1d7dd390da2a7985": [
       "browser-current/current-phone-light-en-empty.png",
-      "browser-initial/current-phone-light-en-empty.png"
+      "browser-initial/current-phone-light-en-empty.png",
+      "r1/browser-old-css/current-phone-light-en-empty.png"
     ],
     "8b36db75159a1bbc829c1aabb70aff405843a6e53346a1d8ee802f76e3995cfd": [
       "browser-current/current-phone-light-en-group-selected.png"
@@ -251,7 +295,8 @@
     ],
     "1b1e9a010a1d9cb25066a9c631a41a0b71d7d6b77624897d8ce4389b0425e06a": [
       "browser-current/current-phone-light-zh-TW-allowed.png",
-      "browser-initial/current-phone-light-zh-TW-allowed.png"
+      "browser-initial/current-phone-light-zh-TW-allowed.png",
+      "r1/browser-current/current-phone-light-zh-TW-allowed.png"
     ],
     "1a2f47be7a13b55b778d56595ce964dd51794968bde9e836a02657334799fc7e": [
       "browser-current/current-phone-light-zh-TW-empty.png",
@@ -339,7 +384,9 @@
       "logs/source-types-final-source.log.gz",
       "logs/source-types-postsync.log.gz",
       "logs/test-types-final-source.log.gz",
-      "logs/test-types-postsync.log.gz"
+      "logs/test-types-postsync.log.gz",
+      "r1/final-source-types.log.gz",
+      "r1/final-test-types.log.gz"
     ],
     "de4b24d2f6e8022858062bf0367a16acd4949d2b5f063a545a3fee720eac394a": [
       "logs/sync-focused.log.gz"
@@ -409,6 +456,108 @@
     ],
     "23e376fe4574e848b1aee7e617f9457fb8f0f82aa2b4ade56043ce1b222bca42": [
       "mutations/U3.log.gz"
+    ],
+    "e6b4f5bf9f2234196ad237167cc21f1aeb356d7bed5b59f82c0d25ef8322b617": [
+      "r1/K1.log.gz"
+    ],
+    "444944de9dcfd3cb5aac1b34c1a15634e9cd023b1ecd9417e2452f1033fbf316": [
+      "r1/K2.log.gz"
+    ],
+    "eddbc8c4dd5ca5f25ef6610f3b5c30aa5e7aa39fb65eea06891acb4eaf94643c": [
+      "r1/K3.log.gz"
+    ],
+    "2bbaade013e50bf5a799dca9ed054ff29d772182f054fda1574fbfbb7761b50a": [
+      "r1/browser-current/current-phone-dark-en-empty.png"
+    ],
+    "dd6dacdf0b284cdeed18ce1ec02aede79dc50c47844ae59d99013be36d3aac62": [
+      "r1/browser-current/current-phone-dark-en-group-selected.png"
+    ],
+    "15c1c192bdb75b9a10755aa4dcabcd7c9a4a3a58457050514a50d02509891235": [
+      "r1/browser-current/current-phone-dark-en-groups.png"
+    ],
+    "a501d340bcbf473c8417d34917f1f2a3eb618b331babb644006fc30d29253291": [
+      "r1/browser-current/current-phone-dark-en-people.png"
+    ],
+    "0d6334dfdce0e2f852f507b6d20f371885aee83b5daf98c738f6c504b4c52070": [
+      "r1/browser-current/current-phone-dark-en-person-selected.png"
+    ],
+    "4509105df71ca268829dea8c3af7e3cef78f71981e7057836c66590ce6f4a29c": [
+      "r1/browser-current/current-phone-dark-zh-TW-empty.png"
+    ],
+    "3941f7a559fc558e33080d22a25856fca47fc7b80fe6da0ee1e02be09eb16c24": [
+      "r1/browser-current/current-phone-dark-zh-TW-group-selected.png"
+    ],
+    "a6a47bac8ac707858df471a85e3462c705a620438594a6d80b54847c91a53b85": [
+      "r1/browser-current/current-phone-dark-zh-TW-groups.png"
+    ],
+    "a1764fb3b03a27529013c03ced3acee9ec36a2cb14499eb709e7a7474b8cc257": [
+      "r1/browser-current/current-phone-dark-zh-TW-people.png"
+    ],
+    "fff2a2ab8109b45cc30e74650f632cddecf7cfcd70ebcf74ef8aebf4c1302ec9": [
+      "r1/browser-current/current-phone-dark-zh-TW-person-selected.png"
+    ],
+    "c5b08d98064177b6a9c91ea1fe70b534169764560438a8d8c0fea359d2bbe72c": [
+      "r1/browser-current/current-phone-light-en-empty.png"
+    ],
+    "4dcf2f9a3dcd5cf4e4538bad3140e3ca5858dece87b9f8d80508d6bc6127f833": [
+      "r1/browser-current/current-phone-light-en-group-selected.png"
+    ],
+    "e7ca2992f91cac53fee1d313e0f2c6dd2b12cd51a51caf07676aa829727217ed": [
+      "r1/browser-current/current-phone-light-en-groups.png"
+    ],
+    "9558b4d70ba12308de85aa65588ffc43f06102c77b2d0ecf732ce794c61a79ae": [
+      "r1/browser-current/current-phone-light-en-people.png"
+    ],
+    "54884e806018839ee726b6056d410e2a1d78516404fe77e5ab620aa2fdf82d95": [
+      "r1/browser-current/current-phone-light-en-person-selected.png"
+    ],
+    "4848d9873f58636403a78d8a4de8a2755ce44ef8ad263575e7f46c05c25d589f": [
+      "r1/browser-current/current-phone-light-zh-TW-empty.png"
+    ],
+    "095d39efa458f75750549b3c5f0b27f0c4e7f8b59fe3240cd6f5049318c70a60": [
+      "r1/browser-current/current-phone-light-zh-TW-group-selected.png"
+    ],
+    "3d9521418153293737332a7e5cd58c46c25db36293cdbb62cac8386f6fb24cde": [
+      "r1/browser-current/current-phone-light-zh-TW-groups.png"
+    ],
+    "3f0e1de0eb6c2c89ee5b6934f69ba02a3cc791c84e3475a2965f5f96c7a54e01": [
+      "r1/browser-current/current-phone-light-zh-TW-people.png"
+    ],
+    "911dc595d675ffaf01e53b917f0f2282690da1a0a3f22ac6f55fb0ac70425175": [
+      "r1/browser-current/current-phone-light-zh-TW-person-selected.png"
+    ],
+    "10f8d3f24f99ada0467ecdf35d244efd95f6f60b31f473bf89062a3b8ee61917": [
+      "r1/browser-current/receipt.json"
+    ],
+    "edcf899b46ba97920faa9380b98eb8bd0d6df2871181802ca025d5d39036c162": [
+      "r1/browser-current.log.gz"
+    ],
+    "366aff2aa572fdf62f25956bd5c96b1f2fa5223597474cd92b42806a512e191a": [
+      "r1/browser-old-css/receipt.json"
+    ],
+    "6fd5ea5f5c4170ec1a7ea350cf6809859f75089696b2778de78627dfb74c189d": [
+      "r1/browser-old-css.log.gz"
+    ],
+    "e49aa4a8f80cb5a70cfe3ac9be48fc51b739dc9b4557896c4549cd74470d0b43": [
+      "r1/fail-first.json"
+    ],
+    "fcbdd4abafd936591b9ea427d81848149ef2db1c3a9921add46933ec8cc15559": [
+      "r1/fail-first.log.gz"
+    ],
+    "54b8e22ccb27dbcae2de829bb606cea6dcc1dd1440be2ea386002baaac6208c1": [
+      "r1/final-checks.json"
+    ],
+    "8ac12e7daa9fc4be5fa6d285fd11c0d3e9c061f5f6840e2593d5a1db9da973d7": [
+      "r1/final-focused.log.gz"
+    ],
+    "bfeb5804dccf7f0247f7aac54ad5d52c812ea51838fc04e6809611fdb430475f": [
+      "r1/mutations.json"
+    ],
+    "94274836586450fc232209bdd2ae0b3174e83c1ffba769c4f4973cb750858738": [
+      "r1/scope.json"
+    ],
+    "dcd2776488c928932adae24e0887a8b4f2f22b873d51d62550314a42e94fb3c7": [
+      "r1/visual.json"
     ],
     "dbdb8cd011adc132ea3004529747be7c5fbbc37e5a56446af1f4cb24fa32e7c4": [
       "source-parity.json"

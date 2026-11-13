@@ -4,6 +4,14 @@ An owner can choose a person by name/login prefix or an AD security group in the
 
 The implementation and shared M-3014 boundary are in [the design note](../../design/hub-owner-group-grants.md). The shipped `hub` skill describes the controls and limits.
 
+## R1 review correction
+
+The action proof now tracks its latest clock observation and permanently refuses after rollback or expiry. Its separate data-only selection fence remains available after ordinary action expiry for a fresh catalog observation; clock rollback also permanently retires that selection. Six person/group controls reproduce the original clock finding. At clean `627992254`, seven focused suites pass132/132 and both native typechecks pass. Three isolated semantic reversals are caught and restored. Original pre-R1 checks below keep their original scope.
+
+The picker uses the established phone/coarse-pointer `--tap` treatment for inputs and selects. At clean `b5253efbc`, a fresh full current matrix passes12cases/141checks/64PNGs, including44px input/select/button geometry. Product and tests are byte-identical to the checked627 head; the later commit only records failed geometry in the browser harness. The controlled0eb stylesheet gives a40px kind select and42px person input, fails the new geometry assertion, and cleans up. That one negative capture is separate from accepted counts. All original144PNGs/receipts remain unchanged; the accepted combined gallery is44cases/407checks/208PNGs. Eight fresh phone originals and their eight pre-R1 counterparts were visually compared, within that bounded scope. See `r1/` for receipts, checks, logs, reversals and visual paths.
+
+Ridge withdrew the separate physical-close finding after checking locked ldapts9.2.0's Unbind/close chain. No directory finalizer or person-search test change is retained for it, and the private provisional stub results are excluded from acceptance. There is no new real-directory, native-platform or live-operation claim.
+
 ## Checks and provenance
 
 | Evidence | Result and scope |
