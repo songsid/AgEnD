@@ -336,7 +336,7 @@ export async function probeCredentialProfileStatus(cli: CredentialProfileCli, di
   run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput> = (entry, args, env) => output(entry.command, [...entry.args, ...args], 15_000, env),
   /** The requester's live check (an install's consent and connection): asked before the CLI is looked for and again before its status program is started. */
   authorized?: () => boolean,
-  /** The account's e-mail address (whole, in the `maskedEmail` field) is read from its folder when it is signed in (a NAMED account of a CLI that keeps its sign-in in a file). The isolation probe's scratch folder never is. */
+  /** The account's e-mail address (whole) is read from its folder when it is signed in (a NAMED account of a CLI that keeps its sign-in in a file). The isolation probe's scratch folder never is. */
   withIdentity = true): Promise<CredentialProfileAnswer> {
   const provider = nativeProvider(cli);
   if (!isCredentialProfileCli(cli)) return { loggedIn: null };

@@ -19,7 +19,7 @@ export const ANTIGRAVITY_SPEC = {
     // The first-run page still only names the console command for it (a browser sign-in needs a version check and the person's own confirmation, which the Accounts page has).
     firstRunSignIn: yes({ mode: "console", rank: 3 }),
     authCheck: yes({ argv: ["agy", "models"] }),
-    // The `id_token_email` of agy's own token file (the whole address, in the existing `maskedEmail` field) (`~/.gemini/antigravity-cli/antigravity-oauth-token`), read locally: that one field only, no process, no network request.
+    // The `id_token_email` of agy's own token file (the whole address) (`~/.gemini/antigravity-cli/antigravity-oauth-token`), read locally: that one field only, no process, no network request.
     identity: yes({ source: "token-file", field: "id_token_email" }),
     // AGEND-119: several accounts on this host. agy takes the account's folder as `--app_data_dir <path relative to ~/.gemini>` (a `..` path reaches AgEnD's own credential-profiles folder), and keeps the
     // sign-in in `<folder>/antigravity-oauth-token`. Its keyring is shared by every folder (the folder is ignored there), so each launch also carries `pin`: `SSH_CONNECTION` makes agy 1.5.3 log
