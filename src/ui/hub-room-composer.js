@@ -103,7 +103,7 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     ${group && value.includes(hroom("mentionAll")) ? html`<p class="note hub-room-allbar" role="status">${allBar(detail)}</p>` : null}
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status"><span class="reply-text">${reply.sender ? `${reply.sender} · ` : ""}${String(reply.text || "").slice(0, 80)}</span>
       <button type="button" class="icon-btn reply-cancel" title=${hroom("cancel")} aria-label=${hroom("cancel")} onClick=${() => { onReply(null); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button></div>` : null}
-    <${ComposerInput} inputRef=${input} value=${value} placeholder=${hroom("composer", room.assistant ? hroom("hubAssistant") : room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
+    <${ComposerInput} inputRef=${input} value=${value} placeholder=${room.assistant ? hroom("composerAssistant") : group ? hroom("composer", room.name || "") : hroom("composerDirect", room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
       controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${chosen ? optId(chosen) : undefined}
       stop=${{ hidden: true, disabled: true, title: t("chat.stopReply"), label: t("chat.stopReply"), onClick: () => {} }}
       send=${{ hidden: false, disabled: !value.trim() || busy, label: t("chat.send"), onClick: () => { void send(); } }} />
