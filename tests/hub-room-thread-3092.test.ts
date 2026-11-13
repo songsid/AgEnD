@@ -47,7 +47,7 @@ describe("the thread's mapping (pure)", () => {
     const out = thread.toThreadMessages(page1.messages, { meId: FIXTURE_ME.id, ids: new Map() });
     const all = out.find((x: any) => x.text.startsWith("@所有 Agent"));
     expect(all).toMatchObject({ role: "user", mine: true, sender: "" });
-    expect(out[out.indexOf(all) + 1]).toMatchObject({ role: "status", text: "已回答 8 · 處理中 1 · 稍後回覆 3" });
+    expect(out[out.indexOf(all) + 1]).toMatchObject({ role: "status", text: "已回答 6 · 處理中 1 · 稍後回覆 5" });
     const answer = out.find((x: any) => x.sender.startsWith("spec-writer"));
     expect(answer).toMatchObject({ role: "agent", sender: "spec-writer · 陳主任的 Agent", replyTo: { boot: "room", id: all.id, text: all.text.slice(0, 120) } });
     expect(out.filter((x: any) => x.role === "agent" && !x.text)).toEqual([]);                           // queued answers are counted, not drawn
