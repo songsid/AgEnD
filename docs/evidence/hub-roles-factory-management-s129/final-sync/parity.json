@@ -1,0 +1,69 @@
+{
+  "oldHead": "882633aaefb5e4653279b3d3079270291677b5a3",
+  "oldParent": "608b35dc3d96daa54cffe793ab5c61f1c24d2c01",
+  "incoming": "17e0b50633e374a13662214d21e6e28b468f3d98",
+  "ownDeltaPaths": [
+    {
+      "path": "changes/3743-roles-factory-management.md",
+      "deltaLines": 5,
+      "oldDeltaSha256": "0bcaef9d46fae46298d5409821a94beaf3a93bc75c2f905071c8d9c5f54dcd6f",
+      "indexSha256": "6da6183f75e99e8d159917110fe2a1c60fb706cbaa9717602d5b34cc61ea41da"
+    },
+    {
+      "path": "changes/3743-roles-factory-management.zh-TW.md",
+      "deltaLines": 5,
+      "oldDeltaSha256": "658a1c62a4b0053f5528521481e36bd55a3e9fecd2c34d3714c8eafadb269551",
+      "indexSha256": "e496b6212a617c7f3e7fceca2cfc094025a19317b89b6e3da1d74e1e79b7725b"
+    },
+    {
+      "path": "docs/design/hub-roles-factory-management.md",
+      "deltaLines": 15,
+      "oldDeltaSha256": "6275885135d4671881a3db82ce7595f18be2e3270ce2e41213430a7fe90afe22",
+      "indexSha256": "d4e695724d4a9aa1b26af37c5a7f6196edd6aa2911c35460e75f2f2205c4bf9a"
+    },
+    {
+      "path": "docs/evidence/hub-roles-factory-management-s129/README.md",
+      "deltaLines": 11,
+      "oldDeltaSha256": "321a8388a07a0f3a641600b26c45e051dcd0e49412dbe3b54e8892d5c3f705be",
+      "indexSha256": "d8ffd55ad3b4180994c60ecd1485a90e27101cd55aa20bd286856dc58f5f010b"
+    },
+    {
+      "path": "docs/evidence/hub-roles-factory-management-s129/ci-fixtures-r1.json",
+      "deltaLines": 33,
+      "oldDeltaSha256": "1066bc24f346614d95bd7d282848d74c8d2c64eebb77b2adc90bcb9121e39d7d",
+      "indexSha256": "89f993361f7efccd60525d66b0d6d39da11f929a7e624f9ca899614b15752287"
+    },
+    {
+      "path": "docs/evidence/hub-roles-factory-management-s129/receipt.json",
+      "deltaLines": 200,
+      "oldDeltaSha256": "0c2cdda7205ff2993203faf66ff641b148a7a32b8f52dd1ecf62e4ec7944c065",
+      "indexSha256": "f227f9aa0fe081b647f7c784bf4e5a752d56239885933c542577651536b73eae"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "deltaLines": 21,
+      "oldDeltaSha256": "05c2d7948994c780a6ceb840053ece68ab0686128dafc3405d244d2673cde8ba",
+      "indexSha256": "ffbcba24bd9d8a6a50224e2d7881b77af1b6e49d29acfd3c64527f63a20b8d80"
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "deltaLines": 146,
+      "oldDeltaSha256": "3fafb850823fc78966fd55c39ba703b9e830cac49c2e07b30381cba905345612",
+      "indexSha256": "2abb7be85898eda97a4ae92759728e74b0d8da8cb63df64a4b79afe2361f24dc"
+    },
+    {
+      "path": "tests/hub-group-composition.test.ts",
+      "deltaLines": 52,
+      "oldDeltaSha256": "a9b8cc79c74a8d7fa3e4e78384578d70db3656c69e80f9d62a4ad783c8153cc2",
+      "indexSha256": "db0869c33f1ed0837cfc090826c5c1a3547ba4370f49a5707661208d95625e16"
+    }
+  ],
+  "incomingPathsExactBlobAndMode": 13059,
+  "manualResolutions": {
+    "docs/design/hub-roles-directory-admission.md": "exact incoming alpha",
+    "docs/evidence/hub-roles-directory-admission-s129/README.md": "exact incoming alpha",
+    "src/hub/compose/server.ts": "retain shared role clock in operational reader; exact original +/- delta",
+    "tests/hub-compose.test.ts": "retain isIdentityCurrent in direct authority fixture; exact original +/- delta"
+  },
+  "otherProductChanges": false
+}

@@ -1,0 +1,94 @@
+{
+  "mergeCheckpoint": "e7b6f8c6bd407b8487ee9fac4f8042aea03147ef",
+  "parents": [
+    "882633aaefb5e4653279b3d3079270291677b5a3",
+    "17e0b50633e374a13662214d21e6e28b468f3d98"
+  ],
+  "parentPR": 3806,
+  "parentMerge": "17e0b50633e374a13662214d21e6e28b468f3d98",
+  "parentVerification": "Delivered coordinator receipts, actual GH merged PR and all 25 exact-head push check runs completed success",
+  "freshValidation": {
+    "passed": 349,
+    "files": 10,
+    "skipped": 0,
+    "suites": [
+      {
+        "file": "hub-compose.test.ts",
+        "passed": 129
+      },
+      {
+        "file": "hub-group-authorization.test.ts",
+        "passed": 54
+      },
+      {
+        "file": "hub-group-composition.test.ts",
+        "passed": 18
+      },
+      {
+        "file": "hub-pairing-api-s3c.test.ts",
+        "passed": 30
+      },
+      {
+        "file": "hub-pairing.test.ts",
+        "passed": 11
+      },
+      {
+        "file": "hub-roles-authority-s129.test.ts",
+        "passed": 31
+      },
+      {
+        "file": "hub-roles-clock-s129.test.ts",
+        "passed": 29
+      },
+      {
+        "file": "hub-roles-company-issuer-s129.test.ts",
+        "passed": 8
+      },
+      {
+        "file": "hub-roles-issuer-s129.test.ts",
+        "passed": 25
+      },
+      {
+        "file": "hub-roles-management-reader-s129.test.ts",
+        "passed": 14
+      }
+    ],
+    "nativeCompiler": "7.0.2/GOMAXPROCS=2",
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "changelogFragments": 448,
+    "scopedDiffCheck": "pass",
+    "changelogGuard": "pass"
+  },
+  "privateLogBindings": [
+    {
+      "path": "focused.log",
+      "sha256": "bdfdeacf20ce7e9d9fcee59af043574b5fac461fe9c769a38f1bc52175b51275"
+    },
+    {
+      "path": "focused.json",
+      "sha256": "902936b7484eea01958aae9d7e631cfa34694d68c4d1e12c536dce0e7cfe1a5b"
+    },
+    {
+      "path": "source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "changelog.log",
+      "sha256": "ef4ccdd05c4674a61ba00a4e7089960548683a82ef2397315254374c920b0649"
+    },
+    {
+      "path": "changelog-guard.log",
+      "sha256": "27f3bf9d0e19f1b802387921ff223ff0b5ec296cd50bc51857dc694f6cf79c15"
+    }
+  ],
+  "conflicts": "Four: incoming-only admission design and README take exact alpha; server operational role-clock argument and isIdentityCurrent fixture retain original reviewed delta. No package/lock conflict. All nine old delta sequences exact; all other 13059 paths match alpha blob/mode.",
+  "historicalEvidence": "Original 328/9, eight compiling reversals at44d4d5020 and source-clear R1 fixture evidence remain historical, not relabelled as final-head mutation runs. Original packets are unchanged.",
+  "limits": "Actual sealed owned Hub and loopback HTTPS with fictional directory; private fixture cutover only. No startup cutover/migration registration, role writer/endpoints, session/admin mapping, resource effects, scheduler, member/SSE activation or full S129. No real AD/account/backend CLI/Fleet/browser/native/pilot.",
+  "excluded": "Initial changelog guard invocation with HEAD was rejected as non-SHA; rerun with actual merge SHA passed. Broad parent diff reports unchanged incoming whitespace; alpha-scoped diff is clean.",
+  "gate": "Fresh exact-head CI and conflict-resolution review required; coordinator alone gates."
+}
