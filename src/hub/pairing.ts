@@ -7,9 +7,10 @@ import type { HubTransportState, HubTransportStore } from "./store.js";
 import type { HubActor, HubDirectory, HubRequestContext, PersonKey } from "./types.js";
 import type Database from "better-sqlite3";
 import { HubGroupAuthorizationError, type HubGroupAuthorization, type HubGroupEnrollmentPermit } from "./group-policy/authorization.js";
-import { HubGroupPolicyError } from "./group-policy/store.js";
+import { HubGroupPolicyError, HubGroupReadOverload } from "./group-policy/store.js";
 import { HubGroupEnrollmentRefusal } from "./group-policy/resources.js";
 import { automaticFleetSlots } from "./enrollment-budget.js";
+import type { HubManagementAuthority, HubManagementPermission } from "./roles/authority.js";
 const TTL = 10 * 60_000;
 const secret = () => randomBytes(32).toString("hex");
 export interface HubPairingIdentity {
@@ -34,6 +35,8 @@ export class HubPairingService {
     enabled(): boolean; now?: () => number; fenceFleet(fleetId: string, reason: "replaced" | "revoked"): void;
     /** Required when composed with a live member server; reconnect other links after a global version commit. */
     refreshAuthorization?(): void;
+    management?: Pick<HubManagementAuthority, "require">;
+    directoryReads?: Pick<import("./directory/admission.js").HubDirectoryReads, "withDirectoryRead">;
     /** S5 owns this DB. No transaction is held across directory work; provenance and the actual fleet commit together. */
     enrollment?: { prepare: HubGroupAuthorization["prepareEnrollment"]; prepareManual?: HubGroupAuthorization["prepareManualEnrollment"];
       atomic<T>(work: (database: Database.Database) => T): T };
@@ -43,6 +46,20 @@ export class HubPairingService {
     automaticReservations?: { count(owner: PersonKey): number; retained(): number } }) {}
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private check(): void { if (!this.options.enabled()) throw new HubProtocolError("unavailable"); }
+  private async eligible(who: PersonKey) {
+    this.check(); const owner = Object.freeze(validated(person, who));
+    const work = () => this.options.directory.checkEligibility(owner);
+    try { return await (this.options.directoryReads ? this.options.directoryReads.withDirectoryRead(owner, work) : work()); }
+    catch (error) {
+      if (error instanceof HubGroupReadOverload) throw new HubProtocolError("backpressure");
+      throw error;
+    }
+  }
+  private async manage(ctx: HubRequestContext, permission: HubManagementPermission) {
+    if (this.options.management) return this.options.management.require(ctx, permission);
+    const actor = await ctx.requireAdmin(), current = ctx.isCurrent?.bind(ctx);
+    return { actor, assertCurrent: () => { this.check(); if (current && current() !== true) throw new HubProtocolError("revoked"); } };
+  }
   private audit(actor: HubActor | { kind: "member"; fleetId: string }, action: string, requestId: string) {
     return { at: this.now(), requestId, actor: actor.kind === "directory" ? { kind: "person" as const, person: actor.person } : actor.kind === "member" ? actor : { kind: "local-host" as const }, action, result: "allowed" as const };
   }
@@ -132,17 +149,20 @@ export class HubPairingService {
     this.options.enrollment.atomic(() => { write(); if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked"); });
   }
   async create(ctx: HubRequestContext, owner: PersonKey): Promise<{ pairingId: string; code: string; expiresAt: number }> {
-    validated(person, owner); this.check();
-    const eligible = await this.options.directory.checkEligibility(owner);
+    owner = validated(person, owner); this.check();
+    const permit = await this.manage(ctx, "join.manage"); permit.assertCurrent();
+    const eligible = await this.eligible(owner);
+    permit.assertCurrent();
     if (!eligible.eligible || personKeyString(eligible.person.key) !== personKeyString(owner)) throw new HubProtocolError("denied");
-    const admin = await ctx.requireAdmin(); this.check();
     const id = randomUUID(), code = randomBytes(6).toString("hex"), expiresAt = this.now() + TTL;
-    this.options.store.mutate(this.audit(admin, "pairing.created", ctx.requestId), state => {
+    this.options.store.mutate(this.audit(permit.actor, "pairing.created", ctx.requestId), state => {
+      permit.assertCurrent();
       state.pairings = state.pairings.filter(p => p.expiresAt > this.now());
       if (state.pairings.length + (this.options.automaticReservations?.retained() ?? 0) >= 64) throw new HubProtocolError("backpressure");
       state.pairings.push({ id, owner: { ...owner }, codeHash: sha256(code), expiresAt, fleetId: null, claimHash: null, fingerprint: null,
         ownerConfirmed: false, adminApproved: false, state: "offered" });
-    });
+    }, () => permit.assertCurrent());
+    permit.assertCurrent();
     return { pairingId: id, code, expiresAt };
   }
   /** Unauthenticated bootstrap accepts a code only: no cookies, passwords, exports or directory attributes. */
@@ -178,7 +198,8 @@ export class HubPairingService {
     } else write();
   }
   async approve(ctx: HubRequestContext, pairId: string, fingerprint: string): Promise<void> {
-    validated(uuid, pairId); validated(hash, fingerprint); const found = await ctx.requireAdmin(); this.check();
+    validated(uuid, pairId); validated(hash, fingerprint); const permit = await this.manage(ctx, "join.manage"); permit.assertCurrent();
+    const found = permit.actor; this.check();
     const admin = found.kind === "directory" ? { ...found, person: validated(person, found.person) } : found;
     const enrollment = this.options.enrollment;
     let proof: HubGroupEnrollmentPermit | undefined;
@@ -187,14 +208,19 @@ export class HubPairingService {
       if (admin.kind !== "directory" || !selected || selected.state !== "pending" || !selected.ownerConfirmed
         || selected.expiresAt <= this.now() || selected.fingerprint !== fingerprint || !selected.fleetId) throw new HubProtocolError("denied");
       const owner = validated(person, selected.owner), who = validated(person, admin.person);
-      const eligible = await this.options.directory.checkEligibility(owner);
+      const eligible = await this.eligible(owner);
+      // Keep the existing signed-out response after a held read; the permit still proves all authority below.
+      if (ctx.isCurrent?.() === false) await ctx.current();
+      permit.assertCurrent();
       if (!eligible.eligible) throw new HubProtocolError(eligible.reason === "unavailable" ? "unavailable" : "denied");
       if (personKeyString(eligible.person.key) !== personKeyString(owner)) throw new HubProtocolError("denied");
-      const again = await ctx.requireAdmin(); this.check();
-      if (again.kind !== "directory" || personKeyString(again.person) !== personKeyString(who)) throw new HubProtocolError("denied");
+      if (!this.options.management) {
+        const again = await ctx.requireAdmin(); this.check();
+        if (again.kind !== "directory" || personKeyString(again.person) !== personKeyString(who)) throw new HubProtocolError("denied");
+      }
       try {
         proof = await enrollment.prepareManual({ kind: "fleet", id: selected.fleetId, revision: 1, owner }, who,
-          { requestId: ctx.requestId, current: () => this.options.enabled() && selected.expiresAt > this.now() && (ctx.isCurrent?.() ?? true) });
+          { requestId: ctx.requestId, current: () => { permit.assertCurrent(); return this.options.enabled() && selected.expiresAt > this.now() && (ctx.isCurrent?.() ?? true); } });
       } catch (error) {
         if ((error instanceof HubGroupEnrollmentRefusal && error.outcome === "denied")
           || (error instanceof HubGroupAuthorizationError && error.reason === "denied")) throw new HubProtocolError("denied");
@@ -203,13 +229,14 @@ export class HubPairingService {
       }
     }
     const write = () => this.options.store.mutate(this.audit(admin, "pairing.approved", ctx.requestId), state => {
+      permit.assertCurrent();
       const p = state.pairings.find(p => p.id === pairId);
       if (!p || p.state !== "pending" || p.expiresAt <= this.now() || p.fingerprint !== fingerprint || !p.ownerConfirmed) throw new HubProtocolError("denied");
       if (proof && (!selected || p.fleetId !== selected.fleetId || personKeyString(p.owner) !== personKeyString(selected.owner))) throw new HubProtocolError("denied");
       proof?.assertCurrent();
       p.adminApproved = true;
       if (admin.kind === "directory") p.approvedBy = validated(person, admin.person);
-    });
+    }, () => { permit.assertCurrent(); proof?.assertCurrent(); });
     try {
       if (proof && enrollment) enrollment.atomic(() => { write(); proof!.assertCurrent(); });
       else write();
@@ -233,7 +260,7 @@ export class HubPairingService {
     if (this.throttled(initial, key, maximum)) throw new HubProtocolError("denied");
     let eligible = false;
     if (owner) {
-      const result = await this.options.directory.checkEligibility(Object.freeze({ ...owner }));
+      const result = await this.eligible(owner);
       eligible = result.eligible && personKeyString(result.person.key) === personKeyString(owner);
     }
     this.check();
@@ -284,7 +311,7 @@ export class HubPairingService {
       if (p.automatic) event.action = "pairing.automatically-approved";
       event.result = "allowed";
       return { status: "approved" as const, fleetId: body.fleetId, credential };
-    });
+    }, prepared ? () => prepared.assertCurrent() : undefined);
     let outcome: ReturnType<typeof write>;
     try {
       outcome = prepared && enrollment ? enrollment.atomic(database => {
@@ -328,7 +355,7 @@ export class HubPairingService {
   }
   async connect(credential: string): Promise<{ fleetId: string; owner: PersonKey; generation: number; linkEpoch: number; revocationVersion: number }> {
     let f = this.authenticate(credential);
-    const eligible = await this.options.directory.checkEligibility(f.owner);
+    const eligible = await this.eligible(f.owner);
     if (!eligible.eligible || personKeyString(eligible.person.key) !== personKeyString(f.owner)) throw new HubProtocolError("denied");
     f = this.authenticate(credential); this.options.fenceFleet(f.fleetId, "replaced");
     return this.options.store.mutate(this.audit({ kind: "member", fleetId: f.fleetId }, "member.connected", randomUUID()), state => {
@@ -338,11 +365,12 @@ export class HubPairingService {
     });
   }
   async revoke(ctx: HubRequestContext, fleetId: string): Promise<void> {
-    validated(uuid, fleetId); const admin = await ctx.requireAdmin(); this.check(); this.options.fenceFleet(fleetId, "revoked");
-    this.options.store.mutate({ ...this.audit(admin, "member.revoked", ctx.requestId), fleetId }, state => {
+    validated(uuid, fleetId); const permit = await this.manage(ctx, "fleets.manage"); permit.assertCurrent(); this.check(); this.options.fenceFleet(fleetId, "revoked");
+    this.options.store.mutate({ ...this.audit(permit.actor, "member.revoked", ctx.requestId), fleetId }, state => {
+      permit.assertCurrent();
       const f = state.fleets.find(f => f.id === fleetId); if (!f) throw new HubProtocolError("not-found");
       revokeHubFleet(state, f);
-    });
+    }, () => permit.assertCurrent());
     // The version is global. Other members keep their credentials and reconnect immediately,
     // rather than keeping a stale socket until its next heartbeat. Never refresh before commit.
     this.options.refreshAuthorization?.();

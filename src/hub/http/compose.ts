@@ -186,21 +186,26 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       return send(res, 200, await deps.companyJoin.createInvitation(ctx, owner));
     }
     if (deps.companyJoin && path === "/hub/v1/admin/company-join") {
-      if (method === "GET") { signedIn(); await ctx.requireAdmin(); return send(res, 200, deps.companyJoin.adminView()); }
+      if (method === "GET") { signedIn(); const permit = await core.management(ctx, "join.manage"), view = deps.companyJoin.adminView(); permit.assertCurrent(); return send(res, 200, view); }
       if (method !== "PUT") throw new HttpError(405, "method");
       csrf(); return send(res, 200, await deps.companyJoin.configure(ctx, await body()));
     }
 
     if (path === "/hub/v1/session") {
       if (method === "GET") {
-        const s = sessions.session(ctx.token);
+        const presentation = await sessions.presentation(ctx.token);
+        presentation?.assertCurrent();
+        const s = presentation?.view;
         return send(res, 200, s ? { signedIn: true, displayName: s.displayName, login: s.login, admin: s.admin, csrf: s.csrf, hub: { name: deps.config.name }, ...features }
           : { signedIn: false, hub: { name: deps.config.name } });
       }
       if (method === "POST") {
         const b = await body();
         const out = await sessions.signIn(b.login, b.password);
-        const { csrf: token, ...view } = out.view;
+        const presentation = await sessions.presentation(out.token);
+        if (!presentation) throw new HubProtocolError("revoked");
+        presentation.assertCurrent();
+        const { csrf: token, ...view } = presentation.view;
         return send(res, 200, { signedIn: true, displayName: view.displayName, login: view.login, admin: view.admin, csrf: token, hub: { name: deps.config.name }, ...features },
           { "Set-Cookie": hubSetCookie(deps.config.hubId, out.token, out.maxAgeMs) });
       }

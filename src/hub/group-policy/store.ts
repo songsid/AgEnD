@@ -11,12 +11,10 @@ import { identifier, person, uuid, validated } from "../validation.js";
 import { GROUP_CAPABILITIES, evaluateGroupPolicy, initialGroupPolicy, parseGroupCapability, parseGroupPolicy, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
 import { createHubCanonicalPolicyReader, parseCanonicalPolicy, type HubCanonicalPolicy } from "../roles/read.js";
 import { evaluateRolePolicy, snapshotRolePersonFacts, type RoleDecision, type RolePersonFacts } from "../roles/evaluate.js";
+import { HubGroupPolicyError, HubGroupReadOverload } from "./errors.js";
+import { createHubDirectoryAdmission, type HubDirectoryReads } from "../directory/admission.js";
+export { HubGroupPolicyError, HubGroupReadOverload } from "./errors.js";
 
-export class HubGroupPolicyError extends Error {
-  constructor(readonly code: "unavailable" | "conflict" | "unsupported" | "invalid" | "audit") { super(`group_policy_${code}`); }
-}
-/** Capacity pressure is retryable; malformed/unknown directory authority remains a separate refusal. */
-export class HubGroupReadOverload extends HubGroupPolicyError { constructor() { super("unavailable"); } }
 export function groupPolicyMigration(hubId: string, realm: string, generation: string): HubMigration {
   const initial = JSON.stringify(initialGroupPolicy(realm, generation)), hub = validated(identifier, hubId);
   return { component: "s5-group-policy", version: 1, up(db) {
@@ -89,11 +87,12 @@ export function createHubGroupPolicyStore(options: {
   db: Database.Database; hubId: string; realm: string; generation: string; directory: HubDirectory;
   audit: Pick<HubAuditStore, "appendInTransaction">; current(): boolean; now?: () => number;
   roles?: { root: PersonKey; assertAuthorizationTime(): void };
+  reads?: Pick<HubDirectoryReads, "withDirectoryRead">;
 }): HubGroupPolicyStore {
   const { db, directory, audit } = options, hubId = validated(identifier, options.hubId);
   const binding = initialGroupPolicy(options.realm, options.generation), current = options.current, now = options.now ?? Date.now;
   if (directory.realm !== binding.realm) throw new HubGroupPolicyError("unavailable");
-  const inflight = new Map<string, number>(); let total = 0;
+  const reads = options.reads ?? createHubDirectoryAdmission(current);
   const assert = (caller: () => boolean = () => true) => { if (current() !== true || caller() !== true) throw new HubGroupPolicyError("unavailable"); };
   const reader = createHubCanonicalPolicyReader({ db, hubId, realm: binding.realm, generation: binding.generation, current });
   const canonical = (): HubCanonicalPolicy => {
@@ -164,15 +163,7 @@ export function createHubGroupPolicyStore(options: {
   canonical(); // Missing/corrupt state is not an excuse to restore permissive legacy behavior.
   return { read, canonical, authorizationPolicy, async withDirectoryRead<T>(subject: PersonKey, read: () => Promise<T>): Promise<T> {
     const who = validated(person, subject); assert();
-    const key = `${who.realm}/${who.objectId}`, count = inflight.get(key) ?? 0;
-    if (count >= 4 || total >= 32) throw new HubGroupReadOverload();
-    inflight.set(key, count + 1); total++;
-    try { return await read(); }
-    finally {
-      const left = (inflight.get(key) ?? 1) - 1;
-      if (left) inflight.set(key, left); else inflight.delete(key);
-      total--;
-    }
+    return reads.withDirectoryRead(who, read);
   }, async resolveEnrolmentGroup(subject, group, dn, incoming) {
     const target = validated(person, group), who = validated(person, subject), ctx = context(incoming), before = operational(); assert(ctx.current);
     if (target.realm !== binding.realm || directory.groupPolicy !== "ad-direct-guid" || !directory.resolvePolicyGroup) return false;

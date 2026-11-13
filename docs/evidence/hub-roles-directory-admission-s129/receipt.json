@@ -1,0 +1,286 @@
+{
+  "scope": "S129 shared physical directory admission + unmounted narrow management repair reader; no role activation",
+  "parent": "9170eac545c946702db671f6e874a22ea3660cc1",
+  "checks": {
+    "passed": 409,
+    "failed": 0,
+    "skipped": 0,
+    "files": 15,
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "compiler": "native TypeScript7.0.2, GOMAXPROCS=2",
+    "isolatedCompilingSemanticReversals": 11,
+    "changelogFragments": 433
+  },
+  "tests": [
+    "tests/hub-compose.test.ts",
+    "tests/hub-directory-admission-s129.test.ts",
+    "tests/hub-grant-subjects-m3016.test.ts",
+    "tests/hub-group-admin-control.test.ts",
+    "tests/hub-group-admin-facts.test.ts",
+    "tests/hub-group-admin-read.test.ts",
+    "tests/hub-group-policy-store.test.ts",
+    "tests/hub-group-search-boundary-s2.test.ts",
+    "tests/hub-pairing-notices.test.ts",
+    "tests/hub-pairing-owner.test.ts",
+    "tests/hub-pairing.test.ts",
+    "tests/hub-roles-canonical-s129.test.ts",
+    "tests/hub-roles-issuer-s129.test.ts",
+    "tests/hub-roles-management-reader-s129.test.ts",
+    "tests/hub-s3b-flow.test.ts"
+  ],
+  "failFirst": {
+    "separatePools": "2 intended semantic reds +2 controls before shared physical ownership",
+    "reader": "2 intended legacy-repair reds plus one dependent post-read control failing at the same earlier generation refusal;11 controls pass",
+    "excludedSetupFailures": "Initial mounted assertions used error instead of the existing code JSON field; corrected to exact contract. One new typed directory fixture lacked groups:[], corrected without changing assertions. Neither setup correction counts as fail-first."
+  },
+  "bindings": [
+    {
+      "file": "changes/3743-roles-directory-admission.md",
+      "sha256": "3397b34d0c8aace04aaaa674ffadb796f26e1daa11008f84986d3baff5c58a3a"
+    },
+    {
+      "file": "changes/3743-roles-directory-admission.zh-TW.md",
+      "sha256": "62a240562adaff3cf3bfd3fdf113ba037aead61041a3cbf4bfac13f2d447803b"
+    },
+    {
+      "file": "docs/design/hub-roles-directory-admission.md",
+      "sha256": "c26df5e15e81bc5af7d001314c9a2ecab9ff138d52413d54083a288ab609a901"
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "6870adf7ba3365a89c286642f23c24a90226833ff2e4c82fad90a269a39720e9"
+    },
+    {
+      "file": "src/hub/directory/admission.ts",
+      "sha256": "c48f8592825121403e4ec04ed32999a4544678f8876dd34e130b1908e6811dd4"
+    },
+    {
+      "file": "src/hub/group-policy/admin-control.ts",
+      "sha256": "1cacf76748d9955ca0c6a709b8e8ad6874220d7917131b61b64d748259ecf96f"
+    },
+    {
+      "file": "src/hub/group-policy/admin-facts.ts",
+      "sha256": "76424ea46fd1838a815d7cfc8b4b6cfab4b0b47246039cf33ad003cfd4321dae"
+    },
+    {
+      "file": "src/hub/group-policy/admin-read.ts",
+      "sha256": "4b6f12ac420e98b11ce7674baa5f767196a18de496c81ad142d53399655e5a74"
+    },
+    {
+      "file": "src/hub/group-policy/errors.ts",
+      "sha256": "3ff8683d230c49a965d2e1eb7843b9a8fca018fbc14b1a24932ad373f246e3a6"
+    },
+    {
+      "file": "src/hub/group-policy/store.ts",
+      "sha256": "c4396cc2d396a5e84108015787f61b7297b65f78fa30ae60fdd706db4d24072d"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "ec536e6d34ffcc5758056ad36df9cca45a20b8f71b4eabc02ed4dd0894b86173"
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "sha256": "fd21af001816f72587b34d0d2450b2d481c70f4f9dd413b53656eb6da2f8d573"
+    },
+    {
+      "file": "src/hub/pairing-notices.ts",
+      "sha256": "0a0e83805201dd5358f0e7bd7cbd8f1f67f321a1ac6425b2e926ebfe1b9382e1"
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "sha256": "55f3d90b1c5ffab2a87530273b33d0d58a34683209f0f2be0cc483ee9d31f16f"
+    },
+    {
+      "file": "src/hub/roles/read.ts",
+      "sha256": "37e50394e706e9be2bca8c87344c1f138ab42dbfa4bb0030087b51f33fb2e4dc"
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "f49bfa0fc057206da9e33e785c9c95c8e29f6345b7aaa1077e1919ecb4934b0f"
+    },
+    {
+      "file": "tests/hub-compose.test.ts",
+      "sha256": "1402f396ea0d34263fed62b5c7194c1f80fa03dd7c122feec02ea62e441cef25"
+    },
+    {
+      "file": "tests/hub-directory-admission-s129.test.ts",
+      "sha256": "d28dc81043a2229d07da09e430913d583f0565d691bd265ce0d312a86392c14d"
+    },
+    {
+      "file": "tests/hub-roles-management-reader-s129.test.ts",
+      "sha256": "c3a2f30aeb49841f25482e1dd41c3e6418345f263a515ebca7de81d9af082703"
+    }
+  ],
+  "mutations": [
+    {
+      "name": "core-owner",
+      "file": "src/hub/http/core.ts",
+      "sourceSha256": "ec536e6d34ffcc5758056ad36df9cca45a20b8f71b4eabc02ed4dd0894b86173",
+      "test": "tests/hub-directory-admission-s129.test.ts",
+      "selected": "shares a person|shares all 32",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 shared physical directory admission shares a person's four slots between policy reads and HTTP eligibility",
+        "S129 shared physical directory admission shares all 32 slots between person reads and an unsigned-in owner lookup"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "policy-owner",
+      "file": "src/hub/group-policy/store.ts",
+      "sourceSha256": "c4396cc2d396a5e84108015787f61b7297b65f78fa30ae60fdd706db4d24072d",
+      "test": "tests/hub-directory-admission-s129.test.ts",
+      "selected": "shares a person|shares all 32",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 shared physical directory admission shares a person's four slots between policy reads and HTTP eligibility",
+        "S129 shared physical directory admission shares all 32 slots between person reads and an unsigned-in owner lookup"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "login-owner",
+      "file": "src/hub/sessions.ts",
+      "sourceSha256": "f49bfa0fc057206da9e33e785c9c95c8e29f6345b7aaa1077e1919ecb4934b0f",
+      "test": "tests/hub-compose.test.ts",
+      "selected": "mounted sign-in shares",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "directory decision joins the mounted runtime mounted sign-in shares the total physical directory admission bound"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "pairing-owner",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "6870adf7ba3365a89c286642f23c24a90226833ff2e4c82fad90a269a39720e9",
+      "test": "tests/hub-compose.test.ts",
+      "selected": "mounted HTTP and pairing eligibility",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "directory decision joins the mounted runtime mounted HTTP and pairing eligibility share the proof-source admission owner"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "mount-drain",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "6870adf7ba3365a89c286642f23c24a90226833ff2e4c82fad90a269a39720e9",
+      "test": "tests/hub-compose.test.ts",
+      "selected": "mounted teardown drains",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "directory decision joins the mounted runtime mounted teardown drains admitted physical work before closing its directory client"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "owner-fence",
+      "file": "src/hub/directory/admission.ts",
+      "sourceSha256": "c48f8592825121403e4ec04ed32999a4544678f8876dd34e130b1908e6811dd4",
+      "test": "tests/hub-directory-admission-s129.test.ts",
+      "selected": "physical-close settlement",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 shared physical directory admission keeps admission until physical-close settlement and drains a fenced owner only afterwards"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "person-bound",
+      "file": "src/hub/directory/admission.ts",
+      "sourceSha256": "c48f8592825121403e4ec04ed32999a4544678f8876dd34e130b1908e6811dd4",
+      "test": "tests/hub-directory-admission-s129.test.ts",
+      "selected": "shares a person|normalizes login case",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 shared physical directory admission shares a person's four slots between policy reads and HTTP eligibility",
+        "S129 shared physical directory admission normalizes login case, keeps namespaces distinct and frees rejected work"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "total-bound",
+      "file": "src/hub/directory/admission.ts",
+      "sourceSha256": "c48f8592825121403e4ec04ed32999a4544678f8876dd34e130b1908e6811dd4",
+      "test": "tests/hub-directory-admission-s129.test.ts",
+      "selected": "shares all 32",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 shared physical directory admission shares all 32 slots between person reads and an unsigned-in owner lookup"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "repair-refused",
+      "file": "src/hub/roles/read.ts",
+      "sourceSha256": "37e50394e706e9be2bca8c87344c1f138ab42dbfa4bb0030087b51f33fb2e4dc",
+      "test": "tests/hub-roles-management-reader-s129.test.ts",
+      "selected": "preserves exact never-enabled|permits configured-root",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 independent management policy reader preserves exact never-enabled legacy bytes while the operational reader keeps refusing a generation mismatch",
+        "S129 independent management policy reader permits configured-root management repair without constructing the strict operational store"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "repair-widened",
+      "file": "src/hub/roles/read.ts",
+      "sourceSha256": "37e50394e706e9be2bca8c87344c1f138ab42dbfa4bb0030087b51f33fb2e4dc",
+      "test": "tests/hub-roles-management-reader-s129.test.ts",
+      "selected": "generation mismatch",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 independent management policy reader refuses a legacy enabled generation mismatch",
+        "S129 independent management policy reader refuses a legacy suspended generation mismatch",
+        "S129 independent management policy reader refuses a role never-enabled generation mismatch even when rolesActive=true",
+        "S129 independent management policy reader refuses a role never-enabled generation mismatch even when rolesActive=false"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    },
+    {
+      "name": "reader-final-current",
+      "file": "src/hub/roles/read.ts",
+      "sourceSha256": "37e50394e706e9be2bca8c87344c1f138ab42dbfa4bb0030087b51f33fb2e4dc",
+      "test": "tests/hub-roles-management-reader-s129.test.ts",
+      "selected": "checks the exact mount",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 independent management policy reader checks the exact mount both before and after reading its repair image"
+      ],
+      "semanticRed": true,
+      "sourceRestored": true
+    }
+  ],
+  "commands": [
+    "vitest run <15 files listed> --maxWorkers=2",
+    "GOMAXPROCS=2 tsc --noEmit",
+    "GOMAXPROCS=2 tsc --noEmit -p tsconfig.test.json",
+    "python3 .artifacts/roles-admission-m3010/mutate.py",
+    "readFragments(process.cwd())"
+  ],
+  "limits": "Owned initialized scratch Hub/HTTPS + actual Core/store/SQL with inert directory; three mounted admission/drain controls. No real AD/account/Fleet/browser/native/pilot. Physical callback promises model held operations through close; no fabricated ldapts unbind/close split. No protocol/asset/UI or schema migration change. Parent-first plain sync and exact-head CI/readiness remain."
+}

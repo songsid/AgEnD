@@ -56,10 +56,15 @@ import { createHubWebAddressDecision, HUB_WEB_ADDRESS_MIGRATION, type HubWebAddr
 import { createHubDirectoryNotices, HUB_DIRECTORY_HOST_NOTICE_SINK, type HubDirectoryNotices } from "../settings-directory-notices.js";
 import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
 import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
-import { collectPolicyDirectoryGroups, parseCanonicalPolicy } from "../roles/read.js";
+import { collectPolicyDirectoryGroups, createHubManagementPolicyReader, parseCanonicalPolicy } from "../roles/read.js";
+import { createHubManagementAuthority } from "../roles/authority.js";
+import { createHubRoleAuthorizationClock } from "../roles/clock.js";
+import { createHubRoleExpiryRuntime } from "../roles/expiry-runtime.js";
 import type { HubDirectoryResponse, HubDirectoryResponseListener, HubDirectoryResponseOwner } from "../directory-response-owner.js";
+import { createHubDirectoryAdmission } from "../directory/admission.js";
 
 import { SERVER_SET, createKeyFile, readKeyFile } from "./storage.js";
+import { HubProtocolError } from "../validation.js";
 export { SERVER_SET } from "./storage.js";
 
 /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
@@ -72,9 +77,12 @@ export interface HubHttpDeps {
   /** attachments-v1 files under the content key (absent: the Hub offers no upload). */
   attachments?: HubAttachmentStore;
   directory: HubDirectory;
+  directoryReads?: import("../directory/admission.js").HubDirectoryReads;
   pairing: HubPairingService;
   companyJoin?: HubCompanyJoin;
   groups?: HubGroupAuthorization;
+  management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require">;
+  roleSessionMode?(): boolean;
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   grantDirectory?: import("../http/deps.js").HubHttpDeps["grantDirectory"];
   pairingNotices?: HubPairingNotices;
@@ -307,6 +315,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       catch (err) { throw new HubStateError("hub-directory-secret", `the directory bind secret is missing or not private: ${(err as Error).message}`); }
 
       let memberServer: HubServer | null = null;
+      let roleRuntime: ReturnType<typeof createHubRoleExpiryRuntime> | null = null;
       let fenced = false;
       const owned = () => !fenced && current();
       let responseListener: HubDirectoryResponseListener | null = null;
@@ -327,14 +336,26 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const { bindPasswordRef: _ref, ...directoryConfig } = settings.directory;
       const directory = options.createDirectory(directoryConfig as HubDirectoryConfig, { bindPassword });
       teardown.add("the directory client", () => (directory as { close?: () => Promise<void> }).close?.());
+      const directoryReads = createHubDirectoryAdmission(live);
+      teardown.add("physical directory reads", () => directoryReads.drain());
 
       // 4. S1 identity, pairing and the member listener; S3's HTTP entry in between (it supplies receive).
       const identity = readHubIdentity({ home: options.home, memberOrigin: settings.memberOrigin });
       if (identity.hubId !== settings.hubId) throw new HubStateError("hub-state-mismatch", "the Hub keys belong to another Hub");
       const issuerKey = createPrivateKey(readPrivateFile(options.home, "hub/keys/issuer-key.pem"));
+      // No cutover is registered here. Legacy images remain configured-root-only; a future
+      // committed role image must prove the real persisted clock before any named management use.
+      const roleClock = createHubRoleAuthorizationClock({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
+        generation: groupGeneration, root: settings.administrator, transport: store, current: live, now });
+      teardown.add("role authorization clock", () => roleClock.close());
+      const management = createHubManagementAuthority({ root: settings.administrator, directory, reads: directoryReads,
+        policy: createHubManagementPolicyReader({ db, hubId: settings.hubId, realm: resolvedDirectory.realm, generation: groupGeneration, current: live }),
+        current: live, version: () => store.read().revocationVersion, assertAuthorizationTime: roleClock.assertAuthorizationTime, now });
+      teardown.add("management authorization", () => management.close());
       let groupPolicy: HubGroupPolicyStore | undefined;
       const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
-        generation: groupGeneration, directory, audit, current: live, now });
+        generation: groupGeneration, directory, audit, current: live, now, reads: directoryReads,
+        roles: { root: settings.administrator, assertAuthorizationTime: roleClock.assertAuthorizationTime } });
       const directoryNotices = createHubDirectoryNotices({ db, transport: store, hubId: settings.hubId,
         hostSink: HUB_DIRECTORY_HOST_NOTICE_SINK, audit, current: live, now });
       teardown.add("directory security notices", () => directoryNotices.close());
@@ -352,11 +373,11 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           if (!live() || !http.directorySessions) throw new HubStateError("service-unavailable", "The directory session adapter is unavailable");
           return http.directorySessions;
         },
-        withDirectoryRead: <T>(person: PersonKey, work: () => Promise<T>) => policy().withDirectoryRead(person, work),
+        withDirectoryRead: <T>(person: PersonKey, work: () => Promise<T>) => directoryReads.withDirectoryRead(person, work),
       });
       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
       const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,
-        policy, binding,
+        policy, binding, management,
         audit, current: live, now, version: () => store.read().revocationVersion,
         advanceAuthorization: (database, resource) => {
           if (database !== db || !db.inTransaction) throw new HubStateError("service-unavailable", "the group authorization transaction is unavailable");
@@ -367,20 +388,23 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       teardown.add("group authorization", () => groups.close());
       const retention = createHubRetentionControl({ db, hubId: settings.hubId, audit, current: live, now });
       const pairingNotices = new HubPairingNotices({ db, store, administrator: settings.administrator, directory, audit,
-        current: live, now, transport: () => memberServer });
+        current: live, now, transport: () => memberServer, directoryReads });
       pairingNotices.start();
       teardown.add("pairing security notices", () => pairingNotices.close());
       const companyIdentity = { hubId: identity.hubId, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey,
         webOrigin: settings.webOrigin, memberOrigin: settings.memberOrigin };
       const companyJoin = new HubCompanyJoin({ home: options.home, db, store, audit, groups, notices: pairingNotices, name: settings.name,
+        management,
         refreshAuthorization: () => memberServer?.refreshAuthorization(),
         identity: companyIdentity, connected: fleetId => memberServer?.features(fleetId) !== null && memberServer?.features(fleetId) !== undefined, signInvitation: claims => signCompanyInvitation(claims, issuerKey), descriptor: signCompanyDescriptor(companyIdentity, issuerKey),
         certificatePem: readPrivateFile(options.home, "hub/keys/tls-cert.pem"), administrator: settings.administrator,
         eventDays: settings.retention.eventDays, current: live, now });
       const pairing = new HubPairingService({
         store,
+        management,
         identity: { hubId: identity.hubId, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey },
         directory,
+        directoryReads,
         enabled: live,
         now,
         fenceFleet: (fleetId, reason) => memberServer?.fenceFleet(fleetId, reason),
@@ -392,6 +416,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         automaticReservations: { count: owner => companyJoin.records.reservations(owner), retained: () => companyJoin.retained() },
       });
       const groupControl = createHubGroupAdminControl({ db, audit, directory, administrator: settings.administrator,
+        directoryReads,
         transport: store, inventory: createHubGroupAdminInventory({ db, transport: store, realm: resolvedDirectory.realm }),
         authorization: groups, policy, binding, current: live, version: () => store.read().revocationVersion, now,
         advanceAuthorization: database => {
@@ -420,10 +445,22 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         content: audit.content,
         attachments,
         directory,
+        directoryReads,
         pairing,
         companyJoin,
         groups,
+        management,
         groupHttp: { control: groupControl, welcome: groupWelcome },
+        roleSessionMode: () => {
+          // Classification is not authority. A legacy repair must not ask the strict role reader
+          // to authorize sign-in; a roles result still needs the full current management permit.
+          try {
+            if (!live()) throw new Error("retired");
+            const row = db.prepare("SELECT hub_id,body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
+            if (!row || row.hub_id !== settings.hubId) throw new Error("missing owner");
+            return parseCanonicalPolicy(row.body).kind === "roles";
+          } catch { throw new HubProtocolError("unavailable"); }
+        },
         grantDirectory: { policy, binding },
         pairingNotices,
         directoryNotices,
@@ -551,6 +588,20 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             if (withdrawDirectory) teardown.add("the mounted directory control", withdrawDirectory);
             const withdrawAddress = options.webAddressReady?.(addressDecision);
             if (withdrawAddress) teardown.add("the mounted web-address participant", withdrawAddress);
+            // No migration/cutover is registered here. Only an already valid canonical role image
+            // can own a worker; legacy mounts keep their existing behavior.
+            const stored = db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string };
+            if (parseCanonicalPolicy(stored.body).kind === "roles" && !roleRuntime) {
+              roleClock.assertAuthorizationTime();
+              roleRuntime = createHubRoleExpiryRuntime({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
+                generation: groupGeneration, root: settings.administrator, transport: store, audit, directory, reads: directoryReads,
+                current: live, assertAuthorizationTime: roleClock.assertAuthorizationTime, now,
+                refreshAuthorization: () => memberServer?.refreshAuthorization(),
+                warning: code => options.log("warn", "Hub role expiry is waiting to settle", { code }) });
+              const ownedRoleRuntime = roleRuntime;
+              teardown.add("role expiry work", () => ownedRoleRuntime.close());
+              roleRuntime.start();
+            }
           } catch (err) {
             options.report(err instanceof HubStateError ? err.code : "service-unavailable", (err as Error).message);
             throw err;
@@ -558,11 +609,15 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         },
         fence() {
           fenced = true;
+          roleRuntime?.fence();
+          directoryReads.fence();
           generation += 1;
           memberServer?.fence();
         },
         async close() {
           fenced = true;
+          roleRuntime?.fence();
+          directoryReads.fence();
           // Rejects while any step is unconfirmed; S1 keeps ownership and retries this close before any replacement.
           await teardown.run();
         },
