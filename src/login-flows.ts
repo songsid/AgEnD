@@ -385,13 +385,13 @@ async function runAuthCheckProcess(argv: string[], timeoutMs: number, env?: Reco
  * `env`: a credential profile's variable, so the probe reads that profile's login rather than the default one.
  */
 /**
- * Which account is a backend's sign-in (the default one, or a credential profile's `env`): a masked e-mail (and a plan, for Claude Code). Nothing is run for a CLI whose spec says it has no
- * identity. The output is parsed and dropped here: it is never logged or kept, and what is returned is masked.
+ * Which account is a backend's sign-in (the default one, or a credential profile's `env`): the whole e-mail address (in the `maskedEmail` field) and a plan, for Claude Code. Nothing is run for a CLI whose spec says it has no
+ * identity. The output is parsed and dropped here: it is never logged or kept, and what is returned is the one address field (and a plan).
  *
  * The behaviour that backs each registry `host.identity` (cli-registry.ts), keyed by the CLI id and exhaustive over the CLIs whose spec says "yes": a CLI that gains the capability does
  * not compile until it has its reader, and tests/cli-registry-completeness.test.ts checks that the reader's `from` is the spec's `source`. `status-command`: parsed from the output of the
  * SAME status command `authCheck` runs, so no extra login and no network request is made. `token-file`: one field of the CLI's own token file, read locally (antigravity-identity.ts):
- * nothing is started and nothing leaves this machine, and nothing else of the file is read, kept or logged. What comes back is masked; the output (or the file's text) is dropped here.
+ * nothing is started and nothing leaves this machine, and nothing else of the file is read, kept or logged. What comes back is the whole address, in the existing `maskedEmail` field; the output (or the file's text) is dropped here.
  */
 type IdentityCli = HostCliWith<"identity">;
 const IDENTITY_READERS: Record<IdentityCli, { from: "status-command"; parse: (output: string) => AccountIdentity | undefined } | { from: "token-file"; read: (env?: Record<string, string>, folder?: string) => AccountIdentity | undefined }> = {

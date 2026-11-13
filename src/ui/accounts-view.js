@@ -66,7 +66,7 @@ register("accounts", {
     acctHintCreate: "The new agent connects with this account from its first start. A disconnected account can't be chosen: connect it under Accounts first.",
     why_cli_old: "{1} on {0} is too old to connect from here (it needs {2} or newer). Update it on that computer.",
     why_cli_missing: "{1} is not installed on {0}.",
-    machineOneLogin: "This is the Windows user's own {1} connection on {0}, one for the whole computer. Connecting here replaces it; use + Add account to keep another one beside it.",
+    machineOneLogin: "This is the Windows user's one default {1} connection on {0}. Connecting here replaces it; named accounts (+ Add account) are separate and are not affected.",
     acctDefaultBlocked: "This fleet's default for {0} is “{1}”, so an agent follows it unless it names another account.",
     usedPopTitle: "Agents using this account — choose one to open its settings",
   },
@@ -100,7 +100,7 @@ register("accounts", {
     acctHintCreate: "新 Agent 從第一次啟動就會使用這個帳號。尚未連接的帳號不能選，請先在「帳號」連接。",
     why_cli_old: "{0} 上的 {1} 版本太舊，無法從這裡連接（需要 {2} 或更新）。請在那台電腦上更新它。",
     why_cli_missing: "{0} 上沒有安裝 {1}。",
-    machineOneLogin: "這是 {0} 上 Windows 使用者自己的 {1} 連接，整台電腦只有一個。在這裡連接會取代它；要另外保留一個，請用「＋新增帳號」。",
+    machineOneLogin: "這是 {0} 上 Windows 使用者的唯一一個預設 {1} 連接。在這裡連接會取代它；具名帳號（「＋新增帳號」）是分開的，不受影響。",
     acctDefaultBlocked: "這個 Fleet 的 {0} 預設帳號是「{1}」，Agent 除非指定其他帳號，否則會使用它。",
     usedPopTitle: "使用此帳號的 Agent（點擊跳轉設定）",
   },
@@ -237,12 +237,12 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent, r
   // AGEND-203: the login window is one PER BACKEND (login-window-lock.ts) — a sign-in or install on one AI holds only that AI's buttons. `busyBackends` names them; the rest stay pressable:
   //   - the terminal sign-in (`login`, also another tab's) and the structured one (`active`, also another tab's) hold the backend they run on;
   //   - an install or update holds its backend's sign-in buttons, and every Install/Update button (one installer on the host: InstallButton/VersionLine read hostInstallStore themselves);
-  //   - a computer's account sign-in (the open dialog) is Claude Code's.
+  //   - a computer's account sign-in (the open dialog) holds the backend the dialog is for (Claude Code's, or Antigravity's).
   // Not here, on purpose: the terminal sign-in is one at a time too, so a second terminal AI (Grok while another is running) is refused by the server (`busy`), which the dialog's cancel flow handles.
   const busyBackends = new Set();
   if (login && login.phase === "running" && login.backend) busyBackends.add(login.backend);
   if (active && active.phase !== "done" && !(active.phase === "failed" && active.reason) && active.backend) busyBackends.add(active.backend);
-  if (machineActive) busyBackends.add("claude-code");
+  if (machineActive) busyBackends.add(machineLogin.backend || "claude-code");   // AGEND-250: the dialog's own backend (a store from an older tab has none: Claude Code, as before)
   if (install.starting) busyBackends.add(install.starting);
   if (install.run && install.run.phase === "running" && install.run.backend) busyBackends.add(install.run.backend);
   const running = (backend) => busyBackends.has(backend);

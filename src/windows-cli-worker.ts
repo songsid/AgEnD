@@ -336,7 +336,7 @@ export async function probeCredentialProfileStatus(cli: CredentialProfileCli, di
   run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput> = (entry, args, env) => output(entry.command, [...entry.args, ...args], 15_000, env),
   /** The requester's live check (an install's consent and connection): asked before the CLI is looked for and again before its status program is started. */
   authorized?: () => boolean,
-  /** The account's masked e-mail is read from its folder when it is signed in (a NAMED account of a CLI that keeps its sign-in in a file). The isolation probe's scratch folder never is. */
+  /** The account's e-mail address (whole, in the `maskedEmail` field) is read from its folder when it is signed in (a NAMED account of a CLI that keeps its sign-in in a file). The isolation probe's scratch folder never is. */
   withIdentity = true): Promise<CredentialProfileAnswer> {
   const provider = nativeProvider(cli);
   if (!isCredentialProfileCli(cli)) return { loggedIn: null };
@@ -358,7 +358,7 @@ export async function probeCredentialProfileStatus(cli: CredentialProfileCli, di
     // own), which is not this account's, so the answer is "could not confirm" (never "signed in", and not "signed out" either).
     const store = credentialProfileStore(cli);
     if (loggedIn === true && store !== undefined) { try { const stat = lstatSync(join(directory, store)); if (!stat.isFile() || stat.isSymbolicLink()) loggedIn = null; } catch { loggedIn = null; } }
-    // AGEND-124: the one field of the account's own token file that names the account, masked here (agy has no command that does): only for a folder the CLI just said is signed in, only when asked.
+    // AGEND-124: the one field of the account's own token file that names the account, validated here and reported whole (agy has no command that does): only for a folder the CLI just said is signed in, only when asked.
     const identity = withIdentity && loggedIn === true && store !== undefined ? readAntigravityIdentityIn(directory) : undefined;
     return { loggedIn, ...(identity ? { identity } : {}) };
   }

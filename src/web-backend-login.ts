@@ -50,7 +50,7 @@ export interface SignInTarget {
   /** Too old: the command that installs the current version over it. */
   update?: string;
   /**
-   * Which account this sign-in is (a masked e-mail and a plan), from the host's own `claude auth status` (Claude Code) or, for Antigravity, the masked `id_token_email` of agy's token file
+   * Which account this sign-in is (the whole e-mail address and a plan), from the host's own `claude auth status` (Claude Code) or, for Antigravity, the `id_token_email` of agy's token file
    * (an e-mail only, no plan; AGEND-113). Local administrators only: this list is never served to anyone else.
    */
   identity?: AccountIdentity;

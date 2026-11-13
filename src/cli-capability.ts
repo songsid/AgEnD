@@ -112,7 +112,7 @@ export interface HostCapabilities {
   /** A cheap, token-free probe of whether the sign-in works (the command, run with a 5 s timeout). */
   readonly authCheck: Cap<{ argv: readonly string[] }>;
   /**
-   * Which account the sign-in is (a masked e-mail, and a plan where the CLI says one), read locally and never from a credential: `status-command` is the CLI's own status answer;
+   * Which account the sign-in is (the whole e-mail address in the `maskedEmail` field, and a plan where the CLI says one), read locally and never from a credential: `status-command` is the CLI's own status answer;
    * `token-file` is the one field of the CLI's own token file that names the account (`field`; nothing else of the file is read, kept or logged).
    */
   readonly identity: Cap<{ source: "status-command" } | { source: "token-file"; field: string }>;
@@ -204,7 +204,7 @@ export interface RuntimeCapabilities {
    * answer is the model listing the Runtime already asks for (`argv` is `runtime.provider.modelProbe`, and the answer is read by its exit code and its words: no extra process).
    */
   readonly authStatus: Cap<{ argv: readonly string[]; source: "own-command" | "model-listing" }>;
-  /** The Runtime reports which account it is (masked). */
+  /** The Runtime reports which account it is (the whole e-mail address, in the `maskedEmail` field). */
   readonly identity: Cap;
   /** The Runtime reports the account's usage. */
   readonly usage: Cap;

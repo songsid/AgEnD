@@ -3,7 +3,7 @@
 // `?machine=&profile=` — so there is no second sign-in screen to learn. Only a Claude subscription account is signed in from here: a Console account is kept
 // outside the profile's folder, so the person runs `agend-runtime login claude-code NAME` on that computer (said in the dialog).
 // AGEND-113: a CLI whose registry spec says `runtime.signIn.profile === "none"` (cli-caps.js: `runtimeDefaultLogin`; Antigravity) has no profile: its login on Windows is one entry in the Credential
-// Manager, so this signs the computer's OWN login in (`?machine=&backend=<cli>`), after the person has confirmed that it changes that login (a computer can only have one).
+// Manager, so this signs the computer's OWN login in (`?machine=&backend=<cli>`), after the person has confirmed that it changes that login (the Windows user has one default connection; named accounts are separate).
 // A module of its own, its words registered here: a tab that loaded an older accounts-view.js keeps working, and this never meets an older cached strings file.
 import { html, useEffect, useRef } from "/assets/app-html.js";
 import { register, t, lang, onLang } from "/assets/app-i18n.js";
@@ -22,9 +22,9 @@ register("machineSignin", {
     console: "Using an Anthropic Console account instead? Run this on that computer: {0}",
     close: "Close",
     titleDefault: "Connect {0} on {1}",
-    leadDefault: "AgEnD asks {1}'s Runtime to connect {0}. You get a link here, open it in your browser, finish with the account, and paste back the code it shows. This replaces the {0} connection of the Windows user on that computer (a computer has only one), and anyone who can sign in to that Windows user can use it.",
+    leadDefault: "AgEnD asks {1}'s Runtime to connect {0}. You get a link here, open it in your browser, finish with the account, and paste back the code it shows. This replaces the Windows user's one default {0} connection on that computer (named accounts are separate and are not affected), and anyone who can sign in to that Windows user can use it.",
     confirmTitle: "Change {1}'s connection on {0}?",
-    confirm: "This changes the {1} connection on {0}. One computer can only have one {1} account, so the account that is connected there now is replaced.",
+    confirm: "This changes the default {1} connection on {0}. The Windows user has one default {1} connection, so the account that is connected there now is replaced. Named accounts are not affected.",
     confirmLabel: "Continue",
   },
   "zh-TW": {
@@ -33,9 +33,9 @@ register("machineSignin", {
     console: "要改用 Anthropic Console 帳號嗎？請在那台電腦上執行：{0}",
     close: "關閉",
     titleDefault: "在 {1} 連接 {0}",
-    leadDefault: "AgEnD 會請 {1} 的 Runtime 連接 {0}。這裡會給你一個連結，在瀏覽器開啟後用帳號完成連接，再把它顯示的授權碼貼回來。這會取代那台電腦上 Windows 使用者目前的 {0} 連接（一台電腦只能有一個），能登入該 Windows 使用者的人都能使用它。",
+    leadDefault: "AgEnD 會請 {1} 的 Runtime 連接 {0}。這裡會給你一個連結，在瀏覽器開啟後用帳號完成連接，再把它顯示的授權碼貼回來。這會取代那台電腦上 Windows 使用者目前的預設 {0} 連接（具名帳號是分開的，不受影響），能登入該 Windows 使用者的人都能使用它。",
     confirmTitle: "要更改 {0} 上的 {1} 連接嗎？",
-    confirm: "這會更改 {0} 上的 {1} 連接。一台電腦只能有一個 {1} 帳號，所以目前連接在那裡的帳號會被取代。",
+    confirm: "這會更改 {0} 上的預設 {1} 連接。Windows 使用者只有一個預設 {1} 連接，所以目前連接在那裡的帳號會被取代；具名帳號不受影響。",
     confirmLabel: "繼續",
   },
 });
@@ -44,7 +44,7 @@ const tm = (k, ...v) => t(`machineSignin.${k}`, ...v);
 const ownLogin = (backend) => !!(capsOf(backend) && capsOf(backend).runtimeDefaultLogin);
 
 /** What the Accounts view reads to refresh itself and to keep a second sign-in from starting: the open dialog's current phase for the computer's profile. */
-export const machineSignInStore = createStore({ phase: "", reason: "" });
+export const machineSignInStore = createStore({ phase: "", reason: "", backend: "" });
 
 /** The endpoint of one profile's sign-in on one computer; with a `backend` whose login is the computer's own (no profile), that login. */
 export const machineSignInEndpoint = (machineId, profile, backend) => backend && !profile && ownLogin(backend)
@@ -61,10 +61,11 @@ export function MachineSignInDialog({ machine, profile, backend, onClose }) {
   useEffect(() => {
     const cards = mountStructuredSignIns(root.current, { endpoint: machineSignInEndpoint(machine.id, profile, backend), lang, machine: true, codeHint: (b) => !!(capsOf(b) && capsOf(b).codeHint), changed: (next) => {
       const login = next && next.login;
-      machineSignInStore.set({ phase: login ? login.phase : "", reason: (login && login.reason) || "" });
+      // AGEND-250: the state carries the dialog's backend, so an Antigravity sign-in being busy marks Antigravity's card and never Claude's.
+      machineSignInStore.set({ phase: login ? login.phase : "", reason: (login && login.reason) || "", backend: backend || "claude-code" });
     } });
     const unlisten = onLang(() => cards.relabel());
-    return () => { unlisten(); cards.dispose(); machineSignInStore.set({ phase: "", reason: "" }); };
+    return () => { unlisten(); cards.dispose(); machineSignInStore.set({ phase: "", reason: "", backend: "" }); };
   }, [machine.id, profile, backend]);
   const product = cliLabel(backend && backend !== "claude-code" ? backend : "claude-code"), claude = !backend || backend === "claude-code";
   return html`<${Dialog} title=${bare ? tm("titleDefault", cliLabel(backend), machine.name) : tm("title", product, profile, machine.name)} onClose=${close}

@@ -92,13 +92,30 @@ describe("this host's Antigravity row", () => {
   });
 });
 
+describe("AGEND-250: a computer's sign-in marks the card of ITS backend busy", () => {
+  const claudeRow = { scope: { kind: "host" }, backend: "claude-code", profile: null, state: "usable", signIn: true, usedBy: none };
+  const two = () => ({ clis: [{ backend: "claude-code", profiles: true, installed: true, fleetDefault: null, agents: [], rows: [claudeRow] },
+    { backend: "antigravity", profiles: false, installed: true, fleetDefault: null, agents: [], rows: [hostRow()] }] });
+  const connectDisabled = (backend: string) => { const b = btn(p.root.querySelector(`.s-account-card[data-backend="${backend}"] .s-account-rows .s-account-row`), "Reconnect") as any; return b.disabled === true || b.getAttribute("disabled") !== null; };
+  it("an Antigravity sign-in being busy holds Antigravity's button, not Claude's; the state carries the dialog's backend", async () => {
+    current = two(); M.machineSignInStore.set({ phase: "code", reason: "", backend: "antigravity" }); await mount();
+    expect(connectDisabled("antigravity")).toBe(true); expect(connectDisabled("claude-code")).toBe(false);
+  });
+  it("a Claude sign-in (or a store with no backend, as an older tab left it) holds Claude's, not Antigravity's", async () => {
+    for (const state of [{ phase: "code", reason: "", backend: "claude-code" }, { phase: "code", reason: "" }]) {
+      await p.unmount(); current = two(); A.accountsStore.set({ loaded: false, failed: false, view: null }); M.machineSignInStore.set(state as any); await mount();
+      expect(connectDisabled("claude-code")).toBe(true); expect(connectDisabled("antigravity")).toBe(false);
+    }
+  });
+});
+
 describe("a computer's Antigravity login", () => {
   it("is one row under the computer's name: Sign in, no Add account, Sign out or Remove, and a note that it replaces that computer's login", async () => {
     await mount();
     expect(text(machineBox().querySelector(".s-account-machine-head strong"))).toBe("On Desk PC");
     expect(actions(mrow())).toEqual(["Connect"]);
     expect(labels(card().querySelector(".s-account-head"))).toEqual([]);          // no + Add account on this card
-    expect(text(mrow())).toContain("This is the Windows user's own Antigravity connection on Desk PC, one for the whole computer. Connecting here replaces it; use + Add account to keep another one beside it.");
+    expect(text(mrow())).toContain("This is the Windows user's one default Antigravity connection on Desk PC. Connecting here replaces it; named accounts (+ Add account) are separate and are not affected.");
     expect(machineBox().querySelectorAll(".s-account-row").length).toBe(1);
     current = view([machineRow({ state: "usable" })]); await p.unmount(); A.accountsStore.set({ loaded: false, failed: false, view: null }); await mount();
     expect(actions(mrow())).toEqual(["Reconnect"]);
@@ -125,7 +142,7 @@ describe("a computer's Antigravity login", () => {
     let q = C.confirmStore.get().queue;
     expect(q).toHaveLength(1);
     expect(q[0].title).toBe("Change Antigravity's connection on Desk PC?");
-    expect(q[0].message).toBe("This changes the Antigravity connection on Desk PC. One computer can only have one Antigravity account, so the account that is connected there now is replaced.");
+    expect(q[0].message).toBe("This changes the default Antigravity connection on Desk PC. The Windows user has one default Antigravity connection, so the account that is connected there now is replaced. Named accounts are not affected.");
     C.answerConfirm(q[0].id, false); await settle(6);
     expect(shell.shellStore.get().dialog).toBeFalsy(); expect(calls).toEqual([]);
     btn(mrow(), "Connect").click(); await settle(6);
@@ -139,7 +156,7 @@ describe("a computer's Antigravity login", () => {
     btn(mrow(), "連接").click(); await settle(6);
     const q = C.confirmStore.get().queue[0];
     expect([q.title, q.confirmLabel]).toEqual(["要更改 Desk PC 上的 Antigravity 連接嗎？", "繼續"]);
-    expect(q.message).toBe("這會更改 Desk PC 上的 Antigravity 連接。一台電腦只能有一個 Antigravity 帳號，所以目前連接在那裡的帳號會被取代。");
+    expect(q.message).toBe("這會更改 Desk PC 上的預設 Antigravity 連接。Windows 使用者只有一個預設 Antigravity 連接，所以目前連接在那裡的帳號會被取代；具名帳號不受影響。");
   });
   const mountDialog = async () => { await p.unmount(); await p.mount(h(M.MachineSignInDialog, { machine: { id: "m1", name: "Desk PC" }, backend: "antigravity", onClose: () => {} })); await settle(12); };
   it("the dialog is the host's controls on `?machine=&backend=antigravity`: titled for the computer, no profile name and no Claude Console hint", async () => {
@@ -150,7 +167,7 @@ describe("a computer's Antigravity login", () => {
     const d = dialog() ?? p.root;
     expect(gets).toContain("/ui/browser-backend-signins?machine=m1&backend=antigravity");
     expect(text(d)).toContain("Connect Antigravity on Desk PC");
-    expect(text(d)).toContain("This replaces the Antigravity connection of the Windows user on that computer");
+    expect(text(d)).toContain("This replaces the Windows user's one default Antigravity connection on that computer");
     expect(text(d)).not.toContain("agend-runtime login"); expect(text(d)).not.toContain("account “"); expect(text(d)).not.toContain("Connect later");
     expect(text(d)).toContain("Not connected"); expect(text(d.querySelector("section h3"))).toBe("Antigravity");   // not "(console fallback)": it signs in here
     i18n.setLang("zh-TW", { store: false }); await mountDialog();
