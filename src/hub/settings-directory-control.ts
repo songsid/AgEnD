@@ -1,8 +1,8 @@
 /** #3425: host-lifetime directory settings control. Authority is acquired by each listener, never by this DTO. */
 import { z } from "zod";
-import { canonicalArguments } from "./identity.js";
 import { HubProtocolError, validated } from "./validation.js";
-import { createHubDirectorySettingsProof, type HubDirectoryProofContext, type HubDirectoryProofDeps } from "./settings-directory-proof.js";
+import { captureHubDirectoryProofContext, createHubDirectorySettingsProof, type HubDirectoryProofContext, type HubDirectoryProofDeps } from "./settings-directory-proof.js";
+import { assertHubDirectoryActor } from "./roles/directory-authority.js";
 import { createHubDirectorySaveCoordinator, type HubDirectorySaveDeps, type HubDirectorySaveDelivery } from "./settings-directory-save.js";
 import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import { HUB_DIRECTORY_HOST_NOTICE_SINK } from "./settings-directory-notices.js";
@@ -16,7 +16,6 @@ const ref = z.string().regex(/^[A-Za-z0-9_-]{32}$/);
 const refRequest = z.strictObject({ ref });
 const testRequest = z.strictObject({ ref, confirmation: text(64).optional() });
 const saveRequest = testRequest.extend({ credentials: z.strictObject({ login: text(256), password: text(4096) }).optional() });
-const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
 
 export interface HubDirectorySettingsControlDeps extends Omit<HubDirectorySaveDeps, "proof"> {
   createDirectory: HubDirectoryProofDeps["createDirectory"];
@@ -34,12 +33,12 @@ export function createHubDirectorySettingsControl(options: HubDirectorySettingsC
     if (!owned() || !m?.current() || m.decision.hubId !== deps.hubId) throw new HubProtocolError("unavailable");
     return m;
   };
-  const context = (input: HubDirectoryProofContext): HubDirectoryProofContext => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal });
+  const context = captureHubDirectoryProofContext;
   const source = (ctx: HubDirectoryProofContext) => {
     if (ctx.signal?.aborted || ctx.current() !== true) throw new HubProtocolError("revoked");
     const m = mounted(), s = m.source();
     parseHubDirectoryDecisionMetadata({ actor: ctx.actor, changes: ["search"], recipients: [{ kind: "host", sink: HUB_DIRECTORY_HOST_NOTICE_SINK }] });
-    if (ctx.actor.kind === "hub-administrator" && !same(ctx.actor.person, s.administrator)) throw new HubProtocolError("denied");
+    assertHubDirectoryActor(ctx, s);
     if (!s.current() || !m.current() || !owned() || ctx.current() !== true) throw new HubProtocolError("revoked");
     return s;
   };

@@ -5,7 +5,7 @@ import { canonicalArguments } from "./identity.js";
 import { resolveDirectoryConfig } from "./directory/config.js";
 import { inspectDirectoryCertificate, fetchDirectoryCa, sameDirectoryFingerprint, type DirectoryCertificateProbe } from "./init/directory-certificate.js";
 import { HubProtocolError, validated } from "./validation.js";
-import type { HubDirectoryProofContext, HubDirectoryProofSource } from "./settings-directory-proof.js";
+import { captureHubDirectoryProofContext, type HubDirectoryProofContext, type HubDirectoryProofSource } from "./settings-directory-proof.js";
 import type { PersonKey } from "./types.js";
 
 const text = (max: number) => z.string().min(1).max(max);
@@ -34,7 +34,7 @@ export function createHubDirectorySettingsCa(options: HubDirectorySettingsCaDeps
   const probes = new Map<string, Probe>();
   let stopped = false, preparing = 0;
   const time = () => { const t = now(); if (!Number.isSafeInteger(t) || t < 0) throw new HubProtocolError("revoked"); return t; };
-  const context = (input: HubDirectoryProofContext) => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal });
+  const context = captureHubDirectoryProofContext;
   const check = (record: Pick<Probe, "actor" | "source" | "createdAt" | "expiresAt">, ctx: HubDirectoryProofContext) => {
     const before = time();
     if (stopped || ctx.signal?.aborted || ctx.current() !== true || actorKey(ctx.actor) !== record.actor || !record.source.current()) throw new HubProtocolError("revoked");
@@ -47,7 +47,8 @@ export function createHubDirectorySettingsCa(options: HubDirectorySettingsCaDeps
   const admitted = async <T>(record: Pick<Probe, "actor" | "source" | "createdAt" | "expiresAt">, ctx: HubDirectoryProofContext, work: () => Promise<T>) => {
     check(record, ctx);
     try {
-      const result = await deps.withDirectoryRead(record.source.administrator, async () => { check(record, ctx); return work(); });
+      const subject = ctx.actor.kind === "hub-administrator" ? ctx.actor.person : record.source.administrator;
+      const result = await deps.withDirectoryRead(subject, async () => { check(record, ctx); return work(); });
       check(record, ctx); return result;
     } catch (error) {
       check(record, ctx);

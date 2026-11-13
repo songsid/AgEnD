@@ -7,7 +7,7 @@ import { HubDirectoryProofError } from "./settings-directory-proof.js";
 import type { HubMountedDirectory } from "./settings-directory-runtime.js";
 import type { HubDirectorySettingsDecision, HubDirectorySettingsOperation } from "./settings-directory-decision.js";
 import type { HubDirectorySettingsWriter } from "./settings-commit.js";
-import type { HubDirectorySettingsProof, HubDirectoryProofContext } from "./settings-directory-proof.js";
+import { captureHubDirectoryProofContext, type HubDirectorySettingsProof, type HubDirectoryProofContext } from "./settings-directory-proof.js";
 import type { HubDirectorySessionRotation } from "./session-directory-transition.js";
 import type { HubDirectoryResponse } from "./directory-response-owner.js";
 
@@ -49,7 +49,7 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
   const fence = () => { stopped = true; deps.proof.close(); void response?.discard().catch(() => {}); };
   async function run(ref: string, raw: Parameters<HubDirectorySettingsProof["apply"]>[1], inputContext: HubDirectoryProofContext,
     delivery?: HubDirectorySaveDelivery): Promise<HubDirectorySaveResult> {
-    const context = { actor: structuredClone(inputContext.actor), current: inputContext.current, signal: inputContext.signal };
+    const context = captureHubDirectoryProofContext(inputContext);
     const input = { confirmation: raw.confirmation, ...(raw.credentials ? { credentials: { ...raw.credentials } } : {}) };
     const capture = delivery?.capture, rotation = delivery?.rotation;
     const old = deps.mounted();

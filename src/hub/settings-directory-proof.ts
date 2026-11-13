@@ -14,6 +14,7 @@ import { MAX_POLICY_DIRECTORY_GROUPS } from "./roles/read.js";
 import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubDirectorySettingsCandidate, HubDirectorySettingsWriter } from "./settings-commit.js";
 import type { HubDirectorySessionRotation } from "./session-directory-transition.js";
+import { assertHubDirectoryActor, type HubDirectoryAdministration } from "./roles/directory-authority.js";
 
 type Actor = HubDirectoryDecisionRequest["actor"];
 export interface HubDirectoryProofContext {
@@ -21,6 +22,12 @@ export interface HubDirectoryProofContext {
   actor: Actor;
   current(): boolean;
   signal?: AbortSignal;
+  /** Ephemeral server proof from this session's hub.admin permit; never parsed from HTTP input. */
+  administration?: HubDirectoryAdministration;
+}
+export function captureHubDirectoryProofContext(input: HubDirectoryProofContext): HubDirectoryProofContext {
+  const actor = parseHubDirectoryDecisionMetadata({ actor: input.actor, changes: ["search"], recipients: [{ kind: "host", sink: "owner" }] }).actor;
+  return { actor, current: input.current, signal: input.signal, ...(input.administration !== undefined ? { administration: input.administration } : {}) };
 }
 export interface HubDirectoryProofSource {
   directory: HubDirectory;
@@ -117,11 +124,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
   const attempts = new Map<string, { at: number; count: number }>();
   let stopped = false, preparing = 0;
   const time = () => { const t = now(); return Number.isSafeInteger(t) && t >= 0 ? t : refuse("expired"); };
-  const context = (input: HubDirectoryProofContext) => {
-    const actor = parseHubDirectoryDecisionMetadata({ actor: input.actor, changes: ["search"], recipients: [{ kind: "host", sink: "owner" }] }).actor;
-    // Capture callback/signal and nested identity before any await; later input replacement cannot retarget a proof.
-    return { actor, current: input.current, signal: input.signal };
-  };
+  const context = captureHubDirectoryProofContext;
   const capture = (): CapturedSource => {
     const s = deps.source(), config = structuredClone(s.config), administrator = validated(person, s.administrator);
     const groups = structuredClone(s.groups);
@@ -135,10 +138,12 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
   const current = (d: Pick<Draft, "source" | "actor" | "createdAt" | "expiresAt">, ctx: ReturnType<typeof context>) => {
     const t = time();
     if (stopped || ctx.signal?.aborted || actorKey(ctx.actor) !== actorKey(d.actor) || !boolean(ctx.current) || !boolean(d.source.current)) refuse("denied");
+    assertHubDirectoryActor(ctx, d.source);
     const s = capture();
     if (!boolean(s.current) || s.directory !== d.source.directory || s.image !== d.source.image || s.epoch !== d.source.epoch
       || !same(s.config, d.source.config) || s.bindPassword !== d.source.bindPassword || !same(s.administrator, d.source.administrator)
       || !same(s.groups, d.source.groups)) refuse("stale");
+    assertHubDirectoryActor(ctx, s);
     // The authority/material callbacks may move the clock too. Last sample follows ALL of them.
     const final = time();
     if (t < d.createdAt || t >= d.expiresAt || final < d.createdAt || final >= d.expiresAt) refuse("expired");
@@ -146,7 +151,8 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
   const admitted = async <T>(d: Draft, ctx: ReturnType<typeof context>, work: () => Promise<T>): Promise<T> => {
     current(d, ctx);
     try {
-      const result = await deps.withDirectoryRead(d.source.administrator, async () => { current(d, ctx); return work(); });
+      const subject = ctx.actor.kind === "hub-administrator" ? ctx.actor.person : d.source.administrator;
+      const result = await deps.withDirectoryRead(subject, async () => { current(d, ctx); return work(); });
       current(d, ctx); return result;
     } catch (error) { current(d, ctx); if (error instanceof HubDirectoryProofError) throw error; refuse("unavailable"); }
   };
@@ -160,10 +166,13 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       directory = deps.createDirectory(structuredClone(d.candidate.directory), { bindPassword: d.candidate.bindPassword! },
         d.trustRequired ? { expectedServerFingerprint: d.leaf } : {});
       if (directory.realm !== d.source.administrator.realm) refuse("denied");
+      const people = [d.source.administrator, ...(ctx.actor.kind === "hub-administrator" && !same(ctx.actor.person, d.source.administrator) ? [ctx.actor.person] : [])];
       const checkAdmin = async () => {
-        const answer = await directory!.checkEligibility(Object.freeze({ ...d.source.administrator })); current(d, ctx);
-        if (!answer.eligible) refuse(answer.reason === "unavailable" ? "unavailable" : "denied");
-        if (!same(answer.person.key, d.source.administrator)) refuse("denied");
+        for (const subject of people) {
+          const answer = await directory!.checkEligibility(Object.freeze({ ...subject })); current(d, ctx);
+          if (!answer.eligible) refuse(answer.reason === "unavailable" ? "unavailable" : "denied");
+          if (!same(answer.person.key, subject)) refuse("denied");
+        }
       };
       await checkAdmin(); current(d, ctx);
       for (const group of d.source.groups) {
@@ -176,16 +185,17 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
     current(d, ctx);
   });
   const authenticate = async (d: Draft, ctx: ReturnType<typeof context>, credentials?: { login: string; password: string }) => {
-    if (ctx.actor.kind === "host-owner") { if (credentials !== undefined) refuse("invalid"); return d.createdAt; }
-    const key = actorKey(ctx.actor), stored = recent.get(key);
-    const attested = stored?.image === d.source.image && stored.epoch === d.source.epoch ? stored.at : deps.recentAuthentication?.(ctx.actor);
+    const actor = ctx.actor;
+    if (actor.kind === "host-owner") { if (credentials !== undefined) refuse("invalid"); return d.createdAt; }
+    const key = actorKey(actor), stored = recent.get(key);
+    const attested = stored?.image === d.source.image && stored.epoch === d.source.epoch ? stored.at : deps.recentAuthentication?.(actor);
     current(d, ctx);
     const t = time();
     if (credentials === undefined && attested !== undefined && attested !== null && Number.isSafeInteger(attested) && attested >= 0 && attested <= t && t - attested < TTL) {
       await admitted(d, ctx, async () => {
-        const answer = await d.source.directory.checkEligibility(Object.freeze({ ...d.source.administrator })); current(d, ctx);
+        const answer = await d.source.directory.checkEligibility(Object.freeze({ ...actor.person })); current(d, ctx);
         if (!answer.eligible) refuse(answer.reason === "unavailable" ? "unavailable" : "denied");
-        if (!same(answer.person.key, d.source.administrator)) refuse("denied");
+        if (!same(answer.person.key, actor.person)) refuse("denied");
       });
       return attested;
     }
@@ -206,7 +216,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
         // Personal password has exactly ONE destination: the already mounted, trusted OLD directory.
         const answer = await d.source.directory.signIn(credentials.login.trim(), credentials.password); current(d, ctx);
         if (!answer.ok) refuse(answer.reason === "unavailable" ? "unavailable" : "denied");
-        if (!same(answer.person.key, d.source.administrator)) refuse("denied");
+        if (!same(answer.person.key, actor.person)) refuse("denied");
       });
     } catch (error) { failure = error instanceof HubDirectoryProofError && error.code === "denied"; throw error; }
     finally { if (!failure && attempts.get(key) === window && --window.count === 0) attempts.delete(key); }
@@ -221,7 +231,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       if (Object.keys(copy).some(key => !["directory", "bindPassword", "changes", "recipients"].includes(key))) refuse("invalid");
       const metadata = parseHubDirectoryDecisionMetadata({ actor: ctx.actor, changes: copy.changes, recipients: copy.recipients });
       const resolved = resolveDirectoryConfig(copy.directory);
-      if (ctx.actor.kind === "hub-administrator" && !same(ctx.actor.person, source.administrator)) refuse("denied");
+      assertHubDirectoryActor(ctx, source);
       if (resolved.realm !== source.resolved.realm || resolved.profile !== source.resolved.profile
         || copy.directory.bindPasswordRef !== undefined && copy.directory.bindPasswordRef !== BIND_PASSWORD_REF) refuse("invalid");
       if (copy.bindPassword === undefined) {
