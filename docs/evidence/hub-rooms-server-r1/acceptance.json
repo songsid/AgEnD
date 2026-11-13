@@ -1,5 +1,5 @@
 {
-  "sourceHead": "b2228a95583fa883b81d54c0e445315a0df74a71",
+  "sourceHead": "222928ba350252b95760e1feac18be279a096f98",
   "base": "95393951296dcdaecc1c300a89eb7da701b2888f",
   "sourceCommit": "ec45ddfdd",
   "checks": [
@@ -88,6 +88,22 @@
     {
       "name": "review-r1-test-types",
       "exit": 0
+    },
+    {
+      "name": "ci-feature-inventory",
+      "tests": 35,
+      "files": 2,
+      "outcome": "pass",
+      "suites": [
+        "hub-groups-mount-s89",
+        "hub-rooms-r1"
+      ],
+      "precedingFailure": {
+        "run": 43468675166,
+        "job": 132035807036,
+        "failedCases": 3,
+        "cause": "six exact feature expectations omit rooms-v1"
+      }
     }
   ],
   "limits": {
@@ -159,6 +175,10 @@
     {
       "path": "tests/hub-rooms-r1.test.ts",
       "sha256": "b4fe8a021746457df368cf9ca53a5f775c56ba1e4e9a09d39f5a1c130082dbc0"
+    },
+    {
+      "path": "tests/hub-groups-mount-s89.test.ts",
+      "sha256": "b2cf1e1e8ef26b2a4ebddf2793e32193a7af9f46ca454707ed055f9833ceec34"
     }
   ]
 }
