@@ -69,7 +69,10 @@ try {
     await page.goto(`${origin}/ui/hub/exposures?agent=${id}`); await page.locator(".hub-agent-rooms li").waitFor();
     check(tag + " accepted in SQLite", !!r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='agent' AND room_id=? AND subject=? AND owner_at_join=?").get(roomId, id, personKeyString(owner)));
     check(tag + " owner not made room person", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='person' AND room_id=? AND subject=?").get(roomId, personKeyString(owner)));
-    check(tag + " owner cannot read room history", (await r.call(actor, "GET", `/hub/v1/rooms/${roomId}`)).status === 403); await shot("accepted");
+    check(tag + " owner cannot read room history", (await r.call(actor, "GET", `/hub/v1/rooms/${roomId}`)).status === 403);
+    const leaveSizes = await page.locator(".hub-agent-rooms button").evaluateAll((buttons: HTMLElement[]) => buttons.map(b => b.getBoundingClientRect().height));
+    receipt.geometry.push({ tag, leaveButtonHeights: leaveSizes }); await shot("accepted");
+    check(tag + " leave touch target", device !== "phone" || leaveSizes.every((h: number) => h >= 44));
     await page.locator(".hub-agent-rooms button").click(); await page.locator(".hub-agent-rooms").waitFor({ state: "detached" });
     check(tag + " owner leave saved", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='agent' AND room_id=? AND subject=?").get(roomId, id));
     const again = await r.call(admin, "POST", `/hub/v1/rooms/${roomId}/invitations`, { agents: [id] }); check(tag + " manager can invite again", again.status === 200);
