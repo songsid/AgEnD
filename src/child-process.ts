@@ -11,6 +11,7 @@
  */
 import * as cp from "node:child_process";
 import { promisify } from "node:util";
+export type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 type Pipes = { stdin?: unknown; stdout?: unknown; stderr?: unknown; kill?: (signal?: NodeJS.Signals) => boolean;
   emit?: (event: "error", err: Error) => boolean; listenerCount?: (event: "error") => number };
