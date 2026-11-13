@@ -6,16 +6,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { provisionHubIdentity } from "../src/hub/tls.js";
-import { HUB_MEMBER_ADDRESS_MIGRATION, createHubMemberAddressDecision, type HubMemberAddressOperation } from "../src/hub/settings-member-address-decision.js";
+import { HUB_MEMBER_ADDRESS_MIGRATION, HUB_MEMBER_RELOCATION_MIGRATION, createHubMemberAddressDecision, type HubMemberAddressOperation } from "../src/hub/settings-member-address-decision.js";
 import { HUB_COMPANY_JOIN_MIGRATION } from "../src/hub/join/store.js";
 import { HubTransportStore, migrateHubTransportStore } from "../src/hub/store.js";
-import { canonicalArguments, personKeyString } from "../src/hub/identity.js";
+import { canonicalArguments, personKeyString, sha256 } from "../src/hub/identity.js";
 const owned: Array<() => void> = [];
 afterEach(() => { for (const stop of owned.splice(0)) stop(); });
 async function rig() {
   const home = mkdtempSync(join(tmpdir(), "member-address-sql-")), identity = await provisionHubIdentity({ home, memberOrigin: "https://127.0.0.1:18443" });
   const db = new Database(":memory:"); owned.push(() => { db.close(); rmSync(home, { recursive: true, force: true }); });
-  db.exec("CREATE TABLE audit(id TEXT,action TEXT)"); migrateHubTransportStore(db); HUB_COMPANY_JOIN_MIGRATION.up(db); HUB_MEMBER_ADDRESS_MIGRATION.up(db);
+  db.exec("CREATE TABLE audit(id TEXT,action TEXT)"); migrateHubTransportStore(db); HUB_COMPANY_JOIN_MIGRATION.up(db); HUB_MEMBER_ADDRESS_MIGRATION.up(db); HUB_MEMBER_RELOCATION_MIGRATION.up(db);
   let floor = 0;
   const audit = vi.fn((event: { id: string; action: string }, own: Database.Database) => { expect(own).toBe(db); own.prepare("INSERT INTO audit VALUES(?,?)").run(event.id, event.action); });
   const store = new HubTransportStore(db, { floor: { read: () => floor, raise: n => { floor = n; } }, appendAudit: audit }); store.initialize();
@@ -101,5 +101,50 @@ describe("#3429 same-transaction transport address decision", () => {
   });
   it("a lost/partial member component is never recreated", async () => {
     const r = await rig(); r.db.exec("DROP TABLE hub_member_address_targets"); expect(() => HUB_MEMBER_ADDRESS_MIGRATION.up(r.db)).toThrow("recovery");
+  });
+});
+
+describe("#3429 B — members that followed keep their credential (the kept set)", () => {
+  const TO = "https://127.0.0.1:19443", FROM = "https://127.0.0.1:18443";
+  async function relocated(opts: { keptGeneration?: number; keptCredential?: string; statementDigest?: string } = {}) {
+    const r = await rig();
+    const sequence = r.decision.reserveRelocation({ attempt: randomUUID(), from: FROM, to: TO, spki: r.decision.inspect().spkiSha256, at: 2000 });
+    const digest = "e".repeat(64);
+    r.decision.recordRelocationStatements(sequence, [{ fleetId: r.a, digest: opts.statementDigest ?? digest, body: "{}" }]);
+    const op = { ...r.operation(), relocation: { sequence, to: TO,
+      kept: [{ id: r.a, generation: opts.keptGeneration ?? 3, credentialSha: sha256(opts.keptCredential ?? "a".repeat(64)), digest }] } };
+    return { ...r, op, sequence };
+  }
+  it("the acked Fleet stays active with its credential; the others are revoked; notices name only the revoked", async () => {
+    const r = await relocated(), before = r.store.read();
+    r.decision.commit(r.op, () => true);
+    const after = r.store.read();
+    expect(after.fleets.find(f => f.id === r.a)).toEqual(before.fleets.find(f => f.id === r.a));          // untouched
+    expect(after.fleets.find(f => f.id === r.b)).toMatchObject({ status: "revoked", credentialHash: null, generation: 6 });
+    expect(after.revocationVersion).toBe(before.revocationVersion + 1);
+    expect(r.decision.notices({ kind: "person", person: r.alice }, () => true).rows).toEqual([]);          // kept: no notice
+    expect(r.decision.notices({ kind: "person", person: r.bob }, () => true).rows[0]!.fleets).toEqual([{ id: r.b, label: "Bob Fleet" }]);
+    expect(r.decision.notices({ kind: "person", person: r.admin }, () => true).rows[0]!.fleets).toEqual([{ id: r.b, label: "Bob Fleet" }]);
+    expect(r.decision.lookup(r.op.id)).toEqual(r.op);                                                   // the kept set is immutable
+  });
+  it.each([["another generation", { keptGeneration: 4 }], ["another credential", { keptCredential: "z".repeat(64) }]] as const)(
+    "a kept Fleet with %s since it was signed for: stale, nothing written", async (_n, opts) => {
+    const r = await relocated(opts), before = r.store.read();
+    expect(() => r.decision.commit(r.op, () => true)).toThrow(expect.objectContaining({ code: "stale" }));
+    expect(r.store.read()).toEqual(before);
+    expect(r.decision.head()).toEqual({ operationId: null, revision: 0 });
+  });
+  it("a kept Fleet that is not one of this reservation's signed rows: refused, nothing written", async () => {
+    const r = await relocated({ statementDigest: "f".repeat(64) }), before = r.store.read();
+    expect(() => r.decision.commit(r.op, () => true)).toThrow();
+    expect(r.store.read()).toEqual(before);
+  });
+  it("a reservation per attempt: an abort burns its sequence; the head does not move until the decision", async () => {
+    const r = await rig(), spki = r.decision.inspect().spkiSha256;
+    expect(r.decision.reserveRelocation({ attempt: "one", from: FROM, to: TO, spki, at: 1 })).toBe(1);
+    expect(r.decision.head()).toEqual({ operationId: null, revision: 0 });
+    expect(r.decision.reserveRelocation({ attempt: "two", from: FROM, to: "https://127.0.0.1:19555", spki, at: 2 })).toBe(2);   // after an abort
+    expect(() => r.decision.reserveRelocation({ attempt: "two", from: FROM, to: TO, spki, at: 3 })).toThrow();                 // one per attempt
+    expect(() => r.decision.reserveRelocation({ attempt: "three", from: FROM, to: FROM, spki, at: 3 })).toThrow();
   });
 });

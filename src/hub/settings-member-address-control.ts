@@ -7,7 +7,8 @@ import { readHubMemberTls } from "./tls.js";
 import { parseHubMemberAddressCandidate, HubMemberAddressError } from "./settings-member-address-policy.js";
 import { probeHubMemberAddress } from "./settings-member-address-network.js";
 import type { HubSettingsWriter } from "./settings-commit.js";
-import type { HubMemberAddressActor, HubMemberAddressDecision } from "./settings-member-address-decision.js";
+import type { HubMemberAddressActor, HubMemberAddressDecision, HubMemberAddressRelocation } from "./settings-member-address-decision.js";
+import { relocationDigest } from "./member-origin.js";
 import type { HubMemberAddressSummary } from "./settings-member-address.js";
 export interface HubMemberAddressContext {
     actor: HubMemberAddressActor;
@@ -26,6 +27,8 @@ export function createHubMemberAddressControl(deps: {
     running(hub: unknown): boolean;
     settle(): Promise<void>;
     probe?: typeof probeHubMemberAddress;
+    /** #3429 B: the one shared wait for every member's ack (design r4: concurrent, never N × this). */
+    relocationWaitMs?: number;
 }) {
     const prepared = new Map<string, {
         actor: HubMemberAddressActor;
@@ -37,6 +40,33 @@ export function createHubMemberAddressControl(deps: {
         authorityEpoch: number;
         current(): boolean;
     }>();
+    /**
+     * #3429 B (design r4): before the decision, members online with member-relocation-v1 are told where the member address
+     * goes — one reservation (its sequence is every statement's revision; an abort burns it), one issuer-signed statement
+     * per affected Fleet recorded before any is sent, all sent at once under ONE deadline, and only an ack matched to that
+     * exact link, epoch, digest and revision whose link is still current afterwards keeps that Fleet. No mounted relocator
+     * (cold recovery) or nobody affected: nothing to send — every affected Fleet is revoked as in option A.
+     */
+    const relocate = async (attempt: string, from: string, to: string, current: () => boolean): Promise<HubMemberAddressRelocation | undefined> => {
+        const plan = await deps.withDecision(d => {
+            if (!d.relocator) return null;
+            const fleets = d.affected().flatMap(f => { const b = d.fleetBinding(f.id); return b ? [{ id: f.id, ...b }] : []; });
+            return fleets.length ? { relocator: d.relocator, fleets, spki: d.inspect().spkiSha256 } : null;
+        }, current);
+        if (!plan) return undefined;
+        const sequence = await deps.withDecision(d => d.reserveRelocation({ attempt, from, to, spki: plan.spki, at: Date.now() }), current);
+        const signed = plan.fleets.map(f => { const statement = plan.relocator.sign(f.id, { from, to, revision: sequence }); return { ...f, statement, digest: relocationDigest(statement) }; });
+        await deps.withDecision(d => d.recordRelocationStatements(sequence, signed.map(s => ({ fleetId: s.id, digest: s.digest, body: JSON.stringify(s.statement) }))), current);
+        if (!current()) throw new HubMemberAddressError("denied");
+        const deadline = Date.now() + (deps.relocationWaitMs ?? 5_000);
+        const proofs = await Promise.all(signed.map(s => plan.relocator.send(s.id, s.statement, s.digest, deadline).catch(() => null)));
+        const kept = signed.flatMap((s, i) => {
+            const p = proofs[i];
+            return p && p.fleetId === s.id && p.digest === s.digest && p.revision === sequence && plan.relocator.linkCurrent(p)
+                ? [{ id: s.id, generation: s.generation, credentialSha: s.credentialSha, digest: s.digest }] : [];
+        });
+        return { sequence, to, kept };
+    };
     const proof = (ctx: HubMemberAddressContext) => {
         if (ctx.actor.kind !== "host-owner" || ctx.current() !== true)
             throw new HubMemberAddressError("denied");
@@ -103,9 +133,13 @@ export function createHubMemberAddressControl(deps: {
             proof({ ...ctx, current });
             await (deps.probe ?? probeHubMemberAddress)(deps.readConfig(), p.candidate, deps.running(p.hub));
             proof({ ...ctx, current });
+            const relocation = await relocate(input.ref, obj(p.hub).memberOrigin as string, p.candidate.origin, current);
+            // After the shared wait: the host session, the prepared image and the bind probe again (nothing awaited in SQL).
+            proof({ ...ctx, current });
+            if (relocation) { await (deps.probe ?? probeHubMemberAddress)(deps.readConfig(), p.candidate, deps.running(p.hub)); proof({ ...ctx, current }); }
             let result: ReturnType<NonNullable<HubSettingsWriter["memberAddress"]>["commit"]>;
             try {
-                result = await deps.withDecision(() => writer().commit(input.ref, ctx.actor, current), current);
+                result = await deps.withDecision(() => writer().commit(input.ref, ctx.actor, current, relocation), current);
             }
             catch (error) {
                 if (deps.writer.pending())

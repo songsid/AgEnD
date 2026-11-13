@@ -11,7 +11,7 @@ import { hubPlanDigest } from "./init/plan-digest.js";
 
 import { parseHubMemberAddressCandidate, HubMemberAddressError, hubMemberAddressBoundary } from "./settings-member-address-policy.js";
 import { canonicalArguments } from "./identity.js";
-import type { HubMemberAddressActor, HubMemberAddressDecision, HubMemberAddressExpectation, HubMemberAddressOperation } from "./settings-member-address-decision.js";
+import type { HubMemberAddressActor, HubMemberAddressDecision, HubMemberAddressExpectation, HubMemberAddressOperation, HubMemberAddressRelocation } from "./settings-member-address-decision.js";
 const manifest = "hub/init-manifest.json";
 const obj = (x: unknown): Record<string, unknown> => x && typeof x === "object" && !Array.isArray(x) ? x as Record<string, unknown> : {};
 const canonical = (x: unknown): string => Array.isArray(x) ? `[${x.map(canonical).join(",")}]` : x && typeof x === "object"
@@ -41,7 +41,8 @@ export interface HubMemberAddressSettingsWriter {
         expiresAt: number;
         summary: HubMemberAddressSummary;
     };
-    commit(ref: string, actor: HubMemberAddressActor, current: () => boolean): {
+    /** #3429 B: `relocation` names the Fleets that followed (kept); every other affected Fleet is revoked as before. */
+    commit(ref: string, actor: HubMemberAddressActor, current: () => boolean, relocation?: HubMemberAddressRelocation): {
         receiptId: string;
         summary: HubMemberAddressSummary;
     };
@@ -244,7 +245,7 @@ export function createHubMemberAddressSettingsOperation(deps: Deps) {
             refs.set(ref, p);
             return { ref, expiresAt: p.expiresAt, summary: summary(p) };
         },
-        commit(ref, rawActor, current) {
+        commit(ref, rawActor, current, relocation) {
             const p = refs.get(ref);
             refs.delete(ref);
             if (!p)
@@ -274,7 +275,7 @@ export function createHubMemberAddressSettingsOperation(deps: Deps) {
             const receiptText = JSON.stringify(receipt) + "\n", confirmationId = sha(canonical(receipt)).slice(0, 32), planDigest = hubPlanDigest(next), committedAt = receipt.at;
             const manifestText = JSON.stringify({ v: 1, hubId: d.hubId, planDigest, committedAt, confirmationId, signature: sealHubInitialization({ home: deps.home, planDigest, committedAt, confirmationId }) }) + "\n";
             const op: HubMemberAddressOperation = { v: 1, kind: "member-address", id, expected: p.expected, revision: p.expected.revision + 1, before: { configSha: p.old.configSha, manifestSha: p.old.manifestSha, identitySha: p.old.identitySha },
-                after: { configSha: sha(canonical(next)), manifestSha: sha(manifestText), certificateSha: sha(p.input.certificate), identitySha: sha(identityText), memberSha: sha(canonicalArguments(hubMemberAddressBoundary(next))) }, receiptSha: sha(receiptText), actor, at: deps.now(), webOrigin: p.old.hub.webOrigin as string, affected: p.fleets, administrator: p.old.hub.administrator as HubMemberAddressOperation["administrator"] };
+                after: { configSha: sha(canonical(next)), manifestSha: sha(manifestText), certificateSha: sha(p.input.certificate), identitySha: sha(identityText), memberSha: sha(canonicalArguments(hubMemberAddressBoundary(next))) }, receiptSha: sha(receiptText), actor, at: deps.now(), webOrigin: p.old.hub.webOrigin as string, affected: p.fleets, administrator: p.old.hub.administrator as HubMemberAddressOperation["administrator"], ...(relocation ? { relocation } : {}) };
             write(certificateFile, p.input.certificate);
             deps.step("member-certificate");
             const s: Stage = { v: 1, id, operation: op, next, manifest: manifestText, receipt: receiptText, certificateFile, identity: identityText };

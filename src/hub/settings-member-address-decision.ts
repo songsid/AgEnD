@@ -16,12 +16,42 @@ const affected = z.strictObject({ id: uuid, owner: person, generation: epoch, la
 const headSchema = z.strictObject({ revision: epoch, operationId: uuid.nullable() });
 const expectedSchema = headSchema.extend({ transportRevision: epoch, identitySha: hash, certificateSha: hash, keySha: hash, hubId: uuid, spkiSha256: hash, issuerKeyId: hash });
 const image = z.strictObject({ configSha: hash, manifestSha: hash, identitySha: hash });
+/**
+ * #3429 B: the Fleets that followed the relocation (an ack the Hub received, matched to that exact link, epoch, digest and
+ * revision, rechecked after the shared wait) — each with the generation and credential it had when it was signed for.
+ * Immutable: recovery uses this, never a live link map.
+ */
+const keptFleet = z.strictObject({ id: uuid, generation: epoch, credentialSha: hash, digest: hash });
+const relocationSchema = z.strictObject({ sequence: epoch.min(1), to: z.string().url(), kept: z.array(keptFleet).max(256) });
 const operationSchema = z.strictObject({ v: z.literal(1), kind: z.literal("member-address"), id: uuid, revision: epoch,
   expected: expectedSchema, before: image, after: image.extend({ certificateSha: hash, memberSha: hash }), receiptSha: hash,
-  actor, at: epoch, webOrigin: z.string().url(), affected: z.array(affected).max(256), administrator: person });
+  actor, at: epoch, webOrigin: z.string().url(), affected: z.array(affected).max(256), administrator: person,
+  relocation: relocationSchema.optional() });
+export type HubMemberAddressRelocation = z.infer<typeof relocationSchema>;
+/**
+ * #3429 B: what a MOUNTED decision can do on the live member listener (compose/server.ts): sign a relocation for one Fleet
+ * with the issuer key, send it on that Fleet's current link and wait for its matched ack, and recheck that link. A
+ * recovery decision has none: every affected Fleet is then revoked (option A).
+ */
+export interface HubMemberRelocator {
+  sign(fleetId: string, s: { from: string; to: string; revision: number }): import("./types.js").HubRelocation;
+  send(fleetId: string, statement: import("./types.js").HubRelocation, digest: string, deadline: number): Promise<import("./server.js").HubRelocationAck | null>;
+  linkCurrent(proof: import("./server.js").HubRelocationAck): boolean;
+}
 export type HubMemberAddressOperation = z.infer<typeof operationSchema>;
 export type HubMemberAddressExpectation = z.infer<typeof expectedSchema>;
 export type HubMemberAddressFleet = z.infer<typeof affected>;
+/**
+ * #3429 B: the relocation reservations (one per commit attempt; an abort burns its sequence) and the exact statement
+ * signed for each Fleet in it (the signature binds the Fleet, so each row is its own). A component of its own, so an
+ * older build that does not know it refuses the database (the required-component rule).
+ */
+export const HUB_MEMBER_RELOCATION_MIGRATION: HubMigration = Object.freeze({ component: "s5-member-relocation", version: 1, up(db: Database.Database) {
+  db.exec(`CREATE TABLE IF NOT EXISTS hub_member_relocations(sequence INTEGER PRIMARY KEY CHECK(sequence>=1),attempt TEXT UNIQUE NOT NULL,
+      base_revision INTEGER NOT NULL,from_origin TEXT NOT NULL,to_origin TEXT NOT NULL,spki TEXT NOT NULL,at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS hub_member_relocation_statements(sequence INTEGER NOT NULL REFERENCES hub_member_relocations(sequence),
+      fleet_id TEXT NOT NULL,digest TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(sequence,fleet_id));`);
+} });
 const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
 const refuse = (): never => { throw new HubMemberAddressError("recovery"); };
 const TABLES = ["hub_member_address_head", "hub_member_address_operations", "hub_member_address_notices", "hub_member_address_targets"];
@@ -72,6 +102,36 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
   const snapshot = () => expectedSchema.parse(inspect());
   const api = {
     hubId, inspect: snapshot, affected: () => structuredClone(stateFleets()), head: () => { transport.read(); return readHubMemberAddressHead(db); },
+    /** #3429 B: set by the mounted Hub once its member listener exists; null for a recovery decision. */
+    relocator: null as HubMemberRelocator | null,
+    /** #3429 B: the generation and credential binding a Fleet has now (what a kept proof is bound to), or null. */
+    fleetBinding(id: string): { generation: number; credentialSha: string } | null {
+      const f = transport.read().fleets.find(x => x.id === id && x.status === "active" && x.credentialHash !== null);
+      return f ? { generation: f.generation, credentialSha: sha256(f.credentialHash!) } : null;
+    },
+    /**
+     * #3429 B: reserve the next relocation sequence for one commit attempt, in its own IMMEDIATE transaction. It does not
+     * move the member-address head (the running listener is not fenced before the acks are in); an abort burns it.
+     */
+    reserveRelocation(input: { attempt: string; from: string; to: string; spki: string; at: number }): number {
+      if (db.inTransaction || hubOrigin(input.from) !== input.from || hubOrigin(input.to) !== input.to || input.from === input.to) throw new HubMemberAddressError("invalid");
+      return db.transaction(() => {
+        const base = readHubMemberAddressHead(db).revision;
+        const top = (db.prepare("SELECT max(sequence) s FROM hub_member_relocations").get() as { s: number | null }).s ?? 0;
+        if (top >= Number.MAX_SAFE_INTEGER - 1) throw new HubMemberAddressError("busy");
+        db.prepare("INSERT INTO hub_member_relocations VALUES(?,?,?,?,?,?,?)").run(top + 1, input.attempt, base, input.from, input.to, input.spki, input.at);
+        return top + 1;
+      }).immediate();
+    },
+    /** #3429 B: the exact statement signed for each Fleet of a reservation, before any is sent (never re-signed later). */
+    recordRelocationStatements(sequence: number, rows: readonly { fleetId: string; digest: string; body: string }[]): void {
+      if (db.inTransaction) throw new HubMemberAddressError("invalid");
+      db.transaction(() => {
+        if (!db.prepare("SELECT 1 FROM hub_member_relocations WHERE sequence=?").get(sequence)) throw new HubMemberAddressError("stale");
+        const insert = db.prepare("INSERT INTO hub_member_relocation_statements VALUES(?,?,?,?)");
+        for (const r of rows) insert.run(sequence, uuid.parse(r.fleetId), hash.parse(r.digest), r.body);
+      }).immediate();
+    },
     assertMounted(raw: unknown): void {
       const hub = raw as Record<string, unknown>, head = api.head(), m = readHubMemberTls({ home, memberOrigin: hub.memberOrigin as string });
       if (m.identity.hubId !== hubId) refuse();
@@ -100,11 +160,29 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
         if ((db.prepare("SELECT count(*) n FROM hub_member_address_notices").get() as { n: number }).n >= 1024) throw new HubMemberAddressError("busy");
         try { retireCompanyJoinForWebAddress(db, options.now?.() ?? Date.now()); }
         catch (e) { if (e instanceof HubProtocolError && e.code === "backpressure") throw new HubMemberAddressError("busy"); throw e; }
-        const targets = new Set([personKeyString(op.administrator), ...op.affected.map(f => personKeyString(f.owner))]);
+        // #3429 B: the kept Fleets must be from this exact reservation (its base head and target), signed rows included.
+        const kept = new Map((op.relocation?.kept ?? []).map(k => [k.id, k]));
+        if (op.relocation) {
+          const row = db.prepare("SELECT base_revision b,to_origin t FROM hub_member_relocations WHERE sequence=?").get(op.relocation.sequence) as { b: number; t: string } | undefined;
+          if (!row || row.b !== op.expected.revision || row.t !== op.relocation.to) return refuse();
+          for (const k of kept.values()) if (!db.prepare("SELECT 1 FROM hub_member_relocation_statements WHERE sequence=? AND fleet_id=? AND digest=?").get(op.relocation.sequence, k.id, k.digest)) return refuse();
+        }
+        const keeps = (f: { id: string; generation: number; credentialHash: string | null }) => {
+          const k = kept.get(f.id);
+          return !!k && f.credentialHash !== null && k.generation === f.generation && k.credentialSha === sha256(f.credentialHash);
+        };
+        // Every kept Fleet must still have the generation and credential it was signed for; otherwise the whole change is
+        // stale (prepare again) — never a silently different kept set, so "revoked = affected − kept" holds exactly.
+        const live = transport.read().fleets;
+        for (const k of kept.values()) if (!live.some(f => f.id === k.id && f.status === "active" && keeps(f))) throw new HubMemberAddressError("stale");
+        const keptNow = new Set(kept.keys());
+        const revokedOwners = op.affected.filter(f => !keptNow.has(f.id)).map(f => personKeyString(f.owner));
+        const targets = new Set([personKeyString(op.administrator), ...revokedOwners]);
         let expectedState = "";
         transport.mutate({ at: op.at, requestId: op.actor.requestId, actor: { kind: "local-host" }, action: "hub.member-address.changed", result: "completed" }, (s, owning) => {
           if (owning !== db || s.revision !== op.expected.transportRevision || s.revocationVersion === Number.MAX_SAFE_INTEGER) return refuse();
           for (const f of s.fleets) if (f.status === "active" && f.credentialHash !== null) {
+            if (keptNow.has(f.id) && keeps(f)) continue;          // #3429 B: it followed the relocation with this credential
             if (f.generation === Number.MAX_SAFE_INTEGER) return refuse();
             f.credentialHash = null; f.status = "revoked"; f.generation++;
           }
@@ -123,7 +201,9 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
         const m = readHubMemberTls({ home }), h = readHubMemberAddressHead(db), settled = transport.read();
         if (sha256(m.metadataText) !== op.expected.identitySha || sha256(m.certificatePem) !== op.expected.certificateSha || sha256(m.keyPem) !== op.expected.keySha
           || h.operationId !== op.id || h.revision !== op.revision || !same(readOperation(db, op.id), op)
-          || canonicalArguments(settled) !== expectedState || settled.revision !== op.expected.transportRevision + 1 || stateFleets().length !== 0
+          || canonicalArguments(settled) !== expectedState || settled.revision !== op.expected.transportRevision + 1
+          // #3429 B: exactly the kept rows stay active with their credential (the image, not merely a count).
+          || !same(stateFleets().map(f => [f.id, f.generation]).sort(), [...keptNow].map(id => [id, kept.get(id)!.generation]).sort())
           || settled.pairings.some(p => p.state === "offered" || p.state === "pending")
           || (db.prepare("SELECT count(*) n FROM hub_member_address_targets WHERE notice_id=?").get(op.id) as { n: number }).n !== targets.size + 1
           || !db.prepare("SELECT 1 FROM hub_member_address_notices WHERE id=? AND revision=? AND body=?").get(op.id, op.revision, canonicalArguments(op))) return refuse();
@@ -142,7 +222,7 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
       const visible = rows.slice(0, 100).map(row => {
         const op = readOperation(db, row.id), all = recipient.kind === "host" || recipient.kind === "person" && personKeyString(op.administrator) === target;
         return { id: op.id, revision: op.revision, at: op.at, state: row.state, action: "reconnect" as const, webOrigin: op.webOrigin,
-          fleets: op.affected.filter(f => all || personKeyString(f.owner) === target).map(f => ({ id: f.id, ...(f.label === undefined ? {} : { label: f.label }) })) };
+          fleets: op.affected.filter(f => !(op.relocation?.kept ?? []).some(k => k.id === f.id) && (all || personKeyString(f.owner) === target)).map(f => ({ id: f.id, ...(f.label === undefined ? {} : { label: f.label }) })) };
       });
       proof(current); return { rows: visible, before: rows.length > 100 ? visible.at(-1)!.revision : null };
     },
