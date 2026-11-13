@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { probeBackendVersion, versionBelow } from "../backend-availability.js";
 import { randomUUID } from "node:crypto";
 import { EFFORT_CAPABILITIES, readGrokEffortLevels } from "./effort-metadata.js";
 import { flagEffort } from "./launch-effort.js";
@@ -376,6 +378,32 @@ export class GrokBackend implements CliBackend {
   private quietLaunchNotes: string[] = [];
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
 
+  private uuidPreparation = 0;
+  private uuidBinarySignature: string | null = null;
+  private uuidSignature(s: { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number }): string {
+    return `${this.binaryPath}:${s.dev}:${s.ino}:${s.size}:${s.mtimeMs}:${s.ctimeMs}`;
+  }
+  /** #3810/G1: no new flag on an old or unknown CLI. Version reads are disk-first, otherwise netless (#2078). */
+  async prepareLaunch(): Promise<void> {
+    const preparation = ++this.uuidPreparation;
+    this.uuidBinarySignature = null;
+    try {
+      const before = await stat(this.binaryPath);
+      const version = await probeBackendVersion("grok", this.binaryPath);
+      const after = await stat(this.binaryPath);
+      if (preparation === this.uuidPreparation && before.isFile() && after.isFile()
+        && this.uuidSignature(before) === this.uuidSignature(after) && version && /^\d+\.\d+\.\d+$/.test(version)
+        && !versionBelow(version, "1.0.62")) {
+        this.uuidBinarySignature = this.uuidSignature(after);
+      }
+    } catch { /* unknown: keep the previous launch syntax, without a fresh-session receipt lease */ }
+  }
+  private canSelectSessionUuid(): boolean {
+    if (!this.uuidBinarySignature) return false;
+    try { return this.uuidSignature(statSync(this.binaryPath)) === this.uuidBinarySignature; }
+    catch { return false; }
+  }
+
   private deliverySessionId: string | null = null;
   getDeliverySessionId(): string | null { return this.deliverySessionId; }
 
@@ -401,7 +429,7 @@ export class GrokBackend implements CliBackend {
       if (sid) { cmd += ` --resume ${sid}`; this.launchResumes = true; this.deliverySessionId = sid; }
     }
     // #3810: select a UUID before launch; newest-cwd discovery cannot authorize a receipt.
-    if (!this.deliverySessionId) {
+    if (!this.deliverySessionId && this.canSelectSessionUuid()) {
       this.deliverySessionId = randomUUID();
       cmd += ` --session-id ${this.deliverySessionId}`;
     }

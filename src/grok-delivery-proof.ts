@@ -39,7 +39,8 @@ export async function checkpointGrokDelivery(input: {
   let retired = false;
   const current = () => !retired && input.current();
   const retire = () => { retired = true; return null; };
-  const dir = join(input.home ?? homedir(), ".grok", "sessions", encodeURIComponent(input.cwd), sessionId);
+  const grokHome = input.home ? join(input.home, ".grok") : process.env.GROK_HOME || join(homedir(), ".grok");
+  const dir = join(grokHome, "sessions", encodeURIComponent(input.cwd), sessionId);
   const path = join(dir, "updates.jsonl");
   const inspect = async () => {
     const canonical = await realpath(dir), directory = await lstat(dir);
