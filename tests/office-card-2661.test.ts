@@ -103,6 +103,13 @@ describe("the card's content", () => {
   const node = (o: Record<string, unknown> = {}) => ({ name: "quill", state: "working", i: { name: "quill", display_name: "Quill", backend: "claude-code", model: "claude-opus-5-5", ...o } });
   const full = () => lvOf({ enabled: true, unit: 100_000, detail: true, levels: { quill: { level: 50, workTokens: 250_000_000, estimated: false, today: { workTokens: 12_300, requests: 45 }, firstSeen: "2026-01-01" } } });
   const base = { state: "Working", now: "Typing away", where: "Eng · Work" };
+  it("observations appear only on the authenticated card, never the Office share", () => {
+    const model_observation = { active: { original: "claude-opus-5-5", served: "claude-opus-4-8", cause: "safeguards", scope: "session" } };
+    const n = node({ model_observation });
+    expect(C.cardModel({ ...base, node: n, lv: full(), levels: null }).modelSwitch).toBe("Model switched by safeguards: Opus 5.5 → Opus 4.8 · session");
+    expect(C.cardModel({ ...base, node: n, lv: full(), levels: null }).rows.map((r: string[]) => r[0])).toContain("Session model");
+    expect(C.cardModel({ ...base, node: n, lv: full(), levels: null, share: true }).modelSwitch).toBe("");
+  });
   it("the dashboard with the numbers: two XP lines over the bar; model and backend as two rows; today and first seen", () => {
     const m = C.cardModel({ ...base, node: node(), lv: full(), levels: null });
     expect([m.name, m.instance, m.stateLine]).toEqual(["Quill", "quill", "Working · Master"]);

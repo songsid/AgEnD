@@ -1,3 +1,4 @@
+import { parseClaudeModelRecord, type ModelSwitch } from "./claude-model-observation.js";
 /**
  * #1218: an instance's work, step by step, for the web Log tab (紀錄) — the step model and the per-backend parsers.
  * Design: issue #1218 comment 6142912335 and the user's decisions after it; docs/design/1218-live-activity.md.
@@ -10,8 +11,9 @@
  * was cut, so the page can say so. The page renders words from the structured fields (kind, cat, subject), so the
  * labels follow its language.
  *
- * Nothing here reads a file except `readTailRecords` (bounded, async, for an on-demand backfill).
+ * File reads are async: `readTailRecords` for Log/backfill, `readStartupTailRecords` for a bounded metadata look.
  */
+import { open, type FileHandle } from "node:fs/promises";
 import { LINE_MAX_BYTES, LONG_HEAD_BYTES, boundaryBefore, openTranscript, type LongLine } from "./transcript-jsonl.js";
 import { redactSecrets, shellProgramName, type ToolProgressLevel } from "./tool-progress.js";
 
@@ -52,6 +54,8 @@ export interface LogStep {
   note?: string;
   /** AGEND-181: what ties this step to a row of the chat ledger (see StepAnchor). Only user steps and `reply` calls carry one. */
   anchor?: StepAnchor;
+  modelSwitch?: ModelSwitch;
+  servedModel?: string;
 }
 
 /**
@@ -444,6 +448,10 @@ export class ClaudeStepParser extends StepParser {
   protected record(e: Record<string, unknown>): Emission {
     const ts = tsOf(e.timestamp);
     const msg = e.message as Record<string, unknown> | undefined;
+    const modelRecord = parseClaudeModelRecord(e);
+    if (modelRecord?.kind === "switch") return [this.add({ id: `model:${modelRecord.sessionId}:${modelRecord.id}`, kind: "state", ts, note: `Model switched: ${modelRecord.original} → ${modelRecord.served}`,
+      modelSwitch: { id: modelRecord.id, original: modelRecord.original!, served: modelRecord.served,
+        cause: modelRecord.cause!, scope: modelRecord.scope!, since: ts } })];
     if (e.type === "system") {
       if (e.subtype === "turn_duration") {
         const out = this.endOpen("interrupted");
@@ -487,7 +495,7 @@ export class ClaudeStepParser extends StepParser {
     for (const b of Array.isArray(content) ? content : []) {
       const blk = b as Record<string, unknown>;
       if (blk.type === "text" && typeof blk.text === "string" && blk.text.trim()) {
-        const s = this.add({ kind: "assistant", ts }); bodyOf(s, blk.text, TEXT_MAX); out.push(s);
+        const s = this.add({ kind: "assistant", ts, ...(modelRecord?.kind === "served" ? { servedModel: modelRecord.served } : {}) }); bodyOf(s, blk.text, TEXT_MAX); out.push(s);
       } else if (blk.type === "thinking" && this.opts.thinking && typeof blk.thinking === "string" && blk.thinking.trim()) {
         // AGEND-181: the summary Claude Code writes when `showThinkingSummaries` is on (empty otherwise: no step).
         const s = this.add({ kind: "thinking", ts }); bodyOf(s, blk.thinking, TEXT_MAX); out.push(s);
@@ -1031,6 +1039,71 @@ export async function readTailRecords(path: string, opts: { maxBytes?: number; m
   } finally {
     await fh.close();
   }
+}
+
+/** Metadata-only startup look. No forward cursor is exposed when a boundary does not fit the read budget. */
+export async function readStartupTailRecords(path: string, opts: { end: number; maxBytes?: number; maxLines?: number }): Promise<{ records: TailRecord[]; truncated: boolean }> {
+  const maxBytes = Math.max(1, opts.maxBytes ?? BACKFILL_MAX_BYTES);
+  const maxLines = Math.max(1, opts.maxLines ?? 2000);
+  const fh = await open(path, "r");
+  try {
+    // The cursor is applied before any boundary read; all physical reads share the same budget.
+    const size = (await fh.stat()).size;
+    let boundary = Math.max(0, Math.min(opts.end, size)), end = 0, read = 0;
+    while (boundary > 0 && read < maxBytes) {
+      // The usual cursor already ends just after LF; one byte verifies it without rereading its whole chunk.
+      const length = Math.min(read === 0 ? 1 : BACKFILL_CHUNK, boundary, maxBytes - read);
+      const start = boundary - length, buf = Buffer.alloc(length);
+      for (let filled = 0; filled < length;) {
+        const { bytesRead } = await fh.read(buf, filled, length - filled, start + filled);
+        if (bytesRead <= 0) throw new Error(`readStartupTailRecords: no progress reading ${path} at ${start + filled}`);
+        filled += bytesRead; read += bytesRead;
+      }
+      const lf = buf.lastIndexOf(0x0a);
+      if (lf >= 0) { end = start + lf + 1; break; }
+      boundary = start;
+    }
+    if (end === 0) return { records: [], truncated: boundary > 0 };
+    const { records, truncated } = await readTailAtBoundary(path, fh, end, maxBytes - read, maxLines);
+    return { records, truncated };
+  } finally { await fh.close(); }
+}
+
+async function readTailAtBoundary(path: string, fh: FileHandle, end: number, maxBytes: number, maxLines: number) {
+  const out: TailRecord[] = [];
+  const KEEP = LINE_MAX_BYTES + LONG_HEAD_BYTES;
+  let read = 0;
+  let pos = end - 1;                 // the last record's line end (excluded); records lie between line ends
+  let recEnd = end - 1;              // where the record being assembled ends (its line end)
+  let acc: Buffer = Buffer.alloc(0); // its bytes after the current chunk: its first KEEP bytes at most
+  const emit = (bytes: Buffer, total: number, at: number) => { if (total > 0) out.push({ record: toRecord(bytes, total, at), at }); };
+  while (pos > 0 && read < maxBytes && out.length < maxLines) {
+    const length = Math.min(BACKFILL_CHUNK, pos, maxBytes - read);
+    const start = pos - length;
+    const buf = Buffer.alloc(length);
+    for (let filled = 0; filled < length;) {
+      const { bytesRead } = await fh.read(buf, filled, length - filled, start + filled);
+      if (bytesRead <= 0) throw new Error(`readTailRecords: no progress reading ${path} at ${start + filled}`);
+      filled += bytesRead;
+    }
+    read += length;
+    let segEnd = length;
+    for (let i = length - 1; i >= 0 && out.length < maxLines; i--) {
+      if (buf[i] !== 0x0a) continue;
+      const total = recEnd - (start + i + 1);
+      emit(Buffer.concat([buf.subarray(i + 1, segEnd), acc]), total, start + i + 1);
+      acc = Buffer.alloc(0);
+      recEnd = start + i;
+      segEnd = i;
+    }
+    if (out.length >= maxLines) { pos = start + segEnd; break; }
+    acc = Buffer.concat([buf.subarray(0, segEnd), acc]);
+    if (acc.length > KEEP) acc = acc.subarray(0, KEEP);
+    pos = start;
+  }
+  // The first record of the file, when the read reached it.
+  if (pos === 0 && out.length < maxLines) { emit(acc, recEnd, 0); recEnd = 0; }
+  return { records: out.reverse(), truncated: recEnd > 0, end };
 }
 
 function toRecord(piece: Buffer, bytes: number, offset: number): string | LongLine {

@@ -1,0 +1,15 @@
+{
+  "ownedPorts": [
+    {
+      "port": 55876,
+      "connectError": 111
+    },
+    {
+      "port": 55877,
+      "connectError": 111
+    }
+  ],
+  "browser": "fixture close awaited before successful process exit",
+  "scratchHome": "fixture close removed its own temporary home",
+  "noOwnedFutureLauncher": true
+}

@@ -1,0 +1,293 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (15 tests | 13 failed) 1355ms
+     × keeps pending intent  across JSON persistence and replay dedupe 112ms
+     × keeps pending intent claude-sonnet-5-5 across JSON persistence and replay dedupe 6ms
+     × retains an active incident while a concrete command still lacks session confirmation 13ms
+     × conservatively restores missing or invalid intent undefined 3ms
+     × conservatively restores missing or invalid intent {"kind":"concrete","model":"opus"} 7ms
+     × conservatively restores missing or invalid intent {"kind":"unexpected"} 13ms
+     × conservatively restores missing or invalid intent "arbitrary command text" 6ms
+     × legacy v1 intent loss stays unresolved until a new session 6ms
+     × an explicit complete cursor never scans the later 16 MiB unfinished suffix 460ms
+     × a boundary search within a long unfinished record is bounded (cursor=false) 442ms
+     × a boundary search within a long unfinished record is bounded (cursor=true) 256ms
+     × a cursor inside a record emits only earlier complete records, even with short physical reads 7ms
+     × does not emit a partial record when the remaining payload budget is exhausted 4ms
+ ❯ tests/claude-model-switch-daemon.test.ts (7 tests | 3 failed) 164ms
+   × the actual daemon preserves unconfirmed /model opus through disk restore and replay 13ms
+   × the actual daemon preserves unconfirmed /model  through disk restore and replay 5ms
+   × the actual daemon preserves unconfirmed /model claude-sonnet-5-5 through disk restore and replay 5ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 16 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > keeps pending intent  across JSON persistence and replay dedupe
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > keeps pending intent claude-sonnet-5-5 across JSON persistence and replay dedupe
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to deeply equal { configured: 'claude-opus-5-5', …(5) }
+
+- Expected
++ Received
+
+@@ -1,7 +1,14 @@
+  {
+-   "active": null,
++   "active": {
++     "cause": "observed",
++     "id": "session-A:fresh",
++     "original": "claude-opus-5-5",
++     "scope": "unknown",
++     "served": "claude-sonnet-5-5",
++     "since": 3,
++   },
+    "configured": "claude-opus-5-5",
+    "lastServed": "claude-sonnet-5-5",
+    "launch": "claude-opus-5-5",
+    "observedAt": 3,
+    "session": "claude-opus-5-5",
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:40:80
+     38|     expect(restored.observe(intent, configured)).toBe(false); // daemo…
+     39|     for (const o of [original, restored]) o.observe(response("fresh", …
+     40|     expect(original.snapshot().active).toBeNull(); expect(restored.sna…
+       |                                                                                ^
+     41|     if (requested) {
+     42|       restored.observe(response("confirmed", 4), sonnet);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/16]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > retains an active incident while a concrete command still lacks session confirmation
+AssertionError: expected { id: 'session-A:fallback', …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "baseline": true,
+  "cause": "observed",
+  "id": "session-A:fallback",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-opus-4-8",
+  "since": 1,
+}
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:57:92
+     55|     expect(restored.snapshot().active).toMatchObject({ served: "claude…
+     56|     expect(restored.checkpoint().expected).toBe(configured);
+     57|     restored.observe(response("confirmed", 4), sonnet); expect(restore…
+       |                                                                                            ^
+     58|   });
+     59|   it("a checkpoint with no pending intent still detects a fresh differ…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/16]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > conservatively restores missing or invalid intent undefined
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > conservatively restores missing or invalid intent {"kind":"concrete","model":"opus"}
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > conservatively restores missing or invalid intent {"kind":"unexpected"}
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > conservatively restores missing or invalid intent "arbitrary command text"
+AssertionError: expected { id: 'session-A:unconfirmed', …(5) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:unconfirmed",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 2,
+}
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:67:40
+     65|     const original = observer(); original.observe(response("normal", 1…
+     66|     const restored = observer({ ...original.checkpoint(), intent }); r…
+     67|     expect(restored.snapshot().active).toBeNull();
+       |                                        ^
+     68|     restored.ownIntent(sonnet); restored.ownResult(true, sonnet);
+     69|     restored.observe(response("later-difference", 3, "claude-haiku-4-5…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/16]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > legacy v1 intent loss stays unresolved until a new session
+AssertionError: expected { id: 'session-A:same-session', …(5) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:same-session",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 2,
+}
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:76:40
+     74|     const { intent: _intent, ...saved } = original.checkpoint() as any;
+     75|     const restored = observer({ ...saved, v: 1 }); restored.observe(re…
+     76|     expect(restored.snapshot().active).toBeNull();
+       |                                        ^
+     77|     restored.observe({ ...response("new-session", 3), sessionId: "sess…
+     78|     expect(restored.snapshot().active?.cause).toBe("observed");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/16]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > an explicit complete cursor never scans the later 16 MiB unfinished suffix
+AssertionError: expected 16777349 to be less than or equal to 1024
+ ❯ tests/claude-model-checkpoint-tail.test.ts:92:22
+     90|     const tail = await readTailRecords(path, { end, maxBytes: budget }…
+     91|     expect(tail).toMatchObject({ end, truncated: false, records: [{ at…
+     92|     expect(io.bytes).toBeLessThanOrEqual(budget);
+       |                      ^
+     93|     expect(io.ranges.every(([, right]) => right <= end)).toBe(true);
+     94|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/16]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > a boundary search within a long unfinished record is bounded (cursor=false)
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > a boundary search within a long unfinished record is bounded (cursor=true)
+AssertionError: expected 16777241 to be less than or equal to 1024
+ ❯ tests/claude-model-checkpoint-tail.test.ts:98:24
+     96|     const path = join(root, "session.jsonl"); writeFileSync(path, '{"o…
+     97|     return readTailRecords(path, { ...(explicit ? { end: 8 * 1024 * 10…
+     98|       expect(io.bytes).toBeLessThanOrEqual(1024); expect(tail.records)…
+       |                        ^
+     99|       expect(tail.truncated).toBe(true);
+    100|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/16]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > a cursor inside a record emits only earlier complete records, even with short physical reads
+AssertionError: expected { …(3) } to deeply equal { records: [ { …(2) } ], end: 8, …(1) }
+
+- Expected
++ Received
+
+  {
+-   "end": 8,
++   "end": 12,
+    "records": [
+      {
+        "at": 0,
+        "record": "{\"a\":1}",
++     },
++     {
++       "at": 8,
++       "record": "{\"b",
+      },
+    ],
+    "truncated": false,
+  }
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:106:18
+    104|     writeFileSync(path, first + next); io.maxRead = 2;
+    105|     const tail = await readTailRecords(path, { end: first.length + 4, …
+    106|     expect(tail).toEqual({ records: [{ record: first.trimEnd(), at: 0 …
+       |                  ^
+    107|     expect(io.bytes).toBeLessThanOrEqual(128);
+    108|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/16]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > does not emit a partial record when the remaining payload budget is exhausted
+AssertionError: expected 351 to be less than or equal to 32
+ ❯ tests/claude-model-checkpoint-tail.test.ts:112:91
+    110|     const path = join(root, "session.jsonl"); writeFileSync(path, '{"a…
+    111|     const tail = await readTailRecords(path, { maxBytes: 32 });
+    112|     expect(tail.records).toEqual([]); expect(tail.truncated).toBe(true…
+       |                                                                                           ^
+    113|   });
+    114|   it("a non-progressing boundary read throws instead of adopting a gue…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/16]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon preserves unconfirmed /model opus through disk restore and replay
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:response:after-resume:sonnet-5.5",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 1794564404404,
+}
+
+ ❯ tests/claude-model-switch-daemon.test.ts:89:45
+     87|   const monitor = resumed.buildTranscriptMonitor(null); resumed.transc…
+     88|   monitor.processEntry(intent); monitor.processEntry(served("after-res…
+     89|   expect(resumed.modelObservation().active).toBeNull();
+       |                                             ^
+     90|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+     91| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/16]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon preserves unconfirmed /model  through disk restore and replay
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:response:after-resume:sonnet-5.5",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 1794564404416,
+}
+
+ ❯ tests/claude-model-switch-daemon.test.ts:89:45
+     87|   const monitor = resumed.buildTranscriptMonitor(null); resumed.transc…
+     88|   monitor.processEntry(intent); monitor.processEntry(served("after-res…
+     89|   expect(resumed.modelObservation().active).toBeNull();
+       |                                             ^
+     90|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+     91| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/16]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon preserves unconfirmed /model claude-sonnet-5-5 through disk restore and replay
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:response:after-resume:sonnet-5.5",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 1794564404421,
+}
+
+ ❯ tests/claude-model-switch-daemon.test.ts:89:45
+     87|   const monitor = resumed.buildTranscriptMonitor(null); resumed.transc…
+     88|   monitor.processEntry(intent); monitor.processEntry(served("after-res…
+     89|   expect(resumed.modelObservation().active).toBeNull();
+       |                                             ^
+     90|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+     91| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/16]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  16 failed | 6 passed (22)
+   Start at  18:06:32
+   Duration  11.92s (transform 10.53s, setup 962ms, import 12.19s, tests 1.52s, environment 0ms)
+

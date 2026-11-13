@@ -1,3 +1,4 @@
+import { modelSwitchText, modelName, observationLabel } from "/assets/model-observation.js";
 // #1918: Fleet → Org chart as a canvas — the same structure as the list (fleet-org.js: General, the teams fleet.yaml
 // defines, their members, the instances in no team), drawn as cards in team boxes you can pan, zoom and pinch. No
 // library: SVG with attributes and classes (never a style attribute, #1300); the view's transform is an SVG attribute
@@ -117,17 +118,19 @@ function Card({ c, lead, cls, onOpen }) {
   const n = c.node, it = n.i;
   const { primary, sub, full } = nodeText(n);
   const id = it ? identityOf(it) : null;
-  const cy = c.h / 2;
+  const switched = it?.model_observation?.active;
+  const cy = c.h / 2 - (switched ? 8 : 0);
   return html`<g class=${`oc-node st-${n.state}${lead ? " lead" : ""}${cls ? ` ${cls}` : ""} ${identityClasses(id)}`} ref=${(el) => paintIdentity(el, id)}
     transform=${`translate(${c.x} ${c.y})`} data-name=${n.name} data-key=${c.key} tabindex="0" role=${it ? "link" : "img"}
     aria-label=${it ? `${full}. ${tc("openChat")}` : full} onClick=${it ? () => onOpen(n.name) : undefined}>
-    <title>${full}</title>
+    <title>${full}${switched ? ` · ${modelSwitchText(switched)}` : ""}</title>
     <rect class="oc-card" width=${c.w} height=${c.h} rx="10" />
     <rect class="oc-idbar" x="0" y="8" width="4" height=${c.h - 16} rx="2" />
     <${Face} it=${it} name=${n.name} cx=${26} cy=${cy} r=${16} />
     <circle class=${`oc-dot st-${n.state}`} cx=${38} cy=${cy + 12} r=${5} />
     <text class="oc-name" x=${50} y=${cy - 4}>${clip(primary, lead ? 20 : 15)}</text>
     <text class="oc-sub" x=${50} y=${cy + 13}><tspan class=${`oc-st st-${n.state}`}>${clip(sub, lead ? 27 : 20)}</tspan></text>
+    ${switched ? html`<text class="oc-sub" x="8" y=${c.h - 6}><title>${modelSwitchText(switched)}</title>${clip(modelSwitchText(switched), lead ? 34 : 26)}</text>` : null}
   </g>`;
 }
 

@@ -1,6 +1,6 @@
 /**
  * #1699: claude-code credential profiles — a named profile is its own CLAUDE_CONFIG_DIR (login, account, trust,
- * conversations); no profile is exactly today's launch. Every AgEnD reader of the config dir follows the instance's
+ * conversations); no profile keeps the same command after its observation-only launch marker. Every AgEnD reader of the config dir follows the instance's
  * profile, and the API key is injected only by the instance's own dir's login (billing).
  *
  * Scratch AGEND_HOME and HOME (os.homedir() reads HOME), a fake ANTHROPIC_API_KEY of no secret shape, the real
@@ -44,7 +44,15 @@ const profileDir = (p: string) => credentialProfileHome(agendHome, "claude-code"
 const writeJson = (path: string, value: unknown) => { mkdirSync(join(path, ".."), { recursive: true }); writeFileSync(path, JSON.stringify(value)); };
 const OAUTH = { oauthAccount: { accountUuid: "acct-test" } };
 
-describe("#1699 invariant 1: no profile is byte-identical to today", () => {
+// The inherited observation marker is independent of credential selection. Pin it, then compare every legacy byte.
+const credentialCommand = (b: ClaudeCodeBackend, config: any): string => {
+  const command = b.buildCommand(config);
+  const prefix = `AGEND_CLAUDE_LAUNCH_ID=${b.modelObservationLaunch().id} `;
+  expect(command.startsWith(prefix)).toBe(true);
+  return command.slice(prefix.length);
+};
+
+describe("#1699 invariant 1: no profile keeps the existing credential command", () => {
   const TODAY = (i: string) => `CMUX_CLAUDE_HOOKS_DISABLED=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 /usr/bin/claude --settings ${i}/claude-settings.json --mcp-config ${i}/mcp-config.json --dangerously-skip-permissions`;
 
   it("the launch command is today's, whether backend_options is absent, empty or has no profile; nothing is created", () => {
@@ -52,7 +60,7 @@ describe("#1699 invariant 1: no profile is byte-identical to today", () => {
       const b = backend();
       b.writeConfig(cfg(opts));
       b.preTrust(work, cfg(opts));
-      expect(b.buildCommand(cfg(opts)), JSON.stringify(opts)).toBe(TODAY(inst));
+      expect(credentialCommand(b, cfg(opts)), JSON.stringify(opts)).toBe(TODAY(inst));
     }
     expect(existsSync(join(agendHome, "credential-profiles")), "no profile directory").toBe(false);
     // Trust still goes where it always went.
@@ -64,14 +72,14 @@ describe("#1699 invariant 1: no profile is byte-identical to today", () => {
     process.env.CLAUDE_CONFIG_DIR = own;
     const b = backend();
     b.preTrust(work, cfg());
-    expect(b.buildCommand(cfg())).toBe(TODAY(inst));
+    expect(credentialCommand(b, cfg())).toBe(TODAY(inst));
     expect(existsSync(join(own, ".claude.json"))).toBe(true);
     // --continue still judges the fleet's own dir's conversations, as before.
     writeFileSync(join(inst, "session-id"), "x");
     const p = join(own, "projects", claudeProjectKey(work));
     mkdirSync(p, { recursive: true });
     writeFileSync(join(p, "s.jsonl"), `${JSON.stringify({ type: "user", timestamp: new Date().toISOString(), message: { role: "user", content: "hi" } })}\n`);
-    expect(b.buildCommand(cfg())).toBe(`${TODAY(inst)} --continue`);
+    expect(credentialCommand(b, cfg())).toBe(`${TODAY(inst)} --continue`);
   });
 
   it("with the fleet's own CLAUDE_CONFIG_DIR, a profile links back to THAT dir's instructions and skills", () => {
@@ -88,7 +96,7 @@ describe("#1699: a named profile is its own config dir", () => {
     mkdirSync(join(home, ".claude", "skills"), { recursive: true });
     writeFileSync(join(home, ".claude", "CLAUDE.md"), "my instructions");
     mkdirSync(join(home, ".claude", "plugins"), { recursive: true });
-    const cmd = backend().buildCommand(cfg({ credential_profile: "team" }));
+    const cmd = credentialCommand(backend(), cfg({ credential_profile: "team" }));
     const dir = profileDir("team");
     expect(cmd.startsWith(`CMUX_CLAUDE_HOOKS_DISABLED=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 CLAUDE_CONFIG_DIR='${dir}' /usr/bin/claude `)).toBe(true);
     for (const shared of ["CLAUDE.md", "skills", "plugins"]) {

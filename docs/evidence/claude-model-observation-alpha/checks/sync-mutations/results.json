@@ -1,0 +1,35 @@
+[
+  {
+    "name": "S1-incoming-cursor",
+    "file": "src/log-steps.ts",
+    "before": "if (found.at === null) return { records: out, truncated: true, end: from, ...(opts.end === undefined ? { skip: true as const } : {}) };",
+    "after": "if (found.at === null) return { records: out, truncated: true, end: 0 };",
+    "baseDigest": "759868a730e80947b6cb30788a3e2dab87129f3cf991c74701fdf50493168b68",
+    "mutantDigest": "5c48f295c4dfed5c82d846fe34b745494d947c2ba1b00f062cb466a5962875af",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "S2-incoming-skip",
+    "file": "src/log-steps.ts",
+    "before": "if (found.at === null) return { records: out, truncated: true, end: from, ...(opts.end === undefined ? { skip: true as const } : {}) };",
+    "after": "if (found.at === null) return { records: out, truncated: true, end: from };",
+    "baseDigest": "759868a730e80947b6cb30788a3e2dab87129f3cf991c74701fdf50493168b68",
+    "mutantDigest": "c947bd0756d90f965b8e93c2d1c3ee545466a78334f987c1c02950150880690a",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "S3-startup-budget",
+    "file": "src/log-steps.ts",
+    "before": "readTailAtBoundary(path, fh, end, maxBytes - read, maxLines)",
+    "after": "readTailAtBoundary(path, fh, end, maxBytes, maxLines)",
+    "baseDigest": "759868a730e80947b6cb30788a3e2dab87129f3cf991c74701fdf50493168b68",
+    "mutantDigest": "c41d50fb146512fb9062c57db31bd2be3d0f5ce51f7b9423cd3d816db5214529",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  }
+]

@@ -1,3 +1,4 @@
+import { modelSwitchText, modelName, observationLabel } from "/assets/model-observation.js";
 // AGEND-181: one step of an instance's work as a row — shared by the Log tab (panel-log.js) and the chat's activity
 // timeline (chat-activity.js), so a step looks and behaves the same in both: its icon, words, status, and its arguments
 // and output on demand. Masking and cutting are the server's (log-steps.ts); this only shows what it is given.
@@ -301,7 +302,7 @@ export function LogRow({ x, prev, paths, chat, compact, latest }) {
       ${x.screen && open ? html`<div class="log-detail"><div class="log-text mono log-screen">${x.screen}</div></div>` : null}`;
   } else if (x.kind === "user" || x.kind === "assistant") {
     // In the chat's timeline an assistant line is what the agent said on the way (its replies are the bubbles): "Said".
-    row = html`${head(KIND_ICON[x.kind], x.kind === "assistant" && chat ? tl("said") : tl(x.kind))}${text(x.body, x.bodyCut)}`;
+    row = html`${head(KIND_ICON[x.kind], x.kind === "assistant" && chat ? tl("said") : tl(x.kind))}${x.servedModel ? text(`${observationLabel("served")}: ${modelName(x.servedModel)}`) : null}${text(x.body, x.bodyCut)}`;
   } else if (x.kind === "thinking") {
     // AGEND-181: the model's thinking (admin only; the server sends it only then): folded to its start, opened on demand.
     const body = x.body || "";
@@ -316,7 +317,8 @@ export function LogRow({ x, prev, paths, chat, compact, latest }) {
     row = head(KIND_ICON.turn_end, x.durationMs ? tl("turnEndIn", duration(x.durationMs)) : tl("turnEnd"),
       x.status && x.status !== "done" ? html`<span class=${`log-status ${x.status}`}>${tl(x.status)}</span>` : null);
   } else if (x.kind === "state") {
-    row = head(KIND_ICON.state, x.note === "compacted" ? tl("compacted") : x.note || "");
+    row = x.modelSwitch ? html`${head(KIND_ICON.state, observationLabel("title"))}${text(modelSwitchText(x.modelSwitch))}`
+      : head(KIND_ICON.state, x.note === "compacted" ? tl("compacted") : x.note || "");
   } else {
     const cat = x.cat || "other";
     const subject = cat === "plan" && x.subject ? tl("plan_items", x.subject) : short(x.subject || "");

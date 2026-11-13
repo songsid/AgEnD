@@ -1,3 +1,4 @@
+import { modelSwitchText, modelName, observationLabel } from "/assets/model-observation.js";
 // #2661: a person's profile card in the Office (fleet-office.js opens it): a popover beside them, not a modal — the Office
 // keeps running and is not dimmed; on a phone, a bottom sheet swiped down to close. Fixed 320 px wide.
 //
@@ -60,7 +61,7 @@ export function cardModel({ node, lv, levels, share = false, state, now, where }
   const detail = !share && !!e && e.workTokens !== undefined;
   const xp = showLevel && detail ? xpOf(e.level, e.workTokens, lv.unit) : null;
   const rows = [[tc("office"), where]];
-  if (!share && it.model) rows.push([tc("model"), modelText(it)]);
+  if (!share && it.model) rows.push(it.model_observation ? [observationLabel("selection"), modelName(it.model_observation.session) || observationLabel("unresolved")] : [tc("model"), modelText(it)]);
   if (!share && it.backend) rows.push([tc("backend"), backendLabel(it.backend)]);
   if (detail) rows.push([tc("today"), tc("todayN", tokens(e.today.workTokens), e.today.requests)]);
   if (detail && e.firstSeen) rows.push([tc("firstSeen"), tc("day", dayOf(e.firstSeen))]);
@@ -70,7 +71,7 @@ export function cardModel({ node, lv, levels, share = false, state, now, where }
     badge: on && fx && fx.hideLevel ? { mark: true, tier: 0 } : e ? { text: badgeText(e.level), tier: tierOf(e.level) } : null,
     level: showLevel ? { line1: detail ? `${tc("level", e.level)} · ${tc("work", tokens(e.workTokens))}` : tc("level", e.level), estimated: detail && e.estimated,
       line2: xp ? tc("toNext", tokens(xp.toNext), xp.next) : null, pct: xp ? xp.pct : null, next: xp ? xp.next : null } : null,
-    rows, now,
+    rows, now, modelSwitch: !share ? modelSwitchText(it.model_observation?.active) : "",
   };
 }
 
@@ -89,6 +90,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   return html`<div ref=${box} class=${`oo-card${sheet ? " sheet" : ""}`} role="dialog" aria-modal="false" aria-label=${tc("card", m.name)}
       onPointerDown=${down} onPointerUp=${up} onPointerCancel=${() => { swipe.current = null; }}>
     ${sheet ? html`<div class="oo-card-grip" aria-hidden="true"></div>` : null}
+    ${m.modelSwitch ? html`<p class="oo-card-now model-switch" role="status"><strong>${m.modelSwitch}</strong></p>` : null}
     <div class="oo-card-head">
       <div class="oo-card-avatar"><canvas ref=${canvas} width="56" height="56" aria-hidden="true"></canvas>
         ${m.badge ? html`<span class=${`oo-badge tier-${m.badge.tier}${m.badge.mark ? " mark" : ""}`} aria-hidden="true">${m.badge.mark ? "" : m.badge.text}</span>` : null}</div>
