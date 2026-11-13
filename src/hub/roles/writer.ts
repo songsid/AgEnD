@@ -140,7 +140,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
         if (!same(actor.person, root) || bundle.kind !== "known" || !bundle.administrator) throw new Refusal("denied");
         if (logical(plan) !== logical(planRoleChange(before.policy, rootProposal(before.policy), root, now()))) throw new Refusal("invalid");
       } else {
-        if (plan.roles.some(d => d.after?.id.startsWith("root-self:"))) throw new Refusal("invalid");
+        if ([...plan.roles, ...plan.assignments].some(d => d.after?.id.startsWith("root-self:"))) throw new Refusal("invalid");
         const answer = checkRoleChange(plan, bundle); if (answer !== "allow") throw new Refusal(answer);
       }
     };
