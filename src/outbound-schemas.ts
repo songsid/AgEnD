@@ -98,6 +98,10 @@ export const CreateScheduleArgs = z.object({
 });
 
 export const ListSchedulesArgs = z.object({
+  detail: z.boolean().optional().describe("Return the legacy full answer; omit limit/cursor"),
+  limit: z.number().int().min(1).max(100).optional().describe("Page size, default20; maximum100"),
+  cursor: z.string().min(1).max(128).optional().describe("next_cursor from the previous page; keep the same filters"),
+
   target: z.string().optional().describe("Filter by target instance name"),
 });
 
@@ -122,6 +126,10 @@ export const DeleteScheduleArgs = z.object({
 // ── Fleet Task Board ────────────────────────────────────────────────────
 
 export const TaskBoardArgs = z.object({
+  detail: z.boolean().optional().describe("Return the legacy full answer; omit limit/cursor"),
+  limit: z.number().int().min(1).max(100).optional().describe("Page size, default20; maximum100"),
+  cursor: z.string().min(1).max(128).optional().describe("next_cursor from the previous page; keep the same filters"),
+
   action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects"])
     .describe("Operation to perform"),
   title: z.string().optional().describe("Task title (create/update)"),
@@ -181,11 +189,15 @@ export const PostDecisionArgs = z.object({
 });
 
 export const ListDecisionsArgs = z.object({
+  detail: z.boolean().optional().describe("Return the legacy full answer; omit limit/cursor"),
+  limit: z.number().int().min(1).max(100).optional().describe("Page size, default20; maximum100"),
+  cursor: z.string().min(1).max(128).optional().describe("next_cursor from the previous page; keep the same filters"),
+
   include_archived: z.boolean().optional()
     .describe("Include archived/superseded decisions. Default: false"),
   tags: z.array(z.string()).optional().describe("Filter by tags"),
-  id: z.string().optional().describe("One decision's full text, by its id (or a unique prefix of 6+ characters)"),
-  full: z.boolean().optional().describe("Every decision's full text (large: prefer titles, then { id } for the ones you need). Default: false — titles only"),
+  id: z.string().optional().describe("One decision's title (detail:true for its full text), by its id (or a unique prefix of 6+ characters)"),
+  full: z.boolean().optional().describe("Legacy alias for detail:true: every full record, without pagination. Prefer paged titles, then {id,detail:true} for relevant rules"),
 });
 
 export const UpdateDecisionArgs = z.object({
