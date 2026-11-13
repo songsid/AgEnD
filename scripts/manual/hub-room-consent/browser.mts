@@ -29,12 +29,13 @@ let browser: any;
 const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
 const receipt: any = { sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   scope: "Owned HTTPS/SQLite real C consent/R HTTP with the public U owner/sidebar mounts. Fake directory/transport; no real agent, AD or input; no API response fixtures.",
-  checks: [], pictures: [], requests: [], served: {} };
+  checks: [], pictures: [], requests: [], served: {}, geometry: [] };
 const check = (name: string, ok: unknown) => { receipt.checks.push({ name, ok: !!ok }); if (!ok) throw Error(name); };
 try {
   browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
   for (const device of ["desktop", "phone"]) for (const lang of ["en", "zh-TW"]) for (const theme of ["light", "dark"]) {
     const tag = `${device}-${lang}-${theme}`, id = randomUUID(), errors: string[] = [];
+    if (process.env.CASE && process.env.CASE !== tag) continue;
     exposures.push({ id, fleetId, owner, displayName: "Notes", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) });
     await r.http.receive(r.frame("exposure.snapshot", { revision: exposures.length, exposures }, link) as never, link);
     const room = await r.call(admin, "POST", "/hub/v1/rooms", { name: "Project room", people: [personKeyString(reader)] }); check(tag + " room created", room.status === 200);
@@ -59,8 +60,10 @@ try {
     check(tag + " sidebar invitation mount", await page.locator("#sidebar button.hub-invitations-row").count() === 1);
     await open(); await page.locator(".hub-invitation").waitFor();
     check(tag + " participant disclosure", (await page.locator(".hub-invitation").innerText()).includes(lang === "en" ? "2 people" : "2 個人"));
+    await page.waitForFunction(() => !!document.querySelector<HTMLLinkElement>('link[data-hub-rooms-u2-css="1"]')?.sheet);
     const sizes = await page.locator(".hub-invitation button").evaluateAll((buttons: HTMLElement[]) => buttons.map(b => b.getBoundingClientRect().height));
-    check(tag + " touch targets", device !== "phone" || sizes.every((h: number) => h >= 44)); await shot("pending");
+    receipt.geometry.push({ tag, buttonHeights: sizes }); await shot("pending");
+    check(tag + " touch targets", device !== "phone" || sizes.every((h: number) => h >= 44));
     await page.getByRole("button", { name: lang === "en" ? "Agree" : "同意", exact: true }).click();
     await page.locator(".hub-invitation").waitFor({ state: "detached" });
     await page.goto(`${origin}/ui/hub/exposures?agent=${id}`); await page.locator(".hub-agent-rooms li").waitFor();
