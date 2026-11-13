@@ -114,6 +114,8 @@ register("hubRoom", {
     agentNoOneToOne: "No one may ask it one-to-one yet", inRoomsOne: "in 1 room", inRoomsMany: "in {0} rooms",
     // A room's counts, singular and plural (Ridge's routing walk: never "1 people").
     peopleOne: "1 person", peopleMany: "{0} people", agentsOne: "1 agent", agentsMany: "{0} agents",
+    // The @ progress line in parts, a part with 0 left out (Lumen): "Answered 1 · Working 1".
+    progAnswered: "Answered {0}", progWorking: "Working {0}", progLater: "Reply later {0}",
     roomsCanAskIt: "People in its rooms can @ it there. See In these rooms.", invitationsTitle: "Invitations",
   },
   "zh-TW": {
@@ -209,6 +211,7 @@ register("hubRoom", {
     sysAdminJoined: "{0} 以房間管理的身分加入", composerAssistant: "問 Hub 助理", composerDirect: "問 {0}",
     agentNoOneToOne: "還沒有人可以一對一提問", inRoomsOne: "在 1 個房間裡", inRoomsMany: "在 {0} 個房間裡",
     peopleOne: "1 人", peopleMany: "{0} 人", agentsOne: "1 個 Agent", agentsMany: "{0} 個 Agent",
+    progAnswered: "已回答 {0}", progWorking: "處理中 {0}", progLater: "稍後回覆 {0}",
     roomsCanAskIt: "房間裡的人可以在房間裡 @ 它，見「在這些房間裡」。", invitationsTitle: "邀請",
   },
 });
