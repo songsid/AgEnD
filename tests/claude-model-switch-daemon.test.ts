@@ -91,3 +91,45 @@ it("a legacy quiet daemon incident recovers on fresh original metadata while inf
   expect(resumed.modelObservation().active).toBeNull();
   expect(JSON.parse(readFileSync(path, "utf8")).intent).toEqual({ kind: "unresolved" });
 });
+
+it("distinct same-model responses preserve human cadence and an outstanding write stamp (#3074)", () => {
+  const { d, m } = rig(); const model = "claude-opus-5-5";
+  m.emit("model_context", "session-A", model); d.installCompactInboundInstructions();
+  const hints: number[] = [], stamps: any[] = [];
+  for (let n = 1; n <= 12; n++) {
+    const stamp = d.humanReminders.prepare(String(n)); stamps.push(stamp);
+    if (stamp.replyHint) hints.push(n); d.humanReminders.settle(stamp, true);
+    m.emit("model_observation", { kind: "served", id: `response:${n}`, sessionId: "session-A", at: n, served: model }, model);
+  }
+  expect(hints).toEqual([1, 11]);
+  expect(stamps.every(stamp => d.humanReminders.current(stamp))).toBe(true);
+});
+it("genuine model and compact boundaries reset reminders, while repeated metadata does not (#3074)", () => {
+  const { d, m } = rig(); const model = "claude-opus-5-5";
+  m.emit("model_context", "session-A", model); d.installCompactInboundInstructions();
+  const old = d.humanReminders.prepare("old"); d.humanReminders.settle(old, true);
+  const record = { kind: "switch", id: "notice:changed", sessionId: "session-A", at: 1,
+    original: model, served: "claude-haiku-4-5", cause: "availability", scope: "session" };
+  m.emit("model_observation", record, model);
+  expect(d.humanReminders.current(old)).toBe(false);
+  const next = d.humanReminders.prepare("new"); expect(next.replyHint).toBe(true); d.humanReminders.settle(next, true);
+  m.emit("model_observation", record, model);
+  expect(d.humanReminders.current(next)).toBe(true); expect(d.humanReminders.prepare("later").replyHint).toBe(false);
+  m.emit("context_reset"); expect(d.humanReminders.prepare("compact").replyHint).toBe(true);
+});
+it("owned session replacement resets human reminders but an unchanged context does not (#3074)", () => {
+  const { d, m } = rig(); const model = "claude-opus-5-5";
+  m.emit("model_context", "session-A", model); d.installCompactInboundInstructions();
+  const old = d.humanReminders.prepare("old"); d.humanReminders.settle(old, true);
+  m.emit("model_context", "session-A", model); expect(d.humanReminders.current(old)).toBe(true);
+  m.emit("model_context", "session-B", model);
+  expect(d.humanReminders.current(old)).toBe(false); expect(d.humanReminders.prepare("new").replyHint).toBe(true);
+});
+it("an owned selected-model change invalidates the human stamp even before another served response (#3074)", () => {
+  const { d, m } = rig(); const model = "claude-opus-5-5";
+  m.emit("model_context", "session-A", model);
+  m.emit("model_observation", { kind: "served", id: "response:old", sessionId: "session-A", at: 1, served: model }, model);
+  d.installCompactInboundInstructions(); const old = d.humanReminders.prepare("old"); d.humanReminders.settle(old, true);
+  m.emit("model_context", "session-A", "claude-sonnet-5-5");
+  expect(d.humanReminders.current(old)).toBe(false); expect(d.humanReminders.prepare("next").replyHint).toBe(true);
+});

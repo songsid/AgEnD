@@ -1,4 +1,4 @@
-import { ClaudeModelObserver, type ModelObservation } from "./claude-model-observation.js";
+import { ClaudeModelObserver, normalizeClaudeModel, type ModelObservation } from "./claude-model-observation.js";
 import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import type { SubagentSource } from "./subagent-service.js";
 import { codexMetadataHomes } from "./backend/codex-metadata.js";
@@ -6659,18 +6659,32 @@ export class Daemon extends EventEmitter {
     this.claudeModelObserver = modelObserver;
     this.modelObservationBound = false;
     const owner = launchIdentity(this.interactionOwner());
+    let reminderSession = modelObserver?.checkpoint().sessionId ?? null;
+    const observeReminderBoundary = (sessionId: string, before: ModelObservation, after: ModelObservation) => {
+      const selected = (s: ModelObservation) => normalizeClaudeModel(s.session ?? s.launch);
+      const served = (s: ModelObservation) => normalizeClaudeModel(s.active?.served ?? s.lastServed ?? s.session ?? s.launch);
+      const moved = (a: string | null, b: string | null) => a !== null && b !== null && a !== b;
+      const changed = reminderSession !== null && reminderSession !== sessionId
+        || moved(selected(before), selected(after)) || moved(served(before), served(after));
+      reminderSession = sessionId;
+      if (changed) this.resetInboundPresentation();
+    };
     monitor.on("model_context", (sessionId, sessionModel) => {
       if (!modelObserver || this.transcriptMonitor !== monitor || owner !== launchIdentity(this.interactionOwner())) return;
+      const before = modelObserver.snapshot();
       modelObserver.bindSession(sessionId, sessionModel); this.modelObservationBound = true;
+      observeReminderBoundary(sessionId, before, modelObserver.snapshot());
     });
     monitor.on("model_observation", (record, sessionModel) => {
       if (!modelObserver || this.transcriptMonitor !== monitor || owner !== launchIdentity(this.interactionOwner())) return;
+      const before = modelObserver.snapshot();
       const changed = modelObserver.observe(record, sessionModel); this.modelObservationBound = true;
+      observeReminderBoundary(record.sessionId, before, modelObserver.snapshot());
       try {
         const path = join(this.instanceDir, "claude-model-observation.json"), temp = `${path}.tmp`;
         writeFileSync(temp, JSON.stringify(modelObserver.checkpoint()), { mode: 0o600 }); renameSync(temp, path);
       } catch { /* Observation remains visible in memory. */ }
-      if (changed) { this.resetInboundPresentation(); this.emit("model_observation"); }
+      if (changed) this.emit("model_observation");
     });
     this.transcriptTurns.reset();
     this.transcriptActivityAt = 0;

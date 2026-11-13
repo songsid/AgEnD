@@ -78,3 +78,19 @@ An uncertain compatibility write stays legacy. Header text grants no authority;
 lookup ACL, original content/hash, authority actor, proof and explicit forwarding
 are unchanged. Rollback is a scoped revert with legacy support retained; there is
 no receipt schema/authority migration.
+
+## Model-observer correction
+
+Ridge found that an ordinary distinct same-model response reports a new observer
+snapshot, which must not reset human context. Added actual daemon-listener +
+observer/reminder cases first: two semantic failures (cadence1..12 instead of1/11,
+and missing session replacement), plus a real model/compact positive control.
+The correction compares normalized selected/served models and owned session
+identity; snapshot notifications remain unchanged. Final listener file11/11;
+prior two-file listener/receipt slice69/69 preceded its last additive selected-model
+case. Restoring reset-on-every-response fails the cadence/stamp case, and disabling
+genuine-boundary reset fails the positive controls; exact source restored.
+
+Fixed grammar instructions and legacy-transition notices add context overhead.
+The header-byte estimate excludes that fixed overhead and is not a net fleet
+token/billing measurement.
