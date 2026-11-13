@@ -62,7 +62,7 @@ describe("Remove: every refusal deletes nothing", () => {
     for (const name of ["", "../spare", "a/b", ".hidden", "CON", "nul.txt", "spare.", "x".repeat(65), 7]) {
       expect(remove(data, { name, confirm: name }), String(name)).toEqual({ ok: false, error: "name" });
     }
-    for (const backend of ["antigravity", "grok", "muse", "claude", ""]) expect(remove(data, { backend })).toEqual({ ok: false, error: "backend" });
+    for (const backend of ["grok", "muse", "opencode", "claude", ""]) expect(remove(data, { backend })).toEqual({ ok: false, error: "backend" });
   });
   it("a profile that does not exist: refused", () => {
     const { data } = withProfile();

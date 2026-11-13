@@ -65,7 +65,8 @@ describe("native Windows CLI discovery", () => {
     });
     expect(result.clis.find(row => row.id === "codex")).toMatchObject({ authenticated: false, runnable: false });
     expect(result.clis.find(row => row.id === "claude-code")).toMatchObject({ authenticated: null, runnable: true, readOnlySupport: true });
-    expect(result.clis.find(row => row.id === "antigravity")).toMatchObject({ authenticated: null, runnable: true, readOnlySupport: false, models: [{ id: "gemini-3.1-pro-high", name: "Gemini 3.1 Pro (High)" }] });
+    // Antigravity has no status command, so none is run; its signed-in state is read from the model listing it is asked for anyway (AGEND-113).
+    expect(result.clis.find(row => row.id === "antigravity")).toMatchObject({ authenticated: true, runnable: true, readOnlySupport: false, models: [{ id: "gemini-3.1-pro-high", name: "Gemini 3.1 Pro (High)" }] });
     expect(calls.filter(call => call.startsWith("antigravity:")).sort()).toEqual(["antigravity:--help", "antigravity:--version", "antigravity:models"].sort());
   });
 

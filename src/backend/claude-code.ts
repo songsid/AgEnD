@@ -5,7 +5,7 @@ import { flagEffort } from "./launch-effort.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { credentialHomeSpec, credentialProfileHome, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
 import { t } from "../locale.js";
@@ -1532,6 +1532,10 @@ export class ClaudePaneDetectors {
 
 export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend {
   private binaryPath: string;
+  private observationLaunchId = randomUUID();
+  private observationStartedAt = Date.now();
+  private observationModel: string | undefined;
+  modelObservationLaunch() { return { id: this.observationLaunchId, startedAt: this.observationStartedAt, model: this.observationModel }; }
 
   constructor(private instanceDir: string) {
     super();
@@ -1545,11 +1549,12 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
 
   buildCommand(config: CliBackendConfig): string {
+    this.observationModel = config.model;
     const settingsPath = join(this.instanceDir, "claude-settings.json");
     const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
-    const envPrefix = ["CMUX_CLAUDE_HOOKS_DISABLED=1", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"];
+    const envPrefix = [`AGEND_CLAUDE_LAUNCH_ID=${this.observationLaunchId}`, "CMUX_CLAUDE_HOOKS_DISABLED=1", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"];
     // #1699: a named credential profile is its own config dir — its login, account, trust and conversations. No profile:
-    // nothing added, nothing created (the command is exactly what it was).
+    // no credential additions or directories; the common observation marker above is independent of profile selection.
     const profileDir = claudeProfileConfigDir(config.backendOptions);
     if (profileDir) {
       prepareCredentialProfileHome(credentialHomeSpec("claude-code")!, profileDir);
@@ -1627,6 +1632,8 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
   }
 
   writeConfig(config: CliBackendConfig): void {
+    this.observationLaunchId = randomUUID();
+    this.observationStartedAt = Date.now();
     // 1. Write mcp-config.json to instance dir (loaded via --mcp-config)
     const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
     const mcpConfig = { mcpServers: config.mcpServers };
@@ -1881,7 +1888,7 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
       "const fs = require('fs');",
       "let input = '';",
       "process.stdin.on('data', d => input += d);",
-      `process.stdin.on('end', () => { fs.writeFileSync(${JSON.stringify(statusFile)}, input); console.log('ok'); });`,
+      `process.stdin.on('end', () => { try { const data = JSON.parse(input); data._agendLaunchId = process.env.AGEND_CLAUDE_LAUNCH_ID || null; fs.writeFileSync(${JSON.stringify(statusFile)}, JSON.stringify(data)); } catch {} console.log('ok'); });`,
     ].join("\n");
     const scriptPath = join(this.instanceDir, "statusline.js");
     writeFileSync(scriptPath, script, { mode: 0o755 });

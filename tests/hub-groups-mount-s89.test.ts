@@ -164,20 +164,20 @@ describe("the group routes on the real Hub HTTP", () => {
     apply: { ok: false, code: "stale-preview" }, resume: { ok: true, state: "active" } }; };
   const POLICY = { realm: "example", generation: "g", revision: 1, state: "enabled", groups: [], denies: [] };
 
-  it("without the control: no session mark, and every group route is 404", async () => {
+  it("without the control: no group-policy mark, and every group route is 404", async () => {
     const a = await rigOff.signIn("admin");
-    expect(a.body.features).toBeUndefined();
-    expect((await rigOff.call(a, "GET", "/hub/v1/session")).json.features).toBeUndefined();
+    expect(a.body.features).toEqual(["sharing-pause-v1"]);
+    expect((await rigOff.call(a, "GET", "/hub/v1/session")).json.features).toEqual(["sharing-pause-v1"]);
     for (const [m, p] of [["GET", "/hub/v1/admin/group-policy"], ["GET", "/hub/v1/me/welcome"], ["POST", "/hub/v1/admin/group-policy/preview"]] as const)
       expect((await rigOff.call(a, m, p, m === "POST" ? { policy: POLICY } : undefined)).status, p).toBe(404);
   });
   it("the Hub HTTP reports group permissions only when composed with them (what marks the host fleet's Settings row)", () => {
-    expect(rigOff.http.features).toEqual([]);
-    expect(rig.http.features).toEqual(["group-policy-v1"]);
+    expect(rigOff.http.features).toEqual(["sharing-pause-v1"]);
+    expect(rig.http.features).toEqual(["sharing-pause-v1", "group-policy-v1"]);
   });
   it("with it: the mark on both the sign-in answer and the session read", async () => {
-    expect(admin.body.features).toEqual(["group-policy-v1"]);
-    expect((await rig.call(bo, "GET", "/hub/v1/session")).json.features).toEqual(["group-policy-v1"]);
+    expect(admin.body.features).toEqual(["sharing-pause-v1", "group-policy-v1"]);
+    expect((await rig.call(bo, "GET", "/hub/v1/session")).json.features).toEqual(["sharing-pause-v1", "group-policy-v1"]);
   });
   it("admin authority is the session's own (the control calls requireAdmin): the admin reads, a member is refused, signed out is 401", async () => {
     reset();

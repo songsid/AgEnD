@@ -26,7 +26,7 @@ describe("agend-runtime remote-setup", () => {
     const f = setup();
     await f.run(["remote-setup", "accounts", "on"]);
     expect(readRemoteSwitches(f.runtimeHome)).toEqual({ accounts: { on: true }, install: { on: false } });
-    expect(f.text()).toMatch(/accounts: on\n.*add, sign in, sign out and remove Claude accounts that this Runtime creates.*anyone who can sign in to this Windows user can use it.*own Claude sign-in is not touched/s);
+    expect(f.text()).toMatch(/accounts: on\n.*add, sign in, sign out and remove Claude and Antigravity accounts that this Runtime creates.*anyone who can sign in to this Windows user can use it.*own Claude sign-in is not touched/s);
     await f.run(["remote-setup", "install", "on"]); await f.run(["remote-setup", "accounts", "off"]);
     expect(readRemoteSwitches(f.runtimeHome)).toEqual({ accounts: { on: false }, install: { on: true } });
   });

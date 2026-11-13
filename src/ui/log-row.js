@@ -1,3 +1,4 @@
+import { modelSwitchText, modelName, observationLabel } from "/assets/model-observation.js";
 // AGEND-181: one step of an instance's work as a row — shared by the Log tab (panel-log.js) and the chat's activity
 // timeline (chat-activity.js), so a step looks and behaves the same in both: its icon, words, status, and its arguments
 // and output on demand. Masking and cutting are the server's (log-steps.ts); this only shows what it is given.
@@ -157,9 +158,16 @@ export function mergeSteps(list, incoming, older = false) {
       // category and start time stay; the outcome is the newer read's.
       // Prism #3709 R5: a read that saw only a call's result has no turn evidence (`turn: ""`) — it never erases the turn the
       // call already gave (a fresh parser per cursor range), so a poll-by-poll Log groups exactly as a cold read does.
-      if (!older) next[i] = s.kind === "tool" && !s.tool && next[i].tool
-        ? { ...next[i], ...s, tool: next[i].tool, cat: next[i].cat, ts: next[i].ts, ...kept(s.turn, next[i].turn) }
-        : { ...next[i], ...s, ...kept(s.turn, next[i].turn) };
+      // A result with no call (`tool: ""`) is not proof of anything about a step the page already holds as finished: codex runs a
+      // tool through an `exec` script call, and the item that did the work takes the call's step over (done / failed, with its
+      // own output); the script's own, later output — read by a poll that cannot see the call — is not the action's outcome.
+      // It completes a call still running, and never rewrites an outcome (a failed command stays failed, with its body).
+      const orphan = s.kind === "tool" && !s.tool && next[i].tool;
+      if (!older) next[i] = orphan && (next[i].status === "done" || next[i].status === "failed")
+        ? { ...next[i], ...kept(s.turn, next[i].turn) }
+        : orphan
+          ? { ...next[i], ...s, tool: next[i].tool, cat: next[i].cat, ts: next[i].ts, ...kept(s.turn, next[i].turn) }
+          : { ...next[i], ...s, ...kept(s.turn, next[i].turn) };
       else if (next[i].kind === "tool" && !next[i].tool && s.tool) {
         const { tool, cat, subject, input, ts } = s;
         next[i] = { ...next[i], tool, cat, ...(subject !== undefined ? { subject } : {}), ...(input !== undefined ? { input } : {}), ...(ts ? { ts } : {}), ...kept(next[i].turn, s.turn) };
@@ -294,7 +302,7 @@ export function LogRow({ x, prev, paths, chat, compact, latest }) {
       ${x.screen && open ? html`<div class="log-detail"><div class="log-text mono log-screen">${x.screen}</div></div>` : null}`;
   } else if (x.kind === "user" || x.kind === "assistant") {
     // In the chat's timeline an assistant line is what the agent said on the way (its replies are the bubbles): "Said".
-    row = html`${head(KIND_ICON[x.kind], x.kind === "assistant" && chat ? tl("said") : tl(x.kind))}${text(x.body, x.bodyCut)}`;
+    row = html`${head(KIND_ICON[x.kind], x.kind === "assistant" && chat ? tl("said") : tl(x.kind))}${x.servedModel ? text(`${observationLabel("served")}: ${modelName(x.servedModel)}`) : null}${text(x.body, x.bodyCut)}`;
   } else if (x.kind === "thinking") {
     // AGEND-181: the model's thinking (admin only; the server sends it only then): folded to its start, opened on demand.
     const body = x.body || "";
@@ -309,7 +317,8 @@ export function LogRow({ x, prev, paths, chat, compact, latest }) {
     row = head(KIND_ICON.turn_end, x.durationMs ? tl("turnEndIn", duration(x.durationMs)) : tl("turnEnd"),
       x.status && x.status !== "done" ? html`<span class=${`log-status ${x.status}`}>${tl(x.status)}</span>` : null);
   } else if (x.kind === "state") {
-    row = head(KIND_ICON.state, x.note === "compacted" ? tl("compacted") : x.note || "");
+    row = x.modelSwitch ? html`${head(KIND_ICON.state, observationLabel("title"))}${text(modelSwitchText(x.modelSwitch))}`
+      : head(KIND_ICON.state, x.note === "compacted" ? tl("compacted") : x.note || "");
   } else {
     const cat = x.cat || "other";
     const subject = cat === "plan" && x.subject ? tl("plan_items", x.subject) : short(x.subject || "");

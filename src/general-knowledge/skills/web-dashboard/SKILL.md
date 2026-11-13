@@ -184,8 +184,10 @@ them: "N running", "N finished", "Main Agent task: …" (up to 16 recent).
 line above where its reply will come (the current step · N tools · elapsed; grok says **Reasoning…**, **Running a
 tool…** and so on); opened, the steps, newest in bold; once it replied, one line **Tool history · used N tools** above
 the reply. **⋯ → Show activity** turns it on or off for you; **Show thinking** is off by default. It follows the agent's
-**Tool progress** (Off shows no block). An agent whose steps aren't readable here, such as Codex, gets only the line
-"This agent's steps are not shown in the chat; this line only says it is working."
+**Tool progress** (Off shows no block). An agent whose steps aren't readable here (muse, opencode, kiro) gets only the line
+"This agent's steps are not shown in the chat; this line only says it is working." Codex has the block: its steps come from its
+rollout file, one step per action; its own reasoning is encrypted and never shown, so **Show thinking** has something only when the
+model wrote a summary.
 
 **Files & changes (#3153, #3160, alpha).** An agent's **⋯ → Files & changes** opens the folder it works in, read-only
 (secret-looking files such as `.env` and keys are hidden): tabs **Changes** and **Files**, **Refresh**. **Follow
@@ -241,13 +243,19 @@ Alpha (#3637, #3689, #3702, #3707). On a computer whose window is at least 1200 
   other agent's box. From the image editor, **Quote to *B*** puts the PNG there too.
 - A narrower window shows one pane with a tab per agent; phones keep the single chat. Guests have no split chat.
 
+## Claude model switch observations
+
+The instance card and Details → Runtime show a localized original → fallback line with turn/session scope. Details keeps the configured model, current session selection and last served model separate. The Log has a typed switch step, and assistant steps can show their served model. These are metadata observations, not final-answer or policy guarantees.
+
+Needs you gets one item per new confirmed main-thread switch. Repeated blocks and resumed history do not announce it again; a fresh response returning to the configured/original model removes it. AgEnD does not switch models, restart the agent or change safeguards automatically. Intentional `/model` and next-spawn failover are separate; unresolved default/plan aliases are not guessed. No prompt, answer or refusal explanation is copied into the observation.
+
 ## Needs you
 
 `/ui/needs`, the sidebar row **Needs you** with a count, the phone tab of the same name, and "(N)" in the browser
 tab title. Items, grouped by instance, oldest first:
 - the CLI waiting: "Permission needed", "Dangerous command waiting", "Waiting to connect its AI account", "Waiting at a dialog", "May be
   waiting for input", "Waiting at its terminal", "Not responding", "Exited";
-- the instance: "Paused: AI account not connected", "Crashed";
+- the instance: "Paused: AI account not connected", "Crashed", and a confirmed Claude model switch (safeguards, availability, or a different served model with cause unknown);
 - deliveries from the last 24 h: "Could not confirm delivery", "Delivery failed" (source → target · kind).
 
 "Asking you a question" is a kiro V3 question card, posted to the instance's chat with a button per answer and a box
@@ -560,7 +568,7 @@ from the tab itself needs a fleet admin's confirmation). Read from each CLI's ow
 stopped), Codex while it runs, Antigravity and Grok from the records they keep for the agent's working directory (a
 stopped agent's last work too, where it is still there; a ClassicBot room on them has no working directory of its own,
 so nothing to read). kiro shows fleet events only; other backends, or an agent whose transcript can't be found, say there
-is no readable transcript. (Codex's steps are in the Log, though not in the chat's activity block.) Secrets are masked.
+is no readable transcript. (Codex's steps are in the chat's activity block too.) Secrets are masked.
 A dialog or prompt the agent stopped at is a row with its text folded: **Show what was on screen** / **Hide what was on
 screen** (「顯示當時的畫面」, #2966).
 
@@ -612,8 +620,8 @@ host command where the dashboard cannot), the web
 temporary public link** where allowed), titled **Connect an AI account: <CLI · account>**, then the provider's link and **authorization code** (授權碼) to finish on the
 provider's official website, or **Open the authorization terminal** + its one-time access code (this browser only, no DM). While it runs every admin page shows
 "Connecting your X account (started on <device>)" with **Open**; another browser sees no code and may **Cancel connecting**. Ends
-when the browser session ends. A missing CLI is not installed here (the dialog says the install command). agy and
-opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`). Default Kiro, Claude Code and Codex
+when the browser session ends. A missing CLI is not installed here (the dialog says the install command). opencode:
+no dashboard sign-in. Config: `web_terminal.*` (as `/login`). Default Kiro, Claude Code and Codex
 accounts sign in with named browser controls instead (#2599): Kiro's account method, Start URL and region and Claude's
 code are entered in the browser, Codex shows its link and device code. A **named** Claude Code account signs in the same
 way as its default one (alpha); named Codex and Kiro accounts keep the dialog above (the terminal stays the fallback). A
@@ -627,6 +635,39 @@ when it must be connected again. A CLI that is not installed has **Install** (it
 an installed one older than the version AgEnD has checked has **Update to *version*** where the CLI can be updated
 from here (#3521; Antigravity: **Update to latest (not audited by AgEnD)**; Muse updates itself and only shows the
 installed and checked versions). A paired Windows computer's Claude Code accounts are listed under **On *computer***.
+
+**Antigravity (agy) in Accounts (#3771; AGEND-224)** — agy **can** be connected from the dashboard now (it could not
+before), from Settings → Agents → AI accounts and API keys → Accounts, local admin sessions only. What the Antigravity
+card offers, and what it means:
+- **Connect / Reconnect** on the **Default connection** and on each named account: the dashboard runs `agy acp --login`
+  in its own login window (never in an agent's pane; needs agy 1.5.0 or newer, otherwise the card keeps the command to
+  run on the host with a note to update), shows Google's link and takes the **authorization code** you paste back. It
+  counts as connected only when the command ended with exit 0 **and** `agy models` works; a failed or cancelled run is
+  never "connected" because an older login is still there. Only a Google-account (subscription) connection.
+- **Default connection vs named account.** The **default connection** is the computer's own agy login (on the AgEnD
+  host: the login agy keeps for that user; on a paired Windows computer: **one per Windows user**, kept in the Credential
+  Manager, shared by every folder). A **named account** (**+ Add account**) has its own folder and is told to use it
+  (`agy --app_data_dir <folder>`, pinned so agy keeps that account's login in that folder's token file and not in the
+  shared store). Before connecting a named account AgEnD asks agy about an empty scratch folder and refuses
+  (`not_isolated`, nothing starts) unless it says "not connected"; afterwards the folder must hold a token file **written
+  by that attempt** (an old file left there proves nothing). An agent can run on a named account (Account field in its
+  dialog); an agent that names no account may inherit a named default set for the whole Fleet, so it is not necessarily the computer's own default login.
+- **Disconnect** removes a named account's token file (or, on Windows, the default's Credential Manager entry) and then
+  asks `agy models`. It reports **signed out only when agy said so** ("Please sign in"); offline, a timeout or any other
+  failure is reported as **unverified / refused**, never as signed out. **Remove** deletes a named account's folder.
+- **Windows (paired computer).** The same accounts, **Connect** and **Disconnect**, behind the owner's local `accounts`
+  switch; account folders live under the Runtime's own `credential-profiles`, and a Runtime must be updated with the server
+  (it reports `signin-antigravity` / `accounts-antigravity`). Connecting the default login **replaces** it, so the page
+  asks first. The default's **Disconnect** is refused while a task or terminal is using that login and holds it against new
+  ones until the check is done. A named account's folder must be on the same drive as the CLI's home. A computer's row
+  shows no usage.
+- **Keep connection alive** (per account, **off** until a person turns it on): runs `agy models` about once an hour when
+  the token is about to lapse, never while an agent uses it; the setting says so, and it is the user's consent to that
+  background activity — never turn it on for someone.
+- **Limits today.** `/login agy` in chat is still **not** supported (it is declined; only the dashboard connects agy), and
+  chat `/login <backend> <profile>` does not cover agy accounts. The first-install page is unchanged. The first start of
+  an agent on a brand-new named account has not been verified with a real account yet. Usage is read from agy's own token
+  file (every quota pool with every window); an individual quota cap is shown on the account whose agent hit it.
 
 **Agents** — **New agent** (alpha: with an **Account** field); per agent **Settings**, **Pause / Wake**, **Start / Stop** (direct), ⋯ **Delete agent**
 (staged; "Delete agent "*name*" and its chat topic (on Discord, its channel and history)?" — on Apply the agent is stopped
@@ -735,6 +776,9 @@ installing, installed and restarting, starting ("Closing this page does not affe
 (**the update source could not be reached** / **no permission to install** / **did not finish**), whether anything changed
 ("AgEnD is still v*X*; nothing was changed."), with **Try again** and **See the full log** (**Update log**). After it:
 **AgEnD is updated to v*X*** · **Reload this tab to use the new version.** · **Reload**.
+A tab left open across an update may also show, where a page or a part of it would have loaded, **This tab is older
+than AgEnD now.** (這個分頁比 AgEnD 舊。) with **Reload this tab**: what it loads now no longer fits what it loaded before
+the update. Reloading fixes it; nothing saved is lost.
 It stays on the install's line: an alpha install updates to the newest alpha, a stable one to stable. Going from alpha
 back to stable is `agend rollback <version>` on the host, never offered here ("Updating from the web stays on the
 Alpha preview line"). Guests and agents can't update.

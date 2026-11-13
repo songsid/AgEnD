@@ -188,6 +188,7 @@ export interface OutboundContext {
   backendModelVerdict?(instanceName: string, backend: string, model: string, opts?: { provider: string | null }): { ok: true } | { ok: false; choices: string[] };
   /** #1808: `/effort`'s levels on a backend this instance may move to, for the model that will run there; empty: none. */
   backendEffortLevels?(instanceName: string, backend: string, model: string | null): string[];
+  modelObservationForInstance?(name: string): import("./claude-model-observation.js").ModelObservation | null;
   resolveInstanceModel?(name: string): {
     model: string;
     source: "instance" | "fleet-default" | "classic" | "cli-default" | "unresolved";
@@ -931,11 +932,16 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
   const v = validateArgs(DescribeInstanceArgs, rawArgs, "describe_instance");
   if (!v.ok) { respond(null, v.error); return; }
   const targetName = v.data.name;
+  const observation = ctx.modelObservationForInstance?.(targetName);
+  const modelObservation = v.data.detail === true ? { model_observation: observation ?? null }
+    : observation?.active ? { model_switch: { original: observation.active.original, served: observation.active.served,
+      cause: observation.active.cause, scope: observation.active.scope } } : {};
   const config = ctx.fleetConfig?.instances[targetName];
   if (config) {
     const model = ctx.resolveInstanceModel?.(targetName);
     respond({
       name: targetName,
+      ...modelObservation,
       type: "instance",
       kind: "fleet-topic",
       display_name: config.display_name ?? null,
@@ -964,6 +970,7 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
       const model = ctx.resolveInstanceModel?.(targetName);
       respond({
         name: targetName,
+        ...modelObservation,
         type: "instance",
         kind: "classic",
         description: `ClassicBot channel`,

@@ -4,13 +4,13 @@
  *   the fleet default, AND only on disk — each with who uses it, its identity and weekly usage; every row `host`
  *   scope; a CLI without profiles has only its default. A CLI that is not installed is listed with its install (AGEND-133, #3521): see the last tests.
  * - profilesOnDisk: real directories with valid names only (a symlink or a bad name is ignored); none for other CLIs.
- * - weeklyUsage: the percent metric closest to a week, never a per-model quota.
+ * - the usage a row carries: every pool and every window the account reports (accountUsage; tests/accounts-usage-windows-3212.test.ts).
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildAccountsView, profilesOnDisk, weeklyUsage, type AccountsInput } from "../src/accounts-view.js";
+import { buildAccountsView, profilesOnDisk, type AccountsInput } from "../src/accounts-view.js";
 
 const base: AccountsInput = {
   targets: [
@@ -27,7 +27,7 @@ const base: AccountsInput = {
   ],
   classic: [{ key: "room1", backend: "claude-code", profile: "work" }],
   fleetDefaults: new Map(),
-  usage: new Map([["claude-code\0work", { percent: 82, resetsAt: "2026-11-09T12:00:00Z", windowMs: 7 * 86400000 }]]),
+  usage: new Map([["claude-code\0work", { groups: [{ windows: [{ kind: "weekly" as const, percent: 82, resetsAt: "2026-11-09T12:00:00Z", windowMs: 7 * 86400000 }] }] }]]),
 };
 
 describe("buildAccountsView", () => {
@@ -39,7 +39,7 @@ describe("buildAccountsView", () => {
       [null, "usable", ["rev"], [], true], ["personal", "not_signed_in", [], [], false], ["work", "usable", ["dev"], ["room1"], false]]);
     expect(claude.rows.every((r) => r.scope.kind === "host")).toBe(true);
     expect(claude.rows[2]!.identity).toEqual({ maskedEmail: "cd***@corp.example", plan: "team" });
-    expect(claude.rows[2]!.usage).toEqual({ percent: 82, resetsAt: "2026-11-09T12:00:00Z", windowMs: 7 * 86400000 });
+    expect(claude.rows[2]!.usageGroups).toEqual([{ windows: [{ kind: "weekly", percent: 82, resetsAt: "2026-11-09T12:00:00Z", windowMs: 7 * 86400000 }] }]);
     expect(claude.agents).toEqual([{ name: "dev", profile: "work" }, { name: "rev", profile: null }]);
     const codex = v.clis[1]!;
     expect(codex.rows.map((r) => [r.profile, r.signIn, r.hostCommand ?? null])).toEqual([[null, true, null], ["team2", false, "CODEX_HOME=… codex login"]]);
@@ -100,15 +100,5 @@ describe("profilesOnDisk", () => {
     const linkedRoot = join(dir, "credential-profiles", "kiro-cli");
     symlinkSync(join(dir, "elsewhere"), linkedRoot);
     expect(profilesOnDisk(dir, "kiro-cli"), "a symlinked root is not followed").toEqual([]);
-  });
-});
-
-describe("weeklyUsage", () => {
-  it("the percent metric closest to a week (≥ 2 days), never a per-model quota; stale is said", () => {
-    const m = (windowMs: number, used: number, extra = {}) => ({ type: "percent", used, windowMs, resetsAt: `r${windowMs}`, ...extra });
-    expect(weeklyUsage({ metrics: [m(5 * 3600000, 90), m(7 * 86400000, 41.6), m(30 * 86400000, 10)] })).toEqual({ percent: 42, windowMs: 7 * 86400000, resetsAt: `r${7 * 86400000}` });
-    expect(weeklyUsage({ metrics: [m(7 * 86400000, 99, { scope: "model" }), m(5 * 3600000, 90)] })).toBeUndefined();
-    expect(weeklyUsage({ metrics: [m(7 * 86400000, 10)], stale: true })?.stale).toBe(true);
-    expect(weeklyUsage(undefined)).toBeUndefined();
   });
 });

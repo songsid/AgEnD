@@ -34,7 +34,7 @@ describe("a persistent terminal launch that names a credential profile", () => {
     const ok = launch({ credentialProfile: "work" });
     expect(validateRuntimePaneLaunch(ok).credentialProfile).toBe("work");
     for (const bad of ["C:\\Users\\me\\.claude", "../x", "a/b", "", "con", "work."]) expect(() => validateRuntimePaneLaunch({ ...ok, credentialProfile: bad }), bad).toThrow(/Credential profile names/);
-    expect(() => validateRuntimePaneLaunch({ ...ok, cli: "codex" })).toThrow(/Claude Code only/);
+    expect(() => validateRuntimePaneLaunch({ ...ok, cli: "codex" })).toThrow(/Claude Code and Antigravity only/);
     expect(() => validateRuntimePaneLaunch({ ...ok, credentialHome: "C:\\x" } as never)).toThrow(/fields/);
     expect(() => validateRuntimePaneRequest({ action: "open", operationId: randomUUID(), launch: { ...ok, env: { CLAUDE_CONFIG_DIR: "C:\\x" } } })).toThrow(/fields/);
   });

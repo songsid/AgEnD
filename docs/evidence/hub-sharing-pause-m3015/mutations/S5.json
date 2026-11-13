@@ -1,0 +1,13 @@
+{
+  "id": "S5",
+  "path": "src/hub/catalog.ts",
+  "test": "tests/hub-sharing-pause-m3015.test.ts",
+  "selector": "retains an owner pause",
+  "caught": true,
+  "nativeCompilerExit": 0,
+  "typeLogDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "exit": 1,
+  "sourceDigest": "ec21f0408cc3d7e14f537dd383e0d678338f875b0ecf53c3c7be00e7758ed308",
+  "logDigest": "4ca6ad7fc3f4808dc36e88d3cf91950a37e3dc089ba562d0ba0a1e5ac955c2cd",
+  "restored": true
+}

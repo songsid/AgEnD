@@ -1,3 +1,4 @@
+import { modelSwitchText } from "./model-observation.js";
 // #1386 §6.3 (#1408 step 4): browser notifications for "Needs you", per device and opt-in, desktop browsers only.
 //
 // The list itself is the app store's `needs` (SSE `needs` / the /ui/poll field — no read of its own, #1374). This
@@ -60,6 +61,7 @@ export async function setNotify(on, env = globalThis) {
 }
 
 export const configDetail = (item) => {
+  if (item.modelSwitch) return modelSwitchText(item.modelSwitch);
   const issue = item.configIssue;
   return issue ? t(`app.config_history_${issue.mode === "fallback" ? "fallback" : issue.time ? "edit" : "no_history"}`, issue.file, issue.line, issue.column, issue.reason, issue.time || "") : item.detail;
 };
@@ -89,6 +91,7 @@ export function startNeedsNotifier({ open, env = globalThis } = {}) {
     const listed = new Set(items.map((i) => i.id));
     for (const [id, h] of timers) if (!listed.has(id)) { clearTimeout(h); timers.delete(id); }
     for (const item of items) {
+      if (item.quiet) { seen.add(item.id); continue; }
       if (seen.has(item.id) || timers.has(item.id)) continue;
       if (!hidden()) { seen.add(item.id); continue; }
       const wait = item.type === "awaiting_input" ? TERMINAL_WAIT_MS - (now() - item.since) : 0;

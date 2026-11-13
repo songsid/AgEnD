@@ -101,7 +101,8 @@ export async function s3bRig(opts: { directory?: HubDirectory; now?: () => numbe
     fenceFleet: () => {}, now: opts.now });
   const config = Object.freeze({ hubId, name: "Team Hub", memberOrigin: "https://127.0.0.1:9", webOrigin, administrator: admin });
   const httpDeps: Parameters<typeof createHubHttp>[0] = { uow, audit, directory, pairing, store, config, issuer, content, ...(attachments ? { attachments } : {}), ...(opts.preview ? { preview: opts.preview } : {}), ...(opts.groupHttp ? { groupHttp: opts.groupHttp } : {}), ...(opts.hubSettings ? { hubSettings: opts.hubSettings } : {}),
-    transport: () => (transportOn && enabled ? transport : null), current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), now: opts.now };
+    transport: () => (transportOn && enabled ? transport : null), refreshAuthorization: () => {},
+    current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), now: opts.now };
   let http = createHubHttp(httpDeps, sql);
 
   const server: Server = createServer((req, res) => { if (!http.handle(req, res)) { res.writeHead(404); res.end("fleet-404"); } });

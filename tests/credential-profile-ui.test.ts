@@ -141,6 +141,30 @@ describe("names that are also Object properties", () => {
   });
 });
 
+// AGEND-250 (#3771 review P2-7): the choice is labelled with the computer's identity for the REQUESTED CLI, never with Claude's.
+describe("the computer's own identity on an account choice is the requested CLI's", () => {
+  const CLAUDE_ID = { maskedEmail: "claude.fixture@example.test", plan: "pro" }, AGY_ID = { maskedEmail: "agy.fixture@example.test" };
+  const both = (agy: object) => ({ runtimeInfo: caps(["credential-profiles", "accounts-antigravity"]),
+    inventory: { clis: [{ ...claude, identity: CLAUDE_ID }, { id: "antigravity", runnable: true, authenticated: true, ...agy }],
+      credentialProfiles: { profiles: [{ name: "work", loggedIn: true }], byCli: { antigravity: [{ name: "agy-work", loggedIn: true }] }, default: "" } } });
+  it("both backends on the same machine: each choice carries its own CLI's identity", () => {
+    const m = both({ identity: AGY_ID });
+    expect(accounts.credentialProfileView(m, "antigravity").machineIdentity).toBe("agy.fixture@example.test");
+    expect(accounts.credentialProfileView(m, "claude-code").machineIdentity).toBe("claude.fixture@example.test · Pro");
+    expect(accounts.credentialProfileView(m, "antigravity").profiles.map((row: any) => row.name)).toEqual(["agy-work"]);
+  });
+  it("Antigravity reporting no default identity shows none (it does not borrow Claude's); Claude's is unchanged", () => {
+    const m = both({});
+    expect(accounts.credentialProfileView(m, "antigravity").machineIdentity).toBe("");
+    expect(JSON.stringify(accounts.credentialProfileView(m, "antigravity"))).not.toContain("claude.fixture");
+    expect(accounts.credentialProfileView(m, "claude-code").machineIdentity).toBe("claude.fixture@example.test · Pro");
+  });
+  it("rendered: the Antigravity select's own-connection option has no Claude e-mail in it", async () => {
+    const m = both({}), node: any = accounts.ClaudeAccountSelect({ machine: m, backend: "antigravity", value: "", onChange() {}, id: "agy-account" });
+    expect(JSON.stringify(node)).not.toContain("claude.fixture");
+  });
+});
+
 describe("new remote agent: Claude account", () => {
   const open = async (id: string) => { await p.mount(h(Create, { onClose() {} })); await settle(8); await choose(id); };
   it("offers the computer's accounts for Claude Code, disables a signed-out one and sends only the chosen name", async () => {

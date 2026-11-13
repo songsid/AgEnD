@@ -11,7 +11,7 @@ export const CODEX_SPEC = {
     update: yes({ binary: "codex", command: "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release {version}" }),
     chatLogin: yes({ aliases: [], mode: "device-code" }),
     dashboardSignIn: yes({ named: true }),
-    structuredSignIn: yes({ argv: ["codex", "login", "--device-auth"], rank: 2, named: false }),
+    structuredSignIn: yes({ argv: ["codex", "login", "--device-auth"], rank: 2, ends: "success-line", screen: "login-flow", answer: "code", named: false }),
     firstRunSignIn: yes({ mode: "browser", rank: 2 }),
     authCheck: yes({ argv: ["codex", "login", "status"] }),
     identity: toVerify("Only the sign-in state is read from `codex login status`; whether its output names the account (and could be masked like Claude Code's) has not been checked. Reading the credential file for it is not an option."),
@@ -19,7 +19,7 @@ export const CODEX_SPEC = {
     signOut: yes({ binary: "codex", args: ["logout"] }),
     keepAlive: yes(),
     accountCard: yes({ rank: 1 }),
-    usage: yes({ providerId: "codex", name: "Codex", rank: 1, profileRows: true }),
+    usage: yes({ providerId: "codex", name: "Codex", rank: 1, profileRows: true, hostRows: false, pools: "single", windows: ["session", "weekly", "monthly"] }),
   },
   runtime: {
     provider: yes({
@@ -32,8 +32,9 @@ export const CODEX_SPEC = {
     update: yes({ kind: "pinned" }),
     signIn: notYetBuilt("#3212", "Named accounts on a computer wait for the Codex part of #3212 (its PR 4); only Claude Code is signed in from the dashboard there."),
     namedAccounts: notYetBuilt("#3212", "The Runtime's profile folders are Claude Code's only (CLAUDE_CONFIG_DIR); Codex waits for #3212 PR 4."),
+    signOut: notYetBuilt("#3212", "Named accounts on a computer wait for the Codex part of #3212 (its PR 4); a sign-out from the dashboard needs a profile folder to run in."),
     accountRows: notYetBuilt("#3212", "Accounts shows a computer's Claude Code accounts only; Codex waits for #3212 PR 4."),
-    authStatus: yes({ argv: ["login", "status"] }),
+    authStatus: yes({ argv: ["login", "status"], source: "own-command" }),
     identity: toVerify("The Runtime reports an identity for Claude Code only; whether `codex login status` has an account to mask has not been checked."),
     usage: notYetBuilt("undecided", "A computer reports no usage for any CLI yet."),
   },

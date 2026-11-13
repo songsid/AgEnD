@@ -1,0 +1,8 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+
+ Test Files  2 passed (2)
+      Tests  33 passed (33)
+   Start at  15:05:03
+   Duration  5.20s (transform 3.77s, setup 263ms, import 3.84s, tests 2.31s, environment 0ms)

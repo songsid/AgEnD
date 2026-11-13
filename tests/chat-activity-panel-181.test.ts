@@ -105,8 +105,8 @@ describe("the chat for an admin session", () => {
     expect([...doc.querySelectorAll(".activity-row")].filter((n: any) => !n.hidden)).toHaveLength(0);
     panel.store.applyActivity({ instance: "w", state: "idle" });
   });
-  it("a backend whose steps are not shown (Codex under #3709 R6, muse, opencode, kiro) still has the Working… line while busy — from the busy state, no transcript", async () => {
-    steps(() => ({ enabled: true, instance: "w", backend: "codex", supported: false, reason: "unsupported", level: "standard", thinking: false, steps: [], events: [], ev: 0, before: null, after: null }));
+  it("a backend whose steps are not shown (muse, opencode, kiro) still has the Working… line while busy — from the busy state, no transcript", async () => {
+    steps(() => ({ enabled: true, instance: "w", backend: "opencode", supported: false, reason: "unsupported", level: "standard", thinking: false, steps: [], events: [], ev: 0, before: null, after: null }));
     const doc = await open();
     panel.store.state.msgs.w = ledger.slice(0, 1).map((r) => ({ ...r }));
     panel.store.applyActivity({ instance: "w", state: "idle" });

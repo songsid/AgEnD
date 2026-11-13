@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-ui-m3015.test.ts (8 tests | 1 failed | 7 skipped) 2369ms
+   × a stale-tab question refused by pause does not close the conversation or discard its draft 25ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-ui-m3015.test.ts > a stale-tab question refused by pause does not close the conversation or discard its draft
+AssertionError: expected 'published' to be 'paused' // Object.is equality
+
+Expected: "paused"
+Received: "published"
+
+ ❯ tests/hub-sharing-pause-ui-m3015.test.ts:63:182
+     61|   const c = { read: async () => ({ ok: true, entries: [] }), ask: asyn…
+     62|   const s = chats.createHubChatStore({ id: roomId, exposureState: "pub…
+     63|   try { expect((await s.send("kept by composer")).code).toBe("sharing-…
+       |                                                                                                                                                                                      ^
+     64|   finally { s.stop(); }
+     65| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 skipped (8)
+   Start at  14:19:21
+   Duration  3.93s (transform 3.03s, setup 304ms, import 916ms, tests 2.37s, environment 0ms)
+

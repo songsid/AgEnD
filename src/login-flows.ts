@@ -39,7 +39,8 @@
 import { claudeLoginScreenActive } from "./backend/claude-code.js";
 import { agyLoginScreenActive } from "./backend/antigravity.js";
 import { identityOf, parseClaudeAuthStatus, type AccountIdentity } from "./claude-auth-status.js";
-import { hostFacts, hostIds } from "./cli-registry.js";
+import { hostFacts, hostIds, type HostCliWith } from "./cli-registry.js";
+import { readAntigravityIdentity, readAntigravityIdentityIn } from "./antigravity-identity.js";
 
 export interface AuthCheck {
   /** argv of a cheap, LLM-token-free status probe (5s timeout). */
@@ -54,6 +55,11 @@ export interface AuthCheck {
    * (claude-auth-status.ts), the same one the Windows Runtime and the sign-in list use, so they cannot drift.
    */
   valid?: (output: string) => boolean;
+  /**
+   * Only for `checkAuthSignedOut` (the isolation proof): what the CLI SAYS when it is signed out. A non-zero exit that does not say so (offline, a refused flag, a broken binary) is not
+   * "signed out". Antigravity: `agy models` exits 1 with "Please sign in to view available models".
+   */
+  signedOutPattern?: RegExp;
 }
 
 export interface LoginFlow {
@@ -298,7 +304,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = Object.assign(Object.creat
     remoteLogin: "unsupported",
     backend: "antigravity",
     command: "agy",
-    authCheck: { argv: ["agy", "models"] },
+    authCheck: { argv: ["agy", "models"], signedOutPattern: /\bplease sign in\b/i },
     loginScreenPattern: /You are currently not signed in|not logged into Antigravity|https:\/\/\S*google\.com\/device/i,
     // The screen itself (1.0.10 and 1.3.1): the bare pattern's old wording is only in agy's log file, so a
     // logged-out agy was never reported (CLI audit, 2026-10-07).
@@ -379,25 +385,64 @@ async function runAuthCheckProcess(argv: string[], timeoutMs: number, env?: Reco
  * `env`: a credential profile's variable, so the probe reads that profile's login rather than the default one.
  */
 /**
- * Which account is a backend's sign-in (the default one, or a credential profile's `env`): a masked e-mail and a plan, from the SAME `auth status`
- * answer `authCheck` reads, so no extra login and no network request is made for it. Only Claude Code's answer carries an account; for any other
- * backend nothing is run and nothing is shown. The output is parsed and dropped here: it is never logged or kept, and what is returned is masked.
+ * Which account is a backend's sign-in (the default one, or a credential profile's `env`): the whole e-mail address and a plan, for Claude Code. Nothing is run for a CLI whose spec says it has no
+ * identity. The output is parsed and dropped here: it is never logged or kept, and what is returned is the one address field (and a plan).
+ *
+ * The behaviour that backs each registry `host.identity` (cli-registry.ts), keyed by the CLI id and exhaustive over the CLIs whose spec says "yes": a CLI that gains the capability does
+ * not compile until it has its reader, and tests/cli-registry-completeness.test.ts checks that the reader's `from` is the spec's `source`. `status-command`: parsed from the output of the
+ * SAME status command `authCheck` runs, so no extra login and no network request is made. `token-file`: one field of the CLI's own token file, read locally (antigravity-identity.ts):
+ * nothing is started and nothing leaves this machine, and nothing else of the file is read, kept or logged. What comes back is the whole address; the output (or the file's text) is dropped here.
  */
-const AUTH_IDENTITY = new Map<string, (output: string) => AccountIdentity | undefined>([["claude-code", output => identityOf(parseClaudeAuthStatus(output))]]);
-export function authIdentitySupported(backend: string): boolean { return AUTH_IDENTITY.has(backend); }
-export async function checkAuthIdentity(backend: string, env?: Record<string, string>): Promise<AccountIdentity | undefined> {
-  const parse = AUTH_IDENTITY.get(backend), check = LOGIN_FLOWS[backend]?.authCheck;
-  if (!parse || !check) return undefined;
+type IdentityCli = HostCliWith<"identity">;
+const IDENTITY_READERS: Record<IdentityCli, { from: "status-command"; parse: (output: string) => AccountIdentity | undefined } | { from: "token-file"; read: (env?: Record<string, string>, folder?: string) => AccountIdentity | undefined }> = {
+  "claude-code": { from: "status-command", parse: output => identityOf(parseClaudeAuthStatus(output)) },
+  // `folder`: a named account's own folder (AGEND-119); none: the default sign-in's.
+  "antigravity": { from: "token-file", read: (env, folder) => folder ? readAntigravityIdentityIn(folder) : readAntigravityIdentity({ ...process.env, ...(env ?? {}) }) },
+};
+/** How a CLI's identity is read (null: it has none), for the completeness test. */
+export function identityReaderKind(backend: string): "status-command" | "token-file" | null { return hostFacts(backend, "identity") ? IDENTITY_READERS[backend as IdentityCli]?.from ?? null : null; }
+export function authIdentitySupported(backend: string): boolean { return hostFacts(backend, "identity") !== null && !!IDENTITY_READERS[backend as IdentityCli]; }
+/**
+ * `profile` (AGEND-119): the launch of a NAMED account for a CLI that is told its account by an argument (credentialProfileLaunch): `args` go right after the binary, `folder` is where its sign-in is kept
+ * (read for the identity of a token-file CLI). `env` alone is a variable-based profile's, as before.
+ */
+export interface AuthProfileLaunch { args?: readonly string[]; folder?: string }
+export async function checkAuthIdentity(backend: string, env?: Record<string, string>, profile?: AuthProfileLaunch): Promise<AccountIdentity | undefined> {
+  if (!authIdentitySupported(backend)) return undefined;
+  const reader = IDENTITY_READERS[backend as IdentityCli];
+  if (reader.from === "token-file") { try { return reader.read(env, profile?.folder); } catch { return undefined; } }
+  const check = LOGIN_FLOWS[backend]?.authCheck;
+  if (!check) return undefined;
   const run = authCheckRunnerOverride ?? runAuthCheckProcess;
+  const argv = withProfileArgs(check.argv, profile?.args);
   try {
-    const { code, output } = await (env ? run(check.argv, AUTH_CHECK_TIMEOUT_MS, env) : run(check.argv, AUTH_CHECK_TIMEOUT_MS));
-    return code === 0 && (!check.valid || check.valid(output)) ? parse(output) : undefined;
+    const { code, output } = await (env ? run(argv, AUTH_CHECK_TIMEOUT_MS, env) : run(argv, AUTH_CHECK_TIMEOUT_MS));
+    return code === 0 && (!check.valid || check.valid(output)) ? reader.parse(output) : undefined;
   } catch { return undefined; }
 }
-export async function checkAuthStatus(check: AuthCheck, env?: Record<string, string>): Promise<AuthCheckResult> {
+/** A command with the arguments a named account's launch adds put right after the binary (`agy models` → `agy --app_data_dir <folder> models`). */
+export function withProfileArgs(argv: readonly string[], args: readonly string[] | undefined): string[] {
+  return args?.length ? [argv[0]!, ...args, ...argv.slice(1)] : [...argv];
+}
+/**
+ * The STRICT reading for the isolation proof: "invalid" (signed out) only when the CLI exited non-zero AND said it is signed out (`signedOutPattern`). Any other failure (offline, a flag the
+ * CLI refused, a broken binary, a timeout) is "unknown", never "signed out": an isolation proof that any failure could pass would pass for a CLI that is not running at all.
+ */
+export async function checkAuthSignedOut(check: AuthCheck, env?: Record<string, string>, args?: readonly string[]): Promise<AuthCheckResult> {
   const run = authCheckRunnerOverride ?? runAuthCheckProcess;
+  const argv = withProfileArgs(check.argv, args);
   try {
-    const { code, output } = await (env ? run(check.argv, AUTH_CHECK_TIMEOUT_MS, env) : run(check.argv, AUTH_CHECK_TIMEOUT_MS));
+    const { code, output } = await (env ? run(argv, AUTH_CHECK_TIMEOUT_MS, env) : run(argv, AUTH_CHECK_TIMEOUT_MS));
+    if (code === null) return "unknown";
+    if (code === 0) return "valid";
+    return check.signedOutPattern && check.signedOutPattern.test(output) ? "invalid" : "unknown";
+  } catch { return "unknown"; }
+}
+export async function checkAuthStatus(check: AuthCheck, env?: Record<string, string>, args?: readonly string[]): Promise<AuthCheckResult> {
+  const run = authCheckRunnerOverride ?? runAuthCheckProcess;
+  const argv = withProfileArgs(check.argv, args);
+  try {
+    const { code, output } = await (env ? run(argv, AUTH_CHECK_TIMEOUT_MS, env) : run(argv, AUTH_CHECK_TIMEOUT_MS));
     if (code === null) return "unknown";
     if (code !== 0) return "invalid";
     if (check.validPattern && !check.validPattern.test(output)) return "invalid";

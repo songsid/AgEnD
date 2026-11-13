@@ -48,6 +48,8 @@ describe("titles by default; the full text when asked", () => {
     const { db, a, b } = store();
     const r = decisionListAnswer(db.listDecisions(WD)) as any;
     expect(r.hint).toBe(DECISION_TITLES_HINT);
+    expect(r.hint).toContain("next_cursor");
+    expect(r.hint).toContain("{ id, detail: true }");
     expect(r.decisions.map((d: any) => d.title).sort()).toEqual(["Review flow v3", "Use pnpm"]);
     const row = r.decisions.find((d: any) => d.id === a.id);
     expect(row).toEqual({ id: a.id, title: "Review flow v3", scope: "fleet", date: a.updated_at.slice(0, 10), tags: ["review"] });
@@ -57,8 +59,8 @@ describe("titles by default; the full text when asked", () => {
   it("by id (exact, or a unique prefix of 6+): the whole decision; an unknown or too-short id says so", () => {
     const { db, a, long } = store();
     const all = db.listDecisions(WD);
-    expect((decisionListAnswer(all, { id: a.id }) as any).decision.content).toBe(long);
-    expect((decisionListAnswer(all, { id: a.id.slice(0, 8) }) as any).decision.id).toBe(a.id);
+    expect((decisionListAnswer(all, { id: a.id, detail:true }) as any).decision.content).toBe(long);
+    expect((decisionListAnswer(all, { id:a.id.slice(0,8),detail:true }) as any).decision.id).toBe(a.id);
     expect((decisionListAnswer(all, { id: a.id.slice(0, 3) }) as any).error).toMatch(/^No decision/);
     expect((decisionListAnswer(all, { id: "nope-nope" }) as any).error).toMatch(/^No decision 'nope-nope'/);
   });
@@ -84,7 +86,7 @@ describe("both entry paths answer the same", () => {
     const { db, a } = store();
     const f = fleet(db);
     expect(f.ipc({}).decisions.map((d: any) => d.id)).toContain(a.id);
-    expect(f.ipc({ id: a.id }).decision.id).toBe(a.id);
+    expect(f.ipc({ id: a.id, detail:true }).decision.id).toBe(a.id);
     expect(f.ipc({ full: true }).length).toBe(2);
   });
   it("CLI mode (decision-list / decision-get): the same; decision-list true includes archived (include_archived, as the CLI sends it)", async () => {
@@ -92,7 +94,7 @@ describe("both entry paths answer the same", () => {
     const f = fleet(db);
     expect((await f.http("list", {})).decisions.map((d: any) => d.id)).not.toContain(c.id);
     expect((await f.http("list", { include_archived: true })).decisions.map((d: any) => d.id)).toContain(c.id);
-    expect((await f.http("get", { id: a.id })).decision.id).toBe(a.id);
+    expect((await f.http("get", { id: a.id, detail:true })).decision.id).toBe(a.id);
     expect((await f.http("get", {})).error).toBeDefined();                     // decision-get with no id: not the list
     expect(EARLY_AGENT_OP_TOOLS["decision-get"]).toBe("list_decisions");
   });

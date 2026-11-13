@@ -1,0 +1,73 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-runtime-observation.test.ts (4 tests | 3 failed) 26ms
+   × native metadata uses the pinned session, preserves history baseline and never reads a local statusline 14ms
+   × a valid partial native batch still reports metadata without claiming complete follow progress 4ms
+   × a native gap preserves typed evidence and suppresses inferred switches across missing intent 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-runtime-observation.test.ts > native metadata uses the pinned session, preserves history baseline and never reads a local statusline
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/claude-model-runtime-observation.test.ts:24:50
+     22|  await f.monitor.pollIncrement(); expect(events).toEqual([]);
+     23|  f.add(f.record(), { ...f.record(), sessionId: randomUUID() }, { ...f.…
+     24|  await f.monitor.pollIncrement(); expect(events).toHaveLength(1); expe…
+       |                                                  ^
+     25|  expect(f.source.currentPath()).toBeNull(); expect(await f.source.chec…
+     26| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/claude-model-runtime-observation.test.ts > a valid partial native batch still reports metadata without claiming complete follow progress
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/claude-model-runtime-observation.test.ts:29:148
+     27| it("a valid partial native batch still reports metadata without claimi…
+     28|  const f = rig(); await f.monitor.initialize(); f.partial(); f.add(f.r…
+     29|  f.monitor.on("model_observation", e => events.push(e)); await f.monit…
+       |                                                                                                                                                    ^
+     30| });
+     31| it("pending checkpoint metadata cannot escape after native ownership i…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/claude-model-runtime-observation.test.ts > a native gap preserves typed evidence and suppresses inferred switches across missing intent
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match object { lastServed: 'claude-opus-4-8', …(2) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "active": null,
+-   "lastServed": "claude-opus-4-8",
++   "lastServed": null,
+    "session": null,
+  }
+
+ ❯ tests/claude-model-runtime-observation.test.ts:39:63
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 1 passed (4)
+   Start at  17:21:48
+   Duration  1.14s (transform 665ms, setup 277ms, import 632ms, tests 26ms, environment 0ms)
+

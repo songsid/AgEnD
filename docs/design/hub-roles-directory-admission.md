@@ -59,3 +59,22 @@ There is no migration, policy write or independent floor change. Reverting this
 preparation before role activation restores the previous admission composition;
 do not confuse that with permission to roll back an eventually activated role
 database or its monotonic authorization state.
+
+## Final parent sync after #3802 R2
+
+The plain merge `6cd4e37138d83675110f7f12d2a88aef339936bd` joins cleared
+#3805 `c7551edf9` and merged alpha `71dbc7829`. Six conflicts preserve the
+shared physical admission and narrow management repair reader, incoming parent
+design/tests, and both halves of the held-approval path: pooled owner eligibility,
+then the original session reader when retired, then the mandatory current
+management permit. Incoming sharing-pause proof and raw epoch handling remain.
+All sixteen original product/test added/removed-line sequences exactly match
+their original `bd1e6c5c8` delta against the new alpha base. All 467 incoming-only
+files match alpha byte for byte.
+
+Current verification passes 523 tests across twenty suites, zero skipped, plus
+both native TypeScript 7.0.2 checks. One fresh isolated R2 guard removal compiles
+and fails the intended signed-out assertion while its stale-double control
+passes; exact restoration passes both. The prior eleven mutation claims retain
+their recorded source-preparation scope and are not eleven new sync runs.
+No role activation or additional mounted S-129 acceptance is implied.

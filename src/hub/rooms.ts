@@ -28,6 +28,7 @@ import type { HubGrantSubjectProof } from "./grant-access.js";
 import { POSITIVE, QUESTION_LIFETIME_MS, TERMINAL, messageFacts, readMessage, type HubPolicyService, type MessageRow } from "./policy.js";
 import { personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
 import { RoomReadPacer, ROOM_READ_BURST } from "./room-read-pacer.js";
+import { HubSharingPaused } from "./sharing.js";
 
 /** The normal client poll interval; the shared session allowance replenishes over this interval. */
 export const ROOM_POLL_MS = 10_000;
@@ -41,9 +42,9 @@ export interface HubRoomListItem extends HubRoom {
   exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
   grantExpiresAt: number; lastAt: number; waiting: boolean; features: readonly string[];
 }
-type RoomViewRow = RoomRow & { fleet_id: string; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number;
+type RoomViewRow = RoomRow & { fleet_id: string; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number; sharing_paused: number;
   owner_name: string | null; grant_expires_at: number | null; last_at: number; waiting: number };
-const ROOM_VIEW_SQL = `SELECT r.*, e.fleet_id AS fleet_id, e.display_name AS exposure_name, e.state AS exposure_state, e.revision AS exposure_revision, e.frozen_through,
+const ROOM_VIEW_SQL = `SELECT r.*, e.fleet_id AS fleet_id, e.display_name AS exposure_name, e.state AS exposure_state, e.revision AS exposure_revision, e.frozen_through,e.sharing_paused,
   p.display_name AS owner_name, g.expires_at AS grant_expires_at,
   COALESCE((SELECT MAX(m.stage_at) FROM hub_messages m WHERE m.room_id = r.id), r.created_at) AS last_at,
   EXISTS (SELECT 1 FROM hub_messages m WHERE m.room_id = r.id AND m.stage IN ('queued','delivered','consumed')) AS waiting
@@ -54,7 +55,7 @@ function roomListItem(r: RoomViewRow, features: readonly string[]): HubRoomListI
   if (r.state !== "active") return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "", exposureState: r.exposure_state,
     grantExpiresAt: 0, lastAt: r.last_at, waiting: false, features: [] };
   return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
-    exposureState: r.frozen_through >= r.exposure_revision && r.exposure_state === "published" ? "frozen" : r.exposure_state,
+    exposureState: r.exposure_state === "published" ? r.frozen_through >= r.exposure_revision ? "frozen" : r.sharing_paused ? "paused" : "published" : r.exposure_state,
     grantExpiresAt: r.grant_expires_at ?? 0, lastAt: r.last_at, waiting: !!r.waiting, features };
 }
 const roomOf = (r: RoomRow): HubRoom => ({ id: r.id, asker: personFromString(r.asker), exposureId: r.exposure_id, ownerAtCreation: personFromString(r.owner_at_creation), grantId: r.grant_id, state: r.state });
@@ -102,6 +103,7 @@ export class HubRoomsService {
     const e = readExposure(db, r.exposure_id), g = readGrant(db, r.grant_id);
     if (!e || !g) throw new HubProtocolError("revoked");
     const exposure = exposureOf(e), grant = grantOf(g);
+    if (permission === "ask" && exposure.state === "paused" && grantApplies(grant, exposure, asker, now, proof)) throw new HubSharingPaused();
     if (permission === "ask" ? exposure.state !== "published" || !grantApplies(grant, exposure, asker, now, proof)
       : grant.state !== "active" || now >= grant.expiresAt || !grantSubjectApplies(grant, asker, proof) || !grant.permissions.includes("read-own-room") || exposure.state === "withdrawn")
       throw new HubProtocolError("revoked");

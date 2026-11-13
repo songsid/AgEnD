@@ -46,7 +46,7 @@ describe("Sign out: refusals run nothing", () => {
     const { data } = profileDir();
     const r = runner();
     const go = (over: Record<string, unknown>) => signOutAccount(data, { backend: "claude-code", profile: "work", confirm: true, signingIn: false, ...over } as any, { run: r.run, keychainHas: noKeychain, platform: "linux", fs: fsMine });
-    for (const backend of ["grok", "antigravity", "muse", "nope", "__proto__"]) expect(await go({ backend }), backend).toEqual({ ok: false, error: "unsupported" });
+    for (const backend of ["grok", "opencode", "muse", "nope", "__proto__"]) expect(await go({ backend }), backend).toEqual({ ok: false, error: "unsupported" });
     for (const confirm of [false, "yes", 1, undefined]) expect(await go({ confirm }), String(confirm)).toEqual({ ok: false, error: "confirm" });
     for (const profile of ["../x", "CON", "a.", ""]) expect(await go({ profile }), profile).toEqual({ ok: false, error: "name" });
     expect(await go({ profile: "missing" })).toEqual({ ok: false, error: "missing" });

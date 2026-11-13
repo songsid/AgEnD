@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 75ms
+     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 8ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 57 passed (58)
+   Start at  18:44:38
+   Duration  518ms (transform 213ms, setup 80ms, import 212ms, tests 75ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/claude-model-switch.test.ts:124:65
+    122|     resumed.bindSession("session-A", "claude-opus-4-8");
+    123|     expect(resumed.snapshot().active).toMatchObject({ id: prior.snapsh…
+    124|     expect(resumed.observe(parse(served()), "claude-opus-4-8")).toBe(f…
+       |                                                                 ^
+    125|     const items = deriveNeedsYou({ prompts: [], instances: [{ name: "w…
+    126|     expect(items[0].quiet).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

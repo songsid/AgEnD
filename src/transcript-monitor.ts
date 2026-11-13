@@ -1,11 +1,13 @@
 import { claudeTranscriptRecord, claudeTranscriptLongHead } from "./transcript-records.js";
+import { readStartupTailRecords } from "./log-steps.js";
+import { parseClaudeModelRecord, type ClaudeModelLaunch } from "./claude-model-observation.js";
 import { EventEmitter } from "node:events";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Logger } from "./logger.js";
 import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
 import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
-import { LOOKS_PER_POLL, isClaudeAssistantHead, lastLineBoundary, readNewLines, resolveLongLines } from "./transcript-jsonl.js";
+import { LOOKS_PER_POLL, isClaudeAssistantHead, lastLineBoundary, readNewLines, readWholeLine, resolveLongLines } from "./transcript-jsonl.js";
 
 /**
  * How far before this monitor's attach boundary a record read from a file's start may still be this run's own: the CLI
@@ -35,6 +37,7 @@ export class TranscriptMonitor extends EventEmitter {
   private offsetFile: string;
   private polling = false; // reentry guard for pollIncrement
   private generation = 0;
+  private modelResetAt = 0;
 
   /**
    * #2834: since when a transcript counts as this run's own (read from its start): when this monitor began, moved to each
@@ -55,6 +58,7 @@ export class TranscriptMonitor extends EventEmitter {
     private instanceDir: string,
     private logger: Logger,
     private source: TranscriptSource | null = null,
+    private modelLaunch?: () => ClaudeModelLaunch | undefined,
   ) {
     super();
     this.attachBoundary = Date.now();
@@ -99,6 +103,10 @@ export class TranscriptMonitor extends EventEmitter {
     if (existsSync(statusFile)) {
       try {
         const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+        const launch = this.modelLaunch?.();
+        if (launch && data._agendLaunchId === launch.id && typeof data.session_id === "string"
+          && typeof data.transcript_path === "string" && basename(data.transcript_path) === `${data.session_id}.jsonl`
+          && !/[\\/]subagents[\\/]/.test(data.transcript_path)) this.emit("model_context", data.session_id, data.model?.id);
         if (data.transcript_path) return data.transcript_path;
       } catch {
         // Status file may be partially written — retry on next poll
@@ -186,7 +194,16 @@ export class TranscriptMonitor extends EventEmitter {
       const events = await this.source!.poll();
       if (generation !== this.generation) return;
       if (previousPath !== this.source!.currentPath?.()) this.emit("workspace_reset");
-      for (const record of events.records ?? []) { if (generation !== this.generation) return; this.emit(record[0], ...record.slice(1)); }
+      for (const record of events.records ?? []) {
+        if (generation !== this.generation) return;
+        if (record[0] === "model_observation") {
+          const session = this.source!.modelObservationSession?.();
+          if (!session || record[1].sessionId !== session || record[1].at <= this.modelResetAt) continue;
+          this.emit("model_context", session, undefined);
+          if (generation !== this.generation || this.source!.modelObservationSession?.() !== session) continue;
+        }
+        this.emit(record[0], ...record.slice(1));
+      }
       for (const use of events.toolUses) { if (generation !== this.generation) return; this.emit("tool_use", use.name, use.input); }
       for (const result of events.toolResults) { if (generation !== this.generation) return; this.emit("tool_result", result.name, undefined); }
       for (const text of events.assistantTexts) { if (generation !== this.generation) return; this.emit("assistant_text", text); }
@@ -236,6 +253,19 @@ export class TranscriptMonitor extends EventEmitter {
         // not be skipped: read it from the start. A filesystem without a creation time keeps the EOF baseline.
         try {
           this.byteOffset = initialOffset;
+          if (!fromStart && this.modelLaunch?.()) {
+            // Observation-only bounded tail: keep this launch's fast first metadata without replaying existing
+            // text, tools, usage errors or status notes through their established EOF baseline.
+            const tail = await readStartupTailRecords(current, { end: initialOffset, maxBytes: 8 * 1024 * 1024, maxLines: 2000 });
+            if (generation !== this.generation || this.transcriptPath !== current) return;
+            for (const item of tail.records) {
+              let line = typeof item.record === "string" ? item.record : null;
+              if (line === null && typeof item.record !== "string") line = await readWholeLine(current, item.at, item.record.bytes);
+              if (generation !== this.generation || this.transcriptPath !== current) return;
+              if (line !== null) { try { this.processModelEntry(JSON.parse(line)); } catch { /* Malformed record. */ } }
+            }
+          }
+
           // A file created after the boundary can still be a COPY of an older conversation (a profile switch copies it
           // into the new profile): its records from before the boundary are history for the alarms. A new session's own
           // first records are written after the CLI started, which is after this monitor began (less a little skew).
@@ -304,6 +334,7 @@ export class TranscriptMonitor extends EventEmitter {
     const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
     const history = this.isHistoryAlarm(at);
     if (Number.isFinite(at) && at > this.seenThrough) this.seenThrough = at;
+    this.processModelEntry(entry);
     claudeTranscriptRecord(entry, (...event) => {
       // A copied record with no timestamp cannot prove that its file activity belongs to this launch.
       if (event[0] === "workspace_follow" && this.historyBefore > 0 && !Number.isFinite(at)) return;
@@ -314,6 +345,23 @@ export class TranscriptMonitor extends EventEmitter {
       }
       this.emit(event[0], ...event.slice(1));
     });
+  }
+
+  private processModelEntry(entry: any): void {
+    // Independent of text/tool parsing: main-thread metadata only, under this launch's inherited hook marker.
+    const observation = parseClaudeModelRecord(entry);
+    if (observation && observation.at > this.modelResetAt && observation.at <= Date.now() + HISTORY_SKEW_MS) {
+      try {
+        const hook = JSON.parse(readFileSync(join(this.instanceDir, "statusline.json"), "utf-8"));
+        const launch = this.modelLaunch?.();
+        if (launch && observation.at >= launch.startedAt && hook._agendLaunchId === launch.id && hook.session_id === observation.sessionId
+          && typeof hook.transcript_path === "string" && basename(hook.transcript_path) === `${observation.sessionId}.jsonl`
+          && !/[\\/]subagents[\\/]/.test(hook.transcript_path)
+          && (!this.transcriptPath || this.transcriptPath === hook.transcript_path)) {
+          this.emit("model_observation", observation, hook.model?.id);
+        }
+      } catch { /* An old, partial or absent hook proves no active-session ownership. */ }
+    }
   }
 
   startPolling(intervalMs = 2000): void {
@@ -360,6 +408,7 @@ export class TranscriptMonitor extends EventEmitter {
 
   resetOffset(): void {
     this.generation++;
+    this.modelResetAt = Date.now();
     this.attachBoundary = Date.now();
     // Read from the top again: what is there was written before this re-baseline.
     this.historyBefore = Math.max(this.attachBoundary - HISTORY_SKEW_MS, this.seenThrough);

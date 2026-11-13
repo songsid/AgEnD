@@ -128,23 +128,42 @@ export class HubCore {
   }
   /** Fresh asker + exact fleet/exposure provenance. An allow is for this operation only. */
   async groupExposure(exposureId: string, asker: PersonKey | null, ctx: GroupCheckContext): Promise<HubOperationPermit> {
+    return this.exposurePermission(exposureId, asker, ctx, false);
+  }
+  /** Only the owner-sharing writer: it separately fences the exact before/after row inside its transaction. */
+  async sharingPermission(exposureId: string, ctx: GroupCheckContext): Promise<HubOperationPermit> {
+    return this.exposurePermission(exposureId, null, ctx, true);
+  }
+  private async exposurePermission(exposureId: string, asker: PersonKey | null, ctx: GroupCheckContext, sharingChange: boolean): Promise<HubOperationPermit> {
     const groups = this.deps.groups;
-    if (!groups) return LEGACY_OPERATION;
     const exposure = this.atomic(db => { const row = readExposure(db, exposureId); return row && exposureOf(row); });
     if (!exposure) throw new HubProtocolError("not-found");
+    const bytes = (e: typeof exposure) => {
+      if (!sharingChange) return JSON.stringify(e);
+      const { sharingEpoch: _epoch, ...rest } = e;
+      return JSON.stringify({ ...rest, state: rest.state === "paused" ? "published" : rest.state });
+    };
+    const serializedExposure = bytes(exposure);
+    const assertExposure = () => {
+      if (!this.live() || ctx.current() !== true) throw new HubProtocolError("unavailable");
+      const row = this.atomic(db => readExposure(db, exposureId));
+      if (this.deps.groups !== groups || !row || bytes(exposureOf(row)) !== serializedExposure) throw new HubProtocolError("stale");
+    };
+    if (!groups) { assertExposure(); return { source: "legacy", assertCurrent: assertExposure }; }
     const fleet = this.deps.store.read().fleets.find(f => f.id === exposure.fleetId);
     if (!fleet || personKeyString(fleet.owner) !== personKeyString(exposure.owner)) throw new HubProtocolError("revoked");
-    const serializedExposure = JSON.stringify(exposure), serializedFleet = JSON.stringify(fleet), permits: HubOperationPermit[] = [];
+    const serializedFleet = JSON.stringify(fleet), permits: HubOperationPermit[] = [];
     if (asker) permits.push(await this.groupAsker(asker, ctx));
     const fleetPermit = await this.group(() => groups.check({ kind: "fleet", id: fleet.id, revision: fleet.generation, owner: fleet.owner }, ctx));
     permits.push(fleetPermit);
     if (fleet.status !== "active" && fleetPermit.source !== "legacy") throw new HubProtocolError("revoked");
     permits.push(await this.group(() => groups.check({ kind: "exposure", id: exposure.id, revision: exposure.revision, owner: exposure.owner }, ctx)));
     const permit = { assertCurrent: () => {
+      assertExposure();
       if (!this.live() || ctx.current() !== true || this.deps.groups !== groups) throw new HubProtocolError("unavailable");
       for (const proof of permits) proof.assertCurrent();
       const row = this.atomic(db => readExposure(db, exposure.id));
-      if (!row || JSON.stringify(exposureOf(row)) !== serializedExposure
+      if (!row || bytes(exposureOf(row)) !== serializedExposure
         || JSON.stringify(this.deps.store.read().fleets.find(f => f.id === fleet.id)) !== serializedFleet) throw new HubProtocolError("stale");
     } };
     permit.assertCurrent(); return permit;

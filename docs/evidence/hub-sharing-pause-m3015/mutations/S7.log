@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (14 tests | 1 failed | 13 skipped) 128ms
+     × requires the exact owner/session, publication revision, sharing epoch and strict input 126ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > requires the exact owner/session, publication revision, sharing epoch and strict input
+AssertionError: expected 200 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 200
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:65:47
+     63|     expect((await w.change(true, 0, w.o, { authority: "admin" })).stat…
+     64|     expect((await w.change(true, 0)).status).toBe(200);
+     65|     expect((await w.change(false, 0)).status).toBe(409);
+       |                                               ^
+     66|     expect((await w.r.call(w.o, "POST", `/hub/v1/exposures/${w.e.id}/s…
+     67|     await w.r.call(w.o, "DELETE", "/hub/v1/session"); expect((await w.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  14:18:23
+   Duration  4.48s (transform 3.19s, setup 139ms, import 4.03s, tests 128ms, environment 0ms)
+

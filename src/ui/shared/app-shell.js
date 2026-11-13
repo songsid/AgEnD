@@ -15,6 +15,7 @@ import { SessionMenu } from "./app-session.js";
 import { onPrefsChanged, savePref } from "./app-prefs.js";
 import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
+import { StaleTabPrompt, isStaleModuleError } from "./stale-tab.js";
 import { Dialog } from "./ui-dialog.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
 import { usageRailStore } from "./header-tools.js";
@@ -1133,7 +1134,9 @@ export function Outlet({ route, seq, panels }) {
     return () => { current = false; };
   }, [entry, seq, attempt]);
   if (!route) return html`<div class="panel"><${ErrorState} message=${t("app.loadFailed")} /></div>`;
-  if (entry && entry.error && !entry.loading) return html`<div class="panel"><${ErrorState} onRetry=${() => setAttempt(n => n + 1)} /></div>`;
+  // #3822: a panel that would not link (this tab is older than AgEnD) needs a reload, not a Retry that loads the same old copy.
+  if (entry && entry.error && !entry.loading) return html`<div class="panel">${isStaleModuleError(entry.error) ? html`<${StaleTabPrompt} />`
+    : html`<${ErrorState} onRetry=${() => setAttempt(n => n + 1)} />`}</div>`;
   if (!entry || !entry.Component) return html`<div class="panel"><${Skeleton} lines=${4} /></div>`;
   const C = entry.Component;
   return html`<${C} route=${route} navKey=${`${routeKey(route)}|${seq}|${lang()}`} />`;

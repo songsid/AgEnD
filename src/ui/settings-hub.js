@@ -4,6 +4,7 @@
 // Hub key's fingerprint), the key changed (both keys, labelled; only pair again or disconnect), on hold (why) — then
 // this fleet's own agents with a Share switch each, against the revision shown (a stale tab gets a conflict, never a
 // silent widening). Everything goes through hubClient(); until slice 1 that is a stub, and the card says so.
+import { register, t } from "/assets/app-i18n.js";
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -20,6 +21,10 @@ import { confirmPlace, pendingView } from "./hub-confirm-place.js";
 import { hq } from "./hub-quick-strings.js";
 import { hp } from "./hub-pairing-progress-strings.js";
 
+register("hubSharingFleet", {
+  en: { hint: "To pause and resume without clearing the allow list, open this agent under My shared agents on the Hub. Turning Share off stops sharing." },
+  "zh-TW": { hint: "要保留允許名單並暫停或繼續分享，請在 Hub「我分享的 Agent」開啟這個 Agent。關閉「分享」會停止分享。" },
+});
 const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy", unreachable: "errUnreachable", refused: "errRefused" };
 const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected", "rejected"]);
 const PUBLISH_ERRORS = { conflict: "errConflict", unsaved: "errUnsaved", not_paired: "errNotPaired", not_enforceable: "agentNotShareable",
@@ -273,6 +278,7 @@ function HubExposures({ client, pairing }) {
   return html`<div class="hub-exposures">
     <h4>${hw("sharedTitle")}</h4>
     <p class="note">${hw("agentLead")}</p>
+    <p class="note hub-sharing-hint">${t("hubSharingFleet.hint")}</p>
     ${readError ? html`<${ErrorState} message=${hw("errFailed")} onRetry=${load} />` : !rows ? html`<${Skeleton} variant="rows" lines=${3} />` : null}
     ${rows && !rows.length ? html`<p class="note">${hw("noAgents")}</p>` : null}
     ${rows && rows.length ? html`<ul class="hub-exposure-list">${rows.map((row) => html`<li key=${row.agent} class=${`hub-exposure${row.state === "published" ? " is-shared" : ""}`}>

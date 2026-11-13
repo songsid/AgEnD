@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+
+ Test Files  2 passed (2)
+      Tests  29 passed (29)
+   Start at  18:50:58
+   Duration  2.84s (transform 2.50s, setup 204ms, import 3.08s, tests 481ms, environment 0ms)
+

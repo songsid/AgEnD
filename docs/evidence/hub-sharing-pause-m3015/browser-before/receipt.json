@@ -1,0 +1,1016 @@
+{
+  "head": "56a3e2665ae907438a2728d22cc6298d6835e4a2",
+  "tree": "d407e6727c5e3aa9b80783450892288432f696ea",
+  "dirty": "",
+  "mode": "before",
+  "base": "bc22d3b8422d2396d6806972df9d519eaab642de",
+  "inputDigests": {
+    "9678d0bcfc0a63eab062b98f6a7d1dbee1ab644f3b4efecc95695710a7d4b2eb": [
+      "src/auth-api.ts"
+    ],
+    "79f060278df5c75f13682cdae713b8c132b3db91436e94f4364b6e5109792e2e": [
+      "src/general-knowledge/skills/hub/SKILL.md"
+    ],
+    "ec21f0408cc3d7e14f537dd383e0d678338f875b0ecf53c3c7be00e7758ed308": [
+      "src/hub/catalog.ts"
+    ],
+    "c00872938ed8b94553415c8603fe7be90a51044473a83670a85824f4bc30a419": [
+      "src/hub/group-policy/admin-inventory.ts"
+    ],
+    "19a81280019d1237c8353a2c32ce3e0ccc36910615a943b329d0be0afb1ad9d2": [
+      "src/hub/group-policy/impact-inventory.ts"
+    ],
+    "be4c06df1945ef084cd4fb956bb593d7b6651bb20b639b8bc94748fb5a2cac5c": [
+      "src/hub/http/compose.ts"
+    ],
+    "475e8188b85c8ca72fd46148b193d42c4cbf204b46fc199d3602fab6be7d090f": [
+      "src/hub/http/core.ts"
+    ],
+    "581c001f76cf4e71972d7b50537bef0529b2772db2a3703e997533d03d1e39c8": [
+      "src/hub/http/schema.ts"
+    ],
+    "27bd603673472ea95dce87e297655316a557a719400bded5ff485c416c79a4d4": [
+      "src/hub/rooms.ts"
+    ],
+    "bc78b461e277b8aa39769a874dbaeb53b08f20a3927ac098145ad3fba71cbd17": [
+      "src/hub/sharing.ts"
+    ],
+    "ff6e99d33e066cd4717c15753afec85345dde8740189e9c9b7be42ade4dbc2b8": [
+      "src/hub/types.ts"
+    ],
+    "d50b745c5d15a2b96fa179975209b3a762c7f0c5a29625e3e26f8dad263d18ce": [
+      "src/ui/hub-chat-store.js"
+    ],
+    "dc4217a8011e1226b4687d9b549656e192c1096e182e9527401a7e52d62fd518": [
+      "src/ui/hub-client.js"
+    ],
+    "0a19ed018ebb42bc1e9ffba3930c66377b398e99edd368961f6172ffe8d95873": [
+      "src/ui/panel-hub.js"
+    ],
+    "7b6677ec73a318ed6a04b240358e39d408ebe39858a5e343a2565035236cc3e0": [
+      "src/ui/settings-hub.js"
+    ],
+    "ba7a0ede1d290286ff5c2fec717719e7f21df412a19c8ac09906e07dafd77e51": [
+      "src/ui/shared/hub-sharing.css"
+    ],
+    "f841f955dbb644b5f5f4c419c9184b8c819953cd6aa242ee9d967d81b37f69e9": [
+      "tests/helpers/hub-s3b-rig.ts"
+    ],
+    "c386eea0b2b09fa21c4a545dc954be98338dd25b948423c88f2574635ab99661": [
+      "scripts/manual/hub-sharing-pause-m3015/browser.mts"
+    ]
+  },
+  "servedDigests": {
+    "ffc4f54dd8a2511eeb931a77d25d65ddd0a187e414b9deabe9290184399fe22d": [
+      "/assets/theme.js"
+    ],
+    "cd62669f84666fb16e49cf63ebdc8376d3965106eeaf0531744372bdcf70f3c9": [
+      "/assets/tokens.css"
+    ],
+    "db5c3a265b094ac0a85ac059efeee467577696f4eb909626dd1d1dc8ea382c04": [
+      "/assets/app.css"
+    ],
+    "68dd23194827d7a83f532b1d7b3161fd27a2e696ef14cf6d593b0a65e3ad9ce8": [
+      "/assets/loading.css"
+    ],
+    "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c": [
+      "/assets/app.js"
+    ],
+    "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9": [
+      "/assets/app-html.js"
+    ],
+    "d223ea3ca62d93e8991f3a92efa92de9eb0bb5ad4e72b11ce18f286e372580c2": [
+      "/assets/app-prefs.js"
+    ],
+    "feb36efef72b92a5510f881902c0a08140d6940f62304766e3857d13f5e188fa": [
+      "/assets/app-swipe.js"
+    ],
+    "5b71d57a353d8e3cde1c178cb1020b2ebda68a463c57ac579d522d6b2ba58c8b": [
+      "/assets/app-shell.js"
+    ],
+    "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842": [
+      "/assets/app-store.js"
+    ],
+    "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd": [
+      "/assets/app-route.js"
+    ],
+    "0ad785a7cf88d1d46dc4b747aaebb3e969945e46b9c63a1dbc50f444536832e4": [
+      "/assets/app-needs.js"
+    ],
+    "6f7fd589ed235fb3081d3097b4669cee511a16ad3a3b5e363d94ab4b2cefd9e5": [
+      "/assets/app-i18n.js"
+    ],
+    "49234d50df7b41e005d0221a1a5b5614d30f9b27a9c0d82312c56c694184b58b": [
+      "/assets/app-stream.js"
+    ],
+    "601074179fe7c9156d05d507f28e3d22f93b49aba43f8d903b40ae4b8b1bba8d": [
+      "/assets/ui-toast.js"
+    ],
+    "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a": [
+      "/assets/text-undo.js"
+    ],
+    "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f": [
+      "/assets/app-nav.js"
+    ],
+    "886b72a54b88f65fbc27a9b86fe786d5a1f2774a24c0cc16dddfd1c6ce1fc2b4": [
+      "/assets/app-themes.js"
+    ],
+    "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d": [
+      "/assets/header-tools.js"
+    ],
+    "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8": [
+      "/assets/preact.module.js"
+    ],
+    "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4": [
+      "/assets/htm.module.js"
+    ],
+    "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b": [
+      "/assets/ui-confirm.js"
+    ],
+    "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50": [
+      "/assets/ui-icons.js"
+    ],
+    "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38": [
+      "/assets/preact-hooks.module.js"
+    ],
+    "d38412dd2327ffb4a98248ab8a847eb6abcf18470cd8f5f9635a20df3aace05e": [
+      "/assets/owner-css.js"
+    ],
+    "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a": [
+      "/assets/identity-color.js"
+    ],
+    "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec": [
+      "/assets/app-session.js"
+    ],
+    "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31": [
+      "/assets/ui-states.js"
+    ],
+    "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6": [
+      "/assets/ui-dialog.js"
+    ],
+    "0b675a3860b2f10a40d9557b18d609cb60ddd0e766b6cf9c1b2f27211d930596": [
+      "/assets/app-update.js"
+    ],
+    "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1": [
+      "/assets/settings-width.js"
+    ],
+    "8e90812b94bad0b93c744a0daa3fc4fe6e02249106604ca013c9d6df4ef25a43": [
+      "/assets/agent-widget.js"
+    ],
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": [
+      "/assets/app-ctx.js"
+    ],
+    "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946": [
+      "/assets/side-panel.js"
+    ],
+    "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64": [
+      "/assets/instance-nav.js"
+    ],
+    "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56": [
+      "/assets/side-rail.js"
+    ],
+    "b7cb7d8f4df081e3d514c869cf6f99d8f64b0b730ddecaf955a8d0ccedf3ca43": [
+      "/assets/usage-dialog.js"
+    ],
+    "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d": [
+      "/assets/device-roles.js"
+    ],
+    "3c87a7c99b39adb87e624cd7292b37547e33e418b955466109e178795af927b1": [
+      "/assets/web-authorize.js"
+    ],
+    "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200": [
+      "/assets/usage-meter.js"
+    ],
+    "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41": [
+      "/assets/read-stream.js"
+    ],
+    "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48": [
+      "/assets/ui-menu.js"
+    ],
+    "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae": [
+      "/assets/machine-name.js"
+    ],
+    "23f03826cec94cb9bd940325b6f4c14d66faaef0473fb34cfad71cb682757d52": [
+      "/assets/view-strings.js"
+    ],
+    "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8": [
+      "/assets/view-roster-store.js"
+    ],
+    "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f": [
+      "/ui/js/panel-hub.js"
+    ],
+    "696e5db1efc6388e3059b9651e3e6a9fa8d4f279010eb53152b85d293ad9a112": [
+      "/ui/js/hub-owner-strings.js"
+    ],
+    "7840122cfb793af9b9ae44e9081252064c8993274d3fc0a9e485c908259b9f58": [
+      "/ui/js/hub-company-join.js"
+    ],
+    "e11e7cd022cb23c758726f1cd7f07d530608ab38f1907085ae86a8926ac29676": [
+      "/ui/js/hub-company-join-strings.js"
+    ],
+    "abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1": [
+      "/ui/js/hub-join-approval.js"
+    ],
+    "4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3": [
+      "/ui/js/hub-joincode-flow-strings.js"
+    ],
+    "90f089c96321bdf5a45be4921fb6133f9203f0aa4826e796c02f1dc9dcb8896e": [
+      "/ui/js/hub-directory-notice-strings.js"
+    ],
+    "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13": [
+      "/ui/js/hub-quick-pairing.js"
+    ],
+    "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227": [
+      "/assets/chat-composer.js"
+    ],
+    "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076": [
+      "/assets/preview-panel.js"
+    ],
+    "c4d0a6cf1b12d7fde9bb1e30ab005da1ca9c7916b693cc86e9bf0d28f5a8f9eb": [
+      "/ui/js/hub-directory-notices.js"
+    ],
+    "e8124f3778fdb4eb70ebf5077e282f01e464a6945dcfd9730d085757dbf3209b": [
+      "/assets/chat-thread.js"
+    ],
+    "cc1690aa8931b111e35166fd8f29120c3a7a4ec7a6720108dc7b7ef7e515ac8c": [
+      "/assets/chat-strings.js"
+    ],
+    "dc4217a8011e1226b4687d9b549656e192c1096e182e9527401a7e52d62fd518": [
+      "/ui/js/hub-client.js"
+    ],
+    "1be8bee71352ed41e8b71592b6acc404829f574327f3ab2aab433c64ace4a046": [
+      "/ui/js/hub-read-strings.js"
+    ],
+    "7903f0a70ae974c4f562d54efdbf698e4186293db3a2c6067ed1557ece11d76f": [
+      "/ui/js/hub-chat-strings.js"
+    ],
+    "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4": [
+      "/ui/js/hub-grant-strings.js"
+    ],
+    "f12b3db0cc675c4fde91b793641cd43b8bd9ea1d87afe318bbf6c90cb3a737f2": [
+      "/ui/js/hub-strings.js"
+    ],
+    "d50b745c5d15a2b96fa179975209b3a762c7f0c5a29625e3e26f8dad263d18ce": [
+      "/ui/js/hub-chat-store.js"
+    ],
+    "a9e9e71b8e64b54a69e3265395948d15f512f811a03353ccf3c0fa04e2788f2a": [
+      "/assets/page-head.js"
+    ],
+    "dedbf75e56c51d5a8d22c449a2869bc04e7c5a9e59bda8d5e0c139e856ba5c09": [
+      "/ui/js/hub-attachments.js"
+    ],
+    "958ee0b43bc94eb33f1accc2ccf0bd0d70cfeaba6f0d10fbfba22c411824be8b": [
+      "/ui/js/hub-join-steps.js"
+    ],
+    "b4cf4c2c4976b3b0ba5d1440579bd89c7b54f1231a33a38b1aef4bd49bdc14d1": [
+      "/ui/js/hub-quota.js"
+    ],
+    "b653dd4b49b92b91c1db71d6e652a08da06cc8164db5dfad4bdb46fe6ef711d5": [
+      "/ui/js/hub-preview.js"
+    ],
+    "1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324": [
+      "/ui/js/hub-enrolment-code-strings.js"
+    ],
+    "0a6b59ad416fe04765c9ec8fcb06aea0d75f1c22cededf746415377fe19c4c35": [
+      "/ui/js/hub-quick-strings.js"
+    ],
+    "2419460a300b9aae37024348e9925d7fe142b0e3cd8d20f0c429ab24903e1d22": [
+      "/assets/chat-render.js"
+    ],
+    "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1": [
+      "/assets/preview.js"
+    ],
+    "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538": [
+      "/assets/chat-time.js"
+    ],
+    "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764": [
+      "/ui/js/hub-join-queue.js"
+    ],
+    "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643": [
+      "/assets/html-attachment.js"
+    ],
+    "8e2665b14f5df60a7698ba5852a5d217257c495bd4c5c4e81b70acda8c65431f": [
+      "/assets/preview-panel-actions.js"
+    ],
+    "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814": [
+      "/assets/preview-versions.js"
+    ],
+    "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b": [
+      "/assets/chat-md-strings.js"
+    ],
+    "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925": [
+      "/assets/preview-pages.js"
+    ],
+    "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a": [
+      "/ui/js/hub-group-search.js"
+    ],
+    "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063": [
+      "/ui/js/hub-button-actions.js"
+    ],
+    "dbb490b50f06f45d538259cad57f5d130ed29c17f4295d8d3c4c848b037190fb": [
+      "/assets/hub-quota.css"
+    ],
+    "06a788df08807cbc7b124add1103b36355ad4f411357cbddb3ca338feb9701be": [
+      "/assets/hub-chat.css"
+    ],
+    "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472": [
+      "/assets/hub.css"
+    ],
+    "e8d9234628f8ac9e1e5a9732d15b6ddefc00fa2eba98d2a32fe52185164264bc": [
+      "/assets/hub-owner.css"
+    ],
+    "bff809d11b0869cfa0b05055fbe80a2190de5cff388d5f13d74bb71aa6e5f5cb": [
+      "/assets/hub-signin.css"
+    ]
+  },
+  "substitutions": [
+    {
+      "ref": "bc22d3b8422d2396d6806972df9d519eaab642de",
+      "path": "src/ui/panel-hub.js",
+      "digest": "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f"
+    },
+    {
+      "ref": "bc22d3b8422d2396d6806972df9d519eaab642de",
+      "path": "src/ui/panel-hub.js",
+      "digest": "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f"
+    },
+    {
+      "ref": "bc22d3b8422d2396d6806972df9d519eaab642de",
+      "path": "src/ui/panel-hub.js",
+      "digest": "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f"
+    },
+    {
+      "ref": "bc22d3b8422d2396d6806972df9d519eaab642de",
+      "path": "src/ui/panel-hub.js",
+      "digest": "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f"
+    },
+    {
+      "ref": "bc22d3b8422d2396d6806972df9d519eaab642de",
+      "path": "src/ui/panel-hub.js",
+      "digest": "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f"
+    },
+    {
+      "ref": "bc22d3b8422d2396d6806972df9d519eaab642de",
+      "path": "src/ui/panel-hub.js",
+      "digest": "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f"
+    },
+    {
+      "ref": "bc22d3b8422d2396d6806972df9d519eaab642de",
+      "path": "src/ui/panel-hub.js",
+      "digest": "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f"
+    },
+    {
+      "ref": "bc22d3b8422d2396d6806972df9d519eaab642de",
+      "path": "src/ui/panel-hub.js",
+      "digest": "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f"
+    }
+  ],
+  "cases": [
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "tag": "before-desk-light-en",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "shared",
+          "geometry": {
+            "overflow": 0,
+            "controls": [
+              {
+                "label": "Stop sharing…",
+                "x": 404,
+                "y": 918.1875,
+                "width": 110.875,
+                "height": 30,
+                "top": 918.1875,
+                "right": 514.875,
+                "bottom": 948.1875,
+                "left": 404
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "tag": "before-desk-light-zh-TW",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "shared",
+          "geometry": {
+            "overflow": 0,
+            "controls": [
+              {
+                "label": "停止分享…",
+                "x": 404,
+                "y": 894.1875,
+                "width": 85.484375,
+                "height": 30,
+                "top": 894.1875,
+                "right": 489.484375,
+                "bottom": 924.1875,
+                "left": 404
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "tag": "before-desk-dark-en",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "shared",
+          "geometry": {
+            "overflow": 0,
+            "controls": [
+              {
+                "label": "Stop sharing…",
+                "x": 404,
+                "y": 918.1875,
+                "width": 110.875,
+                "height": 30,
+                "top": 918.1875,
+                "right": 514.875,
+                "bottom": 948.1875,
+                "left": 404
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "tag": "before-desk-dark-zh-TW",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "shared",
+          "geometry": {
+            "overflow": 0,
+            "controls": [
+              {
+                "label": "停止分享…",
+                "x": 404,
+                "y": 894.1875,
+                "width": 85.484375,
+                "height": 30,
+                "top": 894.1875,
+                "right": 489.484375,
+                "bottom": 924.1875,
+                "left": 404
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "tag": "before-phone-light-en",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "shared",
+          "geometry": {
+            "overflow": 0,
+            "controls": [
+              {
+                "label": "Stop sharing…",
+                "x": 33,
+                "y": 1017.796875,
+                "width": 110.875,
+                "height": 30,
+                "top": 1017.796875,
+                "right": 143.875,
+                "bottom": 1047.796875,
+                "left": 33
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "tag": "before-phone-light-zh-TW",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "shared",
+          "geometry": {
+            "overflow": 0,
+            "controls": [
+              {
+                "label": "停止分享…",
+                "x": 33,
+                "y": 993.796875,
+                "width": 85.484375,
+                "height": 30,
+                "top": 993.796875,
+                "right": 118.484375,
+                "bottom": 1023.796875,
+                "left": 33
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "tag": "before-phone-dark-en",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "shared",
+          "geometry": {
+            "overflow": 0,
+            "controls": [
+              {
+                "label": "Stop sharing…",
+                "x": 33,
+                "y": 1017.796875,
+                "width": 110.875,
+                "height": 30,
+                "top": 1017.796875,
+                "right": 143.875,
+                "bottom": 1047.796875,
+                "left": 33
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "tag": "before-phone-dark-zh-TW",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "shared",
+          "geometry": {
+            "overflow": 0,
+            "controls": [
+              {
+                "label": "停止分享…",
+                "x": 33,
+                "y": 993.796875,
+                "width": 85.484375,
+                "height": 30,
+                "top": 993.796875,
+                "right": 118.484375,
+                "bottom": 1023.796875,
+                "left": 33
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "name": "start load at most10",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en person grant",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en group grant",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en room",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en feature admission",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en shared no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-zh-TW person grant",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-zh-TW group grant",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-zh-TW room",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-zh-TW feature admission",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-zh-TW shared no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-en person grant",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-en group grant",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-en room",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-en feature admission",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-en shared no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-zh-TW person grant",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-zh-TW group grant",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-zh-TW room",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-zh-TW feature admission",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-zh-TW shared no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-en person grant",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-en group grant",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-en room",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-en feature admission",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-en shared no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-zh-TW person grant",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-zh-TW group grant",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-zh-TW room",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-zh-TW feature admission",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-zh-TW shared no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-en person grant",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-en group grant",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-en room",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-en feature admission",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-en shared no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-zh-TW person grant",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-zh-TW group grant",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-zh-TW room",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-zh-TW feature admission",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-zh-TW shared no overflow",
+      "ok": true
+    },
+    {
+      "name": "no browser errors",
+      "ok": true
+    },
+    {
+      "name": "all cases ran",
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/94098fc1-ed5f-4d08-bb26-e03546cd1057/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/94e4c69e-bfd0-41ae-8de8-4c7986f5f48b/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/5049af6f-ed8a-4ece-88b8-728616b5c742/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/c80f26c8-bf7d-4cb6-94db-96efa3141b7c/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/4a8fdbcf-f5fd-40d5-8561-32f887b16acc/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/42ae66c9-23bf-44c3-9cc2-45825732f665/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/a03b2398-5103-43a3-bd9a-c2cdea6b2cbc/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/b5aeaa41-9fd3-4a0e-aa56-226341622597/activity",
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "scope": "Owned production HTTPS/SQLite/session/CSRF server and real UI; inert AD/person/group/member facts. No live Fleet, account, AD or model. Before uses retained base panel on candidate server, not execution of a baseline server.",
+  "font": "MicrosoftYaHeiMono-Enhanced.ttf: \"Microsoft YaHei Mono\" \"Regular\"",
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}

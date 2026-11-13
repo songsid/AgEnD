@@ -1,0 +1,49 @@
+[
+  {
+    "name": "sync2-focused",
+    "command": [
+      "./node_modules/.bin/vitest",
+      "run",
+      "tests/web-app-modules-1408.test.ts",
+      "tests/esm-skew-roles-138.test.ts",
+      "tests/ui-stale-tab-3822.test.ts",
+      "tests/claude-model-switch.test.ts",
+      "tests/claude-model-switch-daemon.test.ts",
+      "tests/claude-model-runtime-observation.test.ts",
+      "tests/claude-model-checkpoint-tail.test.ts",
+      "tests/grok-consumed-3810.test.ts",
+      "tests/grok-native-boundary-3810.test.ts",
+      "tests/web-log-tab-1218.test.ts",
+      "tests/concepts-skill-sync.test.ts",
+      "tests/cli-registry-no-literal-lists.test.ts",
+      "tests/pane-quota-history-3188.test.ts",
+      "--maxWorkers=2"
+    ],
+    "exit": 0,
+    "load": 4.982421875
+  },
+  {
+    "name": "sync2-source-types",
+    "command": [
+      "./node_modules/.bin/tsc",
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "exit": 0,
+    "load": 6.16943359375
+  },
+  {
+    "name": "sync2-test-types",
+    "command": [
+      "./node_modules/.bin/tsc",
+      "--noEmit",
+      "--pretty",
+      "false",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "exit": 0,
+    "load": 6.15576171875
+  }
+]

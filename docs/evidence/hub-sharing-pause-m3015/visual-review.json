@@ -1,0 +1,29 @@
+{
+  "scope": "CLI subagent viewed12current+2before originals using view_image; static, no whole-gallery/dynamic/AD/native claim.",
+  "verdict": "PASS",
+  "current": [
+    "current-desk-light-zh-TW-shared.png",
+    "current-desk-light-zh-TW-paused.png",
+    "current-desk-dark-zh-TW-paused.png",
+    "current-desk-dark-zh-TW-stopped.png",
+    "current-phone-light-zh-TW-paused.png",
+    "current-phone-dark-zh-TW-paused.png",
+    "current-phone-dark-zh-TW-asker-paused.png",
+    "current-phone-light-en-paused.png",
+    "current-desk-light-en-resumed.png",
+    "current-desk-light-en-asker-paused.png",
+    "old-css-phone-light-zh-TW-paused.png",
+    "old-client-phone-light-zh-TW-shared.png"
+  ],
+  "before": [
+    "before-desk-light-zh-TW-shared.png",
+    "before-phone-light-zh-TW-shared.png"
+  ],
+  "notes": [
+    "No clipping/overflow/overlap blocker in selected originals.",
+    "Phone originals show separate Pause/Resume and red permanent Stop sharing with expiry copy.",
+    "Desktop Stop card is below some captured viewports.",
+    "Info rail still states nominal grant capabilities; paused banner states current availability.",
+    "EN month labels in zh-TW dates predate this feature."
+  ]
+}

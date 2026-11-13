@@ -38,7 +38,7 @@ import {
 import { claudeKeychainService } from "../backend/claude-code.js";
 import { readKiroAuthTokens, type KiroStoredToken } from "../backend/kiro-auth-store.js";
 import { homedir, userInfo } from "node:os";
-import { getProviderRateLimit } from "./provider-alerts.js";
+import { antigravityCapKey, getProviderRateLimit } from "./provider-alerts.js";
 import { MUSE_USAGE_STALE_MS, readMuseUsageSnapshot } from "../muse-usage-relay.js";
 import {
   readStatuslineRateLimits,
@@ -691,7 +691,7 @@ function agyOAuthClient(env: NodeJS.ProcessEnv = process.env): { id: string; sec
 
 /** Refreshed bearer, cached until shortly before expiry. The CLI's token file is
  * never written back — it belongs to agy; refresh tokens are reusable. */
-let agyTokenCache: { token: string; until: number } | null = null;
+const agyTokenCache = new Map<string, { token: string; until: number }>();
 
 /**
  * One quota bucket of `retrieveUserQuotaSummary` (agy's proto: QuotaSummaryBucket). `group` is not on the wire: it is
@@ -733,7 +733,26 @@ export function agyModelBuckets(body: AgyModels): AgyBucket[] {
 export function agyUsageBuckets(summary: AgyQuotaSummary, models: AgyModels | null): AgyBucket[] {
   const fromSummary = agyQuotaBuckets(summary);
   const named = new Set(fromSummary.map(b => { const id = agyBucketId(b); return id ? agyPool(b, id) : null; }));
-  return [...fromSummary, ...(models ? agyModelBuckets(models).filter(b => !named.has(agyPool(b, b.bucketId!))) : [])];
+  const allModels = models ? agyModelBuckets(models) : [];
+  const fromModels = allModels.filter(b => !named.has(agyPool(b, b.bucketId!)));
+  // AGEND-119: Gemini 4 Argon has a limit of its own only on some plans. The summary says so (a group of its own, as on a Pro plan); the models' quotas alone do not: on an Ultra plan (checked live 2026-11-09)
+  // the summary has no Argon group and every Argon model carries the very quota the other Gemini models do — one snapshot of the Gemini five-hour pool (the same fraction and the same reset) — so a pool made of
+  // them was that pool shown twice under another name. An Argon model whose quota repeats another bucket's — the summary's, or another (non-Argon) model's in the same answer — is that pool's, not a limit of
+  // Argon's own; one whose quota differs from every other bucket's is a limit of its own and stays. (Not compared to the summary alone: its numbers are a little fresher than the models' — measured 0.8936
+  // against 0.8911 for the same pool and the same reset — while the models of one pool agree with each other exactly.) What is read is the data's, never a plan's name.
+  const isArgon = (b: AgyBucket) => !!(agyArgonPool(b.group) ?? agyArgonPool(b.bucketId));
+  const references = [...fromSummary, ...allModels.filter(b => !isArgon(b))];
+  return [...fromSummary, ...fromModels.filter(b => !isArgon(b) || !references.some(o => sameQuota(o, b)))];
+}
+
+/**
+ * Two buckets that count against one limit: the same remaining fraction and the same reset (a rolling window of its own never ties to the second with another's). The trade-off: an independent pool that is exactly
+ * in step with another (the same fraction AND the same reset time, both untouched at 100% for instance) is taken for a repeat and not drawn as a line of its own, until its numbers part. A quota with no reset time
+ * never matches. That is a line missing for a while, never a wrong number; the other reading drew a repeat as a pool of its own (the Ultra account's Argon, measured) for as long as the account existed.
+ */
+function sameQuota(a: AgyBucket, b: AgyBucket): boolean {
+  return typeof a.remainingFraction === "number" && typeof b.remainingFraction === "number" && Math.abs(a.remainingFraction - b.remainingFraction) < 1e-9
+    && !!a.resetTime && a.resetTime === b.resetTime;
 }
 
 function agyBucketId(b: AgyBucket): string | undefined {
@@ -899,18 +918,21 @@ function agyExpiryMs(t: AgyStoredToken): number {
   return t.expiry ? new Date(t.expiry).getTime() : 0;
 }
 
-async function agyAccessToken(): Promise<{ token: string } | { error: string; errorI18n: UsageI18nRef } | null> {
+/** `storeHome` (AGEND-119): a named account's own folder, which holds its `antigravity-oauth-token`; none: the default sign-in's (`~/.gemini/antigravity-cli`). */
+async function agyAccessToken(storeHome?: string): Promise<{ token: string } | { error: string; errorI18n: UsageI18nRef } | null> {
   const home = process.env.GEMINI_HOME || join(homedir(), ".gemini");
+  const file = storeHome ? join(storeHome, AGY_TOKEN_FILE[1]) : join(home, ...AGY_TOKEN_FILE);
   let raw: unknown;
   try {
-    raw = JSON.parse(await readFile(join(home, ...AGY_TOKEN_FILE), "utf8"));
+    raw = JSON.parse(await readFile(file, "utf8"));
   } catch {
-    return null; // no agy login on this machine
+    return null; // no agy login on this machine (or in this account's folder)
   }
   const t = readAgyToken(raw);
   const expiryMs = agyExpiryMs(t);
   if (t.access_token && expiryMs > Date.now() + 60_000) return { token: t.access_token };
-  if (agyTokenCache && agyTokenCache.until > Date.now()) return { token: agyTokenCache.token };
+  const cached = agyTokenCache.get(file);
+  if (cached && cached.until > Date.now()) return { token: cached.token };
 
   const client = agyOAuthClient();
   if (!t.refresh_token || !client) {
@@ -918,7 +940,7 @@ async function agyAccessToken(): Promise<{ token: string } | { error: string; er
     return {
       error: client
         ? "Access token expired and no refresh token is stored. Run `agy` once."
-        : "Access token expired. Run `agy` once to refresh it (or set AGY_OAUTH_CLIENT_ID/SECRET to refresh automatically).",
+        : "Access token expired. Turn on Keep connection alive for this account (Settings → Accounts) to renew it every hour, or run `agy` once.",
       errorI18n: client
         ? i18n("usage.error.agy_no_refresh")
         : i18n("usage.error.agy_token_expired"),
@@ -939,7 +961,7 @@ async function agyAccessToken(): Promise<{ token: string } | { error: string; er
     if (!res.ok) return { error: "Google sign-in expired. Run `agy` once to log in again.", errorI18n: i18n("usage.error.agy_login_expired") };
     const body = await res.json() as { access_token?: string; expires_in?: number };
     if (!body.access_token) return { error: "Google token refresh returned no token.", errorI18n: i18n("usage.error.agy_refresh_empty") };
-    agyTokenCache = { token: body.access_token, until: Date.now() + Math.max(60, (body.expires_in ?? 3600) - 120) * 1000 };
+    agyTokenCache.set(file, { token: body.access_token, until: Date.now() + Math.max(60, (body.expires_in ?? 3600) - 120) * 1000 });
     return { token: body.access_token };
   } catch {
     return { error: "Could not reach oauth2.googleapis.com.", errorI18n: i18n("usage.error.unreachable", "oauth2.googleapis.com") };
@@ -1010,7 +1032,7 @@ function agyOptionalRead<T extends object>(base: string, token: string, method: 
   };
 }
 
-export async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+export async function fetchAntigravityUsage(storeHome?: string, scope: ClaudeUsageScope = {}): Promise<Omit<ProviderUsage, "id" | "name">> {
   // Monotonic: the deadline the models' budget is measured against is a timer, which a wall-clock change does not move.
   const startedAt = performance.now();
   // A CLI-observed rate limit outranks anything the quota API says. The bucket
@@ -1019,7 +1041,9 @@ export async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" 
   // with "Individual quota reached". Showing those buckets would be the exact
   // misleading 🟢 0% this overlay exists to correct — so the row goes red and
   // the buckets are withheld until the cap lifts.
-  const capAlert = getProviderRateLimit("antigravity");
+  // The cap is kept per account (AGEND-250, #3771 review P2-6): the pane of an agent that hit it is reported under the credential that agent was launched with (`antigravityCapKey`: the default's, or the
+  // named account's), and this row reads its own account's key only. A row asked for a folder without saying which account it is (no `scope.profile`) has none to read: never another account's.
+  const capAlert = storeHome && !scope.profile ? null : getProviderRateLimit(antigravityCapKey(storeHome ? scope.profile : null));
   if (capAlert) {
     const hoursLeft = Math.max(1, Math.round((capAlert.resetsAtMs - Date.now()) / 3_600_000));
     const resetText = hoursLeft >= 48 ? `${Math.round(hoursLeft / 24)}d` : `${hoursLeft}h`;
@@ -1032,7 +1056,7 @@ export async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" 
     };
   }
 
-  const auth = await agyAccessToken();
+  const auth = await agyAccessToken(storeHome);
   if (auth === null) {
     return { status: "no-credentials", hint: "Log in with the Antigravity CLI (`agy`).", hintI18n: i18n("usage.hint.login_agy"), metrics: [] };
   }
@@ -1778,6 +1802,7 @@ export function providersForConfig(
     const backendName = usageBackendForProviderId(provider.id);
     if (!backendName || !credentialHomeSpec(backendName)) return [provider];
     if (provider.id === "claude") return claudeHostRows(config, provider, backendName);
+    if (hostFacts(backendName, "usage")?.hostRows) return hostLoginRows(config, provider, backendName);
     const profiles = effectiveCredentialProfiles(config, backendName);
     if (profiles.length === 0) return [provider];
 
@@ -1824,7 +1849,7 @@ function fleetHasChat(config: UsageFleetConfig | null | undefined): boolean {
 
 function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backendName: string): UsageProvider[] {
   const inUse = effectiveCredentialProfiles(config, backendName);
-  const profiles = [...new Set([...inUse, ...claudeProfilesOnHost()])].sort();
+  const profiles = [...new Set([...inUse, ...profilesOnHost(backendName)])].sort();
   if (profiles.length === 0) return [provider];
   const homes = profiles.map(profile => credentialProfileStoreHome(getAgendHome(), backendName, profile));
   const hasChat = fleetHasChat(config);
@@ -1839,15 +1864,32 @@ function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backe
   ];
 }
 
+/**
+ * AGEND-119: one row per login on the host for a CLI whose spec says `host.usage.hostRows` (Antigravity): the default sign-in, and every named account in its folder, used by an agent or not, so
+ * Settings → Accounts has the numbers of an account nothing runs on yet. Each reads its own token file; a folder with none says "log in" and shows no numbers. (The usage panel's own filter, which
+ * keeps only the rows an agent uses, is unchanged: `isHostLoginUsageProvider` is Claude's alone.)
+ */
+function hostLoginRows(config: UsageFleetConfig, provider: UsageProvider, backendName: string): UsageProvider[] {
+  const profiles = [...new Set([...effectiveCredentialProfiles(config, backendName), ...profilesOnHost(backendName)])].sort();
+  if (profiles.length === 0) return [provider];
+  return [
+    { id: provider.id, name: `${provider.name} (default)`, defaultLogin: true, fetch: () => provider.fetch(undefined) },
+    ...profiles.map(profile => ({
+      id: `${provider.id}:${profile}`, name: `${provider.name} (${profile})`, profile,
+      fetch: () => provider.fetch(credentialProfileStoreHome(getAgendHome(), backendName, profile), { profile }),
+    })),
+  ];
+}
+
 /** What a row says about whose login it reads: its profile (#2014), or that it is the default login beside profiles. */
 function rowTags(p: UsageProvider): Pick<ProviderUsage, "profile" | "defaultLogin"> {
   return { ...(p.profile ? { profile: p.profile } : {}), ...(p.defaultLogin ? { defaultLogin: true as const } : {}) };
 }
 
-/** #2236: the Claude credential profiles on this host (their directories), whether or not an instance uses them. */
-function claudeProfilesOnHost(): string[] {
+/** #2236: a backend's credential profiles on this host (their directories), whether or not an instance uses them. */
+function profilesOnHost(backendName: string): string[] {
   try {
-    return readdirSync(dirname(credentialProfileHome(getAgendHome(), "claude-code", "x")), { withFileTypes: true })
+    return readdirSync(dirname(credentialProfileHome(getAgendHome(), backendName, "x")), { withFileTypes: true })
       .filter(e => e.isDirectory() && isCredentialProfileName(e.name))
       .map(e => e.name);
   } catch {
@@ -1855,7 +1897,7 @@ function claudeProfilesOnHost(): string[] {
   }
 }
 
-/** #2236: a Claude login's row — kept on screen whether or not a running instance uses it. */
+/** #2236: a Claude login's row — kept on screen whether or not a running instance uses it. (Antigravity's accounts are read for Settings → Accounts without that filter; the usage panel still shows only the ones an agent uses.) */
 export function isHostLoginUsageProvider(id: string): boolean {
   return id === "claude" || id.startsWith("claude:");
 }
