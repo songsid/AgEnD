@@ -9,8 +9,8 @@
  * The data-view registry comes from a HubViewSource: EMPTY until the owner-approval flow exists (§7 Q2), so nothing
  * is publishable or askable — fail closed.
  */
-import { createPublicKey, randomBytes } from "node:crypto";
-import { closeSync, openSync, writeSync } from "node:fs";
+import { createHash, createPublicKey, randomBytes } from "node:crypto";
+import { closeSync, existsSync, openSync, writeSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { createHubAudit, HUB_AUDIT_MIGRATION, type HubAuditStore } from "../audit/index.js";
 import {
@@ -40,8 +40,11 @@ import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSet
 import { HubMemberFiles } from "../member/attachments.js";
 import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../member/pairing-notices.js";
 
-export function memberSet(hubId: string): HubStateSet {
-  const base = `hub-member/${hubId}`;
+/** The legacy location remains assigned to its first proven binding; later pairings get separate complete sets. */
+export function memberSet(hubId: string, profile?: Pick<HubMemberProfile, "fleetId" | "owner" | "issuerKeyId">): HubStateSet {
+  const scope = profile ? createHash("sha256").update(JSON.stringify(["agend-member-binding-v1", hubId, profile.issuerKeyId,
+    profile.fleetId, profile.owner.realm, profile.owner.objectId])).digest("hex") : null;
+  const base = `hub-member/${hubId}${scope ? `/bindings/${scope}` : ""}`;
   return Object.freeze({
     database: `${base}/member.sqlite`,
     floors: Object.freeze([`${base}/floors/journal`, `${base}/floors/execution`, `${base}/floors/s3c-exposures`]),
@@ -268,31 +271,78 @@ export function createMemberReceive(deps: {
   };
 }
 
+/** Open at most two candidates. A partial/corrupt selected set never falls back to fresh state. */
+function openMemberState(options: {
+  home: string; hubId: string; profile: HubMemberProfile; execution: Execution; exposureStore: Exposures;
+  views: HubViewSource; outbox: HubRestrictedOutbox; now(): number; current(): boolean;
+}) {
+  const { home, hubId, profile, execution, exposureStore, now } = options;
+  const scoped = memberSet(hubId, profile);
+  const candidates = inspectStateSet(home, scoped) === "complete" ? [scoped] : [memberSet(hubId), scoped];
+  for (const set of candidates) {
+    if (!options.current()) throw new HubStateError("hub-member-pairing", "the pairing changed before opening its state");
+    const state = inspectStateSet(home, set);
+    const db = openHubDatabase(home, set.database, { create: state === "new" });
+    let selected = false;
+    try {
+      const [journalFloor, executionFloor, exposureFloor] = set.floors.map(f => new HubFileVersionFloor(home, f));
+      if (state === "new") {
+        for (const floor of [journalFloor!, executionFloor!, exposureFloor!]) floor.initialize();
+        for (const key of set.keys) createKeyFile(home, key);
+      }
+      applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_MEMBER_JOURNAL_MIGRATION,
+        { component: "s4-execution", version: 1, up: execution.migrateHubExecution }, exposureStore.HUB_EXPOSURE_MIGRATION,
+        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION]);
+      bindHubInstance(db, hubId, state, now());
+      // P1 never initialized S4, so its absent meta row is valid only with the untouched zero floor.
+      const executionMeta = db.prepare("SELECT revision FROM hub_execution_meta WHERE singleton=1").get() as { revision: number } | undefined;
+      if ((executionMeta?.revision ?? 0) !== executionFloor!.read()) throw new HubStateError("hub-state-mismatch", "the execution database and floor disagree");
+      const audit = createHubAudit({ db, contentKey: readKey(home, set.keys[1]!), now });
+      const journal = new HubMemberJournal(db, { hubId, encryptionKey: readKey(home, set.keys[0]!), floor: journalFloor!, outbox: options.outbox, now });
+      const exposures = new exposureStore.HubExposureStore(db, { floor: exposureFloor!, audit,
+        binding: () => ({ owner: profile.owner, fleetId: profile.fleetId }), views: options.views.load(), now });
+      if (state === "new") { journal.initialize(); exposures.initialize(); }
+      if (!db.transaction(() => journal.bindPairing(profile, exposures.list())).immediate()) {
+        if (set.database === scoped.database) throw new HubStateError("hub-state-mismatch", "the scoped member database belongs to another pairing");
+        continue; // Proven legacy mismatch only. Keep that entire state set, including its floors and keys.
+      }
+      if (!options.current()) throw new HubStateError("hub-member-pairing", "the pairing changed while opening its state");
+      selected = true;
+      return { db, journal, exposures, audit };
+    } finally { if (!selected) db.close(); }
+  }
+  throw new HubStateError("hub-state-mismatch", "no member state belongs to this pairing");
+}
+
 /**
  * Disconnect while the member side is not running (held, or never composed): withdraw every published exposure in the
  * member's own store, so consent never outlives the disconnect (a later re-pair to the same Hub republishes nothing).
  * Never composed (no member state): nothing was published. A partial set throws (the disconnect reports "unsaved").
  */
 export async function withdrawMemberExposuresOffline(home: string, hubId: string, now: () => number = Date.now): Promise<number> {
-  const set = memberSet(hubId);
-  if (inspectStateSet(home, set) === "new") return 0;
-  const mod = await import("../member/exposures.js");
-  const db = openHubDatabase(home, set.database, { create: false });
+  const legacy = memberSet(hubId);
+  if (!existsSync(`${home}/hub-member/${hubId}/pairing.json`)) {
+    if (inspectStateSet(home, legacy) === "new") return 0;
+    throw new HubStateError("hub-member-pairing", "the saved member state has no pairing");
+  }
+  const profiles = new HubMemberProfileStore(home, hubId), profile = profiles.readProfile(), digest = profiles.profileDigest();
+  const scoped = memberSet(hubId, profile);
+  if (inspectStateSet(home, scoped) === "new" && inspectStateSet(home, legacy) === "new") return 0;
+  const [store, execution] = await Promise.all([import("../member/exposures.js"), import("../execution/index.js")]);
+  const { db, exposures } = openMemberState({ home, hubId, profile, execution, exposureStore: store,
+    views: EMPTY_VIEW_SOURCE, outbox: { insert: () => { throw Error("offline"); }, lookup: () => { throw Error("offline"); } }, now,
+    current: () => profiles.profileDigest() === digest });
   try {
-    const audit = createHubAudit({ db, contentKey: readKey(home, set.keys[1]!), now });
-    const store = new mod.HubExposureStore(db, { floor: new HubFileVersionFloor(home, set.floors[2]!), audit, binding: () => null, views: new Map(), now });
     let withdrawn = 0;
-    for (const row of store.list()) {
+    for (const row of exposures.list()) {
       const committed = row.committed;
       if (committed && committed.exposure.state === "published") {
-        store.withdraw(committed.exposure.id, committed.exposure.revision);
+        exposures.withdraw(committed.exposure.id, committed.exposure.revision);
         withdrawn += 1;
       }
     }
     return withdrawn;
-  } finally {
-    db.close();
-  }
+  } finally { db.close(); }
 }
 
 export function createHubMemberFactory(options: HubMemberFactoryOptions) {
@@ -340,31 +390,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const reportLink = (state: "online" | "offline" | "revoked" | "rejected") => options.linkState?.(state, profileDigest);
       const [execution, exposureMods] = await Promise.all([options.components.execution(), options.components.exposures()]);
 
-      // 1. The member state set: new (create all) or complete (open); partial is refused.
-      const set = memberSet(hubId);
-      const state = inspectStateSet(options.home, set);
-      const db: Database.Database = openHubDatabase(options.home, set.database, { create: state === "new" });
-      teardown.add("the member database", () => db.close());
-      const [journalFloor, executionFloor, exposureFloor] = set.floors.map((f) => new HubFileVersionFloor(options.home, f));
-      if (state === "new") {
-        for (const floor of [journalFloor!, executionFloor!, exposureFloor!]) floor.initialize();
-        for (const key of set.keys) createKeyFile(options.home, key);
-      }
-      applyHubMigrations(db, [
-        HUB_INSTANCE_MIGRATION,
-        HUB_AUDIT_MIGRATION,
-        HUB_MEMBER_JOURNAL_MIGRATION,
-        { component: "s4-execution", version: 1, up: execution.migrateHubExecution },
-        exposureMods.store.HUB_EXPOSURE_MIGRATION,
-        HUB_REPRESENTATIVE_MIGRATION,
-        HUB_PAIRING_INBOX_MIGRATION,
-      ]);
-      bindHubInstance(db, hubId, state, now());
-
-      // 2. Member-local audit; S1, S4 and S3c append inside their own transactions on this DB.
-      const audit: HubAuditStore = createHubAudit({ db, contentKey: readKey(options.home, set.keys[1]!), now });
-
-      // 3. S1 journal: its restricted outbox forwards to S4's, callable only once S4 exists and has recovered.
+      // Bind the whole set BEFORE recovery, snapshot publication, attention or outbox attachment.
       let outbox: HubRestrictedOutbox | null = null;
       const forwarding: HubRestrictedOutbox = {
         insert: (...args) => {
@@ -376,24 +402,11 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           return outbox.lookup(...args);
         },
       };
-      const journal = new HubMemberJournal(db, { hubId, encryptionKey: readKey(options.home, set.keys[0]!), floor: journalFloor!, outbox: forwarding, now });
-
-      // 4. S3c exposure store over the approved views (empty until §7 Q2: nothing is publishable).
-      const registry = views.load();
-      const exposures = new exposureMods.store.HubExposureStore(db, {
-        floor: exposureFloor!,
-        audit,
-        binding: () => (profile ? { owner: profile.owner, fleetId: profile.fleetId } : null),
-        views: registry,
-        now,
-      });
-
-      // 5. P1's only execution path: the representative adapter (docs/design/hub-representative-agent.md). No S4 service
-      // or S4b provider is constructed; an old hub_member.execution.provider block is ignored (one info line, no hold).
-      if (state === "new") {
-        journal.initialize();
-        exposures.initialize();
-      }
+      const profileCurrent = () => current() && options.boundHub() === hubId
+        && new HubMemberProfileStore(options.home, hubId).profileDigest() === profileDigest;
+      const { db, journal, exposures, audit } = openMemberState({ home: options.home, hubId, profile, execution,
+        exposureStore: exposureMods.store, views, outbox: forwarding, now, current: profileCurrent });
+      teardown.add("the member database", () => db.close());
       if ((cfg as { execution?: { provider?: unknown } }).execution?.provider !== undefined) {
         options.log("info", "hub_member.execution.provider is ignored: P1 Hub answers come from the published agent (representative mode)");
       }

@@ -27,6 +27,54 @@ function fixture() {
   const fence = { current: () => live, linkEpoch: 1, revocationVersion: 1 };
   return { advanceClock: () => { now += 120_001; }, db, options, journal, admission, q, keys, profile, exposure, insert, authorize, lease, begin, fence, hold, fenceLocal, stop: () => { live = false; }, changeExposure: () => { revision++; }, revoke: () => { revocation++; } };
 }
+describe("#3823 durable pairing ownership", () => {
+  it("infers the legacy owner from authenticated questions, never the replacement profile", async () => {
+    const f = fixture(); const receipt = await f.admission.admit(f.q), next = { ...f.profile, fleetId: randomUUID() };
+    expect(f.journal.bindPairing(next, [])).toBe(false);
+    const reopened = new HubMemberJournal(f.db, f.options);
+    expect(reopened.bindPairing(f.profile, [])).toBe(true);
+    expect(reopened.bindPairing({ ...f.profile, owner: { ...f.profile.owner, objectId: randomUUID() } }, [])).toBe(false);
+    expect(reopened.bindPairing({ ...f.profile, issuerKeyId: "e".repeat(64) }, [])).toBe(false);
+    expect(reopened.unackedReceipts().receipts).toEqual([receipt]);
+    expect(() => reopened.prepare({ ...f.q, identity: { ...f.q.identity, messageId: randomUUID(), destinationFleetId: next.fleetId } })).toThrow("denied");
+  });
+  it("refuses mixed committed/staged legacy ownership before committing a binding", async () => {
+    const f = fixture(); await f.admission.admit(f.q); const floor = f.options.floor.read();
+    expect(() => f.journal.bindPairing(f.profile, [{ committed: { exposure: f.exposure }, staged: { exposure: { ...f.exposure, fleetId: randomUUID() } } }])).toThrow("uncertain");
+    expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null }); expect(f.options.floor.read()).toBe(floor);
+  });
+  it.each(["hub_representative_questions", "hub_representative_consents", "hub_execution_queue", "hub_execution_contexts", "hub_execution_operations", "hub_execution_attention"])("does not adopt unattributed %s as an empty legacy set", table => {
+    const f = fixture(); f.db.exec(`CREATE TABLE ${table}(value TEXT); INSERT INTO ${table} VALUES('orphan')`);
+    expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncertain");
+    expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null });
+  });
+  it("authenticates ciphertext before legacy ownership adoption", async () => {
+    const f = fixture(); await f.admission.admit(f.q);
+    const row = JSON.parse((f.db.prepare("SELECT value FROM hub_member_messages").get() as { value: string }).value); row.payload = "bad.cipher.text";
+    f.db.prepare("UPDATE hub_member_messages SET value=?").run(JSON.stringify(row));
+    expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncertain");
+    expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null });
+  });
+  it("does not adopt orphan representative work merely because another question identifies an owner", async () => {
+    const f = fixture(); await f.admission.admit(f.q);
+    f.db.exec("CREATE TABLE hub_representative_questions(source TEXT,message_id TEXT,digest TEXT,exposure_id TEXT,revision INTEGER)");
+    f.db.prepare("INSERT INTO hub_representative_questions VALUES(?,?,?,?,?)").run(`hub:${f.profile.hub.hubId}:${randomUUID()}`, randomUUID(), f.q.identity.contentDigest, f.exposure.id, 1);
+    expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncertain");
+    expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null });
+  });
+  it("a crash after the adoption floor advances rolls back the binding and remains held on restart", () => {
+    const f = fixture(), raise = f.options.floor.raise;
+    f.options.floor.raise = n => { raise(n); throw Error("simulated floor fsync failure"); };
+    expect(() => f.journal.bindPairing(f.profile, [])).toThrow("simulated");
+    expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null });
+    f.options.floor.raise = raise;
+    expect(() => new HubMemberJournal(f.db, f.options).bindPairing(f.profile, [])).toThrow("uncertain");
+  });
+  it("a receipt counter without any attributable history is not an empty legacy journal", () => {
+    const f = fixture(); f.db.prepare("UPDATE hub_member_meta SET receipt_sequence=1").run();
+    expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncertain");
+  });
+});
 describe("Hub restricted member journal", () => {
   it("admits one exact source into the restricted outbox, with encrypted payload and monotonic receipts", async () => {
     const f = fixture(), first = await f.admission.admit(f.q), duplicate = await f.admission.admit(f.q);

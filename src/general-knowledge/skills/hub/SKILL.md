@@ -191,6 +191,11 @@ Connecting shares nothing. **Reconnect** appears when the connection stopped (re
 ends the old connection and opens the Hub sign-in again. **Remove this connection** ends it from your side ("Agents
 you share will stop answering.").
 
+Reconnecting after revocation or removal creates a new Fleet identity on the same Hub. Its member journal and sharing
+consent are separate from the previous identity: old questions and receipts are not replayed. An ordinary network
+reconnect of the same identity keeps its delivery and acknowledgement history. Do not delete journal files to repair a
+connection; partial or inconsistent state is held rather than reset.
+
 **Other ways** holds the older **pairing code** method for a Hub without company sign-in; a pairing code pasted into
 the address box opens it filled in. Its switch **Allow this fleet to connect to a Hub** (under **Hub membership**)
 applies as soon as it is changed.

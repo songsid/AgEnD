@@ -5,7 +5,8 @@ import { z } from "zod";
 import { messageContentDigest, sha256, verifyLease } from "./identity.js";
 import { questionSchema, answerSchema, receiptSchema, HUB_LIMITS } from "./protocol.js";
 import { buttonsDigest } from "./buttons-model.js";
-import { parseStrictJson, validated, HubProtocolError, uuid, hash, epoch } from "./validation.js";
+import { parseStrictJson, validated, HubProtocolError, uuid, hash, epoch, person } from "./validation.js";
+import type { HubMemberProfile } from "./profile.js";
 import type { HubQuestion, HubReceipt, HubAnswer, HubAuthorizationLease, HubAuthorizationRequest, HubRevocation } from "./types.js";
 import type { HubVersionFloor } from "./store.js";
 // Retain two independently bounded frames: JSON escaping can make their combined payload larger than one frame.
@@ -40,8 +41,12 @@ export interface HubJournalOptions {
 export function migrateHubMemberJournal(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS hub_member_meta(singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL, receipt_sequence INTEGER NOT NULL, revocation_version INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS hub_member_messages(message_id TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+  if (!(db.pragma("table_info(hub_member_meta)") as { name: string }[]).some(c => c.name === "binding")) db.exec("ALTER TABLE hub_member_meta ADD COLUMN binding TEXT");
 }
-export const HUB_MEMBER_JOURNAL_MIGRATION = Object.freeze({ component: "s1-member-journal", version: 1, up: migrateHubMemberJournal });
+export const HUB_MEMBER_JOURNAL_MIGRATION = Object.freeze({ component: "s1-member-journal", version: 2, up: migrateHubMemberJournal });
+const pairingBindingSchema = z.strictObject({ fleetId: uuid, owner: person, issuerKeyId: hash });
+type PairingBinding = z.infer<typeof pairingBindingSchema>;
+const bindingKey = (b: PairingBinding) => JSON.stringify([b.fleetId, b.owner.realm, b.owner.objectId, b.issuerKeyId]);
 /** Signature refresh may change time/nonce/revocation but cannot redirect a previously admitted question. */
 export function questionContextDigest(q: HubQuestion): string {
   const e = q.identity;
@@ -56,7 +61,63 @@ export class HubMemberJournal {
   private now(): number { return this.options.now?.() ?? Date.now(); }
   initialize(): void {
     if (this.options.floor.read() !== 0 || this.db.prepare("SELECT 1 FROM hub_member_meta").get()) throw new HubProtocolError("conflict");
-    this.db.prepare("INSERT INTO hub_member_meta VALUES(1,0,0,0)").run();
+    this.db.prepare("INSERT INTO hub_member_meta(singleton,revision,receipt_sequence,revocation_version) VALUES(1,0,0,0)").run();
+  }
+  /** Composition only, BEFORE recovery. Never relabel a legacy journal as a newly paired Fleet. */
+  bindPairing(profile: Pick<HubMemberProfile, "fleetId" | "owner" | "issuerKeyId">,
+    exposures: readonly { committed: { exposure: { fleetId: string; owner: HubMemberProfile["owner"] } } | null; staged: { exposure: { fleetId: string; owner: HubMemberProfile["owner"] } } | null }[]): boolean {
+    this.meta();
+    const target = validated(pairingBindingSchema, { fleetId: profile.fleetId, owner: profile.owner, issuerKeyId: profile.issuerKeyId });
+    const raw = (this.db.prepare("SELECT binding FROM hub_member_meta WHERE singleton=1").get() as { binding: string | null }).binding;
+    if (raw !== null) return bindingKey(validated(pairingBindingSchema, parseStrictJson(raw))) === bindingKey(target);
+    let observed: PairingBinding | undefined;
+    const identities = new Map<string, HubQuestion["identity"]>();
+    const observe = (b: PairingBinding) => { b = validated(pairingBindingSchema, b); if (observed && bindingKey(observed) !== bindingKey(b)) throw new HubProtocolError("uncertain"); observed = b; };
+    // Decrypt/authenticate every row. No question or answer bytes escape this method.
+    for (const r of this.db.prepare("SELECT message_id FROM hub_member_messages").all() as { message_id: string }[]) {
+      const e = this.decrypt(this.row(r.message_id)!).question.identity;
+      if (e.issuer !== this.options.hubId) throw new HubProtocolError("uncertain");
+      observe({ fleetId: e.destinationFleetId, owner: e.owner, issuerKeyId: e.issuerKeyId });
+      identities.set(e.messageId, e);
+    }
+    for (const row of exposures) for (const value of [row.committed, row.staged]) if (value !== null) {
+      observe({ fleetId: value.exposure.fleetId, owner: value.exposure.owner, issuerKeyId: observed?.issuerKeyId ?? target.issuerKeyId });
+    }
+    if (!observed) {
+      if (this.meta().receipt_sequence !== 0) throw new HubProtocolError("uncertain");
+      // These rows cannot independently establish who owns an old state set. Never adopt orphaned work as empty.
+      for (const table of ["hub_representative_questions", "hub_representative_consents", "hub_execution_queue", "hub_execution_contexts", "hub_execution_operations", "hub_execution_attention"]) {
+        if (this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table)
+          && this.db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get()) throw new HubProtocolError("uncertain");
+      }
+    }
+    const has = (table: string) => !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
+    if (observed && has("hub_representative_questions")) {
+      for (const r of this.db.prepare("SELECT source,message_id,digest,exposure_id,revision FROM hub_representative_questions").all() as { source: string; message_id: string; digest: string; exposure_id: string; revision: number }[]) {
+        const e = identities.get(r.message_id);
+        if (!e || r.source !== this.source(e.messageId) || r.digest !== e.contentDigest || r.exposure_id !== e.exposureId || r.revision !== e.exposureRevision) throw new HubProtocolError("uncertain");
+      }
+    }
+    if (observed && has("hub_execution_queue")) {
+      for (const r of this.db.prepare("SELECT source,digest FROM hub_execution_queue").all() as { source: string; digest: string }[]) {
+        const e = identities.get(r.source.slice(`hub:${this.options.hubId}:`.length));
+        if (!e || r.source !== this.source(e.messageId) || r.digest !== this.row(e.messageId)!.contextDigest) throw new HubProtocolError("uncertain");
+      }
+      // Old S4 work must still belong to an attributed source; no orphan recovery record establishes ownership.
+      if (this.db.prepare("SELECT 1 FROM hub_execution_contexts c LEFT JOIN hub_execution_queue q ON q.source=c.source WHERE q.source IS NULL LIMIT 1").get()
+        || this.db.prepare("SELECT 1 FROM hub_execution_operations o LEFT JOIN hub_execution_contexts c ON c.id=o.context_id WHERE c.id IS NULL LIMIT 1").get()
+        || this.db.prepare("SELECT 1 FROM hub_execution_attention a LEFT JOIN hub_execution_contexts c ON c.id=a.context_id WHERE c.id IS NULL LIMIT 1").get()) throw new HubProtocolError("uncertain");
+    }
+    const binding = observed ?? target;
+    this.change(() => { this.db.prepare("UPDATE hub_member_meta SET binding=? WHERE singleton=1").run(JSON.stringify(binding)); });
+    return bindingKey(binding) === bindingKey(target);
+  }
+  private checkPairing(q: HubQuestion): void {
+    const raw = (this.db.prepare("SELECT binding FROM hub_member_meta WHERE singleton=1").get() as { binding: string | null }).binding;
+    if (raw !== null) {
+      const binding = validated(pairingBindingSchema, parseStrictJson(raw)), e = q.identity;
+      if (e.issuer !== this.options.hubId || bindingKey(binding) !== bindingKey({ fleetId: e.destinationFleetId, owner: e.owner, issuerKeyId: e.issuerKeyId })) throw new HubProtocolError("denied");
+    }
   }
   private meta(): { revision: number; receipt_sequence: number; revocation_version: number } {
     if (this.failed) throw new HubProtocolError("uncertain");
@@ -93,11 +154,13 @@ export class HubMemberJournal {
       const cipher = createDecipheriv("aes-256-gcm", this.options.encryptionKey, iv); cipher.setAAD(this.aad(row)); cipher.setAuthTag(tag);
       const payload = validated(z.strictObject({ question: questionSchema, answer: answerSchema.optional() }), parseStrictJson(Buffer.concat([cipher.update(bytes), cipher.final()]), PAYLOAD_LIMIT));
       if (payload.question.identity.messageId !== row.messageId || payload.question.identity.contentDigest !== row.contentDigest || questionContextDigest(payload.question) !== row.contextDigest) throw Error();
+      this.checkPairing(payload.question);
       return payload;
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
   }
   prepare(question: HubQuestion): { operationId: string; receipt: HubReceipt | null } {
     const q = validated(questionSchema, question); if (q.identity.issuer !== this.options.hubId || q.identity.contentDigest !== messageContentDigest("question", q.text, { attachments: q.attachments })) throw new HubProtocolError("denied");
+    this.checkPairing(q);
     return this.change(() => {
       const existing = this.row(q.identity.messageId);
       if (existing) {
