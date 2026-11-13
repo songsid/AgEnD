@@ -155,6 +155,15 @@ describe("Track C durable room adapter (injectable Track R seam)", () => {
     expect(await reopened.report({ correlationId: cid, caller: "existing-agent", text: "Late answer" })).toMatchObject({ ok: true });
     expect(f.sent[0]?.text).toBe("Late answer");
   });
+  it("recovers an actual persisted first-input intent as held while its old handoff result is still missing", async () => {
+    const f = member(), entered = deferred<void>(), result = deferred<boolean>();
+    f.options.deliver = vi.fn(async input => { expect(await input.beforeInput()).toBe(true); entered.resolve(); return result.promise; });
+    f.adapter.accept(f.ask, f.link); await entered.promise;
+    expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEqual({ state: "input" }); f.adapter.close();
+    const reopened = new HubRoomAskAdapter(f.options); reopened.connected(f.link); reopened.accept(f.ask, f.link); await reopened.settled();
+    expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEqual({ state: "held" });
+    expect(f.options.deliver).toHaveBeenCalledTimes(1); result.resolve(false); await f.adapter.settled(); reopened.close();
+  });
   it("rejects altered ciphertext, another binding and another key instead of falling back to empty history", async () => {
     const f = member(); f.adapter.accept(f.ask, f.link); await f.adapter.settled(); f.adapter.close();
     expect(() => new HubRoomAskAdapter({ ...f.options, bindingKey: "different-binding" })).toThrow("uncertain");
