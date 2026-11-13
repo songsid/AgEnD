@@ -150,6 +150,8 @@ export class RemoteAccounts {
   private readonly busy = new Set<string>();
   /** Operations of which only one may be in progress on the whole computer (its `check` and `run` are separated by awaits). */
   private readonly exclusive = new Set<string>();
+  /** AGEND-250 (#3771 review P2-4): credentials held against new task admission (the computer's own login of a CLI, while a Disconnect deletes and verifies it). Read synchronously by `defaultReserved`. */
+  private readonly held = new Set<string>();
   /** When a sign-out or remove of a profile (lower-case name) last passed its checks. Only profiles this Runtime created get here. */
   private readonly lastChange = new Map<string, number>();
   /** Closed to new work by `stop()`; and the connection the requests in flight belong to (a change ends the old ones' right to start anything). */
@@ -193,8 +195,10 @@ export class RemoteAccounts {
     if (this.meta && this.slot.current()) this.endWithRetry(this.meta.id, "closed");
   }
   /** Nothing of this module is running or being held: the update fence may ask. */
-  idle(): boolean { return this.pending.size === 0 && !this.slot.current() && this.busy.size === 0 && this.retained.size === 0 && this.activeChecks === 0 && this.exclusive.size === 0; }
+  idle(): boolean { return this.pending.size === 0 && !this.slot.current() && this.busy.size === 0 && this.retained.size === 0 && this.activeChecks === 0 && this.exclusive.size === 0 && this.held.size === 0; }
   /** A change to this profile has been reserved or is under way: a task or terminal must not start under it now. */
+  /** Whether the computer's OWN login of this CLI is being changed by a Disconnect (from its first check until its verification has finished): a run or terminal that would use it is refused. */
+  defaultReserved(cli: string): boolean { return this.held.has(`${DEFAULT_KEY}${cli}`); }
   profileReserved(name: string): boolean { const key = name.toLowerCase(); return this.busy.has(key) || this.retained.has(key); }
   private refreshHold(): void { if (this.hold && !this.slot.current()) { const leave = this.hold; this.hold = null; leave(); } }
   private retainBusy(key: string, ended: Promise<unknown>): void { this.retained.add(key); const done = (): void => { this.retained.delete(key); }; ended.then(done, done); }
@@ -240,7 +244,8 @@ export class RemoteAccounts {
    */
   private async audited<T>(action: AuditAction, switchName: RemoteSwitchName, actor: string, subject: { cli?: string; profile?: string; detail?: (result: T) => string | undefined }, ctx: Ctx,
     steps: { check?: () => void | Promise<void>; run: () => Promise<T>; /** The operation goes on after `run` (a sign-in): its own end is recorded later, so no `ok` here. */ openEnded?: boolean;
-      /** Only one operation of this kind at a time on the computer, taken in the same synchronous step as the switch and profile checks (before any await). */ exclusive?: "signin-start" | "install" }): Promise<T> {
+      /** Only one operation of this kind at a time on the computer, taken in the same synchronous step as the switch and profile checks (before any await). */ exclusive?: "signin-start" | "install";
+      /** A credential held (see `defaultReserved`) from the same synchronous step as `exclusive`, until the operation has ended: the check, the deletion and the verification are all inside it. */ hold?: string }): Promise<T> {
     const base = { actor, action, ...(subject.cli ? { cli: subject.cli } : {}), ...(subject.profile ? { profile: subject.profile } : {}) };
     // A failure in `check` changed nothing, so it is a refusal whatever threw (a `find` or `knows` that throws too): it joins the folded refusals instead of
     // writing one unmergeable `failed` line per request. Only a failure of `run` is `failed`.
@@ -253,6 +258,8 @@ export class RemoteAccounts {
       if (this.exclusive.has(taken)) { if (key !== undefined) this.busy.delete(key); return refuse(new SignInRefusal(taken === "install" ? "Another install is running on this computer" : "Another sign-in is starting on this computer", "busy")); }
       this.exclusive.add(taken);
     }
+    const hold = steps.hold;
+    if (hold !== undefined) this.held.add(hold);
     try {
       // The switch and the connection are looked at again after the checks, which can wait a long time (PowerShell, a CLI lookup): a switch turned off or
       // run out meanwhile, or a connection that has gone, stops the operation here, before anything is recorded as started.
@@ -263,7 +270,7 @@ export class RemoteAccounts {
         if (!steps.openEnded) this.record({ ...base, outcome: "ok", ...(subject.detail && subject.detail(result) ? { detail: subject.detail(result) } : {}) }, false);
         return result;
       } catch (error) { return refuse(error); }
-    } finally { if (key !== undefined) this.busy.delete(key); if (taken !== undefined) this.exclusive.delete(taken); }
+    } finally { if (key !== undefined) this.busy.delete(key); if (taken !== undefined) this.exclusive.delete(taken); if (hold !== undefined) this.held.delete(hold); }
   }
   private cliOf(value: string): CredentialProfileCli {
     if (!isCredentialProfileCli(value)) throw new ProfileOwnershipRefusal(`Only ${PROFILE_CLI_NAMES()} accounts can be managed on a computer. Codex may keep its sign-in in the Windows Credential Manager, which a profile folder cannot hold or remove, so it is not offered yet`, "unsupported");
@@ -700,6 +707,7 @@ export class RemoteAccounts {
     const paceKey = `${DEFAULT_KEY}${cli}`;
     return this.audited("login.signout", "accounts", actor, { cli }, ctx, {
       exclusive: "signin-start",
+      hold: paceKey,
       check: async () => {
         await this.settleEndedSignIn();
         if (this.slot.current()) throw new SignInRefusal("A sign-in is running on this computer; end it first", "busy");

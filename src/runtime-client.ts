@@ -20,7 +20,7 @@ import { ProcessNotConfirmedEnded, RemoteAccounts, type RemoteAccountsDeps, type
 import { isCreatedProfile } from "./runtime-profile-ownership.js";
 import { killTree } from "./runtime-signin.js";
 import { CLI_INSTALL_CAPABILITY, CLI_UPDATE_CAPABILITY, MODEL_REFRESH_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
-import { runtimeAccountsCapabilities, runtimeIds, runtimeSignInCapabilities } from "./cli-registry.js";
+import { isRuntimeDefaultLoginCli, runtimeAccountsCapabilities, runtimeIds, runtimeSignInCapabilities } from "./cli-registry.js";
 import { managedCliRoot, managedInstaller, nativeInstallSupported } from "./runtime-cli-install.js";
 import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
 import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
@@ -186,6 +186,13 @@ export class RuntimeClient {
   private readonly activeProfiles = new Map<string, string>();
   /** Terminals being opened right now, by profile (lower-case): they are not in the pane ledger until the host has answered. */
   private readonly openingPanes = new Map<string, number>();
+  /**
+   * AGEND-250 (#3771 review P2-4): the computer's OWN login of a CLI (Antigravity's default) is one credential shared by every launch that names no account. A run counts as using it from the synchronous step that
+   * accepts it (before any await: an `openMcp` wait is not "active" yet) until it finishes; a terminal from the request that opens it until the host has answered. `Disconnect` reads these and holds
+   * `RemoteAccounts.defaultReserved` against new ones; the pair is the shared fence for that credential (the same shape `activeProfiles`/`openingPanes` give a named profile).
+   */
+  private readonly defaultRuns = new Map<string, string>();
+  private readonly openingDefaultPanes = new Map<string, number>();
   private remoteAccounts: RemoteAccounts | null = null;
   /** Ends a CLI install that is still running when this Runtime stops (the install's child process is the exact one it started). */
   private readonly installAbort = new AbortController();
@@ -394,13 +401,17 @@ export class RuntimeClient {
       const request = validateRuntimePaneRequest(value.request);
       this.machinePaneLimit = value.maxAgents as number;
       const epoch = this.paneEpoch;
-      let leave: (() => void) | undefined, opening: string | undefined;
+      let leave: (() => void) | undefined, opening: string | undefined, openingDefault: string | undefined;
       try {
         leave = this.activity.enter();
         // A terminal that would run under a profile that AgEnD is signing out, removing or signing in right now is not started; and from here until the host
         // has answered it counts as using its profile, because the pane ledger does not show it yet.
         if (request.action === "open") {
           const profile = request.launch.credentialProfile ?? this.credentialProfileFor(request.launch.cli, undefined);
+          if (profile === undefined && isRuntimeDefaultLoginCli(request.launch.cli)) {
+            if (this.remoteAccounts?.defaultReserved(request.launch.cli)) throw new Error(`${request.launch.cli}'s own sign-in on this computer is being changed from AgEnD; try again in a moment`);
+            openingDefault = request.launch.cli; this.openingDefaultPanes.set(openingDefault, (this.openingDefaultPanes.get(openingDefault) ?? 0) + 1);
+          }
           if (profile !== undefined) {
             if (this.remoteAccounts?.profileReserved(profile)) throw new Error(`Credential profile "${profile}" is being changed from AgEnD; try again in a moment`);
             opening = profile.toLowerCase(); this.openingPanes.set(opening, (this.openingPanes.get(opening) ?? 0) + 1);
@@ -423,6 +434,7 @@ export class RuntimeClient {
       } catch (error) { this.send({ v: 1, type: "pane.response", id: value.id, ok: false, error: message(error) }); }
       finally {
         if (opening !== undefined) { const left = (this.openingPanes.get(opening) ?? 1) - 1; if (left > 0) this.openingPanes.set(opening, left); else this.openingPanes.delete(opening); }
+        if (openingDefault !== undefined) { const left = (this.openingDefaultPanes.get(openingDefault) ?? 1) - 1; if (left > 0) this.openingDefaultPanes.set(openingDefault, left); else this.openingDefaultPanes.delete(openingDefault); }
         leave?.();
       }
       return;
@@ -490,7 +502,7 @@ export class RuntimeClient {
     if (this.snapshots.get(task.id) === serialized) return;
     try {
       const job = this.options.store.update(task); this.snapshots.set(task.id, serialized); this.publish(job);
-      if (task.finishedAt) { this.active.delete(task.id); this.activeProfiles.delete(task.id); this.closeMcp(task.id); }
+      if (task.finishedAt) { this.active.delete(task.id); this.activeProfiles.delete(task.id); this.defaultRuns.delete(task.id); this.closeMcp(task.id); }
     } catch {
       // A process whose state could not be committed must not continue accepting commands.
       this.report("Runtime execution state could not be saved. Stop and inspect the private runtime profile.");
@@ -625,7 +637,7 @@ export class RuntimeClient {
       // AGEND-124: the proof that an Antigravity account's sign-in stays in its own folder (an empty scratch folder must answer "signed out"), and the Credential Manager entry of the computer's own login.
       isolated: extra?.isolated ?? ((cli, scratch) => probeCredentialIsolation(cli, scratch, extra?.find ? id => extra.find!(id as CredentialProfileCli) : undefined, this.options.credentialIsolationRun)),
       deleteCredential: extra?.deleteCredential ?? (name => deleteWindowsCredential(name, extra?.environment?.() ?? undefined)),
-      taskRunning: async () => { await this.systemBoot(); return this.active.size > 0 || this.cliTerminalRunning("antigravity"); },
+      taskRunning: async () => { await this.systemBoot(); return this.active.size > 0 || this.defaultRuns.size > 0 || this.openingDefaultPanes.size > 0 || this.cliTerminalRunning("antigravity"); },
       inUse: name => this.profileInUse(name), inUseNow: name => this.profileInUseNow(name), report: text => this.report(text),
       // Throws when `credential-default.json` cannot be read: an unreadable default is not "no default" (the remove then answers `unconfirmed`).
       defaultProfile: () => this.options.store.credentialDefault(),
@@ -718,6 +730,11 @@ export class RuntimeClient {
       // profile is never raced by a task, and one that has not yet reserved it finds this task in `activeProfiles`.
       if (profile && this.remoteAccounts?.profileReserved(profile)) throw new Error(`Credential profile "${profile}" is being changed from AgEnD; try again in a moment`);
       if (profile) this.activeProfiles.set(task.requestId, profile);
+      // The same fence for the computer's own login: refused while a Disconnect holds it, and counted from this very step (not from `active`, which an `openMcp` wait comes before).
+      else if (isRuntimeDefaultLoginCli(task.cli)) {
+        if (this.remoteAccounts?.defaultReserved(task.cli)) throw new Error(`${task.cli}'s own sign-in on this computer is being changed from AgEnD; try again in a moment`);
+        this.defaultRuns.set(task.requestId, task.cli);
+      }
       const credentialHome = profile ? await this.credentialHome(task.cli, profile) : undefined;
       const mcp = payload.mcp ? await this.openMcp(task.requestId, (payload.mcp as { tools: string[] }).tools) : undefined;
       if (this.stopped || !this.online()) throw new Error("Runtime disconnected before native execution started");
@@ -729,7 +746,7 @@ export class RuntimeClient {
       });
       this.update(initial); return this.options.store.get(task.requestId)!.task;
     } catch (error) {
-      this.active.delete(task.requestId); this.activeProfiles.delete(task.requestId); this.closeMcp(task.requestId);
+      this.active.delete(task.requestId); this.activeProfiles.delete(task.requestId); this.defaultRuns.delete(task.requestId); this.closeMcp(task.requestId);
       const failed = { ...accepted.job.task, status: "failed" as const, error: message(error), finishedAt: Date.now(), outcomeConfirmed: true };
       this.update(failed); return failed;
     }
