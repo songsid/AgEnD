@@ -17,7 +17,8 @@ import type { IncomingMessage } from "node:http";
 import { HubProtocolError } from "./validation.js";
 import { personKeyString } from "./identity.js";
 import type { HubActor, HubRequestContext, PersonKey } from "./types.js";
-import { recentHubDirectoryAuthentication, prepareHubDirectorySessionRotation, completeHubDirectorySessionRotation, type HubDirectorySessionRotation } from "./session-directory-transition.js";
+import { recentHubDirectoryAuthentication, prepareHubDirectorySessionRotation, completeHubDirectorySessionRotation, completeHubRoleDirectorySessionRotation,
+  type HubDirectorySessionAdministration, type HubDirectorySessionRotation } from "./session-directory-transition.js";
 import type { HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubCore } from "./http/core.js";
 import type { HubManagementPermit } from "./roles/authority.js";
@@ -119,14 +120,17 @@ export class HubSessions {
   }
 
   /** Internal server adapters only; never mounted as token/ref lookup routes. */
-  recentAuthentication(actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>): number | null {
-    return recentHubDirectoryAuthentication(this.core, actor);
+  recentAuthentication(actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>, proof?: HubDirectorySessionAdministration): number | null {
+    return recentHubDirectoryAuthentication(this.core, actor, proof);
   }
-  prepareDirectoryRotation(token: string, actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>): HubDirectorySessionRotation {
-    return prepareHubDirectorySessionRotation(this.core, token, actor);
+  prepareDirectoryRotation(token: string, actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>, proof?: HubDirectorySessionAdministration): HubDirectorySessionRotation {
+    return prepareHubDirectorySessionRotation(this.core, token, actor, proof);
   }
   completeDirectoryRotation(rotation: HubDirectorySessionRotation, operationId: string) {
     return completeHubDirectorySessionRotation(this.core, rotation, operationId);
+  }
+  completeRoleDirectoryRotation(rotation: HubDirectorySessionRotation, operationId: string) {
+    return completeHubRoleDirectorySessionRotation(this.core, rotation, operationId, token => this.contextOf(token));
   }
 
   /** The current session of this token, or null (ended, expired, idle, or the server fenced). Refreshes "seen". */

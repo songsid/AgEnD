@@ -8,11 +8,26 @@ import { personKeyString } from "./identity.js";
 import { HubProtocolError, identifier, person, validated } from "./validation.js";
 import { readHubSessionEpoch } from "./session-epoch.js";
 import { z } from "zod";
+import { assertHubDirectoryAdministration, type HubDirectoryAdministration, type HubDirectoryAdministrationBinding } from "./roles/directory-authority.js";
+import type { HubRequestContext } from "./types.js";
 
 const RECENT_MS = 5 * 60_000, IDLE_MS = 60 * 60_000;
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
 const actorSchema = z.strictObject({ kind: z.literal("hub-administrator"), person, sessionId: identifier, requestId: identifier });
 type Actor = z.infer<typeof actorSchema>;
+/** Internal adapter only; the witness remains opaque and belongs to this exact mounted source. */
+export interface HubDirectorySessionAdministration { witness: HubDirectoryAdministration; source: HubDirectoryAdministrationBinding }
+function administration(core: HubCore, actor: Actor, proof?: HubDirectorySessionAdministration): void {
+  if (!proof) {
+    if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("denied");
+    return;
+  }
+  const check = () => {
+    if (proof.source.directory !== core.deps.directory || proof.source.epoch !== core.directoryEpoch
+      || personKeyString(proof.source.administrator) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("unavailable");
+  };
+  check(); assertHubDirectoryAdministration(proof.witness, actor, proof.source); check();
+}
 
 /** Legacy sessions have no attestation. A rotated session never inherits one from its predecessor. */
 export const HUB_SESSION_AUTHENTICATION_MIGRATION: HubMigration = Object.freeze({ component: "s5-session-authentication", version: 1, up(db: Database.Database) {
@@ -30,16 +45,17 @@ function current(r: Row | undefined, who: string, epoch: number, now: number): r
     && now >= r.created_at && now >= r.seen_at && now < r.expires_at && now - r.seen_at <= IDLE_MS;
 }
 
-/** Only server session rows created by successful trusted-directory sign-in attest authentication. Never touches seen_at. */
-export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor): number | null {
+/** Only successful trusted-directory sign-in attests authentication. Activity checks never create or renew that attestation. */
+export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor, proof?: HubDirectorySessionAdministration): number | null {
   const actor = validated(actorSchema, raw);
-  if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) return null;
+  if (!proof && personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) return null;
   return core.atomic(db => {
     const now = core.now(), who = personKeyString(actor.person), r = row(db, actor.sessionId);
+    administration(core, actor, proof);
     if (!current(r, who, core.directoryEpoch, now)) return null;
-    const proof = db.prepare("SELECT directory_epoch,authenticated_at FROM hub_session_authentication WHERE session_id=?").get(actor.sessionId) as { directory_epoch: number; authenticated_at: number } | undefined;
-    return proof && proof.directory_epoch === core.directoryEpoch && Number.isSafeInteger(proof.authenticated_at)
-      && proof.authenticated_at >= r.created_at && now >= proof.authenticated_at && now - proof.authenticated_at <= RECENT_MS ? proof.authenticated_at : null;
+    const attestation = db.prepare("SELECT directory_epoch,authenticated_at FROM hub_session_authentication WHERE session_id=?").get(actor.sessionId) as { directory_epoch: number; authenticated_at: number } | undefined;
+    return attestation && attestation.directory_epoch === core.directoryEpoch && Number.isSafeInteger(attestation.authenticated_at)
+      && attestation.authenticated_at >= r.created_at && now >= attestation.authenticated_at && now - attestation.authenticated_at <= RECENT_MS ? attestation.authenticated_at : null;
   });
 }
 
@@ -47,22 +63,25 @@ export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor): num
 export interface HubDirectorySessionRotation { discard(): void }
 interface Rotation {
   db: Database.Database; hubId: string; actor: Actor; old: Row; epoch: number; createdAt: number; expiresAt: number;
-  now(): number; token: string | null; newId: string; phase: "prepared" | "taken" | "committed" | "released" | "discarded";
+  now(): number; token: string | null; newId: string; phase: "prepared" | "taken" | "committed" | "completing" | "released" | "discarded";
   operationId?: string; nextEpoch?: number;
+  roleRequired: boolean; administrator: string;
 }
 const rotations = new WeakMap<HubDirectorySessionRotation, Rotation>();
 
-export function prepareHubDirectorySessionRotation(core: HubCore, token: string, raw: Actor): HubDirectorySessionRotation {
+export function prepareHubDirectorySessionRotation(core: HubCore, token: string, raw: Actor, proof?: HubDirectorySessionAdministration): HubDirectorySessionRotation {
   const actor = validated(actorSchema, raw);
-  if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("denied");
+  administration(core, actor, proof);
   const snapshot = core.atomic(db => {
     const now = core.now(), r = row(db, actor.sessionId);
     if (!current(r, personKeyString(actor.person), core.directoryEpoch, now) || r.token_hash !== hash(token)) throw new HubProtocolError("revoked");
+    administration(core, actor, proof);
     return { db, old: { ...r }, now };
   });
   const state: Rotation = { db: snapshot.db, hubId: core.deps.config.hubId, actor, old: snapshot.old, epoch: core.directoryEpoch,
     createdAt: snapshot.now, expiresAt: Math.min(snapshot.old.expires_at, snapshot.now + RECENT_MS), now: () => core.now(),
-    token: randomBytes(32).toString("hex"), newId: randomUUID(), phase: "prepared" };
+    token: randomBytes(32).toString("hex"), newId: randomUUID(), phase: "prepared", roleRequired: proof !== undefined,
+    administrator: personKeyString(core.deps.config.administrator) };
   const handle = Object.freeze({ discard() { state.token = null; state.phase = "discarded"; } });
   rotations.set(handle, state); return handle;
 }
@@ -97,11 +116,19 @@ export function takeHubDirectorySessionRotation(handle: HubDirectorySessionRotat
 /** Only the NEW mounted HubSessions can release to the originating response. No lookup by old cookie/ref exists. */
 export function completeHubDirectorySessionRotation(core: HubCore, handle: HubDirectorySessionRotation, operationId: string): { token: string; maxAgeMs: number } {
   const state = rotations.get(handle);
-  if (!state || state.phase !== "committed" || !state.token || state.operationId !== operationId
+  if (!state || state.roleRequired || state.phase !== "committed" || !state.token || state.operationId !== operationId
     || state.hubId !== core.deps.config.hubId || state.nextEpoch !== core.directoryEpoch
     || personKeyString(state.actor.person) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("revoked");
-  const out = core.atomic(db => {
-    const now = core.now(), head = db.prepare("SELECT operation_id,directory_epoch FROM hub_settings_head WHERE singleton=1").get() as { operation_id: string; directory_epoch: number } | undefined;
+  const out = completion(core, state, operationId);
+  state.token = null; state.phase = "released"; return out;
+}
+
+/** Validate persisted rows after the proof callback. The token stays private until the release caller consumes the handle. */
+function completion(core: HubCore, state: Rotation, operationId: string, prove?: () => number) {
+  return core.atomic(db => {
+    const sampled = core.now(), now = prove ? prove() : sampled;
+    if (!Number.isSafeInteger(now) || now < sampled) throw new HubProtocolError("unavailable");
+    const head = db.prepare("SELECT operation_id,directory_epoch FROM hub_settings_head WHERE singleton=1").get() as { operation_id: string; directory_epoch: number } | undefined;
     const r = row(db, state.newId);
     const saved = db.prepare("SELECT body FROM hub_settings_operations WHERE id=?").get(operationId) as {body:string} | undefined;
     let transition: unknown;
@@ -113,5 +140,41 @@ export function completeHubDirectorySessionRotation(core: HubCore, handle: HubDi
       || !current(r, state.old.person, state.nextEpoch!, now) || r.token_hash !== hash(state.token!)) throw new HubProtocolError("revoked");
     return { token: state.token!, maxAgeMs: r.expires_at - now };
   });
-  state.token = null; state.phase = "released"; return out;
+}
+
+/** Internal new-generation adapter: the exact successor must freshly prove hub.admin, never the old permit. */
+export async function completeHubRoleDirectorySessionRotation(core: HubCore, handle: HubDirectorySessionRotation, operationId: string,
+  contextForToken: (token: string) => HubRequestContext): Promise<{ token: string; maxAgeMs: number }> {
+  const state = rotations.get(handle);
+  if (!state || state.phase !== "committed" || !state.token) throw new HubProtocolError("revoked");
+  state.phase = "completing"; // One caller owns release; a second call cannot cancel or join this one.
+  try {
+    const authority = core.deps.management, method = core.management, configuration = core.deps.config,
+      directory = core.deps.directory, uow = core.deps.uow;
+    const live = () => {
+      if (state.phase !== "completing" || !state.token || state.operationId !== operationId || state.hubId !== core.deps.config.hubId
+        || state.nextEpoch !== core.directoryEpoch || !authority || core.deps.management !== authority || core.management !== method
+        || core.deps.config !== configuration || personKeyString(configuration.administrator) !== state.administrator
+        || core.deps.directory !== directory || core.deps.uow !== uow) throw new HubProtocolError("revoked");
+    };
+    live(); completion(core, state, operationId);
+    const ctx = contextForToken(state.token!); live();
+    const permit = await method.call(core, ctx, "hub.admin"); live();
+    if (!("permission" in permit) || permit.permission !== "hub.admin" || permit.source !== "roles" || permit.actor.kind !== "directory"
+      || permit.actor.sessionId !== state.newId || personKeyString(permit.actor.person) !== personKeyString(state.actor.person)) throw new HubProtocolError("denied");
+    const assert = permit.assertCurrent, expiresAt = permit.expiresAt;
+    const proof = () => {
+      live();
+      const check = () => {
+        if (permit.assertCurrent !== assert || permit.expiresAt !== expiresAt || permit.permission !== "hub.admin" || permit.source !== "roles"
+          || permit.actor.kind !== "directory" || permit.actor.sessionId !== state.newId
+          || personKeyString(permit.actor.person) !== personKeyString(state.actor.person)) throw new HubProtocolError("unavailable");
+      };
+      check(); const at: unknown = assert.call(permit); check(); live();
+      if (typeof at !== "number" || !Number.isSafeInteger(at)) throw new HubProtocolError("unavailable");
+      return at;
+    };
+    const out = completion(core, state, operationId, proof);
+    state.token = null; state.phase = "released"; return out;
+  } catch (error) { handle.discard(); throw error; }
 }

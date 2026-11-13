@@ -22,7 +22,7 @@ export interface HubManagementPermit {
   readonly source: "legacy" | "roles";
   readonly expiresAt: number;
   /** Mandatory before each effect/disclosure, including after any await or reentrant callback. */
-  assertCurrent(): void;
+  assertCurrent(): void | number;
   /** Opt-in, exact synchronous directory decision only. This does not relax assertCurrent(). */
   assertDirectoryDecision?(proof: HubDirectoryDecisionProof): void | number;
 }
@@ -190,6 +190,7 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
             const at = common();
             if (at.wall >= observed.wall + HUB_MANAGEMENT_PROOF_TTL || at.elapsed >= observed.elapsed + HUB_MANAGEMENT_PROOF_TTL
               || !allowed(at.wall)) throw new HubProtocolError("unavailable");
+            return at.wall;
           } catch (error) { retired = true; throw error; }
         },
         ...(decision ? { assertDirectoryDecision(proof: HubDirectoryDecisionProof) {

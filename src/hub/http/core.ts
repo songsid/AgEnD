@@ -50,7 +50,7 @@ export class HubCore {
         const assertCurrent = () => {
           try {
             check();
-            permit.assertCurrent();
+            return permit.assertCurrent();
           } catch (error) { retired = true; throw error; }
         };
         assertCurrent();
