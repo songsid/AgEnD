@@ -556,8 +556,11 @@ What an agent was asked, its replies (never its thinking), each tool call (Read,
 Sub-agent…, with **Show output**), errors, turn ends, compactions and fleet events, on one timeline. Filters **All /
 Tools / Errors**; **Live** while it updates. Opens with the newest 200 steps; **Load older steps** adds 100 at a time
 (the page keeps 1000). Off by default: `web.log_tab` (Settings → Web dashboard → **Log tab: each agent's steps**; turning it on
-from the tab itself needs a fleet admin's confirmation). Full for Claude Code (also after it stopped) and Codex while
-running; kiro shows fleet events only; other backends say they have no readable transcript. Secrets are masked.
+from the tab itself needs a fleet admin's confirmation). Read from each CLI's own transcript: Claude Code (also after it
+stopped), Codex while it runs, Antigravity and Grok from the records they keep for the agent's working directory (a
+stopped agent's last work too, where it is still there; a ClassicBot room on them has no working directory of its own,
+so nothing to read). kiro shows fleet events only; other backends, or an agent whose transcript can't be found, say there
+is no readable transcript. (Codex's steps are in the Log, though not in the chat's activity block.) Secrets are masked.
 A dialog or prompt the agent stopped at is a row with its text folded: **Show what was on screen** / **Hide what was on
 screen** (「顯示當時的畫面」, #2966).
 
@@ -612,7 +615,8 @@ provider's official website, or **Open the authorization terminal** + its one-ti
 when the browser session ends. A missing CLI is not installed here (the dialog says the install command). agy and
 opencode: no dashboard sign-in. Config: `web_terminal.*` (as `/login`). Default Kiro, Claude Code and Codex
 accounts sign in with named browser controls instead (#2599): Kiro's account method, Start URL and region and Claude's
-code are entered in the browser, Codex shows its link and device code; credential profiles keep the dialog above. A
+code are entered in the browser, Codex shows its link and device code. A **named** Claude Code account signs in the same
+way as its default one (alpha); named Codex and Kiro accounts keep the dialog above (the terminal stays the fallback). A
 backend skipped at first setup shows in Needs you even before an agent uses it.
 On an account (Claude Code, Codex, Kiro; alpha, #3212): **+ Add account** (a named account, then its sign-in),
 **Remove** (deletes its folder; refused while anything uses it), **Disconnect** (the CLI's own logout; conversations stay),
@@ -620,8 +624,9 @@ On an account (Claude Code, Codex, Kiro; alpha, #3212): **+ Add account** (a nam
 connection alive** (Claude Code, Codex; off unless ticked, #3292): about once a day AgEnD renews an account no agent
 uses, with the CLI's own status check, no model request (**Backup renewal** allows one tiny request); Needs you says
 when it must be connected again. A CLI that is not installed has **Install** (its official installer on the AgEnD host);
-an installed one older than the version AgEnD has checked has **Update to *version*** (#3521; Antigravity: **Update to
-latest (not audited by AgEnD)**). A paired Windows computer's Claude Code accounts are listed under **On *computer***.
+an installed one older than the version AgEnD has checked has **Update to *version*** where the CLI can be updated
+from here (#3521; Antigravity: **Update to latest (not audited by AgEnD)**; Muse updates itself and only shows the
+installed and checked versions). A paired Windows computer's Claude Code accounts are listed under **On *computer***.
 
 **Agents** — **New agent** (alpha: with an **Account** field); per agent **Settings**, **Pause / Wake**, **Start / Stop** (direct), ⋯ **Delete agent**
 (staged; "Delete agent "*name*" and its chat topic (on Discord, its channel and history)?" — on Apply the agent is stopped
