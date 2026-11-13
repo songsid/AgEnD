@@ -1,0 +1,134 @@
+{
+  "recordedAt": "2026-11-13T10:16:45.635769+00:00",
+  "sourceCommit": "cec7e08076286d6c2b8cbced8541fe87c965a542",
+  "parent": {
+    "pr": 3817,
+    "head": "ebd1a7518d94193835a366951872138b58e6e08f"
+  },
+  "branch": "feat/hub-roles-audit-m3010",
+  "scope": "Inactive preparation only; explicit role metadata selector, no content/auditor/activation rights.",
+  "bindings": [
+    {
+      "path": "src/hub/roles/audit.ts",
+      "sha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "53e5071fb2d19572e72f3afc513c3ca054445db64d0cf8f9275f653bd260a506"
+    },
+    {
+      "path": "src/hub/audit/index.ts",
+      "sha256": "612067f991c33f6350b939129f75479a98b465ba0cb922ebc4eb259400641d1e"
+    },
+    {
+      "path": "src/hub/roles/authority.ts",
+      "sha256": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a"
+    },
+    {
+      "path": "src/hub/roles/model.ts",
+      "sha256": "6b25d9c532f271c540ed2772b3e6e28a383efb99389c76c5b28ba44eee2844fc"
+    },
+    {
+      "path": "tests/hub-roles-audit-s129.test.ts",
+      "sha256": "ccb04877cee1ee51142b258e7b4b304e6f049f67337169ba49440252050ed6c2"
+    },
+    {
+      "path": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "8aa3dfa1eb53e9492a7c0c43812870e675b88900137bc7f123733818feed22ac"
+    },
+    {
+      "path": "docs/design/hub-roles-audit-metadata.md",
+      "sha256": "c8d35f388e274fb0e51555459f46a62107c2a33128c68918982f177f8f11990e"
+    },
+    {
+      "path": "changes/3743-roles-audit-metadata.md",
+      "sha256": "754958124185dbef8a709d76fddc7b237302545364058ceb319fdd81cc7b3719"
+    },
+    {
+      "path": "changes/3743-roles-audit-metadata.zh-TW.md",
+      "sha256": "0eb8a8253d68faa283ca8ce6f253ac17667075bf2dd325f20400fceb328bd147"
+    },
+    {
+      "path": "docs/evidence/hub-roles-audit-s129/README.md",
+      "sha256": "47529a48b642bf7a51ae9f48abd397b47ea73c4cbe82f4cc538816e34750c758"
+    }
+  ],
+  "focused": {
+    "command": "nice -n 10 node_modules/.bin/vitest run --maxWorkers=2 tests/hub-roles-audit-s129.test.ts tests/hub-roles-admin-s129.test.ts tests/hub-roles-session-s129.test.ts tests/hub-s3b-server.test.ts tests/hub-s3b-flow.test.ts tests/hub-compose.test.ts tests/hub-group-composition.test.ts",
+    "files": [
+      "tests/hub-roles-audit-s129.test.ts",
+      "tests/hub-roles-admin-s129.test.ts",
+      "tests/hub-roles-session-s129.test.ts",
+      "tests/hub-s3b-server.test.ts",
+      "tests/hub-s3b-flow.test.ts",
+      "tests/hub-compose.test.ts",
+      "tests/hub-group-composition.test.ts"
+    ],
+    "passed": 240,
+    "failed": 0,
+    "skipped": 0,
+    "loadAtStart": 9.376953125
+  },
+  "native": {
+    "compiler": "TypeScript native 7.0.2",
+    "environment": {
+      "GOMAXPROCS": "2"
+    },
+    "source": {
+      "command": "node_modules/.bin/tsc --noEmit",
+      "exit": 0,
+      "diagnosticBytes": 0
+    },
+    "test": {
+      "command": "node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0,
+      "diagnosticBytes": 0
+    }
+  },
+  "restored": {
+    "passed": 16,
+    "failed": 0,
+    "skipped": 0
+  },
+  "mutations": {
+    "cases": 12,
+    "compiled": 12,
+    "semanticCaught": 12,
+    "allSourceExactlyRestored": true,
+    "file": "mutations.json"
+  },
+  "failFirst": {
+    "selector": {
+      "passed": 1,
+      "semanticFailed": 2,
+      "scope": "Construction baseline before selector implementation; tests subsequently expanded."
+    },
+    "capability": {
+      "passed": 0,
+      "semanticFailed": 1,
+      "unselected": 15,
+      "scope": "Before capability addition; not additive to baseline."
+    },
+    "excluded": [
+      "Optional-features matcher construction error",
+      "Incomplete feature-export candidate",
+      "Two noncompiling legacy-guard mutations; corrected replacement preserves source-property narrowing"
+    ]
+  },
+  "changelog": {
+    "command": "node scripts/changelog-assemble.mjs --check",
+    "fragments": 446,
+    "exit": 0
+  },
+  "limits": [
+    "Actual roles/session/SQL/audit encryption and owned loopback HTTP; synthetic directory and direct role image controls.",
+    "No sealed production Hub, browser, container, live Fleet, AD, account/backend CLI, native OS or pilot.",
+    "No UI/assets; no PNG/browser SKEW claim.",
+    "Parent-first plain sync, resolution review, exact-head CI and alpha.3 merge freeze.",
+    "Startup cutover, directory save, members/streams and full S-129 acceptance remain separate."
+  ]
+}

@@ -1,0 +1,366 @@
+{
+  "sourceCommit": "cec7e08076286d6c2b8cbced8541fe87c965a542",
+  "cases": [
+    {
+      "id": "A1-named-right",
+      "file": "src/hub/roles/audit.ts",
+      "originalSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "old": "core.management(ctx, \"audit.view\")",
+      "new": "core.management(ctx, \"join.manage\")",
+      "mutantSha256": "b3c270c601f465c7ead40f71f0de00e6922d253a96d090b965059559ddf7c5d0",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 8,
+      "failed": 8,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "seconds": 18.116,
+      "loadAtStart": 6.77490234375,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata lets a current audit.view-only holder read Hub-wide allowlisted metadata, without content references",
+          "assertions": [
+            "AssertionError: expected 403 to be 200 // Object.is equality"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata does not treat join.manage as a metadata read right",
+          "assertions": [
+            "AssertionError: expected 200 to be 403 // Object.is equality"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata rolls back the required read audit without disclosure on role-loss during append",
+          "assertions": [
+            "AssertionError: expected 403 to be 503 // Object.is equality"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata rolls back the required read audit without disclosure on expiry during append",
+          "assertions": [
+            "AssertionError: expected 403 to be 503 // Object.is equality"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata withholds a completed snapshot if permission changes in the final HTTP await gap",
+          "assertions": [
+            "AssertionError: expected 403 to be 503 // Object.is equality"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata does not disclose metadata when the required read audit cannot be written",
+          "assertions": [
+            "AssertionError: expected 403 to be 500 // Object.is equality"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata fails closed on an unrecognized actor image rather than projecting extra private fields",
+          "assertions": [
+            "AssertionError: expected 403 to be 503 // Object.is equality"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata bounds pages, selects only the exact exposure and advances the sequence cursor",
+          "assertions": [
+            "AssertionError: expected 403 to be 200 // Object.is equality"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A2-legacy-unavailable",
+      "file": "src/hub/roles/audit.ts",
+      "originalSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "old": "  if (!(\"source\" in permit) || permit.source !== \"roles\") throw new HubProtocolError(\"not-found\");\n",
+      "new": "  if (!(\"source\" in permit)) throw new HubProtocolError(\"not-found\");\n",
+      "mutantSha256": "5658cd891444f0d71645abba476e690cb627622edc21c889e8792a3cb4be7d7e",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "seconds": 20.003,
+      "loadAtStart": 8.56396484375,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata does not expose role metadata on a legacy group-policy image",
+          "assertions": [
+            "AssertionError: expected 200 to be 404 // Object.is equality"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A3-atomic-proof",
+      "file": "src/hub/roles/audit.ts",
+      "originalSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "old": "  }, permit);",
+      "new": "  });",
+      "mutantSha256": "dbed7fa3a7501627eda33ae9674b4330811b00ac121c17c75c1d9f6c804a0c64",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 14,
+      "failed": 2,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "seconds": 17.017,
+      "loadAtStart": 8.18603515625,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata rolls back the required read audit without disclosure on role-loss during append",
+          "assertions": [
+            "AssertionError: expected { n: 1 } to deeply equal { n: +0 }"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata rolls back the required read audit without disclosure on expiry during append",
+          "assertions": [
+            "AssertionError: expected { n: 1 } to deeply equal { n: +0 }"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A4-required-audit",
+      "file": "src/hub/roles/audit.ts",
+      "originalSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "old": "    core.audit(tx, { requestId: ctx.requestId, actor: { kind: \"person\", person: permit.actor.person }, action: \"audit.metadata-read\", result: \"completed\",\n      ...(scope.exposureId ? { exposureId: scope.exposureId } : {}) });\n",
+      "new": "",
+      "mutantSha256": "403e30fe858f39aa07c562cd542485991d248c743c08efaf8afca06b0ff8135a",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 13,
+      "failed": 3,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "seconds": 12.475,
+      "loadAtStart": 7.51123046875,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata rolls back the required read audit without disclosure on role-loss during append",
+          "assertions": [
+            "AssertionError: expected 200 to be 503 // Object.is equality"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata rolls back the required read audit without disclosure on expiry during append",
+          "assertions": [
+            "AssertionError: expected 200 to be 503 // Object.is equality"
+          ]
+        },
+        {
+          "name": "S129 explicit audit metadata does not disclose metadata when the required read audit cannot be written",
+          "assertions": [
+            "AssertionError: expected 200 to be 500 // Object.is equality"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A5-http-disclosure",
+      "file": "src/hub/http/compose.ts",
+      "originalSha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3",
+      "old": "        result.assertCurrent(); return send(res, 200, { records: result.records });",
+      "new": "        return send(res, 200, { records: result.records });",
+      "mutantSha256": "643299cad6d5b6a8b6483bbb492dd6cf2f825a5c77073102e5012966c83508b1",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3",
+      "seconds": 17.934,
+      "loadAtStart": 6.7373046875,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata withholds a completed snapshot if permission changes in the final HTTP await gap",
+          "assertions": [
+            "AssertionError: expected 200 to be 503 // Object.is equality"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A6-bounded-page",
+      "file": "src/hub/roles/audit.ts",
+      "originalSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "old": "export const HUB_ROLE_AUDIT_PAGE = 500;",
+      "new": "export const HUB_ROLE_AUDIT_PAGE = 1000;",
+      "mutantSha256": "c1e85c05ec12c6760a27a457c77b0043f5c3e6297d437819a29c4af0945959dc",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "seconds": 19.17,
+      "loadAtStart": 6.2109375,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata bounds pages, selects only the exact exposure and advances the sequence cursor",
+          "assertions": [
+            "AssertionError: expected [ { \u2026(7) }, { \u2026(10) }, \u2026(506) ] to have a length of 500 but got 508"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A7-exposure-scope",
+      "file": "src/hub/roles/audit.ts",
+      "originalSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "old": "    if (scope.exposureId !== undefined) { where.push(\"exposure_id=?\"); args.push(scope.exposureId); }\n",
+      "new": "",
+      "mutantSha256": "187a99df11013a250b67a09ab659d2d2fc997ee19f7234d9db0d4ddecae8dc82",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "seconds": 20.822,
+      "loadAtStart": 6.77587890625,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata bounds pages, selects only the exact exposure and advances the sequence cursor",
+          "assertions": [
+            "AssertionError: expected false to be true // Object.is equality"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A8-after-cursor",
+      "file": "src/hub/roles/audit.ts",
+      "originalSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "old": "    if (scope.after !== undefined) { where.push(\"sequence>?\"); args.push(scope.after); }\n",
+      "new": "",
+      "mutantSha256": "3f7d04976530745b4c4c6a8a6bbd334e7824e154404f5c579968a85184a03cb8",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "seconds": 21.124,
+      "loadAtStart": 7.943359375,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata bounds pages, selects only the exact exposure and advances the sequence cursor",
+          "assertions": [
+            "AssertionError: expected false to be true // Object.is equality"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A9-strict-actor",
+      "file": "src/hub/roles/audit.ts",
+      "originalSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "old": "  z.strictObject({ kind: z.literal(\"person\"), person }),",
+      "new": "  z.object({ kind: z.literal(\"person\"), person }),",
+      "mutantSha256": "7bda8a8896284bf7d7f48db7d7eb4e9d933fb9df7e647bbe7716088e15521088",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "308702d4dc05f4ab4298d07dee53baa9456b9c60734fc6719aa2ec785ba7c0b4",
+      "seconds": 23.367,
+      "loadAtStart": 7.35693359375,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata fails closed on an unrecognized actor image rather than projecting extra private fields",
+          "assertions": [
+            "AssertionError: expected 200 to be 503 // Object.is equality"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A10-legacy-feature",
+      "file": "src/hub/http/compose.ts",
+      "originalSha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3",
+      "old": "return live() && !!deps.management && deps.roleSessionMode?.() === true;",
+      "new": "return live() && !!deps.management;",
+      "mutantSha256": "599c1668ac6ab6c20c0b31b3c8522cc92e88382561eb3969e76eb24757ee4980",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3",
+      "seconds": 21.938,
+      "loadAtStart": 7.08447265625,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata advertises the metadata selector only for a current role image; old clients keep their old audit read",
+          "assertions": [
+            "AssertionError: expected [ 'role-audit-metadata-v1' ] to not include 'role-audit-metadata-v1'"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A11-advertise-selector",
+      "file": "src/hub/http/compose.ts",
+      "originalSha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3",
+      "old": "const offered = [...(roleAuditOffered() ? [HUB_ROLE_AUDIT_FEATURE] : []),",
+      "new": "const offered = [...[], ",
+      "mutantSha256": "97deb0da9868bb76849ce1140b7fbab142b407bfbee19510e43f92db9f99db71",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3",
+      "seconds": 15.264,
+      "loadAtStart": 6.80810546875,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata advertises the metadata selector only for a current role image; old clients keep their old audit read",
+          "assertions": [
+            "AssertionError: expected [] to include 'role-audit-metadata-v1'"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "A12-selector-shape",
+      "file": "src/hub/http/compose.ts",
+      "originalSha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3",
+      "old": "        if (query.get(\"view\") !== \"metadata\") throw new HubProtocolError(\"invalid\");\n",
+      "new": "",
+      "mutantSha256": "b69bbf008d141bb4c5772e3b5942f84205c4310d099b500d3e2d75ce458870e9",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "caught": true,
+      "restoredSha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3",
+      "seconds": 17.736,
+      "loadAtStart": 5.81005859375,
+      "failures": [
+        {
+          "name": "S129 explicit audit metadata rejects unknown views and invalid metadata cursors",
+          "assertions": [
+            "AssertionError: expected 200 to be 400 // Object.is equality"
+          ]
+        }
+      ]
+    }
+  ],
+  "excludedCompileOnlyAttempts": 2
+}
