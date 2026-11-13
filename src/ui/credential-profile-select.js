@@ -37,10 +37,11 @@ export function credentialProfileView(machine, backend = "claude-code") {
   const report = machine?.inventory?.credentialProfiles;
   const own = backend === "claude-code" ? report?.profiles : report?.byCli?.[backend];
   const profiles = Array.isArray(own) ? own.filter(row => row && typeof row.name === "string") : [];
-  // The default sign-in's own account (the computer's Claude Code, as its last detection saw it), for the "default sign-in" choice.
-  const claude = Array.isArray(machine?.inventory?.clis) ? machine.inventory.clis.find(cli => cli?.id === "claude-code") : undefined;
+  // The default sign-in's own account, for the "default sign-in" choice: the identity of the REQUESTED CLI on that computer, as its last detection saw it (AGEND-250, #3771 review P2-7: the computer's
+  // Claude identity must never label an Antigravity choice; a CLI that reports no identity shows none).
+  const ownCli = Array.isArray(machine?.inventory?.clis) ? machine.inventory.clis.find(cli => cli?.id === backend) : undefined;
   const defaultName = backend === "claude-code" && typeof report?.default === "string" ? report.default : "";
-  return { capable, profiles, defaultName, machineIdentity: identityText(profiles.find(row => row.name === defaultName)?.identity ?? claude?.identity) };
+  return { capable, profiles, defaultName, machineIdentity: identityText(profiles.find(row => row.name === defaultName)?.identity ?? ownCli?.identity) };
 }
 export const credentialProfileState = loggedIn => loggedIn === true ? "signedIn" : loggedIn === false ? "signedOut" : "unchecked";
 /** The choice exists for Claude Code and Antigravity (a CLI with named accounts on a computer) on a paired computer. */
