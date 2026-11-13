@@ -1,0 +1,270 @@
+{
+  "head": "385b6930f2827a6a511e505db809dc360b360ce2",
+  "parents": [
+    "dc922e3d059c3660f94047dcc711297cb149e2b2",
+    "ead8d4a80ab51161c1d8a8f6d7ce9e8cb0ef9cc5"
+  ],
+  "mergeBase": "829733669ec316a8a98f33ebcc34e2621c3cb0b2",
+  "clean": true,
+  "sourceAndTestDeltaParity": [
+    {
+      "file": "src/hub/compose/server.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/enrolment-code.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/group-policy/authorization.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/group-policy/resources.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/group-policy/store.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/group-policy/welcome.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/join/service.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/roles/model.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/roles/read.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/settings-directory-decision.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/settings-directory-proof.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/settings-directory-recovery.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/store.ts",
+      "equal": true
+    },
+    {
+      "file": "src/hub/types.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/hub-directory-settings-decision.test.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/hub-directory-settings-proof.test.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/hub-group-enrollment-transaction.test.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/hub-roles-authority-s129.test.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/hub-roles-canonical-s129.test.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/hub-roles-company-issuer-s129.test.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/hub-roles-issuer-s129.test.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/hub-roles-lifecycle-s129.test.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/hub-store-publication-s1.test.ts",
+      "equal": true
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "equal": true
+    }
+  ],
+  "incomingDisjointBlobs": 377,
+  "incomingBlobMismatches": [],
+  "ownSlice": "dc922e3d059c3660f94047dcc711297cb149e2b2",
+  "ownParent": "a1f0f141f3183356323045450680c98b3d42f0cf",
+  "incoming": "ead8d4a80ab51161c1d8a8f6d7ce9e8cb0ef9cc5",
+  "checks": {
+    "passed": 201,
+    "skipped": 0,
+    "files": 11,
+    "nativeTypes": {
+      "sync-source-types": 0,
+      "sync-test-types": 0
+    },
+    "changelogFragments": 432,
+    "diff": "pass"
+  },
+  "sourceBindings": [
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "1c95bf394ed343e447f29831ace8d429340d0f9220a9249c757893457efd125b"
+    },
+    {
+      "file": "src/hub/enrolment-code.ts",
+      "sha256": "03c06d7a8429a90d3a2c36b1362ef2c3e75368b35d829a18f9a303ea4a06a036"
+    },
+    {
+      "file": "src/hub/group-policy/authorization.ts",
+      "sha256": "924b3a40bfeefe6ee411303058adf6338e770ebb28db21373948fad4b5c95171"
+    },
+    {
+      "file": "src/hub/group-policy/resources.ts",
+      "sha256": "0f1741b12291afdd5cd1f848ac131a81616394ad35e25a2fd0b61d6d337f9631"
+    },
+    {
+      "file": "src/hub/group-policy/store.ts",
+      "sha256": "65e140151a5229750bf3578e98bd73660306c89c65339e56af1e559190cf9546"
+    },
+    {
+      "file": "src/hub/group-policy/welcome.ts",
+      "sha256": "223b2d14b75e61a6305d769c8a2f4853b8a5b724148ce8fa403b66badf7e57f3"
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "sha256": "e08ab280662835f7a2673f5b96c35b93bba2e3df91b616a21d24b63ecd77245e"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "c98b8bd16b41d0ce302d70438f9a70682fc68908610e3940ab9e4ba560bb2a48"
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "sha256": "7af7a479bc3b5ac62b57b25877816a6036767e60bdf4fda15f99b6123a1bdd0b"
+    },
+    {
+      "file": "src/hub/join/service.ts",
+      "sha256": "a2c45804be0626100fd1149ee78787ac38bfb01f0e6a4bba75222fc59ae32ec0"
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "sha256": "b05efa96250c79487f485b37c4b0619f0e4fc01f1872855e26319afe3aafaae9"
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "sha256": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a"
+    },
+    {
+      "file": "src/hub/roles/model.ts",
+      "sha256": "6b25d9c532f271c540ed2772b3e6e28a383efb99389c76c5b28ba44eee2844fc"
+    },
+    {
+      "file": "src/hub/roles/read.ts",
+      "sha256": "20c4285f6b05e56592b88343eb672fac2651bed2eaf98a947e51847664f45982"
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "1179eb51c3baa38ee5364666460e2bc7c232ce5f2e4f5d125b8cfe24d85bc0a3"
+    },
+    {
+      "file": "src/hub/settings-directory-decision.ts",
+      "sha256": "729023823fceabae3bf84b1a919b17eb14c3d094f324f887109dd77fb4de6f76"
+    },
+    {
+      "file": "src/hub/settings-directory-proof.ts",
+      "sha256": "f0a83ed1409273a11e351a5dec2382731ae53cd4ebba33c21d10f16bca811c3d"
+    },
+    {
+      "file": "src/hub/settings-directory-recovery.ts",
+      "sha256": "92900a6318cab6e977dd7e052303e5e37a0cf2d0616640b61f4a312512fddb35"
+    },
+    {
+      "file": "src/hub/store.ts",
+      "sha256": "0550f7555c6ee382dbf2410e8229730a30f14636c3377781c1e9b8cc302a5bcf"
+    },
+    {
+      "file": "src/hub/types.ts",
+      "sha256": "dbe127194edf254b2be7b30bffa101acf191fdeac850f3fc75380755a4fad490"
+    },
+    {
+      "file": "tests/hub-directory-settings-decision.test.ts",
+      "sha256": "09517f8f45907745150a9064f34b4b2c2afba10f5ed2ea0a6d3e7057f5603b08"
+    },
+    {
+      "file": "tests/hub-directory-settings-proof.test.ts",
+      "sha256": "afe6c7a5548595600622d976172555c1c8b0876b8bb1d83d0f0ef3f0b20094f9"
+    },
+    {
+      "file": "tests/hub-group-enrollment-transaction.test.ts",
+      "sha256": "8e2c71c8d2bbe80d85300a042e50493b1a6fe6c476896dad256883220514687b"
+    },
+    {
+      "file": "tests/hub-roles-authority-s129.test.ts",
+      "sha256": "fbce4d78d82e6bf9e6ca5dab57048b318aca03dd2e10131064abe9dba7f7526d"
+    },
+    {
+      "file": "tests/hub-roles-canonical-s129.test.ts",
+      "sha256": "66dbc036dc90774ccb80f97ea3978866fb65097b2ee22308ee83daf740802b28"
+    },
+    {
+      "file": "tests/hub-roles-company-issuer-s129.test.ts",
+      "sha256": "d02f8adc1c732cfff15fddec4b28b5a9d27c1ef8eaf885cbb3af77ef2ddb2d65"
+    },
+    {
+      "file": "tests/hub-roles-issuer-s129.test.ts",
+      "sha256": "281f935ebeddeab29153831bc978271751137d323478606258478d6c8da0e2c9"
+    },
+    {
+      "file": "tests/hub-roles-lifecycle-s129.test.ts",
+      "sha256": "6725f4ac08908f5848cb842d397eb4224e970c4bb9fa15e10ac601c104172069"
+    },
+    {
+      "file": "tests/hub-store-publication-s1.test.ts",
+      "sha256": "ec8cdf835cab600b0af37b1bfc291acec54c1c1974076b0440a32e7f60b0204e"
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "687de604fd18763c4abdbef9324aed30ba9315194d412e6e4ce39ffd29ff86ce"
+    }
+  ],
+  "limits": "Plain sync only; initial issuer tests and mutation evidence bind dc922e3d0 and remain historical. Production factory still does not inject optional authority; no startup cutover/registry/effects/expiry/role routes/SSE/member activation. S129 acceptance remains incomplete."
+}
