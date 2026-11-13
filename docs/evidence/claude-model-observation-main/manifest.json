@@ -1,6 +1,6 @@
 [
   {
-    "digest": "db0befc185cb5f7b0335bb019d1c2c691668bd6071bc1a267fae2b10e905e063",
+    "digest": "001b8764fd1c7cef5d2c69ef3f9d63101ed59fd3c4ea2edc0855b0e325691201",
     "paths": [
       "README.md"
     ]
@@ -318,7 +318,7 @@
     ]
   },
   {
-    "digest": "ebf3710e6af3c5ab95884a68ec226cf72d21ef2a043e0c4ace8e418ebf72c0c9",
+    "digest": "fe32865ef8b906aa3463acd6a12d17c5a1b284cc2e96b1f49eafbfaa62a26b09",
     "paths": [
       "checks/commands.txt"
     ]
@@ -354,14 +354,15 @@
     ]
   },
   {
-    "digest": "8bf2da0a66b12f54b661e9316cb8dbf272f512d102e8c2b28710a5277adc96b5",
+    "digest": "d13cf250f8c450d7818dfb9fd03640500adff25ab31fea54478c4f377459ad8e",
     "paths": [
-      "checks/retained-needs-before.log"
+      "checks/r1-controls.log"
     ]
   },
   {
     "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "paths": [
+      "checks/r1-test-types.log",
       "checks/source-types-final.log",
       "checks/test-types-final.log",
       "mutations/M1-sidechain-types.log",
@@ -370,6 +371,7 @@
       "mutations/M12-logpair-types.log",
       "mutations/M13-officeshare-types.log",
       "mutations/M14-nofallback-types.log",
+      "mutations/M15-intent-session-types.log",
       "mutations/M2-apierror-types.log",
       "mutations/M3-dedupe-types.log",
       "mutations/M4-recovery-types.log",
@@ -381,13 +383,19 @@
     ]
   },
   {
+    "digest": "8bf2da0a66b12f54b661e9316cb8dbf272f512d102e8c2b28710a5277adc96b5",
+    "paths": [
+      "checks/retained-needs-before.log"
+    ]
+  },
+  {
     "digest": "c2c0d3ebd236d8287967bfba76a698b130bf8c741621ebe05d7ff2322f28aba2",
     "paths": [
       "checks/visual-prefix-before.log"
     ]
   },
   {
-    "digest": "d4bba8833df2a7ef7a06f522ae4e2b8aa0f700e80c8606e998063eaa5c8d5b9a",
+    "digest": "f81ebab080e717d02ff96e3e7df415c0ed7abf69695e761873a31b2b92494daf",
     "paths": [
       "checks.json"
     ]
@@ -426,6 +434,12 @@
     "digest": "3012228c92fb03a6324c67bf6f0f0aec9a539d074f9d99d49a246399d788835f",
     "paths": [
       "mutations/M14-nofallback.log"
+    ]
+  },
+  {
+    "digest": "5c310fc4d642e74442a192a7b07ab4eefa115e23a0412938ca0ade8e554607b3",
+    "paths": [
+      "mutations/M15-intent-session.log"
     ]
   },
   {
@@ -477,13 +491,13 @@
     ]
   },
   {
-    "digest": "b1d544b533afc0ab348aa162b17768d8b3e279b0531b09e8802cba00af057036",
+    "digest": "9270d1e4610c9603fb59c6ecc6e2b5150e9f4e9973cd6fe8f9ad896a3957b4b8",
     "paths": [
       "mutations/results.json"
     ]
   },
   {
-    "digest": "5885cadb8afffef2d16557a341a779f92910b70b7c96823393102f7439c2fc35",
+    "digest": "ab577fc9de67945d87fca09f181bbd09ae11910c44c1f1d586104c7125aa9412",
     "paths": [
       "mutations/run.py"
     ]

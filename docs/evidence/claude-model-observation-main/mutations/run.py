@@ -16,6 +16,7 @@ cases=[
  ('M12-logpair','src/ui/panel-log.js','${text(modelSwitchText(x.modelSwitch))}','${null}',['tests/web-log-tab-1218.test.ts']),
  ('M13-officeshare','src/ui/fleet-office-card.js','modelSwitch: !share ? modelSwitchText(it.model_observation?.active) : ""','modelSwitch: modelSwitchText(it.model_observation?.active)',['tests/office-card-2661.test.ts']),
  ('M14-nofallback',core,'e.subtype === "model_refusal_fallback" || e.subtype === "model_fallback"','e.subtype === "model_refusal_fallback" || e.subtype === "model_fallback" || e.subtype === "model_refusal_no_fallback"',['tests/claude-model-switch.test.ts']),
+ ('M15-intent-session',core,'&& normalizeClaudeModel(session) === normalizeClaudeModel(record.served)','',['tests/claude-model-switch.test.ts']),
  ('M10-original',core,'original = claudeModelId(e.originalModel)','original = claudeModelId(e.fallbackModel)',['tests/claude-model-switch.test.ts']),
 ]
 selected=set(sys.argv[1:])

@@ -10,3 +10,7 @@ vitest run tests/claude-credential-profile-1699.test.ts --maxWorkers=2
 vitest run tests/claude-model-switch.test.ts tests/claude-model-switch-daemon.test.ts tests/claude-transcript-limits-2834.test.ts tests/transcript-monitor-generation-1218.test.ts tests/log-steps-1218.test.ts --maxWorkers=2
 python3 docs/evidence/claude-model-observation-main/mutations/run.py M6-hookowner M7-launchtime
 git diff 29d3a5142 8ec20af92 -- src/ui src/fleet-manager.ts src/claude-model-observation.ts scripts/manual/claude-model-observation-browser.mts
+
+# R1 test/docs-only pin
+python3 docs/evidence/claude-model-observation-main/mutations/run.py M15-intent-session
+vitest run tests/claude-model-switch.test.ts tests/claude-model-switch-daemon.test.ts tests/claude-credential-profile-1699.test.ts tests/needs-you-hub-1386.test.ts tests/office-card-2661.test.ts tests/web-details-n2.test.ts tests/web-log-tab-1218.test.ts tests/web-needs-1408.test.ts --maxWorkers=2

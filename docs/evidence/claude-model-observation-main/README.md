@@ -4,7 +4,7 @@ AgEnD previously discarded the typed fallback notices and assistant model metada
 
 This is detection only: separate configured/launch/session/served values, typed safeguards/availability notices, one quiet Needs-you incident with recovery, localized runtime cards/details and Log, and compact `describe_instance` output (`detail:true` for bounded metadata). No automatic model, policy, restart or permission operation is added.
 
-Final source pin: `8ec20af92`; browser capture pin: `29d3a5142` (full SHAs in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. The later source correction only isolates metadata startup recovery from existing text/alarm replay; its test and credential fixtures are separate from the browser path. The UI, pure observer, FleetManager and capture harness are byte-identical to the capture. No recapture execution is claimed.
+Final test/docs pin: `4bbb1f868`; product source pin: `8ec20af92`; browser capture pin: `29d3a5142` (full SHAs in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. The later source correction only isolates metadata startup recovery from existing text/alarm replay; its test and credential fixtures are separate from the browser path. The UI, pure observer, FleetManager and capture harness are byte-identical to the capture. No recapture execution is claimed.
 
 ## Verification
 
@@ -12,11 +12,17 @@ Final source pin: `8ec20af92`; browser capture pin: `29d3a5142` (full SHAs in [c
 - **21/21 credential-profile controls**, preserving every legacy command byte after the pinned ownership marker.
 - **138/138 startup isolation controls**, including a new [semantic red](checks/metadata-only-before.log) that caught unwanted text replay and its [fixed control](checks/metadata-only-controls.log).
 - Native TypeScript **7.0.2** source and test projects exit 0; changelog validation passes.
-- **14 isolated reversals caught**, with native compilation and JS syntax checks where applicable; every source restored. [Cases, exact substitutions and digests](mutations/results.json), [runner](mutations/run.py).
+- **15 isolated reversals caught**, with native compilation and JS syntax checks where applicable; every source restored. [Cases, exact substitutions and digests](mutations/results.json), [runner](mutations/run.py).
 - Fail-first: original monitor emits no observation ([baseline red](checks/baseline-monitor-red.log)); a response before monitor construction is lost ([early-record red](checks/early-record-before.log)); retained formatter loses localized detail ([retained-shell red](checks/retained-needs-before.log)); command-message prefix and three visual contracts each fail ([four semantic reds](checks/visual-prefix-before.log)). Final controls are green.
 - **15 serial Chromium cases, 61 checkpoints, 53 PNGs**, with real cookie sign-in, product shell/SSE, Log reader/parser and styles. Every current phone Log pair is asserted to live in wrapping text and fit its box; zero page errors/CSP reports or horizontal overflow. Eight live recovery checks remove the incident without reloading. [Receipt and served-byte bindings](browser/receipt.json).
 
 The browser uses synthetic typed metadata and the real pure observer, with a read-only projection seeded into an owned scratch FleetManager. It never starts a Fleet/CLI, types in a live pane, reads a live transcript or calls a vendor. Office cards open through the product's accessibility button. Scratch browser/listeners/home are closed. The earlier incomplete formatter run and pre-visual-fix gallery are private historical diagnostics, not accepted captures.
+
+## R1 parity pin
+
+All product bytes remain identical to `f52c67b00`. The new concrete-intent test preserves the active incident and expected model when served metadata changes but the session hook does not; its matching-session positive clears it. The removed session predicate is assertion-red (M15). **207/207 across eight changed suites**, native test types exit0.
+
+An unresolved `/model` alias/picker deliberately keeps mismatch inference unconfirmed until a concrete owned/confirmed selection, new session or typed fallback notice. It does not stop served-model observations or typed fallback notices. A served response alone cannot resolve the intended alias.
 
 ## PNGs
 

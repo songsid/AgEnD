@@ -152,5 +152,16 @@
     "types": 0,
     "testExit": 1,
     "semanticRed": true
+  },
+  {
+    "name": "M15-intent-session",
+    "file": "src/claude-model-observation.ts",
+    "before": "&& normalizeClaudeModel(session) === normalizeClaudeModel(record.served)",
+    "after": "",
+    "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+    "mutantDigest": "e80e2263f78f45eed8db0ae699932d110fa47348753c929a7ba6204fe11f1800",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
   }
 ]

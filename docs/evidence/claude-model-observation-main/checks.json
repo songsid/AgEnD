@@ -1,5 +1,5 @@
 {
-  "sourceHead": "8ec20af92c8b9058eb879bfad353c44186759d85",
+  "sourceHead": "4bbb1f868b4d9574f89ec3f6aba70a66481e1ba8",
   "baseline": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
   "sourceInputs": [
     {
@@ -15,7 +15,7 @@
       ]
     },
     {
-      "digest": "1209594aa6171d711e6a28176b504123c64d28113f7893a26767a770697397c9",
+      "digest": "a32d5a38f8995fd9b3461294cf39ccc2bed965f776b45ce80b92de8898305303",
       "paths": [
         "docs/design/claude-model-observation.md"
       ]
@@ -207,7 +207,7 @@
       ]
     },
     {
-      "digest": "f282a3db77ceadc44e45c28a500a4a3bee12be515ed698f83a5aafae9ce9fc58",
+      "digest": "e55ed1f38baaca99a6943ee102a7f68220ad5349ac6ddd613eea7169c807ae02",
       "paths": [
         "tests/claude-model-switch.test.ts"
       ]
@@ -255,7 +255,7 @@
     "tests": 0
   },
   "mutations": {
-    "caught": 14,
+    "caught": 15,
     "isolated": true,
     "allRestored": true,
     "record": "mutations/results.json"
@@ -295,5 +295,14 @@
     "red": "checks/metadata-only-before.log",
     "control": "checks/metadata-only-controls.log",
     "note": "Metadata-only bounded startup recovery leaves existing text/alarm EOF baseline unchanged."
+  },
+  "r1": {
+    "sourceDelta": "test/docs only; all src bytes identical to f52c67b00",
+    "passed": 207,
+    "files": 8,
+    "log": "checks/r1-controls.log",
+    "testTypes": 0,
+    "caught": "M15-intent-session",
+    "aliasLimit": "Unconfirmed alias suppresses inferred mismatch; served values and typed fallback notices continue."
   }
 }
