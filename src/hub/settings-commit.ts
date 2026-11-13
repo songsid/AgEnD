@@ -44,6 +44,7 @@ import type { HubDirectoryDecisionRequest, HubDirectorySettingsDecision, HubDire
 import { parseHubDirectoryDecisionMetadata } from "./settings-directory-decision.js";
 import { createHubWebAddressSettingsOperation, type HubWebAddressJournal, type HubWebAddressSettingsWriter, type HubWebAddressStep } from "./settings-web-address.js";
 import type { HubWebAddressDecision } from "./settings-web-address-decision.js";
+import { assertHubDirectoryAdministration, type HubDirectoryAdministration, type HubDirectoryAdministrationBinding } from "./roles/directory-authority.js";
 
 export const SETTINGS_JOURNAL = "hub/settings-journal.json";
 export const SETTINGS_STAGED = "hub/settings-staged";
@@ -83,6 +84,8 @@ export interface HubSettingsWriterDeps {
   step?(name: "staged" | "committed" | "manifest" | "config" | "done" | "directory-decision" | "directory-secret" | HubWebAddressStep): void;
   /** Directory-v2 only: the existing Hub DB/floor/audit decision. Absent keeps every directory method unexposed. */
   directoryDecision?: () => HubDirectorySettingsDecision | null;
+  /** Inactive role adapter: the writer's OWN mounted decision and complete source, never request data. */
+  directoryAdministration?: () => { decision: HubDirectorySettingsDecision; source: HubDirectoryAdministrationBinding } | null;
   /** Web-address only: physical existing-DB participant; absent exposes no address operation. */
   webAddressDecision?: () => HubWebAddressDecision | null;
 }
@@ -107,11 +110,14 @@ interface PreparedDirectory {
   changes: HubDirectoryDecisionRequest["changes"]; recipients: HubDirectoryDecisionRequest["recipients"];
   createdAt: number; expiresAt: number;
   recoveryDeadline?: number;
+  /** Ephemeral identity only, never serialized into staged files, the journal or the receipt. */
+  admission?: HubDirectorySettingsDecision;
 }
 export interface HubDirectorySettingsWriter {
   /** Internal only: caller proves old-directory recent auth/D3, same immutable candidate admin, GUIDs and trust consent. */
-  prepare(candidate: HubDirectorySettingsCandidate, actor: DirectoryActor, current: () => boolean): { ref: string; expiresAt: number };
-  commit(ref: string, actor: DirectoryActor, current: () => boolean, rotation?: HubDirectorySessionRotation, recoveryDeadline?: number): { receiptId: string; directoryEpoch: number };
+  prepare(candidate: HubDirectorySettingsCandidate, actor: DirectoryActor, current: () => boolean, administration?: HubDirectoryAdministration): { ref: string; expiresAt: number };
+  commit(ref: string, actor: DirectoryActor, current: () => boolean, rotation?: HubDirectorySessionRotation, recoveryDeadline?: number,
+    administration?: HubDirectoryAdministration): { receiptId: string; directoryEpoch: number };
   /** Only the exact prior-content intent preauthorized by the original operation; never an old session/role.
    * An optional orchestration deadline is checked by the writer's final clock, not just before an await. */
   compensate(originalId: string, currentIntent: (original: HubDirectorySettingsOperation) => boolean, expiresAt?: number): { receiptId: string; directoryEpoch: number };
@@ -168,6 +174,7 @@ export function readHubDirectorySettingsImage(home: string, hub: unknown): HubDi
 
 export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSettingsWriter {
   const now = deps.now ?? Date.now;
+  const administrationProvider = deps.directoryAdministration, decisionProvider = deps.directoryDecision;
   const prepared = new Map<string, Prepared>();
   const preparedDirectory = new Map<string, PreparedDirectory>();
   const step = (name: Parameters<NonNullable<HubSettingsWriterDeps["step"]>>[0]) => deps.step?.(name);
@@ -235,6 +242,28 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
   const directoryImage = (hub: unknown = deps.readHub(), manifest = readManifest(), secret = readSecret()): HubDirectorySettingsImage =>
     hubDirectorySettingsImage(hub, manifest, secret);
   const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
+  const administrationProof = (actor: DirectoryActor, root: unknown, witness?: HubDirectoryAdministration, expected?: HubDirectorySettingsDecision) => {
+    if (witness === undefined) {
+      if (expected || actor.kind === "hub-administrator" && !same(actor.person, root)) throw new HubSettingsError("denied");
+      return undefined;
+    }
+    if (actor.kind !== "hub-administrator") throw new HubSettingsError("denied");
+    const guard = () => {
+      if (!administrationProvider || deps.directoryAdministration !== administrationProvider || deps.directoryDecision !== decisionProvider) throw new HubSettingsError("unavailable");
+    };
+    guard();
+    const owner = decision(), selected = administrationProvider!();
+    if (selected && typeof (selected as { then?: unknown }).then === "function") {
+      void Promise.resolve(selected).catch(() => {}); throw new HubSettingsError("unavailable");
+    }
+    if (!selected || selected.decision !== owner || expected && expected !== owner || !selected.source
+      || !same(selected.source.administrator, root) || selected.source.decisionProof !== owner.administrationProof
+      || owner.proofBasis() !== null && owner.administrationProof() === null) throw new HubSettingsError("unavailable");
+    const at = assertHubDirectoryAdministration(witness, actor, selected.source);
+    guard();
+    if (selected.decision !== owner || selected.source.decisionProof !== owner.administrationProof) throw new HubSettingsError("unavailable");
+    return { owner, at };
+  };
   const removeDirectoryPreparation = (id: string) => {
     for (const role of ["old-hub", "new-hub", "old-secret", "new-secret", "old-manifest", "new-manifest", "receipt"]) rmSync(file(directoryFile(id, role)), { force: true });
     rmSync(file(SETTINGS_JOURNAL), { force: true });
@@ -274,14 +303,17 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     // Keep the exact private preimages for the original operation's bounded forward compensation, never an old DB.
     return { receiptId: op.id, directoryEpoch: op.directoryEpoch };
   };
-  const installDirectory = (p: PreparedDirectory, current: () => boolean, original?: HubDirectorySettingsOperation, rotation?: HubDirectorySessionRotation) => {
-    const checkTime = () => {
-      const t = now();
-      if (!Number.isSafeInteger(t) || t < p.createdAt || t >= p.expiresAt) throw new HubSettingsError("denied");
+  const installDirectory = (p: PreparedDirectory, current: () => boolean, original?: HubDirectorySettingsOperation, rotation?: HubDirectorySessionRotation, administration?: HubDirectoryAdministration) => {
+    const checkAt = (t: unknown): number => {
+      if (typeof t !== "number" || !Number.isSafeInteger(t) || t < p.createdAt || t >= p.expiresAt) throw new HubSettingsError("denied");
       return t;
+    };
+    const checkTime = () => {
+      return checkAt(now());
     };
     const check = () => {
       checkTime();
+      if (!original) administrationProof(p.actor, p.next.administrator, administration, p.admission);
       if (!currentProof(current)) throw new HubSettingsError("denied");
       image(true);
       if (!same(directoryImage(), p.before)) throw new HubSettingsError("stale");
@@ -310,7 +342,14 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
         || !same(directoryImage(JSON.parse(readDirectoryFile(id, "new-hub")), readDirectoryFile(id, "new-manifest"), readDirectoryFile(id, "new-secret", 4096)), after)
         || sha(readDirectoryFile(id, "receipt")) !== request.receiptSha) throw new HubSettingsError("stale");
       // Proof and material checks may cross either bound; fence the callback-free SQL transition with a fresh sample.
-      return checkTime(); // the session participant shares this FINAL writer-owned sample
+      const sampled = checkTime();
+      if (!original && administration !== undefined) {
+        const proof = administrationProof(p.actor, p.next.administrator, administration, p.admission);
+        const at = checkAt(proof?.at);
+        if (at < sampled) throw new HubSettingsError("denied");
+        return at; // Same proof-owned final sample; no callback follows before the kernel's SQL transition.
+      }
+      return sampled; // the legacy/session participant keeps the existing writer-owned sample
     };
     try {
       if (original) decision().compensate(original.id, request, decisionCheck); else decision().decide(request, decisionCheck, rotation);
@@ -322,11 +361,11 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     return finishDirectory(journal)!;
   };
   const directoryWriter: HubDirectorySettingsWriter = {
-    prepare(candidate, actor, current) {
+    prepare(candidate, actor, current, administration) {
       const metadata = parseHubDirectoryDecisionMetadata({ actor, changes: candidate.changes, recipients: candidate.recipients });
       const cfg = structuredClone(candidate.directory), nextDirectory = resolveDirectoryConfig(cfg), old = image(true), oldCfg = obj(old.hub.directory);
       const oldSecret = readSecret(), before = directoryImage(old.hub, old.manifest, oldSecret);
-      if (metadata.actor.kind === "hub-administrator" && !same(metadata.actor.person, old.hub.administrator)) throw new HubSettingsError("denied");
+      const admitted = administrationProof(metadata.actor, old.hub.administrator, administration);
       if (oldCfg.bindPasswordRef !== BIND_PASSWORD_REF || cfg.bindPasswordRef !== undefined && cfg.bindPasswordRef !== BIND_PASSWORD_REF
         || nextDirectory.realm !== oldCfg.realm || nextDirectory.profile !== oldCfg.profile) throw new HubSettingsError("invalid");
       const next = { ...old.hub, directory: { ...cfg, bindPasswordRef: BIND_PASSWORD_REF } };
@@ -347,18 +386,21 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       const t = now();
       for (const [key, value] of preparedDirectory) if (value.expiresAt <= t) preparedDirectory.delete(key);
       if (preparedDirectory.size >= MAX_PREPARED) throw new HubSettingsError("busy");
+      const final = administrationProof(metadata.actor, old.hub.administrator, administration, admitted?.owner);
+      if (final && final.owner !== d) throw new HubSettingsError("stale");
       const ref = randomBytes(24).toString("base64url"), expiresAt = t + PREPARED_MS;
-      preparedDirectory.set(ref, { ...metadata, before, expected, next: structuredClone(next), secret, generation, createdAt: t, expiresAt });
+      preparedDirectory.set(ref, { ...metadata, before, expected, next: structuredClone(next), secret, generation, createdAt: t, expiresAt,
+        ...(final ? { admission: final.owner } : {}) });
       return { ref, expiresAt };
     },
-    commit(ref, actor, current, rotation, recoveryDeadline) {
+    commit(ref, actor, current, rotation, recoveryDeadline, administration) {
       const p = preparedDirectory.get(ref); preparedDirectory.delete(ref);
       if (!p) throw new HubSettingsError("expired");
       const fresh = parseHubDirectoryDecisionMetadata({ actor, changes: p.changes, recipients: p.recipients });
       if (!same({ ...p.actor, requestId: undefined }, { ...fresh.actor, requestId: undefined })) throw new HubSettingsError("denied");
       if (recoveryDeadline !== undefined && (!Number.isSafeInteger(recoveryDeadline) || recoveryDeadline <= p.createdAt)) throw new HubSettingsError("invalid");
       const expiresAt = recoveryDeadline === undefined ? p.expiresAt : Math.min(p.expiresAt, recoveryDeadline);
-      return installDirectory({ ...p, actor: fresh.actor, expiresAt, ...(recoveryDeadline === undefined ? {} : { recoveryDeadline: expiresAt }) }, current, undefined, rotation);
+      return installDirectory({ ...p, actor: fresh.actor, expiresAt, ...(recoveryDeadline === undefined ? {} : { recoveryDeadline: expiresAt }) }, current, undefined, rotation, administration);
     },
     compensate(originalId, currentIntent, expiresAt) {
       const d = decision(), original = d.operation(originalId);

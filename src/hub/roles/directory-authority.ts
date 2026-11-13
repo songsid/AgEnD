@@ -51,7 +51,7 @@ export function bindHubDirectoryAdministration(permit: HubManagementPermit, raw:
 }
 
 /** Opaque identity, exact actor/request and original method; an observed failure permanently retires this operation. */
-export function assertHubDirectoryAdministration(handle: HubDirectoryAdministration, raw: HubDirectoryDecisionRequest["actor"], source: HubDirectoryAdministrationBinding): void {
+export function assertHubDirectoryAdministration(handle: HubDirectoryAdministration, raw: HubDirectoryDecisionRequest["actor"], source: HubDirectoryAdministrationBinding): number | undefined {
   const state = proofs.get(handle);
   if (!state) throw new HubProtocolError("denied");
   try {
@@ -74,6 +74,7 @@ export function assertHubDirectoryAdministration(handle: HubDirectoryAdministrat
     }
     synchronous(answer);
     check();
+    return typeof answer === "number" ? answer : undefined;
   } catch (error) { state.retired = true; throw error; }
 }
 

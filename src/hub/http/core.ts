@@ -59,7 +59,7 @@ export class HubCore {
           try {
             check();
             if (permit.assertDirectoryDecision !== assertDecision) throw new HubProtocolError("unavailable");
-            assertDecision.call(permit, proof); check();
+            const sample = assertDecision.call(permit, proof); check(); return sample;
           } catch (error) { retired = true; throw error; }
         } } : {}) };
       } catch (error) {

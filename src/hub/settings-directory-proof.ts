@@ -266,7 +266,8 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       d.expiresAt = Math.min(d.expiresAt, at + TTL);
       await candidate(d, ctx); current(d, ctx);
       const writer = deps.writer(), proof = () => { current(d, ctx); return true; };
-      const prepared = writer.prepare(structuredClone(d.candidate), ctx.actor, proof);
+      const prepared = ctx.administration === undefined ? writer.prepare(structuredClone(d.candidate), ctx.actor, proof)
+        : writer.prepare(structuredClone(d.candidate), ctx.actor, proof, ctx.administration);
       const effect: unknown = beforeCommit?.();
       if (effect && (typeof effect === "object" || typeof effect === "function") && typeof (effect as { then?: unknown }).then === "function") {
         try { (effect as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused below */ }
@@ -274,6 +275,8 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       }
       if (effect !== undefined && typeof effect !== "number") refuse("invalid");
       current(d, ctx);
+      if (ctx.administration !== undefined) return writer.commit(prepared.ref, ctx.actor, proof, rotation,
+        typeof effect === "number" ? effect : undefined, ctx.administration);
       return typeof effect === "number" ? writer.commit(prepared.ref, ctx.actor, proof, rotation, effect) : writer.commit(prepared.ref, ctx.actor, proof, rotation);
     },
     cancel(ref, inputContext) { const ctx = context(inputContext); get(ref, ctx); drafts.delete(ref); },

@@ -24,7 +24,7 @@ export interface HubManagementPermit {
   /** Mandatory before each effect/disclosure, including after any await or reentrant callback. */
   assertCurrent(): void;
   /** Opt-in, exact synchronous directory decision only. This does not relax assertCurrent(). */
-  assertDirectoryDecision?(proof: HubDirectoryDecisionProof): void;
+  assertDirectoryDecision?(proof: HubDirectoryDecisionProof): void | number;
 }
 /** First issuance only: the issuer identity comes from the server's retained approval, never browser input. */
 export interface HubJoinIssuerPermit {
@@ -198,6 +198,7 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
             const at = common(proof);
             if (at.wall >= observed.wall + HUB_MANAGEMENT_PROOF_TTL || at.elapsed >= observed.elapsed + HUB_MANAGEMENT_PROOF_TTL
               || !allowed(at.wall)) throw new HubProtocolError("unavailable");
+            return at.wall; // Trusted final sample; consumers must not invoke another clock callback afterward.
           } catch (error) { retired = true; throw error; }
         } } : {}),
       });

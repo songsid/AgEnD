@@ -53,7 +53,19 @@ describe("S129 directory proof administrator identity", () => {
       expect(w.eligible.mock.calls.map(([person]) => person)).toEqual([w.root, w.admin]);
       expect(w.prepare.mock.calls[0]![1]).toEqual(w.adminActor);
       expect(w.commit.mock.calls[0]![1]).toEqual(w.adminActor);
+      expect(w.prepare.mock.calls[0]![3]).toBe(w.administration);
+      expect(w.commit.mock.calls[0]![5]).toBe(w.administration);
       expect(w.read.mock.calls.every(([person]) => person.objectId === w.admin.objectId)).toBe(true);
+    } finally { await w.finish(); }
+  });
+  it("carries the same opaque administrator witness alongside the bounded commit deadline", async () => {
+    const w = await world();
+    try {
+      const p = await w.engine.prepare(w.input(), w.context);
+      await w.engine.apply(p.ref, { credentials: { login: w.who.objectId, password: "synthetic" } }, w.context, undefined, () => 1600);
+      expect(w.prepare.mock.calls[0]![3]).toBe(w.administration);
+      expect(w.commit.mock.calls[0]![4]).toBe(1600);
+      expect(w.commit.mock.calls[0]![5]).toBe(w.administration);
     } finally { await w.finish(); }
   });
   it.each(["root", "host"] as const)("retains the old %s proof path", async mode => {
