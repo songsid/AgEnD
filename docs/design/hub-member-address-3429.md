@@ -43,3 +43,57 @@ Eleven injected crash steps cover certificate/material/journal, SQL decision, id
 The container recipe `scripts/manual/hub-member-address/run.sh` uses a real initialized Hub, verified synthetic LDAPS and a second FleetManager/member runtime, with an empty Agent inventory. It exercises legacy manual pairing, the affected-list preview, actual-browser D3 commit, old-endpoint/old-credential refusal, unchanged browser login, one retained owner notice, exact local Disconnect/Start over, and fresh browser company sign-in under a real group permit. The original revoked Fleet row remains; no automatic row supersession or republishing occurs. Fixture network seams are explicit per-client browser CA/hostname mapping and an exact loopback :636 mapping to the owned ephemeral LDAP peer. No real AD, pilot, native platform, CLI/model, new reconnect UI, or existing-company trust-repair journey is claimed.
 
 Provisional held-UI zh-TW copy: 「Hub 成員連線位址」; 「變更後，下列 Fleet 需要重新連接。」; 「確認變更」; notice 「Hub 的連線位址已變更，請重新連接。」; recovery action 「重新連接」. Normal people keep the browser-facing 「Hub 位址」; transport fields remain host/advanced information. These are review notes, not shipped new controls.
+
+
+## Online members follow (option B; user decision 11-13) — design, before code
+
+The user chose B: members **online** at the change follow an issuer-signed relocation sent over their current link; members offline then use the reconnect path above (with the issuer-signed descriptor repair). Never an unsigned relocation. Only `memberOrigin` moves: Hub ID, issuer key, member TLS key/SPKI and every credential of a member that followed stay as they are.
+
+### Statement and acknowledgement
+
+- New optional link capability `member-relocation-v1` (only when both ends list it, with `welcome-caps-v1`).
+- Server frame `relocate`, payload `{v:1, from, to, spkiSha256, revision, signature}`. The signature is Ed25519 by the **issuer key** over `["agend-hub-member-origin-v1", v, hubId, issuerKeyId, fleetId, from, to, spkiSha256, revision]`, with `fleetId` the link's authenticated Fleet.
+- `revision` is a **relocation sequence** the Hub takes in its own IMMEDIATE transaction before sending: one per commit attempt, never reused. An attempt that aborts burns its number, so a later attempt can never present the same revision with another address.
+- Member frame `relocate.ack {revision}`, sent only **after** the member has stored the statement durably (atomic write + fsync).
+
+### Hub commit sequence (changes to #3660)
+
+1. Prepare is unchanged (affected Fleets listed, one confirmation).
+2. Commit, a new phase before the SQL decision: take the relocation sequence; send `relocate` to every Fleet that is connected now with the capability; wait up to 5 s for each ack on the **same link epoch**. Every Fleet's ack is recorded (audit `member-address.relocation-acked`).
+3. #3660's single SQL decision, changed in one place: an affected Fleet whose ack arrived, and which is still active with the **same generation** at decision time, **keeps** its credential (no revoke, no generation bump, no notice). Every other affected Fleet is revoked and notified exactly as #3660 does. The decision audit lists both sets.
+4. Files, manifest, remount and recovery are #3660's, unchanged. Old links close with the old listener; followers dial `to`.
+
+### Member side: the pin rewrite (the security surface)
+
+- The verified statement is kept verbatim in `hub-member/<hubId>/member-origin.json`, beside the pairing and never inside it: pairing.json stays byte-identical, because its digest is an identity key (as with #3797's `web-origin.json`). Beside it, a local, unsigned `confirmed` mark is set the first time a welcome arrives at `to`.
+- **Accepted only if:**
+  - it verifies against the issuer key **pinned at pairing**;
+  - `hubId` and `fleetId` are the member's own;
+  - `spkiSha256` equals the **pinned** SPKI;
+  - `from` equals the member's current effective member address;
+  - `to` is a bare https origin that differs from the web address and from `from` (join-grade validation);
+  - `revision` is strictly above the kept one (forward only; the same revision with another address is refused).
+
+  Every decision is audited in the member's log (`member-origin.updated` / `member-origin.refused`), committed before the file is written (as in #3797).
+- **Effective member address:** the kept statement's `to` when it verifies, else the profile's. The client dials it and `pinnedHubAgent` checks it: the **SPKI pin is unchanged**, and the certificate's SAN must cover `to`'s host (#3660 reissues the SAN with the same key). The company-join display/anchor and #3797's web-origin binding use the effective member address too, so a later Reconnect or web move doesn't see a spurious change.
+- **Connect order while unconfirmed:** `to` first. If it can't be reached (refused, timeout, or a TLS identity mismatch, since anything not holding the pinned key is refused anyway), try `from` (the pinned address, the same pinned key). Once confirmed, `from` is never tried again.
+
+### Crash and abort boundaries
+
+| Where it stops | What follows |
+|---|---|
+| Hub: before any `relocate` is sent | Nothing changed anywhere. |
+| Hub: relocations sent/acked, no SQL decision (crash, cancel, probe failure) | The old config stays. Followers try `to`, which isn't listening (or isn't the pinned key) and is refused; they fall back to `from` and work as before. A later attempt has a higher revision and replaces their statement. |
+| Hub: decision committed, files not installed | #3660 recovery installs exactly the committed image; followers' credentials were kept; they dial `to` once it listens. |
+| Hub: installed, remount fails | `saved_unavailable` (#3660); followers wait at `to` with their kept credentials. |
+| Member: crash before storing | No ack, so revoked → the offline path (notice + Reconnect). |
+| Member: stored, ack lost | Counted as not followed, so revoked: the member dials `to` and is refused as revoked → the offline path. Never a kept credential without a confirmed ack. |
+| Member: audit committed, file write failed | The address is unchanged (the record comes first); no ack; revoked → the offline path. |
+
+### Old-listener grace: not in this change
+
+A second, temporary listener on `from` would add a socket lifecycle inside #3660's fenced remount, plus more crash states, for the narrow benefit of members that come online within the grace window. Members online at the change follow; everyone else uses Reconnect. Revisit only if rehearsals show the reconnect wave is painful. Any grace design would then get its own review.
+
+### Not changed
+
+#3660's prepare, SQL decision shape (apart from the kept set), journal, recovery, notices, the offline Reconnect and its descriptor repair. Old members and older Hubs: no capability, so #3660's revoke-and-reconnect for everyone.
