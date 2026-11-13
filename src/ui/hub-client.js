@@ -100,6 +100,27 @@ export function hubClient() {
 export function setHubClient(next) { client = next; }
 
 /** UX checks only (the server parses and canonicalizes): an https:// origin, and a code of the shape people type. */
+/** The session feature a Hub with rooms (seam 1) lists. */
+export const ROOMS_FEATURE = "rooms-v1";
+/** The live stream's events (seam 1). */
+/**
+ * The live stream's events (seam 1, as agreed with Lumen): message.added / message.updated { roomId, message, parent?:
+ * { id, ask } } (a reply that changes its question's counts carries them), presence.changed { roomId, memberId, presence,
+ * presenceNote? }, member.changed { roomId } (joined, left, role: read the room again), room.changed { roomId, room } or
+ * { roomId, removed: true } (no longer a member: drop it), unread.changed { roomId, unread }, invitation.changed {}.
+ */
+export const ROOM_EVENTS = Object.freeze(["message.added", "message.updated", "presence.changed", "member.changed", "room.changed", "unread.changed", "invitation.changed"]);
+/**
+ * Today's room (one asker, one agent; GET /hub/v1/rooms before ROOMS_FEATURE) in the rooms list's shape: a direct room
+ * named after its agent, the old item kept under `legacy` (its state, its agent's state, its grant's end, its features),
+ * and `limited: true`: that Hub has no members, presence or unread, so the page leaves those controls out.
+ */
+export function legacyRoom(item) {
+  if (!item || typeof item !== "object" || typeof item.id !== "string") return null;
+  return { id: item.id, kind: "direct", name: String(item.exposureName || ""), people: 1, agents: 1, online: null, unread: 0,
+    lastAt: Number.isFinite(item.lastAt) ? item.lastAt : 0, lastText: "", lastAuthor: "",
+    agent: { exposureId: String(item.exposureId || ""), owner: { name: String(item.ownerName || "") }, presence: null }, limited: true, legacy: item };
+}
 export const ADDRESS_HINT = /^https:\/\/[^\s/?#@]+\/?$/i;
 export const CODE_HINT = /^[A-Za-z0-9][A-Za-z0-9 -]{4,62}[A-Za-z0-9]$/;
 /** The part of a fingerprint people compare: its first 32 hex digits (128 bits) in 8 groups of 4. */
@@ -207,7 +228,7 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
 export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTimeoutMs = 120_000 } = {}) {
   // The factory override is for owned transports/rehearsals; the page uses the finite default.
   const readBudget = Number.isInteger(readTimeoutMs) && readTimeoutMs > 0 && readTimeoutMs <= 300_000 ? readTimeoutMs : 120_000;
-  let csrf = null, codeNotices = false, generation = 0;
+  let csrf = null, codeNotices = false, roomsLive = false, generation = 0;
   const ended = new Set(), pendingReads = new Map(), waits = new Set(), readControllers = new Set();
   let readTail = Promise.resolve();
   const retired = () => ({ ok: false, status: 401, code: "unauthenticated" });
@@ -277,20 +298,63 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     let json = null;
     try { json = await r.json(); } catch { json = null; }
     if (method === "GET" && signal?.aborted) return unreachable();
-    if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+    if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; roomsLive = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
     if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0,
       ...(method === "POST" && path === "/hub/v1/admin/enrolment-codes" && r.status === 429 && json?.code === "backpressure"
         && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}) };
     return { ok: true, ...(json && typeof json === "object" ? json : {}) };
   }
   const id = (v) => encodeURIComponent(String(v));
+  // One stream per tab (#1580): every live subscription shares one EventSource. A Hub with rooms carries the notices on
+  // its rooms stream too (`notices` = the notice version); before that the notices have their own. Listeners are kept
+  // per event name; the stream closes with its last listener, and a refused (CLOSED) stream tells every subscriber once.
+  // One dispatcher per event name per source, added when the name first listens and kept while that source lives (with no
+  // listeners it reads an empty set), so a name that listens again while the stream stays open is heard once (Fable on #3848).
+  const stream = { source: null, url: "", listeners: new Map(), dispatchers: new Map(), closers: new Set() };
+  const attach = (name) => { if (stream.source && !stream.dispatchers.has(name)) { const fn = dispatch(name); stream.dispatchers.set(name, fn); stream.source.addEventListener(name, fn); } };
+  const dispatch = (name) => (event) => {
+    let data; try { data = JSON.parse(event.data); } catch { return; }
+    for (const fn of [...(stream.listeners.get(name) || [])]) { try { fn(data); } catch { /* a listener's own failure */ } }
+  };
+  function listen(url, handlers, onClosed) {
+    if (typeof EventSource === "undefined") return () => {};
+    if (stream.source && stream.url !== url) { stream.source.close(); stream.source = null; stream.dispatchers.clear(); }   // the session changed what it may hear
+    const mine = [];
+    for (const [name, fn] of Object.entries(handlers)) {
+      if (typeof fn !== "function") continue;
+      if (!stream.listeners.has(name)) stream.listeners.set(name, new Set());
+      attach(name);
+      stream.listeners.get(name).add(fn); mine.push([name, fn]);
+    }
+    stream.closers.add(onClosed);
+    if (!stream.source) {
+      const source = new EventSource(url); stream.source = source; stream.url = url; stream.dispatchers.clear();
+      for (const name of stream.listeners.keys()) attach(name);
+      source.addEventListener("error", () => {
+        // A refused handshake is CLOSED, unlike a transient disconnect that EventSource itself reconnects.
+        if (stream.source !== source || source.readyState !== 2) return;
+        source.close(); stream.source = null; stream.listeners.clear(); stream.dispatchers.clear();
+        const closers = [...stream.closers]; stream.closers.clear();
+        for (const fn of closers) { try { fn(); } catch { /* a subscriber's own failure */ } }
+      });
+    }
+    let live = true;
+    return () => {
+      if (!live) return; live = false;
+      for (const [name, fn] of mine) { const set = stream.listeners.get(name); set?.delete(fn); if (set && !set.size) stream.listeners.delete(name); }
+      stream.closers.delete(onClosed);
+      if (!stream.listeners.size && stream.source) { stream.source.close(); stream.source = null; stream.dispatchers.clear(); }
+    };
+  }
+  const noticeVersion = (version) => version === 3 && codeNotices ? 3 : 2;
+  const streamUrl = (version) => roomsLive ? `/hub/v1/rooms/events?notices=${noticeVersion(version)}` : `/hub/v1/notices/events?v=${noticeVersion(version)}`;
   return {
     stub: false, web: true,
     /** Hear the session end (a 401 anywhere). @returns {() => void} */
     onSignedOut(fn) { ended.add(fn); return () => ended.delete(fn); },
-    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; } return r; },
-    async signIn(login, password) { retireReads(); const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; } return r; },
-    async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; return r; },
+    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; roomsLive = r.signedIn === true && r.features?.includes(ROOMS_FEATURE) === true; } return r; },
+    async signIn(login, password) { retireReads(); const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; roomsLive = r.features?.includes(ROOMS_FEATURE) === true; } return r; },
+    async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; roomsLive = false; return r; },
     catalog() { return call("GET", "/hub/v1/exposures"); },
     sharingPauseV1: true,
     sharing(exposureId, revision, sharingEpoch, paused) { return call("POST", `/hub/v1/exposures/${id(exposureId)}/sharing`, { revision, sharingEpoch, paused }); },
@@ -329,6 +393,70 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     },
     read(roomId, after = 0) { return call("GET", `/hub/v1/rooms/${id(roomId)}/messages?after=${id(after)}`); },
     chooseButtons(roomId, input) { return call("POST", `/hub/v1/rooms/${id(roomId)}/buttons`, input); },
+    // Hub rooms (docs/design/hub-rooms-split.md, seams 1, 3 and 5). The Hub speaks them once its session lists
+    // ROOMS_FEATURE; before that it has today's rooms (one asker, one agent), which roomList() still answers in the same
+    // shape (kind "direct", the old item under `legacy`), and whose messages stay with hub-chat-store.js.
+    roomsV1: true,
+    /** The Hub answers the rooms calls (seam 1) — otherwise only roomList() is meaningful. */
+    roomsLive() { return roomsLive; },
+    /**
+     * → { ok, rooms: [{ id, kind: "direct" | "group", name, people, agents, online, unread, lastAt, lastText, lastAuthor }] }.
+     * `?v=2` (Ridge, #3858): the combined list; GET /hub/v1/rooms itself stays direct-only for older cached tabs, and a
+     * server without rooms ignores the parameter (its answer is then normalised here).
+     */
+    async roomList() {
+      const r = await call("GET", "/hub/v1/rooms?v=2");
+      if (!r.ok || roomsLive) return r;
+      return { ...r, rooms: (Array.isArray(r.rooms) ? r.rooms : []).map(legacyRoom).filter(Boolean) };
+    },
+    /** → { ok, room, me: { role }, members: [Member], settings: { allMention, historyForNew } } */
+    room(roomId) { return call("GET", `/hub/v1/rooms/${id(roomId)}`); },
+    /** A group room: { name, people: [personId], teams: [teamId], groups: [groupId], agents: [exposureId], assistant }. */
+    createRoom(input) { return call("POST", "/hub/v1/rooms", input); },
+    /** { name?, allMention?, historyForNew?, assistant?, archived? } */
+    updateRoom(roomId, patch) { return call("PATCH", `/hub/v1/rooms/${id(roomId)}`, patch); },
+    /** One member: { kind: "person" | "team" | "group" | "agent" | "assistant", id? } (the assistant has no id). */
+    addRoomMember(roomId, member) { return call("POST", `/hub/v1/rooms/${id(roomId)}/members`, member); },
+    removeRoomMember(roomId, memberId) { return call("DELETE", `/hub/v1/rooms/${id(roomId)}/members/${id(memberId)}`); },
+    /** A page of Message, newest last: the latest `limit`, or those before the message `before`. */
+    roomMessages(roomId, { before, limit } = {}) {
+      const q = new URLSearchParams();
+      if (before) q.set("before", String(before));
+      if (Number.isSafeInteger(limit) && limit > 0) q.set("limit", String(limit));
+      const query = q.toString();
+      return call("GET", `/hub/v1/rooms/${id(roomId)}/messages${query ? `?${query}` : ""}`);
+    },
+    /** { text, mentions: ["all" | "assistant" | exposureId], replyTo?, files?: [fileId], idempotencyKey } → the stored Message. */
+    sendRoomMessage(roomId, { text, mentions = [], replyTo, files, idempotencyKey }) {
+      return call("POST", `/hub/v1/rooms/${id(roomId)}/messages`, { text, mentions, idempotencyKey,
+        ...(replyTo ? { replyTo } : {}), ...(Array.isArray(files) && files.length ? { files } : {}) });
+    },
+    markRoomRead(roomId, upTo) { return call("POST", `/hub/v1/rooms/${id(roomId)}/read`, { upTo }); },
+    /**
+     * The one live stream of everything this person may see (seam 1): `handlers[name](data)` for each of ROOM_EVENTS,
+     * on the tab's one stream (which also carries the notices). A refused stream (CLOSED) calls onClosed once; a
+     * transient drop reconnects by itself. → unsubscribe.
+     */
+    subscribeRooms(handlers = {}, onClosed = () => {}) {
+      if (!roomsLive) return () => {};
+      const mine = {};
+      for (const name of ROOM_EVENTS) if (typeof handlers[name] === "function") mine[name] = (data) => { if (data && typeof data === "object") handlers[name](data); };
+      return listen(streamUrl(codeNotices ? 3 : 2), mine, onClosed);
+    },
+    // Seam 3: agents enter a room by their owner's consent.
+    inviteToRoom(roomId, input) { return call("POST", `/hub/v1/rooms/${id(roomId)}/invitations`, input); },
+    invitations() { return call("GET", "/hub/v1/invitations"); },
+    acceptInvitation(invitationId) { return call("POST", `/hub/v1/invitations/${id(invitationId)}/accept`, {}); },
+    declineInvitation(invitationId) { return call("POST", `/hub/v1/invitations/${id(invitationId)}/decline`, {}); },
+    // Seam 5: teams, who may open rooms, and the administrator's list of rooms (names and members, no content).
+    teams() { return call("GET", "/hub/v1/teams"); },
+    team(teamId) { return call("GET", `/hub/v1/teams/${id(teamId)}`); },
+    createTeam(input) { return call("POST", "/hub/v1/teams", input); },
+    updateTeam(teamId, patch) { return call("PATCH", `/hub/v1/teams/${id(teamId)}`, patch); },
+    deleteTeam(teamId) { return call("DELETE", `/hub/v1/teams/${id(teamId)}`); },
+    roomCreators() { return call("GET", "/hub/v1/admin/rooms/creators"); },
+    saveRoomCreators(input) { return call("PUT", "/hub/v1/admin/rooms/creators", input); },
+    adminRooms() { return call("GET", "/hub/v1/admin/rooms"); },
     pairings() { return call("GET", "/hub/v1/pairings"); },
     quickPairingV1: true,
     createQuickPairing(label) { return call("POST", "/hub/v1/quick-pairing", { label }); },
@@ -349,14 +477,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     pairingNoticeSnapshotV1: typeof EventSource !== "undefined",
     acknowledgePairingNotice(noticeId) { return call("POST", `/hub/v1/notices/${id(noticeId)}/ack`); },
     subscribePairingNotices(fn, onClosed = () => {}, version = 2) {
-      if (typeof EventSource === "undefined") return () => {};
-      const events = new EventSource(`/hub/v1/notices/events?v=${version === 3 && codeNotices ? 3 : 2}`); let live = true;
-      events.addEventListener("notices", (event) => { if (!live) return; try { const value = JSON.parse(event.data); if (Array.isArray(value.notices)) fn(value.notices); } catch { /* bounded server DTO only */ } });
-      events.addEventListener("error", () => {
-        // A refused handshake is CLOSED, unlike a transient disconnect that EventSource itself reconnects.
-        if (live && events.readyState === 2) { live = false; events.close(); onClosed(); }
-      });
-      return () => { live = false; events.close(); };
+      return listen(streamUrl(version), { notices: (value) => { if (value && Array.isArray(value.notices)) fn(value.notices); } }, onClosed);
     },
     confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
     companyJoinSettings() { return call("GET", "/hub/v1/admin/company-join"); },
