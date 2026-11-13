@@ -1,0 +1,10 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+(node:13333) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  7 passed (7)
+      Tests  97 passed (97)
+   Start at  15:00:46
+   Duration  11.33s (transform 9.74s, setup 445ms, import 13.56s, tests 5.95s, environment 1ms)

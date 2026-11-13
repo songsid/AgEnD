@@ -1,0 +1,13 @@
+{
+  "id": "U3",
+  "path": "src/ui/hub-chat-store.js",
+  "test": "tests/hub-sharing-pause-ui-m3015.test.ts",
+  "selector": "a stale-tab question",
+  "caught": true,
+  "nativeCompilerExit": 0,
+  "typeLogDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "exit": 1,
+  "sourceDigest": "d50b745c5d15a2b96fa179975209b3a762c7f0c5a29625e3e26f8dad263d18ce",
+  "logDigest": "c30aee6101d96a7db7d50183bf4bce704ae6d978fc0dbd7d6ca1e6289aa06c17",
+  "restored": true
+}

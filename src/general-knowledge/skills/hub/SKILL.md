@@ -26,7 +26,7 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | join codes, 加入碼, create, end, used up, limits | [Join codes](#join-codes) |
 | Settings → Hub, Hub address, "address space code", Join code included | [Connecting a Fleet](#connecting-a-fleet) |
 | needs attention, Recover this connection, queue, timed out, cancel | [Held, refused and queued connections](#held-refused-and-queued-connections) |
-| Shared agents, Share, Not shared, Stop sharing, ClassicBot rooms | [Sharing agents](#sharing-agents) |
+| Shared agents, Share, Not shared, Pause sharing, Resume sharing, Stop sharing, ClassicBot rooms | [Sharing agents](#sharing-agents) |
 | Allow someone to ask, AD group, name search, how long, Revoke, Recent questions | [Who may ask](#who-may-ask) |
 | New chat, asking someone's agent, Waiting / Answered | [Asking an agent](#asking-an-agent) |
 | Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
@@ -231,9 +231,11 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
   "This fleet has no agents to share yet."
 - "Shared under the older restricted mode. Hub questions are refused until you share this agent again." → **Share
   again**.
-- On the Hub, an owner can **Stop sharing…** (停止分享) an agent: "No one can ask it any more. To share it again, it has to
+- On the Hub, under **My shared agents**, an owner can **Pause sharing** (暫停分享) and **Resume sharing** (繼續分享). Pause hides the agent from new-chat choices and refuses new questions; existing authorized chats say **Sharing paused** and stay readable. Person and AD group grants, IDs and original expiry dates are kept. Expiry time keeps running: resume does not extend or resurrect an expired/revoked grant, and live AD membership and Hub group permissions still apply. Reconnecting the Fleet or restarting the Hub never resumes sharing.
+- Pause is not instantaneous cancellation: a pre-Pause authorization whose result is already travelling to the Fleet may start its one first input within its existing lease (at most five seconds). Already-running work may finish. The committed authorization version makes members reconnect; after a member observes that fence, old capabilities stay unusable even after Resume. No new authorization is admitted while paused, and old answer-release leases are retired immediately. Do not promise an instant halt or automatic replay.
+- **Stop sharing…** (停止分享) is separate and permanent for the current publication. It means: "No one can ask it any more. To share it again, it has to
   be shared again from its fleet, and everyone has to be allowed to ask again. What was asked stays readable." Its
-  state then reads **Sharing stopped on the Hub**. It is not a pause: there is no resume on the Hub.
+  state then reads **Sharing stopped on the Hub**. Resume cannot undo Stop sharing or a Hub policy hold. The Fleet Share switch still controls publication; use the Hub page for a resumable pause.
 
 ## Who may ask
 
@@ -331,8 +333,6 @@ Say plainly that these are not in the product yet:
 - **Custom roles and a manager's team view** (several administrators, roles assigned to people or AD groups, a team
   list with usage counts). Designed and decided; not shipped. Today there is one Hub administrator.
 - **Sharing a ClassicBot room.** Only fleet agents can be shared.
-- **Pause and resume of a shared agent on the Hub.** Stop sharing is final until the agent is shared again from its
-  Fleet and everyone is allowed again.
 - **A second sign-in factor on the Hub.** It uses the company account and password only.
 - **Adding to People excluded from the editor.** The list is shown; it cannot be edited there in this release.
 - **Per-person cost or quota figures on the Hub.** Exact usage stays in each Fleet.

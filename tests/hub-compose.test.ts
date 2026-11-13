@@ -268,6 +268,15 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
       expect(store.read()).toMatchObject({ revocationVersion: 1, fleets: [{ id: fleetId, status: "revoked" }] });
     } finally { refresh.mockRestore(); await service.close(); }
   });
+  it("wires the sharing writer's refresh to the existing live member listener", async () => {
+    const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
+    const service = await f.create(hub.config.hub, () => true), refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization");
+    try {
+      await service.start(); http.state.deps!.refreshAuthorization!();
+      expect(refresh).toHaveBeenCalledExactlyOnceWith();
+      expect(http.state.deps!.transport()).not.toBeNull();
+    } finally { refresh.mockRestore(); await service.close(); }
+  });
 
   it("without S3 in the build: hub-incomplete, before opening anything", async () => {
     const hub = await initializedHub();

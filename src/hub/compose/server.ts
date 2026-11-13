@@ -80,6 +80,8 @@ export interface HubHttpDeps {
   pairingNotices?: HubPairingNotices;
   directoryNotices?: Pick<HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
+  /** Reconnect links after the sharing writer commits its authorization version. */
+  refreshAuthorization?(): void;
   current(): HubMode;
   now?: () => number;
   /** Private physical response ownership only; the directory route must independently prove the actor and operation. */
@@ -429,6 +431,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         store,
         current: () => mode,
         now,
+        refreshAuthorization: () => memberServer?.refreshAuthorization(),
         ...(options.directoryResponses ? { directoryResponse: Object.freeze({ capture(req: IncomingMessage, res: ServerResponse, proof: () => boolean) {
           if (!live() || !responseListener) throw new HubStateError("service-unavailable", "The directory response owner is unavailable");
           return responseListener.capture(req, res, () => proof() === true && live());

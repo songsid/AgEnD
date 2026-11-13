@@ -44,12 +44,13 @@ const grantInput = z.strictObject({ exposureId: uuid, exposureRevision: epoch, d
   login: z.string().trim().min(1).max(256).optional(), subject: selectedSubject.optional(),
 }).refine(v => v.subject?.kind === "group" || !!v.login);
 
-interface ExposureRow { id: string; fleet_id: string; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string; allowed_tools: string; policy_digest: string; frozen_through: number }
+interface ExposureRow { id: string; fleet_id: string; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string; allowed_tools: string; policy_digest: string; frozen_through: number; sharing_paused?: number; sharing_epoch?: number }
 interface GrantRow { id: string; revision: number; owner: string; exposure_id: string; exposure_revision: number; approved_by: string; approved_at: number; subject: string; subject_kind?: "person" | "group"; subject_label?: string; permissions: string; starts_at: number; expires_at: number; state: HubGrant["state"] }
 
 export function exposureOf(row: ExposureRow): HubExposure {
   return { id: row.id, fleetId: row.fleet_id, owner: personFromString(row.owner), displayName: row.display_name, revision: row.revision,
-    state: row.frozen_through >= row.revision && row.state === "published" ? "frozen" : row.state,
+    state: row.state === "published" ? row.frozen_through >= row.revision ? "frozen" : row.sharing_paused ? "paused" : "published" : row.state,
+    ...(row.sharing_epoch ? { sharingEpoch: row.sharing_epoch } : {}),
     dataViewId: row.data_view_id, allowedTools: JSON.parse(row.allowed_tools) as string[], policyDigest: row.policy_digest };
 }
 export function grantOf(row: GrantRow): HubGrant {
@@ -319,7 +320,7 @@ export class HubCatalogService {
       if (exposure.state !== "published") throw new HubProtocolError("denied");
       return exposure;
     };
-    this.core.atomic(ownedExposure);
+    const selectedExposure = JSON.stringify(this.core.atomic(ownedExposure));
     let directoryPermit: HubOperationPermit | undefined;
     const select = async (): Promise<{ subject: HubGrant["subject"]; label?: string } | null> => {
       if (input.subject?.kind === "group") {
@@ -351,6 +352,7 @@ export class HubCatalogService {
     return this.core.atomic((db, tx) => {
       if (ctx.isCurrent?.() === false) throw new HubProtocolError("revoked");
       const exposure = ownedExposure(db);
+      if (JSON.stringify(exposure) !== selectedExposure) throw new HubProtocolError("conflict");
       if (!selection.ok) throw selection.error;
       const selected = selection.value;
       if (!selected) throw new HubProtocolError("not-found");
@@ -395,7 +397,7 @@ export class HubCatalogService {
       const row = readExposure(db, id);
       if (!row || (!admin && row.owner !== personKeyString(person))) throw new HubProtocolError("not-found");
       if (row.revision !== revision) throw new HubProtocolError("conflict");
-      db.prepare("UPDATE hub_exposures SET frozen_through=MAX(frozen_through, ?), updated_at=? WHERE id=?").run(row.revision, this.core.now(), id);
+      db.prepare("UPDATE hub_exposures SET frozen_through=MAX(frozen_through, ?), sharing_paused=0, sharing_epoch=sharing_epoch+1, updated_at=? WHERE id=?").run(row.revision, this.core.now(), id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person }, action: "exposure.frozen", result: "completed",
         fleetId: row.fleet_id, exposureId: id, ownerAtEvent: personFromString(row.owner) });
     });

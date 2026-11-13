@@ -1,0 +1,13 @@
+{
+  "id": "S2",
+  "path": "src/hub/sharing.ts",
+  "test": "tests/hub-sharing-pause-m3015.test.ts",
+  "selector": "pauses without changing",
+  "caught": true,
+  "nativeCompilerExit": 0,
+  "typeLogDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "exit": 1,
+  "sourceDigest": "bc78b461e277b8aa39769a874dbaeb53b08f20a3927ac098145ad3fba71cbd17",
+  "logDigest": "8b2fd1a674bcf73d7aa6aea55e6f7ce1101e27b91a5d09c77eccd1576f6f98df",
+  "restored": true
+}
