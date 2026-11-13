@@ -206,13 +206,15 @@ export class HubServer {
   /**
    * #3429 B: is this ack's link still the Fleet's current, ready one (the decision's recheck)? `advanced`: how many
    * authorization versions the caller's own uncommitted decision has already published (the member-address decision
-   * advances it by exactly one, and rechecks after its audit with 1) — any other change still fails.
+   * advances it by exactly one, and rechecks after its audit with 1) — any other change still fails. With an advance,
+   * the Hub's liveness is not consulted (it already reflects that same decision's head move); the server must not be
+   * stopped, and the link and its exact transport row must be the ones the ack was proven on.
    */
   relocationLinkCurrent(proof: HubRelocationAck, advanced = 0): boolean {
     const connection = this.connections.get(proof.fleetId);
-    if (!connection || connection !== proof.link || !connection.ready || connection.context.linkEpoch !== proof.linkEpoch || !this.current()) return false;
-    return advanced === 0 ? connection.context.current()
-      : this.options.pairing.bindingCurrent(proof.fleetId, connection.binding.generation, connection.binding.revocationVersion + advanced);
+    if (!connection || connection !== proof.link || !connection.ready || connection.context.linkEpoch !== proof.linkEpoch || this.stopped) return false;
+    return advanced === 0 ? this.current() && connection.context.current()
+      : this.options.pairing.bindingRow(proof.fleetId, connection.binding.generation, connection.binding.revocationVersion + advanced);
   }
   /** The enabled optional features of a fleet's ready link, or null while it has none. */
   features(fleetId: string): ReadonlySet<string> | null {

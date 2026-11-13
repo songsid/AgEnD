@@ -62,6 +62,10 @@ describe("#3429 B — relocate and its ack over the pinned link", () => {
     const bump = (change: (x: any) => void) => r.store.mutate({ at: 1, requestId: "bump", actor: { kind: "local-host" }, action: "fixture.bump", result: "completed" }, change);
     bump(x => { x.revocationVersion++; });                                                              // what the decision itself publishes
     expect([r.server.relocationLinkCurrent(proof), r.server.relocationLinkCurrent(proof, 1)]).toEqual([false, true]);
+    // The Hub's liveness already says no inside that decision (compose live() includes the member-address head it just
+    // moved): the advanced recheck reads the link and its exact row, not that gate (alpha rehearsal, leg 1).
+    r.disable();
+    expect([r.server.relocationLinkCurrent(proof), r.server.relocationLinkCurrent(proof, 1)]).toEqual([false, true]);
     bump(x => { x.revocationVersion++; });                                                              // anything more: not this link's
     expect(r.server.relocationLinkCurrent(proof, 1)).toBe(false);
     void c;
