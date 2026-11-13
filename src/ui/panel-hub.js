@@ -981,6 +981,11 @@ function LazyThisHub({ directory }) {
   useEffect(() => { let live = true; import("./hub-this-hub.js").then((m) => { if (live) setC(() => m.ThisHubCard); }, () => {}); return () => { live = false; }; }, []);
   return C ? html`<${C} directory=${directory} />` : null;
 }
+function LazyAssistantAdmin() {
+  const [C, setC] = useState(null);
+  useEffect(() => { let live = true; import("./hub-assistant-admin.js").then(m => { if (live) setC(() => m.HubAssistantAdmin); }, () => {}); return () => { live = false; }; }, []);
+  return C ? html`<${C} client=${hubClient()} />` : null;
+}
 /** #3298 S-89: Administration's sub-page (?view=groups: Group permissions), from the page's own address. */
 function adminView() { try { return new URLSearchParams(location.search).get("view") || ""; } catch { return ""; } }
 /** #3298 S-89: the prominent entry to Group permissions at the top of Administration (discovery without docs). */
@@ -988,6 +993,7 @@ function GroupPermissionsEntry() {
   return html`<${LazyGroups} pick=${(m) => m.GroupPermissionsCard} props=${{}} />`;
 }
 function HubAdminPage({ groups = false, companyJoin = false, directory = false } = {}) {
+  const assistantSession = useSession();
   const [view, reload] = useRead(() => hubClient().adminOverview());
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
@@ -1031,8 +1037,9 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     <div class="s-section-layout">
       ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
       ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
-      ${/* Lumen's order (M-3092): Let colleagues join → Rooms → Room assistant (track A's card, next) → Connected fleets → pairing. */ ""}
+      ${/* Lumen's order: Let colleagues join → Rooms → Room assistant → Connected fleets → pairing. */ ""}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
+      ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
