@@ -11,3 +11,21 @@ The owner pending list, room `invited[]`, cancellation and owner exposure-room D
 Lumen's product-plan update f87fadf37 distinguishes two consumers: rooms and agent invitations use a point-in-time expansion, while ask grants and room-creation rights check the current roster each time through `isMember(db, teamId, person)`. That read returns the current revision and membership, or null for a missing/deleted team; callers keep their final current-row checks. Department groups only organize teams and default the people search scope; selected members may come from other departments. The lead belongs to the roster. Deleting a team ends live team-based permissions without changing already-expanded room memberships or consented agents.
 
 The team writer, team-subject grant evaluation and management UI are not implemented by this contract commit. No roles helper is activated.
+
+## Team CRUD mount
+
+There is no existing Team CRUD route or separate host beyond `HubTeamReader` and `roomTeamCandidates`. C supplies `createHubTeams(core)` and `HUB_TEAMS_MIGRATION`; R registers the migration before HTTP mount and composes one optional `deps.teams(core)` service. The returned `HubTeams` also implements the existing reader and `candidates(db, prefix)`, so CRUD, room expansion, suggestions and live creator membership share one mounted service over the same Core/DB. An absent factory leaves CRUD unavailable and the existing reader/candidate ports optional.
+
+The service methods are `list(ctx)`, `get(ctx, id)`, `create(ctx, value)`, `update(ctx, id, value)` and `remove(ctx, id)`. `value` is unknown at the route boundary; C owns validation, admin/current-lead rules, transactions and the Team DTO from seam 5. List returns a Team array, get/create/update return one Team, and remove returns void. R wraps responses as follows:
+
+| Method and path | Answer |
+|---|---|
+| `GET /hub/v1/teams` | `{ teams }` |
+| `POST /hub/v1/teams` | `{ team }` |
+| `GET /hub/v1/teams/:id` | `{ team }` |
+| `PATCH /hub/v1/teams/:id` | `{ team }` |
+| `DELETE /hub/v1/teams/:id` | `{ ok: true }` |
+
+R applies the normal signed-in read and mutation CSRF handling and passes the current `HubRequestContext`; C performs the business authorization. No room-manager host or R-owned Team SQL is needed. Team DTO field names stay `id`, `name`, `department`, `lead` and `members` per seam 5; C may also return the stored revision. The existing immutable department identity in `HubTeamSnapshot` and its reader methods stay unchanged.
+
+The Team store's 200-person/200-team bounds do not change the room's 100-person union bound. Room membership and invitations use snapshot expansion; creator rights and team ask grants use the live roster. These notes reserve the mount contract only: no Team factory, CRUD route or UI availability is activated by this documentation.
