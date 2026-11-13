@@ -14,7 +14,7 @@ import { currentBinding, createHubMemberPairingApi } from "../src/hub/member/pai
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { sha256, issuerKeyId } from "../src/hub/identity.js";
 import { signHubWebOrigin } from "../src/hub/web-origin.js";
-import { CompanyTrustStore } from "../src/hub/join/trust.js";
+import { CompanyIdentityChanged, CompanyTrustStore } from "../src/hub/join/trust.js";
 import { companyIdentityDigest } from "../src/hub/join/protocol.js";
 import { createJoinPrivate, writeJoinPrivate } from "../src/hub/join/private.js";
 import { HubMemberProfileStore } from "../src/hub/profile.js";
@@ -494,7 +494,7 @@ describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這
     const w = await memberMoved();
     await w.controller.remove({ ...w.shown, address: w.old.webOrigin }, w.authority, w.pairing);
     const before = w.store.pinBytes(w.old.webOrigin);
-    await expect(w.start()).rejects.toThrow();
+    await expect(w.start()).rejects.toBeInstanceOf(CompanyIdentityChanged);                     // the saved pin's own refusal
     expect(w.store.pinBytes(w.old.webOrigin)).toBe(before);
     w.controller.close();
   });
