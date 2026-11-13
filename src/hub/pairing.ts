@@ -199,6 +199,8 @@ export class HubPairingService {
         || selected.expiresAt <= this.now() || selected.fingerprint !== fingerprint || !selected.fleetId) throw new HubProtocolError("denied");
       const owner = validated(person, selected.owner), who = validated(person, admin.person);
       const eligible = await this.options.directory.checkEligibility(owner);
+      // Keep the existing signed-out response after a held read; the permit still proves all authority below.
+      if (ctx.isCurrent?.() === false) await ctx.current();
       permit.assertCurrent();
       if (!eligible.eligible) throw new HubProtocolError(eligible.reason === "unavailable" ? "unavailable" : "denied");
       if (personKeyString(eligible.person.key) !== personKeyString(owner)) throw new HubProtocolError("denied");
