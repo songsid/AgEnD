@@ -56,7 +56,9 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     members: detail.members.filter(m => m && !gone[m.id]).map(m => presence[m.id] ? { ...m, ...presence[m.id] } : m) };
   const meId = detail.me?.id;
   const manager = data.role === "manager";
-  const people = data.members.filter(m => m.kind === "person");
+  // Me first, then who is online, then the offline and those who have never signed in (spec 8224c4675).
+  const personRank = (m) => m.id === meId ? 0 : m.presence === "online" ? 1 : 2;
+  const people = data.members.filter(m => m.kind === "person").sort((a, b) => personRank(a) - personRank(b));
   const agents = data.members.filter(isAgent).sort((a, b) => (AGENT_ORDER[a.presence] ?? 3) - (AGENT_ORDER[b.presence] ?? 3));
   const assistant = data.members.find(m => m.kind === "assistant");
   const shown = expanded || agents.length <= AGENTS_SHOWN ? agents : agents.slice(0, AGENTS_SHOWN);
@@ -75,7 +77,8 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     <section><h4>${hroom("membersHead", people.length, people.filter(m => m.presence === "online").length)}</h4>
       <ul>${people.map(m => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`)}</ul>
     </section>
-    <section><h4>${hroom("agentsHead", agents.length, agents.filter(agentOnline).length)}</h4>
+    ${agents.length ? null : html`<section class="hub-room-no-agents"><h4>${hm("agents")}</h4><p class="note">${hm("noAgents")}</p></section>`}
+    ${agents.length ? html`<section><h4>${hroom("agentsHead", agents.length, agents.filter(agentOnline).length)}</h4>
       <ul>${shown.map(m => html`<li class="hub-member hub-member-agent" key=${m.id}>
         <button type="button" class="hub-member-open" title=${m.owner?.name ? hm("ownerOf", m.owner.name) : ""} aria-expanded=${open === m.id} onClick=${() => { setFailed(false); setOpen(open === m.id ? null : m.id); }}>${row(m)}</button>
         ${open === m.id ? html`<div class="hub-member-card" role="group" aria-label=${m.name}>
@@ -90,7 +93,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
         </div>` : null}
       </li>`)}</ul>
       ${agents.length > AGENTS_SHOWN ? html`<button type="button" class="btn btn-link hub-members-more" onClick=${() => setExpanded(!expanded)}>${expanded ? hm("fewer") : hroom("moreN", agents.length - AGENTS_SHOWN)}</button>` : null}
-    </section>
+    </section>` : null}
     ${assistant ? html`<section><ul><li class="hub-member hub-member-assistant">${row({ ...assistant, name: hroom("roomAssistant") })}</li></ul></section>` : null}
     <section class="hub-room-who"><h4>${hroom("whoSees")}</h4><p class="note">${hroom("whoSeesRoom")}</p></section>
     ${manager ? html`<button type="button" class="btn btn-link hub-room-settings-link" onClick=${() => onSettings?.()}>${hroom("roomSettings")}</button>` : null}

@@ -7,6 +7,7 @@ register("hubRoomNew", {
   en: {
     agents: "Agents",
     withCount: "{0} · {1} people",
+    withCountOne: "{0} · 1 person",
     peopleLimit: "This room would have {0} people, over the limit of {1}. Choose a smaller AD group or team instead.",
     groupUnavailable: "Can't read the members of “{0}” right now. Try again later.",
     neverSignedIn: "Hasn't signed in to the Hub yet",
@@ -20,6 +21,7 @@ register("hubRoomNew", {
   "zh-TW": {
     agents: "Agent",
     withCount: "{0} · {1} 人",
+    withCountOne: "{0} · 1 人",
     peopleLimit: "這個房間會有 {0} 人，超過上限 {1} 人。請改選較小的 AD 群組或團隊。",
     groupUnavailable: "目前無法讀取「{0}」的成員，請稍後再試。",
     neverSignedIn: "還沒登入過 Hub",

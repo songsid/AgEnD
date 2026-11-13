@@ -137,6 +137,15 @@ describe("Hub New room dialog (section 6)", () => {
     expect(opened).toHaveLength(1);
   });
 
+  it.each(["en", "zh-TW"] as const)("a group of one reads 「1 person」 in English, 「1 人」 in zh (%s)", async (lang) => {
+    {
+      const { pg, client } = await fixture(lang, (path) => path === "/hub/v1/rooms/candidates/group/group-rd1" ? { status: 200, body: { kind: "group", id: "group-rd1", name: "Pilot direct group", people: 1 } } : null);
+      await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false })); await settle(10);
+      await search(pg, "hubRoomPeople", "研發一"); await pick(pg, "hubRoomPeople", "研發一部"); await settle(10);
+      expect(tags(pg, "hubRoomPeople").at(-1)).toBe(lang === "en" ? "Pilot direct group · 1 person" : "Pilot direct group · 1 人");
+    }
+  });
+
   it("a picked item is not offered again, and × removes it", async () => {
     const { pg, client } = await fixture("en");
     await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false })); await settle(10);

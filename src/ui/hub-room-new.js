@@ -18,7 +18,7 @@ const SEARCH_DELAY_MS = 200;
 /** One picked item's words: a person or agent by name, a team or AD group with its people, a team's agents. */
 export function pickLabel(item) {
   if (item.kind === "team-agents") return hn("teamAgents", item.name);
-  if ((item.kind === "team" || item.kind === "group") && Number.isFinite(item.people)) return hn("withCount", item.name, item.people);
+  if ((item.kind === "team" || item.kind === "group") && Number.isFinite(item.people)) return item.people === 1 ? hn("withCountOne", item.name) : hn("withCount", item.name, item.people);
   return item.name;
 }
 const keyOf = (item) => `${item.kind}:${item.id}`;
