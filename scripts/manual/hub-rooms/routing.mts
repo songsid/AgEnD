@@ -34,6 +34,7 @@ try {
   web = await s3bRig({ administrator: net.owner, webOrigin: origin });
   web.httpDeps.transport = () => net.server; web.httpDeps.store = net.store; web.httpDeps.pairing = net.pairing; await web.restartHttp();
   net.setReceive(async (frame, link) => web!.http.receive(frame, link));
+  web.addPerson("admin", "Alex", net.owner);
   const admin = await web.signIn("admin");
   async function peer(name: string) {
     const home = join(net.root, name); mkdirSync(home, { mode: 0o700 });
@@ -71,6 +72,7 @@ try {
     }; peers.push(value); await connect(); return value;
   }
   const notes = await peer("Notes"), planner = await peer("Planner");
+  const extras = process.env.EXTRA_ANSWERS === "1" ? [await peer("Writer"), await peer("Reviewer")] : [];
   const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core"); browser = await pw.chromium.launch({ args: ["--no-sandbox"] });
   const layouts = [["desktop", "en", "light"], ["phone", "zh-TW", "dark"]].filter(([device]) => !process.env.DEVICES || process.env.DEVICES.split(",").includes(device));
   if (!layouts.length) throw Error("DEVICES must select desktop or phone");
@@ -96,7 +98,7 @@ try {
       if (u.pathname.startsWith("/hub/v1/")) receipt.requests.push({ device, method: response.request().method(), path: u.pathname + u.search, status: response.status() });
       if (u.pathname.startsWith("/assets/") || u.pathname.startsWith("/ui/js/")) responses.push(response.body().then((body: Buffer) => { receipt.served[u.pathname] = sha(body); }).catch(() => {}));
     });
-    const shot = async (name: string) => { const path = `${tag}-${name}.png`; await page.screenshot({ path: join(out, path), fullPage: true }); receipt.pictures.push({ path, sha256: sha(readFileSync(join(out, path))) }); };
+    const shot = async (name: string) => { if (process.env.SHOTS && !process.env.SHOTS.split(",").includes(name)) return; const path = `${tag}-${name}.png`; await page.screenshot({ path: join(out, path), fullPage: true }); receipt.pictures.push({ path, sha256: sha(readFileSync(join(out, path))) }); };
     await page.goto(origin + "/ui/hub?room=" + roomId); await page.locator(".hub-room-page").waitFor(); await page.locator(".hub-room-rail-toggle").waitFor();
     if (await page.locator(".hub-room-rail-toggle").getAttribute("aria-pressed") === "false") await page.locator(".hub-room-rail-toggle").click();
     await page.locator(".hub-member-agent").first().waitFor();
@@ -109,7 +111,8 @@ try {
       check(tag + " " + name + " " + word + " dot", await row(name).locator(".dot." + dot).count() === 1);
     };
     const idle = lang === "en" ? "Idle" : "待命", working = lang === "en" ? "Working" : "處理中", paused = lang === "en" ? "Paused" : "暫停", offline = lang === "en" ? "Offline" : "離線";
-    await visiblePresence("Notes", idle, "ok"); await visiblePresence("Planner", idle, "ok"); await shot("idle");
+    await visiblePresence("Notes", idle, "ok"); await visiblePresence("Planner", idle, "ok");
+    check(tag + " member rows show owner without hover", (await row("Notes").innerText()).includes("Alex") && (await row("Planner").innerText()).includes("Alex")); await shot("idle");
     const closeRail = async () => { if (device === "phone" && await page.locator(".hub-rail-sheet").isVisible()) await page.locator("dialog:has(.hub-rail-sheet) .dlg-x").click(); };
     const send = async (text: string) => { await closeRail(); await page.locator(".hub-room-composer textarea").fill(text); await page.locator(".hub-room-composer #sendBtn").click(); await page.getByText(text, { exact: true }).first().waitFor(); };
     const before = notes.inputs.length + planner.inputs.length;
@@ -118,9 +121,14 @@ try {
     const selected = notes.inputs.length; await send("@Notes Please summarize " + device);
     await until(() => notes.inputs.length === selected + 1, "selected agent input");
     check(tag + " @agent routes only to Notes", planner.inputs.length + notes.inputs.length === before + 1);
-    await notes.state({ process: "running", execution: "working" }); await visiblePresence("Notes", working, "busy"); await shot("agent-working");
+    await notes.state({ process: "running", execution: "working" }); await visiblePresence("Notes", working, "busy"); await closeRail();
+    check(tag + " working answer uses the shared work bar", await page.locator(".work-bar").filter({ hasText: "Notes" }).count() > 0);
+    check(tag + " working answers create no empty message bubble", await page.locator(".msg.agent").evaluateAll((rows: HTMLElement[]) => rows.every(row => !!row.querySelector(".md")?.textContent?.trim()))); await shot("agent-working");
     await notes.answer(notes.inputs[selected], "Notes summary " + device); await page.getByText("Notes summary " + device, { exact: true }).waitFor();
     await notes.state({ process: "running", execution: "idle" });
+    const answered = await web.call(admin, "GET", `/hub/v1/rooms/${roomId}/messages`);
+    check(tag + " real answer carries its recorded owner", answered.json.messages.find((m: any) => m.text === "Notes summary " + device)?.author.owner?.name === "Alex");
+    check(tag + " answer shows owner in the author line", (await page.getByText("Notes summary " + device, { exact: true }).locator("xpath=ancestor::div[contains(concat(' ',normalize-space(@class),' '),' msg ')][1]").locator(".sender").innerText()).includes("Alex"));
     check(tag + " C answer is acknowledged durably", await (async () => { await until(() => notes.db.prepare("SELECT COUNT(*) n FROM hub_room_asks WHERE state<>'acked'").get().n === 0, "C ACK"); return true; })());
     await planner.disconnect(); await visiblePresence("Planner", offline, "off");
     const n = notes.inputs.length, b = planner.inputs.length, mentionAll = lang === "en" ? "@All agents" : "@所有 Agent";
@@ -129,15 +137,23 @@ try {
     check(tag + " @all preflight describes one online and one later", (await page.locator(".hub-room-allbar").innerText()).includes(lang === "en" ? "2 agents, 1 online, 1 will answer after they come online" : "2 個 Agent 中 1 個在線上，1 個上線後回答")); await shot("all-preflight");
     await page.locator(".hub-room-composer #sendBtn").click(); await until(() => notes.inputs.length === n + 1, "online @all input");
     await notes.state({ process: "running", execution: "working" }); await visiblePresence("Notes", working, "busy"); await closeRail();
-    const progress = lang === "en" ? "Answered 0 · working 1 · reply later 1" : "已回答 0 · 處理中 1 · 稍後回覆 1";
-    await page.getByText(progress, { exact: true }).waitFor(); await shot("all-queued");
+    const progress = lang === "en" ? "Working 1 · Reply later 1" : "處理中 1 · 稍後回覆 1";
+    await page.getByText(progress, { exact: true }).waitFor();
+    const question = mentionAll + " Plan together " + device, askBubble = page.locator(".msg.user").filter({ has: page.locator(".md", { hasText: question }) });
+    check(tag + " @all sent mention has the same accent", (await askBubble.locator(".mention").allTextContents()).includes(mentionAll));
+    check(tag + " progress is attached to its question without a second time", (await askBubble.innerText()).includes(progress) && await askBubble.locator(".time").count() === 1);
+    await shot("all-queued");
     check(tag + " offline Fleet retains exactly one queued delivery", planner.inputs.length === b && web.db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE room_id=? AND fleet_id=? AND state='queued'").get(roomId, planner.profile.fleetId).n === 1);
     await notes.answer(notes.inputs[n], "Notes team answer " + device); await notes.state({ process: "running", execution: "idle" }); await page.getByText("Notes team answer " + device, { exact: true }).waitFor();
     await planner.connect(); await until(() => planner.inputs.length === b + 1, "reconnected queued delivery");
-    await planner.state({ process: "running", execution: "working" }); await visiblePresence("Planner", working, "busy"); await shot("all-reconnected");
+    await planner.state({ process: "running", execution: "working" }); await visiblePresence("Planner", working, "busy"); await closeRail(); await shot("all-reconnected");
     await planner.answer(planner.inputs[b], "Planner team answer " + device); await planner.state({ process: "running", execution: "idle" }); await page.getByText("Planner team answer " + device, { exact: true }).waitFor();
     await visiblePresence("Planner", idle, "ok");
     await page.getByText(lang === "en" ? "All 2 answered" : "2 個都回答了", { exact: true }).waitFor(); await closeRail(); await shot("all-answered");
+    for (const answerText of ["Notes team answer " + device, "Planner team answer " + device]) {
+      const answerBubble = page.locator(".msg.agent").filter({ has: page.locator(".md", { hasText: answerText }) });
+      check(tag + " answer quotes the @all question: " + answerText, (await answerBubble.locator(".msg-quote .quote-text").innerText()).includes(question));
+    }
     check(tag + " both @all answers persisted exactly once", web.db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE room_id=? AND state='answered'").get(roomId).n === 3);
     await notes.state({ process: "paused", execution: null, pauseReason: "quota" }); await visiblePresence("Notes", paused, "warn");
     check(tag + " quota reason uses viewer language in live panel", (await row("Notes").locator(".hub-member-state").innerText()).includes(lang === "en" ? "Out of quota" : "額度用完"));
@@ -151,6 +167,28 @@ try {
     await notes.state({ process: "running", execution: "idle" }); await visiblePresence("Notes", idle, "ok");
     const restored = await web.call(admin, "GET", `/hub/v1/rooms/${roomId}`);
     check(tag + " idle event clears prior quota reason", !restored.json.members.find((m: any) => m.id === notes.exposureId)?.presenceReason && !(await row("Notes").locator(".hub-member-state").innerText()).includes(lang === "en" ? "Out of quota" : "額度用完")); await shot("presence-restored");
+    if (extras.length) {
+      const batch = [notes, planner, ...extras], counts = batch.map(p => p.inputs.length);
+      const created = await web.call(admin, "POST", "/hub/v1/rooms", { name: "Answer references " + device, agents: batch.map(p => p.exposureId) });
+      if (created.status !== 200) throw Error("four-agent room: " + created.text);
+      const batchRoom = created.json.room.id, batchQuestion = mentionAll + " Compare four answers " + device;
+      await page.goto(origin + "/ui/hub?room=" + batchRoom); await page.locator(".hub-room-composer textarea").waitFor();
+      await send(batchQuestion); await until(() => batch.every((p, i) => p.inputs.length === counts[i] + 1), "four-agent input");
+      await Promise.all(batch.map(p => p.state({ process: "running", execution: "working" })));
+      for (let i = 0; i < batch.length; i++) {
+        await batch[i].answer(batch[i].inputs[counts[i]], "Four-answer " + (i + 1) + " " + device);
+        await batch[i].state({ process: "running", execution: "idle" });
+        if (i === 1) await send("Human conversation between answers " + device);
+      }
+      await until(async () => (await web!.call(admin, "GET", `/hub/v1/rooms/${batchRoom}/messages`)).json.messages.filter((m: any) => m.stage === "answered").length === 4, "four answers committed");
+      const expand = page.getByRole("button", { name: lang === "en" ? "Show the other 1" : "展開其餘 1 則", exact: true }); await expand.waitFor();
+      check(tag + " fourth answer starts collapsed", await page.locator(".msg.agent").filter({ hasText: "Four-answer" }).count() === 3); await shot("four-answers-collapsed");
+      await expand.click(); await page.getByText("Four-answer 4 " + device, { exact: true }).waitFor();
+      const answerRows = page.locator(".msg.agent").filter({ hasText: "Four-answer" });
+      check(tag + " expanding shows all four answers", await answerRows.count() === 4);
+      check(tag + " interleaved answers all quote the original question", (await answerRows.locator(".msg-quote .quote-text").allTextContents()).every((text: string) => text.includes(batchQuestion)));
+      await shot("four-answers-expanded");
+    }
     check(tag + " no browser error", errors.length === 0, errors);
     check(tag + " no horizontal document overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await Promise.all(responses); await context.close(); activePage = null;
