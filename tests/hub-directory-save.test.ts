@@ -37,6 +37,7 @@ function fixture(roleMode = false) {
   const helpers = { completeDirectoryRotation: complete, ...(roleMode ? { prepareRoleDirectoryRotationRelease: prepareRole } : {}) };
   const old = { decision, current: () => live } as unknown as HubMountedDirectory;
   const mounted = { decision, current: () => active, sessions: () => helpers } as unknown as HubMountedDirectory;
+  let replacementMount: HubMountedDirectory | undefined;
   const rotation = { discard: vi.fn() }, packets: Array<{ status: number; json: string; cookie?: string }> = [];
   const response: HubDirectoryResponse = { current: () => connected, discard: vi.fn(async () => { connected = false; }),
     reply: vi.fn(async (build, current) => { expect(current()).toBe(true); beforeBuild?.();
@@ -56,12 +57,13 @@ function fixture(roleMode = false) {
   });
   const remount = vi.fn(async () => { events.push("remount"); await mountGate?.(); active = head.directoryEpoch === 1 ? !failure : !failRestore; });
   const deps: HubDirectorySaveDeps = { hubId, proof: proof as unknown as HubDirectorySettingsProof,
-    mounted: () => live ? old : active ? mounted : null, writer: () => ({ compensate }) as unknown as HubDirectorySettingsWriter,
+    mounted: () => live ? old : active ? replacementMount ?? mounted : null, writer: () => ({ compensate }) as unknown as HubDirectorySettingsWriter,
     withDecision: vi.fn(async work => work(decision)), remount, current: () => owner, now: () => time };
   const coordinator = createHubDirectorySaveCoordinator(deps);
   const save = () => coordinator.apply("owned-draft", {}, context, { capture, rotation });
   return { coordinator, context, deps, proof, rotation, response, packets, events, capture, save, id, compensation, head, original, complete,
     helpers, mounted, prepareRole, release, loseRole: () => { permitted = false; },
+    replaceMounted: (next: HubMountedDirectory) => { replacementMount = next; },
     releaseGate: (gate: () => Promise<void>) => { releaseGate = gate; }, beforeBuild: (hook: () => void) => { beforeBuild = hook; }, afterBuild: (hook: () => void) => { afterBuild = hook; },
     compensate, remount, intent, settled, decision, get deadline() { return deadline; }, tick: (n: number) => { time += n; }, stop: () => { owner = false; }, disconnect: () => { connected = false; },
     fail: (restore = false) => { failure = true; failRestore = restore; }, proofGate: (gate: () => Promise<void>) => { proofGate = gate; },
@@ -73,7 +75,7 @@ describe("S129 Save successor release", () => {
     const r = fixture(true);
     try {
       await expect(r.save()).resolves.toMatchObject({ state: "ready" });
-      expect(r.prepareRole).toHaveBeenCalledOnce(); expect(r.complete).not.toHaveBeenCalled();
+      expect(r.prepareRole).toHaveBeenCalledExactlyOnceWith(r.rotation, r.id); expect(r.complete).not.toHaveBeenCalled();
       expect(r.events).toEqual(["capture", "decision", "remount", "mount-ready", "role-acquire", "role-response", "role-release"]);
       expect(r.packets[0]?.cookie).toContain("fixture-role-token"); expect(r.release.discard).toHaveBeenCalledOnce();
     } finally { await r.coordinator.close(); }
@@ -110,6 +112,66 @@ describe("S129 Save successor release", () => {
     try {
       await expect(r.save()).rejects.toThrow(); expect(r.packets).toEqual([]); expect(r.complete).not.toHaveBeenCalled();
       expect(r.compensate).not.toHaveBeenCalled(); expect(r.head.operationId).toBe(r.id);
+    } finally { await r.coordinator.close(); }
+  });
+  it("drains a held successor acquisition on close before finishing cleanup", async () => {
+    const r = fixture(true), entered = deferred(), held = deferred();
+    r.releaseGate(async () => { entered.resolve(); await held.promise; });
+    const saving = r.save(); void saving.catch(() => {}); await entered.promise;
+    let closed = false; const closing = r.coordinator.close().then(() => { closed = true; });
+    try {
+      await Promise.resolve(); expect(closed).toBe(false); expect(r.release.discard).not.toHaveBeenCalled();
+      held.resolve(); await expect(saving).rejects.toThrow(); await closing;
+      expect(r.packets).toEqual([]); expect(r.complete).not.toHaveBeenCalled(); expect(r.release.discard).toHaveBeenCalledOnce();
+    } finally { held.resolve(); await Promise.allSettled([saving, closing]); await r.coordinator.close(); }
+  });
+  it.each(["mount", "method"] as const)("retires an awaited successor acquisition after its %s changes", async mode => {
+    const r = fixture(true), entered = deferred(), held = deferred();
+    r.releaseGate(async () => { entered.resolve(); await held.promise; });
+    const saving = r.save(); void saving.catch(() => {}); await entered.promise;
+    try {
+      if (mode === "mount") r.replaceMounted({ ...r.mounted });
+      else r.helpers.prepareRoleDirectoryRotationRelease = vi.fn(async () => r.release);
+      held.resolve(); await expect(saving).rejects.toThrow(); expect(r.packets).toEqual([]);
+      expect(r.complete).not.toHaveBeenCalled(); expect(r.compensate).not.toHaveBeenCalled();
+    } finally { held.resolve(); await Promise.allSettled([saving]); await r.coordinator.close(); }
+  });
+  it("refuses a non-void final assertion instead of accepting it as authority", async () => {
+    const r = fixture(true); r.release.assertCurrent.mockImplementation(() => true as unknown as void);
+    try { await expect(r.save()).rejects.toMatchObject({ code: "unavailable" }); expect(r.packets).toEqual([]); }
+    finally { await r.coordinator.close(); }
+  });
+  it("refuses a mutable release object", async () => {
+    const r = fixture(true); r.prepareRole.mockResolvedValue({ ...r.release });
+    try { await expect(r.save()).rejects.toMatchObject({ code: "unavailable" }); expect(r.packets).toEqual([]); }
+    finally { await r.coordinator.close(); }
+  });
+  it("keeps the legacy root completion when the new helper is merely available", async () => {
+    const r = fixture(); r.helpers.prepareRoleDirectoryRotationRelease = r.prepareRole;
+    try {
+      await expect(r.save()).resolves.toMatchObject({ state: "ready" }); expect(r.prepareRole).not.toHaveBeenCalled();
+      expect(r.complete).toHaveBeenCalledOnce(); expect(r.packets[0]?.cookie).toContain("fixture-opaque-token");
+    } finally { await r.coordinator.close(); }
+  });
+  it("does not acquire a successor for forward compensation", async () => {
+    const r = fixture(true); r.fail();
+    try {
+      await expect(r.save()).resolves.toMatchObject({ state: "restored" }); expect(r.prepareRole).not.toHaveBeenCalled();
+      expect(r.release.release).not.toHaveBeenCalled(); expect(r.packets[0]?.cookie).toBeUndefined();
+    } finally { await r.coordinator.close(); }
+  });
+  it("does not acquire authority for an already disconnected response", async () => {
+    const r = fixture(true); r.mountGate(async () => { r.disconnect(); });
+    try {
+      await expect(r.save()).resolves.toMatchObject({ state: "ready" }); expect(r.prepareRole).not.toHaveBeenCalled();
+      expect(r.packets).toEqual([]); expect(r.compensate).not.toHaveBeenCalled();
+    } finally { await r.coordinator.close(); }
+  });
+  it("still cleans rotation and response when successor discard reports an error", async () => {
+    const r = fixture(true); r.release.discard.mockImplementation(() => { throw Error("inert release cleanup"); });
+    try {
+      await expect(r.save()).rejects.toThrow("inert release cleanup"); expect(r.rotation.discard).toHaveBeenCalledOnce();
+      expect(r.response.discard).toHaveBeenCalled();
     } finally { await r.coordinator.close(); }
   });
 });

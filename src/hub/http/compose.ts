@@ -592,6 +592,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       recentAuthentication: (actor, proof) => sessions.recentAuthentication(actor, proof),
       prepareDirectoryRotation: (token, actor, proof) => sessions.prepareDirectoryRotation(token, actor, proof),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
+      prepareRoleDirectoryRotationRelease: (rotation, operationId) => sessions.prepareRoleDirectoryRotationRelease(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
     handle, receive, features: Object.freeze([...(roleAuditOffered() ? [HUB_ROLE_AUDIT_FEATURE] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),

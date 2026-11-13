@@ -4,7 +4,8 @@ import type { HubDirectoryProofSource } from "./settings-directory-proof.js";
 import type { HubSessions } from "./sessions.js";
 import type { PersonKey } from "./types.js";
 
-export type HubDirectoryBrowserSessions = Pick<HubSessions, "recentAuthentication" | "prepareDirectoryRotation" | "completeDirectoryRotation">;
+export type HubDirectoryBrowserSessions = Pick<HubSessions, "recentAuthentication" | "prepareDirectoryRotation" | "completeDirectoryRotation">
+  & Partial<Pick<HubSessions, "prepareRoleDirectoryRotationRelease">>;
 
 export interface HubMountedDirectory {
   readonly decision: HubDirectorySettingsDecision;

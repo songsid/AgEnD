@@ -52,6 +52,8 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
     const context = captureHubDirectoryProofContext(inputContext);
     const input = { confirmation: raw.confirmation, ...(raw.credentials ? { credentials: { ...raw.credentials } } : {}) };
     const capture = delivery?.capture, rotation = delivery?.rotation;
+    const roleSuccessor = context.administration !== undefined || context.preparation !== undefined;
+    let discardSuccessor: (() => void) | undefined;
     const old = deps.mounted();
     let at: number | undefined, expected: ReturnType<HubDirectorySettingsDecision["inspect"]> | undefined;
     const current = () => context.current() === true && owned();
@@ -117,13 +119,46 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
       }
       if (response?.current()) {
         const exact = { receiptId: result.receiptId, directoryEpoch: result.directoryEpoch };
+        let assertSuccessor: (() => void) | undefined;
+        let releaseSuccessor: (() => { token: string; maxAgeMs: number }) | undefined;
+        if (result.state === "ready" && rotation && roleSuccessor) {
+          const mounted = ready(exact); if (!mounted) fail("revoked");
+          const provider = mounted.sessions, sessions = provider.call(mounted), prepare = sessions.prepareRoleDirectoryRotationRelease;
+          if (typeof prepare !== "function") fail("unavailable");
+          const bound = () => {
+            postDecision();
+            if (ready(exact) !== mounted || mounted.sessions !== provider || provider.call(mounted) !== sessions
+              || sessions.prepareRoleDirectoryRotationRelease !== prepare) fail("revoked");
+          };
+          bound();
+          const successor = await prepare.call(sessions, rotation, result.receiptId);
+          if (!successor || !Object.isFrozen(successor) || typeof successor.assertCurrent !== "function"
+            || typeof successor.release !== "function" || typeof successor.discard !== "function") fail("unavailable");
+          const assert = successor.assertCurrent, release = successor.release, discard = successor.discard;
+          discardSuccessor = () => discard.call(successor);
+          const methods = () => {
+            if (successor.assertCurrent !== assert || successor.release !== release || successor.discard !== discard) fail("revoked");
+          };
+          assertSuccessor = () => {
+            bound(); methods();
+            const answer: unknown = assert.call(successor);
+            if (answer !== undefined) fail("unavailable");
+            methods(); bound();
+          };
+          releaseSuccessor = () => {
+            assertSuccessor!(); const cookie = release.call(successor); assertSuccessor!(); return cookie;
+          };
+          assertSuccessor();
+        }
+        const disclosureCurrent = () => { postDecision(); if (!ready(exact)) return false; assertSuccessor?.(); return true; };
         await response.reply(() => {
-          postDecision(); const mounted = ready(exact); if (!mounted) fail("revoked");
+          if (!disclosureCurrent()) fail("revoked");
+          const mounted = ready(exact); if (!mounted) fail("revoked");
           const cookie = result.state === "ready" && rotation
-            ? mounted.sessions().completeDirectoryRotation(rotation, result.receiptId) : undefined;
+            ? releaseSuccessor ? releaseSuccessor() : mounted.sessions().completeDirectoryRotation(rotation, result.receiptId) : undefined;
           return { status: result.state === "ready" ? 200 : 503, json: JSON.stringify(result),
             ...(cookie ? { cookie: hubSetCookie(deps.hubId, cookie.token, cookie.maxAgeMs) } : {}) };
-        }, () => { postDecision(); return ready(exact) !== null; });
+        }, disclosureCurrent);
       }
       return result;
     } catch (error) {
@@ -146,8 +181,11 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
       }
       throw error;
     } finally {
-      rotation?.discard();
-      await response?.discard(); response = null;
+      try { discardSuccessor?.(); }
+      finally {
+        rotation?.discard();
+        await response?.discard(); response = null;
+      }
     }
   }
   return {

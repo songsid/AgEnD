@@ -2359,6 +2359,18 @@ describe.skipIf(process.platform === "win32")("S129 factory session classificati
 
 /** The real mounted source and writer; role cutover is private fixture setup, never an upgrade claim. */
 describe.skipIf(process.platform === "win32")("S129 mounted preparation sessions", () => {
+  it("forwards exact arguments through the mounted successor-release adapter", async () => {
+    const r = await directoryRuntimeRig(), rotation = { discard: vi.fn() }, operationId = randomUUID();
+    const refused = Error("inert successor dispatch reached");
+    const target = vi.spyOn(HubSessions.prototype, "prepareRoleDirectoryRotationRelease").mockRejectedValue(refused);
+    try {
+      const mounted = r.runtime.directorySettings()!, sessions = mounted.sessions();
+      expect(mounted.sessions()).toBe(sessions); expect(Object.isFrozen(sessions)).toBe(true);
+      expect(sessions.prepareRoleDirectoryRotationRelease).toBeTypeOf("function");
+      await expect(sessions.prepareRoleDirectoryRotationRelease!(rotation, operationId)).rejects.toBe(refused);
+      expect(target).toHaveBeenCalledExactlyOnceWith(rotation, operationId);
+    } finally { target.mockRestore(); await r.runtime.close(); }
+  });
   it.each(["recent", "rotation"] as const)("forwards the auxiliary preparation to the actual %s session adapter", async mode => {
     const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], beforeHttp(hub, deps, entry) {
       provisionMountedRoles({ hub, deps, entry });
