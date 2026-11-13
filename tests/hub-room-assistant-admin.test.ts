@@ -107,6 +107,27 @@ describe("Hub assistant admin service (fake host, no accounts)", () => {
     expect(w.service.available().enabled).toBe(false);
   });
 
+  it("can close a corrupt-state provider without blocking the Hub mount's teardown", async () => {
+    const w = world(), service = new RoomAssistantService({ host: { start: w.start },
+      store: { ...w.store, load: async () => { throw Error("corrupt state"); } }, backends: w.backends });
+    services.push(service);
+    await expect(service.settings()).rejects.toThrow("corrupt state");
+    expect(service.available()).toMatchObject({ state: "paused", enabled: false });
+    await expect(service.close()).resolves.toBeUndefined();
+    await expect(service.close()).resolves.toBeUndefined();
+    expect(w.start).not.toHaveBeenCalled();
+  });
+
+  it("treats an unchanged settings save as a no-op without interrupting room answers", async () => {
+    const w = world({ config: config(), answers: [] }); await w.service.settings();
+    const turn = w.service.ask(ask()); await flush();
+    await w.service.configure(config());
+    expect(w.turns[0].stop).not.toHaveBeenCalled();
+    expect(w.store.save).not.toHaveBeenCalled();
+    w.turns[0].done.resolve({ text: "Uninterrupted" });
+    await expect(turn).resolves.toEqual({ text: "Uninterrupted" });
+  });
+
   it("cancels an ask forgotten during initial load", async () => {
     const w = world(), held = deferred<AssistantSavedState | null>();
     // A second provider owns its own initial read; no real files or worker are involved.

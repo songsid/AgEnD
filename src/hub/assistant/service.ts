@@ -83,6 +83,7 @@ export class RoomAssistantService implements RoomAssistant, RoomAssistantAdmin {
     await this.ready;
     return this.enqueue(async () => {
       if (this.closed) throw new Error("Room assistant is stopping");
+      if ((["enabled", "backend", "account", "cap", "idleMinutes"] as const).every(key => next[key] === this.config[key])) return this.settings();
       if (next.enabled && !this.options.backends().some(backend => backend.id === next.backend
         && backend.accounts.some(account => account.id === next.account && account.state !== "needs-sign-in"))) {
         throw new Error("Room assistant account needs sign-in");
@@ -120,7 +121,7 @@ export class RoomAssistantService implements RoomAssistant, RoomAssistantAdmin {
     this.closed = true;
     const currentDrain = this.runner?.close(); // fence current asks now, including while a settings write is held
     this.closing = (async () => {
-      await this.ready;
+      await this.ready.catch(() => {}); // A failed load created no runner; it must not strand the owning Hub mount.
       await currentDrain;
       await this.serial;
       await this.runner?.close();
