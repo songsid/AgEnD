@@ -1,0 +1,91 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3
+
+ ❯ tests/hub-room-agents-r2.test.ts (20 tests | 1 failed | 19 skipped) 295ms
+   × projects committed message order when an answer moves past a later human message 293ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > projects committed message order when an answer moves past a later human message
+AssertionError: expected undefined to deeply equal Any<Number>
+
+- Expected:
+Any<Number>
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-agents-r2.test.ts:80:34
+     78|     const history = (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/…
+     79|     const answer = history.find((m: any) => m.text === text);
+     80|     expect.soft(parent.sequence).toEqual(expect.any(Number));
+       |                                  ^
+     81|     expect.soft(pending.sequence).toBeGreaterThan(parent.sequence);
+     82|     expect.soft(human.sequence).toBeGreaterThan(pending.sequence);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > projects committed message order when an answer moves past a later human message
+TypeError: actual value must be number or bigint, received "undefined"
+ ❯ tests/hub-room-agents-r2.test.ts:81:35
+     79|     const answer = history.find((m: any) => m.text === text);
+     80|     expect.soft(parent.sequence).toEqual(expect.any(Number));
+     81|     expect.soft(pending.sequence).toBeGreaterThan(parent.sequence);
+       |                                   ^
+     82|     expect.soft(human.sequence).toBeGreaterThan(pending.sequence);
+     83|     expect.soft(answer.sequence).toBeGreaterThan(human.sequence);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > projects committed message order when an answer moves past a later human message
+TypeError: actual value must be number or bigint, received "undefined"
+ ❯ tests/hub-room-agents-r2.test.ts:82:33
+     80|     expect.soft(parent.sequence).toEqual(expect.any(Number));
+     81|     expect.soft(pending.sequence).toBeGreaterThan(parent.sequence);
+     82|     expect.soft(human.sequence).toBeGreaterThan(pending.sequence);
+       |                                 ^
+     83|     expect.soft(answer.sequence).toBeGreaterThan(human.sequence);
+     84|     expect.soft(live).toMatchObject({ id: pending.id, sequence: answer…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > projects committed message order when an answer moves past a later human message
+TypeError: actual value must be number or bigint, received "undefined"
+ ❯ tests/hub-room-agents-r2.test.ts:83:34
+     81|     expect.soft(pending.sequence).toBeGreaterThan(parent.sequence);
+     82|     expect.soft(human.sequence).toBeGreaterThan(pending.sequence);
+     83|     expect.soft(answer.sequence).toBeGreaterThan(human.sequence);
+       |                                  ^
+     84|     expect.soft(live).toMatchObject({ id: pending.id, sequence: answer…
+     85|     expect(history.filter((m: any) => [parent.id, human.id, answer.id]…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > projects committed message order when an answer moves past a later human message
+AssertionError: expected { …(8) } to match object { …(3) }
+(10 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "id": "9fcaabaa-6726-411e-8c75-b99de480ee2b",
+-   "sequence": undefined,
+    "stage": "answered",
+  }
+
+ ❯ tests/hub-room-agents-r2.test.ts:84:23
+     82|     expect.soft(human.sequence).toBeGreaterThan(pending.sequence);
+     83|     expect.soft(answer.sequence).toBeGreaterThan(human.sequence);
+     84|     expect.soft(live).toMatchObject({ id: pending.id, sequence: answer…
+       |                       ^
+     85|     expect(history.filter((m: any) => [parent.id, human.id, answer.id]…
+     86|   } finally { clearTimeout(deadline); stop.abort(); }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 19 skipped (20)
+   Start at  04:49:10
+   Duration  5.07s (transform 3.48s, setup 137ms, import 4.47s, tests 295ms, environment 0ms)
