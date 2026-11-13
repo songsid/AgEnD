@@ -36,6 +36,12 @@ export function presenceDot(presence) {
     : presence === "offline" || presence === "later" ? "off" : null;
 }
 
+/** A room's counts, "3 人 · 12 個 Agent" / "1 person · 2 agents" — singular when one. */
+export function countsLine(people, agents) {
+  const p = Math.max(0, Number(people) || 0), a = Math.max(0, Number(agents) || 0);
+  return `${p === 1 ? tr("peopleOne") : tr("peopleMany", String(p))} · ${a === 1 ? tr("agentsOne") : tr("agentsMany", String(a))}`;
+}
+
 const rank = (r) => (r.archived ? 2 : r.unread > 0 ? 0 : 1);
 const order = (a, b) => rank(a) - rank(b) || (b.lastAt || 0) - (a.lastAt || 0) || String(a.name).localeCompare(String(b.name));
 
@@ -59,7 +65,7 @@ export function rowView(r) {
   const group = r.kind === "group", limited = r.limited === true;
   // Today's chats keep what their row said: closed, or a question waiting (the Fleet's working dot), else its owner.
   const closed = limited && r.legacy?.state === "closed", waiting = limited && !closed && r.legacy?.waiting === true;
-  const line2 = group ? tr("roomSub", String(r.people ?? 0), String(r.agents ?? 0))
+  const line2 = group ? countsLine(r.people, r.agents)
     : closed ? t("hubChat.tagClosed") : waiting ? t("hubChat.waiting")
     : r.assistant ? tr("providedByHub") : String(r.agent?.owner?.name || "");
   return {

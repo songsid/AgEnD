@@ -15,6 +15,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
+import { countsLine } from "./hub-room-list.js";
 
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
 const BOOT = "room";
@@ -177,7 +178,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     startReply: (x) => { setReply(x); setTimeout(() => input.current?.focus(), 0); },
     findQuoted: async () => { await store.older(); return false; },
   };
-  const line2 = group ? (hasAssistant ? hroom("roomTitle", String(room.people ?? 0), String(room.agents ?? 0)) : hroom("roomSub", String(room.people ?? 0), String(room.agents ?? 0)))
+  const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : String(room.agent?.owner?.name || "");
   const showRail = wide && rail && Panel && group && detail;
   const panel = Panel && detail ? html`<${Panel} client=${client} roomId=${roomId} detail=${detail}
