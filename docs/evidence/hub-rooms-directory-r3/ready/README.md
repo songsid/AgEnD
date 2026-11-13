@@ -1,0 +1,11 @@
+# Independent alpha directory slice
+
+This candidate combines the source-reviewed room administration/creator helpers from #3864 with #3866's directory picker, response envelopes and structured system events. It can land without the broader R/C/A/U integration or concrete C consent/Team services. The optional provider ports remain uncomposed; no Track A host, Track C execution or consent factory is activated here. #3864's source is included rather than left as a separate merge dependency.
+
+The plain R2 merge abde96737 carries reviewed8cfe0d5d (same-link30s retries and final R1 resolutions). Three migration/test conflicts preserve both the creator/assistant/directory components and retry component; each resulting blob is identical to the previously published integrationf41f8efc. The plain alpha merge39fcc793c is conflict-free on1b74f2cc. All eight directory/service/admin/HTTP product blobs listed in bindings.json remain exactly equal to cleared d2e527f2. R2 agents and transport changes are inherited from its approved head.
+
+Both native TypeScript programs exit 0. Current combined acceptance passes 96/96 across 13 files: creator/admin, assistant contracts, picker/complete direct roster, public DTOs, system events, migrations, R1 membership/notices, R2 routing/retry and group feature inventories. This is a fresh local execution; historical116/12 and37/6 results are not added to it. The only subsequent script change carries the known shell-gate repair from c6f1716ff byte-for-byte (same as #3869); there is no application change in that repair. New browser evidence remains on the broader integration branch and is not claimed for this slice.
+
+Merge order still requires #3869's alpha UI-gate repair and green post-merge, then #3863, then this exact candidate with Fable's final ordinary approval and current CI. The coordinator owns merging. Full S142 remains open for concrete Team integration and the remaining complete UX walk.
+
+The new directory component retains pre-sign-in room labels separately from hub_people and sessions. Rollback uses a compatible correction while retaining the DB, floors, keys and membership history; older registries deliberately refuse the new schema component. Nothing in this slice alters the direct-chat grant or answer path.

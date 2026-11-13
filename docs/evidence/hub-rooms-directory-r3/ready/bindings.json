@@ -1,0 +1,75 @@
+{
+  "sourceCheckpoint": "381451e8712dc17a0b26c4eb57f8489743416d88",
+  "alphaAtSync": "1b74f2cc2b87a5fa18d45fce9d762870f0c98b22",
+  "clearedDirectoryHead": "d2e527f21b02d261ebd38f60711a226611c1fcb7",
+  "reviewedR2": "8cfe0d5dec79468478246becac2bdc4ed788c3e9",
+  "r2Merge": "abde96737342ad983438b306930d27fb70583196",
+  "alphaMerge": "39fcc793c7efbec28212e37a1fdca58f60fcf2fa",
+  "retainedProductBlobs": {
+    "src/hub/directory/directory.ts": true,
+    "src/hub/directory/types.ts": true,
+    "src/hub/rooms/directory.ts": true,
+    "src/hub/rooms/service.ts": true,
+    "src/hub/rooms/admin.ts": true,
+    "src/hub/http/core.ts": true,
+    "src/hub/http/compose.ts": true,
+    "src/hub/http/deps.ts": true
+  },
+  "retryResolutionsEqualIntegration": [
+    "src/hub/http/schema.ts",
+    "src/hub/rooms/schema.ts",
+    "tests/hub-rooms-migration-r1.test.ts"
+  ],
+  "scriptOnlyRepair": {
+    "commit": "381451e8712dc17a0b26c4eb57f8489743416d88",
+    "sameBlobAs": "c6f1716ff92a5cca41bb173af078f79185bcd215",
+    "path": "scripts/manual/smoke/smoke-hub-shell-gate.mts"
+  },
+  "bindings": {
+    "src/general-knowledge/skills/hub/SKILL.md": "a0f5e3870d3ba59c35d00f80f29d4c7c8526aa5b84bde69405b60b712f6dfc59",
+    "src/hub/directory/directory.ts": "7a1afe4e9ce0ff35df9eaba6081a2d772ba3fb4e593997ab0750b3f48f0b0c38",
+    "src/hub/directory/types.ts": "6ec6a7eee0a173ab9fbac3a3826e609295e8101333d48cb765168ba6a3775c0f",
+    "src/hub/http/compose.ts": "0e2d6ebc5b59c24fc9170964f8b81985466eabc80bfead43dbcf79271f85f884",
+    "src/hub/http/core.ts": "5c272a8d47c2a60617e04053c2cc8bd29c359474e7f7107e94a56172ab44ee79",
+    "src/hub/http/deps.ts": "ce4ef715f339c19d83aa5162cae61e982f8290bdfca37cb12014946e903a0a8f",
+    "src/hub/http/schema.ts": "7e4cca0dc550537eddab8b0f1d820aad1663a1acc39daa59a81406c6f35364ca",
+    "src/hub/invitations.ts": "479245737600ad2ed764406779ad6fd8b2b5ed0a36acb5c1fc318034365debca",
+    "src/hub/rooms/admin.ts": "6c9acbfd88226cea40d942efade23fc56be061c5fdb2e2b43b61692721375494",
+    "src/hub/rooms/agents.ts": "0539ee9a0c3d819b0b24a66b855fde906d10427cc9c3c61e3c94ed642ab3eb64",
+    "src/hub/rooms/assistant.ts": "6edc4304b8ead380c43b9c76fd741d823c8fc0ace19df48eb24f9eb3cee51904",
+    "src/hub/rooms/context.ts": "5d52327685ad98a7d44af366f6391fa8dddee8e4f845b48d85d34988a842109e",
+    "src/hub/rooms/directory.ts": "2e2fe034190b84b6d2d3d6afeac497f1804e631ad7c4d2003bc2608e828b0061",
+    "src/hub/rooms/schema.ts": "aed9fb0eb8b73521859b62042a4d578927a5d0f868373b3bda1df76000792e7d",
+    "src/hub/rooms/service.ts": "2ad90b5d2f5877ae2e06936665d6c291e9b67134343275b39890bfd94116fa9f",
+    "src/hub/rooms/types.ts": "e4ab7220700659a2d3775bae75dda63032a8b6bbe2da5977d6e37f68f6968634",
+    "src/hub/teams/types.ts": "de4e6f945f8a7c640a8fa15b7f711fa77362ba54336c338d74e2c78aaa8c331f",
+    "src/ui/hub-client.js": "ef07feb2b968c41e955038dc2e5a696e8c2d78b01023eb67f070c60540487ea4",
+    "src/ui/hub-room-strings.js": "7ef567740561db1e36cffbcb7b17a8d030d4a32ba73cc13201b8e450739befd1",
+    "tests/helpers/hub-vocabulary.ts": "376205c83d809167aef6f93f1765d2e8f14dde18bc96ac3f990a0d6d041c16e3",
+    "tests/hub-room-admin-r3.test.ts": "f1135cebefcfb19fe0dfbbce06f7775f47f8198abd4f7fd960e98ed5a6d42231",
+    "tests/hub-room-assistant-r3.test.ts": "e40b9129d495689b056e06b1632f95195728632fe95f56b33db97413848107d5",
+    "tests/hub-room-candidates-r3.test.ts": "41c06a5ed71bee9bb73b54184c2e0ab4e7d3cede387e56d6eb2d365db155385c",
+    "tests/hub-room-client-contract-r3.test.ts": "055ff308969294778499efbaec5d0ecdf0bf80c02c5a17a72b73917cfbe364e6",
+    "tests/hub-room-directory-roster-r3.test.ts": "00e9d2bf9e12d79513f3cee7a5e0dfaa6e58bc1dc3f5653ac497c73fc708819d",
+    "tests/hub-room-integration-r3.test.ts": "d99ab37e1b881a6543fbc3dbec1ee2ec28f34cc5aef92b201900926d1f31755c",
+    "tests/hub-room-strings.test.ts": "ce98ef7faaa2a8b233d35765d67901cd9a035a136055dc115148ec82f7136f16",
+    "tests/hub-room-system-r3.test.ts": "4428bc5176e1bd82314a562cdfa91766df1954737f9f401329d4f25be923a75f",
+    "tests/hub-rooms-client-3092.test.ts": "0e98f86c78f7688c8497a092605762c38f24689f2a5a6cceb164ae14ecdb5aa6",
+    "tests/hub-rooms-migration-r1.test.ts": "12fd2cf2dbd0b61cf0e4cf1fe36cab7caa19722427e10fff4115dc407635bb2a",
+    "tests/hub-rooms-r1.test.ts": "4d0f39f5feef8aa330f71dbe55c89f9f1a8411cc5c0b68805df33f3555e2bc79",
+    "tests/hub-skill.test.ts": "ff40dee56b994eb1dedc0fb66124148bcfbfa3b1578d3c956571e6c1dcffd523",
+    "tests/hub-u3-vocabulary-gate-2933.test.ts": "d4b4b96123c9a1ad1d4e01a9d72898d12af5644cdb389284ecaecce2fef57dfa",
+    "tests/support/hub-rooms-fixture.ts": "9828bce48c14f3737a1c44fb8c9a1611d83278d0657116875eb65998f90be864"
+  },
+  "executionScope": "96/96 across13 actual focused suites on39fcc793c; no product/test changes in381451e87 (shell fixture only). Native results recorded separately. No new browser or vendor call. Previous private/browser/mutant scopes remain historical.",
+  "nativeTypeChecks": [
+    {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exitCode": 0
+    }
+  ]
+}
