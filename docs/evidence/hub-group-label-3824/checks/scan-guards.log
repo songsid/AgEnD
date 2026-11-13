@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-group-label-3824
+
+
+ Test Files  2 passed (2)
+      Tests  35 passed (35)
+   Start at  23:58:55
+   Duration  770ms (transform 112ms, setup 167ms, import 44ms, tests 516ms, environment 0ms)
+

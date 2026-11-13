@@ -18,7 +18,7 @@ afterEach(async () => {
   for (const p of pages.splice(0)) { await p.unmount(); p.restore(); }
   confirmations.resetConfirmations(); clientModule.setHubClient(null); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
-async function fixture(options: { enabled?: boolean; pairing?: any; language?: string; legacy?: boolean; public?: boolean; bad?: any; heldRead?: Promise<any>; write?: Promise<any>; pending?: boolean; operation?: any; failedAfterWrite?: number; display?: any } = {}) {
+async function fixture(options: { enabled?: boolean; pairing?: any; language?: string; legacy?: boolean; public?: boolean; bad?: any; heldRead?: Promise<any>; write?: Promise<any>; pending?: boolean; operation?: any; failedAfterWrite?: number; display?: any; probe?: (address: string) => any } = {}) {
   const p = page({ url: "http://127.0.0.1:19290/settings/hub", storage: { agend_lang: options.language ?? "en" } }); pages.push(p);
   vi.stubGlobal("crypto", webcrypto); if (options.public) p.document.body.dataset.publicLink = "1";
   words.setLang(options.language ?? "en");
@@ -42,6 +42,7 @@ async function fixture(options: { enabled?: boolean; pairing?: any; language?: s
       if (options.heldRead) return options.heldRead;
       return response(options.bad ?? { ok: true, enabled, ...(!options.legacy && path.includes("?v=2") ? { connectionCardV1: true, pairing } : {}) });
     }
+    if (path.endsWith("/company-join/probe") && options.probe) return response(options.probe(JSON.parse(init.body).address));
     if (path === "/api/hub/member/company-join") return response({ ok: true, bound: pairing.state !== "unpaired", operation: options.operation ?? null, display: options.display ?? null });
     if (path.endsWith("/company-join/reconnect") || path.endsWith("/company-join/remove")) { pairing = { state: "unpaired" }; return response({ ok: true, operation: { operationId: id, state: "awaiting-sign-in" } }); }
     if (path.endsWith("/confirm")) { enabled = true; return response({ result: "pending_confirmation", pending_change: { id: pendingId, state: "applied", outcome: { result: { ok: true } } } }, 202); }
@@ -181,5 +182,24 @@ describe("M-2921: the connected and held card (spec 1.1 / 1.3)", () => {
     expect(f.p.root.querySelector(".hub-connection-manual").open).toBe(true);
     expect(f.calls.filter(c => c.path.endsWith("/reconnect"))).toEqual([]);
   });
+  // User decision 2aeecd58 (P6, "one way in"): a Hub that answers it takes company sign-in hides the other join paths.
+  const offer = { ok: true, hubName: "Acme Hub", webOrigin: "https://hub.example.test", companyJoin: true, identity: "new", separateHosts: true, suggestedLabel: "box", features: [] };
+  async function typeAddress(f: any, value: string) {
+    const address = f.p.root.querySelector("#hubCompanyAddress"); address.value = value; fire(address, "input"); await settle(4); fire(address, "blur"); await settle(20);
+  }
+  it("P6: a Hub that offers company sign-in hides Other ways; typing another address brings it back", async () => {
+    const f = await fixture({ probe: a => a === "https://hub.example.test" ? offer : { ...offer, companyJoin: false } }); await until(() => f.p.root.querySelector("#hubCompanyAddress"));
+    expect(f.p.root.querySelector(".hub-connection-manual")).toBeTruthy();
+    await typeAddress(f, "hub.example.test");
+    expect(f.calls.some(c => c.path.endsWith("/probe"))).toBe(true);
+    expect(f.p.root.querySelector(".hub-connection-manual")).toBeNull();
+    await typeAddress(f, "other.example.test");
+    expect(f.p.root.querySelector(".hub-connection-manual")).toBeTruthy();
+  });
+  it.each([["no company sign-in", { ...offer, companyJoin: false }], ["an untrusted certificate", { ok: false, reason: "certificate" }], ["an unreachable Hub", { ok: false, reason: "unreachable" }]])("P6: %s keeps Other ways", async (_label, answer) => {
+    const f = await fixture({ probe: () => answer }); await until(() => f.p.root.querySelector("#hubCompanyAddress"));
+    await typeAddress(f, "hub.example.test");
+    expect(f.calls.some(c => c.path.endsWith("/probe"))).toBe(true);
+    expect(f.p.root.querySelector(".hub-connection-manual")).toBeTruthy();
+  });
 });
-
