@@ -88,11 +88,16 @@ export class ClaudeModelObserver {
     this.state = { configured: configured ?? null, launch: launch ?? null, session: null, lastServed: null, observedAt: null, active: null };
     this.expected = claudeModelId(launch);
     // Read a bounded, versioned metadata checkpoint, never arbitrary transcript content.
-    if (saved?.v === 1 && saved.configured === this.state.configured && saved.launch === this.state.launch
+    if ((saved?.v === 1 || saved?.v === 2) && saved.configured === this.state.configured && saved.launch === this.state.launch
       && identifier(saved.sessionId) && Array.isArray(saved.seen) && saved.seen.length <= 1024
       && saved.seen.every((id: unknown) => typeof id === "string" && /^[\w.:-]{1,600}$/.test(id))) {
       this.sessionId = saved.sessionId; this.seen = new Set(saved.seen);
       this.expected = claudeModelId(saved.expected);
+      // v1 omitted intent while retaining replay dedupe. Missing/invalid intent cannot prove that no
+      // command is pending: suppress inferred differences until an owned confirmation, typed notice or new session.
+      const intent = saved.v === 2 ? saved.intent : undefined;
+      this.intent = intent?.kind === "none" ? undefined
+        : intent?.kind === "concrete" && claudeModelId(intent.model) ? claudeModelId(intent.model) : null;
       this.state.lastServed = claudeModelId(saved.lastServed);
       this.state.observedAt = Number.isFinite(saved.observedAt) ? saved.observedAt : null;
       const a = saved.active;
@@ -111,7 +116,9 @@ export class ClaudeModelObserver {
     this.state.session = claudeModelId(sessionModel);
   }
   checkpoint() {
-    return { v: 1, configured: this.state.configured, launch: this.state.launch, sessionId: this.sessionId,
+    return { v: 2,
+      intent: this.intent === undefined ? { kind: "none" } : this.intent === null ? { kind: "unresolved" } : { kind: "concrete", model: this.intent },
+      configured: this.state.configured, launch: this.state.launch, sessionId: this.sessionId,
       expected: this.expected, seen: [...this.seen], lastServed: this.state.lastServed, observedAt: this.state.observedAt, active: this.state.active };
   }
   snapshot(): ModelObservation { return structuredClone(this.state); }

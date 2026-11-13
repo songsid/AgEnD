@@ -72,3 +72,20 @@ it("native observations need the exact source and current native lifecycle, with
   unowned.emit("model_observation", record); expect(d.modelObservation()).toBeNull();
   expect(backend.modelObservationLaunch).toBeDefined();
 });
+it.each(["opus", "", "claude-sonnet-5-5"])("the actual daemon preserves unconfirmed /model %s through disk restore and replay", requested => {
+  const { d, m, dir, backend } = rig();
+  const intent = { type: "user", uuid: "pending-intent", sessionId: "session-A", timestamp: new Date().toISOString(),
+    message: { role: "user", content: `<command-message>model</command-message>\n<command-name>/model</command-name>${requested ? `<command-args>${requested}</command-args>` : ""}` } };
+  const served = (id: string) => ({ type: "assistant", sessionId: "session-A", uuid: `record-${id}`, timestamp: new Date().toISOString(),
+    message: { id, role: "assistant", model: "claude-sonnet-5-5", content: [], stop_reason: "end_turn" } });
+  m.processEntry(intent); m.processEntry(served("before-resume"));
+  expect(d.modelObservation().active).toBeNull();
+  const checkpoint = JSON.parse(readFileSync(join(dir, "claude-model-observation.json"), "utf8"));
+  expect(checkpoint.seen.some((id: string) => id.includes("pending-intent"))).toBe(true);
+  const resumed: any = new Daemon("worker", { backend: "claude-code", model: "claude-opus-5-5", working_directory: dir, log_level: "silent" } as any,
+    dir, false, backend, undefined, pino({ level: "silent" }) as any);
+  const monitor = resumed.buildTranscriptMonitor(null); resumed.transcriptMonitor = monitor;
+  monitor.processEntry(intent); monitor.processEntry(served("after-resume"));
+  expect(resumed.modelObservation().active).toBeNull();
+  expect(resumed.modelObservation()).toMatchObject({ lastServed: "claude-sonnet-5-5" });
+});
