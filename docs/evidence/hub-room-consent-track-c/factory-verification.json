@@ -1,0 +1,17 @@
+{
+  "head": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+  "results": [
+    {
+      "name": "factory-focused",
+      "exit": 0
+    },
+    {
+      "name": "factory-source-types",
+      "exit": 0
+    },
+    {
+      "name": "factory-test-types",
+      "exit": 0
+    }
+  ]
+}

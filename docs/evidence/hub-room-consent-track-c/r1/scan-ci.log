@@ -1,0 +1,19 @@
+scan	Scan complete PR history	﻿2026-11-13T19:36:07.2304730Z ##[group]Run bash scripts/ci/gitleaks-pr.sh
+scan	Scan complete PR history	2026-11-13T19:36:07.2305121Z [36;1mbash scripts/ci/gitleaks-pr.sh[0m
+scan	Scan complete PR history	2026-11-13T19:36:07.2356825Z shell: /usr/bin/bash -e {0}
+scan	Scan complete PR history	2026-11-13T19:36:07.2357088Z env:
+scan	Scan complete PR history	2026-11-13T19:36:07.2357335Z   PR_BASE_SHA: 889e62d478caaf964141950ebec8570216a9f442
+scan	Scan complete PR history	2026-11-13T19:36:07.2357715Z   PR_HEAD_SHA: 4bcf218c2bd4172204d487baa950787cc081e740
+scan	Scan complete PR history	2026-11-13T19:36:07.2358016Z ##[endgroup]
+scan	Scan complete PR history	2026-11-13T19:36:07.5547081Z Gitleaks PR range: 889e62d478caaf964141950ebec8570216a9f442..4bcf218c2bd4172204d487baa950787cc081e740 (191 commits)
+scan	Scan complete PR history	2026-11-13T19:36:07.8368217Z 
+scan	Scan complete PR history	2026-11-13T19:36:07.8368816Z     ○
+scan	Scan complete PR history	2026-11-13T19:36:07.8369102Z     │╲
+scan	Scan complete PR history	2026-11-13T19:36:07.8369317Z     │ ○
+scan	Scan complete PR history	2026-11-13T19:36:07.8369531Z     ○ ░
+scan	Scan complete PR history	2026-11-13T19:36:07.8369743Z     ░    gitleaks
+scan	Scan complete PR history	2026-11-13T19:36:07.8369888Z 
+scan	Scan complete PR history	2026-11-13T19:36:08.4446302Z [90m7:36PM[0m [32mINF[0m [1m155 commits scanned.[0m
+scan	Scan complete PR history	2026-11-13T19:36:08.4447002Z [90m7:36PM[0m [32mINF[0m [1mscanned ~1369173 bytes (1.37 MB) in 608ms[0m
+scan	Scan complete PR history	2026-11-13T19:36:08.4447582Z [90m7:36PM[0m [33mWRN[0m [1mleaks found: 3[0m
+scan	Scan complete PR history	2026-11-13T19:36:08.4506079Z ##[error]Process completed with exit code 2.

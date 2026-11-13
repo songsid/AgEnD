@@ -379,7 +379,7 @@ agent and room, and says how many people will see the answers. **Agree** (同意
 does not. The owner does not become a person in that room and cannot read its messages just by accepting.
 
 - An invitation lasts seven days from when it was sent. Repeating a pending invitation does not extend it. The
-  manager sees an expired invitation and can send a new one.
+  manager can clear an expired invitation or send a new one; the replacement takes the old entry’s place.
 - Pausing sharing keeps existing room membership and pending invitations, while their expiry clocks keep running.
   Resume sharing before accepting a pending invitation; an expired invitation needs a new invitation.
 - On the shared agent's page, **In these rooms** (在這些房間裡) lists its rooms. **Leave this room** removes the agent.

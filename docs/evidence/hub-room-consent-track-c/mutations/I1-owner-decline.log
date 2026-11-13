@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (15 tests | 1 failed | 14 skipped) 129ms
+   × invites only through a current manager and shows pending consent only to the agent owner 128ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > invites only through a current manager and shows pending consent only to the agent owner
+AssertionError: expected 200 to be 403 // Object.is equality
+
+- Expected
++ Received
+
+- 403
++ 200
+
+ ❯ tests/hub-room-consent-track-c.test.ts:48:92
+     46|   expect((await r!.call(w.s, "POST", `/hub/v1/rooms/${w.roomId}/invita…
+     47|   expect((await r!.call(w.s, "POST", `/hub/v1/invitations/${inv.id}/ac…
+     48|   expect((await r!.call(w.s, "POST", `/hub/v1/invitations/${inv.id}/de…
+       |                                                                                            ^
+     49|   expect(members()).toEqual([]); expect(await w.pending()).toHaveLengt…
+     50| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  03:07:43
+   Duration  3.81s (transform 2.68s, setup 90ms, import 3.43s, tests 129ms, environment 0ms)
+

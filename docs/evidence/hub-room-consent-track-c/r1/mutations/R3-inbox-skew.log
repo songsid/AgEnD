@@ -1,0 +1,34 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (18 tests | 1 failed | 17 skipped) 105ms
+   × one future-dated invitation does not hide another current invitation from the owner's inbox 103ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > one future-dated invitation does not hide another current invitation from the owner's inbox
+AssertionError: expected 503 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 503
+
+ ❯ Object.pending tests/hub-room-consent-track-c.test.ts:38:135
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+       |                                                                                                                                       ^
+     39|   return { owner, stranger, admin, o, s, roomId, e, invite, pending, s…
+     40| }
+ ❯ tests/hub-room-consent-track-c.test.ts:211:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 skipped (18)
+   Start at  03:43:55
+   Duration  3.73s (transform 2.64s, setup 83ms, import 3.41s, tests 105ms, environment 0ms)
+

@@ -1,0 +1,53 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (18 tests | 1 failed | 17 skipped) 123ms
+   × re-inviting after expiry lists only the fresh pending row and rolls supersession back if audit fails 122ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > re-inviting after expiry lists only the fresh pending row and rolls supersession back if audit fails
+AssertionError: expected [ { …(6) }, { …(6) } ] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+  [
+    {
++     "at": 1794592800000,
++     "exposureId": "52ff9403-ac41-4442-b6c3-9f0c2a39cdbc",
++     "id": "43398e99-a945-4d67-85b9-e98a1392603b",
++     "name": "Notes",
++     "owner": {
++       "name": "Agent owner",
++     },
++     "state": "expired",
++   },
++   {
++     "at": 1795197600000,
++     "exposureId": "52ff9403-ac41-4442-b6c3-9f0c2a39cdbc",
+      "id": "b009288a-3232-41af-935e-73bcac97d50b",
++     "name": "Notes",
++     "owner": {
++       "name": "Agent owner",
++     },
+      "state": "pending",
+    },
+  ]
+
+ ❯ tests/hub-room-consent-track-c.test.ts:202:85
+    200|   const retry = await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.room…
+    201|   const fresh = retry.json.invited[0]; expect(fresh.id).not.toBe(old.i…
+    202|   expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).…
+       |                                                                                     ^
+    203|   expect(r!.db.prepare("SELECT state FROM hub_room_invitations WHERE i…
+    204|   expect(members()).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 skipped (18)
+   Start at  03:43:47
+   Duration  3.82s (transform 2.69s, setup 99ms, import 3.44s, tests 123ms, environment 0ms)
+

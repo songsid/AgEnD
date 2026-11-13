@@ -1,0 +1,96 @@
+{
+  "sourceHead": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+  "ownSourceCommit": "64ef7fba5cbcd8e802ee57a30f197f9bb156dde8",
+  "integrationParent": "d168bed13fedf26721a9abe180fcbddf8117ba68",
+  "sourceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
+  "focused": {
+    "files": 4,
+    "cases": 28,
+    "exit": 0,
+    "head": "39b9000ad65da895b1239b5642bfa0efaf5d2a68",
+    "currentServiceByteEqual": true
+  },
+  "types": {
+    "source": "native TS7.0.2 exit0",
+    "tests": "native TS7.0.2 exit0"
+  },
+  "failFirst": {
+    "selected": 8,
+    "semanticAssertionFailures": 8,
+    "unselected": 7,
+    "baselineTypes": 0,
+    "restoredCurrentTests": 15
+  },
+  "mutations": {
+    "isolated": 6,
+    "compilingAssertionReds": 6,
+    "exactRestore": true
+  },
+  "browser": {
+    "state": "eight-case candidate PASS",
+    "head": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+    "cases": 8,
+    "checks": 120,
+    "pictures": 16,
+    "phoneFields": 12,
+    "phoneMinimumHeight": 44,
+    "maxLoad": 5.63720703125,
+    "listenerClosed": true,
+    "cleanup": {
+      "browserClosed": true,
+      "listenerClosed": true,
+      "keysRemoved": true
+    },
+    "historicalNegative": "phone36px after featureCSS readiness, retained separately; excluded from current pass count",
+    "scope": "Prior67080 happy-flow capture; R1UI unchanged and repair-specific behavior covered by actual HTTP/SQLite tests, no fresh browser claim"
+  },
+  "scope": "Actual R HTTP/SQLite, C factory/storage, inert directory/transport; U mini-DOM and actual pinned TLS/WSS ACK recovery use their existing bounded scopes. No real AD/Fleet/account/input. Factory remains optional until R composes it.",
+  "factory": {
+    "Rsource": "d168bed13fedf26721a9abe180fcbddf8117ba68",
+    "selectedSealedHubCases": 2,
+    "unselected": 130,
+    "schemaInventoryCases": 1,
+    "inventoryUnselected": 131,
+    "nativeSource": 0,
+    "nativeTests": 0,
+    "scope": "Actual sealed-Hub/HTTPS owned controls, inert directory/transport; no realAD/Fleet/input. Factory registration is now present on the integration stack, not yet alpha release."
+  },
+  "ownerCssHead": "ae3852c81f7a3878768f54452f18483a46c6de07",
+  "r1": {
+    "sourceCommit": "8aba948aefdf6464e9b7383b221a1c244a594ac9",
+    "beforeHead": "4bcf218c2bd4172204d487baa950787cc081e740",
+    "sourceSha256": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+    "testSha256": "5535c9d7b91dbbabcd613238481d1b5c8c88d70c1a5652be808679d670fd91ff",
+    "baseline": {
+      "nativeTestTypes": 0,
+      "semanticAssertionReds": 3,
+      "unselected": 15
+    },
+    "current": {
+      "focusedFiles": 4,
+      "focusedCases": 31,
+      "nativeSourceTypes": 0,
+      "nativeTestTypes": 0
+    },
+    "mutations": {
+      "isolatedCompilingAssertionReds": 3,
+      "restoredPositiveSelected": 3,
+      "unselected": 15,
+      "exactSourceRestore": true
+    },
+    "captureLimits": {
+      "UIByteEqual": true,
+      "all25PNGByteEqual": true,
+      "priorServerCaptureHead": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+      "noNewBrowserRun": true,
+      "scope": "R1 is validated by actual HTTP/SQLite regressions, not a fresh browser campaign. Prior8case/120check/16PNG happy-flow capture retains its original service-head scope; all UI inputs are unchanged."
+    },
+    "scan": {
+      "version": "8.24.3",
+      "currentEvidenceFindings": 0,
+      "publicAssetHistoricalExceptions": 3,
+      "localGit": "2.34.1; exact remerge unavailable",
+      "exactFreshCIRequired": true
+    }
+  }
+}

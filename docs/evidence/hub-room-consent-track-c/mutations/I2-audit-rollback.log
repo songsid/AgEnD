@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (15 tests | 1 failed | 14 skipped) 117ms
+   × rolls membership and invitation consumption back together when its audit fails 114ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > rolls membership and invitation consumption back together when its audit fails
+AssertionError: expected 200 to be 500 // Object.is equality
+
+- Expected
++ Received
+
+- 500
++ 200
+
+ ❯ tests/hub-room-consent-track-c.test.ts:86:91
+     84|   const w = await world(), inv = await w.invite();
+     85|   r!.setAuditFails(true, "room.invitation-accepted");
+     86|   expect((await r!.call(w.o, "POST", `/hub/v1/invitations/${inv.id}/ac…
+       |                                                                                           ^
+     87|   expect(members()).toEqual([]); expect(await w.pending()).toHaveLengt…
+     88|   r!.setAuditFails(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  03:07:52
+   Duration  3.93s (transform 2.78s, setup 232ms, import 3.43s, tests 117ms, environment 0ms)
+

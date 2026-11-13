@@ -1,0 +1,25 @@
+{
+  "head": "7c5f0260e70e5fe04a511c412fd67f3af56fbefd",
+  "command": "ionice -c3 nice -n 10 tsx scripts/manual/hub-room-consent/browser.mts",
+  "exit": 1,
+  "loads": [
+    {
+      "at": 1794597576.7258883,
+      "load1": 3.55078125
+    },
+    {
+      "at": 1794597578.7277982,
+      "load1": 3.55078125
+    },
+    {
+      "at": 1794597580.7302628,
+      "load1": 3.7470703125
+    }
+  ],
+  "env": {
+    "PW_DIR": "/home/han/.cache/wt-hubdto",
+    "CHROME": "/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+    "FONTCONFIG_FILE": "/etc/fonts/fonts.conf",
+    "OUT": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c/.artifacts/room-invitations-track-c/phone-diagnostic"
+  }
+}

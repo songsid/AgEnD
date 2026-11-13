@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+
+ Test Files  4 passed (4)
+      Tests  31 passed (31)
+   Start at  03:42:51
+   Duration  5.65s (transform 5.30s, setup 269ms, import 7.78s, tests 2.39s, environment 0ms)
+

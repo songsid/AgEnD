@@ -1,0 +1,58 @@
+{
+  "serviceBlobs": [
+    {
+      "head": "39b9000ad65da895b1239b5642bfa0efaf5d2a68",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    },
+    {
+      "head": "d92b8cb1425d46c6a7777b5e38772cf07e2ad49d",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    },
+    {
+      "head": "7c5f0260e70e5fe04a511c412fd67f3af56fbefd",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    },
+    {
+      "head": "0d166da349168ad09af4a9d52803439b88a35f48",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    },
+    {
+      "head": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    }
+  ],
+  "currentInputsHead": "8aba948aefdf6464e9b7383b221a1c244a594ac9",
+  "captures": [
+    {
+      "receipt": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
+      "head": "d92b8cb1425d46c6a7777b5e38772cf07e2ad49d",
+      "harnessSha256": "58ebb0acc930e033082813921e83d0d0092ebf727494bc4cce0367ecb84e912f",
+      "pictures": 8,
+      "complete": false
+    },
+    {
+      "receipt": "docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json",
+      "head": "7c5f0260e70e5fe04a511c412fd67f3af56fbefd",
+      "harnessSha256": "d3b71dd06354deeb974d2b932a94ba9a14e1249c80a70c7cedcf2de425a4bae0",
+      "pictures": 1,
+      "complete": false
+    },
+    {
+      "receipt": "docs/evidence/hub-room-consent-track-c/browser-final/receipt.json",
+      "head": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+      "harnessSha256": "2464977ccab4cee4c723eaf7d6d95a4f1f6b5a5801105f610ca322a28b88665a",
+      "pictures": 16,
+      "complete": true,
+      "cssOwnerHead": "ae3852c81f7a3878768f54452f18483a46c6de07"
+    }
+  ],
+  "r1": {
+    "sourceCommit": "8aba948aefdf6464e9b7383b221a1c244a594ac9",
+    "serviceSha256": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+    "previousServiceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
+    "UIUnchanged": true,
+    "PNGUnchanged": true,
+    "receiptSerialization": "lossless path\u2192hash to hash\u2192paths",
+    "newBrowserClaim": false
+  }
+}

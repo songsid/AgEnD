@@ -2,7 +2,7 @@
 import { createRequire } from "node:module";
 import { createServer } from "node:https";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { s3bRig } from "../../../tests/helpers/hub-s3b-rig.js";
@@ -25,15 +25,17 @@ server.on("request", (req, res) => {
   if (!r.http.handle(req, res)) { res.writeHead(404); res.end(); }
 });
 const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core");
-const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
+let browser: any;
 const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
-const receipt: any = { sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+const receipt: any = { origin, sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   scope: "Owned HTTPS/SQLite real C consent/R HTTP with the public U owner/sidebar mounts. Fake directory/transport; no real agent, AD or input; no API response fixtures.",
-  checks: [], pictures: [], requests: [], served: {} };
+  checks: [], pictures: [], requests: [], served: {}, geometry: [] };
 const check = (name: string, ok: unknown) => { receipt.checks.push({ name, ok: !!ok }); if (!ok) throw Error(name); };
 try {
+  browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
   for (const device of ["desktop", "phone"]) for (const lang of ["en", "zh-TW"]) for (const theme of ["light", "dark"]) {
     const tag = `${device}-${lang}-${theme}`, id = randomUUID(), errors: string[] = [];
+    if (process.env.CASE && process.env.CASE !== tag) continue;
     exposures.push({ id, fleetId, owner, displayName: "Notes", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) });
     await r.http.receive(r.frame("exposure.snapshot", { revision: exposures.length, exposures }, link) as never, link);
     const room = await r.call(admin, "POST", "/hub/v1/rooms", { name: "Project room", people: [personKeyString(reader)] }); check(tag + " room created", room.status === 200);
@@ -52,15 +54,25 @@ try {
     });
     const shot = async (name: string) => { const file = `${tag}-${name}.png`; await page.screenshot({ path: join(out, file), fullPage: true }); receipt.pictures.push({ path: file, sha256: sha(readFileSync(join(out, file))) }); };
     const open = () => page.goto(`${origin}/ui/hub?view=invitations`);
+    await page.goto(`${origin}/ui/hub/exposures`); await page.locator(".hub-invitation").waitFor();
+    check(tag + " owner list mount", await page.locator(".p-hub .hub-invitation").count() === 1);
+    await page.locator("#sidebar button.hub-invitations-row").waitFor({ state: "attached" });
+    check(tag + " sidebar invitation mount", await page.locator("#sidebar button.hub-invitations-row").count() === 1);
     await open(); await page.locator(".hub-invitation").waitFor();
     check(tag + " participant disclosure", (await page.locator(".hub-invitation").innerText()).includes(lang === "en" ? "2 people" : "2 個人"));
+    await page.waitForFunction(() => !!document.querySelector<HTMLLinkElement>('link[data-hub-rooms-u2-css="1"]')?.sheet);
     const sizes = await page.locator(".hub-invitation button").evaluateAll((buttons: HTMLElement[]) => buttons.map(b => b.getBoundingClientRect().height));
-    check(tag + " touch targets", device !== "phone" || sizes.every((h: number) => h >= 44)); await shot("pending");
+    receipt.geometry.push({ tag, buttonHeights: sizes }); await shot("pending");
+    check(tag + " touch targets", device !== "phone" || sizes.every((h: number) => h >= 44));
     await page.getByRole("button", { name: lang === "en" ? "Agree" : "同意", exact: true }).click();
     await page.locator(".hub-invitation").waitFor({ state: "detached" });
     await page.goto(`${origin}/ui/hub/exposures?agent=${id}`); await page.locator(".hub-agent-rooms li").waitFor();
     check(tag + " accepted in SQLite", !!r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='agent' AND room_id=? AND subject=? AND owner_at_join=?").get(roomId, id, personKeyString(owner)));
-    check(tag + " owner not made room person", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='person' AND room_id=? AND subject=?").get(roomId, personKeyString(owner))); await shot("accepted");
+    check(tag + " owner not made room person", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='person' AND room_id=? AND subject=?").get(roomId, personKeyString(owner)));
+    check(tag + " owner cannot read room history", (await r.call(actor, "GET", `/hub/v1/rooms/${roomId}`)).status === 403);
+    const leaveSizes = await page.locator(".hub-agent-rooms button").evaluateAll((buttons: HTMLElement[]) => buttons.map(b => b.getBoundingClientRect().height));
+    receipt.geometry.push({ tag, leaveButtonHeights: leaveSizes }); await shot("accepted");
+    check(tag + " leave touch target", device !== "phone" || leaveSizes.every((h: number) => h >= 44));
     await page.locator(".hub-agent-rooms button").click(); await page.locator(".hub-agent-rooms").waitFor({ state: "detached" });
     check(tag + " owner leave saved", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='agent' AND room_id=? AND subject=?").get(roomId, id));
     const again = await r.call(admin, "POST", `/hub/v1/rooms/${roomId}/invitations`, { agents: [id] }); check(tag + " manager can invite again", again.status === 200);
@@ -71,7 +83,11 @@ try {
   }
 } catch (error) { receipt.checks.push({ name: "run completed", ok: false, error: String(error) }); }
 finally {
-  await browser.close(); server.closeAllConnections(); await new Promise<void>(yes => server.close(() => yes())); await r.close(); rmSync(keys, { recursive: true, force: true });
+  await browser?.close(); server.closeAllConnections(); await new Promise<void>(yes => server.close(() => yes())); await r.close(); rmSync(keys, { recursive: true, force: true });
+  receipt.cleanup = { browserClosed: !!browser, listenerClosed: !server.listening, keysRemoved: !existsSync(keys) };
+  const servedByHash: Record<string, string[]> = {};
+  for (const [path, digest] of Object.entries(receipt.served) as [string, string][]) (servedByHash[digest] ??= []).push(path);
+  receipt.servedByHash = servedByHash; delete receipt.served;
   writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2));
 }
 console.log(JSON.stringify({ checks: receipt.checks.length, failed: receipt.checks.filter((x: any) => !x.ok).length, pictures: receipt.pictures.length }));

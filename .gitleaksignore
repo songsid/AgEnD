@@ -75,3 +75,10 @@ ee2a9922c0f59662b11f2cb9ba6a7887bb68c4e4:tests/antigravity-accounts-119.test.ts:
 # remain in the PR scan; no rule, path or future finding is exempted.
 6bdab5c543a671c8d55dee3d70663fe8441dd838:docs/evidence/hub-group-label-3824/before/receipt.json:generic-api-key:14
 6bdab5c543a671c8d55dee3d70663fe8441dd838:docs/evidence/hub-group-label-3824/current/receipt.json:generic-api-key:15
+
+# PR #3872: three historical public /assets/tokens.css SHA-256 values,
+# verified byte-for-byte against each recorded capture source. Current receipts
+# use hashes -> paths. Exact historical commit/path/rule/line only.
+96c207feaf0a546622347f9c2a38c7e5a631dc66:docs/evidence/hub-room-consent-track-c/browser-final/receipt.json:generic-api-key:1607
+ce5756066e9faa53ac73c39a4e06a374a30d6a58:docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json:generic-api-key:95
+ce5756066e9faa53ac73c39a4e06a374a30d6a58:docs/evidence/hub-room-consent-track-c/browser-1/receipt.json:generic-api-key:867
