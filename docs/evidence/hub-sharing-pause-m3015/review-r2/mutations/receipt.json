@@ -1,0 +1,59 @@
+{
+  "results": [
+    {
+      "id": "V1-version",
+      "path": "src/hub/sharing.ts",
+      "selector": "commits the authorization",
+      "nativeCompilerExit": 0,
+      "exit": 1,
+      "semanticCaught": true,
+      "originalDigest": "88cfcb879f554727b22958d0541984993cea37f8232df225b9037ccb5fdc4f21"
+    },
+    {
+      "id": "V2-refresh",
+      "path": "src/hub/sharing.ts",
+      "selector": "commits the authorization",
+      "nativeCompilerExit": 0,
+      "exit": 1,
+      "semanticCaught": true,
+      "originalDigest": "88cfcb879f554727b22958d0541984993cea37f8232df225b9037ccb5fdc4f21"
+    },
+    {
+      "id": "V3-final-proof",
+      "path": "src/hub/sharing.ts",
+      "selector": "rechecks the operational Resume proof",
+      "nativeCompilerExit": 0,
+      "exit": 1,
+      "semanticCaught": true,
+      "originalDigest": "88cfcb879f554727b22958d0541984993cea37f8232df225b9037ccb5fdc4f21"
+    },
+    {
+      "id": "H1-old-read",
+      "path": "src/ui/hub-chat-store.js",
+      "selector": "keeps a learned pause",
+      "nativeCompilerExit": 0,
+      "exit": 1,
+      "semanticCaught": true,
+      "originalDigest": "f75ed0aaf89169e60885b0e127167122ffddb174f9412d335914004d73c2d01b"
+    },
+    {
+      "id": "L1-expiry",
+      "path": "src/hub/identity.ts",
+      "selector": "issued-capability boundary.*expired",
+      "nativeCompilerExit": 0,
+      "exit": 1,
+      "semanticCaught": true,
+      "originalDigest": "d6e1acc8952bba226fe7bee0fcec3c06e6dab0e79cb005c0697ba312042685e8"
+    },
+    {
+      "id": "V4-feature",
+      "path": "src/hub/http/compose.ts",
+      "selector": "refuses pause and omits its mark",
+      "nativeCompilerExit": 0,
+      "exit": 1,
+      "semanticCaught": true,
+      "originalDigest": "3e78dd187fb5f64bf4089781dc04c3465b2f12b4bef140a6e49a8d70c68080f3"
+    }
+  ],
+  "exactRestore": true
+}

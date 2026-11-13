@@ -1,0 +1,29 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-ui-m3015.test.ts (9 tests | 1 failed | 8 skipped) 876ms
+   × keeps a learned pause through an older published history response, then accepts a fresh resumed read 22ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  15:02:38
+   Duration  1.31s (transform 829ms, setup 109ms, import 151ms, tests 876ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-ui-m3015.test.ts > keeps a learned pause through an older published history response, then accepts a fresh resumed read
+AssertionError: expected 'published' to be 'paused' // Object.is equality
+
+Expected: "paused"
+Received: "published"
+
+ ❯ tests/hub-sharing-pause-ui-m3015.test.ts:77:36
+     75|     scheduled!();
+     76|     finish({ ok: true, entries: [], room: { exposureState: "published"…
+     77|     expect(s.room().exposureState).toBe("paused"); expect(s.closed()).…
+       |                                    ^
+     78|     expect(delay).toBe(0); scheduled!();
+     79|     finish({ ok: true, entries: [], room: { exposureState: "published"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

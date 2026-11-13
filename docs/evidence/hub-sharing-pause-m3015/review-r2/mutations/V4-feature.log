@@ -1,0 +1,25 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (24 tests | 1 failed | 23 skipped) 205ms
+     × refuses pause and omits its mark when no member refresh is composed 202ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 23 skipped (24)
+   Start at  15:03:05
+   Duration  5.70s (transform 4.15s, setup 130ms, import 5.18s, tests 205ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > refuses pause and omits its mark when no member refresh is composed
+AssertionError: expected [ 'sharing-pause-v1' ] to not include 'sharing-pause-v1'
+ ❯ tests/hub-sharing-pause-m3015.test.ts:92:85
+     90|   it("refuses pause and omits its mark when no member refresh is compo…
+     91|     const w = await world(); delete w.r.httpDeps.refreshAuthorization;…
+     92|     expect((await w.r.call(w.o, "GET", "/hub/v1/session")).json.featur…
+       |                                                                                     ^
+     93|     expect((await w.change(true, 0)).status).toBe(503);
+     94|     expect(w.r.store.read().revocationVersion).toBe(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

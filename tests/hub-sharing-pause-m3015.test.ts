@@ -65,7 +65,7 @@ async function heldBegin(w: Awaited<ReturnType<typeof world>>) {
   expect(sent.status).toBe(200);
   const q = w.r.sent.find(s => s.frame.type === "question")!.frame as Extract<HubServerFrame, { type: "question" }>;
   expect((await admission.admit(q.payload)).stage).toBe("queued"); await entered;
-  return { db, entered, finish: async () => { release(); await finished; },
+  return { db, entered, messageId: q.payload.identity.messageId, finish: async () => { release(); await finished; },
     observeFence: () => { observed = true; client.fence(); },
     inputCount: () => intents,
     inputIntent: () => JSON.parse((db.prepare("SELECT value FROM hub_member_messages WHERE message_id=?").get(q.payload.identity.messageId) as { value: string }).value).inputIntent,
@@ -77,7 +77,12 @@ describe("M-3015 resumable sharing", () => {
     if (mode === "fresh-after-ABA") { expect((await w.change(true, 0)).status).toBe(200); expect((await w.change(false, 1)).status).toBe(200); }
     const m = await heldBegin(w);
     try {
-      if (mode !== "no-pause" && mode !== "fresh-after-ABA") expect((await w.change(true, 0)).status).toBe(200);
+      if (mode !== "no-pause" && mode !== "fresh-after-ABA") {
+        expect((await w.change(true, 0)).status).toBe(200);
+        const afterPause = await new HubPolicyService(new HubCore(w.r.httpDeps, w.r.sql)).authorize({ messageId: m.messageId,
+          operationId: randomUUID(), exposureRevision: 1, phase: "begin" }, w.link);
+        expect(afterPause.ok).toBe(false);
+      }
       if (mode === "in-transit-ABA" || mode === "observed-ABA") expect((await w.change(false, 1)).status).toBe(200);
       if (mode === "expired") w.advance(5_000);
       if (mode.startsWith("observed")) m.observeFence();
@@ -105,6 +110,20 @@ describe("M-3015 resumable sharing", () => {
     w.r.setAuditFails(false);
     expect((await w.change(true, 0)).status).toBe(200); expect(refresh).toHaveBeenCalledTimes(1);
     expect((await w.change(false, 1)).status).toBe(200); expect(refresh).toHaveBeenCalledTimes(2);
+  });
+  it("rechecks the operational Resume proof after the transport audit and before publishing its own version", async () => {
+    const w = await world(); expect((await w.change(true, 0)).status).toBe(200);
+    w.r.store.mutate({ requestId: randomUUID(), actor: { kind: "local-host" }, action: "fixture.fleet", result: "completed", at: w.now() }, state => {
+      state.fleets.push({ id: w.link.fleetId, owner: w.e.owner, generation: 1, status: "active", credentialHash: "a".repeat(64) });
+    });
+    let changed = false;
+    w.r.httpDeps.groups = { check: async () => ({ source: "legacy", assertCurrent() { if (changed) throw new HubProtocolError("denied"); } }) } as never;
+    const options = (w.r.store as unknown as { options: { appendAudit(...args: any[]): void } }).options, append = options.appendAudit;
+    options.appendAudit = (...args) => { append(...args); if (args[0].action === "exposure.sharing-authorization-changed") changed = true; };
+    const refresh = vi.fn(); w.r.httpDeps.refreshAuthorization = refresh;
+    expect((await w.change(false, 1)).status).not.toBe(200);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(w.r.db.prepare("SELECT sharing_paused FROM hub_exposures WHERE id=?").get(w.e.id)).toEqual({ sharing_paused: 1 });
   });
   it("pauses without changing grants/rooms, hides new asks, and resumes the exact allow list", async () => {
     const w = await world(), rows = w.r.db.prepare("SELECT * FROM hub_grants").all();
