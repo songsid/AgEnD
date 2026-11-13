@@ -148,6 +148,8 @@ Hub 現在只有兩種人：
 | 個別邀請、加入碼、手動配對碼 | 不變。它們是一次性的核准，不是角色 |
 | 擁有者對某人的「允許提問」 | 不變。那是擁有者的授權，不是 Hub 的角色 |
 
+升級後，第一位管理員會在「通知」頁看到一則一次性的通知：「角色與權限」現在可以使用了，而且目前沒有任何人的權限因此改變。這則通知要按確認已讀（決定：2026-11-13，升級後角色功能預設開啟）。
+
 「群組權限」頁改名為「角色與權限」；「讓同仁加入」卡片的步驟 2 不變（它其實就是「把成員角色指派給 AD 群組」的捷徑）。
 
 關閉角色功能是一個**往前的**變更，不是還原：關閉後回到「只有第一位管理員 + 三項群組權限」的行為，但已經做過的禁止、撤銷、暫停都保留。不會把升級前的設定整份蓋回來，因為那樣可能讓已經收回的權限或已撤銷的 Fleet 復活。要退回舊版程式是另一件事（資料庫備份與還原），不在這份提案內。
@@ -265,7 +267,7 @@ State table. `rolesActive` and `state` are independent: no transition of one cha
 | true | suspended | by roles | denied (suspended), as today |
 | false | any | configured root only | as the row above for that `state`, by forward projection |
 
-Automatic migration sets `rolesActive = true` and leaves `state` exactly as it was. `never-enabled → enabled` stays its own previewed, audited self-use activation (today's first group save), whose preview shows the loss of legacy access. Turning roles on or off never performs it.
+Automatic migration sets `rolesActive = true` and leaves `state` exactly as it was. `never-enabled → enabled` stays its own previewed, audited self-use activation (today's first group save), whose preview shows the loss of legacy access. Turning roles on or off never performs it. The cutover commit also records one acknowledgeable notice for the configured root: roles are now available and nobody's access has changed. It is written once, by the migration marker, and not again on later off / on.
 
 Switching roles off is a new monotone transition, not a snapshot restore. It flips `rolesActive` and never touches `state`: `suspended` keeps its one meaning (the self-use policy is suspended) and the ever-enabled latch is untouched, so off is not encoded as a suspension. With roles off, management returns to the configured root only, and team and Hub-management permissions confer nothing (their assignments stay stored, inert). The self-use rules keep working by forward projection of the current document: each assignment's three self-use permissions and its fleet limit, plus current denies, revocations and suspensions. Restoring a saved pre-migration snapshot could resurrect removed permissions or revoked resources, so it is not offered. Turning roles back on is a reactivation of the current document, not a restore: a previewed, audited new policy and authorization revision that re-reads the current time and subject / target facts, keeps every assignment revoked, removed or expired in the meantime and every resource suspension, and never revives old permits, leases or SSE streams. A binary downgrade is a separate schema and backup operation. Crash points and repeated disable are pinned like the migration.
 
