@@ -18,15 +18,16 @@ For how *you* look on the dashboard (theme, identity card, colour, widgets and a
 | The user asks about… | Section |
 |---|---|
 | getting in, `/web`, codes, "Send me a new code", the public link, sessions, signing out, `/view`, guests | [Sign-in and access](#sign-in-and-access) |
-| sending, files, buttons, polls, HTML previews, code, tables, slash commands, Stop, history, copies in Discord/Telegram | [Chat](#chat) |
+| sending, files, buttons, polls, HTML/Markdown previews, sharing a page, 「引用」 quote, Subagents, slash commands, Stop, history, copies in Discord/Telegram | [Chat](#chat) |
 | the red badge, prompts, failed deliveries, desktop notifications | [Needs you](#needs-you) |
 | "which agent did I ask about X", Ctrl+K, Ctrl+F in a chat, search results, filters | [Search](#search) |
 | Ctrl+Z / undo / redo in a text box, "undo did nothing", "undo changed another box" | [Undo and redo](#undo-and-redo) |
 | tasks, schedules, teams, org chart, live traffic lines, cache, Config tab | [Fleet](#fleet) |
 | the sidebar list, filters, favorites, Chat / View / Log / Details, the Details page | [Finding an instance](#finding-an-instance) |
-| subscription meters, plan badges, profiles, keep-warm, prompt cache | [Usage and the cache report](#usage-and-the-cache-report) |
+| subscription meters, plan badges, profiles, keep-warm, prompt cache, output speed | [Usage and the cache report](#usage-and-the-cache-report) |
 | what an agent did step by step | [The Log tab](#the-log-tab) |
-| any Settings control | [Settings](#settings) |
+| any Settings control, quota notices | [Settings](#settings) |
+| "update AgEnD", the 「AgEnD vX 已推出」 notice, `/update` in a chat, update failed | [Updating AgEnD](#updating-agend) |
 | themes, cards, widgets, ambient effects (petals, click stars) | [Look](#look) |
 | blank page, preview refused, link fails, signed out, "live" missing | [Troubleshooting](#troubleshooting) |
 
@@ -134,7 +135,8 @@ A message to a paused agent wakes it through the same delivery path as Discord/T
 
 **Sending.** Type and press Enter. A message sent while the agent works waits its turn; `/steer <text>` goes into
 the current turn, `/btw <question>` asks a side question. **Stop reply** (or Esc) interrupts the reply and drops
-queued messages. Text is capped at 16,384 characters; a paste over 4,000 characters becomes a `pasted-….txt`
+queued messages. While the agent works, "*name* is working…" and **Stop reply** sit in a bar above the message box; the
+bar and the box keep one size as the agent starts and stops, so the conversation does not jump (#3651, #3724). Text is capped at 16,384 characters; a paste over 4,000 characters becomes a `pasted-….txt`
 attachment (its chip has **As text** to undo that).
 
 **Ticks** under your message: ◷ waiting behind another message · ✓ handed to the agent · ✓✓ the agent has it ·
@@ -154,24 +156,34 @@ workspace `inbox/`; an unused upload is deleted after 30 minutes.
 - **The agent** gets `(reply_to: "…")`, exactly as from a Discord or Telegram reply, read by the server from the quoted message (one line, at most 500 characters). Nothing new for guests: they reply only to what they can see.
 - **The channel echo** quotes only a message that was already in that channel.
 
+**Quote a passage (「引用」, M-2789).** Select text inside one message: a **Quote** button (「引用」; on a phone **Quote
+selection** / 「引用選取的文字」) appears below the selection. It puts the passage in the message box as `> ` lines with
+the caret on the next line for your answer; repeat for more passages. Nothing is sent until you send.
+
 **In replies.** Images inline; video and audio play inline; Markdown, CSV, JSON, code and text files get a **Show**
 card (200 lines, then "Show all … lines"); other files download. Code blocks have a language tag, **Wrap** and
 **Copy**, and fold after 30 lines. Each reply has **Copy this reply**. Markdown: headings, lists, quotes, bold/italic/
 strike, links, and tables (header row plus separator, alignment, up to 20 columns). Discord mentions show as names;
 a Discord server emoji (`<:name:id>`) of the fleet's servers shows as its picture, and any other (or one whose picture
 can't load) as `:name:`. Unicode emoji are drawn by the system's colour emoji font under every theme font (boxes on
-Linux mean no colour emoji font is installed). There is no @-autocomplete in the composer.
+Linux mean no colour emoji font is installed). A bare URL is a link, also right after CJK text or
+full-width punctuation (it ends at the first one, #3716). There is no @-autocomplete in the composer.
+
+**Subagents (#3516).** When Claude Code runs child agents, a read-only **Subagents** (「子 Agent」) row in the chat lists
+them: "N running", "N finished", "Main Agent task: …" (up to 16 recent).
 
 **Buttons and polls.** An agent's reply can carry up to 10 buttons ("Choices"); a click shows as a 🔘 chip and the
 agent receives `[button] <label>` (with `(value: …)` when it differs). Buttons expire after 24 h ("Expired — reply in
 text"). Polls show "Poll", "Time left", "🗳 N answered"; voter names only when it closes.
 
-**HTML previews.** An agent's ` ```html ` block or `.html` file gets a card: **Preview**, **Stop**, **Download**,
+**HTML and Markdown previews.** A Markdown file opens in the side panel as **Markdown preview** (#3155). An agent's ` ```html ` block or `.html` file gets a card: **Preview**, **Stop**, **Download**,
 **Open in panel** (side panel: **Page** / **Code** / **Reload** / **Close**). Previews need a one-time opt-in, **Allow
 HTML previews** (also in Settings → Preferences); it is a host-wide preference, and you still press Preview each time.
 The page runs in a sandboxed frame on a second port (`health_port + 1`, default 19281). "Never preview HTML on this
 device" turns it off for this browser session. Cards are at most 1 MiB; a cut-off block says "Truncated — ask the
-agent to send it as a .html file."
+agent to send it as a .html file." **Share page** (in the panel, #2911) makes a time-limited link to that one
+page for someone without a sign-in — 15 minutes, 1 hour, 8 hours or 24 hours; **Stop sharing** ends it, and Settings →
+Access & security → **Shared pages** lists the live ones.
 
 **Slash commands** (the **Commands** palette): `/ctx`, `/compact [instructions]`, `/clear` (asks first), `/model
 [name]`, `/backend [backend] [model] [effort]` (asks first), `/effort [level]`, `/cancel`, `/btw`, `/steer`, `/pause`,
@@ -207,6 +219,10 @@ A prompt shows its own answer buttons (first answer wins); a delivery has **Ackn
 tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `needs_you.live_message` (default on),
 `needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
 for you — set `true` to list them).
+
+**Notices** (#2910): on a fleet with no chat connection, what General would have posted (a version's new features, a
+restart, a sign-in) is listed on the **Notices** page in the sidebar ("What General would have said"; **New**, **Open
+chat**).
 
 ## Search
 
@@ -439,7 +455,8 @@ coordinators and full-profile instances, and each other instance only its own ro
 **The usage report** (the `get_usage_report` tool, and Fleet → **Usage**, `/ui/fleet/usage`, #2122; the ◔ dialog's
 **By agent →** opens it). Per instance (or backend,
 model, credential profile, team): input, output, reasoning, cache read and cache write tokens, requests, delivered messages,
-and an amount, over today / 7d / month / all / custom days in the fleet's timezone. **Every amount is the
+and an amount, over today / 7d / month / all / custom days in the fleet's timezone. **Speed** (「速度」, #3066):
+output tokens per second ("{N} tok/s"), and **Speed by model**; "no timing in its transcripts" where a backend has none. **Every amount is the
 API-equivalent at list price — not money spent** (subscriptions aren't billed per token): say "API-equivalent", never
 "spent". Measured for Claude Code, Codex, Grok, Muse, OpenCode and Antigravity; **estimated** for Kiro (it records no token counts). Marks to repeat in words:
 - `cost_reported`: the model has no list price in AgEnD's table, so the amount is what the CLI (Grok, OpenCode's provider) reported.
@@ -476,13 +493,15 @@ Tools / Errors**; **Live** while it updates. Opens with the newest 200 steps; **
 (the page keeps 1000). Off by default: `web.log_tab` (Settings → Web dashboard → **Log tab: each agent's steps**; turning it on
 from the tab itself needs a fleet admin's confirmation). Full for Claude Code (also after it stopped) and Codex while
 running; kiro shows fleet events only; other backends say they have no readable transcript. Secrets are masked.
+A dialog or prompt the agent stopped at is a row with its text folded: **Show what was on screen** / **Hide what was on
+screen** (「顯示當時的畫面」, #2966).
 
 ## Settings
 
 **Chat & connections → Retry now** retries a disconnected connection without a fleet restart; a running login is reused. Startup retries continue with a five-minute cap. Local admin only, unavailable over public links. It changes no token or binding; refresh to read the later result.
 
 Sections (`/settings/<section>`, #2347), in two groups. **You**: **Preferences**, **Look**. **Fleet**: **Agents**,
-**Agent defaults**, **Chat & connections**, **Web dashboard**, **Access & security**, **Advanced**. Old addresses (`device`,
+**Agent defaults**, **Notifications**, **Chat & connections**, **Web dashboard**, **Access & security**, **Advanced**. Old addresses (`device`,
 `appearance`, `general`, `bots`, `classic`, `web`) lead to the new sections. **Search settings** (top of the sections, **/**;
 also Ctrl K → Settings) finds a setting by name, `fleet.yaml` key or synonym in either language and goes to the field.
 Header: version, **Setup wizard**, **Help**.
@@ -529,8 +548,8 @@ code are entered in the browser, Codex shows its link and device code; credentia
 backend skipped at first setup shows in Needs you even before an agent uses it.
 
 **Agents** — **New agent**; per agent **Settings**, **Pause / Wake**, **Start / Stop** (direct), ⋯ **Delete agent**
-(staged; on Apply it waits for a fleet admin's confirmation in General, then the agent is stopped and removed, as
-`delete_instance` does — no restart). The agent dialog writes `instances.<name>.*` (an "Inherit" box removes the key, and the field then says what it inherits:
+(staged; "Delete agent "*name*" and its chat topic (on Discord, its channel and history)?" — on Apply the agent is stopped
+and removed with its topic, as `delete_instance` does, no restart). The agent dialog writes `instances.<name>.*` (an "Inherit" box removes the key, and the field then says what it inherits:
 "Inherited: 30 min · change in Agent defaults"; a value nobody set anywhere is marked "default"):
 | Label | Key | Applies |
 |---|---|---|
@@ -561,7 +580,12 @@ ClassicBot (in **Chat & connections**, `/settings/chat#classicbot`) — per room
 `channels.<key>.*`: Backend, Model, Auto-pause after, **Collaboration mode** (`collab`), **Web echo** (`web_echo`),
 Advanced **Context lines** (these restart the room's agent); Tool progress and Require a delivered reply (now).
 
-**Agent defaults** — **Project folders** (`project_roots`: where New agent may put an agent; empty = anywhere;
+**Notifications** — **Quota notices** (「用量提醒」, #3302): one reminder per account at the **Remaining percentages**
+and **Periods** you choose, shared by its agents, **Send to** General.
+
+**Agent defaults** — **When an assignee stops** (#3647, `defaults.task_board.liveness`): the agent that handed out a task
+board card is told once when its assignee crashes and is not back, is paused, looks stuck, waits on a prompt (10 min) or
+stays quiet with the card (60 min), and again when it works; nothing is restarted or reassigned. **Project folders** (`project_roots`: where New agent may put an agent; empty = anywhere;
 changing it waits for a fleet admin's OK) and the fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW), default
 backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard, **Native replies trigger ClassicBot**
 (`reply_triggers`: a native reply triggers a ClassicBot bot; off by default, #2576); Advanced: tool set, agent mode, log
@@ -584,12 +608,14 @@ progress, reply guard, **Native replies trigger ClassicBot** (`reply_triggers`, 
 | Public link minutes (1–480; with a fixed hostname 0–10080, 0 = no expiry) | `web.public_link.ttl_minutes` |
 | Reopen the public link when AgEnD starts (fixed hostname only) | `web.public_link.auto_open` |
 | Tunnel protocol (http2 / quic / auto) | `web.public_link.protocol` |
+**Shared pages** lists the pages shared from a preview (**Stop sharing**).
 Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `preview`, `preview_port`,
 `preview_origin`, `preview_on_public_link`, `usage_panel`, `search` (`retention_days`: unset and 0 = no age limit,
 300,000-row cap), `provider_secrets`, `upload_max_file_mb`,
 `upload_max_total_mb`, `web_terminal.bind`, `web_terminal.tunnel`.
 
-**Advanced** — fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply**
+**Advanced** — on top, **Version and update** (「版本與更新」): **Current version**, **Update line**, **Latest**,
+**Last checked**, **Check for updates** (see [Updating AgEnD](#updating-agend)). Below: fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply**
 (edit mode) adds the edit to the bar, and Save writes it. While it waits, Agents, Agent defaults and the
 connections are off (and the setup wizard); while those have unsaved changes, the editor only reads.
 
@@ -604,6 +630,20 @@ Once a fleet has a connection or a General, a new agent can't be called `general
 page, in English or 繁體中文 (the browser's language; the button at the top switches). The working directory may be
 left empty: the agent then gets its own folder, `~/.agend/workspaces/<name>`, shown under the field and created
 when the host confirms; a directory that is entered must be absolute.
+
+## Updating AgEnD
+
+A fleet admin sees a notice on top when a newer version is out on the install's own line: **AgEnD v*X* is available
+(current v*Y*)** (「AgEnD vX 已推出（目前 vY）」) · **Update now** (「立即更新」) / **Later** (「稍後」); ✕ dismisses it. The
+same comes from Settings → Advanced → **Version and update** → **Check for updates**, and from `/update` typed in any
+web chat (it opens the Update dialog; it is never sent to the agent). **Update AgEnD?** → **Update and restart** installs
+it and restarts AgEnD; every agent stops briefly and comes back. Progress: **Step *n* of 4** — preparing, downloading and
+installing, installed and restarting, starting ("Closing this page does not affect the update."). A failure says why
+(**the update source could not be reached** / **no permission to install** / **did not finish**), whether anything changed
+("AgEnD is still v*X*; nothing was changed."), with **Try again** and **See the full log** (**Update log**). After it:
+**AgEnD is updated to v*X*** · **Reload this tab to use the new version.** · **Reload**.
+It stays on the install's line: a stable install updates to stable, a preview one to its own line. Going back to an older
+version is `agend rollback <version>` on the host. Guests and agents can't update.
 
 ## Look
 
