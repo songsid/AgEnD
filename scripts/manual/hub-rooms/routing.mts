@@ -108,7 +108,7 @@ try {
     };
     const idle = lang === "en" ? "Idle" : "待命", working = lang === "en" ? "Working" : "處理中", paused = lang === "en" ? "Paused" : "暫停", offline = lang === "en" ? "Offline" : "離線";
     await visiblePresence("Notes", idle, "ok"); await visiblePresence("Planner", idle, "ok"); await shot("idle");
-    const closeRail = async () => { if (device === "phone" && await page.locator('.u-rail button[aria-label="' + (lang === "en" ? "Cancel" : "取消") + '"]').isVisible()) await page.locator('.u-rail button[aria-label="' + (lang === "en" ? "Cancel" : "取消") + '"]').click(); };
+    const closeRail = async () => { if (device === "phone" && await page.locator(".hub-rail-sheet").isVisible()) await page.locator("dialog:has(.hub-rail-sheet) .dlg-x").click(); };
     const send = async (text: string) => { await closeRail(); await page.locator(".hub-room-composer textarea").fill(text); await page.locator(".hub-room-composer #sendBtn").click(); await page.getByText(text, { exact: true }).first().waitFor(); };
     const before = notes.inputs.length + planner.inputs.length;
     await send("Plain room conversation " + device);
@@ -137,7 +137,8 @@ try {
     await visiblePresence("Planner", idle, "ok");
     await page.getByText(lang === "en" ? "All 2 answered" : "2 個都回答了", { exact: true }).waitFor(); await closeRail(); await shot("all-answered");
     check(tag + " both @all answers persisted exactly once", web.db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE room_id=? AND state='answered'").get(roomId).n === 3);
-    await notes.state({ process: "paused", execution: null, pauseReason: "quota" }); await visiblePresence("Notes", paused, "warn"); await shot("paused");
+    await notes.state({ process: "paused", execution: null, pauseReason: "quota" }); await visiblePresence("Notes", paused, "warn");
+    check(tag + " quota reason uses viewer language in live panel", (await row("Notes").locator(".hub-member-state").innerText()).includes(lang === "en" ? "Out of quota" : "額度用完")); await shot("paused");
     const detail = await web.call(admin, "GET", `/hub/v1/rooms/${roomId}`);
     check(tag + " quota reason reaches real HTTP projection", detail.json.members.find((m: any) => m.id === notes.exposureId)?.presenceReason === "quota");
     const events = await page.evaluate(() => (window as any).__roomEvents); receipt.events.push({ device, events });
