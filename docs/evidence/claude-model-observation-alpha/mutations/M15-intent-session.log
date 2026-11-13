@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 141ms
+     × raw concrete intent needs both session and served confirmation before replacing an active switch 18ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 57 passed (58)
+   Start at  17:35:07
+   Duration  1.47s (transform 564ms, setup 230ms, import 505ms, tests 141ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > raw concrete intent needs both session and served confirmation before replacing an active switch
+AssertionError: expected 'claude-sonnet-5-5' to be 'claude-opus-5-5' // Object.is equality
+
+Expected: "claude-opus-5-5"
+Received: "claude-sonnet-5-5"
+
+ ❯ tests/claude-model-switch.test.ts:140:37
+    138|     o.observe({ kind: "intent", id: "model-intent", sessionId: "sessio…
+    139|     o.observe(parse(served("claude-sonnet-5-5", "unconfirmed")), "clau…
+    140|     expect(o.checkpoint().expected).toBe("claude-opus-5-5"); expect(o.…
+       |                                     ^
+    141|     o.observe(parse(served("claude-sonnet-5-5", "confirmed")), "claude…
+    142|     expect(o.checkpoint().expected).toBe("claude-sonnet-5-5"); expect(…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

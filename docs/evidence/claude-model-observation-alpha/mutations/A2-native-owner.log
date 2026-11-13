@@ -1,0 +1,44 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 29ms
+   × pending checkpoint metadata cannot escape after native ownership is lost 9ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  17:36:38
+   Duration  3.75s (transform 3.44s, setup 108ms, import 3.43s, tests 29ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-runtime-observation.test.ts > pending checkpoint metadata cannot escape after native ownership is lost
+AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "at": 1794562601916,
++     "cause": "safeguards",
++     "id": "notice:400ad931-d618-42c3-8cf2-872b56e58586",
++     "kind": "switch",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "sessionId": "2b386138-c42b-4752-97a1-4ca50f608f1b",
++   },
++ ]
+
+ ❯ tests/claude-model-runtime-observation.test.ts:33:132
+     31| it("pending checkpoint metadata cannot escape after native ownership i…
+     32|  const f = rig(); await f.monitor.initialize(); f.add(f.record()); awa…
+     33|  const events: any[] = []; f.monitor.on("model_observation", e => even…
+       |                                                                                                                                    ^
+     34| });
+     35| it("a native gap preserves typed evidence and suppresses inferred swit…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

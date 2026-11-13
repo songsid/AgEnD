@@ -1,0 +1,222 @@
+[
+  {
+    "name": "M1-sidechain",
+    "file": "src/claude-model-observation.ts",
+    "before": "e.isSidechain !== true",
+    "after": "true",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "555418f1ffe8858e5195849dee52110b1e06a12f279059b1826aab3fd464662b",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M2-apierror",
+    "file": "src/claude-model-observation.ts",
+    "before": "e.isApiErrorMessage !== true",
+    "after": "true",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "9896d7883f04b10d597f09bd473037b3a6cd63aecbaf3efca36687de44aef6cd",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M3-dedupe",
+    "file": "src/claude-model-observation.ts",
+    "before": "if (this.seen.has(key)) return false;",
+    "after": "if (false) return false;",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "0d91dc498d00604a48c4dabaffe6e23496f3244410a2e8a0fbc4211d5ed46406",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M4-recovery",
+    "file": "src/claude-model-observation.ts",
+    "before": "this.state.active = null;\n    else if (allowInference && !this.state.active && expected",
+    "after": "{}\n    else if (allowInference && !this.state.active && expected",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "9e6223f154cb314a40d9077882d0d0617700f2999c709550c710163433f112d8",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M5-concrete",
+    "file": "src/claude-model-observation.ts",
+    "before": "this.expected = claudeModelId(launch);",
+    "after": "this.expected = null;",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "99c1e6500f35ab512ba2748fe2f0d7e5e6ea9142a12982b82b64751b424f9dfd",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M6-hookowner",
+    "file": "src/transcript-monitor.ts",
+    "before": "hook._agendLaunchId === launch.id",
+    "after": "true",
+    "baseDigest": "d9f9bfafaaf74826d457ad81e1c08944de9b88f154f0eedee2d63b142219f91d",
+    "mutantDigest": "0d05fcd8f53077b564647caddf6f90bb3d9c42ce830fb22512c70463e300cbb4",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M7-launchtime",
+    "file": "src/transcript-monitor.ts",
+    "before": "observation.at >= launch.startedAt",
+    "after": "true",
+    "baseDigest": "d9f9bfafaaf74826d457ad81e1c08944de9b88f154f0eedee2d63b142219f91d",
+    "mutantDigest": "589847fcde2915fe0ab40a404a8249f515a236887619e631c9a4b3964764c835",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M8-daemonfence",
+    "file": "src/daemon.ts",
+    "before": "owner !== launchIdentity(this.interactionOwner())",
+    "after": "false",
+    "baseDigest": "40a84ee25feda5247910b0894ad0e312192b0aa392c2622863359604690ed107",
+    "mutantDigest": "32d85182c85e365651b35d26e67df34d3e9079b25dc6b3943f20764c55806ae2",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M9-resumequiet",
+    "file": "src/needs-you-hub.ts",
+    "before": "!i.quiet && !seen.has(i.id)",
+    "after": "!seen.has(i.id)",
+    "baseDigest": "5306e915189405ee3d96b499aae4dc122e0c385d45885c17a1ef91417b41dc77",
+    "mutantDigest": "e0c7d28d02f6d432046e8de63a29b998f41a5ac5c7003beff90a246ccd3c4469",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M11-commandprefix",
+    "file": "src/claude-model-observation.ts",
+    "before": "/^(?:<command-name>\\/|<command-message>)/",
+    "after": "/^<command-name>\\//",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "c75a94f22790285bdfb6e65039aa252b706877de798a978f3c130ad976aa5c67",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M12-logpair",
+    "file": "src/ui/log-row.js",
+    "before": "${text(modelSwitchText(x.modelSwitch))}",
+    "after": "${null}",
+    "baseDigest": "920449ae8986c3648277b550e3637dace1d5b804a374c77ac32da44dc2d28672",
+    "mutantDigest": "07a50b7ca0187b243469ec1926fb338b3903699057ff1149bfb8d234c6cf8e82",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M13-officeshare",
+    "file": "src/ui/fleet-office-card.js",
+    "before": "modelSwitch: !share ? modelSwitchText(it.model_observation?.active) : \"\"",
+    "after": "modelSwitch: modelSwitchText(it.model_observation?.active)",
+    "baseDigest": "0523431fa73d3c79c52ac464dbd2d131e9cfe26753b1e383a47fbf874129e9cc",
+    "mutantDigest": "9cb3e255a5430ff1e0ccb92d92819956ed362da393a64e702bed6e1d5fdba345",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M14-nofallback",
+    "file": "src/claude-model-observation.ts",
+    "before": "e.subtype === \"model_refusal_fallback\" || e.subtype === \"model_fallback\"",
+    "after": "e.subtype === \"model_refusal_fallback\" || e.subtype === \"model_fallback\" || e.subtype === \"model_refusal_no_fallback\"",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "d05ac5ea18abf2f8ac5d636a47d03c68446fa5ed130e75a0d3935224b59eb53d",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M15-intent-session",
+    "file": "src/claude-model-observation.ts",
+    "before": "&& normalizeClaudeModel(session) === normalizeClaudeModel(record.served)",
+    "after": "",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "9daaee2e07eff451f199db48412bcb85a7efa8fea818d3a32ff47d52d5d41e46",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M10-original",
+    "file": "src/claude-model-observation.ts",
+    "before": "original = claudeModelId(e.originalModel)",
+    "after": "original = claudeModelId(e.fallbackModel)",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "8a6286cfebab1690ee5ed5c2a29b25dd284231571ead68648d405b4471cf7cf2",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "A1-native-session",
+    "file": "src/runtime-transcript-source.ts",
+    "before": "model.sessionId === before.cursor.sessionId",
+    "after": "true",
+    "baseDigest": "7b19254fe34cd3ef034cf0e3f6f6f07f6c0b2f90116324efce9ba1599557208e",
+    "mutantDigest": "f1d30d3e5515eb2cb16805194efa102ef59e940e4552871bb9e01bc0e78c36ab",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "A2-native-owner",
+    "file": "src/runtime-transcript-source.ts",
+    "before": "&& !this.stopped && this.port.isTranscriptObservationCurrent(this.reference) ? this.reference.cursor.sessionId",
+    "after": "? this.reference.cursor.sessionId",
+    "baseDigest": "7b19254fe34cd3ef034cf0e3f6f6f07f6c0b2f90116324efce9ba1599557208e",
+    "mutantDigest": "9bb9849e626ee6c2665e148d5009299e6e0b837296b4b1b3a3b3df0ef4338357",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "A3-native-daemon",
+    "file": "src/daemon.ts",
+    "before": "const modelCurrent = () => !nativeModel || this.nativePaneLifecycle?.current() === true;",
+    "after": "const modelCurrent = () => true;",
+    "baseDigest": "40a84ee25feda5247910b0894ad0e312192b0aa392c2622863359604690ed107",
+    "mutantDigest": "3903cbcae56e6fbec7e1b1cdf4a4723e6d3bb50b7014c4d23f7ffdb48575b2e9",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "A4-native-gap",
+    "file": "src/claude-model-observation.ts",
+    "before": "else if (allowInference &&",
+    "after": "else if (",
+    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+    "mutantDigest": "abbf02da05a5ffeb7c307dc03ab874d4c293cf3e24deb7993df22fe19a71fca1",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "A5-native-context",
+    "file": "src/transcript-monitor.ts",
+    "before": "if (generation !== this.generation || this.source!.modelObservationSession?.() !== session) continue;",
+    "after": "if (false) continue;",
+    "baseDigest": "d9f9bfafaaf74826d457ad81e1c08944de9b88f154f0eedee2d63b142219f91d",
+    "mutantDigest": "48b2c9c559035d72bf24c349727b044555d27833c3e76e8cb3f5b34ce6d43555",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  }
+]

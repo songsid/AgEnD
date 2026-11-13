@@ -1,0 +1,67 @@
+{
+  "main": "f773dc990218e255e59b8bd3773f0eda2bfde429",
+  "mainBase": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
+  "alpha": "34d236d2d98f10440c0819b20134aee47ee36f63",
+  "alphaBase": "71dbc782956047c413b9f367a572e38c39d53651",
+  "identicalBlobs": [
+    "src/ui/fleet-canvas.js",
+    "src/ui/fleet-office-card.js",
+    "src/ui/fleet-org.js",
+    "src/ui/shared/app-needs.js",
+    "src/ui/shared/model-observation.js",
+    "tests/claude-credential-profile-1699.test.ts",
+    "tests/claude-model-switch.test.ts",
+    "tests/claude-prompt-cache-ttl-2010.test.ts",
+    "tests/claude-shared-memory-1754.test.ts",
+    "tests/office-card-2661.test.ts"
+  ],
+  "identicalChanges": [
+    "src/backend/claude-code.ts",
+    "src/backend/types.ts",
+    "src/channel/mcp-tools.ts",
+    "src/fleet-manager.ts",
+    "src/general-knowledge/skills/concepts/SKILL.md",
+    "src/general-knowledge/skills/web-dashboard/SKILL.md",
+    "src/instance-lifecycle.ts",
+    "src/locale.ts",
+    "src/log-steps.ts",
+    "src/needs-you-hub.ts",
+    "src/office-share-page.ts",
+    "src/outbound-handlers.ts",
+    "src/outbound-schemas.ts",
+    "src/ui/panel-details.js",
+    "src/ui/panel-needs.js",
+    "src/web-api.ts",
+    "tests/web-details-n2.test.ts",
+    "tests/web-log-tab-1218.test.ts",
+    "tests/web-needs-1408.test.ts"
+  ],
+  "adapted": [
+    "src/auth-api.ts",
+    "src/claude-model-observation.ts",
+    "src/daemon.ts",
+    "src/needs-you.ts",
+    "src/transcript-monitor.ts",
+    "src/ui/panel-log.js",
+    "src/ui/shared/app-i18n.js",
+    "tests/claude-model-switch-daemon.test.ts",
+    "tests/needs-you-hub-1386.test.ts"
+  ],
+  "nativeOnly": [
+    "src/runtime-transcript-source.ts",
+    "src/transcript-records.ts",
+    "src/transcript-sources.ts",
+    "src/ui/log-row.js",
+    "tests/claude-model-runtime-observation.test.ts"
+  ],
+  "adaptationNotes": {
+    "auth-api": "Retain alpha device roles while admitting the same string/format leaf.",
+    "claude-model-observation": "Same normalization/intent/recovery with optional default-true inference gate; native baseline/gap passes false.",
+    "daemon": "Retain fleet bridge/followLog; native exact-source/current-lifecycle fences.",
+    "needs-you": "Keep alpha Hub/native reasons plus the model reason.",
+    "transcript-monitor": "Retain extracted grammar/workspace generations; local metadata-only startup tail plus native ordered owner-checked records.",
+    "panel-log": "Alpha uses shared log-row; preserve anchors/thinking/compact timeline behavior.",
+    "app-i18n": "Keep alpha Hub/native reason words plus model reason.",
+    "tests": "Native daemon/current-source controls and alpha existing Needs-you shape retained."
+  }
+}

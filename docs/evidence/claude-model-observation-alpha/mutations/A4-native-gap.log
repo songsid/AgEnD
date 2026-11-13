@@ -1,0 +1,40 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 37ms
+   × a native gap preserves typed evidence and suppresses inferred switches across missing intent 13ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  17:37:03
+   Duration  799ms (transform 414ms, setup 144ms, import 407ms, tests 37ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-runtime-observation.test.ts > a native gap preserves typed evidence and suppresses inferred switches across missing intent
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match object { lastServed: 'claude-opus-4-8', …(2) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "active": null,
++   "active": {
++     "cause": "observed",
++     "id": "cad200a5-821e-4e15-b3b8-2202a8bcb544:response:served:opus-4.8",
++     "original": "claude-opus-5-5",
++     "scope": "unknown",
++     "served": "claude-opus-4-8",
++     "since": 1794562624560,
++   },
+    "lastServed": "claude-opus-4-8",
+    "session": null,
+  }
+
+ ❯ tests/claude-model-runtime-observation.test.ts:39:63
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

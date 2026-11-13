@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch-daemon.test.ts (4 tests | 1 failed) 115ms
+   × native observations need the exact source and current native lifecycle, with session selection unresolved 10ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  17:36:50
+   Duration  4.91s (transform 3.62s, setup 175ms, import 4.40s, tests 115ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > native observations need the exact source and current native lifecycle, with session selection unresolved
+AssertionError: expected 'claude-haiku-4-5' to be 'claude-opus-4-8' // Object.is equality
+
+Expected: "claude-opus-4-8"
+Received: "claude-haiku-4-5"
+
+ ❯ tests/claude-model-switch-daemon.test.ts:70:46
+     68|   expect(d.modelObservation()).toMatchObject({ session: null, active: …
+     69|   live = false; m.emit("model_observation", { ...record, id: "late", s…
+     70|   expect(d.modelObservation().active.served).toBe("claude-opus-4-8");
+       |                                              ^
+     71|   const unowned = d.buildTranscriptMonitor({ ...source }); d.transcrip…
+     72|   unowned.emit("model_observation", record); expect(d.modelObservation…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

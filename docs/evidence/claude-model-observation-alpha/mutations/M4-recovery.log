@@ -1,0 +1,159 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (58 tests | 5 failed) 96ms
+     × one incident survives repeated notices and response blocks, recovers, then allows a new incident 9ms
+     × a local fallback does not rewrite session selection and is recovered by a later configured response 2ms
+     × a return to the configured model recovers a fallback that followed next-spawn failover 1ms
+     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 2ms
+     × Needs you uses the incident identity for quiet updates, and removes it on recovery 4ms
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 53 passed (58)
+   Start at  17:33:40
+   Duration  708ms (transform 318ms, setup 100ms, import 311ms, tests 96ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > one incident survives repeated notices and response blocks, recovers, then allows a new incident
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "safeguards",
+  "id": "session-A:notice:notice-A",
+  "original": "claude-opus-5-5",
+  "scope": "session",
+  "served": "claude-opus-4-8",
+  "since": 1794562421320,
+}
+
+ ❯ tests/claude-model-switch.test.ts:88:118
+     86|     o.observe(parse(served()), "claude-opus-4-8"); o.observe(parse(ser…
+     87|     expect(o.snapshot().active?.id).toBe(first.id);
+     88|     o.observe(parse(served("claude-opus-5-5", "response-recovery")), "…
+       |                                                                                                                      ^
+     89|     o.observe(parse({ ...notice(), uuid: "notice-C" }), "claude-opus-4…
+     90|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a local fallback does not rewrite session selection and is recovered by a later configured response
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "safeguards",
+  "id": "session-A:notice:notice-A",
+  "original": "claude-opus-5-5",
+  "scope": "turn",
+  "served": "claude-opus-4-8",
+  "since": 1794562421329,
+}
+
+ ❯ tests/claude-model-switch.test.ts:95:105
+     93|     o.observe(parse({ ...notice(), scope: "local" }), "claude-opus-5-5…
+     94|     expect(o.snapshot()).toMatchObject({ session: "claude-opus-5-5", l…
+     95|     o.observe(parse(served("claude-opus-5-5", "next")), "claude-opus-5…
+       |                                                                                                         ^
+     96|   });
+     97|   it("serving a concrete unexpected model proves a difference, not its…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a return to the configured model recovers a fallback that followed next-spawn failover
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "safeguards",
+  "id": "session-A:notice:notice-A",
+  "original": "claude-opus-4-8",
+  "scope": "session",
+  "served": "claude-sonnet-5-5",
+  "since": 1794562421331,
+}
+
+ ❯ tests/claude-model-switch.test.ts:106:33
+    104|     expect(o.snapshot().active?.served).toBe("claude-sonnet-5-5");
+    105|     o.observe(parse(served("claude-opus-5-5", "configured-recovery")),…
+    106|     expect(o.snapshot().active).toBeNull();
+       |                                 ^
+    107|   });
+    108|   it("next-spawn failover is a launch selection, not a detected provid…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers
+AssertionError: expected { …(7) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "baseline": true,
+  "cause": "safeguards",
+  "id": "session-A:notice:notice-A",
+  "original": "claude-opus-5-5",
+  "scope": "session",
+  "served": "claude-opus-4-8",
+  "since": 1794562421333,
+}
+
+ ❯ tests/claude-model-switch.test.ts:127:127
+    125|     const items = deriveNeedsYou({ prompts: [], instances: [{ name: "w…
+    126|     expect(items[0].quiet).toBe(true);
+    127|     resumed.observe(parse(served("claude-opus-5-5", "fresh-recovery"))…
+       |                                                                                                                               ^
+    128|     resumed.bindSession("new-session", "claude-opus-5-5"); expect(resu…
+    129|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > Needs you uses the incident identity for quiet updates, and removes it on recovery
+AssertionError: expected [ { …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "detail": "claude-opus-5-5 → claude-opus-4-8",
++     "id": "model:worker:session-A:notice:notice-A",
++     "instance": "worker",
++     "modelSwitch": {
++       "cause": "safeguards",
++       "id": "session-A:notice:notice-A",
++       "original": "claude-opus-5-5",
++       "scope": "session",
++       "served": "claude-opus-4-8",
++       "since": 1794562421338,
++     },
++     "reason": "model_switch",
++     "since": 1794562421338,
++     "type": "instance",
++   },
++ ]
+
+ ❯ tests/claude-model-switch.test.ts:173:36
+    171|     expect(deriveNeedsYou(inputs)[0].id).toBe(first[0].id);
+    172|     o.observe(parse(served("claude-opus-5-5", "recovered")), "claude-o…
+    173|     expect(deriveNeedsYou(inputs)).toEqual([]);
+       |                                    ^
+    174|   });
+    175| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+

@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 78ms
+     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 7ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 57 passed (58)
+   Start at  17:33:32
+   Duration  650ms (transform 285ms, setup 132ms, import 254ms, tests 78ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/claude-model-switch.test.ts:124:65
+    122|     resumed.bindSession("session-A", "claude-opus-4-8");
+    123|     expect(resumed.snapshot().active).toMatchObject({ id: prior.snapsh…
+    124|     expect(resumed.observe(parse(served()), "claude-opus-4-8")).toBe(f…
+       |                                                                 ^
+    125|     const items = deriveNeedsYou({ prompts: [], instances: [{ name: "w…
+    126|     expect(items[0].quiet).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

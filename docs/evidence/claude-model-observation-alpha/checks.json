@@ -1,0 +1,321 @@
+{
+  "sourceHead": "34d236d2d98f10440c0819b20134aee47ee36f63",
+  "baseline": "71dbc782956047c413b9f367a572e38c39d53651",
+  "main": "f773dc990218e255e59b8bd3773f0eda2bfde429",
+  "sourceInputs": [
+    {
+      "digest": "bd5df81c11b885d6436cd5d6958777191ca0cc22367ec27efa3b8a3956d5746a",
+      "paths": [
+        "changes/3815-claude-model-observations.md"
+      ]
+    },
+    {
+      "digest": "3e23424092325e5607ac6e0ecd874c06337a7377f63ae2458ca59565e0f9702c",
+      "paths": [
+        "changes/3815-claude-model-observations.zh-TW.md"
+      ]
+    },
+    {
+      "digest": "9049b990551cddf3f53f28f86415a0259e0ee06c62c2d419d35b25d0ed3aedac",
+      "paths": [
+        "docs/concepts.md"
+      ]
+    },
+    {
+      "digest": "2abf90b97a6a7b52cb770a3b4cd5622c9efbd6f5b6e9f9eb6112a77608bf933a",
+      "paths": [
+        "docs/design/claude-model-observation.md"
+      ]
+    },
+    {
+      "digest": "07a82f75ea6f16f3d59d42ac251f12fb26cfd9a4202e263faa689ca248cd5f04",
+      "paths": [
+        "scripts/manual/claude-model-observation-browser.mts"
+      ]
+    },
+    {
+      "digest": "5a51e580f54c34f2a934cad0564f7088822c4b308ac653223b4445a51f3f7577",
+      "paths": [
+        "src/auth-api.ts"
+      ]
+    },
+    {
+      "digest": "af619e95ec7451e91c7130abb9ecbc88806ae133118d74d385a0718489ead205",
+      "paths": [
+        "src/backend/claude-code.ts"
+      ]
+    },
+    {
+      "digest": "0d3b2885bfdf4f8553302e9a51616edf9e7b41a37c9586148fe1203e4ee3816e",
+      "paths": [
+        "src/backend/types.ts"
+      ]
+    },
+    {
+      "digest": "3a09d1c338d3897e818f0f2a6069a8787a961abc82d22c8105f0e074eb1b3fec",
+      "paths": [
+        "src/channel/mcp-tools.ts"
+      ]
+    },
+    {
+      "digest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
+      "paths": [
+        "src/claude-model-observation.ts"
+      ]
+    },
+    {
+      "digest": "40a84ee25feda5247910b0894ad0e312192b0aa392c2622863359604690ed107",
+      "paths": [
+        "src/daemon.ts"
+      ]
+    },
+    {
+      "digest": "20bcbb1c9a6946c85009ef3b1536619e3b6e48c6a050a50099dc4a400557a062",
+      "paths": [
+        "src/fleet-manager.ts"
+      ]
+    },
+    {
+      "digest": "cd45882c4793a3e74930a47f6f683f918e7bc0ef2687190d87011f27ba66df78",
+      "paths": [
+        "src/general-knowledge/skills/concepts/SKILL.md"
+      ]
+    },
+    {
+      "digest": "2772b5db2420806fa701810845c2589b50fab6ce5cda6cb49985457e6cbb6483",
+      "paths": [
+        "src/general-knowledge/skills/web-dashboard/SKILL.md"
+      ]
+    },
+    {
+      "digest": "29d6e11f576fc40460e883dadc5de024c49281413041fabc10946f80c6222ebf",
+      "paths": [
+        "src/instance-lifecycle.ts"
+      ]
+    },
+    {
+      "digest": "50400f7bd33105f486c8d2412ef4f3025bfff16d6a45e32a5ab620f721fd19cb",
+      "paths": [
+        "src/locale.ts"
+      ]
+    },
+    {
+      "digest": "f046acf9c9f172195a183a6ed2db50088fcbb7373f58acd344e8805f35c56c82",
+      "paths": [
+        "src/log-steps.ts"
+      ]
+    },
+    {
+      "digest": "5306e915189405ee3d96b499aae4dc122e0c385d45885c17a1ef91417b41dc77",
+      "paths": [
+        "src/needs-you-hub.ts"
+      ]
+    },
+    {
+      "digest": "d6ab0264c0d74f583aa492989a86ff37288dd5c32f63b418bdab61e4f49c7137",
+      "paths": [
+        "src/needs-you.ts"
+      ]
+    },
+    {
+      "digest": "9f44fcd6b404da768cf96d94bf5b49b0cbc2f3b313640b294da220afa1dfe85d",
+      "paths": [
+        "src/office-share-page.ts"
+      ]
+    },
+    {
+      "digest": "14f02f41403f15bbe98a917a7b28de9825e3b8de1fdf37733bf692141dab9c7a",
+      "paths": [
+        "src/outbound-handlers.ts"
+      ]
+    },
+    {
+      "digest": "e149b3c66ea1a253b8f06ab7bd2af0fc44a6a7245afa642d988d4db52f8baf8f",
+      "paths": [
+        "src/outbound-schemas.ts"
+      ]
+    },
+    {
+      "digest": "7b19254fe34cd3ef034cf0e3f6f6f07f6c0b2f90116324efce9ba1599557208e",
+      "paths": [
+        "src/runtime-transcript-source.ts"
+      ]
+    },
+    {
+      "digest": "d9f9bfafaaf74826d457ad81e1c08944de9b88f154f0eedee2d63b142219f91d",
+      "paths": [
+        "src/transcript-monitor.ts"
+      ]
+    },
+    {
+      "digest": "bd2a4ca6120c32568cd5e4402196975acdcb9f261bcb5c3bcf2ddf20986535c6",
+      "paths": [
+        "src/transcript-records.ts"
+      ]
+    },
+    {
+      "digest": "baa9df056dcfddbab032677b617881b46d7515b61de657d0397361cf363d5c55",
+      "paths": [
+        "src/transcript-sources.ts"
+      ]
+    },
+    {
+      "digest": "898817ba61a5cf8d1a94dc488a384687e50c1d510474a11e6c9ef9da99777d48",
+      "paths": [
+        "src/ui/fleet-canvas.js"
+      ]
+    },
+    {
+      "digest": "0523431fa73d3c79c52ac464dbd2d131e9cfe26753b1e383a47fbf874129e9cc",
+      "paths": [
+        "src/ui/fleet-office-card.js"
+      ]
+    },
+    {
+      "digest": "7ab4ee299c0f3a4641bca0d7f2a863ee74cd8ab1208040784a449b1e9fd4476e",
+      "paths": [
+        "src/ui/fleet-org.js"
+      ]
+    },
+    {
+      "digest": "920449ae8986c3648277b550e3637dace1d5b804a374c77ac32da44dc2d28672",
+      "paths": [
+        "src/ui/log-row.js"
+      ]
+    },
+    {
+      "digest": "fde387fb803ba08d7dc087f01240fc2000d08ddc720030db59f73740fd5a9b80",
+      "paths": [
+        "src/ui/panel-details.js"
+      ]
+    },
+    {
+      "digest": "59de925bd2a64869db9fdbf54061900557b058940b836dcfb2a79ae21f11bc88",
+      "paths": [
+        "src/ui/panel-needs.js"
+      ]
+    },
+    {
+      "digest": "efa73d2f985b029c8f81e9893c9f8a67df75e67cfb85b8bf7bf070d4c55303cf",
+      "paths": [
+        "src/ui/shared/app-i18n.js"
+      ]
+    },
+    {
+      "digest": "47fdfcbd3dd53d6d2ef90943ce3cdd2aabb5178454f01a6c90968497a805c8c2",
+      "paths": [
+        "src/ui/shared/app-needs.js"
+      ]
+    },
+    {
+      "digest": "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef",
+      "paths": [
+        "src/ui/shared/model-observation.js"
+      ]
+    },
+    {
+      "digest": "332fbee7075532a9167997a75c178d56db94231f75ab25ab0121fdc424737d96",
+      "paths": [
+        "src/web-api.ts"
+      ]
+    },
+    {
+      "digest": "1e52ef26aab8abc693b160e68d6fdade8696a3ac90b8aed3de333cbe5a782840",
+      "paths": [
+        "tests/claude-credential-profile-1699.test.ts"
+      ]
+    },
+    {
+      "digest": "48fc37b760ee4c03b9a738eb407b0871e7831404b7eee94df7044200631ca5af",
+      "paths": [
+        "tests/claude-model-runtime-observation.test.ts"
+      ]
+    },
+    {
+      "digest": "6780f5ae35f0598fbe9d00f90eb7d2df8253fc9bacab66f016d1152ff7acd892",
+      "paths": [
+        "tests/claude-model-switch-daemon.test.ts"
+      ]
+    },
+    {
+      "digest": "acae404f710c2a911e580c598c67fce9613a93c32aa4b40429c56e7186c3c451",
+      "paths": [
+        "tests/claude-model-switch.test.ts"
+      ]
+    },
+    {
+      "digest": "79538d7498039996560c814daaa5e01ac7e50b48a786df3504bb78aefa82fcdb",
+      "paths": [
+        "tests/claude-prompt-cache-ttl-2010.test.ts"
+      ]
+    },
+    {
+      "digest": "84a13ef0b70384f92c9701526b3f2a7868a48a78c400971913fc3b4fd21f4e60",
+      "paths": [
+        "tests/claude-shared-memory-1754.test.ts"
+      ]
+    },
+    {
+      "digest": "5ad406c8dd9ce854023bbc3e93f571feb98c040b4a517517235b714eefcffb15",
+      "paths": [
+        "tests/needs-you-hub-1386.test.ts"
+      ]
+    },
+    {
+      "digest": "76dee648c7ca3636939c1bd35974dcd01ebd40a9cd7353f5c63cbf76da692ad7",
+      "paths": [
+        "tests/office-card-2661.test.ts"
+      ]
+    },
+    {
+      "digest": "0558711e45af798b4ebe4900c10695458ef652bded5006ec0b999d658abefdec",
+      "paths": [
+        "tests/web-details-n2.test.ts"
+      ]
+    },
+    {
+      "digest": "0eed856018ea3d9ff8f100c4f48b8815948ea4178ca87816f3e9f9b0acb0d59a",
+      "paths": [
+        "tests/web-log-tab-1218.test.ts"
+      ]
+    },
+    {
+      "digest": "c0f832c78bfd6c58cb3e885365279937dd1d81f800917f98e65adc94b37366cb",
+      "paths": [
+        "tests/web-needs-1408.test.ts"
+      ]
+    }
+  ],
+  "focused": {
+    "passed": 469,
+    "files": 23,
+    "workers": 2,
+    "log": "checks/final-controls.log"
+  },
+  "types": {
+    "compiler": "native TypeScript7.0.2",
+    "source": 0,
+    "tests": 0
+  },
+  "mutations": {
+    "caught": 20,
+    "isolated": true,
+    "allRestored": true,
+    "record": "mutations/results.json"
+  },
+  "browser": {
+    "captureHead": "34d236d2d98f10440c0819b20134aee47ee36f63",
+    "cases": 15,
+    "pngs": 53,
+    "checkpoints": 61,
+    "receipt": "browser/receipt.json",
+    "visualReviewOriginals": 15,
+    "phone": "Settings Overview explicitly opened; category index is not the runtime page."
+  },
+  "liveVendorCalls": 0,
+  "liveTranscriptReads": 0,
+  "livePaneWrites": 0,
+  "realNativeMachines": 0,
+  "modelOrPolicyActions": 0,
+  "alphaMergeHold": "2.4.0-alpha.3 rehearsal freeze; coordinator/Leader clearance required."
+}

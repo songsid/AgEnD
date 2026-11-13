@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch-daemon.test.ts (4 tests | 1 failed) 120ms
+   × the actual daemon wires metadata to read-only presentation, persists it, and fences replaced monitors/launches 18ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  17:34:06
+   Duration  2.99s (transform 2.06s, setup 86ms, import 2.64s, tests 120ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon wires metadata to read-only presentation, persists it, and fences replaced monitors/launches
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ ❯ tests/claude-model-switch-daemon.test.ts:34:21
+     32|   expect(JSON.parse(readFileSync(join(dir, "claude-model-observation.j…
+     33|   d.launchFenceEpoch++; m.processEntry({ ...record, uuid: "stale-gener…
+     34|   expect(attention).toHaveBeenCalledTimes(1); expect(d.modelObservatio…
+       |                     ^
+     35|   d.launchFenceEpoch--; d.transcriptMonitor = {}; m.processEntry({ ...…
+     36|   expect(attention).toHaveBeenCalledTimes(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

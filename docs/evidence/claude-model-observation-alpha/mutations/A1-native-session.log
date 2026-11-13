@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 29ms
+   × the native source itself never projects metadata from a different embedded session 7ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  17:36:20
+   Duration  3.99s (transform 3.21s, setup 2.70s, import 756ms, tests 29ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-runtime-observation.test.ts > the native source itself never projects metadata from a different embedded session
+AssertionError: expected [ …(2) ] to deeply equal [ Array(1) ]
+
+- Expected
++ Received
+
+  [
++   "54ccd01c-4f0f-4e8f-8fe7-df4fcf7e33a1",
+    "0f1fbf3f-3d9b-4997-b176-ea5fc7e83fb1",
+  ]
+
+ ❯ tests/claude-model-runtime-observation.test.ts:50:93
+     48|  const f = rig(); await f.source.initialize(); f.add({ ...f.record(), …
+     49|  const events = await f.source.poll();
+     50|  expect(events.records?.flatMap(r => r[0] === "model_observation" ? [r…
+       |                                                                                             ^
+     51| });
+     52|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
