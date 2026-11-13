@@ -193,11 +193,12 @@ describe("active hook + append source ownership", () => {
   it("keeps first records written by this launch before the monitor was constructed", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-switch-early-")); dirs.push(dir);
     const path = join(dir, "session-A.jsonl"), startedAt = Date.now() - 1000;
-    writeFileSync(path, JSON.stringify(notice()) + "\n");
+    writeFileSync(path, [notice(), { ...served(), message: { ...served().message, content: [{ type: "text", text: "not a new text event" }] } }].map(e => JSON.stringify(e)).join("\n") + "\n");
     await new Promise(resolve => setTimeout(resolve, 20));
     writeFileSync(join(dir, "statusline.json"), JSON.stringify({ _agendLaunchId: "launch-A", session_id: "session-A", transcript_path: path }));
     const m = new TranscriptMonitor(dir, pino({ level: "silent" }) as any, null, () => ({ id: "launch-A", startedAt }));
-    const events: any[] = []; m.on("model_observation", e => events.push(e));
-    await m.pollIncrement(); await m.pollIncrement(); expect(events).toHaveLength(1);
+    const events: any[] = [], texts: string[] = []; m.on("model_observation", e => events.push(e)); m.on("assistant_text", text => texts.push(text));
+    await m.pollIncrement(); await m.pollIncrement(); expect(events).toHaveLength(2);
+    expect(texts).toEqual([]); // Adding observations must not replay the existing text/alarm path.
   });
 });
