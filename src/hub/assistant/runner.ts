@@ -9,6 +9,7 @@ function deferred<T>() {
 type Job = ReturnType<typeof deferred<{ text: string }>> & { input: RoomAssistantAsk };
 type Entry = {
   roomId: string;
+  roomName: string;
   state: "starting" | "working" | "idle" | "stopping" | "failed";
   controller: AbortController;
   done: ReturnType<typeof deferred<void>>;
@@ -86,6 +87,21 @@ export class RoomAssistantRunner implements RoomAssistant {
     this.schedule();
   }
 
+  /** Admin status contains names/lifecycle only, never prompts or answers. */
+  instances(): Array<{ roomId: string; roomName: string; state: Entry["state"]; lastUsed: number }> {
+    return [...this.entries.values()].map(({ roomId, roomName, state, lastUsed }) => ({ roomId, roomName, state, lastUsed }));
+  }
+
+  /** Admin Stop retains room membership; the next ask may start a fresh instance. */
+  async stopRoom(roomId: string): Promise<void> {
+    const entry = this.entries.get(roomId);
+    this.forget(roomId);
+    if (entry) {
+      await entry.done.promise;
+      if (entry.stopError !== undefined) throw new Error("Room assistant instance did not stop");
+    }
+  }
+
   /** Fleet shutdown/config replacement drains every physical owner before returning. */
   close(): Promise<void> {
     if (this.closing) return this.closing;
@@ -127,7 +143,7 @@ export class RoomAssistantRunner implements RoomAssistant {
       } else if (this.entries.size < this.config.cap) {
         this.queue.splice(index, 1);
         const entry: Entry = {
-          roomId: job.input.roomId, state: "starting", controller: new AbortController(),
+          roomId: job.input.roomId, roomName: job.input.roomName, state: "starting", controller: new AbortController(),
           done: deferred<void>(), lastUsed: this.now(), stopStarted: false, job,
         };
         this.entries.set(entry.roomId, entry); // reserve before the first await
@@ -161,6 +177,7 @@ export class RoomAssistantRunner implements RoomAssistant {
 
   private async run(entry: Entry, job: Job): Promise<void> {
     entry.state = "working";
+    entry.roomName = job.input.roomName;
     entry.job = job;
     try {
       const result = await entry.session!.ask(job.input, entry.controller.signal);
