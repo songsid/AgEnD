@@ -1,0 +1,34 @@
+/* Hub rooms, track U2: New room, Room settings, the members panel, invitations and Administration → Rooms. Its own
+   stylesheet (linked by hub-room-new-strings.js's linkRoomsU2Css, which every U2 module calls), so a tab holding an older
+   hub-chat.css or hub-owner.css still draws these. Built on the shared field / btn / tag / dot / note pieces; only the
+   layout of tags, results, rows and the rail is here. */
+.hub-room-picker { display: flex; flex-direction: column; gap: var(--s-1); }
+.hub-room-tags { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.hub-room-tags > .tag { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-xs); max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.hub-room-results { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); max-height: 240px; overflow-y: auto; }
+.hub-room-result { display: flex; width: 100%; align-items: baseline; gap: var(--s-2); padding: var(--s-2); background: transparent; border: 0; text-align: start; cursor: pointer; color: inherit; font: inherit; min-height: 40px; }
+.hub-room-result:hover, .hub-room-result:focus-visible { background: var(--surface-2); }
+.hub-room-new .form, .hub-room-settings section.form { display: flex; flex-direction: column; gap: var(--s-3); }
+.hub-room-settings section + section { margin-top: var(--s-4); }
+.hub-room-settings h4, .hub-room-members h4, .hub-agent-rooms h4 { margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
+.hub-room-settings fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.hub-settings-people, .hub-settings-agents, .hub-settings-invited, .hub-agent-rooms ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.hub-settings-row, .hub-agent-rooms li { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-1) 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.hub-settings-row > span { min-width: 0; overflow-wrap: anywhere; }
+.hub-room-members { display: flex; flex-direction: column; gap: var(--s-4); padding: var(--s-3); }
+.hub-room-members ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.hub-member, .hub-member-open { display: flex; flex-direction: column; gap: 2px; }
+.hub-member-open { width: 100%; background: transparent; border: 0; padding: var(--s-1); border-radius: var(--r-sm); text-align: start; cursor: pointer; color: inherit; font: inherit; }
+.hub-member-open:hover, .hub-member-open:focus-visible { background: var(--surface-2); }
+.hub-member-state { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
+.hub-member-card { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-2); margin: var(--s-1) 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.hub-member-card .field-row { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.hub-invitations { display: flex; flex-direction: column; gap: var(--s-2); }
+.hub-invitation { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.hub-invitation p { margin: 0; overflow-wrap: anywhere; }
+.hub-invitations-row { display: flex; width: 100%; align-items: center; padding: var(--s-2) var(--s-3); background: var(--surface-2); border: 0; border-radius: var(--r-sm); cursor: pointer; color: inherit; font: inherit; font-weight: 600; min-height: 40px; }
+.hub-admin-rooms { display: flex; flex-direction: column; gap: var(--s-4); }
+.hub-admin-all-rooms { overflow-x: auto; }
+.hub-admin-rooms-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.hub-admin-rooms-table th, .hub-admin-rooms-table td { text-align: start; padding: var(--s-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.hub-admin-rooms-table td:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 8em; }

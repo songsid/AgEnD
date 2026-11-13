@@ -7,6 +7,9 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { hubClient } from "./hub-client.js";
 import { hm } from "./hub-room-members-strings.js";
 import { hroom } from "./hub-room-strings.js";
+import { linkRoomsU2Css } from "./hub-room-new-strings.js";
+
+linkRoomsU2Css();
 
 const AGENT_ORDER = { working: 0, idle: 1, paused: 2, offline: 3, later: 4 };
 const AGENTS_SHOWN = 8;

@@ -7,6 +7,9 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { hubClient } from "./hub-client.js";
 import { hi } from "./hub-invitations-strings.js";
 import { hroom } from "./hub-room-strings.js";
+import { linkRoomsU2Css } from "./hub-room-new-strings.js";
+
+linkRoomsU2Css();
 
 /** The pending invitations to my agents: { list (null while loading), error, reload, answer(id, accept) → Promise<boolean> }. */
 export function useInvitations(client = hubClient()) {

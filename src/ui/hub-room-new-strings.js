@@ -26,3 +26,13 @@ register("hubRoomNew", {
   },
 });
 export const hn = (key, ...args) => t(`hubRoomNew.${key}`, ...args);
+
+/** The U2 screens' stylesheet, linked once (an older hub-chat.css or hub-owner.css lacks these rules). */
+export function linkRoomsU2Css(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-hub-rooms-u2-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-rooms-u2.css"); link.setAttribute("data-hub-rooms-u2-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* the screens still work without it */ }
+}

@@ -11,6 +11,9 @@ import { hubClient } from "./hub-client.js";
 import { hroom } from "./hub-room-strings.js";
 import { ha } from "./hub-admin-rooms-strings.js";
 import { RoomPicker } from "./hub-room-new.js";
+import { linkRoomsU2Css } from "./hub-room-new-strings.js";
+
+linkRoomsU2Css();
 
 export function AdminRooms({ client = hubClient() } = {}) {
   const [creators, setCreators] = useState(null), [rooms, setRooms] = useState(null), [failed, setFailed] = useState(false);

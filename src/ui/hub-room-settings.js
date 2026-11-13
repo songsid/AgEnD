@@ -15,6 +15,9 @@ import { hubClient } from "./hub-client.js";
 import { hroom } from "./hub-room-strings.js";
 import { hs } from "./hub-room-settings-strings.js";
 import { RoomPicker } from "./hub-room-new.js";
+import { linkRoomsU2Css } from "./hub-room-new-strings.js";
+
+linkRoomsU2Css();
 
 const NAME_MAX = 60;
 const isAgent = (m) => m.kind === "agent" || m.kind === "later";

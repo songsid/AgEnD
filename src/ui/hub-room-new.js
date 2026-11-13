@@ -8,7 +8,9 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { hubClient } from "./hub-client.js";
 import { hroom } from "./hub-room-strings.js";
-import { hn } from "./hub-room-new-strings.js";
+import { hn, linkRoomsU2Css } from "./hub-room-new-strings.js";
+
+linkRoomsU2Css();
 
 const NAME_MAX = 60;
 const SEARCH_DELAY_MS = 200;
