@@ -144,7 +144,7 @@ Hub 現在只有兩種人：
 | 設定檔的管理員 | 「管理員」角色，指派給這個人，標記為「第一位管理員」，不能移除。**他今天沒有自動的對話、分享、連接權限（要靠群組），搬過去之後也一樣**；要套用管理員角色的新預設（含 8 台），由他自己在角色頁按一次「套用新的預設」，儲存前會顯示影響 |
 | 群組權限裡的每一條規則（群組 + 三項權限的組合 + 每人幾台） | 一筆指派：AD 群組 → 角色，**台數記在這一筆指派上**（0–8，原樣保留）。三項全有就是「成員」；只有部分的，各對應一個「沿用」角色，最多 7 種。同一個人符合多筆時，台數取最大值，和今天一樣，不相加。成員 1 台、主管 2 台是之後新指派的預設，不會改動搬過來的數字 |
 | 個別禁止 | 原樣保留，優先於角色 |
-| 群組權限「從未開啟」的舊 Hub | 維持舊行為（登入的人都能對話，連接要管理員核准），直到管理員第一次開啟角色 |
+| 群組權限「從未開啟」的舊 Hub | 維持舊行為（登入的人都能對話，連接要管理員核准），直到管理員開啟「自己使用」這三項的權限設定為止。這和今天第一次儲存群組是同一個動作，儲存前一樣會顯示誰會失去原本的使用權。升級後角色功能本身就是開啟的（可以指派第二位管理員），但不會因此改變任何人的使用權 |
 | 個別邀請、加入碼、手動配對碼 | 不變。它們是一次性的核准，不是角色 |
 | 擁有者對某人的「允許提問」 | 不變。那是擁有者的授權，不是 Hub 的角色 |
 
@@ -255,6 +255,17 @@ Losslessness, tested on a matrix of all three old states × overlapping rules ×
 - each group rule → one assignment to the role with that capability set, its `maxFleets` on the assignment;
 - `suspended`, the ever-enabled latch, retained resource state and explicit Resume are carried unchanged;
 - the configured administrator → root admin, with **no** self-use permissions added (today it has no automatic ask / publish / pair exception). In `can()` the root's management permissions are evaluated separately from the self-use bits: a blanket "built-in admin has everything" evaluation would re-add them by accident and is not allowed. The D7 defaults (member 1, manager 2, admin 8) apply to assignments made after migration. The root gets them only through the configured-root-only activation named in A.4.4 (`role.root-self-use-activated`, previewed, audited, notified), or when another admin assigns them.
+
+State table. `rolesActive` and `state` are independent: no transition of one changes the other, and neither touches the ever-enabled latch.
+
+| `rolesActive` | `state` | Management | Self-use |
+|---|---|---|---|
+| true | never-enabled | by roles | `legacy`, as today. Self-use bits on assignments are stored but not evaluated, and the editor says so |
+| true | enabled | by roles | by assignments, denies win |
+| true | suspended | by roles | denied (suspended), as today |
+| false | any | configured root only | as the row above for that `state`, by forward projection |
+
+Automatic migration sets `rolesActive = true` and leaves `state` exactly as it was. `never-enabled → enabled` stays its own previewed, audited self-use activation (today's first group save), whose preview shows the loss of legacy access. Turning roles on or off never performs it.
 
 Switching roles off is a new monotone transition, not a snapshot restore. It flips `rolesActive` and never touches `state`: `suspended` keeps its one meaning (the self-use policy is suspended) and the ever-enabled latch is untouched, so off is not encoded as a suspension. With roles off, management returns to the configured root only, and team and Hub-management permissions confer nothing (their assignments stay stored, inert). The self-use rules keep working by forward projection of the current document: each assignment's three self-use permissions and its fleet limit, plus current denies, revocations and suspensions. Restoring a saved pre-migration snapshot could resurrect removed permissions or revoked resources, so it is not offered. Turning roles back on is a reactivation of the current document, not a restore: a previewed, audited new policy and authorization revision that re-reads the current time and subject / target facts, keeps every assignment revoked, removed or expired in the meantime and every resource suspension, and never revives old permits, leases or SSE streams. A binary downgrade is a separate schema and backup operation. Crash points and repeated disable are pinned like the migration.
 
