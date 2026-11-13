@@ -102,7 +102,14 @@ try {
     await context.addCookies([{ name: admin.cookie.slice(0, adminAt), value: admin.cookie.slice(adminAt + 1), url: origin, httpOnly: true, secure: true, sameSite: "Strict" }]);
     await p.goto(origin + "/ui/hub/admin"); await p.locator("#hubRoomCreators").waitFor();
     check(tag + " admin room card uses named creator projection", (await p.locator(".hub-admin-creators").innerText()).includes("Alex"));
-    check(tag + " admin room table contains actual created room", (await p.locator(".hub-admin-rooms-table").innerText()).includes(renamed)); await shot("admin");
+    check(tag + " admin room table contains actual created room", (await p.locator(".hub-admin-rooms-table").innerText()).includes(renamed));
+    const assistantCard = p.getByRole("heading", { name: lang === "en" ? "Room assistant" : "房間助理", exact: true }).locator("..");
+    await assistantCard.getByRole("combobox", { name: lang === "en" ? "Backend" : "後端", exact: true }).waitFor();
+    check(tag + " signed-in assistant account omits sign-in instructions", (await assistantCard.locator(".s-group .note").first().innerText()) === (lang === "en" ? "Signed in." : "已登入"));
+    check(tag + " admin cards keep rooms-assistant-fleets-pairing order", await assistantCard.evaluate((card: Element) => {
+      const nodes = [document.querySelector(".hub-admin-rooms"), card, document.querySelector(".hub-fleet-list"), document.querySelector("#hubOwnerLogin")?.closest("section.card")];
+      return nodes.every((node, i) => !!node && (i === 0 || !!(nodes[i - 1]!.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)));
+    })); await shot("admin");
     check(tag + " admin view has no horizontal document overflow", await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await context.close();
   }
