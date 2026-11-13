@@ -1,0 +1,84 @@
+{
+  "inputHead": "bf03ad0cd94e813ac1f8a03c32a8187aa868ee70",
+  "inputDigests": {
+    "105409f33b73dc5b2d47989ab7e99fb8ab74792f97b2fb042322f6f96070a7ea": [
+      "src/ui/hub-client.js"
+    ],
+    "126c0d26660264607f8c497420e57e3319abacb0839dea105cfe3f2648c09975": [
+      "src/ui/hub-join-steps.js"
+    ],
+    "23139e2693941b0a0950bd7a8dacac81de4b1a3386f0b82ec8dbe1aaddc31956": [
+      "src/ui/hub-enrolment-code.js"
+    ],
+    "278b98358db595c91b6730be8a5df8d4672b2c2568f36a05b8770938bc81ea09": [
+      "tests/hub-read-deadline-3761.test.ts"
+    ],
+    "8fc781a73d1d44f65e60ca0b9918b80519cbf509e3efd1b5a2357abebc4303fa": [
+      "tests/hub-admin-backpressure-a2.test.ts"
+    ],
+    "7b69ef3ed45773c223bbae32875749998aedfeccc8ca22691ed247edb1c9f8c7": [
+      "scripts/manual/hub-read-deadline-3761/browser.mts"
+    ]
+  },
+  "commands": [
+    {
+      "argv": [
+        "node",
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "tests/hub-read-deadline-3761.test.ts",
+        "tests/hub-admin-backpressure-a2.test.ts",
+        "tests/hub-admin-read-http-a2.test.ts",
+        "tests/hub-enrolment-code-client-b2.test.ts",
+        "tests/hub-enrolment-code-slot-b2.test.ts",
+        "tests/hub-enrolment-code-ui-b2.test.ts",
+        "tests/hub-company-join-ui.test.ts",
+        "tests/hub-buttons-client.test.ts",
+        "tests/hub-u2-join-steps-2932.test.ts",
+        "tests/hub-ui-s3.test.ts",
+        "tests/hub-quick-pairing-ui.test.ts",
+        "tests/hub-attachments-ui.test.ts",
+        "tests/hub-continuation-3338.test.ts",
+        "tests/hub-admin-entry-ui.test.ts",
+        "tests/hub-shell-parity.test.ts",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "files": 15,
+      "tests": 264,
+      "log": "logs/final-focused.log.gz"
+    },
+    {
+      "argv": [
+        "node",
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit"
+      ],
+      "exit": 0,
+      "log": "logs/final-source-types.log.gz"
+    },
+    {
+      "argv": [
+        "node",
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "log": "logs/final-test-types.log.gz"
+    }
+  ],
+  "mutants": {
+    "count": 10,
+    "assertionCaught": 10,
+    "exactRestore": true
+  },
+  "browser": {
+    "receipt": "browser/receipt.json",
+    "cases": 11,
+    "checks": 117,
+    "pngs": 31,
+    "scope": "Owned HTTPS stalls with recorded API DTOs; timer accelerated120000ms to1000ms."
+  }
+}
