@@ -44,10 +44,15 @@ const cases = [
   ...matrix("desk-light-en,desk-dark-zh-TW").map(c => ({ ...c, variant: "availability" })),
   ...matrix("desk-light-en").map(c => ({ ...c, variant: "retained-panels" })),
 ];
-const results: any[] = [];
+const partial = join(out, "partial.json");
+const prior = process.env.RESUME === "1" ? JSON.parse(readFileSync(partial, "utf8")) : null;
+if (prior && (prior.head !== head || prior.tree !== tree || prior.baseline !== base)) throw Error("resume capture inputs differ");
+const results: any[] = prior?.results ?? [];
+const saveProgress = () => writeFileSync(partial, JSON.stringify({ head, tree, baseline: base, bindings, results }, null, 2) + "\n");
 try {
   for (const c of cases) {
-    if (loadavg()[0] > 10) throw Error("host load over10; pause campaign");
+    if (results.some(r => r.variant === c.variant && r.case === caseName(c))) continue;
+    if (loadavg()[0] > 10) { saveProgress(); throw Error("host load over10; pause campaign (resume with RESUME=1)"); }
     const observer = seed(c.variant), { page, ctx, csp } = await fx.page(c);
     const errors: string[] = [], served: any[] = [], substitutions: any[] = [], reads: Promise<void>[] = [];
     page.on("pageerror", (e: Error) => errors.push(e.message));
@@ -100,7 +105,7 @@ try {
     }
     if (errors.length || (await csp()).length) throw Error(JSON.stringify({ errors, csp: await csp() }));
     await Promise.all(reads);
-    results.push({ variant: c.variant, case: caseName(c), checks, substitutions, served }); await ctx.close();
+    results.push({ variant: c.variant, case: caseName(c), checks, substitutions, served }); await ctx.close(); saveProgress();
   }
 } finally { await fx.close(); }
 if (git("rev-parse", "HEAD") !== head || git("status", "--porcelain", "--untracked-files=no")) throw Error("source changed during capture");
