@@ -49,7 +49,7 @@ describe("#M-3027: Codex instructions get Persistence and Output style", () => {
     // Fable W1: the stop line is not an exhaustive "only" list; it names the web-chat rule's go-ahead classes.
     expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).not.toMatch(/Stop and ask only/);
     for (const cls of ["a release or publish", "anything destructive or irreversible beyond your own work", "credentials or secrets", "granting or forwarding authority to another instance"]) expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toContain(cls);
-    expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toMatch(/never resend blindly/);
+    expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toMatch(/check it with `delivery_status`, then confirm \(or resend only if it shows `failed`\)/);
     expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toMatch(/None of this loosens the authority rules/);
   });
   it.each([[{}], [{ cliInstructions: CLI }]])("the authority text is unchanged: Codex minus the new block = what claude-code gets (%#)", (extra) => {
