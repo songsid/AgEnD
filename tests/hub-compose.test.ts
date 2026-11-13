@@ -711,6 +711,8 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
 async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => HubHttp = http => http,
   options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean; now?: () => number;
     beforeStart?: (hub: Awaited<ReturnType<typeof initializedHub>>, attempt: number) => Promise<void>;
+    beforeHttp?: (hub: Awaited<ReturnType<typeof initializedHub>>, deps: HubHttpDeps, entry: HubHttpEntry) => void;
+    eligibilityGate?: () => Promise<void>;
     directorySettings?: () => Promise<HubDirectorySettingsControl> } = {}) {
   let hub = await initializedHub();
   const real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
@@ -721,6 +723,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
   const people = [ADMIN, ...options.people ?? []];
   const entry: HubHttpEntry = { ...real, createHubHttp(deps) {
     lastDeps = { ...deps, ...(options.noGroupHttp ? { groupHttp: undefined } : {}), ...(options.noDirectoryNotices ? { directoryNotices: undefined } : {}) };
+    options.beforeHttp?.(hub, lastDeps, entry);
     lastHttp = wrap(real.createHubHttp(lastDeps), lastDeps); return lastHttp;
   } };
   const build = (http: () => Promise<HubHttpEntry> = async () => entry, readConfig = () => hub.config) => {
@@ -743,7 +746,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
           const person = people.find(p => p.login === login);
           return person && password === "Dummy-browser-only" ? { ok: true, person } : { ok: false, reason: "invalid-credentials" };
         },
-        checkEligibility: async key => { eligibility++; const person = people.find(p => p.key.realm === key.realm && p.key.objectId === key.objectId);
+        checkEligibility: async key => { eligibility++; await options.eligibilityGate?.(); const person = people.find(p => p.key.realm === key.realm && p.key.objectId === key.objectId);
           return person ? { eligible: true, person } : { eligible: false, reason: "disabled" }; }, close: async () => {} }; } });
     return runtime;
   };
@@ -1052,7 +1055,7 @@ const NOTICE_OTHER: typeof ADMIN = { ...NOTICE_READER, key: { realm: "corp", obj
 const NOTICE_PATH = "/hub/v1/security-notices/directory";
 
 /** Private fixture cutover only. Runtime still registers no role migration or activation operation. */
-function provisionMountedRoles(r: Awaited<ReturnType<typeof directoryRuntimeRig>>) {
+function provisionMountedRoles(r: Pick<Awaited<ReturnType<typeof directoryRuntimeRig>>, "hub" | "entry" | "deps">) {
   const plan = hubServerDatabasePlan(r.hub.config.hub, r.entry.migrations);
   let owning!: Database.Database;
   r.deps.uow.atomic(tx => { owning = hubTxDatabase(tx); }); // Test-only access to the actual factory-owned database.
@@ -2267,5 +2270,65 @@ describe.skipIf(process.platform === "win32")("directory Save decision borrowing
       await r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId), d => { retained = d; return 0; }, () => true);
       expect(() => retained!.inspect()).toThrow("owner changed");
     } finally { await r.runtime.close(); }
+  });
+});
+
+/** Private in-construction SQL cutover only; not a supported cold role mount or production activation. */
+describe.skipIf(process.platform === "win32")("S129 actual factory expiry ownership", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+  const provisionExpired = (hub: Awaited<ReturnType<typeof initializedHub>>, deps: HubHttpDeps, entry: HubHttpEntry) => {
+    provisionMountedRoles({ hub, deps, entry });
+    deps.uow.atomic(tx => {
+      const db = hubTxDatabase(tx), row = db.prepare("SELECT body FROM hub_group_policy").get() as { body: string };
+      const policy = parseRolePolicy(JSON.parse(row.body));
+      policy.assignments[0]!.expiresAt = deps.now!();
+      db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+    });
+  };
+  const signal = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; };
+  const observedWithin = async (event: Promise<void>) => {
+    let timer!: NodeJS.Timeout;
+    try { return await Promise.race([event.then(() => true), new Promise<false>(r => { timer = setTimeout(() => r(false), 1000); })]); }
+    finally { clearTimeout(timer); }
+  };
+  it("starts the actual settlement after the listener and refreshes only its committed version", async () => {
+    const done = signal(), original = HubServer.prototype.refreshAuthorization;
+    const refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization").mockImplementation(function (this: HubServer) { original.call(this); done.resolve(); });
+    const at = Date.now(), r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], now: () => at, beforeHttp: provisionExpired });
+    try {
+      expect(await observedWithin(done.promise)).toBe(true);
+      expect(refresh).toHaveBeenCalledOnce();
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx);
+        expect(db.prepare("SELECT COUNT(*) n FROM hub_role_expiry_terms").get()).toEqual({ n: 1 });
+        expect(db.prepare("SELECT actor FROM hub_audit WHERE action='role.assignment-expired'").all()).toEqual([{ actor: JSON.stringify({ kind: "local-host" }) }]);
+      });
+      expect(r.deps.store.read().revocationVersion).toBe(2);
+    } finally { await r.runtime.close(); }
+  });
+  it("keeps legacy factory mounts without a role worker or role schema", async () => {
+    const refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization"), r = await directoryRuntimeRig();
+    try {
+      await new Promise<void>(r => setImmediate(r));
+      expect(refresh).not.toHaveBeenCalled();
+      r.deps.uow.atomic(tx => expect(hubTxDatabase(tx).prepare("SELECT name FROM sqlite_master WHERE name='hub_role_expiry_terms'").get()).toBeUndefined());
+    } finally { await r.runtime.close(); }
+  });
+  it("drains the held worker before closing its owned database and refuses the late result", async () => {
+    const entered = signal(), release = signal(), refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization");
+    const at = Date.now(), r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], now: () => at, beforeHttp: provisionExpired,
+      eligibilityGate: async () => { entered.resolve(); await release.promise; } });
+    try {
+      expect(await observedWithin(entered.promise)).toBe(true);
+      let closed = false;
+      const closing = r.runtime.close().then(() => { closed = true; });
+      await new Promise<void>(r => setImmediate(r));
+      expect(closed).toBe(false);
+      release.resolve(); await closing;
+      expect(refresh).not.toHaveBeenCalled();
+      const db = new Database(join(r.hub.home, "hub/hub.sqlite"), { readonly: true });
+      try { expect(db.prepare("SELECT COUNT(*) n FROM hub_role_expiry_terms").get()).toEqual({ n: 0 }); }
+      finally { db.close(); }
+    } finally { release.resolve(); await r.runtime.close(); }
   });
 });

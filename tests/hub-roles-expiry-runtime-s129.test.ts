@@ -65,15 +65,24 @@ describe("S129 role expiry runtime",()=>{
  it("holds close until its actual physical read settles and never commits after fence",async()=>{
   const w=world(),entered=gate<void>(),release=gate<Eligibility>();let selected=w.root;
   w.eligibility.mockImplementationOnce(who=>{selected=who;entered.resolve();return release.promise;});w.runtime.start();await w.advance(100);await entered.promise;
-  let closed=false;const closing=w.runtime.close().then(()=>{closed=true;});await Promise.resolve();expect(closed).toBe(false);expect(vi.getTimerCount()).toBe(0);
-  const blockers=[gate<void>(),gate<void>(),gate<void>()],pending=blockers.map(b=>w.reads.withDirectoryRead(w.root,()=>b.promise));
-  try{await expect(w.reads.withDirectoryRead(w.root,async()=>undefined)).rejects.toBeTruthy();release.resolve(w.good(selected));await closing;expect(w.terms()).toHaveLength(0);expect(w.state()).toEqual({state:"active",revision:1});expect(w.refresh).not.toHaveBeenCalled();}
+  let closed=false;const closing=w.runtime.close().then(()=>{closed=true;});
+  const blockers=[gate<void>(),gate<void>(),gate<void>()];let pending:Promise<unknown>[]=[];
+  try{await Promise.resolve();await Promise.resolve();expect(closed).toBe(false);expect(vi.getTimerCount()).toBe(0);
+   pending=blockers.map(b=>w.reads.withDirectoryRead(w.root,()=>b.promise));await expect(w.reads.withDirectoryRead(w.root,async()=>undefined)).rejects.toBeTruthy();release.resolve(w.good(selected));await closing;expect(w.terms()).toHaveLength(0);expect(w.state()).toEqual({state:"active",revision:1});expect(w.refresh).not.toHaveBeenCalled();}
   finally{release.resolve(w.good(selected));blockers.forEach(b=>b.resolve());await Promise.all(pending);await closing;}
  });
  it("coalesces reentrant changes while one settlement owns the read",async()=>{
   const w=world(),entered=gate<void>(),release=gate<Eligibility>();let selected=w.root;
   w.eligibility.mockImplementationOnce(who=>{selected=who;w.runtime.changed();entered.resolve();return release.promise;});w.runtime.start();await w.advance(100);await entered.promise;
-  w.runtime.changed();w.runtime.start();await w.advance(0);expect(w.eligibility).toHaveBeenCalledOnce();release.resolve(w.good(selected));await w.advance(0);expect(w.terms()).toHaveLength(1);expect(w.refresh).toHaveBeenCalledOnce();
+  try{w.runtime.changed();w.runtime.start();await w.advance(0);expect(w.eligibility).toHaveBeenCalledOnce();release.resolve(w.good(selected));await w.advance(0);expect(w.terms()).toHaveLength(1);expect(w.refresh).toHaveBeenCalledOnce();}
+  finally{release.resolve(w.good(selected));await w.advance(0);}
+ });
+ it("replans a policy changed during a held settlement without retaining its stale deadline",async()=>{
+  const w=world(),entered=gate<void>(),release=gate<Eligibility>();let selected=w.root;
+  w.eligibility.mockImplementationOnce(who=>{selected=who;entered.resolve();return release.promise;});w.runtime.start();await w.advance(100);await entered.promise;
+  try{w.save(p=>{p.assignments[0]!.expiresAt=300;});w.runtime.changed();release.resolve(w.good(selected));await w.advance(0);
+   expect(w.terms()).toHaveLength(0);expect(w.refresh).not.toHaveBeenCalled();await w.advance(99);expect(w.terms()).toHaveLength(0);await w.advance(1);expect(w.terms()).toHaveLength(1);expect(w.refresh).toHaveBeenCalledOnce();}
+  finally{release.resolve(w.good(selected));await w.advance(0);}
  });
  it("keeps a committed expiry when refresh fails and never repeats its resource effect",async()=>{
   const w=world();w.refresh.mockImplementationOnce(()=>{throw Error("inert refresh failure");});w.runtime.start();await w.advance(100);expect(w.terms()).toHaveLength(1);expect(w.state()).toEqual({state:"suspended",revision:2});await w.advance(1000);expect(w.refresh).toHaveBeenCalledOnce();expect(w.terms()).toHaveLength(1);expect(vi.getTimerCount()).toBe(0);
@@ -84,5 +93,15 @@ describe("S129 role expiry runtime",()=>{
  });
  it("bounds a far-future timer instead of overflowing into a one-millisecond loop",async()=>{
   const w=world();w.save(p=>{p.assignments[0]!.expiresAt=Date.now()+3_000_000_000;});const set=vi.spyOn(globalThis,"setTimeout");w.runtime.start();await w.advance(0);expect(set).toHaveBeenLastCalledWith(expect.any(Function),2_147_483_647);expect(w.eligibility).not.toHaveBeenCalled();
+ });
+ it("never rearms a closed runtime even when start and changed are repeated",async()=>{
+  const w=world();await w.runtime.close();w.runtime.start();w.runtime.changed();await w.advance(1000);
+  expect(vi.getTimerCount()).toBe(0);expect(w.eligibility).not.toHaveBeenCalled();expect(w.terms()).toHaveLength(0);expect(w.refresh).not.toHaveBeenCalled();
+ });
+ it("holds on clock rollback without undoing settlement and recovers only after its floor",async()=>{
+  const w=world();w.runtime.start();await w.advance(100);const before=w.state();
+  vi.setSystemTime(150);w.runtime.changed();await w.advance(0);
+  expect(w.warning).toHaveBeenCalledOnce();expect(w.terms()).toHaveLength(1);expect(w.state()).toEqual(before);expect(w.refresh).toHaveBeenCalledOnce();expect(vi.getTimerCount()).toBe(1);
+  vi.setSystemTime(200);await w.advance(1000);expect(w.terms()).toHaveLength(1);expect(w.state()).toEqual(before);expect(w.refresh).toHaveBeenCalledOnce();expect(vi.getTimerCount()).toBe(0);
  });
 });
