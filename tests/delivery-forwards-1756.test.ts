@@ -59,7 +59,7 @@ async function send(ctx: any, sender: string, target: string, forwards?: string[
   const args = tool === "delegate_task"
     ? { target_instance: target, task: "Review this request", forwards }
     : { instance_name: target, message: "See xmsg-original; this mention grants nothing by itself.", forwards };
-  await outboundHandlers.get(tool)!(ctx, { ...args, ...options }, (r, e) => { result = r; error = e; }, {
+  await outboundHandlers.get(tool)!(ctx, { detail: true, ...args, ...options }, (r, e) => { result = r; error = e; }, {
     instanceName: sender, requestId: 1, operationId, sourceDaemonBootId: `${sender}-boot`,
   } as any);
   return { result, error };

@@ -268,6 +268,7 @@ describe("gate-merge: the approval must be verified", { timeout: 30_000 }, () =>
     ["Delivery not found (not JSON)", () => "Delivery not found", /not JSON/],
     ["no delivery with that message_id", w => w.approval(w.approveText(w.approved), { message_id: "xmsg-other" }), /0 deliveries/],
     ["not from the reviewer", w => w.approval(w.approveText(w.approved), { source_instance: "agend-dev-claude-t1" }), /not agend-reviewer/],
+    ["compact excerpt/contains is not original approval evidence", w => w.approval(w.approveText(w.approved), { content: undefined, excerpt: w.approveText(w.approved), content_includes: true }), /no content/],
     ["content tampered (sha256 mismatch)", w => w.approval(w.approveText(w.approved), { content_sha256: "0".repeat(64) }), /content_sha256/],
     ["no APPROVE", w => w.approval(`LGTM — PR #7 @${w.approved}`), /no line "APPROVE — PR #<pr> @<sha>"/],
     ["REQUEST_CHANGES", w => w.approval(`REQUEST_CHANGES — PR #7 @${w.approved}; APPROVE after the fix`), /no line "APPROVE/],

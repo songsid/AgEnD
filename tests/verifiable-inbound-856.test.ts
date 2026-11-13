@@ -47,7 +47,7 @@ function statusAs(outbox: DeliveryOutbox, caller: string, args: Record<string, u
     queryDurableDeliveryStatus: (who: string, selector: any) => outbox.queryStatusForInstance(who, selector),
     logger: { warn: vi.fn() },
   } as any;
-  return new Promise<{ result: any; error?: string }>(resolve => handler(ctx, args, (result, error) => resolve({ result, error }), {
+  return new Promise<{ result: any; error?: string }>(resolve => handler(ctx, { detail: true, ...args }, (result, error) => resolve({ result, error }), {
     instanceName: caller, requestId: 1, fleetRequestId: undefined, senderSessionName: undefined,
   } as any));
 }
