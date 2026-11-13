@@ -62,6 +62,28 @@ it("persists one exact answer and ACKs retries without duplicate room posts", as
   await expect(r!.http.receive(r!.frame("room.answer", { ...answer, text: "Changed" }, w.link) as never, w.link)).rejects.toThrow();
 });
 
+it("attributes answers to their recorded owner in history and live events after an exposure changes owner", async () => {
+  const w = await world(), stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 3000);
+  try {
+    const response = await fetch(`${r!.base}/hub/v1/rooms/events`, { headers: { Cookie: w.a.cookie }, signal: stop.signal });
+    const reader = response.body!.getReader(), parent = await send(w);
+    await vi.waitFor(() => expect(asks()).toHaveLength(1));
+    const input = lastAsk(), text = "Recorded owner answer";
+    await r!.http.receive(r!.frame("room.answer", { messageId: input.messageId, roomId: w.id, exposureId: w.e.id, answerId: randomUUID(), text }, w.link) as never, w.link);
+    let events = "";
+    while (!events.includes(text) || !events.slice(events.indexOf(text)).includes("\n\n")) { const chunk = await reader.read(); if (chunk.done) throw Error("stream ended"); events += new TextDecoder().decode(chunk.value); }
+    const live = events.split("\n\n").flatMap(block => block.split("\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6))))
+      .find(event => event.message?.text === text).message;
+    const expected = { answerTo: parent.id, author: { kind: "agent", name: "Notes", owner: { name: "Hub Admin" } } };
+    expect.soft(live).toMatchObject(expected);
+    const history = () => r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/messages`);
+    expect.soft((await history()).json.messages.find((m: any) => m.text === text)).toMatchObject(expected);
+    r!.db.prepare("UPDATE hub_exposures SET owner=? WHERE id=?").run(personKeyString(w.alex), w.e.id);
+    await r!.restartHttp();
+    expect((await history()).json.messages.find((m: any) => m.text === text)).toMatchObject(expected);
+  } finally { clearTimeout(deadline); stop.abort(); }
+});
+
 it("retries a transiently refused ask on the same live link only when due, retaining one exact answer", async () => {
   const w = await world(); await send(w); await vi.waitFor(() => expect(asks()).toHaveLength(1));
   // The Fleet refused local admission without disconnecting or acknowledging the input.

@@ -86,6 +86,12 @@ describe("the list's groups and rows (pure)", () => {
     expect(list.listRoomOf(base)).toEqual(client.legacyRoom(base));                                      // the client's mapping, exactly
     expect(list.listRoomOf(null)).toBeNull();
   });
+  it("a room's counts are singular when one (never 「1 people」)", () => {
+    expect([list.countsLine(1, 2), list.countsLine(3, 1), list.countsLine(1, 1), list.countsLine(0, 12)])
+      .toEqual(["1 person · 2 agents", "3 people · 1 agent", "1 person · 1 agent", "0 people · 12 agents"]);
+    i18n.setLang("zh-TW", { store: false });
+    expect(list.countsLine(1, 2)).toBe("1 人 · 2 個 Agent");
+  });
   it("presence as the Fleet sidebar's dots (spec §5's colours)", () => {
     expect(["online", "idle", "working", "paused", "offline", "later", undefined].map(list.presenceDot)).toEqual(["ok", "ok", "busy", "warn", "off", "off", null]);
   });
@@ -114,6 +120,15 @@ describe("the sidebar, drawn as the Fleet roster", () => {
     try {
       await until(() => rows(pg).length === 6);
       expect(pg.root.querySelector("#sidebar .side-nav .hub-new-room")!.textContent).toBe("新房間");
+    } finally { restore(); }
+  });
+  it("invitations are an ordinary sidebar row with their count, like Needs you (Lumen's walk)", async () => {
+    const fx = createHubRoomsFixture();
+    const { pg, restore } = await hubApp((url: string, init?: any) => fx.fetch(url, init), "zh-TW");
+    try {
+      await until(() => rows(pg).length === 6);
+      const row = [...pg.root.querySelectorAll("#sidebar .side-nav a.side-row")].find((a: any) => a.getAttribute("href") === "/ui/hub?view=invitations") as any;
+      expect([row.querySelector(".grow").textContent, row.querySelector(".nav-count").textContent]).toEqual(["邀請", "1"]);
     } finally { restore(); }
   });
   it("no 「新房間」 on today's Hub (no rooms)", async () => {

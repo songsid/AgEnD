@@ -1,0 +1,1057 @@
+{
+  "sourceHead": "d168bed13fedf26721a9abe180fcbddf8117ba68",
+  "scope": "Real R HTTP/SQLite + A service/runner + shared U1/U2 browser components; inert directory and physical worker; all list/new-room/thread/settings/admin views mounted by the actual Hub shell; C consent service/migration are injected at the real HTTP boundary; Teams remain uncomposed; production factory registration is checked separately by hub-compose tests",
+  "checks": [
+    {
+      "name": "desktop-en-light list reads real room and private assistant",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light New room opens from the actual sidebar",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light complete direct group preview shows singular count",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light create persists complete group and never-signed-in state",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light system sentence follows viewer language without message actions",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light members toggle uses a shared SVG icon",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light human message uses actual SQL",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light room settings is mounted by the actual shell",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Name Save button aligns with the input",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light settings rename persists through actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light settings all-mention switch persists through actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light localized room assistant mention reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light private assistant composer uses its direct prompt",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light plain private ask reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light assistant label follows viewer language",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light consent room created",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light C invitation created by actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light actual owner page discloses the room and people count",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light owner acceptance persisted exact agent membership",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light consent did not add owner as person",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light owner room list names the accepted room",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light owner removal persisted through actual route",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light manager can invite again after owner removal",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light decline persisted without re-adding agent",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no page errors",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light admin room card uses named creator projection",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light admin room table contains actual created room",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light signed-in assistant account omits sign-in instructions",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light admin cards keep rooms-assistant-fleets-pairing order",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light admin view has no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark list reads real room and private assistant",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark New room opens from the actual sidebar",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark complete direct group preview shows singular count",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark create persists complete group and never-signed-in state",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark system sentence follows viewer language without message actions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark members toggle uses a shared SVG icon",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark human message uses actual SQL",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark room settings is mounted by the actual shell",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Name Save button aligns with the input",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark settings rename persists through actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark settings all-mention switch persists through actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark localized room assistant mention reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark private assistant composer uses its direct prompt",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark plain private ask reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark assistant label follows viewer language",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark consent room created",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark C invitation created by actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark actual owner page discloses the room and people count",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark owner acceptance persisted exact agent membership",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark consent did not add owner as person",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark owner room list names the accepted room",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark owner removal persisted through actual route",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark manager can invite again after owner removal",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark decline persisted without re-adding agent",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark admin room card uses named creator projection",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark admin room table contains actual created room",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark signed-in assistant account omits sign-in instructions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark admin cards keep rooms-assistant-fleets-pairing order",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark admin view has no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark internal room-table scroll exposes row actions",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "desktop-en-light-list.png",
+      "sha256": "358aa7c75c461e312a5b4b8bd1c296ee2bd4ab3fe5bea5cb49925bf037236641"
+    },
+    {
+      "path": "desktop-en-light-new-group.png",
+      "sha256": "f78b305b731b3ab450971301616b0a63b927899b1c9c98e76118da4c63838fdf"
+    },
+    {
+      "path": "desktop-en-light-thread.png",
+      "sha256": "614c1e97b778da97c8b9a32755dbc6ef2db0ab460d7b616adecb1a777a3db556"
+    },
+    {
+      "path": "desktop-en-light-settings.png",
+      "sha256": "bc044a4afc7f37ce08b5f3097b9e8080c793c5cff6064591a995b407ad3d8770"
+    },
+    {
+      "path": "desktop-en-light-assistant.png",
+      "sha256": "f26ea85dac6b43cd495c55e2d84a563041e80862791177cb70dc2fc75a361ab8"
+    },
+    {
+      "path": "desktop-en-light-consent-pending.png",
+      "sha256": "6041e15bdcf66c50f4b0a0fd735ac65925e53d28e14c38485bbfc7669c93e144"
+    },
+    {
+      "path": "desktop-en-light-consent-accepted.png",
+      "sha256": "c9ee6dea583b3d1ccb73f10ee4946c074f5a14617a5da4ff29e4f6faddb429ba"
+    },
+    {
+      "path": "desktop-en-light-admin.png",
+      "sha256": "1248fc53df2c04124f4520082681689a60a5bff4daa70ad0beb72e1ee969c59f"
+    },
+    {
+      "path": "desktop-en-light-admin-tail.png",
+      "sha256": "6f83edf201935ccdc22b3d4aab65c1831d7494dc666e901ac3bbe50cff99fa59"
+    },
+    {
+      "path": "phone-zh-TW-dark-list.png",
+      "sha256": "3b3941ded73940b25123daf70de40b481dde56d6507c5655d6fb8f45cd24bbaa"
+    },
+    {
+      "path": "phone-zh-TW-dark-new-group.png",
+      "sha256": "af97cd79c8e04cd2c721790ae2d038f1b3fcabf4e51662bf6494031148b11303"
+    },
+    {
+      "path": "phone-zh-TW-dark-thread.png",
+      "sha256": "148e035d8cc7a81c19d1fbc7d54f8a6341498037a199a0601d8569cd2e79753f"
+    },
+    {
+      "path": "phone-zh-TW-dark-settings.png",
+      "sha256": "012ec15332307d853e73b9abe75c953e075ff566859ad717109156e553c47d83"
+    },
+    {
+      "path": "phone-zh-TW-dark-assistant.png",
+      "sha256": "c7f8d9d6b0dfff06fa79cbfe2851b08214464aadf7ee46625c2bebbf1ede2c7c"
+    },
+    {
+      "path": "phone-zh-TW-dark-consent-pending.png",
+      "sha256": "0ac31ce3a23f04435c153958a83d33ed881a2f3129c56c3a45639c60dcbbb4e7"
+    },
+    {
+      "path": "phone-zh-TW-dark-consent-accepted.png",
+      "sha256": "b63ae5ca42e005fa32d7046e5f953d1851fc8dfc04e6969e4257a09f6485e234"
+    },
+    {
+      "path": "phone-zh-TW-dark-admin.png",
+      "sha256": "40a0a89b6245f72a39379ef326d6b477ac81a3bd564eb3b266b7beb919ed56f7"
+    },
+    {
+      "path": "phone-zh-TW-dark-admin-table-actions.png",
+      "sha256": "388c19811eac54ddaf236b90f98fbcc0420322533bb09cc93d45367855c7bb99"
+    },
+    {
+      "path": "phone-zh-TW-dark-admin-account.png",
+      "sha256": "5d39f924a2d0c52614a59ffab8f6ac31411af21a22ff6d1b89374aaa663ef1f0"
+    },
+    {
+      "path": "phone-zh-TW-dark-admin-tail.png",
+      "sha256": "74f126b8e1c76953e4235a1a6c4674684f31fbe7b025998215f7eeb7224902ec"
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=person",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=team",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=group",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates/group/78f4afc7-8cc7-4e81-ac8b-75a5846504bc",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/messages?after=0",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/read",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/17777307-a184-4267-8118-d28f9d68526e/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/invitations",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/invitations/6b944761-4fd2-4cf6-8268-cd63d28f15b5/accept",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/invitations",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/exposures",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/pairings",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/exposures/4c24c990-ef5c-479f-acfd-9beb6d661853/activity",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/exposures/4c24c990-ef5c-479f-acfd-9beb6d661853/rooms",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/hub/v1/rooms/7c5dcd2a-f8c3-44da-9bc0-d1c83a71e47d/members/6d2cba9b-092e-4380-bb43-b677b6d3fecb",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/invitations",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/invitations/c2f842ee-87f1-41c2-92a7-baf28d1fe0ab/decline",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/invitations",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/overview",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/hub",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/rooms/creators",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/assistant",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/assistant/usage",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=person",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=team",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=group",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates/group/78f4afc7-8cc7-4e81-ac8b-75a5846504bc",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/messages?after=0",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/read",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/55a4e7eb-da8e-41ed-9205-4b5f3898b672/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/abf464cb-c470-42ca-b19d-e012ea6e73ea/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/invitations",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/invitations/a22a78fa-9cf9-4fca-b082-9808c8dd8b0f/accept",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/invitations",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/exposures",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/pairings",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/exposures/033ef01d-865e-438d-9c4f-58fa2b71011c/activity",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/exposures/033ef01d-865e-438d-9c4f-58fa2b71011c/rooms",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/hub/v1/rooms/86a89276-60c5-493e-8254-2f90e2369a96/members/100b4dfb-97d9-4a3d-8977-fab9ca1c4f0b",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/invitations",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/invitations/56e991da-fff2-4c2a-961a-9d5011f5d96b/decline",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/invitations",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/overview",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/hub",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/rooms/creators",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/assistant",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/assistant/usage",
+      "status": 200
+    }
+  ],
+  "served": {
+    "/assets/theme.js": "ffc4f54dd8a2511eeb931a77d25d65ddd0a187e414b9deabe9290184399fe22d",
+    "/assets/tokens.css": "cd62669f84666fb16e49cf63ebdc8376d3965106eeaf0531744372bdcf70f3c9",
+    "/assets/app.css": "225a5f1860d7476597af1c7ffc4c6fdfedec663b92f9c8c712bcda149d3b67e7",
+    "/assets/loading.css": "68dd23194827d7a83f532b1d7b3161fd27a2e696ef14cf6d593b0a65e3ad9ce8",
+    "/assets/app.js": "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c",
+    "/assets/app-prefs.js": "d223ea3ca62d93e8991f3a92efa92de9eb0bb5ad4e72b11ce18f286e372580c2",
+    "/assets/app-html.js": "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9",
+    "/assets/app-shell.js": "e53a87d9ca8f4d97c811f9380b9f8b674db518fce92a268322f1b3c0342a5c9a",
+    "/assets/app-swipe.js": "feb36efef72b92a5510f881902c0a08140d6940f62304766e3857d13f5e188fa",
+    "/assets/app-nav.js": "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f",
+    "/assets/app-route.js": "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd",
+    "/assets/ui-toast.js": "601074179fe7c9156d05d507f28e3d22f93b49aba43f8d903b40ae4b8b1bba8d",
+    "/assets/owner-css.js": "d38412dd2327ffb4a98248ab8a847eb6abcf18470cd8f5f9635a20df3aace05e",
+    "/assets/header-tools.js": "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d",
+    "/assets/text-undo.js": "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a",
+    "/assets/app-store.js": "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842",
+    "/assets/app-needs.js": "47fdfcbd3dd53d6d2ef90943ce3cdd2aabb5178454f01a6c90968497a805c8c2",
+    "/assets/app-themes.js": "886b72a54b88f65fbc27a9b86fe786d5a1f2774a24c0cc16dddfd1c6ce1fc2b4",
+    "/assets/app-stream.js": "49234d50df7b41e005d0221a1a5b5614d30f9b27a9c0d82312c56c694184b58b",
+    "/assets/preact.module.js": "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8",
+    "/assets/app-i18n.js": "efa73d2f985b029c8f81e9893c9f8a67df75e67cfb85b8bf7bf070d4c55303cf",
+    "/assets/ui-icons.js": "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50",
+    "/assets/preact-hooks.module.js": "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38",
+    "/assets/ui-confirm.js": "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b",
+    "/assets/identity-color.js": "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a",
+    "/assets/ui-states.js": "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31",
+    "/assets/app-session.js": "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec",
+    "/assets/stale-tab.js": "c951cb7122e5c3f7c76f3e01ab072f0a5d0ac7433ad1088a9a9e1cffc3fcf657",
+    "/assets/ui-dialog.js": "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6",
+    "/assets/side-panel.js": "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946",
+    "/assets/htm.module.js": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4",
+    "/assets/instance-nav.js": "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64",
+    "/assets/app-update.js": "0b675a3860b2f10a40d9557b18d609cb60ddd0e766b6cf9c1b2f27211d930596",
+    "/assets/settings-width.js": "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1",
+    "/assets/app-ctx.js": "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6",
+    "/assets/agent-widget.js": "8e90812b94bad0b93c744a0daa3fc4fe6e02249106604ca013c9d6df4ef25a43",
+    "/assets/side-rail.js": "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56",
+    "/assets/model-observation.js": "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef",
+    "/assets/usage-dialog.js": "b7cb7d8f4df081e3d514c869cf6f99d8f64b0b730ddecaf955a8d0ccedf3ca43",
+    "/assets/web-authorize.js": "3c87a7c99b39adb87e624cd7292b37547e33e418b955466109e178795af927b1",
+    "/assets/device-roles.js": "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d",
+    "/assets/ui-menu.js": "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48",
+    "/assets/view-roster-store.js": "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8",
+    "/assets/view-strings.js": "05aa2e9500aef1e4c9f2e89d80fdc4e2dae86cb552583ce4b5e6db29096e5447",
+    "/assets/machine-name.js": "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae",
+    "/assets/read-stream.js": "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41",
+    "/assets/usage-meter.js": "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200",
+    "/assets/inter.woff2": "6dc9db6cb53e6ce9c82b760d5c94c3a773003abac2c8efa2cb535a9d87c7ecea",
+    "/ui/js/panel-hub.js": "98ac233c173e4f34e18a96378db7c3a92427d12fd336ca5a633f59ebbfbb51b2",
+    "/ui/js/hub-owner-strings.js": "696e5db1efc6388e3059b9651e3e6a9fa8d4f279010eb53152b85d293ad9a112",
+    "/ui/js/hub-company-join.js": "7840122cfb793af9b9ae44e9081252064c8993274d3fc0a9e485c908259b9f58",
+    "/ui/js/hub-company-join-strings.js": "e11e7cd022cb23c758726f1cd7f07d530608ab38f1907085ae86a8926ac29676",
+    "/ui/js/hub-join-approval.js": "abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1",
+    "/ui/js/hub-joincode-flow-strings.js": "4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3",
+    "/ui/js/hub-quick-pairing.js": "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13",
+    "/ui/js/hub-directory-notice-strings.js": "90f089c96321bdf5a45be4921fb6133f9203f0aa4826e796c02f1dc9dcb8896e",
+    "/ui/js/hub-directory-notices.js": "c4d0a6cf1b12d7fde9bb1e30ab005da1ca9c7916b693cc86e9bf0d28f5a8f9eb",
+    "/assets/chat-composer.js": "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227",
+    "/assets/chat-strings.js": "cc1690aa8931b111e35166fd8f29120c3a7a4ec7a6720108dc7b7ef7e515ac8c",
+    "/assets/chat-thread.js": "94572a0b13850df731507e44a8f160083ea08fb1fc36ea7fc5450d163e911075",
+    "/ui/js/hub-read-strings.js": "1be8bee71352ed41e8b71592b6acc404829f574327f3ab2aab433c64ace4a046",
+    "/assets/preview-panel.js": "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076",
+    "/ui/js/hub-room-list.js": "407952de0a63ebae59adc7870258e4ae69396fc79507fccf61d06cd8323b7f31",
+    "/ui/js/hub-room-thread.js": "bbec7589f17896c6f73a6a3d56f4dc82638d4d916bda9ac1ca44ae65bcf0f5a2",
+    "/ui/js/hub-chat-strings.js": "7903f0a70ae974c4f562d54efdbf698e4186293db3a2c6067ed1557ece11d76f",
+    "/ui/js/hub-room-strings.js": "a854bad193477756a421d4d4a01af8ef56c53b6fb2af5ab4c18b846224dff6c9",
+    "/ui/js/hub-quota.js": "b4cf4c2c4976b3b0ba5d1440579bd89c7b54f1231a33a38b1aef4bd49bdc14d1",
+    "/ui/js/hub-grant-strings.js": "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4",
+    "/assets/page-head.js": "a9e9e71b8e64b54a69e3265395948d15f512f811a03353ccf3c0fa04e2788f2a",
+    "/ui/js/hub-preview.js": "b653dd4b49b92b91c1db71d6e652a08da06cc8164db5dfad4bdb46fe6ef711d5",
+    "/ui/js/hub-attachments.js": "dedbf75e56c51d5a8d22c449a2869bc04e7c5a9e59bda8d5e0c139e856ba5c09",
+    "/ui/js/hub-join-queue.js": "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764",
+    "/ui/js/hub-join-steps.js": "958ee0b43bc94eb33f1accc2ccf0bd0d70cfeaba6f0d10fbfba22c411824be8b",
+    "/ui/js/hub-enrolment-code-strings.js": "1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324",
+    "/ui/js/hub-client.js": "16c865fa7ce2f556818918a1a86e72d4b2744590c532c209e4f0e23626488fc8",
+    "/ui/js/hub-chat-store.js": "f75ed0aaf89169e60885b0e127167122ffddb174f9412d335914004d73c2d01b",
+    "/ui/js/hub-strings.js": "f12b3db0cc675c4fde91b793641cd43b8bd9ea1d87afe318bbf6c90cb3a737f2",
+    "/ui/js/hub-quick-strings.js": "0a6b59ad416fe04765c9ec8fcb06aea0d75f1c22cededf746415377fe19c4c35",
+    "/assets/html-attachment.js": "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643",
+    "/assets/preview.js": "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1",
+    "/assets/chat-render.js": "2419460a300b9aae37024348e9925d7fe142b0e3cd8d20f0c429ab24903e1d22",
+    "/assets/chat-time.js": "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538",
+    "/assets/preview-panel-actions.js": "8e2665b14f5df60a7698ba5852a5d217257c495bd4c5c4e81b70acda8c65431f",
+    "/assets/preview-versions.js": "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814",
+    "/assets/preview-pages.js": "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925",
+    "/assets/chat-md-strings.js": "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b",
+    "/ui/js/hub-room-composer.js": "ed79763edea2363578f061ea21697f94066b298ae4e14b610b0ea585011ac31f",
+    "/ui/js/hub-button-actions.js": "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063",
+    "/ui/js/hub-group-search.js": "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a",
+    "/assets/hub-quota.css": "dbb490b50f06f45d538259cad57f5d130ed29c17f4295d8d3c4c848b037190fb",
+    "/assets/hub-owner.css": "e8d9234628f8ac9e1e5a9732d15b6ddefc00fa2eba98d2a32fe52185164264bc",
+    "/assets/hub.css": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472",
+    "/assets/hub-chat.css": "f6117e5234047479282a83fa5175ff8657bca89aaa6fcda7ab14992b6d1e3230",
+    "/ui/js/hub-room-new.js": "f4ade027d0733418d22f42d333dca9453f2f496eb58eaec4cd2ab0ee76459286",
+    "/ui/js/hub-room-new-strings.js": "33f6cca50137fb9bc3c60bb878299ff452dbe1378b8907888e5fd02c051c397e",
+    "/assets/hub-rooms-u2.css": "c43f4ddbd4ec468ec6cc5db41aa56533d77dd5a989e9bf160353ab49e317a73c",
+    "/ui/js/hub-room-members.js": "6412d130351d049dcad325732b3f3cbbc42e24eb2655ca9f7c7cc109eaf085e3",
+    "/ui/js/hub-room-members-strings.js": "109ecc9238c2a5ccbd77f5faaf20148fdad12b1502c50d70277ef36ff69ea32a",
+    "/ui/js/hub-room-settings.js": "e96d99d9ec5af3e20a3a537ef3f9cd77ca6a5cca749aabb2b386926b6f8c076a",
+    "/ui/js/hub-room-settings-strings.js": "fdb452e79c6b9fd59282d1a94d5cb71b7744e4e3ad796604f0dc621dab61a072",
+    "/ui/js/hub-invitations.js": "b30cd28e6dacfa02879a9b14281ad0124e15a6caf3232e6edaa6141889f536e1",
+    "/ui/js/hub-invitations-strings.js": "8ff22d003f70567f8e73a106c3babb6f28be63479df5a6f493d57090ac0f03c5",
+    "/assets/hub-sharing.css": "ba7a0ede1d290286ff5c2fec717719e7f21df412a19c8ac09906e07dafd77e51",
+    "/ui/js/hub-admin-rooms.js": "9263e3d8afb9c5a00082059e9cdb116a39e2c2fd2ff35f65c191afc387e0ac95",
+    "/ui/js/hub-this-hub.js": "8a352dcbbfaf2a39ccf8176a4370412dad91d03de0c588d0752ec321d8edde71",
+    "/ui/js/hub-assistant-admin.js": "183eece7eed0cd2190a96fb86f10876f3c0bf285064fab091e9209778978320c",
+    "/ui/js/hub-admin-rooms-strings.js": "9663d1be48e0add9746830fa6a4578cd9002f7a3d759858ff22380b76d983c34",
+    "/ui/js/hub-assistant-admin-strings.js": "58837fd4348ca9cf8dbcc0666ffc347513281c933b1ab6b03625050e1cc37442"
+  }
+}

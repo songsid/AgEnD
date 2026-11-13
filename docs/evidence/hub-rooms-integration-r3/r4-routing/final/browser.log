@@ -1,0 +1,49 @@
+PASS desktop-en-light members panel uses the intended width layout
+PASS desktop-en-light room counts use viewer language and singular person
+PASS desktop-en-light Notes Idle dot
+PASS desktop-en-light Planner Idle dot
+PASS desktop-en-light plain message has no agent deliveries
+PASS desktop-en-light @agent routes only to Notes
+PASS desktop-en-light Notes Working dot
+PASS desktop-en-light C answer is acknowledged durably
+PASS desktop-en-light Planner Offline dot
+PASS desktop-en-light @all preflight describes one online and one later
+PASS desktop-en-light Notes Working dot
+PASS desktop-en-light offline Fleet retains exactly one queued delivery
+PASS desktop-en-light Planner Working dot
+PASS desktop-en-light Planner Idle dot
+PASS desktop-en-light both @all answers persisted exactly once
+PASS desktop-en-light Notes Paused dot
+PASS desktop-en-light quota reason uses viewer language in live panel
+PASS desktop-en-light quota reason reaches real HTTP projection
+PASS desktop-en-light live SSE carries state reason and completed progress
+PASS desktop-en-light Notes Idle dot
+PASS desktop-en-light idle event clears prior quota reason
+PASS desktop-en-light no browser error
+PASS desktop-en-light no horizontal document overflow
+PASS phone-zh-TW-dark members panel uses the intended width layout
+PASS phone-zh-TW-dark room counts use viewer language and singular person
+PASS phone-zh-TW-dark Notes 待命 dot
+PASS phone-zh-TW-dark Planner 待命 dot
+PASS phone-zh-TW-dark plain message has no agent deliveries
+PASS phone-zh-TW-dark @agent routes only to Notes
+PASS phone-zh-TW-dark Notes 處理中 dot
+PASS phone-zh-TW-dark C answer is acknowledged durably
+PASS phone-zh-TW-dark Planner 離線 dot
+PASS phone-zh-TW-dark @all preflight describes one online and one later
+PASS phone-zh-TW-dark Notes 處理中 dot
+PASS phone-zh-TW-dark offline Fleet retains exactly one queued delivery
+PASS phone-zh-TW-dark Planner 處理中 dot
+PASS phone-zh-TW-dark Planner 待命 dot
+PASS phone-zh-TW-dark both @all answers persisted exactly once
+PASS phone-zh-TW-dark Notes 暫停 dot
+PASS phone-zh-TW-dark quota reason uses viewer language in live panel
+PASS phone-zh-TW-dark Notes 暫停 dot
+PASS phone-zh-TW-dark reason survives members-sheet reopen
+PASS phone-zh-TW-dark quota reason reaches real HTTP projection
+PASS phone-zh-TW-dark live SSE carries state reason and completed progress
+PASS phone-zh-TW-dark Notes 待命 dot
+PASS phone-zh-TW-dark idle event clears prior quota reason
+PASS phone-zh-TW-dark no browser error
+PASS phone-zh-TW-dark no horizontal document overflow
+{"checks":48,"failed":0,"pictures":16}

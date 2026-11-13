@@ -1,0 +1,53 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3
+
+ ❯ tests/hub-compose.test.ts (132 tests | 2 failed | 130 skipped) 3680ms
+     × registers consent once after the room schema before mounting the real HTTP entry 3277ms
+     × retains pending consent across a sealed-Hub restart, then accepts and removes only the owner's agent over HTTPS 323ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-compose.test.ts > room consent factory composition > registers consent once after the room schema before mounting the real HTTP entry
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/hub-compose.test.ts:2309:101
+    2307|       const plan = hubServerDatabasePlan(r.hub.config.hub, r.entry.mig…
+    2308|       const index = plan.migrations.findIndex(m => m.component === HUB…
+    2309|       expect(plan.migrations.filter(m => m.component === HUB_ROOM_INVI…
+       |                                                                                                     ^
+    2310|       expect(index).toBeGreaterThan(plan.migrations.findIndex(m => m.c…
+    2311|       expect(Reflect.get(r.deps, "roomInvitations")).toBeTypeOf("funct…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-compose.test.ts > room consent factory composition > retains pending consent across a sealed-Hub restart, then accepts and removes only the owner's agent over HTTPS
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-compose.test.ts:2336:30
+    2334|       { fleetId, owner: NOTICE_READER.key, linkEpoch: 1, features: new…
+    2335|       const invited = await directoryBrowser(r.hub, root.cookie, { age…
+    2336|       expect(invited.status).toBe(200);
+       |                              ^
+    2337|       const invitationId = invited.json.invited[0].id;
+    2338|       await r.runtime.close();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 130 skipped (132)
+   Start at  03:19:36
+   Duration  8.59s (transform 5.33s, setup 415ms, import 4.25s, tests 3.68s, environment 0ms)
+

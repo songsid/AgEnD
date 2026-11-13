@@ -50,7 +50,25 @@ describe("the thread's mapping (pure)", () => {
     expect(out[out.indexOf(all) + 1]).toMatchObject({ role: "status", text: "已回答 6 · 處理中 1 · 稍後回覆 5" });
     const answer = out.find((x: any) => x.sender.startsWith("spec-writer"));
     expect(answer).toMatchObject({ role: "agent", sender: "spec-writer · 陳主任的 Agent", replyTo: { boot: "room", id: all.id, text: all.text.slice(0, 120) } });
-    expect(out.filter((x: any) => x.role === "agent" && !x.text)).toEqual([]);                           // queued answers are counted, not drawn
+    expect(out.filter((x: any) => x.role === "agent" && !x.text)).toEqual([]);                           // queued/working answers: no empty bubble
+    // Past three answers, one 「展開其餘 N 則」 line (an action the page answers); progress lines carry no time of their own.
+    const more = out.filter((x: any) => x.action);
+    expect(more.map((x: any) => x.action.label)).toEqual(["展開其餘 3 則"]);
+    expect(out.find((x: any) => x.progressOf)!.ts).toBeUndefined();
+    const all2 = thread.toThreadMessages(page1.messages, { meId: FIXTURE_ME.id, ids: new Map(), expanded: new Set([all.roomMessage]) });
+    expect(all2.filter((x: any) => x.action)).toEqual([]);
+    expect(all2.filter((x: any) => x.replyTo?.id === all.id)).toHaveLength(6);                            // every answer quotes its question
+    // An answer that names its question only by answerTo still quotes it (the Fleet's reply reference).
+    const q = { id: "q1", roomId: "r", at: 1, author: { kind: "person", id: "p2", name: "陳主任" }, text: "@Notes 好嗎", mentions: ["n"] };
+    const a = { id: "a1", roomId: "r", at: 2, author: { kind: "agent", id: "n", name: "Notes", owner: { name: "林小華" } }, text: "好", mentions: [], answerTo: "q1", stage: "answered" };
+    const w = { id: "a2", roomId: "r", at: 3, author: { kind: "agent", id: "n2", name: "Planner" }, text: "", mentions: [], answerTo: "q1", stage: "working" };
+    const small = thread.toThreadMessages([q, a, w], { meId: FIXTURE_ME.id, ids: new Map() });
+    expect(small.map((x: any) => x.sender)).toEqual(["陳主任", "Notes · 林小華的 Agent"]);
+    // A final "not answered" with no text still shows, in words (Ridge: only queued and working wait unseen).
+    const gone = { ...w, id: "a3", stage: "not-answered" };
+    const withGone = thread.toThreadMessages([q, a, gone], { meId: FIXTURE_ME.id, ids: new Map() });
+    expect(withGone.map((x: any) => x.text)).toEqual(["@Notes 好嗎", "好", "沒有回答"]);
+    expect(small[1].replyTo).toMatchObject({ boot: "room", id: small[0].id, text: "@Notes 好嗎" });
     expect(out.find((x: any) => x.sender === "房間助理 · Hub 提供")).toBeTruthy();
     expect(out[0]).toMatchObject({ role: "status", text: "王經理 建立了這個房間。" });
     expect(new Set(out.filter((x: any) => x.role !== "status").map((x: any) => x.id)).size).toBe(out.filter((x: any) => x.role !== "status").length);
@@ -62,7 +80,26 @@ describe("the thread's mapping (pure)", () => {
     expect(thread.systemText({ text: "older row" })).toBe("older row");
     expect(out.filter((x: any) => x.role === "status").every((x: any) => x.bare === true)).toBe(true);
     expect(thread.askState({ total: 1, answered: 0, working: 1, later: 0 })).toEqual({ delivery: "processing" });
-    expect(thread.askState({ total: 12, answered: 12, working: 0, later: 0 }).line).toBe("12 個都回答了");
+    expect(thread.askState({ total: 12, answered: 12, working: 0, later: 0 })).toEqual({ delivery: "delivered" });   // all answered: the tick, no line
+    expect(thread.askState({ total: 3, answered: 1, working: 1, later: 0 }).line).toBe("已回答 1 · 處理中 1");           // a 0 is left out
+    i18n.setLang("en", { store: false });
+    expect(thread.askState({ total: 3, answered: 1, working: 0, later: 2 }).line).toBe("Answered 1 · Reply later 2");
+    i18n.setLang("zh-TW", { store: false });
+  });
+  it("presence.changed keeps a member's note and reason only while the event carries them (Ridge)", async () => {
+    const fx = createHubRoomsFixture();
+    const prev = g.fetch; g.fetch = (url: string, init?: any) => fx.fetch(url, init); g.EventSource = fx.EventSource;
+    try {
+      const c = client.createHubWebClient(); await c.session();
+      const st = thread.createRoomStore("room-weekly", { client: c });
+      await until(() => st.loaded());
+      const who = () => st.detail().members.find((m: any) => m.id === "exp-02");
+      fx.emit("presence.changed", { roomId: "room-weekly", memberId: "exp-02", presence: "paused", presenceReason: "quota" });
+      expect([who().presence, who().presenceReason, who().presenceNote]).toEqual(["paused", "quota", undefined]);   // reason alone
+      fx.emit("presence.changed", { roomId: "room-weekly", memberId: "exp-02", presence: "idle" });
+      expect([who().presence, "presenceReason" in who()]).toEqual(["idle", false]);                                  // omitted: cleared
+      st.stop();
+    } finally { g.fetch = prev; }
   });
   it("the @ menu: @All agents (if allowed), the assistant, agents by name or owner, then people; mentions read from the text", async () => {
     const fx = createHubRoomsFixture();
@@ -79,6 +116,36 @@ describe("the thread's mapping (pure)", () => {
     i18n.setLang("zh-TW", { store: false });
     expect(composer.allBar(weekly)).toBe("12 個 Agent 中 7 個在線上，5 個上線後回答");
     expect(composer.refusalText({ ok: false, code: "all-mention-off" })).toBe("這個房間只有房間管理可以 @所有 Agent。");
+  });
+});
+
+describe("a send answered with the bare message, before any stream (Ridge's server)", () => {
+  it("is drawn at once; the same message from the stream later is not drawn twice", async () => {
+    const fx = createHubRoomsFixture();
+    const real = client.createHubWebClient({ fetchImpl: (u: string, i?: any) => fx.fetch(u, i) as any }); await real.session();
+    const bare = Object.create(real);
+    bare.subscribeRooms = () => () => {};                                                                // no stream yet
+    bare.sendRoomMessage = async (id: string, body: any) => { const r = await real.sendRoomMessage(id, body); return r.ok ? { ok: true, ...r.message } : r; };
+    const st = thread.createRoomStore("room-weekly", { client: bare });
+    await until(() => st.loaded());
+    const before = st.raw().length;
+    const r = await st.send("bare answer please", { mentions: [] });
+    expect(r.ok && typeof r.id).toBe("string");
+    expect(st.raw().length).toBe(before + 1);
+    expect(st.messages().some((x: any) => x.text === "bare answer please")).toBe(true);
+    st.stop();
+  });
+});
+
+describe("the shared renderer's mention labels (Hub-only opt-in)", () => {
+  it("accents exact labels with a space, CJK or a hyphen as it accents @Notes; without labels nothing changes", async () => {
+    const R = (globalThis as any).AgendChatRender || (await import("/assets/chat-render.js"), (globalThis as any).AgendChatRender);
+    const html = R.renderMarkdown("@所有 Agent 和 @project-helper，@Notes", { mentionLabels: ["@所有 Agent", "@project-helper"] });
+    expect(html).toContain('<span class="mention tg">@所有 Agent</span>');
+    expect(html).toContain('<span class="mention tg">@project-helper</span>');
+    expect(html).toContain('<span class="mention tg">@Notes</span>');
+    const plain = R.renderMarkdown("@所有 Agent 和 @project-helper", {});
+    expect(plain).not.toContain("@所有 Agent</span>");
   });
 });
 
@@ -119,6 +186,17 @@ describe("a room on the page", () => {
       expect(member.pg.root.querySelector(".hub-room-page .hub-room-settings-open")).toBeNull();
     } finally { member.restore(); }
   });
+  it("「Show the other N」 opens a question's remaining answers in place (the thread's own click)", async () => {
+    const { pg, restore } = await roomPage("room-weekly");
+    try {
+      const answers = () => msgs(pg).filter((m) => /'s agent$/.test(m.querySelector(".sender")?.textContent || "") && /進度/.test(m.textContent)).length;
+      expect(answers()).toBe(3);
+      const btn = pg.root.querySelector(".hub-room-page .thread .st-action") as any;
+      expect(btn.textContent).toBe("Show the other 3");
+      fire(btn, "click"); await until(() => answers() === 6);
+      expect([answers(), pg.root.querySelector(".hub-room-page .thread .st-action")]).toEqual([6, null]);
+    } finally { restore(); }
+  });
   it("members may not @all here: the refusal is worded, no resend offered", async () => {
     const { pg, restore } = await roomPage("room-rd");
     try {
@@ -145,7 +223,8 @@ describe("a room on the page", () => {
     const { pg, restore } = await roomPage("room-assistant", "zh-TW");
     try {
       await until(() => pg.root.querySelector(".hub-room-page .hub-assistant-empty"));
-      expect(pg.root.querySelector(".hub-room-page .hub-assistant-empty")!.textContent).toBe("這是 Hub 提供的 AI 助理。它讀不到你的電腦，也讀不到其他房間。");
+      expect(pg.root.querySelector(".hub-room-page .hub-assistant-empty")!.textContent).toContain("這是 Hub 提供的 AI 助理。它讀不到你的電腦，也讀不到其他房間。");
+      expect(pg.root.querySelector(".hub-room-page .hub-assistant-empty")!.textContent).toContain("Hub 助理");   // the shared Empty: its title
       expect(pg.root.querySelector(".hub-room-page .hub-room-hint")).toBeNull();                       // a 1:1: no @ needed
       // Named by its flag in the viewer's words, never by its stored English name (Ridge on #3864).
       expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("Hub 助理");

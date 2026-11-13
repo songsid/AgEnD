@@ -1,6 +1,6 @@
 // Hub rooms, invitations on the owner's side (docs/design/hub-rooms-ux.md section 8; seam 3 in hub-rooms-split.md).
 // A room manager invited one of my shared agents; I agree (it joins the room) or decline. Two places show the same list:
-// a row at the top of the Hub's left list (「邀請 · 2」, opening the list) and the top of My shared agents. The list
+// the Invitations page (the shell's sidebar row 「邀請」 with its count opens it) and the top of My shared agents. The list
 // follows the rooms stream's invitation.changed, so an answer given in another tab, or an invitation that lapsed after
 // 7 days, leaves both places at once.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
@@ -38,14 +38,10 @@ export function useInvitations(client = hubClient()) {
 }
 const valid = (x) => x && typeof x.id === "string" && x.room && typeof x.room.name === "string" && x.agent && typeof x.agent.name === "string";
 
-/** The left list's 「邀請 · n」 row. The shell passes the list answer's pending count; nothing when it is 0. */
-export function InvitationsRow({ count = 0, onOpen } = {}) {
-  const n = Number(count) || 0;
-  if (n <= 0) return null;
-  return html`<button type="button" class="hub-invitations-row" onClick=${() => onOpen?.()}>${hroom("invitationsN", n)}</button>`;
-}
-
-/** The invitations themselves, each with 同意 / 不要. Nothing when there are none (My shared agents shows no empty box). */
+/**
+ * The invitations themselves, each with 同意 / 不要. Nothing when there are none (My shared agents shows no empty box).
+ * heading: the list's own 「邀請」 title — false where the page already says it (the invitations page's header).
+ */
 export function InvitationsList({ client = hubClient(), heading = true } = {}) {   // onOpenRoom: not used — the owner is not a member of the inviting room
   const { list, error, reload, answer } = useInvitations(client);
   const [busy, setBusy] = useState(null), [note, setNote] = useState(null), inflight = useRef(false);
@@ -58,11 +54,12 @@ export function InvitationsList({ client = hubClient(), heading = true } = {}) {
     inflight.current = false; setBusy(null);
     if (!r?.ok) setNote({ id: item.id, text: r?.status === 404 ? hi("gone") : hi("failed") });
   };
-  return html`<section class="hub-invitations" aria-label=${hroom("invitation")}>
-    ${heading ? html`<h3>${hroom("invitation")}</h3>` : null}
+  return html`<section class="hub-invitations" aria-label=${hi("invitations")}>
+    ${heading ? html`<h3>${hi("invitations")}</h3>` : null}
     ${list.map(item => html`<article class="hub-invitation" key=${item.id}>
       <p>${hroom("inviteLead", item.by?.name || "", item.agent.name, item.room.name)}</p>
       <small class="note">${Number(item.room.people) === 1 ? hi("leadOne") : hroom("inviteHint", Number(item.room.people) || 0)}</small>
+      <small class="note">${hi("readsRecent")}</small>
       ${note?.id === item.id ? html`<p class="note" role="alert">${note.text}</p>` : null}
       <div class="field-row">
         <button type="button" class="btn btn-primary" disabled=${busy !== null} onClick=${() => act(item, true)}>${hroom("agree")}</button>
@@ -76,11 +73,14 @@ export function InvitationsList({ client = hubClient(), heading = true } = {}) {
 /**
  * 「在這些房間裡」 on one of my shared agents' pages (section 8): the rooms it was let into, each with 退出這個房間.
  * Nothing when it is in none. Follows member.changed / room.changed for those rooms, and invitation.changed (an accepted
- * invitation adds a room).
+ * invitation adds a room). onRooms(count): after each read of the agent's rooms (0 included) and after a Leave, so the
+ * page can say 「在 N 個房間裡」 from this one read.
  */
-export function AgentRoomsSection({ client = hubClient(), exposureId } = {}) {
+export function AgentRoomsSection({ client = hubClient(), exposureId, onRooms } = {}) {
   const [rooms, setRooms] = useState(null), [busy, setBusy] = useState(null), [failed, setFailed] = useState(null);
-  const live = useRef(true), asked = useRef(0);
+  const live = useRef(true), asked = useRef(0), told = useRef(onRooms);
+  told.current = onRooms;
+  useEffect(() => { if (rooms) told.current?.(rooms.length); }, [rooms]);   // each read (a new list) and each Leave
   const reload = async () => {
     const mine = ++asked.current;
     const r = await client.agentRooms(exposureId);

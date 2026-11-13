@@ -12,6 +12,8 @@ register("hubInvitations", {
     retry: "Try again",
     roomPeople: "{0} · {1} people",
     leaveFailed: "It did not leave the room. Try again.",
+    readsRecent: "When @-ed, it reads the room's recent messages.",
+    invitations: "Invitations",
   },
   "zh-TW": {
     leadOne: "房間裡的 1 個人可以在那裡 @ 它；它的回答房間裡的人都看得到。",
@@ -21,6 +23,8 @@ register("hubInvitations", {
     retry: "再試一次",
     roomPeople: "{0} · {1} 人",
     leaveFailed: "沒有退出房間，請再試一次。",
+    readsRecent: "被 @ 時，它會讀到房間最近的訊息。",
+    invitations: "邀請",
   },
 });
 export const hi = (key, ...args) => t(`hubInvitations.${key}`, ...args);

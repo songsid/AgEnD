@@ -1,0 +1,66 @@
+{
+  "sourceCheckpoint": "4370f0186a846a7ea854832494b75aef3d0a314e",
+  "u1Input": "e5ee08c6db1c70da4c461b45d03677a6a6202199",
+  "u1Merge": "fa9988e75d23582c0570838f39eec1848bd029b8",
+  "u2Input": "56bc636717acac242058446ac9c42b7cc54d2a22",
+  "u2Merge": "594275c17d598409ce6b64a32328a662d8d719d5",
+  "priorConsentSource": "d168bed13fedf26721a9abe180fcbddf8117ba68",
+  "runtimeTypeScriptUnchanged": true,
+  "retainedProtectedBlobs": {
+    "src/hub/http/compose.ts": true,
+    "src/ui/hub-client.js": true,
+    "tests/support/hub-rooms-fixture.ts": true,
+    "tests/hub-shared-modules-a.test.ts": true
+  },
+  "bindings": {
+    "src/ui/panel-hub.js": "8598b018c8f9c0467130c42f89a4bf968e6e69727a70417a6ce0fadd744b3631",
+    "src/ui/hub-room-strings.js": "7dbcdd8ba6f38c482fcc5341d8bcb336f14a9176d8733d401360cb9fd2139926",
+    "src/ui/hub-room-thread.js": "cc36cce57842a8b917ecbfda50bcf4c26972cc19e69f8f419c3d3caa548c3c4f",
+    "src/ui/hub-invitations.js": "94b3c88ef6b0047be4ad04f0e58c9c7c7960c47464e08abc4829a757ab86c58e",
+    "src/ui/hub-invitations-strings.js": "ab8162ab1193cfd7ddd0c1e6873e82cb6771f2b8693143e00b3933217dd0e5be",
+    "src/ui/shared/hub-chat.css": "2529d96ed15fecb4060866c3468007f126dab8b5443802313e1287bda6381322",
+    "src/ui/shared/hub-rooms-u2.css": "b80c72a1f2691c6709e3e2d6afbd1cfb9d63f770f40580fd67b8a644a5067a9f",
+    "src/ui/hub-client.js": "16c865fa7ce2f556818918a1a86e72d4b2744590c532c209e4f0e23626488fc8",
+    "src/hub/compose/server.ts": "26bc9fe524f9e40e405ea6e49d1041255f98d7fd5e9169fe00f1de911956f7b7",
+    "src/hub/invitations.ts": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
+    "src/hub/http/compose.ts": "0cb41071e33cc758f061bdece3191b84f700edd29a38e28d89f29d765af14ae5",
+    "scripts/manual/hub-rooms/real-server.mts": "6f59df5839c541146cd5a5a105f9aae74d13c1cdc30d76ce3d1550988c70149f",
+    "tests/hub-room-invitations.test.ts": "9678814a57bc8cca77d92c93f67129e3fb01f1c69f3efcd686f2721a69008d95",
+    "tests/hub-room-list-3092.test.ts": "44b981946275304be559d0c6aedbaefbdb915442ce1afe5570222602fdff4aeb",
+    "tests/hub-room-thread-3092.test.ts": "55f87f88adc45befe832aec3fa27d5f746b8e3abb204044bde992771654d7b46",
+    "tests/hub-rooms-client-3092.test.ts": "940da6b44249876a68a046d30203c65c703781735e03ff3e2eb0b29f94dd4654"
+  },
+  "focusedAcceptance": {
+    "passed": 84,
+    "files": 8,
+    "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-invitations.test.ts tests/hub-room-list-3092.test.ts tests/hub-room-thread-3092.test.ts tests/hub-owner-admin-c.test.ts tests/hub-rooms-client-3092.test.ts tests/hub-rooms-client-u2.test.ts tests/hub-assistant-admin-ui.test.ts tests/hub-shared-modules-a.test.ts --maxWorkers=2"
+  },
+  "intermediateU1Acceptance": {
+    "passed": 71,
+    "files": 7,
+    "overlapsFinal": true
+  },
+  "nativeTypes": {
+    "testCommand": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+    "testExitCode": 0,
+    "sourceResult": "prior d168bed13 source-program exit0 carries because all src TypeScript files are unchanged; no fresh source-type run claimed"
+  },
+  "browser": {
+    "passed": 80,
+    "pictures": 22,
+    "servedAssets": 108,
+    "scope": "Real R HTTP/SQLite + A service/runner + shared U1/U2 browser components; inert directory and physical worker; all list/new-room/thread/settings/admin views mounted by the actual Hub shell; C consent service/migration are injected at the real HTTP boundary; Teams remain uncomposed; production factory registration is checked separately by hub-compose tests"
+  },
+  "limits": [
+    "Owned inert directory, member transport and assistant physical worker; no real account, vendor CLI/API, AD or Fleet",
+    "Browser C factory/migration injection remains separate from prior actual sealed-Hub production factory proof",
+    "Team store and remaining @agent/@all/presence/fullS142 walk are open; independent ready3866 source unchanged"
+  ],
+  "initialSourceCheckpoint": "1e0bdbb0602755d8b7b05e1fda5695fadc6c4efc",
+  "drawerCaptureCorrection": {
+    "commit": "4370f0186a846a7ea854832494b75aef3d0a314e",
+    "productChanged": false,
+    "initialVisualFinding": "1of22 initial PNGs captured the phone sidebar mid-slide; saved under initial-capture",
+    "finalResult": "80/80 fresh browser checks and22 fresh PNGs; image-only child inspected6/6 final affected consent images clear. Earlier remaining16-layout review scope carries, not a second per-image final22 review."
+  }
+}
