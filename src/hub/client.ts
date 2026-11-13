@@ -7,6 +7,7 @@ import { HubProtocolError } from "./validation.js";
 import { pinnedHubAgent, HubTlsIdentityError } from "./tls.js";
 import { verifyLease, sha256, canonicalArguments } from "./identity.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "./profile.js";
+import { HUB_WEB_ORIGIN_CAPABILITY, type HubWebOriginStatement } from "./web-origin.js";
 import type { HubAuthorizationLease, HubAuthorizationRequest, HubMemberFrame, HubServerFrame, HubMemberTransport, HubMemberLeaveBinding } from "./types.js";
 export class HubAuthorizationError extends Error {
   constructor(readonly code: "denied" | "unavailable" | "stale", readonly reasonCode: string) { super(`Hub authorization ${code}`); }
@@ -29,6 +30,11 @@ export interface HubClientOptions {
   now?: () => number; random?: () => number;
   /** The optional features this member offers (tests use a smaller list to stand in for an older member). */
   capabilities?: readonly string[];
+  /**
+   * web-origin-v1 (M-2901): the Hub's signed current web address from this link's welcome, before reconciliation. The
+   * receiver verifies it against the pinned profile; whatever it does, the link goes on (a refusal is its own to record).
+   */
+  webOrigin?(statement: HubWebOriginStatement, link: HubMemberLink): Promise<void> | void;
 }
 export class HubMemberClient implements HubMemberTransport {
   private profile: HubMemberProfile | null = null;
@@ -126,7 +132,9 @@ export class HubMemberClient implements HubMemberTransport {
         exchange: (value, type) => this.exchange(value, type, view) };
       this.view = view;
       // Do not await reconciliation on the receive queue: its RPC response arrives on that queue.
-      void this.options.reconcile(view).then(async () => {
+      const statement = features.has(HUB_WEB_ORIGIN_CAPABILITY) ? frame.payload.webOrigin : undefined, learn = this.options.webOrigin;
+      const learned = statement && learn ? Promise.resolve().then(() => view.current() ? learn(statement, view) : undefined).catch(() => undefined) : Promise.resolve();
+      void learned.then(() => this.options.reconcile(view)).then(async () => {
         if (!view.current()) return;
         this.ready = true; this.attempt = 0; this.firstResolve?.(); this.firstReject = this.firstResolve = null;
         const queued = this.deferred.splice(0); this.deferredBytes = 0;

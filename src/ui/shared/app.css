@@ -1816,6 +1816,8 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .s-ident { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
 .s-facts { min-width: 0; color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .s-conn .s-actions { margin-left: 0; flex-wrap: nowrap; }
+/* Retry and Settings stay together: in a wide list they are the last of the connection's three action columns. */
+.s-conn-buttons { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-1); }
 @media (max-width: 899px) {
   .s-row.s-conn { grid-template-columns: minmax(0, 1fr) auto; }
   .s-conn .s-facts { grid-column: 1 / -1; grid-row: 2; }
@@ -3698,13 +3700,28 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 }
 @container settings-page (min-width: 900px) {
   .p-settings .s-agents-list > .s-group:nth-child(2) > .s-group-head { border-radius: 0; }
-  .p-settings .s-agent-columns, .p-settings .s-agent-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(120px, .8fr) minmax(170px, 1.2fr) minmax(80px, .6fr) minmax(170px, auto); align-items: center; }
-  .p-settings .s-classic-columns, .p-settings .s-classic-row { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(180px, 1.3fr) minmax(90px, .6fr) minmax(150px, auto); align-items: center; }
+  /* AGEND-256: the columns belong to the list, not to each row. Each row used to be its own grid, so its "auto"
+     actions column took that row's buttons (Pause + Stop when running, only Wake when paused; a longer bot name) and
+     the fr columns before it moved with it: a paused row sat 8–24px right of a running one. The list now holds the
+     tracks; the header, each group and each row take them as a subgrid, so every row measures against the widest.
+     A browser without subgrid keeps the per-row template (the second declaration is dropped). */
+  .p-settings .s-agents-list { --s-cols: minmax(150px, 1.1fr) minmax(120px, .8fr) minmax(170px, 1.2fr) minmax(80px, .6fr) minmax(170px, auto); }
+  .p-settings .s-classic-list { --s-cols: minmax(170px, 1fr) minmax(180px, 1.3fr) minmax(90px, .6fr) minmax(150px, auto); }
+  /* A connection's actions are three columns of their own (token | state | Retry + Settings), so the token chip and the
+     state start at one x in every row, whatever the bot's name and whether Retry is there. */
+  .p-settings .s-connections-list { --s-cols: minmax(180px, .9fr) minmax(180px, 1.4fr) auto auto auto; }
+  .p-settings :is(.s-agents-list, .s-classic-list, .s-connections-list) { display: grid; grid-template-columns: var(--s-cols); column-gap: 16px; row-gap: 0; }
+  .p-settings :is(.s-agents-list, .s-classic-list, .s-connections-list) > *, .p-settings .s-agents-list > .s-group > * { grid-column: 1 / -1; }
+  .p-settings .s-agents-list > .s-group { display: grid; grid-template-columns: var(--s-cols); grid-template-columns: subgrid; column-gap: 16px; }
+  .p-settings :is(.s-agent-columns, .s-agent-row, .s-classic-columns, .s-classic-row, .s-connection-columns),
+  .p-settings .s-connections-list > .s-conn { display: grid; grid-template-columns: var(--s-cols); grid-template-columns: subgrid; column-gap: 16px; align-items: center; }
   .p-settings :is(.s-agent-row, .s-classic-row) > * { grid-column: auto; grid-row: auto; }
   .p-settings :is(.s-agent-row, .s-classic-row) > .s-actions { grid-column: auto; grid-row: auto; }
-  .p-settings .s-connection-columns, .p-settings .s-connections-list > .s-conn { display: grid; grid-template-columns: minmax(180px, .9fr) minmax(180px, 1.4fr) minmax(240px, auto); align-items: center; }
-  .p-settings .s-connections-list .s-facts, .p-settings .s-connections-list .s-actions { grid-column: auto; grid-row: auto; }
-  .p-settings .s-connections-list .s-actions { flex-wrap: wrap; }
+  .p-settings .s-connections-list .s-facts { grid-column: auto; grid-row: auto; text-align: left; }
+  .p-settings .s-connection-columns > span:last-child { grid-column: 3 / -1; }
+  .p-settings .s-connections-list > .s-conn > .s-actions { grid-column: 3 / -1; grid-row: auto; display: grid; grid-template-columns: auto auto auto; grid-template-columns: subgrid; column-gap: 16px; justify-items: start; }
+  .p-settings .s-connections-list .s-state { max-width: 22em; }
+  .p-settings .s-connections-list .s-conn-buttons { justify-self: end; }
 }
 @container settings-page (max-width: 600px) {
   .p-settings :is([data-section="agent-defaults"], [data-section="chat"]) .s-general .grid2 { grid-template-columns: minmax(0, 1fr); }

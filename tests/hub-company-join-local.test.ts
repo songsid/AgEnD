@@ -1,6 +1,6 @@
 /** Local cancellation and strict profile/journal settlement must win independently of the short Settings transaction. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
@@ -12,7 +12,9 @@ import { CompanyJoinRemoteError } from "../src/hub/join/client.js";
 import { currentLocalJoinId, readLocalJoin } from "../src/hub/join/local-journal.js";
 import { currentBinding, createHubMemberPairingApi } from "../src/hub/member/pairing-api.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
-import { sha256 } from "../src/hub/identity.js";
+import { sha256, issuerKeyId } from "../src/hub/identity.js";
+import { signHubWebOrigin } from "../src/hub/web-origin.js";
+import { CompanyTrustStore } from "../src/hub/join/trust.js";
 import { companyIdentityDigest } from "../src/hub/join/protocol.js";
 import { createJoinPrivate, writeJoinPrivate } from "../src/hub/join/private.js";
 import { HubMemberProfileStore } from "../src/hub/profile.js";
@@ -371,6 +373,55 @@ describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這
     expect(w.pairing.view()).toEqual({ state: "unpaired" });
     expect(w.pairing.disconnected(w.shown.hubId)).toBe(true);
     expect(w.calls.length).toBe(calls);
+    w.controller.close();
+  });
+  /** M-2901: the Hub's pages moved (#3428): same Hub, keys and member address, a new web address. */
+  const NEW_WEB = "https://hub-new.example.test";
+  async function moved(statement: "issuer" | "other" | null) {
+    const w = await joined(["join-supersedes-v1", "member-leave-v1"]);
+    const profile = new HubMemberProfileStore(w.directory, w.shown.hubId).readProfile(), oldWeb = w.metadata.hub.webOrigin;
+    if (statement) {
+      const key = statement === "issuer" ? createPrivateKey(readFileSync(join(w.hubHome, "hub/keys/issuer-key.pem"), "utf8")) : generateKeyPairSync("ed25519").privateKey;
+      // Written as the member keeps it (a forged one too, bypassing save's own check: the read must refuse it).
+      writeFileSync(join(w.directory, "hub-member", profile.hub.hubId, "web-origin.json"), JSON.stringify(signHubWebOrigin({ hubId: profile.hub.hubId,
+        issuerKeyId: issuerKeyId(key), fleetId: profile.fleetId, memberOrigin: profile.hub.memberOrigin }, NEW_WEB, 1, key)), { mode: 0o600 });
+    }
+    w.metadata.hub.webOrigin = NEW_WEB; w.metadata.identityDigest = companyIdentityDigest(w.metadata.hub);
+    w.client.discover.mockClear();
+    return { ...w, oldWeb, profile };
+  }
+  it("M-2901: after the Hub's address changed, the card shows the new one and Reconnect re-joins there — the same Hub, never 'a different identity'", async () => {
+    const w = await moved("issuer"), pushes = w.pushes.length, handoffId = randomUUID();
+    expect(w.controller.display()).toMatchObject({ webOrigin: NEW_WEB, label: "My Fleet" });
+    expect(w.pairing.view()).toMatchObject({ state: "paired", hub: { webOrigin: NEW_WEB } });
+    const op = await w.controller.reconnect({ ...w.shown, address: NEW_WEB, fleetOrigin: "http://127.0.0.1:4444", handoffId }, w.authority, w.pairing);
+    expect(op).toMatchObject({ operationId: expect.any(String), handoffId });
+    expect(w.client.discover.mock.calls.map(c => (c as unknown[])[0])).toEqual([NEW_WEB]);
+    expect(w.pushes.length).toBe(pushes + 1);                                                   // past the identity pin, to the Hub
+    expect(w.pushes.at(-1)).toMatchObject({ supersedes: { fleetId: w.profile.fleetId, credential: w.profile.credential } });
+    expect(existsSync(join(w.directory, new CompanyTrustStore(w.directory).path(NEW_WEB)))).toBe(true);
+    w.controller.close();
+  });
+  it("M-2901: an older tab that sends the saved address still names this connection; Reconnect goes to the new address; Remove takes either", async () => {
+    const w = await moved("issuer");
+    await w.controller.reconnect({ ...w.shown, address: w.oldWeb, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing);
+    expect(w.client.discover.mock.calls.map(c => (c as unknown[])[0])).toEqual([NEW_WEB]);
+    w.controller.close();
+    for (const address of [NEW_WEB, "saved"]) {
+      const v = await moved("issuer");
+      expect(await v.controller.remove({ ...v.shown, address: address === "saved" ? v.oldWeb : address }, v.authority, v.pairing)).toEqual({ left: true });
+      v.controller.close();
+    }
+  });
+  it.each([["no statement", null], ["a statement another key signed", "other"]] as const)("M-2901: %s — the card keeps the saved address; nothing pins the moved Hub on its own", async (_name, statement) => {
+    const w = await moved(statement), pushes = w.pushes.length;
+    expect(w.controller.display()).toMatchObject({ webOrigin: w.oldWeb });
+    expect(w.pairing.view()).toMatchObject({ hub: { webOrigin: w.oldWeb } });
+    await expect(w.controller.reconnect({ ...w.shown, address: NEW_WEB, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing)).rejects.toMatchObject({ code: "conflict" });
+    // The saved address now answers as another identity (this test's Hub moved without telling): refused before any push or pin.
+    await expect(w.controller.reconnect({ ...w.shown, address: w.oldWeb, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing)).rejects.toThrow();
+    expect(w.pushes.length).toBe(pushes);
+    expect(existsSync(join(w.directory, new CompanyTrustStore(w.directory).path(NEW_WEB)))).toBe(false);
     w.controller.close();
   });
 });
