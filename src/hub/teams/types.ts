@@ -27,4 +27,6 @@ export interface HubTeamExpansion {
 export interface HubTeamReader {
   read(db: Database.Database, teamId: string): HubTeamSnapshot | null;
   expand(db: Database.Database, teamIds: readonly string[]): HubTeamExpansion;
+  /** Live roster membership for ask grants and creator rights; null means the team is missing/deleted. */
+  isMember(db: Database.Database, teamId: string, person: PersonId): { readonly revision: number; readonly member: boolean } | null;
 }
