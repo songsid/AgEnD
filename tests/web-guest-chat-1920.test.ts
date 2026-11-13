@@ -1,7 +1,7 @@
 /**
  * #1920 phase 2 (step 2b): a guest chats as on the platform — to an in-scope instance, while guests may chat
  * (web.guests.chat, default true), with authority none, and never a command.
- * - /ui/send: out of scope 404; read-only 403; text that starts with "/" 403; the agent sees "[user:… via web (guest)…]".
+ * - /ui/send: out of scope 404; read-only 403; text that starts with "/" 403; the agent sees "[user:…@web:g#…]".
  * - /ui/upload: the same scope and switch. /ui/cancel/<n>: the platform button's, in scope and while guests may chat.
  * - /ui/reply-button: only on a reply the guest may see (§5.2), while guests may chat; the agent sees the choice as a
  *   guest's, as a typed message.
@@ -79,9 +79,9 @@ describe("the rules", () => {
     expect(["/raw ls", "  /clear", "/model x", "hello", "a /path", "\n/raw x"].map(guestCommandText)).toEqual([true, true, true, false, false, true]);
   });
   it("the agent sees a guest's message as a guest's: recognition only", () => {
-    expect(formatHumanInboundMessage("hi", { user: "Alice", source: "web", user_id: ALICE.userId, web_guest: "1" }, "mcp")).toContain(`[user:Alice via web (guest), id:${ALICE.userId}] hi`);
-    expect(formatHumanInboundMessage("hi", { user: "Ops", source: "web", user_id: "web-user" }, "mcp")).toContain("[user:Ops via web, id:web-user] hi");
-    expect(formatHumanInboundMessage("hi", { user: "Bob", source: "discord", user_id: "2", web_guest: "1" }, "mcp"), "only a web message is marked").toContain("[user:Bob via discord, id:2] hi");
+    expect(formatHumanInboundMessage("hi", { user: "Alice", source: "web", user_id: ALICE.userId, web_guest: "1" }, "mcp")).toContain(`[user:Alice@web:g#${ALICE.userId}] hi`);
+    expect(formatHumanInboundMessage("hi", { user: "Ops", source: "web", user_id: "web-user" }, "mcp")).toContain("[user:Ops@web#web-user] hi");
+    expect(formatHumanInboundMessage("hi", { user: "Bob", source: "discord", user_id: "2", web_guest: "1" }, "mcp"), "only a web message is marked").toContain("[user:Bob@dc#2] hi");
   });
   it("guestPrefs keeps the look and the guest's own, nothing that names an instance", () => {
     const view = guestPrefs({ rev: 3, values: { theme: "dark", lang: "zh-TW", "nav.favorites": ["b"], "nav.order": ["b", "a"], "card.sizeByInstance": { b: "l" }, "widget.sidebar": { spec: {} }, "names.primary": "display", "fx.sidebar": { id: "x" } } });
@@ -190,7 +190,7 @@ describe("live: a guest scoped to `a`", () => {
     expect(await raw(port, "POST", "/ui/reply-button", write(session("guest", ALICE)), JSON.stringify({ instance: "a", id: ids[0], index: 0 }))).toEqual({ status: 200, body: JSON.stringify({ answered: true }) });
     expect(delivered).toHaveLength(1);
     expect(delivered[0].meta).toMatchObject({ source: "web", web_guest: "1", user_id: ALICE.userId });
-    expect(formatHumanInboundMessage(delivered[0].content, delivered[0].meta, "mcp")).toContain(`via web (guest), id:${ALICE.userId}]`);
+    expect(formatHumanInboundMessage(delivered[0].content, delivered[0].meta, "mcp")).toContain(`@web:g#${ALICE.userId}]`);
     expect((await raw(port, "POST", "/ui/reply-button", write(session("admin")), JSON.stringify({ instance: "a", id: ids[1], index: 0 }))).status).toBe(200);
     expect(delivered[1].meta.web_guest, "an admin's choice is not a guest's").toBeUndefined();
   });
@@ -255,7 +255,7 @@ describe("live: a guest scoped to `a`", () => {
     expect(st.status, st.body).toBe(200);
     const meta = steered.find((m) => m.type === "steer")?.meta;
     expect(meta).toMatchObject({ source: "web", web_guest: "1", user_id: ALICE.userId });
-    expect(formatHumanInboundMessage("look at the logs", meta, "mcp")).toContain(`via web (guest), id:${ALICE.userId}]`);
+    expect(formatHumanInboundMessage("look at the logs", meta, "mcp")).toContain(`@web:g#${ALICE.userId}]`);
     const clear = await cmd({ instance: "a", command: "clear" });
     expect([clear.status, JSON.parse(clear.body).error]).toEqual([403, expect.stringContaining("/clear")]);
     expect(await cmd({ instance: "b", command: "ctx" })).toEqual({ status: 404, body: JSON.stringify({ error: "not found" }) });

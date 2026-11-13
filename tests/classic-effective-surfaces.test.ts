@@ -66,8 +66,8 @@ describe("Classic effective backend surfaces", () => {
 
     expect(getBackendByInstance).toHaveBeenCalledWith("classic-room", "kiro-cli");
     expect(sent).toEqual([
-      { type: "raw_paste", content: "/compact" },
-      { type: "raw_paste", content: "/clear", confirm_clear: true },
+      { type: "raw_paste", content: "/compact", context_reset: "compact" },
+      { type: "raw_paste", content: "/clear", context_reset: "clear", confirm_clear: true },
       { type: "raw_paste", content: "/chat save snapshot" },
     ]);
   });

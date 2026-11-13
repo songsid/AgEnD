@@ -146,3 +146,13 @@ it("an owned selected-model change invalidates the human stamp even before anoth
   m.emit("model_context", "session-A", "claude-sonnet-5-5");
   expect(d.humanReminders.current(old)).toBe(false); expect(d.humanReminders.prepare("next").replyHint).toBe(true);
 });
+
+it("a first known model does not retire an owned human stamp from an unknown-model launch (#3074)", () => {
+  const { dir, backend } = rig();
+  const d: any = new Daemon("default-worker", { backend: "claude-code", working_directory: dir, log_level: "silent" } as any,
+    dir, false, backend, undefined, pino({ level: "silent" }) as any);
+  const m = d.buildTranscriptMonitor(null); d.transcriptMonitor = m; d.installCompactInboundInstructions();
+  const first = d.humanReminders.prepare("first"); d.humanReminders.settle(first, true);
+  m.emit("model_context", "session-A", "claude-opus-5-5");
+  expect(d.humanReminders.current(first)).toBe(true); expect(d.humanReminders.prepare("next").replyHint).toBe(false);
+});

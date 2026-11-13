@@ -111,3 +111,17 @@ alpha af6f44ae1 sync brings its observer feature; the same correction and tests
 are retained, alongside alpha's native current-owner/allowInference fences.
 Fixed grammar instructions and one-time transition notices are extra context
 overhead; the header-byte estimate excludes them and is not net fleet billing.
+
+Final alpha sync with af6f44ae1 preserves native modelCurrent/allowInference fences
+while carrying the same genuine-boundary helper and listener controls as main.
+Five focused files pass128/128 after the sync (before the additional R5 pin).
+R5 adds the unknown-model launch control; main listener12/12 and its guard-removal
+reversal1red/11controls pin first metadata arrival without resetting the stamp.
+Ridge independently cleared the common production R2 correction.
+
+Native TS7 source and test checks pass on the af6f44ae1 merge. Alpha listener
+file including R5 passes13/13. The same8 legacy CI expectation corrections are
+carried from main: exact actor tags, escaped metadata and command-reset fields,
+with all existing authority/fence assertions retained. Main slice255/255.
+
+The same8 CI contract files pass255/255 on alpha after the sync and R5 pin.
