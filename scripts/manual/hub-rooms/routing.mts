@@ -141,7 +141,9 @@ try {
     await page.getByText(progress, { exact: true }).waitFor();
     const question = mentionAll + " Plan together " + device, askBubble = page.locator(".msg.user").filter({ has: page.locator(".md", { hasText: question }) });
     check(tag + " @all sent mention has the same accent", (await askBubble.locator(".mention").allTextContents()).includes(mentionAll));
-    check(tag + " progress is attached to its question without a second time", (await askBubble.innerText()).includes(progress) && await askBubble.locator(".time").count() === 1);
+    check(tag + " progress follows its question without a second time", await askBubble.evaluate((el: HTMLElement, text: string) => {
+      const line = el.nextElementSibling; return !!line?.classList.contains("status-line") && line.textContent?.trim() === text && !line.querySelector(".time");
+    }, progress) && await askBubble.locator(".time").count() === 1);
     await shot("all-queued");
     check(tag + " offline Fleet retains exactly one queued delivery", planner.inputs.length === b && web.db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE room_id=? AND fleet_id=? AND state='queued'").get(roomId, planner.profile.fleetId).n === 1);
     await notes.answer(notes.inputs[n], "Notes team answer " + device); await notes.state({ process: "running", execution: "idle" }); await page.getByText("Notes team answer " + device, { exact: true }).waitFor();
@@ -149,7 +151,8 @@ try {
     await planner.state({ process: "running", execution: "working" }); await visiblePresence("Planner", working, "busy"); await closeRail(); await shot("all-reconnected");
     await planner.answer(planner.inputs[b], "Planner team answer " + device); await planner.state({ process: "running", execution: "idle" }); await page.getByText("Planner team answer " + device, { exact: true }).waitFor();
     await visiblePresence("Planner", idle, "ok");
-    await page.getByText(lang === "en" ? "All 2 answered" : "2 個都回答了", { exact: true }).waitFor(); await closeRail(); await shot("all-answered");
+    await askBubble.locator(".tick-delivered").waitFor();
+    check(tag + " completed question returns to the delivered tick", await askBubble.evaluate((el: HTMLElement) => !el.nextElementSibling?.classList.contains("status-line"))); await closeRail(); await shot("all-answered");
     for (const answerText of ["Notes team answer " + device, "Planner team answer " + device]) {
       const answerBubble = page.locator(".msg.agent").filter({ has: page.locator(".md", { hasText: answerText }) });
       check(tag + " answer quotes the @all question: " + answerText, (await answerBubble.locator(".msg-quote .quote-text").innerText()).includes(question));
