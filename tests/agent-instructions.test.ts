@@ -21,17 +21,17 @@ import type { Logger } from "../src/logger.js";
 import { matrixCases } from "./helpers/instructions-matrix.js";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
-// Recorded from the instructions code before this change (`release/2.3.5-alpha` at 861ca2ac4): see helpers/instructions-matrix-record.ts.
+// Recorded from compact-list workflow at6595fb5d5; full576x3 matrix retained with explicit detail reads and cursor traversal.
 const GOLDEN: Record<string, string> = JSON.parse(readFileSync(new URL("./fixtures/instructions-matrix.json", import.meta.url), "utf8"));
 
-describe("what an agent is told has not changed", () => {
+describe("the complete expected agent instructions", () => {
   const cases = matrixCases();
   it("covers the whole parameter grid, for the fleet and the Windows native builders (systemPrompt is one of its axes)", () => {
     expect(cases.length).toBe(576);
     expect(Object.keys(GOLDEN).length).toBe(cases.length * 3);
     expect(new Set(cases.map(c => c.params.customPrompt)).size).toBe(2);
   });
-  it("is word for word what it was before, for every combination (fleet and Windows native)", () => {
+  it("matches the reviewed paged-list guidance for every combination (fleet and Windows native)", () => {
     let checked = 0;
     for (const { key, params } of cases) {
       expect(sha(buildFleetInstructions(params)), `fleet|${key}`).toBe(GOLDEN[`fleet|${key}`]);
