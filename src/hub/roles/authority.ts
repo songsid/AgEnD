@@ -15,6 +15,7 @@ import { inspectHubDirectoryDecisionProof, type HubDirectoryDecisionProof } from
 export type HubManagementPermission = typeof MANAGEMENT_PERMISSIONS[number];
 export const HUB_MANAGEMENT_PROOF_TTL = 5_000;
 const PREPARATION_BUDGET = 20_000;
+const DIRECTORY_OPERATION_BUDGET = 300_000;
 type DirectoryActor = Extract<HubActor, { kind: "directory" }>;
 export interface HubManagementPermit {
   readonly actor: DirectoryActor;
@@ -29,6 +30,8 @@ export interface HubManagementPermit {
 /** Preparation only: effects still require a newly acquired named permit. */
 export interface HubDirectoryManagementPreparation {
   readonly actor: DirectoryActor;
+  readonly directory: object;
+  readonly administrator: PersonKey;
   assertCurrent(): void;
   authorize(): Promise<HubManagementPermit>;
   retire(): void;
@@ -83,11 +86,33 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
     if (selected.kind === "roles") sync(assertAuthorizationTime());
     validated(epoch, version()); return selected;
   };
+  // The longer guard is never exposed on a permit and cannot authorize an effect.
+  const preparationChecks = new WeakMap<HubManagementPermit, () => void>();
   const authority = {
     async prepareDirectory(incoming: HubRequestContext): Promise<HubDirectoryManagementPreparation> {
-      const permit = await authority.require(incoming, "hub.admin");
-      return Object.freeze({ actor: permit.actor, assertCurrent() { permit.assertCurrent(); },
-        async authorize() { permit.assertCurrent(); return permit; }, retire() {} });
+      const require = authority.require, permit = await require(incoming, "hub.admin"), guard = preparationChecks.get(permit);
+      if (!guard || authority.require !== require) throw new HubProtocolError("unavailable");
+      let retired = false, running = false;
+      const check = () => {
+        try {
+          if (retired || authority.require !== require) throw new HubProtocolError("unavailable");
+          guard();
+          if (authority.require !== require) throw new HubProtocolError("unavailable");
+        } catch (error) { retired = true; throw error; }
+      };
+      return Object.freeze({ actor: permit.actor, directory, administrator: root, assertCurrent: check,
+        async authorize() {
+          check();
+          if (running) throw new HubProtocolError("backpressure");
+          running = true;
+          try {
+            // Same session, policy/version and provider, but a NEW physical eligibility read.
+            const fresh = await require(incoming, "hub.admin"); check();
+            if (fresh.permission !== "hub.admin" || fresh.source !== permit.source
+              || fresh.actor.sessionId !== permit.actor.sessionId || personKeyString(fresh.actor.person) !== personKeyString(permit.actor.person)) throw new HubProtocolError("unavailable");
+            fresh.assertCurrent(); check(); return fresh;
+          } finally { retired = true; }
+        }, retire() { retired = true; } });
     },
     /** No fabricated browser session. Committed receipt recovery must run before requesting this fresh proof. */
     async requireJoinIssuer(input: PersonKey, incoming: GroupCheckContext): Promise<HubJoinIssuerPermit> {
@@ -139,12 +164,14 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
         || typeof incoming.isIdentityCurrent !== "function") throw new HubProtocolError("unavailable");
       const authenticate = incoming.current.bind(incoming), sessionCurrent = incoming.isCurrent.bind(incoming);
       const identityCurrent = incoming.isIdentityCurrent.bind(incoming), started = time(), before = read(), authEpoch = version();
+      const callerMethods = { current: incoming.current, isCurrent: incoming.isCurrent, isIdentityCurrent: incoming.isIdentityCurrent };
       let retired = false, actor: DirectoryActor | null = null;
-      const common = (proof?: HubDirectoryDecisionProof) => {
+      const common = (proof?: HubDirectoryDecisionProof, preparation = false) => {
         try {
           if (retired || sessionCurrent() !== true) throw new HubProtocolError("unavailable");
           let at = time();
-          if (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET) throw new HubProtocolError("unavailable");
+          const budget = preparation ? DIRECTORY_OPERATION_BUDGET : PREPARATION_BUDGET;
+          if (at.wall - started.wall >= budget || at.elapsed - started.elapsed >= budget) throw new HubProtocolError("unavailable");
           if (proof) {
             const decisionLive = () => {
               live();
@@ -214,6 +241,19 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
             return at.wall; // Trusted final sample; consumers must not invoke another clock callback afterward.
           } catch (error) { retired = true; throw error; }
         } } : {}),
+      });
+      if (cap === "hub.admin") preparationChecks.set(permit, () => {
+        try {
+          const caller = () => {
+            if (incoming.requestId !== requestId || incoming.current !== callerMethods.current || incoming.isCurrent !== callerMethods.isCurrent
+              || incoming.isIdentityCurrent !== callerMethods.isIdentityCurrent) throw new HubProtocolError("unavailable");
+          };
+          caller(); const at = common(undefined, true);
+          if (!allowed(at.wall)) throw new HubProtocolError("unavailable");
+          caller(); const final = common(undefined, true);
+          if (!allowed(final.wall)) throw new HubProtocolError("unavailable");
+          caller();
+        } catch (error) { retired = true; throw error; }
       });
       permit.assertCurrent(); return permit;
     },

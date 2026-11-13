@@ -14,7 +14,7 @@ import { MAX_POLICY_DIRECTORY_GROUPS } from "./roles/read.js";
 import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubDirectorySettingsCandidate, HubDirectorySettingsWriter } from "./settings-commit.js";
 import type { HubDirectorySessionRotation } from "./session-directory-transition.js";
-import { assertHubDirectoryActor, type HubDirectoryAdministration } from "./roles/directory-authority.js";
+import { assertHubDirectoryActor, authorizeHubDirectoryPreparation, type HubDirectoryAdministration, type HubDirectoryPreparation } from "./roles/directory-authority.js";
 import type { HubDirectoryDecisionProof } from "./directory-decision-proof.js";
 
 type Actor = HubDirectoryDecisionRequest["actor"];
@@ -25,10 +25,13 @@ export interface HubDirectoryProofContext {
   signal?: AbortSignal;
   /** Ephemeral server proof from this session's hub.admin permit; never parsed from HTTP input. */
   administration?: HubDirectoryAdministration;
+  /** Server-only, bounded operation identity; exchanged for fresh authority after LDAP checks. */
+  preparation?: HubDirectoryPreparation;
 }
 export function captureHubDirectoryProofContext(input: HubDirectoryProofContext): HubDirectoryProofContext {
   const actor = parseHubDirectoryDecisionMetadata({ actor: input.actor, changes: ["search"], recipients: [{ kind: "host", sink: "owner" }] }).actor;
-  return { actor, current: input.current, signal: input.signal, ...(input.administration !== undefined ? { administration: input.administration } : {}) };
+  return { actor, current: input.current, signal: input.signal, ...(input.administration !== undefined ? { administration: input.administration } : {}),
+    ...(input.preparation !== undefined ? { preparation: input.preparation } : {}) };
 }
 export interface HubDirectoryProofSource {
   directory: HubDirectory;
@@ -109,6 +112,7 @@ export function probeHubDirectorySettingsTls(cfg: ResolvedDirectoryConfig): Prom
 interface CapturedSource extends HubDirectoryProofSource { resolved: ResolvedDirectoryConfig }
 interface Draft {
   actor: Actor; source: CapturedSource; candidate: HubDirectorySettingsCandidate; resolved: ResolvedDirectoryConfig;
+  administrationRequired: boolean;
   createdAt: number; expiresAt: number; leaf: string; ca: string[]; trustRequired: boolean; challenge: string;
 }
 export interface HubDirectorySettingsProof {
@@ -138,9 +142,10 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
     if (resolved.realm !== administrator.realm || s.directory.realm !== administrator.realm) refuse("unavailable");
     return { ...s, config, administrator, groups, resolved };
   };
-  const current = (d: Pick<Draft, "source" | "actor" | "createdAt" | "expiresAt">, ctx: ReturnType<typeof context>) => {
+  const current = (d: Pick<Draft, "source" | "actor" | "createdAt" | "expiresAt" | "administrationRequired">, ctx: ReturnType<typeof context>) => {
     const t = time();
     if (stopped || ctx.signal?.aborted || actorKey(ctx.actor) !== actorKey(d.actor) || !boolean(ctx.current) || !boolean(d.source.current)) refuse("denied");
+    if (d.administrationRequired && ctx.administration === undefined && ctx.preparation === undefined) refuse("denied");
     assertHubDirectoryActor(ctx, d.source);
     const s = capture();
     if (!boolean(s.current) || s.directory !== d.source.directory || s.image !== d.source.image || s.epoch !== d.source.epoch
@@ -244,6 +249,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       if (!opaqueSecret(copy.bindPassword)) refuse("invalid");
       const ca = caFingerprints(copy.directory, createdAt), oldCa = caFingerprints(source.config, createdAt, true);
       const d: Draft = { actor: metadata.actor, source, candidate: { ...copy, changes: metadata.changes, recipients: metadata.recipients }, resolved, createdAt, expiresAt: createdAt + TTL,
+        administrationRequired: ctx.administration !== undefined || ctx.preparation !== undefined,
         leaf: "", ca, trustRequired: resolved.url !== source.resolved.url || !same(ca, oldCa), challenge: randomBytes(32).toString("base64url") };
       current(d, ctx);
       for (const [ref, old] of drafts) if (old.expiresAt <= createdAt) drafts.delete(ref);
@@ -258,13 +264,19 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
     },
     async test(ref, confirmation, inputContext) { const ctx = context(inputContext), d = get(ref, ctx); confirmed(d, confirmation); await candidate(d, ctx); },
     async apply(ref, input, inputContext, rotation, beforeCommit) {
-      const ctx = context(inputContext), d = get(ref, ctx), credentials = input.credentials && { ...input.credentials }, confirmation = input.confirmation;
+      let ctx = context(inputContext);
+      const d = get(ref, ctx), credentials = input.credentials && { ...input.credentials }, confirmation = input.confirmation;
       drafts.delete(ref); // Failed and cancelled saves also consume this exact preparation.
       confirmed(d, confirmation);
       const at = await authenticate(d, ctx, credentials); current(d, ctx);
       // Reuse only the current old-directory authentication; never the earlier candidate test as an allowance.
       d.expiresAt = Math.min(d.expiresAt, at + TTL);
       await candidate(d, ctx); current(d, ctx);
+      if (ctx.preparation !== undefined) {
+        const administration = await authorizeHubDirectoryPreparation(ctx.preparation, ctx.actor, capture());
+        ctx = { actor: ctx.actor, current: ctx.current, signal: ctx.signal, administration };
+        current(d, ctx);
+      }
       const writer = deps.writer(), proof = () => { current(d, ctx); return true; };
       const prepared = ctx.administration === undefined ? writer.prepare(structuredClone(d.candidate), ctx.actor, proof)
         : writer.prepare(structuredClone(d.candidate), ctx.actor, proof, ctx.administration);
