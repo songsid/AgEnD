@@ -27,7 +27,9 @@ import { sealHubInitialization } from "../src/hub/initialization.js";
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import { createHubSettingsWriter, HubSettingsError, type HubSettingsWriterDeps } from "../src/hub/settings-commit.js";
 import { atomicWriteFileSync } from "../src/atomic-write.js";
-import { hubSetCookie } from "../src/hub/sessions.js";
+import { hubSetCookie, HubSessions } from "../src/hub/sessions.js";
+import { HubCore } from "../src/hub/http/core.js";
+import { bindHubDirectoryAdministration } from "../src/hub/roles/directory-authority.js";
 import { SERVER_SET } from "../src/hub/compose/storage.js";
 import { createHubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
 import { createHubDirectorySaveCoordinator } from "../src/hub/settings-directory-save.js";
@@ -730,6 +732,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
     hub.config = yaml.load(readFileSync(join(hub.home, "fleet.yaml"), "utf8")) as typeof hub.config;
     writer = createHubSettingsWriter({ home: hub.home, now: options.now, readHub: () => hub.config.hub,
       directoryDecision: () => borrowed ?? runtime?.directoryDecision() ?? null,
+      directoryAdministration: () => runtime?.directoryAdministration() ?? null,
       saveHub(patches) {
         const next = structuredClone(hub.config.hub);
         for (const patch of patches) { if (patch.remove) delete next[patch.path[1]!]; else next[patch.path[1]!] = patch.value; }
@@ -2351,5 +2354,66 @@ describe.skipIf(process.platform === "win32")("S129 factory session classificati
       owner(randomUUID()); expect(() => classify()).toThrow("unavailable");
       owner(String(r.hub.config.hub.hubId)); expect(() => classify()).toThrow("unavailable");
     } finally { await r.runtime.close(); }
+  });
+});
+
+/** The real mounted source and writer; role cutover is private fixture setup, never an upgrade claim. */
+describe.skipIf(process.platform === "win32")("S129 mounted directory source", () => {
+  const roles = (hub: Awaited<ReturnType<typeof initializedHub>>, deps: HubHttpDeps, entry: HubHttpEntry) =>
+    provisionMountedRoles({ hub, deps, entry });
+  it("publishes its exact live decision getter for an already valid role image", async () => {
+    const r = await directoryRuntimeRig(undefined, { beforeHttp: roles });
+    try {
+      const mounted = r.runtime.directorySettings()!, source = mounted.source();
+      expect(source.decisionProof).toBe(mounted.decision.administrationProof);
+      expect(source.decisionProof!()).toBeNull();
+    } finally { await r.runtime.close(); }
+  });
+  it("selects the exact mounted role source for the existing writer", async () => {
+    const r = await directoryRuntimeRig(undefined, { beforeHttp: roles });
+    try {
+      const mounted = r.runtime.directorySettings()!, selected = r.runtime.directoryAdministration();
+      expect(selected).not.toBeNull();
+      expect(selected!.decision).toBe(mounted.decision);
+      expect(selected!.source.directory).toBe(mounted.source().directory);
+      expect(selected!.source.decisionProof).toBe(mounted.decision.administrationProof);
+      expect(selected!.source).not.toHaveProperty("bindPassword");
+    } finally { await r.runtime.close(); }
+  });
+  it("retains a real session's named proof through the mounted writer's own SQL decision", async () => {
+    const r = await directoryRuntimeRig(undefined, { beforeHttp: roles });
+    try {
+      const signed = await noticeSignIn(r, ADMIN); expect(signed.status).toBe(200);
+      const token = signed.cookie.slice(signed.cookie.indexOf("=") + 1);
+      const core = new HubCore(r.deps, hubTxDatabase), sessions = new HubSessions(core);
+      const ctx = sessions.context({ headers: { cookie: signed.cookie } } as import("node:http").IncomingMessage);
+      const permit = await core.management(ctx, "hub.admin");
+      if (!("permission" in permit)) throw Error("fixture named proof");
+      const actor = { kind: "hub-administrator" as const, person: permit.actor.person, sessionId: permit.actor.sessionId, requestId: ctx.requestId };
+      const mounted = r.runtime.directorySettings()!, witness = bindHubDirectoryAdministration(permit, actor, mounted.source());
+      let saved: { receiptId: string; directoryEpoch: number } | undefined;
+      expect(() => {
+        const candidate = r.candidate(), directory = r.writer.directory!;
+        const prepared = directory.prepare({ ...candidate, changes: [...candidate.changes] }, actor, mounted.current, witness);
+        saved = directory.commit(prepared.ref, actor, mounted.current, undefined, undefined, witness);
+      }).not.toThrow();
+      expect(saved).toMatchObject({ receiptId: expect.any(String), directoryEpoch: 1 });
+      expect(r.runtime.directoryDecision()!.operation(saved!.receiptId).actor).toEqual(actor);
+      expect(r.hub.config.hub.administrator).toEqual(ADMIN.key);
+      expect(sessions.session(token)).toBeNull();
+    } finally { await r.runtime.close(); }
+  });
+  it("leaves legacy root and cold settings without role-writer admission", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      expect(r.runtime.directorySettings()!.source().decisionProof).toBeUndefined();
+      expect(r.runtime.directoryAdministration()).toBeNull();
+      expect(() => r.commit()).not.toThrow();
+    } finally { await r.runtime.close(); }
+  });
+  it("returns no role source after the actual mount is fenced", async () => {
+    const r = await directoryRuntimeRig(undefined, { beforeHttp: roles });
+    try { r.runtime.fence(); expect(r.runtime.directoryAdministration()).toBeNull(); }
+    finally { await r.runtime.close(); }
   });
 });

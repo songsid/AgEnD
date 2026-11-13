@@ -15,9 +15,10 @@ import { provisionHubIdentity } from "../src/hub/tls.js";
 import { sealHubInitialization, verifyHubInitialization } from "../src/hub/initialization.js";
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import { createHubSettingsWriter } from "../src/hub/settings-commit.js";
+import * as settingsCommit from "../src/hub/settings-commit.js";
 
 const hub = vi.hoisted(() => ({ applied: [] as any[], options: null as any, recovery: "normal", directory: null as any,
-  controlDeps: null as any, controls: 0, controller: { fence: () => {}, close: async () => {} } }));
+  administration: null as any, controlDeps: null as any, controls: 0, controller: { fence: () => {}, close: async () => {} } }));
 vi.mock("../src/hub/settings-directory-control.js", () => ({ createHubDirectorySettingsControl(deps: unknown) {
   hub.controlDeps = deps; hub.controls++; return hub.controller;
 } }));
@@ -27,6 +28,7 @@ vi.mock("../src/hub/runtime.js", () => ({
     refresh() { return Promise.resolve(); }
     directoryDecision() { return null; }
     directorySettings() { return hub.directory; }
+    directoryAdministration() { return hub.administration; }
     acquireDirectorySettings() { return Promise.resolve(hub.directory); }
     withDirectoryDecision(id: string, work: (decision: unknown) => unknown, current: () => boolean) {
       if (!current() || id !== hub.directory.decision.hubId) throw Error("revoked"); return Promise.resolve(work(hub.directory.decision));
@@ -48,7 +50,7 @@ const MEMBER = "https://hub.example.test:8443", ADMIN = { realm: "corp", objectI
 const actor = { person: ADMIN, sessionId: "s1", requestId: "r1" };
 const roots: string[] = [];
 afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); hub.applied = []; hub.options = null; hub.recovery = "normal";
-  hub.directory = null; hub.controlDeps = null; hub.controls = 0; hub.controller = { fence: () => {}, close: async () => {} }; });
+  hub.directory = null; hub.administration = null; vi.restoreAllMocks(); hub.controlDeps = null; hub.controls = 0; hub.controller = { fence: () => {}, close: async () => {} }; });
 const settle = async () => { for (let i = 0; i < 40; i += 1) await new Promise((r) => setTimeout(r, 10)); };
 
 async function harness() {
@@ -194,5 +196,29 @@ describe("FleetManager's sealed-settings writer (M-2682)", () => {
     hub.applied = []; hub.recovery = mode;
     await fm.applyHubSwitches(); await settle();
     expect(hub.applied).toEqual([]); expect(hub.options.settingsWriter.pending()).toBe(true);
+  });
+});
+
+
+describe("S129 singleton directory administration", () => {
+  it("passes the actual current runtime packet through the singleton writer provider", async () => {
+    const spy = vi.spyOn(settingsCommit, "createHubSettingsWriter"), { fm } = await harness();
+    const selected = spy.mock.calls[0]![0].directoryAdministration;
+    expect(selected).toEqual(expect.any(Function)); expect(selected!()).toBeNull();
+    const packet = { decision: { hubId: fm.rawFleetConfig.hub.hubId }, source: { image: "owned" } };
+    hub.administration = packet; expect(selected!()).toBe(packet);
+    await Promise.all([fm.hubRuntimeCreated(), fm.hubRuntimeCreated()]);
+    expect(spy).toHaveBeenCalledOnce(); expect(hub.options.settingsWriter).toBe(fm.hubSettingsWriter);
+    const next = { ...packet, source: { image: "next" } };
+    fm.hubRuntime = { directoryAdministration: () => next };
+    expect(selected!()).toBe(next);
+  });
+  it("refuses a role packet after host Stop or while effects are disabled", async () => {
+    const spy = vi.spyOn(settingsCommit, "createHubSettingsWriter"), { fm } = await harness();
+    const selected = spy.mock.calls[0]![0].directoryAdministration;
+    expect(selected).toEqual(expect.any(Function));
+    hub.administration = { decision: {}, source: {} };
+    fm.shuttingDown = true; expect(selected!()).toBeNull();
+    fm.shuttingDown = false; fm.hubEffectsReady = false; expect(selected!()).toBeNull();
   });
 });

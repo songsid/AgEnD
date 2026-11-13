@@ -203,6 +203,8 @@ export class HubRuntime {
   }
   /** Physical completion retains its owning participant after logical epoch revocation, until the DB closes. */
   directoryDecision(): HubDirectorySettingsDecision | null { return this.recoveryDirectory ?? this.coldDirectory?.decision ?? this.mountedDirectory?.decision ?? null; }
+  /** Private role-writer selection; no cold or inferred administrator authority. */
+  directoryAdministration(): ReturnType<NonNullable<import("./settings-commit.js").HubSettingsWriterDeps["directoryAdministration"]>> { return null; }
   webAddressDecision():HubWebAddressDecision|null{return this.recoveryWebAddress??this.mountedWebAddress;}
   /** Borrow only existing state; cold access creates no listener, directory client, migration or session. */
   async withWebAddressDecision<T>(work:(decision:HubWebAddressDecision)=>T,ownerCurrent:()=>boolean):Promise<T>{
