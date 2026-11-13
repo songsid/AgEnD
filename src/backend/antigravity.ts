@@ -1,3 +1,4 @@
+import { agyOnboardingDialogs } from "./agy-onboarding.js";
 import { ensureAgendHome } from "../agend-home.js";
 import { seedFirstRun } from "../antigravity-first-run.js";
 import { credentialHomeSpec, credentialProfileHome, credentialProfileLaunch, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
@@ -629,6 +630,7 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
 
   getStartupDialogs(): StartupDialog[] {
     return [
+      ...agyOnboardingDialogs(),
       // #1328, captured live from agy 1.3.1 (tests/fixtures/agy-1.3.1-trust-dialog.pane.txt): the title is "Do you
       // trust the contents of this project?", then "> Yes, I trust this folder" / "  No, exit". Enter confirms the
       // row under the cursor, so it is sent once, and only when the cursor is verified on "Yes"; a prompt still up
@@ -668,6 +670,7 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
         keys: ["0"],
         description: "Antigravity feedback survey — skip",
       },
+      ...agyOnboardingDialogs(),
       this.trustHoldDialog(),
     ];
   }

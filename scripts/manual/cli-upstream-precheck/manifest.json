@@ -889,7 +889,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 1689,
+     "line": 1692,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
     },
     {
@@ -897,7 +897,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 1689,
+     "line": 1692,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
     },
     {
@@ -905,7 +905,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/claude-code.ts",
-     "line": 1689,
+     "line": 1692,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
     },
     {
@@ -2093,7 +2093,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/daemon.ts",
-     "line": 5472,
+     "line": 5476,
      "symbol": "Daemon.isCodexResumeScreen"
     },
     {
@@ -2249,7 +2249,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13929,
+     "line": 13934,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2257,7 +2257,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13930,
+     "line": 13935,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2265,7 +2265,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13930,
+     "line": 13935,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2273,7 +2273,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13930,
+     "line": 13935,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2281,7 +2281,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13930,
+     "line": 13935,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2289,7 +2289,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13930,
+     "line": 13935,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2297,7 +2297,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13930,
+     "line": 13935,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2305,7 +2305,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13931,
+     "line": 13936,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2313,7 +2313,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14033,
+     "line": 14038,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2321,7 +2321,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14164,
+     "line": 14169,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2329,7 +2329,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 14164,
+     "line": 14169,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]
@@ -4226,15 +4226,135 @@
   "agy": {
    "literals": [
     {
-     "text": "Select login method",
-     "kind": "regex",
-     "surface": "onboarding",
-     "file": "src/backend/antigravity.ts",
-     "line": 98,
-     "symbol": "agyLoginScreenActive"
+     "text": "Terms of Service & Data Use",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 5,
+     "symbol": "TERMS"
     },
     {
-     "text": "You are currently not signed in",
+     "text": "↑/↓ Navigate · enter ",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 6,
+     "symbol": "HINT"
+    },
+    {
+     "text": "colorblind-friendly dark",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 9,
+     "symbol": "COLOURS"
+    },
+    {
+     "text": "colorblind-friendly light",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 9,
+     "symbol": "COLOURS"
+    },
+    {
+     "text": "solarized dark",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 9,
+     "symbol": "COLOURS"
+    },
+    {
+     "text": "solarized light",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 9,
+     "symbol": "COLOURS"
+    },
+    {
+     "text": "tokyo night",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 9,
+     "symbol": "COLOURS"
+    },
+    {
+     "text": "- Terms of Service: https://antigravity.google/terms",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 36,
+     "symbol": "agyOnboardingState"
+    },
+    {
+     "text": "- Privacy Policy: https://policies.google.com/privacy",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 37,
+     "symbol": "agyOnboardingState"
+    },
+    {
+     "text": "Previous [Done",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 38,
+     "symbol": "agyOnboardingState.buttons"
+    },
+    {
+     "text": "Previous] [Done",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 38,
+     "symbol": "agyOnboardingState.buttons"
+    },
+    {
+     "text": "Welcome to Antigravity CLI!",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 46,
+     "symbol": "agyOnboardingState.welcome"
+    },
+    {
+     "text": "Choose your color scheme:",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 57,
+     "symbol": "agyOnboardingState"
+    },
+    {
+     "text": "Welcome to Antigravity CLI",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 88,
+     "symbol": "agyOnboardingDialogs"
+    },
+    {
+     "text": "x] Yes, I agree",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 89,
+     "symbol": "agyOnboardingDialogs"
+    },
+    {
+     "text": "Yes, I agree",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/agy-onboarding.ts",
+     "line": 90,
+     "symbol": "agyOnboardingDialogs"
+    },
+    {
+     "text": "Select login method",
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/antigravity.ts",
@@ -4242,11 +4362,19 @@
      "symbol": "agyLoginScreenActive"
     },
     {
+     "text": "You are currently not signed in",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/antigravity.ts",
+     "line": 100,
+     "symbol": "agyLoginScreenActive"
+    },
+    {
      "text": "esc to cancel",
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/antigravity.ts",
-     "line": 108,
+     "line": 109,
      "symbol": "AGY_LEGACY_BUSY_ROW"
     },
     {
@@ -4254,7 +4382,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/antigravity.ts",
-     "line": 140,
+     "line": 141,
      "symbol": "agyTrustDialogState"
     },
     {
@@ -4262,7 +4390,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/antigravity.ts",
-     "line": 143,
+     "line": 144,
      "symbol": "agyTrustDialogState.yes"
     },
     {
@@ -4270,7 +4398,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/antigravity.ts",
-     "line": 144,
+     "line": 145,
      "symbol": "agyTrustDialogState"
     },
     {
@@ -4278,7 +4406,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/antigravity.ts",
-     "line": 489,
+     "line": 490,
      "symbol": "AntigravityBackend.getReadyPattern"
     },
     {
@@ -4286,7 +4414,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 608,
+     "line": 609,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4294,7 +4422,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 614,
+     "line": 615,
      "symbol": "AntigravityBackend.getErrorPatterns.notice.resets"
     },
     {
@@ -4302,7 +4430,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 619,
+     "line": 620,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4310,7 +4438,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 620,
+     "line": 621,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4318,7 +4446,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 620,
+     "line": 621,
      "symbol": "AntigravityBackend.getErrorPatterns.type"
     },
     {
@@ -4326,7 +4454,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 626,
+     "line": 627,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4334,7 +4462,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 626,
+     "line": 627,
      "symbol": "AntigravityBackend.getErrorPatterns.type"
     },
     {
@@ -4342,7 +4470,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 626,
+     "line": 627,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4350,7 +4478,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/antigravity.ts",
-     "line": 667,
+     "line": 669,
      "symbol": "AntigravityBackend.getRuntimeDialogs.pattern"
     },
     {
