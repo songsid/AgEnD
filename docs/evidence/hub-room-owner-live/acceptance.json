@@ -1,0 +1,36 @@
+{
+  "sourceCheckpoint": "7e315c22ba151dd0234189bdc8fcc8ae98eb35ed",
+  "parent": "13bbaf92f46336ecbdafe800b7d0b46663292642",
+  "focused": {
+    "files": 4,
+    "passed": 43,
+    "failed": 0,
+    "command": "nice -n10 node_modules/.bin/vitest run tests/hub-rooms-r1.test.ts tests/hub-room-agents-r2.test.ts tests/hub-room-link-r2.test.ts tests/hub-room-client-contract-r3.test.ts --maxWorkers=2"
+  },
+  "native": {
+    "source": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exit": 0
+    },
+    "test": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  },
+  "bindings": {
+    "src/hub/http/compose.ts": "ac8b4244ea04b94510fb0758b92bd4f64e1a997cabf9278dbca820d59099aac5",
+    "src/hub/rooms/service.ts": "77418077551c0f9d1f64de77576af6de6d765db1f2b1fa1282cbb9d4cf0ce794",
+    "tests/hub-rooms-r1.test.ts": "f35e024fd0d488d88dfb109adc5b8960b915469c952c16edfc5242ba0014974f",
+    "tests/hub-room-agents-r2.test.ts": "b2a832ad9a62c01d628ac198269093ef785a82d2509f63b6078498c3e2a8fb21",
+    "tests/hub-room-link-r2.test.ts": "da7a1f63e60c48d1b6ea35dcf784a049ad1f11fdf00475d2f2bae513ac1859ab",
+    "tests/hub-room-client-contract-r3.test.ts": "055ff308969294778499efbaec5d0ecdf0bf80c02c5a17a72b73917cfbe364e6",
+    "tests/helpers/hub-s3b-rig.ts": "db4ccc3b2424d487c8c5e94da49fc4dced7fc0c6f6d6f41671bf45e5f1f8d03a"
+  },
+  "integratedPacket": "472aac0c60586fe416346d35611e1f31f558abac/docs/evidence/hub-rooms-integration-r3/r5-owner-thread",
+  "limits": [
+    "Draft parent3866 then plain alpha sync/resolution/currentCI holds",
+    "No schema/protocol/permission change",
+    "Owned actualHTTP/SQLite; inert directory/transport ports",
+    "Integrated browser evidence is separate and does not prove Team/fullS142 acceptance"
+  ]
+}
