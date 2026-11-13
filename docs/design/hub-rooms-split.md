@@ -45,6 +45,22 @@ Message = { id, roomId, at, author: { kind, id, name, owner? }, text, mentions, 
 Events  = message.added | message.updated | presence.changed | room.changed | unread.changed | invitation.changed
 ```
 
+Agreed with track U (2026-11-13):
+
+```
+files[]            = today's attachment { id, name, size, type, url }
+Message            also carries idempotencyKey, echoed back, so the composer matches its optimistic row
+message.added      { roomId, message }
+message.updated    { roomId, message, parentAsk? }     // parentAsk: the @-message's new ask counts, when a reply changed them
+presence.changed   { roomId, memberId, presence, presenceNote? }
+member.changed     { roomId }                           // joined, left, role changed: the client refetches the room
+unread.changed     { roomId, unread }
+room.changed       { roomId, room } | { roomId, removed: true }   // removed: the person is no longer a member
+invitation.changed {}
+```
+
+Until R lands, `hub-client` normalises today's `/hub/v1/rooms` answer into this shape (direct rooms, each entry as two Messages, unread 0), so the UI only ever sees the new model.
+
 `kind: "later"` is a desktop-connector member (phase 4); the field exists now so the UI does not change later.
 
 **So U does not wait for R:** web-claude writes a fixture that serves this API with canned data (a room with 3 people, 12 agents in every presence state, an @all with late answers, an assistant summary). U builds against the fixture; R replaces it. The fixture file is the contract's worked example.
