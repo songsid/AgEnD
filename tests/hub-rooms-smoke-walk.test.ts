@@ -50,8 +50,8 @@ describe("§13 smoke walk (one fixture)", () => {
     // 3. @all: one online answers in the seed, later-agents are queued; answerLater() brings one in.
     const page = await client.roomMessages("room-weekly", { limit: 100 });
     const all = page.messages.find((m: { mentions?: string[] }) => m.mentions?.includes("all"));
-    expect(all.ask).toEqual({ total: 12, answered: 8, working: 1, later: 3 });
-    expect(page.messages.filter((m: { answerTo?: string; stage?: string }) => m.answerTo === all.id && m.stage === "queued")).toHaveLength(3);
+    expect(all.ask).toEqual({ total: 12, answered: 6, working: 1, later: 5 });   // paused, offline and reply-later answer later (one rule with send)
+    expect(page.messages.filter((m: { answerTo?: string; stage?: string }) => m.answerTo === all.id && m.stage === "queued")).toHaveLength(5);
     const late = fx.answerLater();
     expect(late).toMatchObject({ stage: "answered", answerTo: all.id });
     expect(heard.some(([n, d]) => n === "message.updated" && (d as { message: { id: string } }).message.id === late!.id)).toBe(true);
