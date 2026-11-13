@@ -10,6 +10,7 @@ import { HubProtocolError, person, plain, uuid, validated } from "../validation.
 import type { HubTeams, HubTeamView } from "./types.js";
 import { hubTeamReader, hubTeamCandidates, readTeamRow, teamMembers, type TeamMemberRow, type TeamRow } from "./store.js";
 export { HUB_TEAMS_MIGRATION, hubTeamReader, hubTeamCandidates } from "./store.js";
+export { HUB_TEAM_GRANTS_MIGRATION } from "./grant-schema.js";
 export type { HubTeams, HubTeamView, HubTeamReader } from "./types.js";
 
 export const TEAM_LIMIT = 200, TEAM_MEMBER_LIMIT = 200;

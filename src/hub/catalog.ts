@@ -39,13 +39,14 @@ const snapshotSchema = z.strictObject({ revision: epoch, exposures: z.array(expo
 const selectedSubject = z.union([
   z.strictObject({ kind: z.literal("person"), person: personSchema }),
   z.strictObject({ kind: z.literal("group"), group: personSchema.extend({ objectId: uuid }), dn: z.string().min(1).max(1024).regex(/^[^\u0000-\u001f\u007f]+$/) }),
+  z.strictObject({ kind: z.literal("team"), teamId: uuid }),
 ]);
 const grantInput = z.strictObject({ exposureId: uuid, exposureRevision: epoch, days: z.number().int().min(1).max(GRANT_MAX_MS / 86_400_000),
   login: z.string().trim().min(1).max(256).optional(), subject: selectedSubject.optional(),
-}).refine(v => v.subject?.kind === "group" || !!v.login);
+}).refine(v => v.subject?.kind === "group" || v.subject?.kind === "team" || !!v.login);
 
 interface ExposureRow { id: string; fleet_id: string; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string; allowed_tools: string; policy_digest: string; frozen_through: number; sharing_paused?: number; sharing_epoch?: number }
-interface GrantRow { id: string; revision: number; owner: string; exposure_id: string; exposure_revision: number; approved_by: string; approved_at: number; subject: string; subject_kind?: "person" | "group"; subject_label?: string; permissions: string; starts_at: number; expires_at: number; state: HubGrant["state"] }
+interface GrantRow { id: string; revision: number; owner: string; exposure_id: string; exposure_revision: number; approved_by: string; approved_at: number; subject: string; subject_kind?: "person" | "group" | "team"; subject_label?: string; permissions: string; starts_at: number; expires_at: number; state: HubGrant["state"] }
 
 /** Presentation only: AD group DNs normally start with CN. Never use this label as identity or rewrite it.
  * Decode RFC 4514 character/UTF-8 octet escapes in that leading value; preserve plain/unsupported labels.
@@ -68,13 +69,13 @@ export function exposureOf(row: ExposureRow): HubExposure {
     dataViewId: row.data_view_id, allowedTools: JSON.parse(row.allowed_tools) as string[], policyDigest: row.policy_digest };
 }
 export function grantOf(row: GrantRow): HubGrant {
-  const key = validated(personSchema, personFromString(row.subject));
-  if (row.subject_kind !== undefined && row.subject_kind !== "person" && row.subject_kind !== "group") throw new HubProtocolError("unavailable");
-  if (row.subject_kind === "group") validated(uuid, key.objectId);
+  if (row.subject_kind !== undefined && !["person", "group", "team"].includes(row.subject_kind)) throw new HubProtocolError("unavailable");
+  const subject: HubGrant["subject"] = row.subject_kind === "team" ? { kind: "team", teamId: validated(uuid, row.subject) }
+    : row.subject_kind === "group" ? { kind: "group", group: validated(personSchema, personFromString(row.subject)) }
+    : { kind: "person", person: validated(personSchema, personFromString(row.subject)) };
   return { id: row.id, revision: row.revision, owner: personFromString(row.owner), exposureId: row.exposure_id, exposureRevision: row.exposure_revision,
     approvedBy: personFromString(row.approved_by), approvedAt: row.approved_at,
-    subject: row.subject_kind === "group" ? { kind: "group", group: key } : { kind: "person", person: key },
-    ...(row.subject_kind === "group" && row.subject_label ? { subjectLabel: row.subject_label } : {}),
+    subject, ...((row.subject_kind === "group" || row.subject_kind === "team") && row.subject_label ? { subjectLabel: row.subject_label } : {}),
     permissions: JSON.parse(row.permissions) as HubGrant["permissions"], startsAt: row.starts_at, expiresAt: row.expires_at, state: row.state };
 }
 export const readExposure = (db: Database.Database, id: string) => db.prepare("SELECT * FROM hub_exposures WHERE id=?").get(id) as ExposureRow | undefined;
@@ -258,11 +259,13 @@ export class HubCatalogService {
       const names = (id: string) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
       const mine = (db.prepare("SELECT * FROM hub_exposures WHERE owner=? AND state<>'withdrawn' ORDER BY display_name").all(me) as ExposureRow[]).map((row) => {
         const grants = (db.prepare("SELECT * FROM hub_grants WHERE exposure_id=? AND state='active' AND expires_at>? ORDER BY approved_at").all(row.id, now) as GrantRow[])
-          .map((g) => { const n = g.subject_kind === "group" ? null : names(g.subject); return { ...grantOf(g), subjectName: g.subject_kind === "group" ? groupGrantName(g.subject_label ?? g.subject) : n?.display_name ?? "", subjectLogin: n?.login_label ?? "" }; });
+          .map((g) => { const n = g.subject_kind === "group" || g.subject_kind === "team" ? null : names(g.subject);
+            return { ...grantOf(g), subjectName: g.subject_kind === "team" ? this.core.deps.roomTeams?.read(db, g.subject)?.name ?? g.subject_label ?? ""
+              : g.subject_kind === "group" ? groupGrantName(g.subject_label ?? g.subject) : n?.display_name ?? "", subjectLogin: n?.login_label ?? "" }; });
         return { ...exposureOf(row), grants };
       });
       const askable: { exposure: HubExposure; grant: HubGrant; ownerName: string }[] = [];
-      for (const g of db.prepare("SELECT * FROM hub_grants WHERE ((subject=? AND subject_kind='person') OR subject_kind='group') AND state='active' AND expires_at>?").all(me, now) as GrantRow[]) {
+      for (const g of db.prepare("SELECT * FROM hub_grants WHERE ((subject=? AND subject_kind='person') OR subject_kind IN ('group','team')) AND state='active' AND expires_at>?").all(me, now) as GrantRow[]) {
         const row = readExposure(db, g.exposure_id); if (!row) continue;
         const exposure = exposureOf(row), grant = grantOf(g);
         if (exposure.state !== "published" || grant.exposureRevision !== exposure.revision || grant.startsAt > now
@@ -337,6 +340,19 @@ export class HubCatalogService {
     const selectedExposure = JSON.stringify(this.core.atomic(ownedExposure));
     let directoryPermit: HubOperationPermit | undefined;
     const select = async (): Promise<{ subject: HubGrant["subject"]; label?: string } | null> => {
+      if (input.subject?.kind === "team") {
+        const reader = this.core.deps.roomTeams, read = reader?.read, teamId = input.subject.teamId;
+        if (!reader || !read) throw new HubProtocolError("unavailable");
+        const selected = this.core.atomic(db => read.call(reader, db, teamId));
+        if (!selected) throw new HubProtocolError("not-found");
+        const image = JSON.stringify(selected);
+        directoryPermit = { assertCurrent: () => {
+          this.core.check(); if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+          if (this.core.deps.roomTeams !== reader || reader.read !== read
+            || this.core.atomic(db => JSON.stringify(read.call(reader, db, teamId))) !== image) throw new HubProtocolError("conflict");
+        } };
+        return { subject: { kind: "team", teamId }, label: selected.name };
+      }
       if (input.subject?.kind === "group") {
         const { group, dn } = input.subject, directory = this.core.deps.directory, lookup = directory.resolvePolicyGroup;
         if (group.realm !== directory.realm || directory.groupPolicy !== "ad-direct-guid" || !lookup) throw new HubProtocolError("unavailable");
@@ -370,7 +386,7 @@ export class HubCatalogService {
       if (!selection.ok) throw selection.error;
       const selected = selection.value;
       if (!selected) throw new HubProtocolError("not-found");
-      const subject = selected.subject, subjectId = personKeyString(subject.kind === "person" ? subject.person : subject.group);
+      const subject = selected.subject, subjectId = subject.kind === "team" ? subject.teamId : personKeyString(subject.kind === "person" ? subject.person : subject.group);
       const now = this.core.now();
       const grant: HubGrant = { id: randomUUID(), revision: 1, owner, exposureId: exposure.id, exposureRevision: exposure.revision,
         approvedBy: owner, approvedAt: now, subject, ...(selected.label ? { subjectLabel: selected.label } : {}), permissions: [...PERMISSIONS],
