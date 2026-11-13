@@ -3,7 +3,7 @@ import hashlib, json, os, pathlib, subprocess, time
 root = pathlib.Path.cwd()
 source = root / "src/hub/member/room-ask.ts"
 folder = root / ".artifacts/room-ask-track-c/mutations"
-folder.mkdir(exist_ok=True)
+folder.mkdir(parents=True, exist_ok=True)
 original = source.read_bytes()
 text = original.decode()
 test_hash = hashlib.sha256((root / "tests/hub-room-ask-track-c.test.ts").read_bytes()).hexdigest()
