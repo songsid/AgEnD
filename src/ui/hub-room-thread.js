@@ -28,6 +28,15 @@ export function authorLine(author, mine = false, direct = false) {
   if (author.kind === "agent") return author.owner?.name ? hroom("authorAgent", String(author.name || ""), String(author.owner.name)) : String(author.name || "");
   return String(author.name || "");
 }
+/**
+ * A room's own line in this viewer's words (Ridge: `system` { kind, name } beside the stored text): a kind this page does
+ * not know, or an older row without `system`, keeps the stored text.
+ */
+const SYSTEM = { "room-created": "createdSys", "member-joined": "sysJoined", "admin-joined": "sysAdminJoined" };
+export function systemText(m) {
+  const key = m && m.system && SYSTEM[m.system.kind];
+  return key && typeof m.system.name === "string" ? hroom(key, m.system.name) : String((m && m.text) || "");
+}
 /** The progress of a message that asked agents: one agent → its delivery mark; several → the line (spec §3). */
 export function askState(ask) {
   if (!ask || !Number.isSafeInteger(ask.total) || ask.total < 1) return null;
@@ -48,7 +57,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false }) {
     // An answer still to come is counted in its question's progress line, not drawn as an empty bubble.
     if (m.answerTo && m.stage === "queued" && !m.text) continue;
     const id = num(m.id), mine = kind === "person" && author.id === meId;
-    if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ts: iso(m.at), text: String(m.text || "") }); continue; }
+    if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ts: iso(m.at), text: systemText(m), bare: true }); continue; }
     const quoted = m.replyTo ? byId.get(m.replyTo) : null;
     const state = mine ? askState(m.ask) : null;
     out.push({ boot: BOOT, id, role: kind === "person" ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
@@ -56,8 +65,8 @@ export function toThreadMessages(messages, { meId, ids, direct = false }) {
       ...(quoted ? { replyTo: { boot: BOOT, id: num(quoted.id), sender: authorLine(quoted.author, quoted.author?.id === meId, direct), text: String(quoted.text || "").slice(0, 120) } } : {}),
       ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
     const line = askState(m.ask)?.line;
-    if (line) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: line, progressOf: m.id });
-    if (mine && m.warning === "assistant-unavailable") out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: hroom("errAssistant") });
+    if (line) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: line, progressOf: m.id, bare: true });
+    if (mine && m.warning === "assistant-unavailable") out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: hroom("errAssistant"), bare: true });
   }
   return out;
 }

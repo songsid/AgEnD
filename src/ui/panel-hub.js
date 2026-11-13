@@ -826,6 +826,7 @@ function HubMine() {
   // Nothing shared yet: the empty state below says where to share from, so the lead doesn't say it too (Argon #20).
   return html`<div class="col hub-owner"><p class="s-page-lead hub-page-lead">${ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
     <div class="s-section-layout">
+      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: true }} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${!pairings ? html`<${Skeleton} lines=${2} />` : pairings.error ? html`<${ErrorState} message=${pairings.error} onRetry=${reloadPairings} />` : null}
       ${pend.length ? html`<section class="card hub-pairings"><h3>${ho("pendingPairings")}</h3><p class="note">${ho("pendingLead")}</p>
@@ -881,6 +882,7 @@ function HubAgentPage({ x, act, msg }) {
         </div>`)}</div>` : html`<p class="note">${hw("noGrants")}</p>`}
       </section>
       <${QuotaVisibilityRow} exposure=${x} onSaved=${() => act(async () => ({ ok: true }))} />
+      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="AgentRoomsSection" props=${{ client: hubClient(), exposureId: x.id }} />` : null}
       <section class="card"><h3>${ho("recent")}</h3><p class="note">${ho("recentLead")}</p>
         ${!activity ? html`<${Skeleton} variant="rows" lines=${3} />` : activity.error ? html`<${ErrorState} message=${activity.error} onRetry=${reloadActivity} />` : null}
         ${activity && !activity.error && !acts.length ? html`<p class="note">${ho("recentNone")}</p>` : null}

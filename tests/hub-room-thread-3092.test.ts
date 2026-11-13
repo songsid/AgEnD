@@ -56,6 +56,11 @@ describe("the thread's mapping (pure)", () => {
     expect(new Set(out.filter((x: any) => x.role !== "status").map((x: any) => x.id)).size).toBe(out.filter((x: any) => x.role !== "status").length);
     expect(thread.authorLine({ kind: "assistant", name: "Hub assistant" }, false, true)).toBe("Hub 助理");          // its own 1:1
     expect(thread.authorLine({ kind: "assistant", name: "Hub assistant" })).toBe("房間助理 · Hub 提供");             // in a room
+    // A room's own lines in the viewer's words from `system` (Ridge); older rows keep their text; no tools on them (Lumen).
+    expect(thread.systemText({ text: "Wang created this room.", system: { kind: "room-created", name: "王經理" } })).toBe("王經理 建立了這個房間。");
+    expect(thread.systemText({ text: "kept as is", system: { kind: "something-new", name: "x" } })).toBe("kept as is");
+    expect(thread.systemText({ text: "older row" })).toBe("older row");
+    expect(out.filter((x: any) => x.role === "status").every((x: any) => x.bare === true)).toBe(true);
     expect(thread.askState({ total: 1, answered: 0, working: 1, later: 0 })).toEqual({ delivery: "processing" });
     expect(thread.askState({ total: 12, answered: 12, working: 0, later: 0 }).line).toBe("12 個都回答了");
   });
@@ -82,6 +87,8 @@ describe("a room on the page", () => {
     const { pg, restore } = await roomPage("room-weekly");
     try {
       expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("研一主管週會");
+      // A room's own line (created …): no message tools, Copy included (Lumen).
+      expect([...pg.root.querySelectorAll(".hub-room-page .thread .status-line")].every((el: any) => !el.querySelector(".msg-tools"))).toBe(true);
       expect(msgs(pg).filter((m) => m.classList.contains("user") && m.querySelector(".sender").textContent === "")).not.toHaveLength(0);
       expect(pg.root.querySelector(".hub-room-page .hub-room-hint")!.textContent).toContain("seen only by people in the room");
       const box = pg.root.querySelector(".hub-room-page #msgIn, .hub-room-page textarea") as any;
@@ -142,7 +149,7 @@ describe("a room on the page", () => {
       expect(pg.root.querySelector(".hub-room-page .hub-room-hint")).toBeNull();                       // a 1:1: no @ needed
       // Named by its flag in the viewer's words, never by its stored English name (Ridge on #3864).
       expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("Hub 助理");
-      expect(pg.root.querySelector(".hub-room-page .composer-ph")!.textContent).toContain("Hub 助理");
+      expect(pg.root.querySelector(".hub-room-page .composer-ph")!.textContent).toBe("問 Hub 助理");          // not the room prompt (Lumen)
       expect(pg.root.querySelector(".hub-room-page")!.textContent).not.toContain("Hub assistant");
     } finally { restore(); }
   });
