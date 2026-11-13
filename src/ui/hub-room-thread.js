@@ -112,7 +112,10 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
 export function createRoomStore(roomId, { client, meId = "" } = {}) {
   const subs = new Set(), ids = new Map(), expanded = new Set();
   const st = { live: true, detail: null, messages: [], loaded: false, error: null, removed: false, more: false, view: [] };
-  const changed = () => { st.view = toThreadMessages(st.messages, { meId: st.detail?.me?.id || meId, ids, direct: st.detail?.room?.kind === "direct", expanded }); for (const fn of [...subs]) { try { fn(); } catch { /* a subscriber's own failure */ } } };
+  // The room's committed order (Ridge: `sequence`, from the stored row): a waiting answer replaced in place, or an event that
+  // arrives out of order, is drawn where the room has it. Rows without it (a direct chat, an older Hub) keep arrival order.
+  const ordered = () => { if (st.messages.length && st.messages.every((m) => Number.isSafeInteger(m.sequence))) st.messages.sort((a, b) => a.sequence - b.sequence); };
+  const changed = () => { ordered(); st.view = toThreadMessages(st.messages, { meId: st.detail?.me?.id || meId, ids, direct: st.detail?.room?.kind === "direct", expanded }); for (const fn of [...subs]) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const upsert = (m) => {
     if (!m || m.roomId !== roomId || typeof m.id !== "string") return;
     const i = st.messages.findIndex((x) => x.id === m.id || (m.idempotencyKey && x.idempotencyKey === m.idempotencyKey));
