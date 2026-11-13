@@ -71,6 +71,8 @@ export { SERVER_SET } from "./storage.js";
 
 /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
 export interface HubHttpDeps {
+  roomAssistant?: import("../assistant/types.js").RoomAssistant;
+  assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
   /** Host-lifetime control; acquired only after the request proves configured-admin authority. */
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   uow: HubUnitOfWork;
@@ -128,6 +130,7 @@ export interface HubServerComponents {
 }
 
 export interface HubServerFactoryOptions {
+  roomAssistant?: () => import("../assistant/admin-types.js").ManagedRoomAssistant;
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   home: string;
   components: HubServerComponents;
@@ -447,7 +450,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       }, fleets: () => store.read().fleets, fleetState: async resource => groups.resourceState(resource) });
       let generation = 0;
       const mode: HubMode = { serverEnabled: live, memberEnabled: () => false, epoch: () => generation };
+      const roomAssistant = options.roomAssistant?.();
+      if (roomAssistant) teardown.add("the room assistant", () => roomAssistant.close());
       const http = httpEntry.createHubHttp({
+        ...(roomAssistant ? { roomAssistant, assistantAdmin: roomAssistant } : {}),
         uow,
         audit,
         content: audit.content,
@@ -604,12 +610,14 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           }
         },
         fence() {
+          if (roomAssistant) void roomAssistant.close().catch(() => {}); // fence asks now; teardown retains any failed drain
           fenced = true;
           directoryReads.fence();
           generation += 1;
           memberServer?.fence();
         },
         async close() {
+          if (roomAssistant) void roomAssistant.close().catch(() => {});
           fenced = true;
           directoryReads.fence();
           // Rejects while any step is unconfirmed; S1 keeps ownership and retries this close before any replacement.

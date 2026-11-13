@@ -62,6 +62,8 @@ export interface HubHold {
 }
 
 export interface HubRuntimeOptions {
+  /** Optional host factory; an absent provider keeps room assistants disabled. */
+  roomAssistant?: () => import("./assistant/admin-types.js").ManagedRoomAssistant;
   home: string;
   log(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   /** Called whenever the hold set changes (FleetManager re-renders its status / Needs-you). */
@@ -325,6 +327,7 @@ export class HubRuntime {
       ? null
       : createHubServerFactory({
           home: options.home,
+          roomAssistant: options.roomAssistant,
           components: options.components ?? { http: S3B_HTTP_ENTRY },
           // M-2724: the running Hub's directory says in the host log which call failed and at which step (op, outcome and,
           // for a group call, the failure kind) — never the server's text, which can repeat a DN or a login.

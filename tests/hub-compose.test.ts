@@ -38,6 +38,7 @@ import type { HubDirectoryProofContext } from "../src/hub/settings-directory-pro
 import { hubTxDatabase } from "../src/hub/db.js";
 import { createHubRoleCutover } from "../src/hub/roles/cutover.js";
 import { parseRolePolicy } from "../src/hub/roles/model.js";
+import { RoomAssistantService } from "../src/hub/assistant/service.js";
 
 const roots: string[] = [];
 let sourceCerts: TestCerts;
@@ -369,6 +370,32 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
 });
 
 describe.skipIf(process.platform === "win32")("Hub runtime (S5b lifecycle)", () => {
+  it("creates a room assistant only for a mounted Hub, passes both ports, and joins its fenced close", async () => {
+    const hub = await initializedHub(), http = fakeHttp();
+    let release!: () => void;
+    const held = new Promise<void>(yes => { release = yes; });
+    const provider = new RoomAssistantService({ store: { load: async () => null, save: async () => {} },
+      host: { start: async () => { throw Error("This disabled fixture never launches a worker"); } }, backends: () => [] });
+    const originalClose = provider.close.bind(provider);
+    const close = vi.spyOn(provider, "close").mockImplementation(() => { void originalClose(); return held; });
+    const create = vi.fn(() => provider);
+    const runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http: async () => http.entry }, roomAssistant: create });
+    try {
+      await runtime.apply({}); expect(create).not.toHaveBeenCalled();
+      await runtime.apply(hub.config);
+      expect(runtime.serverHealth(hub.config.hub)).toBe("ready");
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(http.state.deps!.roomAssistant).toBe(provider);
+      expect(http.state.deps!.assistantAdmin).toBe(provider);
+      runtime.fence(); expect(close).toHaveBeenCalled();
+      const finished = vi.fn(), drain = runtime.close().then(finished);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(finished).not.toHaveBeenCalled();
+      release(); await drain;
+      expect(finished).toHaveBeenCalledTimes(1);
+    } finally { release(); await runtime.close(); }
+  });
+
   it("off means off: the switch check and the view need no Hub state", () => {
     expect(hubSwitchesOn({})).toBe(false);
     expect(hubSwitchesOn({ hub: { enabled: "true" }, hub_member: { enabled: 1 } })).toBe(false);
