@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { flagEffort } from "./launch-effort.js";
 import { join } from "node:path";
@@ -365,11 +366,15 @@ export class GrokBackend implements CliBackend {
   private quietLaunchNotes: string[] = [];
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
 
+  private deliverySessionId: string | null = null;
+  getDeliverySessionId(): string | null { return this.deliverySessionId; }
+
   private launchResumes = false;
   resumesPreservedQuotaHistory(): boolean { return this.launchResumes; }
 
   buildCommand(config: CliBackendConfig): string {
     this.launchResumes = false;
+    this.deliverySessionId = null;
     this.workingDirectory = config.workingDirectory;
     // Flags: -m/--model, --always-approve, -r/--resume <ID>, -p/--single, --no-auto-update.
     // --no-auto-update: an auto-update prompt on launch would corrupt ready detection.
@@ -383,7 +388,12 @@ export class GrokBackend implements CliBackend {
     // from getSessionId(); skip on crash recovery (skipResume) for a clean start.
     if (!config.skipResume) {
       const sid = this.storedSessionId();
-      if (sid) { cmd += ` --resume ${sid}`; this.launchResumes = true; }
+      if (sid) { cmd += ` --resume ${sid}`; this.launchResumes = true; this.deliverySessionId = sid; }
+    }
+    // #3810: select a UUID before launch; newest-cwd discovery cannot authorize a receipt.
+    if (!this.deliverySessionId) {
+      this.deliverySessionId = randomUUID();
+      cmd += ` --session-id ${this.deliverySessionId}`;
     }
     if (config.model) {
       const model = validateModel(config.model);

@@ -838,6 +838,8 @@ export interface CliBackend {
    * cheap: a backend that has to ask a CLI answers from what `refreshSessionId` last found.
    */
   getSessionId(): string | null;
+  /** #3810: exact UUID passed to this launch, never inferred from newest cwd files. */
+  getDeliverySessionId?(): string | null;
   /**
    * Optional: look the session id up the slow way (a CLI listing) without blocking the event loop,
    * and make `getSessionId()` answer with the result. Single-flight; never rejects; resolves to what
