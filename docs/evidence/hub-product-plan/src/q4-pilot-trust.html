@@ -1,0 +1,10 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><link rel="stylesheet" href="m.css"><body><h1>試行期間：在「Hub 位址」直接信任自簽憑證的 Hub <span class="tag">設計示意，非現有畫面</span></h1>
+<p class="sub">現在這裡是死路（「憑證不受這台電腦信任，所以沒有連接」）。試行期間多一個按鈕，按一次就能繼續。正式憑證綁好之後，這一段不會再出現。</p>
+<div class="card" style="max-width:820px"><h2>Hub 連接 <span class="pill gray">尚未連接</span></h2>
+<div class="grp">Hub 位址</div><div class="in" style="margin-top:4px"><span class="mono">hub.example.com:19443</span></div>
+<div class="imp" style="border-color:#e6c65c;background:#fffaf0"><b>這個 Hub 用的是測試用的自簽憑證</b><br><span class="muted">這台電腦無法自動確認它的身分。如果這是你們團隊試行中的 Hub，可以先信任它；之後它的憑證若改變，會再問你一次。</span>
+<div class="mono" style="margin:8px 0;font-size:13px">憑證指紋　3F:9A:27:…:C4:1E　<span class="link">顯示完整指紋</span></div>
+<span class="btn">信任這個 Hub 並繼續</span><span class="btn ghost">取消</span></div>
+<div class="muted" style="margin-top:10px">接著和平常一樣：找到「Acme Hub」→ 以公司帳號登入。</div></div>
+<div class="note">關閉方式：Fleet 的設定「允許信任自簽憑證的 Hub（測試用）」，alpha 版預設開啟、正式版預設關閉。Hub 換上正式憑證後，已信任的 Fleet 會自動改用一般的憑證檢查。</div>
+</body></html>
