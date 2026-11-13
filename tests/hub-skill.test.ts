@@ -127,6 +127,20 @@ describe("the hub skill", () => {
     for (const topic of ["Custom roles", "whole AD group to ask", "ClassicBot room", "Pause and resume", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
   });
 
+  it("after a join code: asking follows the group-policy state, sharing is never given by the code (review of #3773)", () => {
+    // Never-enabled policy: the asker gets the legacy permit, so a code-joined person may ask once the owner allows them.
+    const auth = source("src/hub/group-policy/authorization.ts");
+    expect(auth).toMatch(/before\.state === "never-enabled" && !retainedApproval\) \{[\s\S]{0,200}source: "legacy" as const/);
+    const section = FLAT.slice(FLAT.indexOf("**After joining by code.**"), FLAT.indexOf("## Connecting a Fleet"));
+    expect(section).toContain("**Asking, group permissions never turned on:** they can ask an agent as soon as its owner allows them");
+    expect(section).toContain("Do not tell them to have group permissions turned on for this");
+    expect(section).toContain("**Asking, group permissions on:** they need **Chat with agents** from one of their groups *and* the owner's allowance");
+    expect(section).toContain("**Sharing** is never given by a code.");
+    expect(section).toContain("the owner still allows each asker");
+    // The blanket sentence the review refused must not come back.
+    expect(FLAT).not.toContain("cannot share or chat until a group allows it");
+  });
+
   it("carries no company specifics: placeholder addresses only", () => {
     expect(SKILL).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);                       // no IP address
     expect(SKILL).not.toMatch(/\b(?:DC|OU|CN)=/);                                               // no distinguished name

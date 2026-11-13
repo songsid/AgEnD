@@ -130,9 +130,18 @@ ends by itself as **Expired** or **Used up**; ended codes stay listed for 7 days
 created in one hour. Try again later."
 
 **What a code is.** It stands in for the administrator's approval of the connection only: "A company account is still
-required. This code allows a Fleet connection; it does not allow asking or sharing Agents." Someone who joins by code
-and is in no allowed group can connect, but cannot share or chat until a group allows it. Treat a live code like a
+required. This code allows a Fleet connection; it does not allow asking or sharing Agents." Treat a live code like a
 key: anyone in its scope who gets it can connect a Fleet under their own name until it ends.
+
+**After joining by code.** The code adds nothing beyond the connection, and takes nothing away. What the person can do
+next is what they could do without it:
+- **Asking, group permissions never turned on:** they can ask an agent as soon as its owner allows them, like anyone
+  who signs in. Do not tell them to have group permissions turned on for this: that switch changes access for everyone.
+- **Asking, group permissions on:** they need **Chat with agents** from one of their groups *and* the owner's
+  allowance. In no allowed group, they cannot chat until a group allows it.
+- **Sharing** is never given by a code. The Hub has to allow that person to share; until it does, the row reads "Not
+  shared: your Hub administrator hasn't allowed you to share agents."
+- Either way the owner still allows each asker ([Who may ask](#who-may-ask)); no code or group replaces that.
 
 ## Connecting a Fleet
 
@@ -315,8 +324,9 @@ Say plainly that these are not in the product yet:
   colleagues join**.
 - **"The Hub and this Fleet need different host names."** Open the Fleet's dashboard under a different host name than
   the Hub's; a different port is not enough.
-- **Connected, but the share switch says Not shared.** Group permissions are on and no group gives you **Share
-  agents**. This is expected after joining by code alone; ask the Hub administrator.
+- **Connected, but the share switch says Not shared.** The Hub has not allowed you to share agents; with group
+  permissions on, no group gives you **Share agents**. This is expected after joining by code alone; ask the Hub
+  administrator.
 - **Nothing to ask in New chat.** No owner has allowed you yet; being connected is not enough.
 - **A question stays at "Waiting for the owner's fleet".** It has not reached the owner's Fleet yet; ask the owner
   whether their AgEnD is running and connected.
