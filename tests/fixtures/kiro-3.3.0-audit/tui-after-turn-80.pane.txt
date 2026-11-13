@@ -1,0 +1,40 @@
+
+          ⣀⣤⣤⣶⣶⣤⣤⣄⡀
+        ⢠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣄
+        ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄
+       ⢸⣿⣿⣿⣿⣿⣿⠁⢹⣿⠁⢹⣿⣿⣧        Kiro CLI V3 is here. This version will no longer
+       ⢸⣿⣿⣿⣿⣿⣿⣄⣼⣿⣄⣼⣿⣿⣿        receive feature updates.
+       ⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿        To upgrade, run: kiro-cli --v3
+      ⢰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿        Learn more: https://kiro.dev/docs/cli/v3/
+      ⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠃
+        ⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠁
+         ⠙⠛⠛⠛⠋⠁⠙⠛⠛⠉
+
+────────────────────────────────────────────────────────────────────────────────
+  › hello
+
+• dispatch failure
+
+────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────
+kiro_default · ◔ 3%                                               /tmp/k330/work
+
+›  ask a question or describe a task ↵
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
