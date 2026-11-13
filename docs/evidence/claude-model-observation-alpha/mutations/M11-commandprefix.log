@@ -1,13 +1,13 @@
 
  RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 82ms
-     × recognizes the producer's command-message prefix as intent, never as confirmation 9ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 69ms
+     × recognizes the producer's command-message prefix as intent, never as confirmation 6ms
 
  Test Files  1 failed (1)
       Tests  1 failed | 57 passed (58)
-   Start at  18:13:55
-   Duration  689ms (transform 297ms, setup 110ms, import 281ms, tests 82ms, environment 0ms)
+   Start at  18:45:07
+   Duration  552ms (transform 244ms, setup 84ms, import 240ms, tests 69ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯

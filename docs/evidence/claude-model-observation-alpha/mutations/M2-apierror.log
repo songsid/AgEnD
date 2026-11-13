@@ -1,13 +1,13 @@
 
  RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 72ms
-     × excludes API error 8ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 75ms
+     × excludes API error 9ms
 
  Test Files  1 failed (1)
       Tests  1 failed | 57 passed (58)
-   Start at  18:13:29
-   Duration  597ms (transform 271ms, setup 103ms, import 258ms, tests 72ms, environment 0ms)
+   Start at  18:44:32
+   Duration  560ms (transform 243ms, setup 94ms, import 232ms, tests 75ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
@@ -20,7 +20,7 @@ null
 
 + Received:
 {
-  "at": 1794564809760,
+  "at": 1794566673431,
   "id": "response:response-A:opus-4.8",
   "kind": "served",
   "served": "claude-opus-4-8",

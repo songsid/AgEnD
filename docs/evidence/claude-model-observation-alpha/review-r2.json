@@ -1,0 +1,234 @@
+{
+  "sourceHead": "30b071ed8489d012d658bda47c35c66667b705ca",
+  "priorHead": "4c6d8de0f2a9efa5649441334c40414553aaf14d",
+  "mainSource": "90c41b38b4a46325fbcdf07f38a0b98275a4ec1e",
+  "alphaSource": "30b071ed8489d012d658bda47c35c66667b705ca",
+  "observerParity": "Exact except retained alpha allowInference option/guard",
+  "tailWrappersAndScannerIdentical": true,
+  "originalLogScannerNormalizedDigest": "5b91ac732c8bd6f4290e5180657eba75f4f2076c22f1bd4807d355bc230d5784",
+  "originalScannerSource": "f4a30d470f98116e477c4602732a026847217239",
+  "logServiceBlobUnchanged": true,
+  "monitorDelta": "Only import/local startup call rename; existing native/session/generation fences unchanged",
+  "legacyRecovery": "Fresh original/configured served metadata clears the active incident; intent remains unresolved and new inference remains suppressed",
+  "startupReader": "Bounded physical reads, no forward cursor; normal Log cursor behavior preserved",
+  "browserUnchanged": [
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-card.png",
+      "digest": "e73216f6ef3d5c67f480b2b2d14c4252fd82bd5b5aadb6abd4b93399314887e0"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-details.png",
+      "digest": "440f7eff04e3c176a93fd9ccaa88df58ecd5fc8a292d2d8020a5056fb24282d1"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-log.png",
+      "digest": "5631b432ac3a802b4e333f3542aa74dd60b1a2970e53bb588f3549df4a404862"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-needs.png",
+      "digest": "f7dc5b2086fc5192f1f4dde78c32a9a05a8d76b79480fcb7b2bff3c8b97d3d6c"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-office-card.png",
+      "digest": "13f97dc06f1b70735afba86dfc0317669e263a79923db5db6c5d0e31f8455ca8"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-card.png",
+      "digest": "f5d3dda4581dec15d08f8b060fb030a5c0336a44efdf15c0d4b9d1dad2660674"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-details.png",
+      "digest": "bba3e3f0bda534b4ac6bf648481d9c628bababf6a012f8ad1ffc9d3bd2966d4a"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-log.png",
+      "digest": "fd6f16f70f39000855401d138821d503160c951398386d9cb987db82a1ee8e8f"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-needs.png",
+      "digest": "738eee5f5781ea67e09e64ec0628f2bf3599608a086590f327692c89e175552b"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-office-card.png",
+      "digest": "22bd29f6052b69de8ee594040449ccced705f3a35edfa6cd86847bdd8079c2aa"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-card.png",
+      "digest": "53c410a3a5d35aa9e5248a522c47f24317e9e8329fe29a0badb62e8450ff32d6"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-details.png",
+      "digest": "2381d32495f3e623062afe6c78b4d4430aac91856b4452f8455f9a83b693de16"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-log.png",
+      "digest": "50232982d50bd27330bab1629629d88e75175fbc8105dea527bdfb408d9e2f4a"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-needs.png",
+      "digest": "28cb76f4c38cdba1392f3a3a515b0b4b060d4d66abfc817d9eec1534339905f9"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-office-card.png",
+      "digest": "9cc5a810a023f156df808d923952900239cf162b6d84baf906e230cd0d971a56"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-card.png",
+      "digest": "a3bedd8a2536af9ba687028d64b881c927d22519dbefad647ee760fb4060b32c"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-details.png",
+      "digest": "b7e3b920e0ab938b23710be815d0d22f778e66aa96ea6d22a58e2e7a7f386116"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-log.png",
+      "digest": "2af588b210e4bef22a66987a2810953f96b9f73031181d84c20b464d4ff43655"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-needs.png",
+      "digest": "6bc07612b7a267f40ee06ab2be492a67e3fe22bc731c97aaee59554e8353f341"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-office-card.png",
+      "digest": "c32fee833db98b39feb3d7103d6d641770d0502a44abb965cecfe8f2f82b33f0"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-dark-en-details.png",
+      "digest": "c1755a8b828c3357b1f4af0a71640d28d34771f0448b3bfa9adaaccdb2ad5393"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-dark-en-log.png",
+      "digest": "5ca27521807cc0a12af5fd5ca579776bc171807b716124d92430aec578ce86cf"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-dark-en-needs.png",
+      "digest": "79f233faca625bc1ba75151d474e2d8f2f9b1c7eaec951a992889e45c231ca30"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-dark-en-office-card.png",
+      "digest": "fee8bbd3ded72a7a8d3db0fa3b82bc70c2ab15081e280e52215d5b394656b028"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-dark-zh-TW-details.png",
+      "digest": "44f5b667878a4119a005fa479a2454a121e9be03eb7b6865d566a0ba989de769"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-dark-zh-TW-log.png",
+      "digest": "19c0239e7ccf5e71f53621b92ca04d796172abfa600d9a97b3f86ccdcd6be28c"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-dark-zh-TW-needs.png",
+      "digest": "97a37774b7b5b16d1dba287c6469dba697b196b152d9cccb7f3c47f82d21a155"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-dark-zh-TW-office-card.png",
+      "digest": "776c891c12568e7f67e5f453bc40edab5151e1aad228e0e0ff6c35cbc9ba7909"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-light-en-details.png",
+      "digest": "4c852aeb8c6dacea2450fe5fb716c2273315b996534830153f9a26a6c4bc9270"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-light-en-log.png",
+      "digest": "cd397584002d97182fa921aaed04d890074be7c44d3d6e7bff740c6d0c3d2d1d"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-light-en-needs.png",
+      "digest": "bc3aa6e9e0ec23b5d61cd43d8c1672d0db59cdf9cedd408182faf8604ddbcc81"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-light-en-office-card.png",
+      "digest": "ac23eed35819c61d8bb9251c482101f123515196f8aeea85596e306432df3aa9"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-light-zh-TW-details.png",
+      "digest": "49a713df6eb8307a78e9ce8ac028ff0b22409aa655c485341704be8302f2b6b7"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-light-zh-TW-log.png",
+      "digest": "b3639302e1cbead55c46c64d18902b9f1149f6b0de217d82031b660a446186ee"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-light-zh-TW-needs.png",
+      "digest": "f19f7f33bc14628e5bdb3b1774ac4c12d7dd622dedbfeec677b09a20b5449deb"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-phone-light-zh-TW-office-card.png",
+      "digest": "e8b16fb690cf24daf92d089c0825d2eb17f35a786fe0b87d19d878b31a242168"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-dark-zh-TW-details.png",
+      "digest": "9ae263b9e8c0ee969b0cd9d003f62dc093f233cbe1527bf7e6c887b05619d114"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-dark-zh-TW-log.png",
+      "digest": "e5014b99a84e8a5641fe7d68a8a11f3aa6dea8930fbec09d485d87ce65d9213b"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-dark-zh-TW-needs.png",
+      "digest": "0fc90959f074193f13eac9d4fb45a1884a1165aa5381f3e5740709a82f15a49c"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-light-en-details.png",
+      "digest": "c8590041945deb5e0181a71c2f85b70e1778eac49c5a28663c6d0ae2491ac18e"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-light-en-log.png",
+      "digest": "207d39f0e0762aeb7d250b1887a87f15acff2b3e90ec06a9037234d36e4412da"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-light-en-needs.png",
+      "digest": "5ce1c44cd993e4b7cd81e2459bc3e92ba2c496e06175ad2b2bdc034726543dc9"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/before-desk-dark-zh-TW-details.png",
+      "digest": "a837d896cc60b6c105a1cbf5754f81b1c4feb0695643776c26800ec011375e4e"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/before-desk-light-zh-TW-details.png",
+      "digest": "faa50fad956633d89bc84656c655ad880d4ba4321171a95d63d76c72b5ac1545"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/receipt.json",
+      "digest": "5a462b2a90fb48eeb1e99465a9f52bf63373e7a5a0de75fa3e4f9a07127d5d9e"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-panels-desk-light-en-details.png",
+      "digest": "f82bcac1b5fd3b675b476293b2a8b00649437cae30319cc95639ad952f7c6a0b"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-panels-desk-light-en-log.png",
+      "digest": "46fcc0b30f5538abf82838186ec4ba71e113e268cb2adcfd7179201f2d8f60ba"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-panels-desk-light-en-needs.png",
+      "digest": "28cb76f4c38cdba1392f3a3a515b0b4b060d4d66abfc817d9eec1534339905f9"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-shell-phone-dark-zh-TW-details.png",
+      "digest": "44f5b667878a4119a005fa479a2454a121e9be03eb7b6865d566a0ba989de769"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-shell-phone-dark-zh-TW-log.png",
+      "digest": "19c0239e7ccf5e71f53621b92ca04d796172abfa600d9a97b3f86ccdcd6be28c"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-shell-phone-dark-zh-TW-needs.png",
+      "digest": "97a37774b7b5b16d1dba287c6469dba697b196b152d9cccb7f3c47f82d21a155"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-shell-phone-light-en-details.png",
+      "digest": "4c852aeb8c6dacea2450fe5fb716c2273315b996534830153f9a26a6c4bc9270"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-shell-phone-light-en-log.png",
+      "digest": "cd397584002d97182fa921aaed04d890074be7c44d3d6e7bff740c6d0c3d2d1d"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-shell-phone-light-en-needs.png",
+      "digest": "bc3aa6e9e0ec23b5d61cd43d8c1672d0db59cdf9cedd408182faf8604ddbcc81"
+    }
+  ],
+  "newBrowserExecution": false,
+  "modelPolicyLifecycleActions": 0
+}

@@ -1,0 +1,114 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (21 tests | 4 failed) 339ms
+     × legacy original retires a quiet incident without enabling new inference 9ms
+     × legacy configured retires a quiet incident without enabling new inference 2ms
+     × unresolved original retires a quiet incident without enabling new inference 2ms
+     × pending concrete original retires a quiet incident without enabling new inference 1ms
+ ❯ tests/claude-model-switch-daemon.test.ts (8 tests | 1 failed) 163ms
+   × a legacy quiet daemon incident recovers on fresh original metadata while inference stays conservative 14ms
+
+ Test Files  2 failed (2)
+      Tests  5 failed | 24 passed (29)
+   Start at  18:48:34
+   Duration  2.95s (transform 2.52s, setup 189ms, import 3.06s, tests 502ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > definite recovery while inference is unresolved > legacy original retires a quiet incident without enabling new inference
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > definite recovery while inference is unresolved > unresolved original retires a quiet incident without enabling new inference
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > definite recovery while inference is unresolved > pending concrete original retires a quiet incident without enabling new inference
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match object { lastServed: 'claude-opus-4-8', …(1) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "active": null,
++   "active": {
++     "baseline": true,
++     "cause": "safeguards",
++     "id": "session-A:typed-recovery",
++     "original": "claude-opus-4-8",
++     "scope": "session",
++     "served": "claude-sonnet-5-5",
++     "since": 1,
++   },
+    "lastServed": "claude-opus-4-8",
+  }
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:99:33
+     97|     expect(restored.snapshot().active?.baseline).toBe(true);
+     98|     restored.observe(response("fresh-return", 3, returned as string), …
+     99|     expect(restored.snapshot()).toMatchObject({ lastServed: returned, …
+       |                                 ^
+    100|     expect(restored.checkpoint().expected).toBe(configured);
+    101|     restored.observe(response("still-unconfirmed", 4), sonnet);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > definite recovery while inference is unresolved > legacy configured retires a quiet incident without enabling new inference
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match object { lastServed: 'claude-opus-5-5', …(1) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "active": null,
++   "active": {
++     "baseline": true,
++     "cause": "safeguards",
++     "id": "session-A:typed-recovery",
++     "original": "claude-opus-4-8",
++     "scope": "session",
++     "served": "claude-sonnet-5-5",
++     "since": 1,
++   },
+    "lastServed": "claude-opus-5-5",
+  }
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:99:33
+     97|     expect(restored.snapshot().active?.baseline).toBe(true);
+     98|     restored.observe(response("fresh-return", 3, returned as string), …
+     99|     expect(restored.snapshot()).toMatchObject({ lastServed: returned, …
+       |                                 ^
+    100|     expect(restored.checkpoint().expected).toBe(configured);
+    101|     restored.observe(response("still-unconfirmed", 4), sonnet);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > a legacy quiet daemon incident recovers on fresh original metadata while inference stays conservative
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match object { lastServed: 'claude-opus-5-5', …(1) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "active": null,
++   "active": {
++     "baseline": true,
++     "cause": "safeguards",
++     "id": "session-A:notice:notice-A",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "since": 1794566917749,
++   },
+    "lastServed": "claude-opus-5-5",
+  }
+
+ ❯ tests/claude-model-switch-daemon.test.ts:102:38
+    100|     message: { id, role: "assistant", model, content: [], stop_reason:…
+    101|   monitor.processEntry(served("legacy-fresh-return", "claude-opus-5-5"…
+    102|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+       |                                      ^
+    103|   monitor.processEntry(served("legacy-unconfirmed", "claude-sonnet-5-5…
+    104|   expect(resumed.modelObservation().active).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+

@@ -1,20 +1,26 @@
 [
   {
-    "digest": "09cfd4896df569b412c01036eba0a03e651dee29d657d813cac7eac66df9e61e",
+    "digest": "0a156c16975e2c9ac33a661027cdfab65a723777c1f00d2c1c66de0b4916ef6c",
     "paths": [
-      "mutations/M1-sidechain.log"
+      "checks/reproduce-r2-before.py"
+    ]
+  },
+  {
+    "digest": "0a5ae7db9b2afecbb9038158e7e6a56f633e8cf6fe7146ad4f0aa8ad7b62684d",
+    "paths": [
+      "mutations/M4-recovery.log"
+    ]
+  },
+  {
+    "digest": "0d10893d6794f90468823c58c3e797c06bfab5cfe22a3e95463066485a4681a6",
+    "paths": [
+      "mutations/M10-original.log"
     ]
   },
   {
     "digest": "0fc90959f074193f13eac9d4fb45a1884a1165aa5381f3e5740709a82f15a49c",
     "paths": [
       "browser/availability-desk-dark-zh-TW-needs.png"
-    ]
-  },
-  {
-    "digest": "108793585e773d3a7debb4bb8d5e7b3152d3b8892b54ddfc30590da7ff2cc782",
-    "paths": [
-      "mutations/A5-native-context.log"
     ]
   },
   {
@@ -30,9 +36,9 @@
     ]
   },
   {
-    "digest": "13fb3635f6ce760533737da23c06eaadd33f6525ac0cb85d7a9124b3910a5083",
+    "digest": "1530b454d0902680b864c342fb456865815bed6e9305b83d69fbd54f47a95a39",
     "paths": [
-      "checks/commands.txt"
+      "checks/r2-mutations.log"
     ]
   },
   {
@@ -43,27 +49,21 @@
     ]
   },
   {
-    "digest": "1a9f121fbfea67be5fe596234efd029f0a91459cf1943eb4ad70620794bbe5c2",
-    "paths": [
-      "mutations/T3-boundary-budget.log"
-    ]
-  },
-  {
     "digest": "1b49c105851aef27e2c3d5cce0ba2168be7b9e13801a34a99b6c8e357b2d1463",
     "paths": [
       "repair-parity.json"
     ]
   },
   {
-    "digest": "1d230406dde1491291dfbd0f4f2b074362c32cad775d6742235099c77c1699af",
+    "digest": "1d14b631cad32cbbb88f9e3ec7bfd5cae904329c2e66f7e25ee4e90e7b518e1e",
     "paths": [
-      "mutations/results.json"
+      "mutations/M1-sidechain.log"
     ]
   },
   {
-    "digest": "1e94c9f5cf9f7d90bffbc5e726016a9fd7a1530251698eb0d73e880f07b8aa56",
+    "digest": "1e95fadf483ce7fc54fa5fcdef5111dbed983764441e455bb7c55ff642be5f3b",
     "paths": [
-      "checks.json"
+      "checks/r2-full-controls.log"
     ]
   },
   {
@@ -91,21 +91,9 @@
     ]
   },
   {
-    "digest": "266e109366ab7e006c0d8b42ab37c9359bc4aef98b4f62b082e4361927af521e",
-    "paths": [
-      "mutations/M14-nofallback.log"
-    ]
-  },
-  {
     "digest": "2685c0e61cd74cf17045e38f80528bfe64c7595a8c9c0308cc965c9b9db96921",
     "paths": [
       "mutations/M13-officeshare.log"
-    ]
-  },
-  {
-    "digest": "26cb07462c48412fb85a846926b9cc604dff63ec91905e066976d352c2dc4c19",
-    "paths": [
-      "mutations/run.py"
     ]
   },
   {
@@ -122,21 +110,45 @@
     ]
   },
   {
-    "digest": "2d7b4d0cef43b28abd52c0121120ab815f6ca801e0d8b1098e70641ef3c1eb03",
+    "digest": "2f4827a244817e5bea4da21a3ef4c92c8d676be4589f54370f63798c3b4d0c0f",
     "paths": [
-      "mutations/T2-shared-budget.log"
+      "mutations/C2-restore-intent.log"
     ]
   },
   {
-    "digest": "3aa2ae720dc20d4deeec804c187cd03e86036c0a52136131ac84541daa86a796",
+    "digest": "353b1566b207d57ebf99f2d58e43cba78b72382e3cad2c57ca07b5c34fb3ff8e",
     "paths": [
-      "mutations/M2-apierror.log"
+      "checks/r2-before-tests/r2-before-model.fixture.test.ts.txt"
+    ]
+  },
+  {
+    "digest": "39ee0f0249cf21acd12a242c4b086ca120e3f0e642b5ea258578b88140c03831",
+    "paths": [
+      "checks/r2-restored-controls.log"
+    ]
+  },
+  {
+    "digest": "3a87a294d504b23cb626f2066cbeca71b52c4416e50d280f43475c2b60532cd4",
+    "paths": [
+      "mutations/L1-log-cursor.log"
     ]
   },
   {
     "digest": "3b5d0184f26fa91e0be2d09aa6b34421b40e71a861755ddc976a2d00aabd69fb",
     "paths": [
       "checks/runtime-before.log"
+    ]
+  },
+  {
+    "digest": "3d334b8c605225a04961ab3fa54fe3a4107820c1fc030c99e0e426dbda0a8834",
+    "paths": [
+      "mutations/A5-native-context.log"
+    ]
+  },
+  {
+    "digest": "440c27bc4e57d5d4d42f52590ce60dbd5ae59b1c305037f20ec1cdb69cf6dcb6",
+    "paths": [
+      "mutations/T3-boundary-budget.log"
     ]
   },
   {
@@ -165,6 +177,12 @@
     ]
   },
   {
+    "digest": "4ab4156e0fad8084969b824f78b3083c9432135809ee32382d0fed70e281e0d6",
+    "paths": [
+      "mutations/C1-checkpoint-intent.log"
+    ]
+  },
+  {
     "digest": "4c852aeb8c6dacea2450fe5fb716c2273315b996534830153f9a26a6c4bc9270",
     "paths": [
       "browser/after-phone-light-en-details.png",
@@ -172,9 +190,9 @@
     ]
   },
   {
-    "digest": "4f4626bd0ac80b4f6336415ebfff8ae95def6c83e275c0c9cd65d75a6d1210c7",
+    "digest": "4e94c3f5db799334dfb234f03cc4a0ebc8efd63727873140f1a34475b70b96b7",
     "paths": [
-      "mutations/M3-dedupe.log"
+      "mutations/M2-apierror.log"
     ]
   },
   {
@@ -187,12 +205,6 @@
     "digest": "51c3fa81385a9a6c03cb0ac57d69685d1aad402579422eaf3aa42de9c4f6a371",
     "paths": [
       "checks/checkpoint-tail-controls.log"
-    ]
-  },
-  {
-    "digest": "529825fdbedcc57afed3f383bdd8dbf48cd712e99413d5a7f0f375c2014426a6",
-    "paths": [
-      "mutations/T1-cursor.log"
     ]
   },
   {
@@ -238,15 +250,15 @@
     ]
   },
   {
-    "digest": "5df5785b3a2521410cc7297226b1cfc996224b065eaf0008590527a3e8f26f0b",
+    "digest": "5fc4e7cb18858ae5a169270eec8a37d131b30dd2f17fb299f01b391cab9631c7",
     "paths": [
-      "mutations/M7-launchtime.log"
+      "checks/commands.txt"
     ]
   },
   {
-    "digest": "637c79735a94b17e7c8bc85436afffb467e5a1544a5f6de6cfd35add0f7b10c7",
+    "digest": "60aee75d7d0772debf264129bf83b39e7fc9ade8e1931a611329a0b033fc41ef",
     "paths": [
-      "mutations/M11-commandprefix.log"
+      "README.md"
     ]
   },
   {
@@ -256,21 +268,15 @@
     ]
   },
   {
-    "digest": "6873c29eb652cfd793a8441ce748369e493c4a8e9ea21dffd24fb8a9e256c258",
-    "paths": [
-      "mutations/C1-checkpoint-intent.log"
-    ]
-  },
-  {
     "digest": "6bc07612b7a267f40ee06ab2be492a67e3fe22bc731c97aaee59554e8353f341",
     "paths": [
       "browser/after-desk-light-zh-TW-needs.png"
     ]
   },
   {
-    "digest": "713965bbc7e2a406d54acce843d45023d775c103a86599abee1ea608c58b1724",
+    "digest": "711ca5697eb7b9f823a4e42818e15067d3fc3b39dd0c324661f184f30a086168",
     "paths": [
-      "mutations/C3-legacy-conservative.log"
+      "checks/r2-exact-before.log"
     ]
   },
   {
@@ -298,9 +304,45 @@
     ]
   },
   {
+    "digest": "7b6be39213cdf4c9f6f46ee3abf4c4a5b6fbb6f001bf56c50a3a18a1149aaee4",
+    "paths": [
+      "checks/r2-recovery-log-before.log"
+    ]
+  },
+  {
+    "digest": "7de423300815d982fd7a886658e51e74702dd9d1f11cbab926368e32a95dc8fb",
+    "paths": [
+      "review-r2.json"
+    ]
+  },
+  {
+    "digest": "82ca9274be0bcb7a5f80729b9d6fba2c72dc2a66fa7c61f7e40aa2794313d186",
+    "paths": [
+      "mutations/T1-cursor.log"
+    ]
+  },
+  {
+    "digest": "82fa40771509ddcbdc01746aa6836a27d00c6f524cf6d42ecc7fa14d594e70b3",
+    "paths": [
+      "mutations/results.json"
+    ]
+  },
+  {
     "digest": "834f54fbbd031668cb9daa1b3868bcdb0f67d77a9d2ea84c4054d818da2a16f4",
     "paths": [
       "checks/checkpoint-tail-final-checks.json"
+    ]
+  },
+  {
+    "digest": "89d7cab9d94dafcce2013ae9821f845643b1c9afacc3d18bf8e3219c7b63eb20",
+    "paths": [
+      "mutations/T4-startup-lane.log"
+    ]
+  },
+  {
+    "digest": "8ed34fa8edfc6d896b722db3d75df0671926fa5ada35ed30329dd638425681b6",
+    "paths": [
+      "mutations/M14-nofallback.log"
     ]
   },
   {
@@ -317,21 +359,33 @@
     ]
   },
   {
+    "digest": "9a1be66c14d8c1aa4cdddacf869fc88ec782228cac6fd0314ad218d9e1c478ce",
+    "paths": [
+      "mutations/run.py"
+    ]
+  },
+  {
     "digest": "9ae263b9e8c0ee969b0cd9d003f62dc093f233cbe1527bf7e6c887b05619d114",
     "paths": [
       "browser/availability-desk-dark-zh-TW-details.png"
     ]
   },
   {
-    "digest": "9b16dc671fc7ed2bc6f68131ddb0702df5f36a664f09eb92e9995465caa5001f",
-    "paths": [
-      "mutations/A4-native-gap.log"
-    ]
-  },
-  {
     "digest": "9cc5a810a023f156df808d923952900239cf162b6d84baf906e230cd0d971a56",
     "paths": [
       "browser/after-desk-light-en-office-card.png"
+    ]
+  },
+  {
+    "digest": "9dedb263076a80c53ddee8947fc60ca41aab44c1c4be7ea32a6c66c2ce2108da",
+    "paths": [
+      "checks.json"
+    ]
+  },
+  {
+    "digest": "9e27ce2aeb7ef5b82745304504c8d2a9f8938f24bc5e32d14f0e1c026ce395eb",
+    "paths": [
+      "checks/r2-before-tests/r2-before-daemon.fixture.test.ts.txt"
     ]
   },
   {
@@ -353,13 +407,7 @@
     ]
   },
   {
-    "digest": "a6ef5239a11e604a9c9b1884148b3370d9b4efc9ae8fab471cce05476c20e75d",
-    "paths": [
-      "README.md"
-    ]
-  },
-  {
-    "digest": "a7135f3a28fcc921182db5f0ac415e2a44cb1d3eba4d134544e706c4609b1287",
+    "digest": "a73ef183c32ba2ab3f385770bc458d89df8507a0945733e12c1e785644a1bc0f",
     "paths": [
       "mutations/M5-concrete.log"
     ]
@@ -371,15 +419,33 @@
     ]
   },
   {
+    "digest": "a911521bd7358aba59268514bfb073ddec906d8fd8ad40aa9bd1447e4efff8f9",
+    "paths": [
+      "checks/r2-final-checks.json"
+    ]
+  },
+  {
     "digest": "ac23eed35819c61d8bb9251c482101f123515196f8aeea85596e306432df3aa9",
     "paths": [
       "browser/after-phone-light-en-office-card.png"
     ]
   },
   {
+    "digest": "accf5ee3fc5efe2f7063720a55a196963dd225495679e5fae0140d451b3718f7",
+    "paths": [
+      "checks/r2-exact-before.json"
+    ]
+  },
+  {
     "digest": "ae196466c3a29e1f445b4911db63aef4e14d5a65be298fb8997778436392a94f",
     "paths": [
       "checks/checkpoint-tail-restored.log"
+    ]
+  },
+  {
+    "digest": "af2bc4e74e9a27421b36e1fbb314f9907adca143ca1e9f7b97c08c656f163633",
+    "paths": [
+      "mutations/M11-commandprefix.log"
     ]
   },
   {
@@ -414,9 +480,9 @@
     ]
   },
   {
-    "digest": "bcf2ae984f180cc4872c44d9422b52af98f1047a0db55e9be39de8ac2c237614",
+    "digest": "be5ceba1d275ea78726bc7d48aa35c79bca648cc373d3c6f25b9863c3a2286d3",
     "paths": [
-      "mutations/M6-hookowner.log"
+      "mutations/C3-legacy-conservative.log"
     ]
   },
   {
@@ -438,9 +504,21 @@
     ]
   },
   {
+    "digest": "c7126b6d79577062c3fcc515649151e5ccab2cff8e0efe68bae8c9344b10d760",
+    "paths": [
+      "mutations/M6-hookowner.log"
+    ]
+  },
+  {
     "digest": "c8590041945deb5e0181a71c2f85b70e1778eac49c5a28663c6d0ae2491ac18e",
     "paths": [
       "browser/availability-desk-light-en-details.png"
+    ]
+  },
+  {
+    "digest": "cc1648befaad7747e8b27b7176db57a292fc2c34a73bae4e3225bb5b6cd0bc7e",
+    "paths": [
+      "mutations/T2-shared-budget.log"
     ]
   },
   {
@@ -451,15 +529,21 @@
     ]
   },
   {
-    "digest": "d5df04aaf9d2ac33151424a3efa6c56e222559b8d6d09b81188929ef1c34dd1b",
+    "digest": "d4a651e9547999e46ecdbb9a69663282a46945d26cadc72272813bb3e2420db9",
     "paths": [
-      "mutations/M4-recovery.log"
+      "mutations/M3-dedupe.log"
     ]
   },
   {
     "digest": "dc4d96b2740303c66358043e3df1a2fd8d8a15409925042be5dc9bb47e555141",
     "paths": [
       "mutations/A1-native-session.log"
+    ]
+  },
+  {
+    "digest": "dd178d0f333ac91ddac604f43ef8712eeb170f7cb304f337ab14ee441d76080c",
+    "paths": [
+      "mutations/M7-launchtime.log"
     ]
   },
   {
@@ -479,6 +563,8 @@
     "paths": [
       "checks/checkpoint-tail-source-types.log",
       "checks/checkpoint-tail-test-types.log",
+      "checks/r2-source-types.log",
+      "checks/r2-test-types.log",
       "checks/source-types.log",
       "checks/test-types.log",
       "mutations/A1-native-session-types.log",
@@ -489,6 +575,8 @@
       "mutations/C1-checkpoint-intent-types.log",
       "mutations/C2-restore-intent-types.log",
       "mutations/C3-legacy-conservative-types.log",
+      "mutations/C4-pending-recovery-types.log",
+      "mutations/L1-log-cursor-types.log",
       "mutations/M1-sidechain-types.log",
       "mutations/M10-original-types.log",
       "mutations/M11-commandprefix-types.log",
@@ -506,7 +594,8 @@
       "mutations/M9-resumequiet-types.log",
       "mutations/T1-cursor-types.log",
       "mutations/T2-shared-budget-types.log",
-      "mutations/T3-boundary-budget-types.log"
+      "mutations/T3-boundary-budget-types.log",
+      "mutations/T4-startup-lane-types.log"
     ]
   },
   {
@@ -522,9 +611,21 @@
     ]
   },
   {
+    "digest": "e824110e8f63446156f6de485ef2dd4a1c6c7a62c18f53f693c2c7fcf46abace",
+    "paths": [
+      "mutations/A4-native-gap.log"
+    ]
+  },
+  {
     "digest": "e8b16fb690cf24daf92d089c0825d2eb17f35a786fe0b87d19d878b31a242168",
     "paths": [
       "browser/after-phone-light-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "ebb2769a88eb7d25787bec4643ef970519a80ce0600e7804c1ee63234e729e83",
+    "paths": [
+      "mutations/M15-intent-session.log"
     ]
   },
   {
@@ -540,21 +641,9 @@
     ]
   },
   {
-    "digest": "f48e80fadc4a296733e0316bec2b27444142b6f064339c095988bb7c9ba02a94",
-    "paths": [
-      "mutations/C2-restore-intent.log"
-    ]
-  },
-  {
     "digest": "f5d3dda4581dec15d08f8b060fb030a5c0336a44efdf15c0d4b9d1dad2660674",
     "paths": [
       "browser/after-desk-dark-zh-TW-card.png"
-    ]
-  },
-  {
-    "digest": "f61622be7798da22fc9b716da17e8f9ba323f0a75d8704dcf239394eb998ea63",
-    "paths": [
-      "mutations/M15-intent-session.log"
     ]
   },
   {
@@ -588,6 +677,12 @@
     ]
   },
   {
+    "digest": "fc7c5306f84f5d2ee2a973c7fd8d7be548563a0713812dd5b4399371f0392570",
+    "paths": [
+      "mutations/C4-pending-recovery.log"
+    ]
+  },
+  {
     "digest": "fd6f16f70f39000855401d138821d503160c951398386d9cb987db82a1ee8e8f",
     "paths": [
       "browser/after-desk-dark-zh-TW-log.png"
@@ -597,12 +692,6 @@
     "digest": "fee8bbd3ded72a7a8d3db0fa3b82bc70c2ab15081e280e52215d5b394656b028",
     "paths": [
       "browser/after-phone-dark-en-office-card.png"
-    ]
-  },
-  {
-    "digest": "ff0bf2733a45f250efade6b83bdfb84280505a59635dafc7df3a536dd9076c54",
-    "paths": [
-      "mutations/M10-original.log"
     ]
   }
 ]

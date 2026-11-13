@@ -1,13 +1,13 @@
 
  RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
- ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 34ms
+ ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 20ms
    × a context callback that retires the monitor cannot leak its paired model observation 6ms
 
  Test Files  1 failed (1)
       Tests  1 failed | 5 passed (6)
-   Start at  17:37:11
-   Duration  527ms (transform 236ms, setup 87ms, import 232ms, tests 34ms, environment 0ms)
+   Start at  18:45:39
+   Duration  499ms (transform 239ms, setup 102ms, import 223ms, tests 20ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
@@ -21,14 +21,14 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 - []
 + [
 +   {
-+     "at": 1794562632489,
++     "at": 1794566739967,
 +     "cause": "safeguards",
-+     "id": "notice:dbb32523-b936-4971-9f25-ea7d1842aad4",
++     "id": "notice:12841c29-d5f5-43a4-8ec0-da0f970a50c1",
 +     "kind": "switch",
 +     "original": "claude-opus-5-5",
 +     "scope": "session",
 +     "served": "claude-opus-4-8",
-+     "sessionId": "3f81792c-5db7-4ad7-9c04-9c16a03a386f",
++     "sessionId": "1f51575b-b5bd-48f8-9a71-8d5366c7a8c6",
 +   },
 + ]
 

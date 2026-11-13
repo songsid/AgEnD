@@ -8,3 +8,7 @@ REPO=<checkout> OUT=<output> BASELINE_REF=71dbc782956047c413b9f367a572e38c39d536
 # Checkpoint/read-budget repair (private temp files; no browser)
 vitest run tests/claude-model-checkpoint-tail.test.ts tests/claude-model-switch-daemon.test.ts --maxWorkers=2
 # Full26: original23 plus claude-model-checkpoint-tail and transcript-baseline-boundary/faults-1250
+
+# R2 recovery/Log cursor (private temp files; no browser)
+python3 docs/evidence/claude-model-observation-alpha/checks/reproduce-r2-before.py
+vitest run tests/claude-model-checkpoint-tail.test.ts tests/claude-model-switch-daemon.test.ts --maxWorkers=2

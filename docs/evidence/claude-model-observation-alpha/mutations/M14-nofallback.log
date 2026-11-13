@@ -1,14 +1,14 @@
 
  RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 70ms
-     × excludes no fallback 7ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 72ms
+     × excludes no fallback 6ms
    × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 3ms
 
  Test Files  1 failed (1)
       Tests  2 failed | 56 passed (58)
-   Start at  18:14:02
-   Duration  1.03s (transform 646ms, setup 269ms, import 492ms, tests 70ms, environment 0ms)
+   Start at  18:45:13
+   Duration  549ms (transform 235ms, setup 96ms, import 228ms, tests 72ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
@@ -21,7 +21,7 @@ null
 
 + Received:
 {
-  "at": 1794564843747,
+  "at": 1794566714399,
   "cause": "availability",
   "id": "notice:notice-A",
   "kind": "switch",
@@ -58,10 +58,10 @@ AssertionError: expected [ { …(6) } ] to deeply equal []
 +       "original": "claude-opus-5-5",
 +       "scope": "session",
 +       "served": "claude-opus-4-8",
-+       "since": 1794564843780,
++       "since": 1794566714428,
 +     },
 +     "note": "Model switched: claude-opus-5-5 → claude-opus-4-8",
-+     "ts": 1794564843780,
++     "ts": 1794566714428,
 +     "turn": "",
 +   },
 + ]

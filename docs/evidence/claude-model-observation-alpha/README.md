@@ -35,7 +35,7 @@ Retained-asset claims cover only the exact listed substitutions, including alpha
 Alpha merges remain held for the alpha.3 rehearsal until Leader clearance. Coordinator alone merges. Rollback removes optional observation readers/projections/checkpoint; configured selections, policies, transcripts and permissions remain intact.
 
 
-## Checkpoint intent and startup read-budget repair
+## Checkpoint intent and startup read-budget repair (R1; historical)
 
 The review found two shared problems: pending `/model` intent was missing from the checkpoint despite saved replay dedupe, and the metadata tail's explicit cursor still triggered an unbounded lookup from current EOF. The v2 checkpoint now records no intent, unresolved intent and concrete unconfirmed intent separately. Legacy v1 and invalid/missing intent restore conservatively as unresolved; a typed notice, a concrete owned confirmation or a new session can end that suppression. Served metadata remains visible.
 
@@ -44,3 +44,12 @@ The tail now verifies a complete record at or before its captured cursor. Bounda
 Fail-first controls use private temp files and real file handles with byte counters, including a 16 MiB unfinished suffix, mid-record cursors, short reads and no-progress reads. Observer JSON round trips and actual daemon checkpoint files cover aliases, picker intent, concrete unconfirmed intent, quiet active incidents, confirmed/no-intent positives and legacy recovery. These changes add no UI, launch, native-source or lifecycle action. Existing harness, receipts and all 53 PNGs are unchanged; no new browser execution is claimed.
 
 Repair verification at `d41ec09b63267a1a151aebc6e08d7d9d5255ee7d`: **499/499 across 26 suites**, both native type projects exit0, and all **26** isolated reversals have current baseline digests and exact restoration. Six new reversals pin intent serialization/restore/legacy handling and cursor/shared/boundary budgets. The paired fail-first run has16 semantic reds and6 controls. [Repair receipt](review-fixes.json), [checks](checks.json).
+
+
+## Definite recovery and Log cursor repair (R2)
+
+The R1 fixes had two related gaps: conservative legacy intent could keep a quiet incident after definite recovery, and an exhausted generic tail boundary returned0 as a Log forward cursor, replaying old user/answer steps. A fresh original/configured-model response now clears that incident without confirming the missing command or enabling new mismatch inference.
+
+The bounded reader is now startup-specific and exposes no forward cursor. The normal Log reader retains its original boundary lookup and exact shared payload scanner. Actual LogService initial→poll→append controls prove no old-step replay and later new-step delivery; real file-handle counters also prove the monitor uses the bounded startup lane, separately accounting for its inherited baseline lookup. The inherited earlier boundary scans remain unchanged.
+
+At `30b071ed8489d012d658bda47c35c66667b705ca`, **556/556 across28 suites** and both native type projects pass. Six paired regressions are semantic-red on the exact prior head, with copied test sources/digests and exact restoration. Three new isolated compiling reversals pin pending recovery, the Log cursor and the monitor's startup lane; all **29** mutation baseline bindings are current. [Repair/source parity receipt](review-r2.json), [exact before recipe](checks/reproduce-r2-before.py), [checks](checks.json). Existing UI, native source, harness, receipt and all53 PNGs are unchanged. No new browser, vendor API, live transcript or pane operation is claimed.
