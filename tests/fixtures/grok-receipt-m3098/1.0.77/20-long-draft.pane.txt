@@ -1,0 +1,36 @@
+
+  /t/c/-/4/s/m/rig/work-1.0.77                                                               1.4K / 256K │ [Dashboard]
+
+
+     ❯ [agend-delivery-id:15e40695-0000-4000-8000-000000003098]                                              3:02 AM
+       [from:fixture-sender] please stall: an inert three-line fleet message for the M-3098 fixture. Its
+       middle line is long enough to wrap across the echo row, as the incident messages did on the live …
+
+
+     mock reply r1                                                                                           3:02 AM
+
+     Worked for 8.1s
+
+
+
+
+
+
+
+
+                ╭─────────────────────────────────────────────────────────────────────────────────────╮
+                │[agend-delivery-id:854874b4-0000-4000-8000-000000003098]                             │
+                │[from:fixture-sender] please stall: an inert twenty-line fleet message for the M-309…│
+                │line 3 of the long inert fixture body                                                │
+                │⋮ (14 more lines)                                                                    │
+                │line 18 of the long inert fixture body                                               │
+                │line 19 of the long inert fixture body                                               │
+                │(message_id: xmsg-1794588382724-m3098l | correlation_id: cid-m3098-long)             │
+                ╰─ paste again or double-click to expand ─────────────────────────────────────────────╯
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ [Pasted: 20 lines]                                                                                             │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Enter:send  │  Alt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

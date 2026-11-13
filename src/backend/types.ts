@@ -677,6 +677,13 @@ export interface CliBackend {
   readInputRow?(pane: string): InputBox | null;
 
   /**
+   * M-3098: the lead markers (`[agend-delivery-id:…]`, `[hid:…]`) this CLI shows as taken — echoed into its transcript
+   * or held in its own queue — above the live input box. For a CLI that cuts its echo short (Grok: three rows and a
+   * `…`), the envelope's trailing message_id never reaches the screen; the lead marker does. Only with a readable box.
+   */
+  readTakenMarkers?(pane: string): string[];
+
+  /**
    * Marker the CLI paints when it has accepted input into its own pending
    * queue rather than starting a turn (codex: the `↳` row under "Messages to
    * be submitted after next tool call"). Only meaningful for
