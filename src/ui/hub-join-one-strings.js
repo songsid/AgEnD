@@ -56,7 +56,7 @@ register("joinOne", {
     opened: "已開啟 {0} 的登入分頁…", left: "剩 {0}", reopen: "重新開啟分頁", cancel: "取消",
     ownerLine: "以 {0} 的公司帳號連接 · 這台 Fleet 叫「{1}」",
     reconnect: "重新連接", remove: "移除這個連接",
-    revokedHint: "Hub 結束了這個 Fleet 的連接，例如它變更了 Fleet 連線位址之後。按「重新連接」以公司帳號再次登入即可，不需要其他步驟。",
+    revokedHint: "Hub 結束了這個 Fleet 的連接，例如它變更了 Fleet 連接位址之後。按「重新連接」以公司帳號再次登入即可，不需要其他步驟。",
     removeAsk: "要移除與「{0}」的連接嗎？你分享的 Agent 會停止回答。", removeYes: "移除", removeNo: "保留",
     removed: "已移除連接。",
   },

@@ -45,7 +45,7 @@ async function fixture(opts: { language?: string; read?: Answer; prepare?: (b: a
 describe("#3429 Settings → Hub → Fleet connection address", () => {
   it.each([
     ["en", "Fleet connection address", "Change connection address", "Confirm change", "Fleets that move (2)", "Fleets online now follow on their own", "Done. All 2 Fleets followed to the new address."],
-    ["zh-TW", "Fleet 連線位址", "變更連線位址", "確認變更", "會移動的 Fleet（2）", "目前在線上的 Fleet 會自動跟著移動", "完成。全部 2 個 Fleet 都已跟著移動到新位址。"],
+    ["zh-TW", "Fleet 連接位址", "變更連接位址", "確認變更", "會移動的 Fleet（2）", "目前在線上的 Fleet 會自動跟著移動", "完成。全部 2 個 Fleet 都已跟著移動到新位址。"],
   ])("%s: shows the address and how many Fleets; Check lists those that move; Confirm says who followed", async (language, title, change, confirm, moving, effect, done) => {
     const f = await fixture({ language });
     expect(f.q("summary").textContent).toContain(title);

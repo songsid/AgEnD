@@ -21,7 +21,7 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | what a Hub is, Hub vs Fleet, who can see what | [What the Hub is](#what-the-hub-is) |
 | `agend hub init`, Set up a Hub, first administrator | [Setting up a Hub](#setting-up-a-hub) |
 | move the Hub to another address or port, Hub address (Hub 位址) on the Hub's computer | [Changing the Hub's address](#changing-the-hubs-address) |
-| Fleet connection address (Fleet 連線位址), the address Fleets connect to, Fleets that move | [Changing the Fleet connection address](#changing-the-fleet-connection-address) |
+| Fleet connection address (Fleet 連接位址), the address Fleets connect to, Fleets that move | [Changing the Fleet connection address](#changing-the-fleet-connection-address) |
 | the Hub's sign-in page, which account, wrong password | [Signing in to the Hub](#signing-in-to-the-hub) |
 | Let colleagues join, 讓同仁加入, which groups, the sentence to send | [Letting colleagues join](#letting-colleagues-join) |
 | join codes, 加入碼, create, end, used up, limits | [Join codes](#join-codes) |
@@ -95,10 +95,10 @@ this Hub**. Only that computer's own sign-in sees it, as with **Set up a Hub**.
 
 ## Changing the Fleet connection address
 
-Rarely needed. On the Hub's computer: **Settings → Hub**, the folded card **Fleet connection address** (Fleet 連線位址), below
+Rarely needed. On the Hub's computer: **Settings → Hub**, the folded card **Fleet connection address** (Fleet 連接位址), below
 **Hub address**. It's where connected Fleets reach the Hub; the Hub address colleagues use doesn't change.
 
-- **Change connection address** (變更連線位址) → **New connection address** → **Check** (檢查) → "Change the Fleet
+- **Change connection address** (變更連接位址) → **New connection address** → **Check** (檢查) → "Change the Fleet
   connection address?" lists **Fleets that move (*n*)** → **Confirm change** (確認變更). **Advanced** sets where it listens.
 - Fleets **online** at that moment follow on their own (the Hub sends them the new address, signed with its key). Fleets
   offline lose their connection; their owners get a notice and press **Reconnect** (重新連接) on their own Settings → Hub,

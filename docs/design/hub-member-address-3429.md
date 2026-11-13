@@ -42,7 +42,7 @@ Eleven injected crash steps cover certificate/material/journal, SQL decision, id
 
 The container recipe `scripts/manual/hub-member-address/run.sh` uses a real initialized Hub, verified synthetic LDAPS and a second FleetManager/member runtime, with an empty Agent inventory. It exercises legacy manual pairing, the affected-list preview, actual-browser D3 commit, old-endpoint/old-credential refusal, unchanged browser login, one retained owner notice, exact local Disconnect/Start over, and fresh browser company sign-in under a real group permit. The original revoked Fleet row remains; no automatic row supersession or republishing occurs. Fixture network seams are explicit per-client browser CA/hostname mapping and an exact loopback :636 mapping to the owned ephemeral LDAP peer. No real AD, pilot, native platform, CLI/model, new reconnect UI, or existing-company trust-repair journey is claimed.
 
-Provisional held-UI zh-TW copy: 「Hub 成員連線位址」; 「變更後，下列 Fleet 需要重新連接。」; 「確認變更」; notice 「Hub 的連線位址已變更，請重新連接。」; recovery action 「重新連接」. Normal people keep the browser-facing 「Hub 位址」; transport fields remain host/advanced information. These are review notes, not shipped new controls.
+Provisional held-UI zh-TW copy: 「Hub 成員連接位址」; 「變更後，下列 Fleet 需要重新連接。」; 「確認變更」; notice 「Hub 的連接位址已變更，請重新連接。」; recovery action 「重新連接」. Normal people keep the browser-facing 「Hub 位址」; transport fields remain host/advanced information. These are review notes, not shipped new controls.
 
 
 ## Online members follow (option B; user decision 11-13) — design r2, before code
