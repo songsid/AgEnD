@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (14 tests | 1 failed | 13 skipped) 215ms
+     × retires a pre-pause operation after pause/resume even on legacy-policy fleets 212ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > retires a pre-pause operation after pause/resume even on legacy-policy fleets
+AssertionError: expected [Function] to throw an error
+ ❯ tests/hub-sharing-pause-m3015.test.ts:86:41
+     84|     const proof = await core.groupExposure(w.e.id, w.asker, { requestI…
+     85|     expect((await w.change(true, 0)).status).toBe(200); expect((await …
+     86|     expect(() => proof.assertCurrent()).toThrow();
+       |                                         ^
+     87|     (await core.groupExposure(w.e.id, w.asker, { requestId: randomUUID…
+     88|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  14:17:31
+   Duration  5.43s (transform 3.75s, setup 167ms, import 4.76s, tests 215ms, environment 0ms)
+

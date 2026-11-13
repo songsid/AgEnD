@@ -1,5 +1,6 @@
-import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
+import { EFFORT_CAPABILITIES, readGrokEffortLevels } from "./effort-metadata.js";
 import { flagEffort } from "./launch-effort.js";
+import { readGrokModelCache } from "./grok-model-cache.js";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -349,6 +350,14 @@ function frameAt(
  * strings beyond the cancellation notice are still best-effort and may need
  * tuning.
  */
+/** The models `grok models` lists today (1.0.77), for when neither the CLI nor its model cache can be read. */
+export const GROK_FALLBACK_MODELS: readonly { id: string; label: string }[] = [
+  { id: "grok-4.7", label: "grok-4.7" },
+  { id: "grok-4.7-build-fast", label: "grok-4.7-build-fast" },
+  { id: "grok-4.6", label: "grok-4.6" },
+  { id: "grok-4.5", label: "grok-4.5" },
+];
+
 export class GrokBackend implements CliBackend {
   readonly binaryName = "grok";
   private binaryPath: string;
@@ -392,7 +401,7 @@ export class GrokBackend implements CliBackend {
       cmd += ` --model ${shellQuote(model)}`;
     }
     // #1811: the configured effort, where this grok takes it (launch-effort.ts); else a quiet note.
-    const effort = flagEffort("grok", config.effort, this.binaryPath);
+    const effort = flagEffort("grok", config.effort, this.binaryPath, undefined, readGrokEffortLevels(config.model ?? null));
     if (effort.arg) cmd += effort.arg;
     this.quietLaunchNotes = effort.note ? [effort.note] : [];
     return cmd;
@@ -702,10 +711,12 @@ export class GrokBackend implements CliBackend {
         { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
       const models = parseGrokModelsOutput(out);
       if (models.length) return models;
-    } catch { /* fall back to documented set */ }
-    return [
-      { id: "grok-4.5", label: "grok-4.5" },
-    ];
+    } catch { /* fall back to grok's own model cache, then the documented set */ }
+    // The CLI could not be asked: grok's models_cache.json (what it fetched for this account) is the next best list,
+    // then the models it lists today (`grok models` on 1.0.77).
+    const cached = await readGrokModelCache();
+    if (cached.length) return cached;
+    return GROK_FALLBACK_MODELS.map(model => ({ ...model }));
   }
 
   async probeCLIEnv() {

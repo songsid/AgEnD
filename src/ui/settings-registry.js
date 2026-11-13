@@ -8,6 +8,7 @@ import { navigate } from "/assets/app-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // search shows these labels from outside Settings (dailyTips, hangEnabled, crossInstanceVisibility)
 import "./settings-revoke-strings.js";   // settings.vaRevokeOthers, the revoke button's label (a file of its own: PR #3553 review)
+import "./settings-public-session-strings.js";   // #3708: publicSessionAbsolute / publicSessionIdle (a file of its own)
 import "./settings-access-strings.js";   // …and this one (webLoginQr), added by Access & security (#3061)
 import "/assets/chat-strings.js";
 import { GUESTS_SETTINGS } from "./settings-guests.js";
@@ -18,8 +19,7 @@ const ROWS = [
   ["general.location", "agent-defaults", "#general-location", null, null, ["general", "windows", "paired PC", "host", "location"], ["General", "Windows", "電腦", "主機", "執行位置"], L("Run General on", "General 執行位置")],
   // alpha.6 feedback (#2): "hub" found nothing — Settings → Hub's cards. Connect to a Hub is drawn once membership is on.
   ["hub.membership", "hub", "#hubMemberEnabled", null, "hub_member.enabled", ["hub", "team hub", "membership", "connect", "join", "pair", "share agents"], ["Hub", "團隊 Hub", "成員", "連線", "加入", "配對", "分享"], L("Allow this fleet to connect to a Hub", "允許這個 Fleet 連線至 Hub")],
-  ["hub.company-address", "hub", "#hubCompanyAddress", null, null, ["hub", "company account", "company link", "sign in", "connect", "join"], ["Hub", "公司帳號", "公司連結", "登入", "連接", "加入"], L("Hub address or company link", "Hub 位址或公司連結")],
-  ["hub.company-name", "hub", "#hubCompanyFleetName", null, null, ["fleet", "name", "hub", "company"], ["Fleet", "名稱", "Hub", "公司"], L("Fleet name", "Fleet 名稱")],
+  ["hub.company-address", "hub", "#hubCompanyAddress", null, null, ["hub", "company account", "company link", "sign in", "connect", "join"], ["Hub", "公司帳號", "公司連結", "登入", "連接", "加入"], L("Hub address", "Hub 位址")],
   ["hub.connect", "hub", "#hub-connect", null, null, ["hub", "connect to a hub", "pairing code", "hub address", "fingerprint", "pair", "unpair", "disconnect", "join"], ["Hub", "連線至 Hub", "配對碼", "Hub 位址", "指紋", "配對", "解除配對", "中斷連線", "加入"], L("Connect to a Hub", "連線至 Hub")],
   ["quota.notices", "notifications", "#quota-notices", null, "defaults.quota_notice", ["usage", "quota", "notifications", "remaining", "weekly"], ["用量", "額度", "提醒", "通知", "剩餘"], L("Quota notices", "用量提醒")],
   // You · Preferences
@@ -68,6 +68,10 @@ const ROWS = [
   ["defaults.agent-mode", "agent-defaults", "#g-am", "settings.agentMode", "defaults.agent_mode", ["agent mode", "mcp", "cli"], ["agent 模式"]],
   ["defaults.hang-on", "agent-defaults", "#g-hang-on", "settings.hangEnabled", "defaults.hang_detector.enabled", ["hang detector", "stuck", "frozen"], ["卡住偵測", "卡住", "當機"]],
   ["defaults.hang-timeout", "agent-defaults", "#g-hang", "settings.hangTimeout", "defaults.hang_detector.timeout_minutes", ["hang timeout", "stuck", "minutes"], ["卡住逾時", "逾時"]],
+  ["defaults.liveness-on", "agent-defaults", "#g-live-on", "settings.livenessEnabled", "defaults.task_board.liveness.enabled", ["assignee stopped", "dispatcher", "crashed", "quiet", "task board", "liveness"], ["接手者停下來", "派工者", "當掉", "沒有動靜", "任務看板"]],
+  ["defaults.liveness-quiet", "agent-defaults", "#g-live-quiet", "settings.livenessQuiet", "defaults.task_board.liveness.quiet_minutes", ["quiet", "idle", "claimed card", "minutes"], ["沒有動靜", "閒置", "接了卡"]],
+  ["defaults.liveness-prompt", "agent-defaults", "#g-live-prompt", "settings.livenessPrompt", "defaults.task_board.liveness.prompt_minutes", ["prompt", "permission", "waiting", "minutes"], ["提示", "權限", "等待"]],
+  ["defaults.liveness-crash", "agent-defaults", "#g-live-crash", "settings.livenessCrash", "defaults.task_board.liveness.crash_grace_minutes", ["crashed", "crash grace", "minutes"], ["當掉", "恢復"]],
   ["defaults.concurrency", "agent-defaults", "#g-conc", "settings.concurrency", "startup.concurrency", ["startup", "concurrency", "parallel", "spawn"], ["啟動", "並行"]],
   ["defaults.project-roots", "agent-defaults", "#g-roots", "settings.projectRootsTitle", "project_roots", ["project roots", "folders", "directory", "where agents work", "working directory"], ["專案資料夾", "資料夾", "目錄", "工作目錄"]],
   ["defaults.stagger", "agent-defaults", "#g-stag", "settings.staggerDelay", "startup.stagger_delay_ms", ["startup", "stagger", "delay"], ["啟動", "間隔", "延遲"]],
@@ -82,14 +86,18 @@ const ROWS = [
   ["chat.classic-guilds", "chat", "#g-guilds", "settings.allowedGuilds", "classic.allowed_guilds", ["discord server", "guild", "allowed servers"], ["Discord 伺服器", "伺服器"]],
   // Fleet · Web dashboard
   ["dash.log-tab", "web-dashboard", "#webLogTab", "settings.webLogTab", "web.log_tab", ["log tab", "steps", "log"], ["Log 分頁", "紀錄", "步驟"]],
+  ["dash.log-thinking", "web-dashboard", "#webLogThinking", "settings.webLogThinking", "web.log_thinking", ["thinking", "activity", "chat timeline", "reasoning"], ["思考", "活動", "聊天時間軸"]],
   ["dash.usage-public", "web-dashboard", "#webUsagePublic", "settings.webUsagePublic", "web.usage_report_on_public_link", ["usage", "public link", "cost", "tokens"], ["用量", "公開連結", "費用"]],
   ["dash.preview-cdn", "web-dashboard", "#webPreviewCdn", "settings.webPreviewCdn", "web.preview_cdn", ["cdn", "libraries", "html preview", "chart", "jsdelivr", "cdnjs"], ["CDN", "函式庫", "HTML 預覽", "圖表"]],
   ["dash.office-levels", "web-dashboard", "#webOfficeLevels", "settings.webOfficeLevels", "web.office_levels", ["office", "level", "badge", "profile card"], ["辦公室", "等級", "徽章", "名片"]],
+  ["dash.office-level-titles", "web-dashboard", ".s-level-titles", "settings.levelTitlesTitle", null, ["office", "level titles", "rank", "title", "badge"], ["辦公室", "等級頭銜", "頭銜", "稱號", "階級"]],
   ["dash.app-icon", "web-dashboard", ".s-app-icon", "settings.appIconTitle", null, ["app icon", "favicon", "home screen", "icon"], ["App 圖示", "圖示", "主畫面"]],
   ["dash.card-limits", "web-dashboard", ".s-card-limits", "settings.cardLimitsTitle", "web.appearance", ["upload limits", "portrait", "banner", "card limits"], ["上傳限制", "身分卡上傳限制"]],
   // Fleet · Access & security
   ["access.session-absolute", "access", "#webSessionAbsolute", "settings.sessionAbsolute", "web.session.local.absolute_hours", ["session", "sign in", "hours", "expire", "logout"], ["session", "登入", "時數", "到期"]],
   ["access.session-idle", "access", "#webSessionIdle", "settings.sessionIdle", "web.session.local.idle_hours", ["session", "idle", "unused", "hours"], ["session", "閒置", "時數"]],
+  ["access.public-session-absolute", "access", "#webPublicSessionAbsolute", "settings.publicSessionAbsolute", "web.session.public_link.absolute_hours", ["session", "public link", "tunnel", "hours", "expire"], ["session", "公開連結", "登入時效", "時數"]],
+  ["access.public-session-idle", "access", "#webPublicSessionIdle", "settings.publicSessionIdle", "web.session.public_link.idle_minutes", ["session", "public link", "idle", "unused", "minutes", "phone"], ["session", "公開連結", "閒置", "分鐘", "手機"]],
   ["access.terminal", "access", "#webTerminalEnabled", "settings.webTerminalEnabled", "web_terminal.enabled", ["browser terminal", "terminal", "login", "shell"], ["瀏覽器終端機", "終端機", "登入"]],
   ["access.terminal-ttl", "access", "#webTerminalTtl", "settings.webTerminalTtl", "web_terminal.ttl_minutes", ["terminal minutes", "terminal", "ttl"], ["終端機", "分鐘"]],
   ["access.public-link", "access", "#publicWebLink", "settings.publicLink", "web.public_link.allow_public", ["public link", "share", "tunnel", "cloudflare", "trycloudflare"], ["公開連結", "分享", "tunnel"]],

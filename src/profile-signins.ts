@@ -28,6 +28,8 @@ export interface ProfileSignInSnapshot {
   ready: boolean;
   /** Which account this is (an older page ignores it). */
   target: ProfileSignInTarget;
+  /** Only in the answer to a start that CREATED a run: that run's id. A start that joined a run already there carries none — nobody may end it as "mine". */
+  started?: string;
 }
 export interface ProfileSignInDeps {
   /** The signed-in local admin session is still the one that asked. */
@@ -44,6 +46,11 @@ export interface ProfileSignInDeps {
   add(backend: StructuredBackend, profile: string): boolean;
   /** A token-free probe of THIS account's login (its folder's variable), never the default one's. */
   checkAuth(backend: StructuredBackend, profile: string): Promise<AuthCheckResult>;
+  /**
+   * AGEND-119: for a CLI told its account by an argument (Antigravity), whether the account's sign-in is kept in its own folder — checked before a login command runs (StructuredSignInDeps.isolated).
+   * Absent: a CLI that moves its home with a variable, which needs no check.
+   */
+  isolated?(backend: StructuredBackend, profile: string): Promise<boolean>;
   /** The dedicated PTY for one attempt, given the target (so it can be built for that profile's folder). */
   transport(target: ProfileSignInTarget): StructuredSignInTransport;
   /** Safe event only: a backend, a profile NAME, a phase and a fixed reason. Never a URL, code, output or e-mail. */
@@ -147,6 +154,7 @@ export class ProfileSignIns {
     const session: StructuredSignIn = new StructuredSignIn(target.backend, owner, {
       lock: this.deps.lock, current: () => this.current(owner), transport: this.deps.transport({ backend: target.backend, profile: target.profile }), profile: target.profile,
       checkAuth: () => this.deps.checkAuth(target.backend, target.profile),
+      ...(this.deps.isolated ? { isolated: () => this.deps.isolated!(target.backend, target.profile) } : {}),
       changed: event => {
         if (event.phase === "done" || (event.phase === "failed" && event.reason)) {
           // Done: signed in. Failed or cancelled: what it was before is not known any more — the next read probes again.
@@ -169,7 +177,7 @@ export class ProfileSignIns {
       if (!added && this.deps.known(target.backend, target.profile) !== "exists") { await session.cancel(); throw new Error("signin_profile_unknown"); }
     }
     await session.start(relogin);
-    return this.snapshot(owner, target);
+    return { ...this.snapshot(owner, target), started: session.view(owner).id };
   }
   async input(owner: object, target: ProfileSignInTarget, id: string, revision: number, action: SignInAction): Promise<ProfileSignInSnapshot> {
     this.valid(target);

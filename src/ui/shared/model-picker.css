@@ -8,12 +8,24 @@
 .cmd-card .cmd-choices .btn.current { border-color: var(--accent); color: var(--accent); }
 .cmd-card.cmd-model .cmd-choices .btn.current::before { content: "✓"; }
 .model-entry-row { display: none; }
+/* A /model option with an effort: on a phone its row shows the effort and a "›" to the effort list (below); elsewhere only the model button. */
+.cmd-choice { display: contents; }
+.cmd-effort-go { display: none; }
 @media (max-width: 899px) {
   .model-refresh .btn, .cmd-card .btn, .cmd-card .icon-btn { min-height: var(--tap); min-width: var(--tap); }
   .chat-model-entry { display: none; }
   .model-entry-row { display: flex; flex-wrap: wrap; padding: var(--s-1) var(--s-2); border-bottom: 1px solid var(--border); }
   .p-chat .composer-box { border: 1px solid var(--border); }
-  .model-entry-row .btn { border-radius: var(--r-full); min-height: var(--tap); min-width: var(--tap); max-width: 100%; overflow-wrap: anywhere; }
+  /* The two buttons are the small size (.btn-sm), not a tap-high pill; their touch area stays --tap high through ::after. */
+  .model-entry-row .btn { position: relative; border-radius: var(--r-full); max-width: 100%; overflow-wrap: anywhere; }
+  .model-entry-row .btn::after { content: ""; position: absolute; inset-inline: 0; top: calc(50% - var(--tap) / 2); height: var(--tap); }
+  /* /model on a phone: one model per row, its effort and a "›" at the end; the "›" opens that model's effort list, with a way back. */
+  .cmd-card.cmd-model .cmd-choices { flex-direction: column; flex-wrap: nowrap; align-items: stretch; max-height: calc(var(--tap) * 6); }
+  .cmd-card.cmd-model .cmd-choices > .btn { justify-content: flex-start; text-align: start; }
+  .cmd-card.cmd-model .cmd-choice { display: flex; align-items: stretch; gap: var(--s-1); }
+  .cmd-card.cmd-model .cmd-choice > .btn:first-child { flex: 1; min-width: 0; justify-content: flex-start; text-align: start; }
+  .cmd-card.cmd-model .cmd-effort-go { display: inline-flex; align-items: center; gap: var(--s-1); color: var(--text-2); white-space: nowrap; }
+  .cmd-card .cmd-sub { display: flex; margin-bottom: var(--s-1); }
   /* The latest button lives in a dedicated dock row, clear of message text and the command/composer content. */
   .p-chat .jump-dock { position: static; height: auto; display: flex; justify-content: center; padding: var(--s-1); }
   .p-chat .jump-dock:empty { display: none; }

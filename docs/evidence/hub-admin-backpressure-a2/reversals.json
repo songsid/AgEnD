@@ -1,0 +1,51 @@
+[
+  {
+    "name": "baseline-final-tests",
+    "returncode": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "M1-serial",
+    "returncode": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "M2-coalesce",
+    "returncode": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "M3-retry",
+    "returncode": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "M4-session",
+    "returncode": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "M5-steps",
+    "returncode": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "M6-company",
+    "returncode": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "M7-codes",
+    "returncode": 1,
+    "assertionCaught": true
+  },
+  {
+    "exactRestore": true,
+    "digests": {
+      "67602e6613edc87fd29bf5c3ce3dfe28052de9f469b2b9d7e3148c1a8461da0a": "src/ui/hub-client.js",
+      "7840122cfb793af9b9ae44e9081252064c8993274d3fc0a9e485c908259b9f58": "src/ui/hub-company-join.js",
+      "5176cee81d1d8c54a70ff70b787cfca5b376ac5b8d3c1e7c5bfe93353a35a410": "src/ui/hub-join-steps.js",
+      "7d8e3e92f235ba499aed797c8155b0a14ae2f584020f12454dcf873719df8e90": "src/ui/hub-enrolment-code.js"
+    }
+  }
+]

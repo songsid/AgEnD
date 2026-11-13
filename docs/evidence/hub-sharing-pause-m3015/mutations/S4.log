@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (14 tests | 1 failed | 13 skipped) 179ms
+     × invalidates pre-pause release capabilities permanently, not just while paused 176ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > invalidates pre-pause release capabilities permanently, not just while paused
+AssertionError: expected [Function] to throw an error
+ ❯ tests/hub-sharing-pause-m3015.test.ts:116:165
+    114|     expect((await policy.authorize({ ...request, operationId: randomUU…
+    115|     expect((await w.change(false, 1)).status).toBe(200);
+    116|     expect(() => core.atomic(db => policy.spendReleaseLease(db, result…
+       |                                                                                                                                                                     ^
+    117|   });
+    118|   it("Resume never bypasses independent operational group suspension",…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  14:16:27
+   Duration  4.78s (transform 3.36s, setup 108ms, import 4.30s, tests 179ms, environment 0ms)
+

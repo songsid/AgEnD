@@ -1,0 +1,48 @@
+[
+  {
+    "attempt": "r1-container",
+    "checks": 115,
+    "waves": [
+      {
+        "n": 20,
+        "groups": 0,
+        "startSpanMs": 55,
+        "elapsedMs": 24422,
+        "uses": 20,
+        "online": 20,
+        "hubRss": 312963072,
+        "databaseBytes": 684032
+      },
+      {
+        "n": 50,
+        "groups": 3,
+        "startSpanMs": 93,
+        "elapsedMs": 59714,
+        "uses": 50,
+        "online": 73,
+        "hubRss": 423493632,
+        "databaseBytes": 1404928
+      }
+    ],
+    "error": "Error: Owned Hub fixture request timed out",
+    "cleaned": true
+  },
+  {
+    "attempt": "r1-container-final",
+    "checks": 83,
+    "waves": [
+      {
+        "n": 20,
+        "groups": 0,
+        "startSpanMs": 35,
+        "elapsedMs": 12744,
+        "uses": 20,
+        "online": 20,
+        "hubRss": 336941056,
+        "databaseBytes": 684032
+      }
+    ],
+    "error": "Error: Owned Hub fixture request timed out",
+    "cleaned": true
+  }
+]

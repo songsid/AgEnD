@@ -1,0 +1,17 @@
+(node:370149) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: the floating menu must stay inside its pane
+    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637/scripts/manual/smoke/smoke-split-chat-docking-3637.mts:165:62) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v22.22.2

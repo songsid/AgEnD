@@ -1,0 +1,34 @@
+{
+  "head": "4ab6105cfe041251511652b722fb290ce71f8604",
+  "tree": "ba34adc6d2f73580da93452ce047698d5be899ba",
+  "scope": "Current committed tests with the one product file replaced by its R1 Git blob; restored in finally. Inert runner/reader; actual AgentSettingsPanels/AgentForms and makeCtx.",
+  "oldRef": "e6ab594e0b4667be01fe716bd1abe88bdea345ea",
+  "inputs": {
+    "380a499fd7427f939976f8ea7e818de6f86379b366addb851ac0eb2de201ba0f": [
+      "tests/web-chat-workspace-operation-3637.test.ts"
+    ],
+    "f9c04794b8b26814fbed938eb94838f44d5bcf9abbcb2144965ac83d329467d4": [
+      "tests/helpers/app-harness.ts"
+    ],
+    "1bc09a69bc25aaad7f430dafbaa288ff532e0c5cb2f8710bf6e2b63de53667fd": [
+      "tests/helpers/mini-dom.ts"
+    ]
+  },
+  "productSubstitution": {
+    "2383de487df95b1bb4186b46900501ef0dcd9fac906b44e73e0185a3f4dd706d": [
+      "src/ui/agent-details-settings.js"
+    ]
+  },
+  "command": [
+    "npx",
+    "vitest",
+    "run",
+    "tests/web-chat-workspace-operation-3637.test.ts",
+    "--maxWorkers=1",
+    "--reporter=verbose",
+    "-t",
+    "a suspended owner recovers|actual forms retain"
+  ],
+  "exit": 1,
+  "assertionFailures": 3
+}

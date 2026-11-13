@@ -1,0 +1,403 @@
+{
+  "sourceCommit": "07d4474e8e5b1c76e8dea3b347282e2b248a8dd5",
+  "finalSourceCommit": "78874096d7fbd861f7742c76b8f3d80e0779b5c8",
+  "finalSourceChecks": {
+    "head": "78874096d7fbd861f7742c76b8f3d80e0779b5c8",
+    "scope": "final read-order source; serial local checks, max2workers",
+    "checks": [
+      {
+        "name": "focused-final-source",
+        "command": [
+          "node",
+          "node_modules/vitest/vitest.mjs",
+          "run",
+          "tests/hub-grant-subjects-m3016.test.ts",
+          "tests/hub-grant-person-search-m3016.test.ts",
+          "tests/hub-grant-picker-m3016.test.ts",
+          "tests/hub-grant-migration-m3016.test.ts",
+          "tests/hub-grant-recipient-3370.test.ts",
+          "tests/hub-s3b-server.test.ts",
+          "tests/hub-room-reload.test.ts",
+          "tests/hub-group-admin-impact.test.ts",
+          "tests/hub-group-admin-control.test.ts",
+          "tests/hub-ui-s3.test.ts",
+          "tests/hub-member-reconnect-network.test.ts",
+          "tests/hub-group-message-boundaries.test.ts",
+          "tests/hub-skill.test.ts",
+          "tests/hub-shared-modules-a.test.ts",
+          "tests/zh-admin-word-2820.test.ts",
+          "--maxWorkers=2",
+          "--reporter=dot",
+          "--no-color"
+        ],
+        "exit": 0,
+        "startLoad": 5.06,
+        "seconds": 18.386,
+        "completedAt": "2026-11-13T04:15:16.010012+00:00"
+      },
+      {
+        "name": "source-types-final-source",
+        "command": [
+          "node",
+          "node_modules/@typescript/native/bin/tsc",
+          "--noEmit"
+        ],
+        "exit": 0,
+        "startLoad": 6.99,
+        "seconds": 4.919,
+        "completedAt": "2026-11-13T04:15:20.929878+00:00"
+      },
+      {
+        "name": "test-types-final-source",
+        "command": [
+          "node",
+          "node_modules/@typescript/native/bin/tsc",
+          "--noEmit",
+          "-p",
+          "tsconfig.test.json"
+        ],
+        "exit": 0,
+        "startLoad": 7.23,
+        "seconds": 11.084,
+        "completedAt": "2026-11-13T04:15:32.014844+00:00"
+      }
+    ]
+  },
+  "priorPostSyncChecks": {
+    "head": "94f5433ccff2be2640d43c436ce168ddbb98d319",
+    "scope": "post-sync, serial local phases, at most2 Vitest workers",
+    "checks": [
+      {
+        "name": "focused-postsync",
+        "command": [
+          "node",
+          "node_modules/vitest/vitest.mjs",
+          "run",
+          "tests/hub-grant-subjects-m3016.test.ts",
+          "tests/hub-grant-person-search-m3016.test.ts",
+          "tests/hub-grant-picker-m3016.test.ts",
+          "tests/hub-grant-migration-m3016.test.ts",
+          "tests/hub-grant-recipient-3370.test.ts",
+          "tests/hub-s3b-server.test.ts",
+          "tests/hub-room-reload.test.ts",
+          "tests/hub-group-admin-impact.test.ts",
+          "tests/hub-group-admin-control.test.ts",
+          "tests/hub-ui-s3.test.ts",
+          "tests/hub-member-reconnect-network.test.ts",
+          "tests/hub-group-message-boundaries.test.ts",
+          "tests/hub-skill.test.ts",
+          "--maxWorkers=2",
+          "--reporter=dot",
+          "--no-color"
+        ],
+        "exit": 0,
+        "startLoad": 8.88,
+        "seconds": 17.664,
+        "completedAt": "2026-11-13T04:00:42.721795+00:00"
+      },
+      {
+        "name": "source-types-postsync",
+        "command": [
+          "node",
+          "node_modules/@typescript/native/bin/tsc",
+          "--noEmit"
+        ],
+        "exit": 0,
+        "startLoad": 9.55,
+        "seconds": 5.744,
+        "completedAt": "2026-11-13T04:00:48.466651+00:00"
+      },
+      {
+        "name": "test-types-postsync",
+        "command": [
+          "node",
+          "node_modules/@typescript/native/bin/tsc",
+          "--noEmit",
+          "-p",
+          "tsconfig.test.json"
+        ],
+        "exit": 0,
+        "startLoad": 8.87,
+        "seconds": 14.15,
+        "completedAt": "2026-11-13T04:01:02.617205+00:00"
+      }
+    ]
+  },
+  "mutations": [
+    {
+      "id": "C1",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "one askable agent",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "7eb0b40792c23608a3c80fdb0b4a228db34c0e51b2898f9760c025c3220ca05b",
+      "logDigest": "f380d906f328c4080d11784393729110d3be444b5a03c1d8770a1b0eba71922a",
+      "seconds": 4.19,
+      "restored": true,
+      "sourcePath": "src/hub/catalog.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "D1",
+      "file": "tests/hub-grant-person-search-m3016.test.ts",
+      "selector": "literal prefix",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "cbdab7569e2581375b8fc5fb20af13b86795f6b115069db3be3fb3e15d1e1b49",
+      "logDigest": "fc987dfa6be439b36e1a4c5af0658bfd6cb1de390e7a6b395b754081d47c16ea",
+      "seconds": 0.868,
+      "restored": true,
+      "sourcePath": "src/hub/directory/directory.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "D2",
+      "file": "tests/hub-grant-person-search-m3016.test.ts",
+      "selector": "physical socket close",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "cbdab7569e2581375b8fc5fb20af13b86795f6b115069db3be3fb3e15d1e1b49",
+      "logDigest": "a37612c5637c75ffb471cc184bfe1e7f78d9f218c81bc38d1ad48f729167ce23",
+      "seconds": 0.821,
+      "restored": true,
+      "sourcePath": "src/hub/directory/directory.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "D3",
+      "file": "tests/hub-grant-person-search-m3016.test.ts",
+      "selector": "the5s deadline",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "cbdab7569e2581375b8fc5fb20af13b86795f6b115069db3be3fb3e15d1e1b49",
+      "logDigest": "a00a733d19bc0a7026d5a6428089e6694b32b201d2b6b41718d95be496cf5477",
+      "seconds": 0.868,
+      "restored": true,
+      "sourcePath": "src/hub/directory/directory.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "E1",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "caps all new person",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "7eb0b40792c23608a3c80fdb0b4a228db34c0e51b2898f9760c025c3220ca05b",
+      "logDigest": "b6021a22cbf64e0a8ea1e3f69199971ff55df7355ed7ac672dbba53d4a2d4dca",
+      "seconds": 4.18,
+      "restored": true,
+      "sourcePath": "src/hub/catalog.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "F1",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "membership observations",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "e0c1d2202461bdd8314b0e5ded32e02bac64cac6931d4848caaf29a9245cb8d2",
+      "logDigest": "9eccd9ee635a3875db45e478b505d969a6ad663686c4d2e624cf9270e252b245",
+      "seconds": 3.729,
+      "restored": true,
+      "sourcePath": "src/hub/grant-access.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "F2",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "group identity alone",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "e0c1d2202461bdd8314b0e5ded32e02bac64cac6931d4848caaf29a9245cb8d2",
+      "logDigest": "cc84988066efceae0868ba89eca763430b734df38666796b49c786511de12974",
+      "seconds": 3.881,
+      "restored": true,
+      "sourcePath": "src/hub/grant-access.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "F3",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "accepted durable phases",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "e0c1d2202461bdd8314b0e5ded32e02bac64cac6931d4848caaf29a9245cb8d2",
+      "logDigest": "06bb436972ae8986a78c17eca1709829de6883d63e8d06fdbc4ab2e9671a29c5",
+      "seconds": 4.135,
+      "restored": true,
+      "sourcePath": "src/hub/grant-access.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "G1",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "checks live direct membership",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "e0c1d2202461bdd8314b0e5ded32e02bac64cac6931d4848caaf29a9245cb8d2",
+      "logDigest": "a65014fa25aaf798057c23d8fd20f6ebfdabeed784ef261a26f383152fe52745",
+      "seconds": 3.831,
+      "restored": true,
+      "sourcePath": "src/hub/grant-access.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "G2",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "group identity alone",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "7eb0b40792c23608a3c80fdb0b4a228db34c0e51b2898f9760c025c3220ca05b",
+      "logDigest": "bf41e6c12833f6c7c2b2cc4e1b66531c24aecd00432e8efd4846af8ce59bcd88",
+      "seconds": 4.533,
+      "restored": true,
+      "sourcePath": "src/hub/catalog.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "G3",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "fences a held group resolve",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "7eb0b40792c23608a3c80fdb0b4a228db34c0e51b2898f9760c025c3220ca05b",
+      "logDigest": "5f013c2bd4e5065ecbf2906935a98a10ebffc127ba19c2576c78664cbddfeff4",
+      "seconds": 3.677,
+      "restored": true,
+      "sourcePath": "src/hub/catalog.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "I1",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "impact evaluates known-person",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "40d711e25cf0dee05f71734bfb6d28b79d3596318f6950b00b5e91fc8df140bb",
+      "logDigest": "627e88a086a116e2aaab735ef5876ad3737eeb84f4231464f8b12bd04bbd5473",
+      "seconds": 3.779,
+      "restored": true,
+      "sourcePath": "src/hub/group-policy/admin-impact.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "P1",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "selection binds",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "7eb0b40792c23608a3c80fdb0b4a228db34c0e51b2898f9760c025c3220ca05b",
+      "logDigest": "47924f016bed96fc3cc1b89beff2a7f0d024708f7b98e2b4d9d6221d442ce68e",
+      "seconds": 3.776,
+      "restored": true,
+      "sourcePath": "src/hub/catalog.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "R1",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "replacement directory method",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "7eb0b40792c23608a3c80fdb0b4a228db34c0e51b2898f9760c025c3220ca05b",
+      "logDigest": "4ea3befc256b2121458170c51b835840421f2aceea5bce691aecb9edfe09fd44",
+      "seconds": 3.635,
+      "restored": true,
+      "sourcePath": "src/hub/catalog.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "R2",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "catalog refreshes an aged",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "7eb0b40792c23608a3c80fdb0b4a228db34c0e51b2898f9760c025c3220ca05b",
+      "logDigest": "8f5b1916d352c102de7715a2db535d60685e393cf54b655fc9013d7b04de69a9",
+      "seconds": 3.729,
+      "restored": true,
+      "sourcePath": "src/hub/catalog.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "R3",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "room-list subject proof",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "9b6f0bad8b0729b139f83d70b2a7baca629e2463233b0e4c74c491cc3d4c316d",
+      "logDigest": "75e5fb57369c5f16b69b579bb45486b5b150518f065bb39e4eaaf41483cbfd5c",
+      "seconds": 3.782,
+      "restored": true,
+      "sourcePath": "src/hub/rooms.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "S1",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "does not disclose a held search",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "2f08cd63d95a28542849df9b0df7e87470926dc6f9f08d803ecde0c3a4fa1a5f",
+      "logDigest": "2d331daa1603480e462d4faed1bfac21c6d47cda66e5de46c1c0680bba2d9001",
+      "seconds": 3.626,
+      "restored": true,
+      "sourcePath": "src/hub/grant-search.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "S2",
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "selector": "four-physical-read pool",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "6ea14d7b63b100db40634bca674c5c3de592adb12c0f92268205b0497414a48e",
+      "logDigest": "83b8340c7eb7a36ed467aab892c4010eb86f6afbd10ca3848ceca5330ce9678d",
+      "seconds": 3.928,
+      "restored": true,
+      "sourcePath": "src/hub/http/core.ts",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "U1",
+      "file": "tests/hub-grant-picker-m3016.test.ts",
+      "selector": "older server/client marks",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f",
+      "logDigest": "44e762af90d6670912aef55ca3637aff33b348532187c4ff69e6e1d3fb4c3040",
+      "seconds": 1.621,
+      "restored": true,
+      "sourcePath": "src/ui/panel-hub.js",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "U2",
+      "file": "tests/hub-grant-picker-m3016.test.ts",
+      "selector": "posts the selected immutable",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "812b9a889b9596e697058008b99c7e98282aedcb944c4b7fe0a4053774fe2cc5",
+      "logDigest": "2a35d06eb10f058d69ee6445ab1601f3f7102ee8d0c45a19542ae674eec5cdd9",
+      "seconds": 2.172,
+      "restored": true,
+      "sourcePath": "src/ui/hub-grant-picker.js",
+      "matchesCommittedProduct": true
+    },
+    {
+      "id": "U3",
+      "file": "tests/hub-grant-picker-m3016.test.ts",
+      "selector": "aborted suggestion body",
+      "caught": true,
+      "exit": 1,
+      "sourceDigest": "63dc3fc3b5efd79c0007a10af76a90246a55c8e02ae2fa701eee13f59a1b9a9c",
+      "logDigest": "cd7bea2392eccd5ff7851d9f2b57990f63cfd41570083e7c71b4192275ffbbe8",
+      "seconds": 1.469,
+      "restored": true,
+      "sourcePath": "src/ui/hub-client.js",
+      "matchesCommittedProduct": true
+    }
+  ],
+  "historicalScope": "Initial feature fail-first and final mutation logs ran on modified author trees before their source commits. Mutation source digests are verified against the final committed product bytes here; this is later verification, not capture-time Git provenance. The slow-read fail-first test was added over a87be1c4d source; all3 asserted503vs200. Final-source checks and browser runs have separately recorded clean heads. Original receipts/logs are preserved.",
+  "verifiedAt": "2026-11-13T04:19:25.815593+00:00"
+}

@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import {afterEach,expect,it,vi} from 'vitest';
 import {effectSummaryCases} from './helpers/settings-summary-effects-3416.js';
 import {getLocale,setLocale} from '../src/locale.js';
@@ -22,7 +23,7 @@ it('pairing keeps exact Hub, binding prefix and fingerprint in both raw and proj
  expect(confirm.summary[1]).toBe('aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa');
  expect(confirm.summary_i18n![1]).toBeNull();
  const disconnect=cases.find(c=>c.name==='pair-disconnect')!.read().diff!;
- expect(disconnect.summary[0]).toContain('https://member.example.test (owned-hub, pairing bbbbbbbbbbbb)');
+ expect(disconnect.summary[0]).toContain('https://member.example.test (owned-hub, connection bbbbbbbbbbbb)');
  expect(disconnect.summary_i18n![0]!.parts).toContainEqual({key:'hub.pairing.summary.disconnect',args:['https://member.example.test','owned-hub','bbbbbbbbbbbb']});
 });
 it('sharing metadata retains the chosen agent and next revision through effect dispatch',()=>{
@@ -33,7 +34,7 @@ it('sharing metadata retains the chosen agent and next revision through effect d
 });
 
 it.each(["host","windows"])("General's %s preview retains display descriptors through effect dispatch",async location=>{
- const {FleetManager}=await import("../src/fleet-manager.js"),{generalBindingRevision}=await import("../src/general-binding.js"),{prepareSettingsEffect}=await import("../src/settings-effect.js");
+ const {FleetManager}=fleetManagerModule,{generalBindingRevision}=await import("../src/general-binding.js"),{prepareSettingsEffect}=await import("../src/settings-effect.js");
  vi.stubEnv("AGEND_REMOTE_RUNTIME","1");
  const cfg={general_topic:true},record={active:"host",windows:[]};
  const fm:any=Object.create(FleetManager.prototype);fm.fleetConfig={instances:{general:cfg},defaults:{}};fm.generalBindings=()=>({read:()=>record});

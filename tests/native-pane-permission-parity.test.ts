@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -196,7 +197,7 @@ describe("fleet-manager's Needs-you context names instances as the web does", ()
   it("instanceName resolves a configured display name, else the raw instance name", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-fm-names-"));
     dirs.push(dir);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir) as any;
     fm.fleetConfig = { defaults: {}, instances: { "windows-6f2a": { display_name: "Build Bot" }, plain: {} } };
     fm.startNeedsYou();

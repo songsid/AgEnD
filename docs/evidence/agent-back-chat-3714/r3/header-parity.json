@@ -1,0 +1,12 @@
+{
+  "parent": "8ac895063b4309b83b5d847e529c585a244b6d80",
+  "source": "ab86d1eafe8436eed90a0cec081116ad8b63af67",
+  "equalToParent": {
+    "2d16c230a6505bff5c1a433dae0de73e2c99241ea6af66dd642359febc63c8ad": [
+      "src/ui/chat-workspace.js"
+    ],
+    "e9da3bab63ae54a394d313c9580752df06ccd8fa089ffa43bc370e57641df383": [
+      "src/ui/chat-popout-header.js"
+    ]
+  }
+}

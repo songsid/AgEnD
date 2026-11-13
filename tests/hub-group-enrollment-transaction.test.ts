@@ -54,7 +54,9 @@ describe("prepared group enrollment at the actual-resource transaction", () => {
     }
   });
   it("refuses a selected policy from another administrator realm before membership I/O, just like ordinary enrollment", async () => {
-    const w = fixture(); w.enable(); const selected = { ...w.policy, read: () => ({ ...w.policy.read(), realm: "other", groups: [] }) };
+    const w = fixture(); w.enable(); const foreign = { ...w.policy.read(), realm: "other", groups: [] };
+    const selected = { ...w.policy, read: () => foreign,
+      authorizationPolicy: () => ({ kind: "group" as const, raw: JSON.stringify(foreign), policy: foreign }) };
     const authorization = createHubGroupAuthorization({ ...w.options, policy: () => selected });
     await expect(authorization.enroll(w.resource, w.ctx)).rejects.toMatchObject({ code: "unavailable" });
     await expect(authorization.prepareEnrollment(w.resource, w.ctx)).rejects.toMatchObject({ code: "unavailable" });

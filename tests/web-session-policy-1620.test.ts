@@ -6,6 +6,7 @@
  * revives or raises an existing session's absolute limit. The real WebSessionStore on a fake clock; the real
  * validator; the fleet's wiring.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,8 +56,8 @@ describe("the setting: web.session.local", () => {
     expect(errorsOf({ session: { local: { idle_hours: "24" } } })).toEqual(["web.session.local.idle_hours: must be a number of hours from 1 to 720"]);
     expect(errorsOf({ session: { local: { absolute_hours: 10, idle_hours: 20 } } })).toEqual(["web.session.local.idle_hours: must not exceed absolute_hours (20 > 10)"]);
   });
-  it("the public link's limits are not configurable; unknown keys are named", () => {
-    expect(errorsOf({ session: { gateway: { idle_hours: 24 } } })).toEqual(["web.session.gateway: is not configurable: a public-link session's limits are fixed"]);
+  it("the public link's limits are web.session.public_link (#3708), not `gateway`; unknown keys are named", () => {
+    expect(errorsOf({ session: { gateway: { idle_hours: 24 } } })).toEqual(["web.session.gateway: unknown key: the public link's limits are web.session.public_link"]);
     expect(errorsOf({ session: { local: { absolute: 24 } } })).toEqual(["web.session.local.absolute: unknown key (absolute_hours, idle_hours)"]);
     expect(errorsOf({ session: 24 })).toEqual(["web.session: must be a mapping"]);
   });
@@ -150,7 +151,7 @@ describe("the fleet reads fleet.yaml's setting at every check", () => {
   it("initializeWebSessions wires web.session.local; a change to the config applies at once; the gateway stays fixed", async () => {
     const h = home();
     vi.stubEnv("AGEND_HOME", h);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(h) as any;
     clearInterval(fm.sessionPruneTimer);
     fm.fleetConfig = { defaults: {}, instances: {}, web: { session: { local: { absolute_hours: 72, idle_hours: 24 } } } };

@@ -23,6 +23,8 @@ export interface HubWelcome {
   selectedVersion: 1; hubId: HubId; fleetId: FleetId;
   linkEpoch: Epoch; revocationVersion: Epoch;
   capabilities?: readonly string[]; // only when the hello offered welcome-caps-v1
+  /** web-origin-v1 (M-2901): the Hub's issuer-signed current web address (web-origin.ts); only when both ends listed it. */
+  webOrigin?: { v: 1; webOrigin: string; revision: Epoch; signature: string };
 }
 /** attachments-v1: a file carried with a question (Hub → member) or an answer (member → Hub). */
 export interface HubAttachmentRef { id: string; name: string; size: number; mime: string; sha256: Sha256 }
@@ -97,6 +99,7 @@ export interface HubRevocation {
 
 export type HubMemberFrame =
   | HubFrame<"hello", HubHello>
+  | HubFrame<"member.leave", Record<string, never>>
   | HubFrame<"exposure.snapshot", HubExposureSnapshot>
   | HubFrame<"receipt", HubReceipt>
   | HubFrame<"answer", HubAnswer>
@@ -107,9 +110,9 @@ export type HubMemberFrame =
   | HubFrame<"attachment.put", HubAttachmentChunk>
   | HubFrame<"exposure.quota", HubExposureQuota>
   | HubFrame<"pairing.notice-ack", { id: string }>;
-export interface HubPairingNotice {
-  id: string; fleetId: string; generation: number; label: string; at: number; source: "group" | "manual"; revoked: boolean;
-}
+export type HubPairingNotice = {
+  id: string; fleetId: string; generation: number; label: string; at: number;  revoked: boolean;
+} & ({ source: "group" | "manual"; codeId?: never } | { source: "code"; codeId: string });
 export type HubServerFrame =
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>
@@ -121,7 +124,8 @@ export type HubServerFrame =
   | HubFrame<"attachment.chunk", HubAttachmentChunk>
   | HubFrame<"attachment.ack", { id: string; offset: number }>
   | HubFrame<"pairing.notice", HubPairingNotice & { source: "group" }>
-  | HubFrame<"pairing.notice-v2", HubPairingNotice>;
+  | HubFrame<"pairing.notice-v2", Exclude<HubPairingNotice, { source: "code" }>>
+  | HubFrame<"pairing.notice-v3", HubPairingNotice>;
 export interface HubServerTransport {
   start(): Promise<void>;
   send(fleetId: FleetId, frame: HubServerFrame): Promise<void>;
@@ -134,6 +138,8 @@ export interface HubMemberTransport {
   authorize(request: HubAuthorizationRequest): Promise<HubAuthorizationLease>;
   close(): Promise<void>;
 }
+/** Exact local pairing selected by a confirmed disconnect, never a caller-selected remote Fleet ID. */
+export interface HubMemberLeaveBinding { hubId: string; binding: string }
 
 export interface HubAskerEnvelope {
   v: 1; issuer: HubId; issuerKeyId: string; messageId: MessageId;
@@ -156,13 +162,17 @@ export interface HubFleet {
 }
 export interface HubExposure {
   id: ExposureId; fleetId: FleetId; owner: PersonKey; displayName: string;
-  revision: Epoch; state: "published" | "withdrawn" | "frozen";
+  revision: Epoch; state: "published" | "withdrawn" | "frozen" | "paused";
+  /** Hub browser projection only; member snapshots cannot set a Hub-owned pause or its epoch. */
+  sharingEpoch?: Epoch;
   dataViewId: string; allowedTools: readonly string[]; policyDigest: Sha256;
 }
 export interface HubGrant {
   id: GrantId; revision: Epoch; owner: PersonKey; exposureId: ExposureId;
   exposureRevision: Epoch; approvedBy: PersonKey; approvedAt: Millis;
-  subject: { kind: "person"; person: PersonKey }; // role subjects are not accepted in P1
+  subject: { kind: "person"; person: PersonKey } | { kind: "group"; group: PersonKey };
+  /** Presentation only; the immutable subject key, never this label, determines access. */
+  subjectLabel?: string;
   permissions: readonly ("ask" | "read-own-room")[];
   startsAt: Millis; expiresAt: Millis; state: "active" | "revoked";
 }
@@ -180,7 +190,7 @@ export interface HubAuditRecord {
   action: string; result: "allowed" | "denied" | "held" | "completed";
   messageId?: MessageId; roomId?: RoomId; fleetId?: FleetId; exposureId?: ExposureId;
   ownerAtEvent?: PersonKey; grantId?: GrantId; grantRevision?: Epoch;
-  policyVersion: Epoch; contentRef?: string; reasonCode?: string;
+  policyVersion: Epoch; contentRef?: string; reasonCode?: string; codeId?: string;
 }
 
 export interface HubMode {
@@ -193,6 +203,8 @@ export interface HubRequestContext {
   readonly requestId: string;
   /** Synchronous session/lifetime fence for a permit immediately before its effect; never directory authority. */
   isCurrent?(): boolean;
+  /** Exact synchronous identity/session fence, not a directory or permission proof. */
+  isIdentityCurrent?(person: PersonKey, sessionId: string): boolean;
   current(): Promise<HubActor>; // authenticates again, checks mode/session/body continuation
   requirePerson(): Promise<PersonKey>; // fresh directory eligibility; host repair is not an asker
   requireAdmin(): Promise<HubActor>; // current local host or explicit Hub admin assignment

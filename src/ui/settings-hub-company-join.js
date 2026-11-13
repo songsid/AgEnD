@@ -5,38 +5,41 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api, confirmedWrite, confirmWithCode } from "./settings-confirm.js";
 import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
+import { j1, probeMessage, waitingMessage, reasonMessage, leftOf } from "./hub-join-one-strings.js";
+import { confirmPlace, pendingView } from "./hub-confirm-place.js";
+import { classifyJoinInput, fromHandoffText, jc } from "./hub-join-code-input.js";
 // Own words: a new panel must also work with a cached older company-join dictionary.
 register("companyJoinWait", {
   "en": {
     startHint: "Paste the Hub link first.", nameHint: "Enter a Fleet name to continue.",
-    getLink: "On the Hub Administration page, choose Copy colleague connection link and paste it here, or enter the Hub’s https address.",
+    getLink: "Enter the Hub address (for example hub.example.com), or paste the link your Hub administrator gave you.",
     connecting: "Opening Hub sign-in…", codeNeeded: "Your authenticator code is required.", target: "Hub: {0}",
     codeLead: "You enabled authenticator codes for remote changes. Enter your own 6-digit code here to continue to Hub sign-in.",
     codeLabel: "Your 6-digit authenticator code", codeGo: "Continue", codeWrong: "That code was not accepted. Try a current code.",
     codeBusy: "Too many attempts. Wait and try again.", codeUnavailable: "This request cannot be verified now. Check the same connection again.",
     codeInOriginal: "Enter your authenticator code here if requested. This tab continues automatically.",
-    checking: "Checking this connection’s status. Review any local confirmation before continuing.",
-    pending: "Local confirmation is required. Hub sign-in has not started.",
-    pendingNext: "Choose Review local confirmation and complete the next step shown on that card. This connection then continues here.",
-    localWithdrawn: "Local confirmation was withdrawn. Hub sign-in did not start.",
-    reviewConfirmation: "Review local confirmation",
-    localExpired: "The local confirmation wait has ended without a verified connection result. Check this request before starting another connection.",
+    checking: "Checking this connection’s status…",
+    pending: "First confirm on the confirm card that it's really you connecting this Fleet. The Hub sign-in opens after that.",
+    pendingNext: "Once you confirm, this connection continues here.",
+    localWithdrawn: "The confirmation was withdrawn. The Hub sign-in did not start.",
+    reviewConfirmation: "Go to the confirm card",
+    localExpired: "The wait for the confirmation has ended without a verified connection result. Check this request before starting another connection.",
     leaveWait: "Returning to Settings does not withdraw a submitted confirmation. Use Withdraw on its confirmation card to cancel it.",
   },
   "zh-TW": {
     startHint: "請先貼上 Hub 連結。", nameHint: "請填入 Fleet 名稱以繼續。",
-    getLink: "請在 Hub 管理頁按「複製同仁連線連結」並貼到這裡，或輸入 Hub 的 https 網址。",
+    getLink: "請輸入 Hub 位址（例如 hub.example.com），或貼上 Hub 管理員給你的連結。",
     connecting: "正在開啟 Hub 登入頁面…", codeNeeded: "請輸入你的驗證碼以繼續。", target: "Hub：{0}",
     codeLead: "你已啟用遠端變更的驗證碼保護。請在這裡輸入你自己的 6 位數驗證碼，繼續前往 Hub 登入。",
     codeLabel: "你的 6 位數驗證碼", codeGo: "繼續", codeWrong: "驗證碼未通過，請輸入目前的驗證碼。",
     codeBusy: "嘗試次數過多，請稍候再試。", codeUnavailable: "目前無法驗證這次請求，請再次檢查同一個連接。",
     codeInOriginal: "若你的帳號要求驗證碼，請在這裡輸入。這個分頁會自動繼續。",
-    checking: "正在確認這次連接的狀態；請先檢視待完成的本機確認。",
-    pending: "需要先完成本機確認，Hub 登入尚未開始。",
-    pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
-    localWithdrawn: "已撤回本機確認，尚未開始 Hub 登入。",
-    reviewConfirmation: "開啟本機確認",
-    localExpired: "等候本機確認的時間已到，目前仍未確認這次連接的結果。請先檢查這次請求，再開始其他連接。",
+    checking: "正在確認這次連接的狀態…",
+    pending: "請先在確認卡上確認是你本人要連接這個 Fleet；之後才會開啟 Hub 登入。",
+    pendingNext: "確認後，這次連接會在這裡繼續。",
+    localWithdrawn: "已撤回確認，尚未開始 Hub 登入。",
+    reviewConfirmation: "前往確認卡",
+    localExpired: "等候確認的時間已到，目前仍未確認這次連接的結果。請先檢查這次請求，再開始其他連接。",
     leaveWait: "返回設定不會撤回已送出的確認；若要取消，請在該確認卡按「撤回」。",
   },
 });
@@ -44,9 +47,10 @@ const jw = (key, ...args) => t(`companyJoinWait.${key}`, ...args);
 const root = "/api/hub/member/company-join";
 const LOCAL_WAIT_MS = 5 * 60_000; // matches the Settings confirmation ceiling; never renew on a status read
 export const companyJoinEmbedV1 = true;
-export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false } = {}) {
+export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false, onPairingCode } = {}) {
   const notified = useRef(null), submittedTarget = useRef(""), submittedHandoff = useRef(null);
-  const { hubJoinChanges = [] } = useStore(appStore);
+  const shellState = useStore(appStore);
+  const { hubJoinChanges = [] } = shellState;
   const waiting = (() => { try { return new URLSearchParams(location.search).get("joinWait"); } catch { return null; } })();
   const consentWait = (() => { try { return new URLSearchParams(location.search).get("joinConsent") === "1"; } catch { return false; } })();
   const [code, setCode] = useState(""), [codeBusy, setCodeBusy] = useState(false), [codeError, setCodeError] = useState(null);
@@ -55,8 +59,42 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   const waitDeadline = useRef(Date.now() + LOCAL_WAIT_MS), reading = useRef(null);
   const [form, setForm] = useState(() => {
     let address = ""; try { const candidate = new URLSearchParams(location.hash.slice(1)).get("join"); if (candidate && candidate.length <= 8192) address = candidate; } catch {}
-    return { address, label: hj("defaultFleet") };
+    return { address, label: "" };
   }), live = useRef(true), token = useRef(0);
+  // M-2921 (spec 1.1): the one input — classified here, probed (read only) 600 ms after typing stops and on blur.
+  const [probe, setProbe] = useState(null), [probing, setProbing] = useState(false), [renaming, setRenaming] = useState(false), [now, setNow] = useState(Date.now());
+  // #3675 r1 P2: an answer is kept per address only to show it; it never stops another look. Blur asks again (spec 1.1),
+  // a failed or limited answer is asked again on the next blur, and a replaced identity is looked up again at once.
+  // The ref only keeps two looks at the same address from running at the same time.
+  // #3675 r2: every look is bound to the address it was asked for and to its generation; only the newest answer for the
+  // address in the input counts. A forced look (after a replaced identity) retires any look still running.
+  const probeSeq = useRef(0), inflight = useRef(""), current = useRef("");
+  // M-2988 round 2: the join code — the administrator's copied text, and a code typed alone — read here (hub-join-code-input.js).
+  const kind = classifyJoinInput(form.address);
+  current.current = kind.kind === "address" ? kind.address : "";
+  const host = (() => { try { return new URL(kind.address).host; } catch { return ""; } })();
+  const runProbe = async (target = current.current, force = false) => {
+    if (!target || target !== current.current || !force && inflight.current === target) return;
+    const seq = ++probeSeq.current, address = target; inflight.current = address; setProbing(true);
+    try { const r = await api(root + "/probe", { method: "POST", body: JSON.stringify({ address }) });
+      if (!live.current || seq !== probeSeq.current || address !== current.current) return;
+      // No answer at all (a network error, an older server): recorded as answered-without-a-word, which never blocks Start.
+      setProbe(r.ok ? { ...r.body, address } : r.body && r.body.ok === false && typeof r.body.reason === "string" ? { ...r.body, address } : { address, none: true });
+    } catch { if (live.current && seq === probeSeq.current) setProbe({ address, none: true }); }
+    finally { if (inflight.current === address) inflight.current = ""; if (live.current && seq === probeSeq.current) setProbing(false); }
+  };
+  useEffect(() => {
+    if (kind.kind !== "address") { probeSeq.current++; inflight.current = ""; setProbe(null); setProbing(false); return; }
+    setProbe(p => p && p.address === kind.address ? p : null);
+    const timer = setTimeout(() => runProbe(kind.address), 600);
+    return () => clearTimeout(timer);
+  }, [kind.kind, kind.address]);
+  useEffect(() => {
+    if (view?.state !== "awaiting-sign-in" || !Number.isFinite(view.expiresAt)) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [view?.state, view?.expiresAt]);
+  useEffect(() => { if (kind.kind === "pairing") onPairingCode?.({ address: kind.address || "", code: kind.code }); }, [kind.kind, kind.code, kind.address]);
   const read = () => {
     if (reading.current) return reading.current; // one physical status read, including Retry and slow networks
     const gen = token.current;
@@ -74,7 +112,10 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     request.finally(() => { if (reading.current === request) reading.current = null; });
     return request;
   };
-  const unmatched = !!waiting && view?.handoffId !== waiting;
+  // alpha.2 findings 3/4: an attempt that blocks this one (refused, held, or another session's) is shown even in a waiting
+  // tab whose own handoff never started, instead of "Opening Hub sign-in…" until the deadline.
+  const blocking = !!view && (view.foreign === true || view.state === "held");
+  const unmatched = !!waiting && view?.handoffId !== waiting && !blocking;
   useEffect(() => { live.current = true; read(); return () => { live.current = false; token.current++; }; }, []);
   useEffect(() => {
     if (!pending && !unmatched) { setTimedOut(false); return; }
@@ -125,19 +166,20 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   };
   useEffect(() => { if ((!embedded || bound) && view?.state === "saved" && view.link === "online" && notified.current !== view.operationId) { notified.current = view.operationId; onSaved?.(); } }, [view, onSaved, embedded, bound]);
   const start = async e => {
-    e.preventDefault(); if (busy) return;
+    e.preventDefault(); if (busy || !ready) return;
     const gen = ++token.current; setBusy(true); setError(null); setNotice(null); setPending(null); setIdentityChanged(false); setCode(""); setCodeError(null);
     const handoffId = crypto.randomUUID(); submittedHandoff.current = handoffId;
     // Open the Fleet-owned waiting page during the user gesture, with no opener or cross-origin messaging.
-    let target = ""; try { target = new URL(form.address).origin; } catch {}
+    let target = ""; try { target = new URL(kind.address).origin; } catch {}
     submittedTarget.current = target;
     globalThis.open("/settings/hub?joinWait=" + encodeURIComponent(handoffId) + "&joinConsent=1#target=" + encodeURIComponent(target), "_blank", "noopener");
     try {
-      const result = await confirmedWrite(root + "/start", { body: { ...form, handoffId }, label: hj("title"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
+      const body = { address: kind.address, label: fleetLabel, handoffId, ...(kind.code ? { code: kind.code } : {}) };
+      const result = await confirmedWrite(root + "/start", { body, label: hj("title"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
       if (!result.ok || !result.body?.operation) { await read();
         if (result.confirmed?.state === "rejected" && result.confirmed.outcome?.reason_code === "withdrawn") { setError(null); setNotice(jw("localWithdrawn")); return; }
-        const code = joinResponseCode(result); setError(result.confirmed?.state === "expired" ? jw("localExpired") : joinError(code)); setIdentityChanged(code === "identity-changed"); return; }
+        const code = joinResponseCode(result); setError(result.confirmed?.state === "expired" ? jw("localExpired") : code === "conflict" ? jc("blocked") : joinError(code)); setIdentityChanged(code === "identity-changed"); return; }
       const operation = result.body.operation; setView(operation); setError(null);
 
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
@@ -146,9 +188,11 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   const repair = async () => {
     if (busy) return; const gen = ++token.current; setBusy(true); setError(null);
     try {
-      const result = await confirmedWrite(root + "/repair-trust", { body: { address: form.address }, label: hj("repair"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
+      const repaired = kind.address || form.address;
+      const result = await confirmedWrite(root + "/repair-trust", { body: { address: repaired }, label: hj("repair"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
-      if (result.ok) { setIdentityChanged(false); setError(null); } else setError(joinError(joinResponseCode(result)));
+      // Look the repaired address up again — only while it is still the one in the input (moved on: that address's own look stands).
+      if (result.ok) { setIdentityChanged(false); setError(null); if (current.current === repaired) { setProbe(null); void runProbe(repaired, true); } } else setError(joinError(joinResponseCode(result)));
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
     finally { if (live.current && gen === token.current) { setBusy(false); setPending(null); } }
   };
@@ -159,7 +203,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
       const options = { body: { operationId: view.operationId }, label: hj("title") };
       const result = step === "resume" ? await confirmedWrite(root + "/resume", options) : await api(root + "/cancel", { method: "POST", body: JSON.stringify(options.body) });
       if (!live.current || gen !== token.current) return;
-      if (result.ok) setView(result.body.operation); else setError(joinError(joinResponseCode(result)));
+      if (result.ok) setView(result.body.operation); else { setError(joinError(joinResponseCode(result))); await read(); }
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
     finally { if (live.current && gen === token.current) setBusy(false); }
   };
@@ -173,10 +217,17 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     } catch { if (live.current && gen === token.current) setCodeError(jw("codeUnavailable")); }
     finally { if (live.current && gen === token.current) setCodeBusy(false); }
   };
-  const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(form.address).origin); } catch { return ""; } })();
+  const fleetLabel = (form.label.trim() || probe?.suggestedLabel || hj("defaultFleet")).slice(0, 120);
+  const problem = kind.kind === "error" ? kind.error === "codeOnly" ? jc("codeOnly", kind.code) : j1(kind.error) : probe && !probe.none && probe.address === kind.address ? probeMessage(probe, host) : null;
+  // Start once the probe for exactly this address has answered without a problem. A probe that could not answer at all
+  // (no reason: a network error, an older server) does not block Start: Start makes the same checks itself.
+  const ready = kind.kind === "address" && !problem && !probing && probe?.address === kind.address;
+  const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(kind.address).origin); } catch { return ""; } })();
   const inlineWait = consentWait || pending?.inline;
   const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;
-  const canStart = !pending?.inline && !waiting && (retired || view === null || view && ["ended", "cancelled"].includes(view.state) && !view.issued && view.outcomeKnown);
+  const canStart = !pending?.inline && !waiting && (retired || view === null || view && ["ended", "cancelled", "held"].includes(view.state) && !view.issued && view.outcomeKnown);
+  // (alpha.2 finding 3: under a held attempt that issued nothing, a new Start is offered — the Fleet retires the held one
+  // first, only when the Hub confirms it can't issue; otherwise the Start is refused and says so.)
   // The existing connection card owns ready status, sharing and disconnect. Do not duplicate it after handoff.
   if (!waiting && bound && view === null || !retired && view?.state === "saved" && (memberEnabled || view.link === "online") && onSaved) return null;
   const Frame = embedded ? "div" : "section";
@@ -196,24 +247,35 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
       ${timedOut ? html`<button type="button" class="btn" onClick=${read}>${hj("retry")}</button>` : null}
     </div>` : null}
     ${(pending || unmatched) && !inlineWait ? html`<div role="status" class="company-local-wait">
-      <p class="note">${jw(timedOut ? "localExpired" : !pending && (view === undefined || error) ? "checking" : "pending")}</p>
+      <p class="note">${timedOut ? jw("localExpired") : !pending && (view === undefined || error) ? jw("checking") : pending ? confirmPlace("join", pendingView(shellState, pending.id)) : jw("pending")}</p>
       <p class="note">${jw("pendingNext")}</p>
       <div class="field-row"><button type="button" class="btn btn-sm btn-primary" onClick=${reviewConfirmation}>${jw("reviewConfirmation")}</button>
         ${timedOut ? html`<button type="button" class="btn btn-sm" onClick=${read}>${hj("retry")}</button>` : null}
         ${waiting ? html`<a class="btn btn-sm" href="/settings/hub">${hj("return")}</a>` : null}</div>
       ${waiting ? html`<p class="note">${jw("leaveWait")}</p>` : null}
     </div>` : null}
-    ${canStart ? html`<form class="form" onSubmit=${start}>
-      <label class="field" for="hubCompanyAddress"><span>${hj("address")}</span><input id="hubCompanyAddress" type="text" value=${form.address} autocomplete="off" spellcheck=${false} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} /><small class="note">${jw("getLink")}</small></label>
-      <label class="field" for="hubCompanyFleetName"><span>${hj("fleetName")}</span><input id="hubCompanyFleetName" value=${form.label} maxlength="120" onInput=${e => setForm(f => ({ ...f, label: e.target.value }))} /></label>
-      <p class="note">${hj("firstUse")}</p>${!form.address.trim() || !form.label.trim() ? html`<p class="note" id="hubCompanyStartHint">${jw(!form.address.trim() ? "startHint" : "nameHint")}</p>` : null}<div class="field-row"><button class="btn btn-primary" type="submit" aria-describedby=${!form.address.trim() || !form.label.trim() ? "hubCompanyStartHint" : undefined} disabled=${busy || !form.address.trim() || !form.label.trim()}>${hj("start")}</button></div>
-      ${identityChanged ? html`<p class="note">${hj("repairLead")}</p><button class="btn btn-sm" type="button" disabled=${busy || !form.address.trim()} onClick=${repair}>${hj("repair")}</button>` : null}
+    ${canStart ? html`<form class="form hub-join-one" onSubmit=${start}>
+      <label class="field" for="hubCompanyAddress"><span>${j1("input")}</span><input id="hubCompanyAddress" type="text" value=${form.address} placeholder=${j1("placeholder")} autocomplete="off" spellcheck=${false} autocapitalize="off"
+        aria-describedby="hubCompanyLine" aria-invalid=${problem ? "true" : undefined} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))}
+        onPaste=${e => { const n = fromHandoffText(e.clipboardData?.getData("text")); if (n) { e.preventDefault(); setForm(f => ({ ...f, address: n })); } }} onBlur=${() => runProbe()} /></label>
+      <p class="note hub-join-line" id="hubCompanyLine" role=${problem ? "alert" : "status"}>${problem ? problem
+        : kind.kind === "pairing" ? j1("otherPairing")
+        : probing ? j1("probing")
+        : probe?.ok && probe.address === kind.address ? html`${j1("found", probe.hubName || host, fleetLabel)}${kind.code ? ` ${jc("included")}` : ""} ${!renaming ? html`<button type="button" class="btn btn-ghost btn-sm hub-join-rename" onClick=${() => setRenaming(true)}>${j1("rename")}</button>` : null}`
+        : !form.address.trim() ? jc("hint") : null}</p>
+      ${renaming ? html`<label class="field" for="hubCompanyFleetName"><span>${j1("label")}</span><input id="hubCompanyFleetName" value=${form.label} maxlength="120" placeholder=${probe?.suggestedLabel || hj("defaultFleet")} onInput=${e => setForm(f => ({ ...f, label: e.target.value }))} /></label>` : null}
+      <div class="field-row"><button class="btn btn-primary" type="submit" disabled=${busy || !ready}>${j1("go")}</button></div>
+      ${identityChanged || probe?.identity === "changed" && probe.address === kind.address ? html`<p class="note">${hj("repairLead")}</p><button class="btn btn-sm" type="button" disabled=${busy || kind.kind !== "address"} onClick=${repair}>${hj("repair")}</button>` : null}
     </form>` : null}
-    ${view && !retired && (!waiting || view.handoffId === waiting) ? html`<div role="status"><strong>${hj(view.state === "saved" ? view.link === "online" ? "saved" : "joining" : view.state === "awaiting-sign-in" ? "awaiting" : view.state === "cancelled" ? "cancelled" : view.state === "held" || view.state === "ended" ? "held" : "joining")}</strong>
-      ${view.state === "saved" ? html`<p class="note">${hj(view.link === "online" ? "fleetDone" : "offline")}</p>` : view.reason && view.reason !== "cancelled" ? html`<p class="note">${joinError(view.reason)}</p>` : null}
+    ${view && !retired && (!waiting || view.handoffId === waiting || blocking) ? html`<div role="status" class=${view.foreign ? "hub-join-foreign" : undefined}><strong>${hj(view.state === "saved" ? view.link === "online" ? "saved" : "joining" : view.state === "awaiting-sign-in" ? "awaiting" : view.state === "cancelled" ? "cancelled" : view.state === "held" || view.state === "ended" ? "held" : "joining")}</strong>
+      ${view.state === "awaiting-sign-in" ? html`<p class="note hub-join-opened">${j1("opened", probe?.ok && probe.hubName || (() => { try { return new URL(view.hubOrigin).host; } catch { return view.hubOrigin || ""; } })())}${Number.isFinite(view.expiresAt) ? html` <span class="hub-join-left">${j1("left", leftOf(view.expiresAt, now))}</span>` : null}</p>` : null}
+      ${view.state === "awaiting-sign-in" && waitingMessage(view.waiting) ? html`<p class="note" role="alert">${waitingMessage(view.waiting)}</p>` : null}
+      ${view.state === "saved" ? html`<p class="note">${hj(view.link === "online" ? "fleetDone" : "offline")}</p>` : view.reason && view.reason !== "cancelled" ? html`<p class="note">${view.reason === "code-denied" ? jc("codeDenied") : reasonMessage(view) || joinError(view.reason)}</p>` : null}
+      ${view.foreign ? html`<p class="note">${jc(view.state === "held" ? "foreignHeld" : "foreignBusy", Number.isFinite(view.expiresAt) ? leftOf(view.expiresAt, now) : "")}</p>` : null}
       ${view.issued && view.state !== "saved" ? html`<p class="note">${hj("issued")}</p>` : null}
-      <div class="field-row">${view.state === "awaiting-sign-in" ? html`<a class="btn btn-sm" href=${root + "/bridge?operationId=" + encodeURIComponent(view.operationId)} target="_blank" rel="noopener">${hj("start")}</a>` : null}${view.state === "held" && !["authority", "expired"].includes(view.reason) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("resume")}>${hj("resume")}</button>` : null}
-        ${!["saved", "cancelled", "ended"].includes(view.state) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("cancel")}>${hj("stop")}</button>` : null}
+      <div class="field-row">${view.state === "awaiting-sign-in" && !view.foreign ? html`<a class="btn btn-sm" href=${root + "/bridge?operationId=" + encodeURIComponent(view.operationId)} target="_blank" rel="noopener">${j1("reopen")}</a>` : null}${view.state === "held" && !["authority", "expired", "denied", "code-denied"].includes(view.reason) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("resume")}>${hj("resume")}</button>` : null}
+        ${!["saved", "cancelled", "ended"].includes(view.state) && (!view.foreign || view.state === "held") ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("cancel")}>${view.state === "awaiting-sign-in" ? j1("cancel") : hj("stop")}</button>` : null}
+        ${view.state === "held" && !view.foreign && ["unknown", "uncertain"].includes(view.reason) ? html`<button type="button" class="btn btn-sm hub-join-check" disabled=${busy} onClick=${read}>${hj("retry")}</button>` : null}
         ${view.hubOrigin ? html`<a class="btn btn-sm" href=${view.hubOrigin + "/ui/hub"} target="_blank" rel="noopener noreferrer">${hj("inspect")}</a>` : null}</div>
     </div>` : null}
   </${Frame}>`;

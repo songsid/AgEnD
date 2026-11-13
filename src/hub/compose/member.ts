@@ -30,6 +30,7 @@ import { HubMemberClient, type HubMemberLink } from "../client.js";
 import { HUB_MEMBER_JOURNAL_MIGRATION, HubMemberJournal, type HubRestrictedOutbox } from "../member-journal.js";
 import { createHubMemberHandshake } from "../member-reconciliation.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "../profile.js";
+import { createHubWebOriginRecorder, learnHubWebOrigin } from "../web-origin.js";
 import { createQuotaPublisher } from "../member/quota.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import type { HubAuditRecord, HubServerFrame } from "../types.js";
@@ -241,6 +242,8 @@ export function createMemberReceive(deps: {
   live(): boolean;
   log(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   notices?: { receive: ReturnType<typeof createHubPairingNoticeInbox>["receive"] };
+  /** M-3007: the snapshot sender's record of a policy refusal (what the owner's Settings shows). */
+  publicationRefused?(requestId: string, code: string): void;
 }) {
   return async (frame: Exclude<HubServerFrame, { type: "welcome" }>, l: HubMemberLink): Promise<void> => {
     if (!deps.live() || !l.current()) return;
@@ -252,7 +255,14 @@ export function createMemberReceive(deps: {
     }
     if (frame.type === "revoke") return deps.admission.fence(frame.payload);
     if (frame.type === "receipt") return deps.journal.acknowledge(frame.payload);
-    if ((frame.type === "pairing.notice" || frame.type === "pairing.notice-v2") && deps.notices) return deps.notices.receive(frame.payload, l);
+    if (frame.type === "error" && (frame.payload.code === "denied" || frame.payload.code === "unavailable")) {
+      // The Hub may refuse publication independently of the saved member credential.
+      // Keep local consent pending; this feedback grants no remote publication or execution.
+      deps.log("warn", "Hub publication not accepted", { code: frame.payload.code });
+      deps.publicationRefused?.(frame.requestId, frame.payload.code);
+      return;
+    }
+    if ((frame.type === "pairing.notice" || frame.type === "pairing.notice-v2" || frame.type === "pairing.notice-v3") && deps.notices) return deps.notices.receive(frame.payload, l);
     deps.log("warn", "Hub frame not expected on the member", { type: frame.type });
     throw new HubStateError("service-unavailable", `unexpected ${frame.type} frame`);
   };
@@ -459,7 +469,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         changed: () => options.pokeAttention() });
       options.attachPairingNotices?.(() => notices.list());
       teardown.add("security notices", () => options.attachPairingNotices?.(null));
-      const receive = createMemberReceive({ admission, journal, live, log: options.log, notices });
+      const receive = createMemberReceive({ admission, journal, live, log: options.log, notices,
+        publicationRefused: (requestId, code) => sender.refused(requestId, code) });
       client = new HubMemberClient({
         home: options.home,
         hubId,
@@ -478,6 +489,18 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         receive,
+        // M-2901: where the Hub's pages are now. Kept beside the pairing (never in it), only when it verifies against the
+        // issuer key pinned at pairing and moves forward; audited in this member's own log either way it is decided.
+        webOrigin: (statement, l) => {
+          if (!live() || !l.current()) return;
+          try {
+            learnHubWebOrigin({ home: options.home, profile, current: () => live() && l.current(), log: options.log,
+              record: createHubWebOriginRecorder({ db, audit, now, fleetId: profile.fleetId, policyVersion: () => l.revocationVersion }) }, statement);
+          } catch (err) {
+            // Not recorded or not kept: the address is unchanged; the next welcome's statement tries again (no second record).
+            options.log("warn", "The Hub's web address was not kept yet", { error: (err as Error).message });
+          }
+        },
         hold: (code) => {
           quota.stop();
           const state = code === "revoked" ? "revoked" : code === "rejected" || code === "invalid" ? "rejected" : "offline";
@@ -494,11 +517,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         // P1 representative agent (docs/design/hub-representative-agent.md): the owner shares a configured agent.
         agents: options.agents,
         afterCommit: () => sender.afterCommit(),
+        refused: () => sender.isRefused(),
         // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
         readinessCandidate: (candidate) => service.readinessCandidate(candidate),
       });
 
       return {
+        async leave(expected: import("../types.js").HubMemberLeaveBinding) { return live() && await client!.leave(expected); },
         async start() {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
           options.attachAttention(() => service.attentionItems());

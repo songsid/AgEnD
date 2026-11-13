@@ -17,7 +17,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram、Discord 或瀏覽器
   <code>你 → Telegram/Discord/網頁 → AgEnD → AI Agent 團隊 → 結果回到你手上</code>
 </p>
 
-[English](README.md) · [功能文件](docs/features.zh-TW.md) · [CLI 參考](docs/cli.zh-TW.md) · [2.3 新功能](docs/whats-new-2.3.zh-TW.md) · [升級到 2.3](docs/upgrade-2.3.zh-TW.md)
+[English](README.md) · [功能文件](docs/features.zh-TW.md) · [CLI 參考](docs/cli.zh-TW.md) · [2.3 新功能](docs/whats-new-2.3.zh-TW.md) · [升級到 2.3](docs/upgrade-2.3.zh-TW.md) · [2.4 預覽（alpha）](docs/whats-new-2.4.zh-TW.md)
 
 ---
 

@@ -1,3 +1,4 @@
+import { compactDeliveryStatus, compactSendAck } from "./tool-receipt-output.js";
 import { KNOWN_BACKENDS, validateFleetConfig, type ValidationResult } from "./config-validator.js";
 import { resolve as pathResolve, isAbsolute } from "node:path";
 import { homedir } from "node:os";
@@ -109,6 +110,11 @@ export interface OutboundContext {
   requestWindowsConfig?(requester: string, name: string, patch: Record<string, unknown>): Promise<{ id: string; state: string }>;
   /** M-2297: the fleet's stop (lifecycle transition; a native pane closed, never detached). Throws when it cannot. */
   stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
+  /** #3715: a ClassicBot room's account (backend_options.<cli>.credential_profile), written and relaunched as Settings does. */
+  switchClassicRoomProfile?(name: string, backendOptions: unknown): Promise<
+    { ok: true; channel: string; backend: string; profile: string | null; changed: boolean } | { ok: false; error: string; loginCommand?: string }>;
+  /** The profile an instance was launched on (a ClassicBot room: its running daemon's), null for the shared login. */
+  credentialProfileOf?(name: string, backend: string): string | null;
   restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean; carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null } }): Promise<void>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
@@ -707,7 +713,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(hideInternalMessageIds(message ?? ""), 500)}`);
   const targetStateWarning = recipientWarning(ctx.lifecycle.daemons.get(targetInstanceName), targetName, state === "paused");
   const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
-  respond({ sent: true, queued: true, target: targetName, target_state: state,
+  respond(compactSendAck({ sent: true, queued: true, target: targetName, target_state: state,
     ...(forwards?.length ? { forwards } : {}),
     ...(durableReceipt ? {
       durable: true,
@@ -720,7 +726,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     ...(effectiveUseSteer ? { delivery_mode: "steer" } : {}),
     ...(steer === true && !effectiveUseSteer ? { delivery_mode: "idle_queue" } : {}),
     ...(warnings.length > 0 ? { warning: warnings.join(" ") } : {}),
-  });
+  }, v.data.detail, parsedCorrelationId !== undefined));
 };
 
 /**
@@ -1261,9 +1267,10 @@ const getUsage: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(GetUsageArgs, rawArgs, "get_usage");
   if (!v.ok) { respond(null, v.error); return; }
   try {
-    // Same structure as GET /api/ai-usage, same 5-minute cache behind it.
+    // Same snapshot/cache as the web and slash command; only agent rendering differs.
     const { getUsageSnapshot } = await import("./usage/usage-api.js");
-    respond(await getUsageSnapshot(v.data.force === true, ctx.getActiveUsageProviderIds?.()));
+    const { agentUsage } = await import("./usage/agent-output.js");
+    respond(agentUsage(await getUsageSnapshot(v.data.force === true, ctx.getActiveUsageProviderIds?.()), v.data.detail));
   } catch (err) {
     respond(null, `Usage fetch failed: ${(err as Error).message}`);
   }
@@ -1315,8 +1322,8 @@ const getCacheReport: Handler = async (ctx, rawArgs, respond, meta) => {
 
 /**
  * #2122: the usage report for an agent — the dashboard's Fleet → Usage, from the last scan (no transcript read). Who
- * sees what: cacheReportScope (its own row, or the fleet). Every amount carries `basis`: the API-equivalent at list
- * price, not money spent.
+ * sees what: cacheReportScope (its own row, or the fleet). A shared `basis` identifies every amount as the API-equivalent
+ * at list price, not money spent. detail:true preserves the full legacy tool shape.
  */
 const getUsageReport: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(GetUsageReportArgs, rawArgs, "get_usage_report");
@@ -1331,14 +1338,8 @@ const getUsageReport: Handler = async (ctx, rawArgs, respond, meta) => {
   const only = scope === "own" ? caller : v.data.instance;
   try {
     const r = await ctx.usageReport({ range: usageRange(v.data.range, v.data.from, v.data.to), group: scope === "own" ? "instance" : usageGroup(v.data.group), ...(only ? { only } : {}) });
-    const top = v.data.top ?? 10;
-    respond({
-      basis: r.basis, range: r.range, zone: r.zone, granularity: r.granularity, group: r.group,
-      rows: r.rows.slice(0, top).map(row => ({ ...row, basis: r.basis })),
-      more: Math.max(0, r.rows.length - top),
-      totals: { ...r.totals, basis: r.basis },
-      notMeasured: r.notMeasured, shared: r.shared, scanning: r.scanning,
-    });
+    const { agentUsageReport } = await import("./usage/agent-output.js");
+    respond(agentUsageReport(r, v.data.top, v.data.detail));
   } catch (err) {
     respond(null, `get_usage_report failed: ${(err as Error).message}`);
   }
@@ -1445,6 +1446,13 @@ const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
     respond(null, WINDOWS_TOOL_SET_REFUSED);
     return;
   }
+  // #3715 (M-2961): a ClassicBot room takes its AI account and nothing else. The raw keys decide (the schema strips
+  // unknown ones), so an unsupported field is refused rather than dropped.
+  if (typeof target === "string" && !(instances && Object.hasOwn(instances, target))
+    && (ctx.classicChannels?.getAll() ?? []).some(channel => channel.instanceName === target)) {
+    await updateClassicRoomProfile(ctx, target, (rawArgs as any)?.config, respond);
+    return;
+  }
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
   // M-2239 P1-1: a Windows agent's settings belong to the administrator's dashboard, not to another agent.
@@ -1464,6 +1472,38 @@ const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
   }
   applyInstanceConfigPatch(ctx, v.data.name, v.data.config, respond);
 };
+
+/** Today's refusal (#3715 keeps it word for word for every key but a room's account). */
+const CLASSIC_CONFIG_REFUSED = "This is a ClassicBot instance (managed in classicBot.yaml). Use set_display_name or set_description to configure it.";
+
+/**
+ * #3715: update_instance_config on a ClassicBot room. Only `config.backend_options.<backend>.credential_profile`; the
+ * write and relaunch are the room's Settings save (switchClassicRoomProfile). The answer names the profile the room was
+ * relaunched on, read back from its running daemon — not the one asked for.
+ */
+async function updateClassicRoomProfile(ctx: OutboundContext, name: string, rawConfig: unknown, respond: Respond): Promise<void> {
+  const config = rawConfig && typeof rawConfig === "object" && !Array.isArray(rawConfig) ? rawConfig as Record<string, unknown> : {};
+  const fields = Object.keys(config).filter(key => config[key] !== undefined);
+  if (fields.length !== 1 || fields[0] !== "backend_options" || !ctx.switchClassicRoomProfile) { respond(null, CLASSIC_CONFIG_REFUSED); return; }
+  let result: Awaited<ReturnType<NonNullable<OutboundContext["switchClassicRoomProfile"]>>>;
+  try { result = await ctx.switchClassicRoomProfile(name, config.backend_options); }
+  catch (err) { respond(null, `Failed to switch the room's account: ${(err as Error).message}`); return; }
+  if (!result.ok) { respond(null, result.loginCommand ? `${result.error}:\n  ${result.loginCommand}` : result.error); return; }
+  const running = targetState(ctx, name) === "running";
+  const launched = running ? (ctx.credentialProfileOf?.(name, result.backend) ?? null) : undefined;
+  respond({
+    success: true,
+    name,
+    classic_room: result.channel,
+    backend: result.backend,
+    credential_profile: result.profile ?? "default",
+    changed: result.changed,
+    restarted: result.changed && running,
+    ...(running
+      ? { launched_profile: launched ?? "default", ...(launched !== result.profile ? { warning: `The room is running on "${launched ?? "default"}", not "${result.profile ?? "default"}".` } : {}) }
+      : { note: `The room is ${targetState(ctx, name)}; it starts on this account next time.` }),
+  });
+}
 
 /**
  * What update_instance_config merges into an instance — and, in-process only, what chat `/backend` (#1806) needs on
@@ -1485,7 +1525,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
     const isClassic = (ctx.classicChannels?.getAll() ?? [])
       .some(channel => channel.instanceName === name);
     respond(null, isClassic
-      ? "This is a ClassicBot instance (managed in classicBot.yaml). Use set_display_name or set_description to configure it."
+      ? CLASSIC_CONFIG_REFUSED
       : `Instance '${name}' not found in fleet config`);
     return;
   }
@@ -1818,6 +1858,7 @@ function wrapAsSend<T>(
       : {};
     const newArgs = {
       ...extra,
+      detail: (v.data as { detail?: boolean }).detail,
       instance_name: targetName,
       message: body,
       ...((v.data as { steer?: boolean }).steer !== undefined
@@ -2012,6 +2053,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   // target's idle gate blocked for as long as the BUSIEST recipient. Connectivity
   // is decided synchronously (that's the real failure), delivery runs in background.
   const sentTo: string[] = [];
+  const deliveryIds: string[] = [];
   const sentMeta = new Map<string, Record<string, string>>();
   const failed: string[] = [];
   for (const targetName of targetNames) {
@@ -2025,7 +2067,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     let duplicate = false;
     if (ctx.admitDurableDelivery) {
       try {
-        duplicate = ctx.admitDurableDelivery({
+        const receipt = ctx.admitDurableDelivery({
           operationId: operationId!,
           sourceDaemonBootId: meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName),
           sourceInstance: meta.instanceName,
@@ -2034,7 +2076,9 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
           kind: "broadcast",
           correlationId,
           payload,
-        })?.duplicate === true;
+        });
+        duplicate = receipt.duplicate === true;
+        deliveryIds.push(receipt.deliveryId);
       } catch (err) {
         ctx.logger.error({ err, target: targetName, source: meta.instanceName }, "Durable broadcast admission failed closed");
         failed.push(targetName);
@@ -2073,14 +2117,14 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const bDisplay = (name: string) =>
     bLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
   ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(hideInternalMessageIds(message), 500)}`);
-  respond({
+  respond(v.data.detail ? {
     sent_to: sentTo,
     failed,
     count: sentTo.length,
     queued: true,
     ...(operationId ? { operation_id: operationId } : {}),
     ...(ctx.admitDurableDelivery ? { durable: true, delivery_state: "queued" } : { durable: false }),
-  });
+  } : { sent: sentTo.length, queued: true, ...(deliveryIds.length ? { delivery_ids: deliveryIds } : {}), ...(failed.length ? { failed } : {}) });
 };
 
 // ── Teams ────────────────────────────────────────────────────────────────
@@ -2489,7 +2533,7 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
       respond(null, t("delivery.not_found"));
       return;
     }
-    respond(page);
+    respond(compactDeliveryStatus(page, v.data.detail, v.data.content_includes));
   } catch (err) {
     ctx.logger.warn({ err, caller: meta.instanceName }, "Delivery status query failed");
     respond(null, t("delivery.unavailable"));

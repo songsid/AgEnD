@@ -12,12 +12,14 @@ export const SIGNIN_STRINGS = {
     field_code: "Paste the authorization code", field_start_url: "Organization Start URL", field_region: "AWS region",
     phase_method: "method", phase_code: "authorization code", phase_start_url: "start URL", phase_region: "region", phase_authorization: "authorization",
     choice_organization: "Your organization", choice_subscription: "Claude subscription",
-    antigravity: "Antigravity (console fallback)",
+    consoleName: "{0} (console fallback)",
     error: "Could not connect the account. Check status, retry, or connect later.",
     error_unsupported_prompt: "This CLI screen is not supported. Cancel and use the console fallback.",
     error_cleanup_failed: "The login process could not be confirmed closed. Close it on the host and restart setup before retrying.",
     error_signin_cleanup_failed: "The login process could not be confirmed closed. Close it on the host and restart setup before retrying.",
     error_signin_action_stale: "That prompt changed or was already answered. Refresh its status; do not submit it again.",
+    error_signin_action_invalid: "That is not a valid entry. Check it and try again.",
+    codeOnly: "Paste only the code the page shows, not the page's address.",
     error_signin_console_only: "This backend uses the explicit console fallback.",
     error_backend_signin_local_only: "AI accounts can be connected only on this computer. Use the local setup page, or connect later.",
     error_signin_session_expired: "This setup session has ended. Reopen setup on the host.",
@@ -27,6 +29,7 @@ export const SIGNIN_STRINGS = {
     error_signin_profile_unknown: "This account is not in the list. Add it with + Add account in Settings → Accounts, then connect it.",
     error_auth_unconfirmed: "The CLI exited, but credentials could not be verified. Retry or connect later.",
     error_provider_rejected: "The provider rejected this authorization. Retry or connect later.",
+    error_not_isolated: "This CLI keeps one connection for every account on this computer (the system's keyring), so this account cannot have its own. Nothing was started and no connection was changed.",
     // #3190 Part 3c: a profile on a paired computer (the dashboard's Accounts view).
     error_machine_unknown: "That computer is not paired any more.",
     error_machine_offline: "That computer is offline. Start its Runtime, then try again.",
@@ -49,12 +52,14 @@ export const SIGNIN_STRINGS = {
     field_code: "貼上取得的授權碼", field_start_url: "組織的 Start URL", field_region: "AWS 區域",
     phase_method: "選擇方式", phase_code: "授權碼", phase_start_url: "Start URL", phase_region: "區域", phase_authorization: "授權",
     choice_organization: "你的組織", choice_subscription: "Claude 訂閱",
-    antigravity: "Antigravity（主控台備援）",
+    consoleName: "{0}（主控台備援）",
     error: "無法連接帳號。請檢查狀態、重試，或稍後連接。",
     error_unsupported_prompt: "不支援這個 CLI 畫面。請取消並改用主控台備援。",
     error_cleanup_failed: "無法確認登入程序已關閉。請在主機上關閉它，並重新開始設定後再試。",
     error_signin_cleanup_failed: "無法確認登入程序已關閉。請在主機上關閉它，並重新開始設定後再試。",
     error_signin_action_stale: "這個畫面已改變或已回答過。請重新整理狀態，不要再送一次。",
+    error_signin_action_invalid: "這不是有效的輸入。請檢查後再試一次。",
+    codeOnly: "只貼上頁面顯示的授權碼，不要貼網址。",
     error_signin_console_only: "這個後端使用主控台備援。",
     error_backend_signin_local_only: "AI 帳號只能在這台電腦上連接。請使用本機的設定頁，或稍後連接。",
     error_signin_session_expired: "這個設定工作階段已結束。請在主機上重新開啟設定。",
@@ -64,6 +69,7 @@ export const SIGNIN_STRINGS = {
     error_signin_profile_unknown: "清單裡沒有這個帳號。請先在 設定 → 帳號 用 + 新增帳號 加入，再連接。",
     error_auth_unconfirmed: "CLI 已結束，但無法確認憑證。請重試或稍後連接。",
     error_provider_rejected: "平台拒絕了這次授權。請重試或稍後連接。",
+    error_not_isolated: "這個 CLI 在這台電腦上只保留一份連接（系統鑰匙圈），所以這個帳號無法有自己的連接。沒有啟動任何東西，也沒有改到現有的連接。",
     // #3190 Part 3c：配對電腦上的憑證設定檔（儀表板的「帳號」頁）。
     error_machine_unknown: "那台電腦已不再配對。",
     error_machine_offline: "那台電腦離線了。請先啟動它的 Runtime，再試一次。",
@@ -94,10 +100,12 @@ const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" 
  * themselves every second) and no "Sign in later" (nothing would remember it). `focus` (a backend id) then shows only that backend's card: the default account's checklist may
  * hold others. The setup page and the installer's `?backend_signins=` list do not pass `dialog`, and look as they did.
  *
- * `started` (run id → void): called with the id of the run a press of Sign in in THESE cards started (not one that was already running when they were drawn). The account dialog
- * keeps it, to end exactly that run when it closes.
+ * `started` (run id → void): called with the id of the run a press of Sign in in THESE cards started — the id the server names as created by that very request (`started` in its
+ * answer), never one it joined that was already running (another tab's, another backend's, a double click). The account dialog keeps it, to end exactly that run when it closes.
+ * `abandoned` (run id → void): the same id, when the cards were disposed (the dialog closed) while that request was still in flight: nobody is left to show or keep the run, so
+ * whoever mounted the cards ends it by this id. Nothing is drawn, and no other run is touched.
  */
-export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false, dialog = false, focus, started = () => {} } = {}) {
+export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false, dialog = false, focus, started = () => {}, abandoned = () => {}, codeHint = () => false } = {}) {
   const doc = root.ownerDocument;
   let view = null, busy = false, disposed = false, timer = null, generation = 0, message = "", rendered = "";
   const language = () => (lang ? lang() : pageLang(doc)) === "zh-TW" ? "zh-TW" : "en";
@@ -105,7 +113,10 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
   const el = (tag, text, parent = root) => { const node = doc.createElement(tag); if (text) node.textContent = text; parent.append(node); return node; };
   // An error is kept as its code, so it is said again in the other language when that changes.
   const errorText = code => machine && SIGNIN_STRINGS.en["error_machine_" + code] ? tr("error_machine_" + code) : SIGNIN_STRINGS.en["error_" + code] ? tr("error_" + code) : tr("error");
-  const name = backend => backend === "antigravity" ? tr("antigravity") : NAMES[backend] || backend;
+  // `view.console`: the CLIs the first-run list only names the console command for (cli-registry.ts `host.firstRunSignIn.mode`). Such a CLI is "(console fallback)" on that list only; in Settings
+  // → Accounts (a dialog, or a computer's own sign-in) it signs in here, so it is just its name.
+  const consoleOnly = backend => !!view && Array.isArray(view.console) && view.console.includes(backend);
+  const name = backend => !(dialog || machine) && consoleOnly(backend) ? tr("consoleName", NAMES[backend] || backend) : NAMES[backend] || backend;
   const choiceName = choice => CHOICES[choice] ?? tr("choice_" + choice);
   const phaseName = phase => SIGNIN_STRINGS.en["phase_" + phase] ? tr("phase_" + phase) : phase.replaceAll("_", " ");
   const button = (parent, label, action) => { const b = el("button", label, parent); b.type = "button"; b.disabled = busy; b.onclick = action; return b; };
@@ -119,7 +130,12 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
   async function perform(data) {
     if (busy || disposed) return;
     busy = true; generation++; message = ""; render();
-    try { const next = await request(data); if (!disposed) { accept(next); if (data?.operation === "start" && typeof next?.login?.id === "string") started(next.login.id); } }
+    try {
+      const next = await request(data);
+      const created = data?.operation === "start" && typeof next?.started === "string" ? next.started : null;   // a start that joined a run already there names none
+      if (disposed) { if (created) abandoned(created); }
+      else { if (created) started(created); accept(next); }
+    }
     catch (error) { if (!disposed) message = String(error?.message || "error"); }
     finally { busy = false; if (!disposed) render(); }
   }
@@ -137,7 +153,8 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
       const card = el("section"); card.dataset.backend = backend;
       el("h3", name(backend), card);
       const state = view.states[backend], pending = view.pending.includes(backend), skipped = view.skipped.includes(backend);
-      el("p", tr(skipped ? "skipped" : state === "valid" ? "valid" : state === "not_installed" ? "notInstalled" : state === "console_only" ? "consoleOnly" : "needed"), card);
+      // "Console only" is the first-run list's word for a CLI it does not sign in; Settings → Accounts (`dialog`, or a computer's own sign-in) does, so there it is a sign-in that is needed.
+      el("p", tr(skipped ? "skipped" : state === "valid" ? "valid" : state === "not_installed" ? "notInstalled" : state === "console_only" && !(dialog || machine) ? "consoleOnly" : "needed"), card);
       const login = view.login?.backend === backend ? view.login : null;
       const active = login && login.phase !== "done" && !(login.phase === "failed" && login.reason);
       if (active) {
@@ -157,13 +174,16 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
           const label = el("label", tr("field_" + login.phase), card);
           const input = el("input", null, label); input.type = login.phase === "code" ? "password" : "text"; input.autocomplete = "off"; input.spellcheck = false;
           input.setAttribute("aria-label", label.textContent); input.disabled = busy;
+          if (login.phase === "code" && codeHint(backend)) el("small", tr("codeOnly"), card);   // the CLI's own prompt also accepts the page's address; ours takes the code only (the driver and the Runtime both check)
           button(card, tr("submit", phaseName(login.phase)), () => { const value = input.value; input.value = ""; void perform({ operation: "input", id: login.id, revision: login.revision, action: { kind: login.phase, value } }); });
         }
         if (["method", "code", "start_url", "region"].includes(login.phase) && !login.canAct) el("p", tr("answerSent"), card);
         button(card, tr("cancel"), () => perform({ operation: "cancel" }));
       } else {
         if (login?.reason && login.reason !== "cancelled") el("p", errorText(login.reason), card);
-        const usable = !["antigravity"].includes(backend) && state !== "not_installed";
+        // A CLI the first-run list only names the console command for (`view.console`, from the registry's `host.firstRunSignIn`) has no button there; in Settings → Accounts (a dialog, or a
+        // computer's own sign-in) the caller has already chosen a CLI the registry says can be signed in, so it does.
+        const usable = (dialog || machine || !consoleOnly(backend)) && state !== "not_installed";
         // Ridge #3321 S01: the question names THIS card's CLI, and says what a sign-in again does to it — only Kiro signs out
         // first (logoutArgv); Claude Code and Codex sign in again over the account they have. The dashboard passes its own
         // in-app confirmation (`ask`); the setup page, which loads nothing else, keeps the browser's.

@@ -1,0 +1,24 @@
+{
+  "testedGitHead": "7917c4f35135516df3521e34626aeabffa686944",
+  "trackedDirty": true,
+  "modifiedInputs": {
+    "af9b0b26cfdcb8b30a73334452f13322a58a6e2d39e9a7c6182c3fbd7db0ef81": [
+      "tests/hub-init-rig.test.ts"
+    ]
+  },
+  "unchangedProductInputCommit": "eeae77d272f5301717d54704d75b73d792be685e",
+  "ciFailure": {
+    "run": 43010855874,
+    "job": 130490351662,
+    "test": "hub-init-rig: plaintext LDAP refused before any connection",
+    "message": "unscripted question: Directory address (ldaps://host[:port]):"
+  },
+  "localResult": {
+    "files": 4,
+    "passed": 44,
+    "skipped": 0
+  },
+  "ownedContainerRemoved": true,
+  "realDirectory": false,
+  "serviceInstall": false
+}

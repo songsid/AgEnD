@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·x···
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  00:03:18
+   Duration  13.90s (transform 10.55s, setup 271ms, import 13.18s, tests 67ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-shell-3637.test.ts > split-view marks carry convenience, never account or session authority > never offers it on an excluded shell: {"gateway":true}
+AssertionError: expected '<body data-mode="full" data-chat-work…' not to contain 'data-chat-workspace'
+
+Expected: "data-chat-workspace"
+Received: "<body data-mode="full" data-chat-workspace="1" data-web-transport="poll" data-dashboard-origin="" data-preview-origin="" data-preview-boot="" data-preview-reason="Previews are not available on this fleet." data-preview-reason-code="publicLink" data-usage-panel="1" data-log-tab="0" data-upload-limits="{&#34;maxFileBytes&#34;:52428800,&#34;maxFiles&#34;:5,&#34;maxTotalBytes&#34;:104857600}" data-fleet-tz="UTC" data-owner-css-state="off" data-public-link="1">"
+
+ ❯ tests/web-chat-workspace-shell-3637.test.ts:28:48
+     26|   });
+     27|   it.each([{ gateway: true }, { tier: "guest" as const }, { mode: "vie…
+     28|     const html = shell(opts); expect(html).not.toContain("data-chat-wo…
+       |                                                ^
+     29|   });
+     30|   it("a read-only viewer gets only the same display convenience; serve…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

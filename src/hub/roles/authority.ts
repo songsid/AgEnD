@@ -1,0 +1,174 @@
+/** Operation-owned management proof. Not mounted until canonical consumers and cutover are ready. */
+import { performance } from "node:perf_hooks";
+import { z } from "zod";
+import type { HubDirectory } from "../directory/types.js";
+import { HubGroupReadOverload, type GroupCheckContext, type HubGroupPolicyStore } from "../group-policy/store.js";
+import { personKeyString } from "../identity.js";
+import type { HubActor, HubRequestContext, PersonKey } from "../types.js";
+import { epoch, HubProtocolError, identifier, person, validated } from "../validation.js";
+import { evaluateRolePolicy } from "./evaluate.js";
+import { MANAGEMENT_PERMISSIONS } from "./model.js";
+import type { HubCanonicalPolicy } from "./read.js";
+
+export type HubManagementPermission = typeof MANAGEMENT_PERMISSIONS[number];
+export const HUB_MANAGEMENT_PROOF_TTL = 5_000;
+const PREPARATION_BUDGET = 20_000;
+type DirectoryActor = Extract<HubActor, { kind: "directory" }>;
+export interface HubManagementPermit {
+  readonly actor: DirectoryActor;
+  readonly permission: HubManagementPermission;
+  readonly source: "legacy" | "roles";
+  readonly expiresAt: number;
+  /** Mandatory before each effect/disclosure, including after any await or reentrant callback. */
+  assertCurrent(): void;
+}
+/** First issuance only: the issuer identity comes from the server's retained approval, never browser input. */
+export interface HubJoinIssuerPermit {
+  readonly approvedBy: PersonKey;
+  readonly source: "legacy" | "roles";
+  assertCurrent(): void;
+}
+export interface HubManagementAuthorityOptions {
+  root: PersonKey;
+  policy(): HubCanonicalPolicy;
+  directory: Pick<HubDirectory, "realm" | "checkEligibility">;
+  reads: Pick<HubGroupPolicyStore, "withDirectoryRead">;
+  current(): boolean;
+  /** Existing transport version, including its independent persistent floor. */
+  version(): number;
+  /** The real expiry settlement's persisted clock fence; synchronous and mandatory on role images. */
+  assertAuthorizationTime(): void;
+  now?: () => number;
+  elapsedNow?: () => number;
+}
+function sync(result: unknown): void {
+  if (result && typeof (result as { then?: unknown }).then === "function") {
+    void Promise.resolve(result).catch(() => undefined); throw new HubProtocolError("unavailable");
+  }
+}
+export function createHubManagementAuthority(options: HubManagementAuthorityOptions) {
+  const { policy, directory, reads, current, version, assertAuthorizationTime } = options;
+  const root = Object.freeze(validated(person, options.root)), method = directory.checkEligibility;
+  const clock = options.now ?? Date.now, elapsedClock = options.elapsedNow ?? (() => performance.now());
+  let closed = false, clockRetired = false, latestWall = 0, latestElapsed = 0;
+  const time = () => {
+    const wall = validated(epoch, clock()), elapsed = elapsedClock();
+    if (!Number.isFinite(elapsed) || elapsed < latestElapsed || wall < latestWall) clockRetired = true;
+    if (clockRetired) throw new HubProtocolError("unavailable");
+    latestWall = wall; latestElapsed = elapsed; return { wall, elapsed };
+  };
+  const live = () => {
+    if (closed || current() !== true || directory.realm !== root.realm || directory.checkEligibility !== method) throw new HubProtocolError("unavailable");
+  };
+  const read = () => {
+    live(); const selected = policy();
+    if (selected.policy.realm !== root.realm) throw new HubProtocolError("unavailable");
+    if (selected.kind === "roles") sync(assertAuthorizationTime());
+    validated(epoch, version()); return selected;
+  };
+  return {
+    /** No fabricated browser session. Committed receipt recovery must run before requesting this fresh proof. */
+    async requireJoinIssuer(input: PersonKey, incoming: GroupCheckContext): Promise<HubJoinIssuerPermit> {
+      const who = Object.freeze(validated(person, input)); validated(identifier, incoming.requestId);
+      if (who.realm !== root.realm || typeof incoming.current !== "function") throw new HubProtocolError("denied");
+      const caller = incoming.current.bind(incoming), started = time(), before = read(), authEpoch = version();
+      let retired = false;
+      const common = () => {
+        try {
+          if (retired || caller() !== true) throw new HubProtocolError("unavailable");
+          const at = time();
+          if (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET
+            || read().raw !== before.raw || version() !== authEpoch) throw new HubProtocolError("unavailable");
+          return at;
+        } catch (error) { retired = true; throw error; }
+      };
+      common();
+      let result;
+      try { result = await reads.withDirectoryRead(who, async () => {
+        const value = await method.call(directory, Object.freeze({ ...who }));
+        return value.eligible === true ? { eligible: true as const, person: validated(person, value.person.key) }
+          : { eligible: false as const, reason: value.eligible === false ? value.reason : "unavailable" };
+      }); } catch (error) {
+        if (error instanceof HubGroupReadOverload) throw new HubProtocolError("backpressure");
+        throw new HubProtocolError("unavailable");
+      }
+      const observed = common();
+      if (result.eligible !== true) throw new HubProtocolError(result.reason === "gone" || result.reason === "disabled" ? "denied" : "unavailable");
+      if (personKeyString(result.person) !== personKeyString(who)) throw new HubProtocolError("unavailable");
+      const facts = Object.freeze({ kind: "eligible" as const, person: who, observedAt: observed.wall });
+      const allowed = (at: number) => before.kind === "group" ? personKeyString(who) === personKeyString(root)
+        : evaluateRolePolicy(before.policy, who, "join.manage", null, { subject: facts }, at, root).outcome === "allow";
+      if (!allowed(observed.wall)) throw new HubProtocolError("denied");
+      const permit: HubJoinIssuerPermit = Object.freeze({ approvedBy: who, source: before.kind === "group" ? "legacy" : "roles",
+        assertCurrent() {
+          try {
+            const at = common();
+            if (at.wall >= observed.wall + HUB_MANAGEMENT_PROOF_TTL || at.elapsed >= observed.elapsed + HUB_MANAGEMENT_PROOF_TTL
+              || !allowed(at.wall)) throw new HubProtocolError("unavailable");
+          } catch (error) { retired = true; throw error; }
+        },
+      });
+      permit.assertCurrent(); return permit;
+    },
+    async require(incoming: HubRequestContext, permission: HubManagementPermission): Promise<HubManagementPermit> {
+      const cap = validated(z.enum(MANAGEMENT_PERMISSIONS), permission);
+      validated(identifier, incoming.requestId);
+      if (typeof incoming.current !== "function" || typeof incoming.isCurrent !== "function"
+        || typeof incoming.isIdentityCurrent !== "function") throw new HubProtocolError("unavailable");
+      const authenticate = incoming.current.bind(incoming), sessionCurrent = incoming.isCurrent.bind(incoming);
+      const identityCurrent = incoming.isIdentityCurrent.bind(incoming), started = time(), before = read(), authEpoch = version();
+      let retired = false, actor: DirectoryActor | null = null;
+      const common = () => {
+        try {
+          if (retired || sessionCurrent() !== true) throw new HubProtocolError("unavailable");
+          const at = time();
+          if (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET
+            || read().raw !== before.raw || version() !== authEpoch) throw new HubProtocolError("unavailable");
+          if (actor && identityCurrent(actor.person, actor.sessionId) !== true) throw new HubProtocolError("unavailable");
+          return at;
+        } catch (error) { retired = true; throw error; }
+      };
+      const identity = async () => {
+        common(); const found = await authenticate(); common();
+        if (found.kind !== "directory") throw new HubProtocolError("denied");
+        const who = Object.freeze(validated(person, found.person)), sessionId = validated(identifier, found.sessionId);
+        if (who.realm !== root.realm || actor && (personKeyString(who) !== personKeyString(actor.person) || sessionId !== actor.sessionId)
+          || identityCurrent(who, sessionId) !== true) throw new HubProtocolError("unavailable");
+        actor = Object.freeze({ kind: "directory", person: who, sessionId });
+      };
+      await identity(); common(); const who = actor!.person;
+      // Management assignments are persons-only and Hub-wide in the strict graph. Fresh eligibility is
+      // sufficient; never invent an empty membership set or create a second directory-admission pool.
+      let result;
+      try { result = await reads.withDirectoryRead(who, async () => {
+        const value = await method.call(directory, Object.freeze({ ...who }));
+        return value.eligible === true ? { eligible: true as const, person: validated(person, value.person.key) }
+          : { eligible: false as const, reason: value.eligible === false ? value.reason : "unavailable" };
+      }); }
+      catch (error) {
+        if (error instanceof HubGroupReadOverload) throw new HubProtocolError("backpressure");
+        throw new HubProtocolError("unavailable");
+      }
+      const observed = common(); await identity(); const proved = common();
+      if (result.eligible !== true) throw new HubProtocolError(result.reason === "gone" || result.reason === "disabled" ? "denied" : "unavailable");
+      if (personKeyString(result.person) !== personKeyString(who)) throw new HubProtocolError("unavailable");
+      const facts = Object.freeze({ kind: "eligible" as const, person: who, observedAt: observed.wall });
+      const allowed = (at: number) => before.kind === "group" ? personKeyString(who) === personKeyString(root)
+        : evaluateRolePolicy(before.policy, who, cap, null, { subject: facts }, at, root).outcome === "allow";
+      if (!allowed(proved.wall)) throw new HubProtocolError("denied");
+      const permit: HubManagementPermit = Object.freeze({ actor: actor!, permission: cap, source: before.kind === "group" ? "legacy" : "roles",
+        expiresAt: observed.wall + HUB_MANAGEMENT_PROOF_TTL,
+        assertCurrent() {
+          try {
+            const at = common();
+            if (at.wall >= observed.wall + HUB_MANAGEMENT_PROOF_TTL || at.elapsed >= observed.elapsed + HUB_MANAGEMENT_PROOF_TTL
+              || !allowed(at.wall)) throw new HubProtocolError("unavailable");
+          } catch (error) { retired = true; throw error; }
+        },
+      });
+      permit.assertCurrent(); return permit;
+    },
+    close() { closed = true; },
+  };
+}
+export type HubManagementAuthority = ReturnType<typeof createHubManagementAuthority>;

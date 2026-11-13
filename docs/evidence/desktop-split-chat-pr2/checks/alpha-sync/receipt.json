@@ -1,0 +1,31 @@
+{
+  "head": "3bfa962766958314ef58e73a799b75c333486dc3",
+  "tree": "4a0a4711575e87b7a367a735a843573d86e6ab29",
+  "inputs": {
+    "8c0b5b4c3bea9b1cdb52aecdc402dd56445c4c9604f2fb6531a3a0c0303e951a": [
+      "src/ui/settings-dialogs.js"
+    ],
+    "64f8796f79bdd85f5608d71e39d64864b354de77074340f173ae3b28965f04da": [
+      "src/ui/agent-details-settings.js"
+    ],
+    "0ad5ed739291fd9a5ef9e7ea67c991d9079eae0d190bf30fb2ed8a3621e810ba": [
+      "tests/web-chat-pane-fields-3637.test.ts"
+    ],
+    "d58a63987d3d870870e205c1f2de3a4a7d0dc5df098dba616bb5f7c7aef05fca": [
+      "scripts/manual/mutation/desktop-chat-workspace-3637.py"
+    ],
+    "34285f96bde3b347406cb627f52dead106834839c953e744f6042158c6f20669": [
+      "scripts/manual/smoke/smoke-split-chat-workspace-3637.mts"
+    ]
+  },
+  "scope": "Plain alpha merge and one Classic account picker conflict; no rebase/force push. Source pins belong to their executions, never historical relabelling.",
+  "checks": {
+    "related": "53/53 seven suites; before only adding mockClear and positive label-loop count to the new test",
+    "restored": "5/5 final committed field tests after three compiling reversals restored exact source",
+    "mutations": "3/3 assertion-caught: Classic account memory, account ID and model-profile handoff",
+    "types": "both native typechecks pass",
+    "changelog": "386 fragments OK",
+    "browser": "17 light +17 dark +2 retained-fields checkpoints, clean source; one stream, zero page errors or external requests"
+  },
+  "limits": "Owned scratch browser fixture has no Classic rooms; Classic picker behavior is inert actual-form coverage. No Apply, send, real CLI/account/AD, live Fleet or pilot. Prior glyph/timestamp/historical limits carry."
+}

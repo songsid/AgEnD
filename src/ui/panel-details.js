@@ -9,12 +9,13 @@ import { NativePaneRecovery } from "./native-pane-recovery.js";
 //   ⋯), pause / wake (Settings' agent row). Deletion stays where it already lives (Chat's ⋯, Settings).
 // One read of /ui/instance/<name> when it opens (#1374: nothing recurring); the live status is the app's.
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
-import { t } from "/assets/app-i18n.js";
+import { register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
+import * as paneContext from "/assets/app-ctx.js";
 import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/assets/app-shell.js";
 import { navigate } from "/assets/app-nav.js";
-import { detailsPath } from "/assets/app-route.js";
+import { chatPath, detailsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { modelText } from "/assets/instance-nav.js";
 import { HeaderTools } from "/assets/header-tools.js";
@@ -29,15 +30,19 @@ import "/assets/chat-strings.js";
 import { api } from "./settings-confirm.js";
 import { InstanceBoardWork } from "./fleet-task-work.js";
 import { Icon } from "/assets/ui-icons.js";
-import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, categoryLabel, useAgentSettings } from "./agent-details-settings.js";
+import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, useAgentSettings } from "./agent-details-settings.js";
 import "./agent-page-strings.js";
 import { pt } from "./agent-page-strings.js";
 
+// Local registration also works when this lazy page is paired with retained string modules.
+register("agentNavigation", { en: { backToChat: "Back to chat" }, "zh-TW": { backToChat: "回到聊天" } });
+
 export function DetailsPanel({ route, navKey }) {
+  const pane = paneContext.usePane?.();
   const app = useStore(appStore);
   const name = route.instance;
   const inst = app.instances.find((i) => i.name === name) || null;
-  useEffect(() => { setTitle(`${name} · ${t("app.details")}`); }, [name, navKey]);
+  useEffect(() => { if (pane?.focused !== false) setTitle(`${name} · ${t("app.details")}`); }, [name, navKey, pane?.focused]);
   if (!app.ready) return html`<div data-effect-panel="details" class="panel p-details"><${PanelHeader} title=${name} /><div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div></div>`;
   if (!inst) {
     return html`<div data-effect-panel="details" class="panel p-details"><${PanelHeader} title=${name} />
@@ -49,6 +54,7 @@ export function DetailsPanel({ route, navKey }) {
 }
 
 function DetailsView({ name, inst, navKey, exec, awaiting }) {
+  const pane = paneContext.usePane?.();
   useStore(themesStore);   // #1629: Lock / Unlock follows the themes as read
   const lease = useLease(`details:${name}`);
   // #1629 r4 §1: the identity card at the top, read when the status frame's card_v moves.
@@ -61,7 +67,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   const [opened, setOpened] = useState(false);
   const [dirty, setDirty] = useState(() => new Set());
   const kind = agentKind(d, inst);
-  const cat = categoryFromSearch(kind);
+  const cat = categoryFromSearch(kind, pane?.search);
   const shownCat = cat || "overview";
   useEffect(() => { if (d && cat && cat !== "overview") setOpened(true); }, [!!d, cat]);
   const sess = useAgentSettings({ name, lease, enabled: opened, navKey });
@@ -168,22 +174,28 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
         <span class="ev">${a.event}</span> ${a.summary || ""}</div>`) : html`<p class="note">${t("chat.dNoActivity")}</p>`}</section>`;
   }
   const actions = items.filter((i) => i && ["start", "restart", "stop", "pause", "wake"].includes(i.key));
+  const backToChat = { path: chatPath(name), label: t("agentNavigation.backToChat") };
+  const followBack = (event) => {
+    if (!pane?.navigate || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    event.preventDefault(); pane.navigate(backToChat.path);
+  };
+  const backLink = () => html`<a class="icon-btn agent-back-chat" href=${backToChat.path} aria-label=${backToChat.label} title=${backToChat.label} onClick=${followBack}><${Icon} name="close" /></a>`;
   const overview = html`<${NativePaneRecovery} name=${name} inst=${inst} lease=${lease} />${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />
       <${AgentWidget} slot="details" widget=${widgetFor(name, "details")} binds=${instanceBinds(inst, exec, awaiting)} />${content}
       ${actions.length ? html`<section class="card d-actions"><h3>${pt("actions")}</h3><div class="field-row">${actions.map((i) => html`<button key=${i.key} type="button" class="btn btn-sm" disabled=${i.disabled} onClick=${i.onSelect}>${i.label}</button>`)}</div>
         <p class="note">${pt("actionsNote")}</p></section>` : null}`;
   const Pending = sess.mod && sess.mod.PendingBar, OpCard = sess.mod && sess.mod.OperationCard;
   return html`<div data-effect-panel="details" class="panel p-details p-settings p-agent-page" data-view=${cat ? "section" : "index"}>
-    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
-    <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty} />
+    <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} pageActions=${items} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty}>${!cat ? html`<div class="only-narrow"><div class="s-row agent-settings-index-return"><h2>${pt("title")}</h2>${backLink()}</div></div>` : null}</${AgentCategoryNav}>
     <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>
-      <a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span><span class="s-back-here">${categoryLabel(kind, shownCat)}</span></a>
-      <${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />
+      <div class="s-row agent-settings-heading"><a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span></a><${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />${backLink()}</div>
       ${OpCard && sess.op ? html`<${OpCard} op=${sess.op} schema=${sess.data && sess.data.schema} />` : null}
       <div class="s-section-layout" data-agent-category=${shownCat}>
-        <div class="ap-panel" id="ap-panel-overview" hidden=${shownCat !== "overview"}>${overview}</div>
+        <div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-overview` : "ap-panel-overview"} hidden=${shownCat !== "overview"}>${overview}</div>
         ${opened ? html`<${AgentSettingsPanels} name=${name} kind=${kind} cat=${shownCat} sess=${sess} onDirty=${onDirty} />` : null}
       </div></div></div>
     ${sess.staged.size && Pending ? html`<${Pending} staged=${sess.staged} busy=${!!sess.op && ["writing", "posting", "watching"].includes(sess.op.phase)} onApply=${sess.apply} onDiscard=${sess.discard} section="agents" />` : null}
   </div>`;
 }
+DetailsPanel.workspaceVersion = 1;

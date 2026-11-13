@@ -2,7 +2,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import { HubProtocolError, parseStrictJson, validated, hash, uuid } from "../validation.js";
-import { CompanyJoinLimit, type HubCompanyJoin } from "./service.js";
+import { CompanyJoinLimit, CompanyJoinOfferPending, type HubCompanyJoin } from "./service.js";
 const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" };
 const status: Record<string, number> = { denied: 403, invalid: 400, stale: 409, conflict: 409, expired: 410, revoked: 403,
@@ -15,8 +15,8 @@ export function companyFlowCookie(req: IncomingMessage, hubId: string, requestId
 }
 export function sendCompanyJoinError(res: ServerResponse, error: unknown): void {
   if (res.writableEnded || res.headersSent) return;
-  const code = error instanceof CompanyJoinLimit ? "limit-reached" : error instanceof HubProtocolError ? error.code : "unavailable";
-  res.writeHead(error instanceof CompanyJoinLimit ? 429 : status[code] ?? 503, headers); res.end(JSON.stringify({ code }));
+  const code = error instanceof CompanyJoinOfferPending ? "offer-pending" : error instanceof CompanyJoinLimit ? "limit-reached" : error instanceof HubProtocolError ? error.code : "unavailable";
+  res.writeHead(error instanceof CompanyJoinOfferPending ? 409 : error instanceof CompanyJoinLimit ? 429 : status[code] ?? 503, headers); res.end(JSON.stringify({ code }));
 }
 async function bytes(req: IncomingMessage, contentType: string, maximum = 24 * 1024): Promise<string> {
   if (String(req.headers["content-type"] ?? "").split(";")[0]!.toLowerCase() !== contentType || req.headers["content-encoding"] !== undefined)
@@ -45,7 +45,9 @@ export function handleCompanyJoin(req: IncomingMessage, res: ServerResponse, ser
   void (async () => {
     if (path === "/hub/v1/join/metadata") {
       if (req.method !== "GET") throw new HubProtocolError("invalid");
-      return send(service.metadata());
+      const value = service.metadata();
+      if (req.headers["x-agend-join-display"] === "1") return send(value);
+      const { name: _name, ...legacy } = value; return send(legacy);
     }
     if (req.method !== "POST") throw new HubProtocolError("invalid");
     if (path === "/hub/join/open") {
@@ -75,7 +77,11 @@ export function handleCompanyJoin(req: IncomingMessage, res: ServerResponse, ser
       case "status": return send(service.status(b.binding, b.proof, b.payload));
       case "tombstone": return send(service.status(b.binding, b.proof, b.payload, "tombstone"));
       case "cancel": return send(service.cancel(b.binding, b.proof, b.payload));
-      case "redeem": return send(await service.redeem(b.binding, b.proof, b.payload));
+      case "redeem": {
+        const value = await service.redeem(b.binding, b.proof, b.payload);
+        if (req.headers["x-agend-join-display"] === "1") return send(value);
+        const { ownerLabel: _owner, hubName: _name, ...legacy } = value; return send(legacy);
+      }
       case "ack": return send(await service.acknowledge(b.binding, b.proof, b.payload));
     }
   })().catch(error => sendCompanyJoinError(res, error));

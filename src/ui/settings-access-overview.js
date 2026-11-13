@@ -52,7 +52,7 @@ register("accessov", {
     on: "開啟", goOwner: "擁有者驗證設定", twoStepNone: "未設定時，其他裝置上的變更以「立即套用」確認。",
     otherTitle: "其他連線", otherLead: "到各自的頁面中斷或移除。",
     hub: "Hub", hubHint: "你的團隊 Hub，以及在那裡分享的 Agent", windows: "Windows 電腦", windowsHint: "連上這裡、用來執行 Agent 的 Windows 電腦",
-    accounts: "AI 帳號", accountsHint: "Agent 使用的 Claude、Codex 等帳號", hubOn: "已連線", paired: "已連上 {0} 台",
+    accounts: "AI 帳號", accountsHint: "Agent 使用的 Claude、Codex 等帳號", hubOn: "已連接", paired: "已連上 {0} 台",
   },
 });
 const to = (k, ...a) => t(`accessov.${k}`, ...a);

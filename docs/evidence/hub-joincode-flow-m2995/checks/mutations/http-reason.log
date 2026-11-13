@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts (25 tests | 1 failed | 24 skipped) 1789ms
+     × code creation returns distinct protected HTTP reasons for the live and hourly caps 1786ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 skipped (25)
+   Start at  02:01:36
+   Duration  5.34s (transform 2.61s, setup 94ms, import 3.34s, tests 1.79s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-http-b1.test.ts > B1 enrolment-code protected routes and actual join > code creation returns distinct protected HTTP reasons for the live and hourly caps
+AssertionError: expected { code: 'backpressure' } to deeply equal { code: 'backpressure', …(1) }
+
+- Expected
++ Received
+
+  {
+    "code": "backpressure",
+-   "reason": "live-code-limit",
+  }
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts:173:23
+    171|     const create = () => r.call(admin, "POST", "/hub/v1/admin/enrolmen…
+    172|     const live = await create(); expect(live.status).toBe(429);
+    173|     expect(live.body).toEqual({ code: "backpressure", reason: "live-co…
+       |                       ^
+    174|     expect((await r.call(null, "POST", "/hub/v1/admin/enrolment-codes"…
+    175|     const outsider = await r.call(await r.signIn("dan"), "POST", "/hub…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

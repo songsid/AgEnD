@@ -1,0 +1,56 @@
+{
+  "head": "ab86d1eafe8436eed90a0cec081116ad8b63af67",
+  "tree": "0372f662b1e66b6b3ec2d04029a92dc3f3b8d874",
+  "dirty": false,
+  "commands": [
+    {
+      "argv": [
+        "npx",
+        "vitest",
+        "run",
+        "tests/web-agent-back-chat-3714.test.ts",
+        "tests/web-usage-rail-1673.test.ts",
+        "tests/sidebar-instance-identity.test.ts",
+        "tests/web-instance-nav-n1.test.ts",
+        "tests/web-details-n2.test.ts",
+        "tests/web-chat-workspace-host-3637.test.ts",
+        "tests/web-chat-popout-composition-3637.test.ts",
+        "tests/ui-css-literals-ratchet.test.ts",
+        "--maxWorkers=1"
+      ],
+      "exit": 0,
+      "seconds": 11.544,
+      "log": "1.log"
+    },
+    {
+      "argv": [
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit"
+      ],
+      "exit": 0,
+      "seconds": 4.342,
+      "log": "2.log"
+    },
+    {
+      "argv": [
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "seconds": 9.957,
+      "log": "3.log"
+    },
+    {
+      "argv": [
+        "node",
+        "scripts/changelog-assemble.mjs",
+        "--check"
+      ],
+      "exit": 0,
+      "seconds": 0.141,
+      "log": "4.log"
+    }
+  ]
+}

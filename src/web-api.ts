@@ -1,6 +1,8 @@
 import { buildAgentExport, parseAgentExport } from "./agent-export.js";
+import { STRUCTURED_PROFILE_BACKENDS } from "./structured-signin-transport.js";
 import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
 import { validCredentialProfileName } from "./runtime-credential-profiles.js";
+import { MACHINE_ACCOUNT_CLIS } from "./accounts-view.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { MachineSlotLimitError } from "./windows-agents.js";
 import { daemonTopicMode } from "./web-only-fleet.js";
@@ -52,7 +54,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createReadStream, createWriteStream, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, CreateScheduleArgs, UpdateScheduleArgs, validateArgs } from "./outbound-schemas.js";
 import { scheduleView } from "./web-schedules.js";
@@ -61,7 +63,9 @@ import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
 import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
-import { ONBOARDING_BACKENDS, ONBOARDING_BROWSER_BACKENDS } from "./backend-signin-pending.js";
+import { ONBOARDING_BACKENDS } from "./backend-signin-pending.js";
+import { STRUCTURED_SIGNIN_BACKENDS } from "./structured-signin.js";
+import { isRuntimeDefaultLoginCli, type RuntimeDefaultLoginCli } from "./cli-registry.js";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
 import { WEB_CHAT_CARDS_OVERFLOW, catchUpWindow, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatAttachment, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
@@ -91,6 +95,7 @@ import {handleAgentRuntimeChange} from "./agent-runtime-api.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
 import { handleNativeModelCatalog, refreshNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
+import { shapeDocumentedClaudeModels, shapeWebModelCatalog } from "./web-model-groups.js";
 import { handleRuntimeRequest } from "./runtime-api.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { taskBoardOffNames } from "./dashboard-permissions.js";
@@ -387,6 +392,8 @@ export interface WebApiContext {
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
   modelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Array<{ id: string; label: string; description?: string }>;
+  /** The same cache, shaped for Web Settings (grouped; `[1m]` only where offered; antigravity's effort levels merged). */
+  modelCatalogForWeb?(backend: string, instance: string | null, selection?:{profile?:string}): import("./web-model-groups.js").WebModelOption[];
   /** Async, account-safe fallback from existing CLI metadata; never launch a CLI or refresh a vendor catalog. */
   cliModelCatalogFor?(backend: string, instance: string | null): Promise<Array<{ id: string; label: string; description?: string }>>;
   refreshModelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Promise<{ models: Array<{ id: string; label: string; description?: string }>; refreshed: boolean }>;
@@ -432,7 +439,7 @@ export interface WebApiContext {
   addAccountProfile?(backend: string, name: unknown, by: string, machine?: AccountMachine): AccountWriteResult | Promise<AccountWriteResult>;
   removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string, machine?: AccountMachine, opts?: { cancelSignIn?: true }): Promise<AccountWriteResult & { keychainLeft?: true }>;
   /** #3212 PR 3: Sign out (accounts-signout.ts): `profile` null for the CLI's default sign-in. */
-  signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true }>;
+  signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true; unverified?: true }>;
   /** #3292: Keep sign-in alive (signin-keepalive.ts): `profile` null for the CLI's default sign-in. */
   setAccountKeepAlive?(backend: unknown, profile: unknown, enabled: unknown, fallback: unknown, by: string): { ok: true } | { ok: false; error: string };
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
@@ -614,6 +621,8 @@ export interface WebApiContext {
   resolveInstanceEffort?(name: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" };
   /** Effort strategy for backend capability check. */
   effortStrategyFor?(name: string): "runtime" | "restart" | "unsupported";
+  /** Settings → Runtime & model's effort choices: the levels `model` (null: the running one) takes, and the effort in force. */
+  effortOptionsFor?(name: string, model?: string | null): { levels: string[]; effort: string | null; source: "instance" | "fleet-default" | "unset" };
   readonly scheduler: {
     db: {
       listTasks(opts?: { assignee?: string; status?: string }): unknown[];
@@ -661,6 +670,22 @@ function jsonText(res: ServerResponse, status: number, body: string): void {
 const boardBodies = new WeakMap<object, { key: string; body: string }>();
 /** #2316 review: the same for who works on what (GET /ui/tasks/work), per (revision, names asked for). */
 const workBodies = new WeakMap<object, { key: string; body: string }>();
+
+/**
+ * The catalog Web Settings lists for a backend and instance (and credential profile): the fleet's shaped cache
+ * (web-model-groups.ts), else — a hand-built context — the plain list, shaped the same way.
+ */
+function webCatalog(ctx: WebApiContext, backend: string, instance: string | null, profile: string | null, plain?: Array<{ id: string; label: string; description?: string }>): Array<{ id: string; label: string; description?: string }> {
+  if (ctx.modelCatalogForWeb) return profile !== null ? ctx.modelCatalogForWeb(backend, instance, { profile }) : ctx.modelCatalogForWeb(backend, instance);
+  const flat = plain ?? (profile !== null ? ctx.modelCatalogFor?.(backend, instance, { profile }) : ctx.modelCatalogFor?.(backend, instance)) ?? [];
+  return shapeWebModelCatalog(backend, flat);
+}
+
+/** claude's fallback when no account list is readable: the documentation's `claude-*` ids for the host's CLI version, unverified. */
+function documentedClaudeCatalog(ctx: WebApiContext) {
+  const version = ctx.backendAvailabilityRows?.().find(row => row.backend === "claude-code")?.version;
+  return shapeDocumentedClaudeModels(claudeDocumentedModels(version));
+}
 
 /**
  * #1630 (#1635 review): an answer that waited on something (a list, a download) is sent only if the request is still
@@ -952,6 +977,50 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
 }
 
 /**
+ * #2716/#3679: an Office-wide setting kept in web-offices.json beside the offices (PUT { <key>: value }): who may save
+ * the offices may set it — an admin session, never the CLI token or the public link; asked again once the body is in;
+ * counted with the offices' saves (OfficeWriteLimiter); every page hears `offices` and reads again.
+ */
+function officeSettingPut(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, o: {
+  key: string; invalid: string; shape: string; failed: string;
+  apply(store: OfficeStore, value: unknown): { ok: true; rev: number; answer: Record<string, unknown> } | { ok: false; status: number; error: string; detail?: string };
+}): boolean {
+  const store = ctx.officeStore;
+  if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
+  const who = (): { person: string } | { status: number } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401 };
+    return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
+  };
+  const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
+  const first = who();
+  if ("status" in first) { refuse(first.status); return true; }
+  (async () => {
+    let body: Record<string, unknown>;
+    try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who();
+    if ("status" in now) { refuse(now.status); return; }
+    if (!body || typeof body !== "object" || Array.isArray(body) || !(o.key in body) || Object.keys(body).some(k => k !== o.key)) {
+      json(res, 400, { error: o.invalid, detail: o.shape });
+      return;
+    }
+    const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
+    if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
+    const r = o.apply(store, body[o.key]);
+    if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+    limiter?.record(now.person);
+    ctx.emitSseEvent("offices", { rev: r.rev });
+    json(res, 200, { rev: r.rev, ...r.answer });
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, o.failed);
+    try { json(res, 500, { error: o.failed }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
  * #2513: the Office view's skin packs (web-office-skins.ts). The reads are the offices' (GET /ui/offices): whoever may
  * open the org chart, the public link too (its manifest lists them; a guest's routes do not): the list, a pack's
  * manifest (?v=<sha>: immutable, else no-store) and its pictures (by the sha of their bytes: immutable, image/png,
@@ -1212,13 +1281,18 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
   // `?backend=<cli>&profile=<name>` addresses them for a named account on THIS host (profile-signins.ts). Nothing else is accepted in the query, and both are checked
   // in full before anything else happens.
   const keys = [...url.searchParams.keys()];
-  let target: { machine: string; profile: string } | null = null;
+  let target: { machine: string; profile?: string; backend?: RuntimeDefaultLoginCli } | null = null;   // backend + profile (AGEND-124): a named Antigravity account on a computer
   let account: { backend: string; profile: string } | null = null;
   if (keys.length) {
     const machine = url.searchParams.get("machine"), backend = url.searchParams.get("backend"), profile = url.searchParams.get("profile");
     const shape = keys.length === 2 && new Set(keys).size === 2 && profile && validCredentialProfileName(profile);
-    if (shape && machine && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(machine) && !backend) target = { machine, profile };
-    else if (shape && backend === "claude-code" && !machine) account = { backend, profile };
+    const computer = !!machine && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(machine);
+    if (shape && computer && !backend) target = { machine: machine!, profile };
+    // `?machine=<id>&backend=<cli>` is that computer's OWN login of a CLI the registry says has none (`runtime.signIn.profile === "none"`: Antigravity): no profile in the address, and nothing but these two keys.
+    else if (keys.length === 2 && new Set(keys).size === 2 && computer && isRuntimeDefaultLoginCli(backend) && !profile) target = { machine: machine!, backend };
+    // AGEND-124: `?machine=<id>&backend=<cli>&profile=<name>` is a NAMED account of a CLI other than Claude Code on that computer (the registry's `runtime.namedAccounts`: Antigravity): exactly these three keys.
+    else if (keys.length === 3 && new Set(keys).size === 3 && computer && profile && validCredentialProfileName(profile) && isRuntimeDefaultLoginCli(backend) && MACHINE_ACCOUNT_CLIS.has(backend)) target = { machine: machine!, backend, profile };
+    else if (shape && backend !== null && STRUCTURED_PROFILE_BACKENDS.has(backend) && !machine) account = { backend, profile };   // a CLI whose named account is signed in with these controls (registry: `host.structuredSignIn.named`)
     else { json(res, 404, { error: "not_found" }); return true; }
   }
   // Only the one that is asked for is looked up: the host's creates its checklist state, a computer's or a named account's does not need it.
@@ -1233,9 +1307,9 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
         if (!permitWebContinuation(req, res, ctx)) return;
         if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
         let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
-        // Only what a computer's sign-in can do: start (Claude Code, subscription: the Runtime builds the command), answer a prompt, cancel, read again.
+        // Only what a computer's sign-in can do: start (Claude Code or Antigravity, subscription: the Runtime builds the command; the address says which one), answer a prompt, cancel, read again.
         const parsed = z.discriminatedUnion("operation", [
-          z.strictObject({ operation: z.literal("start"), backend: z.literal("claude-code"), relogin: z.boolean().optional() }),
+          z.strictObject({ operation: z.literal("start"), backend: z.literal(target.backend ?? "claude-code"), relogin: z.boolean().optional() }),
           z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
             z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
             z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
@@ -1282,13 +1356,14 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
       let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
       const parsed = z.discriminatedUnion("operation", [
         z.strictObject({ operation: z.literal("select"), backends: z.array(z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS])).max(ONBOARDING_BACKENDS.length) }),
-        z.strictObject({ operation: z.literal("start"), backend: z.enum(ONBOARDING_BROWSER_BACKENDS as unknown as [typeof ONBOARDING_BROWSER_BACKENDS[number], ...typeof ONBOARDING_BROWSER_BACKENDS]), relogin: z.boolean().optional() }),
+        // Any CLI whose registry spec says `host.structuredSignIn` (the first-run page's own service still refuses the ones it only names the console command for).
+        z.strictObject({ operation: z.literal("start"), backend: z.enum(STRUCTURED_SIGNIN_BACKENDS as unknown as [typeof STRUCTURED_SIGNIN_BACKENDS[number], ...typeof STRUCTURED_SIGNIN_BACKENDS]), relogin: z.boolean().optional() }),
         z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
           z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
           z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
         ]) }),
         z.strictObject({ operation: z.literal("skip"), backend: z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS]) }),
-        z.strictObject({ operation: z.literal("cancel") }), z.strictObject({ operation: z.literal("refresh") }),
+        z.strictObject({ operation: z.literal("cancel"), id: z.string().regex(/^[0-9a-f]{32}$/).optional(), backend: z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS]).optional() }), z.strictObject({ operation: z.literal("refresh") }),
       ]).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
       const action = parsed.data;
@@ -1296,7 +1371,7 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
       else if (action.operation === "start") result = await service.begin(owner, action.backend, action.relogin === true);
       else if (action.operation === "input") result = await service.input(owner, action.id, action.revision, action.action);
       else if (action.operation === "skip") result = await service.skip(owner, action.backend);
-      else if (action.operation === "cancel") result = await service.cancel(owner);
+      else if (action.operation === "cancel") result = await service.cancel(owner, action.id, action.backend);
       else result = await service.refresh(owner, true);
     }
     if (!permitWebContinuation(req, res, ctx)) return;
@@ -1358,10 +1433,11 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
     } else {
       // `{}`: the explicit "Cancel sign-in" — whatever sign-in is running, as ever. `{ run, ifUnopened }`: the dialog's own Close (#3321 review), for
       // that one run and only while its terminal is unopened and it is this session's own; anything else is left alone and `cancelled` is false.
-      const parsed = z.union([z.strictObject({}), z.strictObject({ run: z.string().regex(/^[0-9a-f]{32}$/), ifUnopened: z.literal(true) })]).safeParse(body);
+      // `{ backend }` (AGEND-203): the "Cancel the running sign-in" a refused start offers — only the sign-in or install on that backend.
+      const parsed = z.union([z.strictObject({}), z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/i) }), z.strictObject({ run: z.string().regex(/^[0-9a-f]{32}$/), ifUnopened: z.literal(true) })]).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "sign_in_args" }); return; }
       if ("run" in parsed.data) json(res, 200, await logins.closeRun(now, parsed.data.run));
-      else json(res, 200, { message: await logins.cancel() });
+      else json(res, 200, { message: await logins.cancel("backend" in parsed.data ? parsed.data.backend.toLowerCase() : undefined) });
     }
   })().catch(() => { try { json(res, 500, { error: "sign_in_request_failed" }); } catch { /* response ended */ } });
   return true;
@@ -1437,7 +1513,7 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
  */
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
   backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
-  unsafe: 409, default_home: 409, failed: 500, unsupported: 400,
+  unsafe: 409, default_home: 409, failed: 500, unsupported: 400, still_signed_in: 409,
   // #3190 Part 3c: a paired computer (the Runtime there decides; these are what the server can say before it asks, or what the computer answered).
   machine_unknown: 404, machine_offline: 409, machine_unsupported: 409, machine_accounts_off: 409, machine_unreachable: 502, machine_profile_not_owned: 409,
   machine_refused: 409, machine_default_login: 409,
@@ -1502,7 +1578,7 @@ function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL,
       const machine = onMachine(parsed.data.machine);
       if (machine === "refused") { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
       const r = await (machine ? ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label, machine) : ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label));
-      if (r.ok) json(res, 200, { signedOut: parsed.data.profile, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
+      if (r.ok) json(res, 200, { signedOut: parsed.data.profile, ...(r.keychainLeft ? { keychainLeft: true } : {}), ...(r.unverified ? { unverified: true } : {}) });
       else fail(r);
     }
   })().catch(() => { try { json(res, 500, { error: "accounts_request_failed" }); } catch { /* response ended */ } });
@@ -2099,7 +2175,7 @@ export function handleWebRequest(
       const runtime=body.runtime, machineId=body.machineId, profile=body.profile;
       if(runtime!==undefined && runtime!=="windows" && runtime!=="wsl" || machineId!==undefined && (typeof machineId!=="string" || !/^[a-f0-9-]{36}$/i.test(machineId)) || profile!==undefined && (typeof profile!=="string" || profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile))) {json(res,400,{error:"invalid model target"});return;}
       const target={backend,instance,...(runtime?{runtime:runtime as "windows"|"wsl"}:{}),...(machineId?{machineId:machineId as string}:{}),...(profile!==undefined?{profile:profile as string}:{})};
-      let result;
+      let result, fleetAnswered=false;
       try {
         result=await refreshNativeModelCatalog(req,url,ctx,target);
         // Recheck after runtime selection, before any portable probe is admitted.
@@ -2108,11 +2184,23 @@ export function handleWebRequest(
         if(!result){
           if(machineId || !ctx.refreshModelCatalogFor){json(res,503,{error:"model_refresh_unavailable"});return;}
           result=await (profile!==undefined ? ctx.refreshModelCatalogFor(backend,instance,{profile:profile as string}) : ctx.refreshModelCatalogFor(backend,instance));
+          fleetAnswered=true;
         }
       } catch {if(!permitWebContinuation(req,res,ctx))return;json(res,503,{error:"model_refresh_unavailable"});return;}
       if (!permitWebContinuation(req, res, ctx)) return;
       if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
-      json(res, 200, { backend, ...result });
+      // The refreshed list is shaped as the passive read is (a refresh answered by a computer's own runtime is its own).
+      // When the fleet answered, `webCatalog` re-reads the cache the refresh has just written, through the same shaping
+      // as GET /ui/models, rather than shaping `result.models`: that list is the flat one (it has lost which tier each
+      // model came from, and claude's aliases / [1m] variants are in it), so only the cache read can be grouped right.
+      const models = fleetAnswered && Array.isArray(result.models) ? webCatalog(ctx, backend, instance as string | null, typeof profile === "string" ? profile : null, result.models) : result.models;
+      // claude with no account list (the refresh could not read it, or the account has none) is answered as GET /ui/models
+      // answers it: the documentation's ids, marked unverified — never an empty list that shows nothing to pick.
+      if (fleetAnswered && backend === "claude-code" && Array.isArray(models) && models.length === 0) {
+        json(res, 200, { backend, ...result, models: documentedClaudeCatalog(ctx), source: "official-catalog" });
+        return;
+      }
+      json(res, 200, { backend, ...result, models });
     })().catch(() => { if (!res.headersSent) json(res, 500, { error: "model_refresh_failed" }); });
     return true;
   }
@@ -2154,12 +2242,11 @@ export function handleWebRequest(
     const profile=url.searchParams.get("profile");
     if(profile!==null && profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile)){json(res,400,{error:"Invalid model account"});return true;}
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
-    const models = (profile!==null ? ctx.modelCatalogFor?.(backend,instance,{profile}) : ctx.modelCatalogFor?.(backend,instance)) ?? [];
+    const models = webCatalog(ctx, backend, instance, profile);
+    // claude with no account list — with or without a credential profile — is answered with the documentation's ids.
     const answerCatalog = (): void => {
-      if (backend === "claude-code" && !models.length && !profile) {
-        const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
-        json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
-      } else json(res, 200, { backend, models });
+      if (backend === "claude-code" && !models.length) json(res, 200, { backend, models: documentedClaudeCatalog(ctx), source: "official-catalog" });
+      else json(res, 200, { backend, models });
     };
     // The existing catalog belongs to this instance/account and always wins.
     if (models.length || !ctx.cliModelCatalogFor || profile!==null) { answerCatalog(); return true; }
@@ -2167,11 +2254,24 @@ export function handleWebRequest(
     void (async () => {
       const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
       if (!canAnswer()) return;
-      if (cliModels.length) json(res, 200, { backend, models: cliModels, source: "cli-cache" });
+      const shaped = shapeWebModelCatalog(backend, cliModels);
+      if (shaped.length) json(res, 200, { backend, models: shaped, source: "cli-cache" });
       else answerCatalog();
     })().catch(() => {
       if (canAnswer()) json(res, 503, { error: "CLI model cache unavailable" });
     });
+    return true;
+  }
+
+  // The effort levels Settings → Runtime & model's dropdown offers for an agent and a (not yet saved) model — the chat chip's list.
+  if (method === "GET" && path === "/ui/effort-options") {
+    const instance = url.searchParams.get("instance") ?? "", model = url.searchParams.get("model");
+    if (!instance || !isSafeInstanceName(instance) || (model !== null && (model.length > 256 || /[\x00-\x1f\x7f]/.test(model)))) { json(res, 400, { error: "instance (and optional model) required" }); return true; }
+    if (!Object.hasOwn(ctx.fleetConfig?.instances ?? {}, instance) || !ctx.effortOptionsFor) { json(res, 404, { error: "Not available" }); return true; }
+    const { levels, effort, source } = ctx.effortOptionsFor(instance, model || null);
+    // `model`: the one saved for the agent (empty: it follows the default), so the page can tell a model it has not saved yet.
+    const saved = (ctx.fleetConfig!.instances[instance] as { model?: unknown }).model;
+    json(res, 200, { instance, levels, effort, source, model: typeof saved === "string" ? saved : "" });
     return true;
   }
 
@@ -2499,11 +2599,28 @@ export function handleWebRequest(
       return true;
     }
     if (!ctx.logSteps) { json(res, 404, { error: "not available" }); return true; }
+    // AGEND-181: thinking only for an admin session on the local dashboard, decided here — never the public link, a
+    // guest or a View projection, whatever the query says. The service makes none otherwise (its parser is not asked).
+    // AGEND-197: the chat's activity block (chat=1) is for the same viewer and no other: a refusal here, not a hidden block.
+    const admission = adminAdmissionOf(req, url, ctx);
+    const admin = !!admission && !gatewayRequestContext(req) && !guestRequestOf(req);
+    const chat = p.get("chat") === "1";
+    if (chat && !admin) { json(res, 403, { error: "admin_only" }); return true; }
+    const thinking = p.get("thinking") === "1" && admin;
     ctx.logSteps(instance, {
+      ...(chat ? { chat: true } : {}),
+      ...(thinking ? { thinking: true } : {}),
       ...(after !== undefined ? { after } : {}), ...(before !== undefined ? { before } : {}), ...(ev !== undefined ? { ev } : {}),
       ...(limit !== undefined ? { limit } : {}), ...(key !== null ? { key } : {}),
       skip: p.get("skip") === "1", watch: p.get("watch") === "1",
     }).then(answer => {
+      if (res.destroyed) return;
+      // Prism #3709 R1: the transcript read is asynchronous — an admin session revoked, or the web token rotated, while it
+      // ran must not receive the private steps (the chat's block, thinking) it was admitted for. Asked again here, as
+      // /ui/subagents does; the Log tab's own read (no chat, no thinking) is not private and is left as it was.
+      if ((chat || thinking) && (adminAdmissionOf(req, url, ctx) !== admission || gatewayRequestContext(req) || guestRequestOf(req))) {
+        json(res, 403, { error: "admin_only" }); return;
+      }
       if (answer === null) json(res, 404, { error: `Instance not found: ${instance}` });
       else json(res, 200, answer);
     }).catch(err => {
@@ -2674,39 +2791,15 @@ export function handleWebRequest(
   // would: an admin session, never the CLI token or the public link; asked again once the body is in; counted with the
   // offices' saves. Every page hears `offices` and reads again.
   if (method === "PUT" && path === "/ui/office-style") {
-    const store = ctx.officeStore;
-    if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
-    const who = (): { person: string } | { status: number } => {
-      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      if (verdict.kind !== "allow") return { status: 401 };
-      return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
-    };
-    const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
-    const first = who();
-    if ("status" in first) { refuse(first.status); return true; }
-    (async () => {
-      let body: Record<string, unknown>;
-      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
-      if (!permitWebContinuation(req, res, ctx)) return;
-      const now = who();
-      if ("status" in now) { refuse(now.status); return; }
-      if (!body || typeof body !== "object" || Array.isArray(body) || !("skin" in body) || Object.keys(body).some(k => k !== "skin")) {
-        json(res, 400, { error: "office_style_invalid", detail: "{ skin: a skin id, or null }" });
-        return;
-      }
-      const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
-      if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
-      const r = store.setAutoSkin(body.skin);
-      if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
-      limiter?.record(now.person);
-      ctx.emitSseEvent("offices", { rev: r.rev });
-      json(res, 200, { rev: r.rev, autoSkin: r.autoSkin });
-    })().catch(err => {
-      ctx.logger.error({ err: (err as Error).message }, "Saving the office style failed");
-      try { json(res, 500, { error: "Saving the office style failed" }); } catch { /* already answered */ }
-    });
-    return true;
+    return officeSettingPut(req, res, url, ctx, { key: "skin", invalid: "office_style_invalid", shape: "{ skin: a skin id, or null }", failed: "Saving the office style failed",
+      apply: (store, v) => { const r = store.setAutoSkin(v); return r.ok ? { ok: true, rev: r.rev, answer: { autoSkin: r.autoSkin } } : r; } });
+  }
+  // #3679: PUT /ui/office-level-titles { levels }: the fleet's own Office level titles for every office (`{ titles?,
+  // fixed? }`, a pack's rules; null: none — read back as GET /ui/offices's levels). A pack's own `levels` still win for
+  // the offices drawn in it (on the page). Who may set the style may set these, the same way.
+  if (method === "PUT" && path === "/ui/office-level-titles") {
+    return officeSettingPut(req, res, url, ctx, { key: "levels", invalid: "office_levels_invalid", shape: "{ levels: { titles?, fixed? }, or null }", failed: "Saving the level titles failed",
+      apply: (store, v) => { const r = store.setLevels(v); return r.ok ? { ok: true, rev: r.rev, answer: { levels: r.levels } } : r; } });
   }
 
   // #2578: GET /ui/office-acts { acts }: the agents' live acts (office_set), read as the offices are (the public link
@@ -4478,7 +4571,7 @@ export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { public_link?: boolean } } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; log_thinking?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { public_link?: boolean } } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: which owner CSS this load's person has in force (data-owner-css), for a signed-in human session only. */
@@ -4502,6 +4595,7 @@ export interface AppShellContext {
   hubDirectoryNotices?(): Promise<unknown>;
   /** Display only: AD editing routes reauthorize local D3 on every request. */
   hubDirectorySettings?(): Promise<unknown>;
+  hubWebAddress?(): Promise<unknown>;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -4674,7 +4768,10 @@ function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
     + (setup && !gatewayRequestContext(req) && typeof ctx.hubDirectorySettings === "function"
       && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-settings="1"' : "")
     + (setup && !gatewayRequestContext(req) && typeof ctx.hubDirectoryNotices === "function"
-      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-notices="1"' : "");
+      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-directory-notices="1"' : "")
+    // M-2901 (#3428): Settings → Hub's "Hub address" card, for the same host owner on a fleet whose Hub is set up.
+    + (setup && !gatewayRequestContext(req) && typeof ctx.hubWebAddress === "function"
+      && !!(config as { hub?: { hubId?: unknown } } | null)?.hub?.hubId ? ' data-hub-web-address="1"' : "");
 }
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);
@@ -4693,8 +4790,12 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
   const admission = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
   const childMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest && admission.kind === "allow"
     && (admission.via !== "session" || admission.session.tier === "admin");
+  // #3637: display-only capability and a non-authorizing namespace. No account/session/token value reaches storage.
+  const workspaceMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest && admission.kind === "allow";
+  const workspaceScope = workspaceMark && viewer?.person && ctx.webToken
+    ? createHmac("sha256", ctx.webToken).update(`agend-chat-layout-v1\0${viewer.person}`).digest("hex") : null;
 
-  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${workspaceMark ? ' data-chat-workspace="1"' : ""}${workspaceScope ? ` data-chat-layout-scope="${workspaceScope}"` : ""}${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
@@ -4704,6 +4805,13 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`   // #2855: guests' too
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
+    // AGEND-181: whether thinking may be asked for (web.log_thinking; OFF by default, AGEND-197). The server answers
+    // `thinking: true` only to an admin session on the local dashboard (GET /ui/steps), whatever this says.
+    + ` data-log-thinking="${ctx.fleetConfig?.web?.log_thinking === true ? "1" : "0"}"`
+    // AGEND-197: whether this page may ask for the chat's activity block at all — an admin session on the local dashboard
+    // only (a guest, the public link and a read-only session are never offered it, and the server refuses them anyway).
+    // Each agent's own tool_progress decides whether there is anything to show (the answer's `level`).
+    + ` data-chat-activity="${childMark ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
     // checks before sending a file, and the numbers its words say. The server checks again on every upload.
     + ` data-upload-limits="${attr(JSON.stringify(uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined })))}"`

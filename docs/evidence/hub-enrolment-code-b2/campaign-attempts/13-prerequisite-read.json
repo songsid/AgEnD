@@ -1,0 +1,703 @@
+{
+  "source": "8a0cc7f79f2a5e794c62f1c27a309ce771685ba3",
+  "goReference": "xmsg-1794454315558-4oi40c",
+  "window": {
+    "from": 1794454900931,
+    "until": 1794462100931
+  },
+  "sourceVersionStamp": "2.3.5-alpha.16",
+  "startedAt": 1794458400531,
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794458400532,
+      "finishedAt": 1794458411675,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794458411723,
+      "finishedAt": 1794458463338,
+      "exitCode": 0
+    },
+    {
+      "name": "ui-capacity",
+      "startedAt": 1794458463338,
+      "finishedAt": 1794458581484,
+      "exitCode": 1
+    }
+  ],
+  "ready": false,
+  "boundary": "Source build, owned network-none container, synthetic verified LDAPS; five real Fleet web/settings/join/member services per mass wave with Agent lifecycle refused. Not npm/systemd or real accounts/AD/pilot/native Windows.",
+  "chineseFont": "WenQuanYi Zen Hei,\u6587\u6cc9\u9a5b\u6b63\u9ed1,\u6587\u6cc9\u9a7f\u6b63\u9ed1 aa|af|av|ay|be|bg|bi|br|ca|ce|ch|co|da|de|el|en|es|eu|fj|fo|fr|fur|fy|gd|gl|gv|ho|ia|id|ie|ik|io|is|it|ja|ko|kum|lb|lez|mg|nb|nds|nl|nn|no|nr|ny|oc|om|os|pt|rm|ru|sel|sm|sma|smj|so|sq|sr|ss|st|sv|sw|tl|to|ts|uz|vo|wa|wo|xh|yap|zh-cn|zh-sg|zh-tw|zu|an|fil|ht|jv|kj|kwm|lg|li|ms|ng|pap-an|pap-aw|rn|rw|sc|sg|sn|su|za|agr|ayc|bem|cmn|hak|lij|lzh|mfe|mhr|mjw|nan|nhn|niu|tpi|unm|wae|yuw",
+  "error": "Error: ui-capacity did not complete successfully",
+  "finishedAt": 1794458581484,
+  "runtime": {
+    "source": "8a0cc7f79f2a5e794c62f1c27a309ce771685ba3",
+    "checks": [
+      {
+        "name": "company join enabled",
+        "pass": true
+      },
+      {
+        "name": "built strict discovery advertises code",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en-admin-before no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en-admin-before no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en-create-dialog no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en-create-dialog no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en scoped picker input and note are distinct",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en-resolved-group no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en-resolved-group no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en resolved picker retires its input",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en-active-code no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en-active-code no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-light-en admin page errors",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en-admin-before no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en-admin-before no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en-create-dialog no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en-create-dialog no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en scoped picker input and note are distinct",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en-resolved-group no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en-resolved-group no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en resolved picker retires its input",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en-active-code no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en-active-code no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-en admin page errors",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW-admin-before no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW-admin-before no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW-create-dialog no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW-create-dialog no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW scoped picker input and note are distinct",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW-resolved-group no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW-resolved-group no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW resolved picker retires its input",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW-active-code no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW-active-code no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-light-zh-TW admin page errors",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW-admin-before no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW-admin-before no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW-create-dialog no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW-create-dialog no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW scoped picker input and note are distinct",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW-resolved-group no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW-resolved-group no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW resolved picker retires its input",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW-active-code no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW-active-code no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "desk-dark-zh-TW admin page errors",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en-admin-before no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en-admin-before no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en-create-dialog no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en-create-dialog no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en scoped picker input and note are distinct",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en-resolved-group no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en-resolved-group no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en resolved picker retires its input",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en-active-code no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en-active-code no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-light-en admin page errors",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en-admin-before no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en-admin-before no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en-create-dialog no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en-create-dialog no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en scoped picker input and note are distinct",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en-resolved-group no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en-resolved-group no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en resolved picker retires its input",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en-active-code no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en-active-code no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-en admin page errors",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW-admin-before no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW-admin-before no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW-create-dialog no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW-create-dialog no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW scoped picker input and note are distinct",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW-resolved-group no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW-resolved-group no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW resolved picker retires its input",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW-active-code no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW-active-code no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-light-zh-TW admin page errors",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW-admin-before no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW-admin-before no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW-create-dialog no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW-create-dialog no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW scoped picker input and note are distinct",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW-resolved-group no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW-resolved-group no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW resolved picker retires its input",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW-active-code no horizontal overflow",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW-active-code no raw i18n keys",
+        "pass": true
+      },
+      {
+        "name": "phone-dark-zh-TW admin page errors",
+        "pass": true
+      }
+    ],
+    "waves": [],
+    "screenshots": [
+      "desk-light-en-admin-before.png",
+      "desk-light-en-create-dialog.png",
+      "desk-light-en-resolved-group.png",
+      "desk-light-en-active-code.png",
+      "desk-dark-en-admin-before.png",
+      "desk-dark-en-create-dialog.png",
+      "desk-dark-en-resolved-group.png",
+      "desk-dark-en-active-code.png",
+      "desk-light-zh-TW-admin-before.png",
+      "desk-light-zh-TW-create-dialog.png",
+      "desk-light-zh-TW-resolved-group.png",
+      "desk-light-zh-TW-active-code.png",
+      "desk-dark-zh-TW-admin-before.png",
+      "desk-dark-zh-TW-create-dialog.png",
+      "desk-dark-zh-TW-resolved-group.png",
+      "desk-dark-zh-TW-active-code.png",
+      "phone-light-en-admin-before.png",
+      "phone-light-en-create-dialog.png",
+      "phone-light-en-resolved-group.png",
+      "phone-light-en-active-code.png",
+      "phone-dark-en-admin-before.png",
+      "phone-dark-en-create-dialog.png",
+      "phone-dark-en-resolved-group.png",
+      "phone-dark-en-active-code.png",
+      "phone-light-zh-TW-admin-before.png",
+      "phone-light-zh-TW-create-dialog.png",
+      "phone-light-zh-TW-resolved-group.png",
+      "phone-light-zh-TW-active-code.png",
+      "phone-dark-zh-TW-admin-before.png",
+      "phone-dark-zh-TW-create-dialog.png",
+      "phone-dark-zh-TW-resolved-group.png",
+      "phone-dark-zh-TW-active-code.png"
+    ],
+    "boundary": "Owned network-none source build. Five independent production Fleet web/settings/join/member services per mass wave, no Agent lifecycle or backend CLI. Remaining clients use shipped compiled join/member code and explicit harness-side durable profiles. Synthetic LDAP; owned HTTPS proxies; deliberate eligibility-delay control for real admission backpressure. Not packaged/systemd/native/pilot/real AD.",
+    "error": "Error: Owned visible code-manager readiness deadline",
+    "cleaned": true,
+    "production": [
+      {
+        "path": "src/hub/audit/index.ts",
+        "sha256": "612067f991c33f6350b939129f75479a98b465ba0cb922ebc4eb259400641d1e"
+      },
+      {
+        "path": "src/hub/catalog.ts",
+        "sha256": "fd5278d9db728ed6dfb36eeea9612698127246a0012e4c5dbdb8697362bb8247"
+      },
+      {
+        "path": "src/hub/client.ts",
+        "sha256": "f07eb24c1ee94365f04b26c06ff07b195d9de2f3f06b47e88ce141a72523098e"
+      },
+      {
+        "path": "src/hub/compose/member.ts",
+        "sha256": "aa73a789e0d32b4a6eba759610cf5f59f57e639bcf4be52a18987f6b4e782719"
+      },
+      {
+        "path": "src/hub/compose/server.ts",
+        "sha256": "5da38a22d6d82a795e2d04ba449100190f1f7906fc9b43d4b92cead18f5d1108"
+      },
+      {
+        "path": "src/hub/enrolment-code.ts",
+        "sha256": "0af0dd5f23ac0ba59d5132033ec4aedd8710169a9d884da85df9da04ba5af1f7"
+      },
+      {
+        "path": "src/hub/group-policy/admin-impact.ts",
+        "sha256": "0405cdcd06fee88f52d13965f10993e9aa721227260f65b3b6ef38127df06599"
+      },
+      {
+        "path": "src/hub/group-policy/admin-inventory.ts",
+        "sha256": "7d6eb02454c2aa31c86d893211dc7244cff2a2e1ac9d31461f16b1dc52c9238c"
+      },
+      {
+        "path": "src/hub/group-policy/authorization.ts",
+        "sha256": "9adadbae8688085832484f762ac96537ee7ba409cb9b0f53934680dcd1b83262"
+      },
+      {
+        "path": "src/hub/group-policy/impact-inventory.ts",
+        "sha256": "185c44308de5de3bd035ab24e924bfc2d39ca2b0e59e9382022cd978db53375b"
+      },
+      {
+        "path": "src/hub/group-policy/resources.ts",
+        "sha256": "84fe8587c0c0d2f9135022dcb64b77343d3f9fbeb47caf0601db7318a9dce51d"
+      },
+      {
+        "path": "src/hub/group-policy/store.ts",
+        "sha256": "5d387e27514a106c65b8973590e901d81376fdb1eb027b636e3c979f66f6412d"
+      },
+      {
+        "path": "src/hub/http/compose.ts",
+        "sha256": "f9e77708ab88d838a826504849615bb734c48cc7c7b1e4af58f16f3b76918131"
+      },
+      {
+        "path": "src/hub/join/receipt.ts",
+        "sha256": "3358a9ace8ba6a0e89f5acfffe7fe69ae954d96abb42b6b72171732b22cef2a5"
+      },
+      {
+        "path": "src/hub/join/service.ts",
+        "sha256": "3a67e889c0ba6929bd286c9f969d8530126b1093844f3a923888b87711167e47"
+      },
+      {
+        "path": "src/hub/join/store.ts",
+        "sha256": "b84b57eea359c0ef4dbf8bc25d5c679618007ad16566f0c65d7ef6978e6e3b63"
+      },
+      {
+        "path": "src/hub/member/pairing-notices.ts",
+        "sha256": "6020790d4a44bfdd006681cc4e673fa4826e1901846994d89322138631b638d3"
+      },
+      {
+        "path": "src/hub/pairing-notices.ts",
+        "sha256": "a304fdf4a90d792b3b7663ad1fe7a2d6faec37604e466f15cbd0c4fcb4b17c73"
+      },
+      {
+        "path": "src/hub/pairing.ts",
+        "sha256": "53db89c0eaf72d8091377d74580997fc1705c87d6c7494d4a0243481ae9b067e"
+      },
+      {
+        "path": "src/hub/protocol.ts",
+        "sha256": "0050902484371d58fd55b7e80befd090b2e549f898dadaa095646b17fb8209fc"
+      },
+      {
+        "path": "src/hub/server.ts",
+        "sha256": "8375e750126fabaa4597347098500b97d2814c5c5fee7194bc5a691c9adcf0a3"
+      },
+      {
+        "path": "src/hub/types.ts",
+        "sha256": "8ef10112ca8523eff85ba84652a059b383602e5b94b07dc8fb7add40dc129429"
+      },
+      {
+        "path": "src/settings-api.ts",
+        "sha256": "9bb16cb61de425eb9c6bfa19890c0404eddd63e0fafb0f59c85c16176c8a29e6"
+      },
+      {
+        "path": "src/fleet-manager.ts",
+        "sha256": "789780cef3bfce944a5b8e7aa6b611fc3daffc0c45dfde4309adb64d0d9efa0d"
+      },
+      {
+        "path": "src/ui/hub-join-steps.js",
+        "sha256": "ce7af483d340b980d38e71df9d39720605234a9186ea4d8431c47074b9ab9fe2"
+      },
+      {
+        "path": "src/ui/hub-enrolment-code.js",
+        "sha256": "966c7613113455af0e3efe40b4efd546f33b86037b13ce2df38d25cdfce16ded"
+      },
+      {
+        "path": "src/ui/hub-enrolment-code-strings.js",
+        "sha256": "f57f8986e74e00d952190eec739f264c87671b87796320490fc1c94c66ba2aeb"
+      },
+      {
+        "path": "src/ui/hub-join-approval.js",
+        "sha256": "5c7a29bb7d47809b61f6a1b49ea0b36388075d80b98c2e6fc670f02709060e00"
+      },
+      {
+        "path": "src/ui/hub-join-queue.js",
+        "sha256": "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764"
+      },
+      {
+        "path": "src/ui/hub-client.js",
+        "sha256": "6d15110dd27b2e3da883f78116a94d1525df45676474084c891987ee1dfd0d60"
+      },
+      {
+        "path": "src/ui/hub-company-join.js",
+        "sha256": "35c0fbc928a5c2c75e37be6c420db314554308b70c4f85a86c6d4e248d33fd8e"
+      },
+      {
+        "path": "src/ui/settings-hub.js",
+        "sha256": "639c3da643f95b6f8a5ea45fe8f3e8c8ed7db2c74841141e385211c0bc4648a2"
+      },
+      {
+        "path": "src/ui/settings-hub-company-join.js",
+        "sha256": "efe0f4d565cd425a48bc9183357d876212a391cbaca086b664f224fd0efc595b"
+      }
+    ],
+    "images": [
+      {
+        "path": "desk-light-en-admin-before.png",
+        "sha256": "636c0d9215315c0a4558786d87ed76ebe0a030e1d1402e1d7ea773f9c63a4ebe"
+      },
+      {
+        "path": "desk-light-en-create-dialog.png",
+        "sha256": "8e5544cb5f75233dfa29d1c47d4f8f57d8a44072c2c6711e0dc1fd4adf58dcaa"
+      },
+      {
+        "path": "desk-light-en-resolved-group.png",
+        "sha256": "654bb6e69768a02f726a099e52cf22405470361f3fd0a1380b169ce85137a0af"
+      },
+      {
+        "path": "desk-light-en-active-code.png",
+        "sha256": "c56083e799e68a93bcf3b270b69906d79d6bf442e0b71dfc36e6bdce063f497e"
+      },
+      {
+        "path": "desk-dark-en-admin-before.png",
+        "sha256": "c45068cb27889dd6ff033aa8d629cedaa2f4488382daee4c88688b4c8f3614f3"
+      },
+      {
+        "path": "desk-dark-en-create-dialog.png",
+        "sha256": "5d50688b9b41362036767cbbf0b480ef8d22a8ee96349b84cb33682c74abe2d8"
+      },
+      {
+        "path": "desk-dark-en-resolved-group.png",
+        "sha256": "a0284e4fbaf7c6356f22f387201b84bebcde453ad074ed081dd9afc554863770"
+      },
+      {
+        "path": "desk-dark-en-active-code.png",
+        "sha256": "c45068cb27889dd6ff033aa8d629cedaa2f4488382daee4c88688b4c8f3614f3"
+      },
+      {
+        "path": "desk-light-zh-TW-admin-before.png",
+        "sha256": "eabdd18b7a98f4d078719d654bb9458698b7323b000877cc7916a802142a25a3"
+      },
+      {
+        "path": "desk-light-zh-TW-create-dialog.png",
+        "sha256": "0beb94f540642cf8de918897f4300dc2715c4fca14165877f1c7f57c3f935523"
+      },
+      {
+        "path": "desk-light-zh-TW-resolved-group.png",
+        "sha256": "ddfa1d968a60bd6bd1ce8c58ff8c957eb1a0929e307e38abe0beacc30a760fcb"
+      },
+      {
+        "path": "desk-light-zh-TW-active-code.png",
+        "sha256": "eabdd18b7a98f4d078719d654bb9458698b7323b000877cc7916a802142a25a3"
+      },
+      {
+        "path": "desk-dark-zh-TW-admin-before.png",
+        "sha256": "b02a771e032eb22f8ec48728eea2226d7ef17bacb68bebccbf2cab89e6925eb4"
+      },
+      {
+        "path": "desk-dark-zh-TW-create-dialog.png",
+        "sha256": "e4440e174fac3f24a61f9b230894d253379dd5ab0e2f97724852dee7d1a65416"
+      },
+      {
+        "path": "desk-dark-zh-TW-resolved-group.png",
+        "sha256": "fc4d4d0fac67581cb5f68fa90937bdaeb5a74708bc1a157c50795700f0e2fcde"
+      },
+      {
+        "path": "desk-dark-zh-TW-active-code.png",
+        "sha256": "b02a771e032eb22f8ec48728eea2226d7ef17bacb68bebccbf2cab89e6925eb4"
+      },
+      {
+        "path": "phone-light-en-admin-before.png",
+        "sha256": "586b0c0aefc63fc41a417135d5c5b75918b9cbb2c2f45734140e862de49788b5"
+      },
+      {
+        "path": "phone-light-en-create-dialog.png",
+        "sha256": "4395c79592a45c34af7e32a8a2ab96a07634fdfa49dd18a79525410b4e396395"
+      },
+      {
+        "path": "phone-light-en-resolved-group.png",
+        "sha256": "a7602999920d96b67828a416255623a0d18d2e05e86e25e8d804a90ca4eb5c52"
+      },
+      {
+        "path": "phone-light-en-active-code.png",
+        "sha256": "586b0c0aefc63fc41a417135d5c5b75918b9cbb2c2f45734140e862de49788b5"
+      },
+      {
+        "path": "phone-dark-en-admin-before.png",
+        "sha256": "f208ca9add07dc2ea69a47ef9fd1cc9473dc76af70206031d787c9172fd05599"
+      },
+      {
+        "path": "phone-dark-en-create-dialog.png",
+        "sha256": "d96514af9850661f16768634ced77b1485e93ceca5e53676274489e78567c555"
+      },
+      {
+        "path": "phone-dark-en-resolved-group.png",
+        "sha256": "14bb33b30a2c68847bc35ac69b62e292cc129b9c9d257fc5e62e088062c52f0d"
+      },
+      {
+        "path": "phone-dark-en-active-code.png",
+        "sha256": "f208ca9add07dc2ea69a47ef9fd1cc9473dc76af70206031d787c9172fd05599"
+      },
+      {
+        "path": "phone-light-zh-TW-admin-before.png",
+        "sha256": "32bd9266b6972102dc490675a97643f376d7111530a9e9766f199c381e85007a"
+      },
+      {
+        "path": "phone-light-zh-TW-create-dialog.png",
+        "sha256": "b00df4edda23d38d4ae3a21c15b0c9277210e71cc41caa4e63cd9d4426a1b367"
+      },
+      {
+        "path": "phone-light-zh-TW-resolved-group.png",
+        "sha256": "630556d292bae8cbf1ece4031d008c4899c450fe009df3664775d34e74b12ea5"
+      },
+      {
+        "path": "phone-light-zh-TW-active-code.png",
+        "sha256": "32bd9266b6972102dc490675a97643f376d7111530a9e9766f199c381e85007a"
+      },
+      {
+        "path": "phone-dark-zh-TW-admin-before.png",
+        "sha256": "732471134cc7244bbbe901a22608749582d8ad2d43e6565bdddeda2268bd9318"
+      },
+      {
+        "path": "phone-dark-zh-TW-create-dialog.png",
+        "sha256": "ff2ed2be5c9b6ac07f943b23124a8234795f7cd10e261248fbcc1e71517d7c6e"
+      },
+      {
+        "path": "phone-dark-zh-TW-resolved-group.png",
+        "sha256": "692fbd912b79f263bbe927ef14b1249f6dce90f86d45fe8cccbbdae7dcc41e35"
+      },
+      {
+        "path": "phone-dark-zh-TW-active-code.png",
+        "sha256": "732471134cc7244bbbe901a22608749582d8ad2d43e6565bdddeda2268bd9318"
+      }
+    ]
+  },
+  "disposition": "Not passed.116 protocol checks passed;33 admin capture PNGs before U2 prerequisite-read readiness did not settle. Codes were readable but creation disabled; no capacity wave ran. Next fixture may press U2's existing explicit read-only retry at most3times, with5s spacing. No write, account, bucket, pool or product limit is changed. Container and owned launcher cleanup completed."
+}

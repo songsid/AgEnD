@@ -58,6 +58,12 @@ it("pending IDs for a backend without an agent survive into the authenticated da
   expect(response.status).toBe(200); expect(response.body.selected).toEqual(["codex", "antigravity"]); expect(response.body.pending).toEqual(["codex", "antigravity"]);
   expect(response.body.states.antigravity).toBe("console_only"); expect(response.headers["cache-control"]).toContain("no-store"); expect(h.transport.start).not.toHaveBeenCalled();
 });
+it("AGEND-113: the route takes a start for Antigravity (the service decides: the first-run checklist's own service still says console-only), and never anything outside the four", async () => {
+  const h = await rig();
+  const agy = await h.call(h.admin.headers, { operation: "start", backend: "antigravity" });
+  expect(agy.status).toBe(409); expect(agy.body).toEqual({ error: "signin_console_only" }); expect(h.transport.start).not.toHaveBeenCalled();
+  for (const backend of ["grok", "agy", "opencode", "codex; sh"]) expect((await h.call(h.admin.headers, { operation: "start", backend })).status, backend).toBe(400);
+});
 it("a second admin gets no hints and cannot answer the first admin's prompt", async () => {
   const h = await rig(); const started = await h.call(h.admin.headers, { operation: "start", backend: "codex" });
   expect(started.body.login.code).toBe("TEST-CODE"); const other = h.session(); const view = await h.call(other.headers);
@@ -88,4 +94,16 @@ it("a verified auth check removes the pending hint; a screen/exit alone does not
   const h = await rig(); h.state.alive = false;
   const failed = await h.call(h.admin.headers, { operation: "start", backend: "codex" }); expect(failed.body.login.reason).toBe("auth_unconfirmed"); expect(readPendingBackendSignIns(h.dir).pending).toContain("codex");
   h.state.auth = "valid"; const done = await h.call(h.admin.headers, { operation: "start", backend: "codex" }); expect(done.body.login.phase).toBe("done"); expect(readPendingBackendSignIns(h.dir).pending).toEqual(["antigravity"]);
+});
+it("AGEND-215: cancel {operation, backend} ends the run only when it is on that backend; an unknown backend or an extra field is refused", async () => {
+  const h = await rig();
+  expect((await h.call(h.admin.headers, { operation: "start", backend: "codex" })).status).toBe(200);
+  expect(h.service.activeBackend).toBe("codex");
+  const other = await h.call(h.admin.headers, { operation: "cancel", backend: "kiro-cli" });
+  expect(other.status).toBe(200); expect(h.service.activeBackend, "another backend's cancel leaves codex running").toBe("codex"); expect(h.transport.close).not.toHaveBeenCalled();
+  expect((await h.call(h.admin.headers, { operation: "cancel", backend: "../x" })).status).toBe(400);
+  expect((await h.call(h.admin.headers, { operation: "cancel", backend: "codex", extra: 1 })).status).toBe(400);
+  expect(h.service.activeBackend).toBe("codex");
+  expect((await h.call(h.admin.headers, { operation: "cancel", backend: "codex" })).status).toBe(200);
+  expect(h.service.activeBackend).toBeNull(); expect(h.transport.close).toHaveBeenCalledOnce();
 });

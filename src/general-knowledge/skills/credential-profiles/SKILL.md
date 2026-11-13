@@ -1,6 +1,6 @@
 ---
 name: credential-profiles
-description: Run agents on more than one subscription or login of the same backend (credential profiles). Use when someone asks for a worker on a different account; to switch, change or move an agent's profile, credential profile, account or login (codex, claude-code, kiro-cli); whether its session or conversation continues after the switch; or which subscription an agent is using. Also 換帳號、換 profile、切換 codex/claude/kiro 登入、換訂閱、切換後接續 session. Currently kiro-cli, codex and claude-code.
+description: Run agents on more than one subscription or login of the same backend (credential profiles). Use when someone asks for a worker on a different account; to switch, change or move an agent's profile, credential profile, account or login (codex, claude-code, kiro-cli); whether its session or conversation continues after the switch; or which subscription an agent is using. Also 換帳號、換 profile、切換 codex/claude/kiro 登入、換訂閱、切換後接續 session. Currently kiro-cli, codex, claude-code and (dashboard only) antigravity.
 roles: [general]
 ---
 
@@ -10,8 +10,12 @@ One AgEnD fleet normally shares one login per backend. A **credential profile**
 is a named, separate login for the same backend, so two agents can run on two
 subscriptions at once.
 
-`kiro-cli`, `codex` and `claude-code` have profiles today. For any other backend,
-say so rather than setting an option that will be ignored.
+`kiro-cli`, `codex` and `claude-code` have profiles today, and `antigravity` has
+named accounts (told its folder by an argument, `agy --app_data_dir <folder>`).
+An Antigravity account is **made and connected from the dashboard only** (Settings
+→ Accounts → **+ Add account** → Connect); it has no `/login agy <profile>` in chat
+and no host command to hand over. For any other backend, say so rather than
+setting an option that will be ignored.
 
 **The two behave differently when you switch, and it is not a setting.** Kiro
 keeps its conversations inside the same database as its login, so a different
@@ -73,7 +77,8 @@ anywhere: on macOS the login is stored under a Keychain item named after that
 path string, so a login under a differently spelled path (a relative
 `AGEND_HOME`, a trailing slash, a `~` that was never expanded) lands in another
 item, and the agent still finds no login.
-The refusal also names `/login <backend> <profile>`: offer that first, since it works from chat.
+For `kiro-cli`, `codex` and `claude-code` the refusal also names `/login <backend> <profile>`: offer that first, since it works from chat.
+**Antigravity is the exception: never tell the user to type `/login` for it.** An Antigravity account is connected only from the dashboard (Settings → Accounts → **+ Add account** → Connect), so for it send the user there; a chat `/login agy …` is refused.
 
 ## Create a worker on another subscription
 
@@ -117,6 +122,25 @@ agent's **Account** field, or **Settings → Agents → AI accounts and API keys
 Accounts** (**Move agents here…**, and each CLI's **Fleet default**). Settings
 refuses a signed-out profile and names its login command.
 Never hand-edit `fleet.yaml`.
+
+### A ClassicBot room (#3715)
+
+A ClassicBot room is not in `fleet.yaml`, but its account is switched the same way:
+
+```
+update_instance_config(
+  name: "classic-room-0001",
+  config: { backend_options: { "claude-code": { credential_profile: "personal" } } },
+)
+```
+
+For a room this is the **only** thing `update_instance_config` changes; any other
+key is refused, as before. AgEnD writes only that room's lines in `classicBot.yaml`
+(comments and other rooms stay), restarts the room as a Settings save does (Claude
+Code's conversation goes along), and the reply's `launched_profile` is the account
+the room actually restarted on. `null` goes back to the fleet default. An account
+that does not exist on this host or is not signed in is refused, with nothing
+written. Never hand-edit `classicBot.yaml` for this.
 
 A fleet admin can also add a named account (**+ Add account**: creates its
 folder, then signs it in) and remove one (**Remove…**: deletes its folder, its
@@ -234,6 +258,15 @@ Say "the default login", not "no subscription".
 
 ## Answer "how much is left on each subscription?"
 
+`get_usage` defaults to compact account rows: name/profile, plan, used percentages
+and relative reset times; `binding` lists only vendor-reported binding windows
+(absent means not reported), with short stale/cache hints and Codex reset tickets
+and credits. `get_usage {detail:true}` returns the full JSON, including capacity
+estimates and localization metadata. CLI: `agend-agent usage [--detail]`; `--force`
+still uses the existing rate-limited refresh. Capacity estimates count only this
+fleet, so the shared footnote appears once in the compact answer. The dashboard
+and chat `/usage` keep their existing rich display.
+
 `get_usage` returns one row per subscription: `Kiro (work)` and
 `Kiro (personal)` rather than a single `Kiro`. Read them out separately — they
 are two quotas, and adding them together would give a number that is true of
@@ -289,8 +322,11 @@ and log it in, so report it as such rather than as a missing subscription.
 
 - Do not invent a profile that has never been logged in and report success —
   the switch is refused, and the refusal tells you what to relay.
-- Do not set `credential_profile` for a backend other than `kiro-cli`, `codex`
-  or `claude-code`; it is ignored, and the config validator warns about it.
+- Do not set `credential_profile` for a backend other than `kiro-cli`, `codex`,
+  `claude-code` or `antigravity`; it is ignored, and the config validator warns
+  about it. An `antigravity` agent may be assigned an account that already exists
+  (`backend_options: { "antigravity": { "credential_profile": "<account>" } }`),
+  but connecting that account is dashboard-only: do not offer `/login` for it.
 - Do not copy a Codex agent's `state_5.sqlite`, `cx/` hash dirs or rollout JSONL
   by hand. Set the profile through tooling; a running instance is restarted for
   you. Do not tell the user the agent has resumed the same thread just because

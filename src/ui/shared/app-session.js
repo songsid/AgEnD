@@ -8,6 +8,7 @@ import { Icon } from "./ui-icons.js";
 import { t, lang } from "./app-i18n.js";
 import { AuthorizeChip, useWebAuthorization } from "./web-authorize.js";
 import { roleName } from "./device-roles.js";             // its own file: a retained older web-authorize.js has no roleName (PR #3553 review)
+import { appStore } from "./app-store.js";
 
 async function getJson(url) {
   try {
@@ -43,6 +44,7 @@ export function SessionMenu() {
     try {
       const r = await fetch(url, { method, credentials: "same-origin" });
       if (!r.ok) throw new Error(String(r.status));
+      if (url === "/auth/logout" || (method === "DELETE" && url === "/auth/sessions")) appStore.get().chatWorkspaceSessionEnd?.();
       after();
     } catch { setError(true); }
   }
@@ -67,3 +69,5 @@ export function SessionMenu() {
     </div>` : null}
   </div>`;
 }
+// A split workspace clears only this viewer's display preference after successful sign-out.
+SessionMenu.workspaceVersion = 1;

@@ -107,5 +107,6 @@ Hub 會為你的其他登入工作階段、Hub 管理員與你其他已連接的
 
 ## 另請參閱
 
+- [把 Fleet 連接到 Hub](hub-join.zh-TW.md)：一個輸入框的連接方式，以及管理員的「讓同仁加入」卡片。
 - [Web dashboard](web-dashboard.zh-TW.md)：登入你自己 Fleet 的 dashboard。
 - [概念](concepts.zh-TW.md)：host owner、fleet admin 與其他角色。

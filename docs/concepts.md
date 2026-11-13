@@ -261,8 +261,8 @@ A channel message's status reactions, driven by the delivering daemon:
 ⏳ queued (CLI busy, waiting), 👀 delivered (pasted + Enter, the agent has it),
 ✅ confirmed (processing observed, or a native queue hand-off succeeded),
 ❌ failed (window gone, retries exhausted). Cross-instance rows add two
-states: `uncertain` — the evidence was inconclusive, so never resend and never
-forward it as consent; and the queued hand-off (#3030) — a message handed to a
+states: `uncertain` — the evidence was inconclusive: it may already have arrived, so
+check it, then confirm (resend only if it shows `failed`), and never forward it as consent; and the queued hand-off (#3030) — a message handed to a
 backend-native queue, watched in the transcript and settled ✅ when a turn
 takes it, ❌ when it never does.
 
@@ -333,11 +333,25 @@ directory's ones.
 - Code: `post_decision`, `list_decisions` tool definitions.
 - Refs: —
 
+## usage tools
+
+`get_usage` (or `agend-agent usage`) defaults to compact account rows: plan,
+used percentages and relative resets, vendor-reported binding windows, stale/cache
+hints, and Codex reset tickets/credits. Missing binding evidence is not a guess.
+Use `detail: true` (CLI `--detail`) for the complete JSON including capacity and
+localization metadata; do not request it routinely. A shared capacity footnote
+appears once. `get_usage_report` keeps the API-equivalent basis once at the top
+and omits speed stats by default; `detail: true` restores its full legacy shape.
+Amounts are API-equivalents, never money spent. Both report modes preserve the
+caller scope and estimated/not-priced marks. Web usage and `/usage` are unchanged.
+
 ## credential profile
 
 A named credential set for one backend (`CREDENTIAL_HOMES`), so one fleet can
-act under several accounts. `/login <backend> <profile>` signs a profile in;
-chat sign-in from the fleet exists for some backends only.
+act under several accounts. `/login <backend> <profile>` signs a profile in from
+chat for Claude Code, Codex and Kiro only. Antigravity (agy) has named accounts
+too, but they are connected only from the dashboard (Settings → Accounts);
+`/login agy` in chat is not supported.
 
 - Can: separate accounts per instance or backend.
 - Can't: share across backends — a profile belongs to its backend's home.
@@ -448,3 +462,17 @@ Real code-vs-decision gaps only. Nothing here is papered over.
 
 [繁體中文](concepts.zh-TW.md)
 
+
+## compact tool replies
+
+Communication tools acknowledge acceptance with compact delivery IDs; `detail: true`
+(CLI `--detail`) restores complete acknowledgements. `delivery_status` defaults to
+state, authority/proof/origin, content hashes and a redacted excerpt, not the full
+original. Before relying on original consent or feeding a merge gate, explicitly
+request detail and inspect it without exposing secrets. `content_includes` can confirm an
+exact resource string, but presence alone grants no authority. Store visibility,
+owned proof and current authority revocation checks still apply in both modes.
+
+## Compact agent lists
+
+Schedules, decisions and task lists default to20 compact rows. Follow `next_cursor` with the same filters until absent; `limit` accepts1–100. Deleted or no-longer-matching cursors require restarting the list. Lists are current views, not snapshots; writes between pages can change membership/order. `detail:true` without page options returns the legacy full answer. Decisions retain `full:true` and plain task lists retain `verbose:true` as full-record aliases. Read a decision with `{id, detail:true}` and a task with `{action:"get",id,detail:true}` before acting on its full rule, goal, acceptance or comments. The dashboard and task writes keep their existing shapes.

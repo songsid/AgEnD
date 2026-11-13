@@ -10,6 +10,7 @@
  * Real files on scratch directories; a real FleetManager on a scratch AGEND_HOME (never the real one), no daemon, no
  * CLI, no tmux (bd0c88aa).
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -235,7 +236,7 @@ describe("#1770: the ledger keeps snapshots as long as their message", () => {
 describe("#1770: the fleet — a reply's files are served from their snapshot, across edits and restarts", () => {
   const fleet = { defaults: {}, instances: { w: { working_directory: "/w/w" } } };
   async function start() {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(home) as any;
     clearInterval(fm.sessionPruneTimer);
     fm.fleetConfig = fleet;

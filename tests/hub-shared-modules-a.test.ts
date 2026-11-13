@@ -41,7 +41,9 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
   });
   it("the Hub's own module list holds only Hub modules: it reaches the shared ones through /assets/", () => {
     expect([...HUB_UI_MODULES]).toEqual(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
-      "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js"]);   // #3298 S-89/S-90
+      "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",   // #3298 S-89/S-90
+      "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js",
+      "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js"]);   // Hub UX U2 (M-2932)
   });
 });
 
@@ -107,7 +109,26 @@ describe("ComposerInput, RailFrame and PageHead", () => {
     expect(p.root.querySelector("#attachBtn").getAttribute("aria-label")).toBe("Attach a file");
     const input = p.root.querySelector('input[type="file"]'); (input as any).files = ["f1"]; fire(input, "change", {});
     expect(files).toEqual([["f1"]]);
-    expect([p.root.querySelector("#sendBtn").disabled, p.root.querySelector("#stopBtn").hidden]).toEqual([true, true]);
+    // M-2904: the composer row has no Stop (it is WorkBarView's), so its width never changes with the agent's state.
+    expect([p.root.querySelector("#sendBtn").disabled, p.root.querySelector("#stopBtn")]).toEqual([true, null]);
+    await p.unmount();
+  });
+  it("M-2904 (Fable #3653): panel-chat still hands ComposerInput a hidden stop — an older chat-composer.js (kept by a tab that loaded the Hub panel first) reads stop.* with no default", () => {
+    const src = readFileSync(ui("panel-chat.js"), "utf8");
+    expect(src).toMatch(/const HIDDEN_STOP = Object\.freeze\(\{ hidden: true, disabled: true, title: "", label: "", onClick: \(\) => \{\} \}\);/);
+    const at = src.indexOf("<${ComposerInput}");
+    expect(src.slice(at, src.indexOf("/>", at))).toContain("stop=${HIDDEN_STOP}");
+  });
+  it("M-2904: WorkBarView draws Stop only when given one, beside what it stops", async () => {
+    let stopped = 0;
+    await p.mount(h(C.WorkBarView, { kind: "working", label: "Alpha is working…", elapsed: "3s", elapsedTitle: "t" })); await settle(2);
+    expect(p.root.querySelector("#stopBtn")).toBeNull();
+    await p.unmount();
+    await p.mount(h(C.WorkBarView, { kind: "working", label: "Alpha is working…", elapsed: "3s", elapsedTitle: "t", stop: { disabled: false, title: "Stop the reply", label: "停止回覆", onClick: () => { stopped++; } } })); await settle(2);
+    const stop = p.root.querySelector(".work-bar #stopBtn");
+    expect([stop.getAttribute("aria-label"), stop.textContent]).toEqual(["停止回覆", "停止回覆"]);
+    fire(stop, "click", {});
+    expect(stopped).toBe(1);
     await p.unmount();
   });
   it("RailFrame: the usage rail's frame; × is the caller's", async () => {

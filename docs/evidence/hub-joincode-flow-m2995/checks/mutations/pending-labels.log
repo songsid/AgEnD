@@ -1,0 +1,40 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts (25 tests | 1 failed | 24 skipped) 972ms
+     × real revoke retires a pending code request and preserves its specific browser feedback 970ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 skipped (25)
+   Start at  02:01:43
+   Duration  4.35s (transform 2.48s, setup 78ms, import 3.17s, tests 972ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-http-b1.test.ts > B1 enrolment-code protected routes and actual join > real revoke retires a pending code request and preserves its specific browser feedback
+AssertionError: expected { …(12) } to match object { inFlight: 1, …(1) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "inFlight": 1,
+-   "inFlightLabels": [
+-     "Code Fleet",
+-   ],
++   "inFlight": 0,
++   "inFlightLabels": [],
+  }
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts:150:20
+    148|     const browser = await a.openBrowser("dan");
+    149|     const listed = (await r.call(admin, "GET", "/hub/v1/admin/enrolmen…
+    150|     expect(listed).toMatchObject({ inFlight: 1, inFlightLabels: ["Code…
+       |                    ^
+    151|     expect((await r.call(admin, "POST", "/hub/v1/admin/enrolment-codes…
+    152|     expect((await a.command("status")).body).toMatchObject({ state: "e…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

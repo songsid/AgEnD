@@ -11,9 +11,12 @@
  * Everything else is the tool's own and is answered as before (undefined here). The caller is the instance the tool
  * belongs to; the board's rules (scheduler/task-board.ts) decide what it may do. Answers are plain text.
  */
+import { listOptions, pageRows } from "./agent-list-output.js";
 import type { SchedulerDb } from "./scheduler/db.js";
-import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor, type CardPatch, type CardPriority, type CardSize, type CardStatus, type DispatcherInput, type NewCard } from "./scheduler/task-board.js";
+import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor, type Card, type CardPatch, type CardPriority, type CardSize, type CardStatus, type DispatcherInput, type NewCard } from "./scheduler/task-board.js";
 import { cardLine, cardText, myWorkText, projectsText, writeText } from "./scheduler/task-board-text.js";
+import { spanText } from "./dispatcher-liveness.js";
+import { t } from "./locale.js";
 
 /** A `create` naming one of these opens a board card; without them it is the tool's plain task. */
 const BOARD_CREATE = ["project", "parent", "scope", "acceptance", "context", "needs_review", "size", "dispatcher"] as const;
@@ -30,8 +33,8 @@ export const ACTION_FIELDS: Readonly<Record<string, readonly string[]>> = {
   move: ["id", "to", "status", "reason", "result", "comment", "version"],
   claim: ["id"],
   done: ["id", "result"],
-  get: ["id"],
-  list: ["filter_assignee", "filter_status", "verbose", "project", "parent"],
+  get: ["id", "detail"],
+  list: ["filter_assignee", "filter_status", "verbose", "project", "parent", "stale", "detail", "limit", "cursor"],
   mine: [],
   projects: [],
   create_project: ["name", "description"],
@@ -212,16 +215,43 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
       return writeText(card, board.takeNotes(), from);
     }
     case "list": {
+      const paging = listOptions(args);
+      // #3647: the claimed cards whose assignee stopped (the same episodes the dispatcher was told about).
+      if (args.stale === true) {
+        const now = Date.now();
+        const lines = db.liveness.listOpen().flatMap((e) => {
+          const card = board.findCard(e.cardUuid);
+          if (!card || card.status !== "claimed" || (args.filter_assignee && card.assignee !== args.filter_assignee)) return [];
+          return [{
+            id: card.uuid, code: card.code, title: card.title, assignee: e.assignee,
+            reason: t(`liveness.kind_${e.kind}`), age: spanText(now - e.since),
+            line: t("liveness.stale_line", card.code, e.assignee, t(`liveness.kind_${e.kind}`), spanText(now - e.since)),
+          }];
+        });
+        if (args.detail === true) return lines.length ? lines.map(row => row.line).join("\n") : t("liveness.stale_none");
+        const { rows, ...more } = pageRows(lines, args);
+        return JSON.stringify({ tasks: rows.map(({ line, ...row }) => row), ...more });
+      }
       if (!has(args, ["project", "parent"])) return undefined;
       const filterStatus = args.filter_status === undefined ? undefined : (Array.isArray(args.filter_status) ? args.filter_status : [args.filter_status]).map((v) => status(v, "filter_status"));
       const project = args.project === "" || args.project === "none" || args.project === null ? null : (str(args.project) ?? (typeof args.project === "number" ? args.project : undefined));
-      const { cards, total } = board.listCards({ project, parent: str(args.parent), assignee: str(args.filter_assignee) || undefined, status: filterStatus });
+      const filter = { project, parent: str(args.parent), assignee: str(args.filter_assignee) || undefined, status: filterStatus };
+      if (args.detail !== true && args.verbose !== true) {
+        const { cards } = board.listCards({ ...filter, limit: paging.limit + 1, after: paging.cursor });
+        const rows = cards.slice(0, paging.limit);
+        return JSON.stringify({ tasks: rows.map(cardTitle), ...(cards.length > paging.limit ? { next_cursor: rows.at(-1)!.uuid } : {}) });
+      }
+      const { cards, total } = board.listCards(filter);
       if (!cards.length) return "No cards match.";
       return [...cards.map((c) => cardLine(c)), ...(total > cards.length ? [`… ${total - cards.length} more: narrow with filter_status or filter_assignee`] : [])].join("\n");
     }
     case "get": {
       const card = board.findCard(need(args.id, "id"));
-      return card && board.isOnBoard(card) ? cardText(board, card) : undefined;
+      listOptions(args);
+      if (!card || !board.isOnBoard(card)) return undefined;
+      return args.detail === true ? cardText(board, card) : JSON.stringify({
+        task: cardTitle(card), hint: "Use detail:true for goal, acceptance, state and comments before working.",
+      });
     }
     default:
       return undefined;
@@ -246,4 +276,8 @@ export function boardActivity(args: Record<string, unknown>): string | null {
 export function boardCardLimit(fleet: { instances?: Record<string, { board_cards_at_once?: unknown } | undefined> } | null | undefined, name: string): number {
   const own = fleet?.instances && Object.prototype.hasOwnProperty.call(fleet.instances, name) ? fleet.instances[name]?.board_cards_at_once : undefined;
   return typeof own === "number" && Number.isInteger(own) && own >= 1 ? own : 1;
+}
+
+function cardTitle(card: Card) {
+  return { id: card.uuid, code: card.code, title: card.title, status: card.status, assignee: card.assignee, priority: card.priority, version: card.version };
 }

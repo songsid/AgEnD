@@ -225,7 +225,7 @@ describe("`agend fleet restart` runs `agend restart` (inert stubs)", () => {
     "%j: a deprecation line, then exactly `agend restart --yes` — the same manager calls and exit code, no SIGUSR1", async args => {
       await fakeFleet();
       const shim = await run(args, "agend-leader");
-      expect(shim.stderr).toContain("`agend fleet restart` is deprecated and goes away in 2.4");
+      expect(shim.stderr).toContain("`agend fleet restart` is deprecated and goes away in a later 2.4 release");
       const shimCalls = calls();
       expect(shimCalls).toContain("systemctl");          // it asked the service manager first, as `agend restart` does
       expect(existsSync(marker)).toBe(false);            // the "fleet" never got SIGUSR1

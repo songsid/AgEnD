@@ -1,0 +1,34 @@
+{
+  "reversals": [
+    {
+      "regression": "fingerprint-exit",
+      "failedAssertions": [
+        "directory CA consent in the initializer refuses a mismatched leaf fingerprint without any LDAP bytes or secret prompt"
+      ],
+      "failure": "expected 1 to be 2",
+      "passedControls": 6
+    },
+    {
+      "regression": "file-ca-exit",
+      "failedAssertions": [
+        "directory CA consent in the initializer declining fetched or imported CA fingerprints returns to CA choices before service login and initialization"
+      ],
+      "failure": "expected 1 to be 2",
+      "passedControls": 6
+    },
+    {
+      "regression": "fetched-ca-exit",
+      "failedAssertions": [
+        "directory CA consent in the initializer declining fetched or imported CA fingerprints returns to CA choices before service login and initialization"
+      ],
+      "failure": "expected 1 to be 2",
+      "passedControls": 6
+    }
+  ],
+  "restored": true,
+  "inputs": {
+    "0c3b337a332bcff4b36e2f451727c6e50ef57f02b63eb27af8d90f07c9a0c34c": [
+      "src/hub/init/wizard.ts"
+    ]
+  }
+}

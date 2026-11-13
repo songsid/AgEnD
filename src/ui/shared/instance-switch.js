@@ -4,6 +4,7 @@
 // gets none (Chat and Details need a session): the caller does not render it there. #2855: a trusted guest's is Chat |
 // View | Search (search opens on this agent); a chat-level guest gets none.
 import { html } from "./app-html.js";
+import * as paneContext from "./app-ctx.js";
 import { openSearch } from "./app-shell.js";
 import { t } from "./app-i18n.js";
 import { chatPath, detailsPath, logPath, viewPath } from "./app-route.js";
@@ -14,7 +15,12 @@ import { supportsInstanceFeature } from "./instance-nav.js";
  * wide as its label in the current tab's weight (app.css), so the bar keeps its size whichever tab is current.
  */
 export function InstanceSwitch({ name, current, guest = false, instance }) {
-  const seg = (key, href, label) => html`<a key=${key} class=${`seg-item${current === key ? " active" : ""}`} href=${href}
+  const pane = paneContext.usePane?.();
+  const follow = (e, href) => {
+    if (!pane?.navigate || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    e.preventDefault(); pane.navigate(href);
+  };
+  const seg = (key, href, label) => pane?.visibleTabs && !pane.visibleTabs.includes(key) ? null : html`<a key=${key} class=${`seg-item${current === key ? " active" : ""}`} href=${href} onClick=${pane?.navigate ? (e) => follow(e, href) : undefined}
     aria-current=${current === key ? "page" : undefined} data-label=${label}>${label}</a>`;
   if (guest) return html`<nav class="inst-switch seg" aria-label=${t("app.instanceViews", name)}>
     ${seg("chat", chatPath(name), t("app.chat"))}${supportsInstanceFeature(instance,"view") ? seg("view", viewPath(name), t("app.view")) : null}<button key="search" type="button" class="seg-item"
@@ -24,3 +30,4 @@ export function InstanceSwitch({ name, current, guest = false, instance }) {
     ${seg("chat", chatPath(name), t("app.chat"))}${supportsInstanceFeature(instance,"view") ? seg("view", viewPath(name), t("app.view")) : null}${supportsInstanceFeature(instance,"log") ? seg("log", logPath(name), t("app.log")) : null}${supportsInstanceFeature(instance,"details") ? seg("details", detailsPath(name), t("app.details")) : null}
   </nav>`;
 }
+InstanceSwitch.workspaceVersion = 1;

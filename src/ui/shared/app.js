@@ -12,6 +12,7 @@ import { Shell, handleKey, handleSearchKey, showDialog, closeDrawer, openDrawer,
 import { installSwipe } from "./app-swipe.js";
 import { installTextUndo } from "./text-undo.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
+import * as navigation from "./app-nav.js";
 import { createStream } from "./app-stream.js";
 import { appStore, applyStatus, applyActivity, guestPage, guestTrusted, addNotice, createNoticesSync } from "./app-store.js";
 import { chatPath } from "./app-route.js";
@@ -23,6 +24,8 @@ import { installOwnerCss } from "./owner-css.js";
 import { startThemes } from "./app-themes.js";
 
 const boot = document.body.dataset;
+const workspaceLanding = location.pathname === "/ui";
+const popoutRequested = new URLSearchParams(location.search).get("presentation") === "popout";
 // #1523 N3: this device's text size, on the root before the first paint of any panel.
 initTextSize();
 initUsageRail();
@@ -148,6 +151,22 @@ if (hubPage) {
     showDialog(m.CreateInstanceDialog);
   };
   setNewInstanceOpener(onNewInstance);
+  // Optional alpha feature: an old server/CSS/module set keeps the original single-panel path and drafts.
+  if (!guest && popoutRequested && boot.chatWorkspace === "1") {
+    Promise.all([import("/ui/js/chat-popout.js"), chatBoot]).then(([popout, chat]) => {
+      popout.installPopout({ nav: navigation, chat, scope: boot.chatLayoutScope });
+    }).catch(() => {}); // old optional assets retain the full single-chat frame and the parent's draft
+  }
+  if (!guest && !popoutRequested && boot.chatWorkspace === "1" && getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-version").trim() === "1"
+    && getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-geometry-version").trim() === "1") {
+    Promise.all([import("/ui/js/chat-workspace.js"), chatBoot]).then(([workspace, chat]) => {
+      workspace.installWorkspaceEntry({ nav: navigation, chat, landing: workspaceLanding, scope: boot.chatLayoutScope,
+        ready: async () => {
+          const [details, log, view] = await Promise.all([loadDetails(), loadLog(), loadView()]);
+          return workspace.verifyWorkspaceDependencies({ chat, details, log, view });
+        } });
+    }).catch(() => {}); // no entry on a mixed/failed optional import
+  }
 } else appStore.set({ connection: "none" });
 
 startRouter(window);

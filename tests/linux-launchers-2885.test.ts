@@ -4,11 +4,11 @@
  * icons in the user's hicolor theme, and the scripts they run. No desktop session: nothing, said plainly. The scripts
  * are run here with the real sh against fake agend / xdg-open / wl-copy / xclip.
  */
-import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { chmodSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { getLocale, setLocale } from "../src/locale.js";
 import {
   LINUX_LAUNCHERS_HINT_MARKER, LINUX_LAUNCHERS_MARKER, agendDirOnPath, dashboardScript, desktopEntry, execArg, icoPngs, isGnome,
@@ -173,13 +173,18 @@ describe("M-2885: the desktop entry text", () => {
 });
 
 /** Fake commands in a bin directory: each logs its argv (and standard input) to <name>.log. */
-function fakeBin(commands: Record<string, string>) {
+function fakeBin(commands: Record<string, string>, beforeLog: Record<string, string> = {}) {
   const bin = scratch();
   for (const [name, body] of Object.entries(commands)) {
-    writeFileSync(join(bin, name), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${bin}/${name}.log'\n${body}\n`);
+    writeFileSync(join(bin, name), `#!/bin/sh\n${beforeLog[name] ?? ""}\nprintf '%s\\n' "$*" >> '${bin}/${name}.log'\n${body}\nagend_fake_status=$?\n: > '${bin}/${name}.done'\nexit "$agend_fake_status"\n`);
     chmodSync(join(bin, name), 0o755);
   }
   return bin;
+}
+async function fakeCommandDone(bin: string, name: string) {
+  // Redirection creates .log before printf writes. The marker is created only
+  // after argv and body complete; keep the old loop's five-second bound.
+  await vi.waitFor(() => expect(existsSync(join(bin, `${name}.done`))).toBe(true), { timeout: 5_000 });
 }
 const runScript = (text: string, bin: string, input: string, env: NodeJS.ProcessEnv = {}) => {
   const file = join(scratch(), "s.sh");
@@ -189,7 +194,7 @@ const runScript = (text: string, bin: string, input: string, env: NodeJS.Process
 const AGEND_WEB = `if [ "$1 $2" = "web --code" ]; then printf 'Sign-in page: http://localhost:19280/signin\\nCode:         ABCD-EF23   (works once, valid ~5 min)\\n'; exit 0; fi; exit 9`;
 
 describe("M-2885: the dashboard launcher's script (real sh)", () => {
-  it("asks the fleet for a code, opens the sign-in page, copies the code (Wayland), shows it spaced, waits for Enter", () => {
+  it("asks the fleet for a code, opens the sign-in page, copies the code (Wayland), shows it spaced, waits for Enter", async () => {
     setLocale("zh-TW");
     const bin = fakeBin({ agend: AGEND_WEB, "xdg-open": "", "wl-copy": `cat >> "\${0%/*}/wl-copy.in"` });
     const r = runScript(dashboardScript(null, "/srv/agend-home"), bin, "\n", { WAYLAND_DISPLAY: "wayland-0" });
@@ -199,9 +204,35 @@ describe("M-2885: the dashboard launcher's script (real sh)", () => {
     expect(r.stdout).toContain("登入頁網址：http://localhost:19280/signin");
     expect(r.stdout).toContain("[OK] 登入碼已複製：在登入頁的輸入框按 Ctrl+V。");
     expect(r.stdout.trimEnd().endsWith("按 Enter 關閉")).toBe(true);
-    for (let i = 0; i < 50 && !existsSync(join(bin, "xdg-open.log")); i++) spawnSync("sleep", ["0.1"]);   // it was started in the background
+    await fakeCommandDone(bin, "xdg-open"); // it was started in the background
     expect(readFileSync(join(bin, "xdg-open.log"), "utf8")).toBe("http://localhost:19280/signin\n");
     expect(readFileSync(join(bin, "wl-copy.in"), "utf8")).toBe("ABCD-EF23");
+  });
+  it("an empty opener log is not a completion signal", async () => {
+    const bin = fakeBin({ "xdg-open": "" }, { "xdg-open": ': > "${0}.log"\n: > "${0}.entered"\nIFS= read -r released < "${0}.gate"' });
+    const gate = join(bin, "xdg-open.gate");
+    expect(spawnSync("mkfifo", [gate]).status).toBe(0);
+    const fd = openSync(gate, constants.O_RDWR);
+    const child = spawn(join(bin, "xdg-open"), ["http://localhost:19280/signin"], { stdio: "ignore" });
+    const exited = new Promise<number | null>((resolve, reject) => { child.once("exit", resolve); child.once("error", reject); });
+    let completion: Promise<void> | undefined;
+    try {
+      await vi.waitFor(() => expect(existsSync(join(bin, "xdg-open.entered"))).toBe(true), { timeout: 5_000 });
+      expect(readFileSync(join(bin, "xdg-open.log"), "utf8")).toBe("");
+      let done = false;
+      completion = fakeCommandDone(bin, "xdg-open").then(() => { done = true; });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(done).toBe(false);
+      writeSync(fd, "\n");
+      await completion;
+      expect(readFileSync(join(bin, "xdg-open.log"), "utf8")).toBe("http://localhost:19280/signin\n");
+      expect(await exited).toBe(0);
+    } finally {
+      writeSync(fd, "\n"); closeSync(fd);
+      if (child.exitCode === null) child.kill("SIGKILL");
+      await exited;
+      await completion?.catch(() => {});
+    }
   });
   it("X11 with xclip: copied there; no clipboard tool: says to type it", () => {
     setLocale("en");

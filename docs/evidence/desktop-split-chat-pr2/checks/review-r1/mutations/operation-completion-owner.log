@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+····x
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  00:02:50
+   Duration  6.35s (transform 4.50s, setup 1.41s, import 897ms, tests 3.59s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > a late completion from the previous owned operation cannot reset the next draft
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:73:32
+     71|   await sessions.alpha.apply(); await settle();
+     72|   release({ fleet: { defaults: {}, instances: { alpha: { description: …
+     73|   expect(sessions.alpha.epoch).toBe(epoch); expect(models.alpha.pendin…
+       |                                ^
+     74|   rig.data = { fleet: { defaults: {}, instances: { alpha: { descriptio…
+     75|   app.appStore.set({ settingsOp: { ...app.appStore.get().settingsOp, p…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

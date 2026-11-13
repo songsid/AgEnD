@@ -25,11 +25,13 @@ import { resolveDirectoryConfig, type HubDirectory, type HubDirectoryConfig } fr
 import { groupPolicyMigration, createHubGroupPolicyStore, inspectHubGroupPolicyBinding, type HubGroupPolicyStore } from "../group-policy/store.js";
 import { HUB_GROUP_RESOURCES_MIGRATION } from "../group-policy/resources.js";
 import { createHubGroupAuthorization, type HubGroupAuthorization } from "../group-policy/authorization.js";
+import { HUB_ENROLMENT_CODE_MIGRATION } from "../enrolment-code.js";
 import { HubPairingNotices, HUB_PAIRING_NOTICES_MIGRATION } from "../pairing-notices.js";
 import { createHubGroupAdminControl } from "../group-policy/admin-control.js";
 import { createHubGroupAdminInventory } from "../group-policy/admin-inventory.js";
 import { createHubGroupWelcome } from "../group-policy/welcome.js";
 import { signAsker, canonicalArguments, sha256, personKeyString } from "../identity.js";
+import { signHubWebOrigin } from "../web-origin.js";
 import { BIND_SECRET_REL, bindSecretPath } from "../init/layout.js";
 import type { HubMountedService } from "../mount.js";
 import { HubPairingService } from "../pairing.js";
@@ -56,7 +58,7 @@ import { createHubMemberAddressDecision, HUB_MEMBER_ADDRESS_MIGRATION, type HubM
 import { createHubDirectoryNotices, HUB_DIRECTORY_HOST_NOTICE_SINK, type HubDirectoryNotices } from "../settings-directory-notices.js";
 import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
 import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
-import { parseGroupPolicy } from "../group-policy/model.js";
+import { collectPolicyDirectoryGroups, parseCanonicalPolicy } from "../roles/read.js";
 import type { HubDirectoryResponse, HubDirectoryResponseListener, HubDirectoryResponseOwner } from "../directory-response-owner.js";
 
 import { SERVER_SET, createKeyFile, readKeyFile } from "./storage.js";
@@ -75,11 +77,15 @@ export interface HubHttpDeps {
   pairing: HubPairingService;
   companyJoin?: HubCompanyJoin;
   groups?: HubGroupAuthorization;
+  management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require">;
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
+  grantDirectory?: import("../http/deps.js").HubHttpDeps["grantDirectory"];
   pairingNotices?: HubPairingNotices;
   memberAddressNotices?: import("../settings-member-address-notices.js").HubMemberAddressNotices;
   directoryNotices?: Pick<HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
+  /** Reconnect links after the sharing writer commits its authorization version. */
+  refreshAuthorization?(): void;
   current(): HubMode;
   now?: () => number;
   /** Private physical response ownership only; the directory route must independently prove the actor and operation. */
@@ -155,6 +161,8 @@ interface ServerSettings {
   directory: HubDirectoryConfig & { bindPasswordRef: string };
   administrator: PersonKey;
   retention: { contentDays: number; eventDays: number };
+  /** M-2901: the sealed hub.webAddress.revision (#3428), 0 for a Hub whose web address never changed. */
+  webAddressRevision: number;
 }
 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -195,6 +203,7 @@ export function settingsOf(cfg: Record<string, unknown>): ServerSettings {
     directory: directory as unknown as ServerSettings["directory"],
     administrator: { realm: admin.realm, objectId: admin.objectId },
     retention: { contentDays: retention.contentDays as number, eventDays: retention.eventDays as number },
+    webAddressRevision: Number.isSafeInteger(obj(cfg.webAddress).revision) && (obj(cfg.webAddress).revision as number) > 0 ? obj(cfg.webAddress).revision as number : 0,
   };
 }
 
@@ -208,7 +217,7 @@ export function hubServerDatabasePlan(cfg: Record<string, unknown>, httpMigratio
   const migrations = [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_WEB_INIT_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpMigrations,
     retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
     groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION,
-    HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION, HUB_DIRECTORY_SETTINGS_MIGRATION, HUB_DIRECTORY_RECOVERY_MIGRATION, HUB_WEB_ADDRESS_MIGRATION, HUB_MEMBER_ADDRESS_MIGRATION];
+    HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION, HUB_ENROLMENT_CODE_MIGRATION, HUB_DIRECTORY_SETTINGS_MIGRATION, HUB_DIRECTORY_RECOVERY_MIGRATION, HUB_WEB_ADDRESS_MIGRATION, HUB_MEMBER_ADDRESS_MIGRATION];
   return { settings, resolvedDirectory, groupGeneration, migrations };
 }
 
@@ -344,10 +353,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         current: live,
         source: () => db.transaction(() => {
           const stamp = directoryBarrier.capture();
-          const previous = directoryDecision.proofBasis()?.policy ?? parseGroupPolicy(JSON.parse(
-            (db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body));
+          const previous = directoryDecision.proofBasis()?.policy ?? parseCanonicalPolicy(
+            (db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body).policy;
           return { directory, config: structuredClone(directoryConfig), bindPassword, administrator: { ...settings.administrator },
-            groups: previous.groups.map(g => ({ key: { ...g.group }, dn: g.dn })), ...stamp, current: live };
+            groups: collectPolicyDirectoryGroups(previous), ...stamp, current: live };
         })(),
         sessions() {
           if (!live() || !http.directorySessions) throw new HubStateError("service-unavailable", "The directory session adapter is unavailable");
@@ -373,7 +382,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       teardown.add("pairing security notices", () => pairingNotices.close());
       const companyIdentity = { hubId: identity.hubId, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey,
         webOrigin: settings.webOrigin, memberOrigin: settings.memberOrigin };
-      const companyJoin = new HubCompanyJoin({ home: options.home, db, store, audit, groups, notices: pairingNotices,
+      const companyJoin = new HubCompanyJoin({ home: options.home, db, store, audit, groups, notices: pairingNotices, name: settings.name,
+        refreshAuthorization: () => memberServer?.refreshAuthorization(),
         identity: companyIdentity, connected: fleetId => memberServer?.features(fleetId) !== null && memberServer?.features(fleetId) !== undefined, signInvitation: claims => signCompanyInvitation(claims, issuerKey), descriptor: signCompanyDescriptor(companyIdentity, issuerKey),
         certificatePem: readHubMemberTls({home:options.home,memberOrigin:settings.memberOrigin}).certificatePem, administrator: settings.administrator,
         eventDays: settings.retention.eventDays, current: live, now });
@@ -424,6 +434,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         companyJoin,
         groups,
         groupHttp: { control: groupControl, welcome: groupWelcome },
+        grantDirectory: { policy, binding },
         pairingNotices,
         directoryNotices,
         memberAddressNotices: createHubMemberAddressNotices(memberAddressDecision, live),
@@ -431,6 +442,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         store,
         current: () => mode,
         now,
+        refreshAuthorization: () => memberServer?.refreshAuthorization(),
         ...(options.directoryResponses ? { directoryResponse: Object.freeze({ capture(req: IncomingMessage, res: ServerResponse, proof: () => boolean) {
           if (!live() || !responseListener) throw new HubStateError("service-unavailable", "The directory response owner is unavailable");
           return responseListener.capture(req, res, () => proof() === true && live());
@@ -454,6 +466,9 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         current: live,
         receive: (frame, link) => http.receive(frame, link),
         hold: (fleetId, code) => options.log("warn", "Hub member link held", { fleetId, code }),
+        // M-2901: a connected Fleet learns where this Hub's pages are now (web-origin.ts), signed for its own link.
+        webOrigin: (fleetId) => signHubWebOrigin({ hubId: settings.hubId, issuerKeyId: identity.issuerKeyId, fleetId, memberOrigin: settings.memberOrigin },
+          settings.webOrigin, settings.webAddressRevision, issuerKey),
       });
       teardown.add("the member listener", () => memberServer?.close());
 

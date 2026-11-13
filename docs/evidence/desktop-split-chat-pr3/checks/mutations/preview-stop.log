@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+xx···
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  03:39:51
+   Duration  717ms (transform 324ms, setup 238ms, import 181ms, tests 62ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-docking-navigation-3637.test.ts > stops the old preview on first split and final collapse, before the next host can render
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/web-chat-workspace-docking-navigation-3637.test.ts:10:48
+      8| it("stops the old preview on first split and final collapse, before th…
+      9|   nav.navigate("/ui/chat/alpha", { workspace: true, force: true }); st…
+     10|   controller.open("beta"); expect(stopPreview).toHaveBeenCalledTimes(1…
+       |                                                ^
+     11|   controller.closePane("b"); expect(stopPreview).toHaveBeenCalledTimes…
+     12| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-workspace-docking-navigation-3637.test.ts > floats the requested pane and stops the old live preview before changing its DOM position
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/web-chat-workspace-docking-navigation-3637.test.ts:16:107
+     14|   const w = controller.current(); controller.layout("float", "a");
+     15|   expect(controller.current().layout).toBe("float"); expect(controller…
+     16|   expect(controller.current().a).toBe(w.a); expect(controller.current(…
+       |                                                                                                           ^
+     17|   controller.swap(); expect(controller.current().floating).toBe("b"); …
+     18| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯

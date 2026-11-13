@@ -1,0 +1,106 @@
+{
+  "head": "537ffc7c03e770f73e528d746aef58aa5025b90f",
+  "tree": "0763f4b6fb62b9e7f9ee6e00f02d4f4090250e89",
+  "inputs": {
+    "2d16c230a6505bff5c1a433dae0de73e2c99241ea6af66dd642359febc63c8ad": [
+      "src/ui/chat-workspace.js",
+      "src/ui/chat-workspace.js",
+      "src/ui/chat-workspace.js"
+    ],
+    "3b86448832fd3185237245745a9b73df46e5767d9a9bbf3a64f0f63650fad57e": [
+      "src/ui/shared/instance-nav.js",
+      "src/ui/shared/instance-nav.js",
+      "src/ui/shared/instance-nav.js"
+    ],
+    "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a": [
+      "src/ui/shared/identity-color.js",
+      "src/ui/shared/identity-color.js"
+    ],
+    "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48": [
+      "src/ui/shared/ui-menu.js",
+      "src/ui/shared/ui-menu.js"
+    ],
+    "96fab0875460eaabfb5d0ea245b40b078a5c0fa395a9a076db167865be0948da": [
+      "src/ui/chat-quote.js"
+    ]
+  },
+  "cases": [
+    {
+      "label": "legacy-model-rows",
+      "source": "src/ui/chat-workspace.js",
+      "test": "tests/web-chat-menus-2959.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "focused-settings",
+      "source": "src/ui/chat-workspace.js",
+      "test": "tests/web-chat-menus-2959.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "read-only-favourites",
+      "source": "src/ui/shared/instance-nav.js",
+      "test": "tests/web-chat-menus-2959.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "moved-row-focus",
+      "source": "src/ui/shared/instance-nav.js",
+      "test": "tests/web-chat-menus-2959.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "selected-name-contrast",
+      "source": "src/ui/shared/identity-color.js",
+      "test": "tests/web-chat-menus-2959.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "dark-name-unchanged",
+      "source": "src/ui/shared/identity-color.js",
+      "test": "tests/web-chat-menus-2959.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "retained-css",
+      "source": "src/ui/shared/ui-menu.js",
+      "test": "tests/web-chat-menus-2959.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "retained-css-trigger",
+      "source": "src/ui/shared/instance-nav.js",
+      "test": "tests/web-chat-menus-2959.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "placement-scroll-owner",
+      "source": "src/ui/shared/ui-menu.js",
+      "test": "tests/web-chat-menus-2959.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "quote-display-name",
+      "source": "src/ui/chat-workspace.js",
+      "test": "tests/web-chat-workspace-entry-3637.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "quote-row-icon",
+      "source": "src/ui/chat-quote.js",
+      "test": "tests/web-chat-quote-2789.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    }
+  ]
+}

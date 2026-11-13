@@ -82,6 +82,17 @@ export function versionBelow(a: string, b: string): boolean {
   return false;
 }
 
+/**
+ * Whether a CLI's probed version is at least `min` (a registry fact, e.g. `host.structuredSignIn.minVersion`: `agy acp --login` exists from agy 1.5.0). No `min` means any version will do;
+ * a version that is not known (not probed yet, or not a version) is NOT enough: the dashboard offers the command only to a CLI known to have it, and an older one keeps "Sign in on the host".
+ * Not a MIN_SUPPORTED_VERSION: an older CLI still runs agents, it only cannot be signed in from the page.
+ */
+export function versionAtLeast(version: string | null | undefined, min: string | undefined): boolean {
+  if (min === undefined) return true;
+  const found = typeof version === "string" ? /(\d+(?:\.\d+)+)/.exec(version) : null;
+  return !!found && !versionBelow(found[1]!, min);
+}
+
 /** The state for what the probes answered. Pure. */
 export function availabilityState(a: { installed: boolean | null; version: string | null; auth: AuthState; minVersion: string | null }): AvailabilityState {
   if (a.installed === false) return "not_installed";
@@ -281,9 +292,27 @@ export const STATIC_VERSION_FILES: Readonly<Record<string, (path: string) => str
 };
 
 /**
+ * Grok's installer drops one file, `<grok home>/downloads/grok-<target>` (no version in its name), and the launcher `~/.grok/bin/grok` links to it. The CLI keeps the version that last
+ * set up its home in `<grok home>/.metadata_version` (`1.0.77`; observed with grok 1.0.77, written on its first run). That records the installed version only while no newer binary
+ * has been put there since: a file older than the binary it sits beside says nothing about it, so it is read only when it is at least as new as the binary (AGEND-223). Reading it starts
+ * nothing. Null (unknown) when the binary is not in a grok home's `downloads/`, the file is missing, older than the binary, or not a plain x.y.z.
+ */
+async function grokInstalledVersion(real: string): Promise<string | null> {
+  const downloads = dirname(real);
+  if (!downloads.endsWith("/downloads")) return null;
+  try {
+    const marker = join(dirname(downloads), ".metadata_version");
+    const [bin, meta] = await Promise.all([stat(real), stat(marker)]);
+    if (meta.mtimeMs < bin.mtimeMs) return null;
+    const text = (await readFile(marker, "utf8")).trim();
+    return /^\d+\.\d+\.\d+$/.test(text) ? text : null;
+  } catch { return null; }
+}
+
+/**
  * The version from what is on disk, starting nothing: a launcher's own version file (muse), else a version segment
  * the package.json of the npm package that owns the binary (under node_modules), else a version segment of the real
- * path in a layout we know (claude's `…/versions/2.1.302`, codex's `…/releases/0.162.1-<target>/`). Null when none says.
+ * path in a layout we know (claude's `…/versions/2.1.302`, codex's `…/releases/0.162.1-<target>/`), else grok's `.metadata_version` beside its download. Null when none says.
  */
 export async function staticBackendVersion(backend: string, path: string): Promise<string | null> {
   const file = STATIC_VERSION_FILES[backend];
@@ -291,6 +320,7 @@ export async function staticBackendVersion(backend: string, path: string): Promi
   let real: string;
   try { real = await realpath(path); } catch { return null; }
   const parts = real.split("/");
+  if (backend === "grok") { const v = await grokInstalledVersion(real); if (v) return v; }
   // An npm-installed CLI: the package that owns the binary (…/node_modules/<pkg> or …/node_modules/@scope/<pkg>). Read
   // first: an nvm prefix puts Node's own version in the path (…/nvm/versions/node/v22.22.2/…, #2078 review).
   const nm = parts.lastIndexOf("node_modules");

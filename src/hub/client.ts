@@ -5,9 +5,10 @@ import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, par
 import { HubSocket } from "./socket.js";
 import { HubProtocolError } from "./validation.js";
 import { pinnedHubAgent, HubTlsIdentityError } from "./tls.js";
-import { verifyLease } from "./identity.js";
+import { verifyLease, sha256, canonicalArguments } from "./identity.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "./profile.js";
-import type { HubAuthorizationLease, HubAuthorizationRequest, HubMemberFrame, HubServerFrame, HubMemberTransport } from "./types.js";
+import { HUB_WEB_ORIGIN_CAPABILITY, type HubWebOriginStatement } from "./web-origin.js";
+import type { HubAuthorizationLease, HubAuthorizationRequest, HubMemberFrame, HubServerFrame, HubMemberTransport, HubMemberLeaveBinding } from "./types.js";
 export class HubAuthorizationError extends Error {
   constructor(readonly code: "denied" | "unavailable" | "stale", readonly reasonCode: string) { super(`Hub authorization ${code}`); }
 }
@@ -29,6 +30,11 @@ export interface HubClientOptions {
   now?: () => number; random?: () => number;
   /** The optional features this member offers (tests use a smaller list to stand in for an older member). */
   capabilities?: readonly string[];
+  /**
+   * web-origin-v1 (M-2901): the Hub's signed current web address from this link's welcome, before reconciliation. The
+   * receiver verifies it against the pinned profile; whatever it does, the link goes on (a refusal is its own to record).
+   */
+  webOrigin?(statement: HubWebOriginStatement, link: HubMemberLink): Promise<void> | void;
 }
 export class HubMemberClient implements HubMemberTransport {
   private profile: HubMemberProfile | null = null;
@@ -126,7 +132,9 @@ export class HubMemberClient implements HubMemberTransport {
         exchange: (value, type) => this.exchange(value, type, view) };
       this.view = view;
       // Do not await reconciliation on the receive queue: its RPC response arrives on that queue.
-      void this.options.reconcile(view).then(async () => {
+      const statement = features.has(HUB_WEB_ORIGIN_CAPABILITY) ? frame.payload.webOrigin : undefined, learn = this.options.webOrigin;
+      const learned = statement && learn ? Promise.resolve().then(() => view.current() ? learn(statement, view) : undefined).catch(() => undefined) : Promise.resolve();
+      void learned.then(() => this.options.reconcile(view)).then(async () => {
         if (!view.current()) return;
         this.ready = true; this.attempt = 0; this.firstResolve?.(); this.firstReject = this.firstResolve = null;
         const queued = this.deferred.splice(0); this.deferredBytes = 0;
@@ -153,6 +161,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (!view.current() || frame.type === "welcome") throw new HubProtocolError("stale");
     if (frame.type === "pairing.notice" && (!view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v2" && (!view.features.has("pairing-notices-v2") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "pairing.notice-v3" && (!view.features.has("pairing-notices-v3") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "revoke") {
       if (frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       this.revocation = frame.payload.revocationVersion;
@@ -186,6 +195,19 @@ export class HubMemberClient implements HubMemberTransport {
   }
   async send(frame: HubMemberFrame): Promise<void> {
     if (!this.ready || !this.view?.current()) throw new HubAuthorizationError("unavailable", "unavailable"); await this.view.send(frame);
+  }
+  /** Best-effort narrowing for this exact saved binding. True means socket-written, never a durable remote ACK. */
+  async leave(expected: HubMemberLeaveBinding): Promise<boolean> {
+    try {
+      const view = this.view, profile = this.profile;
+      if (!this.ready || !view?.current() || !profile || expected.hubId !== profile.hub.hubId
+        || !view.features.has("member-leave-v1") || !view.features.has("welcome-caps-v1")) return false;
+      const store = new HubMemberProfileStore(this.options.home, expected.hubId), digest = store.profileDigest();
+      if (!digest || expected.binding !== sha256(JSON.stringify(["agend-hub-binding-v1", expected.hubId, digest]))
+        || canonicalArguments(store.readProfile()) !== canonicalArguments(profile) || !view.current()) return false;
+      await view.send({ v: 1, type: "member.leave", requestId: randomUUID(), linkEpoch: view.linkEpoch, payload: {} });
+      return true;
+    } catch { return false; }
   }
   async authorize(request: HubAuthorizationRequest): Promise<HubAuthorizationLease> {
     const view = this.view;

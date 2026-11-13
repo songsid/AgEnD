@@ -1,0 +1,81 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts (35 tests | 4 failed | 31 skipped) 456ms
+     × a en/live-code-limit creation limit names its real remedy 82ms
+     × a en/hourly-code-limit creation limit names its real remedy 55ms
+     × a zh-TW/live-code-limit creation limit names its real remedy 54ms
+     × a zh-TW/hourly-code-limit creation limit names its real remedy 56ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > a en/live-code-limit creation limit names its real remedy
+AssertionError: expected 'Create join codeThe Hub is busy. Try …' to contain 'At most 8 join codes can be live. End…'
+
+Expected: "At most 8 join codes can be live. End one before creating another."
+Received: "Create join codeThe Hub is busy. Try again shortly.Try againNo join codesCreate a code to connect Fleets with company accounts."
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:47:21
+     45|     const c = clients.createHubWebClient({ fetchImpl }), p = await mou…
+     46|     fire(buttons(p, lang === "en" ? "Create join code" : "建立加入碼")[0], …
+     47|     expect(text(p)).toContain(message); expect(text(p)).not.toContain(…
+       |                     ^
+     48|     expect(fetchImpl.mock.calls.filter(([, init]: any) => init.method …
+     49|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > a en/hourly-code-limit creation limit names its real remedy
+AssertionError: expected 'Create join codeThe Hub is busy. Try …' to contain 'At most 10 join codes can be created …'
+
+Expected: "At most 10 join codes can be created in one hour. Try again later."
+Received: "Create join codeThe Hub is busy. Try again shortly.Try againNo join codesCreate a code to connect Fleets with company accounts."
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:47:21
+     45|     const c = clients.createHubWebClient({ fetchImpl }), p = await mou…
+     46|     fire(buttons(p, lang === "en" ? "Create join code" : "建立加入碼")[0], …
+     47|     expect(text(p)).toContain(message); expect(text(p)).not.toContain(…
+       |                     ^
+     48|     expect(fetchImpl.mock.calls.filter(([, init]: any) => init.method …
+     49|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > a zh-TW/live-code-limit creation limit names its real remedy
+AssertionError: expected '建立加入碼Hub 目前忙碌，請稍後再試。再試一次尚無加入碼建立加入碼，讓同…' to contain '最多 8 組有效的加入碼，請先停用一組，再建立新的加入碼。'
+
+Expected: "最多 8 組有效的加入碼，請先停用一組，再建立新的加入碼。"
+Received: "建立加入碼Hub 目前忙碌，請稍後再試。再試一次尚無加入碼建立加入碼，讓同仁以公司帳號連接 Fleet。"
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:47:21
+     45|     const c = clients.createHubWebClient({ fetchImpl }), p = await mou…
+     46|     fire(buttons(p, lang === "en" ? "Create join code" : "建立加入碼")[0], …
+     47|     expect(text(p)).toContain(message); expect(text(p)).not.toContain(…
+       |                     ^
+     48|     expect(fetchImpl.mock.calls.filter(([, init]: any) => init.method …
+     49|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > a zh-TW/hourly-code-limit creation limit names its real remedy
+AssertionError: expected '建立加入碼Hub 目前忙碌，請稍後再試。再試一次尚無加入碼建立加入碼，讓同…' to contain '一小時內最多建立 10 組加入碼，請晚點再試。'
+
+Expected: "一小時內最多建立 10 組加入碼，請晚點再試。"
+Received: "建立加入碼Hub 目前忙碌，請稍後再試。再試一次尚無加入碼建立加入碼，讓同仁以公司帳號連接 Fleet。"
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:47:21
+     45|     const c = clients.createHubWebClient({ fetchImpl }), p = await mou…
+     46|     fire(buttons(p, lang === "en" ? "Create join code" : "建立加入碼")[0], …
+     47|     expect(text(p)).toContain(message); expect(text(p)).not.toContain(…
+       |                     ^
+     48|     expect(fetchImpl.mock.calls.filter(([, init]: any) => init.method …
+     49|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 31 skipped (35)
+   Start at  01:58:39
+   Duration  855ms (transform 389ms, setup 128ms, import 133ms, tests 456ms, environment 0ms)
+

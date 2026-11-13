@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+(node:87458) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  6 passed (6)
+      Tests  174 passed (174)
+   Start at  02:06:19
+   Duration  16.23s (transform 6.22s, setup 252ms, import 7.73s, tests 7.48s, environment 0ms)
+

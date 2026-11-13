@@ -209,42 +209,43 @@ describe("`agend update` when the package is already current (built CLI copy, st
    */
   function update(fleetPid: number | null, opts: { installedVersion?: string; pidFile?: (path: string) => void } = {}) {
     const home = tmp();
-    const agendHome = join(home, ".agend");
-    mkdirSync(agendHome, { recursive: true });
-    if (fleetPid !== null) writeFileSync(join(agendHome, "fleet.pid"), `${fleetPid}\n`);
-    opts.pidFile?.(join(agendHome, "fleet.pid"));
-    spawnSync("sleep", ["2.5"]); // past the 2 s margin
-    const pkg = join(home, "pkg");
-    mkdirSync(pkg);
-    spawnSync("cp", ["-r", join(process.cwd(), "dist"), join(pkg, "dist")]);
-    spawnSync("cp", ["-r", join(process.cwd(), "templates"), join(pkg, "templates")]);
-    // Runtime root admission shares this shipped helper with the installer (#2435).
-    spawnSync("cp", ["-r", join(process.cwd(), "launcher"), join(pkg, "launcher")]);
-    // No runtime pins, as in installedCopy (#1450).
-    writeFileSync(join(pkg, "package.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")), optionalDependencies: undefined }));
-    symlinkSync(join(process.cwd(), "node_modules"), join(pkg, "node_modules"));
-    const unitDir = join(home, ".config", "systemd", "user");
-    mkdirSync(unitDir, { recursive: true });
-    writeFileSync(join(unitDir, "com.agend.fleet.service"), renderSystemdUnit({
-      // as `agend install` writes it for the installed package: its global bin (#1449: a restart is refused unless the
-      // service starts the verified install)
-      label: "com.agend.fleet", execPath: join(home, "bin", "agend"), workingDirectory: agendHome,
-      logPath: join(agendHome, "daemon.log"), path: `${join(home, "bin")}:/usr/bin:/bin`,
-    }));
-    const bin = join(home, "bin");
-    mkdirSync(bin);
-    const log = join(home, "calls.log");
-    writeFileSync(log, "");
-    const version = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version;
-    // The global package npm reports as installed: before restarting a fleet that predates it, the update verifies
-    // it (#1449 review: version, bin on PATH, a database opens on its node).
-    const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
-    // The installed `agend`: this build — its `install --no-activate` refreshes the unit, its `restart` is the real one.
-    installedCopy(globalPkg, opts.installedVersion ?? version);
-    symlinkSync(join(globalPkg, "launcher", "agend"), join(bin, "agend"));   // npm's bin link
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '${version}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
-    // systemd 249 as observed: CoredumpFilter stays 0x33 whatever the unit file says.
-    writeFileSync(join(bin, "systemctl"), `#!/bin/sh
+    try {
+      const agendHome = join(home, ".agend");
+      mkdirSync(agendHome, { recursive: true });
+      if (fleetPid !== null) writeFileSync(join(agendHome, "fleet.pid"), `${fleetPid}\n`);
+      opts.pidFile?.(join(agendHome, "fleet.pid"));
+      if (fleetPid !== null) spawnSync("sleep", ["2.5"]); // age comparison only for a real candidate PID
+      const pkg = join(home, "pkg");
+      mkdirSync(pkg);
+      spawnSync("cp", ["-r", join(process.cwd(), "dist"), join(pkg, "dist")]);
+      spawnSync("cp", ["-r", join(process.cwd(), "templates"), join(pkg, "templates")]);
+      // Runtime root admission shares this shipped helper with the installer (#2435).
+      spawnSync("cp", ["-r", join(process.cwd(), "launcher"), join(pkg, "launcher")]);
+      // No runtime pins, as in installedCopy (#1450).
+      writeFileSync(join(pkg, "package.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")), optionalDependencies: undefined }));
+      symlinkSync(join(process.cwd(), "node_modules"), join(pkg, "node_modules"));
+      const unitDir = join(home, ".config", "systemd", "user");
+      mkdirSync(unitDir, { recursive: true });
+      writeFileSync(join(unitDir, "com.agend.fleet.service"), renderSystemdUnit({
+        // as `agend install` writes it for the installed package: its global bin (#1449: a restart is refused unless the
+        // service starts the verified install)
+        label: "com.agend.fleet", execPath: join(home, "bin", "agend"), workingDirectory: agendHome,
+        logPath: join(agendHome, "daemon.log"), path: `${join(home, "bin")}:/usr/bin:/bin`,
+      }));
+      const bin = join(home, "bin");
+      mkdirSync(bin);
+      const log = join(home, "calls.log");
+      writeFileSync(log, "");
+      const version = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version;
+      // The global package npm reports as installed: before restarting a fleet that predates it, the update verifies
+      // it (#1449 review: version, bin on PATH, a database opens on its node).
+      const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
+      // The installed `agend`: this build — its `install --no-activate` refreshes the unit, its `restart` is the real one.
+      installedCopy(globalPkg, opts.installedVersion ?? version);
+      symlinkSync(join(globalPkg, "launcher", "agend"), join(bin, "agend"));   // npm's bin link
+      writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '${version}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
+      // systemd 249 as observed: CoredumpFilter stays 0x33 whatever the unit file says.
+      writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 echo "systemctl $*" >> '${log}'
 case "$*" in *is-active*) echo active;; esac
 case "$*" in *"show -p KillMode --value"*) echo mixed;; esac
@@ -252,17 +253,22 @@ case "$*" in *"show -p TimeoutStopUSec --value"*) echo 5min;; esac
 case "$*" in *"show -p CoredumpFilter --value"*) echo 0x33;; esac
 exit 0
 `);
-    symlinkSync(process.execPath, join(bin, "node"));
-    writeFileSync(join(bin, "busctl"), fakeBusctl(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
-    chmodSync(join(bin, "busctl"), 0o755);
-    chmodSync(join(bin, "npm"), 0o755);
-    chmodSync(join(bin, "systemctl"), 0o755);
-    const r = spawnSync(process.execPath, [join(pkg, "dist", "cli.js"), "update", "--beta"], {
-      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
-      encoding: "utf8", timeout: 60_000,
-    });
-    const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
-    return { r, calls, out: `${r.stdout}\n${r.stderr}`, restarted: calls.some(c => /^systemctl --user restart com\.agend\.fleet/.test(c)) };
+      symlinkSync(process.execPath, join(bin, "node"));
+      writeFileSync(join(bin, "busctl"), fakeBusctl(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
+      chmodSync(join(bin, "busctl"), 0o755);
+      chmodSync(join(bin, "npm"), 0o755);
+      chmodSync(join(bin, "systemctl"), 0o755);
+      const r = spawnSync(process.execPath, [join(pkg, "dist", "cli.js"), "update", "--beta"], {
+        env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
+        encoding: "utf8", timeout: 60_000,
+      });
+      const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
+      return { r, calls, fixtureHome: home, out: `${r.stdout}\n${r.stderr}`, restarted: calls.some(c => /^systemctl --user restart com\.agend\.fleet/.test(c)) };
+    } finally {
+      // The synchronous child and all reads are finished. Do not accumulate two
+      // copied builds per table row in the shared ten-second afterEach hook.
+      rmSync(home, { recursive: true, force: true });
+    }
   }
 
   it.skipIf(!existsSync(cli) || !linux)("a PID-file-only stand-in is refused before the CoredumpFilter check (#2823)", () => {
@@ -316,7 +322,8 @@ exit 0
     ];
     if (process.getuid?.() !== 0) writers.push(["unreadable", path => { writeFileSync(path, `${process.pid}\n`); chmodSync(path, 0o000); }]);
     for (const [label, pidFile] of writers) {
-      const { r, out, restarted } = update(null, { pidFile });
+      const { r, out, restarted, fixtureHome } = update(null, { pidFile });
+      expect(existsSync(fixtureHome), `${label}: fixture cleanup completed before the next row`).toBe(false);
       expect(restarted, `${label}\n${out}`).toBe(false);
       expect(r.stderr, `${label}\n${out}`).not.toContain("the fleet is not running");
       expect(r.stdout, `${label}\n${out}`).not.toContain("Already up to date");

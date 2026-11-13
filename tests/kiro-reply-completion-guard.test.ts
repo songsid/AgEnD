@@ -170,7 +170,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(h.daemon.deliverDaemonReply).not.toHaveBeenCalled();
     expect(h.detected).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("no_valid_call, no-adapter-confirmed-reply, chat=guild-1, thread=channel-1") }));
     expect(recoveryWrites(h)).toHaveLength(1);
-    expect(recoveryWrites(h)[0]).toContain("Do not redo the work");
+    expect(recoveryWrites(h)[0]).toContain("the work itself is done; keep it");
     expect(recoveryWrites(h)[0]).toContain("react or reply tool");
     expect(h.daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
   });

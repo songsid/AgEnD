@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 <owned checkout>
+
+ ❯ tests/hub-compose.test.ts (113 tests | 1 failed | 111 skipped) 76ms
+     × still reports a genuine owned listener as connected 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-compose.test.ts > owned TCP refusal probe > still reports a genuine owned listener as connected
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-compose.test.ts:157:80
+    155|     const listener = createNetServer(socket => socket.destroy());
+    156|     await new Promise<void>((resolve, reject) => { listener.once("erro…
+    157|     try { expect(await refused((listener.address() as { port: number }…
+       |                                                                                ^
+    158|     finally { await new Promise<void>((resolve, reject) => listener.cl…
+    159|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 111 skipped (113)
+   Start at  03:19:54
+   Duration  2.08s (transform 1.35s, setup 91ms, import 1.76s, tests 76ms, environment 0ms)
+

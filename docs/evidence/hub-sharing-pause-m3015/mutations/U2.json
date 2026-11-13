@@ -1,0 +1,13 @@
+{
+  "id": "U2",
+  "path": "src/ui/panel-hub.js",
+  "test": "tests/hub-sharing-pause-ui-m3015.test.ts",
+  "selector": "a paused asker sees",
+  "caught": true,
+  "nativeCompilerExit": 0,
+  "typeLogDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "exit": 1,
+  "sourceDigest": "0a19ed018ebb42bc1e9ffba3930c66377b398e99edd368961f6172ffe8d95873",
+  "logDigest": "7265a53666290159809a985c780134812e498ea64043664183a6f8f3eeb8ecac",
+  "restored": true
+}

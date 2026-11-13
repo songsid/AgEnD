@@ -1,0 +1,28 @@
+已安裝建置：原始碼建置 · eeae77d272f5（套件 1.22.0）。可執行 agend build-info --json 查看原始碼資訊。
+
+═══ AgEnD Hub 設定（實驗性）═══
+Hub 讓同事用組織的目錄登入，向各機群主人選擇公開的 agent 提問。
+Hub 本身不跑 agent，也不需要登入任何 AI CLI。建議放在一台專用、常開、有固定內網位址的機器或 OS 帳號上。
+
+Hub 名稱（選填；直接按 Enter 顯示「AgEnD Hub」）：Retained setup
+同事要開的網址（https://主機[:埠]；固定的內網 IP 或主機名稱）：https://hub.example.test:18601
+機群連線用的成員位址（https://主機:埠，需與網址不同）[https://hub.example.test:9443]：https://hub.example.test:18602
+網頁監聽：要監聽的網路介面位址與埠 []：127.0.0.1:18601
+成員監聽：要監聽的網路介面位址與埠 []：127.0.0.1:18602
+正在檢查 Hub 的兩個本機監聽端點…
+兩個 Hub 端點皆可在本機監聽，檢查用通訊端已關閉。這不代表其他電腦的 DNS、防火牆或反向代理路由已可用。啟動後，請從成員電腦測試兩個對外公布的 HTTPS 位址。
+
+瀏覽器用的 HTTPS 憑證
+要讓同仁用公司帳號連接，Hub 需要公司或其他受信任 CA 簽發、名稱包含 https://hub.example.test:18601 的憑證；Hub 和 Fleet 也必須用不同的主機名稱（只換連接埠不行）。自簽憑證只適合測試：在瀏覽器略過警告，Fleet 也不會信任它。
+憑證檔（PEM，含完整憑證鏈），或輸入 generate 產生有效 30 天的自簽憑證：/opt/fixture/hub-chain.pem
+對應的私鑰檔（PEM，未加密）：/opt/fixture/hub.key
+瀏覽器憑證 SHA-256：E7:37:A1:A3:57:A0:42:5A:5E:A5:25:18:AE:26:7C:1A:F1:B0:35:A5:41:EA:BB:B3:4E:38:59:99:66:FA:57:44
+hub.example.test 的憑證，有效到 Nov 13 11:14:05 2026 GMT。
+
+目錄（LDAP / Active Directory，只接受 LDAPS）
+目錄代號：這個目錄的固定短名稱，小寫（例如「corp」）：example
+目錄位址（ldaps://主機[:埠]）：
+目錄位址不可空白。請輸入 LDAPS 位址，例如 ldaps://directory.example.test:636，不可包含帳號密碼、路徑或查詢參數。
+目錄位址（ldaps://主機[:埠]）：ldaps://directory.example.test
+目錄 CA：輸入 PEM 檔案、輸入「fetch」檢查並從此目錄取得，或按 Enter 使用系統信任的根憑證：
+已取消，沒有做任何變更。

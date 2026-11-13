@@ -1,0 +1,50 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts (16 tests | 1 failed) 76ms
+     × rejects foreign origin/window/viewer/agent/nonce and duplicate READY without disclosing a draft 9ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-transport-3637.test.ts > real pop-out exact-window, one-use handoff > rejects foreign origin/window/viewer/agent/nonce and duplicate READY without disclosing a draft
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      Object {
+        "channel": "agend-chat-popout-v1",
+        "name": "alpha",
+        "nonce": "12a34567-1234-1234-1234-123456789abc",
+        "payload": Object {
+          "files": Array [],
+          "reply": null,
+          "text": "draft",
+        },
+        "scope": "viewer-scope",
+        "type": "draft",
+      },
+      "https://fleet.example",
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts:34:132
+     32|     const f = fixture(); f.open();
+     33|     f.receive(msg("ready"), {}, "https://fleet.example"); f.receive(ms…
+     34|     f.receive(msg("ready", { scope: "someone else" })); f.receive(msg(…
+       |                                                                                                                                    ^
+     35|     f.receive(msg("ready")); f.receive(msg("ready")); expect(f.child.p…
+     36|     f.receive(msg("received", { nonce: "other" })); expect(f.complete)…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+   Start at  11:20:31
+   Duration  692ms (transform 217ms, setup 221ms, import 106ms, tests 76ms, environment 0ms)
+

@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { installTmuxProcessFixture } from "./helpers/tmux-process-stub.js";
 installTmuxProcessFixture();
 import { EventEmitter } from "node:events";
@@ -124,7 +125,7 @@ describe("the daemon reports a web message's delivery even with no platform chat
 // ── the fleet ───────────────────────────────────────────────────────────────────────────────────────────────
 
 async function bareFleet() {
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const fm = new FleetManager(dir);
   const any = fm as unknown as Record<string, any>;
   const events: Array<{ event: string; data: any }> = [];
@@ -293,7 +294,7 @@ function raw(port: number, method: string, path: string, headers: Record<string,
 
 describe("POST /ui/cancel through the real gate", () => {
   it("needs a session, and the session's CSRF token — a cookie alone cannot stop an agent", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir);
     const quiet = () => {};
     fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;
@@ -450,9 +451,12 @@ describe("the chat panel (the real page modules)", () => {
     expect(bar().className).toBe("work-bar working");
     expect(bar().querySelector(".lbl").textContent).toBe("w is working…");
     expect(bar().querySelector(".elapsed").getAttribute("aria-hidden"), "the ticking time is not read out every second").toBe("true");
-    expect([stop().hidden, send().hidden], "an empty composer: Send becomes Stop").toEqual([false, true]);
+    // M-2904: Stop is in the working bar, beside what it stops; the composer row keeps its buttons (one input width).
+    expect(stop().closest(".work-bar"), "Stop is in the working bar").toBe(bar());
+    expect(c.p.root.querySelector(".composer #stopBtn"), "never in the composer row").toBeNull();
+    expect([stop().hidden, send().hidden, send().disabled], "an empty composer: Send stays, disabled").toEqual([false, false, true]);
     await typeIn("next, please");
-    expect([stop().hidden, send().hidden], "something typed: it can be sent to wait its turn, and Stop stays").toEqual([false, false]);
+    expect([stop().hidden, send().hidden, send().disabled], "something typed: it can be sent to wait its turn, and Stop stays").toEqual([false, false, false]);
     await typeIn("");
     c.stream.emit("activity", { instance: "w", state: "stuck" });
     await settle();
@@ -461,8 +465,8 @@ describe("the chat panel (the real page modules)", () => {
     expect(stop().hidden).toBe(false);
     c.stream.emit("activity", { instance: "w", state: "idle" });
     await settle();
-    expect(bar()).toBeNull();
-    expect([stop().hidden, send().hidden]).toEqual([true, false]);
+    expect([bar().className, bar().textContent, bar().getAttribute("aria-hidden")], "#3724: idle keeps the strip, empty").toEqual(["work-bar idle", "", "true"]);
+    expect([stop(), send().hidden]).toEqual([null, false]);                          // idle: no Stop at all, Send as always
   });
 
   it("another instance working does not show here; the status frames carry the state too", async () => {
@@ -471,8 +475,8 @@ describe("the chat panel (the real page modules)", () => {
     await c.mount("w");
     c.stream.emit("activity", { instance: "other", state: "working" });
     await settle();
-    expect(c.p.root.querySelector(".work-bar")).toBeNull();
-    expect(c.p.root.querySelector("#stopBtn").hidden).toBe(true);
+    expect(c.p.root.querySelector(".work-bar").className, "#3724: idle keeps the strip, empty").toBe("work-bar idle");
+    expect(c.p.root.querySelector("#stopBtn")).toBeNull();
     c.stream.emit("status", frame(inst("w", { state: "working" }), inst("other", { state: null })));
     await settle();
     expect(c.p.root.querySelector(".work-bar").className).toBe("work-bar working");
@@ -489,7 +493,7 @@ describe("the chat panel (the real page modules)", () => {
     const bar = c.p.root.querySelector(".work-bar");
     expect(bar.className).toBe("work-bar awaiting");
     expect([bar.querySelector(".lbl").textContent, bar.querySelector(".note").textContent]).toEqual(["w is waiting for your input", "Permission prompt for 12s"]);
-    expect(c.p.root.querySelector("#stopBtn").hidden, "Stop stays").toBe(false);
+    expect(c.p.root.querySelector(".work-bar #stopBtn").hidden, "Stop stays (in the working bar)").toBe(false);
     expect(c.store().state.exec.w).toBe("working");
     // Answered: back to working.
     c.stream.emit("status", frame(inst("w", { state: "working", execution_state: "working" })));
@@ -498,7 +502,7 @@ describe("the chat panel (the real page modules)", () => {
     // An older status without execution_state still works from `state`.
     c.stream.emit("status", frame(inst("w", { state: "idle" })));
     await settle();
-    expect(c.p.root.querySelector(".work-bar")).toBeNull();
+    expect(c.p.root.querySelector(".work-bar").className, "#3724: idle keeps the strip, empty").toBe("work-bar idle");
   });
 
   it("the name is text, never markup", async () => {
@@ -558,7 +562,7 @@ describe("the chat panel (the real page modules)", () => {
     expect(bar().className, "still stopping while it works").toBe("work-bar stopping");
     c.stream.emit("activity", { instance: "w", state: "idle" });
     await settle();
-    expect(bar()).toBeNull();
+    expect([bar().className, bar().textContent, bar().getAttribute("aria-hidden")], "#3724: idle keeps the strip, empty").toEqual(["work-bar idle", "", "true"]);
     c.stream.emit("activity", { instance: "w", state: "working" });
     await settle();
     expect(bar().className, "the next turn starts fresh").toBe("work-bar working");

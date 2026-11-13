@@ -33,7 +33,7 @@ export const readMessage = (db: Database.Database, id: string) => db.prepare("SE
 
 export type Facts = { ok: true; exposure: HubExposure; grant: HubGrant } | { ok: false; reason: "revoked" | "stale" | "expired" | "denied" };
 /** The message's room, grant and exposure as they are now — the synchronous half of "authorize now". */
-export function messageFacts(db: Database.Database, msg: MessageRow, now: number): Facts {
+export function messageFacts(db: Database.Database, msg: MessageRow, now: number, permit?: HubOperationPermit): Facts {
   if (msg.expires_at <= now) return { ok: false, reason: "expired" };
   if (TERMINAL.has(msg.stage)) return { ok: false, reason: "denied" };
   const room = db.prepare("SELECT state FROM hub_rooms WHERE id=?").get(msg.room_id) as { state: string } | undefined;
@@ -43,7 +43,7 @@ export function messageFacts(db: Database.Database, msg: MessageRow, now: number
   const grant = grantOf(g), exposure = exposureOf(e);
   if (grant.revision !== msg.grant_revision || exposure.revision !== msg.exposure_revision) return { ok: false, reason: "stale" };
   if (exposure.state !== "published" || exposure.fleetId !== msg.fleet_id || personKeyString(exposure.owner) !== msg.owner) return { ok: false, reason: "revoked" };
-  if (!grantApplies(grant, exposure, personFromString(msg.asker), now)) return { ok: false, reason: "revoked" };
+  if (!grantApplies(grant, exposure, personFromString(msg.asker), now, permit?.grant)) return { ok: false, reason: "revoked" };
   return { ok: true, exposure, grant };
 }
 
@@ -57,11 +57,21 @@ export class HubPolicyService {
 
   /** Group authority is re-resolved for this exact message, never borrowed from its admission lease. */
   async operation(msg: MessageRow, link: HubLinkContext): Promise<HubOperationPermit> {
-    if (!(await this.peopleEligible(msg))) throw new HubProtocolError("revoked");
-    const permit = await this.core.groupExposure(msg.exposure_id, personFromString(msg.asker),
+    const row = this.core.atomic(db => readMessage(db, msg.id));
+    const identity = (m: MessageRow) => JSON.stringify([m.id, m.fleet_id, m.asker, m.owner, m.grant_id, m.grant_revision, m.exposure_id, m.exposure_revision, m.content_digest]);
+    if (!row || identity(row) !== identity(msg) || row.fleet_id !== link.fleetId || row.owner !== personKeyString(link.owner)) throw new HubProtocolError("stale");
+    const image = identity(row), epoch = link.linkEpoch;
+    if (!(await this.peopleEligible(row))) throw new HubProtocolError("revoked");
+    const permit = await this.core.exposureGrant(row.exposure_id, row.grant_id, personFromString(row.asker),
       { requestId: randomUUID(), current: () => link.current() });
     if (!link.current()) throw new HubProtocolError("stale");
-    return permit;
+    const assertCurrent = () => {
+      permit.assertCurrent();
+      const fresh = this.core.atomic(db => readMessage(db, row.id));
+      if (!fresh || identity(fresh) !== image || !link.current() || link.linkEpoch !== epoch || link.fleetId !== row.fleet_id
+        || personKeyString(link.owner) !== row.owner) throw new HubProtocolError("stale");
+    };
+    assertCurrent(); return { grant: permit.grant, assertCurrent };
   }
 
   /** A member's `authorize.request` on its current link → a lease for exactly that operation, or a bounded refusal. */
@@ -88,7 +98,7 @@ export class HubPolicyService {
     try {
       return this.core.atomic((db, tx) => {
         const msg = readMessage(db, request.messageId)!;
-        const facts = messageFacts(db, msg, now);
+        const facts = messageFacts(db, msg, now, permit);
         if (!facts.ok) throw new HubProtocolError(facts.reason);
         if (request.phase === "admit" && msg.stage !== "queued") throw new HubProtocolError("conflict");
         if ((request.phase === "begin" || request.phase === "tool") && (msg.stage === "answered" || msg.answer_id)) throw new HubProtocolError("conflict");

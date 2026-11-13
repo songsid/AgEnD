@@ -1,0 +1,17 @@
+{
+  "scope": "Post-run comparison of own R1 product/test paths after clean merge of alpha a18ad7428. Incoming accounts files remain separate; original captures retain d24a367f1.",
+  "captureHead": "d24a367f10df9cd710579283d44fcb25ef9e2aee",
+  "mergeHead": "da94359ae96ce2f47003fcf5f8c8293955653a4e",
+  "ownPathsUnchanged": [
+    "src/ui/agent-details-settings.js",
+    "src/ui/chat-workspace.js",
+    "src/ui/settings-dialogs.js",
+    "tests/esm-skew-roles-138.test.ts",
+    "tests/web-chat-pane-fields-3637.test.ts",
+    "tests/web-chat-workspace-host-3637.test.ts",
+    "tests/web-chat-workspace-operation-3637.test.ts",
+    "tests/web-preview-1306.test.ts",
+    "tests/web-usage-rail-1673.test.ts"
+  ],
+  "gitDiffExit": 0
+}

@@ -178,7 +178,7 @@ const TRANSCRIPT_RUNNING_HOLD_MAX_MS = 30 * 60_000;
  * often; a long silent tool run shows its own busy row on the pane.
  */
 export const TRANSCRIPT_OPEN_TURN_QUIET_MS = 15 * 60_000;
-const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. If you already replied to this message, do nothing. Do not reply to this system instruction except through the react or reply tool.";
+const REPLY_RECOVERY_PROMPT = "[system:reply-required] Your last answer to the user hasn't reached them yet. Send it once now with the reply tool: what you did, the result, and the next step (the work itself is done; keep it as it is). If the message only needed an acknowledgement, an emoji react is enough; if you already replied, carry on. Answer this only through the react or reply tool.";
 
 /** The outbox evidence for a delivery the CLI's transcript shows taken (#758; #1201 absorbed; #1647 a raw paste's text). */
 function transcriptMarkerEvidence(kind: TranscriptMarkerKind, rawPaste = false): string {
@@ -2558,6 +2558,10 @@ export class Daemon extends EventEmitter {
   setPeerWorkingDirectories(peers: (() => string[]) | undefined): void {
     this.peerWorkingDirectories = peers;
   }
+
+  /** AGEND-181/197: whether the next launch asks for thinking summaries (web.log_thinking, off by default), read at each spawn. */
+  private thinkingSummaries: (() => boolean) | undefined;
+  setThinkingSummaries(on: (() => boolean) | undefined): void { this.thinkingSummaries = on; }
 
   /** #1005: read at each spawn so an edited status_emojis reaches the next instructions. */
   private statusEmojiAvoidList: (() => string[] | undefined) | undefined;
@@ -12539,6 +12543,7 @@ export class Daemon extends EventEmitter {
       agentPort: isCliMode ? agentPort : undefined,
       backendOptions,
       peerWorkingDirectories: this.peerWorkingDirectories,
+      ...(this.thinkingSummaries?.() === true ? { thinkingSummaries: true } : {}),
     };
   }
 
@@ -14078,7 +14083,7 @@ export class Daemon extends EventEmitter {
                 if (!owned()) return false;
                 const keyScreen = this.nativePaneLifecycle ? await this.tmux!.capturePane() : answeredPane;
                 if (!owned() || !Daemon.dialogMatches(dialog, keyScreen)) return false;
-                if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
+                if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape" || key === "Right") {
                   if (!await (this.nativePaneLifecycle ? this.tmux!.sendSpecialKey(key, undefined, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendSpecialKey(key))) return false;
                 } else {
                   if (!await (this.nativePaneLifecycle ? this.tmux!.sendKeys(key, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendKeys(key))) return false;

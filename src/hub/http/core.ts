@@ -7,11 +7,13 @@ import type Database from "better-sqlite3";
 import { HubProtocolError, person as personSchema, validated } from "../validation.js";
 import { personKeyString, sha256 } from "../identity.js";
 import type { HubAuditRecord, HubRequestContext, HubTx, PersonKey } from "../types.js";
-import { exposureOf, readExposure } from "../catalog.js";
+import { exposureOf, readExposure, readGrant, grantOf } from "../catalog.js";
 import { HubGroupAuthorizationError, type HubGroupPermit } from "../group-policy/authorization.js";
-import { HubGroupPolicyError, type GroupCheckContext } from "../group-policy/store.js";
+import { HubGroupPolicyError, HubGroupReadOverload, type GroupCheckContext } from "../group-policy/store.js";
+import { prepareGrantAccess, type HubGrantSubjectProof } from "../grant-access.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { readHubSessionEpoch } from "../session-epoch.js";
+import type { HubManagementPermission } from "../roles/authority.js";
 
 export type HubAuditEvent = Omit<HubAuditRecord, "id" | "sequence" | "at" | "policyVersion"> & { at?: number };
 
@@ -19,7 +21,7 @@ export type HubAuditEvent = Omit<HubAuditRecord, "id" | "sequence" | "at" | "pol
 export const DIRECTORY_PER_PERSON = 4;
 export const DIRECTORY_TOTAL = 32;
 
-export interface HubOperationPermit { readonly source?: HubGroupPermit["source"]; assertCurrent(): void }
+export interface HubOperationPermit { readonly source?: HubGroupPermit["source"]; readonly grant?: HubGrantSubjectProof; assertCurrent(): void }
 const LEGACY_OPERATION: HubOperationPermit = Object.freeze({ source: "legacy", assertCurrent() {} });
 
 export class HubCore {
@@ -34,6 +36,13 @@ export class HubCore {
   /** Refuses once the server is fenced (and before every write: a stale continuation never commits). */
   live(): boolean { try { return this.lifetime() === true && this.deps.current().serverEnabled() === true; } catch { return false; } }
   check(): void { if (!this.live()) throw new HubProtocolError("unavailable"); }
+  async management(ctx: HubRequestContext, permission: HubManagementPermission) {
+    this.check();
+    if (this.deps.management) return this.deps.management.require(ctx, permission);
+    const actor = await ctx.requireAdmin(), current = ctx.isCurrent?.bind(ctx);
+    const assertCurrent = () => { this.check(); if (current && current() !== true) throw new HubProtocolError("revoked"); };
+    assertCurrent(); return { actor, assertCurrent };
+  }
   /** One synchronous unit of work on the Hub DB; a promise returned from `work` is refused. */
   atomic<T>(work: (db: Database.Database, tx: HubTx) => T, permit?: HubOperationPermit): T {
     this.check();
@@ -68,6 +77,48 @@ export class HubCore {
     const fence = ctx.isCurrent?.bind(ctx);
     return { requestId: ctx.requestId, current: () => this.live() && fence?.() === true };
   }
+  /** Shared physical read owner; the returned fence retains the exact policy, binding and caller. */
+  async grantDirectoryRead<T>(actor: PersonKey, ctx: GroupCheckContext, read: () => Promise<T>): Promise<{ value: T; permit: HubOperationPermit }> {
+    const selected = this.deps.grantDirectory;
+    if (!selected) throw new HubProtocolError("unavailable");
+    let policy: ReturnType<typeof selected.policy>, image: string, binding: string;
+    try {
+      if (selected.binding().kind !== "ready") throw new Error("binding unavailable");
+      policy = selected.policy(); image = JSON.stringify(policy.read()); binding = JSON.stringify(selected.binding());
+    } catch { throw new HubProtocolError("unavailable"); }
+    const assertCurrent = () => {
+      this.check();
+      if (!ctx.current()) throw new HubProtocolError("revoked");
+      try {
+        if (this.deps.grantDirectory !== selected || selected.policy() !== policy
+          || JSON.stringify(policy.read()) !== image || JSON.stringify(selected.binding()) !== binding) throw new Error("binding changed");
+      } catch { throw new HubProtocolError("unavailable"); }
+    };
+    assertCurrent();
+    let value: T;
+    try { value = await policy.withDirectoryRead(actor, read); }
+    catch (e) { assertCurrent(); throw new HubProtocolError(e instanceof HubGroupReadOverload ? "backpressure" : "unavailable"); }
+    assertCurrent(); return { value, permit: { assertCurrent } };
+  }
+  grantAccess(ids: readonly string[], asker: PersonKey, ctx: GroupCheckContext): Promise<HubGrantSubjectProof> {
+    return prepareGrantAccess(this, ids, asker, ctx);
+  }
+  async withGrant(permit: HubOperationPermit, ids: readonly string[], asker: PersonKey, ctx: GroupCheckContext, refusal: "revoked" | "not-found" = "revoked"): Promise<HubOperationPermit> {
+    const grant = await this.grantAccess(ids, asker, ctx);
+    this.atomic(db => { for (const id of ids) {
+      const row = readGrant(db, id);
+      if (!row || !grant.allows(grantOf(row), asker)) throw new HubProtocolError(refusal);
+    } }, grant);
+    return { grant, assertCurrent() { grant.assertCurrent(); permit.assertCurrent(); } };
+  }
+  async exposureGrant(exposureId: string, grantId: string, asker: PersonKey, ctx: GroupCheckContext, refusal: "revoked" | "not-found" = "revoked"): Promise<HubOperationPermit> {
+    const base = await this.groupExposure(exposureId, asker, ctx), permit = await this.withGrant(base, [grantId], asker, ctx, refusal);
+    this.atomic(db => {
+      const grant = readGrant(db, grantId), exposure = readExposure(db, exposureId);
+      if (!grant || !exposure || grant.exposure_id !== exposure.id || grant.owner !== exposure.owner) throw new HubProtocolError(refusal);
+    }, permit);
+    return permit;
+  }
   async groupAsker(person: PersonKey, ctx: GroupCheckContext): Promise<HubOperationPermit> {
     const groups = this.deps.groups;
     if (!groups) return LEGACY_OPERATION;
@@ -79,23 +130,42 @@ export class HubCore {
   }
   /** Fresh asker + exact fleet/exposure provenance. An allow is for this operation only. */
   async groupExposure(exposureId: string, asker: PersonKey | null, ctx: GroupCheckContext): Promise<HubOperationPermit> {
+    return this.exposurePermission(exposureId, asker, ctx, false);
+  }
+  /** Only the owner-sharing writer: it separately fences the exact before/after row inside its transaction. */
+  async sharingPermission(exposureId: string, ctx: GroupCheckContext): Promise<HubOperationPermit> {
+    return this.exposurePermission(exposureId, null, ctx, true);
+  }
+  private async exposurePermission(exposureId: string, asker: PersonKey | null, ctx: GroupCheckContext, sharingChange: boolean): Promise<HubOperationPermit> {
     const groups = this.deps.groups;
-    if (!groups) return LEGACY_OPERATION;
     const exposure = this.atomic(db => { const row = readExposure(db, exposureId); return row && exposureOf(row); });
     if (!exposure) throw new HubProtocolError("not-found");
+    const bytes = (e: typeof exposure) => {
+      if (!sharingChange) return JSON.stringify(e);
+      const { sharingEpoch: _epoch, ...rest } = e;
+      return JSON.stringify({ ...rest, state: rest.state === "paused" ? "published" : rest.state });
+    };
+    const serializedExposure = bytes(exposure);
+    const assertExposure = () => {
+      if (!this.live() || ctx.current() !== true) throw new HubProtocolError("unavailable");
+      const row = this.atomic(db => readExposure(db, exposureId));
+      if (this.deps.groups !== groups || !row || bytes(exposureOf(row)) !== serializedExposure) throw new HubProtocolError("stale");
+    };
+    if (!groups) { assertExposure(); return { source: "legacy", assertCurrent: assertExposure }; }
     const fleet = this.deps.store.read().fleets.find(f => f.id === exposure.fleetId);
     if (!fleet || personKeyString(fleet.owner) !== personKeyString(exposure.owner)) throw new HubProtocolError("revoked");
-    const serializedExposure = JSON.stringify(exposure), serializedFleet = JSON.stringify(fleet), permits: HubOperationPermit[] = [];
+    const serializedFleet = JSON.stringify(fleet), permits: HubOperationPermit[] = [];
     if (asker) permits.push(await this.groupAsker(asker, ctx));
     const fleetPermit = await this.group(() => groups.check({ kind: "fleet", id: fleet.id, revision: fleet.generation, owner: fleet.owner }, ctx));
     permits.push(fleetPermit);
     if (fleet.status !== "active" && fleetPermit.source !== "legacy") throw new HubProtocolError("revoked");
     permits.push(await this.group(() => groups.check({ kind: "exposure", id: exposure.id, revision: exposure.revision, owner: exposure.owner }, ctx)));
     const permit = { assertCurrent: () => {
+      assertExposure();
       if (!this.live() || ctx.current() !== true || this.deps.groups !== groups) throw new HubProtocolError("unavailable");
       for (const proof of permits) proof.assertCurrent();
       const row = this.atomic(db => readExposure(db, exposure.id));
-      if (!row || JSON.stringify(exposureOf(row)) !== serializedExposure
+      if (!row || bytes(exposureOf(row)) !== serializedExposure
         || JSON.stringify(this.deps.store.read().fleets.find(f => f.id === fleet.id)) !== serializedFleet) throw new HubProtocolError("stale");
     } };
     permit.assertCurrent(); return permit;
@@ -201,10 +271,11 @@ export async function personByLogin(core: HubCore, login: string): Promise<Perso
 
 /** Only the existing authenticated Hub-admin pairing operation may select an unsigned-in directory owner. */
 export async function pairingOwnerByLogin(core: HubCore, ctx: HubRequestContext, input: string): Promise<PersonKey | null> {
-  await ctx.requireAdmin();
+  const permit = await core.management(ctx, "join.manage"); permit.assertCurrent();
   const login = input.trim();
   if (!login || login.length > 256) return null;
   const owner = await core.lookupPairingOwner(login);
   await ctx.current(); // No stale admin session may use a lookup completed after it was signed out.
+  permit.assertCurrent();
   return owner;
 }

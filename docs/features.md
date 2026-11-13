@@ -276,7 +276,7 @@ If you `send_to_instance` a stopped instance, the error tells you to use `start_
 
 ### Delivery tracking (`delivery_status`)
 
-A cross-instance send returns as soon as the fleet has accepted it (`{ sent, queued }`, with an `operation_id` / `delivery_id`); the fleet owns delivery from there, through a durable outbox. `delivery_status` reads where a delivery got to, by exactly one of `delivery_id`, `operation_id`, `correlation_id` or `message_id` (paged with `limit` up to 100 and `cursor`). A row moves through `queued`, `delivering`, `submission_started`, `reconciliation_pending`, `retry_wait` to `delivered`, `failed`, `uncertain` or `cancelled`. `uncertain` means it may have arrived: do not resend blindly.
+A cross-instance send returns as soon as the fleet has accepted it (`{ sent, queued }`, with an `operation_id` / `delivery_id`); the fleet owns delivery from there, through a durable outbox. `delivery_status` reads where a delivery got to, by exactly one of `delivery_id`, `operation_id`, `correlation_id` or `message_id` (paged with `limit` up to 100 and `cursor`). A row moves through `queued`, `delivering`, `submission_started`, `reconciliation_pending`, `retry_wait` to `delivered`, `failed`, `uncertain` or `cancelled`. `uncertain` means it may already have arrived: check it with `delivery_status`, then confirm (or resend only if it shows `failed`).
 
 Each row also says how it was routed and what became of it after it reached the CLI (#1201):
 - `delivery_mode` is `steer` (into the live turn) or `idle_queue` (as the next message), as `send_to_instance` reported it.
@@ -312,7 +312,7 @@ A fleet-wide task list, kept in the fleet's SQLite database, through one `task` 
 - `task(action: "claim")` — assign an `open` task to yourself. A task whose dependencies are not all `done` cannot be claimed.
 - `task(action: "done")` — mark a task you claimed as done, with an optional `result`. Only a `claimed` task can be completed. A task that waits for confirmation goes to `review` instead (see below); the one who confirms it (its dispatcher) finishes it from `review` with `done`.
 - `task(action: "update")` — change `status` (`open` / `claimed` / `review` / `done` / `blocked` / `cancelled`), `priority`, `assignee` or `result`.
-- `task(action: "list")` — every task, most urgent first; narrow it with `filter_assignee` and `filter_status`. Without a filter it lists what is not finished (`open`, `claimed`, `blocked`, `review`).
+- `task(action: "list")` — every task, most urgent first; narrow it with `filter_assignee` and `filter_status`. Without a filter it lists what is not finished (`open`, `claimed`, `blocked`, `review`). `stale: true` lists the claimed cards whose assignee stopped (crashed, paused, stuck, waiting on a prompt, or quiet), the same ones their dispatchers were told about (#3647).
 
 `id` takes a task id, an 8-hex prefix, or a card number from the dashboard (`M-3`); list rows carry the card number as `code`.
 
@@ -332,6 +332,32 @@ Working together on the board:
 - **News on your cards.** A card notifies only when its status or assignee changes, and only the one instance that acts next, as a `[Task board]` notice from AgEnD. An instance hears when someone else assigns it a board card (once the card can start; the `task` tool's own tasks come with their own message), starts it, sends it back, answers its blocked question, finishes the last card it waited for, or cancels it (also when its main task's cancel takes it down); a dispatcher hears when a card it handed out gets blocked on a question, or is ready for its confirmation (it confirms it, or sends it back — and when the card went there by itself before it was wrapped up, the notice says what is missing); a main task's owner, when the person's main task went to them by itself before it was wrapped up. A comment and a confirmation notify nobody: the card lists new comments for its assignee (`task mine`, `task get`) — except the answer to its blocked question while it is busy with another card, which waits on the card and is told. News the instance that made it already told in its own message naming the card is not repeated: for an assignment, a message up to 2 minutes before or after it; for anything else, one sent after the change, within 2 minutes. A cancel is told at once. News within 10 s is one notice (a whole plan assigned at once is a count); what no longer stands when it goes out is left out (a card no longer ready, started or answered). The delivery outbox holds the notice until the instance can take it; once every card on it has changed status or assignee again, a notice still waiting is withdrawn (`cancelled`, "superseded").
 
 Creating, claiming and completing a task are written to the activity log. Every tool profile except `minimal` has `task`.
+
+### When an assignee stops
+
+The agent that handed out a card is told when the card's assignee stops working on it (#3647):
+
+- the assignee crashed and is not back after 5 minutes;
+- it is paused: its sign-in ended, it hit a usage limit, or it kept failing;
+- it looks stuck;
+- it has waited on a prompt nobody answered for 10 minutes;
+- it has been quiet with the card claimed for 60 minutes. Long background work (subagents, background tasks) and waiting for a reply do not count as quiet.
+
+The dispatcher gets one `[Task board]` notice per stop, and one "working again" line when the assignee recovers. Planned restarts and updates send nothing. When a person handed out the card, a quiet assignee shows in that person's **Needs you** instead. `task(action: "list", stale: true)` lists the cards whose assignee has stopped.
+
+AgEnD only tells. It never restarts the assignee or gives the card to someone else; the dispatcher decides what to do.
+
+Change it in **Settings → Shared agent settings → Advanced → When an assignee stops**: **Tell the dispatcher** (on by default), and the minutes for each case (1 to 1440). In `fleet.yaml`:
+
+```yaml
+defaults:
+  task_board:
+    liveness:
+      enabled: true
+      quiet_minutes: 60          # quiet with a claimed card
+      prompt_minutes: 10         # waiting on a prompt
+      crash_grace_minutes: 5     # crashed and not back
+```
 
 ### On the dashboard (Fleet › Tasks)
 
@@ -577,7 +603,7 @@ The daemon notifies you in Telegram when a failover occurs and switches back to 
 
 ## Graceful restart
 
-`/restart` in the chat (without `full`) restarts the instances inside the running fleet process: it waits for all instances to go idle (no transcript activity for 10s), then restarts them one by one. A 5-minute timeout prevents hanging on stuck instances. The CLI's whole-fleet restart is `agend restart`, which goes through the service manager (#2356); `agend fleet restart` only runs `agend restart` now and goes away in 2.4.
+`/restart` in the chat (without `full`) restarts the instances inside the running fleet process: it waits for all instances to go idle (no transcript activity for 10s), then restarts them one by one. A 5-minute timeout prevents hanging on stuck instances. The CLI's whole-fleet restart is `agend restart`, which goes through the service manager (#2356); `agend fleet restart` only runs `agend restart` now and goes away in a later 2.4 release.
 
 ## Topic icon + idle archive
 
@@ -849,9 +875,19 @@ instances:
 
 Profiles live in `~/.agend/credential-profiles/<backend>/<profile>`, under the fleet, so several agents can point at one subscription. An instance without a profile is unaffected. Only the login is separated: kiro's large runtime caches are linked back to the shared copy, and for Codex only `auth.json` differs. Switching profiles is a config change plus a restart (`update_instance_config` does both); switching to a profile that was never logged in is refused with the command to log it in. A fleet admin signs a profile in from chat with `/login <backend> <profile>`, or from the web dashboard (**AI accounts** in Settings, **Connect account**): for Claude Code, Codex (device code, `CODEX_HOME` set to the profile) and Kiro (`XDG_DATA_HOME` set to the profile) alike (#3212). On kiro a switch starts a new conversation, because kiro keeps conversations in the same store as its login (AgEnD hands the recent context over). On Codex the conversation stays. On Claude Code AgEnD copies the conversation into the new profile and resumes it there (#1753); the old profile keeps its own copy.
 
-**ClassicBot channels (#1220).** A channel in `classicBot.yaml` takes the same `backend_options.<backend>.credential_profile`, over any profile inherited from the fleet defaults (an empty or `null` value means the shared login). Its agent launches on that profile, `/usage` counts it under that subscription's row (for example `Codex (personal)`), and `kiro_engine_status` reports it. An unusable profile name stops that channel's agent from starting rather than running it on another login. Changing the profile restarts the channel's agent.
+**ClassicBot channels (#1220).** A channel in `classicBot.yaml` takes the same `backend_options.<backend>.credential_profile`, over any profile inherited from the fleet defaults (an empty or `null` value means the shared login). Its agent launches on that profile, `/usage` counts it under that subscription's row (for example `Codex (personal)`), and `kiro_engine_status` reports it. An unusable profile name stops that channel's agent from starting rather than running it on another login. Changing the profile restarts the channel's agent. You can also choose it on the dashboard: the room's settings → **Runtime & model** → **Account** (#3690). Saving there changes only that room's lines in `classicBot.yaml` and keeps your comments. An agent such as General can make the same change with `update_instance_config` (#3715): on a room it takes only `backend_options.<backend>.credential_profile`, writes it the same way, restarts the room and answers with the profile the room restarted on (`launched_profile`).
 
 `/usage`, `get_usage` and the dashboard show one row per subscription, never added together. Full reference: [configuration](configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
+
+## Reasoning effort
+
+Many CLIs let a model think harder or faster: its reasoning effort (`low`, `medium`, `high`, and on some models `xhigh` or `max`).
+
+- **The levels follow the model.** Each model offers only the levels it takes, read from the CLI's own model list: for Claude, the account's model list; for Grok, its model cache. Some models have no effort setting; they get none. When the list can't be read (an alias such as `opus`, or no cache yet), the usual levels are offered.
+- **In the chat header.** An agent whose CLI has an effort setting always shows an effort chip, **auto** when none is set (the CLI's own default). Click it, or send `/effort`, to change it. A running agent uses the new level at once; a few CLIs, such as Codex, restart the agent for it.
+- **On a phone.** `/model` lists each model with its effort and a **›**. **›** opens that model's levels; choosing one switches to that model first if it is not the one in use.
+- **In Settings.** An agent's **Settings → Runtime & model** has **Reasoning effort** under the model. It offers the levels of the model chosen above it. **Model default** means nothing is set and nothing is written. While the model field has an unsaved change, the effort field waits until you save. It is not shown for a Windows agent or a model without an effort setting.
+- Neither the chip nor the Settings field offers going back to **auto** / **Model default** once a level is set.
 
 ## Backend availability and model lists (2.2.5)
 
@@ -1445,7 +1481,7 @@ Since then:
 - **Filtering the sidebar** (2.2.5, #1936): the instance you have open stays on top under **Current**, matching or not.
 - **Names that open an instance** (2.2.5, #1990): in a chat's cross-instance status lines the other instance's name opens its chat, and in a prompt card the instance's name opens its View. An agent's or a person's message never gets such a link.
 - **The chat's commands and quick actions** (#1269): typing `/` runs the instance's own topic commands through the same handlers and command table. A paste over 4,000 characters is attached as a text file, and the thread stays at the newest message as content grows.
-- **Log tab** (#1218): a per-instance **Log** panel shows each prompt, the agent's replies (never its thinking), every tool call with arguments and result, errors, and fleet events such as crashes or restarts. Steps are read on demand from the agent's transcript while the tab is open, and update live; secret values are masked and long text is truncated. Off by default (`web.log_tab`); a fleet admin enables it in Settings → Web dashboard, and it then appears over the public link too. Supported fully on claude-code and codex; other backends show fleet events only; kiro shows fleet events with a note explaining why its own steps are not yet available.
+- **Log tab** (#1218): a per-instance **Log** panel shows each prompt, the agent's replies (never its thinking), every tool call with arguments and result, errors, and fleet events such as crashes or restarts. Steps are read on demand from the agent's transcript while the tab is open, and update live; secret values are masked and long text is truncated. Off by default (`web.log_tab`); a fleet admin enables it in Settings → Web dashboard, and it then appears over the public link too. Separately, the chat of a claude-code or codex instance shows each reply's steps above it to a signed-in admin, as each agent's `tool_progress` allows (#3648; thinking is off by default, `web.log_thinking`). Supported fully on claude-code and codex; other backends show fleet events only; kiro shows fleet events with a note explaining why its own steps are not yet available.
 - **The composer's row** (2.3, #2215): one row under the composer, at the bottom left: this browser's web authority, then the key hint (`✓ Verified · Enter to send · Shift+Enter for a new line`). When "Verified" ends is in its tooltip (on a touch screen, a tap shows it); not verified reads `Not verified · Authorize`. A guest's note and the public link's sentence share the same row.
 - **The chat's identity card** (2.3, #2217): nothing sits on the card. One card button in the chat header opens a menu with **Show card** and **Show picture and bio** (unticked, only the banner stays); both are kept on this device. Guests and the public link have the same button.
 - **Apply from a verified browser** (2.3, #2170): a web-verified browser's own **Apply** confirms a held Settings change when its account is on the change's platform and a fleet admin of every connection the change affects. No chat card is posted, General gets a notice, and every check runs again when the change executes. Guests, the public link, unverified browsers and changes that need the host CLI are unchanged.

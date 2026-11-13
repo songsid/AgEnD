@@ -115,6 +115,12 @@ export interface CliBackendConfig {
   model?: string;
   /** Reasoning effort for backends that take it as a launch flag. */
   effort?: string;
+  /**
+   * AGEND-181: ask the CLI to write its thinking summaries to its transcript (Claude Code's `showThinkingSummaries`:
+   * without it the transcript's thinking blocks are empty). Set only while `web.log_thinking` is on (off by default: then nothing of Claude's settings is touched);
+   * read at each launch, so a running instance picks it up when it next starts.
+   */
+  thinkingSummaries?: boolean;
   /** Kiro-only UI/agent profile. Defaults to "legacy". */
   kiroUi?: "legacy" | "tui" | "v3";
   /** When true, backend should not resume a previous session (crash recovery). */
@@ -209,6 +215,13 @@ export interface ModelOption {
   id: string;
   label: string;
   description?: string;
+  /** Context window the account API reports for this model (claude `max_input_tokens`); absent when unknown. */
+  maxInputTokens?: number;
+  /**
+   * The effort levels this model accepts, in AgEnD's canonical order (claude `capabilities.effort`). `[]`: the model
+   * has no effort setting (Haiku 4.5); absent: unknown, so the backend's own list applies.
+   */
+  effortLevels?: string[];
 }
 
 /** How long a cached CLI env (`<AGEND_HOME>/cli-env/<backend>.json`) is valid; after that nothing may read it. */

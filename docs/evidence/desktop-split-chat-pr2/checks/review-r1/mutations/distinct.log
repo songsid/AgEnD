@@ -1,0 +1,54 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·····x····
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  00:01:17
+   Duration  797ms (transform 351ms, setup 197ms, import 280ms, tests 27ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-3637.test.ts > two-pane navigation uses one bounded topology > rejects malformed, duplicate, unsupported and oversized URL state
+AssertionError: expected { a: { route: { …(2) }, …(3) }, …(5) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "a": {
+    "hash": "",
+    "route": {
+      "instance": "alpha",
+      "panel": "chat",
+    },
+    "search": "",
+    "seq": 1,
+  },
+  "b": {
+    "hash": "",
+    "route": {
+      "instance": "alpha",
+      "panel": "chat",
+    },
+    "search": "",
+    "seq": 1,
+  },
+  "flipped": false,
+  "focus": "b",
+  "layout": "right",
+  "ratio": 0.5,
+}
+
+ ❯ tests/web-chat-workspace-3637.test.ts:51:92
+     49|     for (const path of ["/ui/chat/alpha?compare=alpha", "/ui/chat/alph…
+     50|       "/ui/chat/alpha?compare=..%2Fsecret", "/settings?compare=beta", …
+     51|       "/ui/chat/alpha?compare=" + "x".repeat(129)]) expect(model.readW…
+       |                                                                                            ^
+     52|   });
+     53|   it("only persists topology, never arbitrary query data or message an…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

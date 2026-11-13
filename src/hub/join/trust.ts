@@ -14,6 +14,23 @@ const trustSchema = z.strictObject({ v: z.literal(1), hub: joinIdentitySchema, f
 export class CompanyTrustStore {
   constructor(private readonly home: string) {}
   path(webOrigin: string): string { return `hub-member/company-trust/${sha256(hubOrigin(webOrigin))}.json`; }
+  /**
+   * M-2921 (the Fleet's probe): how this Hub identity compares with what is saved — READ ONLY: it never creates the
+   * trust directory or a pin (spec A-L4: a probe leaves no trace). "known": it matches the saved pin (or the existing
+   * binding of the same origin); "new": nothing saved for that origin; "changed": it differs from either.
+   */
+  peek(hub: JoinIdentity, existing: JoinIdentity | null): "new" | "known" | "changed" {
+    const fingerprint = companyIdentityDigest(hub), suffix = this.path(hub.webOrigin);
+    const sameOrigin = !!existing && existing.webOrigin === hub.webOrigin;
+    if (sameOrigin && companyIdentityDigest(existing!) !== fingerprint) return "changed";
+    let present = false;
+    try { lstatSync(join(this.home, suffix)); present = true; } catch { /* nothing saved */ }
+    if (!present) return sameOrigin ? "known" : "new";
+    try {
+      const previous = validated(trustSchema, parseStrictJson(readPrivateFile(this.home, suffix, 8192)));
+      return previous.hub.webOrigin === hub.webOrigin && previous.fingerprint === companyIdentityDigest(previous.hub) && previous.fingerprint === fingerprint ? "known" : "changed";
+    } catch { return "changed"; }
+  }
   /** Only the separate confirmed local repair calls this; ordinary Start/Retry always checkAndPin. */
   repair(hub: JoinIdentity, expected: string | null, current: () => boolean): void {
     const fingerprint = companyIdentityDigest(hub), suffix = this.path(hub.webOrigin);

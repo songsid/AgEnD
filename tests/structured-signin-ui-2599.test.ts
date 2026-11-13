@@ -9,12 +9,13 @@ function browser(options: Record<string, unknown> = {}, init: Record<string, unk
       append(child: any) { this.children.push(child); }, replaceChildren() { this.children = []; }, setAttribute(key: string, value: string) { this[key] = value; } };
   }
   const doc = { createElement: element, getElementById: () => null };
-  const root = element("main"), state = { selected: ["kiro-cli", "antigravity"], pending: ["kiro-cli", "antigravity"], skipped: [], states: { "kiro-cli": "invalid", antigravity: "console_only" } as Record<string, string>, login: null as any, ready: false, ...init };
+  const root = element("main"), state = { selected: ["kiro-cli", "antigravity"], pending: ["kiro-cli", "antigravity"], skipped: [], states: { "kiro-cli": "invalid", antigravity: "console_only" } as Record<string, string>, console: ["antigravity"], login: null as any, ready: false, ...init };   // `console`: what the server sends: the CLIs the first-run list only names the console command for (registry `host.firstRunSignIn.mode`)
   const fetcher = vi.fn(async (_url: string, options: any) => {
     const data = options.body ? JSON.parse(options.body) : null;
     if (data?.operation === "start") state.login = { backend: "kiro-cli", id: "a".repeat(32), revision: 3, phase: "method", choices: ["builder_id", "github"], canAct: true };
     if (data?.operation === "input") state.login = { ...state.login, revision: 4, canAct: false };
-    return { ok: true, json: async () => structuredClone(state) };
+    // As the server answers: only a start that CREATED the run names it (`started`).
+    return { ok: true, json: async () => ({ ...structuredClone(state), ...(data?.operation === "start" ? { started: state.login.id } : {}) }) };
   });
   const timers: (() => Promise<void>)[] = [];
   const ctx = createContext({ document: doc, fetch: fetcher, setTimeout: (fn: any) => { timers.push(fn); return 1; }, clearTimeout() {}, URL, confirm: nativeConfirm });

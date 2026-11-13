@@ -3,9 +3,9 @@
  * a scratch home), with a fake S3 entry. Local listeners on 127.0.0.1 only; no directory is contacted (S2's client is
  * built but never signs in), nothing outside the scratch home is touched.
  */
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { request, Server as HttpsServer } from "node:https";
-import { connect, createServer as createNetServer } from "node:net";
+import { connect, createServer as createNetServer, type Socket } from "node:net";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { verify, createPublicKey, randomUUID, createHash } from "node:crypto";
@@ -18,7 +18,7 @@ import { createHubServerFactory, hubServerDatabasePlan, type HubHttp, type HubHt
 import { HubDirectoryResponseOwner, type HubDirectoryResponse } from "../src/hub/directory-response-owner.js";
 import { HubServer } from "../src/hub/server.js";
 import type { HubMountedService } from "../src/hub/mount.js";
-import { ADMIN, makeTestCerts } from "./support/hub-init-fixtures.js";
+import { ADMIN, makeTestCerts, type TestCerts } from "./support/hub-init-fixtures.js";
 import { freeHubPort } from "./helpers/hub-rig.js";
 import { readHubSecretFile } from "../src/hub/init/secret-file.js";
 import { readPrivateFile } from "../src/hub/private-files.js";
@@ -37,7 +37,12 @@ import { createHubDirectorySettingsControl, type HubDirectorySettingsControl } f
 import type { HubDirectoryProofContext } from "../src/hub/settings-directory-proof.js";
 
 const roots: string[] = [];
-beforeAll(() => mkdirSync(".artifacts", { recursive: true }));
+let sourceCerts: TestCerts;
+beforeAll(() => {
+  mkdirSync(".artifacts", { recursive: true });
+  sourceCerts = makeTestCerts();
+}, 120_000);
+afterAll(() => { if (sourceCerts) rmSync(sourceCerts.dir, { recursive: true, force: true }); });
 afterEach(() => {
   for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true });
 });
@@ -49,7 +54,7 @@ async function initializedHub(bindPassword = BIND) {
   const home = mkdtempSync(join(process.cwd(), ".artifacts/hub-compose-"));
   chmodSync(home, 0o700);
   roots.push(home);
-  const certs = makeTestCerts();
+  const certs = sourceCerts;
   // Two probes in a row may get the same just-freed port from the OS (a flake: "must use different addresses"): ask again.
   const memberPort = await freeHubPort();
   let webPort = await freeHubPort();
@@ -118,13 +123,41 @@ function get(port: number, path: string, ca: string): Promise<{ status: number; 
   });
 }
 
-function refused(port: number): Promise<boolean> {
+function refused(port: number, dial: (port: number, host: string) => Socket = connect): Promise<boolean> {
   return new Promise((resolve) => {
-    const s = connect(port, "127.0.0.1");
-    s.once("connect", () => { s.destroy(); resolve(false); });
-    s.once("error", () => resolve(true));
+    const s = dial(port, "127.0.0.1");
+    let answer = true;
+    s.once("connect", () => {
+      // Linux can assign the target ephemeral port to this client: that socket talks to itself, not a Hub.
+      answer = s.localAddress === s.remoteAddress && s.localPort === s.remotePort;
+      s.destroy();
+    });
+    s.once("error", () => { answer = true; s.destroy(); });
+    s.once("close", () => resolve(answer));
   });
 }
+
+describe.skipIf(process.platform !== "linux")("owned TCP refusal probe", () => {
+  it("does not mistake a TCP self-connection for a listening Hub", async () => {
+    const port = await freeHubPort();
+    let tuple: { localAddress?: string; localPort?: number; remoteAddress?: string; remotePort?: number } | undefined;
+    const answer = await refused(port, (target, host) => {
+      const socket = connect({ host, port: target, localAddress: host, localPort: target });
+      socket.once("connect", () => { tuple = { localAddress: socket.localAddress, localPort: socket.localPort,
+        remoteAddress: socket.remoteAddress, remotePort: socket.remotePort }; });
+      return socket;
+    });
+    expect(tuple).toEqual({ localAddress: "127.0.0.1", localPort: port, remoteAddress: "127.0.0.1", remotePort: port });
+    expect(answer).toBe(true);
+  });
+
+  it("still reports a genuine owned listener as connected", async () => {
+    const listener = createNetServer(socket => socket.destroy());
+    await new Promise<void>((resolve, reject) => { listener.once("error", reject); listener.listen(0, "127.0.0.1", resolve); });
+    try { expect(await refused((listener.address() as { port: number }).port)).toBe(false); }
+    finally { await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve())); }
+  });
+});
 
 function factory(home: string, http?: HubHttpEntry, extra: Partial<Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs" | "browserCertificateReady" | "createDirectory" | "directoryReady">> = {}) {
   const reports: { code: string; detail: string }[] = [];
@@ -235,6 +268,15 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
       expect(store.read()).toMatchObject({ revocationVersion: 1, fleets: [{ id: fleetId, status: "revoked" }] });
     } finally { refresh.mockRestore(); await service.close(); }
   });
+  it("wires the sharing writer's refresh to the existing live member listener", async () => {
+    const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
+    const service = await f.create(hub.config.hub, () => true), refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization");
+    try {
+      await service.start(); http.state.deps!.refreshAuthorization!();
+      expect(refresh).toHaveBeenCalledExactlyOnceWith();
+      expect(http.state.deps!.transport()).not.toBeNull();
+    } finally { refresh.mockRestore(); await service.close(); }
+  });
 
   it("without S3 in the build: hub-incomplete, before opening anything", async () => {
     const hub = await initializedHub();
@@ -256,7 +298,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     // Private state set, created together.
     for (const p of ["hub/hub.sqlite", "hub/floors/transport", "hub/keys/content.key"]) expect(statSync(join(hub.home, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(hub.home, "hub/hub.sqlite"), { readonly: true });
-    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["company-join", "s1-transport", "s3-http", "s3-session-epoch", "s5-audit", "s5-browser-tls", "s5-directory-mount-intent", "s5-directory-settings", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-member-address", "s5-retention", "s5-web-address", "s5-web-initialization-audit", "s7-attachments", "s90-pairing-notices"]);
+    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["company-join", "enrolment-code", "s1-transport", "s3-http", "s3-session-epoch", "s5-audit", "s5-browser-tls", "s5-directory-mount-intent", "s5-directory-settings", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-member-address", "s5-retention", "s5-web-address", "s5-web-initialization-audit", "s7-attachments", "s90-pairing-notices"]);
     expect((db.prepare("SELECT hub_id FROM hub_instance").get() as { hub_id: string }).hub_id).toBe(hub.config.hub.hubId);
     db.close();
 
@@ -662,8 +704,10 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
 /** Actual S3 HTTPS + the existing writer; driver is inert and never contacts a real directory. */
 async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => HubHttp = http => http,
   options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean; now?: () => number;
+    beforeStart?: (hub: Awaited<ReturnType<typeof initializedHub>>, attempt: number) => Promise<void>;
     directorySettings?: () => Promise<HubDirectorySettingsControl> } = {}) {
-  const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
+  let hub = await initializedHub();
+  const real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
   let runtime: HubRuntime, writer: ReturnType<typeof createHubSettingsWriter>, crash: string | undefined, lastDeps: HubHttpDeps | undefined, lastHttp: HubHttp;
   let atStage: (() => void) | undefined;
   let creates = 0, eligibility = 0, signInGate: (() => Promise<void>) | undefined;
@@ -697,8 +741,27 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
           return person ? { eligible: true, person } : { eligible: false, reason: "disabled" }; }, close: async () => {} }; } });
     return runtime;
   };
-  build();
-  try { await runtime!.apply(hub.config); expect(runtime!.serverHealth(hub.config.hub)).toBe("ready"); }
+  try {
+    for (let attempt = 0; ; attempt++) {
+      build();
+      await options.beforeStart?.(hub, attempt);
+      await runtime!.apply(hub.config);
+      const holds = runtime!.currentHolds();
+      // freeHubPort uses port 0, but its socket closes before initialization and mount.
+      // Another file may take that address. Retry only this initial allocation, with a
+      // fresh sealed home after fully closing the losing generation; never retry a
+      // readiness failure or any later lifecycle operation under test.
+      const collision = holds.length === 1 && holds[0]!.side === "server" && holds[0]!.code === "service-unavailable"
+        && [hub.memberPort, hub.webPort].some(port => holds[0]!.detail === `listen EADDRINUSE: address already in use 127.0.0.1:${port}`);
+      if (collision && attempt < 2) {
+        await runtime!.close();
+        hub = await initializedHub();
+        continue;
+      }
+      expect(runtime!.serverHealth(hub.config.hub), JSON.stringify(runtime!.currentHolds())).toBe("ready");
+      break;
+    }
+  }
   catch (err) { await runtime!.close(); throw err; }
   const candidate = () => ({ directory: { ...(hub.config.hub.directory as import("../src/hub/directory/config.js").HubDirectoryConfig), url: "ldaps://next.example.test" },
     bindPassword: "Dummy-next-bind-only", changes: ["server", "secret"] as const,
@@ -721,6 +784,43 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
       });
     }, holdSignIn(gate?: () => Promise<void>) { signInGate = gate; }, entry, build, commit, candidate, actor };
 }
+
+describe.skipIf(process.platform === "win32")("initial directory fixture port allocation", () => {
+  it.each(["memberPort", "webPort"] as const)("reallocates a %s stolen between selection and startup", async side => {
+    const blocker = createNetServer(), attempts: string[] = [];
+    let first: Awaited<ReturnType<typeof initializedHub>> | undefined;
+    let r: Awaited<ReturnType<typeof directoryRuntimeRig>> | undefined;
+    try {
+      r = await directoryRuntimeRig(undefined, { beforeStart: async (hub, attempt) => {
+        attempts.push(hub.home);
+        if (attempt !== 0) return;
+        first = hub;
+        await new Promise<void>((resolve, reject) => { blocker.once("error", reject); blocker.listen(hub[side], "127.0.0.1", resolve); });
+      } });
+      expect(attempts).toHaveLength(2); expect(new Set(attempts).size).toBe(2);
+      expect(blocker.listening).toBe(true); expect(r.hub[side]).not.toBe(first![side]);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+      expect((await get(r.hub.webPort, "/hub/v1/session", r.hub.caPem)).status).toBe(200);
+    } finally { await r?.runtime.close(); await new Promise<void>(resolve => blocker.close(() => resolve())); }
+  });
+  it("fails with the original ready assertion after three stolen allocations", async () => {
+    const blockers: ReturnType<typeof createNetServer>[] = [], homes: string[] = [];
+    try {
+      await expect(directoryRuntimeRig(undefined, { beforeStart: async hub => {
+        homes.push(hub.home);
+        const blocker = createNetServer(); blockers.push(blocker);
+        await new Promise<void>((resolve, reject) => { blocker.once("error", reject); blocker.listen(hub.webPort, "127.0.0.1", resolve); });
+      } })).rejects.toThrow(/EADDRINUSE.*expected 'unavailable' to be 'ready'/);
+      expect(homes).toHaveLength(3); expect(new Set(homes).size).toBe(3);
+      expect(blockers.every(blocker => blocker.listening)).toBe(true);
+    } finally { await Promise.all(blockers.map(blocker => new Promise<void>(resolve => blocker.close(() => resolve())))); }
+  });
+  it.each(["owned directory refusal", "listen EADDRINUSE: address already in use 127.0.0.1:1"])("does not retry %s", async detail => {
+    let attempts = 0;
+    await expect(directoryRuntimeRig(() => { throw Error(detail); }, { beforeStart: async () => { attempts++; } })).rejects.toThrow(detail);
+    expect(attempts).toBe(1);
+  });
+});
 
 describe.skipIf(process.platform === "win32")("directory decision joins the mounted runtime", () => {
   it("revokes old HTTPS effects immediately but retains the same SQL participant through physical installation", async () => {

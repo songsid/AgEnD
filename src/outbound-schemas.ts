@@ -101,6 +101,10 @@ export const CreateScheduleArgs = z.object({
 });
 
 export const ListSchedulesArgs = z.object({
+  detail: z.boolean().optional().describe("Return the legacy full answer; omit limit/cursor"),
+  limit: z.number().int().min(1).max(100).optional().describe("Page size, default20; maximum100"),
+  cursor: z.string().min(1).max(128).optional().describe("next_cursor from the previous page; keep the same filters"),
+
   target: z.string().optional().describe("Filter by target instance name"),
 });
 
@@ -125,6 +129,10 @@ export const DeleteScheduleArgs = z.object({
 // ── Fleet Task Board ────────────────────────────────────────────────────
 
 export const TaskBoardArgs = z.object({
+  detail: z.boolean().optional().describe("Return the legacy full answer; omit limit/cursor"),
+  limit: z.number().int().min(1).max(100).optional().describe("Page size, default20; maximum100"),
+  cursor: z.string().min(1).max(128).optional().describe("next_cursor from the previous page; keep the same filters"),
+
   action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects", "create_project", "move_project"])
     .describe("Operation to perform"),
   title: z.string().optional().describe("Task title (create/update)"),
@@ -146,6 +154,7 @@ export const TaskBoardArgs = z.object({
     .describe("Filter by status (list) — a single status or an array of statuses. Omit for live-only (open/claimed/blocked/review)."),
   verbose: z.boolean().optional()
     .describe("list: return full task records instead of compact rows (default false)"),
+  stale: z.boolean().optional().describe("list: only claimed cards whose assignee stopped (crashed, paused, stuck, waiting on a prompt, or quiet)"),
   // The task board (docs/design/task-board.md): naming one of these makes create/update a board card's.
   project: z.union([z.string(), z.number().int()]).nullable().optional().describe("Project name or id: a new main task's (create), a filter (list). update / move_project: a main task's project by its id, or null / \"none\" to take it out of its project (sub tasks follow)"),
   name: z.string().optional().describe("A new project's name (create_project)"),
@@ -185,11 +194,15 @@ export const PostDecisionArgs = z.object({
 });
 
 export const ListDecisionsArgs = z.object({
+  detail: z.boolean().optional().describe("Return the legacy full answer; omit limit/cursor"),
+  limit: z.number().int().min(1).max(100).optional().describe("Page size, default20; maximum100"),
+  cursor: z.string().min(1).max(128).optional().describe("next_cursor from the previous page; keep the same filters"),
+
   include_archived: z.boolean().optional()
     .describe("Include archived/superseded decisions. Default: false"),
   tags: z.array(z.string()).optional().describe("Filter by tags"),
-  id: z.string().optional().describe("One decision's full text, by its id (or a unique prefix of 6+ characters)"),
-  full: z.boolean().optional().describe("Every decision's full text (large: prefer titles, then { id } for the ones you need). Default: false — titles only"),
+  id: z.string().optional().describe("One decision's title (detail:true for its full text), by its id (or a unique prefix of 6+ characters)"),
+  full: z.boolean().optional().describe("Legacy alias for detail:true: every full record, without pagination. Prefer paged titles, then {id,detail:true} for relevant rules"),
 });
 
 export const UpdateDecisionArgs = z.object({
@@ -414,6 +427,7 @@ export const ReconcileKiroInstanceArgs = z.object({
 }).strict().refine(v => v.keep_session_id !== v.archive_session_id, "Keep and archive IDs must differ");
 
 export const GetUsageArgs = z.object({
+  detail: z.boolean().optional().describe("Return the full usage JSON including capacity estimates and localization metadata. Default: compact account rows."),
   force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
 });
 
@@ -475,6 +489,7 @@ export const GetCacheReportArgs = z.object({
 
 /** #2122: tokens, requests, delivered messages and their API-equivalent at list price, read-only. */
 export const GetUsageReportArgs = z.object({
+  detail: z.boolean().optional().describe("Include speed stats and the full per-row basis metadata. Default: basis once, no speed stats."),
   range: z.enum(["today", "7d", "month", "all", "custom"]).optional().describe("The days to sum, in the fleet's timezone. Default: 7d. custom needs from and to."),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("custom: the first day, YYYY-MM-DD."),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("custom: the last day, YYYY-MM-DD."),
@@ -607,6 +622,7 @@ const ForwardMessageIds = z.array(z.string().min(1).max(256).regex(/^[^\s\u0000-
   .optional().describe("Explicit message IDs to share read-only verification access with the receiver. You must already be able to read each delivered row. Mentioning an ID in text grants no access; every relay hop must forward it explicitly.");
 
 export const SendToInstanceArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   instance_name: NonEmptyString.describe(
     "Name of the target instance (e.g., 'ccplugin', 'blog-t1385'). Use list_instances to see available instances.",
   ),
@@ -635,6 +651,7 @@ export const SendToInstanceArgs = z.object({
 const BroadcastRequestKind = z.enum(["query", "task", "update"]);
 
 export const BroadcastArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   message: NonEmptyString.describe("Message to send"),
   targets: z.array(z.string()).optional().describe("Instance names. Omit for all running."),
   team: z.string().optional()
@@ -651,6 +668,7 @@ export const BroadcastArgs = z.object({
 // be absent from these two schemas, so zod stripped it and wrapAsSend's forwarding
 // (which reads v.data.correlation_id) was dead for everything except report_result.
 export const RequestInformationArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   target_instance: NonEmptyString.describe("Name of the instance to ask."),
   question: NonEmptyString.describe("The question to ask."),
   context: z.string().optional().describe("Optional context to help the recipient answer."),
@@ -659,6 +677,7 @@ export const RequestInformationArgs = z.object({
 });
 
 export const DelegateTaskArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   target_instance: NonEmptyString.describe("Name of the instance to delegate to."),
   task: NonEmptyString.describe("Description of the task to perform."),
   forwards: ForwardMessageIds,
@@ -673,6 +692,7 @@ export const DelegateTaskArgs = z.object({
 });
 
 export const ReportResultArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   target_instance: NonEmptyString.describe("Name of the instance to report to."),
   correlation_id: z.string().optional()
     .describe("The correlation_id shown in the request's inbound block."),
@@ -690,13 +710,15 @@ export const ReportResultArgs = z.object({
 // selector is required; caller identity comes from the authenticated socket,
 // never from these arguments.
 export const DeliveryStatusArgs = z.object({
+  detail: z.boolean().optional().describe("Include full original content and delivery metadata. Default: secret-redacted excerpt, hashes and authority verdict."),
+  content_includes: z.string().min(1).max(500).optional().describe("Exact case-sensitive content check on an authorised message_id receipt, including beyond its excerpt. Returns a boolean without echoing the value."),
   delivery_id: NonEmptyString.optional().describe("Exact durable delivery ID returned by AgEnD."),
   operation_id: NonEmptyString.optional().describe("Operation ID returned when the outbound tool was accepted."),
   correlation_id: NonEmptyString.optional().describe("Correlation ID from the original request; may return multiple deliveries."),
-  message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. Never resend on uncertain."),
+  message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. On uncertain, it may already have arrived: confirm it, and resend only if it shows failed."),
   limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for operation/correlation queries (default 20, maximum 100)."),
   cursor: NonEmptyString.optional().describe("Opaque next-page cursor returned by the previous query."),
-}).strict().refine(args =>
+}).strict().refine(args => args.content_includes === undefined || args.message_id !== undefined, { message: "content_includes requires message_id" }).refine(args =>
   [args.delivery_id, args.operation_id, args.correlation_id, args.message_id].filter(value => value !== undefined).length === 1,
 { message: "Provide exactly one of delivery_id, operation_id, correlation_id, or message_id" })
   .refine(args => !args.cursor || !args.delivery_id, {

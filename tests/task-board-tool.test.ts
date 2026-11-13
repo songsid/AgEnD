@@ -49,7 +49,7 @@ describe("the task tool's board actions", () => {
     expect(await call("dev-a", { action: "move", id: "S-1", to: "claimed" })).toBe("ok S-1 to do → in progress (v2)");
     expect(await call("dev-a", { action: "update", id: "S-1", state: "done: handler\nnext: tests", log: "handler in" })).toBe("ok S-1 API [in progress] @dev-a (v3)");
     db.board.updateCard(ANN, "S-1", { comment: "cache it 30 s" });
-    expect(await call("dev-a", { action: "get", id: "s1" })).toBe([
+    expect(await call("dev-a", { action: "get", detail:true, id: "s1" })).toBe([
       "S-1 sub task · API [in progress] @dev-a v4",
       "main M-1 Leaderboard · dispatched by lead · finish it yourself",
       "state:", " done: handler", " next: tests",
@@ -58,8 +58,8 @@ describe("the task tool's board actions", () => {
     // Its next write hands over the comment it had not seen.
     expect(await call("dev-a", { action: "move", id: "S-1", to: "done", result: "src/api.ts; tests pass" }))
       .toBe("ok S-1 in progress → done (v5)\nnew comment (Ann): cache it 30 s\nS-2's dependencies are all done; it can start");
-    expect(await call("lead", { action: "list", parent: "M-1" })).toBe("S-2 [to do] Review @dev-b");
-    expect(await call("lead", { action: "list", parent: "M-1", filter_status: ["done", "open"] })).toBe("S-2 [to do] Review @dev-b\nS-1 [done] API @dev-a");
+    expect(await call("lead", { action: "list", detail:true, parent: "M-1" })).toBe("S-2 [to do] Review @dev-b");
+    expect(await call("lead", { action: "list", detail:true, parent: "M-1", filter_status: ["done", "open"] })).toBe("S-2 [to do] Review @dev-b\nS-1 [done] API @dev-a");
     expect(await call("lead", { action: "mine" })).toBe("lead's work on the task board\nmain tasks you coordinate:\n M-1 Leaderboard [in progress] sub tasks 1/2");
   });
 
@@ -82,7 +82,7 @@ describe("the task tool's board actions", () => {
     db.board.createProject(ANN, { name: "Game" });
     expect(await call("lead", { action: "create", title: "Leaderboard", project: "Game", assignee: "dev-a", acceptance: ["resets Monday", "top 100"], needs_review: true }))
       .toBe("ok M-1 Leaderboard [to do] @dev-a (v1)");
-    expect((await call("dev-a", { action: "get", id: "M-1" }) as string).split("\n")[1]).toBe("project Game · dispatched by lead · lead confirms it");   // #2434: an agent's card, its dispatcher's
+    expect((await call("dev-a", { action: "get", detail:true, id: "M-1" }) as string).split("\n")[1]).toBe("project Game · dispatched by lead · lead confirms it");   // #2434: an agent's card, its dispatcher's
     expect(await call("dev-a", { action: "create", title: "Archive", project: "Game", dispatcher: "lead" })).toBe("ok M-2 Archive [to do] @dev-a (v1)");
     expect(db.board.getCard("M-2").dispatcher).toEqual({ kind: "instance", name: "lead" });
     expect(await call("dev-a", { action: "update", id: "M-2", dispatcher: null })).toBe("ok M-2 Archive [to do] @dev-a (v2)");
@@ -101,7 +101,7 @@ describe("the task tool's board actions", () => {
     expect(db.board.detail("M-1").comments.map((e) => `${e.author}: ${e.text}`)).toEqual(["lead: weekly, the person says"]);
     // In review before it is wrapped up (the person moved it there): what is missing, in get and in mine.
     db.board.moveCard(ANN, "M-1", "review");
-    expect(await call("dev-a", { action: "get", id: "M-1" })).toContain("before lead confirms it: 2 definition-of-done items unchecked, no result (fill in with update)");
+    expect(await call("dev-a", { action: "get", detail:true, id: "M-1" })).toContain("before lead confirms it: 2 definition-of-done items unchecked, no result (fill in with update)");
     expect(await call("dev-a", { action: "mine" })).toContain("waiting for confirmation:\n M-1 Leaderboard — fill in before they confirm: 2 definition-of-done items unchecked, no result — by lead");
     // …and the lead, who confirms it, has it in its own list (#2434).
     expect(await call("lead", { action: "mine" })).toContain("for you to confirm:\n M-1 Leaderboard @dev-a — move it to done, or back to claimed with what is missing");
@@ -111,7 +111,7 @@ describe("the task tool's board actions", () => {
     const { call } = fleet();
     const ack = await call("dev-a", { action: "create", title: "Plain" }) as { id: string; status: string };
     expect(Object.keys(ack).sort()).toEqual(["id", "status", "updated_at"]);
-    expect(await call("dev-a", { action: "get", id: ack.id })).toMatchObject({ id: ack.id, code: "M-1", title: "Plain" });
+    expect(await call("dev-a", { action: "get", detail:true, id: ack.id })).toMatchObject({ id: ack.id, code: "M-1", title: "Plain" });
     expect(await call("dev-a", { action: "update", id: ack.id, priority: "high" })).toMatchObject({ id: ack.id, status: "open" });
   });
 

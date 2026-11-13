@@ -1,0 +1,72 @@
+{
+  "head": "3b9a7c5f994ad1ecfb42a94e81cfadc82f43bf4e",
+  "tree": "79c7e3fc45ef1d866af44ab969f01935061cc98a",
+  "inputs": {
+    "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64": [
+      "src/ui/shared/instance-nav.js",
+      "src/ui/shared/instance-nav.js",
+      "src/ui/shared/instance-nav.js"
+    ],
+    "fd102877074c12077fb79c8fbfe7cdef765b4d2c35d4d2bf9ff78ddcb5153f86": [
+      "src/ui/chat-workspace.js"
+    ],
+    "f71ed1c755110357fcf31dee9a013147c89e91672b84f62b385dbf819904efc0": [
+      "src/ui/panel-details.js",
+      "src/ui/panel-details.js"
+    ],
+    "9a2a711f07812f0e2e321d3f542768970e65caa508848ef31315f613cf664399": [
+      "src/ui/chat-popout-header.js"
+    ]
+  },
+  "cases": [
+    {
+      "label": "selected-row",
+      "source": "src/ui/shared/instance-nav.js",
+      "test": "tests/web-agent-back-chat-3714.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "different-agent",
+      "source": "src/ui/shared/instance-nav.js",
+      "test": "tests/web-agent-back-chat-3714.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "public-view",
+      "source": "src/ui/shared/instance-nav.js",
+      "test": "tests/web-agent-back-chat-3714.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "pane-return",
+      "source": "src/ui/chat-workspace.js",
+      "test": "tests/web-agent-back-chat-3714.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "settings-handoff",
+      "source": "src/ui/panel-details.js",
+      "test": "tests/web-agent-back-chat-3714.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "settings-link",
+      "source": "src/ui/panel-details.js",
+      "test": "tests/web-agent-back-chat-3714.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "popup-link",
+      "source": "src/ui/chat-popout-header.js",
+      "test": "tests/web-agent-back-chat-3714.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    }
+  ]
+}

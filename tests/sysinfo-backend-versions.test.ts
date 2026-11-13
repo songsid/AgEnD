@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { installTmuxProcessFixture } from "./helpers/tmux-process-stub.js";
 installTmuxProcessFixture();
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -82,7 +83,7 @@ function seedWithoutMuse(): void {
 }
 
 async function makeCommands(): Promise<{ commands: TopicCommands; fleet: any }> {
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const fleet = new FleetManager(dataDir) as any;
   fleet.fleetConfig = { defaults: {}, instances: {} };
   fleet.getSysInfo = () => ({
@@ -217,7 +218,7 @@ describe("/sysinfo backend CLI cache", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     seedWithoutMuse();
     const { commands, fleet } = await makeCommands();
-    const { CLI_ENV_PROBE_DEADLINE_MS } = await import("../src/fleet-manager.js");
+    const { CLI_ENV_PROBE_DEADLINE_MS } = fleetManagerModule;
     await commands.sendSysInfo(async () => {});
 
     await vi.advanceTimersByTimeAsync(CLI_ENV_PROBE_DEADLINE_MS + 1);

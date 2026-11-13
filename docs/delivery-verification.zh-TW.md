@@ -17,10 +17,10 @@ Agent 的摘要可能省略或改變使用者授權的內容。過去 `delivery_
 目標收到另外的 `[agend-human-id:hmsg-…]` 與 `verification_id`。平台 `message_id` 仍供回覆和反應使用。查原始使用者收據時使用驗證 ID：
 
 ```json
-{"message_id":"hmsg-<receipt UUID>"}
+{"message_id":"hmsg-<receipt UUID>","detail":true}
 ```
 
-結果含原始 `content`、`origin`、`content_sha256`、`wire_content_sha256`、`proof_kind` 與 `delivered_at`。原文在附件處理、Classic 聊天脈絡加入與 Web／slash 操作參數去除首尾空白前保存；wire hash 則涵蓋實際格式化、清理後的投遞位元組。明確授權的收件者讀到同一份原文，不是轉交摘要。其他查詢形式仍不顯示內容。
+指定 `detail:true` 時，結果含原始 `content`、`origin`、`content_sha256`、`wire_content_sha256`、`proof_kind` 與 `delivered_at`。原文在附件處理、Classic 聊天脈絡加入與 Web／slash 操作參數去除首尾空白前保存；wire hash 則涵蓋實際格式化、清理後的投遞位元組。明確授權的收件者讀到同一份原文，不是轉交摘要。其他查詢形式仍不顯示內容。
 
 - 平台訊息：`origin.platform`、`adapter_id`、`user_id` 分別代表平台、bot 連線與使用者。顯示名稱不是身份 ID。
 - 按鈕／slash 操作：記錄點擊或 interaction，已知時附其 anchor；`platform_message_id` 是 null，因為 bot 回覆不是人類撰寫的訊息。按鈕原文是使用者看見的 label，隱藏 value 只在 wire 內容中。
@@ -40,8 +40,10 @@ Agent 的摘要可能省略或改變使用者授權的內容。過去 `delivery_
 
 `Delivery not found` 也可能是隱藏、過期或不存在。不能由此推定授權或重送；請要求明確轉交或新的授權。queued／uncertain 使用者收據不能作為授權轉交。它們只保存證據，不會排程投遞或重送；新 process 將舊的未完成收據標為 uncertain。保存期限會一起刪除原始證據與授權，但只刪掉轉交訊息不會取消原文的讀取授權。
 
-CLI 模式的 `agend-agent send`／`delegate` 支援可重複的 `--forward`，查詢用 `agend-agent delivery-status --message-id <verification_id>`。
+CLI 模式的 `agend-agent send`／`delegate` 支援可重複的 `--forward`，查詢用 `agend-agent delivery-status --detail --message-id <verification_id>`。
 
 同 uid 且能使用 shell 的 agent 並未互相隔離。這些授權保護的是經驗證的工具入口，不是共用 OS 使用者的惡意 process。互不信任時須用不同 OS user／container。回滾程式後，舊版會以寄件者／收件者規則隱藏轉交讀取；新增證據表可留在磁碟。回滾不要刪除或重播 outbox。
 
 [English](delivery-verification.md)
+
+完整驗證證據請用 `delivery_status {message_id: ID, detail: true}`（CLI：`agend-agent delivery-status --detail --message-id ID`）取得。精簡摘要或 `content_includes` 命中只證明文字存在，不能代替完整原始意圖或合併 gate 的證據。存取權、已擁有的送達證明、授權者及目前撤銷狀態仍必須逐項確認；不要將含秘密的原文輸出到紀錄。

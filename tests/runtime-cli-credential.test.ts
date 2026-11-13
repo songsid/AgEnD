@@ -48,7 +48,7 @@ describe("agend-runtime login claude-code NAME", () => {
   });
   it("supports Claude Code only, and takes no server, name or credential-profile option", async () => {
     const f = setup();
-    await expect(f.run(["login", "codex", "work"])).rejects.toThrow(/Claude Code only/);
+    await expect(f.run(["login", "codex", "work"])).rejects.toThrow(/Claude Code and Antigravity only/);
     await expect(f.run(["login", "claude-code"])).rejects.toThrow(/Usage/);
     await expect(f.run(["login", "claude-code", "work", "extra"])).rejects.toThrow();
     await expect(f.run(["login", "claude-code", "work", "--server", "https://x.test"])).rejects.toThrow(/Usage|only by connect/);
@@ -120,6 +120,12 @@ describe("agend-runtime profile list / default", () => {
     const shown = JSON.parse(f.text()).profiles[0].credentialProfiles.profiles[0];
     expect(f.text()).not.toMatch(/alice|fixture/); expect(shown).toMatchObject({ name: "work" });
     expect(shown.identity ?? {}).not.toHaveProperty("maskedEmail");
+  });
+  it("status redacts the Antigravity accounts under `byCli` too", async () => {
+    const f = setup(); ensureCredentialProfile(f.root, "antigravity", "work");
+    rememberCredentialStatus(f.root, "antigravity", "work", { loggedIn: true, identity: { maskedEmail: "alice.fixture@example.com" } });
+    await f.run(["status", "--json"]);
+    expect(f.text()).not.toMatch(/alice|fixture/); expect(JSON.parse(f.text()).profiles[0].credentialProfiles.byCli.antigravity[0].identity).toEqual({ maskedEmail: "al***@example.com" });
   });
   it("the report the Runtime sends over the paired channel is NOT redacted: credentialProfileReport still carries the whole address", () => {
     const f = setup(); ensureCredentialProfile(f.root, "claude-code", "work");

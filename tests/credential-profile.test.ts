@@ -80,8 +80,10 @@ describe("opting in", () => {
     expect(credentialHomeSpec("kiro-cli")).toMatchObject({ kind: "relocate-home", env: "XDG_DATA_HOME" });
     expect(credentialHomeSpec("codex")).toMatchObject({ kind: "redirect-files", files: ["auth.json"] });
     expect(credentialHomeSpec("claude-code")).toMatchObject({ kind: "relocate-home", env: "CLAUDE_CONFIG_DIR", storeSubdir: "" });
+    // AGEND-119: agy has no variable that moves its home: the account's folder is an argument, its sign-in one file in it.
+    expect(credentialHomeSpec("antigravity")).toMatchObject({ kind: "launch-argument", files: ["antigravity-oauth-token"], loginSubcommand: "acp --login", binary: "agy" });
     expect(credentialHomeSpec("opencode")).toBeNull();
-    expect(Object.keys(CREDENTIAL_HOMES)).toEqual(["kiro-cli", "codex", "claude-code"]);
+    expect(Object.keys(CREDENTIAL_HOMES)).toEqual(["kiro-cli", "codex", "claude-code", "antigravity"]);
   });
 
   it("says which switches cost the conversation and which do not", () => {

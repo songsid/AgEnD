@@ -11,7 +11,7 @@ import { crc32 } from "node:zlib";
 import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CLI_IDS } from "../src/cli-capability.js";
-import { CLI_REGISTRY_MODULES, CLI_SPECS } from "../src/cli-registry.js";
+import { CLI_REGISTRY_MODULES, CLI_SPECS, runtimeDefaultLoginIds, runtimeSignInCapabilities } from "../src/cli-registry.js";
 import { CREDENTIAL_PROFILE_CLIS } from "../src/runtime-credential-profiles.js";
 import { RUNTIME_BUNDLE_MODULES, readRuntimeInfo } from "../src/runtime-build-info.js";
 import { createRuntimeBundle } from "../src/runtime-bundle.js";
@@ -91,14 +91,18 @@ describe("the registry's files are part of the Runtime bundle", () => {
 });
 
 describe("an older Runtime and an older server still work with it", () => {
-  it("the Runtime retains protocol v1 and the shared capabilities (no registry-specific or per-CLI capability)", () => {
+  it("the Runtime reports the same protocol and capabilities as before, plus one `signin-<id>` for each CLI whose sign-in has no profile (derived from the registry, not written by hand)", () => {
     const directory = mkdtempSync(join(tmpdir(), "agend-registry-info-"));
     try {
       expect(readRuntimeInfo({ moduleDirectory: directory, packagePath: join(directory, "missing.json"), panes: true, install: true })).toEqual({
-        protocolVersions: [1], capabilities: ["exec", "mcp", "panes", "credential-profiles", "account-identity", "remote-signin", "model-catalog-refresh", "cli-install", "cli-update"],
+        protocolVersions: [1], capabilities: ["exec", "mcp", "panes", "credential-profiles", "account-identity", "remote-signin", "model-catalog-refresh", "signin-antigravity", "accounts-antigravity", "cli-install", "cli-update"],
       });
       expect(readRuntimeInfo({ moduleDirectory: directory, packagePath: join(directory, "missing.json"), panes: false, install: false }).capabilities)
-        .toEqual(["exec", "mcp", "credential-profiles", "account-identity", "remote-signin", "model-catalog-refresh"]);
+        .toEqual(["exec", "mcp", "credential-profiles", "account-identity", "remote-signin", "model-catalog-refresh", "signin-antigravity", "accounts-antigravity"]);
+      // The derived strings are what the registry says (AGEND-113), in the shape an older server's check accepts (runtime-protocol.ts: at most 16, `[a-z][a-z0-9_-]{0,31}`).
+      expect(runtimeSignInCapabilities()).toEqual(runtimeDefaultLoginIds().map(id => `signin-${id}`));
+      for (const name of runtimeSignInCapabilities()) expect(name).toMatch(/^[a-z][a-z0-9_-]{0,31}$/);
+      expect(readRuntimeInfo({ moduleDirectory: directory, packagePath: join(directory, "missing.json"), panes: true, install: true }).capabilities.length).toBeLessThanOrEqual(16);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 

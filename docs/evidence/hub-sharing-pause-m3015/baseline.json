@@ -1,0 +1,18 @@
+{
+  "base": "bc22d3b8422d2396d6806972df9d519eaab642de",
+  "candidate": "56a3e2665ae907438a2728d22cc6298d6835e4a2",
+  "testsDigest": "ed0d1095da87c06938cda234663681d8c8a105977ca662a89299f2935ab40423",
+  "baselineExit": 1,
+  "replaced": [
+    "src/hub/catalog.ts",
+    "src/hub/group-policy/admin-inventory.ts",
+    "src/hub/group-policy/impact-inventory.ts",
+    "src/hub/http/compose.ts",
+    "src/hub/http/core.ts",
+    "src/hub/http/schema.ts",
+    "src/hub/rooms.ts",
+    "src/hub/types.ts"
+  ],
+  "restored": true,
+  "scope": "Current14 production HTTP tests against baseline backend bytes. Added unused sharing.ts remains unreachable under the baseline composer."
+}

@@ -14,6 +14,8 @@ import { readHubMemberTls } from "./tls.js";
 import { personKeyString } from "./identity.js";
 import { handleCompanyJoin } from "./join/http.js";
 import type { HubCompanyJoin } from "./join/service.js";
+import { HubPublicationRefusal } from "./catalog.js";
+import { HUB_WEB_ORIGIN_CAPABILITY, type HubWebOriginStatement } from "./web-origin.js";
 /** `features`: the optional features both ends listed (the member's hello ∩ this Hub's), set once at hello. */
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout }
@@ -27,6 +29,8 @@ export interface HubServerOptions {
   capabilities?: readonly string[];
   /** Key-proved enrollment lives only on this pinned machine listener. */
   companyJoin?: HubCompanyJoin;
+  /** web-origin-v1 (M-2901): this Hub's current web address, signed for the one Fleet this link authenticated. */
+  webOrigin?(fleetId: string): HubWebOriginStatement;
 }
 export class HubServer {
   private server: Server | null = null;
@@ -124,14 +128,27 @@ export class HubServer {
       await link.send({ v: 1, type: "welcome", requestId: frame.requestId, linkEpoch: context.linkEpoch,
         payload: { selectedVersion: 1, hubId: this.options.hubId, fleetId: context.fleetId, linkEpoch: context.linkEpoch, revocationVersion,
           // Only to a member that asked: an older member's strict welcome schema refuses the field.
-          ...(features.has("welcome-caps-v1") ? { capabilities: [...offered] } : {}) } }); return;
+          ...(features.has("welcome-caps-v1") ? { capabilities: [...offered] } : {}),
+          ...(features.has("welcome-caps-v1") && features.has(HUB_WEB_ORIGIN_CAPABILITY) && this.options.webOrigin ? { webOrigin: this.options.webOrigin(context.fleetId) } : {}) } }); return;
     }
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
     if (!connection.ready && !["exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
+    if (frame.type === "member.leave") {
+      if (!context.features.has("member-leave-v1") || !context.features.has("welcome-caps-v1")) throw new HubProtocolError("incompatible");
+      this.options.pairing.leave(context, frame.requestId); return;
+    }
     if (frame.type === "exposure.quota" && (!context.features.has("quota-band-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-ack" && (!context.features.has("pairing-notices-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "exposure.snapshot" && frame.payload.exposures.some(e => e.fleetId !== context.fleetId || personKeyString(e.owner) !== personKeyString(context.owner))) throw new HubProtocolError("denied");
-    const result = await this.options.receive(frame, context);
+    let result: HubServerFrame | void;
+    try { result = await this.options.receive(frame, context); }
+    catch (error) {
+      // Only a valid snapshot's classified policy refusal is application feedback.
+      // Foreign/malformed/stale consent, credential refusal and failed writes still close the link.
+      if (frame.type !== "exposure.snapshot" || !(error instanceof HubPublicationRefusal)) throw error;
+      result = { v: 1, type: "error", requestId: frame.requestId, linkEpoch: context.linkEpoch,
+        payload: { code: error.code, retryable: error.code === "unavailable" } };
+    }
     if (!context.current()) return;
     if (result) {
       if (result.requestId !== frame.requestId || result.linkEpoch !== context.linkEpoch) throw new HubProtocolError("invalid");
@@ -145,6 +162,7 @@ export class HubServer {
       || frame.type === "welcome" || frame.type === "question" && (frame.payload.identity.destinationFleetId !== fleetId || frame.payload.identity.issuer !== this.options.hubId)) throw new HubProtocolError("unavailable");
     if (frame.type === "pairing.notice" && (!connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v2" && (!connection.context.features.has("pairing-notices-v2") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "pairing.notice-v3" && (!connection.context.features.has("pairing-notices-v3") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     await connection.link.send(frame);
   }
   /** The enabled optional features of a fleet's ready link, or null while it has none. */

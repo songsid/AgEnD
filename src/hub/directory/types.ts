@@ -49,6 +49,10 @@ export type SignInResult =
 export type DirectoryLookupResult =
   | { readonly ok: true; readonly person: DirectoryPerson }
   | { readonly ok: false; readonly reason: "bad-input" | "not-found" | "not-eligible" | "unavailable" };
+/** Bounded suggestions only; a selected key/login must be freshly rechecked at grant commit. */
+export type GrantPersonSearch = { readonly ok: true; readonly people: readonly {
+  readonly person: PersonKey; readonly login: string; readonly displayName: string;
+}[]; readonly truncated: boolean } | { readonly ok: false; readonly reason: "unknown" };
 
 /** The local initializer retains its existing signature. */
 export type InitializationLookupResult = DirectoryLookupResult;
@@ -66,6 +70,7 @@ export interface HubDirectory {
   /** Permission lookup only. Absent on non-AD/GC endpoints; ordinary sign-in still works. */
   readonly groupPolicy?: "ad-direct-guid";
   resolvePolicyGroup?(dn: string): Promise<import("./groups.js").PolicyGroupLookup>;
+  searchPolicyGroups?(q: string): Promise<import("./groups.js").PolicyGroupSearch>;
   /** Directory reconfiguration continuity only: security group read by immutable key, not an old DN label. */
   checkPolicyGroup?(key: PersonKey): Promise<import("./groups.js").PolicyGroupLookup>;
   readPolicyGroups?(key: PersonKey): Promise<import("./groups.js").PolicyGroupFacts>;
@@ -78,6 +83,7 @@ export interface HubDirectory {
   lookupForPairing?(login: string): Promise<DirectoryLookupResult>;
   /** Exact owner-authorized grant recipient selection, without sign-in or person/session creation. */
   lookupForGrant?(login: string): Promise<DirectoryLookupResult>;
+  searchGrantPeople?(q: string): Promise<GrantPersonSearch>;
   /** Per-request eligibility (design §4): exists, same immutable id, enabled. No cache; unreachable = not eligible. */
   checkEligibility(key: PersonKey): Promise<Eligibility>;
   /** Release the directory; later calls refuse (unavailable). */

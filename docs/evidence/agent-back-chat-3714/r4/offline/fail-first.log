@@ -1,0 +1,39 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agent-back-to-chat-m2960
+
+ ❯ tests/web-agent-back-chat-3714.test.ts (21 tests | 2 failed) 1472ms
+     × keeps the phone section back link, single title and return in the same content heading 28ms
+     × the phone index return belongs to the category content, outside the header 20ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-agent-back-chat-3714.test.ts > #3714 Settings Back to chat > keeps the phone section back link, single title and return in the same content heading
+AssertionError: expected null not to be null
+ ❯ tests/web-agent-back-chat-3714.test.ts:87:50
+     85|     await p.mount(h(details.DetailsPanel, { route: nav.navStore.get().…
+     86|     const heading = p.root.querySelector(".agent-settings-heading");
+     87|     expect(heading.querySelector(".s-back")).not.toBeNull();
+       |                                                  ^
+     88|     expect(heading.querySelector(".s-back").getAttribute("href")).toBe…
+     89|     expect(heading.querySelectorAll("h2").length).toBe(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-agent-back-chat-3714.test.ts > #3714 Settings Back to chat > the phone index return belongs to the category content, outside the header
+AssertionError: expected null not to be null
+ ❯ tests/web-agent-back-chat-3714.test.ts:98:73
+     96|     const back = p.root.querySelector(".s-nav .agent-settings-index-re…
+     97|     expect(p.root.querySelector(".panel-head .agent-back-chat")).toBeN…
+     98|     expect(p.root.querySelector(".agent-settings-index-return h2")).no…
+       |                                                                         ^
+     99|     expect(p.root.querySelector(".agent-settings-index-return h2").tex…
+    100|     fire(back, "click", { button: 0 }); await settle(4); expect(nav.na…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 19 passed (21)
+   Start at  23:43:37
+   Duration  1.82s (transform 1.12s, setup 82ms, import 141ms, tests 1.47s, environment 0ms)
+

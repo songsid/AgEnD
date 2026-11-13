@@ -66,6 +66,23 @@ describe("server-owned initial setup",()=>{
       expect(r.directory.signIn).not.toHaveBeenCalled();expect(r.close).toHaveBeenCalledTimes(3);
     }finally{await r.controller.close();}
   });
+  it("inspects the exact saved Hub mount independently of successful setup", async () => {
+    let state = "starting";
+    const serverHealth = vi.fn(() => state);
+    const r = fixture({ serverHealth } as any);
+    try {
+      const d = await r.controller.prepare(r.input, r.owner);
+      const result = await r.controller.commit(d.ref, r.owner);
+      expect(await r.controller.inspect(r.owner)).toMatchObject({ initialized: true,
+        runtime: { hubId: result.hubId, webOrigin: r.input.webOrigin, state: "starting" } });
+      expect(serverHealth).toHaveBeenLastCalledWith(r.readConfig().hub);
+      state = "ready";
+      expect(await r.controller.inspect(r.owner)).toMatchObject({ runtime: { state: "ready" } });
+      state = "unavailable";
+      expect(await r.controller.inspect(r.owner)).toMatchObject({ runtime: { state: "unavailable" } });
+      r.revoke(); await expect(r.controller.inspect(r.owner)).rejects.toMatchObject({ code: "denied" });
+    } finally { await r.controller.close(); }
+  });
   it("normalizes an optional trailing slash before binding certificate staging and the saved origins",async()=>{
     const r=fixture();try{const d=await r.controller.prepare({...r.input,webOrigin:r.input.webOrigin+"/",memberOrigin:r.input.memberOrigin+"/"},r.owner);
       expect(d.webOrigin).toBe(r.input.webOrigin);expect(d.memberOrigin).toBe(r.input.memberOrigin);

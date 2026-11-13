@@ -97,6 +97,8 @@ const CLASSIC_FIELDS = [
   "quota_notice", "backend", "model", "auto_pause_after", "tool_progress",
   "reply_completion_guard", "reply_triggers", "collab", "context_lines", "pre_task_command",
   "web_echo",
+  // M-2909: the room's AI account (backend_options.<cli>.credential_profile) — read at launch: a restart of that room's agent.
+  "backend_options",
 ] as const;
 
 /**
@@ -105,6 +107,8 @@ const CLASSIC_FIELDS = [
  */
 const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "defaults.tips": "now",
+  // #3647: the dispatcher-liveness thresholds — read at every 30 s sweep.
+  "defaults.task_board": "now",
   "web.notify_login": "now",
   "web.notice_delivery": "now",
   "defaults.reply_triggers": "now",
@@ -115,6 +119,7 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "runtimes.windows_cli": "now",
   "runtimes.remote_runtime": "now",
   "runtimes.max_agents_per_machine": "now",
+  "web.log_thinking": "now",
   "web.usage_report_on_public_link": "now",
   "web.office_levels": "now",
   "web.preview_cdn": "now",
@@ -130,6 +135,9 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   // #1620: read at every session check, and by /login when it starts a terminal.
   "web.session.local.absolute_hours": "now",
   "web.session.local.idle_hours": "now",
+  // #3708: the public link's own limits, read at every session check like the local ones.
+  "web.session.public_link.absolute_hours": "now",
+  "web.session.public_link.idle_minutes": "now",
   // #1629 r4.1 Q3 (b): the identity card's upload limits and the picture quota — read at each upload.
   ...Object.fromEntries(["portrait.max_width", "portrait.max_height", "portrait.max_kib", "banner.max_width", "banner.max_height", "banner.max_kib",
     "instance_quota.files", "instance_quota.mib"].map((k) => [`web.appearance.${k}`, "now" as const])),

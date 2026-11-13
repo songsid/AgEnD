@@ -1,0 +1,62 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+--------------------························x···········································(node:3847777) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+·················································(node:3849933) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+·························································(node:3850852) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+·····························································································································································································································································································································································································································································································································(node:3851828) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+···························
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-fields-3637.test.ts [ tests/web-chat-pane-fields-3637.test.ts ]
+Error: Hook timed out in 10000ms.
+If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".
+ ❯ tests/web-chat-pane-fields-3637.test.ts:6:1
+      4| import { buildSettingsImpactSchema } from "../src/instance-config-impa…
+      5| let p: AppPage, fields: any, native: any;
+      6| beforeAll(async () => {
+       | ^
+      7|   p = page();
+      8|   (globalThis as any).fetch = vi.fn(async (url: string) => ({ ok: /sta…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts [ tests/web-chat-pane-ownership-3637.test.ts ]
+Error: Hook timed out in 10000ms.
+If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:13:1
+     11| };
+     12| const stream = { on() { return () => {}; } };
+     13| beforeAll(async () => {
+       | ^
+     14|   p = page({ url: "http://127.0.0.1:19280/ui/chat/alpha", storage: { a…
+     15|   (globalThis as any).fetch = fetchFake;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/i18n-ui-literals-2390.test.ts > #2390 the web UI's words go through the locale layer > no English written in place in src/ui (allowlist: names, examples, units)
+Error: Test timed out in 10000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/i18n-ui-literals-2390.test.ts:125:3
+    123|
+    124| describe("#2390 the web UI's words go through the locale layer", () =>…
+    125|   it("no English written in place in src/ui (allowlist: names, example…
+       |   ^
+    126|     expect(uiLiterals().filter((l) => !ALLOWED.has(l))).toEqual([]);
+    127|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  3 failed | 17 passed (20)
+      Tests  1 failed | 709 passed | 20 skipped (730)
+   Start at  22:52:53
+   Duration  110.73s (transform 84.73s, setup 9.46s, import 83.96s, tests 106.43s, environment 2ms)

@@ -1,0 +1,47 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts (29 tests | 2 failed | 27 skipped) 700ms
+     × en approval after company sign-in shows retry progress without signing in a second time 82ms
+     × zh-TW approval after company sign-in shows retry progress without signing in a second time 52ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 27 skipped (29)
+   Start at  02:02:01
+   Duration  1.03s (transform 552ms, setup 87ms, import 115ms, tests 700ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-join-approval-ui-b2.test.ts > B2 actual Hub approval page > en approval after company sign-in shows retry progress without signing in a second time
+AssertionError: expected 'AgEnD HubSign in to the HubConnect My…' to contain 'Retry 1 of 8'
+
+Expected: "Retry 1 of 8"
+Received: "AgEnD HubSign in to the HubConnect My FleetAccountPasswordSign in and connect FleetMany people are connecting at once. Waiting in the queue…"
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts:141:96
+    139|     const login = p.root.querySelector("#hubLogin"), password = p.root…
+    140|     login.value = "carol"; fire(login, "input"); password.value = "ine…
+    141|     fire(p.root.querySelector("form"), "submit"); await settle(10); ex…
+       |                                                                                                ^
+    142|     timers.shift()!(); await settle(10); expect(p.root.textContent).to…
+    143|     timers.shift()!(); await settle(15); expect(signIn).toHaveBeenCall…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-join-approval-ui-b2.test.ts > B2 actual Hub approval page > zh-TW approval after company sign-in shows retry progress without signing in a second time
+AssertionError: expected 'AgEnD Hub登入 Hub連接 My Fleet帳號密碼登入並連接 F…' to contain '第 1 次重試，共 8 次'
+
+Expected: "第 1 次重試，共 8 次"
+Received: "AgEnD Hub登入 Hub連接 My Fleet帳號密碼登入並連接 Fleet目前很多人同時加入，正在排隊…"
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts:141:96
+    139|     const login = p.root.querySelector("#hubLogin"), password = p.root…
+    140|     login.value = "carol"; fire(login, "input"); password.value = "ine…
+    141|     fire(p.root.querySelector("form"), "submit"); await settle(10); ex…
+       |                                                                                                ^
+    142|     timers.shift()!(); await settle(10); expect(p.root.textContent).to…
+    143|     timers.shift()!(); await settle(15); expect(signIn).toHaveBeenCall…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+

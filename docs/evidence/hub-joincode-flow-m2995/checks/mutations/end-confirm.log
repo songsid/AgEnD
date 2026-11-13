@@ -1,0 +1,40 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts (35 tests | 2 failed | 33 skipped) 160ms
+     × en end-code confirmation names affected joins, supports Cancel and shows success 63ms
+     × zh-TW end-code confirmation names affected joins, supports Cancel and shows success 34ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 33 skipped (35)
+   Start at  02:01:58
+   Duration  508ms (transform 181ms, setup 83ms, import 111ms, tests 160ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > en end-code confirmation names affected joins, supports Cancel and shows success
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > zh-TW end-code confirmation names affected joins, supports Cancel and shows success
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "11111111-1111-4111-8111-111111111111",
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:57:39
+     55|     const p = await mount(c, { enabled: false }, lang), end = lang ===…
+     56|     fire(buttons(p, end)[0], "click"); await settle(5);
+     57|     expect(c.revokeEnrolmentCode).not.toHaveBeenCalled();
+       |                                       ^
+     58|     const dialog = p.root.querySelector("dialog"); expect(dialog).not.…
+     59|     expect(dialog.textContent).toContain("1234-ABCD"); expect(dialog.t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+

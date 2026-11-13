@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·····················
+
+ Test Files  5 passed (5)
+      Tests  21 passed (21)
+   Start at  00:00:27
+   Duration  4.25s (transform 1.08s, setup 251ms, import 314ms, tests 2.99s, environment 1ms)

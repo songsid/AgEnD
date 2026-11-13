@@ -236,6 +236,7 @@ describe("cross-backend skill publishing", () => {
     expect(published).toEqual([
       "concepts",   // concepts and definitions: the agents' built-in role reference
       "cross-instance-messaging",
+      "hub",              // the AgEnD Hub from the user's side (experimental)
       "model-discovery",
       "persona-emoji",
       "scheduling",
@@ -386,7 +387,7 @@ describe("MCP instructions budget", () => {
     // The two contracts that must never be truncated away:
     expect(s).toContain("reply");
     expect(s).toContain("report_result");
-    expect(s).toContain("NEVER re-send");
+    expect(s).toContain("sending again would deliver it twice");
   });
 });
 import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";

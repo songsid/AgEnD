@@ -37,17 +37,25 @@ export interface HubHttpDeps {
   companyJoin?: import("../join/service.js").HubCompanyJoin;
   /** Server-owned group permits; absent only in legacy injected compositions. */
   groups?: import("../group-policy/authorization.js").HubGroupAuthorization;
+  management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require">;
   /**
    * #3298 S-89: Administration → Group permissions and the signed-in welcome. Composed only with S-88's complete control; absent,
    * the routes answer 404 and the session carries no "group-policy-v1" mark (the pages show nothing of it).
    */
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
+  /** Owner-grant suggestions and membership share the existing physical group-read admission. */
+  grantDirectory?: {
+    policy(): import("../group-policy/store.js").HubGroupPolicyStore;
+    binding(): import("../group-policy/store.js").HubGroupPolicyBinding;
+  };
   /** S-90: durable credential-transaction outbox, independent of a group's current operational allowance. */
   pairingNotices?: import("../pairing-notices.js").HubPairingNotices;
   /** Original security-notice recipients; independent of operational group or administrator permissions. */
   memberAddressNotices?: import("../settings-member-address-notices.js").HubMemberAddressNotices;
   directoryNotices?: Pick<import("../settings-directory-notices.js").HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
+  /** Reconnect member links only after a committed authorization-version change. Absent: no resumable sharing. */
+  refreshAuthorization?(): void;
   config: HubHttpConfig;
   /** M-2682: Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. Absent: 404. */
   hubSettings?: Readonly<Omit<import("../settings-api.js").HubSettingsHttpDeps, "name">>;

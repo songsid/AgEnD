@@ -1,0 +1,55 @@
+[
+  {
+    "name": "D1-deadline",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "D2-abort-transport",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "D3-body-late401",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "D4-release-queue",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "D5-queued-cancel",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "D6-retire",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "D7-backoff-cleanup",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "D8-release-owner",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "D9-known-steps",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "name": "D10-known-codes",
+    "exit": 1,
+    "assertionCaught": true
+  },
+  {
+    "exactRestore": true
+  }
+]

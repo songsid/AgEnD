@@ -6,7 +6,7 @@ import { personKeyString } from "../identity.js";
 import type { HubTransportStore } from "../store.js";
 import type { PersonKey } from "../types.js";
 import { parseStrictJson } from "../validation.js";
-import { parseHubGroupResource, type HubGroupResource, type HubGroupResourceView } from "./resources.js";
+import { parseHubGroupResource, parseStoredHubGroupResource, type HubGroupResource, type HubGroupResourceView } from "./resources.js";
 import { HubGroupPolicyError } from "./store.js";
 import type { GroupImpactResource, GroupResumeRequest } from "./admin-dto.js";
 
@@ -22,11 +22,11 @@ export function createHubGroupAdminInventory(options: { db: Database.Database; t
     const raw = db.prepare("SELECT body,source,state,revision FROM hub_group_resources WHERE resource_key=?")
       .get(JSON.stringify([input.kind, input.id, input.revision])) as { body: string; source: string; state: string; revision: number } | undefined;
     if (!raw) return null;
-    const resource = parseHubGroupResource(parseStrictJson(raw.body));
+    const { resource, code } = parseStoredHubGroupResource(parseStrictJson(raw.body), raw.source);
     if (resource.kind !== input.kind || resource.id !== input.id || resource.revision !== input.revision || resource.owner.realm !== realm
-      || !["group", "manual"].includes(raw.source) || !["active", "suspended"].includes(raw.state)
+      || !["group", "manual", "code"].includes(raw.source) || !["active", "suspended"].includes(raw.state)
       || !Number.isSafeInteger(raw.revision) || raw.revision < 1) throw new HubGroupPolicyError("unavailable");
-    return { resource, source: raw.source as HubGroupResourceView["source"], state: raw.state as HubGroupResourceView["state"], revision: raw.revision };
+    return { resource, ...(code ? { code } : {}), source: raw.source as HubGroupResourceView["source"], state: raw.state as HubGroupResourceView["state"], revision: raw.revision };
   };
   const name = (owner: PersonKey) => (db.prepare("SELECT display_name FROM hub_people WHERE person=?").get(personKeyString(owner)) as
     { display_name: string } | undefined)?.display_name ?? null;
@@ -39,7 +39,7 @@ export function createHubGroupAdminInventory(options: { db: Database.Database; t
     } else if (input.kind === "exposure") {
       const raw = readExposure(db, input.id); if (!raw) return null;
       const exposure = exposureOf(raw), fleet = transport.read().fleets.find(f => f.id === exposure.fleetId);
-      if (exposure.state !== "published" || exposure.revision !== input.revision || !fleet || fleet.status !== "active" || !fleet.credentialHash
+      if (!["published", "paused"].includes(exposure.state) || exposure.revision !== input.revision || !fleet || fleet.status !== "active" || !fleet.credentialHash
         || personKeyString(fleet.owner) !== personKeyString(exposure.owner)) return null;
       resource = parseHubGroupResource({ ...input, owner: exposure.owner }); material = { exposure, fleet }; label = exposure.displayName;
     } else {
@@ -54,9 +54,9 @@ export function createHubGroupAdminInventory(options: { db: Database.Database; t
   return { current, ledger,
     paused() {
       const result: { item: HubGroupInventoryItem; lifecycleRevision: number }[] = [];
-      const rows = db.prepare("SELECT body FROM hub_group_resources WHERE state='suspended' ORDER BY resource_key").all() as { body: string }[];
+      const rows = db.prepare("SELECT body,source FROM hub_group_resources WHERE state='suspended' ORDER BY resource_key").all() as { body: string; source: string }[];
       for (const raw of rows) {
-        const resource = parseHubGroupResource(parseStrictJson(raw.body)), item = current(resource), row = ledger(resource);
+        const { resource } = parseStoredHubGroupResource(parseStrictJson(raw.body), raw.source), item = current(resource), row = ledger(resource);
         if (item && row?.state === "suspended") {
           if (JSON.stringify(item.resource) !== JSON.stringify(row.resource)) throw new HubGroupPolicyError("unavailable");
           result.push({ item, lifecycleRevision: row.revision });

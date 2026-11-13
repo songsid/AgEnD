@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -206,7 +207,7 @@ describe("the classic hot set is derived, not re-listed", () => {
   it("matches exactly what the classic hot payload can carry", async () => {
     // classicBehaviorUpdate() is what a classic hot reload actually sends; a key
     // outside it would be reported as hot and never reach the daemon.
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = mkdtempSync(join(tmpdir(), "agend-parity-fm-"));
     dirs.push(dir);
     const fm = new FleetManager(dir);

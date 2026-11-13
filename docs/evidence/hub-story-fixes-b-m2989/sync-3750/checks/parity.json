@@ -1,0 +1,13 @@
+{
+  "old": "6e1745252779f191d4087a6918c274a0761c39d6",
+  "base": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+  "merge": "2813ba6c6a34fcb14e88d8079514f02cb8045f46",
+  "ownSourcePatchesUnchanged": [
+    "src/fleet-manager.ts",
+    "src/hub/catalog.ts",
+    "src/hub/init/text.ts",
+    "src/hub/init/web.ts",
+    "src/ui/panel-hub.js",
+    "src/ui/settings-hub-setup.js"
+  ]
+}

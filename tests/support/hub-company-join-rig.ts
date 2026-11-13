@@ -18,9 +18,16 @@ import { createHubDirectory } from "../../src/hub/directory/directory.js";
 import { hubTxDatabase } from "../../src/hub/db.js";
 import * as httpEntry from "../../src/hub/http/compose.js";
 import type { HubGroupPolicy } from "../../src/hub/group-policy/model.js";
-import { ADMIN, makeTestCerts } from "./hub-init-fixtures.js";
+import { ADMIN, makeTestCerts, type TestCerts } from "./hub-init-fixtures.js";
 import { directoryCertificates } from "./hub-directory-ca-fixture.js";
 import { groupWirePeer, GROUP_A, GROUP_B, GROUP_DN, type GroupWireUser } from "./hub-group-directory-wire.js";
+
+/** Immutable source material; the caller owns its lifetime, never a rig's mutable state. */
+export interface CompanyJoinCertificates {
+  host: string;
+  web: TestCerts;
+  directory: ReturnType<typeof directoryCertificates>;
+}
 
 export interface JoinBrowser { cookie: string; csrf: string }
 export interface JoinHttpResult {
@@ -32,7 +39,9 @@ export interface JoinHttpResult {
 }
 
 /** Only dummy passwords. Mutable entries let tests change eligibility/membership across a held browser operation. */
-export async function companyJoinRig(directoryListening: (port: number) => void, options: { host?: string } = {}) {
+export async function companyJoinRig(directoryListening: (port: number) => void, options: { host?: string; certificates?: CompanyJoinCertificates } = {}) {
+  const host = options.host ?? "hub.example.test";
+  if (options.certificates && options.certificates.host !== host) throw Error("Owned certificate hostname mismatch");
   const home = mkdtempSync(join(tmpdir(), "agend-company-join-"));
   chmodSync(home, 0o700);
   const cleanups: Array<() => void | Promise<void>> = [() => rmSync(home, { recursive: true, force: true })];
@@ -47,8 +56,10 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
     if (failures.length) throw new AggregateError(failures, "Company-join fixture cleanup failed");
   };
   try {
-    const host = options.host ?? "hub.example.test", certs = makeTestCerts(host); cleanups.push(() => rmSync(certs.dir, { recursive: true, force: true }));
-    const dcCerts = directoryCertificates(); cleanups.push(dcCerts.cleanup);
+    const certs = options.certificates?.web ?? makeTestCerts(host);
+    if (!options.certificates) cleanups.push(() => rmSync(certs.dir, { recursive: true, force: true }));
+    const dcCerts = options.certificates?.directory ?? directoryCertificates();
+    if (!options.certificates) cleanups.push(dcCerts.cleanup);
     const people: GroupWireUser[] = [
       { id: ADMIN.key.objectId, login: "alice", dn: "CN=Alice,DC=example,DC=test", password: "Dummy-alice-only", groups: [GROUP_A] },
       { id: "22222222-2222-4222-8222-222222222222", login: "carol", dn: "CN=Carol,DC=example,DC=test", password: "Dummy-carol-only", groups: [GROUP_A] },
@@ -89,7 +100,7 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
       createDirectory: (cfg, secrets) => directory = createHubDirectory({ ...cfg, caPem: dcCerts.ca }, secrets, { now: () => Date.now() }),
       report: () => {}, log: () => {}, now: () => Date.now(),
     });
-    const service = await create(config, () => !closed); cleanups.push(() => service.close());
+    let service = await create(config, () => !closed); cleanups.push(() => service.close());
     await service.start();
     const db = new Database(join(home, "hub/hub.sqlite")); cleanups.push(() => { db.close(); });
     const call = (browser: JoinBrowser | null, method: string, path: string, body?: unknown,
@@ -110,7 +121,7 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
           resolve({ status: res.statusCode!, body, text, cookie: (res.headers["set-cookie"]?.[0] ?? "").split(";")[0]!, headers: res.headers });
         });
       });
-      req.setTimeout(5000, () => req.destroy(new Error("Owned Hub fixture request timed out")));
+      req.setTimeout(5000, () => req.destroy(new Error(`Owned Hub fixture ${method} ${path.split("?")[0]} request timed out`)));
       req.on("error", reject); req.end(bytes);
     });
     const signIn = async (login: string): Promise<JoinBrowser> => {
@@ -132,6 +143,10 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
       const saved = await call(admin, "PUT", policyPath, { policy, previewDigest: preview.body.previewDigest });
       if (saved.status !== 200) throw Error("Fixture policy save refused");
     };
-    return { home, config, webOrigin, memberOrigin, certs, dcCerts, wire, people, deps, directory, db, call, signIn, enable, stopService: () => service.close(), close };
+    return { home, config, webOrigin, memberOrigin, certs, dcCerts, wire, people, get deps() { return deps; }, get directory() { return directory; }, db, call, signIn, enable,
+      stopService: () => service.close(), async restartService() {
+        if (closed) throw Error("Owned fixture is closed");
+        await service.close(); service = await create(config, () => !closed); await service.start();
+      }, close };
   } catch (error) { await close(); throw error; }
 }

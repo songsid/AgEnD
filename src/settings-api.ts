@@ -10,7 +10,7 @@ import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
-import { instanceCredentialProfile, signedOutCredentialProfile } from "./backend/credential-profile.js";
+import { credentialHomeSpec, credentialProfileHome, instanceCredentialProfile, signedOutCredentialProfile } from "./backend/credential-profile.js";
 import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestLocalAdminCurrent, settingsRequestJoinAuthority, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -60,6 +60,9 @@ import { CompanyBrowserHostnameConflict } from "./hub/join/protocol.js";
 import { HubProtocolError, validated, uuid } from "./hub/validation.js";
 import { join } from "node:path";
 import yaml from "js-yaml";
+import { parseDocument } from "yaml";
+import { isDeepStrictEqual } from "node:util";
+import { classicProfile, normalizeBackendOptions } from "./classic-bindings.js";
 import { channelWithDefaults } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { FleetConfig, RawFleetConfig } from "./types.js";
@@ -174,6 +177,14 @@ export interface SettingsApiContext extends AppShellContext {
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
   captureClassicSettingsRestoration?(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void>;
+  /** M-2966: an owned room restart (a Settings save's) and its compensation, bound to one receipt (FleetManager). */
+  beginClassicSettingsRestart?(instanceName: string, changedFields: string[], execution?: SettingsExecution): {
+    restart(): Promise<void>; restore(): Promise<"restarted" | "not-running" | "superseded">; close(): void;
+  };
+  /** #3715: an owned room account switch — the forward restart and its compensation bound to one receipt (FleetManager). */
+  beginClassicProfileSwitch?(instanceName: string, changedFields: string[]): {
+    restart(): Promise<void>; restore(): Promise<"restarted" | "not-running" | "superseded">; close(): void;
+  };
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
   startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
@@ -304,18 +315,180 @@ function readClassic(ctx: SettingsApiContext): Record<string, unknown> {
   }
 }
 
-function writeClassicAtomic(ctx: SettingsApiContext, classic: Record<string, unknown>): void {
+function writeClassicAtomic(ctx: SettingsApiContext, classic: Record<string, unknown>, text = yaml.dump(classic, { lineWidth: -1 })): void {
   const target = classicPath(ctx);
   const temp = `${target}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const mode = existsSync(target) ? statSync(target).mode : 0o600;
   noteSettingsWrite(target, readClassic(ctx), classic);
   try {
-    writeFileSync(temp, yaml.dump(classic, { lineWidth: -1 }), { encoding: "utf-8", mode });
+    writeFileSync(temp, text, { encoding: "utf-8", mode });
     renameSync(temp, target);
   } catch (err) {
     try { unlinkSync(temp); } catch { /* temp may not have been created */ }
     throw err;
   }
+}
+
+/**
+ * M-2909: write only the given leaves of classicBot.yaml (a room's fields), keeping every other byte — comments,
+ * quoting, other rooms — as it is (the way fleet-yaml-patch.ts edits fleet.yaml). The edited document must load to
+ * exactly `classic` (what was validated); if it can't be edited in place, the whole file is written as before.
+ */
+function writeClassicLeaves(ctx: SettingsApiContext, classic: Record<string, unknown>, paths: string[][]): void {
+  const target = classicPath(ctx);
+  const loadsTo = (s: string) => { try { return isDeepStrictEqual(yaml.load(s) ?? {}, classic); } catch { return false; } };
+  let text: string | undefined;
+  try {
+    const original = existsSync(target) ? readFileSync(target, "utf-8") : "";
+    const doc = parseDocument(original);
+    if (!doc.errors.length) {
+      const base = doc.toString();
+      for (const path of paths) {
+        let value: unknown = classic;
+        for (const key of path) value = value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
+        if (value === undefined) doc.deleteIn(path); else doc.setIn(path, value);
+      }
+      const edited = doc.toString();
+      // The library re-renders some untouched bytes (the spaces before a trailing comment): take the changed lines from
+      // its render and every unchanged line from the file as it was.
+      const spliced = spliceChangedLines(original, base, edited);
+      text = spliced !== null && loadsTo(spliced) ? spliced : loadsTo(edited) ? edited : undefined;
+    }
+  } catch { text = undefined; }
+  if (text === undefined) ctx.logger.warn({ paths }, "settings: classicBot.yaml could not be edited in place; writing it whole");
+  writeClassicAtomic(ctx, classic, text);
+}
+
+/**
+ * `original`'s lines where `base` (its unedited render) and `edited` agree, `edited`'s where they differ — a line diff of
+ * base → edited replayed onto original. Null when the render does not keep the original's lines one for one, or the
+ * file is too large to diff here.
+ */
+function spliceChangedLines(original: string, base: string, edited: string): string | null {
+  const o = original.split("\n"), b = base.split("\n"), e = edited.split("\n");
+  if (o.length !== b.length || b.length * e.length > 4_000_000) return null;
+  // Longest common subsequence of base and edited lines.
+  const n = b.length, m = e.length, lcs: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) lcs[i]![j] = b[i] === e[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+  const out: string[] = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && b[i] === e[j]) { out.push(o[i]!); i++; j++; }
+    else if (j < m && (i >= n || lcs[i]![j + 1]! >= lcs[i + 1]![j]!)) { out.push(e[j]!); j++; }
+    else i++;
+  }
+  return out.join("\n");
+}
+
+/**
+ * #3715 (Prism on #3719): after a failed restart, put the room's account back and bring the room up on it — and say
+ * what actually happened. The file goes back through the same leaf writer only where nothing changed it since (a newer
+ * edit wins, and nothing is restarted for it); the room is restarted only by this operation's own receipt, never over
+ * a runtime someone else has stopped or started meanwhile.
+ */
+async function rollBackClassicProfile(ctx: SettingsApiContext, key: string, instanceName: string, paths: string[][],
+  undo: ReturnType<typeof settingsUndo>, op: { restore(): Promise<"restarted" | "not-running" | "superseded"> }, cause: string): Promise<string> {
+  const failed = `The room's restart failed (${cause})`;
+  try {
+    const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
+    if (retained.conflicts) {
+      ctx.logger.warn({ key, instanceName }, "update_instance_config: classicBot.yaml changed meanwhile; the newer account is kept");
+      return `${failed}. Its account was not put back: classicBot.yaml was changed again meanwhile, and that newer change is kept. Check the room.`;
+    }
+    writeClassicLeaves(ctx, retained.value, paths);
+  } catch (rollbackErr) {
+    ctx.logger.error({ err: rollbackErr, key }, "update_instance_config: failed to roll back classicBot.yaml");
+    return `${failed}, and classicBot.yaml could not be put back (${(rollbackErr as Error).message}). The room's backend_options may still name the new account. Check the room.`;
+  }
+  let recovery: "restarted" | "not-running" | "superseded";
+  try { recovery = await op.restore(); }
+  catch (recoveryErr) {
+    ctx.logger.error({ err: recoveryErr, instanceName }, "update_instance_config: failed to restore the classic room after rollback");
+    return `${failed}. Its account was put back in classicBot.yaml, but starting the room on it failed too (${(recoveryErr as Error).message}). Check the room.`;
+  }
+  return recovery === "restarted" ? `${failed}, so its account was put back and the room was started on it again.`
+    : recovery === "not-running" ? `${failed}. Its account was put back in classicBot.yaml; the room was not running.`
+    : `${failed}. Its account was put back in classicBot.yaml. The room was not restarted: it was stopped or started by something else meanwhile.`;
+}
+
+/** #3715: what switchClassicRoomProfile answers. `profile` is the room's effective profile after the write (null: the shared login). */
+export type ClassicProfileSwitch =
+  | { ok: true; channel: string; backend: string; profile: string | null; changed: boolean }
+  | { ok: false; error: string; loginCommand?: string };
+
+/**
+ * #3715 (M-2961): `update_instance_config` on a ClassicBot room may change its AI account and nothing else —
+ * `backend_options.<cli>.credential_profile` (a name, or null / "" for the fleet default). The same write as the room's
+ * Settings save (#3691, M-2909): only that room's backend_options lines change, comments and other rooms stay as they
+ * are; then the room restarts through restartClassicInstanceFromSettings (the #1753 handoff: Claude's conversation is
+ * carried, Kiro starts fresh), and the file is put back if that restart fails. Refused, with nothing written: a room this
+ * fleet doesn't have, any other key, a backend without accounts, a profile that doesn't exist on this host or isn't
+ * signed in (the web's 409, with the login command).
+ */
+export async function switchClassicRoomProfile(ctx: SettingsApiContext, instanceName: string, patch: unknown): Promise<ClassicProfileSwitch> {
+  const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  if (!record(patch) || !Object.keys(patch).length) return { ok: false, error: "backend_options must map a backend to { credential_profile }" };
+  for (const [backend, options] of Object.entries(patch)) {
+    if (!KNOWN_BACKENDS.includes(backend) || !credentialHomeSpec(backend)) return { ok: false, error: `${backend} has no named accounts` };
+    if (!record(options) || Object.keys(options).length !== 1 || !Object.hasOwn(options, "credential_profile")) {
+      return { ok: false, error: `On a ClassicBot room only backend_options.${backend}.credential_profile can be changed` };
+    }
+    const value = options.credential_profile;
+    if (value === null || value === "") continue;
+    const { problems } = normalizeBackendOptions({ [backend]: { credential_profile: value } });
+    if (typeof value !== "string" || problems.length) return { ok: false, error: `backend_options.${backend}.credential_profile: ${problems[0]?.message ?? "must be a profile name"}` };
+    if (!existsSync(credentialProfileHome(ctx.dataDir, backend, value))) return { ok: false, error: `No ${backend} account named "${value}" on this host` };
+    const login = signedOutCredentialProfile(ctx.dataDir, backend, value);
+    if (login) return { ok: false, error: `The ${backend} account "${value}" is not signed in. Sign it in first`, loginCommand: login.loginCommand };
+  }
+  let classic: Record<string, unknown>;
+  try { classic = readClassic(ctx); } catch (err) { return { ok: false, error: (err as Error).message }; }
+  const channels = record(classic.channels) ? classic.channels : {};
+  const key = Object.keys(channels).find(k => record(channels[k]) && (channels[k] as Record<string, unknown>).instanceName === instanceName);
+  if (key === undefined) return { ok: false, error: `No ClassicBot room runs as '${instanceName}' in classicBot.yaml` };
+  const room = channels[key] as Record<string, unknown>;
+  const previous = structuredClone(classic);
+  // Per backend, as for an agent: setting one CLI's account keeps the others; null / "" goes back to the default.
+  const options: Record<string, Record<string, unknown>> = structuredClone(record(room.backend_options) ? room.backend_options as Record<string, Record<string, unknown>> : {});
+  for (const [backend, o] of Object.entries(patch as Record<string, Record<string, unknown>>)) {
+    const namespace = { ...(record(options[backend]) ? options[backend] : {}) };
+    if (o.credential_profile === null || o.credential_profile === "") delete namespace.credential_profile;
+    else namespace.credential_profile = o.credential_profile;
+    if (Object.keys(namespace).length) options[backend] = namespace; else delete options[backend];
+  }
+  const merged = { ...room };
+  if (Object.keys(options).length) merged.backend_options = options; else delete merged.backend_options;
+  const cd = record(classic.defaults) ? classic.defaults : {};
+  const backend = String(room.backend ?? cd.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code");
+  const fleetOptions = ctx.fleetConfig?.defaults?.backend_options as Record<string, Record<string, unknown>> | undefined;
+  const after = classicProfile(normalizeBackendOptions(merged.backend_options).options, fleetOptions, backend);
+  // The room lands on the fleet default's account when its own is cleared: that one must be signed in too (web: 409).
+  if (after.state === "profile") {
+    const login = signedOutCredentialProfile(ctx.dataDir, backend, after.name);
+    if (login) return { ok: false, error: `The ${backend} account "${after.name}" is not signed in. Sign it in first`, loginCommand: login.loginCommand };
+  }
+  const profile = after.state === "profile" ? after.name : null;
+  if (isDeepStrictEqual(merged.backend_options, room.backend_options)) return { ok: true, channel: key, backend, profile, changed: false };
+  channels[key] = merged;
+  const invalidBefore = new Set(validateClassicBotConfig(previous).errors.map(issueKey));
+  const introduced = validateClassicBotConfig(classic).errors.filter(e => !invalidBefore.has(issueKey(e)));
+  if (introduced.length) return { ok: false, error: `Rejected: ${introduced.map(e => `${e.path}: ${e.message}`).join("; ")}` };
+  if (!ctx.beginClassicProfileSwitch) return { ok: false, error: "This fleet cannot restart a ClassicBot room here" };
+  const paths = [["channels", key, "backend_options"]];
+  // Owned before the write: the runtime this operation may stop, restart and — if that fails — bring back.
+  const op = ctx.beginClassicProfileSwitch(instanceName, ["backend_options"]);
+  try { writeClassicLeaves(ctx, classic, paths); }
+  catch (err) { op.close(); ctx.logger.warn({ err, key }, "update_instance_config: failed to write classicBot.yaml"); return { ok: false, error: "failed to write classicBot.yaml" }; }
+  const undo = settingsUndo(classicPath(ctx), previous, classic, paths);
+  try {
+    await op.restart();
+  } catch (err) {
+    op.close();
+    return { ok: false, error: await rollBackClassicProfile(ctx, key, instanceName, paths, undo, op, (err as Error).message) };
+  }
+  op.close();
+  ctx.logger.info({ key, instanceName, backend, profile }, "update_instance_config: switched a ClassicBot room's account");
+  return { ok: true, channel: key, backend, profile, changed: true };
 }
 
 const issueKey = (i: { path: string; message: string }) => i.path + "\u0000" + i.message;
@@ -970,13 +1143,13 @@ export function handleSettingsRequest(
   }
 
   // #3423: an original private cookie session owns each company-join operation. No header token or Hub identity is Fleet authority.
-  const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge|repair-trust))?$/);
+  const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge|repair-trust|probe|reconnect|remove))?$/);
   if (companyRoute) {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (!ctx.hubCompanyJoin || !ctx.hubCompanySession) { json(res, 404, { error: "unavailable" }); return true; }
     const step = companyRoute[1], execution = settingsRequestExecution(req);
     const authority = settingsRequestJoinAuthority(req);
-    const confirmed = step === "start" || step === "resume" || step === "repair-trust";
+    const confirmed = step === "start" || step === "resume" || step === "repair-trust" || step === "reconnect" || step === "remove";
     const session = confirmed ? authority?.session : ctx.hubCompanySession(req);
     if (!session?.current()) { json(res, 403, { error: "private_session_required" }); return true; }
     if (confirmed && (!isSettingsReplay(req) || !execution || !authority?.confirmedCurrent())) {
@@ -998,16 +1171,39 @@ export function handleSettingsRequest(
         }
         if (!step) {
           const id = url.searchParams.get("operationId");
-          json(res, 200, { ok: true, bound: api.bound(), operation: id ? await api.status(validated(uuid, id), session) : api.current(session) }); return;
+          json(res, 200, { ok: true, bound: api.bound(), operation: id ? await api.status(validated(uuid, id), session) : api.current(session), display: api.display() }); return;
         }
         const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8"));
         execution?.assert(); if (!session.current()) throw new HubProtocolError("revoked");
+        if (step === "probe") {
+          // M-2921: read only (the Hub's public metadata; no pin, journal, handoff or push) — the same private session as
+          // Start (hubCompanySession: an admin cookie session on this computer's own surface, its POST Origin checked);
+          // a header token, a guest and the public link hold none (refused above). Not a Settings replay: no local-admin
+          // continuation exists here (that is a confirmed write's), so none is asked.
+          if (!session.fleetOrigin || !body || typeof body !== "object" || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
+          json(res, 200, await api.probe({ address: body.address, fleetOrigin: session.fleetOrigin }, session)); return;
+        }
         if (step === "repair-trust") {
           if (!authority || !settingsRequestLocalAdmin(req) || !body || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
           await api.repairTrust(body.address, authority); json(res, 200, { ok: true });
+        } else if (step === "reconnect" || step === "remove") {
+          // M-2921 (spec 1.3, O1): one confirmed press of the connected card — reconnect (its consent covers the disconnect)
+          // or 「移除這個連接」 — for exactly the pairing the card showed.
+          const pairing = ctx.hubMemberPairing?.() ?? null;
+          if (!pairing || !authority || !settingsRequestLocalAdmin(req) || !body || typeof body !== "object") throw new HubProtocolError("invalid");
+          if (step === "reconnect") {
+            if (!session.fleetOrigin || Object.keys(body).some(k => !["hubId", "binding", "address", "handoffId"].includes(k))) throw new HubProtocolError("invalid");
+            json(res, 200, { ok: true, operation: await api.reconnect({ hubId: body.hubId, binding: body.binding, address: body.address, fleetOrigin: session.fleetOrigin,
+              ...(body.handoffId !== undefined ? { handoffId: body.handoffId } : {}) }, authority, pairing) });
+          } else {
+            if (Object.keys(body).some(k => !["hubId", "binding", "address"].includes(k))) throw new HubProtocolError("invalid");
+            const removed = await api.remove({ hubId: body.hubId, binding: body.binding, address: body.address }, authority, pairing);
+            ctx.invalidateHubCompanyJoin?.();
+            json(res, 200, { ok: true, ...removed, pairing: pairing.view() });
+          }
         } else if (step === "start") {
-          if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label", "handoffId"].includes(k))) throw new HubProtocolError("invalid");
-          json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin, handoffId: body.handoffId }, authority) });
+          if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label", "handoffId", "code"].includes(k))) throw new HubProtocolError("invalid");
+          json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin, handoffId: body.handoffId, ...(body.code !== undefined ? { code: body.code } : {}) }, authority) });
         } else {
           if (!body || Object.keys(body).length !== 1) throw new HubProtocolError("invalid");
           const id = validated(uuid, body.operationId);
@@ -1030,7 +1226,13 @@ export function handleSettingsRequest(
     const api = ctx.hubMemberPairing?.() ?? null;
     if (!api) { json(res, 404, { error: "unavailable" }); return true; }
     const step = pairingRoute[1];
-    if (!step && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.view(), notices: (api.notices?.() ?? []).filter(n => url.searchParams.get("v") === "2" || n.source === "group") }); return true; }
+    if (!step && method === "GET") {
+      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      // Keep v=2 on the wire for an older host; only a current code-aware renderer asks for the additive v3 notice DTO.
+      const version = url.searchParams.get("v") === "3" || url.searchParams.get("v") === "2" && url.searchParams.get("notices") === "3" ? 3 : url.searchParams.get("v") === "2" ? 2 : 1;
+      const notices = (api.notices?.() ?? []).filter(n => n.source === "group" || n.source === "manual" && version >= 2 || n.source === "code" && version >= 3);
+      json(res, 200, { ok: true, pairing: api.view(), notices }); return true;
+    }
     if (step === "cancel" && method === "POST") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } ctx.invalidateHubCompanyJoin?.(); json(res, 200, { ok: true, pairing: api.cancel() }); return true; }
     if (step && method === "POST") {
       const execution = settingsRequestExecution(req);
@@ -1043,7 +1245,7 @@ export function handleSettingsRequest(
         const body = JSON.parse(bytes.toString("utf8") || "{}") as Record<string, unknown>;
         if (step === "connect" || step === "disconnect") ctx.invalidateHubCompanyJoin?.();
         const r = step === "connect" ? await api.connect({ address: body.address, code: body.code }, current)
-          : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect({ hubId: body.hubId, binding: body.binding });
+          : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect({ hubId: body.hubId, binding: body.binding }, current);   // #3675 r2: asked again after member.leave's wait
         json(res, r.ok ? 200 : 409, r);
       }).catch(() => json(res, 400, { ok: false, error: "unsaved" }));
       return true;
@@ -1274,6 +1476,7 @@ export function handleSettingsRequest(
       }
       if (parsed.echo !== undefined) { web.echo_to_channel = parsed.echo; changes.push({ path: ["web", "echo_to_channel"], value: parsed.echo }); }
       if (parsed.logTab !== undefined) { web.log_tab = parsed.logTab; changes.push({ path: ["web", "log_tab"], value: parsed.logTab }); }
+      if (parsed.logThinking !== undefined) { web.log_thinking = parsed.logThinking; changes.push({ path: ["web", "log_thinking"], value: parsed.logThinking }); }
       if (parsed.usageOnPublicLink !== undefined) { web.usage_report_on_public_link = parsed.usageOnPublicLink; changes.push({ path: ["web", "usage_report_on_public_link"], value: parsed.usageOnPublicLink }); }
       if (parsed.officeLevels !== undefined) { web.office_levels = parsed.officeLevels; changes.push({ path: ["web", "office_levels"], value: parsed.officeLevels }); }
       if (parsed.previewCdn !== undefined) { web.preview_cdn = parsed.previewCdn; changes.push({ path: ["web", "preview_cdn"], value: parsed.previewCdn }); }
@@ -1289,6 +1492,15 @@ export function handleSettingsRequest(
           else { local[key] = value; changes.push({ path: ["web", "session", "local", key], value }); }
         }
         web.session = { ...web.session, local };
+      }
+      if (parsed.publicLinkSession) {
+        const pl: Record<string, number> = { ...web.session?.public_link };
+        for (const [key, value] of Object.entries(parsed.publicLinkSession)) {
+          if (value === null) { delete pl[key]; changes.push({ path: ["web", "session", "public_link", key], value: undefined, remove: true }); }
+          else { pl[key] = value; changes.push({ path: ["web", "session", "public_link", key], value }); }
+        }
+        const { public_link: _old, ...rest } = web.session ?? {};
+        web.session = Object.keys(pl).length ? { ...rest, public_link: pl } : rest;
       }
       if (terminalPatch) {
         const wt: Record<string, unknown> = { ...cfg.web_terminal };
@@ -1599,6 +1811,8 @@ export function handleSettingsRequest(
         "reply_completion_guard",
         "web_echo",
         "quota_notice",
+        // M-2909: the room's AI account (backend_options.<cli>.credential_profile; null: back to the fleet default).
+        "backend_options",
       ]);
       const unknown = Object.keys(body).filter(field => !allowed.has(field));
       if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
@@ -1628,6 +1842,18 @@ export function handleSettingsRequest(
       if (body.web_echo !== undefined && typeof body.web_echo !== "boolean") {
         return json(res, 400, { error: "web_echo must be a boolean" });
       }
+      if (body.backend_options !== undefined && body.backend_options !== null) {
+        const { problems } = normalizeBackendOptions(body.backend_options);
+        if (problems.length) return json(res, 400, { error: `backend_options: ${problems.map(p => `${p.path ? `${p.path}: ` : ""}${p.message}`).join("; ")}` });
+        // An emptied choice is no choice: drop a null/"" profile, then a backend left with nothing, then the map itself.
+        const kept: Record<string, Record<string, unknown>> = {};
+        for (const [b, o] of Object.entries(body.backend_options as Record<string, Record<string, unknown>>)) {
+          const copy = { ...o };
+          if (copy.credential_profile === null || copy.credential_profile === "") delete copy.credential_profile;
+          if (Object.keys(copy).length) kept[b] = copy;
+        }
+        body.backend_options = Object.keys(kept).length ? kept : null;
+      }
 
       let classic: Record<string, unknown>;
       try { classic = readClassic(ctx); }
@@ -1644,11 +1870,27 @@ export function handleSettingsRequest(
       if (body.reply_completion_guard === null) delete merged.reply_completion_guard;
       if (body.reply_triggers === null) delete merged.reply_triggers;
       if (body.quota_notice === null) delete merged.quota_notice;
+      if (body.backend_options === null) delete merged.backend_options;
+      // M-2909 (as for an agent, #3212): moving a room onto a signed-out profile would leave its agent at a sign-in prompt.
+      // Prism on #3691: the binding before (its current backend and options) against after (the merged ones), whenever
+      // either can change — a backend change can land the room on a saved or inherited profile of the other CLI.
+      if (body.backend_options !== undefined || body.backend !== undefined) {
+        const cd = (classic.defaults && typeof classic.defaults === "object" ? classic.defaults : {}) as Record<string, unknown>;
+        const backendOf = (room: Record<string, unknown>) => String(room.backend ?? cd.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code");
+        const fleetOptions = ctx.fleetConfig?.defaults?.backend_options as Record<string, Record<string, unknown>> | undefined;
+        const beforeBackend = backendOf(current as Record<string, unknown>), afterBackend = backendOf(merged);
+        const before = classicProfile(normalizeBackendOptions((current as Record<string, unknown>).backend_options).options, fleetOptions, beforeBackend);
+        const after = classicProfile(normalizeBackendOptions(merged.backend_options).options, fleetOptions, afterBackend);
+        if (after.state === "profile" && !(before.state === "profile" && before.name === after.name && beforeBackend === afterBackend)) {
+          const login = signedOutCredentialProfile(ctx.dataDir, afterBackend, after.name);
+          if (login) return json(res, 409, { error: "credential_profile_signed_out", backend: afterBackend, profile: after.name, loginCommand: login.loginCommand });
+        }
+      }
       (channels as Record<string, unknown>)[key] = merged;
       const before = validateClassicBotConfig(previous);
       const after = validateClassicBotConfig(classic);
       if (rejectIfWorse(res, before, after)) return;
-      try { settingsWrite(req, () => writeClassicAtomic(ctx, classic), false); }
+      try { settingsWrite(req, () => writeClassicLeaves(ctx, classic, Object.keys(body).map(field => ["channels", key, field])), false); }
       catch (err) {
         ctx.logger.warn({ err, key }, "settings: failed to atomically update classic channel");
         return json(res, 500, { error: "failed to write classicBot.yaml" });
@@ -1656,29 +1898,47 @@ export function handleSettingsRequest(
       const undo = settingsUndo(classicPath(ctx), previous, classic, Object.keys(body).map(field => ["channels", key, field]));
       const execution = settingsRequestExecution(req);
       const instanceName = typeof merged.instanceName === "string" ? merged.instanceName : undefined;
-      const restore = instanceName ? ctx.captureClassicSettingsRestoration?.(instanceName, Object.keys(body), execution) : undefined;
+      // M-2966: the restart and its compensation are one owned operation (as #3719's tool switch): a plain Save's restart is
+      // owned too, so after a failed start the compensation still owns the room and brings it back on what it had.
+      const op = instanceName ? ctx.beginClassicSettingsRestart?.(instanceName, Object.keys(body), execution) : undefined;
+      const restore = !op && instanceName ? ctx.captureClassicSettingsRestoration?.(instanceName, Object.keys(body), execution) : undefined;
       try {
         if (instanceName && ctx.restartClassicInstanceFromSettings) {
-          if (execution) await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body), execution);
+          if (op) await op.restart();
+          else if (execution) await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body), execution);
           else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body));
           execution?.assert();
         }
       } catch (err) {
         // Keep disk and runtime consistent if the requested restart fails.
+        let rolledBack = false;
         try {
           const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
           writeClassicAtomic(ctx, retained.value);
           if (retained.conflicts) throw new Error("concurrent Classic edit retained");
+          rolledBack = true;
         } catch (rollbackErr) {
           ctx.logger.error({ err: rollbackErr, key }, "settings: failed to roll back classic channel update");
         }
-        if (instanceName && ctx.restartClassicInstanceFromSettings) {
-          try { if (restore) await restore(); else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body)); }
+        // M-2966 (Prism on #3721): the owned compensation may start a stopped room, so it runs only on a conflict-free
+        // rollback — never onto a newer edit that undo kept, nor onto a file it couldn't put back (as #3719's tool path).
+        if (op && !rolledBack) ctx.logger.warn({ key, instanceName }, "settings: classic rollback incomplete; the room is not restarted");
+        else if (instanceName && ctx.restartClassicInstanceFromSettings) {
+          try {
+            if (op) {
+              // Never over a runtime someone else stopped or started meanwhile ("superseded"): that one stays as it is.
+              const outcome = await op.restore();
+              if (outcome === "superseded") ctx.logger.warn({ key, instanceName }, "settings: classic room changed meanwhile; not restarted after rollback");
+            } else if (restore) await restore();
+            else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body));
+          }
           catch (recoveryErr) { ctx.logger.error({ err: recoveryErr, key, instanceName }, "settings: failed to restore classic instance after rollback"); }
         }
+        op?.close();
         ctx.logger.warn({ err, key, instanceName }, "settings: classic channel restart failed; config rolled back");
         return json(res, 409, { error: `classic instance restart failed: ${(err as Error).message}` });
       }
+      op?.close();
       execution?.complete();
       ctx.logger.info({ key, instanceName }, "settings: updated classic channel");
       const hotOnly = Object.keys(body).length > 0

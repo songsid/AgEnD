@@ -1,0 +1,173 @@
+{
+  "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+  "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+  "cases": [
+    {
+      "id": "split-minimum",
+      "file": "src/ui/shared/pane-geometry.js",
+      "test": "web-chat-workspace-geometry-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "float-boundary",
+      "file": "src/ui/shared/pane-geometry.js",
+      "test": "web-chat-workspace-geometry-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "outside-drop",
+      "file": "src/ui/shared/pane-geometry.js",
+      "test": "web-chat-workspace-geometry-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "unique-dock",
+      "file": "src/ui/shared/chat-workspace-model.js",
+      "test": "web-chat-workspace-geometry-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "preview-stop",
+      "file": "src/ui/chat-workspace-navigation.js",
+      "test": "web-chat-workspace-docking-navigation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "drop-leave-guard",
+      "file": "src/ui/chat-workspace-navigation.js",
+      "test": "web-chat-workspace-docking-navigation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "revoked-incarnation",
+      "file": "src/ui/chat-workspace-gestures.js",
+      "test": "web-chat-workspace-gestures-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "bounds-fence",
+      "file": "src/ui/chat-workspace-gestures.js",
+      "test": "web-chat-workspace-gestures-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "pointer-owner",
+      "file": "src/ui/chat-workspace-gestures.js",
+      "test": "web-chat-workspace-gestures-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "escape-cancel",
+      "file": "src/ui/chat-workspace-gestures.js",
+      "test": "web-chat-workspace-gestures-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "native-target",
+      "file": "src/ui/chat-workspace-gestures.js",
+      "test": "web-chat-workspace-gestures-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "native-domrect",
+      "file": "src/ui/chat-workspace-gestures.js",
+      "test": "web-chat-workspace-gestures-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "keyboard-browser-keys",
+      "file": "src/ui/chat-workspace-gestures.js",
+      "test": "web-chat-workspace-gestures-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "pane-dom-identity",
+      "file": "src/ui/chat-workspace.js",
+      "test": "web-chat-workspace-host-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "sidebar-dock",
+      "file": "src/ui/shared/instance-nav.js",
+      "test": "web-chat-workspace-sidebar-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "retained-float-model",
+      "file": "src/ui/shared/chat-workspace-model.js",
+      "test": "web-chat-workspace-skew-geometry-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "retained-float-layout",
+      "file": "src/ui/chat-workspace-navigation.js",
+      "test": "web-chat-workspace-skew-geometry-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    }
+  ],
+  "inputs": {
+    "967603a35628503ff4323a4dc7e9ad19b7d42b6fb8963de38f991cd7dd578582": [
+      "src/ui/shared/pane-geometry.js",
+      "src/ui/shared/pane-geometry.js",
+      "src/ui/shared/pane-geometry.js"
+    ],
+    "a87cd5ec9abf85ed67ddb099efb115c1b1003f99ae5b2e11a1a031dad7a647fa": [
+      "src/ui/shared/chat-workspace-model.js",
+      "src/ui/shared/chat-workspace-model.js"
+    ],
+    "bfb796d841fe59679601d1b0e7ad0ecaaee1033009ea9220db214bded7ecf035": [
+      "src/ui/chat-workspace-navigation.js",
+      "src/ui/chat-workspace-navigation.js",
+      "src/ui/chat-workspace-navigation.js"
+    ],
+    "f4bad49945f1c7143209a165554adc332d80411f36aabea9943719b16bc34517": [
+      "src/ui/chat-workspace-gestures.js",
+      "src/ui/chat-workspace-gestures.js",
+      "src/ui/chat-workspace-gestures.js",
+      "src/ui/chat-workspace-gestures.js",
+      "src/ui/chat-workspace-gestures.js",
+      "src/ui/chat-workspace-gestures.js",
+      "src/ui/chat-workspace-gestures.js"
+    ],
+    "e6431ba67b2b0c0086e6cf0eaa7f922156762b25722f973c09ad6340d067ace5": [
+      "src/ui/chat-workspace.js"
+    ],
+    "b0b9cfe9e190caf60ea47f6ecfe9570ab8260908362c8e26efa3caa0d48ffb73": [
+      "src/ui/shared/instance-nav.js"
+    ]
+  }
+}

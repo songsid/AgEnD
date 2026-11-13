@@ -1,0 +1,37 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (14 tests | 1 failed | 13 skipped) 113ms
+     × pauses without changing grants/rooms, hides new asks, and resumes the exact allow list 111ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > pauses without changing grants/rooms, hides new asks, and resumes the exact allow list
+AssertionError: expected { …(13) } to match object { state: 'paused', sharingEpoch: 1 }
+(14 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "sharingEpoch": 1,
+-   "state": "paused",
++   "state": "published",
+  }
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:31:93
+     29|     expect((await w.change(true, 0)).status).toBe(200);
+     30|     expect(w.r.db.prepare("SELECT * FROM hub_grants").all()).toEqual(r…
+     31|     const mine = await w.r.call(w.o, "GET", "/hub/v1/exposures"); expe…
+       |                                                                                             ^
+     32|     expect((await w.r.call(w.a, "GET", "/hub/v1/exposures")).json.aska…
+     33|     const read = await w.r.call(w.a, "GET", `/hub/v1/rooms/${w.roomId}…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  14:15:54
+   Duration  3.89s (transform 2.72s, setup 97ms, import 3.52s, tests 113ms, environment 0ms)
+

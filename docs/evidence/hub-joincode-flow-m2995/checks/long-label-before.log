@@ -1,0 +1,10 @@
+{"scroll":1820,"client":390}
+/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995/scripts/manual/hub-joincode-flow-m2995/.long-label-probe.mts:23
+const check = (name: string, ok: boolean, detail?: unknown) => { checks.push({ name, ok, ...(detail === undefined ? {} : { detail }) }); if (!ok) throw Error(name); };
+                                                                                                                                                        ^
+
+Error: long-name-no-scroll
+    at check (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995/scripts/manual/hub-joincode-flow-m2995/.long-label-probe.mts:23:153)
+    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995/scripts/manual/hub-joincode-flow-m2995/.long-label-probe.mts:103:272)
+
+Node.js v22.22.2

@@ -56,7 +56,25 @@ export function createChatStore(deps) {
     commands: {},
   };
   const subs = new Set();
+  const historyRequests = new Map();
+  const visible = new Map();              // mount token → agent; cleanup never clears a successor's focus
+  let focused = null;
+  const shown = () => new Set([...visible.values(), ...(s.current ? [s.current] : [])]);
+  function show(name) {
+    const owner = {};
+    visible.set(owner, name);
+    return {
+      focus(value) {
+        if (!visible.has(owner)) return;
+        if (value) { focused = owner; s.current = name; }
+        else if (focused === owner) { focused = null; s.current = null; }
+      },
+      close() { visible.delete(owner); if (focused === owner) { focused = null; s.current = null; } },
+    };
+  }
   const pastedTexts = new WeakMap();
+  const draftVersions = new Map(), draftTickets = new WeakSet();
+  const editDraft = name => draftVersions.set(name, (draftVersions.get(name) || 0) + 1);
   const now = deps.now || (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const t = deps.t, tf = deps.t;
   const liveReplies = createLiveAgentReplies(now);
@@ -170,11 +188,14 @@ export function createChatStore(deps) {
   async function openHistory(name, lease, signal) {
     if (s.historyRead.has(name) || signal?.aborted) return false;
     s.historyRead.add(name);
+    const request = {}; historyRequests.set(name, request);
+    const current = () => historyRequests.get(name) === request;
     // M-2260: after a gap, what this chat held when the read began may sit across a hole: the answer replaces it, and
     // only what arrived while the read was out (the live stream) is kept beside it — exactly what a reload would show.
     const stale = s.gapped.has(name) ? new Set((s.msgs[name] || []).map(msgKeyOf)) : null;
     try {
       const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=200`, undefined, signal);
+      if (!current()) return false;
       if (signal?.aborted) { s.historyRead.delete(name); return false; }
       if (!r || !Array.isArray(r.messages)) { s.historyRead.delete(name); return true; }
       // Kept even when the person has moved on: the store is page-lived, and the answer belongs to `name`.
@@ -187,7 +208,8 @@ export function createChatStore(deps) {
       } else s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500);
       settleOutgoing(name);
       changed(name, "msgs");
-    } catch { s.historyRead.delete(name); /* the live stream still works; the next visit tries again */ }
+    } catch { if (current()) s.historyRead.delete(name); /* the live stream still works; the next visit tries again */ }
+    finally { if (current()) historyRequests.delete(name); }
     void lease;
     return true;
   }
@@ -201,7 +223,7 @@ export function createChatStore(deps) {
     // only refreshes its text and buttons (#1463 review).
     if (!had) s.prompts[p.nonce] = { ...p, resolved: false, busy: false };
     else if (!had.resolved) Object.assign(had, { text: p.text, links: p.links, actions: p.actions, expiresAt: p.expiresAt });
-    if (p.instance === s.current) changed(p.instance);
+    if (shown().has(p.instance)) changed(p.instance);
     else if (fresh) deps.toast(tf("chat.promptFor", p.instance, p.text), false);
   }
   /** The open prompts, on every stream (re)connect and with every poll: a prompt answered or expired while this page
@@ -339,6 +361,7 @@ export function createChatStore(deps) {
       files: files.map((f) => ({ file: f, name: f.name || "file", size: f.size || 0, type: f.type || "", url: objectUrl(f), loaded: 0, total: f.size || 0, state: "waiting", id: null })),
     };
     (s.outgoing[target] = s.outgoing[target] || []).push(e);
+    editDraft(target);
     s.drafts[target] = "";
     s.pendingFiles[target] = [];
     if (quote) delete s.replies[target];
@@ -436,6 +459,7 @@ export function createChatStore(deps) {
     const e = list.find((x) => x.clientId === clientId);
     if (!e || e.outgoing.state !== "failed") return;
     const draft = s.drafts[target] || "";
+    editDraft(target);
     s.drafts[target] = e.text ? (draft ? e.text + "\n" + draft : e.text) : draft;
     for (const f of e.files) freeUrl(f.url);
     s.outgoing[target] = list.filter((x) => x !== e);
@@ -446,11 +470,12 @@ export function createChatStore(deps) {
   function addFiles(target, list) {
     if (!target) return;
     const res = R().checkFiles(s.pendingFiles[target] || [], [...(list || [])]);
+    editDraft(target);
     s.pendingFiles[target] = res.kept;
     for (const x of res.rejected) { const why = R().fileRejection(x.reason); deps.toast(`${x.name}: ${t(why.key, ...why.values)}`, false); }
     changed(target);
   }
-  function removeFile(target, index) { (s.pendingFiles[target] || []).splice(index, 1); changed(target); }
+  function removeFile(target, index) { editDraft(target); (s.pendingFiles[target] || []).splice(index, 1); changed(target); }
   /** A long paste as a .txt file when it fits beside what is attached; true when it was attached. */
   function attachPastedText(target, text) {
     if (!target) return false;
@@ -467,6 +492,7 @@ export function createChatStore(deps) {
   function fileBackAsText(target, index) {
     const f = (s.pendingFiles[target] || [])[index];
     if (!f || !pastedTexts.has(f)) return;
+    editDraft(target);
     s.pendingFiles[target].splice(index, 1);
     const draft = s.drafts[target] || "";
     s.drafts[target] = draft ? `${draft}\n${pastedTexts.get(f)}` : pastedTexts.get(f);
@@ -474,11 +500,45 @@ export function createChatStore(deps) {
   }
   const isPasted = (f) => pastedTexts.has(f);
   /** Typing stays local. */
-  function setDraft(target, value) { s.drafts[target] = value; }
+  function setDraft(target, value) { editDraft(target); s.drafts[target] = value; }
+  /** #3637: one page-local, compare-and-clear ticket. No outgoing requests or persistent storage. */
+  function captureDraft(name) {
+    const ticket = { name, version: draftVersions.get(name) || 0, reply: s.replies[name],
+      payload: { text: s.drafts[name] || "", files: [...(s.pendingFiles[name] || [])], reply: s.replies[name] ? { ...s.replies[name] } : null } };
+    draftTickets.add(ticket); return ticket;
+  }
+  function draftCurrent(ticket) {
+    return draftTickets.has(ticket) && ticket.version === (draftVersions.get(ticket.name) || 0)
+      && ticket.payload.text === (s.drafts[ticket.name] || "") && ticket.reply === s.replies[ticket.name]
+      && ticket.payload.files.length === (s.pendingFiles[ticket.name] || []).length
+      && ticket.payload.files.every((file, i) => file === s.pendingFiles[ticket.name][i]);
+  }
+  function clearCapturedDraft(ticket) {
+    if (!draftCurrent(ticket)) return false;
+    draftTickets.delete(ticket); editDraft(ticket.name);
+    s.drafts[ticket.name] = ""; s.pendingFiles[ticket.name] = []; delete s.replies[ticket.name]; changed(ticket.name); return true;
+  }
+  function acceptDraft(name, data) {
+    if (!data || Object.keys(data).sort().join(",") !== "files,reply,text" || typeof data.text !== "string" || data.text.length > 1_000_000
+      || !Array.isArray(data.files) || data.files.length > R().fileLimits().maxFiles
+      || data.files.some(file => typeof File !== "function" || !(file instanceof File))
+      || (s.drafts[name] || "") || (s.pendingFiles[name] || []).length || s.replies[name]) return false;
+    const reply = data.reply;
+    if (reply !== null && (!reply || Object.keys(reply).some(key => !["boot", "id", "sender", "text", "media"].includes(key))
+      || typeof reply.boot !== "string" || reply.boot.length > 128 || !Number.isSafeInteger(reply.id) || reply.id < 0
+      || typeof reply.sender !== "string" || reply.sender.length > 1000 || typeof reply.text !== "string" || reply.text.length > 160
+      || (reply.media !== undefined && !["photo", "document"].includes(reply.media)))) return false;
+    const files = R().checkFiles([], data.files);
+    if (files.rejected.length || files.kept.length !== data.files.length) return false;
+    editDraft(name); s.drafts[name] = data.text; s.pendingFiles[name] = files.kept;
+    if (reply) s.replies[name] = { ...reply };
+    changed(name); return true;
+  }
   /** #2911: a line added to the composer for the person to edit (after what is typed, on its own line; never twice). */
   function addToDraft(target, line) {
     const d = s.drafts[target] || "";
     if (!target || !line || d.split("\n").includes(line)) return;
+    editDraft(target);
     s.drafts[target] = d ? `${d.replace(/\n+$/, "")}\n${line}` : line;
     changed(target);
   }
@@ -488,11 +548,12 @@ export function createChatStore(deps) {
    */
   function startReply(target, m) {
     if (!target || !m || typeof m.boot !== "string" || typeof m.id !== "number") return;
+    editDraft(target);
     s.replies[target] = { boot: m.boot, id: m.id, sender: String(m.sender || ""), text: String(m.click?.label ?? m.text ?? "").replace(/\s+/g, " ").trim().slice(0, 160),
       media: (m.attachments || []).length ? ((m.attachments || []).some(a => a.kind === "photo") ? "photo" : "document") : undefined };
     changed(target);
   }
-  function clearReply(target) { if (s.replies[target]) { delete s.replies[target]; changed(target); } }
+  function clearReply(target) { if (s.replies[target]) { editDraft(target); delete s.replies[target]; changed(target); } }
   /**
    * #2272: the quoted message, drawn for a jump: in what this chat holds, or after reading the longest history the
    * server keeps for it (the newest 500). false: no longer kept.
@@ -587,7 +648,7 @@ export function createChatStore(deps) {
    */
   function onGap() {
     for (const name of new Set([...Object.keys(s.msgs), ...s.historyRead])) { s.historyRead.delete(name); s.gapped.add(name); }
-    if (s.current) void openHistory(s.current);
+    for (const name of shown()) void openHistory(name);
   }
   /** Wire the store to the app's stream, for the life of the page. */
   function attach(stream) {
@@ -609,13 +670,14 @@ export function createChatStore(deps) {
   return {
     state: s,
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
-    setCurrent(name) { s.current = name; },
+    setCurrent(name) { focused = null; s.current = name; },
+    show,
     onAgentReply: liveReplies.subscribe,
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory, onGap,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
     uploadFile, send, retryOutgoing, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
-    startReply, clearReply, findQuoted, addToDraft,
+    startReply, clearReply, findQuoted, addToDraft, captureDraft, draftCurrent, clearCapturedDraft, acceptDraft,
     cancelReply, isUser, runCommand, dismissCommand, commandFree,
     allHidden: (name) => s.allHidden.has(name),
   };

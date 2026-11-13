@@ -1,0 +1,31 @@
+{
+  "base": "dfdcf664ea51a20fb9bd91be3ce2aa9269e22928",
+  "scope": "preserve revoked-session classification after held pairing owner eligibility; every management permit fence remains",
+  "checks": {
+    "passed": 33,
+    "files": 2,
+    "skipped": 0,
+    "sourceTypes": 0,
+    "testTypes": 0
+  },
+  "mutation": {
+    "sourceSha256": "ff1b67a5f2700ca57f491a0dfd9b171b68ed50f759b8a0cba2d4f43d57542d52",
+    "types": 0,
+    "exit": 1,
+    "passedControls": 1,
+    "failed": [
+      "S129 first-issuance approver permission retains the held approval's signed-out session refusal without publishing approval"
+    ],
+    "restored": true
+  },
+  "bindings": [
+    {
+      "file": "src/hub/pairing.ts",
+      "sha256": "ff1b67a5f2700ca57f491a0dfd9b171b68ed50f759b8a0cba2d4f43d57542d52"
+    },
+    {
+      "file": "tests/hub-roles-issuer-s129.test.ts",
+      "sha256": "26eb319c39a7c85a5eb18238c5ab3ef84f836af33d48b150afd1ff65f8756143"
+    }
+  ]
+}

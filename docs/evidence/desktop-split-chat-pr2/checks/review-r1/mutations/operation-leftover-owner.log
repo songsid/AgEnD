@@ -1,0 +1,46 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·xx··
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  00:02:57
+   Duration  5.00s (transform 3.46s, setup 327ms, import 675ms, tests 3.63s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > only the initiating pane consumes its failed leftovers (suspended=false)
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:50:20
+     48|   app.appStore.set({ settingsOp: { ...app.appStore.get().settingsOp, p…
+     49|   if (suspended) { expect(rig.take).not.toHaveBeenCalled(); controller…
+     50|   expect(rig.take).toHaveBeenCalledTimes(1); expect(sessions.alpha.sta…
+       |                    ^
+     51|   expect(sessions.beta.staged.has("agent:alpha")).toBe(false); expect(…
+     52| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > only the initiating pane consumes its failed leftovers (suspended=true)
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array []
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:49:41
+     47|   rig.take.mockImplementation(() => { const result = app.appStore.get(…
+     48|   app.appStore.set({ settingsOp: { ...app.appStore.get().settingsOp, p…
+     49|   if (suspended) { expect(rig.take).not.toHaveBeenCalled(); controller…
+       |                                         ^
+     50|   expect(rig.take).toHaveBeenCalledTimes(1); expect(sessions.alpha.sta…
+     51|   expect(sessions.beta.staged.has("agent:alpha")).toBe(false); expect(…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯

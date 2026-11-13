@@ -12,6 +12,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const fake = vi.hoisted(() => ({ created: [] as any[] }));
 
+vi.mock("../src/backend-availability.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../src/backend-availability.js")>(),
+  resolveBackendBinary: vi.fn(async () => "/fixture/claude"),
+}));
+
 vi.mock("../src/daemon.js", async importOriginal => {
   const original = await importOriginal<typeof import("../src/daemon.js")>();
   const { EventEmitter: Emitter } = await import("node:events");
@@ -308,11 +313,33 @@ describe("busy or held targets (2c ⑤)", () => {
   });
 
   it("a busy (working) target is claimed and handed off through the idle gate, as before", async () => {
-    const { fm, admit } = await fleet("on");
+    const { fm, outbox, admit, scripts, gateHandoff } = await fleet("on");
+    fm.wakeCoordinator?.stop();
+    const timer = (fm as any).deliveryPumpTimer; if (timer) clearTimeout(timer);
+    (fm as any).deliveryPumpTimer = null;
+    vi.spyOn(fm as any, "scheduleDeliveryOutboxPump").mockImplementation(() => {});
+    const drains = vi.spyOn(TargetQueueWorker.prototype, "drain");
+    scripts.set("a", ["gated"]);
+    const gate = gateHandoff();
     const deliver = fm.deliverToInstance as any;
-    admit("a");
-    await vi.waitFor(() => expect(deliver).toHaveBeenCalled());
-    expect(deliver.mock.calls[0][2]).toMatchObject({ isCrossInstance: true, waitForIdle: true, noInlineWake: true });
+    const id = admit("a");
+    await (fm as any).runDeliveryOutboxPump();
+    const drained = drains.mock.results[0].value, worker = fm.queueWorkers.get("a")!;
+    try {
+      expect(deliver).toHaveBeenCalled();
+      expect(deliver.mock.calls[0][2]).toMatchObject({ isCrossInstance: true, waitForIdle: true, noInlineWake: true });
+      // Invocation alone is not completion: this row still owns the lane and budget.
+      expect(outbox.get(id).state).toBe("submission_started");
+      expect(worker.busy).toBe(true); expect(worker.inFlight).toBe(true);
+    } finally {
+      const row = outbox.get(id);
+      outbox.complete(id, row.targetDaemonBootId, row.attemptNo, "delivered");
+      gate.release();
+      await drained;
+    }
+    expect(outbox.get(id).state).toBe("delivered");
+    expect(worker.busy).toBe(false); expect(worker.inFlight).toBe(false);
+    expect((fm as any).activeDurableTargets.has("a")).toBe(false);
   });
 });
 
@@ -452,7 +479,15 @@ describe("an unexpired retry does not spin the claim loop (#1079 review P1-2)", 
 
 describe("a transient claim error does not leak the budget (#1079 review P2-3)", () => {
   it("claimNext throws SQLITE_BUSY once: the budget is returned and delivery recovers", async () => {
-    const { fm, outbox, admit } = await fleet("on");
+    const { fm, outbox, admit, scripts, gateHandoff, handoffs } = await fleet("on");
+    // Drive real pump passes explicitly: automatic kicks can retry before the
+    // old test's 30 ms sample. Keep worker creation/SQLite/budget/dispatch real.
+    const timer = (fm as any).deliveryPumpTimer;
+    if (timer) clearTimeout(timer);
+    (fm as any).deliveryPumpTimer = null;
+    vi.spyOn(fm as any, "scheduleDeliveryOutboxPump").mockImplementation(() => {});
+    fm.wakeCoordinator?.stop();
+    const drains = vi.spyOn(TargetQueueWorker.prototype, "drain");
     const real = outbox.claimNext.bind(outbox);
     let fail = true;
     vi.spyOn(outbox, "claimNext").mockImplementation((...args: any[]) => {
@@ -460,10 +495,34 @@ describe("a transient claim error does not leak the budget (#1079 review P2-3)",
       return real(...args);
     });
     const id = admit("a");
-    await sleep(30);
+    await (fm as any).runDeliveryOutboxPump();
+    await drains.mock.results[0].value; // failed drain settled, before the retry
+    const worker = fm.queueWorkers.get("a")!;
+    expect(fail).toBe(false);
+    expect(outbox.get(id)).toMatchObject({ state: "queued", attemptNo: 0 });
+    expect(handoffs).toHaveLength(0);
     expect((fm as any).activeDurableTargets.has("a")).toBe(false);
-    (fm as any).scheduleDeliveryOutboxPump();
-    await vi.waitFor(() => expect(outbox.get(id).state).toBe("delivered"));
+
+    scripts.set("a", ["gated"]);
+    const gate = gateHandoff();
+    await (fm as any).runDeliveryOutboxPump();
+    const recovered = drains.mock.results[1].value;
+    try {
+      expect(outbox.get(id)).toMatchObject({ state: "submission_started", attemptNo: 1 });
+      expect(handoffs.map(h => h.deliveryId)).toEqual([id]);
+      expect(worker.inFlight).toBe(true);
+      // A retried hand-off legitimately owns its budget until completion.
+      expect((fm as any).activeDurableTargets.has("a")).toBe(true);
+    } finally {
+      const row = outbox.get(id);
+      outbox.complete(id, row.targetDaemonBootId, row.attemptNo, "delivered");
+      gate.release();
+      await recovered; // drain all owned work before storage teardown
+    }
+    expect(outbox.get(id).state).toBe("delivered");
+    expect((fm as any).activeDurableTargets.has("a")).toBe(false);
+    expect(worker.inFlight).toBe(false);
+    expect(worker.busy).toBe(false);
   });
 });
 

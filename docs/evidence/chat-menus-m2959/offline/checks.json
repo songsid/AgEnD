@@ -1,0 +1,117 @@
+{
+  "head": "537ffc7c03e770f73e528d746aef58aa5025b90f",
+  "tree": "0763f4b6fb62b9e7f9ee6e00f02d4f4090250e89",
+  "inputs": {
+    "e3d98f1a8f948d4275e6c4aef8453a25267d36973a078ce305ff0bc2424db25d": [
+      "changes/3637-chat-menus.md"
+    ],
+    "f0e27ed19587569a6fae9b92d32ff6e29d432c12289929ca70c6754214f7317b": [
+      "changes/3637-chat-menus.zh-TW.md"
+    ],
+    "0226be470e0571901083d6cc0ba0ac4d52126d2c65d414d38e170b93225dd0e8": [
+      "docs/design/chat-menus-m2959.md"
+    ],
+    "d2234acc5366c597c85c5f7047103b1b9dcbe4d5cd400868e6ce91c33a397ef1": [
+      "scripts/manual/mutation/chat-menus-2959.py"
+    ],
+    "682787991f62f253fae7ebc16e65824c58b734b92f3c72fbe9fb6cb5a0f67f5c": [
+      "scripts/manual/smoke/smoke-chat-menus-2959.mts"
+    ],
+    "836efffeddcc5a55adb18d18410304c35589873dc4fe6518633e59a13900952c": [
+      "scripts/manual/verify-chat-menus-2959.py"
+    ],
+    "96fab0875460eaabfb5d0ea245b40b078a5c0fa395a9a076db167865be0948da": [
+      "src/ui/chat-quote.js"
+    ],
+    "2d16c230a6505bff5c1a433dae0de73e2c99241ea6af66dd642359febc63c8ad": [
+      "src/ui/chat-workspace.js"
+    ],
+    "5be64f9e3b90bd4368c945585c08d0da4dcdfe3a989325ef390ba1df94a3d905": [
+      "src/ui/panel-chat.js"
+    ],
+    "20d19effd357c8415fedc16241deb70124574d2f9d54c45083b3731d4472f57a": [
+      "src/ui/shared/app.css"
+    ],
+    "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a": [
+      "src/ui/shared/identity-color.js"
+    ],
+    "3b86448832fd3185237245745a9b73df46e5767d9a9bbf3a64f0f63650fad57e": [
+      "src/ui/shared/instance-nav.js"
+    ],
+    "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48": [
+      "src/ui/shared/ui-menu.js"
+    ],
+    "b5a3da2814e42412e362fe44958ffda6bbbbae08eb631b6f69abcd5e3eb6c71b": [
+      "tests/sidebar-names-1722.test.ts"
+    ],
+    "2be88aca87be06748c5829308be21893f37058b6f31d9a4ec3274f84e6712b6a": [
+      "tests/sidebar-reply-time-2179.test.ts"
+    ],
+    "ddef0eea311f144dc7db61062bd1ffa532647f812efbc0c1460d8899162b3441": [
+      "tests/web-chat-1307.test.ts"
+    ],
+    "6c8a38fc8012a8a2f9dc9915689810787812891585299fdb1b7eb7898eca9435": [
+      "tests/web-chat-menus-2959.test.ts"
+    ],
+    "af22cc3f8ae41bef527b3cb3496a777e5fd4667ce84f7613fdb09f994b2e50dd": [
+      "tests/web-chat-quote-2789.test.ts"
+    ],
+    "8d0c38388b2d81b71b01e60123b3d5d1fc86cc4ce9c9c382c992cfffbd60c33f": [
+      "tests/web-chat-workspace-entry-3637.test.ts"
+    ],
+    "a455b5be5ad150c402c5e301a3a9b747d50a447d44baa87457c0ad1f49862fed": [
+      "tests/web-details-n2.test.ts"
+    ],
+    "ec878ac2e4522d06d5f967e4c58248fce0f7bb0bceeec5a31945634e057f2416": [
+      "tests/web-favorites-1664.test.ts"
+    ],
+    "ff3b237e8744df2926c39a087ce8160401446bd888e981f62a73d877eb66bbe8": [
+      "tests/web-identity-color-page-1958.test.ts"
+    ],
+    "2d397b988c948ab615f41eb0fb2656875533978f2b5bf8bec948de83feaedb9c": [
+      "tsconfig.json"
+    ],
+    "3e4513ec0ee03b44c2ee189f1923201ef7db869d5e9735c2561d3fc1a25d8516": [
+      "tsconfig.test.json"
+    ],
+    "8fb83bc55467a07e9341af4faaf3d7daea87e5ed5e3d27c96a0d8d586020bce4": [
+      "vitest.config.ts"
+    ],
+    "b0aa9bbabc2847c72995c576c702929699001b4f277f716a8835e83fdbf6ad26": [
+      "package.json"
+    ],
+    "9daa4d1e11dae2fff5db49d282a1bcb13e3cc56bb3e31941a5a6377e493abf17": [
+      "package-lock.json"
+    ]
+  },
+  "checks": [
+    {
+      "name": "focused",
+      "command": [
+        "npx",
+        "vitest",
+        "run",
+        "tests/web-chat-menus-2959.test.ts",
+        "tests/web-chat-quote-2789.test.ts",
+        "tests/web-chat-workspace-entry-3637.test.ts",
+        "tests/web-favorites-1664.test.ts",
+        "tests/sidebar-names-1722.test.ts",
+        "tests/sidebar-reply-time-2179.test.ts",
+        "tests/web-details-n2.test.ts",
+        "tests/web-identity-color-page-1958.test.ts",
+        "tests/view-ui-improvements.test.ts",
+        "tests/web-emoji-fonts.test.ts",
+        "tests/web-reconnect-1580-ui.test.ts",
+        "tests/fleet-tabs-header-2542.test.ts",
+        "tests/web-chat-1307.test.ts",
+        "tests/esm-skew-roles-138.test.ts",
+        "tests/web-app-modules-1408.test.ts",
+        "tests/ui-css-literals-ratchet.test.ts",
+        "tests/i18n-ui-literals-2390.test.ts",
+        "--maxWorkers=1"
+      ],
+      "exit": 0,
+      "startLoad": 8.77197265625
+    }
+  ]
+}

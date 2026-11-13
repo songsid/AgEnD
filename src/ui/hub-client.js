@@ -204,20 +204,83 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
  * session cookie (HttpOnly; this page never sees it) and the CSRF token /hub/v1/session gives a same-origin read.
  * Every answer is { ok: true, ...body } or { ok: false, status, code }; a 401 also tells the page the session ended.
  */
-export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
-  let csrf = null;
-  const ended = new Set();
-  async function call(method, path, body, signal) {
+export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTimeoutMs = 120_000 } = {}) {
+  // The factory override is for owned transports/rehearsals; the page uses the finite default.
+  const readBudget = Number.isInteger(readTimeoutMs) && readTimeoutMs > 0 && readTimeoutMs <= 300_000 ? readTimeoutMs : 120_000;
+  let csrf = null, codeNotices = false, generation = 0;
+  const ended = new Set(), pendingReads = new Map(), waits = new Set(), readControllers = new Set();
+  let readTail = Promise.resolve();
+  const retired = () => ({ ok: false, status: 401, code: "unauthenticated" });
+  const unreachable = () => ({ ok: false, status: 0, code: "unreachable" });
+  const retireReads = () => {
+    generation++; pendingReads.clear();
+    for (const controller of readControllers) controller.abort();
+    for (const wake of waits) wake();
+  };
+  const pause = (ms, signal) => new Promise(resolve => {
+    const wake = () => { clearTimeout(timer); waits.delete(wake); signal.removeEventListener("abort", wake); resolve(); };
+    const timer = setTimeout(wake, ms); waits.add(wake); signal.addEventListener("abort", wake, { once: true });
+    if (signal.aborted) wake();
+  });
+  // Private reads share fresh directory eligibility admission. Only simultaneous signal-less GETs coalesce;
+  // a caller-owned signal stays independent. No successful-response cache and no automatic write replay.
+  function call(method, path, body, signal) {
+    if (method !== "GET") { pendingReads.clear(); return request(method, path, body, signal); }
+    if (!signal && pendingReads.has(path)) return pendingReads.get(path);
+    const mine = generation, controller = new AbortController();
+    let timedOut = false;
+    readControllers.add(controller);
+    const aborted = () => mine !== generation ? retired() : { ...unreachable(), ...(timedOut ? { timedOut: true } : {}) };
+    let stop;
+    const stopped = new Promise(resolve => { stop = () => resolve(aborted()); controller.signal.addEventListener("abort", stop, { once: true }); });
+    const cancel = () => controller.abort();
+    signal?.addEventListener("abort", cancel, { once: true });
+    if (signal?.aborted) cancel();
+    const run = async () => {
+      for (let attempt = 0; ; attempt++) {
+        if (mine !== generation) return retired();
+        if (controller.signal.aborted) return aborted();
+        // Budget begins when this attempt is admitted, and covers BOTH headers and JSON body. Abort the actual
+        // transport before settling the timeout; the race also fences late/non-cooperative transport completions.
+        const timer = setTimeout(() => { timedOut = true; cancel(); }, readBudget);
+        let result;
+        try { result = await Promise.race([request(method, path, body, controller.signal), stopped]); }
+        finally { clearTimeout(timer); }
+        if (mine !== generation) return retired();
+        if (controller.signal.aborted) return aborted();
+        if (result.ok || result.status !== 429 || result.code !== "backpressure" || attempt === 3) return result;
+        await pause(Math.min(2000, Math.max(500 * 2 ** attempt, Number(result.retryAfter) * 1000 || 0)), controller.signal);
+      }
+    };
+    const queued = readTail.then(run, run);
+    // A queued caller can cancel promptly, but does not let later work jump its still-running predecessor.
+    readTail = queued.then(() => {}, () => {});
+    const result = Promise.race([queued, stopped]);
+    const forget = () => {
+      readControllers.delete(controller); controller.signal.removeEventListener("abort", stop);
+      signal?.removeEventListener("abort", cancel);
+      if (pendingReads.get(path) === result) pendingReads.delete(path);
+    };
+    void result.then(forget, forget);
+    if (!signal) pendingReads.set(path, result);
+    return result;
+  }
+  async function request(method, path, body, signal) {
+    const mine = generation;
     const headers = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (method !== "GET" && csrf) headers["X-AgEnD-Hub-CSRF"] = csrf;
     let r;
     try { r = await fetchImpl(path, { method, headers, credentials: "same-origin", cache: "no-store", ...(signal ? { signal } : {}), body: body === undefined ? undefined : JSON.stringify(body) }); }
     catch { return { ok: false, status: 0, code: "unreachable" }; }
+    if (method === "GET" && signal?.aborted) return unreachable();
     let json = null;
     try { json = await r.json(); } catch { json = null; }
-    if (r.status === 401) { csrf = null; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
-    if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0 };
+    if (method === "GET" && signal?.aborted) return unreachable();
+    if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+    if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0,
+      ...(method === "POST" && path === "/hub/v1/admin/enrolment-codes" && r.status === 429 && json?.code === "backpressure"
+        && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}) };
     return { ok: true, ...(json && typeof json === "object" ? json : {}) };
   }
   const id = (v) => encodeURIComponent(String(v));
@@ -225,11 +288,18 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     stub: false, web: true,
     /** Hear the session end (a 401 anywhere). @returns {() => void} */
     onSignedOut(fn) { ended.add(fn); return () => ended.delete(fn); },
-    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) csrf = r.signedIn ? r.csrf || null : null; return r; },
-    async signIn(login, password) { const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) csrf = r.csrf || null; return r; },
-    async signOut() { const r = await call("DELETE", "/hub/v1/session"); csrf = null; return r; },
+    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; } return r; },
+    async signIn(login, password) { retireReads(); const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; } return r; },
+    async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; return r; },
     catalog() { return call("GET", "/hub/v1/exposures"); },
+    sharingPauseV1: true,
+    sharing(exposureId, revision, sharingEpoch, paused) { return call("POST", `/hub/v1/exposures/${id(exposureId)}/sharing`, { revision, sharingEpoch, paused }); },
     grant(input) { return call("POST", "/hub/v1/grants", input); },
+    grantSubjectsV1: true,
+    async searchGrantSubjects(exposureId, exposureRevision, kind, q, signal) {
+      const out = await call("POST", `/hub/v1/exposures/${id(exposureId)}/grant-subjects/search`, { exposureRevision, kind, q }, signal);
+      return signal?.aborted ? { ok: false, status: 0, code: "unreachable" } : out;
+    },
     revokeGrant(grantId, revision) { return call("DELETE", `/hub/v1/grants/${id(grantId)}?revision=${id(revision)}`); },
     activity(exposureId) { return call("GET", `/hub/v1/exposures/${id(exposureId)}/activity`); },
     freeze(exposureId, revision, admin = false) { return call("POST", `/hub/v1/${admin ? "admin/" : ""}exposures/${id(exposureId)}/freeze`, { revision }); },
@@ -245,6 +315,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     /** #3226 D: one file for a later question in this room, sent as is (the server types it by its name, images by
      * their bytes). → { ok: true, file: { id, name, size, mime, url } } or { ok: false, status, code }. */
     async upload(roomId, file) {
+      const mine = generation;
       const headers = { Accept: "application/json", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(String(file && file.name || "")) };
       if (csrf) headers["X-AgEnD-Hub-CSRF"] = csrf;
       let r;
@@ -252,7 +323,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
       catch { return { ok: false, status: 0, code: "unreachable" }; }
       let json = null;
       try { json = await r.json(); } catch { json = null; }
-      if (r.status === 401) { csrf = null; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+      if (r.status === 401 && mine === generation) { retireReads(); csrf = null; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
       if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed" };
       return { ok: true, ...(json && typeof json === "object" ? json : {}) };
     },
@@ -264,7 +335,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     quickPairing(pairingId) { return call("GET", `/hub/v1/quick-pairing${pairingId ? `?id=${id(pairingId)}` : ""}`); },
     stopQuickPairing(pairingId) { return call("POST", `/hub/v1/quick-pairing/${id(pairingId)}/stop`); },
     revokeOwnFleet(fleetId, generation) { return call("POST", `/hub/v1/fleets/${id(fleetId)}/revoke`, { generation }); },
-    pairingNotices() { return call("GET", "/hub/v1/notices?v=2"); },
+    // A cached notice renderer calls with no version and must never receive a code row it would label as group approval.
+    pairingNoticesV3: true,
+    pairingNotices(version = 2) { return call("GET", `/hub/v1/notices?v=${version === 3 && codeNotices ? 3 : 2}`); },
     directorySecurityNoticesV1: true,
     directorySecurityNotices({ before, limit = 25 } = {}) {
       const query = new URLSearchParams({ limit: String(limit) });
@@ -275,9 +348,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     /** The Hub's stream begins with the complete current snapshot; no bootstrap GET is needed. */
     pairingNoticeSnapshotV1: typeof EventSource !== "undefined",
     acknowledgePairingNotice(noticeId) { return call("POST", `/hub/v1/notices/${id(noticeId)}/ack`); },
-    subscribePairingNotices(fn, onClosed = () => {}) {
+    subscribePairingNotices(fn, onClosed = () => {}, version = 2) {
       if (typeof EventSource === "undefined") return () => {};
-      const events = new EventSource("/hub/v1/notices/events?v=2"); let live = true;
+      const events = new EventSource(`/hub/v1/notices/events?v=${version === 3 && codeNotices ? 3 : 2}`); let live = true;
       events.addEventListener("notices", (event) => { if (!live) return; try { const value = JSON.parse(event.data); if (Array.isArray(value.notices)) fn(value.notices); } catch { /* bounded server DTO only */ } });
       events.addEventListener("error", () => {
         // A refused handshake is CLOSED, unlike a transient disconnect that EventSource itself reconnects.
@@ -286,7 +359,13 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
       return () => { live = false; events.close(); };
     },
     confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
+    companyJoinSettings() { return call("GET", "/hub/v1/admin/company-join"); },
     adminOverview() { return call("GET", "/hub/v1/admin/overview"); },
+    /** B2 capability, not permission: the server still checks the configured administrator on every call. */
+    enrolmentCodeV1: true,
+    enrolmentCodes() { return call("GET", "/hub/v1/admin/enrolment-codes"); },
+    createEnrolmentCode(input) { return call("POST", "/hub/v1/admin/enrolment-codes", input); },
+    revokeEnrolmentCode(codeId) { return call("POST", `/hub/v1/admin/enrolment-codes/${id(codeId)}/revoke`, {}); },
     createPairing(login) { return call("POST", "/hub/v1/admin/pairings", { login }); },
     approvePairing(pairingId, fingerprint) { return call("POST", `/hub/v1/admin/pairings/${id(pairingId)}/approve`, { fingerprint }); },
     revokeFleet(fleetId) { return call("POST", `/hub/v1/admin/fleets/${id(fleetId)}/revoke`); },
@@ -294,6 +373,10 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     // signed-in person (display only — every action still asks the server).
     groupPolicy() { return call("GET", "/hub/v1/admin/group-policy"); },
     resolveGroup(dn) { return call("POST", "/hub/v1/admin/group-policy/resolve", { dn }); },
+    /** M-2932 (Hub UX U2, S2): a prefix search of the directory's groups — input feedback only; choosing one still resolves its DN. */
+    searchGroups(q) { return call("POST", "/hub/v1/admin/group-policy/search", { q }); },
+    /** #3698 r1: the public join metadata a Fleet's discovery reads — its features name company-join-v1 only while joining is ON. */
+    joinMetadata() { return call("GET", "/hub/v1/join/metadata"); },
     previewGroupPolicy(policy) { return call("POST", "/hub/v1/admin/group-policy/preview", { policy }); },
     /** The policy that was previewed and that preview's digest: the server applies only its own sealed candidate for them. */
     saveGroupPolicy(policy, previewDigest) { return call("PUT", "/hub/v1/admin/group-policy", { policy, previewDigest }); },
@@ -330,7 +413,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
  * `confirm` is settings-confirm.js (loaded with the card): { api, isPendingResponse, track, newKey }.
  */
 export function createMemberClient({ confirm, pollMs = 5000, doc = typeof document !== "undefined" ? document : null, timers = globalThis }) {
-  let pairingNotices = [];
+  let pairingNotices = [], noticeEpoch = 0;
+  const noticeReaders = new Set();
   const listed = async () => {
     const r = await confirm.api("/api/hub/member/exposures");
     return r.ok && r.body && Array.isArray(r.body.exposures) ? r.body.exposures : r.status === 404 ? null : [];
@@ -339,9 +423,14 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
   // Pairing (S3c PR B): GET the projection; connect / confirm / disconnect go through the Settings confirmation (a 202:
   // "sent for confirmation", followed in the background; the poll shows the result); cancel at once.
   const pairingNow = async () => {
-    const r = await confirm.api("/api/hub/member/pairing?v=2");
-    if (r.ok && r.body && r.body.pairing) { pairingNotices = Array.isArray(r.body.notices) ? r.body.notices : []; return r.body.pairing; }
-    pairingNotices = [];
+    const mine = noticeEpoch, version = noticeReaders.size ? 3 : 2;
+    const r = await confirm.api(`/api/hub/member/pairing?v=2${version === 3 ? "&notices=3" : ""}`);
+    if (r.ok && r.body && r.body.pairing) {
+      if (mine === noticeEpoch) pairingNotices = Array.isArray(r.body.notices) ? r.body.notices.filter(n => n && typeof n === "object"
+        && (n.source === undefined || n.source === "group" || n.source === "manual" || n.source === "code" && version === 3)) : [];
+      return r.body.pairing;
+    }
+    if (mine === noticeEpoch) pairingNotices = [];
     return { state: "held", hold: r.status === 404 ? "unavailable" : "unsaved" };
   };
   const step = async (name, body) => {
@@ -370,6 +459,12 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
     stub: false, member: true,
     pairing: pairingNow,
     pairingNotices: () => pairingNotices,
+    /** Presentation lease only. Cached renderers never call this and continue to receive v2. */
+    usePairingNoticeVersion(version) {
+      if (version !== 3) return () => {};
+      const reader = {}; if (!noticeReaders.size) noticeEpoch++; noticeReaders.add(reader);
+      return () => { if (noticeReaders.delete(reader) && !noticeReaders.size) { noticeEpoch++; pairingNotices = pairingNotices.filter(n => n.source !== "code"); } };
+    },
     async connect({ address, code }) {
       const a = String(address || "").trim(), c = String(code || "").trim();
       if (!ADDRESS_HINT.test(a)) return { ok: false, error: "address" };
@@ -402,7 +497,7 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
         body: JSON.stringify({ agent, dataViewId: choice.dataViewId, tools: choice.tools, expectedRevision }) });
       if (confirm.isPendingResponse(r)) {
         const p = r.body.pending_change;
-        return { ok: true, pending: { expiresAt: p.expires_at }, view: { ...row, pending: { expiresAt: p.expires_at } }, settled: confirm.track(p, "hub") };
+        return { ok: true, pending: { id: p.id, expiresAt: p.expires_at }, view: { ...row, pending: { expiresAt: p.expires_at } }, settled: confirm.track(p, "hub") };
       }
       return r.ok && r.body && r.body.ok ? { ok: true, view: r.body.view } : fail(r);
     },

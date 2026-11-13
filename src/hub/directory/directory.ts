@@ -14,7 +14,7 @@
  */
 import { isIP } from "node:net";
 import { X509Certificate } from "node:crypto";
-import { AD_EXTENDED_DN, extendedGroupIds, type DirectoryFailure, type PolicyGroupLookup, type PolicyGroupFacts } from "./groups.js";
+import { AD_EXTENDED_DN, extendedGroupIds, type DirectoryFailure, type PolicyGroupLookup, type PolicyGroupFacts, type PolicyGroupSearch } from "./groups.js";
 import * as net from "node:net";
 import * as tls from "node:tls";
 import type { Client as LdapClient, Control, Entry, Filter } from "ldapts";
@@ -28,7 +28,7 @@ export interface HubDirectorySecrets {
 }
 
 export interface HubDirectoryDiagnostic {
-  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "pairing-owner-lookup" | "grant-recipient-lookup" | "group-lookup" | "group-membership";
+  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "pairing-owner-lookup" | "grant-recipient-lookup" | "group-lookup" | "group-membership" | "group-search" | "person-search";
   readonly outcome: string;
   /** The underlying error's message, for the technical log. Never contains a password. */
   readonly error?: string;
@@ -175,13 +175,37 @@ class Session {
     if (complete && searchReferences?.length && searchEntries.length === 0) throw new IncompleteDirectoryResult();
     return searchEntries;
   }
+  async groupPrefix(q: string): Promise<Entry[]> {
+    this.assertSecure();
+    const literal = escapeFilterValue(q);
+    const { searchEntries } = await this.client.search(this.cfg.baseDn, {
+      scope: "sub", derefAliases: "never", sizeLimit: 20, timeLimit: 5,
+      filter: `(&(objectCategory=group)(groupType:1.2.840.113556.1.4.803:=2147483648)(|(cn=${literal}*)(sAMAccountName=${literal}*)))`,
+      attributes: ["objectGUID", "cn", "distinguishedName"], explicitBufferAttributes: ["objectGUID"],
+    });
+    // Suggestions never establish absence/eligibility. Continuation references are not followed.
+    return searchEntries;
+  }
+  async personPrefix(q: string, attributes: readonly string[], binary: readonly string[]): Promise<Entry[]> {
+    this.assertSecure(); const literal = escapeFilterValue(q);
+    const { searchEntries } = await this.client.search(this.cfg.baseDn, {
+      scope: "sub", derefAliases: "never", sizeLimit: 20, timeLimit: 5,
+      filter: `(&${this.cfg.userFilter}(|(displayName=${literal}*)(cn=${literal}*)(${this.cfg.loginAttribute}=${literal}*)))`,
+      attributes: [...attributes], explicitBufferAttributes: [...binary],
+    });
+    return searchEntries; // Feedback only; referrals are never followed or interpreted as an absence proof.
+  }
+  abort(): void { this.tlsSocket?.destroy(); }
 
-  async close(): Promise<void> {
+  async close(physical = false): Promise<void> {
+    const socket = this.tlsSocket;
+    const settled = physical && socket && !socket.closed ? new Promise<void>(resolve => socket.once("close", () => resolve())) : Promise.resolve();
     try {
       await this.client.unbind();
     } catch {
       /* already closed */
     }
+    if (physical) { socket?.destroy(); await settled; }
   }
 }
 
@@ -247,8 +271,9 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
     });
   };
 
-  const openService = async (): Promise<Session> => {
-    const session = await Session.open(cfg, expectedServerFingerprint);
+  const openService = async (selected = cfg, observe?: (session: Session) => void): Promise<Session> => {
+    const session = await Session.open(selected, expectedServerFingerprint);
+    observe?.(session);
     try {
       await session.bind(cfg.bindDn, bindPassword);
       return session;
@@ -323,6 +348,31 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
     realm: cfg.realm,
     ...(groupSupport ? { groupPolicy: "ad-direct-guid" as const } : {}),
 
+    async searchPolicyGroups(q: string): Promise<PolicyGroupSearch> {
+      if (!groupSupport) return { ok: false, reason: "unsupported" };
+      if (closed || typeof q !== "string" || q.length < 2 || q.length > 64 || /[\u0000-\u001f\u007f]/.test(q)) return { ok: false, reason: "unknown" };
+      let service: Session | undefined, expired = false;
+      const deadline = setTimeout(() => { expired = true; service?.abort(); }, 5000); deadline.unref();
+      try {
+        service = await openService({ ...cfg, timeoutMs: Math.min(cfg.timeoutMs, 5000) }, current => {
+          service = current;
+          if (expired) { current.abort(); throw new InsecureTransportError("group search deadline"); }
+        });
+        if (closed || expired) return { ok: false, reason: "unknown", failure: "unreachable" };
+        const entries = await service.groupPrefix(q);
+        if (closed || expired || entries.length > 20) return { ok: false, reason: "unknown" };
+        const groups: Array<{ objectId: string; cn: string; dn: string }> = [], seen = new Set<string>();
+        for (const entry of entries) {
+          const objectId = readObjectId("ad", entry), cn = readText(entry, "cn"), dn = readText(entry, "distinguishedName") ?? entry.dn;
+          if (!objectId || !cn || cn.length > 256 || /[\u0000-\u001f\u007f]/.test(cn) || !dn || dn.length > 1024
+            || /[\u0000-\u001f\u007f]/.test(dn) || !withinGroupBase(dn, cfg.baseDn) || seen.has(objectId)) return { ok: false, reason: "unknown" };
+          seen.add(objectId); groups.push({ objectId, cn, dn });
+        }
+        // ldapts accepts capped size-limit replies but does not expose their status; reaching 20 is conservatively truncated.
+        return { ok: true, groups, truncated: entries.length === 20 };
+      } catch (err) { const failure = expired ? "unreachable" : directoryFailure(err); report("group-search", "unknown", undefined, failure); return { ok: false, reason: "unknown", failure }; }
+      finally { clearTimeout(deadline); await service?.close(true); }
+    },
     async resolvePolicyGroup(dn: string): Promise<PolicyGroupLookup> {
       if (!groupSupport) return { ok: false, reason: "unsupported" };
       if (closed) return { ok: false, reason: "unknown" };
@@ -412,6 +462,29 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
     },
     lookupForGrant(login: string): Promise<DirectoryLookupResult> {
       return lookup(login, "grant-recipient-lookup");
+    },
+    async searchGrantPeople(q: string) {
+      if (closed || typeof q !== "string" || q.length < 2 || q.length > 64 || /[\u0000-\u001f\u007f]/.test(q)) return { ok: false as const, reason: "unknown" as const };
+      let service: Session | undefined, expired = false;
+      const deadline = setTimeout(() => { expired = true; service?.abort(); }, 5000); deadline.unref();
+      try {
+        service = await openService({ ...cfg, timeoutMs: Math.min(cfg.timeoutMs, 5000) }, current => {
+          service = current; if (expired) { current.abort(); throw new InsecureTransportError("person search deadline"); }
+        });
+        const entries = await service.personPrefix(q, attributes, [shape.idAttribute]);
+        if (closed || expired || entries.length > 20) return { ok: false as const, reason: "unknown" as const };
+        const people: Array<{ person: PersonKey; login: string; displayName: string }> = [], seen = new Set<string>();
+        for (const entry of entries) {
+          const objectId = readObjectId(cfg.profile, entry);
+          if (!objectId || seen.has(objectId) || !withinGroupBase(entry.dn, cfg.baseDn)) return { ok: false as const, reason: "unknown" as const };
+          seen.add(objectId); if (isDisabled(cfg.profile, entry, now())) continue;
+          const p = toPerson(entry, objectId), displayName = p.displayName || p.login;
+          if (!p.login || p.login.length > 256 || displayName.length > 256 || /[\u0000-\u001f\u007f]/.test(p.login + displayName)) return { ok: false as const, reason: "unknown" as const };
+          people.push({ person: { ...p.key }, login: p.login, displayName });
+        }
+        return { ok: true as const, people, truncated: entries.length === 20 };
+      } catch { report("person-search", "unavailable", "directory lookup failed"); return { ok: false as const, reason: "unknown" as const }; }
+      finally { clearTimeout(deadline); await service?.close(true); }
     },
 
     async signIn(login: string, password: string): Promise<SignInResult> {

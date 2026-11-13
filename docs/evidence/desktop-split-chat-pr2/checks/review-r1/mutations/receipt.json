@@ -1,0 +1,224 @@
+{
+  "head": "47e05fcdf043de2b11598695c5d514068d38de2e",
+  "tree": "f18bc618ee838d308de2eb1f7902c09ed3363f87",
+  "cases": [
+    {
+      "id": "distinct",
+      "file": "src/ui/shared/chat-workspace-model.js",
+      "test": "web-chat-workspace-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "width",
+      "file": "src/ui/shared/chat-workspace-model.js",
+      "test": "web-chat-workspace-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "scope",
+      "file": "src/ui/shared/chat-workspace-memory.js",
+      "test": "web-chat-workspace-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "own-route",
+      "file": "src/ui/chat-workspace-navigation.js",
+      "test": "web-chat-workspace-navigation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "loading-fence",
+      "file": "src/ui/chat-workspace.js",
+      "test": "web-chat-workspace-entry-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "retired-entry",
+      "file": "src/ui/chat-workspace.js",
+      "test": "web-chat-workspace-entry-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "quote-early",
+      "file": "src/ui/panel-chat.js",
+      "test": "web-chat-pane-ownership-3637",
+      "exit": 0,
+      "assertionCaught": false,
+      "redundant": true
+    },
+    {
+      "id": "quote-currency-paired",
+      "file": "src/ui/panel-chat.js",
+      "test": "web-chat-pane-ownership-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "quote-undo",
+      "file": "src/ui/panel-chat.js",
+      "test": "web-chat-pane-ownership-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "form-prefix",
+      "file": "src/ui/settings-dialogs.js",
+      "test": "web-chat-pane-fields-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "async-emoji-prefix",
+      "file": "src/ui/settings-dialogs.js",
+      "test": "web-chat-pane-fields-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "settings-remount",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-settings-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "suspended-forms",
+      "file": "src/ui/settings-dialogs.js",
+      "test": "web-chat-workspace-suspend-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "suspended-guard",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-suspend-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "suspended-retirement",
+      "file": "src/ui/chat-workspace-navigation.js",
+      "test": "web-chat-workspace-navigation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "operation-completion-owner",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "operation-leftover-owner",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "operation-late-owner",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "emoji-draft",
+      "file": "src/ui/settings-dialogs.js",
+      "test": "web-chat-pane-fields-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "split-button-owner",
+      "file": "src/ui/chat-workspace.js",
+      "test": "web-chat-workspace-host-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "logout-cleanup",
+      "file": "src/ui/shared/app-session.js",
+      "test": "web-chat-workspace-session-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "gateway-mark",
+      "file": "src/web-api.ts",
+      "test": "web-chat-workspace-shell-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    }
+  ],
+  "inputs": {
+    "47c19919e5e8b614110aab0cad53e4efd41118a9fafa6fdc44a94afdb35450b2": [
+      "src/ui/shared/chat-workspace-model.js",
+      "src/ui/shared/chat-workspace-model.js"
+    ],
+    "55d3770b84f3c321165796e032a0f131a5678c4a1ce1ac456be612cf5c2c0dc7": [
+      "src/ui/shared/chat-workspace-memory.js"
+    ],
+    "0474e9ae65fe7de25b58687346a129c87755fe4bbaaf534882eb7089b4bb59ef": [
+      "src/ui/chat-workspace-navigation.js",
+      "src/ui/chat-workspace-navigation.js"
+    ],
+    "3c2be15d3d29dbf6138cc91e3ca9436df4d585f910780746d6d1efc711d5e0f9": [
+      "src/ui/chat-workspace.js",
+      "src/ui/chat-workspace.js",
+      "src/ui/chat-workspace.js"
+    ],
+    "33881341d650ce33c206707bfa5d86adc590f11407d3cfb97f906c2835da4d12": [
+      "src/ui/panel-chat.js",
+      "src/ui/panel-chat.js",
+      "src/ui/panel-chat.js"
+    ],
+    "0a738ebcaa05b9f253ced3de0155c8bf13b21595bcc8f5a007fbf88b09a942d6": [
+      "src/ui/settings-dialogs.js",
+      "src/ui/settings-dialogs.js",
+      "src/ui/settings-dialogs.js",
+      "src/ui/settings-dialogs.js"
+    ],
+    "2383de487df95b1bb4186b46900501ef0dcd9fac906b44e73e0185a3f4dd706d": [
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js"
+    ],
+    "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec": [
+      "src/ui/shared/app-session.js"
+    ],
+    "29ac47458368bc2a711ca6d95e0b68520ca37a90c16eec6d68fa1dd37bc5ba41": [
+      "src/web-api.ts"
+    ]
+  }
+}

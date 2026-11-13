@@ -1,0 +1,42 @@
+{
+  "scope": "Read-only built-in static review of12R1originals, not a browser rerun or behavioral claim.",
+  "result": "No layout/header/obstructed-control blockers. The edited emoji input is visible but renders a missing-glyph box; intended 🎉 is verified by browser input-value assertions, not visually confirmed. Font coverage is a possible cause, not a proven product diagnosis.",
+  "files": {
+    "e3764de5dd70fd8639c4062341d6dab4f545e9fcf49ed2ccffe1cfbf2fa32c3e": [
+      "browser/review-r1-light/light-zh-TW-single.png"
+    ],
+    "d02c09e06c8f03e1c19321e36983857f28c4978de5f568f119e02fc7f4cbb4da": [
+      "browser/review-r1-light/light-zh-TW-right.png"
+    ],
+    "c4ef11c8f2ba26ca970361678c8576d8bff19a5a685674446330733d98359998": [
+      "browser/review-r1-light/light-zh-TW-alt-split-owner.png"
+    ],
+    "b7ed60947e1388b9795e1d4d815d1fc78623f2b1e88b2bf10ab7ead82d1102c0": [
+      "browser/review-r1-light/light-zh-TW-suspended-settings-a.png"
+    ],
+    "81f66692a7771dc9cf0b20db07d2875c8b62873a8535afc44c8c3fce41d2e6fb": [
+      "browser/review-r1-light/light-zh-TW-restored-settings.png"
+    ],
+    "a1a53e9463ae9352fc0751ef5e9cbce3c1e1fb914bf2be259abbd782ad31ff62": [
+      "browser/review-r1-light/light-zh-TW-restored-emojis.png"
+    ],
+    "b16a621be970a6f073a8c235998e97798e7aae6d9ad93f94bc2cef1a110aad88": [
+      "browser/review-r1-dark/dark-zh-TW-single.png"
+    ],
+    "0c709e4c7cb04c8b9c79fe57f627982dddd508598234cd8cf94fdc514c39a8a4": [
+      "browser/review-r1-dark/dark-zh-TW-right.png"
+    ],
+    "7dc8a700d1df2a134a95a32c74c30ad9703bcc3ddb64f65d586df8c401ee86bb": [
+      "browser/review-r1-dark/dark-zh-TW-alt-split-owner.png"
+    ],
+    "9e4f5c6c6a8cf9b3cd295aa141e698a5b5ea48ee11c94694f16a85608557dd46": [
+      "browser/review-r1-dark/dark-zh-TW-suspended-settings-a.png"
+    ],
+    "3ad31ca1d5bc71e84a774238c927777b8c3f648d41e53af01e13fc6ebf404c00": [
+      "browser/review-r1-dark/dark-zh-TW-restored-settings.png"
+    ],
+    "45df6e4121a8882e9a1a7d50f07310cd950f5e611fec97464ae63d9d7ff489c0": [
+      "browser/review-r1-dark/dark-zh-TW-restored-emojis.png"
+    ]
+  }
+}

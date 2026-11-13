@@ -1,0 +1,644 @@
+{
+  "sourceDirty": false,
+  "productBinding": "PRODUCTION_SHA256SUMS",
+  "phase": "after",
+  "source": "68d4d0c55a1af0b666ba8377a9a7525dcf612a64",
+  "longLabel": false,
+  "skew": "/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/b2-source-digest-scan",
+  "boundary": "Production Hub HTTP shell/assets/Preact/Dialog and real dummy-directory sign-in; company-join/code/queue API DTOs are browser-routed fixtures. No directory, real Fleet, capacity, packaged-runtime or Docker claim.",
+  "cachedSource": "332add21fbbc92e716003f9040330eab807a74d3",
+  "cachedBinding": "CACHED_SHA256SUMS",
+  "browser": "156.0.8078.4",
+  "playwright": "1.64.0",
+  "checks": [
+    {
+      "name": "desk-light-en:live-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-en:live-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:live-limit:copy",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en:hourly-code-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-en:hourly-code-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:hourly-code-limit:copy",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en:confirm:no-write",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en:confirm:names",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en:end-confirm:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": [
+          {
+            "text": "",
+            "close": true,
+            "width": 36,
+            "height": 36
+          },
+          {
+            "text": "Cancel",
+            "close": false,
+            "width": 80,
+            "height": 36
+          },
+          {
+            "text": "End this code now",
+            "close": false,
+            "width": 152,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "desk-light-en:end-confirm:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:cancel:no-write",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en:end:one-write",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en:end-result:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-en:end-result:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:code-ended:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-en:code-ended:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:queue-first:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-en:queue-first:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:no-page-errors",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:live-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:live-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:live-limit:copy",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:hourly-code-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:hourly-code-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:hourly-code-limit:copy",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:confirm:no-write",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:confirm:names",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:end-confirm:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": [
+          {
+            "text": "",
+            "close": true,
+            "width": 36,
+            "height": 36
+          },
+          {
+            "text": "取消",
+            "close": false,
+            "width": 60,
+            "height": 36
+          },
+          {
+            "text": "立即停用這組碼",
+            "close": false,
+            "width": 125,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:end-confirm:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:cancel:no-write",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:end:one-write",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:end-result:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:end-result:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:code-ended:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:code-ended:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:queue-first:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:queue-first:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:no-page-errors",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:live-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-en:live-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:live-limit:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:live-limit:copy",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en:hourly-code-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-en:hourly-code-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:hourly-code-limit:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:hourly-code-limit:copy",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en:confirm:no-write",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en:confirm:names",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en:end-confirm:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": [
+          {
+            "text": "",
+            "close": true,
+            "width": 36,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "phone-dark-en:end-confirm:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:end-confirm:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": [
+        {
+          "text": "",
+          "close": true,
+          "width": 36,
+          "height": 36
+        }
+      ]
+    },
+    {
+      "name": "phone-dark-en:cancel:no-write",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en:end:one-write",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en:end-result:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-en:end-result:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:end-result:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:code-ended:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-en:code-ended:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:code-ended:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:queue-first:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-en:queue-first:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:queue-first:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:no-page-errors",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:live-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:live-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:live-limit:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:live-limit:copy",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:hourly-code-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:hourly-code-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:hourly-code-limit:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:hourly-code-limit:copy",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:confirm:no-write",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:confirm:names",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:end-confirm:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": [
+          {
+            "text": "",
+            "close": true,
+            "width": 36,
+            "height": 36
+          }
+        ]
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:end-confirm:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:end-confirm:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": [
+        {
+          "text": "",
+          "close": true,
+          "width": 36,
+          "height": 36
+        }
+      ]
+    },
+    {
+      "name": "phone-dark-zh-TW:cancel:no-write",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:end:one-write",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:end-result:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:end-result:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:end-result:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:code-ended:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:code-ended:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:code-ended:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:queue-first:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "dialogX": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:queue-first:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:queue-first:dialog-tap-actions-held-css",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:no-page-errors",
+      "ok": true,
+      "detail": []
+    }
+  ],
+  "images": [
+    "desk-light-en-live-limit.png",
+    "desk-light-en-hourly-code-limit.png",
+    "desk-light-en-end-confirm.png",
+    "desk-light-en-end-result.png",
+    "desk-light-en-code-ended.png",
+    "desk-light-en-queue-first.png",
+    "desk-light-zh-TW-live-limit.png",
+    "desk-light-zh-TW-hourly-code-limit.png",
+    "desk-light-zh-TW-end-confirm.png",
+    "desk-light-zh-TW-end-result.png",
+    "desk-light-zh-TW-code-ended.png",
+    "desk-light-zh-TW-queue-first.png",
+    "phone-dark-en-live-limit.png",
+    "phone-dark-en-hourly-code-limit.png",
+    "phone-dark-en-end-confirm.png",
+    "phone-dark-en-end-result.png",
+    "phone-dark-en-code-ended.png",
+    "phone-dark-en-queue-first.png",
+    "phone-dark-zh-TW-live-limit.png",
+    "phone-dark-zh-TW-hourly-code-limit.png",
+    "phone-dark-zh-TW-end-confirm.png",
+    "phone-dark-zh-TW-end-result.png",
+    "phone-dark-zh-TW-code-ended.png",
+    "phone-dark-zh-TW-queue-first.png"
+  ],
+  "cleanup": "owned browser/listener/rig/keys closed in finally"
+}

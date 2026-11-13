@@ -1,0 +1,186 @@
+{
+  "checkedAtHead": "9d94c8f4ded00e5bedaf7ad60bfff175ab52b8db",
+  "scope": "All recorded source/harness/helper input bytes match the current tree after disjoint alpha merges. No browser rerun at merge head claimed.",
+  "inputs": [
+    {
+      "capture": "browser-current",
+      "path": "src/auth-api.ts",
+      "sha256": "9678d0bcfc0a63eab062b98f6a7d1dbee1ab644f3b4efecc95695710a7d4b2eb"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "79f060278df5c75f13682cdae713b8c132b3db91436e94f4364b6e5109792e2e"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/hub/catalog.ts",
+      "sha256": "ec21f0408cc3d7e14f537dd383e0d678338f875b0ecf53c3c7be00e7758ed308"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/hub/group-policy/admin-inventory.ts",
+      "sha256": "c00872938ed8b94553415c8603fe7be90a51044473a83670a85824f4bc30a419"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/hub/group-policy/impact-inventory.ts",
+      "sha256": "19a81280019d1237c8353a2c32ce3e0ccc36910615a943b329d0be0afb1ad9d2"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/hub/http/compose.ts",
+      "sha256": "be4c06df1945ef084cd4fb956bb593d7b6651bb20b639b8bc94748fb5a2cac5c"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/hub/http/core.ts",
+      "sha256": "475e8188b85c8ca72fd46148b193d42c4cbf204b46fc199d3602fab6be7d090f"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/hub/http/schema.ts",
+      "sha256": "581c001f76cf4e71972d7b50537bef0529b2772db2a3703e997533d03d1e39c8"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/hub/rooms.ts",
+      "sha256": "27bd603673472ea95dce87e297655316a557a719400bded5ff485c416c79a4d4"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/hub/sharing.ts",
+      "sha256": "bc78b461e277b8aa39769a874dbaeb53b08f20a3927ac098145ad3fba71cbd17"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/hub/types.ts",
+      "sha256": "ff6e99d33e066cd4717c15753afec85345dde8740189e9c9b7be42ade4dbc2b8"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/ui/hub-chat-store.js",
+      "sha256": "d50b745c5d15a2b96fa179975209b3a762c7f0c5a29625e3e26f8dad263d18ce"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/ui/hub-client.js",
+      "sha256": "dc4217a8011e1226b4687d9b549656e192c1096e182e9527401a7e52d62fd518"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/ui/panel-hub.js",
+      "sha256": "0a19ed018ebb42bc1e9ffba3930c66377b398e99edd368961f6172ffe8d95873"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/ui/settings-hub.js",
+      "sha256": "7b6677ec73a318ed6a04b240358e39d408ebe39858a5e343a2565035236cc3e0"
+    },
+    {
+      "capture": "browser-current",
+      "path": "src/ui/shared/hub-sharing.css",
+      "sha256": "ba7a0ede1d290286ff5c2fec717719e7f21df412a19c8ac09906e07dafd77e51"
+    },
+    {
+      "capture": "browser-current",
+      "path": "tests/helpers/hub-s3b-rig.ts",
+      "sha256": "f841f955dbb644b5f5f4c419c9184b8c819953cd6aa242ee9d967d81b37f69e9"
+    },
+    {
+      "capture": "browser-current",
+      "path": "scripts/manual/hub-sharing-pause-m3015/browser.mts",
+      "sha256": "c386eea0b2b09fa21c4a545dc954be98338dd25b948423c88f2574635ab99661"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/auth-api.ts",
+      "sha256": "9678d0bcfc0a63eab062b98f6a7d1dbee1ab644f3b4efecc95695710a7d4b2eb"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "79f060278df5c75f13682cdae713b8c132b3db91436e94f4364b6e5109792e2e"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/hub/catalog.ts",
+      "sha256": "ec21f0408cc3d7e14f537dd383e0d678338f875b0ecf53c3c7be00e7758ed308"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/hub/group-policy/admin-inventory.ts",
+      "sha256": "c00872938ed8b94553415c8603fe7be90a51044473a83670a85824f4bc30a419"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/hub/group-policy/impact-inventory.ts",
+      "sha256": "19a81280019d1237c8353a2c32ce3e0ccc36910615a943b329d0be0afb1ad9d2"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/hub/http/compose.ts",
+      "sha256": "be4c06df1945ef084cd4fb956bb593d7b6651bb20b639b8bc94748fb5a2cac5c"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/hub/http/core.ts",
+      "sha256": "475e8188b85c8ca72fd46148b193d42c4cbf204b46fc199d3602fab6be7d090f"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/hub/http/schema.ts",
+      "sha256": "581c001f76cf4e71972d7b50537bef0529b2772db2a3703e997533d03d1e39c8"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/hub/rooms.ts",
+      "sha256": "27bd603673472ea95dce87e297655316a557a719400bded5ff485c416c79a4d4"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/hub/sharing.ts",
+      "sha256": "bc78b461e277b8aa39769a874dbaeb53b08f20a3927ac098145ad3fba71cbd17"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/hub/types.ts",
+      "sha256": "ff6e99d33e066cd4717c15753afec85345dde8740189e9c9b7be42ade4dbc2b8"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/ui/hub-chat-store.js",
+      "sha256": "d50b745c5d15a2b96fa179975209b3a762c7f0c5a29625e3e26f8dad263d18ce"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/ui/hub-client.js",
+      "sha256": "dc4217a8011e1226b4687d9b549656e192c1096e182e9527401a7e52d62fd518"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/ui/panel-hub.js",
+      "sha256": "0a19ed018ebb42bc1e9ffba3930c66377b398e99edd368961f6172ffe8d95873"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/ui/settings-hub.js",
+      "sha256": "7b6677ec73a318ed6a04b240358e39d408ebe39858a5e343a2565035236cc3e0"
+    },
+    {
+      "capture": "browser-before",
+      "path": "src/ui/shared/hub-sharing.css",
+      "sha256": "ba7a0ede1d290286ff5c2fec717719e7f21df412a19c8ac09906e07dafd77e51"
+    },
+    {
+      "capture": "browser-before",
+      "path": "tests/helpers/hub-s3b-rig.ts",
+      "sha256": "f841f955dbb644b5f5f4c419c9184b8c819953cd6aa242ee9d967d81b37f69e9"
+    },
+    {
+      "capture": "browser-before",
+      "path": "scripts/manual/hub-sharing-pause-m3015/browser.mts",
+      "sha256": "c386eea0b2b09fa21c4a545dc954be98338dd25b948423c88f2574635ab99661"
+    }
+  ]
+}

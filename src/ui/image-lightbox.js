@@ -9,12 +9,17 @@
 // #2333: zoom and pan (image-zoom.js). The toolbar has −, the level (it toggles fit ↔ 100%), + and Fit width; the keys
 // + / − / 0 (fit) / 1 (100%) / W (fit width). Each image opens fitted; stepping to another fits it again.
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
-import { t } from "/assets/app-i18n.js";
+import { register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
 import { createZoom, STEP } from "./image-zoom.js";
 
 const FILE_URL = /^\/ui\/file\/[0-9a-f]{32}$/;
+// #3727: the viewer's own word for the annotate button (here, so an older cached chat dictionary is never shown a raw key).
+register("lbAnnotate", { en: { open: "Annotate", failed: "The annotation tools could not be loaded. Reload this page to try again." },
+  "zh-TW": { open: "標註", failed: "無法載入標註工具。請重新整理頁面再試。" } });
+/** The annotation editor, loaded on the first 「標註」 (its module and stylesheet stay out of every other page load). */
+const loadAnnotate = () => import("./image-annotate.js");
 /** What is shown: { items: [{ src, name }], index, opener } or null. One per page; the chat that shows it owns it. */
 export const lightboxStore = createStore({ open: null });
 let seq = 0;
@@ -23,7 +28,7 @@ let seq = 0;
  * The images of a message, from its thumbnails' links; `index` the one clicked. Anything that is not a chat file URL
  * is left out (and nothing opens if the clicked one is not).
  */
-export function openLightbox(links, clicked) {
+export function openLightbox(links, clicked, annotate = null) {
   const items = [];
   let index = -1;
   for (const a of links) {
@@ -34,7 +39,8 @@ export function openLightbox(links, clicked) {
     items.push({ src, name: (img && img.getAttribute("alt")) || "" });
   }
   if (index < 0) return false;
-  lightboxStore.set({ open: { items, index, opener: clicked, seq: ++seq } });
+  // #3727: `annotate` — { targets: [{ key, label, quote(file) }], notice(text) } — only from a chat that can quote.
+  lightboxStore.set({ open: { items, index, opener: clicked, seq: ++seq, annotate: annotate && annotate.targets?.length ? annotate : null } });
   return true;
 }
 /**
@@ -48,13 +54,19 @@ export function closeLightbox(seq) {
 }
 
 /** Rendered by the chat; gone with it (another instance, another panel). */
-export function LightboxHost() {
+export function LightboxHost({ owner } = {}) {
   const { open } = useStore(lightboxStore);
-  useEffect(() => () => closeLightbox(), []);
-  return open ? html`<${ImageLightbox} key=${open.seq} items=${open.items} index=${open.index} opener=${open.opener} onClose=${() => closeLightbox(open.seq)} />` : null;
+  const owned = useRef(null);
+  const mine = !owner || owner.current?.contains(open?.opener);
+  if (open && mine) owned.current = open.seq;
+  useEffect(() => () => {
+    if (!owner) closeLightbox();
+    else if (owned.current !== null) closeLightbox(owned.current);
+  }, []);
+  return open && mine ? html`<${ImageLightbox} key=${open.seq} items=${open.items} index=${open.index} opener=${open.opener} annotate=${open.annotate} onClose=${() => closeLightbox(open.seq)} />` : null;
 }
 
-function ImageLightbox({ items, index, opener, onClose }) {
+function ImageLightbox({ items, index, opener, annotate = null, onClose }) {
   const [at, setAt] = useState(index);
   const ref = useRef(null);
   const close = useRef(null);
@@ -64,6 +76,13 @@ function ImageLightbox({ items, index, opener, onClose }) {
   const [level, setLevel] = useState(null);   // { scale, fit, mode } once the picture has loaded
   const item = items[at] || items[0];
   const many = items.length > 1;
+  // #3727: the editor's component once 「標註」 has loaded it; while it shows, the viewer's own keys stand aside.
+  const [Editor, setEditor] = useState(null);
+  const editing = !!Editor;
+  const startAnnotate = () => {
+    loadAnnotate().then((m) => { if (m && m.annotateV1 === true && typeof m.AnnotateEditor === "function") setEditor(() => m.AnnotateEditor); else throw new Error("old module"); })
+      .catch(() => annotate?.notice?.(t("lbAnnotate.failed")));
+  };
   const step = (d) => setAt((n) => (n + d + items.length) % items.length);
   useLayoutEffect(() => {
     const d = ref.current;
@@ -107,6 +126,7 @@ function ImageLightbox({ items, index, opener, onClose }) {
     // The dark area (the dialog itself, or the stage around the image) closes it; the image and the controls do not.
     const onClick = (e) => { if (e.target === d || (e.target && e.target.classList && e.target.classList.contains("lb-stage"))) onClose(); };
     const onKey = (e) => {
+      if (editing) return;                                     // the editor's keys (tools, colours, undo) are its own
       const z = zoom.current;
       if (z && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const act = { "+": () => z.zoomBy(STEP), "=": () => z.zoomBy(STEP), "-": () => z.zoomBy(1 / STEP), "_": () => z.zoomBy(1 / STEP),
@@ -121,9 +141,14 @@ function ImageLightbox({ items, index, opener, onClose }) {
     d.addEventListener("click", onClick);
     d.addEventListener("keydown", onKey);
     return () => { d.removeEventListener("cancel", onCancel); d.removeEventListener("close", onNativeClose); d.removeEventListener("click", onClick); d.removeEventListener("keydown", onKey); };
-  }, [onClose, many, items.length]);
+  }, [onClose, many, items.length, editing]);
   const label = item.name ? t("chat.lbLabel", item.name) : t("chat.lbLabelNoName");
   const pct = level ? Math.round(level.scale * 100) : null;
+  if (editing) {
+    return html`<dialog data-trust="lightbox" ref=${ref} class="lb lb-annotating" role="dialog" aria-modal="true" aria-label=${label}>
+      <${Editor} src=${item.src} name=${item.name} targets=${annotate.targets} onClose=${onClose} onError=${(text) => annotate.notice?.(text)} />
+    </dialog>`;
+  }
   return html`<dialog data-trust="lightbox" ref=${ref} class="lb" role="dialog" aria-modal="true" aria-label=${label}>
     <div class="lb-bar">
       <span class="lb-name" title=${item.name}>${item.name}</span>
@@ -138,6 +163,7 @@ function ImageLightbox({ items, index, opener, onClose }) {
         <button type="button" class=${`icon-btn lb-fit-width${level && level.mode === "width" ? " on" : ""}`} disabled=${!level} aria-pressed=${level && level.mode === "width" ? "true" : "false"}
           aria-label=${t("chat.lbFitWidth")} title=${t("chat.lbFitWidth")} onClick=${() => zoom.current && zoom.current.fitWidth()}><${Icon} name="fitwidth" /></button>
       </span>
+      ${annotate ? html`<button type="button" class="btn btn-sm lb-annotate" aria-label=${t("lbAnnotate.open")} title=${t("lbAnnotate.open")} onClick=${startAnnotate}><${Icon} name="edit" size=${14} /><span class="lbl">${t("lbAnnotate.open")}</span></button>` : null}
       <a class="btn btn-sm lb-orig" href=${item.src} target="_blank" rel="noopener noreferrer"><${Icon} name="external" size=${14} /><span class="lbl">${t("chat.lbOpenOriginal")}</span></a>
       <button type="button" class="icon-btn lb-close" ref=${close} aria-label=${t("chat.lbClose")} title=${t("chat.lbClose")} onClick=${onClose}><${Icon} name="close" /></button>
     </div>
@@ -146,3 +172,5 @@ function ImageLightbox({ items, index, opener, onClose }) {
       <button type="button" class="icon-btn lb-nav lb-next" aria-label=${t("chat.lbNext")} title=${t("chat.lbNext")} onClick=${() => step(1)}><${Icon} name="forward" /></button>` : null}
   </dialog>`;
 }
+
+LightboxHost.paneOwner = true;

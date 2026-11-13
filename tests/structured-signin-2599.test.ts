@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { StructuredSignIn, structuredSignInPrompt, structuredSignInSupported,
   type StructuredBackend, type SignInAction, type StructuredSignInTransport } from "../src/structured-signin.js";
 import { LoginWindowLock } from "../src/login-window-lock.js";
+import { ONBOARDING_BROWSER_BACKENDS } from "../src/backend-signin-pending.js";
 import { LOGIN_FLOWS } from "../src/login-flows.js";
 import { dashboardSignInSupported } from "../src/web-backend-login.js";
 
@@ -40,11 +41,13 @@ function harness(backend: StructuredBackend = "codex", lock = new LoginWindowLoc
 }
 
 describe("#2599 structured login: parser", () => {
-  it("supports only the three approved dedicated login commands; agy is still remote-unsupported", () => {
-    expect(["kiro-cli", "claude-code", "codex"].map(structuredSignInSupported)).toEqual([true, true, true]);
-    for (const backend of ["antigravity", "grok", "codex login; sh", "CLAUDE", "toString"]) expect(structuredSignInSupported(backend)).toBe(false);
-    expect(() => harness("antigravity" as StructuredBackend)).toThrow("structured_signin_unsupported");
-    expect(LOGIN_FLOWS.antigravity.remoteLogin).toBe("unsupported");
+  it("the driver runs the CLIs the registry says it can: Kiro, Claude Code, Codex and (AGEND-113) Antigravity's `agy acp --login`; the first-run page offers only the first three as controls; chat's /login agy stays declined", () => {
+    expect(["kiro-cli", "claude-code", "codex", "antigravity"].map(structuredSignInSupported)).toEqual([true, true, true, true]);
+    for (const backend of ["grok", "codex login; sh", "CLAUDE", "toString", "opencode"]) expect(structuredSignInSupported(backend)).toBe(false);
+    expect(() => harness("grok" as StructuredBackend)).toThrow("structured_signin_unsupported");
+    expect(() => harness("antigravity")).not.toThrow();
+    expect([...ONBOARDING_BROWSER_BACKENDS]).toEqual(["kiro-cli", "claude-code", "codex"]);   // the first-run list: browser controls only for these; Antigravity is named there by its console command
+    expect(LOGIN_FLOWS.antigravity.remoteLogin).toBe("unsupported");   // chat's /login agy is unchanged
     expect(dashboardSignInSupported("antigravity")).toBe(false);
   });
   it("uses the captured Kiro menu, its current highlight, and the captured Claude account menu", () => {
@@ -166,9 +169,14 @@ describe("#2599 structured login: authority, episode and cleanup", () => {
     const h = harness(); const probe = defer<"invalid">(); h.checkAuth.mockReturnValue(probe.promise);
     const starting = h.session.start();
     expect(h.lock.isHeld).toBe(true);
-    const second = harness("claude-code", h.lock); await second.session.start();
-    expect(second.transport.start).not.toHaveBeenCalled();
-    expect(h.lock.current?.backend).toBe("codex");
+    // AGEND-203: one window per backend — the same backend is refused, another backend's sign-in is not held up by it.
+    const same = harness("codex", h.lock); await same.session.start();
+    expect(same.transport.start).not.toHaveBeenCalled();
+    expect(same.view().reason).toBe("busy");
+    expect(h.lock.heldFor("codex")?.backend).toBe("codex");
+    const other = harness("claude-code", h.lock); await other.session.start();
+    expect(other.transport.start).toHaveBeenCalled();
+    expect(h.lock.heldFor("claude-code")?.backend).toBe("claude-code");
     probe.resolve("invalid"); await starting;
   });
   it("wrong owner, attempt id and revision never write", async () => {

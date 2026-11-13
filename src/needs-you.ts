@@ -67,7 +67,7 @@ export type NeedsYouReason =
   | "auth_paused" | "crashed" | "usage_limit" | "native_pane_hold"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "missed_offline"                                                // missed while the fleet was down
-  | "task_review" | "task_blocked" | "backend_signin" | "config_invalid" | "config_fallback"
+  | "task_review" | "task_blocked" | "task_stalled" | "backend_signin" | "config_invalid" | "config_fallback"
   | "hub_proposal" | "hub_execution_hold" | "hub_unavailable"
   | "tmux_hold";                                                    // M-2457: the bundled tmux's server/window held
 
@@ -136,7 +136,8 @@ export interface TaskInput {
   uuid: string;
   code: string;
   title: string;
-  status: "review" | "blocked";
+  /** #3647: `stalled` — a card the person handed out whose assignee has been quiet past the threshold. */
+  status: "review" | "blocked" | "stalled";
   version: number;
   /** Its assignee: the instance the item sits under, whose chat world lists it. */
   assignee: string | null;
@@ -329,7 +330,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   for (const c of inputs.tasks ?? []) {
     items.push({
       id: `task:${c.uuid}:${c.status}:${c.since}`, type: "task", instance: c.assignee ?? "",
-      reason: c.status === "review" ? "task_review" : "task_blocked",
+      reason: c.status === "review" ? "task_review" : c.status === "stalled" ? "task_stalled" : "task_blocked",
       detail: oneLine(`${c.code} ${c.title}${c.note ? ` — ${c.note}` : ""}`), since: c.since,
       card: { code: c.code, version: c.version, title: c.title, ...(c.status === "blocked" && c.note ? { question: c.note } : {}), ...(c.gap ? { gap: c.gap } : {}) },
       ...(c.lane ? { lane: c.lane } : {}),

@@ -1,0 +1,42 @@
+{
+  "base": "8a0cc7f79f2a5e794c62f1c27a309ce771685ba3",
+  "scope": "UI-only mapping of authenticated denied/code-scope and denied/code-ended; no route/core/authority change. New strings are part of the original B2 module, not a shared cached dictionary.",
+  "failFirst": {
+    "failed": 8,
+    "passed": 8,
+    "file": "tests/hub-join-approval-ui-b2.test.ts"
+  },
+  "green": {
+    "passed": 137,
+    "files": 4,
+    "skipped": 0
+  },
+  "mutations": [
+    {
+      "mutation": "scope",
+      "exit": 1,
+      "fourSemanticFailures": true
+    },
+    {
+      "mutation": "ended",
+      "exit": 1,
+      "fourSemanticFailures": true
+    },
+    {
+      "mutation": "signin-reason",
+      "exit": 1,
+      "fourSemanticFailures": true
+    }
+  ],
+  "typechecks": "both native source/test pass after the clean B1 feedback merge",
+  "sourceHashes": {
+    "src/ui/hub-company-join.js": "2337cc00126bc332f654a4a5bbed25583d73e04b766f33332d5aa6acd604bd6b",
+    "src/ui/hub-enrolment-code-strings.js": "1d77bb92f1dd6a8636b3621b8ca646c7715aa63964012b64a3dbeea457d68639",
+    "src/ui/panel-hub.js": "8f7b1aec84998b4ed76a4b8b514dd14c1f8b92b7d1c1e9b85449bb4091bfcb6f",
+    "tests/hub-join-approval-ui-b2.test.ts": "df2b31274007336be025f73a15ace0c8da784b62eb3d35ff60108fb812243666"
+  },
+  "boundary": "Production Preact/shared ErrorState with inert fetch/session. These tests are not real-account, container or browser evidence. Heavy run is separate.",
+  "nativeSourceTypes": "pass",
+  "nativeTestTypes": "pass",
+  "backendPrerequisite": "869fe51bd9deda7a7e31ddbb963da2c6abb7cf1f, clean merge; new Prism review pending"
+}

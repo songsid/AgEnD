@@ -242,12 +242,16 @@ export function publishExposure(store: HubExposureStore, input: HubExposureInput
  * again after the await, and a send on an old link promotes nothing.
  */
 export function exposureSnapshotSender(store: Pick<HubExposureStore, "snapshot">) {
-  let link: HubMemberLink | null = null, sent = 0;
+  // M-3007: the Hub answers a snapshot it refuses by policy (#3759: no sharing permission) with an error frame carrying
+  // that snapshot's requestId; an accepted one gets no answer. So "refused" means: the LAST snapshot sent was refused.
+  // A later send (a reconnect after the administrator allows sharing, an owner's change) clears it until refused again.
+  let link: HubMemberLink | null = null, sent = 0, last: string | null = null, refusedId: string | null = null;
   const push = async (l: HubMemberLink): Promise<boolean> => {
     if (!l.current()) return false;
     const payload = store.snapshot();
     if (payload.revision < sent) throw new HubProtocolError("stale");
-    await l.send({ v: 1, type: "exposure.snapshot", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload });
+    const requestId = randomUUID(); last = requestId;
+    await l.send({ v: 1, type: "exposure.snapshot", requestId, linkEpoch: l.linkEpoch, payload });
     if (!l.current()) return false;
     sent = Math.max(sent, payload.revision);
     return true;
@@ -264,5 +268,9 @@ export function exposureSnapshotSender(store: Pick<HubExposureStore, "snapshot">
     },
     /** The highest revision handed to a current link (socket acceptance only). */
     sentRevision: () => sent,
+    /** M-3007: the Hub's policy refusal ("denied") of a snapshot; only the last one sent counts. "unavailable" is transient. */
+    refused(requestId: string, code: string): void { if (code === "denied" && requestId === last) refusedId = requestId; },
+    /** M-3007: the Hub refused the last snapshot sent (its owner may not share agents there). */
+    isRefused: () => refusedId !== null && refusedId === last,
   };
 }

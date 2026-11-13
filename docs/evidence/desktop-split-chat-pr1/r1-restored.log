@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-ownership-3637
+
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  20:58:03
+   Duration  2.61s (transform 1.13s, setup 112ms, import 163ms, tests 2.18s, environment 0ms)
+

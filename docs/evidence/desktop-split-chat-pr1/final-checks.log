@@ -1,0 +1,29 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-ownership-3637
+
+(node:3311384) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/web-chat-c3.test.ts (52 tests | 1 failed) 20509ms
+     × become the message's ticks and a `delivery` event — never a platform reaction 10045ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-c3.test.ts > FleetManager: delivery reports for web messages > become the message's ticks and a `delivery` event — never a platform reaction
+Error: Test timed out in 10000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/web-chat-c3.test.ts:137:3
+    135|
+    136| describe("FleetManager: delivery reports for web messages", () => {
+    137|   it("become the message's ticks and a `delivery` event — never a plat…
+       |   ^
+    138|     const { fm, any, events } = await bareFleet();
+    139|     const reacted: unknown[] = [];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 6 passed (7)
+      Tests  1 failed | 100 passed (101)
+   Start at  20:36:36
+   Duration  33.56s (transform 22.76s, setup 1.49s, import 14.56s, tests 43.78s, environment 1ms)
+

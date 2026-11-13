@@ -9,7 +9,7 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { carryClaudeConversation } from "../src/backend/claude-carry.js";
 import { claudeProjectKey } from "../src/backend/claude-code.js";
 import { credentialSwitchCarriesConversation } from "../src/backend/credential-profile.js";
@@ -138,9 +138,14 @@ describe("which backends carry", () => {
 // ── The restart: between the old CLI's stop and the new one's start ─────────
 
 describe("the restart carries between the stop and the start, or starts fresh", () => {
-  async function restart(opts: { carryable: boolean; extraLine?: boolean }) {
+  let fleetModule: typeof import("../src/fleet-manager.js");
+  // Each case still gets fresh modules; their cold import has its own setup budget.
+  beforeEach(async () => {
     vi.resetModules();
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    fleetModule = await import("../src/fleet-manager.js");
+  }, 120_000);
+  async function restart(opts: { carryable: boolean; extraLine?: boolean }) {
+    const { FleetManager } = fleetModule;
     const w = world();
     const dataDir = tempDir();
     const fm: any = new FleetManager(dataDir);
@@ -182,10 +187,15 @@ describe("the restart carries between the stop and the start, or starts fresh", 
 });
 
 describe("a switch whose restart joins one already in flight (Fable P3, #1758)", () => {
+  let fleetModule: typeof import("../src/fleet-manager.js");
+  // Each case still gets fresh modules; their cold import has its own setup budget.
+  beforeEach(async () => {
+    vi.resetModules();
+    fleetModule = await import("../src/fleet-manager.js");
+  }, 120_000);
   /** A real restartSingleInstance whose restart is held at the stop or at the start until the test lets it go on. */
   async function rig() {
-    vi.resetModules();
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetModule;
     const w = world();
     const dataDir = tempDir();
     const fm: any = new FleetManager(dataDir);

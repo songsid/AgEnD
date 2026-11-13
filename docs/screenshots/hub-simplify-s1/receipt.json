@@ -1,0 +1,193 @@
+{
+  "checks": [
+    {
+      "name": "company join enabled via exact admin /work",
+      "pass": true
+    },
+    {
+      "name": "S1-L5 actual quick offer created",
+      "pass": true
+    },
+    {
+      "name": "S1-L5 precise offer-pending response",
+      "pass": true
+    },
+    {
+      "name": "S1-L5 Fleet key holder receives same reason",
+      "pass": true
+    },
+    {
+      "name": "S1-L5 quick offer stopped",
+      "pass": true
+    },
+    {
+      "name": "S1-L5 exact same request continues",
+      "pass": true
+    },
+    {
+      "name": "real local admin old-fleet-new-hub",
+      "pass": true
+    },
+    {
+      "name": "browser/AD/receipt/member online old-fleet-new-hub",
+      "pass": true
+    },
+    {
+      "name": "S1-L1 legacy strict Fleet joins new Hub",
+      "pass": true
+    },
+    {
+      "name": "S1-L4 wrong supersede proof cannot discount limit",
+      "pass": true
+    },
+    {
+      "name": "exact key holder receives limit reason without issuance",
+      "pass": true
+    },
+    {
+      "name": "S1-L4 other-owner supersession refused",
+      "pass": true
+    },
+    {
+      "name": "S1-L4 no row revoked by invalid/foreign proof",
+      "pass": true
+    },
+    {
+      "name": "old Fleet removes locally while Hub offline",
+      "pass": true
+    },
+    {
+      "name": "offline leave preserves old active row",
+      "pass": true
+    },
+    {
+      "name": "real local admin current-reconnect",
+      "pass": true
+    },
+    {
+      "name": "browser/AD/receipt/member online current-reconnect",
+      "pass": true
+    },
+    {
+      "name": "S1-L3 exactly one active at personal limit one",
+      "pass": true
+    },
+    {
+      "name": "supersede audited once",
+      "pass": true
+    },
+    {
+      "name": "leave written through current mounted member",
+      "pass": true
+    },
+    {
+      "name": "S1-L2 member left revokes within five seconds",
+      "pass": true
+    },
+    {
+      "name": "member.left audit",
+      "pass": true
+    },
+    {
+      "name": "company join enabled via exact admin /legacy",
+      "pass": true
+    },
+    {
+      "name": "real local admin new-fleet-old-hub",
+      "pass": true
+    },
+    {
+      "name": "browser/AD/receipt/member online new-fleet-old-hub",
+      "pass": true
+    },
+    {
+      "name": "S1-L1 current Fleet joins old Hub",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    "old-fleet-new-hub.en-US.png",
+    "current-reconnect.zh-TW.png",
+    "new-fleet-old-hub.zh-TW.png"
+  ],
+  "legacy": "9c98307c938b77d8eaaebf5bcd3f20c5c27dce6f",
+  "boundary": "Owned network-none read-only container, real source FleetManager health/Settings and member runtime with empty Agents, production Hub and verified synthetic LDAPS, actual Chromium. Source compatibility, not packaged/systemd/tmux/native/live AD. Reconnect push is supplied through an explicit client fixture hook until U1 orchestrates it.",
+  "ready": true,
+  "cleaned": true,
+  "production": [
+    {
+      "path": "src/hub/join/service.ts",
+      "sha256": "fa2fa538adc4cb66f9b4cc9a87c293858eba72ec553739efb00796c9677dc957"
+    },
+    {
+      "path": "src/hub/join/store.ts",
+      "sha256": "80c96990f6252e86c44b7443a1d3ac03590d005750836360f3ca02f4ce2f25ee"
+    },
+    {
+      "path": "src/hub/join/http.ts",
+      "sha256": "ec5afb2bc2b0828540580314d4a8fa453335bac5197aea99a833260d53c02461"
+    },
+    {
+      "path": "src/hub/store.ts",
+      "sha256": "aee3852485491afffa01b1b86e9040960845f428a4592ecbd498d08680dd593f"
+    },
+    {
+      "path": "src/hub/pairing.ts",
+      "sha256": "586da5e98ae9bd4542ff6f45d6c5fc8c1ece6a253b23b986063b78df9c96b918"
+    },
+    {
+      "path": "src/hub/server.ts",
+      "sha256": "f9bd073c7c72d573f359584ed66211b2c611048eaa1c7ae2d49d7ca901f31d2f"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "sha256": "04eea4a36882eb7f3c127f73db52e968b23efdec52155a97b1dfedb0a6de046a"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "a313e149032d255413d3ca2edaeadfa54fe81b58e22d47a6373dc2b7f251a539"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "de5365eeea77ebeed90c99db98439cf4e711fe0a6b600c2d016a0e93b694eb3e"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "sha256": "e855a1580f8a0e7c3f5a04a5ecd2dbde2d7bdc23bf494d8f8c87e12ca1bbc369"
+    },
+    {
+      "path": "src/hub/fleet-revocation.ts",
+      "sha256": "de86fd79d21f9ac999e80774a3f5dfc5dfa3c8db96c985f8f85f4738a4b3caf2"
+    },
+    {
+      "path": "src/hub/client.ts",
+      "sha256": "35ada3cf80a960c57e2bdb98060db9963268c0a2fb7d836e782140b8cd91c5f6"
+    },
+    {
+      "path": "src/hub/mount.ts",
+      "sha256": "6bc854fe84108319487c70db2eb855434a0c2f99f549d9208af57945a1bc9530"
+    },
+    {
+      "path": "src/hub/runtime.ts",
+      "sha256": "6e4c133b299ee42558a83a189fd94c477cf1461218d761405a727ff45979a75c"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "04f1bb1dedbca5c575ee5704f37b50b3634bb92e213b246656f4457962af6fc0"
+    }
+  ],
+  "images": [
+    {
+      "path": "old-fleet-new-hub.en-US.png",
+      "sha256": "3287b8263921922ef6f057c8dbe924e18b63c6c1f7d976074df5f67e99281fed"
+    },
+    {
+      "path": "current-reconnect.zh-TW.png",
+      "sha256": "114d1b6d77d0c59579fba5322726189986f3cc261e5d757db1715fa96bac737b"
+    },
+    {
+      "path": "new-fleet-old-hub.zh-TW.png",
+      "sha256": "a576957417387db225cd33a38b644332cb746cb2a4395e44f5a8a524089f119a"
+    }
+  ]
+}

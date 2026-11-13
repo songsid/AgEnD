@@ -1,0 +1,13 @@
+{
+  "scope": "Image-only helper inspection, no interaction claim",
+  "root": "https",
+  "originals": [
+    "normal-light-zh-TW-ready.png",
+    "transient-dark-zh-TW-ready.png",
+    "exhausted-light-zh-TW-retry.png",
+    "exhausted-dark-en-retry.png",
+    "exhausted-light-zh-TW-ready.png",
+    "before-light-zh-TW.png"
+  ],
+  "result": "No visual blocker. HTTPS ready-state instructions present; retry preserves known step2, unknown step1 makes no incomplete claim; no overlap/clipping."
+}

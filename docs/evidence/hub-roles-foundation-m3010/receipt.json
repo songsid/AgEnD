@@ -1,0 +1,327 @@
+{
+  "base": "719fb6f2c316de810e0cf86fcedc8851629d24ad",
+  "design": "f9d969f07",
+  "scope": "inactive pure helpers only; no live authorization or SQL cutover",
+  "compiler": "TypeScript 7.0.2",
+  "finalFocused": {
+    "files": 6,
+    "passed": 91,
+    "failed": 0,
+    "skipped": 0
+  },
+  "legacyDecisionComparisons": 2592,
+  "failFirst": {
+    "groupOnlyParser": {
+      "failed": 10,
+      "passedControls": 3
+    },
+    "unknownEvaluatorAndEmptyConverter": {
+      "failed": 11
+    },
+    "partialPositiveMembership": {
+      "failed": 1,
+      "passedControls": 8
+    }
+  },
+  "mutations": [
+    {
+      "name": "M1 latch",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 3,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "M2 admin immutability",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "M3 reserved hub.admin",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "M4 persons only",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 4,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "M5 hub scope",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "M6 graph reference",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "M7 assignment realm",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "M8 duplicate assignment",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "M9 byte bound",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "M10 carried count",
+      "file": "model.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E1 preserve legacy",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E2 root self separation",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E3 eligibility",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 2,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E4 facts person",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 2,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E5 future facts",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E6 person deny",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 2,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E7 target scope",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 2,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E8 subject group",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 2,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E9 subject person",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E10 MAX not SUM",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E11 zero not default",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E12 permission",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E13 start boundary",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E14 expiry boundary",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E15 off management",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E16 unknown not removal",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 4,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E17 self scope independent",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E18 bounded memberships",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E19 suspended self",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 2,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "C1 quota retained",
+      "file": "convert.ts",
+      "caught": true,
+      "failedTests": 2,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "C2 empty rules retained",
+      "file": "convert.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "C3 exact capabilities",
+      "file": "convert.ts",
+      "caught": true,
+      "failedTests": 2,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "C4 no root self assignment",
+      "file": "convert.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    },
+    {
+      "name": "E20 partial facts",
+      "file": "evaluate.ts",
+      "caught": true,
+      "failedTests": 1,
+      "broken": false,
+      "exit": 1
+    }
+  ],
+  "finalMatrixReruns": [
+    "E10 MAX not SUM",
+    "E12 permission",
+    "C1 quota retained",
+    "C2 empty rules retained",
+    "C3 exact capabilities",
+    "C4 no root self assignment"
+  ],
+  "checks": {
+    "sourceTypes": "pass",
+    "testTypes": "pass",
+    "changelogFragments": 419
+  },
+  "digests": {
+    "src/hub/roles/convert.ts": "2afd9cc9ecbfd538786379b75fabf8a0d579146849aa891aadf40771ff2e631c",
+    "src/hub/roles/evaluate.ts": "7570145d8454e90c327af8956247670bee1be513e3072f10074b9f141f40a76b",
+    "src/hub/roles/model.ts": "2eae5472a4adae5f9acc0b590d0bb3f6d406a192409fc46fa6885273745055a5",
+    "tests/hub-roles-convert-m3010.test.ts": "75edbd278c8977475ec7837276064f5d650523bb8adb0862854dfcc30ab4064f",
+    "tests/hub-roles-evaluate-m3010.test.ts": "0cf01269b81012158cff813890df536858a1b8f2b1bb1a383b33e342f11ae58d",
+    "tests/hub-roles-model-m3010.test.ts": "0972d404eb4b0d93db1a43f2a63623c8c73f962e8e6781ece3c776d540a77230"
+  },
+  "limits": [
+    "No startup/route/writer caller of these modules",
+    "No SQL migration, floor, crash or resource/provenance evidence in this slice",
+    "No live AD, account, container, browser or native Windows operation",
+    "Whole-route fresh read intervals, permits and post-await fences remain future integration work"
+  ]
+}

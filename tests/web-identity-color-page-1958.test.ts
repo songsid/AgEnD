@@ -108,7 +108,8 @@ describe("the sidebar row", () => {
     expect(cls("alpha")).toEqual(["id-bar", "id-name", "id-ring", "idc"]);
     expect([prop("alpha", "--id-light"), prop("alpha", "--id-dark")]).toEqual(["#3f7286", "#92c2d4"]);
     expect(cls("beta")).toEqual(["id-name", "idc"]);
-    expect([prop("beta", "--id-light"), prop("beta", "--id-name-light")]).toEqual(["#cf222e", "#cf222e"]);
+    expect([prop("beta", "--id-light"), prop("beta", "--id-name-light")]).toEqual(["#cf222e", "#b01d27"]);
+    for (const bg of ["#ffffff", "#f9f9f9", "#ececec", "#c2ddfa"]) expect(C.contrast(prop("beta", "--id-name-light"), bg)).toBeGreaterThanOrEqual(4.5);
     expect(cls("gamma")).toEqual(["id-ring", "idc"]);
     expect(prop("gamma", "--id-dark")).toBe("#d2a8ff");                       // the agent's preset, while themes are shown
     expect(cls("delta"), "shown nowhere: nothing painted").toEqual([]);

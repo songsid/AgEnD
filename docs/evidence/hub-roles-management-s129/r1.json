@@ -1,0 +1,35 @@
+{
+  "guard": "Fable I3 legacy configured-root check",
+  "sourceSha256": "a2c45804be0626100fd1149ee78787ac38bfb01f0e6a4bba75222fc59ae32ec0",
+  "compiler": "native TypeScript 7.0.2 (tsc), GOMAXPROCS=2",
+  "excludedSetupAttempt": "tsgo alias was absent; no compiler/test ran, source restored",
+  "i3-types": 0,
+  "i3-mutant": 1,
+  "failedTests": [
+    "S129 company issuer and exact committed recovery keeps legacy company administration root-only for createCode even when requireAdmin accepts a non-root person",
+    "S129 company issuer and exact committed recovery keeps legacy company administration root-only for revokeCode even when requireAdmin accepts a non-root person",
+    "S129 company issuer and exact committed recovery keeps legacy company administration root-only for configure even when requireAdmin accepts a non-root person",
+    "S129 company issuer and exact committed recovery keeps legacy company administration root-only for createInvitation even when requireAdmin accepts a non-root person",
+    "S129 company issuer and exact committed recovery keeps legacy company administration root-only for listCodes even when requireAdmin accepts a non-root person"
+  ],
+  "sourceRestored": true,
+  "restored": 0,
+  "test-types": 0,
+  "restoredTests": {
+    "numPassedTests": 37,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "restoredFiles": 3,
+  "base": "9170eac545c946702db671f6e874a22ea3660cc1",
+  "scope": "test-only legacy company administration root guard; production source unchanged",
+  "productionTree": "b7b0b37d8d66b779b39acf26ab60ec83adacb4be",
+  "testFile": "tests/hub-roles-company-issuer-s129.test.ts",
+  "testSha256": "c427e0d8e39a03337d3d466c9527afc240a9bec8f51de814cebe438560f50da3",
+  "commands": [
+    "GOMAXPROCS=2 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+    "vitest run tests/hub-roles-company-issuer-s129.test.ts -t \"keeps legacy company administration root-only\" --maxWorkers=2 (guard removal)",
+    "vitest run tests/hub-roles-company-issuer-s129.test.ts tests/hub-roles-issuer-s129.test.ts tests/hub-store-publication-s1.test.ts --maxWorkers=2"
+  ],
+  "limits": "Actual service/SQL/session/receipt tests with inert directory. No factory authority injection, mounted-role activation, browser, native OS, real AD/account/Fleet claim. Parent3795 still open; draft and final plain-alpha-sync hold retained."
+}

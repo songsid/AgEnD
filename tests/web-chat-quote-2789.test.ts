@@ -100,7 +100,7 @@ describe("what counts as a passage", () => {
 });
 
 describe("the pill", () => {
-  async function mounted(o: { lang?: "en" | "zh-TW"; phone?: boolean; canQuote?: boolean; thread?: any } = {}) {
+  async function mounted(o: { lang?: "en" | "zh-TW"; phone?: boolean; canQuote?: boolean; thread?: any; targets?: any[] } = {}) {
     vi.useFakeTimers();
     const q = await load(o.lang ?? "en"); const doc = dom!.document as any;
     const { list, a } = thread(doc);
@@ -111,7 +111,7 @@ describe("the pill", () => {
     const insert = vi.fn();
     // The thread's visible box (the chat scroller): 0..680 unless a test gives its own.
     list.getBoundingClientRect = () => o.thread ?? { top: 0, left: 0, right: 1024, bottom: 680, width: 1024, height: 680 };
-    offs.push(q.installQuoteSelection(list, { insert, canQuote: () => o.canQuote !== false, phone: () => !!o.phone, composerBox: () => box, threadBox: () => list, field: () => null }));
+    offs.push(q.installQuoteSelection(list, { insert, canQuote: () => o.canQuote !== false, phone: () => !!o.phone, composerBox: () => box, threadBox: () => list, field: () => null, targets: () => o.targets || [] }));
     const select = (text: string, rect?: any) => { sel = selection(a.text, a.text, text, rect); doc.dispatchEvent(new MiniEvent("selectionchange")); vi.advanceTimersByTime(200); };
     const pill = () => doc.querySelector(".quote-pop");
     return { doc, list, a, insert, select, pill, getSel: () => sel };
@@ -154,6 +154,26 @@ describe("the pill", () => {
     const p = await mounted({ canQuote: false });
     p.select("rehearsal");
     expect(p.pill()).toBe(null);
+  });
+  it("a touch desktop can quote into its caller's other visible pane; ordinary phones supply no targets", async () => {
+    const target = vi.fn(), p = await mounted({ phone: true, targets: [{ label: "Other pane", insert: target }] });
+    p.select("rehearsal"); p.pill()?.querySelector(".quote-other")?.click();
+    expect(target).toHaveBeenCalledWith("rehearsal"); expect(p.insert).not.toHaveBeenCalled();
+  });
+  it("both quote actions have the same icon and one-line label structure, without heading markup", async () => {
+    const target = vi.fn(), label = "引用到另一格（AgEnD Leader）";
+    const p = await mounted({ lang: "zh-TW", targets: [{ label, insert: target }] });
+    p.select("只放進另一格的草稿，不送出");
+    const rows = p.pill().querySelectorAll("button");
+    expect(rows).toHaveLength(2);
+    expect(rows.map((el: any) => el.querySelector("span")?.textContent)).toEqual(["引用", label]);
+    for (const el of rows) {
+      expect(el.classList.contains("quote-pick")).toBe(true);
+      expect(el.querySelector("svg path")?.getAttribute("d")).toBe(rows[0].querySelector("svg path")?.getAttribute("d"));
+      expect(el.querySelector("svg")).not.toBeNull(); expect(el.querySelector("strong, b, h1, h2, h3")).toBeNull();
+    }
+    rows[1].click(); expect(target).toHaveBeenCalledExactlyOnceWith("只放進另一格的草稿，不送出");
+    expect(p.insert).not.toHaveBeenCalled();
   });
   it("desktop: anchored to the passage's end with its pointer; phone: 「引用選取的文字」 above the composer, in the 16-px gutter, no pointer", async () => {
     const d = await mounted({ lang: "zh-TW" });

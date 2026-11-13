@@ -20,6 +20,7 @@ import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { CompactMeter } from "/assets/usage-meter.js";   // #3321: the Usage panel's meter, not a second one (its own module: a tab that kept an older usage-dialog.js still links)
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
+import { UsageBlock } from "./usage-pool.js";   // AGEND-113: every pool and window an account reports, as the server sends them
 import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
 import { capsOf } from "./cli-caps.js";
 import { toast } from "/assets/ui-toast.js";
@@ -31,7 +32,7 @@ import { KeepAliveControl } from "./accounts-keepalive.js";   // #3292
 // cache that still holds #3536's module: "does not provide an export named 'VersionLine'") and takes the whole page with it. A namespace import links with either; the names both modules
 // have are read as before, and a copy of host-install.js without the version line simply shows no version line (the Install button and the run are all it ever had).
 import * as hostInstall from "./host-install.js";
-const { HostInstallRun, InstallButton, hostInstallStore, hostInstallText, installRunning, refreshHostInstall, runFor } = hostInstall;
+const { HostInstallRun, InstallButton, hostInstallStore, hostInstallText, refreshHostInstall, runFor } = hostInstall;
 const VersionLine = typeof hostInstall.VersionLine === "function" ? hostInstall.VersionLine : () => null;
 
 register("accounts", {
@@ -44,9 +45,11 @@ register("accounts", {
     fleetDefaultTag: "fleet default",
     usageLabel: "Usage", winHours: "{0}h", winDays: "{0}d", winWeek: "7d", winStale: "(stale)",
     signIn: "Connect", signInAgain: "Reconnect", hostCommand: "Connect from chat", hostCommandHint: "This row cannot be connected from the dashboard. Send /login in chat, or ask General.",
-    moveHere: "Move agents here", moveTitle: "Move agents to {0}", moveLead: "Choose the {0} agents that should use {1}. Each restarts on it when you Save:",
+    moveHere: "Move agents here", moveTitle: "Move to {0}", moveLead: "Choose the {0} agents and ClassicBot rooms that should use {1}. Each restarts on it when you Save:",
+    moveRooms: "ClassicBot rooms",
+    updateHint: "{0} needs a newer version before it can be connected from here. Update it on the host:",
     carry_claude: "Claude Code carries its conversation over.", carry_codex: "Codex keeps its conversation.", carry_kiro: "Kiro starts a new conversation, with a handover.",
-    moveNone: "Every {0} agent already uses this account.", moveStage: "Stage", cancel: "Cancel", current: "now: {0}",
+    moveNone: "Every {0} agent and ClassicBot room already uses this account.", moveStage: "Stage", cancel: "Cancel", current: "now: {0}",
     fleetDefault: "Fleet default for {0} agents", fleetDefaultHint: "Agents that don't choose an account use this one.",
     machine: "On {0}", machineReadOnly: "Read-only here", machineOnline: "online", machineOffline: "offline", machineDefaultTag: "this computer's default",
     machineNoUsage: "—", machineNoUsageHint: "That computer does not report usage.",
@@ -61,6 +64,9 @@ register("accounts", {
     acctLabel: "Account", acctInherit: "Fleet default ({0})", acctInheritDefault: "Fleet default (default connection)", acctNotSignedIn: "{0} — not connected",
     acctHint: "Changing the account restarts the agent. A disconnected account can't be chosen: connect it under Accounts first.",
     acctHintCreate: "The new agent connects with this account from its first start. A disconnected account can't be chosen: connect it under Accounts first.",
+    why_cli_old: "{1} on {0} is too old to connect from here (it needs {2} or newer). Update it on that computer.",
+    why_cli_missing: "{1} is not installed on {0}.",
+    machineOneLogin: "This is the Windows user's one default {1} connection on {0}. Connecting here replaces it; named accounts (+ Add account) are separate and are not affected.",
     acctDefaultBlocked: "This fleet's default for {0} is “{1}”, so an agent follows it unless it names another account.",
     usedPopTitle: "Agents using this account — choose one to open its settings",
   },
@@ -73,9 +79,11 @@ register("accounts", {
     fleetDefaultTag: "Fleet 預設",
     usageLabel: "用量", winHours: "{0}h", winDays: "{0}天", winWeek: "本週", winStale: "（未更新）",
     signIn: "連接", signInAgain: "重新連接", hostCommand: "從聊天連接", hostCommandHint: "這一列無法從儀表板連接。請在聊天傳 /login，或請 General。",
-    moveHere: "移入 Agent", moveTitle: "把 Agent 移到 {0}", moveLead: "選擇要改用 {1} 的 {0} Agent。按「儲存」後，各自會以它重新啟動：",
+    moveHere: "移入 Agent", moveTitle: "移到 {0}", moveLead: "選擇要改用 {1} 的 {0} Agent 與 ClassicBot 房間。按「儲存」後，各自會以它重新啟動：",
+    moveRooms: "ClassicBot 房間",
+    updateHint: "{0} 需要更新到較新的版本，才能從這裡連接。請在主機上更新：",
     carry_claude: "Claude Code 會帶著對話過去。", carry_codex: "Codex 保留原本的對話。", carry_kiro: "Kiro 會開新對話並附上交接。",
-    moveNone: "所有 {0} Agent 都已經使用這個帳號。", moveStage: "加入待儲存", cancel: "取消", current: "目前：{0}",
+    moveNone: "所有 {0} Agent 與 ClassicBot 房間都已經使用這個帳號。", moveStage: "加入待儲存", cancel: "取消", current: "目前：{0}",
     fleetDefault: "{0} Agent 的 Fleet 預設帳號", fleetDefaultHint: "沒有指定帳號的 Agent 會使用這個。",
     machine: "在 {0}", machineReadOnly: "這裡只能檢視", machineOnline: "在線", machineOffline: "離線", machineDefaultTag: "這台電腦的預設",
     machineNoUsage: "—", machineNoUsageHint: "那台電腦不回報用量。",
@@ -90,6 +98,9 @@ register("accounts", {
     acctLabel: "帳號", acctInherit: "Fleet 預設（{0}）", acctInheritDefault: "Fleet 預設（預設連接）", acctNotSignedIn: "{0}——尚未連接",
     acctHint: "更換帳號會重新啟動 Agent。尚未連接的帳號不能選，請先在「帳號」連接。",
     acctHintCreate: "新 Agent 從第一次啟動就會使用這個帳號。尚未連接的帳號不能選，請先在「帳號」連接。",
+    why_cli_old: "{0} 上的 {1} 版本太舊，無法從這裡連接（需要 {2} 或更新）。請在那台電腦上更新它。",
+    why_cli_missing: "{0} 上沒有安裝 {1}。",
+    machineOneLogin: "這是 {0} 上 Windows 使用者的唯一一個預設 {1} 連接。在這裡連接會取代它；具名帳號（「＋新增帳號」）是分開的，不受影響。",
     acctDefaultBlocked: "這個 Fleet 的 {0} 預設帳號是「{1}」，Agent 除非指定其他帳號，否則會使用它。",
     usedPopTitle: "使用此帳號的 Agent（點擊跳轉設定）",
   },
@@ -97,7 +108,7 @@ register("accounts", {
 const tx = (k, ...v) => t(`accounts.${k}`, ...v);
 /** The reasons that apply to a whole computer (the heading says them once); the others belong to one row. A code a newer server sends that this page does not know is shown as it is. */
 const MACHINE_LEVEL = new Set(["offline", "runtime_old", "accounts_off", "switch_unreadable", "not_installed"]);
-const reasonText = (code, name) => { const key = `why_${code}`, text = tx(key, name); return text === `accounts.${key}` ? String(code) : text; };
+const reasonText = (code, name, ...more) => { const key = `why_${code}`, text = tx(key, name, ...more); return text === `accounts.${key}` ? String(code) : text; };
 /** This view's stylesheet, linked once (a tab opened before an upgrade has an app.css without these rules). */
 function linkAccountsCss(doc = typeof document !== "undefined" ? document : null) {
   try {
@@ -160,14 +171,10 @@ const winLabel = (u, fallback = "") => {
   return d >= 6 && d <= 8 ? tx("winWeek") : tx("winDays", d);
 };
 /**
- * One window of the usage block: the Usage panel's own meter (`CompactMeter`, usage-dialog.js) — its name ("5h", "本週"), the bar, the percent
- * (amber from 70%, red from 90%: the theme's --warn / --danger) and when the window resets. The server's window ({ percent, windowMs, resetsAt }) is
- * given in the meter's shape.
+ * A window's short name for the usage block's meter ("5h", "本週", "30d", "—"): by its length when the CLI gives one, else by its kind; one number with no window is a dash. The meter itself
+ * is the Usage panel's (usage-pool.js).
  */
-function UsageWindow({ u, kind }) {
-  const name = winLabel(u, kind === "weekly" ? tx("winWeek") : "");
-  return html`<${CompactMeter} m=${{ used: Number(u.percent) || 0, windowMs: u.windowMs, resetsAt: u.resetsAt, label: name }} tag=${name} />`;
-}
+const usageTag = (w) => (w.kind === "unwindowed" ? "—" : winLabel(w, w.kind === "weekly" ? tx("winWeek") : w.kind === "monthly" ? tx("winDays", 30) : ""));
 
 /**
  * The fleet default's `backend_options` after choosing `profile` (null: none) for `backend`: the whole map, because the
@@ -202,7 +209,7 @@ register("accounts", {
   "zh-TW": { onHost: "在這台 AgEnD 主機上" },
 });
 
-export function AccountsView({ instances, stageAgent, stageDefault, openAgent }) {
+export function AccountsView({ instances, stageAgent, stageDefault, openAgent, rooms, stageClassic, openRoom }) {
   const { loaded, failed, view } = useStore(accountsStore);
   // Settings read its data again (after a Save): so does this view.
   useEffect(() => { if (loaded) void refreshAccounts(); }, [instances]);
@@ -227,8 +234,18 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   useEffect(() => { if (loaded) void refreshAccounts(); }, [phase]);
   const active = structured && structured.login;
   const machineActive = !!machineLogin.phase && machineLogin.phase !== "done" && !(machineLogin.phase === "failed" && machineLogin.reason);
-  // AGEND-133: the host's login window is one — an install running holds Sign in, and a sign-in running holds Install.
-  const running = !!((login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason)) || machineActive || installRunning(install));
+  // AGEND-203: the login window is one PER BACKEND (login-window-lock.ts) — a sign-in or install on one AI holds only that AI's buttons. `busyBackends` names them; the rest stay pressable:
+  //   - the terminal sign-in (`login`, also another tab's) and the structured one (`active`, also another tab's) hold the backend they run on;
+  //   - an install or update holds its backend's sign-in buttons, and every Install/Update button (one installer on the host: InstallButton/VersionLine read hostInstallStore themselves);
+  //   - a computer's account sign-in (the open dialog) holds the backend the dialog is for (Claude Code's, or Antigravity's).
+  // Not here, on purpose: the terminal sign-in is one at a time too, so a second terminal AI (Grok while another is running) is refused by the server (`busy`), which the dialog's cancel flow handles.
+  const busyBackends = new Set();
+  if (login && login.phase === "running" && login.backend) busyBackends.add(login.backend);
+  if (active && active.phase !== "done" && !(active.phase === "failed" && active.reason) && active.backend) busyBackends.add(active.backend);
+  if (machineActive) busyBackends.add(machineLogin.backend || "claude-code");   // AGEND-250: the dialog's own backend (a store from an older tab has none: Claude Code, as before)
+  if (install.starting) busyBackends.add(install.starting);
+  if (install.run && install.run.phase === "running" && install.run.backend) busyBackends.add(install.run.backend);
+  const running = (backend) => busyBackends.has(backend);
   if (!loaded) return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
     <${Skeleton} variant="cards" lines=${2} label=${tx("loading")} /></section>`;
@@ -239,17 +256,17 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
   const clis = (view && view.clis) || [];
   return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
-    ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} openAgent=${openAgent} onMove=${begin((row) => setMove({ cli, row }))} stageDefault=${stageDefault}
+    ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running(cli.backend)} openAgent=${openAgent} onMove=${begin((row) => setMove({ cli, row }))} stageDefault=${stageDefault}
       onAdd=${begin((machine) => setAdding(machine ? { cli, machine } : cli))} onRemove=${begin((row) => setRemoving({ cli, row }))} onSignIn=${begin((target) => (target.machine ? openMachineSignIn(target) : openSignIn(target)))}
       onSignOut=${begin((row, mode) => setSigningOut({ cli, row, mode }))} />`)}
-    ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} onClose=${() => setMove(null)} />` : null}
+    ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} rooms=${rooms} stageClassic=${stageClassic} onClose=${() => setMove(null)} />` : null}
     ${adding ? html`<${AddAccountDialog} cli=${adding.machine ? adding.cli : adding} machine=${adding.machine || null} label=${cliLabel((adding.machine ? adding.cli : adding).backend)} onClose=${() => setAdding(null)}
-      onAdded=${(name) => { const mine = ++interaction.current, a = adding; void (a.machine ? machineAdded(a.machine, name, () => mounted.current && interaction.current === mine) : accountAdded(a.backend, name, () => mounted.current && interaction.current === mine)); }} />` : null}
+      onAdded=${(name) => { const mine = ++interaction.current, a = adding; void (a.machine ? machineAdded(a.machine, name, () => mounted.current && interaction.current === mine, a.cli.backend) : accountAdded(a.backend, name, () => mounted.current && interaction.current === mine)); }} />` : null}
     ${signingOut ? html`<${SignOutDialog} cli=${signingOut.cli} row=${signingOut.row} mode=${signingOut.mode} label=${cliLabel(signingOut.cli.backend)}
-      onClose=${() => setSigningOut(null)} onMove=${(user) => moveUser(signingOut.cli.backend, user, openAgent)}
+      onClose=${() => setSigningOut(null)} onMove=${(user) => moveUser(signingOut.cli.backend, user, openAgent, openRoom)}
       onDone=${() => { const s = signingOut, mine = ++interaction.current; void signedOut(s, () => mounted.current && interaction.current === mine); }} />` : null}
     ${removing ? html`<${RemoveAccountDialog} cli=${removing.cli} row=${removing.row} label=${cliLabel(removing.cli.backend)} onClose=${() => setRemoving(null)}
-      onRemoved=${() => void refreshAccounts({ fresh: true })} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent)} />` : null}
+      onRemoved=${() => void refreshAccounts({ fresh: true })} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent, openRoom)} canMoveRooms=${typeof openRoom === "function"} />` : null}
   </section>`;
 }
 
@@ -270,10 +287,10 @@ async function accountAdded(backend, name, current) {
  * #3190 Part 3c: after + Add account on a computer: the server only checked the name (the folder is made by that computer's Runtime when the first sign-in starts), so
  * Sign in opens at once for the new name — while this is still the person's current interaction and no other dialog is open.
  */
-async function machineAdded(machine, name, current) {
+async function machineAdded(machine, name, current, backend) {
   await refreshAccounts({ fresh: true });
   if (!current() || shellStore.get().dialog) return;
-  openMachineSignIn({ machine, profile: name });
+  openMachineSignIn({ machine, profile: name, ...(backend ? { backend } : {}) });
 }
 /**
  * #3212 PR 3: after Sign out — the view and the sign-ins read again (reads begun after it); Switch account then opens
@@ -286,8 +303,10 @@ async function signedOut({ cli, row, mode }, current) {
   openSignIn({ backend: cli.backend, ...(row.profile ? { profile: row.profile } : {}) });
 }
 /** Remove's Move…: an agent's own dialog (its Account field), or the card's fleet-default selector. */
-function moveUser(backend, user, openAgent) {
+function moveUser(backend, user, openAgent, openRoom) {
   if (user.kind === "agent" && typeof openAgent === "function") { openAgent(user.name); return; }
+  // M-2909: a ClassicBot room's account is chosen in its own settings (Runtime & model → Account).
+  if (user.kind === "room" && typeof openRoom === "function") { openRoom(user.key); return; }
   if (user.kind === "default" && typeof document !== "undefined") {
     const sel = document.querySelector(`.s-account-card[data-backend="${backend}"] .s-account-default select`);
     if (sel) { sel.scrollIntoView?.({ block: "center" }); sel.focus(); }
@@ -351,7 +370,7 @@ function MachineSection({ cli, m, running, openAgent, onAdd, onSignIn, onSignOut
   return html`<div class="s-account-machine" data-machine=${m.scope.id}>
     <div class="s-account-machine-head"><strong>${tx("machine", m.scope.name)}</strong>
       <span class=${`tag s-auth-state is-${online ? "usable" : "unknown"}`}>${online ? tx("machineOnline") : tx("machineOffline")}</span>
-      ${cli.profiles && !level && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" disabled=${running} onClick=${() => onAdd(m.scope)}>${manageWords.add()}</button>` : null}</div>
+      ${cli.profiles && cli.machineProfiles !== false && !level && !m.rows.some((r) => r.scope.namedAccounts === false) && typeof onAdd === "function" ? html`<button type="button" class="btn btn-sm s-account-add" disabled=${running} onClick=${() => onAdd(m.scope)}>${manageWords.add()}</button>` : null}</div>
     ${level ? html`<p class="note s-account-why" role="status">${reasonText(level, m.scope.name)}</p>` : null}
     ${m.rows.map((row) => html`<${Row} key=${`m:${m.scope.id}:${row.profile || ""}`} cli=${cli} row=${row} running=${running} openAgent=${openAgent} onSignIn=${onSignIn} onSignOut=${onSignOut} onRemove=${onRemove} />`)}
   </div>`;
@@ -374,7 +393,8 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   // #3212 PR 3: a signed-in account of a CLI whose own logout the dashboard runs; Switch account on the default sign-in.
   // #3190 Part 3c: a computer's row is changed only where its Runtime allows it (`signIn`); never its default (the Windows user's own sign-in), never Move or Switch.
   const machine = row.scope && row.scope.kind === "machine" ? row.scope : null;
-  const manageable = !machine || (row.signIn && !!row.profile);
+  // AGEND-124: the computer's OWN login of a CLI whose Runtime signs it out (Antigravity: `signOutOwn`) is signed out from here too; Claude Code's never is.
+  const manageable = !machine || (row.signIn && (!!row.profile || row.signOutOwn === true));
   const canSignOut = manageable && typeof onSignOut === "function" && row.state === "usable" && SIGN_OUT_CLIS.has(row.backend);
   const who = identityText(row.identity);
   // AGEND-133 (#3521): a CLI that is not installed on the host gets Install on its default row (the server looks up the command; the page sends the CLI's id).
@@ -382,11 +402,10 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   const installState = useStore(hostInstallStore);
   const installRun = !machine && !row.profile ? runFor(installState, row.backend) : null;
   const installingNow = !!installRun && installRun.phase === "running";
-  // The week's usage and the short window's (the "5h"), as the server gives them; a CLI that reports one shows one.
-  const windows = [row.shortUsage ? ["short", row.shortUsage] : null, row.usage ? ["weekly", row.usage] : null].filter(Boolean);
-  const stale = windows.some(([, w]) => w.stale);
-  const why = machine && machine.readOnlyReason && !MACHINE_LEVEL.has(machine.readOnlyReason) ? reasonText(machine.readOnlyReason, machine.name) : "";
-  // Four layers in one box: the title bar (name, state, default tag · the buttons), the meta bar (who, used by), the usage block (5h and the week) and Keep sign-in alive as the box's foot.
+  // Every pool and every window the account reports, as the server gives them (accounts-view.ts `accountUsage`); the page lays them out, it does not pick.
+  const usageGroups = Array.isArray(row.usageGroups) ? row.usageGroups.filter((g) => g && Array.isArray(g.windows) && g.windows.length) : [];
+  const why = machine && machine.readOnlyReason && !MACHINE_LEVEL.has(machine.readOnlyReason) ? reasonText(machine.readOnlyReason, machine.name, cliLabel(row.backend), (capsOf(row.backend) && capsOf(row.backend).structuredMinVersion) || "") : "";
+  // Four layers in one box: the title bar (name, state, default tag · the buttons), the meta bar (who, used by), the usage block (every pool and window it reports) and Keep connection alive as the box's foot.
   return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
     <div class="s-account-title-bar">
       <div class="s-account-title-left"><strong>${rowName(row)}</strong>
@@ -406,12 +425,11 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
       <${UsedBy} row=${row} label=${usedText(row)} openAgent=${openAgent} />
       ${machine ? html`<small class="s-account-usage is-none" title=${tx("machineNoUsageHint")}>${tx("machineNoUsage")}</small>` : null}
     </div>
-    ${windows.length ? html`<div class=${`s-account-usage${stale ? " is-stale" : ""}`} role="group" aria-label=${tx("usageLabel")}>
-      ${windows.map(([kind, w]) => html`<${UsageWindow} key=${kind} u=${w} kind=${kind} />`)}
-      ${stale ? html`<small class="s-usage-stale">${tx("winStale")}</small>` : null}
-    </div>` : null}
+    ${usageGroups.length ? html`<${UsageBlock} groups=${usageGroups} stale=${row.usageStale === true} staleInfo=${row.usageStaleInfo} tagOf=${usageTag} label=${tx("usageLabel")} staleText=${tx("winStale")} />` : null}
     ${why ? html`<p class="note s-account-why">${why}</p>` : null}
     ${canInstall && !installRun ? html`<p class="note s-account-why">${hostInstallText("notInstalled")}</p>` : null}
+    ${machine && capsOf(row.backend) && capsOf(row.backend).runtimeDefaultLogin && !row.profile && row.signIn && !readOnly ? html`<p class="note s-account-why">${tx("machineOneLogin", machine.name, cliLabel(row.backend))}</p>` : null}
+    ${!readOnly && !machine && !row.signIn && row.update && row.state !== "too_old" ? html`<p class="note s-account-why">${tx("updateHint", cliLabel(row.backend))} <code>${row.update}</code></p>` : null}
     ${!machine && !row.profile && !readOnly ? html`<${VersionLine} row=${row} label=${cliLabel(row.backend)} blocked=${running} />` : null}
     ${!machine && !row.profile ? html`<${HostInstallRun} backend=${row.backend} label=${cliLabel(row.backend)} />` : null}
     ${!readOnly && !row.signIn && row.hostCommand ? html`<details class="s-host-cli-help"><summary>${machine ? tx("machineCommand") : tx("hostCommand")}</summary><p class="note">${machine ? tx("machineCommandHint", machine.name) : tx("hostCommandHint")}</p>${machine ? html`<p class="s-host-cli-command"><code>${row.hostCommand}</code></p>` : null}</details>` : null}
@@ -419,10 +437,15 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   </div>`;
 }
 
-/** The CLI's agents not on this account; the chosen ones are staged onto it (Settings' Save applies them). */
-function MoveDialog({ cli, row, instances, stageAgent, onClose }) {
+/**
+ * The CLI's agents and (M-2909) ClassicBot rooms not on this account; the chosen ones are staged onto it (Settings' Save
+ * applies them — a room through its own PATCH, as its settings would). An older server sends no `rooms`: agents only.
+ */
+function MoveDialog({ cli, row, instances, stageAgent, rooms, stageClassic, onClose }) {
   const others = cli.agents.filter((a) => a.profile !== row.profile && instances && Object.hasOwn(instances, a.name));
+  const roomList = typeof stageClassic === "function" && rooms ? (cli.rooms || []).filter((r) => r.profile !== row.profile && Object.hasOwn(rooms, r.key) && rooms[r.key]) : [];
   const [chosen, setChosen] = useState(() => new Set());
+  const [chosenRooms, setChosenRooms] = useState(() => new Set());
   const label = rowName(row);
   const stage = () => {
     for (const name of chosen) {
@@ -431,15 +454,25 @@ function MoveDialog({ cli, row, instances, stageAgent, onClose }) {
       opts[cli.backend] = { ...(opts[cli.backend] || {}), credential_profile: row.profile };
       stageAgent(name, inst, { backend_options: opts });
     }
+    for (const key of chosenRooms) {
+      const room = rooms[key];
+      const own = room.backend_options && typeof room.backend_options === "object" && !Array.isArray(room.backend_options) ? room.backend_options : {};
+      stageClassic({ key, ...room }, { backend_options: { ...own, [cli.backend]: { ...(own[cli.backend] || {}), credential_profile: row.profile } } });
+    }
     onClose();
   };
+  const toggle = (set) => (id, on) => set((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; });
+  const roomName = (key) => (rooms && rooms[key] && (rooms[key].name || rooms[key].display_name)) || key;
   return html`<${Dialog} title=${tx("moveTitle", label)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tx("cancel")}</button>
-    <button type="button" class="btn btn-primary" disabled=${!chosen.size} onClick=${stage}>${tx("moveStage")}</button>`}>
-    ${!others.length ? html`<p class="note">${tx("moveNone", cliLabel(cli.backend))}</p>` : html`<p>${tx("moveLead", cliLabel(cli.backend), label)}</p>
+    <button type="button" class="btn btn-primary" disabled=${!chosen.size && !chosenRooms.size} onClick=${stage}>${tx("moveStage")}</button>`}>
+    ${!others.length && !roomList.length ? html`<p class="note">${tx("moveNone", cliLabel(cli.backend))}</p>` : html`<p>${tx("moveLead", cliLabel(cli.backend), label)}</p>
       <p class="note">${tx(CARRY_WORDS[capsOf(cli.backend)?.carry] || "carry_claude")}</p>
-      <ul class="s-account-move">${others.map((a) => html`<li><label class="check"><input type="checkbox" checked=${chosen.has(a.name)}
-        onChange=${(e) => setChosen((s) => { const n = new Set(s); if (e.target.checked) n.add(a.name); else n.delete(a.name); return n; })} />
-        <span>${a.name}</span><small class="note">${tx("current", a.profile || tx("def"))}</small></label></li>`)}</ul>`}
+      ${others.length ? html`<ul class="s-account-move">${others.map((a) => html`<li><label class="check"><input type="checkbox" checked=${chosen.has(a.name)}
+        onChange=${(e) => toggle(setChosen)(a.name, e.target.checked)} />
+        <span>${a.name}</span><small class="note">${tx("current", a.profile || tx("def"))}</small></label></li>`)}</ul>` : null}
+      ${roomList.length ? html`<p class="s-account-move-head"><strong>${tx("moveRooms")}</strong></p><ul class="s-account-move s-account-move-rooms">${roomList.map((r) => html`<li><label class="check"><input type="checkbox" checked=${chosenRooms.has(r.key)}
+        onChange=${(e) => toggle(setChosenRooms)(r.key, e.target.checked)} />
+        <span>${roomName(r.key)}</span><small class="note">${tx("current", r.profile || tx("def"))}</small></label></li>`)}</ul>` : null}`}
   </${Dialog}>`;
 }
 

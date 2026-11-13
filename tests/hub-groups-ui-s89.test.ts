@@ -93,9 +93,9 @@ describe("the welcome: shaped by what the person may do now", () => {
     } finally { timer.mockRestore(); cancelled.mockRestore(); }
   });
 
-  it("no actions: both entries stay visible but unavailable, with 'Contact your Hub admin'", async () => {
+  it("no actions: both entries stay visible but unavailable, with 'Contact your Hub administrator'", async () => {
     const f = fake(); const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
-    expect(text(pg.root.querySelector('[data-welcome="no-actions"]'))).toBe("Your account can sign in, but no actions are allowed yet. Contact your Hub admin.");
+    expect(text(pg.root.querySelector('[data-welcome="no-actions"]'))).toBe("Your account can sign in, but no actions are allowed yet. Contact your Hub administrator.");
     for (const e of ["chat", "connect"]) expect(pg.root.querySelector(`[data-entry="${e}"]`).getAttribute("aria-disabled"), e).toBe("true");
     expect(pg.root.querySelector('[data-entry="chat"] .btn')).toBe(null);
   });
@@ -142,7 +142,7 @@ describe("the welcome: shaped by what the person may do now", () => {
       catalog: async () => ({ ok: true, askable: [{ exposure: { id: "e1" }, grant: { id: "g1" } }] }) });
     const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
     expect(pg.root.querySelector('[data-entry="chat"] .btn')).not.toBe(null);
-    expect(text(pg.root.querySelector('[data-entry="connect"]'))).toContain("Your Hub admin pairs fleets for you.");
+    expect(text(pg.root.querySelector('[data-entry="connect"]'))).toContain("Your Hub administrator connects fleets for you.");
   });
 });
 

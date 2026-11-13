@@ -276,7 +276,7 @@ Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕
 
 ### 投遞追蹤（`delivery_status`）
 
-跨 instance 的傳送只要 fleet 一接手就會立刻回傳（`{ sent, queued }`，附上 `operation_id` / `delivery_id`）；之後由 fleet 透過持久化的 outbox 負責投遞。`delivery_status` 可以查出某次投遞進行到哪裡，查詢時要剛好指定 `delivery_id`、`operation_id`、`correlation_id` 或 `message_id` 其中之一（可用 `limit` 分頁，最多 100 筆，搭配 `cursor`）。一筆紀錄會經過 `queued`、`delivering`、`submission_started`、`reconciliation_pending`、`retry_wait`，最後變成 `delivered`、`failed`、`uncertain` 或 `cancelled`。`uncertain` 代表訊息可能已經送達，不要貿然重送。
+跨 instance 的傳送只要 fleet 一接手就會立刻回傳（`{ sent, queued }`，附上 `operation_id` / `delivery_id`）；之後由 fleet 透過持久化的 outbox 負責投遞。`delivery_status` 可以查出某次投遞進行到哪裡，查詢時要剛好指定 `delivery_id`、`operation_id`、`correlation_id` 或 `message_id` 其中之一（可用 `limit` 分頁，最多 100 筆，搭配 `cursor`）。一筆紀錄會經過 `queued`、`delivering`、`submission_started`、`reconciliation_pending`、`retry_wait`，最後變成 `delivered`、`failed`、`uncertain` 或 `cancelled`。`uncertain` 代表訊息可能已經送達：先用 `delivery_status` 查明再確認，只有顯示 `failed` 時才重送。
 
 每筆紀錄也會說明它怎麼被投遞、到了 CLI 之後怎麼了（#1201）：
 - `delivery_mode`：`steer`（插進進行中的回合）或 `idle_queue`（作為下一則訊息），與 `send_to_instance` 回報的一致。
@@ -312,7 +312,7 @@ Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀�
 - `task(action: "claim")` — 把一個 `open` 的任務指派給自己。相依的任務還沒全部 `done` 的話，就不能認領。
 - `task(action: "done")` — 把自己認領的任務標成完成，可附上 `result`。只有 `claimed` 的任務能完成。需要確認的任務會改成 `review`（見下方）；負責確認的人（派工者）可用 `done` 把 `review` 的卡完成。
 - `task(action: "update")` — 變更 `status`（`open` / `claimed` / `review` / `done` / `blocked` / `cancelled`）、`priority`、`assignee` 或 `result`。
-- `task(action: "list")` — 列出所有任務，最緊急的排最前面；可用 `filter_assignee` 和 `filter_status` 縮小範圍。不加篩選時列出還沒完成的（`open`、`claimed`、`blocked`、`review`）。
+- `task(action: "list")` — 列出所有任務，最緊急的排最前面；可用 `filter_assignee` 和 `filter_status` 縮小範圍。不加篩選時列出還沒完成的（`open`、`claimed`、`blocked`、`review`）。加上 `stale: true` 會列出接手者停下來的已領取卡片（當掉、暫停、卡住、卡在提示上，或沒有動靜），也就是已通知過派工者的那些（#3647）。
 
 `id` 可以是任務 id、8 位 hex 前綴，或網頁上的卡號（`M-3`）；清單的每一列會帶卡號 `code`。
 
@@ -332,6 +332,32 @@ Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀�
 - **卡片的消息。** 卡片只在狀態或負責人改變時通知，而且只通知接下來要處理的那一個 instance，形式是一則 AgEnD 發的 `[Task board]` 通知。別人指派看板卡給它（卡片可以開始時才通知；`task` 工具本身的任務本來就附有派工訊息，不另外通知）、幫它開始、退回、回覆它卡住的問題、它等的最後一張卡完成，或取消它（包括主任務被取消時連帶取消）時，instance 會收到通知；派工者會收到它派出去的卡卡住、等它確認（由它確認或退回；卡片還沒補齊就自動送來確認時，通知會寫缺什麼）的消息；你的主任務自動送你確認但還沒補齊時，通知主任務的負責人。留言和確認不通知任何人：新留言會列在負責人的卡片上（`task mine`、`task get`）；唯一的例外是它忙著別張卡時、它卡住的問題得到的回覆，這個回覆留在卡片上，並會通知它。做出改變的 instance 若已經用自己的訊息告訴對方（訊息裡寫了卡號），看板不再重複通知：指派是前後 2 分鐘內的訊息；其他改變只算改變之後 2 分鐘內送出的訊息。取消會立刻通知。10 秒內的消息合成一則（一次指派整個計畫時只寫總數）；送出時已經不成立的不會列進去（卡片已經不是可以開始、進行中或已回覆的狀態）。通知由投遞匣保管，等 instance 能接收時再送；還在等待的通知，若上面每張卡的狀態或負責人都又變了，就不再送出（`cancelled`，「superseded」）。
 
 建立、認領和完成任務都會寫進活動日誌。除了 `minimal` 以外，每種工具權限組合都有 `task`。
+
+### 接手者停下來時
+
+卡片的接手者停止處理這張卡時，派出這張卡的 Agent 會收到通知（#3647）：
+
+- 接手者當掉，5 分鐘後還沒恢復；
+- 它被暫停了：登入到期、用量達到上限，或一直出錯；
+- 它看起來卡住了；
+- 它卡在沒人回答的提示上 10 分鐘；
+- 它接了卡，卻 60 分鐘都沒有動靜。長時間的背景工作（subagent、背景任務）和等待回覆不算沒有動靜。
+
+每次停下來，派工者會收到一則 `[Task board]` 通知；接手者恢復工作時，再收到一行「恢復工作」。計畫中的重啟和更新不會發通知。如果卡是人派出的，沒有動靜的接手者會出現在那個人的「等你回應」。`task(action: "list", stale: true)` 會列出接手者已停下來的卡。
+
+AgEnD 只通知，不會重啟接手者，也不會把卡改派給別人；怎麼處理由派工者決定。
+
+在「設定 → Agent 共用設定 → 進階設定 → 接手者停下來時」調整：「通知派工者」（預設開啟），以及每種情況的分鐘數（1 到 1440）。在 `fleet.yaml` 裡：
+
+```yaml
+defaults:
+  task_board:
+    liveness:
+      enabled: true
+      quiet_minutes: 60          # 接了卡卻沒有動靜
+      prompt_minutes: 10         # 卡在提示上
+      crash_grace_minutes: 5     # 當掉沒恢復
+```
 
 ### 在網頁上（Fleet › Tasks）
 
@@ -541,7 +567,7 @@ instances:
 
 ## 平順重啟 (Graceful restart)
 
-聊天裡的 `/restart`（不加 `full`）會在執行中的 fleet 進程內重啟各 instance：它會等所有 instance 都進入閒置（對話紀錄 10 秒沒有活動），再逐一重啟。另有 5 分鐘的逾時，避免被卡住的 instance 拖住。CLI 的整個 fleet 重啟是 `agend restart`，會透過服務管理器執行（#2356）；`agend fleet restart` 現在只是改執行 `agend restart`，2.4 會移除。
+聊天裡的 `/restart`（不加 `full`）會在執行中的 fleet 進程內重啟各 instance：它會等所有 instance 都進入閒置（對話紀錄 10 秒沒有活動），再逐一重啟。另有 5 分鐘的逾時，避免被卡住的 instance 拖住。CLI 的整個 fleet 重啟是 `agend restart`，會透過服務管理器執行（#2356）；`agend fleet restart` 現在只是改執行 `agend restart`，之後的 2.4 版本會移除。
 
 ## Topic 圖示與閒置封存 (Topic icon + idle archive)
 
@@ -813,9 +839,19 @@ instances:
 
 profile 存放在 fleet 底下的 `~/.agend/credential-profiles/<backend>/<profile>`，所以好幾個 agent 可以指向同一份訂閱。沒有指定 profile 的 instance 不受影響。只有登入資訊會分開：kiro 龐大的執行期快取會連回共用的那一份，Codex 則只有 `auth.json` 不同。切換 profile 就是改設定再重啟（`update_instance_config` 會兩件事一起做）；切換到從未登入過的 profile 會被拒絕，並附上登入它的指令。fleet 管理員可以在聊天用 `/login <backend> <profile>`，或從網頁設定的 **AI 帳號** 選 **連接帳號**，連接 Claude Code、Codex（授權碼，`CODEX_HOME` 指向該 profile）或 Kiro（`XDG_DATA_HOME` 指向該 profile）帳號（#3212）。在 kiro 上切換會開始新的對話，因為 kiro 把對話和登入資訊存在同一個地方（AgEnD 會把最近的 context 交接過去）。在 Codex 上，對話會保留。在 Claude Code 上，AgEnD 會把對話複製到新 profile 並在那裡接續（#1753），舊 profile 保留自己的那一份。
 
-**ClassicBot 頻道（#1220）。** `classicBot.yaml` 裡的頻道也接受同樣的 `backend_options.<backend>.credential_profile`，而且優先於從 fleet defaults 繼承來的 profile（值為空或 `null` 代表用共用的登入）。頻道的 agent 會以這個 profile 啟動，`/usage` 會把它算在那份訂閱的那一列（例如 `Codex (personal)`），`kiro_engine_status` 也會回報它。profile 名稱無法使用時，這個頻道的 agent 會直接不啟動，而不是改用別的登入執行。更改 profile 會重啟該頻道的 agent。
+**ClassicBot 頻道（#1220）。** `classicBot.yaml` 裡的頻道也接受同樣的 `backend_options.<backend>.credential_profile`，而且優先於從 fleet defaults 繼承來的 profile（值為空或 `null` 代表用共用的登入）。頻道的 agent 會以這個 profile 啟動，`/usage` 會把它算在那份訂閱的那一列（例如 `Codex (personal)`），`kiro_engine_status` 也會回報它。profile 名稱無法使用時，這個頻道的 agent 會直接不啟動，而不是改用別的登入執行。更改 profile 會重啟該頻道的 agent。也可以在網頁上選：房間的設定 →「Runtime 與模型」→「帳號」（#3690）。在那裡儲存只會改 `classicBot.yaml` 裡這個房間的那幾行，你的註解都會保留。General 等 Agent 也可以用 `update_instance_config` 做同樣的事（#3715）：對房間只接受 `backend_options.<backend>.credential_profile`，用同樣的方式寫入、重啟房間，並回報房間實際重啟後用的帳號（`launched_profile`）。
 
 `/usage`、`get_usage` 和儀表板都是每份訂閱各一列，絕不加總。完整說明見英文版 [configuration](configuration.md#credential-profiles-multiple-subscriptions-of-one-backend)。
+
+## 推理強度 (Reasoning effort)
+
+很多 CLI 可以讓模型想得更深或更快，也就是推理強度（`low`、`medium`、`high`，部分模型還有 `xhigh` 或 `max`）。
+
+- **等級跟著模型。** 每個模型只列它接受的等級，從 CLI 自己的模型清單讀取：Claude 讀帳號的模型清單，Grok 讀它的模型快取。沒有強度設定的模型就不帶強度。讀不到清單時（例如 `opus` 這類別名，或還沒有快取），提供一般的等級。
+- **聊天標題上。** CLI 有強度設定的 Agent 一律顯示強度標籤，沒設定時顯示 **auto**（CLI 自己的預設）。點它或傳 `/effort` 就能改。執行中的 Agent 會立刻用新的等級；少數 CLI（例如 Codex）會重啟 Agent 才生效。
+- **手機上。** `/model` 在每個模型旁列出強度和 **›**。點 **›** 打開該模型的等級；選了之後，如果那不是目前用的模型，會先換模型。
+- **設定頁。** Agent 的「設定 → Runtime 與模型」在模型下方有「推理強度」，選項是上方所選模型的等級。「模型預設」代表沒有設定，也不會寫入任何值。模型欄有尚未儲存的變更時，強度欄要等儲存後才能選。Windows Agent 和沒有強度設定的模型不顯示這個欄位。
+- 設定過等級後，強度標籤和設定頁都不提供選回 **auto**／「模型預設」。
 
 ## 後端可用性與模型清單 (Backend availability and model lists, 2.2.5)
 
@@ -1370,7 +1406,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 - **篩選側欄時**（2.2.5，#1936）：你正在看的 instance 會留在最上面的**目前**底下，不論是否符合篩選。
 - **可以點開 instance 的名稱**（2.2.5，#1990）：聊天裡跨 instance 的狀態行中，對方的名稱會打開它的聊天；提示卡片裡的 instance 名稱會打開它的 View。agent 或人寫的訊息永遠不會有這種連結。
 - **聊天的指令與快速動作**（#1269）：打 `/` 即可透過相同的處理程式與指令表，執行 instance 自己 topic 的指令。超過 4,000 字元的貼上會改成文字檔附加，內容變長時聊天會停在最新訊息。
-- **紀錄分頁**（#1218）：每個 instance 有一個「紀錄」面板，逐步顯示每一則提示、agent 的回覆（不含思考過程）、每次工具呼叫的參數與結果、錯誤，以及 fleet 事件如當機或重啟。分頁開著時才從 agent 的 transcript 按需讀取，有人在看時即時更新；機密值會遮蔽，長文字截斷。預設關閉（`web.log_tab`）；fleet admin 在「設定 → 網頁儀表板」開啟後，公開連結也看得到。claude-code 與 codex 完整支援；其他 backend 只顯示 fleet 事件；kiro 會另外說明原因，待確認所在對話後才能顯示它自己的步驟。
+- **紀錄分頁**（#1218）：每個 instance 有一個「紀錄」面板，逐步顯示每一則提示、agent 的回覆（不含思考過程）、每次工具呼叫的參數與結果、錯誤，以及 fleet 事件如當機或重啟。分頁開著時才從 agent 的 transcript 按需讀取，有人在看時即時更新；機密值會遮蔽，長文字截斷。預設關閉（`web.log_tab`）；fleet admin 在「設定 → 網頁儀表板」開啟後，公開連結也看得到。另外，claude-code 與 codex instance 的聊天會依各 agent 的 `tool_progress`，在每則回覆上方向登入的 admin 顯示它的步驟（#3648；思考預設關閉，`web.log_thinking`）。claude-code 與 codex 完整支援；其他 backend 只顯示 fleet 事件；kiro 會另外說明原因，待確認所在對話後才能顯示它自己的步驟。
 - **輸入框下方的一列**（2.3，#2215）：輸入框下方靠左只有一列：先是這個瀏覽器的網頁授權，接著是按鍵提示（`✓ 已驗證 · Enter 送出 · Shift+Enter 換行`）。「已驗證」到何時在它的提示框裡（觸控螢幕上點一下即可看到）；未驗證時顯示 `未驗證 · 授權`。訪客的說明與公開連結的說明也在同一列。
 - **聊天中的身分卡**（2.3，#2217）：卡片上不再放任何按鈕。聊天標題列上一個卡片按鈕會開一個選單，有 **顯示卡片** 與 **顯示小圖和介紹**（取消勾選就只留下橫幅）；兩個選擇都保存在這台裝置上。訪客與公開連結也有同一個按鈕。
 - **在已驗證的瀏覽器上套用**（2.3，#2170）：通過網頁驗證的瀏覽器，帳號和變更在同一平台、又是變更影響到的每個連線的 fleet admin 時，按 **套用** 本身就能確認等待中的設定變更。不會送出聊天卡片，General 會收到通知，執行時所有檢查再做一次。訪客、公開連結、未驗證的瀏覽器，以及需要 host CLI 確認的變更都照舊。

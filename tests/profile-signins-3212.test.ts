@@ -61,7 +61,7 @@ describe("the transport: which folder and variable a named account's sign-in get
         .snapshot({}, { backend: "codex", profile: "CHY" })).toThrow("invalid_signin_target");
     } finally { widened.clear(); for (const b of before) widened.add(b); }
   });
-  it.each(["kiro-cli", "codex", "antigravity", "nope", ""])("%j: a backend whose login screen was not checked under a relocated home is refused, and makes no folder", (backend) => {
+  it.each(["kiro-cli", "codex", "grok", "nope", ""])("%j: a backend whose login screen was not checked under a relocated home is refused, and makes no folder", (backend) => {
     const dir = temp();
     expect(() => structuredSignInProfileEnvironment(dir, backend, "CHY")).toThrow("signin_profile_unsupported");
     expect(existsSync(join(dir, "credential-profiles"))).toBe(false);
@@ -167,7 +167,7 @@ describe("ProfileSignIns", () => {
     expect(h.transportFor).toHaveBeenCalledWith({ backend: "claude-code", profile: "CHY" });
     expect(h.transport.start).toHaveBeenCalledTimes(1);
     expect(h.transport.start.mock.calls[0]![0]).toEqual({ argv: ["claude", "auth", "login"], profile: "CHY" });
-    expect(h.lock.current).toMatchObject({ kind: "web", backend: "claude-code" });
+    expect(h.lock.heldFor("claude-code")).toMatchObject({ kind: "web", backend: "claude-code" });
     expect(login(h)).toMatchObject({ backend: "claude-code", phase: "code", mine: true, canAct: true, url: URL_OK });
     const v = login(h);
     await h.c.input(h.owner, h.target(), v.id, v.revision, { kind: "code", value: CODE });
@@ -207,6 +207,7 @@ describe("ProfileSignIns", () => {
     const h = rig();
     const a = await h.c.begin(h.owner, h.target()), b = await h.c.begin(h.owner, h.target("chy"));
     expect(b.login!.id).toBe(a.login!.id); expect(h.transport.start).toHaveBeenCalledTimes(1);
+    expect(a.started).toBe(a.login!.id); expect(b.started, "#3725 review: a start that joined the run names none — nobody may end it as theirs").toBeUndefined();
     await expect(h.c.begin(h.owner, h.target("home"))).rejects.toThrow("signin_busy");
     expect(h.c.signingIn("claude-code", "CHY")).toBe(true); expect(h.c.signingIn("claude-code", "chy")).toBe(true); expect(h.c.signingIn("claude-code", "home")).toBe(false);
     expect(h.c.signingIn("codex", "CHY")).toBe(false);
@@ -214,10 +215,15 @@ describe("ProfileSignIns", () => {
     // The snapshot of another account shows no login of this one.
     expect(h.c.snapshot(h.owner, h.target("home")).login).toBeNull();
   });
-  it("the host's login window is shared: a sign-in anywhere else on the host (the default account, chat, an install) makes this one busy and starts nothing", async () => {
-    const h = rig(); const claim = h.lock.tryClaim("install", "codex");
+  it("the backend's login window is shared: a sign-in on the same backend anywhere else on the host (the default account, chat, an install) makes this one busy and starts nothing; another backend's does not", async () => {
+    const h = rig();
+    // AGEND-203: a window held on ANOTHER backend (here codex's install) does not hold this one up.
+    const elsewhere = h.lock.tryClaim("install", "codex");
+    const free = await h.c.begin(h.owner, h.target()); expect(free.login).toMatchObject({ phase: "code" }); expect(h.transport.start).toHaveBeenCalledTimes(1);
+    await h.c.cancel(h.owner, h.target()); h.lock.release(elsewhere);
+    const claim = h.lock.tryClaim("install", "claude-code");
     const snapshot = await h.c.begin(h.owner, h.target());
-    expect(snapshot.login).toMatchObject({ phase: "failed", reason: "busy" }); expect(h.transport.start).not.toHaveBeenCalled();
+    expect(snapshot.login).toMatchObject({ phase: "failed", reason: "busy" }); expect(h.transport.start).toHaveBeenCalledTimes(1);
     h.lock.release(claim);
     // …and the other way round: while this one runs nobody else gets the window.
     await h.c.begin(h.owner, h.target()); expect(h.lock.tryClaim("web", "claude-code")).toBeNull();
@@ -401,6 +407,14 @@ describe("the route: ?backend=claude-code&profile=<name>", () => {
     const cancelled = await h.call(Q, { operation: "cancel" });
     expect(cancelled.body.login).toMatchObject({ phase: "failed", reason: "cancelled" });
     expect(h.lock.isHeld).toBe(false);
+  });
+  it("AGEND-119: a CLI whose named account the registry says is signed in with these controls (Antigravity) has the same address; one that is not (Codex, Kiro) does not", async () => {
+    const h = await http();
+    const read = await h.call("?backend=antigravity&profile=CHY");
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ selected: ["antigravity"], target: { backend: "antigravity", profile: "CHY" } });
+    expect((await h.call("?backend=codex&profile=CHY")).status).toBe(404);
+    expect((await h.call("?backend=kiro-cli&profile=CHY")).status).toBe(404);
   });
   it.each([
     ["?backend=claude-code"], ["?profile=CHY"], ["?backend=kiro-cli&profile=CHY"], ["?backend=codex&profile=CHY"], ["?backend=claude-code&profile=..%2Fx"], ["?backend=claude-code&profile="],

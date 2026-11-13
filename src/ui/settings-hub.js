@@ -4,6 +4,7 @@
 // Hub key's fingerprint), the key changed (both keys, labelled; only pair again or disconnect), on hold (why) — then
 // this fleet's own agents with a Share switch each, against the revision shown (a stale tab gets a conflict, never a
 // silent widening). Everything goes through hubClient(); until slice 1 that is a stub, and the card says so.
+import { register, t } from "/assets/app-i18n.js";
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -12,10 +13,18 @@ import { compareGroups, hubClient, safeWebOrigin, ADDRESS_HINT, CODE_HINT } from
 import { hw, linkHubCss } from "./hub-strings.js";
 import { guidanceFor } from "./hub-provider-guidance.js";
 import { AGENT_CHOICE } from "./hub-agent-copy.js";
+import { hr } from "./hub-share-refused.js";
 import { PairingNotices } from "./hub-quick-pairing.js";
+import * as noticeViews from "./hub-quick-pairing.js";
+import { appStore, useStore } from "/assets/app-store.js";
+import { confirmPlace, pendingView } from "./hub-confirm-place.js";
 import { hq } from "./hub-quick-strings.js";
 import { hp } from "./hub-pairing-progress-strings.js";
 
+register("hubSharingFleet", {
+  en: { hint: "To pause and resume without clearing the allow list, open this agent under My shared agents on the Hub. Turning Share off stops sharing." },
+  "zh-TW": { hint: "要保留允許名單並暫停或繼續分享，請在 Hub「我分享的 Agent」開啟這個 Agent。關閉「分享」會停止分享。" },
+});
 const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy", unreachable: "errUnreachable", refused: "errRefused" };
 const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected", "rejected"]);
 const PUBLISH_ERRORS = { conflict: "errConflict", unsaved: "errUnsaved", not_paired: "errNotPaired", not_enforceable: "agentNotShareable",
@@ -46,11 +55,13 @@ function Fingerprint({ label, fp }) {
 }
 
 export const hubConnectEmbedV1 = true;
-export function HubConnectCard({ embedded = false, onPairing, labels = {} } = {}) {
+export function HubConnectCard({ embedded = false, onPairing, labels = {}, prefill = null } = {}) {
   const client = hubClient();
   const [pairing, setPairing] = useState(null);
   const [readError, setReadError] = useState(false);
   const [form, setForm] = useState({ address: "", code: "" });
+  // M-2921: a pairing code typed in the one Hub input arrives here (filled in, never submitted).
+  useEffect(() => { if (prefill?.code) setForm(f => ({ address: prefill.address || f.address, code: prefill.code })); }, [prefill?.code, prefill?.address]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const live = useRef(true);
@@ -88,9 +99,11 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {} } = {}
   useEffect(() => {
     linkHubCss();
     live.current = true;
+    const releaseNotices = noticeViews.pairingNoticesV3 === true && typeof client.usePairingNoticeVersion === "function"
+      ? client.usePairingNoticeVersion(3) : () => {};
     readPairing();
     const off = client.subscribe((p) => { if (live.current) setPairing(p); });
-    return () => { live.current = false; generation.current++; activePending.current = null; off(); };
+    return () => { live.current = false; generation.current++; activePending.current = null; off(); if (typeof releaseNotices === "function") releaseNotices(); };
   }, []);
   const act = async (fn) => {
     if (busy) return;
@@ -213,30 +226,47 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {} } = {}
  * shared under the older restricted mode says so and offers "Share again" (a new, confirmed revision).
  */
 function HubExposures({ client, pairing }) {
+  const store = useStore(appStore);
   const [rows, setRows] = useState(null);
   const [readError, setReadError] = useState(false);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
-  const live = useRef(true);
-  const load = () => { setReadError(false); return client.exposures().then((r) => { if (live.current) setRows(r); }, () => { if (live.current) setReadError(true); }); };
+  const live = useRef(true), seq = useRef(0), polling = useRef(false), busyRef = useRef(null);
+  // Only the newest read lands (a slower older answer never overwrites a newer one). A background read (below) keeps the
+  // rows it has on a failure instead of turning the list into an error.
+  const load = (background = false) => {
+    const n = ++seq.current; if (!background) setReadError(false);
+    return client.exposures().then((r) => { if (live.current && n === seq.current) { setRows(r); setReadError(false); } },
+      () => { if (live.current && n === seq.current && !background) setReadError(true); });
+  };
   useEffect(() => { live.current = true; load(); return () => { live.current = false; }; }, []);
+  // M-3007 (Prism #3763 r1): a share the Hub refuses (or later accepts) changes the rows with no action on this page, so
+  // they are read again on the card's own visible pairing poll: each poll hands this list a new `pairing` (no second
+  // subscription). One read per tick at most, none while one is in flight or a switch is being saved. This component is
+  // keyed by the binding, so a different connection never sees them, and an unmounted one reads nothing.
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (!live.current || polling.current || busyRef.current) return;
+    polling.current = true; load(true).finally(() => { polling.current = false; });
+  }, [pairing]);
   const toggle = async (row, on) => {
     if (busy) return;
-    setBusy(row.agent); setMsg(null);
+    setBusy(row.agent); busyRef.current = row.agent; setMsg(null);
     try {
       const r = await client.setExposed(row.agent, on, row.revision, on ? AGENT_CHOICE : null);
       if (!live.current) return;
       if (!r.ok) { setMsg({ error: true, text: hw(PUBLISH_ERRORS[r.error] || "errUnsaved") }); if (r.error === "conflict") await load(); return; }
       if (!on && r.remote === "pending") setMsg({ error: false, text: hw("withdrawPending") });
       if (r.pending) {
-        const pending = { agent: row.agent, revision: row.revision, on };
+        const pending = { agent: row.agent, revision: row.revision, on, id: r.pending.id || null };
         setMsg({ error: false, text: hw("pendingSent"), pending });
         const settled = () => { if (live.current) { setMsg(current => current?.pending === pending ? null : current); load(); } };
         if (r.settled?.then) r.settled.then(settled, settled);
       }
       await load();
     } catch { if (live.current) setMsg({ error: true, text: hw("errUnsaved") }); }
-    finally { if (live.current) setBusy(null); }
+    finally { busyRef.current = null; if (live.current) setBusy(null); }
   };
   // An older client's settled promise may be absent: the matching saved projection also retires the old hint.
   useEffect(() => {
@@ -248,27 +278,30 @@ function HubExposures({ client, pairing }) {
   return html`<div class="hub-exposures">
     <h4>${hw("sharedTitle")}</h4>
     <p class="note">${hw("agentLead")}</p>
+    <p class="note hub-sharing-hint">${t("hubSharingFleet.hint")}</p>
     ${readError ? html`<${ErrorState} message=${hw("errFailed")} onRetry=${load} />` : !rows ? html`<${Skeleton} variant="rows" lines=${3} />` : null}
     ${rows && !rows.length ? html`<p class="note">${hw("noAgents")}</p>` : null}
     ${rows && rows.length ? html`<ul class="hub-exposure-list">${rows.map((row) => html`<li key=${row.agent} class=${`hub-exposure${row.state === "published" ? " is-shared" : ""}`}>
       <label class="hub-exposure-main">
-        <input class="s-ui-toggle" type="checkbox" role="switch" checked=${row.state === "published"} aria-label=${hw("share", row.display)}
-          disabled=${busy !== null || !!row.pending || row.state === "frozen" || (row.state !== "published" && !row.enforceable)}
+        <input class="s-ui-toggle" type="checkbox" role="switch" checked=${row.state === "published" && row.reason !== "hub_refused"} aria-label=${hw("share", row.display)}
+          disabled=${busy !== null || !!row.pending || row.state === "frozen" || row.reason === "hub_refused" || (row.state !== "published" && !row.enforceable)}
           onChange=${(e) => toggle(row, e.target.checked)} />
         <span class="hub-exposure-name">${row.display}${row.display !== row.agent ? html` <small><code>${row.agent}</code></small>` : null}</span>
       </label>
       ${row.pending ? html`<small class="hub-exposure-why hub-exposure-pending">${hw("waitingConfirm")}</small>`
         : row.state === "frozen" ? html`<small class="hub-exposure-why">${hw("frozen")}</small>`
         : !row.enforceable && row.state !== "published" ? html`<small class="hub-exposure-why">${hw(row.reason === "delivery_unavailable" ? "agentDeliveryUnavailable" : "agentNotShareable")}</small>`
+        : row.reason === "hub_refused" ? html`<small class="hub-exposure-why hub-exposure-refused">${hr("note")}
+            <button type="button" class="btn btn-sm" disabled=${busy !== null} onClick=${() => toggle(row, false)}>${hr("withdraw")}</button></small>`
         : row.reason === "republish_required" ? html`<small class="hub-exposure-why hub-exposure-republish">${hw("republishRequired")}
             <button type="button" class="btn btn-sm" disabled=${busy !== null} onClick=${() => toggle(row, true)}>${hw("shareAgain")}</button></small>`
         : row.policy && row.policy.dataView === AGENT_CHOICE.dataViewId ? html`<small class="hub-exposure-why">${hw("agentShared")}</small>`
         : row.policy ? html`<small class="hub-exposure-why">${hw("policy", row.policy.dataView, row.policy.tools.join(", ") || "—")}</small>` : null}
       ${!row.enforceable && row.state !== "frozen" && guidanceFor(row.reason)
         ? html`<small class="hub-exposure-why hub-provider-guidance">${hw(guidanceFor(row.reason))}</small>` : null}
-      ${row.state === "published" && !row.pending && /^[a-f0-9-]{36}$/.test(row.exposureId || "") && safeWebOrigin(pairing)
+      ${row.state === "published" && row.reason !== "hub_refused" && !row.pending && /^[a-f0-9-]{36}$/.test(row.exposureId || "") && safeWebOrigin(pairing)
         ? html`<div class="field-row"><a class="btn btn-sm" href=${`${safeWebOrigin(pairing)}/ui/hub/exposures?agent=${encodeURIComponent(row.exposureId)}&grant=1`} target="_blank" rel="noopener noreferrer">${allowOnHubLabel()}</a></div>` : null}
     </li>`)}</ul>` : null}
-    ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
+    ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.pending ? confirmPlace("share", pendingView(store, msg.pending.id)) : msg.text}</p>` : null}
   </div>`;
 }

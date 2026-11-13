@@ -1,0 +1,6 @@
+{
+  "head": "8ac895063b4309b83b5d847e529c585a244b6d80",
+  "newTest": "6456016a236fb225cfd50e46318cbcfff0b98c527ed59674be50d303b02d2c4f",
+  "exit": 1,
+  "scope": "pre-implementation test file against exact stacked #3732 product; initial selector diagnostic excluded"
+}

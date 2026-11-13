@@ -9,7 +9,7 @@ export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] a
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
-export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2"];
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
@@ -66,15 +66,24 @@ const errorSchema = z.strictObject({ code: reason, retryable: z.boolean() });
 export const pairingNoticeSchema = z.strictObject({ id: uuid, fleetId: uuid, generation: epoch.min(1), label: plain(120),
   at: epoch, source: z.literal("group"), revoked: z.boolean() });
 export const pairingNoticeV2Schema = pairingNoticeSchema.extend({ source: z.enum(["group", "manual"]) });
+export const pairingNoticeV3Schema = z.union([pairingNoticeV2Schema, pairingNoticeSchema.extend({ source: z.literal("code"), codeId: uuid })]);
+/** web-origin-v1 (M-2901): the Hub's current web address, signed with its issuer key; signed and verified in web-origin.ts. */
+export const webOriginStatementSchema = z.strictObject({ v: z.literal(1), webOrigin: z.string().min(1).max(2048), revision: epoch,
+  signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/) });
 const frame = <T extends string, P extends z.ZodType>(type: T, payload: P) => z.strictObject({ v: z.literal(1), type: z.literal(type), requestId: uuid, linkEpoch: epoch, payload });
 const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(16), memberBootId: uuid });
 const welcome = z.strictObject({ selectedVersion: z.literal(1), hubId: uuid, fleetId: uuid, linkEpoch: epoch.min(1), revocationVersion: epoch,
   /** Sent only when the hello offered welcome-caps-v1: the Hub's own optional features. */
-  capabilities: z.array(identifier).max(16).optional() });
+  capabilities: z.array(identifier).max(16).optional(),
+  /** web-origin-v1 (M-2901): the Hub's current web address, signed with its issuer key (web-origin.ts). Only to a member that asked. */
+  webOrigin: webOriginStatementSchema.optional() });
 const chunkData = z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/).max(Math.ceil(HUB_ATTACHMENT_CHUNK / 3) * 4);
 const attachmentChunk = z.strictObject({ id: uuid, offset: epoch, total: z.number().int().min(1).max(HUB_ATTACHMENT_FILE_MAX), sha256: hash, data: chunkData });
 const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.array(z.strictObject({ messageId: uuid, contentDigest: hash })).max(128) });
+/** The authenticated link is the target. No caller-supplied Fleet ID, owner or credential. */
+export const memberLeavePayloadSchema = z.strictObject({});
 export const memberFrameSchema = z.union([
+  frame("member.leave", memberLeavePayloadSchema),
   frame("hello", hello), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
   frame("receipt", receiptSchema), frame("answer", answerSchema), frame("reconcile", reconcile),
   frame("authorize.request", authorizationSchema), frame("error", errorSchema),
@@ -91,6 +100,7 @@ export const serverFrameSchema = z.union([
   frame("attachment.chunk", attachmentChunk), frame("attachment.ack", z.strictObject({ id: uuid, offset: epoch })),
   frame("pairing.notice", pairingNoticeSchema),
   frame("pairing.notice-v2", pairingNoticeV2Schema),
+  frame("pairing.notice-v3", pairingNoticeV3Schema),
 ]);
 export const parseMemberFrame = (input: string | Buffer): HubMemberFrame => validated(memberFrameSchema, parseStrictJson(input));
 export const parseServerFrame = (input: string | Buffer): HubServerFrame => validated(serverFrameSchema, parseStrictJson(input));
