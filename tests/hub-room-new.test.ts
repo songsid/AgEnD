@@ -65,9 +65,11 @@ describe("Hub New room dialog (section 6)", () => {
     await type(pg, "hubRoomName", "  新案子  ");
     expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理"]);
     await search(pg, "hubRoomPeople", "陳"); await pick(pg, "hubRoomPeople", "陳主任");
-    await search(pg, "hubRoomPeople", "研"); expect(results(pg, "hubRoomPeople")).toEqual(["研一（2 人）", "研發一部（20 人）"]);
+    // A group's count is read when it is chosen (R #3866: GET candidates/group/:id), so the result row has none.
+    await search(pg, "hubRoomPeople", "研"); expect(results(pg, "hubRoomPeople")).toEqual(["研一 · 2 人", "研發一部", "研發二部"]);
     await pick(pg, "hubRoomPeople", "研一"); await search(pg, "hubRoomPeople", "研發"); await pick(pg, "hubRoomPeople", "研發一部");
-    expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理", "陳主任", "研一（2 人）", "研發一部（20 人）"]);
+    expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理", "陳主任", "研一 · 2 人", "研發一部 · 20 人"]);
+    expect(calls.filter(c => c.path.startsWith("/hub/v1/rooms/candidates/group/")).map(c => c.path)).toEqual(["/hub/v1/rooms/candidates/group/group-rd1"]);
     await search(pg, "hubRoomAgents", "my-"); expect(results(pg, "hubRoomAgents")).toEqual(["my-notes 王經理"]);
     await pick(pg, "hubRoomAgents", "my-notes");
     await search(pg, "hubRoomAgents", "spec"); expect(results(pg, "hubRoomAgents")).toEqual(["spec-writer 陳主任 邀請 · 等擁有者同意"]);
@@ -81,6 +83,58 @@ describe("Hub New room dialog (section 6)", () => {
     const roomId = opened[0]!;
     expect(posts.slice(1).map(c => [c.path, c.body])).toEqual([[`/hub/v1/rooms/${roomId}/invitations`, { agents: ["exp-02"] }], [`/hub/v1/rooms/${roomId}/invitations`, { team: "team-1" }]]);
     expect(closed).toBe(1);
+  });
+
+  it("a group the directory cannot read whole is not added: 「目前無法讀取「…」的成員，請稍後再試。」, the other picks stay", async () => {
+    const { pg, client } = await fixture();
+    await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false })); await settle(10);
+    await search(pg, "hubRoomPeople", "陳"); await pick(pg, "hubRoomPeople", "陳主任");
+    await search(pg, "hubRoomPeople", "研發二"); await pick(pg, "hubRoomPeople", "研發二部"); await settle(10);
+    expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理", "陳主任"]);
+    expect(pg.root.querySelector(".hub-room-picker-note").textContent).toBe("目前無法讀取「研發二部」的成員，請稍後再試。");
+    await search(pg, "hubRoomPeople", "研發一"); await pick(pg, "hubRoomPeople", "研發一部"); await settle(10);   // the next pick clears it
+    expect(pg.root.querySelector(".hub-room-picker-note")).toBeNull();
+    expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理", "陳主任", "研發一部 · 20 人"]);
+  });
+
+  it("over 100 people: no room, nothing invited; under the members field 「這個房間會有 N 人，超過上限 100 人。…」 and every pick stays", async () => {
+    const { pg, client, calls } = await fixture();
+    const opened: string[] = [];
+    await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false, onOpenRoom: (id: string) => opened.push(id) })); await settle(10);
+    await type(pg, "hubRoomName", "全員");
+    await search(pg, "hubRoomPeople", "全"); await pick(pg, "hubRoomPeople", "全公司"); await settle(10);
+    await search(pg, "hubRoomAgents", "spec"); await pick(pg, "hubRoomAgents", "spec-writer");
+    expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理", "全公司 · 132 人"]);
+    fire(button(pg, "建立"), "click"); await settle(30);
+    expect(pg.root.querySelector(".hub-room-picker-note").textContent).toBe("這個房間會有 133 人，超過上限 100 人。請改選較小的 AD 群組或團隊。");
+    expect(pg.root.querySelector(".hub-room-new-error")).toBeNull();
+    expect(opened).toEqual([]);
+    expect(calls.filter(c => c.method === "POST").map(c => c.path)).toEqual(["/hub/v1/rooms"]);
+    expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理", "全公司 · 132 人"]);
+    expect(tags(pg, "hubRoomAgents")).toEqual(["spec-writer · 邀請 · 等擁有者同意"]);
+    fire([...pg.root.querySelectorAll(".hub-room-tags button")].find((x: any) => x.getAttribute("aria-label") === "移除 全公司 · 132 人"), "click"); await settle(5);
+    expect(pg.root.querySelector(".hub-room-picker-note")).toBeNull();                       // changing the members clears it
+    fire(button(pg, "建立"), "click"); await settle(30);
+    expect(opened).toHaveLength(1);
+  });
+
+  it("a group unreadable at 建立 (503 group-unavailable): that group is dropped, the rest kept, the room not created", async () => {
+    let unreadable = true;
+    const { pg, client, calls } = await fixture("en", (path, init) => unreadable && path === "/hub/v1/rooms" && init.method === "POST" ? { status: 503, body: { code: "group-unavailable", group: "group-rd1" } } : null);
+    const opened: string[] = [];
+    await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false, onOpenRoom: (id: string) => opened.push(id) })); await settle(10);
+    await type(pg, "hubRoomName", "R");
+    await search(pg, "hubRoomPeople", "陳"); await pick(pg, "hubRoomPeople", "陳主任");
+    await search(pg, "hubRoomPeople", "研發一"); await pick(pg, "hubRoomPeople", "研發一部"); await settle(10);
+    expect(tags(pg, "hubRoomPeople")).toEqual(["You · Manager", "陳主任", "研發一部 · 20 people"]);
+    fire(button(pg, "Create"), "click"); await settle(30);
+    expect(pg.root.querySelector(".hub-room-picker-note").textContent).toBe("Can't read the members of “研發一部” right now. Try again later.");
+    expect(tags(pg, "hubRoomPeople")).toEqual(["You · Manager", "陳主任"]);
+    expect(opened).toEqual([]);
+    unreadable = false;
+    fire(button(pg, "Create"), "click"); await settle(30);
+    expect(calls.filter(c => c.method === "POST" && c.path === "/hub/v1/rooms").at(-1)!.body).toMatchObject({ people: ["person-chen"], groups: [] });
+    expect(opened).toHaveLength(1);
   });
 
   it("a picked item is not offered again, and × removes it", async () => {

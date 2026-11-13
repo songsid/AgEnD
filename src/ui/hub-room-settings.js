@@ -15,7 +15,7 @@ import { hubClient } from "./hub-client.js";
 import { hroom } from "./hub-room-strings.js";
 import { hs } from "./hub-room-settings-strings.js";
 import { RoomPicker } from "./hub-room-new.js";
-import { linkRoomsU2Css } from "./hub-room-new-strings.js";
+import { hn, linkRoomsU2Css } from "./hub-room-new-strings.js";
 
 linkRoomsU2Css();
 
@@ -42,7 +42,7 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
   const invited = Array.isArray(detail?.invited) ? detail.invited : [];
   const [name, setName] = useState(room.name ?? ""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [allMention, setAllMention] = useState(settings.allMention !== false), [history, setHistory] = useState(settings.historyForNew === "all" ? "all" : "since-join");
-  const [offered, setOffered] = useState(assistant === true), [addPeople, setAddPeople] = useState([]), [addAgents, setAddAgents] = useState([]);
+  const [offered, setOffered] = useState(assistant === true), [addPeople, setAddPeople] = useState([]), [addAgents, setAddAgents] = useState([]), [peopleNote, setPeopleNote] = useState("");
   const live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
   useEffect(() => { setName(room.name ?? ""); setAllMention(settings.allMention !== false); setHistory(settings.historyForNew === "all" ? "all" : "since-join"); }, [detail]);
@@ -52,13 +52,14 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
   }, [client, assistant]);
   const hasAssistant = members.some(m => m.kind === "assistant");
   /** One change: send it, then let the shell read the room again; a refusal names what to do. */
-  const act = async (send, undo) => {
-    setBusy(true); setError("");
+  /** refused(r): a refusal the caller shows itself (true = handled), e.g. under the add-people field. */
+  const act = async (send, undo, refused) => {
+    setBusy(true); setError(""); setPeopleNote("");
     const r = await send();
     if (!live.current) return r;
     setBusy(false);
     if (r?.ok) onChanged?.();
-    else { undo?.(); setError(r?.status === 409 && r.code === "last-manager" ? hroom("lastManager") : hs("saveFailed")); }
+    else { undo?.(); if (!refused?.(r)) setError(r?.status === 409 && r.code === "last-manager" ? hroom("lastManager") : hs("saveFailed")); }
     return r;
   };
   const saveName = () => {
@@ -75,7 +76,12 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
         : item.kind === "agent" ? () => client.inviteToRoom(roomId, { agents: [item.id] })
         : item.kind === "team-agents" ? () => client.inviteToRoom(roomId, { team: item.id })
         : () => client.addRoomMember(roomId, { kind: item.kind, id: item.id });
-      const r = await act(send);
+      // Too many people, or a group the directory could not read: said under the add field; nothing was added.
+      const r = await act(send, undefined, (no) => {
+        if (no?.status === 409 && no.code === "people-limit" && Number.isSafeInteger(no.people)) { setPeopleNote(hn("peopleLimit", no.people, no.limit ?? 100)); return true; }
+        if (no?.status === 503 && no.code === "group-unavailable" && item.kind === "group") { setPeopleNote(hn("groupUnavailable", item.name)); return true; }
+        return false;
+      });
       if (!r?.ok) break;
     }
   };
@@ -84,7 +90,7 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
       onSelect: () => { void act(() => client.setRoomMemberRole(roomId, m.id, m.role === "manager" ? "member" : "manager")); } } : null,
     { key: "remove", label: hroom("removeFromRoom"), danger: true, onSelect: () => { void act(() => client.removeRoomMember(roomId, m.id)); } },
   ]} />`;
-  const memberRow = (m) => html`<li class="hub-settings-row" key=${m.id} data-member=${m.id}><span>${m.name}${m.id === detail?.me?.id ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}${isAgent(m) && m.owner?.name ? html` <small class="note">${m.owner.name}</small>` : null}</span>${rowMenu(m)}</li>`;
+  const memberRow = (m) => html`<li class="hub-settings-row" key=${m.id} data-member=${m.id}><span>${m.name}${m.id === detail?.me?.id ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}${isAgent(m) && m.owner?.name ? html` <small class="note">${m.owner.name}</small>` : null}${m.kind === "person" && m.signedIn === false ? html` <small class="note">${hn("neverSignedIn")}</small>` : null}</span>${rowMenu(m)}</li>`;
   const archive = async () => {
     const yes = await confirmDialog({ title: hroom("archiveRoom"), message: hroom("archiveAsk", room.name ?? ""), confirmLabel: hroom("archive"), danger: true });
     if (!yes) return;
@@ -109,7 +115,7 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
     <section class="form"><h4>${hroom("membersAndAgents")}</h4>
       <ul class="hub-settings-people">${members.filter(m => m.kind === "person").map(memberRow)}</ul>
       <${RoomPicker} client=${client} id="hubRoomAddPeople" kinds=${["person", "team", "group"]} label=${hroom("addMembers")} placeholder=${hroom("addPeople")}
-        picked=${addPeople} exclude=${taken} onChange=${(next) => { void add(next, setAddPeople); }} />
+        picked=${addPeople} exclude=${taken} note=${peopleNote} onChange=${(next) => { void add(next, setAddPeople); }} />
       <ul class="hub-settings-agents">${members.filter(isAgent).map(memberRow)}</ul>
       ${invited.length ? html`<ul class="hub-settings-invited">${invited.map(row => html`<li class="hub-settings-row" key=${row.id} data-invitation=${row.id}><span>${invitedLabel(row)}</span>
         ${row.state === "expired"

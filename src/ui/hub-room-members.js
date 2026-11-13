@@ -7,7 +7,7 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { hubClient } from "./hub-client.js";
 import { hm } from "./hub-room-members-strings.js";
 import { hroom } from "./hub-room-strings.js";
-import { linkRoomsU2Css } from "./hub-room-new-strings.js";
+import { hn, linkRoomsU2Css } from "./hub-room-new-strings.js";
 
 linkRoomsU2Css();
 
@@ -18,6 +18,8 @@ const agentOnline = (m) => m.presence === "idle" || m.presence === "working" || 
 
 /** The dot class and words for one member's presence. */
 export function presenceView(m) {
+  // Added from a group or team before their first Hub sign-in: they see the room when they first sign in.
+  if (m.kind === "person" && m.signedIn === false) return { dot: "off", text: hn("neverSignedIn") };
   if (m.kind === "person") return m.presence === "online" ? { dot: "ok", text: hroom("stOnline") } : { dot: "off", text: hroom("stOffline") };
   if (m.kind === "assistant") return m.presence === "working" ? { dot: "busy", text: hroom("stWorking") }
     : m.presence === "paused" ? { dot: "warn", text: hroom("stAssistantDown") } : { dot: "ok", text: hroom("assistantIdleHub") };

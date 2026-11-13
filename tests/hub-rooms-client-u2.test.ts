@@ -21,7 +21,7 @@ async function live() {
 }
 
 describe("rooms client, track U2", () => {
-  it("roomCandidates: a GET with q and an optional kind; people, teams and groups carry counts; agents say whether they are mine", async () => {
+  it("roomCandidates: a GET with q and an optional kind; people and teams carry counts (a group's comes from roomGroup); agents say whether they are mine", async () => {
     const { client, calls } = await live();
     const all = await client.roomCandidates("");
     expect(new Set(all.candidates.map((c: any) => c.kind))).toEqual(new Set(["person", "team", "group", "agent"]));
@@ -53,6 +53,16 @@ describe("rooms client, track U2", () => {
     const r = await client.agentRooms("exp-02");
     expect(r.rooms).toEqual([{ id: "room-weekly", name: "研一主管週會", people: 3, memberId: "exp-02" }, { id: "room-rd", name: "研發例會", people: 2, memberId: "exp-02" }]);
     expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/exposures/exp-02/rooms" });
+  });
+
+  it("roomGroup: a chosen AD group's count; a refused room write carries people/limit (409 people-limit) or group (503 group-unavailable)", async () => {
+    const { client, calls } = await live();
+    expect(await client.roomGroup("group-rd1")).toEqual({ ok: true, kind: "group", id: "group-rd1", name: "研發一部", people: 20 });
+    expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/rooms/candidates/group/group-rd1" });
+    expect(await client.roomGroup("group-rd2")).toMatchObject({ ok: false, status: 503, code: "group-unavailable", group: "group-rd2" });
+    expect(await client.createRoom({ name: "R", groups: ["group-all"] })).toMatchObject({ ok: false, status: 409, code: "people-limit", people: 133, limit: 100 });
+    expect(await client.addRoomMember("room-rd", { kind: "group", id: "group-rd2" })).toMatchObject({ ok: false, status: 503, code: "group-unavailable", group: "group-rd2" });
+    expect(await client.removeRoomMember("room-rd", "nobody")).not.toHaveProperty("people");   // other refusals carry nothing extra
   });
 
   it("joinRoomAsAdmin / archiveRoomAsAdmin: POST …/join and PATCH { archived } under the admin path", async () => {

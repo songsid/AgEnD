@@ -117,6 +117,25 @@ describe("Hub Room settings (section 7)", () => {
     ]);
   });
 
+  it("adding an AD group: its people join now (one has never signed in: 還沒登入過 Hub); too many or unreadable is said under the field and adds nothing", async () => {
+    let unreadable = false;
+    const r = await fixture("zh-TW", (path, init) => unreadable && path === "/hub/v1/rooms/room-rd/members" && init.method === "POST" ? { status: 503, body: { code: "group-unavailable", group: "group-rd1" } } : null);
+    const changed = await mountSettings(r.pg, r.client, "room-rd"); r.calls.length = 0;
+    const note = () => r.pg.root.querySelector("#hubRoomAddPeople").parentElement.querySelector(".hub-room-picker-note")?.textContent ?? null;
+    await search(r.pg, "hubRoomAddPeople", "全"); await pick(r.pg, "hubRoomAddPeople", "全公司");
+    expect(note()).toBe("這個房間會有 134 人，超過上限 100 人。請改選較小的 AD 群組或團隊。");   // 王經理, 陳主任 + 132
+    expect(error(r.pg)).toBeNull(); expect(changed).toEqual([]);
+    unreadable = true;
+    await search(r.pg, "hubRoomAddPeople", "研發一"); await pick(r.pg, "hubRoomAddPeople", "研發一部");
+    expect(note()).toBe("目前無法讀取「研發一部」的成員，請稍後再試。");
+    expect(changed).toEqual([]);
+    unreadable = false;
+    await search(r.pg, "hubRoomAddPeople", "研發一"); await pick(r.pg, "hubRoomAddPeople", "研發一部");
+    expect(note()).toBeNull(); expect(changed).toHaveLength(1);
+    expect(r.calls.filter(c => c.method === "POST").map(c => c.body)).toEqual([{ kind: "group", id: "group-all" }, { kind: "group", id: "group-rd1" }, { kind: "group", id: "group-rd1" }]);
+    expect(r.pg.root.querySelector('[data-member="person-new"]').textContent).toContain("張新人 還沒登入過 Hub");
+  });
+
   it("the room's invitations: a pending one can be cancelled; an expired one (7 days) can be sent again", async () => {
     const { pg, client, calls } = await fixture();
     await mountSettings(pg, client); calls.length = 0;

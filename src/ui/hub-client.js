@@ -301,10 +301,15 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; roomsLive = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
     if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0,
       ...(method === "POST" && path === "/hub/v1/admin/enrolment-codes" && r.status === 429 && json?.code === "backpressure"
-        && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}) };
+        && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}), ...roomRefusal(json) };
     return { ok: true, ...(json && typeof json === "object" ? json : {}) };
   }
   const id = (v) => encodeURIComponent(String(v));
+  // Track U2: a refused room write says what the person is told — 409 people-limit the room's would-be head count (the
+  // deduplicated union, the creator and current members included) and the limit; 503 group-unavailable which group.
+  const roomRefusal = (json) => json?.code === "people-limit" && Number.isSafeInteger(json.people)
+    ? { people: json.people, limit: Number.isSafeInteger(json.limit) ? json.limit : 100 }
+    : json?.code === "group-unavailable" && typeof json.group === "string" ? { group: json.group } : {};
   // One stream per tab (#1580): every live subscription shares one EventSource. A Hub with rooms carries the notices on
   // its rooms stream too (`notices` = the notice version); before that the notices have their own. Listeners are kept
   // per event name; the stream closes with its last listener, and a refused (CLOSED) stream tells every subscriber once.
@@ -457,6 +462,12 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
       if (kind) s.set("kind", kind);
       return call("GET", `/hub/v1/rooms/candidates?${s}`, undefined, signal);
     },
+    /**
+     * A chosen AD group's label and head count → { ok, kind: "group", id, name, people } (its direct members now, nested
+     * groups not followed; creating the room or adding the group reads the list again). 503 group-unavailable when the
+     * directory cannot read the whole list.
+     */
+    roomGroup(groupId) { return call("GET", `/hub/v1/rooms/candidates/group/${id(groupId)}`); },
     /** 設為房間管理 / 改為成員. */
     setRoomMemberRole(roomId, memberId, role) { return call("PATCH", `/hub/v1/rooms/${id(roomId)}/members/${id(memberId)}`, { role }); },
     /** A room manager withdraws a pending (or clears an expired) invitation; 重新邀請 is a new inviteToRoom(). */

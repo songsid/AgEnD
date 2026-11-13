@@ -33,6 +33,8 @@ export interface FixtureMember {
   role: "manager" | "member"; presence: Presence; presenceNote?: string;
   /** dev-claude2: an agent this person may also ask one-to-one (「和它一對一對話」, spec §5). */
   canAsk?: boolean;
+  /** dev-claude2 (R #3866): false for a person added from a group or team before their first Hub sign-in. */
+  signedIn?: boolean;
 }
 export interface FixtureMessage {
   id: string; roomId: string; at: number; author: { kind: "person" | "agent" | "assistant" | "system"; id: string; name: string; owner?: { name: string } };
@@ -152,7 +154,20 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       ...(agent ? agent.kind === "assistant" ? { assistant: true } : { agent: { exposureId: agent.id, owner: agent.owner, presence: agent.presence, ...(agent.presenceNote ? { presenceNote: agent.presenceNote } : {}) } } : {}) };
   };
   const roomOf = (id: string) => rooms.find(r => r.id === id);
-  const fail = (status: number, code: string): Reply => ({ status, body: { code } });
+  const fail = (status: number, code: string, extra: Record<string, unknown> = {}): Reply => ({ status, body: { code, ...extra } });
+  // U2 (R #3866): AD groups. 研發一部 reads whole (20 direct members, 張新人 among them has never signed in), 研發二部 the
+  // directory cannot read whole (503 group-unavailable), 全公司 is too big for a room (over 100 → 409 people-limit).
+  const GROUPS: Record<string, { name: string; people: number }> = { "group-rd1": { name: "研發一部", people: 20 }, "group-rd2": { name: "研發二部", people: 8 }, "group-all": { name: "全公司", people: 132 } };
+  const NEW_PERSON: FixtureMember = { id: "person-new", kind: "person", name: "張新人", role: "member", presence: "offline", signedIn: false };
+  /** A room write's people check: the deduplicated union (the room's people, chosen people, teams' members, groups' heads). */
+  const peopleCheck = (current: string[], chosen: { people?: unknown; teams?: unknown; groups?: unknown }): Reply | null => {
+    const list = (v: unknown) => Array.isArray(v) ? v.map(String) : [];
+    const broken = list(chosen.groups).find(g => g === "group-rd2" || !GROUPS[g]);
+    if (broken) return fail(503, "group-unavailable", { group: broken });
+    const ids = new Set([...current, ...list(chosen.people), ...list(chosen.teams).flatMap(t => teams.find(x => x.id === t)?.members ?? [])]);
+    const heads = ids.size + list(chosen.groups).reduce((n, g) => n + GROUPS[g]!.people, 0);
+    return heads > 100 ? fail(409, "people-limit", { people: heads, limit: 100 }) : null;
+  };
 
   function handle(req: { method: string; path: string; headers?: Record<string, string>; body?: any }): Reply | null {
     const url = new URL(req.path, "https://hub.fixture.test"), p = url.pathname, method = req.method.toUpperCase();
@@ -165,6 +180,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
     if (p === "/hub/v1/rooms" && method === "POST") {
       const b = req.body ?? {};
       if (typeof b.name !== "string" || !b.name.trim() || b.name.length > 60) return fail(400, "invalid");
+      const refused = peopleCheck([FIXTURE_ME.id], b);   // U2: no room is written when refused
+      if (refused) return refused;
       const room: FixtureRoom = { id: nextId("room"), kind: "group", name: b.name.trim(), members: [people[0]!], messages: [], settings: { allMention: true, historyForNew: "since-join" },
         archived: false, readUpTo: null, assistant: b.assistant === true, invited: [] };
       if (b.assistant === true) room.members.push(assistant);
@@ -190,6 +207,14 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       }
       if (sub === "members" && method === "POST") {
         const b = req.body ?? {}, agent = agentMembers.find(a => a.id === b.id);
+        // U2 (R #3866): a group or team joins as its people now; nothing is written when refused.
+        if (b.kind === "group" || b.kind === "team") {
+          const refused = peopleCheck(room.members.filter(x => x.kind === "person").map(x => x.id), b.kind === "group" ? { groups: [b.id] } : { teams: [b.id] });
+          if (refused) return refused;
+          if (b.kind === "group" && !room.members.some(x => x.id === NEW_PERSON.id)) room.members.push({ ...NEW_PERSON });
+          emit("member.changed", { roomId: room.id });
+          return { status: 200, body: {} };
+        }
         const added: FixtureMember = b.kind === "assistant" ? assistant : agent ?? { id: String(b.id), kind: "person", name: String(b.name ?? b.id), role: "member", presence: "offline" };
         if (!room.members.some(x => x.id === added.id)) room.members.push(added);
         emit("member.changed", { roomId: room.id });
@@ -249,7 +274,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       const i = invitations.findIndex(x => x.id === decodeURIComponent(inv[1]!));
       if (i < 0) return fail(404, "not-found");
       invitations.splice(i, 1); emit("invitation.changed", {});
-      return { status: 200, body: {} };
+      return { status: 200, body: { ok: true } };
     }
     if (p === "/hub/v1/teams" && method === "GET") return { status: 200, body: { teams } };
     // U2: the creators list names its entries (the admin page shows them as tags); PUT still takes ids.
@@ -269,11 +294,17 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       const all = [
         ...[...people, { id: "person-lin", name: "林小華" }, { id: "person-zhou", name: "周小明" }].map(x => ({ kind: "person", id: x.id, name: x.name })),
         ...teams.map(x => ({ kind: "team", id: x.id, name: x.name, people: x.members.length })),
-        { kind: "group", id: "group-rd1", name: "研發一部", people: 20 },
+        ...Object.entries(GROUPS).map(([id, g]) => ({ kind: "group", id, name: g.name })),   // a group's count is read when chosen
         ...agentMembers.map(x => ({ kind: "agent", id: x.id, name: x.name, owner: x.owner, mine: false })),
         { kind: "agent", id: "exp-mine-1", name: "my-notes", owner: { name: FIXTURE_ME.name }, mine: true },
       ];
       return { status: 200, body: { candidates: all.filter(x => (!kind || x.kind === kind) && (!q || x.name.toLowerCase().includes(q))) } };
+    }
+    const chosenGroup = p.match(/^\/hub\/v1\/rooms\/candidates\/group\/([^/]+)$/);
+    if (chosenGroup && method === "GET") {
+      const gid = decodeURIComponent(chosenGroup[1]!), g = GROUPS[gid];
+      if (!g || gid === "group-rd2") return fail(503, "group-unavailable", { group: gid });
+      return { status: 200, body: { kind: "group", id: gid, name: g.name, people: g.people } };
     }
     const u2 = p.match(/^\/hub\/v1\/rooms\/([^/]+)\/(members|invitations)\/([^/]+)$/);
     if (u2 && u2[2] === "members" && method === "PATCH") {
@@ -292,7 +323,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       room.invited = room.invited.filter(x => x.id !== decodeURIComponent(u2[3]!));
       if (room.invited.length === before) return fail(404, "not-found");
       emit("room.changed", { roomId: room.id, room: listItem(room) });
-      return { status: 200, body: {} };
+      return { status: 200, body: { ok: true } };
     }
     const agentRooms = p.match(/^\/hub\/v1\/exposures\/([^/]+)\/rooms$/);
     if (agentRooms && method === "GET") {

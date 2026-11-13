@@ -28,12 +28,16 @@ const keyOf = (item) => `${item.kind}:${item.id}`;
  * - kinds: the candidate kinds searched, e.g. ["person", "team", "group"] or ["agent", "team"]. In an agent picker, a team
  *   result stands for "invite every member's agents" (kind "team-agents").
  * - picked, onChange(next), exclude: keys ("kind:id") never offered, e.g. members already in the room.
+ * - note: a refusal the owner shows under the field (the 100-person limit, a group the directory could not read).
+ * A picked AD group is read first (client.roomGroup): its tag shows its head count, and a group the directory cannot
+ * read whole is not added — the other picks stay.
  */
-export function RoomPicker({ client, kinds, picked, onChange, placeholder, label, id, exclude = [], fixed = null } = {}) {
-  const [q, setQ] = useState(""), [results, setResults] = useState(null), [failed, setFailed] = useState(false);
-  const asked = useRef(0), timer = useRef(null);
+export function RoomPicker({ client, kinds, picked, onChange, placeholder, label, id, exclude = [], fixed = null, note = "" } = {}) {
+  const [q, setQ] = useState(""), [results, setResults] = useState(null), [failed, setFailed] = useState(false), [groupNote, setGroupNote] = useState("");
+  const asked = useRef(0), timer = useRef(null), latest = useRef(picked), live = useRef(true);
+  latest.current = picked;
   const agents = kinds.includes("agent");
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => { live.current = true; return () => { live.current = false; clearTimeout(timer.current); }; }, []);
   const search = (text) => {
     setQ(text); clearTimeout(timer.current);
     const mine = ++asked.current;
@@ -50,7 +54,14 @@ export function RoomPicker({ client, kinds, picked, onChange, placeholder, label
   };
   const taken = new Set([...exclude, ...picked.map(keyOf)]);
   const offer = (results ?? []).filter(c => !taken.has(keyOf(c)));
-  const pick = (item) => { onChange([...picked, item]); setQ(""); setResults(null); };
+  const pick = async (item) => {
+    setQ(""); setResults(null); setGroupNote("");
+    if (item.kind !== "group" || typeof client.roomGroup !== "function") { onChange([...latest.current, item]); return; }
+    const r = await client.roomGroup(item.id);
+    if (!live.current || latest.current.some(x => keyOf(x) === keyOf(item))) return;
+    if (!r?.ok) { setGroupNote(hn("groupUnavailable", item.name)); return; }
+    onChange([...latest.current, { ...item, ...(typeof r.name === "string" && r.name ? { name: r.name } : {}), ...(Number.isSafeInteger(r.people) ? { people: r.people } : {}) }]);
+  };
   return html`<div class="field hub-room-picker">
     <label for=${id}><span>${label}</span></label>
     <ul class="hub-room-tags">
@@ -60,8 +71,9 @@ export function RoomPicker({ client, kinds, picked, onChange, placeholder, label
     </ul>
     <input id=${id} type="search" autocomplete="off" placeholder=${placeholder} value=${q} onInput=${(e) => search(e.target.value)} />
     ${failed ? html`<p class="note" role="alert">${hn("searchFailed")}</p>` : null}
+    ${groupNote || note ? html`<p class="note hub-room-picker-note" role="alert">${groupNote || note}</p>` : null}
     ${results && !failed ? offer.length ? html`<ul class="hub-room-results" role="listbox" aria-label=${label}>${offer.map(c => html`<li key=${keyOf(c)}>
-        <button type="button" role="option" class="hub-room-result" onClick=${() => pick(c)}>${pickLabel(c)}${c.owner?.name && c.kind === "agent" ? html` <small class="note">${c.owner.name}</small>` : null}${c.kind === "agent" && !c.mine ? html` <small class="note">${hroom("invitePending")}</small>` : null}</button></li>`)}</ul>`
+        <button type="button" role="option" class="hub-room-result" onClick=${() => { void pick(c); }}>${pickLabel(c)}${c.owner?.name && c.kind === "agent" ? html` <small class="note">${c.owner.name}</small>` : null}${c.kind === "agent" && !c.mine ? html` <small class="note">${hroom("invitePending")}</small>` : null}</button></li>`)}</ul>`
       : html`<p class="note">${hn("noMatch")}</p>` : null}
   </div>`;
 }
@@ -69,7 +81,7 @@ export function RoomPicker({ client, kinds, picked, onChange, placeholder, label
 /** Props: client, onClose(), onOpenRoom(roomId), assistant (whether the Hub offers the room assistant; read from the list when not given). */
 export function NewRoomDialog({ client = hubClient(), onClose, onOpenRoom, assistant } = {}) {
   const [name, setName] = useState(""), [people, setPeople] = useState([]), [agents, setAgents] = useState([]), [withAssistant, setWithAssistant] = useState(false);
-  const [offered, setOffered] = useState(assistant === true), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [offered, setOffered] = useState(assistant === true), [busy, setBusy] = useState(false), [error, setError] = useState(""), [peopleNote, setPeopleNote] = useState("");
   const nameRef = useRef(null), sent = useRef(false);
   useEffect(() => {
     if (typeof assistant === "boolean") { setOffered(assistant); return; }
@@ -82,12 +94,21 @@ export function NewRoomDialog({ client = hubClient(), onClose, onOpenRoom, assis
     const title = name.trim();
     if (!title) { setError(hroom("nameRequired")); nameRef.current?.focus(); return; }
     if ([...title].length > NAME_MAX) { setError(hn("nameTooLong")); nameRef.current?.focus(); return; }
-    sent.current = true; setBusy(true); setError("");
+    sent.current = true; setBusy(true); setError(""); setPeopleNote("");
     const ids = (kind, from = people) => from.filter(x => x.kind === kind).map(x => x.id);
     const r = await client.createRoom({ name: title, people: ids("person"), teams: ids("team"), groups: ids("group"),
       agents: agents.filter(x => x.kind === "agent" && x.mine).map(x => x.id), assistant: offered && withAssistant });
     const roomId = r?.ok ? r.room?.id : null;
-    if (!roomId) { sent.current = false; setBusy(false); setError(hn("createFailed")); return; }
+    if (!roomId) {
+      sent.current = false; setBusy(false);
+      // Nothing was created. Too many people: say how many, keep every pick. A group the directory could not read:
+      // drop that group only.
+      const group = r?.status === 503 && r.code === "group-unavailable" ? people.find(x => x.kind === "group" && x.id === r.group) : null;
+      if (r?.status === 409 && r.code === "people-limit" && Number.isSafeInteger(r.people)) setPeopleNote(hn("peopleLimit", r.people, r.limit ?? 100));
+      else if (group) { setPeople(people.filter(x => x !== group)); setPeopleNote(hn("groupUnavailable", group.name)); }
+      else setError(hn("createFailed"));
+      return;
+    }
     const others = agents.filter(x => x.kind === "agent" && !x.mine).map(x => x.id), teams = agents.filter(x => x.kind === "team-agents").map(x => x.id);
     // The room exists now: invitations are best effort, and the room's own list shows what was sent.
     if (others.length) await client.inviteToRoom(roomId, { agents: others });
@@ -104,7 +125,7 @@ export function NewRoomDialog({ client = hubClient(), onClose, onOpenRoom, assis
           aria-invalid=${error === hroom("nameRequired") || error === hn("nameTooLong") ? "true" : "false"} onInput=${(e) => { setName(e.target.value); if (error) setError(""); }} /></label>
       ${error ? html`<p class="note hub-room-new-error" role="alert">${error}</p>` : null}
       <${RoomPicker} client=${client} id="hubRoomPeople" kinds=${["person", "team", "group"]} label=${hroom("members")} placeholder=${hroom("addPeople")}
-        picked=${people} onChange=${setPeople} fixed=${me} />
+        picked=${people} onChange=${(next) => { setPeople(next); setPeopleNote(""); }} fixed=${me} note=${peopleNote} />
       <${RoomPicker} client=${client} id="hubRoomAgents" kinds=${["agent", "team"]} label=${hn("agents")} placeholder=${hroom("addAgents")}
         picked=${agents} onChange=${setAgents} />
       ${offered ? html`<label class="check"><input id="hubRoomAssistant" class="s-ui-toggle" type="checkbox" role="switch" checked=${withAssistant}

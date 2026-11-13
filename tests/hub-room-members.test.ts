@@ -103,6 +103,16 @@ describe("Hub room members panel (section 5)", () => {
     expect(agentRows(pg).find(r => r[0] === "spec-writer")).toEqual(["spec-writer", "dot ok", "待命"]);
   });
 
+  it("a person added before their first Hub sign-in reads 還沒登入過 Hub (grey), not 離線", async () => {
+    const { pg, client } = await fixture();
+    const d = await detailOf(client, "room-weekly");
+    d.members = d.members.map((m: any) => m.id === "person-wu" ? { ...m, signedIn: false } : m);
+    await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: d })); await settle(20);
+    const wu = [...pg.root.querySelectorAll(".hub-member")].find((li: any) => li.textContent.startsWith("吳小安"));
+    expect(wu.textContent).toBe("吳小安還沒登入過 Hub");
+    expect(wu.querySelector(".dot").className).toBe("dot off");
+  });
+
   it("no detail yet: an empty, busy rail", async () => {
     const { pg, client } = await fixture("en");
     await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly" })); await settle(10);
