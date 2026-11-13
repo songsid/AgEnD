@@ -1,0 +1,249 @@
+[
+  {
+    "id": "P01",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "if (prepared) assertHubDirectoryPreparation(preparation!, actor, source);",
+    "after": "if (prepared) {}",
+    "baseSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "mutantSha256": "edebd4b93ad872d1463409bdf20c2939def0d1407f6eecb10491735cc4c5ac5e",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 2.7109375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "elapsedSeconds": 33.74
+  },
+  {
+    "id": "P02",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "else assertHubDirectoryAdministration(witness!, actor, source);",
+    "after": "else {}",
+    "baseSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "mutantSha256": "d4ece176a2500be730850d49954462980f4367b636f5779bf851b066e740a2ea",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 7.14013671875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "elapsedSeconds": 14.97
+  },
+  {
+    "id": "P03",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "if (prepared === witnessed) throw new HubProtocolError(\"unavailable\");",
+    "after": "if (false) throw new HubProtocolError(\"unavailable\");",
+    "baseSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "mutantSha256": "e4708dc9027a2ed102b9c299a3ebe117382c6de142076bc975e92ac1f9a3fadc",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 5.84716796875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "elapsedSeconds": 14.65
+  },
+  {
+    "id": "P04",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "|| source.directory !== core.deps.directory || source.epoch !== core.directoryEpoch",
+    "after": "|| source.epoch !== core.directoryEpoch",
+    "baseSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "mutantSha256": "32ad6f3cd208680c1875d44bec896dd087ac6b628dfab2286f8a4c292ae24b3e",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 5.15478515625,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "elapsedSeconds": 15.29
+  },
+  {
+    "id": "P05",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "      || personKeyString(source.administrator) !== personKeyString(core.deps.config.administrator))",
+    "after": "      )",
+    "baseSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "mutantSha256": "be1e3a68333232d87b85829ce414332f2167fa8ce8399c25822afb943016b93c",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 4.6025390625,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "elapsedSeconds": 17.83
+  },
+  {
+    "id": "P06",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "|| source.directory !== core.deps.directory || source.epoch !== core.directoryEpoch",
+    "after": "|| source.directory !== core.deps.directory",
+    "baseSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "mutantSha256": "87d588da91866602177e03da721dcb9da488c749ac50cc5502826e438720b407",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 4.0107421875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "elapsedSeconds": 15.87
+  },
+  {
+    "id": "P07",
+    "file": "src/hub/sessions.ts",
+    "before": "return recentHubDirectoryAuthentication(this.core, actor, proof);",
+    "after": "return recentHubDirectoryAuthentication(this.core, actor);",
+    "baseSha256": "896996e9a322bc7784d6d406fc8515b8a94386fdc4a5c3c5253dd1c34f8902f5",
+    "mutantSha256": "5286221bedb817e4345195dee10032bc8ba835f70c5122e59c1113ea14def36d",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 4.18701171875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "896996e9a322bc7784d6d406fc8515b8a94386fdc4a5c3c5253dd1c34f8902f5",
+    "elapsedSeconds": 16.78
+  },
+  {
+    "id": "P08",
+    "file": "src/hub/sessions.ts",
+    "before": "return prepareHubDirectorySessionRotation(this.core, token, actor, proof);",
+    "after": "return prepareHubDirectorySessionRotation(this.core, token, actor);",
+    "baseSha256": "896996e9a322bc7784d6d406fc8515b8a94386fdc4a5c3c5253dd1c34f8902f5",
+    "mutantSha256": "8f18ff04a2589118b60b760e802bb0d347567f048310005fe781db9a0fd1b2c0",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 4.1328125,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "896996e9a322bc7784d6d406fc8515b8a94386fdc4a5c3c5253dd1c34f8902f5",
+    "elapsedSeconds": 13.44
+  },
+  {
+    "id": "P09",
+    "file": "src/hub/http/compose.ts",
+    "before": "recentAuthentication: (actor, proof) => sessions.recentAuthentication(actor, proof),",
+    "after": "recentAuthentication: (actor, proof) => sessions.recentAuthentication(actor),",
+    "baseSha256": "a899c095c086579c2193d2b5e60addafd8f138be34d1600bb310872537cd622a",
+    "mutantSha256": "1a0df4a91027fc08e4f0a4dd8d34a0fb237133d6b81e2c7cc1b0a97d821e924c",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 3.8076171875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "a899c095c086579c2193d2b5e60addafd8f138be34d1600bb310872537cd622a",
+    "elapsedSeconds": 14.87
+  },
+  {
+    "id": "P10",
+    "file": "src/hub/http/compose.ts",
+    "before": "prepareDirectoryRotation: (token, actor, proof) => sessions.prepareDirectoryRotation(token, actor, proof),",
+    "after": "prepareDirectoryRotation: (token, actor, proof) => sessions.prepareDirectoryRotation(token, actor),",
+    "baseSha256": "a899c095c086579c2193d2b5e60addafd8f138be34d1600bb310872537cd622a",
+    "mutantSha256": "b05442a796bd3e93b00ecdb681c28772d2117010fb64a46315a2aa24e9a9eb08",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 3.48681640625,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "a899c095c086579c2193d2b5e60addafd8f138be34d1600bb310872537cd622a",
+    "elapsedSeconds": 17.49
+  },
+  {
+    "id": "P11",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "roleRequired: proof !== undefined,",
+    "after": "roleRequired: false,",
+    "baseSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "mutantSha256": "07199733658e52420b89e985229f9a5cfedc655661cce9437baddab4b0c61e01",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 4.4443359375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "elapsedSeconds": 17.11
+  },
+  {
+    "id": "P12",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": " || r.token_hash !== hash(token)",
+    "after": "",
+    "baseSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "mutantSha256": "10da7cf03d57a12f572aa8f12b207d38bbb8820c5ffc977a3741c7028b08104c",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 4.1796875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "elapsedSeconds": 15.05
+  },
+  {
+    "id": "P13",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "    if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError(\"denied\");",
+    "after": "    if (false) throw new HubProtocolError(\"denied\");",
+    "baseSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "mutantSha256": "863f9b4671da4c0145fa4b9212fa4afe39363da2d2899904cba2128dead3603a",
+    "checkpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+    "testInputSha256": {
+      "tests/hub-roles-directory-session-preparation-s129.test.ts": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6",
+      "tests/hub-compose.test.ts": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    "load1": 3.783203125,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730",
+    "elapsedSeconds": 15.78
+  }
+]

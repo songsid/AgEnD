@@ -1,0 +1,157 @@
+{
+  "task": "S-129 / M-3010",
+  "parent": {
+    "pr": 3832,
+    "head": "ce0f555923f86db748a04db32559053f964d0cca",
+    "sourceClearCorrelation": "pr-3832-review"
+  },
+  "sourceAndTestCheckpoint": "7a532202fbf10235b551da62fcf42ad6375e04ed",
+  "failFirst": {
+    "commit": "922103caa20510c8a8c63f081482fca3b9696d3e",
+    "assertionFailures": 5,
+    "controlsPass": 4,
+    "nativeSourceAndTests": "7.0.2 both exit 0"
+  },
+  "positive": {
+    "newStandaloneCases": 32,
+    "newMountedProjectionCases": 2,
+    "focused": {
+      "files": 8,
+      "passed": 525,
+      "suites": [
+        "hub-compose",
+        "hub-roles-directory-session-preparation-s129",
+        "hub-roles-directory-session-s129",
+        "hub-roles-directory-preparation-s129",
+        "hub-roles-directory-context-s129",
+        "hub-directory-settings-control",
+        "hub-directory-settings-proof",
+        "hub-directory-settings-decision"
+      ]
+    },
+    "restored": {
+      "files": 2,
+      "passed": 175
+    },
+    "nativeSourceAndTests": "7.0.2 both exit 0",
+    "changelogFragments": 455,
+    "diffCheck": "pass"
+  },
+  "mutationSummary": {
+    "isolated": 13,
+    "nativeSourceCompiling": 13,
+    "semanticAssertionRed": 13,
+    "exactRestoration": true
+  },
+  "bindings": [
+    {
+      "path": "src/hub/session-directory-transition.ts",
+      "sha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "896996e9a322bc7784d6d406fc8515b8a94386fdc4a5c3c5253dd1c34f8902f5"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "a899c095c086579c2193d2b5e60addafd8f138be34d1600bb310872537cd622a"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18"
+    },
+    {
+      "path": "src/hub/roles/authority.ts",
+      "sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "path": "src/hub/roles/directory-authority.ts",
+      "sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5"
+    },
+    {
+      "path": "src/hub/settings-directory-decision.ts",
+      "sha256": "a7be86d307e22adc25cd9724aefee3ca5ed0db3aa951b15bc22cd7ae9acebf20"
+    },
+    {
+      "path": "src/hub/directory-decision-proof.ts",
+      "sha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861"
+    },
+    {
+      "path": "tests/hub-roles-directory-session-preparation-s129.test.ts",
+      "sha256": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6"
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "sha256": "a5ce82ada09a1356aae76a4cac2f47c092fa9cfc2cef6bce448833b4c41cdcba"
+    },
+    {
+      "path": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28"
+    },
+    {
+      "path": "docs/design/hub-roles-directory-session-preparation-s129.md",
+      "sha256": "84dec7bf7deb262bf463d674f10f547e4c6f1e3ddadc5569bc4e7806eddc78af"
+    },
+    {
+      "path": "changes/3743-roles-directory-session-preparation.md",
+      "sha256": "b521b32b866480cd86236ae697a57377a79c4d3c744893fbd793a7f4297bb945"
+    },
+    {
+      "path": "changes/3743-roles-directory-session-preparation.zh-TW.md",
+      "sha256": "6a0dab850a7694b437f774ae09e1bc13357aa38801fb4ad77a9b090b31ef4313"
+    }
+  ],
+  "privateLogs": [
+    {
+      "path": "roles-directory-session-preparation-m3010/fail-first.log",
+      "sha256": "6b69fc2c9525d73f644b06b298088b4b559f751366fadeac3236127f1eaeab7e"
+    },
+    {
+      "path": "roles-directory-session-preparation-m3010/fail-first-source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "roles-directory-session-preparation-m3010/fail-first-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "roles-directory-session-preparation-m3010/focused.log",
+      "sha256": "a1b1bcca7344e5573d2ca39c828693f68425ed25bfc3c9c8acac11efad9bbce5"
+    },
+    {
+      "path": "roles-directory-session-preparation-m3010/source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "roles-directory-session-preparation-m3010/test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "roles-directory-session-preparation-m3010/restored.log",
+      "sha256": "96c2b0d3d3fa5bd6cdbf00c0de32b3c3627df3e3cc11c2f2eed74b50ad98ec44"
+    },
+    {
+      "path": "roles-directory-session-preparation-m3010/mutation-progress.log",
+      "sha256": "b9ec56c43b5d4e86125c7ce838f1d79ad3d34ff52a162a2e619218268e13f43a"
+    }
+  ],
+  "limitations": [
+    "Actual Core, HubSessions, canonical role preparation, persisted authorization clock and SQLite; directory answers are synthetic.",
+    "Mounted tests initialize a sealed Hub and use loopback HTTPS sign-in, then invoke its private session projection; no HTTP directory Save/controller activation.",
+    "Private real SQL kernel/root+auxiliary handoff uses synthetic file image hashes; no physical auxiliary file installation, crash/WAL/SIGKILL or successor-cookie response acceptance.",
+    "No automatic role cutover, member/SSE activation or full S129 acceptance.",
+    "No browser, container, native platform, backend CLI, real AD/account/Fleet or pilot.",
+    "Parent-first plain alpha merge, resolution review and exact-head readiness remain required; coordinator alone merges.",
+    "Repeated identity checks on the typed internal envelope are defensive; not every individual repeated check has an independent necessity claim."
+  ],
+  "notes": [
+    "The first fail-first launch was refused before Vitest at load above10; it is not a failed test result. The subsequent qualified run produced the five semantic assertion reds and four passing controls.",
+    "The positive implementation was expanded to32 standalone and2 actual projection cases before the final525-case related run and native typechecks.",
+    "The changelog guard does not support --help; that argument-only failure is excluded. The resolved parent/source SHA guard and455-fragment assembly check passed.",
+    "Raw logs remain private; committed hashes bind source/test/recorded outcomes and do not imply independent reviewer execution."
+  ]
+}
