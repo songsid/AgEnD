@@ -94,3 +94,13 @@ genuine-boundary reset fails the positive controls; exact source restored.
 Fixed grammar instructions and legacy-transition notices add context overhead.
 The header-byte estimate excludes that fixed overhead and is not a net fleet
 token/billing measurement.
+
+Fable's R2 guard probes caught session/selected/served moves, ordinary response
+reset and remembered-session assignment. R5 adds the actual unknown-model-launch
+case: first known model metadata must not retire an already owned human stamp or
+repeat its reminder. This pins the null-to-known distinction without changing
+production.
+
+R5 verification: the listener file passes12/12. Removing the null-to-known guard
+produces1semantic failure in the new case, with11controls passing; source restored
+exactly afterward. Ridge independently cleared the production R2 boundary correction.
