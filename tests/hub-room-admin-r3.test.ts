@@ -3,6 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { personKeyString } from "../src/hub/identity.js";
+const assistantSettings = () => ({ enabled: false, backend: "claude-code", account: null, cap: 3, idleMinutes: 15, backends: [], running: [] });
 let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; });
 async function world() {
@@ -55,9 +56,9 @@ it("serves assistant administration only with both ports and current Hub admin a
   const w = await world(), path = "/hub/v1/admin/assistant";
   expect((await r!.call(w.admin, "GET", path)).status).toBe(404);
   let calls = 0; const stopped: string[] = [];
-  r!.httpDeps.roomAssistant = { available: () => ({ enabled: false, backend: null, running: 0, cap: 3, state: "paused" }), ask: async () => ({ text: "Inert" }), forget() {} };
-  r!.httpDeps.assistantAdmin = { settings: async () => { calls++; return { enabled: false, cap: 3, idleMinutes: 15, backends: [], running: [] }; },
-    configure: async value => value, usage: async () => ({ days: [], quota: { band: "unknown" } }), stopRoom: async id => { stopped.push(id); } };
+  r!.httpDeps.roomAssistant = { available: () => ({ enabled: false, backend: "claude-code", running: 0, cap: 3, state: "paused" }), ask: async () => ({ text: "Inert" }), forget() {} };
+  r!.httpDeps.assistantAdmin = { settings: async () => { calls++; return assistantSettings(); },
+    configure: async () => assistantSettings(), usage: async () => ({ days: [], quota: { band: "unknown" } }), stopRoom: async id => { stopped.push(id); } };
   await r!.restartHttp();
   expect((await r!.call(w.admin, "GET", "/hub/v1/session")).json.features).toContain("room-assistant-v1");
   expect((await r!.call(w.a, "GET", path)).status).toBe(403); expect(calls).toBe(0);
@@ -69,8 +70,8 @@ it("serves assistant administration only with both ports and current Hub admin a
 it("withholds a held assistant admin read after the actual browser signs out", async () => {
   const w = await world(); let release!: () => void, entered!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
-  r!.httpDeps.roomAssistant = { available: () => ({ enabled: false, backend: null, running: 0, cap: 3, state: "paused" }), ask: async () => ({ text: "Inert" }), forget() {} };
-  r!.httpDeps.assistantAdmin = { settings: async () => { entered(); await held; return { privatePicker: true }; }, configure: async value => value, usage: async () => ({}), stopRoom: async () => {} };
+  r!.httpDeps.roomAssistant = { available: () => ({ enabled: false, backend: "claude-code", running: 0, cap: 3, state: "paused" }), ask: async () => ({ text: "Inert" }), forget() {} };
+  r!.httpDeps.assistantAdmin = { settings: async () => { entered(); await held; return { ...assistantSettings(), backends: [{ id: "privatePicker", name: "privatePicker", accounts: [] }] }; }, configure: async () => assistantSettings(), usage: async () => ({ days: [], quota: { band: "unknown" } }), stopRoom: async () => {} };
   await r!.restartHttp();
   const result = r!.call(w.admin, "GET", "/hub/v1/admin/assistant");
   try { await started; expect((await r!.call(w.admin, "DELETE", "/hub/v1/session")).status).toBe(200); }

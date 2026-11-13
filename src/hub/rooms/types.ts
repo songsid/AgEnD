@@ -9,12 +9,8 @@ export interface RoomMessage {
   answerTo?: string;
   stage?: "queued" | "working" | "answered" | "not-answered";
 }
-export interface RoomAssistantPort {
-  available(): { enabled: boolean; backend: string | null; running: number; cap: number; state: "idle" | "busy" | "paused"; note?: string };
-  ask(input: { roomId: string; roomName: string; messageId: string; asker: { name: string }; text: string;
-    context: { author: string; text: string; at: number; repliedTo?: true }[] }): Promise<{ text: string }>;
-  forget(roomId: string): void;
-}
+/** Track A owns the shared service contract. */
+export type RoomAssistantPort = import("../assistant/types.js").RoomAssistant;
 export interface RoomEvent {
   type: "message.added" | "message.updated" | "presence.changed" | "member.changed" | "room.changed" | "unread.changed" | "invitation.changed";
   roomId: string;
