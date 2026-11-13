@@ -1070,10 +1070,14 @@ export class InstanceLifecycle {
     finally{if(!run.timer)this.ctx.onNativePaneRecoverySettled?.(name);}
   }
 
-  /** The backend and credential profile a launch is bound to: the configuration the start was handed, with the fleet defaults it inherits. No await, no read of the live fleet configuration for the instance. */
+  /**
+   * The backend and credential profile a launch is bound to. The `config` a start is handed has the fleet defaults ALREADY applied (config.ts), and the daemon only ever reads its own copy of it
+   * (`structuredClone` in its constructor), so a missing profile means the DEFAULT login — it is never filled in from the fleet's CURRENT defaults: a named default saved while the start was still
+   * waiting (the manager's binary resolution, the credential admission) is not what this daemon runs as. No await, no read of the live fleet configuration for the profile.
+   */
   private launchBindingOf(config: InstanceConfig): { backend: string; profile: string | null } {
     const backend = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
-    return { backend, profile: isWindowsInstance(config) || !credentialHomeSpec(backend) ? null : instanceCredentialProfile(config, this.ctx.fleetConfig?.defaults, backend) };
+    return { backend, profile: isWindowsInstance(config) || !credentialHomeSpec(backend) ? null : instanceCredentialProfile(config, undefined, backend) };
   }
 
   /**
@@ -1977,7 +1981,8 @@ export class InstanceLifecycle {
     const { createBackend } = await import("./backend/factory.js");
     check();
 
-    const backendName = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+    // The backend the incident handlers were bound to at launch (launchBinding), not a second read of the live defaults after the awaits above.
+    const backendName = launchBinding.backend;
 
     // A removed backend (#1280): this instance refuses to start, says why and what to use instead, and the rest of
     // the fleet is unaffected. Never a fallback to another backend.

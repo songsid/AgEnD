@@ -61,7 +61,8 @@ describe("P2-6 (round 2): the quota cap belongs to the launch, even when Setting
   it("an INHERITED default counts: launched under the fleet default account `work` (the instance names none), the default is later changed to `other` during the start → `work`", async () => {
     const fleet: Fleet = { instances: { agy: { backend: "antigravity" } }, defaults: { backend_options: { antigravity: { credential_profile: "work" } } } };
     const { lc, root, admit } = rig(fleet);
-    const starting = lc.start("agy", launchConfig(root, { backend: "antigravity" }), false);
+    // AGEND-252: a start is handed the configuration with the defaults ALREADY applied (config.ts), so the inherited account is in it.
+    const starting = lc.start("agy", launchConfig(root, { backend: "antigravity", backend_options: JSON.parse(JSON.stringify(fleet.defaults.backend_options)) }), false);
     await new Promise(r => setTimeout(r, 20));
     (fleet.defaults as any).backend_options.antigravity.credential_profile = "other";
     admit(); await starting;
