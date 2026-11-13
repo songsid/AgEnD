@@ -56,7 +56,7 @@ try {
     const p = await context.newPage(); p.on("pageerror", (e: Error) => errors.push(e.message));
     p.on("response", (response: any) => { const u = new URL(response.url()); if (u.pathname.startsWith("/hub/v1/")) receipt.requests.push({ method: response.request().method(), path: u.pathname + u.search, status: response.status() }); });
     const shot = async (name: string) => { const path = `${tag}-${name}.png`; await p.screenshot({ path: join(out, path), fullPage: true }); receipt.pictures.push({ path, sha256: sha(readFileSync(join(out, path))) }); };
-    await p.goto(origin + "/ui/hub"); await p.getByText("Pilot weekly", { exact: true }).first().waitFor();
+    await p.goto(origin + "/ui/hub"); await p.locator(".inst-name:visible").filter({ hasText: "Pilot weekly" }).first().waitFor();
     check(tag + " list reads real room and private assistant", (await p.locator("body").innerText()).includes(lang === "en" ? "Hub assistant" : "Hub 助理")); await shot("list");
     await p.goto(origin + "/__rooms/new?lang=" + lang); await p.locator("#hubRoomName").fill("Browser room " + tag);
     await p.locator("#hubRoomPeople").fill("Pilot"); await p.getByRole("option").filter({ hasText: "Pilot direct group" }).click();
