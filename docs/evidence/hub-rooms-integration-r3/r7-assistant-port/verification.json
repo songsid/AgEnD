@@ -1,0 +1,58 @@
+{
+  "sourceCheckpoint": "a798188811a66bd25970ada149aca8e83188eb69",
+  "incomingAssistant": "20361c8d215d4d61740c8a4962183fc0d4dd9cdb",
+  "incomingAlpha": "0aedcd3e86ecb159789a7000264815f1abb36e51",
+  "priorIntegration": "47844b7cb2838b28b9d01909d17059a2344f3144",
+  "canonicalIncomingPaths": [
+    "src/hub/http/deps.ts",
+    "src/hub/rooms/types.ts",
+    "tests/hub-room-admin-r3.test.ts",
+    "tests/hub-room-assistant-r3.test.ts"
+  ],
+  "originalRCaseExpectLines": "Both fixture files retain every original case/expect line exactly. Only complete DTO helpers/disabled-null input differ.",
+  "C2Adapter": "Exact prior integration blob; retained verifyRoomAskJournal and deliveryFailed, with corresponding composition/FM hooks.",
+  "moduleInventory": "One hub-room-unread.js and exactly one of each A UI module; serving and test inventory identical order.",
+  "historicalImages": "Entire incoming U1 screenshot folder equals203 head byte-for-byte; imported historical packet, not new inspection/execution. Own eight final browser originals remain bound to500ee6d5.",
+  "focused": {
+    "passed": 53,
+    "files": 7,
+    "exit": 0
+  },
+  "bindings": {
+    "src/hub/http/deps.ts": "b2dcb4492f95aab74e812053df44fb3fc0f52d8e2c7f6dc721bc715b33b5a29b",
+    "src/hub/rooms/types.ts": "61410073db82d07bdb01ffd881cee33aa5e83872ed262dddb79865aaa15b60dc",
+    "tests/hub-room-admin-r3.test.ts": "d8d471e97ee6ee88e9115bca27c46d3d47d290d34f82f5e648017ba1a977cfa3",
+    "tests/hub-room-assistant-r3.test.ts": "83d74e044f09a520316b773206d48ca1fb4bb57e99eabe7af2ddbeb066b6aa59",
+    "src/hub/http/compose.ts": "f69d76f77d2ff7527acf2f2f1b674583fedda7cd3fdc433bb3918e29a5a80e9a",
+    "src/hub/compose/server.ts": "26bc9fe524f9e40e405ea6e49d1041255f98d7fd5e9169fe00f1de911956f7b7",
+    "src/hub/compose/member.ts": "cca7ea85c2288b67a7c7b6292625ebd4ca11682be5fca105ac1293972b35035a",
+    "src/hub/member/room-ask.ts": "36d930616bb9fdd6dc35c726271bf5a406270699127e0ab96ffc01a512c4b581",
+    "src/hub/assistant/service.ts": "f08f8287bf02920615c7ac05d00d5be672c7bdceb9e76cd8eb21700340a345e6",
+    "src/hub/assistant/admin-types.ts": "fc049659a590b2dae72aafc3f3323545719ca4e07fc0b4293e3ef5631d8a4133",
+    "src/hub/assistant/types.ts": "e14e93cd73f8e071803644120be73811022cd5442687713a2a1c572d19d1f4ec",
+    "src/fleet-manager.ts": "62a4b606e6b4b12b2e7aba9ca460afcb8d532ef0bf2315a9ed06ce081f387a3f",
+    "src/ui/panel-hub.js": "df63ef67841a442e752a9c201945abde074f42e0037e5e6baa00a4c6992a7c98",
+    "src/ui/shared/hub-chat.css": "1653b8f3db9c76a451762a9b2c486708e820bf0091fb7b30d85d0046d73d1858",
+    "src/ui/hub-room-unread.js": "5f134b23c9c0938d999cd82bb4ac06c535a14082f11b198847d77f59a80ebe05",
+    "tests/hub-shared-modules-a.test.ts": "c7a9771b2ae9227ed3cff06a238f0001ffd9f728135ef05c616a03a9c642d4af",
+    "tests/hub-room-assistant-admin.test.ts": "5c15c9e010d7cdce4ca83e80817feb7eec3b96884aec1c38a15100869ac5a8d8",
+    "tests/hub-room-assistant-integration-r3.test.ts": "5dadcf4c1f6641ee9cdd4f0ead2a2786c3ff41a30f40bd28d3b6045fdb9ce8ad",
+    "tests/hub-room-rc-integration-r3.test.ts": "66d01cdecf39200501609e115cd7fb9b147db5682e0df06489628948f5b3a1f7",
+    "tests/hub-room-unread.test.ts": "ca69e98c00cd37d166b7fed8c413556009c7ae2afba8651edeaab848b7d1cf5b"
+  },
+  "resolutionMerge": "a22ef80ea0fe92e7bece4f857b989bbc77714688",
+  "canonicalTypeFollowup": "a798188811a66bd25970ada149aca8e83188eb69",
+  "historicalOwnBrowserSource": "500ee6d50130894cae39121ea556414a2864d4bb",
+  "historicalOwnBrowserPacket": "docs/evidence/hub-rooms-integration-r3/r6-six-answers",
+  "limits": "No new browser, CLI, account, AD or live Fleet execution. Teams still have only the uncomposed reader interfaces; no full S142 acceptance.",
+  "nativePrograms": {
+    "source": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exit": 0
+    },
+    "test": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  }
+}
