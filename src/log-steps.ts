@@ -14,7 +14,7 @@ import { parseClaudeModelRecord, type ModelSwitch } from "./claude-model-observa
  * Nothing here reads a file except `readTailRecords` (bounded, async, for an on-demand backfill).
  */
 import { open, stat } from "node:fs/promises";
-import { LINE_MAX_BYTES, LONG_HEAD_BYTES, lastLineBoundary, type LongLine } from "./transcript-jsonl.js";
+import { LINE_MAX_BYTES, LONG_HEAD_BYTES, type LongLine } from "./transcript-jsonl.js";
 import { redactSecrets } from "./tool-progress.js";
 
 export type StepKind = "user" | "assistant" | "tool" | "error" | "turn_end" | "state";
@@ -751,17 +751,31 @@ export interface TailRecord { record: string | LongLine; at: number }
 export async function readTailRecords(path: string, opts: { maxBytes?: number; maxLines?: number; end?: number } = {}): Promise<{ records: TailRecord[]; truncated: boolean; end: number }> {
   const maxBytes = Math.max(1, opts.maxBytes ?? BACKFILL_MAX_BYTES);
   const maxLines = Math.max(1, opts.maxLines ?? 2000);
-  // `end`: read the records before this offset (a record start, from an earlier read: a line boundary) — older ones.
-  const end = opts.end !== undefined ? Math.min(opts.end, await lastLineBoundary(path)) : await lastLineBoundary(path);
   const out: TailRecord[] = [];
-  if (end === 0) return { records: out, truncated: false, end };
   const KEEP = LINE_MAX_BYTES + LONG_HEAD_BYTES;
   const fh = await open(path, "r");
   try {
+    // Honor the captured cursor before touching the file. Boundary discovery and payload reads share
+    // maxBytes, so a later unfinished record cannot turn a bounded startup tail into an EOF scan.
+    const size = (await fh.stat()).size;
+    let boundary = Math.max(0, Math.min(opts.end ?? size, size)), end = 0, read = 0;
+    while (boundary > 0 && read < maxBytes) {
+      // The usual cursor already ends just after LF; one byte verifies it without rereading its whole chunk.
+      const length = Math.min(read === 0 ? 1 : BACKFILL_CHUNK, boundary, maxBytes - read);
+      const start = boundary - length, buf = Buffer.alloc(length);
+      for (let filled = 0; filled < length;) {
+        const { bytesRead } = await fh.read(buf, filled, length - filled, start + filled);
+        if (bytesRead <= 0) throw new Error(`readTailRecords: no progress reading ${path} at ${start + filled}`);
+        filled += bytesRead; read += bytesRead;
+      }
+      const lf = buf.lastIndexOf(0x0a);
+      if (lf >= 0) { end = start + lf + 1; break; }
+      boundary = start;
+    }
+    if (end === 0) return { records: out, truncated: boundary > 0, end };
     let pos = end - 1;                 // the last record's line end (excluded); records lie between line ends
     let recEnd = end - 1;              // where the record being assembled ends (its line end)
     let acc: Buffer = Buffer.alloc(0); // its bytes after the current chunk: its first KEEP bytes at most
-    let read = 0;
     const emit = (bytes: Buffer, total: number, at: number) => { if (total > 0) out.push({ record: toRecord(bytes, total, at), at }); };
     while (pos > 0 && read < maxBytes && out.length < maxLines) {
       const length = Math.min(BACKFILL_CHUNK, pos, maxBytes - read);
