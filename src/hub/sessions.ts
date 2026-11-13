@@ -79,7 +79,7 @@ export class HubSessions {
     if (this.signingIn >= SIGNIN_INFLIGHT) throw new HubProtocolError("backpressure");
     this.signingIn++;
     let result;
-    try { result = await this.core.deps.directory.signIn(label, password); } finally { this.signingIn--; }
+    try { result = await this.core.directoryLogin(label, () => this.core.deps.directory.signIn(label, password)); } finally { this.signingIn--; }
     this.core.atomic(() => undefined); // held old-directory results cannot mint a new-epoch session
     if (!result.ok) {
       if (result.reason === "unavailable") throw new HubProtocolError("unavailable");

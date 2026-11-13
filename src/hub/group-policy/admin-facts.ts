@@ -9,6 +9,7 @@ export async function readHubGroupImpactFacts(options: {
   directory: HubDirectory; people: readonly { readonly key: PersonKey }[]; now(): number;
   /** Do not start another LDAP request after this bounded preparation budget. Unobserved people stay explicitly HELD. */
   deadline: number; assertCurrent(): void;
+  withDirectoryRead?<T>(work: () => Promise<T>): Promise<T>;
 }) {
   const keys = options.people.map(p => validated(person, p.key)), facts = new Map<string, PolicyGroupFacts>();
   const { directory, now, deadline, assertCurrent } = options;
@@ -17,7 +18,8 @@ export async function readHubGroupImpactFacts(options: {
     const started = now();
     if (started < deadline && directory.groupPolicy === "ad-direct-guid" && directory.realm === who.realm && directory.readPolicyGroups) {
       try {
-        const observed = await directory.readPolicyGroups(Object.freeze({ ...who })), finished = now();
+        const read = () => directory.readPolicyGroups!(Object.freeze({ ...who }));
+        const observed = await (options.withDirectoryRead ? options.withDirectoryRead(read) : read()), finished = now();
         // Copy the entire validated result before any subsequent await; typed driver output is still not an allow cache.
         if (observed.kind !== "unknown" && personKeyString(validated(person, observed.person)) === personKeyString(who)
           && Number.isSafeInteger(observed.observedAt) && observed.observedAt >= started && observed.observedAt <= finished) {

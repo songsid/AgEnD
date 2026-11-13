@@ -917,6 +917,50 @@ describe.skipIf(process.platform === "win32")("directory decision joins the moun
       expect(r.eligibility).toBe(1);
     } finally { release(); await r.runtime.close(); }
   });
+  it("mounted HTTP and pairing eligibility share the proof-source admission owner", async () => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const signed = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+    const mounted = r.runtime.directorySettings()!, pending = Array.from({ length: 4 }, () => mounted.withDirectoryRead(ADMIN.key, () => held));
+    const before = r.eligibility, actor = { kind: "directory" as const, person: ADMIN.key, sessionId: "owned-test-session" };
+    try {
+      const response = await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/admin/enrolment-codes");
+      expect(response).toMatchObject({ status: 429, json: { code: "backpressure" } });
+      await expect(r.deps.pairing.create({ requestId: randomUUID(), current: async () => actor,
+        isCurrent: () => true, requirePerson: async () => ADMIN.key, requireAdmin: async () => actor }, ADMIN.key))
+        .rejects.toMatchObject({ code: "backpressure" });
+      expect(r.eligibility).toBe(before);
+      release(); await Promise.all(pending);
+      expect((await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/admin/enrolment-codes")).status).toBe(200);
+    } finally { release(); await Promise.allSettled(pending); await r.runtime.close(); }
+  });
+  it("mounted sign-in shares the total physical directory admission bound", async () => {
+    const r = await directoryRuntimeRig(), release: (() => void)[] = [];
+    const read = r.deps.directoryReads!, signIn = vi.spyOn(r.deps.directory, "signIn");
+    const pending = Array.from({ length: 32 }, (_, i) => read.withDirectoryRead({ realm: "corp",
+      objectId: `${String(i).padStart(8, "0")}-1111-4111-8111-111111111111` }, () => new Promise<void>(resolve => release.push(resolve))));
+    try {
+      const response = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      expect(response).toMatchObject({ status: 429, json: { code: "backpressure" } }); expect(signIn).not.toHaveBeenCalled();
+      release.forEach(resolve => resolve()); await Promise.all(pending);
+      expect((await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" })).status).toBe(200);
+      expect(signIn).toHaveBeenCalledOnce();
+    } finally { release.forEach(resolve => resolve()); await Promise.allSettled(pending); signIn.mockRestore(); await r.runtime.close(); }
+  });
+  it("mounted teardown drains admitted physical work before closing its directory client", async () => {
+    const r = await directoryRuntimeRig(); let release!: () => void, entered!: () => void;
+    const physical = new Promise<void>(resolve => { release = resolve; }), draining = new Promise<void>(resolve => { entered = resolve; });
+    const owner = r.deps.directoryReads! as NonNullable<HubHttpDeps["directoryReads"]> & { drain(): Promise<void> };
+    const originalDrain = owner.drain.bind(owner), drain = vi.spyOn(owner, "drain").mockImplementation(() => { entered(); return originalDrain(); });
+    const close = vi.spyOn(r.deps.directory, "close"), read = owner.withDirectoryRead(ADMIN.key, () => physical);
+    let stopped = false; const stopping = r.runtime.close().then(() => { stopped = true; });
+    try {
+      expect(await Promise.race([draining.then(() => "draining"), stopping.then(() => "stopped")])).toBe("draining");
+      expect(stopped).toBe(false); expect(close).not.toHaveBeenCalled();
+      await expect(owner.withDirectoryRead(ADMIN.key, async () => true)).rejects.toThrow("unavailable");
+      release(); await read; await stopping; expect(close).toHaveBeenCalledOnce(); expect(stopped).toBe(true);
+    } finally { release(); await Promise.allSettled([read, stopping]); drain.mockRestore(); close.mockRestore(); await r.runtime.close(); }
+  });
   it("rechecks material after a held HTTP import before constructing a directory client", async () => {
     const r = await directoryRuntimeRig();
     try {

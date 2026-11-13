@@ -30,6 +30,7 @@ export class HubPairingNotices {
   private idleSweep: MapIterator<[string, HubLinkContext]> | undefined;
   constructor(private readonly options: {
     db: Database.Database; store: HubTransportStore; administrator: PersonKey; directory: HubDirectory;
+    directoryReads?: Pick<import("./directory/admission.js").HubDirectoryReads, "withDirectoryRead">;
     audit: Pick<HubAuditStore, "appendInTransaction">; current(): boolean;
     transport(): Pick<HubServerTransport, "send"> | null; now?: () => number;
   }) {}
@@ -134,7 +135,8 @@ export class HubPairingNotices {
         WHERE t.kind='fleet' AND t.target=? AND t.state<>'delivered' AND (json_extract(n.body,'$.source')='group' OR (?=1 AND json_extract(n.body,'$.source')='manual') OR (?=1 AND json_extract(n.body,'$.source')='code')) ORDER BY n.rowid LIMIT 100`).all(link.fleetId, Number(link.features.has("pairing-notices-v2")), Number(link.features.has("pairing-notices-v3"))) as NoticeRow[];
       const due = rows.filter(row => { const at = this.sentAt.get(`${link.fleetId}/${row.id}/${link.linkEpoch}`); return at === undefined || this.now() - at >= 5000; });
       if (!due.length) return; // No directory polling for an empty or not-yet-due queue.
-      const eligible = await this.options.directory.checkEligibility(link.owner);
+      const read = () => this.options.directory.checkEligibility(link.owner);
+      const eligible = await (this.options.directoryReads ? this.options.directoryReads.withDirectoryRead(link.owner, read) : read());
       this.check(); if (!link.current() || !eligible.eligible || personKeyString(eligible.person.key) !== personKeyString(link.owner)) return;
       const fleet = this.options.store.read().fleets.find(f => f.id === link.fleetId);
       if (!fleet || fleet.status !== "active" || !fleet.credentialHash || personKeyString(fleet.owner) !== personKeyString(link.owner)) return;
