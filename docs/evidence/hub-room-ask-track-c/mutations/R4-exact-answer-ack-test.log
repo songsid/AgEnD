@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (38 tests | 1 failed) 190ms
+     × freezes an answer before send, retries the exact bytes until the matching ACK, and never re-executes 12ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > freezes an answer before send, retries the exact bytes until the matching ACK, and never re-executes
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-room-ask-track-c.test.ts:91:99
+     89|     expect(first.answerId).toMatch(/^[a-f0-9-]{36}$/);
+     90|     await f.adapter.flush(); expect(f.sent).toEqual([first, first]);
+     91|     expect(f.adapter.acknowledge({ messageId: first.messageId, answerI…
+       |                                                                                                   ^
+     92|     expect(f.adapter.acknowledge(first, f.link)).toBe(true); await f.a…
+     93|     expect(await f.report()).toMatchObject({ ok: true }); expect(f.sen…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 37 passed (38)
+   Start at  00:57:15
+   Duration  741ms (transform 246ms, setup 110ms, import 278ms, tests 190ms, environment 0ms)
+

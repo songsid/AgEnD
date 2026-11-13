@@ -301,12 +301,17 @@ function readRuntimeAttemptReference(text: string | null, evidence: RuntimeAttem
  * The exact statement `needsAttention` runs; exported so the plan test checks this text and no copy of it. A silent
  * schedule's raw paste is never an item (#1647): nobody can act on it, the next run goes ahead anyway, and the fleet's
  * notice to the leader (with the cause) is its whole report. Every human-originated row stays.
+ *
+ * M-3098 (user decision 11-14): Needs you lists only delivery problems a person must act on. AgEnD's own notices
+ * (source `agend-system`: reply reminders, delivery-outcome and quota notices) and broadcasts (information sent to
+ * many, nothing to answer) are left out; the agent-to-agent and human messages stay, failed or unconfirmed.
  */
 export const NEEDS_ATTENTION_SQL = `
   SELECT delivery_id, state, source_instance, target_instance, kind, finished_at, last_error
   FROM deliveries INDEXED BY idx_delivery_attention
   WHERE state IN ('uncertain','failed') AND acknowledged_at IS NULL AND finished_at >= ?
     AND NOT (kind = 'raw_paste' AND source_key LIKE 'schedule:%')
+    AND source_instance <> 'agend-system' AND kind <> 'broadcast'
   ORDER BY finished_at DESC LIMIT ?`;
 
 /** A silent schedule's raw paste (fleet-manager admits it as `raw_paste` under a `schedule:` source key). */

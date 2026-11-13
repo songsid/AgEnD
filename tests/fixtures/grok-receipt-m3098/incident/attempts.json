@@ -1,0 +1,15 @@
+{
+  "note": "Host delivery-outbox rows, 2026-11-13 (UTC), AgEnD 2.4.0-alpha.3, grok 1.0.70 on PATH. Five idle_submit deliveries to the Grok dev instance; ids are real, content is not kept.",
+  "grok": [
+    { "delivery": "15e40695-e711-47e6-a70e-ca4f19c81153", "accepted": "16:24:33.675Z", "begin": "16:32:02.811Z", "enter": "16:32:03.403Z", "finished": "16:32:11.677Z", "evidence": "post-submit-proof:unproven", "lines": 3, "recordedEpoch": 1794587523 },
+    { "delivery": "f2bc2ba4-2397-42e4-be55-74215672ac6a", "begin": "16:38:24.834Z", "enter": "16:38:25.357Z", "finished": "16:38:33.412Z", "evidence": "post-submit-proof:unproven", "lines": 3, "recordedEpoch": 1794587905 },
+    { "delivery": "8ba64009-1d0e-439f-aab1-29397c877a51", "begin": "16:39:10.859Z", "enter": "16:39:11.391Z", "finished": "16:39:19.507Z", "evidence": "post-submit-proof:unproven", "lines": 3, "recordedEpoch": 1794587951 },
+    { "delivery": "f3037cdb-be08-4ba4-84fa-d38334dd381a", "begin": "16:39:55.340Z", "enter": "16:39:55.875Z", "finished": "16:40:03.966Z", "evidence": "post-submit-proof:unproven", "lines": 3, "recordedEpoch": 1794587996 },
+    { "delivery": "b2475c15-c6f5-42d9-981f-b0e43ad6a854", "begin": "16:41:08.399Z", "enter": "16:41:08.937Z", "finished": "16:41:17.031Z", "evidence": "post-submit-proof:unproven", "lines": 3, "recordedEpoch": 1794588069 }
+  ],
+  "grokProvenSameHour": "The 11 other idle_submit deliveries 16:02-16:47Z were 'positive submission proof' within 0.6 s. Every one had 5+ lines, so grok collapsed the paste, and its preview card, still on screen, showed the message_id.",
+  "claude": [
+    { "delivery": "e891def6-10d6-4386-9612-f495c83e7508", "kind": "reply_obligation_notice", "source": "agend-system", "evidence": "post-submit-proof:unproven", "outcome": "arrived" },
+    { "delivery": "d8a76362-5bcf-4dab-bf82-8b9ea5c59d64", "kind": "broadcast", "source": "leader", "evidence": "post-submit-proof:unproven", "outcome": "not in the target's transcript (lost)" }
+  ]
+}

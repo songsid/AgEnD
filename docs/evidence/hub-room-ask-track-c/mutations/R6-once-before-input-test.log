@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (38 tests | 1 failed) 1119ms
+     × cannot start two inputs when beforeInput is invoked twice, and report during delivery cannot be overwritten 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > cannot start two inputs when beforeInput is invoked twice, and report during delivery cannot be overwritten
+AssertionError: expected { state: 'held' } to deeply equal { state: 'acked' }
+
+- Expected
++ Received
+
+  {
+-   "state": "acked",
++   "state": "held",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:192:127
+    190|       expect(f.adapter.acknowledge(f.sent[0]!, f.link)).toBe(true); re…
+    191|     };
+    192|     f.adapter.accept(f.ask, f.link); await f.adapter.settled(); expect…
+       |                                                                                                                               ^
+    193|   });
+    194|   it("holds answers after local consent changes, and ignores later old…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 37 passed (38)
+   Start at  00:57:28
+   Duration  1.74s (transform 273ms, setup 120ms, import 322ms, tests 1.12s, environment 0ms)
+

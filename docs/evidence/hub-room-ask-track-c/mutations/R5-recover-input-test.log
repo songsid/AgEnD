@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (38 tests | 1 failed) 182ms
+     × recovers an actual persisted first-input intent as held while its old handoff result is still missing 16ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > recovers an actual persisted first-input intent as held while its old handoff result is still missing
+AssertionError: expected { state: 'queued' } to deeply equal { state: 'held' }
+
+- Expected
++ Received
+
+  {
+-   "state": "held",
++   "state": "queued",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:165:69
+    163|     const reopened = new HubRoomAskAdapter(f.options);
+    164|     try {
+    165|       expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).to…
+       |                                                                     ^
+    166|       reopened.connected(f.link); reopened.accept(f.ask, f.link); awai…
+    167|       expect(f.options.deliver).toHaveBeenCalledTimes(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 37 passed (38)
+   Start at  00:57:22
+   Duration  763ms (transform 273ms, setup 121ms, import 300ms, tests 182ms, environment 0ms)
+

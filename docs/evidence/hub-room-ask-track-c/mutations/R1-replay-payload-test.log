@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (38 tests | 1 failed) 162ms
+     × delivers into the owner's existing agent and preserves the per-agent message identity on replay 21ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > delivers into the owner's existing agent and preserves the per-agent message identity on replay
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-ask-track-c.test.ts:83:77
+     81|     expect(f.adapter.accept(structuredClone(f.ask), f.link)).toBe("dup…
+     82|     expect(f.inputs).toHaveLength(1);
+     83|     expect(() => f.adapter.accept({ ...f.ask, text: "different" }, f.l…
+       |                                                                             ^
+     84|   });
+     85|   it("freezes an answer before send, retries the exact bytes until the…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 37 passed (38)
+   Start at  00:56:53
+   Duration  888ms (transform 323ms, setup 120ms, import 371ms, tests 162ms, environment 0ms)
+

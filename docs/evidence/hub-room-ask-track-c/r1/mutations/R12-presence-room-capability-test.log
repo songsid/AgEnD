@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 1 failed) 223ms
+     × does not read or export presence when the current link negotiated only welcome-caps-v1 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C current-link agent.state publisher > does not read or export presence when the current link negotiated only welcome-caps-v1
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "owner-agent",
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/hub-room-ask-track-c.test.ts:308:45
+    306|   it("does not read or export presence when the current link negotiate…
+    307|     const f = publisher(); (f.link.features as Set<string>).delete("ro…
+    308|     await f.p.refresh(); expect(f.read).not.toHaveBeenCalled(); expect…
+       |                                             ^
+    309|     (f.link.features as Set<string>).add("room-ask-v1"); await f.p.ref…
+    310|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 45 passed (46)
+   Start at  01:14:00
+   Duration  744ms (transform 228ms, setup 100ms, import 265ms, tests 223ms, environment 0ms)
+

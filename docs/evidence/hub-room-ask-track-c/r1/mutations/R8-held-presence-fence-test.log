@@ -1,0 +1,41 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 1 failed) 136ms
+     × does not publish on an old or unnegotiated link or wait behind an old link's held read 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C current-link agent.state publisher > does not publish on an old or unnegotiated link or wait behind an old link's held read
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      Object {
+        "exposureId": "29619485-2de0-4caa-96b5-694a4ed45195",
+        "state": "working",
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/hub-room-ask-track-c.test.ts:297:105
+    295|     const old = f.p.refresh(), next = { ...f.link, sendState: vi.fn(as…
+    296|     f.p.connected(next); await f.p.refresh(); expect(next.sendState).t…
+    297|     hold.resolve({ process: "running", execution: "working" }); await …
+       |                                                                                                         ^
+    298|     f.p.connected({ ...next, features: new Set() }); await f.p.refresh…
+    299|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 45 passed (46)
+   Start at  01:13:38
+   Duration  640ms (transform 214ms, setup 91ms, import 249ms, tests 136ms, environment 0ms)
+

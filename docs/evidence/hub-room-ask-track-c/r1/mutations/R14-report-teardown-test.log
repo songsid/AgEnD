@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 1 failed) 198ms
+     × keeps a frozen answer saved without reading the closed database after a held send settles 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > keeps a frozen answer saved without reading the closed database after a held send settles
+AssertionError: promise rejected "TypeError: The database connection is not…" instead of resolving
+ ❯ tests/hub-room-ask-track-c.test.ts:267:25
+    265|     vi.mocked(f.link.sendAnswer).mockImplementation(async () => { send…
+    266|     const report = f.report(); await sending.promise; f.adapter.close(…
+    267|     await expect(report).resolves.toMatchObject({ ok: true, message: e…
+       |                         ^
+    268|   });
+    269| });
+
+Caused by: TypeError: The database connection is not open
+ ❯ Database.prepare ../../node_modules/better-sqlite3/lib/methods/wrappers.js:5:21
+ ❯ HubRoomAskAdapter.row src/hub/member/room-ask.ts:90:69
+ ❯ src/hub/member/room-ask.ts:222:55
+ ❯ tests/hub-room-ask-track-c.test.ts:267:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 45 passed (46)
+   Start at  01:14:13
+   Duration  881ms (transform 288ms, setup 119ms, import 352ms, tests 198ms, environment 0ms)
+
