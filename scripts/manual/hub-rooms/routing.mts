@@ -14,11 +14,14 @@ import { HubRoomAskAdapter, migrateRoomAsks, createRoomStatePublisher, type Room
 import type { HubRepresentativeDelivery } from "../../../src/hub/representative.js";
 import type { HubMemberLink } from "../../../src/hub/client.js";
 import { HubGroupRooms } from "../../../src/hub/rooms/service.js";
+import { personKeyString } from "../../../src/hub/identity.js";
 
 const out = resolve(process.env.OUT ?? ".artifacts/rooms-integration/routing/browser"); mkdirSync(out, { recursive: true });
+const answerAgents = Number(process.env.ANSWER_AGENTS ?? (process.env.EXTRA_ANSWERS === "1" ? 4 : 2));
+if (![2, 4, 6].includes(answerAgents)) throw Error("ANSWER_AGENTS must be 2, 4 or 6");
 const sha = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
 const receipt: any = { sourceHead: execFileSync("git", ["-c", "gc.auto=0", "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
-  scope: `Actual R HTTP/SQLite and HubServer/HubMemberClient TLS/WSS, C durable adapter/state publisher, shared U1/U2 browser UI. ${process.env.EXTRA_ANSWERS === "1" ? "Four" : "Two"} owned Fleet fixtures; inert directory and physical input/report hook. Captured bridge composes the two existing test rigs, not a complete FleetManager mount. No Team provider, external service, real agent, account or vendor API.`,
+  scope: `Actual R HTTP/SQLite and HubServer/HubMemberClient TLS/WSS, C durable adapter/state publisher, shared U1/U2 browser UI. ${answerAgents} owned Fleet fixtures; inert directory and physical input/report hook. Captured bridge composes the two existing test rigs, not a complete FleetManager mount. No Team provider, external service, real agent, account or vendor API.`,
   checks: [], pictures: [], requests: [], served: {}, wire: [], events: [], streams: [], eventFailures: [] };
 const originalEvent = HubGroupRooms.prototype.event;
 HubGroupRooms.prototype.event = async function (...args) {
@@ -26,8 +29,8 @@ HubGroupRooms.prototype.event = async function (...args) {
   catch (error: any) { receipt.eventFailures.push({ at: Date.now(), type: args[1].type, roomId: args[1].roomId, code: error.code, message: error.message, stack: error.stack }); throw error; }
 };
 const check = (name: string, value: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!value, ...(value ? {} : { detail }) }); console.log(`${value ? "PASS" : "FAIL"} ${name}`); };
-const until = async (test: () => unknown | Promise<unknown>, label: string) => {
-  const end = Date.now() + 8_000; while (Date.now() < end) { if (await test()) return; await new Promise(r => setTimeout(r, 25)); } throw Error("Timed out: " + label);
+const until = async (test: () => unknown | Promise<unknown>, label: string, budget = 8_000) => {
+  const end = Date.now() + budget; while (Date.now() < end) { if (await test()) return; await new Promise(r => setTimeout(r, 25)); } throw Error("Timed out: " + label);
 };
 const caps = [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY], net = await hubRig({ serverCapabilities: caps });
 let web: Awaited<ReturnType<typeof s3bRig>> | undefined, browser: any, activePage: any, activeTag = "setup";
@@ -85,7 +88,9 @@ try {
     }; peers.push(value); await connect(); return value;
   }
   const notes = await peer("Notes"), planner = await peer("Planner");
-  const extras = process.env.EXTRA_ANSWERS === "1" ? [await peer("Writer"), await peer("Reviewer")] : [];
+  const extras = [];
+  for (const name of ["Writer", "Reviewer", "Researcher", "project-helper"].slice(0, answerAgents - 2)) extras.push(await peer(name));
+  const sam = extras.length ? web.addPerson("sam", "Sam") : null, colleague = sam ? await web.signIn("sam") : null;
   const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core"); browser = await pw.chromium.launch({ args: ["--no-sandbox"] });
   const layouts = [["desktop", "en", "light"], ["phone", "zh-TW", "dark"]].filter(([device]) => !process.env.DEVICES || process.env.DEVICES.split(",").includes(device));
   if (!layouts.length) throw Error("DEVICES must select desktop or phone");
@@ -187,28 +192,45 @@ try {
     check(tag + " idle event clears prior quota reason", !restored.json.members.find((m: any) => m.id === notes.exposureId)?.presenceReason && !(await row("Notes").locator(".hub-member-state").innerText()).includes(lang === "en" ? "Out of quota" : "額度用完")); await shot("presence-restored");
     if (extras.length) {
       const batch = [notes, planner, ...extras], counts = batch.map(p => p.inputs.length);
-      const created = await web.call(admin, "POST", "/hub/v1/rooms", { name: "Answer references " + device, agents: batch.map(p => p.exposureId) });
-      if (created.status !== 200) throw Error("four-agent room: " + created.text);
-      const batchRoom = created.json.room.id, batchQuestion = mentionAll + " Compare four answers " + device;
+      const created = await web.call(admin, "POST", "/hub/v1/rooms", { name: "Answer references " + device, agents: batch.map(p => p.exposureId), people: [personKeyString(sam!)] });
+      if (created.status !== 200) throw Error("multi-agent room: " + created.text);
+      const batchRoom = created.json.room.id, batchQuestion = mentionAll + " Compare " + batch.length + " answers " + device;
       await page.goto(origin + "/ui/hub?room=" + batchRoom); await page.locator(".hub-room-composer textarea").waitFor();
       await page.locator(".hub-room-page .thread .msg.status-line").first().waitFor();
-      await send(batchQuestion); await until(() => batch.every((p, i) => p.inputs.length === counts[i] + 1), "four-agent input");
+      // More than four checks for one owner may wait for the existing 30s capable-link retry.
+      await send(batchQuestion); await until(() => batch.every((p, i) => p.inputs.length === counts[i] + 1), "multi-agent input", 40_000);
       await Promise.all(batch.map(p => p.state({ process: "running", execution: "working" })));
+      const answerText = (i: number) => "Grouped-answer " + (i + 1) + " " + device;
       for (let i = 0; i < batch.length; i++) {
-        await batch[i].answer(batch[i].inputs[counts[i]], "Four-answer " + (i + 1) + " " + device);
+        await batch[i].answer(batch[i].inputs[counts[i]], answerText(i));
         await batch[i].state({ process: "running", execution: "idle" });
         if (i === 1) await send("Human conversation between answers " + device);
+        if (i === 3 || i === 4) {
+          await page.getByText(answerText(i), { exact: true }).waitFor();
+          check(tag + " all " + (i + 1) + " answers remain unfolded", await page.locator(".msg.agent:visible").filter({ hasText: "Grouped-answer" }).count() === i + 1 && await page.locator(".st-action").count() === 0);
+          await shot(i === 3 ? "four-answers-visible" : "five-answers-visible");
+        }
       }
-      await until(async () => (await web!.call(admin, "GET", `/hub/v1/rooms/${batchRoom}/messages`)).json.messages.filter((m: any) => m.stage === "answered").length === 4, "four answers committed");
-      const expand = page.getByRole("button", { name: lang === "en" ? "Show the other 1" : "展開其餘 1 則", exact: true }); await expand.waitFor();
-      check(tag + " fourth answer starts collapsed", await page.locator(".msg.agent:visible").filter({ hasText: "Four-answer" }).count() === 3); await shot("four-answers-collapsed");
-      await expand.click(); await page.getByText("Four-answer 4 " + device, { exact: true }).waitFor();
-      const answerRows = page.locator(".msg.agent:visible").filter({ hasText: "Four-answer" });
-      check(tag + " expanding shows all four answers", await answerRows.count() === 4);
+      await until(async () => (await web!.call(admin, "GET", `/hub/v1/rooms/${batchRoom}/messages`)).json.messages.filter((m: any) => m.stage === "answered").length === batch.length, "all grouped answers committed");
+      if (batch.length >= 6) {
+        const expand = page.getByRole("button", { name: lang === "en" ? "Show " + (batch.length - 3) + " more" : "展開其餘 " + (batch.length - 3) + " 則", exact: true }); await expand.waitFor();
+        check(tag + " six answers show three before expansion", await page.locator(".msg.agent:visible").filter({ hasText: "Grouped-answer" }).count() === 3);
+        check(tag + " expand link follows the third shown answer", await expand.evaluate((el: HTMLElement) => el.closest(".status-line")?.previousElementSibling?.textContent?.includes("Grouped-answer 3")));
+        await shot("six-answers-collapsed"); await expand.click(); await page.getByText(answerText(batch.length - 1), { exact: true }).waitFor();
+      }
+      const answerRows = page.locator(".msg.agent:visible").filter({ hasText: "Grouped-answer" });
+      check(tag + " expanding shows all grouped answers", await answerRows.count() === batch.length);
       check(tag + " interleaved answers all quote the original question", (await answerRows.locator(".msg-quote .quote-text").allTextContents()).every((text: string) => text.includes(batchQuestion)));
-      await shot("four-answers-expanded");
-      const groupedEvents = await page.evaluate(() => (window as any).__roomEvents); receipt.events.push({ device, phase: "four-answers", events: groupedEvents });
-      check(tag + " four-answer SSE retains original question progress", groupedEvents.some((e: any) => e.type === "message.updated" && e.data.parent?.ask?.answered === 4));
+      await shot("six-answers-expanded");
+      const mentionAgent = batch.at(-1)!, mentionedBefore = mentionAgent.inputs.length, otherText = "@" + mentionAgent.name + " Another person's mention " + device;
+      const other = await web.call(colleague!, "POST", `/hub/v1/rooms/${batchRoom}/messages`, { text: otherText, mentions: [mentionAgent.exposureId], idempotencyKey: randomUUID() });
+      check(tag + " colleague's @agent post succeeds", other.status === 200);
+      const otherBubble = page.locator(".msg").filter({ has: page.locator(".md", { hasText: otherText }) }); await otherBubble.waitFor();
+      check(tag + " colleague's member mention is accented after members load", (await otherBubble.locator(".mention").allTextContents()).includes("@" + mentionAgent.name) && (await otherBubble.locator(".sender").innerText()) === "Sam");
+      await until(() => mentionAgent.inputs.length === mentionedBefore + 1, "colleague agent input");
+      await mentionAgent.answer(mentionAgent.inputs[mentionedBefore], "Reply to Sam " + device); await page.getByText("Reply to Sam " + device, { exact: true }).waitFor(); await shot("member-mention");
+      const groupedEvents = await page.evaluate(() => (window as any).__roomEvents); receipt.events.push({ device, phase: "grouped-answers", events: groupedEvents });
+      check(tag + " grouped-answer SSE retains original question progress", groupedEvents.some((e: any) => e.type === "message.updated" && e.data.parent?.ask?.answered === batch.length));
     }
     check(tag + " no browser error", errors.length === 0, errors);
     check(tag + " no horizontal document overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
@@ -224,7 +246,14 @@ try {
 }
 finally {
   HubGroupRooms.prototype.event = originalEvent;
-  writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2));
+  // Evidence-only aliases: these UUIDs are message identities, not secrets. Preserve the wire field name in metadata,
+  // and keep asset paths separate from their digests, so token.css's public hash is not mistaken for a credential.
+  const labelIds = (value: any): any => Array.isArray(value) ? value.map(labelIds) : value && typeof value === "object"
+    ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key === "idempotencyKey" ? "idempotencyId" : key, labelIds(entry)])) : value;
+  const { served, ...data } = receipt;
+  const encoded = { ...data, evidenceFormat: { version: 2, fieldAliases: { idempotencyId: "idempotencyKey" }, assetDigests: "servedAssets entries pair path with sha256" },
+    servedAssets: Object.entries(served).map(([path, sha256]) => ({ path, sha256 })) };
+  writeFileSync(join(out, "receipt.json"), JSON.stringify(labelIds(encoded), null, 2));
   await browser?.close(); for (const p of peers) { p.publisher.close(); await p.adapter.close(); }
   await web?.close(); await new Promise<void>(yes => server.close(() => yes())); await net.close(); for (const p of peers) p.db.close();
 }
