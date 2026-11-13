@@ -497,7 +497,8 @@ function HubChats() {
   const listed = id ? rs.rooms.find((r) => r.id === id) : null;
   const room = id ? (listed ? listed.legacy || listed : rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
   // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
-  if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()} meId=${s?.personId || ""} />`;
+  if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()}
+    rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />

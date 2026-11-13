@@ -104,6 +104,18 @@ describe("a room on the page", () => {
       st.stop();
     } finally { restore(); }
   });
+  it("the members panel's 「在這裡 @ 它」 puts the mention into the box, after what is there", async () => {
+    const fx = createHubRoomsFixture(), detail = { ok: true, ...(await (await fx.fetch("/hub/v1/rooms/room-weekly")).json()) };
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
+    const insert: { current: any } = { current: null };
+    await pg.mount(h(composer.RoomComposer, { store: { send: async () => ({ ok: true }) }, detail, insertRef: insert })); await settle(5);
+    const box = pg.root.querySelector("#msgIn") as any;
+    box.value = "Thanks"; fire(box, "input"); await settle(5);
+    insert.current("@project-helper"); await settle(5);
+    expect(box.value).toBe("Thanks @project-helper ");
+    insert.current("@test-runner"); await settle(5);
+    expect(box.value).toBe("Thanks @project-helper @test-runner ");
+  });
   it("an archived room: the box says so, nothing to send", async () => {
     const { pg, restore } = await roomPage("room-archived");
     try {

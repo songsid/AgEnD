@@ -63,13 +63,15 @@ export function refusalText(r) {
  * The composer. `store`: the room's (send); `detail`: the room GET; `reply`/`onReply`: the message being answered (the
  * thread's Reply); `closed`: archived or no longer a member (the box says why, nothing is sent).
  */
-export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef }) {
+export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef }) {
   const [value, setValue] = useState(""), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false), [pick, setPick] = useState(0);
   const own = useRef(null), input = inputRef || own;
   const [caret, setCaret] = useState(0);
   const at = mentionAt(value, caret), options = at ? mentionOptions(detail, at.query) : [];
   const palette = at && options.length ? options : null, chosen = palette ? palette[Math.min(pick, palette.length - 1)] : null;
   const room = detail?.room || {}, group = room.kind === "group";
+  // 「在這裡 @ 它」 from the members panel: the mention goes into the box, after what is there.
+  if (insertRef) insertRef.current = (text) => { setValue((v) => `${v && !/\s$/.test(v) ? `${v} ` : v}${text} `); setTimeout(() => input.current?.focus(), 0); };
   const complete = (o) => {
     const next = `${value.slice(0, at.start)}${o.label} ${value.slice(caret)}`;
     setValue(next); setPick(0);
