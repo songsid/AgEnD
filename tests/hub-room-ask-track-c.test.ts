@@ -160,9 +160,12 @@ describe("Track C durable room adapter (injectable Track R seam)", () => {
     f.options.deliver = vi.fn(async input => { expect(await input.beforeInput()).toBe(true); entered.resolve(); return result.promise; });
     f.adapter.accept(f.ask, f.link); await entered.promise;
     expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEqual({ state: "input" }); f.adapter.close();
-    const reopened = new HubRoomAskAdapter(f.options); reopened.connected(f.link); reopened.accept(f.ask, f.link); await reopened.settled();
-    expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEqual({ state: "held" });
-    expect(f.options.deliver).toHaveBeenCalledTimes(1); result.resolve(false); await f.adapter.settled(); reopened.close();
+    const reopened = new HubRoomAskAdapter(f.options);
+    try {
+      expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEqual({ state: "held" });
+      reopened.connected(f.link); reopened.accept(f.ask, f.link); await reopened.settled();
+      expect(f.options.deliver).toHaveBeenCalledTimes(1);
+    } finally { result.resolve(false); await f.adapter.settled(); reopened.close(); }
   });
   it("rejects altered ciphertext, another binding and another key instead of falling back to empty history", async () => {
     const f = member(); f.adapter.accept(f.ask, f.link); await f.adapter.settled(); f.adapter.close();
