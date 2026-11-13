@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createHubManagementAuthority } from "../src/hub/roles/authority.js";
 import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION, type HubDirectoryDecisionRequest } from "../src/hub/settings-directory-decision.js";
 import { createHubRoleAuthorizationClock } from "../src/hub/roles/clock.js";
+import { HUB_DIRECTORY_RECOVERY_MIGRATION } from "../src/hub/settings-directory-recovery-intent.js";
 
 function held() {
   let enter!: () => void, release!: () => void;
@@ -122,13 +123,13 @@ describe("S129 Core owner retirement and preparation consumption", () => {
   });
 });
 async function decisionWorld() {
-  const w = await world(true); HUB_DIRECTORY_SETTINGS_MIGRATION.up(w.db);
+  const w = await world(true); HUB_DIRECTORY_SETTINGS_MIGRATION.up(w.db); HUB_DIRECTORY_RECOVERY_MIGRATION.up(w.db);
   const decision = createHubDirectorySettingsDecision({ db: w.db, transport: w.store, hubId: w.hubId, roleProofs: true });
   const actor = await w.ctx.ctx.current(); if (actor.kind !== "directory") throw Error("fixture actor");
   const image = (v: string) => ({ configDigest: v.repeat(64), configSha: v.repeat(64), directorySha: v.repeat(64), manifestSha: v.repeat(64), bindSecretSha: v.repeat(64) });
   const input: HubDirectoryDecisionRequest = { id: randomUUID(), expected: decision.inspect(), before: image("a"), after: image("b"), generation: "g2", receiptSha: "c".repeat(64),
     actor: { kind: "hub-administrator", person: actor.person, sessionId: actor.sessionId, requestId: w.ctx.ctx.requestId }, at: 100,
-    changes: ["search"], recipients: [{ kind: "host", sink: "owner" }] };
+    changes: ["search"], recipients: [{ kind: "host", sink: "owner" }], recovery: { v: 1, expiresAt: 300100 } };
   return { ...w, decision, input };
 }
 describe("S129 Core preparation's fresh explicit SQL proof", () => {
