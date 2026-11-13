@@ -236,6 +236,7 @@ describe("cross-backend skill publishing", () => {
     expect(published).toEqual([
       "concepts",   // concepts and definitions: the agents' built-in role reference
       "cross-instance-messaging",
+      "hub",              // the AgEnD Hub from the user's side (experimental)
       "model-discovery",
       "persona-emoji",
       "scheduling",

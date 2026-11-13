@@ -32,7 +32,7 @@ afterEach(() => {
   for (const d of roots.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-const CLASSIC = ["persona-emoji", "web-appearance", "web-dashboard"];
+const CLASSIC = ["hub", "persona-emoji", "web-appearance", "web-dashboard"];
 
 async function startClassic(workDir: string, backend = "codex") {
   const fm = new FleetManager(scratch("agend-2163-data-")) as any;

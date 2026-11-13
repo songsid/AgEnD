@@ -14,6 +14,7 @@ export const GENERAL_SKILL_NAMES = [
   "fleet-config",
   "fleet-health",
   "fleet-restart",
+  "hub",
   "instance-lifecycle",
   "kiro-engine-migration",
   "model-discovery",
