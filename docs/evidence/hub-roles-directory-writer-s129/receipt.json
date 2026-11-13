@@ -1,0 +1,228 @@
+{
+  "task": "S-129/M-3010",
+  "sourceCommit": "919d6809886cfb554c0559a6c03018d512cc8ece",
+  "parent": {
+    "pr": 3821,
+    "head": "663269f641ff76d5a1d1f961c22dc098e0a1477c"
+  },
+  "recordedAt": "2026-11-13T11:37:29.921686+00:00",
+  "boundary": "Inactive trusted sealed-writer adapter; production provider, session and factory unchanged",
+  "failFirst": {
+    "checkpoint": "739c433e4a9a4ee2fd3977f73c52866393b03201",
+    "passed": 2,
+    "failed": 1,
+    "assertion": "actual auxiliary administrator at actual sealed writer: expected no throw, HubSettingsError: denied"
+  },
+  "restored": {
+    "command": "nice -n 10 node_modules/.bin/vitest run tests/hub-directory-session-transition.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-roles-directory-s129.test.ts tests/hub-roles-directory-transition-s129.test.ts tests/hub-roles-directory-witness-s129.test.ts tests/hub-roles-directory-writer-s129.test.ts tests/hub-settings-commit-m2682.test.ts --maxWorkers=2",
+    "passed": 375,
+    "failed": 0,
+    "skipped": 0,
+    "files": 8,
+    "newWriterCases": 34,
+    "proofEngineCases": 26,
+    "perFile": [
+      {
+        "file": "tests/hub-directory-session-transition.test.ts",
+        "passed": 38
+      },
+      {
+        "file": "tests/hub-directory-settings-decision.test.ts",
+        "passed": 136
+      },
+      {
+        "file": "tests/hub-directory-settings-proof.test.ts",
+        "passed": 60
+      },
+      {
+        "file": "tests/hub-roles-directory-s129.test.ts",
+        "passed": 26
+      },
+      {
+        "file": "tests/hub-roles-directory-transition-s129.test.ts",
+        "passed": 49
+      },
+      {
+        "file": "tests/hub-roles-directory-witness-s129.test.ts",
+        "passed": 14
+      },
+      {
+        "file": "tests/hub-roles-directory-writer-s129.test.ts",
+        "passed": 34
+      },
+      {
+        "file": "tests/hub-settings-commit-m2682.test.ts",
+        "passed": 18
+      }
+    ]
+  },
+  "nativeTypes": {
+    "version": "7.0.2",
+    "source": {
+      "command": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.json",
+      "exit": 0
+    },
+    "tests": {
+      "command": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  },
+  "mutations": {
+    "isolated": 13,
+    "compiled": 13,
+    "semanticAssertionRed": 13,
+    "restored": true,
+    "detail": "mutations.json"
+  },
+  "modeledRecovery": {
+    "steps": [
+      "staged",
+      "directory-decision",
+      "directory-secret",
+      "manifest",
+      "config",
+      "done"
+    ],
+    "expiredPermitNotReused": true,
+    "rootAndPolicyGraphRetainedExceptExistingGenerationRevisionRebind": true,
+    "notSIGKILL": true,
+    "database": "memory SQLite; fixture external floor"
+  },
+  "changelog": {
+    "command": "node scripts/changelog-assemble.mjs --check",
+    "fragments": 450,
+    "exit": 0
+  },
+  "limitations": [
+    "Fictional directory and synthetic mounted source projection",
+    "No production provider/getter/session/factory activation or working mounted auxiliary Directory Save",
+    "No physical/WAL crash, SIGKILL, browser, container, native platform or live directory claim",
+    "No successor token release, late fresh-permit producer or full S-129 activation/acceptance",
+    "Alpha.3 release freeze and parent-first plain-sync/resolution/current-head CI/readiness holds"
+  ],
+  "rollback": "Leave optional provider uncomposed; complete committed operations forward, never restore old DB/floor/journal",
+  "bindings": [
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "86722c78246201df0dfe8b0cc1d4585cf15b89725b12fa687895713558d35b40",
+      "bytes": 18880
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "sha256": "7158352d59b1bba25638b5f2440c09c0259773499f0c80dc1b7168ab8e0b1453",
+      "bytes": 13359
+    },
+    {
+      "file": "src/hub/roles/directory-authority.ts",
+      "sha256": "630e83b748f70c4a8a30bac280b9790582cb519d3a77915d976b8a790f37b395",
+      "bytes": 5936
+    },
+    {
+      "file": "src/hub/settings-commit.ts",
+      "sha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "bytes": 40122
+    },
+    {
+      "file": "src/hub/settings-directory-proof.ts",
+      "sha256": "7f5519db02959d69e4517280761ead8766ece55914137ef741d46395bbea8064",
+      "bytes": 20101
+    },
+    {
+      "file": "tests/hub-roles-directory-writer-s129.test.ts",
+      "sha256": "98de542b55b6818352cf004c3d116cf36f4426a7f1a4a31426bd87d45871ed3d",
+      "bytes": 18603
+    },
+    {
+      "file": "tests/hub-roles-directory-s129.test.ts",
+      "sha256": "a2699e91aba288a38c8d7278f19fcfd9a7f16aec17442c0222c29bd4903b4a12",
+      "bytes": 15393
+    },
+    {
+      "file": "docs/design/hub-roles-directory-writer-s129.md",
+      "sha256": "ee28e41c468ca5f99509d832bdafe1f0501b64046b15b0c481a6e8837c40fae0",
+      "bytes": 3690
+    },
+    {
+      "file": "changes/3743-roles-directory-writer.md",
+      "sha256": "1702c7868aa66415a871c9dca2e478a06b37063445792d4803ea5645d59c81a0",
+      "bytes": 210
+    },
+    {
+      "file": "changes/3743-roles-directory-writer.zh-TW.md",
+      "sha256": "f78196b18190b7df1c004f9a926b274cb35848b8ae2549f179a0dd0ca3ccaddf",
+      "bytes": 166
+    },
+    {
+      "file": "src/hub/session-directory-transition.ts",
+      "sha256": "130bfb9882ad2365f44c8659b6fdc37c0da7ab4dd9327215ff49c39e84c60428",
+      "bytes": 8924,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760",
+      "bytes": 41544,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "115f24436cb77e35ebdfd9bd0c8d37c1f34d3040e39725af80efa963c58d0e2c",
+      "bytes": 16479,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-control.ts",
+      "sha256": "0e47c1c72f1cd6f13d77ddc1afea147f2f191f74e9db37ef8e59558e7b52d19e",
+      "bytes": 7458,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-save.ts",
+      "sha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48",
+      "bytes": 10506,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/directory-decision-proof.ts",
+      "sha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "bytes": 5060,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-decision.ts",
+      "sha256": "a7be86d307e22adc25cd9724aefee3ca5ed0db3aa951b15bc22cd7ae9acebf20",
+      "bytes": 23700,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5",
+      "bytes": 4710,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/fleet-manager.ts",
+      "sha256": "7ae2e4817a99a8515446793f0f5cdcf4e4c98feedc324bd2e950f6c9b4b4d824",
+      "bytes": 1776962,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "tests/hub-roles-directory-witness-s129.test.ts",
+      "sha256": "efde4e20153d056e5431e1d60331585574abe4bb5ed1760d379fa7cc049213cb",
+      "bytes": 7807,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "tests/hub-roles-directory-transition-s129.test.ts",
+      "sha256": "74af41493b351c1dda47e38e3b0ea4b6196d5d8aed908f2d185bf5d9a71d0dc1",
+      "bytes": 17667,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28",
+      "bytes": 7232,
+      "unchangedFromParent": true
+    }
+  ]
+}

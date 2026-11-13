@@ -1,0 +1,464 @@
+{
+  "sourceCommit": "919d6809886cfb554c0559a6c03018d512cc8ece",
+  "typeCommand": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.json",
+  "testCommand": "nice -n 10 node_modules/.bin/vitest run tests/hub-roles-directory-writer-s129.test.ts tests/hub-roles-directory-s129.test.ts --maxWorkers=2 --reporter=json",
+  "baseline": {
+    "passed": 60,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "id": "W01-legacy-root",
+      "file": "src/hub/settings-commit.ts",
+      "originalSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "replacements": [
+        {
+          "old": "expected || actor.kind === \"hub-administrator\" && !same(actor.person, root)",
+          "new": "expected",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "5229e4ea94c7ef0ac642c7f487eb644061cf7e654e80e8816d16b7fb0bff1be3",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 59,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 sealed directory writer admission refuses an auxiliary admin with only a successful current callback",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "id": "W02-sealed-root",
+      "file": "src/hub/settings-commit.ts",
+      "originalSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "replacements": [
+        {
+          "old": "!same(selected.source.administrator, root) || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "ecb60c3e52b330d8adfccb336aecc83e2bcdd4817db7a1ba355ca6619ea571ad",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 59,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 trusted writer source and final proof binds the witness source to the sealed configured root, not just its realm",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "id": "W03-provider-identity",
+      "file": "src/hub/settings-commit.ts",
+      "originalSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "replacements": [
+        {
+          "old": "deps.directoryAdministration !== administrationProvider || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "a941bdd8d963164ccf57bf1b6526fbba19482eb468d98e8950758daa42077361",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 58,
+      "failed": 2,
+      "failedAssertions": [
+        {
+          "name": "S129 trusted writer source and final proof refuses replacement of the provider function and consumes the preparation",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof refuses a provider identity swap from inside the actual frame proof",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "id": "W04-reader-identity",
+      "file": "src/hub/settings-commit.ts",
+      "originalSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "replacements": [
+        {
+          "old": " || deps.directoryDecision !== decisionProvider",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "c3459383d2365a3fae39a753e6b17538d9fe43cb183966da15f63177f2d53931",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 59,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 trusted writer source and final proof refuses replacement of the reader function and consumes the preparation",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "id": "W05-prepared-owner",
+      "file": "src/hub/settings-commit.ts",
+      "originalSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "replacements": [
+        {
+          "old": "expected && expected !== owner || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "510d5157d2fdd3961e921e2562e82f4bc647715e950b24f7d5a411cc26d84412",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 59,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 trusted writer source and final proof refuses a remounted decision even with a fresh current witness and unchanged SQL",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "id": "W06-no-downgrade",
+      "file": "src/hub/settings-commit.ts",
+      "originalSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "replacements": [
+        {
+          "old": "if (expected || actor.kind === \"hub-administrator\" && !same(actor.person, root))",
+          "new": "if (actor.kind === \"hub-administrator\" && !same(actor.person, root))",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "12b4ef4d8fff17b849c0a5d7262b530886f486bec994973a37dba10d9b900964",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 59,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 trusted writer source and final proof does not downgrade a root's witness-required preparation to the bare legacy path",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "id": "W07-final-authority",
+      "file": "src/hub/settings-commit.ts",
+      "originalSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "replacements": [
+        {
+          "old": "      if (!original && administration !== undefined) {\n        const proof = administrationProof(p.actor, p.next.administrator, administration, p.admission);\n        const at = checkAt(proof?.at);\n        if (at < sampled) throw new HubSettingsError(\"denied\");\n        return at; // Same proof-owned final sample; no callback follows before the kernel's SQL transition.\n      }\n",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "ed6e03f157dfbce4bb9b5362483320b0cc0db1030940536d5bc682c362764c68",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 53,
+      "failed": 7,
+      "failedAssertions": [
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (undefined)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (NaN)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (Infinity)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (0)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (99)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof rechecks authority after the last writer-clock callback revokes the actual browser",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof checks the recovery deadline against the proof's own final clock sample",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "id": "W08-final-deadline",
+      "file": "src/hub/settings-commit.ts",
+      "originalSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "replacements": [
+        {
+          "old": "const at = checkAt(proof?.at);",
+          "new": "const at = sampled;",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "13ced6649a84393e75d29f845bd2cc822b7d8284f235dd25fc5e3c88f81e9109",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 54,
+      "failed": 6,
+      "failedAssertions": [
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (undefined)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (NaN)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (Infinity)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (0)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof refuses an unusable final proof sample (99)",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 trusted writer source and final proof checks the recovery deadline against the proof's own final clock sample",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "id": "W09-permit-sample",
+      "file": "src/hub/roles/authority.ts",
+      "originalSha256": "7158352d59b1bba25638b5f2440c09c0259773499f0c80dc1b7168ab8e0b1453",
+      "replacements": [
+        {
+          "old": "return at.wall; // Trusted final sample; consumers must not invoke another clock callback afterward.",
+          "new": "return; // Owned reversal: drop the final scalar.",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "23b6af999bb66072ab093af48b554336f4b616cb26ef8a99d2f5357d3d5df148",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 50,
+      "failed": 10,
+      "failedAssertions": [
+        {
+          "name": "S129 sealed directory writer admission uses the actual auxiliary administrator witness without replacing the configured root",
+          "firstLine": "AssertionError: expected [Function] to not throw an error but 'HubSettingsError: denied' was thrown"
+        },
+        {
+          "name": "S129 trusted writer source and final proof carries the final numeric clock sample through HubCore's retained wrapper",
+          "firstLine": "AssertionError: expected [Function] to not throw an error but 'HubSettingsError: denied' was thrown"
+        },
+        {
+          "name": "S129 trusted writer source and final proof rechecks authority after the last writer-clock callback revokes the actual browser",
+          "firstLine": "AssertionError: expected +0 to be 2 // Object.is equality"
+        },
+        {
+          "name": "S129 trusted writer source and final proof checks the recovery deadline against the proof's own final clock sample",
+          "firstLine": "AssertionError: expected +0 to be 2 // Object.is equality"
+        },
+        {
+          "name": "S129 trusted writer source and final proof commits under the same recovery deadline while the final role proof remains current",
+          "firstLine": "HubSettingsError: denied"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled directory-decision interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled directory-secret interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled manifest interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled config interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled done interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "7158352d59b1bba25638b5f2440c09c0259773499f0c80dc1b7168ab8e0b1453"
+    },
+    {
+      "id": "W10-core-sample",
+      "file": "src/hub/http/core.ts",
+      "originalSha256": "86722c78246201df0dfe8b0cc1d4585cf15b89725b12fa687895713558d35b40",
+      "replacements": [
+        {
+          "old": "const sample = assertDecision.call(permit, proof); check(); return sample;",
+          "new": "assertDecision.call(permit, proof); check();",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "e46c9d80d96f220552c9813061346d77684d388e705784c444d95892669c2584",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 59,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 trusted writer source and final proof carries the final numeric clock sample through HubCore's retained wrapper",
+          "firstLine": "AssertionError: expected [Function] to not throw an error but 'HubSettingsError: denied' was thrown"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "86722c78246201df0dfe8b0cc1d4585cf15b89725b12fa687895713558d35b40"
+    },
+    {
+      "id": "W11-witness-sample",
+      "file": "src/hub/roles/directory-authority.ts",
+      "originalSha256": "630e83b748f70c4a8a30bac280b9790582cb519d3a77915d976b8a790f37b395",
+      "replacements": [
+        {
+          "old": "return typeof answer === \"number\" ? answer : undefined;",
+          "new": "return undefined;",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "1d5c993af8f392f1f70295497358b5494e6613439deef7b6a0c0832584a074b5",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 50,
+      "failed": 10,
+      "failedAssertions": [
+        {
+          "name": "S129 sealed directory writer admission uses the actual auxiliary administrator witness without replacing the configured root",
+          "firstLine": "AssertionError: expected [Function] to not throw an error but 'HubSettingsError: denied' was thrown"
+        },
+        {
+          "name": "S129 trusted writer source and final proof carries the final numeric clock sample through HubCore's retained wrapper",
+          "firstLine": "AssertionError: expected [Function] to not throw an error but 'HubSettingsError: denied' was thrown"
+        },
+        {
+          "name": "S129 trusted writer source and final proof rechecks authority after the last writer-clock callback revokes the actual browser",
+          "firstLine": "AssertionError: expected +0 to be 2 // Object.is equality"
+        },
+        {
+          "name": "S129 trusted writer source and final proof checks the recovery deadline against the proof's own final clock sample",
+          "firstLine": "AssertionError: expected +0 to be 2 // Object.is equality"
+        },
+        {
+          "name": "S129 trusted writer source and final proof commits under the same recovery deadline while the final role proof remains current",
+          "firstLine": "HubSettingsError: denied"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled directory-decision interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled directory-secret interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled manifest interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled config interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        },
+        {
+          "name": "S129 trusted writer source and final proof recovers the modeled done interruption without reusing an expired administrator permit",
+          "firstLine": "AssertionError: expected [Function] to throw error including 'owned modeled interruption' but got 'denied'"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "630e83b748f70c4a8a30bac280b9790582cb519d3a77915d976b8a790f37b395"
+    },
+    {
+      "id": "W12-engine-prepare",
+      "file": "src/hub/settings-directory-proof.ts",
+      "originalSha256": "7f5519db02959d69e4517280761ead8766ece55914137ef741d46395bbea8064",
+      "replacements": [
+        {
+          "old": ": writer.prepare(structuredClone(d.candidate), ctx.actor, proof, ctx.administration);",
+          "new": ": writer.prepare(structuredClone(d.candidate), ctx.actor, proof);",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "d5429d873f733f1cd175784a17979ea30ddeeb458b03f3a817fa0cfc297aebf9",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 58,
+      "failed": 2,
+      "failedAssertions": [
+        {
+          "name": "S129 directory proof administrator identity prepares for a current auxiliary administrator, authenticates that actor and checks both candidate identities",
+          "firstLine": "AssertionError: expected undefined to be { directoryAdministration: true } // Object.is equality"
+        },
+        {
+          "name": "S129 directory proof administrator identity carries the same opaque administrator witness alongside the bounded commit deadline",
+          "firstLine": "AssertionError: expected undefined to be { directoryAdministration: true } // Object.is equality"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "7f5519db02959d69e4517280761ead8766ece55914137ef741d46395bbea8064"
+    },
+    {
+      "id": "W13-engine-commit",
+      "file": "src/hub/settings-directory-proof.ts",
+      "originalSha256": "7f5519db02959d69e4517280761ead8766ece55914137ef741d46395bbea8064",
+      "replacements": [
+        {
+          "old": "typeof effect === \"number\" ? effect : undefined, ctx.administration);",
+          "new": "typeof effect === \"number\" ? effect : undefined);",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "d178336312d9c1fc9dedb27e8179ed926ce2778cb90982c8cc1b469415bbb001",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 58,
+      "failed": 2,
+      "failedAssertions": [
+        {
+          "name": "S129 directory proof administrator identity prepares for a current auxiliary administrator, authenticates that actor and checks both candidate identities",
+          "firstLine": "AssertionError: expected undefined to be { directoryAdministration: true } // Object.is equality"
+        },
+        {
+          "name": "S129 directory proof administrator identity carries the same opaque administrator witness alongside the bounded commit deadline",
+          "firstLine": "AssertionError: expected undefined to be { directoryAdministration: true } // Object.is equality"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "7f5519db02959d69e4517280761ead8766ece55914137ef741d46395bbea8064"
+    }
+  ]
+}
