@@ -203,6 +203,8 @@ try {
       const answerText = (i: number) => "Grouped-answer " + (i + 1) + " " + device;
       for (let i = 0; i < batch.length; i++) {
         await batch[i].answer(batch[i].inputs[counts[i]], answerText(i));
+        // Cross-Fleet socket writes are independent: fix the actual commit order before sending the next answer.
+        await until(async () => (await web!.call(admin, "GET", `/hub/v1/rooms/${batchRoom}/messages`)).json.messages.some((m: any) => m.text === answerText(i)), "grouped answer committed " + i);
         await batch[i].state({ process: "running", execution: "idle" });
         if (i === 1) await send("Human conversation between answers " + device);
         if (i === 3 || i === 4) {
@@ -224,6 +226,11 @@ try {
       const answerRows = page.locator(".msg.agent:visible").filter({ hasText: "Grouped-answer" });
       check(tag + " expanding shows all grouped answers", await answerRows.count() === batch.length);
       check(tag + " interleaved answers all quote the original question", (await answerRows.locator(".msg-quote .quote-text").allTextContents()).every((text: string) => text.includes(batchQuestion)));
+      const humanText = "Human conversation between answers " + device;
+      const chronology = await page.locator(".hub-room-page .thread .msg").evaluateAll((rows: HTMLElement[]) => rows.map(row => row.querySelector(".md")?.textContent?.trim() || "")
+        .filter(text => text.startsWith("Grouped-answer ") || text.startsWith("Human conversation between answers ")));
+      const expectedOrder = batch.map((_, i) => answerText(i)); expectedOrder.splice(2, 0, humanText);
+      check(tag + " live answers and interleaved human follow committed order", JSON.stringify(chronology) === JSON.stringify(expectedOrder), chronology);
       await shot("six-answers-expanded");
       const mentionAgent = batch.at(-1)!, mentionedBefore = mentionAgent.inputs.length, otherText = "@" + mentionAgent.name + " Another person's mention " + device;
       const other = await web.call(colleague!, "POST", `/hub/v1/rooms/${batchRoom}/messages`, { text: otherText, mentions: [mentionAgent.exposureId], idempotencyKey: randomUUID() });
