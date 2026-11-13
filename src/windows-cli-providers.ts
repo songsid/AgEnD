@@ -58,7 +58,7 @@ const PROVIDERS = Object.fromEntries(NATIVE_PROVIDER_IDS.map(id => {
   const descriptor: NativeProviderDescriptor = {
     id, name: provider.name, company: provider.company, binaryNames: provider.binaryNames,
     supports: provider.supports, readOnlySupport: provider.readOnlySupport, permission: provider.permission, permissionNote: provider.permissionNote,
-    promptTransport: provider.promptTransport, authProbe: status ? status.argv : null, modelProbe: provider.modelProbe,
+    promptTransport: provider.promptTransport, authProbe: status && status.source === "own-command" ? status.argv : null, modelProbe: provider.modelProbe,
     ...(provider.reason ? { reason: provider.reason } : {}),
   };
   return [id, descriptor] as const;
@@ -319,6 +319,9 @@ export function parseNativeAuthResult(cli: NativeProviderId, ok: boolean, output
   }
   // The one reader of `claude auth status` (also the host's authCheck and the account identity): see claude-auth-status.ts.
   if (cli === "claude-code") return parseClaudeAuthStatus(output).loggedIn;
+  // A CLI whose sign-in state is the answer of its model listing (registry `runtime.authStatus.source`: Antigravity's `agy models`). Signed in lists models and exits 0; signed out exits 1 saying
+  // "Please sign in to view available models" (agy 1.5.3). A failure that does not say so (the network, a timeout) is unknown.
+  if (runtimeFacts(cli, "authStatus")?.source === "model-listing") return ok && output.trim() ? true : !ok && /\bplease sign in\b/i.test(output) ? false : null;
   return null;
 }
 

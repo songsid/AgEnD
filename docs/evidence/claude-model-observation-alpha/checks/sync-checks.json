@@ -1,0 +1,57 @@
+[
+  {
+    "name": "sync-focused",
+    "command": [
+      "./node_modules/.bin/vitest",
+      "run",
+      "tests/claude-model-switch.test.ts",
+      "tests/claude-model-switch-daemon.test.ts",
+      "tests/claude-model-checkpoint-tail.test.ts",
+      "tests/claude-model-runtime-observation.test.ts",
+      "tests/claude-credential-profile-1699.test.ts",
+      "tests/needs-you-hub-1386.test.ts",
+      "tests/office-card-2661.test.ts",
+      "tests/web-details-n2.test.ts",
+      "tests/web-log-tab-1218.test.ts",
+      "tests/web-needs-1408.test.ts",
+      "tests/chat-activity-197-server.test.ts",
+      "tests/chat-activity-backends-live.test.ts",
+      "tests/chat-activity-codex-3787.test.ts",
+      "tests/chat-activity-panel-181.test.ts",
+      "tests/codex-activity-fixture-redact-3787.test.ts",
+      "tests/log-steps-1218.test.ts",
+      "tests/transcript-jsonl.test.ts",
+      "tests/log-service-1218.test.ts",
+      "tests/transcript-baseline-boundary-1250.test.ts",
+      "tests/transcript-baseline-faults-1250.test.ts",
+      "tests/concepts-skill-sync.test.ts",
+      "--maxWorkers=2"
+    ],
+    "exit": 0,
+    "load": 3.94189453125
+  },
+  {
+    "name": "sync-source-types",
+    "command": [
+      "./node_modules/.bin/tsc",
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "exit": 0,
+    "load": 3.67333984375
+  },
+  {
+    "name": "sync-test-types",
+    "command": [
+      "./node_modules/.bin/tsc",
+      "--noEmit",
+      "--pretty",
+      "false",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "exit": 0,
+    "load": 3.77978515625
+  }
+]

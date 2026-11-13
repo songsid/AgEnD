@@ -7,8 +7,8 @@ import { readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { dirname, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
-import { validWindowsAgentId, validWindowsDirectory, validateNativeTask, type NativeCliRow, type NativeTaskInput } from "./windows-cli-worker.js";
-import type { CredentialProfileReport } from "./runtime-credential-profiles.js";
+import { validWindowsAgentId, validWindowsDirectory, validateNativeTask, withAuthenticated, type NativeCliRow, type NativeTaskInput } from "./windows-cli-worker.js";
+import { isCredentialProfileCli, type CredentialProfileReport } from "./runtime-credential-profiles.js";
 import { isNativeProviderId, parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
 const exec = promisify(execFile);
@@ -130,6 +130,19 @@ export class WindowsCliBridge {
     // Neither callers nor another request may mutate a cached/pending result.
     return structuredClone(await this.pendingProbe);
   }
+  /**
+   * AGEND-113: a sign-in check that was just asked of this computer (`agy models` by its exit code, after a sign-in made from the dashboard) is the newest word on that CLI's login, so the last
+   * detection's row says it from now on, in memory and in the file: a Runtime that reports its cached inventory again (a reconnect, another account's change) must not take the dashboard back
+   * to what was true before the sign-in. A detection (Detect again) still overrides it. A CLI that was never detected has no row to correct, and the same answer changes nothing.
+   */
+  noteAuthenticated(id: string, authenticated: boolean): void {
+    const probe = this.cachedProbe;
+    const at = probe ? probe.clis.findIndex(row => row.id === id) : -1;
+    if (!probe || at < 0 || probe.clis[at]!.authenticated === authenticated) return;
+    const clis = probe.clis.slice(); clis[at] = withAuthenticated(clis[at]!, authenticated);
+    this.cachedProbe = { ...probe, clis };
+    if (this.inventoryFile) writeInventory(this.inventoryFile, this.cachedProbe);
+  }
   async prepareWorkspace(agentId: string, authorized: () => boolean = () => true): Promise<string> {
     if (!validWindowsAgentId(agentId)) throw new Error("Invalid Windows agent id");
     const value = await this.workerResult({ op: "workspace", agentId }, 15_000, authorized);
@@ -189,7 +202,7 @@ export class WindowsCliBridge {
     const input = validateNativeTask(value);
     if (options.mcp) options = {...options,mcp:validateNativeMcpConnection(options.mcp)};
     if (options.context !== undefined && (typeof options.context !== "string" || options.context.length > 2000 || options.context.includes("\0"))) throw new Error("Invalid native task context");
-    if (options.credentialHome !== undefined && (input.cli !== "claude-code" || !validWindowsDirectory(options.credentialHome))) throw new Error("Invalid credential profile folder");
+    if (options.credentialHome !== undefined && (!isCredentialProfileCli(input.cli) || !validWindowsDirectory(options.credentialHome))) throw new Error("Invalid credential profile folder");
     const old = this.tasks.get(input.requestId);
     if (old) {
       if (JSON.stringify(old.input) !== JSON.stringify(input)) throw new Error("requestId already belongs to another task");

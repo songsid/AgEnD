@@ -202,13 +202,13 @@ describe("/ui/send: the receipt's origin carries the session's authority (and is
     expect(origin.authority).toEqual({ kind: "web-verified", actor: { adapter_id: "owner", user_id: "admin" },
       session: { handle, peer: "loopback", signed_in_at: new Date(T0).toISOString(), authorized_at: new Date(T0).toISOString() }, authority_epoch: 1 });
   });
-  it("S3: what the agent sees — authorized: `via web (verified)`; before its account authorized it: plain `via web`", async () => {
+  it("S3: what the agent sees — authorized: `@web:v`; before its account authorized it: plain `@web`", async () => {
     const h = rig(); h.s.ensureDeliveryOutbox();
     const seen = (n: number) => { const { name, payload, origin } = h.got[n]!; const meta = h.s.humanReceiptPayload(name, payload, origin, "ship it").meta; return formatHumanInboundMessage(payload.content, meta, "mcp"); };
     await send(h, session(h));
     await send(h, session(h, { authorized: false }));
-    expect(seen(0)).toContain("via web (verified), id:admin] ship it");
-    expect(seen(1)).toContain("via web, id:admin] ship it");
+    expect(seen(0)).toContain("@web:v#admin] ship it");
+    expect(seen(1)).toContain("@web#admin] ship it");
     h.s.deliveryOutbox.close();
   });
   it("§0: the same session before its account authorized it: none — recognition only, as before #1939", async () => {

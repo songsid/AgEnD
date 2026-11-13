@@ -1,0 +1,84 @@
+{
+  "base": "c7551edf98c11e00cd9c31f4f67d8df80494faac",
+  "oldHead": "608b35dc3d96daa54cffe793ab5c61f1c24d2c01",
+  "alpha": "dee603eb00090979a528b6f2db2a89b8236a1e94",
+  "merge": "68baf306aec22ff677e3af5e354ddb8af03ec527",
+  "plainMerge": true,
+  "resolvedConflicts": [
+    {
+      "path": "docs/design/hub-roles-directory-admission.md",
+      "resolution": "incoming alpha, no own delta relative to reviewed base",
+      "blob": "a33f25d470e171ef3aa8291d8157ef857d61e678"
+    },
+    {
+      "path": "docs/design/hub-roles-management.md",
+      "resolution": "incoming alpha, no own delta relative to reviewed base",
+      "blob": "5c58ef8ea64228db6ff382e2c8dd9e20a2a68685"
+    },
+    {
+      "path": "docs/evidence/hub-roles-directory-admission-s129/README.md",
+      "resolution": "incoming alpha, no own delta relative to reviewed base",
+      "blob": "8dd60ffb7c95c1521affdc2fbf411472be61ac20"
+    },
+    {
+      "path": "src/hub/pairing.ts",
+      "resolution": "incoming alpha, no own delta relative to reviewed base",
+      "blob": "6f1be424316a2fefe15619f8e96bb6384ad4ba2c"
+    },
+    {
+      "path": "tests/hub-roles-issuer-s129.test.ts",
+      "resolution": "incoming alpha, no own delta relative to reviewed base",
+      "blob": "353367294e6ac92deee6bbc43773d8bde11aad44"
+    }
+  ],
+  "ownedPathsByteAndModeEqualOriginal": [
+    "changes/3743-roles-authorization-clock.md",
+    "changes/3743-roles-authorization-clock.zh-TW.md",
+    "docs/design/hub-roles-authorization-clock.md",
+    "docs/evidence/hub-roles-authorization-clock-s129/README.md",
+    "docs/evidence/hub-roles-authorization-clock-s129/receipt.json",
+    "src/hub/roles/clock.ts",
+    "src/hub/roles/cutover-marker.ts",
+    "src/hub/roles/cutover.ts",
+    "tests/hub-roles-clock-s129.test.ts"
+  ],
+  "incomingOnlyPathsByteAndModeEqualAlpha": 12821,
+  "productAndTestBindings": [
+    {
+      "path": "changes/3743-roles-authorization-clock.md",
+      "sha256": "814d83562af6dab2864b262b1de19954b7c630fe7ffe73d60f215eeeacdfec90"
+    },
+    {
+      "path": "changes/3743-roles-authorization-clock.zh-TW.md",
+      "sha256": "d2b105864c0ddcacf283e1dce7960b4b663893b8e2613e32db273ec6ad43021c"
+    },
+    {
+      "path": "docs/design/hub-roles-authorization-clock.md",
+      "sha256": "d5753634ea7074c79915094c440706b2a87959945e06a6b97e56f86dd7ddf529"
+    },
+    {
+      "path": "docs/evidence/hub-roles-authorization-clock-s129/README.md",
+      "sha256": "4e1fbd61354e6bbd22b044442b8aef2220e491daf98c28dfd760d6cf8e0ed222"
+    },
+    {
+      "path": "docs/evidence/hub-roles-authorization-clock-s129/receipt.json",
+      "sha256": "ed1b34d83851e096582d4ba6c41375c04e51d80ebc2b23296010ecc6bdb8e8ae"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7"
+    },
+    {
+      "path": "src/hub/roles/cutover-marker.ts",
+      "sha256": "e37ce1469142e0b54376c63e012eb0eac77c8e5900f233c82e3ee4a2f5763c6d"
+    },
+    {
+      "path": "src/hub/roles/cutover.ts",
+      "sha256": "50d87de9970f2c934857ad7086bb953fb61c478bd512d29991488a835f7afee5"
+    },
+    {
+      "path": "tests/hub-roles-clock-s129.test.ts",
+      "sha256": "b8dca07048622bebd2d0ed091aadaa4f9e8b5ba97d47d40cd97b386d1a98f334"
+    }
+  ]
+}

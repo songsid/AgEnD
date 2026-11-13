@@ -275,7 +275,7 @@ describe("#2599 installer dashboard handoff", () => {
     } finally { history.replaceState(null, "", before); }
   });
   it("merges the checklist without starting a CLI, with an explicit per-backend console fallback", async () => {
-    let snapshot = { selected: ["kiro-cli"], pending: ["kiro-cli"], skipped: [], states: { "kiro-cli": "invalid", codex: "invalid", antigravity: "console_only" }, login: null, ready: false };
+    let snapshot = { selected: ["kiro-cli"], pending: ["kiro-cli"], skipped: [], states: { "kiro-cli": "invalid", codex: "invalid", antigravity: "console_only" }, console: ["antigravity"], login: null, ready: false };
     answer = r => {
       if (r.url !== "/ui/browser-backend-signins") return {};
       if (r.body?.operation === "select") snapshot = { ...snapshot, selected: r.body.backends, pending: r.body.backends };

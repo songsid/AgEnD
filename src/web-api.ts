@@ -1,6 +1,8 @@
 import { buildAgentExport, parseAgentExport } from "./agent-export.js";
+import { STRUCTURED_PROFILE_BACKENDS } from "./structured-signin-transport.js";
 import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
 import { validCredentialProfileName } from "./runtime-credential-profiles.js";
+import { MACHINE_ACCOUNT_CLIS } from "./accounts-view.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { MachineSlotLimitError } from "./windows-agents.js";
 import { daemonTopicMode } from "./web-only-fleet.js";
@@ -61,7 +63,9 @@ import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
 import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
-import { ONBOARDING_BACKENDS, ONBOARDING_BROWSER_BACKENDS } from "./backend-signin-pending.js";
+import { ONBOARDING_BACKENDS } from "./backend-signin-pending.js";
+import { STRUCTURED_SIGNIN_BACKENDS } from "./structured-signin.js";
+import { isRuntimeDefaultLoginCli, type RuntimeDefaultLoginCli } from "./cli-registry.js";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
 import { WEB_CHAT_CARDS_OVERFLOW, catchUpWindow, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatAttachment, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
@@ -435,7 +439,7 @@ export interface WebApiContext {
   addAccountProfile?(backend: string, name: unknown, by: string, machine?: AccountMachine): AccountWriteResult | Promise<AccountWriteResult>;
   removeAccountProfile?(backend: string, name: unknown, confirm: unknown, by: string, machine?: AccountMachine, opts?: { cancelSignIn?: true }): Promise<AccountWriteResult & { keychainLeft?: true }>;
   /** #3212 PR 3: Sign out (accounts-signout.ts): `profile` null for the CLI's default sign-in. */
-  signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true }>;
+  signOutAccount?(backend: string, profile: unknown, confirm: unknown, by: string, machine?: AccountMachine): Promise<AccountWriteResult & { keychainLeft?: true; unverified?: true }>;
   /** #3292: Keep sign-in alive (signin-keepalive.ts): `profile` null for the CLI's default sign-in. */
   setAccountKeepAlive?(backend: unknown, profile: unknown, enabled: unknown, fallback: unknown, by: string): { ok: true } | { ok: false; error: string };
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
@@ -611,6 +615,7 @@ export interface WebApiContext {
   connectIpcToInstance(name: string): Promise<void>;
   /** Human-readable model string (aligned with /ctx). */
   modelDisplayForInstance?(name: string): string;
+  modelObservationForInstance?(name: string): import("./claude-model-observation.js").ModelObservation | null;
   /** Full model resolution with source. */
   resolveInstanceModel?(name: string): { model: string; source: string; display: string };
   /** Configured effort for an instance (no live file from CLI). */
@@ -1277,13 +1282,18 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
   // `?backend=<cli>&profile=<name>` addresses them for a named account on THIS host (profile-signins.ts). Nothing else is accepted in the query, and both are checked
   // in full before anything else happens.
   const keys = [...url.searchParams.keys()];
-  let target: { machine: string; profile: string } | null = null;
+  let target: { machine: string; profile?: string; backend?: RuntimeDefaultLoginCli } | null = null;   // backend + profile (AGEND-124): a named Antigravity account on a computer
   let account: { backend: string; profile: string } | null = null;
   if (keys.length) {
     const machine = url.searchParams.get("machine"), backend = url.searchParams.get("backend"), profile = url.searchParams.get("profile");
     const shape = keys.length === 2 && new Set(keys).size === 2 && profile && validCredentialProfileName(profile);
-    if (shape && machine && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(machine) && !backend) target = { machine, profile };
-    else if (shape && backend === "claude-code" && !machine) account = { backend, profile };
+    const computer = !!machine && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(machine);
+    if (shape && computer && !backend) target = { machine: machine!, profile };
+    // `?machine=<id>&backend=<cli>` is that computer's OWN login of a CLI the registry says has none (`runtime.signIn.profile === "none"`: Antigravity): no profile in the address, and nothing but these two keys.
+    else if (keys.length === 2 && new Set(keys).size === 2 && computer && isRuntimeDefaultLoginCli(backend) && !profile) target = { machine: machine!, backend };
+    // AGEND-124: `?machine=<id>&backend=<cli>&profile=<name>` is a NAMED account of a CLI other than Claude Code on that computer (the registry's `runtime.namedAccounts`: Antigravity): exactly these three keys.
+    else if (keys.length === 3 && new Set(keys).size === 3 && computer && profile && validCredentialProfileName(profile) && isRuntimeDefaultLoginCli(backend) && MACHINE_ACCOUNT_CLIS.has(backend)) target = { machine: machine!, backend, profile };
+    else if (shape && backend !== null && STRUCTURED_PROFILE_BACKENDS.has(backend) && !machine) account = { backend, profile };   // a CLI whose named account is signed in with these controls (registry: `host.structuredSignIn.named`)
     else { json(res, 404, { error: "not_found" }); return true; }
   }
   // Only the one that is asked for is looked up: the host's creates its checklist state, a computer's or a named account's does not need it.
@@ -1298,9 +1308,9 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
         if (!permitWebContinuation(req, res, ctx)) return;
         if (who() !== owner) { json(res, 409, { error: "signin_session_expired" }); return; }
         let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
-        // Only what a computer's sign-in can do: start (Claude Code, subscription: the Runtime builds the command), answer a prompt, cancel, read again.
+        // Only what a computer's sign-in can do: start (Claude Code or Antigravity, subscription: the Runtime builds the command; the address says which one), answer a prompt, cancel, read again.
         const parsed = z.discriminatedUnion("operation", [
-          z.strictObject({ operation: z.literal("start"), backend: z.literal("claude-code"), relogin: z.boolean().optional() }),
+          z.strictObject({ operation: z.literal("start"), backend: z.literal(target.backend ?? "claude-code"), relogin: z.boolean().optional() }),
           z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
             z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
             z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
@@ -1347,7 +1357,8 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
       let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "sign_in_json" }); return; }
       const parsed = z.discriminatedUnion("operation", [
         z.strictObject({ operation: z.literal("select"), backends: z.array(z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS])).max(ONBOARDING_BACKENDS.length) }),
-        z.strictObject({ operation: z.literal("start"), backend: z.enum(ONBOARDING_BROWSER_BACKENDS as unknown as [typeof ONBOARDING_BROWSER_BACKENDS[number], ...typeof ONBOARDING_BROWSER_BACKENDS]), relogin: z.boolean().optional() }),
+        // Any CLI whose registry spec says `host.structuredSignIn` (the first-run page's own service still refuses the ones it only names the console command for).
+        z.strictObject({ operation: z.literal("start"), backend: z.enum(STRUCTURED_SIGNIN_BACKENDS as unknown as [typeof STRUCTURED_SIGNIN_BACKENDS[number], ...typeof STRUCTURED_SIGNIN_BACKENDS]), relogin: z.boolean().optional() }),
         z.strictObject({ operation: z.literal("input"), id: z.string().regex(/^[0-9a-f]{32}$/), revision: z.number().int().nonnegative(), action: z.discriminatedUnion("kind", [
           z.strictObject({ kind: z.literal("method"), choice: z.string().max(32) }),
           z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
@@ -1503,7 +1514,7 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
  */
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
   backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
-  unsafe: 409, default_home: 409, failed: 500, unsupported: 400,
+  unsafe: 409, default_home: 409, failed: 500, unsupported: 400, still_signed_in: 409,
   // #3190 Part 3c: a paired computer (the Runtime there decides; these are what the server can say before it asks, or what the computer answered).
   machine_unknown: 404, machine_offline: 409, machine_unsupported: 409, machine_accounts_off: 409, machine_unreachable: 502, machine_profile_not_owned: 409,
   machine_refused: 409, machine_default_login: 409,
@@ -1568,7 +1579,7 @@ function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL,
       const machine = onMachine(parsed.data.machine);
       if (machine === "refused") { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
       const r = await (machine ? ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label, machine) : ctx.signOutAccount!(signout![1]!, parsed.data.profile, parsed.data.confirm, now.label));
-      if (r.ok) json(res, 200, { signedOut: parsed.data.profile, ...(r.keychainLeft ? { keychainLeft: true } : {}) });
+      if (r.ok) json(res, 200, { signedOut: parsed.data.profile, ...(r.keychainLeft ? { keychainLeft: true } : {}), ...(r.unverified ? { unverified: true } : {}) });
       else fail(r);
     }
   })().catch(() => { try { json(res, 500, { error: "accounts_request_failed" }); } catch { /* response ended */ } });
@@ -3526,6 +3537,7 @@ export function handleWebRequest(
       context_pct,
       model,
       model_source,
+      ...(backend === "claude-code" ? { model_observation: ctx.modelObservationForInstance?.(name) ?? null } : {}),
       effort,
       effort_source,
       statusline,
@@ -4379,7 +4391,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
             ts,
             thread_id: topicId != null ? String(topicId) : "",
             source: "web",
-            ...(guest ? { web_guest: "1" } : {}),          // #1920: "[user:… via web (guest), id:…]" (authority none)
+            ...(guest ? { web_guest: "1" } : {}),          // #1920: "[user:…@web:g#…]" (authority none)
             adapter_id: syncAdapter?.id,
             ...delivery.meta,
             // #2272: `(reply_to: "…")`, as a Discord or Telegram reply gives the agent.

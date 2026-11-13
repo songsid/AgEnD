@@ -228,8 +228,8 @@ export function composeActivity(name, rows, now = Date.now(), opts = {}) {
   const s = memory.get(name);
   if (!s || s.info.level === "off") return rows;
   const busy = opts.busy === true;
-  // a backend whose steps are not shown in the chat (the server said `supported: false`: Codex until its real fixture
-  // (#3709 R6), muse, opencode, kiro), or a transcript with no step yet, still has the "Working…" line while the agent is working.
+  // a backend whose steps are not shown in the chat (the server said `supported: false`: muse, opencode, kiro — a backend with
+  // no transcript parser), or a transcript with no step yet, still has the "Working…" line while the agent is working.
   // It comes from the page's busy state alone — nothing is read from a transcript or the pane. Not busy, or the first answer not
   // in yet (`supported` null): nothing.
   if (s.info.supported === false || (s.info.supported !== null && !s.dead && !s.steps.length)) return busy ? statusRows(rows, opts.since, s.info.supported === false, s.phase) : rows;

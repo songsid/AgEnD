@@ -221,6 +221,9 @@ describe("buildFleetInstructions", () => {
     const result = buildFleetInstructions({ ...base, decisions });
     expect(result).toContain("5 more");
     expect(result).toContain("list_decisions");
+    const overflow = result.split("\n").find(line => line.includes("5 more"));
+    expect(overflow).toContain("next_cursor");
+    expect(overflow).toContain("detail:true");
   });
 
   it("omits decisions section when empty", () => {
@@ -247,7 +250,7 @@ describe("#1634: what the injected texts say is what main does", () => {
     const r = buildFleetInstructions(base);
     expect(r).toContain("`buttons` (1–10, `{label, value?}`); a click comes back as a message `[button] <label>` (or `[button] <label> (value: <value>)` when the value differs)");
     expect(r).toContain("`stickers` (up to 3 ids from `list_stickers`; not together with buttons)");
-    expect(r).toContain("web-chat user (`via web`)");
+    expect(r).toContain("web-chat user (`@web`)");
     expect(r).toContain("`[📷 Image: PATH]` in a message: Read PATH");
     expect(r).toContain('`(reply_to: "…")` after a message');
     expect(r).not.toContain("has image_path");

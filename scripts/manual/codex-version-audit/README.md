@@ -121,3 +121,11 @@ versions under `unshare -rn`, and captured the sign-in screens from an empty hom
 0.167's startup folder-trust screen pairs `2. Back to Agent Command Center` with `esc back`, and AgEnD's auto-trust now
 accepts that pair too. A rig note: the passes do not stop when `gen-cmd.ts` fails, for example in a checkout without
 `node_modules`. Check that `cap/` holds the scenarios before reading `classify.ts`.
+
+## Codex 0.169.0
+
+The [0.167.2 → 0.169.0 audit](../../../tests/fixtures/codex-audit-0169/README.md) reran `pass1.sh` + `pass2.sh` on both
+versions under `unshare -rn` and captured the sign-in screens from an empty home. One detector change was needed:
+0.169's resume-loading screen shows `  ? for shortcuts` under the composer, which `codexUnboxedResumeLoading` now allows.
+Also checked from source: `codex exec`'s new project-trust gate (AgEnD passes its MCP server with `-c`, so it is
+unaffected) and the 0.168 429 reconnect status (`Server is busy, reconnecting n/m`, read by nothing in AgEnD).

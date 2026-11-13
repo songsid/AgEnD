@@ -70,7 +70,7 @@ describe("what an instance is told", () => {
     expect(later && "ids" in later ? later.ids : later).toEqual(["2.2-forwards", "2.2-polls", "2.2-web-identity", "2.2-delivery-status-evidence"]);
     const plan = planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.8" });
     const notice = plan && "notice" in plan ? plan.notice : "";
-    for (const s of ["`send_to_instance` and `delegate_task` take `forwards: [id, …]`", "`verification_id`", "`delivery_status`",
+    for (const s of ["`send_to_instance` and `delegate_task` take `forwards: [id, …]`", "`[hid:…]`", "`delivery_status`",
       "An id written in the message text grants nothing", "\"Delivery not found\"", "on every hop",
       "a description you loaded earlier may be out of date", "AgEnD's server accepts what is written here", WHATS_NEW_NOTES_URL]) expect(notice, s).toContain(s);
     expect(notice).not.toContain("ToolSearch");                 // reloading does not refresh a Claude Code copy (#1780)
@@ -87,7 +87,7 @@ describe("what an instance is told", () => {
     const notice = plan && "notice" in plan ? plan.notice : "";
     expect(notice.split("\n")[0]).toBe(`[system:whats-new] AgEnD is now 2.2.0-beta.11. Changed for tools you have — a description you loaded earlier may be out of date; AgEnD's server accepts what is written here. Full notes: ${WHATS_NEW_NOTES_URL}`);
     for (const s of ["`reply` takes `poll: {seconds, multi?, reveal?: \"close\"|\"live\", show_voters?}`", "2–10 `buttons`", "`poll_id`", "one `[poll results]` message",
-      "`close_poll({poll_id})`", "`[user:<name> via web, id:<their Discord/Telegram user id>]`", "the web-chat rule in your instructions",
+      "`close_poll({poll_id})`", "`[user:<name>@web#<their Discord/Telegram user id>]`", "the web-chat rule in your instructions",
       "a description you loaded earlier may be out of date", "AgEnD's server accepts what is written here", WHATS_NEW_NOTES_URL]) expect(notice, s).toContain(s);
     expect(notice).not.toContain("forwards");
     // A new instance on beta.11 starts with the current schemas: told nothing, both recorded.
@@ -111,7 +111,7 @@ describe("what an instance is told", () => {
   it("the notice names the exact parameters, says an older loaded copy may be out of date (#1780), and links the full notes (#2800)", () => {
     const text = whatsNewNotice("2.2.0-beta.2", AGENT_WHATS_NEW);
     for (const s of ["[system:whats-new] AgEnD is now 2.2.0-beta.2.", "`buttons: [{label, value?}]` (1–10)", "`[button] <label>`", "`[button] <label> (value: <value>)` when the value differs", "`stickers` (up to 3 ids from `list_stickers`",
-      "`preview_stickers`", "`[user:… via web, …]`", "`message_id`", "`consumed_at` / `consumed_via`", "`filter_status`", "`verbose: true`", "`create_instance` refuses `tool_set` and `skipPermissions`; `update_instance_config` refuses `tool_set` and ignores `skipPermissions`",
+      "`preview_stickers`", "`[user:…@web#…]`", "`message_id`", "`consumed_at` / `consumed_via`", "`filter_status`", "`verbose: true`", "`create_instance` refuses `tool_set` and `skipPermissions`; `update_instance_config` refuses `tool_set` and ignores `skipPermissions`",
       "a description you loaded earlier may be out of date", "AgEnD's server accepts what is written here", WHATS_NEW_NOTES_URL]) expect(text, s).toContain(s);
     // #2800: it rides in front of a real message, so it no longer says not to reply or tells the agent to "use them anyway".
     expect(text).not.toContain("Do not reply to this message.");
@@ -183,10 +183,11 @@ describe("the daemon", () => {
   });
   it("trySpawn decides 'new' before prev-instructions is first written", () => {
     const src = readFileSync(join(process.cwd(), "src", "daemon.ts"), "utf-8");
-    const prepare = src.indexOf('this.prepareWhatsNew(!existsSync(join(this.instanceDir, "prev-instructions")));');
+    const prepare = src.indexOf('const freshInboundInstructions = !existsSync(join(this.instanceDir, "prev-instructions"));');
     const firstWrite = src.indexOf('try { writeFileSync(join(this.instanceDir, "prev-instructions"), backendConfig.instructions); }');
     expect(prepare).toBeGreaterThan(0);
     expect(prepare).toBeLessThan(firstWrite);
+    expect(src.indexOf("this.prepareWhatsNew(freshInboundInstructions);", prepare)).toBeLessThan(firstWrite);
   });
   it("#2800: in front of the next real message, in the same paste; recorded; the next message carries nothing extra", async () => {
     const w = daemon();

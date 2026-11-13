@@ -96,7 +96,7 @@ describe("#1462 clear keeps actual launch and queued lifecycle generations", () 
       const r = rig();
       if (recovered) { (r.daemon as any).beginSpawn(); (r.daemon as any).endSpawn(); }
       const held = await holdClear(r); held.release.resolve(); await held.running;
-      expect(r.send).toHaveBeenCalledExactlyOnceWith({ type: "raw_paste", content: "/clear" });
+      expect(r.send).toHaveBeenCalledExactlyOnceWith({ type: "raw_paste", content: "/clear", context_reset: "clear" });
     });
   }
   for (const field of ["bootId", "launchAttempt"] as const) {

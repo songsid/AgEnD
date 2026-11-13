@@ -145,3 +145,22 @@ export function parseClaudeAuthStatus(text: unknown): ClaudeAuthStatus {
   const maskedEmail = cleanEmail(row.email), plan = planOf(row.subscriptionType);
   return { loggedIn: true, ...(maskedEmail ? { maskedEmail } : {}), ...(plan ? { plan } : {}) };
 }
+
+/**
+ * AGEND-113: which Google account an Antigravity (`agy`) sign-in is, from the text of its own token file (`antigravity-oauth-token`), as the WHOLE e-mail address (`maskedEmail` is the field's historical name; the way Claude's is carried), never a masked one on the Accounts page.
+ *
+ * Only the one field `id_token_email` is looked at: nothing else of the file (the access, refresh or ID token, their expiry, the auth method) is read into the answer, returned,
+ * stored or logged, and no plan is claimed (Antigravity's plans are not the closed list above; the usage panel names them). The address is checked inside this function, before it is
+ * returned, by the same private `cleanEmail` as Claude's (whole address, no `*`); a missing, empty, non-ASCII, multi-`@` or over-long address, text that is not a JSON object, or text over 64 KiB gives no identity.
+ * It proves nothing about whether the login still works: the caller shows it only for a sign-in that is already known to be signed in.
+ */
+/** The one key of agy's token file this module reads (not a key of `claude auth status`: the test that pins the status parser's keys must not count it). */
+const AGY_EMAIL_KEY = "id_token_email";
+export function parseAntigravityToken(text: unknown): AccountIdentity | undefined {
+  if (typeof text !== "string" || text.length > 64 * 1024) return undefined;
+  let file: unknown;
+  try { file = JSON.parse(text); } catch { return undefined; }
+  if (!file || typeof file !== "object" || Array.isArray(file)) return undefined;
+  const maskedEmail = cleanEmail((file as { [key: string]: unknown })[AGY_EMAIL_KEY]);
+  return maskedEmail ? { maskedEmail } : undefined;
+}

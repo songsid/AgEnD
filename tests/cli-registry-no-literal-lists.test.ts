@@ -23,7 +23,8 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
     "src/windows-agents.ts": 2, "src/windows-cli-worker.ts": 2, "src/backend/native-pane.ts": 1, "src/ui/general-location.js": 1, "src/ui/agent-runtime-settings.js": 1, "src/ui/panel-windows-cli.js": 1,
   } },
   { why: "delivery, turn resume, transcripts and usage reports: which CLIs write which kind of transcript or report", files: {
-    "src/daemon.ts": 8, "src/delivery-reconciliation.ts": 2, "src/turn-resume.ts": 2, "src/backend/session-signals.ts": 1, "src/cache-ledger.ts": 1, "src/cache-service.ts": 5,
+    // #3810 also nests the existing Claude/Codex transcript family under the Grok-owned idle alternative.
+    "src/daemon.ts": 9, "src/delivery-reconciliation.ts": 2, "src/turn-resume.ts": 2, "src/backend/session-signals.ts": 1, "src/cache-ledger.ts": 1, "src/cache-service.ts": 5,
     "src/transcript-sources.ts": 1, "src/usage-report.ts": 2, "src/usage-rollup.ts": 1,
     // AGEND-181: where agy's and grok's own records lie for the Log (one table keyed by CLI id).
     "src/log-transcript-paths.ts": 1,
@@ -46,6 +47,8 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
   { why: "fleet-manager.ts: Windows General workspaces, Kiro-only paths, effort and display switches, and its backend tables", files: { "src/fleet-manager.ts": 11 } },
   { why: "behaviour keyed by CLI id (credential homes, the login hosts a link may point at, usage readers): the keys are checked against the registry by cli-registry-completeness.test.ts", files: {
     "src/backend/credential-profile.ts": 1, "src/login-url.ts": 1, "src/usage/providers.ts": 2,
+    // AGEND-119: a keep-alive run per CLI (the switch is checked by the compiler against `host.keepAlive`'s ids) and the words that say what the switch does for each.
+    "src/signin-keepalive.ts": 1, "src/ui/accounts-keepalive.js": 1,
   } },
   { why: "web-api.ts: the backend names in a request schema, and which CLIs have a workspace follow", files: { "src/web-api.ts": 4 } },
 ];

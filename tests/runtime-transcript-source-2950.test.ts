@@ -68,3 +68,13 @@ it('an unknown runner tail stays unknown through an orphan end until a new start
  const f=rig(),offset=9*1024*1024;Object.assign(f.port,{readTranscriptBaseline:vi.fn(async()=>({state:'ready',cursor:{...f.reference.cursor,fileId:'a'.repeat(64),offset,anchor:'b'.repeat(64)},complete:true,turnKnown:false,openTurn:null}))});const source=f.source();await source.initialize();expect(source.turnStateKnown()).toBe(false);
  const orphan=line(end('unproven'));vi.mocked(f.port.readTranscript).mockImplementationOnce(async cursor=>({state:'ready',cursor:{...cursor,offset:cursor.offset+Buffer.byteLength(orphan),anchor:'c'.repeat(64)},data:Buffer.from(orphan).toString('base64'),gap:false,complete:true}));expect((await source.poll()).turns).toEqual([]);expect(source.turnStateKnown()).toBe(false);
 });
+
+it.each(['codex','claude-code'] as const)('native %s context reset observations are live, owned, once and checkpoint-preserved (#3074)',async provider=>{
+ const f=rig(provider),boundary=provider==='codex'?{type:'compacted',payload:{}}:{type:'system',subtype:'compact_boundary',isSidechain:false};
+ f.add(boundary);const source=f.source();await source.initialize();expect((await source.poll()).contextResets).toBeUndefined();
+ if(provider==='claude-code'){f.add({...boundary,isSidechain:true});expect((await source.poll()).contextResets).toBeUndefined();}
+ f.add(boundary);expect((await source.poll()).contextResets).toBe(1);expect((await source.poll()).contextResets).toBeUndefined();
+ f.add(boundary);await source.runtimeCheckpoint();expect((await source.poll()).contextResets).toBe(1);expect((await source.poll()).contextResets).toBeUndefined();
+ source.reset();await source.initialize();expect((await source.poll()).contextResets).toBeUndefined();
+ f.offline();f.add(boundary);expect((await source.poll()).contextResets).toBeUndefined();source.close();
+});

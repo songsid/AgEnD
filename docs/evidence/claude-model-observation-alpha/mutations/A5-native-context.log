@@ -1,0 +1,44 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 20ms
+   × a context callback that retires the monitor cannot leak its paired model observation 6ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  18:45:39
+   Duration  499ms (transform 239ms, setup 102ms, import 223ms, tests 20ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-runtime-observation.test.ts > a context callback that retires the monitor cannot leak its paired model observation
+AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "at": 1794566739967,
++     "cause": "safeguards",
++     "id": "notice:12841c29-d5f5-43a4-8ec0-da0f970a50c1",
++     "kind": "switch",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "sessionId": "1f51575b-b5bd-48f8-9a71-8d5366c7a8c6",
++   },
++ ]
+
+ ❯ tests/claude-model-runtime-observation.test.ts:45:50
+     43|  const f = rig(); await f.monitor.initialize(); f.add(f.record()); con…
+     44|  f.monitor.on("model_context", () => f.monitor.stop()); f.monitor.on("…
+     45|  await f.monitor.pollIncrement(); expect(events).toEqual([]);
+       |                                                  ^
+     46| });
+     47| it("the native source itself never projects metadata from a different …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

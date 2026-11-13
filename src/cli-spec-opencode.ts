@@ -34,6 +34,7 @@ export const OPENCODE_SPEC = {
     update: yes({ kind: "pinned" }),
     signIn: notApplicable("AgEnD has no sign-in flow for OpenCode."),
     namedAccounts: toVerify("Whether `opencode` on Windows can keep more than one set of credentials side by side has not been checked."),
+    signOut: notApplicable("AgEnD has no sign-in flow for OpenCode, so nothing to sign out."),
     accountRows: none("OpenCode has no card on Settings → Accounts."),
     authStatus: notYetBuilt("undecided", "The Windows adapter has no sign-in probe for OpenCode (`authProbe` is null); its state is unknown, not signed out."),
     identity: notApplicable("Needs a sign-in probe on the computer first."),

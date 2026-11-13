@@ -71,7 +71,7 @@ export function transcriptDeltaDeliveryMarker(rawDelta: string, backend: string,
 
 /**
  * #3030: the same reading for any unique leading marker — a delivery's `[agend-delivery-id:…]` or a person's
- * `[agend-human-id:…]` (both lead the pasted body).
+ * `[hid:…] / [agend-human-id:…]` (both lead the pasted body).
  */
 export function transcriptDeltaMarkerKind(rawDelta: string, backend: string, marker: string): TranscriptMarkerKind | null {
   let queued = false;

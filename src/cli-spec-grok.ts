@@ -16,7 +16,7 @@ export const GROK_SPEC = {
     signOut: toVerify("No `grok` logout command has been checked."),
     keepAlive: toVerify("Whether Grok's sign-in needs a keep-alive run has not been checked."),
     accountCard: yes({ rank: 4 }),
-    usage: yes({ providerId: "grok", name: "Grok", rank: 3, profileRows: false }),
+    usage: yes({ providerId: "grok", name: "Grok", rank: 3, profileRows: false, hostRows: false, pools: "single", windows: ["weekly"] }),
   },
   runtime: {
     provider: yes({
@@ -32,6 +32,7 @@ export const GROK_SPEC = {
     update: byDesign("Grok is not in the Runtime's pinned installer table, so there is no audited, verifiable release for the Runtime to install; its owner can run `grok update --version <audited release>` on that computer."),
     signIn: notYetBuilt("undecided", "Only Claude Code is signed in from the dashboard on a computer."),
     namedAccounts: toVerify("Whether `grok` on Windows can keep more than one login side by side has not been checked."),
+    signOut: toVerify("Whether `grok` on Windows can keep its login anywhere but the Credential Manager has not been checked; nothing is signed out from the dashboard there."),
     accountRows: notYetBuilt("undecided", "Accounts shows a computer's Claude Code accounts only."),
     authStatus: notYetBuilt("undecided", "The Windows adapter has no sign-in probe for Grok (`authProbe` is null); its state is unknown, not signed out."),
     identity: notApplicable("Needs a sign-in probe on the computer first."),

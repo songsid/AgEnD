@@ -222,6 +222,11 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   // Start once the probe for exactly this address has answered without a problem. A probe that could not answer at all
   // (no reason: a network error, an older server) does not block Start: Start makes the same checks itself.
   const ready = kind.kind === "address" && !problem && !probing && probe?.address === kind.address;
+  // #3837: an address the probe has already CLEARED (answered ok, nothing to say) is not looked up again on blur. A click on
+  // Start blurs the input, and that re-check disabled the button under the click (the click was lost). An address with no
+  // answer yet, a failed one (unreachable, certificate, not a Hub, limited) or one naming a problem is still asked again on
+  // blur (#3675's retry path); the forced look after a repair is unchanged.
+  const cleared = kind.kind === "address" && probe?.address === kind.address && probe.ok === true && !problem;
   const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(kind.address).origin); } catch { return ""; } })();
   const inlineWait = consentWait || pending?.inline;
   const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;
@@ -257,7 +262,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     ${canStart ? html`<form class="form hub-join-one" onSubmit=${start}>
       <label class="field" for="hubCompanyAddress"><span>${j1("input")}</span><input id="hubCompanyAddress" type="text" value=${form.address} placeholder=${j1("placeholder")} autocomplete="off" spellcheck=${false} autocapitalize="off"
         aria-describedby="hubCompanyLine" aria-invalid=${problem ? "true" : undefined} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))}
-        onPaste=${e => { const n = fromHandoffText(e.clipboardData?.getData("text")); if (n) { e.preventDefault(); setForm(f => ({ ...f, address: n })); } }} onBlur=${() => runProbe()} /></label>
+        onPaste=${e => { const n = fromHandoffText(e.clipboardData?.getData("text")); if (n) { e.preventDefault(); setForm(f => ({ ...f, address: n })); } }} onBlur=${() => { if (!cleared) runProbe(); }} /></label>
       <p class="note hub-join-line" id="hubCompanyLine" role=${problem ? "alert" : "status"}>${problem ? problem
         : kind.kind === "pairing" ? j1("otherPairing")
         : probing ? j1("probing")

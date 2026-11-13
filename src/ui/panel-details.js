@@ -1,4 +1,5 @@
 import { NativePaneRecovery } from "./native-pane-recovery.js";
+import { modelSwitchText, modelName, observationLabel } from "/assets/model-observation.js";
 // #1523 N2 (§3.3, Q1 = B): Details — "the Fleet side of one instance", at /ui/fleet/agent/<name>. Behind the session
 // gate (/ui/js/). What it holds:
 // - runtime and recent activity (what Chat's details dialog showed, now a page);
@@ -60,6 +61,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   // #1629 r4 §1: the identity card at the top, read when the status frame's card_v moves.
   const card = useCard(name, inst.card_v);
   const [d, setD] = useState(null);
+  const observed = Object.prototype.hasOwnProperty.call(inst, "model_observation") ? inst.model_observation : d?.model_observation;
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState("");
   const body = useRef(null);
@@ -162,7 +164,10 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
         ${row(t("chat.dTags"), Array.isArray(d.tags) && d.tags.length ? html`<span class="d-tags">${d.tags.map((x) => html`<span key=${x} class="tag">${x}</span>`)}</span>` : "--")}</section>
       <section class="card"><h3>${t("chat.dRuntime")}</h3>
         ${row(t("chat.dBackend"), d.backend || "--")}
-        ${row(t("chat.dModel"), `${(d.model && modelText(d)) || sl.model?.display_name || "--"}${d.model_source === "live" ? "" : src(d.model_source)}`)}
+        ${row(observed ? observationLabel("selection") : t("chat.dModel"), observed ? modelName(observed.session) || observationLabel("unresolved") : `${(d.model && modelText(d)) || sl.model?.display_name || "--"}${d.model_source === "live" ? "" : src(d.model_source)}`)}
+        ${observed ? html`${row(observationLabel("configured"), modelName(observed.configured) || observationLabel("unresolved"))}
+          ${row(observationLabel("served"), modelName(observed.lastServed) || observationLabel("unresolved"))}
+          ${observed.active ? html`<p class="note model-switch" role="status">${modelSwitchText(observed.active)}</p>` : null}` : null}
         ${d.effort ? row(t("chat.dEffort"), `${d.effort}${src(d.effort_source)}`) : null}
         ${row(t("chat.dCost"), `$${cost.toFixed(2)} ${t("chat.dCostNote")}`)}
         ${row(t("chat.dContext"), html`<span class="pct">${ctx != null ? `${Math.round(ctx)}%` : "--"}</span>${ctx != null ? bar(ctx, ctx > 80 ? "warn" : "") : null}`)}

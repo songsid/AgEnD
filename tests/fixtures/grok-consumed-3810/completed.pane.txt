@@ -1,0 +1,40 @@
+
+  master /rig/work                                                                           1.4K / 256K │ [Dashboard]
+
+
+     ❯ [agend-delivery-id:74ff4c43-8c39-400f-a8a0-f2551b05b2db] please stall owned receipt fixture           9:03 AM
+
+
+     mock reply r1                                                                                           9:04 AM
+
+     Worked for 8.1s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ mock reply r3                                                                                                  │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Tab/→:accept suggestion  │  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

@@ -112,7 +112,7 @@ describe("item 2 — whitespace/empty filter normalization (real handler)", () =
     const doneTask = db.createTask({ title: "done-one", created_by: "x" });
     db.updateTask(doneTask.id, { status: "done" }, AGENT);
 
-    const result = await call(fm, "list", { filter_status: " \t " });
+    const result = await call(fm,"list",{filter_status:" \t ",detail:true});
     const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[]; omitted: number }).tasks;
     // 1. done task must NOT be in result (live-only still active)
     expect((tasks as Array<{ id: string }>).some(t => t.id === doneTask.id)).toBe(false);
@@ -127,7 +127,7 @@ describe("item 2 — whitespace/empty filter normalization (real handler)", () =
     const doneTask = db.createTask({ title: "done-one", created_by: "x" });
     db.updateTask(doneTask.id, { status: "done" }, AGENT);
 
-    const result = await call(fm, "list", { filter_status: [" ", "\t"] });
+    const result = await call(fm,"list",{filter_status:[" ","\t"],detail:true});
     const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[]; omitted: number }).tasks;
     expect((tasks as Array<{ id: string }>).some(t => t.id === doneTask.id)).toBe(false);
     expect((tasks as unknown[]).length).toBe(100);
@@ -168,7 +168,7 @@ describe("item 3 — compact rows + verbose + get (real HTTP handler)", () => {
   it("get action returns a single full record by prefix", async () => {
     const { fm, db } = makeFleet();
     const t = db.createTask({ title: "full record", description: "detail", created_by: "x" });
-    const result = await call(fm, "get", { id: t.id.slice(0, 8) });
+    const result = await call(fm,"get",{id:t.id.slice(0,8),detail:true});
     expect((result as { id: string }).id).toBe(t.id);
     expect((result as { description: string }).description).toBe("detail");
     expect((result as { created_by: string }).created_by).toBe("x");
@@ -187,7 +187,7 @@ describe("item 4 — cap via real handler", () => {
   it("unfiltered list of 110 live tasks → 100 returned, 10 omitted", async () => {
     const { fm, db } = makeFleet();
     for (let i = 0; i < 110; i++) db.createTask({ title: `t${i}`, created_by: "x" });
-    const result = await call(fm, "list");
+    const result = await call(fm,"list",{detail:true});
     const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
     expect((tasks as unknown[]).length).toBe(100);
     expect((result as { omitted: number }).omitted).toBe(10);
@@ -197,7 +197,7 @@ describe("item 4 — cap via real handler", () => {
   it("assignee-filtered list is not capped", async () => {
     const { fm, db } = makeFleet();
     for (let i = 0; i < 110; i++) db.createTask({ title: `t${i}`, assignee: "a", created_by: "x" });
-    const result = await call(fm, "list", { filter_assignee: "a" });
+    const result = await call(fm, "list", {filter_assignee:"a",detail:true});
     const tasks = Array.isArray(result) ? result : result;
     expect(Array.isArray(tasks)).toBe(true);
     expect((tasks as unknown[]).length).toBe(110);
