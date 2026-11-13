@@ -3,7 +3,7 @@
 The live post-trust banner identified **Antigravity CLI 1.5.7**. These are actual
 plain tmux screen captures from a fresh owned HOME/private socket, after the user
 completed Google OAuth. No credentials were copied; no model prompt was sent.
-Only the owned project path is replaced with `/fixture/agy-workspace` in `trust`.
+Trailing empty terminal rows are trimmed. Only the owned project path is replaced with `/fixture/agy-workspace` in `trust`.
 The colour/Terms frames contain no account identity or sign-in material. The
 private settings frame is reduced to its version, colour and telemetry rows.
 

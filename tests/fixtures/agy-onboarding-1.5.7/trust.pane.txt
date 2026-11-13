@@ -11,38 +11,3 @@ Antigravity CLI requires permission to read, edit, and execute files here.
 
   ↑/↓ Navigate · enter Confirm
                                                                                                               auto · Gemini 3.8 Flash · high
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
