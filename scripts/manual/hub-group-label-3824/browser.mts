@@ -59,7 +59,9 @@ try {
       const page = await context.newPage(), assets: Promise<void>[] = [];
       page.on("pageerror", (e: any) => receipt.errors.push(String(e)));
       page.on("response", (response: any) => { const path = new URL(response.url()).pathname;
-        if (/\.(js|css)$/.test(path)) assets.push((async () => { receipt.served[path] = hash(await response.body()); })()); });
+        if (/\.(js|css)$/.test(path)) assets.push((async () => {
+          const paths = receipt.served[hash(await response.body())] ??= []; if (!paths.includes(path)) paths.push(path);
+        })()); });
       await page.goto(origin + "/ui/hub/exposures?agent=" + id);
       await page.fill("#hubLogin", "owner"); await page.fill("#hubPassword", "pw-owner");
       await page.locator(".hub-signin button[type=submit]").click();

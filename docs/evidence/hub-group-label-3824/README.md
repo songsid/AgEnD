@@ -15,6 +15,7 @@ The small presentation decoder reads a leading `CN` value, including escaped del
 | Native TypeScript 7 source and test programs | both exit 0 before and after sync |
 | Isolated reversals | 4/4 compile and fail assertions: remove projection, omit UTF-8 decoding, accept decoded controls, decode person names |
 | Restored targeted tests | 17 pass, 42 deliberately unselected |
+| Secret-scan configuration/range guards | 35/35 across two additional suites |
 | Changelog check | 454 fragments pass |
 | Owned Chromium campaign | baseline 8 cases/46 checks + candidate 8/54; 24 PNGs; zero page errors; both cleanup receipts true |
 | Original-image inspection | all 12 current originals + 4 baseline desktop rows clear; 8 other baseline originals have geometry/interaction checks only |
@@ -33,6 +34,8 @@ REPO=<actual-baseline-or-candidate-worktree> OUT=<evidence/before-or-current> MO
 The baseline server really ran `e933d36a9d538405bd66ac8ac3bdeb5ce61136e3`; it was not a response or UI substitution. The candidate captured clean `6d43c3861639437219b614e2807510ccb378ec0e`. Both used actual production Hub HTTP, cookie session, CSRF, SQLite catalog and unchanged UI over owned HTTPS, with inert directory facts and authenticated member publication. The fixture creates a GUID grant, checks the row/menu accessible name and revoke confirmation, cancels every confirmation, and verifies the entire stored grant remains byte-for-byte equal. No live directory, account, Fleet, model, input or deployment was exercised.
 
 No UI, CSS, module import or API key changed. A retained UI receives the same `subjectName` string field; the captured baseline/candidate panel and owner stylesheet inputs are identical. There is no claim of a historical-browser lifecycle run or an exhaustive server suite. Static PNG inspection does not establish authority or accessibility metrics; DOM assertions cover the named row/menu/confirmation and viewport overflow.
+
+The first PR scan found two `generic-api-key` false positives: the SHA-256 of the public `/assets/tokens.css` response in the two receipts. Both match `src/ui/shared/tokens.css`. Served hashes now use `hash → paths` groups; the existing receipts were transformed losslessly, with original/new hashes and exact round-trip checks in `checks/scan-false-positives.json`. The harness changes only that serialization. PNGs, checks, observations and product code are unchanged. Two exact historical commit/path/rule/line fingerprints in `.gitleaksignore` cover the earlier commit; no rule, path, pattern or future finding is excluded. Pinned Gitleaks 8.24.3 checks the complete local history using `-m` (all merge parents) and the current evidence tree without findings. Local Git 2.34.1 cannot run CI's `--diff-merges=remerge`; the first unsupported attempt was a partial scan and is not counted as passing. CI remains the exact remerge-range gate.
 
 The harness's first initialization attempt named the stylesheet's parent directory incorrectly; it stopped before starting a listener/browser. The empty owned scratch was removed and the harness fixed before both accepted campaigns. No failed capture is presented as passing evidence.
 
