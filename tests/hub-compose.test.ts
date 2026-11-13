@@ -2332,3 +2332,24 @@ describe.skipIf(process.platform === "win32")("S129 actual factory expiry owners
     } finally { release.resolve(); await r.runtime.close(); }
   });
 });
+
+describe.skipIf(process.platform === "win32")("S129 factory session classification", () => {
+  it("classifies the current image without becoming an operation permit and stops on fence", async () => {
+    const r = await directoryRuntimeRig();
+    const classify = r.deps.roleSessionMode!;
+    try {
+      expect(classify()).toBe(false);
+      provisionMountedRoles(r); expect(classify()).toBe(true);
+      r.runtime.fence(); expect(() => classify()).toThrow("unavailable");
+    } finally { await r.runtime.close(); }
+  });
+  it("retains the mount's existing permanent refusal after an observed foreign owner and restoration", async () => {
+    const r = await directoryRuntimeRig(), classify = r.deps.roleSessionMode!;
+    const owner = (hubId: string) => r.deps.uow.atomic(tx => hubTxDatabase(tx).prepare("UPDATE hub_group_policy SET hub_id=? WHERE singleton=1").run(hubId));
+    try {
+      expect(classify()).toBe(false);
+      owner(randomUUID()); expect(() => classify()).toThrow("unavailable");
+      owner(String(r.hub.config.hub.hubId)); expect(() => classify()).toThrow("unavailable");
+    } finally { await r.runtime.close(); }
+  });
+});

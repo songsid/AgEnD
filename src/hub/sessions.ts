@@ -9,8 +9,8 @@
  *   session token, which only a same-origin read of /hub/v1/session can learn.
  * - Every check is fresh: the session row and the server's switch on each call, the directory's eligibility on
  *   `requirePerson`/`requireAdmin` (hub.md §5: no eligibility allow-cache). An ineligible person's sessions end.
- * - Local-host repair sign-in is reserved: P1 refuses it (requireAdmin is the configured administrator's current
- *   directory identity).
+ * - Local-host repair sign-in is reserved. Administrative authority always needs a current directory session:
+ *   the configured root by default, or the composed hub.admin proof.
  */
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
@@ -20,6 +20,7 @@ import type { HubActor, HubRequestContext, PersonKey } from "./types.js";
 import { recentHubDirectoryAuthentication, prepareHubDirectorySessionRotation, completeHubDirectorySessionRotation, type HubDirectorySessionRotation } from "./session-directory-transition.js";
 import type { HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubCore } from "./http/core.js";
+import type { HubManagementPermit } from "./roles/authority.js";
 
 /** Absolute and idle lifetimes of a Hub session. */
 export const HUB_SESSION_TTL = 8 * 60 * 60_000;
@@ -65,7 +66,15 @@ export class HubSessions {
   private signingIn = 0;
   constructor(private readonly core: HubCore) {}
   private get hubId() { return this.core.deps.config.hubId; }
+  /** Configured-root identity only (claim witness and legacy presentation), never a role permission. */
   isAdmin(person: PersonKey): boolean { return personKeyString(person) === personKeyString(this.core.deps.config.administrator); }
+  private roleSessionMode(): boolean {
+    const classify = this.core.deps.roleSessionMode;
+    if (!classify) return true; // Older injected authority owns its own classification.
+    const roles = classify();
+    if (typeof roles !== "boolean") throw new HubProtocolError("unavailable");
+    return roles;
+  }
 
   /** Directory sign-in → a new session. Errors are generic to the browser ("denied"), bounded to the audit. */
   async signIn(login: unknown, password: unknown): Promise<{ token: string; view: HubSessionView; maxAgeMs: number }> {
@@ -142,6 +151,38 @@ export class HubSessions {
     }
   }
 
+  /** Presentation only. The retained positive proof is checked again immediately before disclosure. */
+  async presentation(token: string | null) {
+    const selected = this.session(token);
+    if (!selected) return null;
+    const management = this.core.deps.management;
+    const classify = this.core.deps.roleSessionMode;
+    let admin = selected.admin, permit: Pick<HubManagementPermit, "assertCurrent"> | undefined;
+    // The immutable root's existing repair presentation does not depend on a healthy policy binding.
+    // This flag never replaces the clock/current proof required by a management operation.
+    if (management && !this.isAdmin(selected.person) && this.roleSessionMode()) {
+      try { permit = await this.core.management(this.contextOf(token), "hub.admin"); admin = true; }
+      catch (error) {
+        if (!this.session(token)) throw new HubProtocolError("revoked");
+        if (!(error instanceof HubProtocolError) || error.code !== "denied") throw error;
+        admin = false;
+      }
+    }
+    let retired = false;
+    const assertCurrent = () => {
+      try {
+        const current = this.session(token);
+        if (retired || !current || current.sessionId !== selected.sessionId || personKeyString(current.person) !== personKeyString(selected.person)) throw new HubProtocolError("revoked");
+        if (this.core.deps.management !== management) throw new HubProtocolError("unavailable");
+        if (this.core.deps.roleSessionMode !== classify) throw new HubProtocolError("unavailable");
+        permit?.assertCurrent();
+      } catch (error) { retired = true; throw error; }
+    };
+    assertCurrent();
+    const { token: _token, ...view } = selected;
+    return { view: { ...view, admin }, assertCurrent };
+  }
+
   signOut(token: string | null): void {
     if (!token) return;
     this.core.atomic((db, tx) => {
@@ -168,10 +209,13 @@ export class HubSessions {
 
   /**
    * The request context of hub.md §5 for this request's cookie. `current()` authenticates again (session row, switch);
-   * `requirePerson()` adds a fresh directory check; `requireAdmin()` is the configured administrator's identity, fresh.
+   * `requirePerson()` adds a fresh directory check. A composed authority proves hub.admin; absent, the root-only rule remains.
    */
   context(req: IncomingMessage): HubRequestContext & { token: string | null } {
-    const token = readHubCookie(req.headers.cookie, this.hubId);
+    return this.contextOf(readHubCookie(req.headers.cookie, this.hubId));
+  }
+  /** Only actual session tokens are accepted; no actor or administrative flag is supplied by a caller. */
+  private contextOf(token: string | null): HubRequestContext & { token: string | null } {
     const requestId = randomUUID();
     const current = async (): Promise<HubActor> => {
       const s = this.session(token);
@@ -186,6 +230,18 @@ export class HubSessions {
       return actor.person;
     };
     const requireAdmin = async (): Promise<HubActor> => {
+      const selected = await current();
+      const classify = this.core.deps.roleSessionMode;
+      // Preserve the configured root's existing fresh-directory repair boundary. Every role-aware
+      // operation must still consume its own named management permit, including for this root.
+      if (selected.kind === "directory" && !this.isAdmin(selected.person) && this.core.deps.management && this.roleSessionMode()) {
+        let permit;
+        try { permit = await this.core.management(context, "hub.admin"); }
+        catch (error) { await current(); throw error; }
+        if (this.core.deps.roleSessionMode !== classify || !this.roleSessionMode()) throw new HubProtocolError("unavailable");
+        permit.assertCurrent();
+        return permit.actor;
+      }
       const person = await requirePerson();
       if (!this.isAdmin(person)) throw new HubProtocolError("denied");
       return current();
@@ -195,6 +251,7 @@ export class HubSessions {
       const s = this.session(token);
       return s !== null && s.sessionId === sessionId && personKeyString(s.person) === personKeyString(person);
     };
-    return { requestId, token, current, isCurrent, isIdentityCurrent, requirePerson, requireAdmin };
+    const context = { requestId, token, current, isCurrent, isIdentityCurrent, requirePerson, requireAdmin };
+    return context;
   }
 }

@@ -64,6 +64,7 @@ import type { HubDirectoryResponse, HubDirectoryResponseListener, HubDirectoryRe
 import { createHubDirectoryAdmission } from "../directory/admission.js";
 
 import { SERVER_SET, createKeyFile, readKeyFile } from "./storage.js";
+import { HubProtocolError } from "../validation.js";
 export { SERVER_SET } from "./storage.js";
 
 /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
@@ -81,6 +82,7 @@ export interface HubHttpDeps {
   companyJoin?: HubCompanyJoin;
   groups?: HubGroupAuthorization;
   management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require">;
+  roleSessionMode?(): boolean;
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   grantDirectory?: import("../http/deps.js").HubHttpDeps["grantDirectory"];
   pairingNotices?: HubPairingNotices;
@@ -449,6 +451,16 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         groups,
         management,
         groupHttp: { control: groupControl, welcome: groupWelcome },
+        roleSessionMode: () => {
+          // Classification is not authority. A legacy repair must not ask the strict role reader
+          // to authorize sign-in; a roles result still needs the full current management permit.
+          try {
+            if (!live()) throw new Error("retired");
+            const row = db.prepare("SELECT hub_id,body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
+            if (!row || row.hub_id !== settings.hubId) throw new Error("missing owner");
+            return parseCanonicalPolicy(row.body).kind === "roles";
+          } catch { throw new HubProtocolError("unavailable"); }
+        },
         grantDirectory: { policy, binding },
         pairingNotices,
         directoryNotices,

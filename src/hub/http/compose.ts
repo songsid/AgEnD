@@ -193,14 +193,19 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
 
     if (path === "/hub/v1/session") {
       if (method === "GET") {
-        const s = sessions.session(ctx.token);
+        const presentation = await sessions.presentation(ctx.token);
+        presentation?.assertCurrent();
+        const s = presentation?.view;
         return send(res, 200, s ? { signedIn: true, displayName: s.displayName, login: s.login, admin: s.admin, csrf: s.csrf, hub: { name: deps.config.name }, ...features }
           : { signedIn: false, hub: { name: deps.config.name } });
       }
       if (method === "POST") {
         const b = await body();
         const out = await sessions.signIn(b.login, b.password);
-        const { csrf: token, ...view } = out.view;
+        const presentation = await sessions.presentation(out.token);
+        if (!presentation) throw new HubProtocolError("revoked");
+        presentation.assertCurrent();
+        const { csrf: token, ...view } = presentation.view;
         return send(res, 200, { signedIn: true, displayName: view.displayName, login: view.login, admin: view.admin, csrf: token, hub: { name: deps.config.name }, ...features },
           { "Set-Cookie": hubSetCookie(deps.config.hubId, out.token, out.maxAgeMs) });
       }

@@ -36,7 +36,21 @@ export class HubCore {
   check(): void { if (!this.live()) throw new HubProtocolError("unavailable"); }
   async management(ctx: HubRequestContext, permission: HubManagementPermission) {
     this.check();
-    if (this.deps.management) return this.deps.management.require(ctx, permission);
+    const management = this.deps.management;
+    if (management) {
+      const require = management.require;
+      const permit = await require.call(management, ctx, permission);
+      let retired = false;
+      const assertCurrent = () => {
+        try {
+          this.check();
+          if (retired || this.deps.management !== management || management.require !== require) throw new HubProtocolError("unavailable");
+          permit.assertCurrent();
+        } catch (error) { retired = true; throw error; }
+      };
+      assertCurrent();
+      return { ...permit, assertCurrent };
+    }
     const actor = await ctx.requireAdmin(), current = ctx.isCurrent?.bind(ctx);
     const assertCurrent = () => { this.check(); if (current && current() !== true) throw new HubProtocolError("revoked"); };
     assertCurrent(); return { actor, assertCurrent };
