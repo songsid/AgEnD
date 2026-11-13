@@ -11,6 +11,7 @@
  */
 import {isNativeProviderId,nativeProvider} from "./windows-cli-providers.js";
 import { existsSync, lstatSync, unlinkSync } from "node:fs";
+import { fingerprintStore, storeWrittenSince, type StoreFingerprint } from "./credential-store-proof.js";
 import { join } from "node:path";
 import { CliInstallError } from "./runtime-cli-install.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
@@ -124,7 +125,7 @@ function reasonOf(error: unknown): AuditReason {
 const NEEDS_ACCOUNTS: readonly RuntimeRemoteOperation[] = ["models.refresh", "signin.start", "signin.capture", "signin.status", "signin.write", "accounts.check", "accounts.signout", "accounts.remove"];
 
 /** `profile` is absent for Antigravity's sign-in: the computer's own default login (there is no profile folder for it). */
-interface Meta { id: string; actor: string; cli: SignInCli; profile?: string; signedIn?: boolean; /** The command ended well but the account's folder holds no sign-in (AGEND-124). */ notIsolated?: true }
+interface Meta { id: string; actor: string; cli: SignInCli; profile?: string; signedIn?: boolean; /** The command ended well but the account's folder holds no sign-in (AGEND-124). */ notIsolated?: true; /** AGEND-250 (review P2-1): the account's sign-in file as it was when the attempt began (see credential-store-proof.ts). */ storeBefore?: StoreFingerprint }
 /** The key of "a CLI's own login" in the pace table (no profile name can hold a NUL). */
 const DEFAULT_KEY = "\0default-login:";
 /** Deletes one plain file of an account's folder, by the registry's exact name: not a link, not a folder, and nothing else. A file that is not there is already signed out. */
@@ -469,10 +470,13 @@ export class RemoteAccounts {
         // The switch and the connection once more, in the same synchronous step as the child is started (the slot waits before it calls this).
         // The launch of this account: its variable (Claude Code), or the pin and `--app_data_dir <folder>` that go with the sign-in command (Antigravity).
         const launch = credentialProfileLaunch(this.deps.environment(), cli, directory);
+        // AGEND-250 (review P2-1): the file an earlier attempt may have left, fingerprinted before this login starts; only a file that differs from it counts as this attempt's sign-in.
+        const storeName = RemoteAccounts.byArgument(cli) ? credentialProfileStore(cli) : null;
+        const storeBefore = storeName ? fingerprintStore(join(credentialProfileDirectory(credentialRoot, cli, input.profile), storeName)) : null;
         const session = await this.slot.start(() => { this.gate(ctx, "accounts"); return new RuntimeSignIn({ command: executable!.command, args: executable!.args, profileArgs: launch.args, method: input.method, cli,
           env: launch.env }, { ...this.deps.signIn, now: this.deps.now,
           onTimeout: () => { this.endWithRetry(session.id, "timeout"); } }); });
-        this.meta = { id: session.id, actor, cli, profile: input.profile };
+        this.meta = { id: session.id, actor, cli, profile: input.profile, storeBefore };
         await this.holdSignIn(session, ctx);
         return { sessionId: session.id };
       },
@@ -501,8 +505,8 @@ export class RemoteAccounts {
     const session = this.slot.find(sessionId), status = session.status(), meta = this.meta;
     if (meta && meta.id === sessionId && meta.profile !== undefined && !status.alive && status.exitCode === 0 && isCredentialProfileCli(meta.cli) && RemoteAccounts.byArgument(meta.cli)) {
       const store = credentialProfileStore(meta.cli);
-      let kept = false;
-      try { const stat = lstatSync(join(credentialProfileDirectory(this.deps.credentialRoot, meta.cli, meta.profile), store!)); kept = stat.isFile() && !stat.isSymbolicLink(); } catch { kept = false; }
+      // AGEND-250 (review P2-1): a plain file that is not the one the attempt began with; an old file left in the folder proves nothing about where this login went.
+      const kept = !!store && storeWrittenSince(join(credentialProfileDirectory(this.deps.credentialRoot, meta.cli, meta.profile), store), meta.storeBefore ?? null);
       if (!kept) { meta.notIsolated = true; meta.signedIn = false; return { ...status, isolated: false }; }
     }
     return status;

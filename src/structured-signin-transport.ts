@@ -1,5 +1,6 @@
 /** Native adapter for the closed driver. Tests inject TerminalBackend; never a fleet pane. */
 import { lstatSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { fingerprintStore, storeWrittenSince } from "./credential-store-proof.js";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -95,8 +96,11 @@ export function createStructuredSignInTransport(options: StructuredSignInTranspo
             argv = [spec.argv[0]!, ...args, ...spec.argv.slice(1)];
             const facts = hostFacts(options.backend, "namedAccounts"), backend = options.backend, dataDir = options.dataDir, profile = spec.profile;
             const store = facts && facts.home === "launch-argument" ? facts.store : null;
-            // No store name to look for is "not kept": the proof can only fail closed.
-            keptIn = () => { try { const st = lstatSync(join(credentialProfileHome(dataDir, backend, profile), store ?? "")); return !!store && st.isFile() && !st.isSymbolicLink(); } catch { return false; } };
+            // AGEND-250 (review P2-1): the proof is bound to THIS attempt. The file as it is right now (an earlier attempt's, possibly expired, file may be there) is fingerprinted; the
+            // login only counts when the folder holds a plain file that is not that one. Nothing is removed, so a failed attempt keeps the account's previous credential. No store name = fail closed.
+            const storePath = store ? join(credentialProfileHome(dataDir, backend, profile), store) : null;
+            const before = storePath ? fingerprintStore(storePath) : null;
+            keptIn = () => !!storePath && storeWrittenSince(storePath, before);
           }
         }
         const envArgs = Object.entries(environment).map(([key, value]) => shellQuote(`${key}=${value}`)).join(" ");

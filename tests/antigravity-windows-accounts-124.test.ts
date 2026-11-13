@@ -388,10 +388,11 @@ describe("a named account's e-mail, read from its own token file on the computer
 });
 
 describe("a named sign-in that ended well must have left its sign-in in the account's own folder (P2-1)", () => {
-  const finish = async (f: Rig, before?: (dir: string) => void) => {
+  const finish = async (f: Rig, before?: (dir: string) => void, signedInAfterStart = false) => {
     await f.signIns.begin(f.owner, f.agyNamed("work"));
     f.children[0]!.say(AGY_SCREEN);
     await waitFor(() => expect(f.signIns.snapshot(f.owner, f.agyNamed("work")).login?.phase).toBe("code"));
+    if (signedInAfterStart) f.answer({ loggedIn: true });         // the account was signed out when the attempt began; whatever store the login used now says "signed in"
     const login = f.signIns.snapshot(f.owner, f.agyNamed("work")).login!;
     await f.signIns.input(f.owner, f.agyNamed("work"), login.id, login.revision, { kind: "code", value: AGY_CODE });
     before?.(agyDir(f, "work"));
@@ -428,6 +429,24 @@ describe("a named sign-in that ended well must have left its sign-in in the acco
     own.agyAnswer(true); own.children[0]!.end(0);
     await waitFor(() => expect(own.signIns.snapshot(own.owner, own.agyTarget).login?.phase).toBe("done"));
     await own.stop();
+  });
+  // AGEND-250 (#3771 review P2-1): the evidence is bound to THIS attempt. An expired file left in the folder by an earlier attempt, with the pin ignored (the login went to the shared Credential Manager), is not proof.
+  it("AGEND-250 P2-1: an old invalid token file that the login did not touch is `not_isolated`, and it is left exactly as it was (the account's previous credential is kept)", async () => {
+    const { f } = proven({ agyCreated: ["work"] }); f.answer({ loggedIn: false });
+    const old = join(agyDir(f, "work"), TOKEN); writeFileSync(old, "FIXTURE-EXPIRED-NOT-A-TOKEN");
+    await finish(f, undefined, true);                                                          // nothing is written during the attempt
+    await waitFor(() => expect(f.signIns.snapshot(f.owner, f.agyNamed("work")).login).toMatchObject({ phase: "failed", reason: "not_isolated" }));
+    expect(readFileSync(old, "utf8")).toBe("FIXTURE-EXPIRED-NOT-A-TOKEN");
+    await f.signIns.cancel(f.owner, f.agyNamed("work"));
+    expect(audit(f).filter(r => r.action === "signin" && r.outcome === "failed").at(-1)).toMatchObject({ profile: "work", reason: "not_isolated" });
+    await f.stop();
+  });
+  it("AGEND-250 P2-1 (positive control): the same account with the same old file succeeds when the login rewrote it", async () => {
+    const { f } = proven({ agyCreated: ["work"] }); f.answer({ loggedIn: false });
+    writeFileSync(join(agyDir(f, "work"), TOKEN), "FIXTURE-EXPIRED-NOT-A-TOKEN");
+    await finish(f, dir => writeFileSync(join(dir, TOKEN), "FIXTURE-NEW-NOT-A-TOKEN-AT-ALL"), true);
+    await waitFor(() => expect(f.signIns.snapshot(f.owner, f.agyNamed("work")).login?.phase).toBe("done"));
+    await f.stop();
   });
   it("the Runtime answers `isolated: false` only for that case, and the transport refuses any other value", async () => {
     const { f } = proven();
