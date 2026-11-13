@@ -24,3 +24,4 @@ table{border-collapse:collapse;width:100%;font-size:13.5px;background:#fff;borde
 .bub.sum{background:#eef6f0;border:1px solid #b9dcc3}.comp{border-top:1px solid #e2e2e2;padding:12px 18px}.comp .in{margin:0}
 .ctx{width:250px;flex:none;border-left:1px solid #e2e2e2;padding:14px;background:#fafafa;font-size:13.5px}.ctx h4{margin:0 0 6px;font-size:13px;color:#555}.ctx .ritem{padding:5px 2px}
 .pop{border:1px solid #bbb;border-radius:10px;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.12);padding:6px;width:300px;margin-bottom:8px;font-size:14px}.pop div{padding:5px 8px;border-radius:7px}.pop div.on{background:#eee}
+.pd{display:inline-block;width:8px;height:8px;border-radius:50%;background:#bbb;margin-right:5px}.pd.on{background:#1f9d55}.pd.work{background:#2f6fe0}.pd.pause{background:#d9a100}
