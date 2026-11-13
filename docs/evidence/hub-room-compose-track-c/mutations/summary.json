@@ -1,0 +1,58 @@
+[
+  {
+    "name": "C1-uncomposed-off",
+    "path": "src/hub/compose/member.ts",
+    "mutantSha256": "1f4e595e296180c2decadd3692b1eee483d53a81478b42457475eb8efd494990",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "C2-ack",
+    "path": "src/hub/compose/member.ts",
+    "mutantSha256": "a1f18b20e08137088ab469171d1dbfd349d06fdc5c4122961a3fc0ab26791c98",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "C3-consent-token",
+    "path": "src/hub/compose/member.ts",
+    "mutantSha256": "489edc8589b60ec8a2033457638ce089574c4fbe0969a6b05a06ed998b0704ce",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "C4-pre-adoption",
+    "path": "src/hub/compose/member.ts",
+    "mutantSha256": "a8058d3683033fbecfcb612fc04645f02935d7f667fe1790741bd655fba7d8df",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "C5-delayed-failure",
+    "path": "src/hub/compose/member.ts",
+    "mutantSha256": "d14e86ab6d8d4c1af0c6ec13610b5e64c43e4cbdfc0300f52a1d78ea45f3e963",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "C6-explicit-offer",
+    "path": "src/hub/compose/member.ts",
+    "mutantSha256": "d68dd07efb1ac09b57cb402e1836d76c77879d5dd5b8e9c4541e158e758e8103",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "C7-fresh-approval",
+    "path": "src/fleet-manager.ts",
+    "mutantSha256": "0cbda4bfb65324d97d07fd906810b98326b48e358bf5f9e0f932b6d0913e394d",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  }
+]

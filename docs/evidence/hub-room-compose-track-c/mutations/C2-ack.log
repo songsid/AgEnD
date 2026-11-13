@@ -1,0 +1,34 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+x--------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > composes negotiated room delivery, text reports, exact ACK and viewer-neutral presence
+AssertionError: expected { state: 'answered' } to deeply equal { state: 'acked' }
+
+- Expected
++ Received
+
+  {
+-   "state": "acked",
++   "state": "answered",
+  }
+
+ ❯ tests/hub-room-compose-track-c.test.ts:71:55
+     69|   expect(h.row(ask.messageId)).toEqual({ state: "answered" });
+     70|   await h.send("room.answer-ack", { messageId: frame.payload.messageId…
+     71|   await vi.waitFor(() => expect(h.row(ask.messageId)).toEqual({ state:…
+       |                                                       ^
+     72|   await vi.waitFor(() => expect(h.r.received.filter(f => f.type === "a…
+     73|   expect(h.readState).toHaveBeenCalledWith("general");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  01:49:22
+   Duration  3.68s (transform 1.66s, setup 102ms, import 2.02s, tests 1.39s, environment 0ms)
+

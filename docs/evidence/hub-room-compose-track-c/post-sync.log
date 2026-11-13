@@ -1,0 +1,10 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+·························
+
+ Test Files  2 passed (2)
+      Tests  25 passed (25)
+   Start at  01:52:55
+   Duration  11.25s (transform 5.64s, setup 187ms, import 7.13s, tests 10.81s, environment 0ms)
+
