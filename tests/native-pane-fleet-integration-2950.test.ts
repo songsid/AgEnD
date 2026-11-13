@@ -160,9 +160,29 @@ async function nativeExit(f:Awaited<ReturnType<typeof fixture>>,code=1){
 }
 it('positive native crashes close only their owned receipt and resume the same pin through a replacement daemon',async()=>{
  const f=await fixture();f.config.restart_policy={...f.config.restart_policy,reset_after:300000};await f.fleet.startInstance('native',f.config,true);const pin=f.store.get(f.agent.id).threadId;vi.useFakeTimers();
- try{const {daemon}=await nativeExit(f);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());expect(f.fleet.isInstanceRestarting('native')).toBe(true);expect(f.spawn).toHaveBeenCalledOnce();
- await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.daemons.get('native')).not.toBe(daemon));await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.exec).not.toHaveBeenCalled();
+ try{const {daemon}=await nativeExit(f);
+ // Releasing activeId happens inside stop; the transition also waits for backoff installation after stop returns.
+ await f.fleet.lifecycle.runTransition('native',async()=>{});
+ expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.fleet.isInstanceRestarting('native')).toBe(true);expect(f.spawn).toHaveBeenCalledOnce();
+ await vi.advanceTimersByTimeAsync(999);expect(f.spawn).toHaveBeenCalledOnce();
+ // The timer only queues a transition. Restore real timers synchronously before its async startup begins,
+ // so module/file I/O and xterm callbacks never race a fast-forwarded startup/parser deadline.
+ vi.advanceTimersByTime(1);vi.useRealTimers();await f.fleet.lifecycle.runTransition('native',async()=>{});
+ expect(f.fleet.daemons.get('native')).not.toBe(daemon);expect(f.fleet.isInstanceRestarting('native')).toBe(false);expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.spawn.mock.calls[1][0].sessionId).toBe(pin);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.exec).not.toHaveBeenCalled();
  }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
+});
+it('native retry backoff starts after held stop completes, not when its active receipt is released',async()=>{
+ const f=await fixture();f.config.restart_policy={...f.config.restart_policy,reset_after:300000};await f.fleet.startInstance('native',f.config,true);const daemon=f.fleet.daemons.get('native'),pin=f.store.get(f.agent.id).threadId,stop=daemon.stop.bind(daemon);
+ let finish!:()=>void,released!:()=>void;const gate=new Promise<void>(resolve=>{finish=resolve;}),receiptReleased=new Promise<void>(resolve=>{released=resolve;});vi.useFakeTimers();
+ try{vi.spyOn(daemon,'stop').mockImplementationOnce(async(options:any)=>{await stop(options);released();await gate;});
+ await nativeExit(f);await receiptReleased;expect(f.store.get(f.agent.id).activeId).toBeUndefined();
+ // This is the old predicate, deliberately satisfied before the retry timer can exist.
+ await vi.advanceTimersByTimeAsync(1001);expect(f.spawn).toHaveBeenCalledOnce();expect(f.fleet.isInstanceRestarting('native')).toBe(true);
+ finish();await f.fleet.lifecycle.runTransition('native',async()=>{});
+ await vi.advanceTimersByTimeAsync(999);expect(f.spawn).toHaveBeenCalledOnce();
+ vi.advanceTimersByTime(1);vi.useRealTimers();await f.fleet.lifecycle.runTransition('native',async()=>{});
+ expect(f.fleet.daemons.get('native')).not.toBe(daemon);expect(f.fleet.isInstanceRestarting('native')).toBe(false);expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.spawn.mock.calls[1][0].sessionId).toBe(pin);expect(f.store.get(f.agent.id).threadId).toBe(pin);expect(f.exec).not.toHaveBeenCalled();
+ }finally{finish();vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
 });
 it.each(['stop','pause','planned'])('a %s during native retry backoff prevents any replacement',async action=>{
  const f=await fixture();await f.fleet.startInstance('native',f.config,true);vi.useFakeTimers();

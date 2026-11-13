@@ -12,6 +12,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const fake = vi.hoisted(() => ({ created: [] as any[] }));
 
+vi.mock("../src/backend-availability.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../src/backend-availability.js")>(),
+  resolveBackendBinary: vi.fn(async () => "/fixture/claude"),
+}));
+
 vi.mock("../src/daemon.js", async importOriginal => {
   const original = await importOriginal<typeof import("../src/daemon.js")>();
   const { EventEmitter: Emitter } = await import("node:events");
@@ -308,11 +313,33 @@ describe("busy or held targets (2c ⑤)", () => {
   });
 
   it("a busy (working) target is claimed and handed off through the idle gate, as before", async () => {
-    const { fm, admit } = await fleet("on");
+    const { fm, outbox, admit, scripts, gateHandoff } = await fleet("on");
+    fm.wakeCoordinator?.stop();
+    const timer = (fm as any).deliveryPumpTimer; if (timer) clearTimeout(timer);
+    (fm as any).deliveryPumpTimer = null;
+    vi.spyOn(fm as any, "scheduleDeliveryOutboxPump").mockImplementation(() => {});
+    const drains = vi.spyOn(TargetQueueWorker.prototype, "drain");
+    scripts.set("a", ["gated"]);
+    const gate = gateHandoff();
     const deliver = fm.deliverToInstance as any;
-    admit("a");
-    await vi.waitFor(() => expect(deliver).toHaveBeenCalled());
-    expect(deliver.mock.calls[0][2]).toMatchObject({ isCrossInstance: true, waitForIdle: true, noInlineWake: true });
+    const id = admit("a");
+    await (fm as any).runDeliveryOutboxPump();
+    const drained = drains.mock.results[0].value, worker = fm.queueWorkers.get("a")!;
+    try {
+      expect(deliver).toHaveBeenCalled();
+      expect(deliver.mock.calls[0][2]).toMatchObject({ isCrossInstance: true, waitForIdle: true, noInlineWake: true });
+      // Invocation alone is not completion: this row still owns the lane and budget.
+      expect(outbox.get(id).state).toBe("submission_started");
+      expect(worker.busy).toBe(true); expect(worker.inFlight).toBe(true);
+    } finally {
+      const row = outbox.get(id);
+      outbox.complete(id, row.targetDaemonBootId, row.attemptNo, "delivered");
+      gate.release();
+      await drained;
+    }
+    expect(outbox.get(id).state).toBe("delivered");
+    expect(worker.busy).toBe(false); expect(worker.inFlight).toBe(false);
+    expect((fm as any).activeDurableTargets.has("a")).toBe(false);
   });
 });
 
