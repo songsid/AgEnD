@@ -34,26 +34,27 @@ async function detailOf(client: any, roomId: string, canAsk: string[] = []) {
 }
 const heads = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-room-members h4")].map((x: any) => x.textContent);
 const agentRows = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-member-agent .hub-member-open")].map((b: any) => [b.querySelector(".hub-member-name").textContent, b.querySelector(".dot").className, b.querySelector(".hub-member-state").textContent]);
+const openAgent = (pg: AppPage, name: string) => fire([...pg.root.querySelectorAll(".hub-member-agent .hub-member-open")].find((b: any) => b.querySelector(".hub-member-name").textContent === name), "click");
 const button = (pg: AppPage, label: string) => [...pg.root.querySelectorAll("button")].find((b: any) => b.textContent === label);
 
 describe("Hub room members panel (section 5)", () => {
-  it("counts people and agents online; me and the manager are marked; agents in presence order with the Fleet dots; 8 then a fold", async () => {
+  it("counts people and agents online (paused is not online); me and the manager are marked; agents in presence order, by name within one, with the Fleet dots; 8 then a fold", async () => {
     const { pg, client } = await fixture();
     await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: await detailOf(client, "room-weekly") })); await settle(20);
-    expect(heads(pg)).toEqual(["成員 · 3（線上 2）", "Agent · 12（線上 9）", "誰看得到"]);
+    expect(heads(pg)).toEqual(["成員 · 3（線上 2）", "Agent · 12（線上 7）", "誰看得到"]);   // hub-room-presence headerCounts: online/idle/working
     const people = [...pg.root.querySelectorAll(".hub-member:not(.hub-member-agent):not(.hub-member-assistant)")].map((li: any) => li.textContent);
     expect(people).toEqual(["王經理 你 管理線上", "陳主任線上", "吳小安離線"]);
     expect(agentRows(pg)).toEqual([
-      ["project-helper", "dot busy", "處理中"], ["budget-check", "dot busy", "處理中"],
-      ["spec-writer", "dot ok", "待命"], ["release-notes", "dot ok", "待命"], ["test-runner", "dot ok", "待命"], ["doc-search", "dot ok", "待命"], ["design-review", "dot ok", "待命"],
-      ["schedule-bot", "dot warn", "暫停 · 額度用完"],
+      ["budget-check", "dot busy", "處理中"], ["project-helper", "dot busy", "處理中"],
+      ["design-review", "dot ok", "待命"], ["doc-search", "dot ok", "待命"], ["release-notes", "dot ok", "待命"], ["spec-writer", "dot ok", "待命"], ["test-runner", "dot ok", "待命"],
+      ["infra-watch", "dot warn", "暫停 · 等待登入"],
     ]);
     fire(button(pg, "… 其餘 4 個"), "click"); await settle(5);
-    expect(agentRows(pg).slice(8)).toEqual([["infra-watch", "dot warn", "暫停 · 等待登入"], ["report-bot", "dot off", "離線"], ["old-helper", "dot off", "需要更新 AgEnD"], ["desk-notes", "dot off", "上線時回答"]]);
+    expect(agentRows(pg).slice(8)).toEqual([["schedule-bot", "dot warn", "暫停 · 額度用完"], ["old-helper", "dot off", "需要更新 AgEnD"], ["report-bot", "dot off", "離線"], ["desk-notes", "dot off", "上線時回答"]]);
     expect(button(pg, "收合")).toBeTruthy();
     expect(pg.root.querySelector(".hub-member-assistant").textContent).toBe("房間助理待命 · Hub 提供");
     expect(pg.root.querySelector(".hub-room-who p").textContent).toBe("房間裡的每個人都看得到所有訊息與回答。Agent 被 @ 時會讀到最近的對話。");
-    expect(pg.root.querySelector(".hub-member-agent .hub-member-open").getAttribute("title")).toBe("擁有者：林小華");
+    expect(pg.root.querySelector(".hub-member-agent .hub-member-open").getAttribute("title")).toBe("擁有者：吳小安");
   });
 
   it("a manager sees Room settings and may remove an agent; the card offers one-to-one only when I may ask it", async () => {
@@ -62,18 +63,18 @@ describe("Hub room members panel (section 5)", () => {
     await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: await detailOf(client, "room-weekly", ["exp-01"]),
       onSettings: () => { settings++; }, onMention: (m: any) => mentioned.push(m.id), onOpenChat: (m: any) => direct.push(m.id) })); await settle(20);
     fire(button(pg, "Room settings"), "click"); expect(settings).toBe(1);
-    fire(pg.root.querySelector(".hub-member-agent .hub-member-open"), "click"); await settle(5);
+    openAgent(pg, "project-helper"); await settle(5);
     const card = pg.root.querySelector(".hub-member-card");
     expect(card.textContent).toContain("Owner: 林小華"); expect(card.textContent).toContain("Working");
     fire(button(pg, "@ it here"), "click"); expect(mentioned).toEqual(["exp-01"]); await settle(5);
-    fire(pg.root.querySelector(".hub-member-agent .hub-member-open"), "click"); await settle(5);
+    openAgent(pg, "project-helper"); await settle(5);
     fire(button(pg, "Chat with it one-to-one"), "click"); expect(direct).toEqual(["exp-01"]); await settle(5);
-    fire(pg.root.querySelectorAll(".hub-member-agent .hub-member-open")[1], "click"); await settle(5);
+    openAgent(pg, "budget-check"); await settle(5);
     expect(button(pg, "Chat with it one-to-one")).toBeUndefined();                     // budget-check: not mine to ask
     fire(button(pg, "Remove from room"), "click"); await settle(20);
     expect(calls.filter(c => c.method === "DELETE").map(c => c.path)).toEqual(["/hub/v1/rooms/room-weekly/members/exp-06"]);
     expect(agentRows(pg).map(r => r[0])).not.toContain("budget-check");
-    expect(heads(pg)[1]).toBe("Agents · 11 (online 8)");
+    expect(heads(pg)[1]).toBe("Agents · 11 (online 6)");
   });
 
   it("a plain member: no Room settings, no remove", async () => {
@@ -92,10 +93,11 @@ describe("Hub room members panel (section 5)", () => {
     const before = calls.length;
     await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail })); await settle(20);
     fx.emit("presence.changed", { roomId: "room-weekly", memberId: "exp-02", presence: "paused", presenceNote: "等待核准" }); await settle(10);
+    fire(button(pg, "… 其餘 4 個"), "click"); await settle(5);                          // paused now: past the first 8
     expect(agentRows(pg).find(r => r[0] === "spec-writer")).toEqual(["spec-writer", "dot warn", "暫停 · 等待核准"]);
-    expect(heads(pg)[1]).toBe("Agent · 12（線上 9）");
+    expect(heads(pg)[1]).toBe("Agent · 12（線上 6）");
     fx.emit("presence.changed", { roomId: "room-rd", memberId: "exp-01", presence: "offline" }); await settle(10);
-    expect(agentRows(pg)[0]).toEqual(["project-helper", "dot busy", "處理中"]);
+    expect(agentRows(pg)[1]).toEqual(["project-helper", "dot busy", "處理中"]);
     fx.emit("member.changed", { roomId: "room-weekly" }); await settle(20);
     expect(calls.slice(before).filter(c => c.path.startsWith("/hub/v1/rooms/"))).toEqual([]);   // the shell owns the detail
     detail = await detailOf(client, "room-weekly");
@@ -125,6 +127,21 @@ describe("Hub room members panel (section 5)", () => {
     expect(heads(pg)).toEqual(["成員 · 4（線上 1）", "Agent", "誰看得到"]);
     expect(pg.root.querySelector(".hub-room-no-agents .note").textContent).toBe("還沒有 Agent。房間管理可以在房間設定加入或邀請。");
     expect(pg.root.textContent).not.toContain("線上 0");
+  });
+
+  it("reason codes and known notes read in the viewer's language (never the Fleet's note text); an unknown code shows the plain state", async () => {
+    const { pg, client } = await fixture("en");
+    const d = await detailOf(client, "room-weekly");
+    const set = (id: string, patch: any) => { d.members = d.members.map((m: any) => m.id === id ? { ...m, ...patch } : m); };
+    set("exp-01", { presence: "paused", presenceReason: "approval", presenceNote: "等待核准" });
+    set("exp-06", { presence: "paused", presenceReason: "bogus-code", presenceNote: undefined });
+    await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: d })); await settle(20);
+    fire(button(pg, "… 4 more"), "click"); await settle(5);
+    const rows = agentRows(pg);
+    expect(rows.find(r => r[0] === "project-helper")).toEqual(["project-helper", "dot warn", "Paused · Waiting for approval"]);
+    expect(rows.find(r => r[0] === "schedule-bot")).toEqual(["schedule-bot", "dot warn", "Paused · Out of quota"]);   // the fixture's 「額度用完」 note
+    expect(rows.find(r => r[0] === "budget-check")).toEqual(["budget-check", "dot warn", "Paused"]);
+    expect(rows.find(r => r[0] === "old-helper")).toEqual(["old-helper", "dot off", "Needs an AgEnD update"]);
   });
 
   it("no detail yet: an empty, busy rail", async () => {
