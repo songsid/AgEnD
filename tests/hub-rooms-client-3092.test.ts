@@ -42,9 +42,10 @@ describe("before the Hub has rooms (today's server)", () => {
 
 describe("rooms (seam 1) against the fixture", () => {
   it("the list: the spec's rooms, unread first then by last message; my permission to open rooms; invitations waiting", async () => {
-    const { client } = await live();
+    const { client, calls } = await live();
     expect(client.roomsLive()).toBe(true);
     const r = await client.roomList();
+    expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/rooms?v=2" });              // Ridge #3858: /rooms stays direct-only for old tabs
     expect(r.me).toEqual({ canCreateRooms: true }); expect(r.invitations).toBe(1);
     expect(r.rooms.map((x: any) => x.name)).toEqual(["研一主管週會", "project-helper", "研發例會", "report-bot", "去年專案", "Hub 助理"].filter(n => r.rooms.some((x: any) => x.name === n)).sort((a, b) =>
       r.rooms.findIndex((x: any) => x.name === a) - r.rooms.findIndex((x: any) => x.name === b)));

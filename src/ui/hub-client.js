@@ -399,9 +399,13 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     roomsV1: true,
     /** The Hub answers the rooms calls (seam 1) — otherwise only roomList() is meaningful. */
     roomsLive() { return roomsLive; },
-    /** → { ok, rooms: [{ id, kind: "direct" | "group", name, people, agents, online, unread, lastAt, lastText, lastAuthor }] } */
+    /**
+     * → { ok, rooms: [{ id, kind: "direct" | "group", name, people, agents, online, unread, lastAt, lastText, lastAuthor }] }.
+     * `?v=2` (Ridge, #3858): the combined list; GET /hub/v1/rooms itself stays direct-only for older cached tabs, and a
+     * server without rooms ignores the parameter (its answer is then normalised here).
+     */
     async roomList() {
-      const r = await call("GET", "/hub/v1/rooms");
+      const r = await call("GET", "/hub/v1/rooms?v=2");
       if (!r.ok || roomsLive) return r;
       return { ...r, rooms: (Array.isArray(r.rooms) ? r.rooms : []).map(legacyRoom).filter(Boolean) };
     },
