@@ -108,6 +108,23 @@ describe("the sidebar, drawn as the Fleet roster", () => {
       expect(rows(pg)[0].getAttribute("href")).toBe("/ui/hub?room=room-weekly");
     } finally { restore(); }
   });
+  it("「新房間」 for someone who may open rooms on a Hub with rooms; not on today's Hub", async () => {
+    const fx = createHubRoomsFixture();
+    const { pg, restore } = await hubApp((url: string, init?: any) => fx.fetch(url, init), "zh-TW");
+    try {
+      await until(() => rows(pg).length === 6);
+      expect(pg.root.querySelector("#sidebar .side-nav .hub-new-room")!.textContent).toBe("新房間");
+    } finally { restore(); }
+  });
+  it("no 「新房間」 on today's Hub (no rooms)", async () => {
+    const legacy = [{ id: "11111111-2222-4333-8444-555555555555", exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", lastAt: 1, waiting: false, features: [] }];
+    const old = await hubApp(async (url: string) => ({ ok: true, status: 200, headers: { get: () => null },
+      json: async () => url.startsWith("/hub/v1/session") ? { signedIn: true, displayName: "Alex", csrf: "c".repeat(64) } : url.startsWith("/hub/v1/rooms") ? { rooms: legacy } : {} }));
+    try {
+      await until(() => rows(old.pg).length === 1);
+      expect(old.pg.root.querySelector("#sidebar .side-nav .hub-new-room")).toBeNull();
+    } finally { old.restore(); }
+  });
   it("Ctrl K filters by a name or an owner across both groups; an empty group is left out", async () => {
     const fx = createHubRoomsFixture();
     const { pg, restore } = await hubApp((url: string, init?: any) => fx.fetch(url, init));
