@@ -21,7 +21,13 @@
     },
     {
       "path": "tests/hub-member-upgrade-3878.test.ts",
-      "sha256": "1545c7601d5e64a57c42cfdda7dd958ac45b0d25522c9220c04e55992e879160"
+      "sha256": "bfd2bd6ba8212cf3f62036011c0e54b06f85037143c312f68bae27ebd3c93ff0"
     }
-  ]
+  ],
+  "followup": {
+    "fixture": "one clock sample binds issuedAt/expiresAt; no product change",
+    "factory": 1,
+    "nativeTests": 0,
+    "unchangedProductSource": "5d3ea25825136b955b405b13c33ac21a1becdfa5"
+  }
 }

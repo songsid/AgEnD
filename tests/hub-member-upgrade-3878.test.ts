@@ -45,11 +45,11 @@ it("#3878: reopens an alpha.3 held question, reconnects, and answers new work on
     service = await create({}, () => true); await service.start();
     const published = api!.publish({ agent: "probe", dataViewId: "agent", tools: [], expectedRevision: 0 });
     const key = createPrivateKey(readFileSync(join(r.root, "hub/keys/issuer-key.pem")));
-    const question = (): HubQuestion => ({ text: "Owned upgrade fixture", identity: signAsker({ v: 1, issuer: r.identity.hubId,
+    const question = (): HubQuestion => { const now = Date.now(); return { text: "Owned upgrade fixture", identity: signAsker({ v: 1, issuer: r.identity.hubId,
       issuerKeyId: r.identity.issuerKeyId, messageId: randomUUID(), asker: r.owner, owner: r.owner, destinationFleetId: profile.fleetId,
       exposureId: published.exposureId!, exposureRevision: published.revision, roomId: randomUUID(), grantId: randomUUID(), grantRevision: 1,
-      revocationVersion: r.store.read().revocationVersion, contentDigest: sha256("Owned upgrade fixture"), issuedAt: Date.now(),
-      expiresAt: Date.now() + 120_000, nonce: randomBytes(32).toString("hex") }, key) });
+      revocationVersion: r.store.read().revocationVersion, contentDigest: sha256("Owned upgrade fixture"), issuedAt: now,
+      expiresAt: now + 120_000, nonce: randomBytes(32).toString("hex") }, key) }; };
     const held = question();
     await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: epoch, payload: held });
     const path = join(r.memberHome, memberSet(r.identity.hubId).database);

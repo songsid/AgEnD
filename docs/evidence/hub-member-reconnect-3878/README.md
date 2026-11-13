@@ -18,6 +18,8 @@ The stopped original container is retained. Its web certificate and Hub package 
 - The representative regression separately proves a queued legacy question completes once when its link returns; the held control proves a failed-before-input hand-off stays held. A negative journal control refuses a representative row carrying only the content digest.
 - Native source and test programs both complete with no diagnostics. `verification.json` binds the checked source and test files.
 
+A test-only follow-up captures one clock sample for issuedAt/expiresAt, avoiding a 120-second boundary flake. The factory case and native test program were rerun successfully; product source and the earlier five-suite/source-type results are unchanged.
+
 The two early factory-harness failures (an undefined mock authorization version, then counting progress receipts as replay ACKs) were corrected before its passing run; neither is claimed as a product regression. There was no new broad security or mutation campaign, live AD/account/API call, or real agent input.
 
 ## Risk and rollback
