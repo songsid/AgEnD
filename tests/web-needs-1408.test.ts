@@ -56,6 +56,15 @@ beforeEach(async () => {
   app.appStore.set({ ready: true, needsLoaded: true, needs: ITEMS.map(i => ({ ...i })), instances: [] });
 });
 const mount = (key = "needs:|1|en") => p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: key }));
+it("a fresh panel formats model switches when the retained shell knows only plain detail", async () => {
+  const legacy = vi.spyOn(notifier, "configDetail").mockImplementation((item: any) => item.detail);
+  try {
+    app.appStore.set({ needs: [{ id: "model:worker:new", type: "instance", instance: "worker", reason: "model_switch", since: Date.now(),
+      detail: "claude-opus-5-5 → claude-opus-4-8", modelSwitch: { original: "claude-opus-5-5", served: "claude-opus-4-8", cause: "safeguards", scope: "session" } }] });
+    await mount(); await settle(4);
+    expect(p.root.textContent).toContain("Model switched by safeguards: Opus 5.5 → Opus 4.8 · session");
+  } finally { legacy.mockRestore(); }
+});
 const btn = (scope: any, text: string) => scope.querySelectorAll("button, a").find((b: any) => b.textContent.includes(text));
 
 describe("#2246 step 3: task board cards in Needs you", () => {
