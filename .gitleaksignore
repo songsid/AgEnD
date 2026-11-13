@@ -68,3 +68,10 @@ fa941c810ad3cd724775b28363003da7bed1a6c0:tests/codex-activity-fixture-redact-378
 # per-commit scan. Exact historical commit/path/rule/line only; no rule, path, future commit or other finding is exempted. Delete with the PR's squash.
 ee2a9922c0f59662b11f2cb9ba6a7887bb68c4e4:tests/antigravity-accounts-119.test.ts:generic-api-key:511
 ee2a9922c0f59662b11f2cb9ba6a7887bb68c4e4:tests/antigravity-accounts-119.test.ts:generic-api-key:527
+
+# PR #3845: SHA-256 of the public /assets/tokens.css response, verified against
+# src/ui/shared/tokens.css. Current receipts group paths under hashes, avoiding
+# the misleading key name. These exact historical commit/path/rule/lines alone
+# remain in the PR scan; no rule, path or future finding is exempted.
+6bdab5c543a671c8d55dee3d70663fe8441dd838:docs/evidence/hub-group-label-3824/before/receipt.json:generic-api-key:14
+6bdab5c543a671c8d55dee3d70663fe8441dd838:docs/evidence/hub-group-label-3824/current/receipt.json:generic-api-key:15

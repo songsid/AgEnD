@@ -1,0 +1,15 @@
+{
+  "source": "2d58d2d23ec641ad01a36fc82d3bb21f5719cd28",
+  "alpha": "d34004398a36dfbe92344d72c577c49d2dcd2ff1",
+  "passed": 141,
+  "failed": 0,
+  "files": 6,
+  "browserChecks": 16,
+  "browserErrors": [],
+  "changedImages": [
+    "en-desktop-trusted.png",
+    "en-phone-trusted.png",
+    "zh-TW-desktop-trusted.png",
+    "zh-TW-phone-trusted.png"
+  ]
+}

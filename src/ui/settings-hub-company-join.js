@@ -1,3 +1,5 @@
+import { PilotTrustPrompt, pilotTrustCandidate } from "./hub-pilot-trust.js";
+import { pt } from "./hub-pilot-trust-strings.js";
 /** Fleet-only company handoff; all fields live in the actual Settings section and use its shared confirmation card. */
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
@@ -47,7 +49,7 @@ const jw = (key, ...args) => t(`companyJoinWait.${key}`, ...args);
 const root = "/api/hub/member/company-join";
 const LOCAL_WAIT_MS = 5 * 60_000; // matches the Settings confirmation ceiling; never renew on a status read
 export const companyJoinEmbedV1 = true;
-export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false, onPairingCode } = {}) {
+export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false, onPairingCode, onOffer, pilotRevision = 0 } = {}) {
   const notified = useRef(null), submittedTarget = useRef(""), submittedHandoff = useRef(null);
   const shellState = useStore(appStore);
   const { hubJoinChanges = [] } = shellState;
@@ -88,13 +90,18 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     setProbe(p => p && p.address === kind.address ? p : null);
     const timer = setTimeout(() => runProbe(kind.address), 600);
     return () => clearTimeout(timer);
-  }, [kind.kind, kind.address]);
+  }, [kind.kind, kind.address, pilotRevision]);
   useEffect(() => {
     if (view?.state !== "awaiting-sign-in" || !Number.isFinite(view.expiresAt)) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [view?.state, view?.expiresAt]);
   useEffect(() => { if (kind.kind === "pairing") onPairingCode?.({ address: kind.address || "", code: kind.code }); }, [kind.kind, kind.code, kind.address]);
+  // User decision 2aeecd58 (P6, "one way in"): the Hub typed here answered that it takes company sign-in, so the other
+  // join paths (the pairing-code form under Other ways) are not offered. Unknown (no answer yet, an untrusted
+  // certificate, an unreachable Hub) is not an offer: the pairing path stays (#3839's workaround).
+  const offered = kind.kind === "address" && !!probe?.ok && probe.address === kind.address && probe.companyJoin === true;
+  useEffect(() => { onOffer?.(offered); }, [offered]);
   const read = () => {
     if (reading.current) return reading.current; // one physical status read, including Retry and slow networks
     const gen = token.current;
@@ -165,8 +172,8 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     if (control) control.focus(); else { card.tabIndex = -1; card.focus(); }
   };
   useEffect(() => { if ((!embedded || bound) && view?.state === "saved" && view.link === "online" && notified.current !== view.operationId) { notified.current = view.operationId; onSaved?.(); } }, [view, onSaved, embedded, bound]);
-  const start = async e => {
-    e.preventDefault(); if (busy || !ready) return;
+  const start = async (e, trust) => {
+    e.preventDefault(); if (busy || (!trust && !ready) || trust && (trust !== trustCandidate || probing)) return;
     const gen = ++token.current; setBusy(true); setError(null); setNotice(null); setPending(null); setIdentityChanged(false); setCode(""); setCodeError(null);
     const handoffId = crypto.randomUUID(); submittedHandoff.current = handoffId;
     // Open the Fleet-owned waiting page during the user gesture, with no opener or cross-origin messaging.
@@ -174,7 +181,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     submittedTarget.current = target;
     globalThis.open("/settings/hub?joinWait=" + encodeURIComponent(handoffId) + "&joinConsent=1#target=" + encodeURIComponent(target), "_blank", "noopener");
     try {
-      const body = { address: kind.address, label: fleetLabel, handoffId, ...(kind.code ? { code: kind.code } : {}) };
+      const body = { address: kind.address, label: fleetLabel, handoffId, ...(kind.code ? { code: kind.code } : {}), ...(trust ? { trust: { fingerprint: trust.fingerprint, previous: trust.previous } } : {}) };
       const result = await confirmedWrite(root + "/start", { body, label: hj("title"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
       if (!result.ok || !result.body?.operation) { await read();
@@ -221,12 +228,13 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   const problem = kind.kind === "error" ? kind.error === "codeOnly" ? jc("codeOnly", kind.code) : j1(kind.error) : probe && !probe.none && probe.address === kind.address ? probeMessage(probe, host) : null;
   // Start once the probe for exactly this address has answered without a problem. A probe that could not answer at all
   // (no reason: a network error, an older server) does not block Start: Start makes the same checks itself.
+  const trustCandidate = probe?.address === kind.address ? pilotTrustCandidate(probe) : null;
   const ready = kind.kind === "address" && !problem && !probing && probe?.address === kind.address;
   // #3837: an address the probe has already CLEARED (answered ok, nothing to say) is not looked up again on blur. A click on
   // Start blurs the input, and that re-check disabled the button under the click (the click was lost). An address with no
   // answer yet, a failed one (unreachable, certificate, not a Hub, limited) or one naming a problem is still asked again on
   // blur (#3675's retry path); the forced look after a repair is unchanged.
-  const cleared = kind.kind === "address" && probe?.address === kind.address && probe.ok === true && !problem;
+  const cleared = kind.kind === "address" && probe?.address === kind.address && (probe.ok === true && !problem || !!trustCandidate);
   const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(kind.address).origin); } catch { return ""; } })();
   const inlineWait = consentWait || pending?.inline;
   const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;
@@ -259,17 +267,19 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
         ${waiting ? html`<a class="btn btn-sm" href="/settings/hub">${hj("return")}</a>` : null}</div>
       ${waiting ? html`<p class="note">${jw("leaveWait")}</p>` : null}
     </div>` : null}
-    ${canStart ? html`<form class="form hub-join-one" onSubmit=${start}>
+    ${canStart ? html`<form class="form hub-join-one" onSubmit=${e => start(e)}>
       <label class="field" for="hubCompanyAddress"><span>${j1("input")}</span><input id="hubCompanyAddress" type="text" value=${form.address} placeholder=${j1("placeholder")} autocomplete="off" spellcheck=${false} autocapitalize="off"
         aria-describedby="hubCompanyLine" aria-invalid=${problem ? "true" : undefined} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))}
         onPaste=${e => { const n = fromHandoffText(e.clipboardData?.getData("text")); if (n) { e.preventDefault(); setForm(f => ({ ...f, address: n })); } }} onBlur=${() => { if (!cleared) runProbe(); }} /></label>
-      <p class="note hub-join-line" id="hubCompanyLine" role=${problem ? "alert" : "status"}>${problem ? problem
+      <p class="note hub-join-line" id="hubCompanyLine" role=${problem ? "alert" : "status"}>${problem ? probe?.address === kind.address && probe?.selfSigned ? trustCandidate ? null : pt("disabled", host) : problem
         : kind.kind === "pairing" ? j1("otherPairing")
         : probing ? j1("probing")
         : probe?.ok && probe.address === kind.address ? html`${j1("found", probe.hubName || host, fleetLabel)}${kind.code ? ` ${jc("included")}` : ""} ${!renaming ? html`<button type="button" class="btn btn-ghost btn-sm hub-join-rename" onClick=${() => setRenaming(true)}>${j1("rename")}</button>` : null}`
         : !form.address.trim() ? jc("hint") : null}</p>
+      ${probe?.pilotTrusted && probe.address === kind.address ? html`<p class="note">${pt("trusted")}</p>` : null}
+      ${trustCandidate ? html`<${PilotTrustPrompt} trust=${trustCandidate} host=${host} busy=${busy || probing} onTrust=${e => start(e, trustCandidate)} onCancel=${() => { probeSeq.current++; setProbe(null); setForm(f => ({ ...f, address: "" })); }} />` : null}
       ${renaming ? html`<label class="field" for="hubCompanyFleetName"><span>${j1("label")}</span><input id="hubCompanyFleetName" value=${form.label} maxlength="120" placeholder=${probe?.suggestedLabel || hj("defaultFleet")} onInput=${e => setForm(f => ({ ...f, label: e.target.value }))} /></label>` : null}
-      <div class="field-row"><button class="btn btn-primary" type="submit" disabled=${busy || !ready}>${j1("go")}</button></div>
+      ${!trustCandidate ? html`<div class="field-row"><button class="btn btn-primary" type="submit" disabled=${busy || !ready}>${j1("go")}</button></div>` : null}
       ${identityChanged || probe?.identity === "changed" && probe.address === kind.address ? html`<p class="note">${hj("repairLead")}</p><button class="btn btn-sm" type="button" disabled=${busy || kind.kind !== "address"} onClick=${repair}>${hj("repair")}</button>` : null}
     </form>` : null}
     ${view && !retired && (!waiting || view.handoffId === waiting || blocking) ? html`<div role="status" class=${view.foreign ? "hub-join-foreign" : undefined}><strong>${hj(view.state === "saved" ? view.link === "online" ? "saved" : "joining" : view.state === "awaiting-sign-in" ? "awaiting" : view.state === "cancelled" ? "cancelled" : view.state === "held" || view.state === "ended" ? "held" : "joining")}</strong>

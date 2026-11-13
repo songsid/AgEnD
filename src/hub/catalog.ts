@@ -47,6 +47,20 @@ const grantInput = z.strictObject({ exposureId: uuid, exposureRevision: epoch, d
 interface ExposureRow { id: string; fleet_id: string; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string; allowed_tools: string; policy_digest: string; frozen_through: number; sharing_paused?: number; sharing_epoch?: number }
 interface GrantRow { id: string; revision: number; owner: string; exposure_id: string; exposure_revision: number; approved_by: string; approved_at: number; subject: string; subject_kind?: "person" | "group"; subject_label?: string; permissions: string; starts_at: number; expires_at: number; state: HubGrant["state"] }
 
+/** Presentation only: AD group DNs normally start with CN. Never use this label as identity or rewrite it.
+ * Decode RFC 4514 character/UTF-8 octet escapes in that leading value; preserve plain/unsupported labels.
+ * This deliberately is not a DN validator or a BER hexstring decoder.
+ */
+function groupGrantName(label: string): string {
+  const first = /^cn=((?:\\(?:[0-9a-f]{2}|[ "#+,;<=>\\])|[^\\,+;"<>])*)(?:[,+]|$)/i.exec(label)?.[1];
+  if (!first || first.startsWith("#")) return label;
+  try {
+    const name = first.replace(/\\((?:[0-9a-f]{2})(?:\\[0-9a-f]{2})*)|\\([ "#+,;<=>\\])/gi, (_, hex: string | undefined, char: string) =>
+      hex ? new TextDecoder("utf-8", { fatal: true }).decode(Buffer.from(hex.replaceAll("\\", ""), "hex")) : char);
+    return name && !/[\u0000-\u001f\u007f]/.test(name) ? name : label;
+  } catch { return label; }
+}
+
 export function exposureOf(row: ExposureRow): HubExposure {
   return { id: row.id, fleetId: row.fleet_id, owner: personFromString(row.owner), displayName: row.display_name, revision: row.revision,
     state: row.state === "published" ? row.frozen_through >= row.revision ? "frozen" : row.sharing_paused ? "paused" : "published" : row.state,
@@ -244,7 +258,7 @@ export class HubCatalogService {
       const names = (id: string) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
       const mine = (db.prepare("SELECT * FROM hub_exposures WHERE owner=? AND state<>'withdrawn' ORDER BY display_name").all(me) as ExposureRow[]).map((row) => {
         const grants = (db.prepare("SELECT * FROM hub_grants WHERE exposure_id=? AND state='active' AND expires_at>? ORDER BY approved_at").all(row.id, now) as GrantRow[])
-          .map((g) => { const n = g.subject_kind === "group" ? null : names(g.subject); return { ...grantOf(g), subjectName: g.subject_kind === "group" ? g.subject_label ?? g.subject : n?.display_name ?? "", subjectLogin: n?.login_label ?? "" }; });
+          .map((g) => { const n = g.subject_kind === "group" ? null : names(g.subject); return { ...grantOf(g), subjectName: g.subject_kind === "group" ? groupGrantName(g.subject_label ?? g.subject) : n?.display_name ?? "", subjectLogin: n?.login_label ?? "" }; });
         return { ...exposureOf(row), grants };
       });
       const askable: { exposure: HubExposure; grant: HubGrant; ownerName: string }[] = [];
