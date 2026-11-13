@@ -1,0 +1,184 @@
+{
+  "sourceHead": "222928ba350252b95760e1feac18be279a096f98",
+  "base": "95393951296dcdaecc1c300a89eb7da701b2888f",
+  "sourceCommit": "ec45ddfdd",
+  "checks": [
+    {
+      "name": "fail-first",
+      "tests": 6,
+      "outcome": "6 semantic assertion failures before group routes"
+    },
+    {
+      "name": "integration",
+      "tests": 171,
+      "files": 6,
+      "outcome": "pass",
+      "suites": [
+        "hub-rooms-r1",
+        "hub-room-frames-r1",
+        "hub-rooms-migration-r1",
+        "hub-s3b-server",
+        "hub-attachments-rooms",
+        "hub-compose"
+      ]
+    },
+    {
+      "name": "post-sync",
+      "tests": 23,
+      "files": 4,
+      "outcome": "pass",
+      "suites": [
+        "hub-rooms-r1",
+        "hub-room-frames-r1",
+        "hub-rooms-migration-r1",
+        "hub-shared-modules-a"
+      ]
+    },
+    {
+      "name": "post-sync-source-types",
+      "exit": 0
+    },
+    {
+      "name": "post-sync-test-types",
+      "exit": 0
+    },
+    {
+      "name": "list-compatibility",
+      "tests": 37,
+      "files": 4,
+      "outcome": "pass",
+      "suites": [
+        "hub-rooms-r1",
+        "hub-room-frames-r1",
+        "hub-rooms-migration-r1",
+        "hub-s3b-server"
+      ]
+    },
+    {
+      "name": "final-source-types",
+      "exit": 0
+    },
+    {
+      "name": "final-test-types",
+      "exit": 0
+    },
+    {
+      "name": "review-r1-before",
+      "tests": 14,
+      "failed": 6,
+      "outcome": "semantic: missing initial notice frames, system unread counts, unrelated stream closed"
+    },
+    {
+      "name": "review-r1-after",
+      "tests": 48,
+      "files": 5,
+      "outcome": "pass",
+      "suites": [
+        "hub-rooms-r1",
+        "hub-room-frames-r1",
+        "hub-rooms-migration-r1",
+        "hub-s3b-server",
+        "hub-quick-pairing-http"
+      ]
+    },
+    {
+      "name": "review-r1-source-types",
+      "exit": 0
+    },
+    {
+      "name": "review-r1-test-types",
+      "exit": 0
+    },
+    {
+      "name": "ci-feature-inventory",
+      "tests": 35,
+      "files": 2,
+      "outcome": "pass",
+      "suites": [
+        "hub-groups-mount-s89",
+        "hub-rooms-r1"
+      ],
+      "precedingFailure": {
+        "run": 43468675166,
+        "job": 132035807036,
+        "failedCases": 3,
+        "cause": "six exact feature expectations omit rooms-v1"
+      }
+    }
+  ],
+  "limits": {
+    "vitestMaxWorkers": 2,
+    "GOMAXPROCS": 2,
+    "nice": 10
+  },
+  "bindings": [
+    {
+      "path": "changes/3856-rooms-server-r1.md",
+      "sha256": "7dcceb28548794f0e3edaa130d650c7fff523354c2164b3fdd78d05acc37d57a"
+    },
+    {
+      "path": "changes/3856-rooms-server-r1.zh-TW.md",
+      "sha256": "72281288f971795993d355d8260dfe0a64dfffbb2b8c68ab5b97f17673519415"
+    },
+    {
+      "path": "docs/design/hub-rooms-server-r1.md",
+      "sha256": "fe7bcef125a78f3a65c96e908dc3b14b6c04a58e7478b264184f7c2c23b58731"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "2e377ec5e533a825ee35877d3325ff38c8c86f2d68f58b506a63bf198cff1126"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "d1861082bc9e5990f57e12e9b73caf9d115f9d9869b0ab169622ac54bf00885d"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "2c19299aa756e91db80e3e8d0f0e01a98d4cdebedd00cdeda2830983e847b89f"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "sha256": "fcb0a09eec9c1b01c249025acde91112a6284fb6fd4fa294120a21367504c9cf"
+    },
+    {
+      "path": "src/hub/rooms.ts",
+      "sha256": "6741b191bf4f496684df62b8cc6e60668332982010f9a71647fce45d453bc19d"
+    },
+    {
+      "path": "src/hub/rooms/direct-view.ts",
+      "sha256": "f757522d3f528387aeedbd892b15fac49135411c457aaaf70ef23222dbd34dff"
+    },
+    {
+      "path": "src/hub/rooms/schema.ts",
+      "sha256": "b0ab4e08be7297f36f7b23a095d974a5ece0e3e5b8ee66b732c629afbdca4eff"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "465f3dd6a2be71450f53c7793ec30ea49c55dd023f0226e4dbe2c4db20b96ce6"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "967bee9bd7737b1038e384fcddb9754601411fa8eaab946b2227a5cce8e57db7"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "sha256": "dc0f948fd8bdeaa59a0df2a6d1a923945f3a595923bff97475527b672c9236db"
+    },
+    {
+      "path": "tests/hub-room-frames-r1.test.ts",
+      "sha256": "5f3619ed8edc316d8c00374ae3208cc406b4e4fd0d5c0b435c18f9062fd0ca8c"
+    },
+    {
+      "path": "tests/hub-rooms-migration-r1.test.ts",
+      "sha256": "73313afeaedc8c7f7c228b2b173d4afd0c596c93c28775a469bd7a2674161875"
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "sha256": "b4fe8a021746457df368cf9ca53a5f775c56ba1e4e9a09d39f5a1c130082dbc0"
+    },
+    {
+      "path": "tests/hub-groups-mount-s89.test.ts",
+      "sha256": "b2cf1e1e8ef26b2a4ebddf2793e32193a7af9f46ca454707ed055f9833ceec34"
+    }
+  ]
+}

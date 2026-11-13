@@ -29,6 +29,7 @@ export interface HubContentStore {
   get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
+  /** Track A's optional host adapter; absent means the room assistant is disabled. */
   roomAssistant?: import("../assistant/types.js").RoomAssistant;
   assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
