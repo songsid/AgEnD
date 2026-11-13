@@ -125,16 +125,28 @@ describe("#3429 B — D1: pending is not confirmed; the anchor decides", () => {
 });
 
 describe("#3429 B — fail closed; record before file", () => {
-  it("absent = legacy; corrupt, partial, another profile's or a broken chain = no address at all", async () => {
+  it("absent = legacy; corrupt, partial or tampered (for this pairing) = no address at all; another pairing's = absent", async () => {
     const { p, digest, st, store, A, accept, file } = await setup();
     accept(st(A, B, 1));
     const good = readFileSync(file(), "utf8");
-    for (const bad of ["{", good.slice(0, 40), good.replace(`"profile":"${digest}"`, `"profile":"${"0".repeat(64)}"`), good.replace('"highWater":1', '"highWater":0')]) {
+    for (const bad of ["{", good.slice(0, 40), good.replace('"highWater":1', '"highWater":0'), good.replace('"revision":1', '"revision":7')]) {
       writeFileSync(file(), bad, { mode: 0o600 });
       expect(store.read(p, digest).kind).toBe("corrupt");
       expect(store.dialOrder(p, digest)).toEqual([]);
     }
-    expect(store.read(p, sha256("another profile")).kind).toBe("corrupt");
+    // Another pairing's file (re-paired since): not this pairing's state — the profile's own address; the next one replaces it.
+    writeFileSync(file(), good, { mode: 0o600 });
+    expect(store.read(p, sha256("another profile"))).toMatchObject({ kind: "absent", anchor: A, stale: good });
+    expect(store.dialOrder(p, sha256("another profile"))).toEqual([A]);
+  });
+  it("after a re-pair (a new pairing.json), the previous pairing's file is replaced by the next relocation", async () => {
+    const { r, p, digest, st, A, accept, file } = await setup();
+    accept(st(A, B, 1));
+    const repaired = sha256("a re-paired pairing.json");
+    const out = acceptHubRelocation({ home: r.memberHome, profile: p, profileDigest: repaired, webOrigins: [], current: () => true, log: () => {}, record: () => {} }, st(A, C, 2));
+    expect(out).toMatchObject({ ack: { revision: 2 } });
+    expect(JSON.parse(readFileSync(file(), "utf8"))).toMatchObject({ profile: repaired, highWater: 2, confirmed: [], pending: { statement: { to: C } } });
+    void digest;
   });
   it("the record commits before the file; a record that fails leaves no file and no ack", async () => {
     const { r, p, digest, st, A, file } = await setup();

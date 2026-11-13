@@ -71,7 +71,8 @@ export function verifyHubRelocation(input: unknown, profile: HubMemberProfile, w
 }
 
 export type HubRelocationRead =
-  | { kind: "absent"; anchor: string }
+  /** No state for this pairing. `stale`: a previous pairing's file still on disk (its exact bytes, to replace). */
+  | { kind: "absent"; anchor: string; stale?: string }
   | { kind: "ok"; anchor: string; state: HubRelocationState; text: string }
   | { kind: "corrupt" };
 
@@ -86,7 +87,9 @@ export class HubMemberRelocationStore {
     try {
       const text = readPrivateFile(this.home, this.suffix, 64 * 1024);
       const state = validated(stateSchema, parseStrictJson(text));
-      if (state.profile !== profileDigest) return { kind: "corrupt" };
+      // A previous pairing's state (re-paired since: a new pairing.json, a new Fleet ID its statements were never signed
+      // for): not this pairing's, so as if absent — the profile's own address — and the next relocation replaces it.
+      if (state.profile !== profileDigest) return { kind: "absent", anchor: profile.hub.memberOrigin, stale: text };
       let anchor = profile.hub.memberOrigin, top = 0;
       for (const e of state.confirmed) {
         const s = verifyHubRelocation(e.statement, profile);
@@ -126,12 +129,12 @@ export class HubMemberRelocationStore {
     if (state?.confirmed.some(e => e.digest === digest)) return { kind: "retry", digest };
     if (s.revision <= (state?.highWater ?? 0)) throw new HubProtocolError("stale");
     if (s.from !== r.anchor) throw new HubProtocolError("denied");
-    return { kind: "store", statement: s, digest, expected: r.kind === "ok" ? r.text : null };
+    return { kind: "store", statement: s, digest, expected: r.kind === "ok" ? r.text : r.stale ?? null };
   }
   /** Write the planned pending statement: a CAS on the bytes read when planning, flushed with its parents. */
   store(profile: HubMemberProfile, profileDigest: string, planned: { statement: HubRelocationStatement; digest: string; expected: string | null }, current: () => boolean): void {
     const r = this.read(profile, profileDigest);
-    if (r.kind === "corrupt" || (r.kind === "ok" ? r.text : null) !== planned.expected) throw new HubProtocolError("stale");
+    if (r.kind === "corrupt" || (r.kind === "ok" ? r.text : r.stale ?? null) !== planned.expected) throw new HubProtocolError("stale");
     const next: HubRelocationState = { v: 1, profile: profileDigest, highWater: planned.statement.revision,
       confirmed: r.kind === "ok" ? r.state.confirmed : [], pending: { statement: planned.statement, digest: planned.digest } };
     this.write(JSON.stringify(validated(stateSchema, next)), planned.expected, current);
