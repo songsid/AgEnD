@@ -1,7 +1,7 @@
 [
   {
     "path": "docs/evidence/hub-room-compose-track-c/README.md",
-    "sha256": "da167747058a8c36031d35aa36210f23f8aa9a00d658f3ba522f647a0ddb8819"
+    "sha256": "8ea33505fcddc20566d5cedd2227a7d9a40b3d2f3cc10fede8a952b569f7fec4"
   },
   {
     "path": "docs/evidence/hub-room-compose-track-c/baseline-before.log",
@@ -94,6 +94,66 @@
   {
     "path": "docs/evidence/hub-room-compose-track-c/post-sync.log",
     "sha256": "ee5b2854ace758422f30a4d543d131e832c0365bcff79fd36fb71bdebdc76b03"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/README.md",
+    "sha256": "36a168442ca85b12453a0b2ac178cef90a125cef0d06cc0a5a031493e64a4c24"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/bindings.json",
+    "sha256": "092ae3e46f5ac3484e8c2f91998ed080e0a4565a58a7651a97f6033f35e01150"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/mutations/R10-backpressure-types.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/mutations/R10-backpressure.log",
+    "sha256": "1eae8fe4985143550e3b2d71f5a0644fce5bfeb4906c1653ce4ce06300f92c40"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/mutations/R8-refusal-link-types.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/mutations/R8-refusal-link.log",
+    "sha256": "e4b78d1eccd56865eddfd83f06adf069dba51a4e97e879bb142fb300e0bf0d34"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/mutations/R9-room-subkey-types.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/mutations/R9-room-subkey.log",
+    "sha256": "a7cfead3a30b8369220877df64c3723c1d61890e5cbe45a7cf52b2ed0d538104"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/mutations/restored.json",
+    "sha256": "8b6fb0a9ae9a3a8e9a5e3aec7f0ffcf612e38cbb52b3b81b62c9ed00898b64d0"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/mutations/run.py",
+    "sha256": "ddd84d5ac0f04202c637b6e5e0fa11767234644dbbb56565f7fd331166add1f8"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/mutations/summary.json",
+    "sha256": "df52789995534c8549b34cf670b1bd2191405b36e3a2f91f255e22bb1a5a555d"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/r1-before.log",
+    "sha256": "7779588965e76c1db43e5db754d50d973ea0f2d88c44514204988fa6fe0ffac1"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/r1-final-source-types.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/r1-final-test-types.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r1/r1-final.log",
+    "sha256": "351cf10fb3a4c60e6b7c7cba7a8110e1e49819c791e5d39da808fc936f0de1bc"
   },
   {
     "path": "docs/evidence/hub-room-compose-track-c/supplement.log",

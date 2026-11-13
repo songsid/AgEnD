@@ -1,5 +1,7 @@
 # Track C member composition checkpoint
 
+**Current R1:** see [r1/README.md](r1/README.md), source `386f0c03a`. The receipts below are the initial f0a743f7 checkpoint, retained as historical evidence; they are not current R1 source bindings.
+
 Source `5a493cd9d`, followed by plain sync `95b67d7ba99f0692751fffb9382e39d407108cdf` onto R2 `74018cbf4ba594a4a7b1f4518bc55d8b101752d0`. All ten own source/test/doc blobs are unchanged by that sync. `bindings.json` and `manifest.json` bind the exact inputs and receipts. The unmounted adapter's earlier #3860 packet remains separate.
 
 The actual member factory, private SQLite/floors/keys, pairing replacement and TLS/WSS link run in the tests. Fleet delivery, state and directory callbacks are inert. No agent receives input, no model or real directory is called, and no browser/container is started.
