@@ -1,0 +1,151 @@
+{
+  "scope": "S129 retained hub.admin administration proofs; no startup activation/full acceptance. Parent-first draft/release holds.",
+  "candidate": "e50da6ccb16ee2056fbebb75725b87dab34cd3f7",
+  "parent": "6c2cbf00109d76cd4c7b9cd978d4b19f4be6973b",
+  "at": "2026-11-13T09:53:32.672055+00:00",
+  "checks": {
+    "focused": {
+      "numTotalTests": 314,
+      "numPassedTests": 314,
+      "numFailedTests": 0,
+      "numPendingTests": 0,
+      "files": 13
+    },
+    "restored": {
+      "numTotalTests": 26,
+      "numPassedTests": 26,
+      "numFailedTests": 0,
+      "numPendingTests": 0,
+      "files": 2
+    },
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "compiler": "native TypeScript 7.0.2; GOMAXPROCS=2",
+    "changelogFragments": 445,
+    "diffCheckExit": 0
+  },
+  "tests": [
+    "tests/hub-roles-admin-s129.test.ts",
+    "tests/hub-roles-session-s129.test.ts",
+    "tests/hub-settings-api-m2682.test.ts",
+    "tests/hub-settings-commit-m2682.test.ts",
+    "tests/hub-settings-guards-m2682.test.ts",
+    "tests/hub-settings-fleet-m2682.test.ts",
+    "tests/hub-owner-admin-c.test.ts",
+    "tests/hub-s3b-server.test.ts",
+    "tests/hub-s3b-flow.test.ts",
+    "tests/hub-sharing-pause-m3015.test.ts",
+    "tests/hub-roles-issuer-s129.test.ts",
+    "tests/hub-group-composition.test.ts",
+    "tests/hub-compose.test.ts"
+  ],
+  "failFirst": {
+    "initial": {
+      "numTotalTests": 7,
+      "numPassedTests": 2,
+      "numFailedTests": 5,
+      "numPendingTests": 0,
+      "files": 1
+    },
+    "heldSignout": {
+      "numTotalTests": 23,
+      "numPassedTests": 1,
+      "numFailedTests": 1,
+      "numPendingTests": 21,
+      "files": 1
+    },
+    "meaning": "Initial5 semantic failures+2 current positives. Held sign-out separately1semantic503-vs401red+1 stale-reader refusal control; other21 tests unselected in that narrow run.",
+    "excluded": "Initial wrong catalog export3setup errors; initial second-LDAP-read gate2unentered timeouts; construction native-type diagnostic. None count as semantic proof."
+  },
+  "mutations": {
+    "count": 13,
+    "file": "mutations.json",
+    "compile": "GOMAXPROCS=2 node_modules/.bin/tsc --noEmit",
+    "tests": [
+      "tests/hub-roles-admin-s129.test.ts",
+      "tests/hub-settings-api-m2682.test.ts"
+    ],
+    "semanticOnly": true,
+    "fullRestoration": true,
+    "historical": "Earlier12 pass superseded after Core held-signout change; no additive count. All13 refreshed on this candidate,26-case baseline."
+  },
+  "bindings": [
+    {
+      "file": "src/hub/catalog.ts",
+      "sha256": "e9b31a1cca85ccfd225617df90d3c10ec2eedcd7da3bb25d964ae7f18816119f"
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "sha256": "a10f81c438b468ae2e7f375ea4992cb49bf25f692072b8440c64b636a0882baf"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "53e5071fb2d19572e72f3afc513c3ca054445db64d0cf8f9275f653bd260a506"
+    },
+    {
+      "file": "src/hub/settings-api.ts",
+      "sha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b"
+    },
+    {
+      "file": "tests/hub-roles-admin-s129.test.ts",
+      "sha256": "1bfc68cbf992f3efdd627818eabf2734a35c66aca525b5f18c948e0597f30f45"
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "8aa3dfa1eb53e9492a7c0c43812870e675b88900137bc7f123733818feed22ac"
+    },
+    {
+      "file": "docs/design/hub-roles-admin-authority.md",
+      "sha256": "1094e3f6433783b4cbf8a7c87b14e882ca70821aee1c3c403546695b88b8aaa1"
+    },
+    {
+      "file": "docs/evidence/hub-roles-admin-s129/README.md",
+      "sha256": "e83c0d8a383131bc90289c1bf2c23c543da6f5a6ec2caaa4e315fd52c0a24240"
+    },
+    {
+      "file": "changes/3743-roles-admin-authority.md",
+      "sha256": "701fc500404be4a181935f1d34a9f7f6454c023495ffd6c485a015634d7e6569"
+    },
+    {
+      "file": "changes/3743-roles-admin-authority.zh-TW.md",
+      "sha256": "0b0703e0a3f3475b393bbe0c8b5bb58e317a917309ef1193581be8618e7475a2"
+    }
+  ],
+  "unchangedFromParent": [
+    {
+      "file": "src/hub/compose/server.ts",
+      "same": true,
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760"
+    },
+    {
+      "file": "src/hub/settings-commit.ts",
+      "same": true,
+      "sha256": "778284b011dd741414db9cf233ce646f506d8195993a0afdd051f650a88d0357"
+    },
+    {
+      "file": "src/hub/group-policy/authorization.ts",
+      "same": true,
+      "sha256": "924b3a40bfeefe6ee411303058adf6338e770ebb28db21373948fad4b5c95171"
+    },
+    {
+      "file": "tests/hub-compose.test.ts",
+      "same": true,
+      "sha256": "48f2a9e4a0473724509c388f67dfd4b45f02a0c561c35efae6ae28adbe238086"
+    },
+    {
+      "file": "tests/hub-group-composition.test.ts",
+      "same": true,
+      "sha256": "db0869c33f1ed0837cfc090826c5c1a3547ba4370f49a5707661208d95625e16"
+    }
+  ],
+  "commands": [
+    "node_modules/.bin/vitest run <13 tests listed> --maxWorkers=2 --reporter=json",
+    "GOMAXPROCS=2 node_modules/.bin/tsc --noEmit",
+    "GOMAXPROCS=2 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+    "python3 .artifacts/roles-admin-m3010/mutate.py",
+    "readFragments(process.cwd())",
+    "git diff --check"
+  ],
+  "load": "Each run/case starts only at load1<=10; original series paused/restored before next case at10.85, then resumed belowgate. No concurrent heavy campaign launched.",
+  "limits": "Actual roles/session/SQLite, owned loopbackHTTP, generated signing keys and real sealed writer; synthetic directory/config-save callbacks. No sealed-production-factory/browser/container/real AD/account/vendor CLI/Fleet/native OS/pilot claim. No directory-save or metadata-audit/member/SSE/startup activation. FullS1290of4 remains."
+}

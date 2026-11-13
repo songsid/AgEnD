@@ -1,0 +1,423 @@
+[
+  {
+    "id": "A1-overview-permission",
+    "file": "src/hub/http/compose.ts",
+    "originalSha256": "a10f81c438b468ae2e7f375ea4992cb49bf25f692072b8440c64b636a0882baf",
+    "old": "signedIn(); const permit = await guard(() => core.management(ctx, \"hub.admin\"));",
+    "new": "signedIn(); const permit = await guard(() => core.management(ctx, \"fleets.manage\"));",
+    "loadAtStart": 3.19091796875,
+    "mutantSha256": "b5e07847e31047f16b569401a1391a5f15e72880524d774af8574442db37bd95",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 25,
+    "failed": 1,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename refuses all administrative entries for a split fleets.manage holder",
+        "messages": [
+          "AssertionError: expected 200 to be 403 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "a10f81c438b468ae2e7f375ea4992cb49bf25f692072b8440c64b636a0882baf",
+    "seconds": 14.615
+  },
+  {
+    "id": "A2-freeze-permission",
+    "file": "src/hub/catalog.ts",
+    "originalSha256": "e9b31a1cca85ccfd225617df90d3c10ec2eedcd7da3bb25d964ae7f18816119f",
+    "old": "const management = admin ? await this.core.management(ctx, \"hub.admin\") : undefined;",
+    "new": "const management = admin ? await this.core.management(ctx, \"fleets.manage\") : undefined;",
+    "loadAtStart": 2.92626953125,
+    "mutantSha256": "82ff19c23ecef1a294ef67ac2e20fd586f41693b23fe7bf40f4ae01ec0374e86",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 25,
+    "failed": 1,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename refuses all administrative entries for a split fleets.manage holder",
+        "messages": [
+          "AssertionError: expected 200 to be 403 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "e9b31a1cca85ccfd225617df90d3c10ec2eedcd7da3bb25d964ae7f18816119f",
+    "seconds": 15.136
+  },
+  {
+    "id": "A3-freeze-final",
+    "file": "src/hub/catalog.ts",
+    "originalSha256": "e9b31a1cca85ccfd225617df90d3c10ec2eedcd7da3bb25d964ae7f18816119f",
+    "old": "    }, management);",
+    "new": "    });",
+    "loadAtStart": 3.51611328125,
+    "mutantSha256": "c899f194bbd1de2e92724c5fff7c7e19dc5c4794f763f4fcab5d504b936781d1",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 24,
+    "failed": 2,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 administrative operation proofs rolls back exposure freeze and its required audit on role-loss during audit",
+        "messages": [
+          "Error: promise resolved \"undefined\" instead of rejecting"
+        ]
+      },
+      {
+        "name": "S129 administrative operation proofs rolls back exposure freeze and its required audit on expiry during audit",
+        "messages": [
+          "Error: promise resolved \"undefined\" instead of rejecting"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "e9b31a1cca85ccfd225617df90d3c10ec2eedcd7da3bb25d964ae7f18816119f",
+    "seconds": 16.99
+  },
+  {
+    "id": "A4-overview-disclosure",
+    "file": "src/hub/http/compose.ts",
+    "originalSha256": "a10f81c438b468ae2e7f375ea4992cb49bf25f692072b8440c64b636a0882baf",
+    "old": "      permit.assertCurrent(); return send(res, 200, view);",
+    "new": "      return send(res, 200, view);",
+    "loadAtStart": 3.34033203125,
+    "mutantSha256": "9304c593a3e3ce21d5e44f2500fae8d01c7c233f8d59075905900ef6c2b9964a",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 25,
+    "failed": 1,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 administrative operation proofs does not disclose overview when the SQL unit returns after the proof's deadline",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "a10f81c438b468ae2e7f375ea4992cb49bf25f692072b8440c64b636a0882baf",
+    "seconds": 15.931
+  },
+  {
+    "id": "S1-composed-authority",
+    "file": "src/hub/http/compose.ts",
+    "originalSha256": "a10f81c438b468ae2e7f375ea4992cb49bf25f692072b8440c64b636a0882baf",
+    "old": "      authorize: () => core.management(ctx, \"hub.admin\"),\n",
+    "new": "",
+    "loadAtStart": 3.33837890625,
+    "mutantSha256": "00a6257a7340fa60895851c968c9bfa15b09721c3a00c0bfbf965f423fa77f54",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 18,
+    "failed": 8,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename does not disclose This Hub metadata if its projection retires authority",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename rechecks read permission before work after the inner asynchronous admin proof returns",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename rechecks prepare permission before work after the inner asynchronous admin proof returns",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename rechecks commit permission before work after the inner asynchronous admin proof returns",
+        "messages": [
+          "AssertionError: expected 409 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename does not disclose a prepared reference if the writer's prepare retires authority",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename refuses rename before the writer after the held audit retires its auxiliary permission",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename passes current permission through the real writer's last precommit check",
+        "messages": [
+          "AssertionError: expected 200 to be 409 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename keeps an already-committed rename forward-only when the completed audit retires authority",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "a10f81c438b468ae2e7f375ea4992cb49bf25f692072b8440c64b636a0882baf",
+    "seconds": 15.554
+  },
+  {
+    "id": "S2-info-disclosure",
+    "file": "src/hub/settings-api.ts",
+    "originalSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "old": "    permit.assertCurrent(); q.send(200, view);",
+    "new": "    q.send(200, view);",
+    "loadAtStart": 3.10009765625,
+    "mutantSha256": "f819ba60551045d68fe9c0b540726f2b3040e484c35561bde2555d7e95aeffeb",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 25,
+    "failed": 1,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename does not disclose This Hub metadata if its projection retires authority",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "seconds": 14.448
+  },
+  {
+    "id": "S3-prepare-disclosure",
+    "file": "src/hub/settings-api.ts",
+    "originalSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "old": "      permit.assertCurrent(); q.send(200, { ok: true, ...prepared });",
+    "new": "      q.send(200, { ok: true, ...prepared });",
+    "loadAtStart": 2.9306640625,
+    "mutantSha256": "04d4597dd93e57262bbc66a4ccb7f9d6949fada73024dc02313383bea57c3b92",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 25,
+    "failed": 1,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename does not disclose a prepared reference if the writer's prepare retires authority",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "seconds": 14.427
+  },
+  {
+    "id": "S4-after-held-audit",
+    "file": "src/hub/settings-api.ts",
+    "originalSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "old": "    permit.assertCurrent();\n    let done: ReturnType<HubSettingsWriter[\"commit\"]>;",
+    "new": "    let done: ReturnType<HubSettingsWriter[\"commit\"]>;",
+    "loadAtStart": 3.0078125,
+    "mutantSha256": "e78bac58e2928b09bf3872468540719724347a2328af441fb7eaf9eee0cac834",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 25,
+    "failed": 1,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename refuses rename before the writer after the held audit retires its auxiliary permission",
+        "messages": [
+          "AssertionError: expected 403 to be 503 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "seconds": 14.779
+  },
+  {
+    "id": "S5-writer-final",
+    "file": "src/hub/settings-api.ts",
+    "originalSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "old": "try { done = deps.writer.commit(body.ref, who, () => {\n      try { permit.assertCurrent(); return true; } catch { return false; }\n    }); }",
+    "new": "try { done = deps.writer.commit(body.ref, who, () => q.ctx.current()); }",
+    "loadAtStart": 3.0,
+    "mutantSha256": "d05d71bad389f1c84ce899cb798d8e23d67134fd4fba1788e10d1b3345451137",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 25,
+    "failed": 1,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename passes current permission through the real writer's last precommit check",
+        "messages": [
+          "AssertionError: expected 503 to be 409 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "seconds": 16.94
+  },
+  {
+    "id": "S6-committed-disclosure",
+    "file": "src/hub/settings-api.ts",
+    "originalSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "old": "    permit.assertCurrent(); q.send(200, { ok: true, summary: done.summary });",
+    "new": "    q.send(200, { ok: true, summary: done.summary });",
+    "loadAtStart": 2.82275390625,
+    "mutantSha256": "ca90ed52f4ee3e86955f047f5a54f02ce353cc792db339aefed51f962ff7df0f",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 25,
+    "failed": 1,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename keeps an already-committed rename forward-only when the completed audit retires authority",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "seconds": 14.843
+  },
+  {
+    "id": "S7-retained-proof",
+    "file": "src/hub/settings-api.ts",
+    "originalSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "old": "        permit?.assertCurrent();",
+    "new": "",
+    "loadAtStart": 2.5595703125,
+    "mutantSha256": "471f56cf24ffcaa9a89961f23ba1729caf7bace49bb42d516610981ede3946aa",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 18,
+    "failed": 8,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename does not disclose This Hub metadata if its projection retires authority",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename rechecks read permission before work after the inner asynchronous admin proof returns",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename rechecks prepare permission before work after the inner asynchronous admin proof returns",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename rechecks commit permission before work after the inner asynchronous admin proof returns",
+        "messages": [
+          "AssertionError: expected 409 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename does not disclose a prepared reference if the writer's prepare retires authority",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename refuses rename before the writer after the held audit retires its auxiliary permission",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename passes current permission through the real writer's last precommit check",
+        "messages": [
+          "AssertionError: expected 200 to be 409 // Object.is equality"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename keeps an already-committed rename forward-only when the completed audit retires authority",
+        "messages": [
+          "AssertionError: expected 200 to be 503 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "seconds": 15.275
+  },
+  {
+    "id": "S8-after-admin-await",
+    "file": "src/hub/settings-api.ts",
+    "originalSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "old": "    const permit = await admin(), actor = permit.actor;\n    permit.assertCurrent();",
+    "new": "    const permit = await admin(), actor = permit.actor;",
+    "loadAtStart": 2.67041015625,
+    "mutantSha256": "205eb52091859f4fe7dd763d5cd1ad7f8af0dd1c78ed8717798f7293fadc00cf",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 24,
+    "failed": 2,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 current authority at sealed rename rechecks prepare permission before work after the inner asynchronous admin proof returns",
+        "messages": [
+          "AssertionError: expected \"prepare\" to not be called at all, but actually been called 1 times"
+        ]
+      },
+      {
+        "name": "S129 current authority at sealed rename rechecks commit permission before work after the inner asynchronous admin proof returns",
+        "messages": [
+          "AssertionError: expected \"append\" to not be called at all, but actually been called 1 times"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "cea49ecdc0ca6c3025bda9d3c9d5be121cfe163d984a6fedf0a85a9635d0f49b",
+    "seconds": 16.634
+  },
+  {
+    "id": "C1-held-signout",
+    "file": "src/hub/http/core.ts",
+    "originalSha256": "53e5071fb2d19572e72f3afc513c3ca054445db64d0cf8f9275f653bd260a506",
+    "old": "        if (ctx.isCurrent?.() === false) await ctx.current();\n",
+    "new": "",
+    "loadAtStart": 3.14404296875,
+    "mutantSha256": "b552e74e978dcf52fba8dc66d35c281d785bfc79ceb7c19f2ae5092c6f2a7672",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 25,
+    "failed": 1,
+    "skipped": 0,
+    "failures": [
+      {
+        "name": "S129 administrative operation proofs keeps the named read's signed-out result after its held eligibility read",
+        "messages": [
+          "AssertionError: expected 503 to be 401 // Object.is equality"
+        ]
+      }
+    ],
+    "caught": true,
+    "restoredSha256": "53e5071fb2d19572e72f3afc513c3ca054445db64d0cf8f9275f653bd260a506",
+    "seconds": 14.992
+  }
+]
