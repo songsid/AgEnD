@@ -515,6 +515,23 @@ describe("a call or output over the line limit is bookkept like a short one (the
       expect(mine(merged), `split at record ${k}`).toEqual([["c1", "command", "done"]]);
     }
   });
+  it("a failed command after a long exec call stays failed, with its own output, whichever record the poll's cursor stops at", async () => {
+    // The call is over the priming read's 256 KiB, so a poll that begins after the command cannot learn it: its output (a short,
+    // successful wrapper) reaches the page as an orphan completion. It must not turn the adopted, failed command into `done` nor
+    // replace its body with the wrapper's: the incremental page and a cold read say the same.
+    const all = [...start, call("c1", `text(await tools.exec_command({cmd:'false'}));/*${BIG}*/`), command("exec-1", 1), done("c1", "Script completed\nWall time 0.1 seconds\nOutput:\nthe wrapper's own, different text")];
+    const { file, steps, whole } = await cold(all);
+    const mine = (l: LogStep[]) => l.filter((s) => s.kind === "tool").map((s) => [s.id, s.tool, s.status, s.exitCode, s.body]);
+    expect(mine(whole)).toEqual([["c1", "command", "failed", 1, "nope"]]);
+    expect(mine(steps)).toEqual(mine(whole));
+    const cut = start.length + 2;                                                  // after the failed command, before the wrapper's output
+    const polled = await splits(all, file);
+    expect(polled.some(([k]) => k === cut)).toBe(true);
+    for (const [k, merged] of polled) {
+      if (k === start.length + 1) continue;                                        // the known limit above: a poll between the call and its item
+      expect(mine(merged), `split at record ${k}${k === cut ? " (the cut after the command)" : ""}`).toEqual(mine(whole));
+    }
+  });
   it("a long call that sends a reply is a turn that spoke: its `task_complete` with no last message is not a failure", async () => {
     const all = [...start, call("c1", `${REPLY_SCRIPT}/*${BIG}*/`), done("c1", "Script completed\nWall time 0.1 seconds\nOutput:\n"), ev({ type: "task_complete", turn_id: "t1", last_agent_message: null })];
     const { steps } = await cold(all);
