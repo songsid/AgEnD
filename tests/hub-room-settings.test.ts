@@ -50,11 +50,11 @@ async function mountSettings(pg: AppPage, client: any, roomId = "room-weekly", e
   return changed;
 }
 const writes = (calls: any[]) => calls.filter(c => c.method !== "GET").map(c => [c.method, c.path, c.body]);
-const button = (pg: AppPage, label: string) => [...pg.document.querySelectorAll("button")].find((b: any) => b.textContent.trim() === label);
+const button = (pg: AppPage, label: string) => [...(pg.document as any).querySelectorAll("button")].find((b: any) => b.textContent.trim() === label);
 async function menu(pg: AppPage, rowId: string, item: string) {
   const row = pg.root.querySelector(`[data-member="${rowId}"]`); expect(row, rowId).toBeTruthy();
   fire(row.querySelector("button"), "click"); await settle(10);
-  const it = [...pg.document.querySelectorAll("[role=menuitem]")].find((x: any) => x.textContent.trim() === item);
+  const it = [...(pg.document as any).querySelectorAll("[role=menuitem]")].find((x: any) => x.textContent.trim() === item);
   expect(it, item).toBeTruthy(); fire(it, "click"); await settle(30);
 }
 async function search(pg: AppPage, id: string, value: string) { const el = pg.root.querySelector(`#${id}`); el.value = value; fire(el, "input"); await wait(260); await settle(10); }
@@ -151,11 +151,11 @@ describe("Hub Room settings (section 7)", () => {
     let closed = 0;
     await mountSettings(pg, client, "room-weekly", { onClose: () => { closed++; } }); calls.length = 0;
     fire(button(pg, "封存房間"), "click"); await settle(10);
-    expect(pg.document.body.textContent).toContain("要封存「研一主管週會」嗎？房間會變成唯讀，內容仍然看得到。");
+    expect((pg.document as any).body.textContent).toContain("要封存「研一主管週會」嗎？房間會變成唯讀，內容仍然看得到。");
     fire(button(pg, "取消"), "click"); await settle(20);
     expect(writes(calls)).toEqual([]);
     fire(button(pg, "封存房間"), "click"); await settle(10);
-    fire(pg.document.querySelector("[data-confirm=yes]"), "click"); await settle(30);
+    fire((pg.document as any).querySelector("[data-confirm=yes]"), "click"); await settle(30);
     expect(writes(calls)).toEqual([["PATCH", "/hub/v1/rooms/room-weekly", { archived: true }]]);
     expect(closed).toBe(1);
     } finally { (globalThis as any).confirm = prior; }

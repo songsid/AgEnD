@@ -40,7 +40,7 @@ const tags = (pg: AppPage) => [...pg.root.querySelectorAll("#hubRoomCreators")[0
 const rows = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-admin-rooms-table tbody tr")].map((tr: any) => [...tr.querySelectorAll("td")].slice(0, 6).map((td: any, i: number) => i === 4 ? (td.textContent ? "time" : "") : td.textContent));
 async function menu(pg: AppPage, roomId: string, item: string) {
   fire(pg.root.querySelector(`[data-room="${roomId}"] button`), "click"); await settle(10);
-  const it = [...pg.document.querySelectorAll("[role=menuitem]")].find((x: any) => x.textContent.trim() === item);
+  const it = [...(pg.document as any).querySelectorAll("[role=menuitem]")].find((x: any) => x.textContent.trim() === item);
   expect(it, item).toBeTruthy(); fire(it, "click"); await settle(30);
 }
 
@@ -72,11 +72,11 @@ describe("Hub Administration → Rooms (section 11)", () => {
       expect(pg.root.querySelector("[role=status]").textContent).toBe("你現在是「研發例會」的房間管理，房間裡會出現一則說明。");
       expect(rows(pg)[1][3]).toBe("王經理、陳主任");
       await menu(pg, "room-rd", "封存");
-      expect(pg.document.body.textContent).toContain("要封存「研發例會」嗎？房間會變成唯讀，成員仍然看得到內容。");
-      fire(pg.document.querySelector("[data-confirm=yes]"), "click"); await settle(40);
+      expect((pg.document as any).body.textContent).toContain("要封存「研發例會」嗎？房間會變成唯讀，成員仍然看得到內容。");
+      fire((pg.document as any).querySelector("[data-confirm=yes]"), "click"); await settle(40);
       expect(rows(pg)[1][5]).toBe("已封存");
       fire(pg.root.querySelector('[data-room="room-archived"] button'), "click"); await settle(10);
-      expect([...pg.document.querySelectorAll("[role=menuitem]")].map((x: any) => x.textContent.trim())).toEqual(["加入自己成為房間管理"]);
+      expect([...(pg.document as any).querySelectorAll("[role=menuitem]")].map((x: any) => x.textContent.trim())).toEqual(["加入自己成為房間管理"]);
       expect(writes(calls)).toEqual([["POST", "/hub/v1/admin/rooms/room-rd/join", {}], ["PATCH", "/hub/v1/admin/rooms/room-rd", { archived: true }]]);
     } finally { (globalThis as any).confirm = prior; }
   });

@@ -53,7 +53,7 @@ describe("Hub New room dialog (section 6)", () => {
     expect(button(pg, "建立").disabled).toBe(false);
     fire(button(pg, "建立"), "click"); await settle(10);
     expect(pg.root.querySelector(".hub-room-new-error").textContent).toBe("請輸入房間名稱。");
-    expect(pg.document.activeElement).toBe(pg.root.querySelector("#hubRoomName"));
+    expect((pg.document as any).activeElement).toBe(pg.root.querySelector("#hubRoomName"));
     expect(calls.filter(c => c.method === "POST")).toEqual([]);
     expect(pg.root.querySelector("#hubRoomName").getAttribute("maxlength")).toBe("60");
   });

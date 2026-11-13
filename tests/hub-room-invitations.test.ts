@@ -123,7 +123,7 @@ describe("Hub room invitations, owner side (section 8)", () => {
     fire(button(pg, "退出這個房間"), "click"); await settle(20);
     expect(calls.filter(c => c.method === "DELETE").map(c => c.path)).toEqual(["/hub/v1/rooms/room-weekly/members/exp-02"]);
     expect(items()).toEqual(["研發例會 · 2 人"]);
-    fx.rooms.find((r: any) => r.id === "room-rd").members.push({ id: "exp-mine-1", kind: "agent", name: "my-notes", owner: { name: "王經理" }, role: "member", presence: "idle" });
+    fx.rooms.find((r: any) => r.id === "room-rd")!.members.push({ id: "exp-mine-1", kind: "agent", name: "my-notes", owner: { name: "王經理" }, role: "member", presence: "idle" });
     fx.emit("member.changed", { roomId: "room-rd" }); await settle(20);
     expect(pg.root.querySelectorAll(".hub-agent-rooms")).toHaveLength(2);
   });
