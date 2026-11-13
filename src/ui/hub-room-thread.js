@@ -62,13 +62,14 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
   const out = [], byId = new Map(messages.map((m) => [m.id, m]));
   // Each question's answers that have text, in arrival order: past ANSWERS_SHOWN they wait behind one 「展開其餘 N 則」.
   const answersOf = new Map();
-  for (const m of messages) if (m && m.answerTo && m.text) answersOf.set(m.answerTo, [...(answersOf.get(m.answerTo) || []), m.id]);
+  const drawn = (m) => !!m.text || m.stage === "not-answered";   // an answer that shows: its text, or that none came (Ridge)
+  for (const m of messages) if (m && m.answerTo && drawn(m)) answersOf.set(m.answerTo, [...(answersOf.get(m.answerTo) || []), m.id]);
   const num = (id) => { if (!ids.has(id)) ids.set(id, ids.size * 2 + 2); return ids.get(id); };
   for (const m of messages) {
     if (!m || typeof m.id !== "string") continue;
     const author = m.author || {}, kind = author.kind;
     // An answer still to come (queued, or being worked on: the working bar says who) is never an empty bubble.
-    if (m.answerTo && !m.text) continue;
+    if (m.answerTo && !m.text && (m.stage === "queued" || m.stage === "working")) continue;
     // Past the first ANSWERS_SHOWN answers of a question, the rest wait behind one line (until it is opened).
     if (m.answerTo && !direct && !expanded.has(m.answerTo)) {
       const list = answersOf.get(m.answerTo) || [], at = list.indexOf(m.id);
