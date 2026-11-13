@@ -58,13 +58,14 @@ describe("rooms (seam 1) against the fixture", () => {
   it("a room: every presence state, both notes, the assistant, my role and its settings; members only @all where allowed", async () => {
     const { client } = await live();
     const weekly = await client.room("room-weekly");
-    expect(weekly.me).toEqual({ role: "manager" });
+    expect(weekly.me).toEqual({ id: FIXTURE_ME.id, role: "manager" });
+    expect(weekly.members.filter((m: any) => m.canAsk).map((m: any) => m.name)).toEqual(["project-helper", "test-runner", "design-review", "report-bot", "old-helper"]);
     expect(new Set(weekly.members.map((m: any) => m.presence))).toEqual(new Set(["online", "offline", "idle", "working", "paused", "later"]));
     expect(weekly.members.map((m: any) => m.presenceNote).filter(Boolean)).toEqual(["額度用完", "等待登入", "需要更新 AgEnD"]);
     expect(weekly.members.filter((m: any) => m.kind === "assistant")).toHaveLength(1);
     expect(weekly.invited).toHaveLength(1);
     const rd = await client.room("room-rd");
-    expect(rd).toMatchObject({ me: { role: "member" }, settings: { allMention: false } });
+    expect(rd).toMatchObject({ me: { id: FIXTURE_ME.id, role: "member" }, settings: { allMention: false } });
   });
   it("messages: a page newest last; the @all's counts, its answers as replies, the late ones queued; the assistant's summary", async () => {
     const { client, calls } = await live();
