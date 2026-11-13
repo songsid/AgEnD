@@ -11,6 +11,7 @@ import { HubProtocolError } from "./validation.js";
 import { exposureOf, grantApplies, grantOf, readExposure, readGrant } from "./catalog.js";
 import { readMessage, type MessageRow } from "./policy.js";
 import { personFromString, type HubCore } from "./http/core.js";
+import type { HubGrantSubjectProof } from "./grant-access.js";
 export { buttonsDigest } from "./buttons-model.js";
 
 export const HUB_BUTTONS_MIGRATION = Object.freeze({ component: "s8-buttons", version: 1, up(db: Database.Database) {
@@ -37,6 +38,8 @@ type Room = { id: string; asker: string; exposure_id: string; grant_id: string; 
 export interface HubButtonQuestion {
   roomId: string; asker: PersonKey; idempotencyKey: string; text: string; requestId: string;
   actor: HubAuditRecord["actor"];
+  /** Server-only operation proof, never accepted from an HTTP or member DTO. */
+  grantProof?: HubGrantSubjectProof;
 }
 export interface HubButtonsQueue {
   /** The SAME synchronous insertion/audit/caps path as rooms.ask, inside the supplied transaction. */
@@ -78,7 +81,7 @@ export class HubButtonsService {
     return { msg, buttons: b };
   }
   /** A published answer's continuation has its own bounded lifetime; current source identities/revisions never change. */
-  private authorized(db: Database.Database, row: Row, now: number) {
+  private authorized(db: Database.Database, row: Row, now: number, proof?: HubGrantSubjectProof) {
     const data = this.source(db, row), msg = data.msg;
     const room = db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(row.room_id) as Room | undefined;
     const e = readExposure(db, msg.exposure_id), g = readGrant(db, msg.grant_id);
@@ -87,7 +90,7 @@ export class HubButtonsService {
     const exposure = exposureOf(e), grant = grantOf(g);
     if (exposure.revision !== msg.exposure_revision || grant.revision !== msg.grant_revision) throw new HubProtocolError("stale");
     if (exposure.fleetId !== msg.fleet_id || personKeyString(exposure.owner) !== msg.owner || exposure.state !== "published"
-      || !grantApplies(grant, exposure, personFromString(msg.asker), now)) throw new HubProtocolError("revoked");
+      || !grantApplies(grant, exposure, personFromString(msg.asker), now, proof)) throw new HubProtocolError("revoked");
     return data;
   }
   private ballot(row: Row, asker: string): PollBallot | undefined {
@@ -140,10 +143,10 @@ export class HubButtonsService {
     if (actor.kind !== "directory" || personKeyString(actor.person) !== me) throw new HubProtocolError("denied");
     const auditActor = { kind: "person" as const, person: asker };
     this.check();
-    const permit = await this.core.groupExposure(first.exposure_id, asker, this.core.groupContext(ctx));
+    const permit = await this.core.exposureGrant(first.exposure_id, first.grant_id, asker, this.core.groupContext(ctx));
     const out = this.core.atomic((db, tx) => {
       const row = this.row(db, setId); if (!row || row.room_id !== roomId) throw new HubProtocolError("not-found");
-      const { msg, buttons: b } = this.authorized(db, row, this.core.now());
+      const { msg, buttons: b } = this.authorized(db, row, this.core.now(), permit.grant);
       if (msg.asker !== me) throw new HubProtocolError("denied");
       const options = input.options;
       let picked: number[];
@@ -163,7 +166,7 @@ export class HubButtonsService {
       let receipt: HubReceipt;
       if (!b.poll) {
         // A public click key belongs to the button-operation namespace, not a previous typed question.
-        receipt = this.queue.insert(db, tx, { roomId, asker, idempotencyKey: row.result_key, requestId: ctx.requestId,
+        receipt = this.queue.insert(db, tx, { roomId, asker, idempotencyKey: row.result_key, requestId: ctx.requestId, grantProof: permit.grant,
           text: replyButtonClickText({ label: b.labels[picked[0]!]!, value: b.values?.[picked[0]!] ?? b.labels[picked[0]!]! }), actor: auditActor });
         db.prepare("UPDATE hub_answer_buttons SET state='chosen',chosen_index=?,closed_at=?,revision=revision+1 WHERE id=? AND state='open'").run(picked[0], this.core.now(), row.id);
         this.audit(tx, msg, "buttons.chosen", "completed", ctx.requestId, auditActor);
@@ -176,7 +179,7 @@ export class HubButtonsService {
         receipt = receiptOf(msg); // the ballot is durable; a multi-choice poll queues results only at its deadline
         if (!b.poll.multi) {
           this.closeRow(db, tx, row, msg, this.core.now());
-          receipt = this.queueResults(db, tx, this.row(db, row.id)!, ctx.requestId);
+          receipt = this.queueResults(db, tx, this.row(db, row.id)!, ctx.requestId, permit.grant);
         }
       }
       db.prepare("INSERT INTO hub_button_operations VALUES(?,?,?,?,?)").run(roomId, key, setId, digest, JSON.stringify(receipt));
@@ -193,8 +196,8 @@ export class HubButtonsService {
       .run(poll ? "closed" : "expired", now, poll ? "owed" : "none", row.id).changes;
     if (changed) this.audit(tx, msg, poll ? "poll.closed" : "buttons.expired", "completed", randomUUID(), { kind: "local-host" });
   }
-  private queueResults(db: Database.Database, tx: HubTx, row: Row, requestId: string): HubReceipt {
-    const { msg, buttons: b } = this.authorized(db, row, this.core.now());
+  private queueResults(db: Database.Database, tx: HubTx, row: Row, requestId: string, proof?: HubGrantSubjectProof): HubReceipt {
+    const { msg, buttons: b } = this.authorized(db, row, this.core.now(), proof);
     if (!b.poll || row.closed_at === null || !["owed", "held"].includes(row.result_state)) throw new HubProtocolError("conflict");
     const ballot = this.ballot(row, msg.asker);
     const choices = b.labels.map((label, i) => ({ label, value: b.values?.[i] ?? label }));
@@ -203,7 +206,7 @@ export class HubButtonsService {
     if (!b.poll.multi && ballot && row.closed_at < row.expires_at) {
       const lines = text.split("\n"); lines[0] = lines[0]!.replace(/closed early by close_poll after \d+ s/, "closed after the asker's vote"); text = lines.join("\n");
     }
-    const receipt = this.queue.insert(db, tx, { roomId: row.room_id, asker: personFromString(msg.asker), idempotencyKey: row.result_key, text, requestId, actor: { kind: "local-host" } });
+    const receipt = this.queue.insert(db, tx, { roomId: row.room_id, asker: personFromString(msg.asker), idempotencyKey: row.result_key, text, requestId, actor: { kind: "local-host" }, grantProof: proof });
     db.prepare("UPDATE hub_answer_buttons SET result_state='queued',result_message_id=? WHERE id=?").run(receipt.messageId, row.id);
     this.audit(tx, msg, "poll.results", "completed", requestId, { kind: "local-host" });
     return receipt;
@@ -239,11 +242,11 @@ export class HubButtonsService {
         const msg = this.core.atomic(db => this.source(db, first).msg);
         if (!(await this.core.eligible(personFromString(msg.asker))) || !(await this.core.eligible(personFromString(msg.owner)))) throw new HubProtocolError("unavailable");
         this.check();
-        const permit = await this.core.groupExposure(msg.exposure_id, personFromString(msg.asker), { requestId: randomUUID(), current: () => !this.stopped && this.core.live() });
+        const permit = await this.core.exposureGrant(msg.exposure_id, msg.grant_id, personFromString(msg.asker), { requestId: randomUUID(), current: () => !this.stopped && this.core.live() });
         const fleetId = this.core.atomic((db, tx) => {
           const row = this.row(db, first.id)!;
           if (!["owed", "held"].includes(row.result_state)) return null;
-          this.queueResults(db, tx, row, randomUUID()); return msg.fleet_id;
+          this.queueResults(db, tx, row, randomUUID(), permit.grant); return msg.fleet_id;
         }, permit);
         if (fleetId) this.queue.flush(fleetId);
       } catch (err) {

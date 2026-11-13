@@ -23,7 +23,8 @@ import type { HubAttachmentStore } from "./attachments/store.js";
 import { isInlineImage } from "./attachments/limits.js";
 import type { HubAnswer, HubExposure, HubReceipt, HubReconcile, HubReconcileReply, HubRequestContext, HubRoom, HubRoomEntry, HubServerFrame } from "./types.js";
 import type { HubLinkContext } from "./server.js";
-import { exposureOf, grantApplies, grantOf, readExposure, readGrant } from "./catalog.js";
+import { exposureOf, grantApplies, grantSubjectApplies, grantOf, readExposure, readGrant } from "./catalog.js";
+import type { HubGrantSubjectProof } from "./grant-access.js";
 import { POSITIVE, QUESTION_LIFETIME_MS, TERMINAL, messageFacts, readMessage, type HubPolicyService, type MessageRow } from "./policy.js";
 import { personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
 import { RoomReadPacer, ROOM_READ_BURST } from "./room-read-pacer.js";
@@ -94,15 +95,15 @@ export class HubRoomsService {
   }
   private requireFiles(fleetId: string): void { if (!this.features(fleetId).includes(FILES)) throw new HubProtocolError("incompatible"); }
   /** The asker's room, its grant applying now with `permission`, inside a transaction. */
-  private askerRoom(db: Parameters<Parameters<HubCore["atomic"]>[0]>[0], roomId: string, asker: import("./types.js").PersonKey, now: number, permission: "ask" | "read-own-room") {
+  private askerRoom(db: Parameters<Parameters<HubCore["atomic"]>[0]>[0], roomId: string, asker: import("./types.js").PersonKey, now: number, permission: "ask" | "read-own-room", proof?: HubGrantSubjectProof) {
     const r = db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow | undefined;
     if (!r || r.asker !== personKeyString(asker)) throw new HubProtocolError("not-found");
     if (r.state !== "active") throw new HubProtocolError("revoked");
     const e = readExposure(db, r.exposure_id), g = readGrant(db, r.grant_id);
     if (!e || !g) throw new HubProtocolError("revoked");
     const exposure = exposureOf(e), grant = grantOf(g);
-    if (permission === "ask" ? exposure.state !== "published" || !grantApplies(grant, exposure, asker, now)
-      : grant.state !== "active" || now >= grant.expiresAt || personKeyString(grant.subject.person) !== personKeyString(asker) || !grant.permissions.includes("read-own-room") || exposure.state === "withdrawn")
+    if (permission === "ask" ? exposure.state !== "published" || !grantApplies(grant, exposure, asker, now, proof)
+      : grant.state !== "active" || now >= grant.expiresAt || !grantSubjectApplies(grant, asker, proof) || !grant.permissions.includes("read-own-room") || exposure.state === "withdrawn")
       throw new HubProtocolError("revoked");
     return { room: r, exposure, grant };
   }
@@ -113,7 +114,7 @@ export class HubRoomsService {
     const ownerId = this.core.atomic((db) => readExposure(db, room.exposure_id)?.owner);
     if (!ownerId || !(await this.core.eligible(personFromString(ownerId)))) throw new HubProtocolError("revoked");
     await ctx.current();
-    const permit = await this.core.groupExposure(room.exposure_id, asker, this.core.groupContext(ctx));
+    const permit = await this.core.exposureGrant(room.exposure_id, room.grant_id, asker, this.core.groupContext(ctx));
     return { asker, room, permit };
   }
 
@@ -121,7 +122,7 @@ export class HubRoomsService {
   async uploadAdmit(ctx: HubRequestContext, roomId: string, declaredBytes: number): Promise<void> {
     const store = this.store(), { asker, permit } = await this.ownerEligible(ctx, roomId), now = this.core.now();
     this.core.atomic((db) => {
-      const { exposure } = this.askerRoom(db, roomId, asker, now, "ask");
+      const { exposure } = this.askerRoom(db, roomId, asker, now, "ask", permit.grant);
       this.requireFiles(exposure.fleetId);
       store.admit(db, { uploader: personKeyString(asker) }, declaredBytes);
     }, permit);
@@ -130,7 +131,7 @@ export class HubRoomsService {
   async upload(ctx: HubRequestContext, roomId: string, name: string, bytes: Buffer): Promise<HubFileView> {
     const store = this.store(), { asker, permit } = await this.ownerEligible(ctx, roomId), now = this.core.now();
     return this.core.atomic((db, tx) => {
-      const { room, exposure, grant } = this.askerRoom(db, roomId, asker, now, "ask");
+      const { room, exposure, grant } = this.askerRoom(db, roomId, asker, now, "ask", permit.grant);
       this.requireFiles(exposure.fleetId);
       const ref = store.createUpload(db, { roomId: room.id, uploader: personKeyString(asker), name, bytes });
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: asker }, action: "file.upload", result: "allowed",
@@ -143,7 +144,7 @@ export class HubRoomsService {
   async download(ctx: HubRequestContext, roomId: string, fileId: string): Promise<{ name: string; mime: string; image: boolean; bytes: Buffer }> {
     const store = this.store(), { asker, permit } = await this.ownerEligible(ctx, roomId), now = this.core.now();
     return this.core.atomic((db, tx) => {
-      const { exposure, grant } = this.askerRoom(db, roomId, asker, now, "read-own-room");
+      const { exposure, grant } = this.askerRoom(db, roomId, asker, now, "read-own-room", permit.grant);
       const row = store.row(db, fileId);
       if (!row || row.room_id !== roomId || row.state !== "bound" && !(row.state === "pending" && row.uploader === personKeyString(asker) && (row.expires_at ?? 0) > now)) throw new HubProtocolError("not-found");
       const bytes = store.read(db, row.sha256);
@@ -155,28 +156,28 @@ export class HubRoomsService {
   }
 
   /** Open (or find) the asker's room for one exposure under one grant that applies to them now. */
-  async open(ctx: HubRequestContext, exposureId: string, grantId: string): Promise<HubRoom & { exposure: HubExposure }> {
+  async open(ctx: HubRequestContext, exposureId: string, grantId: string): Promise<HubRoom & { exposure: HubExposure; grantProof?: HubGrantSubjectProof }> {
     const asker = await ctx.requirePerson(), me = personKeyString(asker), now = this.core.now();
     const owner = this.core.atomic((db) => readExposure(db, exposureId)?.owner);
     if (!owner || !(await this.core.eligible(personFromString(owner)))) throw new HubProtocolError("not-found");
     await ctx.current();
-    const permit = await this.core.groupExposure(exposureId, asker, this.core.groupContext(ctx));
+    const permit = await this.core.exposureGrant(exposureId, grantId, asker, this.core.groupContext(ctx), "not-found");
     return this.core.atomic((db, tx) => {
       const e = readExposure(db, exposureId), g = readGrant(db, grantId);
       if (!e || !g) throw new HubProtocolError("not-found");
       const exposure = exposureOf(e), grant = grantOf(g);
-      if (exposure.state !== "published" || !grantApplies(grant, exposure, asker, now)) throw new HubProtocolError("not-found");
+      if (exposure.state !== "published" || !grantApplies(grant, exposure, asker, this.core.now(), permit.grant)) throw new HubProtocolError("not-found");
       const found = db.prepare("SELECT * FROM hub_rooms WHERE asker=? AND exposure_id=? AND grant_id=?").get(me, exposureId, grantId) as RoomRow | undefined;
       if (found) {
         if (found.state !== "active") throw new HubProtocolError("revoked");
-        return { ...roomOf(found), exposure };
+        return { ...roomOf(found), exposure, grantProof: permit.grant };
       }
       const room: RoomRow = { id: randomUUID(), asker: me, exposure_id: exposureId, owner_at_creation: e.owner, grant_id: grantId, state: "active", created_at: now };
       db.prepare("INSERT INTO hub_rooms(id, asker, exposure_id, owner_at_creation, grant_id, state, created_at) VALUES(?,?,?,?,?,?,?)")
         .run(room.id, room.asker, room.exposure_id, room.owner_at_creation, room.grant_id, room.state, room.created_at);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: asker }, action: "room.opened", result: "completed",
         roomId: room.id, fleetId: exposure.fleetId, exposureId, ownerAtEvent: exposure.owner, grantId, grantRevision: grant.revision });
-      return { ...roomOf(room), exposure };
+      return { ...roomOf(room), exposure, grantProof: permit.grant };
     }, permit);
   }
 
@@ -188,21 +189,31 @@ export class HubRoomsService {
    * has negotiated (D's link.features; none until then).
    */
   async list(ctx: HubRequestContext): Promise<readonly HubRoomListItem[]> {
+    return (await this.listAuthorized(ctx)).rooms;
+  }
+  /** Internal projection carries its own short-lived proof to the synchronous quota renderer. */
+  async listAuthorized(ctx: HubRequestContext): Promise<{ rooms: readonly HubRoomListItem[]; grantProof: HubGrantSubjectProof }> {
     const asker = await ctx.requirePerson(), me = personKeyString(asker), context = this.core.groupContext(ctx);
     const askerPermit = await this.core.groupAsker(asker, context);
     const rows = this.core.atomic(db => db.prepare(`${ROOM_VIEW_SQL} WHERE r.asker=? ORDER BY (r.state='active') DESC, last_at DESC LIMIT 100`).all(me) as RoomViewRow[]);
+    const subjectProof = await this.core.grantAccess(rows.filter(r => r.state === "active").map(r => r.grant_id), asker, context);
     const proofs = new Map<string, HubOperationPermit | null>();
     for (const row of rows) if (!proofs.has(row.exposure_id)) {
       try { proofs.set(row.exposure_id, await this.core.groupExposure(row.exposure_id, null, context)); }
       catch (e) { if (e instanceof HubProtocolError && (e.code === "denied" || e.code === "revoked")) proofs.set(row.exposure_id, null); else throw e; }
     }
     askerPermit.assertCurrent();
-    return this.core.atomic(db => rows.flatMap(row => {
+    const rooms = this.core.atomic(db => rows.flatMap(row => {
       const proof = proofs.get(row.exposure_id); if (proof === null) return [];
       proof?.assertCurrent();
       const fresh = db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(row.id, me) as RoomViewRow | undefined;
+      if (fresh?.state === "active") {
+        const grant = readGrant(db, fresh.grant_id);
+        if (!grant || !grantSubjectApplies(grantOf(grant), asker, subjectProof)) return [roomListItem({ ...fresh, state: "held" }, [])];
+      }
       return fresh ? [roomListItem(fresh, this.featuresOf(fresh.fleet_id))] : [];
-    }), askerPermit);
+    }), { assertCurrent() { askerPermit.assertCurrent(); subjectProof.assertCurrent(); } });
+    return { rooms, grantProof: subjectProof };
   }
 
   /**
@@ -231,10 +242,15 @@ export class HubRoomsService {
     const asker = await ctx.requirePerson(), me = personKeyString(asker);
     const row = this.core.atomic((db) => db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(roomId, me) as RoomViewRow | undefined);
     if (!row) throw new HubProtocolError("not-found");
-    const permit = await this.core.groupExposure(row.exposure_id, asker, this.core.groupContext(ctx));
+    const context = this.core.groupContext(ctx), base = await this.core.groupExposure(row.exposure_id, asker, context);
+    const permit = row.state === "active" ? await this.core.withGrant(base, [row.grant_id], asker, context) : base;
     return this.core.atomic(db => {
       const fresh = db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(roomId, me) as RoomViewRow | undefined;
       if (!fresh) throw new HubProtocolError("not-found");
+      if (fresh.state === "active") {
+        const grant = readGrant(db, fresh.grant_id);
+        if (!grant || !grantSubjectApplies(grantOf(grant), asker, permit.grant)) return roomListItem({ ...fresh, state: "held" }, []);
+      }
       return roomListItem(fresh, this.featuresOf(fresh.fleet_id));
     }, permit);
   }
@@ -255,9 +271,9 @@ export class HubRoomsService {
     const ownerId = this.core.atomic((db) => readExposure(db, room.exposure_id)?.owner);
     if (!ownerId || !(await this.core.eligible(personFromString(ownerId)))) throw new HubProtocolError("revoked");
     await ctx.current();
-    const permit = await this.core.groupExposure(room.exposure_id, asker, this.core.groupContext(ctx));
+    const permit = await this.core.exposureGrant(room.exposure_id, room.grant_id, asker, this.core.groupContext(ctx));
     const out = this.core.atomic((db, tx) => this.insertQuestion(db, tx, {
-      roomId, asker, idempotencyKey, text, requestId: ctx.requestId, actor: { kind: "person", person: asker },
+      roomId, asker, idempotencyKey, text, requestId: ctx.requestId, actor: { kind: "person", person: asker }, grantProof: permit.grant,
     }, fileIds), permit);
     if (out.fleet) void this.flush(out.fleet);
     return out.receipt;
@@ -268,7 +284,7 @@ export class HubRoomsService {
     const { roomId, asker, idempotencyKey, text } = input, now = this.core.now(), me = personKeyString(asker), store = this.core.deps.attachments;
     if (!text.trim() || Buffer.byteLength(text, "utf8") > HUB_LIMITS.question || !scalarString(text) || !/^[a-f0-9-]{36}$/.test(idempotencyKey)) throw new HubProtocolError("invalid");
     // Current room/grant checks precede idempotent returns as well: an old request never restores revoked access.
-    const { exposure, grant } = this.askerRoom(db, roomId, asker, now, "ask");
+    const { exposure, grant } = this.askerRoom(db, roomId, asker, now, "ask", input.grantProof);
     const dup = db.prepare("SELECT * FROM hub_messages WHERE room_id=? AND idempotency_key=?").get(roomId, idempotencyKey) as MessageRow | undefined;
     if (dup) {
       const bound = store?.forMessage(db, dup.id, "question") ?? [];
@@ -294,7 +310,7 @@ export class HubRoomsService {
   }
 
   /** Keep the HTTP room projection under the same physical-work and disclosure fences as its history. */
-  async readPage(ctx: HubRequestContext, roomId: string, after: number, sessionKey: string): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem }> {
+  async readPage(ctx: HubRequestContext, roomId: string, after: number, sessionKey: string): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof }> {
     if (!Number.isSafeInteger(after) || after < 0) throw new HubProtocolError("invalid");
     this.core.check();
     const finish = this.polls.enter(sessionKey);
@@ -302,14 +318,14 @@ export class HubRoomsService {
     finally { finish(); }
   }
 
-  private async readCurrent(ctx: HubRequestContext, roomId: string, after: number): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem }> {
+  private async readCurrent(ctx: HubRequestContext, roomId: string, after: number): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof }> {
     const asker = await ctx.requirePerson(), me = personKeyString(asker);
     const room = this.core.atomic((db) => db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow | undefined);
     if (!room || room.asker !== me) throw new HubProtocolError("not-found");
     const ownerId = this.core.atomic((db) => readExposure(db, room.exposure_id)?.owner);
     if (!ownerId || !(await this.core.eligible(personFromString(ownerId)))) throw new HubProtocolError("revoked");
     await ctx.current();
-    const permit = await this.core.groupExposure(room.exposure_id, asker, this.core.groupContext(ctx));
+    const permit = await this.core.exposureGrant(room.exposure_id, room.grant_id, asker, this.core.groupContext(ctx));
     const rows = this.core.atomic((db) => {
       const now = this.core.now(); // A grant may have expired while the directory/group checks were in flight.
       const r = db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow;
@@ -317,7 +333,7 @@ export class HubRoomsService {
       if (r.state !== "active" || !e || !g) throw new HubProtocolError("revoked");
       const grant = grantOf(g), exposure = exposureOf(e);
       // History stays readable while the grant does (a later exposure revision or a freeze stops new questions only).
-      if (grant.state !== "active" || now >= grant.expiresAt || personKeyString(grant.subject.person) !== me || !grant.permissions.includes("read-own-room")
+      if (grant.state !== "active" || now >= grant.expiresAt || !grantSubjectApplies(grant, asker, permit.grant) || !grant.permissions.includes("read-own-room")
         || exposure.state === "withdrawn") throw new HubProtocolError("revoked");
       return db.prepare("SELECT * FROM hub_messages WHERE room_id=? AND sequence>? ORDER BY sequence LIMIT 100").all(roomId, after) as MessageRow[];
     });
@@ -343,9 +359,9 @@ export class HubRoomsService {
     });
     const view = await this.view(ctx, roomId);
     // Content and the awaited room projection can cross a grant deadline. Check only after both settle.
-    this.core.atomic(db => { this.askerRoom(db, roomId, asker, this.core.now(), "read-own-room"); }, permit);
+    this.core.atomic(db => { this.askerRoom(db, roomId, asker, this.core.now(), "read-own-room", permit.grant); }, permit);
     if (ctx.isCurrent && !ctx.isCurrent()) throw new HubProtocolError("revoked");
-    return { entries, room: view };
+    return { entries, room: view, grantProof: permit.grant };
   }
 
   /**
@@ -373,7 +389,7 @@ export class HubRoomsService {
         const frame = this.core.atomic((db, tx): HubServerFrame | null => {
           const msg = readMessage(db, first.id);
           if (!msg || msg.stage !== "queued" || msg.sent_epoch === link.linkEpoch || !link.current()) return null;
-          const facts = eligible ? messageFacts(db, msg, now) : { ok: false as const, reason: "revoked" as const };
+          const facts = eligible ? messageFacts(db, msg, now, permit) : { ok: false as const, reason: "revoked" as const };
           if (!facts.ok) {
             const stage = facts.reason === "expired" ? "failed" : "cancelled";
             db.prepare("UPDATE hub_messages SET stage=?, reason_code=?, stage_at=? WHERE id=?").run(stage, facts.reason, now, msg.id);
@@ -460,7 +476,7 @@ export class HubRoomsService {
       if (msg.answer_id) {
         if (msg.answer_id !== a.answerId || msg.answer_digest !== a.contentDigest) throw new HubProtocolError("conflict");
       } else {
-        const facts = messageFacts(db, msg, now);
+        const facts = messageFacts(db, msg, now, permit);
         if (!facts.ok) throw new HubProtocolError(facts.reason);
         const ref = this.core.deps.content.put(tx, { answer: a.text, ...(a.buttons ? { buttons: a.buttons } : {}) });
         if (a.attachments?.length) {
@@ -498,7 +514,7 @@ export class HubRoomsService {
     return this.core.atomic((db, tx) => {
       const row = store.row(db, input.id), msg = row?.message_id ? readMessage(db, row.message_id) : undefined;
       if (!ours(row, msg) || row!.message_id !== located.msg!.id) throw new HubProtocolError("not-found");
-      const facts = messageFacts(db, msg!, now);
+      const facts = messageFacts(db, msg!, now, permit);
       if (!facts.ok) throw new HubProtocolError(facts.reason);
       if (!link.current()) throw new HubProtocolError("stale");
       const chunk = store.chunk(db, row!.sha256, input.offset);

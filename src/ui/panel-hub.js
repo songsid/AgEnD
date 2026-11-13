@@ -49,8 +49,8 @@ register("hubAccess", {
 const ha = key => t(`hubAccess.${key}`);
 // Kept with the fresh renderer: retained owner dictionaries do not know this label.
 register("hubGrantStatus", {
-  en: { grantNeverSignedIn: "Hasn't signed in to Hub yet" },
-  "zh-TW": { grantNeverSignedIn: "還沒登入過 Hub" },
+  en: { grantNeverSignedIn: "Hasn't signed in to Hub yet", grantADGroup: "AD group", grantSubjects: "People and groups allowed: {0}" },
+  "zh-TW": { grantNeverSignedIn: "還沒登入過 Hub", grantADGroup: "AD 群組", grantSubjects: "已允許的個人與群組：{0}" },
 });
 
 // #3298 S-89 (experimental): the group permissions editor and the signed-in welcome are their own LAZY modules, loaded only
@@ -756,6 +756,7 @@ const DAYS_LEFT = (ms) => daysLeft(ms);
 const stateTag = (state) => state === "published" ? html`<span class="tag ok">${ho("stateShared")}</span>`
   : state === "frozen" ? html`<span class="tag warn">${ho("statePaused")}</span>` : html`<span class="tag">${ho("stateWithdrawn")}</span>`;
 const mayAsk = (n) => (n === 0 ? ho("mayAskNone") : n === 1 ? ho("mayAskOne") : ho("mayAsk", n));
+const grantSummary = (grants = []) => grants.some(g => g.subject?.kind === "group") ? t("hubGrantStatus.grantSubjects", grants.length) : mayAsk(grants.length);
 const agentParam = () => { try { const v = new URLSearchParams(location.search).get("agent"); return v && /^[a-f0-9-]{36}$/.test(v) ? v : null; } catch { return null; } };
 
 /**
@@ -806,7 +807,7 @@ function HubMine() {
       ${cat && !cat.error && !mine.length ? html`<div class="center hub-empty"><${Empty} icon="globe" title=${hw("exposuresEmpty")} hint=${hw("exposuresHint")} /></div>` : null}
       ${mine.length ? html`<section class="card hub-shared"><h3>${ho("sharedCount", mine.length)}</h3>
         <div class="hub-rows">${mine.map((e) => html`<a key=${e.id} class="s-row hub-row hub-row-link" href=${`/ui/hub/exposures?agent=${encodeURIComponent(e.id)}`}>
-          <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong><small class="note">${mayAsk((e.grants || []).length)}</small></span>
+          <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong><small class="note">${grantSummary(e.grants)}</small></span>
           ${stateTag(e.state)}<${Icon} name="next" size=${16} /></a>`)}</div></section>` : null}
     </div></div>`;
 }
@@ -831,13 +832,13 @@ function HubAgentPage({ x, act, msg }) {
   const acts = activity && activity.activity ? activity.activity : [];
   return html`<div class="col hub-owner">
     <a class="hub-crumb" href="/ui/hub/exposures"><${Icon} name="back" size=${14} />${ho("backToMine")}</a>
-    <${PageHead} title=${x.displayName} scope=${stateTag(x.state)} lead=${mayAsk(grants.length)} />
+    <${PageHead} title=${x.displayName} scope=${stateTag(x.state)} lead=${grantSummary(grants)} />
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       <section class="card"><div class="hub-card-head"><h3>${ho("whoMayAsk")}</h3>${shared ? html`<button type="button" class="btn btn-sm" onClick=${() => setAllowing(true)}><${Icon} name="plus" size=${14} />${ho("allow")}</button>` : null}</div>
         ${grants.length ? html`<div class="hub-rows">${grants.map((g) => html`<div key=${g.id} class="s-row hub-row">
           <${Avatar} name=${g.subjectName || g.subjectLogin} size="sm" />
-          <span class="hub-row-text"><strong>${g.subjectName || g.subjectLogin}</strong><small class="note">${g.subjectLogin ? html`<code>${g.subjectLogin}</code> · ` : null}${ho("untilLeft", dateOnly(g.expiresAt), DAYS_LEFT(g.expiresAt))}</small>${g.subjectSignedIn === false ? html`<small class="tag warn">${t("hubGrantStatus.grantNeverSignedIn")}</small>` : null}</span>
+          <span class="hub-row-text"><strong>${g.subjectName || g.subjectLogin}</strong><small class="note">${g.subjectLogin ? html`<code>${g.subjectLogin}</code> · ` : null}${ho("untilLeft", dateOnly(g.expiresAt), DAYS_LEFT(g.expiresAt))}</small>${g.subject?.kind === "group" ? html`<small class="tag">${t("hubGrantStatus.grantADGroup")}</small>` : g.subjectSignedIn === false ? html`<small class="tag warn">${t("hubGrantStatus.grantNeverSignedIn")}</small>` : null}</span>
           <${Menu} label=${ho("rowMenu", g.subjectName || g.subjectLogin)} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(g) }]} />
         </div>`)}</div>` : html`<p class="note">${hw("noGrants")}</p>`}
       </section>
@@ -858,6 +859,19 @@ function HubAgentPage({ x, act, msg }) {
 }
 
 function AllowDialog({ x, act, onClose }) {
+  const s = useSession(), client = hubClient(), marked = s?.features?.includes("grant-subjects-v1") && client?.grantSubjectsV1 === true && typeof client.searchGrantSubjects === "function";
+  const [Picker, setPicker] = useState(null), [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!marked) return; let live = true;
+    import("./hub-grant-picker.js").then(m => { if (live) { if (typeof m.HubGrantPicker === "function") setPicker(() => m.HubGrantPicker); else setFailed(true); } })
+      .catch(() => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [marked]);
+  if (!marked || failed) return html`<${LegacyAllowDialog} x=${x} act=${act} onClose=${onClose} />`;
+  if (Picker) return html`<${Picker} x=${x} client=${client} act=${act} onClose=${onClose} />`;
+  return html`<${Dialog} title=${ho("allowTitle", x.displayName)} onClose=${onClose}><${Skeleton} rows=${2} /></${Dialog}>`;
+}
+function LegacyAllowDialog({ x, act, onClose }) {
   const [form, setForm] = useState({ login: "", days: 7 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);

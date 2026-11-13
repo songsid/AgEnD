@@ -92,4 +92,9 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_BUTTONS_MIGRATION,
   HUB_SESSION_EPOCH_MIGRATION,
   HUB_SESSION_AUTHENTICATION_MIGRATION,
+  Object.freeze({ component: "s3-grant-subjects", version: 1, up(db: Database.Database) {
+    const columns = new Set((db.prepare("PRAGMA table_info(hub_grants)").all() as { name: string }[]).map(c => c.name));
+    if (!columns.has("subject_kind")) db.exec("ALTER TABLE hub_grants ADD COLUMN subject_kind TEXT NOT NULL DEFAULT 'person' CHECK(subject_kind IN ('person','group'))");
+    if (!columns.has("subject_label")) db.exec("ALTER TABLE hub_grants ADD COLUMN subject_label TEXT NOT NULL DEFAULT ''");
+  } }),
 ]);
