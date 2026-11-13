@@ -17,6 +17,8 @@ The implementation and shared M-3014 boundary are in [the design note](../../des
 
 Final proofs still expire within5seconds and the grant's expiry. Catalog selection keeps its original data-only row/session/policy fence across slow operational reads, obtains a fresh final subject observation when needed, and never revives the expired proof. Room-list proofs are acquired after operational reads. Durable dispatch/admit/tool/release derives the asker from the exact persisted message/current link; browser sign-out does not cancel an already accepted question.
 
+Before review, alpha `5fc122feb` was merged cleanly at `d187710a9`. All grant product, harness and original evidence blobs are unchanged. The three overlapping files combine additive Hub/dashboard skill text and its test; incoming UI changes concern the existing join steps and E14, outside these grant-picker captures. Five focused suites pass96/96 on the merged head. `sync.json` binds both parents, unchanged paths and the exact command/result. The earlier checks and captures retain their original heads; no post-sync browser execution is claimed.
+
 ## Browser evidence
 
 One serial Chromium, production HTTPS/cookies/CSRF/Hub UI and actual in-memory SQLite grant writes/revokes; directory and authenticated member transport are inert fixtures. No real account, AD, Fleet, pilot, native platform or model CLI. Phone captures are390×844 emulation; desktop1366×1000. EN/zh-TW and light/dark use the existing UI components and real installed CJK glyphs.

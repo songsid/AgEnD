@@ -1,6 +1,6 @@
 {
   "sha256": {
-    "e743ae64c986a36d9cc9832b048c6f48a9ce35d4ee38b64a74a9d2afbbf859da": [
+    "eac44a3dcc3c293725c3f15bb6e32f62b50d9a22f373b3a3f7f646664ad80cc6": [
       "README.md"
     ],
     "0eed5ebd5fd446ac16f802016b2e601a228f652cf6c8e7844d568df7bda6405b": [
@@ -341,6 +341,9 @@
       "logs/test-types-final-source.log.gz",
       "logs/test-types-postsync.log.gz"
     ],
+    "de4b24d2f6e8022858062bf0367a16acd4949d2b5f063a545a3fee720eac394a": [
+      "logs/sync-focused.log.gz"
+    ],
     "ae3a3a831dde4d0008fbbb24e6cf2504e2c955db9ad074c6a3416acda836bc24": [
       "logs/ui-fail-first.log.gz"
     ],
@@ -409,6 +412,9 @@
     ],
     "dbdb8cd011adc132ea3004529747be7c5fbbc37e5a56446af1f4cb24fa32e7c4": [
       "source-parity.json"
+    ],
+    "0edef3c947301f306f3748e4d2fb6cc7026649ccac6d1db306ca7cab8fac21d0": [
+      "sync.json"
     ],
     "1136d5f9e1ef7eb6706e6844674ccfb33f8f6428f83c6ab69f0934d79ede2146": [
       "visual-review.json"
