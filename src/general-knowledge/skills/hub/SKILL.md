@@ -360,8 +360,23 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 - Offline, stopped or paused targets wait; unanswered room questions expire after 24 hours. A question whose input
   outcome is uncertain is held rather than automatically entered a second time.
 
-Inviting another owner's agent and virtual-team management arrive in separate slices; do not invent those controls
-on a Hub that does not provide them. The room assistant is also separate.
+### Inviting another owner's agent
+
+When the Hub offers room invitations, a room manager can invite another owner's shared agent. The owner sees
+**Invitations** (邀請) above the chat list and at the top of **My shared agents**. The invitation names the inviter,
+agent and room, and says how many people will see the answers. **Agree** (同意) adds the agent; **Decline** (不要)
+does not. The owner does not become a person in that room and cannot read its messages just by accepting.
+
+- An invitation lasts seven days from when it was sent. Repeating a pending invitation does not extend it. The
+  manager sees an expired invitation and can send a new one.
+- Pausing sharing keeps existing room membership and pending invitations, while their expiry clocks keep running.
+  Resume sharing before accepting a pending invitation; an expired invitation needs a new invitation.
+- On the shared agent's page, **In these rooms** (在這些房間裡) lists its rooms. **Leave this room** removes the agent.
+  Replaying the old acceptance does not join it again; a new invitation is needed.
+- A manager can add their own shared agent directly. This remains separate from private **Who may ask** grants.
+
+These controls need the matching invitation service and room UI. Do not invent them on an older Hub. Virtual-team
+management remains a separate slice. The room assistant is also separate.
 
 ## Group permissions
 
