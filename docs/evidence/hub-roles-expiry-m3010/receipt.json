@@ -4,7 +4,8 @@
   "writerPrerequisite": {
     "pr": 3772,
     "reviewedRevision": "31d591098e66e021b71bc04a64ac7aed3c4f2fd2",
-    "noApprovalCarryClaim": true
+    "noApprovalCarryClaim": true,
+    "mergedAlphaCommit": "a39dc39d33d6d91f028b546c921d6569c3a131be"
   },
   "checks": {
     "ownTests": 30,
@@ -13,7 +14,12 @@
     "caught": 13,
     "perReversalNativeSourceTypecheck": "all exit0",
     "nativeCompiler": "TypeScript7.0.2",
-    "finalIntegratedChecks": "exact-head acceptance comment"
+    "finalIntegratedChecks": "exact-head acceptance comment",
+    "integratedFiles": 10,
+    "integratedTests": 179,
+    "sourceAndTestNativeTypechecks": "both exit0",
+    "changelogFragments": 422,
+    "plainAlphaSync": "clean, entire tree identical to tested60fe9e490 before this evidence-only update"
   },
   "fileDigests": {
     "src/hub/roles/expiry.ts": "dd743de54979e05af69c8c67c451a6cfc012dfd04b72a0cb6c5c5572f693020d",

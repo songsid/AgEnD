@@ -18,3 +18,5 @@ git diff --check
 ```
 
 There are no UI assets, features or routes to expose to older tabs, and no live SKEW or screenshot claim. The helper and its auxiliary migration remain unregistered and uncalled. The real resource/provenance adapter, atomic cutover, runtime scheduler and live role permits/leases/streams are not supplied here. Every later authority path must enforce assignment deadlines and the persisted clock fence before activation. No LDAP wire, browser, container, real account, backend CLI, native Windows or live Fleet operation was run.
+
+Final local evidence: the expiry suite passes30/30; with writer R1, ten focused suites pass179/179, zero skips. Both native TypeScript7.0.2 checks pass, as do422 changelog fragments and diff checks. All13 isolated reversals compile and fail assertions, with source restored byte-for-byte. The prerequisite writer #3772 merged as a39dc39d; plain merge into this branch was clean and changed no tested tree bytes. The final commit only adds these evidence results. Exact-head CI and parity review remain required.
