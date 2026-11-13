@@ -49,6 +49,11 @@ successful text result from that same session. Tool-use/permission frames, malfo
 foreign sessions and process exits reject the turn. Stop waits for physical close before deleting its scratch
 directory. This adapter is not wired into a live Fleet until the later Track A integration slice.
 
+Every ask ends its worker's stdin and waits for process close before returning text. The next ask launches a
+fresh worker with a different session and cwd. Only the room controller remains during the fifteen-minute idle
+window; earlier model turns are never retained or repeatedly appended to the supplied recent context. This
+one-shot refinement was accepted by Lumen at `ea4e347be`.
+
 Tests use fake sessions, explicit completion gates and a fake clock. No vendor binary, account, tmux or Hub
 pilot is involved. The parent feature is decision 38e2ea2d, Track A in `docs/design/hub-rooms-split.md` and
 section 10 of `docs/design/hub-rooms-ux.md` on `docs/hub-ux-review-m2902`.
