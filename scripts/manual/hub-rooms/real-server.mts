@@ -125,6 +125,9 @@ try {
       && await p.locator(".p-hub-invitations .hub-invitations h3").count() === 0);
     check(tag + " invitation explains the recent room context", (await p.locator(".hub-invitation").innerText()).includes(lang === "en"
       ? "When @-ed, it reads the room's recent messages." : "被 @ 時，它會讀到房間最近的訊息。"));
+    if (device === "phone") check(tag + " invitation actions meet the 44px touch target", await p.locator(".hub-invitation button").evaluateAll((buttons: HTMLElement[]) => buttons.every(b => {
+      const box = b.getBoundingClientRect(); return box.height >= 44 && box.width >= 44;
+    })));
     await shot("consent-pending");
     const invitationNav = p.locator('#sidebar .side-nav a.side-row[href="/ui/hub?view=invitations"]');
     if (!await invitationNav.isVisible()) await p.locator("#sbOpen").click();
