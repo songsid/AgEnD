@@ -266,8 +266,8 @@ A channel message's status reactions, driven by the delivering daemon:
 ⏳ queued (CLI busy, waiting), 👀 delivered (pasted + Enter, the agent has it),
 ✅ confirmed (processing observed, or a native queue hand-off succeeded),
 ❌ failed (window gone, retries exhausted). Cross-instance rows add two
-states: `uncertain` — the evidence was inconclusive, so never resend and never
-forward it as consent; and the queued hand-off (#3030) — a message handed to a
+states: `uncertain` — the evidence was inconclusive: it may already have arrived, so
+check it, then confirm (resend only if it shows `failed`), and never forward it as consent; and the queued hand-off (#3030) — a message handed to a
 backend-native queue, watched in the transcript and settled ✅ when a turn
 takes it, ❌ when it never does.
 

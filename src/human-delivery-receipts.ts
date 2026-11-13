@@ -291,8 +291,8 @@ export function formatHumanInboundMessage(content: string, meta: Record<string, 
   // Reaction/reply addressing keeps the actual platform ID. Only verification uses hmsg.
   body += renderCrossInstanceHandoffMetadata(meta);
   body += mode === "cli"
-    ? '\n(Reply with agend-agent reply "…" — do NOT respond with direct text)'
-    : "\n(Reply using the reply tool — do NOT respond with direct text)";
+    ? '\n(Answer with agend-agent reply "…".)'
+    : "\n(Answer with the reply tool.)";
   if (meta.reply_to_text) body += '\n(reply_to: "' + meta.reply_to_text + '")';
   if (meta.verification_id) body = "[agend-human-id:" + meta.verification_id + "]\n" + body;
   if (meta.delivery_id) body = "[agend-delivery-id:" + meta.delivery_id + "]\n" + body;

@@ -25,7 +25,7 @@ describe("Delivery not found is missing evidence, not proof of non-delivery", ()
     expect(planWhatsNew({ record: { announced: [...record.announced, "2.2-delivery-status-evidence"] }, fresh: false, version: "2.2.0" })).toBeNull();
   });
   it("pins both the runtime schema and the public MCP field description", () => {
-    const expected = "The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. Never resend on uncertain.";
+    const expected = "The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. On uncertain, it may already have arrived: confirm it, and resend only if it shows failed.";
     expect(DeliveryStatusArgs.shape.message_id.description).toBe(expected);
     const schema = TOOLS.find(tool => tool.name === "delivery_status")!.inputSchema;
     expect((schema.properties as Record<string, { description?: string }>).message_id.description).toBe(expected);
