@@ -48,7 +48,7 @@ const actorOf = (raw: Administrator): Administrator => {
 export function bindHubDirectoryPreparation(preparation: HubDirectoryManagementPreparation, raw: Administrator,
   source: HubDirectoryAdministrationBinding): HubDirectoryPreparation {
   const actor = actorOf(raw);
-  if (preparation.actor.kind !== "directory" || preparation.actor.sessionId !== actor.sessionId
+  if (preparation.actor.kind !== "directory" || preparation.actor.sessionId !== actor.sessionId || preparation.requestId !== actor.requestId
     || canonicalArguments(preparation.actor.person) !== canonicalArguments(actor.person)
     || typeof preparation.assertCurrent !== "function" || typeof preparation.authorize !== "function" || typeof preparation.retire !== "function"
     || source.decisionProof !== undefined && typeof source.decisionProof !== "function"
@@ -67,6 +67,7 @@ function preparationState(handle: HubDirectoryPreparation, actor: HubDirectoryDe
     if (state.retired || canonicalArguments(actor) !== canonicalArguments(state.actor)
       || state.preparation.assertCurrent !== state.check || state.preparation.authorize !== state.authorize || state.preparation.retire !== state.retire
       || state.preparation.actor.kind !== "directory" || state.preparation.actor.sessionId !== state.actor.sessionId
+      || state.preparation.requestId !== state.actor.requestId
       || canonicalArguments(state.preparation.actor.person) !== canonicalArguments(state.actor.person)
       || state.preparation.directory !== state.binding.directory || canonicalArguments(state.preparation.administrator) !== canonicalArguments(state.binding.administrator)
       || source.directory !== state.binding.directory || source.image !== state.binding.image || source.epoch !== state.binding.epoch

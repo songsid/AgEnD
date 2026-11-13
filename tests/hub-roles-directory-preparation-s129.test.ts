@@ -132,6 +132,14 @@ async function engineWorld(root = false) {
   return { ...w, browser, preparation, handle, actor, source, context, check, candidate, prepare, commit, probe, engine, input, saveDirectory: save };
 }
 describe("S129 preparation exchange at the directory proof engine", () => {
+  it.each(["person", "session", "request"] as const)("cannot initially bind an actual preparation to another %s", async mode => {
+    const w = await engineWorld(), actor = structuredClone(w.actor);
+    if (mode === "person") actor.person = w.other;
+    if (mode === "session") actor.sessionId = randomUUID();
+    if (mode === "request") actor.requestId = randomUUID();
+    try { expect(() => bindHubDirectoryPreparation(w.preparation, actor, w.source)).toThrow(); }
+    finally { w.engine.close(); }
+  });
   it("admits preparation only at an explicit preparation boundary, never an ordinary read control", async () => {
     const w = await engineWorld();
     try {

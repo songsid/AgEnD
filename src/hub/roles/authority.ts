@@ -30,6 +30,7 @@ export interface HubManagementPermit {
 /** Preparation only: effects still require a newly acquired named permit. */
 export interface HubDirectoryManagementPreparation {
   readonly actor: DirectoryActor;
+  readonly requestId: string;
   readonly directory: object;
   readonly administrator: PersonKey;
   assertCurrent(): void;
@@ -90,7 +91,8 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
   const preparationChecks = new WeakMap<HubManagementPermit, () => void>();
   const authority = {
     async prepareDirectory(incoming: HubRequestContext): Promise<HubDirectoryManagementPreparation> {
-      const require = authority.require, permit = await require(incoming, "hub.admin"), guard = preparationChecks.get(permit);
+      const requestId = validated(identifier, incoming.requestId), require = authority.require,
+        permit = await require(incoming, "hub.admin"), guard = preparationChecks.get(permit);
       if (!guard || authority.require !== require) throw new HubProtocolError("unavailable");
       let retired = false, running = false;
       const check = () => {
@@ -100,7 +102,7 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
           if (authority.require !== require) throw new HubProtocolError("unavailable");
         } catch (error) { retired = true; throw error; }
       };
-      return Object.freeze({ actor: permit.actor, directory, administrator: root, assertCurrent: check,
+      return Object.freeze({ actor: permit.actor, requestId, directory, administrator: root, assertCurrent: check,
         async authorize() {
           check();
           if (running) throw new HubProtocolError("backpressure");
