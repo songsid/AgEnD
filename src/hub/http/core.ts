@@ -75,6 +75,23 @@ export class HubCore {
     const fence = ctx.isCurrent?.bind(ctx);
     return { requestId: ctx.requestId, current: () => this.live() && fence?.() === true };
   }
+  /** Room pickers share the mount's physical directory owner; callers keep their own room/creator checks. */
+  async readDirectory<T>(actor: PersonKey, ctx: GroupCheckContext, read: () => Promise<T>): Promise<T> {
+    const directory = this.deps.directory;
+    const assert = () => {
+      this.check();
+      if (!ctx.current()) throw new HubProtocolError("revoked");
+      if (this.deps.directory !== directory) throw new HubProtocolError("unavailable");
+      this.atomic(() => {});
+    };
+    assert();
+    try { const value = await this.directoryReads.withDirectoryRead(actor, read); assert(); return value; }
+    catch (error) { assert();
+      if (error instanceof HubGroupReadOverload) throw new HubProtocolError("backpressure");
+      if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");
+      throw error;
+    }
+  }
   /** Shared physical read owner; the returned fence retains the exact policy, binding and caller. */
   async grantDirectoryRead<T>(actor: PersonKey, ctx: GroupCheckContext, read: () => Promise<T>): Promise<{ value: T; permit: HubOperationPermit }> {
     const selected = this.deps.grantDirectory;
