@@ -1,5 +1,5 @@
 {
-  "sourceHead": "776cf10e2cc6ebf17d9a218f51cea6e2e10601b9",
+  "sourceHead": "b338d410fc864decf11f203745ec196bb442b28e",
   "baseline": "71dbc782956047c413b9f367a572e38c39d53651",
   "main": "f773dc990218e255e59b8bd3773f0eda2bfde429",
   "sourceInputs": [
@@ -16,21 +16,27 @@
       ]
     },
     {
+      "digest": "062c14c85916ab4fed5920f9a4f2f7002697ba7bf0ee946aaa6a0e3447f9d107",
+      "paths": [
+        "tests/ui-stale-tab-3822.test.ts"
+      ]
+    },
+    {
       "digest": "07a82f75ea6f16f3d59d42ac251f12fb26cfd9a4202e263faa689ca248cd5f04",
       "paths": [
         "scripts/manual/claude-model-observation-browser.mts"
       ]
     },
     {
-      "digest": "0d3b2885bfdf4f8553302e9a51616edf9e7b41a37c9586148fe1203e4ee3816e",
-      "paths": [
-        "src/backend/types.ts"
-      ]
-    },
-    {
       "digest": "0eed856018ea3d9ff8f100c4f48b8815948ea4178ca87816f3e9f9b0acb0d59a",
       "paths": [
         "tests/web-log-tab-1218.test.ts"
+      ]
+    },
+    {
+      "digest": "10efadc5f314bdd4a2cf6d333ca65e13a235f56233a4f77711f4c4aed0138f4d",
+      "paths": [
+        "src/auth-api.ts"
       ]
     },
     {
@@ -70,6 +76,12 @@
       ]
     },
     {
+      "digest": "36700461c4d7b83f970ff2e1546ea219b1808dcd5b4bb498d1e73b0f23e607a2",
+      "paths": [
+        "src/backend/types.ts"
+      ]
+    },
+    {
       "digest": "3a09d1c338d3897e818f0f2a6069a8787a961abc82d22c8105f0e074eb1b3fec",
       "paths": [
         "src/channel/mcp-tools.ts"
@@ -79,12 +91,6 @@
       "digest": "3e23424092325e5607ac6e0ecd874c06337a7377f63ae2458ca59565e0f9702c",
       "paths": [
         "changes/3815-claude-model-observations.zh-TW.md"
-      ]
-    },
-    {
-      "digest": "40a84ee25feda5247910b0894ad0e312192b0aa392c2622863359604690ed107",
-      "paths": [
-        "src/daemon.ts"
       ]
     },
     {
@@ -100,9 +106,21 @@
       ]
     },
     {
+      "digest": "4c9138a06ecccb6d2d326863733222bcf6fdb8e26ed5b5b6362c81c14ad78c66",
+      "paths": [
+        "src/ui/shared/stale-tab.css"
+      ]
+    },
+    {
       "digest": "50400f7bd33105f486c8d2412ef4f3025bfff16d6a45e32a5ab620f721fd19cb",
       "paths": [
         "src/locale.ts"
+      ]
+    },
+    {
+      "digest": "521d24a678f6e6c5422cd9e5684a5c46065d31bc42e57d805e1428618ef65831",
+      "paths": [
+        "src/general-knowledge/skills/web-dashboard/SKILL.md"
       ]
     },
     {
@@ -118,15 +136,21 @@
       ]
     },
     {
-      "digest": "5a51e580f54c34f2a934cad0564f7088822c4b308ac653223b4445a51f3f7577",
-      "paths": [
-        "src/auth-api.ts"
-      ]
-    },
-    {
       "digest": "5ad406c8dd9ce854023bbc3e93f571feb98c040b4a517517235b714eefcffb15",
       "paths": [
         "tests/needs-you-hub-1386.test.ts"
+      ]
+    },
+    {
+      "digest": "5f35a02d5583f225b0f19707b2d5f46b0a55e0acf1bc701f6f8f1788bdd197a8",
+      "paths": [
+        "tests/grok-native-boundary-3810.test.ts"
+      ]
+    },
+    {
+      "digest": "66b72b321f9bd94b6f8f874c066ca2bcea2a5494c7ef50276da3d44271bafb18",
+      "paths": [
+        "src/daemon.ts"
       ]
     },
     {
@@ -202,9 +226,9 @@
       ]
     },
     {
-      "digest": "a82eedf03060acea6df8c942b721e7f317d964f45a44eaaa0989574d236143b0",
+      "digest": "ab2ee0329f66a871a01eef6043795c9e67ff3ee37bfd2cb6f5e7d4aaad7e37b5",
       "paths": [
-        "src/general-knowledge/skills/web-dashboard/SKILL.md"
+        "tests/grok-consumed-3810.test.ts"
       ]
     },
     {
@@ -253,6 +277,12 @@
       "digest": "c0f832c78bfd6c58cb3e885365279937dd1d81f800917f98e65adc94b37366cb",
       "paths": [
         "tests/web-needs-1408.test.ts"
+      ]
+    },
+    {
+      "digest": "c951cb7122e5c3f7c76f3e01ab072f0a5d0ac7433ad1088a9a9e1cffc3fcf657",
+      "paths": [
+        "src/ui/shared/stale-tab.js"
       ]
     },
     {
@@ -317,27 +347,32 @@
     }
   ],
   "focused": {
-    "passed": 535,
-    "files": 21,
+    "passed": 278,
+    "files": 13,
     "workers": 2,
-    "log": "checks/sync-focused.log"
+    "log": "checks/sync2-focused.log"
   },
   "types": {
     "source": 0,
     "tests": 0,
-    "sourceLog": "checks/sync-source-types.log",
-    "testLog": "checks/sync-test-types.log",
+    "sourceLog": "checks/sync2-source-types.log",
+    "testLog": "checks/sync2-test-types.log",
     "compiler": "TypeScript native7.0.2"
   },
   "mutations": {
-    "caught": 3,
+    "caught": 2,
     "isolated": true,
     "allRestored": true,
-    "record": "checks/sync-mutations/results.json",
+    "record": "checks/sync2-mutations/results.json",
     "historicalR2": {
       "caught": 29,
       "sourceHead": "30b071ed8489d012d658bda47c35c66667b705ca",
       "record": "mutations/results.json"
+    },
+    "previousSync": {
+      "caught": 3,
+      "sourceHead": "776cf10e2cc6ebf17d9a218f51cea6e2e10601b9",
+      "record": "checks/sync-mutations/results.json"
     }
   },
   "browser": {
@@ -460,5 +495,20 @@
     "newBrowserExecution": false,
     "original53PngsUnchanged": true
   },
-  "releaseScope": "Leader resumed ordered alpha gating after the alpha.3 host upgrade; fresh exact-head parity/CI and coordinator gate still required."
+  "releaseScope": "Leader resumed ordered alpha gating after the alpha.3 host upgrade; fresh exact-head parity/CI and coordinator gate still required.",
+  "reviewSync2": {
+    "sourceHead": "b338d410fc864decf11f203745ec196bb442b28e",
+    "receipt": "review-sync2.json",
+    "priorClearedHead": "fa63ee12601349d2ad14a36117ed78121f3a280f",
+    "incoming": "67b5b2d7a521d39e351b676d4ca325aa40d77c3e",
+    "focused": {
+      "passed": 278,
+      "files": 13,
+      "workers": 2,
+      "log": "checks/sync2-focused.log"
+    },
+    "freshCompilingReversals": 2,
+    "authExactIncomingPlusModelLeaf": true,
+    "newBrowserExecution": false
+  }
 }

@@ -55,10 +55,19 @@ The bounded reader is now startup-specific and exposes no forward cursor. The no
 At `30b071ed8489d012d658bda47c35c66667b705ca`, **556/556 across28 suites** and both native type projects pass. Six paired regressions are semantic-red on the exact prior head, with copied test sources/digests and exact restoration. Three new isolated compiling reversals pin pending recovery, the Log cursor and the monitor's startup lane; all **29** mutation baseline bindings are current. [Repair/source parity receipt](review-r2.json), [exact before recipe](checks/reproduce-r2-before.py), [checks](checks.json). Existing UI, native source, harness, receipt and all53 PNGs are unchanged. No new browser, vendor API, live transcript or pane operation is claimed.
 
 
-## Alpha sync after #3809
+## Alpha sync after #3809 (historical)
 
 Plain merge `776cf10e2cc6ebf17d9a218f51cea6e2e10601b9` has parents `71eb2b5dfd16448293b9edccbdea2645edcb80fa` and `e77738fe12a021f6794776f5b5f1b2bc86a6509d`. The sole conflict was `log-steps.ts`: it retains #3809's exact ordinary bounded Log reader (including its interior EOF+skip cursor), Codex helpers/parser and the approved separate Claude metadata startup reader/payload scanner. The Claude parser is exact to the approved parent. The other two overlaps, the shared Log row and dashboard skill, auto-merge both sides. All45 incoming and195 own disjoint blobs are exact.
 
 The old integration test expected the prior prefix cursor; that assertion is semantic-red with172 controls passing on the merged source. It now pins the incoming EOF+skip contract, while retaining no-write poll, no old history replay, and newly appended record delivery. **535/535 across21 focused suites**, both native source/test typechecks, and **three fresh isolated compiling reversals** pass their expected outcomes. A restored21/21 control follows exact source restoration. Prior29 mutation bindings and556/28 broad results remain historical R2 evidence; they are not relabelled as new-head runs.
 
 [Sync receipt](review-sync.json) binds the source, parents, exact-reader comparisons, controls and three reversals. All53 original PNGs, the capture harness and receipt are unchanged. They remain the earlier bounded feature captures; no new merged-graph browser run or pixel comparison is claimed. No vendor, live transcript/pane, model, policy or lifecycle operation was performed.
+
+
+## Static closure sync after #3816 and #3825
+
+Plain merge `b338d410fc864decf11f203745ec196bb442b28e` has parents `fa63ee12601349d2ad14a36117ed78121f3a280f` and `67b5b2d7a521d39e351b676d4ca325aa40d77c3e`. Only `auth-api.ts` conflicts: against incoming alpha it adds only the existing public static `model-observation.js` leaf, while retaining `stale-tab.js` and its comment. The backend interface, daemon (including Grok proofs) and dashboard skill are byte-exact automatic three-way merges. All66 incoming and211 own disjoint blobs are exact at this source merge; Log readers/parsers and the earlier fixture repair are unchanged.
+
+**278/278 across13 focused suites** and both native type projects pass. The actual anonymous static-closure test is semantic-red when either public leaf is independently removed; both reversals compile and restore exactly, followed by one selected restored closure control. Other tests in that selected run are not counted. [Sync receipt](review-sync2.json), [resolution](checks/sync2-resolution.json).
+
+The earlier535/21 and three-reversal Log-resolution results retain their previous source scope and Prism clearance. All53 original PNGs, harness and capture receipt remain unchanged historical captures, with no new merged-graph browser or pixel-comparison claim. No vendor, live transcript/pane, native machine, model, policy or lifecycle action was performed. Fresh exact-head CI/Prism approval and the coordinator gate remain required.

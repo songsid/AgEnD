@@ -24,12 +24,6 @@
     ]
   },
   {
-    "digest": "0f3c28e84c79142f7a69f477941c974cd4feadae22dc0fe0679ad2b6de1632e6",
-    "paths": [
-      "README.md"
-    ]
-  },
-  {
     "digest": "0fc90959f074193f13eac9d4fb45a1884a1165aa5381f3e5740709a82f15a49c",
     "paths": [
       "browser/availability-desk-dark-zh-TW-needs.png"
@@ -158,6 +152,12 @@
     ]
   },
   {
+    "digest": "3e9d77e78ad4fae1f2ecee5ec1e5613aefbedc5de083a7265d972d6cc1bb5d8e",
+    "paths": [
+      "checks/sync2-resolution.json"
+    ]
+  },
+  {
     "digest": "440c27bc4e57d5d4d42f52590ce60dbd5ae59b1c305037f20ec1cdb69cf6dcb6",
     "paths": [
       "mutations/T3-boundary-budget.log"
@@ -180,6 +180,12 @@
     "digest": "46fcc0b30f5538abf82838186ec4ba71e113e268cb2adcfd7179201f2d8f60ba",
     "paths": [
       "browser/retained-panels-desk-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "47bbb13dc14b5ca3ad24992b6719727450a4a0b63a08ebf4e2474b79604051d1",
+    "paths": [
+      "checks/sync2-mutations/results.json"
     ]
   },
   {
@@ -232,15 +238,15 @@
     ]
   },
   {
-    "digest": "5631b432ac3a802b4e333f3542aa74dd60b1a2970e53bb588f3549df4a404862",
+    "digest": "54dcebffaa4920def7e8acc6bad9a8410921b79e3490af7484f53ae3468f4e27",
     "paths": [
-      "browser/after-desk-dark-en-log.png"
+      "checks.json"
     ]
   },
   {
-    "digest": "575f1df514da1845a5ba387330934b7a20d8041c0f5812f922a1c3cc9235bfa0",
+    "digest": "5631b432ac3a802b4e333f3542aa74dd60b1a2970e53bb588f3549df4a404862",
     "paths": [
-      "checks.json"
+      "browser/after-desk-dark-en-log.png"
     ]
   },
   {
@@ -253,6 +259,12 @@
     "digest": "57d324a3c9286a96563bab313ec552a3d0827f72fdbe8c1eaee6249ec6ce8ab6",
     "paths": [
       "review-fixes.json"
+    ]
+  },
+  {
+    "digest": "57ffc2e382cc005ecfc2b8d19719d1dcaea91af4260569ecbd9a0af46d58b31b",
+    "paths": [
+      "checks/sync2-restored.log"
     ]
   },
   {
@@ -346,6 +358,18 @@
     ]
   },
   {
+    "digest": "7ee41e5bcb8a2e037168656b3ffb6772515f86a1805488c02c35704755da214f",
+    "paths": [
+      "checks/sync2-mutations.py"
+    ]
+  },
+  {
+    "digest": "8036cff51dd906618f910555a89876405307c16d0ec4881e6970a5b86c4628cd",
+    "paths": [
+      "review-sync2.json"
+    ]
+  },
+  {
     "digest": "82ca9274be0bcb7a5f80729b9d6fba2c72dc2a66fa7c61f7e40aa2794313d186",
     "paths": [
       "mutations/T1-cursor.log"
@@ -389,6 +413,12 @@
     ]
   },
   {
+    "digest": "991c52c61936013fd2ff68236ea6d266390e8f7843b7955941e4c8e0c50372c8",
+    "paths": [
+      "checks/sync2-checks.json"
+    ]
+  },
+  {
     "digest": "998b93a7cd66e485e1edaa5e6d21e023d1214ebcf5b70952a10a20475209b95b",
     "paths": [
       "review-sync.json"
@@ -416,6 +446,12 @@
     "digest": "9e27ce2aeb7ef5b82745304504c8d2a9f8938f24bc5e32d14f0e1c026ce395eb",
     "paths": [
       "checks/r2-before-tests/r2-before-daemon.fixture.test.ts.txt"
+    ]
+  },
+  {
+    "digest": "a3adba0016f8fef56d1a9d22eebcff41805145eda572b14fe48a667d000d63ed",
+    "paths": [
+      "README.md"
     ]
   },
   {
@@ -589,6 +625,12 @@
     ]
   },
   {
+    "digest": "d86e636773e69720a5bc6d80143177078a7e9d3acdfe4616f5b2da4751571b3b",
+    "paths": [
+      "checks/sync2-focused.log"
+    ]
+  },
+  {
     "digest": "da531a0f0a471310dfab328965a5d49341dcd4904157277e0ea0db930fcce4ec",
     "paths": [
       "checks/sync-mutations.py"
@@ -604,6 +646,12 @@
     "digest": "dd178d0f333ac91ddac604f43ef8712eeb170f7cb304f337ab14ee441d76080c",
     "paths": [
       "mutations/M7-launchtime.log"
+    ]
+  },
+  {
+    "digest": "dd21cb3be37269dee777b54637aca46822bf4c628da87e0e3c84563915a35bbb",
+    "paths": [
+      "checks/sync2-mutations/A1-model-leaf.log"
     ]
   },
   {
@@ -631,6 +679,10 @@
       "checks/sync-mutations/S3-startup-budget-types.log",
       "checks/sync-source-types.log",
       "checks/sync-test-types.log",
+      "checks/sync2-mutations/A1-model-leaf-types.log",
+      "checks/sync2-mutations/A2-stale-leaf-types.log",
+      "checks/sync2-source-types.log",
+      "checks/sync2-test-types.log",
       "checks/test-types.log",
       "mutations/A1-native-session-types.log",
       "mutations/A2-native-owner-types.log",
@@ -697,6 +749,12 @@
     "digest": "f19f7f33bc14628e5bdb3b1774ac4c12d7dd622dedbfeec677b09a20b5449deb",
     "paths": [
       "browser/after-phone-light-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "f20feae61709ce35e6b79dbfcb1879c750f6cf24766fd85874f544080953f208",
+    "paths": [
+      "checks/sync2-mutations/A2-stale-leaf.log"
     ]
   },
   {

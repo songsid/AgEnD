@@ -1,0 +1,26 @@
+[
+  {
+    "name": "A1-model-leaf",
+    "file": "src/auth-api.ts",
+    "before": "\"model-observation.js\", ",
+    "after": "",
+    "baseDigest": "10efadc5f314bdd4a2cf6d333ca65e13a235f56233a4f77711f4c4aed0138f4d",
+    "mutantDigest": "e2940ad7dda2746827f1d83ae4a95fb6508c43782e88af2abc88d609bff1c2a4",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true,
+    "scope": "One selected actual anonymous static-closure test; unselected cases not counted"
+  },
+  {
+    "name": "A2-stale-leaf",
+    "file": "src/auth-api.ts",
+    "before": "\"stale-tab.js\",",
+    "after": "",
+    "baseDigest": "10efadc5f314bdd4a2cf6d333ca65e13a235f56233a4f77711f4c4aed0138f4d",
+    "mutantDigest": "6649e6f0b348057e92f72fb0f01752fefd8a290690b876e3fb00597848071640",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true,
+    "scope": "One selected actual anonymous static-closure test; unselected cases not counted"
+  }
+]
