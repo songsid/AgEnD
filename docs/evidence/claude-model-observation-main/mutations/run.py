@@ -1,5 +1,5 @@
 from pathlib import Path
-import subprocess, json, os, hashlib
+import subprocess, json, os, hashlib, sys
 root=Path.cwd(); out=root/'.artifacts/model-switch/mutations';out.mkdir(exist_ok=True)
 core='src/claude-model-observation.ts'; monitor='src/transcript-monitor.ts'; daemon='src/daemon.ts'; hub='src/needs-you-hub.ts'
 cases=[
@@ -18,8 +18,11 @@ cases=[
  ('M14-nofallback',core,'e.subtype === "model_refusal_fallback" || e.subtype === "model_fallback"','e.subtype === "model_refusal_fallback" || e.subtype === "model_fallback" || e.subtype === "model_refusal_no_fallback"',['tests/claude-model-switch.test.ts']),
  ('M10-original',core,'original = claudeModelId(e.originalModel)','original = claudeModelId(e.fallbackModel)',['tests/claude-model-switch.test.ts']),
 ]
-results=[]
+selected=set(sys.argv[1:])
+results=json.loads((out/'results.json').read_text()) if selected else []
 for name,file,before,after,tests in cases:
+ if selected and name not in selected: continue
+ results=[r for r in results if r['name']!=name]
  if os.getloadavg()[0]>10: raise SystemExit('load over10; resume remaining mutations later')
  p=root/file; original=p.read_text(); assert before in original,(name,'targetmissing')
  changed=original.replace(before,after)

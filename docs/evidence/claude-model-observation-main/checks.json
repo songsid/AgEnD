@@ -1,5 +1,5 @@
 {
-  "sourceHead": "29d3a5142d8f462798c6976f629b49f375419764",
+  "sourceHead": "8ec20af92c8b9058eb879bfad353c44186759d85",
   "baseline": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
   "sourceInputs": [
     {
@@ -15,7 +15,7 @@
       ]
     },
     {
-      "digest": "f15bbede5182171ab274b1b10fb6db227ea40be425681a9bb2fba14fab713a1c",
+      "digest": "1209594aa6171d711e6a28176b504123c64d28113f7893a26767a770697397c9",
       "paths": [
         "docs/design/claude-model-observation.md"
       ]
@@ -129,7 +129,7 @@
       ]
     },
     {
-      "digest": "95a5616fd60bf2268719743f364aa66dc0c576df8477d7845fb1db49ae0881c3",
+      "digest": "bca0dbe8f26f54068acb2a239b0b5285109a534c95a18f44234e4ef861a418c5",
       "paths": [
         "src/transcript-monitor.ts"
       ]
@@ -195,13 +195,19 @@
       ]
     },
     {
+      "digest": "1e52ef26aab8abc693b160e68d6fdade8696a3ac90b8aed3de333cbe5a782840",
+      "paths": [
+        "tests/claude-credential-profile-1699.test.ts"
+      ]
+    },
+    {
       "digest": "841c72520055a42efd122729e339d79e137c7d922d6bf110842c70d8089fd246",
       "paths": [
         "tests/claude-model-switch-daemon.test.ts"
       ]
     },
     {
-      "digest": "6a26a6ef166aabc10f8483539484cb03d4de246858531453c11a0b55b4fb9df7",
+      "digest": "f282a3db77ceadc44e45c28a500a4a3bee12be515ed698f83a5aafae9ce9fc58",
       "paths": [
         "tests/claude-model-switch.test.ts"
       ]
@@ -260,10 +266,34 @@
     "pngs": 53,
     "checkpoints": 61,
     "receipt": "browser/receipt.json",
-    "cleanup": "owned browser/listeners/home closed"
+    "cleanup": "owned browser/listeners/home closed",
+    "continuity": {
+      "captureSourceHead": "29d3a5142d8f462798c6976f629b49f375419764",
+      "finalSourceHead": "8ec20af92c8b9058eb879bfad353c44186759d85",
+      "unchanged": [
+        "src/ui/",
+        "src/fleet-manager.ts",
+        "src/claude-model-observation.ts",
+        "scripts/manual/claude-model-observation-browser.mts"
+      ],
+      "laterDelta": "Metadata-only monitor startup recovery, credential fixture, tests and design. Monitor is not executed by the browser fixture."
+    }
   },
   "liveVendorCalls": 0,
   "liveTranscriptReads": 0,
   "livePaneWrites": 0,
-  "modelOrPolicyActions": 0
+  "modelOrPolicyActions": 0,
+  "credentialFixture": {
+    "passed": 21,
+    "files": 1,
+    "log": "checks/credential-controls.log",
+    "note": "CI exact-command fixtures now pin the inherited observation marker and compare all remaining legacy command bytes."
+  },
+  "startupIsolation": {
+    "passed": 138,
+    "files": 5,
+    "red": "checks/metadata-only-before.log",
+    "control": "checks/metadata-only-controls.log",
+    "note": "Metadata-only bounded startup recovery leaves existing text/alarm EOF baseline unchanged."
+  }
 }

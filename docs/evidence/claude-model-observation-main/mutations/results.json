@@ -55,28 +55,6 @@
     "semanticRed": true
   },
   {
-    "name": "M6-hookowner",
-    "file": "src/transcript-monitor.ts",
-    "before": "hook._agendLaunchId === launch.id",
-    "after": "true",
-    "baseDigest": "95a5616fd60bf2268719743f364aa66dc0c576df8477d7845fb1db49ae0881c3",
-    "mutantDigest": "230b05c3168f9369ce7cdff7b9048eae986b2a933763037395553dc7aba8db8a",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
-    "name": "M7-launchtime",
-    "file": "src/transcript-monitor.ts",
-    "before": "observation.at >= launch.startedAt",
-    "after": "true",
-    "baseDigest": "95a5616fd60bf2268719743f364aa66dc0c576df8477d7845fb1db49ae0881c3",
-    "mutantDigest": "ac442b26ef0198a99d9b62c46e95e9659d6d62bfaa73ce653fec7df133bce7b2",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
     "name": "M8-daemonfence",
     "file": "src/daemon.ts",
     "before": "owner !== launchIdentity(this.interactionOwner())",
@@ -149,6 +127,28 @@
     "after": "original = claudeModelId(e.fallbackModel)",
     "baseDigest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
     "mutantDigest": "4c99d6be3df0823622360968c0a141a95c1132ed1141caa8e4fd33512ed59a76",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M6-hookowner",
+    "file": "src/transcript-monitor.ts",
+    "before": "hook._agendLaunchId === launch.id",
+    "after": "true",
+    "baseDigest": "bca0dbe8f26f54068acb2a239b0b5285109a534c95a18f44234e4ef861a418c5",
+    "mutantDigest": "23cc4eb5bceb52d3d122f335fd984988bf1e2279ca163c3b0cfa73d68805a367",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M7-launchtime",
+    "file": "src/transcript-monitor.ts",
+    "before": "observation.at >= launch.startedAt",
+    "after": "true",
+    "baseDigest": "bca0dbe8f26f54068acb2a239b0b5285109a534c95a18f44234e4ef861a418c5",
+    "mutantDigest": "701b6a96c6f5bc2c58815963fa92c0c9715bd533366a928371eb45833e407619",
     "types": 0,
     "testExit": 1,
     "semanticRed": true

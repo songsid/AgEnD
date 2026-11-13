@@ -4,11 +4,13 @@ AgEnD previously discarded the typed fallback notices and assistant model metada
 
 This is detection only: separate configured/launch/session/served values, typed safeguards/availability notices, one quiet Needs-you incident with recovery, localized runtime cards/details and Log, and compact `describe_instance` output (`detail:true` for bounded metadata). No automatic model, policy, restart or permission operation is added.
 
-Source and capture pin: `29d3a5142` (full SHA in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. The evidence commit changes no product bytes.
+Final source pin: `8ec20af92`; browser capture pin: `29d3a5142` (full SHAs in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. The later source correction only isolates metadata startup recovery from existing text/alarm replay; its test and credential fixtures are separate from the browser path. The UI, pure observer, FleetManager and capture harness are byte-identical to the capture. No recapture execution is claimed.
 
 ## Verification
 
 - **390/390, 17 focused files**, `vitest run --maxWorkers=2`; [commands](checks/commands.txt), [results](checks/final-17-controls.log).
+- **21/21 credential-profile controls**, preserving every legacy command byte after the pinned ownership marker.
+- **138/138 startup isolation controls**, including a new [semantic red](checks/metadata-only-before.log) that caught unwanted text replay and its [fixed control](checks/metadata-only-controls.log).
 - Native TypeScript **7.0.2** source and test projects exit 0; changelog validation passes.
 - **14 isolated reversals caught**, with native compilation and JS syntax checks where applicable; every source restored. [Cases, exact substitutions and digests](mutations/results.json), [runner](mutations/run.py).
 - Fail-first: original monitor emits no observation ([baseline red](checks/baseline-monitor-red.log)); a response before monitor construction is lost ([early-record red](checks/early-record-before.log)); retained formatter loses localized detail ([retained-shell red](checks/retained-needs-before.log)); command-message prefix and three visual contracts each fail ([four semantic reds](checks/visual-prefix-before.log)). Final controls are green.

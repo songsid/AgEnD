@@ -1,6 +1,6 @@
 [
   {
-    "digest": "75f4659d27607d45773fd2ab1fe29f067152691a03e9258bccfac5c54e6341e2",
+    "digest": "db0befc185cb5f7b0335bb019d1c2c691668bd6071bc1a267fae2b10e905e063",
     "paths": [
       "README.md"
     ]
@@ -318,9 +318,15 @@
     ]
   },
   {
-    "digest": "dc21d82ff97e9b40e46bd16e76c5b46757f8d86c0ef476123684ff11fcf45969",
+    "digest": "ebf3710e6af3c5ab95884a68ec226cf72d21ef2a043e0c4ace8e418ebf72c0c9",
     "paths": [
       "checks/commands.txt"
+    ]
+  },
+  {
+    "digest": "2e1aaa663cb00c3c8541c1659474566bc9d28970f9374799fbc8512db0dd54ed",
+    "paths": [
+      "checks/credential-controls.log"
     ]
   },
   {
@@ -330,9 +336,21 @@
     ]
   },
   {
-    "digest": "e8e20edd94d16860fbb599ab43b3f18bc90cbf66dbd4739ce563fa04062079a7",
+    "digest": "205a4836c74947ba9bfff33e2f721df876b482b8da832ccf4df23a2b0e0d2e96",
     "paths": [
       "checks/final-17-controls.log"
+    ]
+  },
+  {
+    "digest": "fd125c31395c09a9a2e9ae56fb63f6eb4150474af60229fbb727b8bab90f4aac",
+    "paths": [
+      "checks/metadata-only-before.log"
+    ]
+  },
+  {
+    "digest": "c5028fc4857d05a210292b5e4d1cabcb116a4c542fd7c235aabffce599dd6734",
+    "paths": [
+      "checks/metadata-only-controls.log"
     ]
   },
   {
@@ -369,7 +387,7 @@
     ]
   },
   {
-    "digest": "950091baded53af0e759ddd2380efeaad44f2728d03b51a7be8845a91ce95fe7",
+    "digest": "d4bba8833df2a7ef7a06f522ae4e2b8aa0f700e80c8606e998063eaa5c8d5b9a",
     "paths": [
       "checks.json"
     ]
@@ -435,13 +453,13 @@
     ]
   },
   {
-    "digest": "a80a9fb22d29221a6b6869f81e94f3c2953d93850691ccbc0d9f78bd42913906",
+    "digest": "4ef9be85cc5e12c348b4af5b6fb7a1d7cbe645fa1895ebf7a787362e01c484f5",
     "paths": [
       "mutations/M6-hookowner.log"
     ]
   },
   {
-    "digest": "2783a8a88d41c89a18eea50e08aceaa600a36e553088c3b81e1eed4cfef323c7",
+    "digest": "9226ac8b81c8fa6373d2a61f5db9f6ef5bfe6f2141c173e581a6095c9f943ab2",
     "paths": [
       "mutations/M7-launchtime.log"
     ]
@@ -459,13 +477,13 @@
     ]
   },
   {
-    "digest": "3aa77106278866ee887711268d793d324e26141b0f512fe0b14084916d0c91b7",
+    "digest": "b1d544b533afc0ab348aa162b17768d8b3e279b0531b09e8802cba00af057036",
     "paths": [
       "mutations/results.json"
     ]
   },
   {
-    "digest": "e6c4a72c9b86e294235c169ad82c018f1f25e22a5bdfa80a59004c6dddd09334",
+    "digest": "5885cadb8afffef2d16557a341a779f92910b70b7c96823393102f7439c2fc35",
     "paths": [
       "mutations/run.py"
     ]

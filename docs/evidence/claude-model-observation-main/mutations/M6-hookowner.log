@@ -1,14 +1,14 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch.test.ts (55 tests | 2 failed) 109ms
-     × rejects old marker 15ms
-     × rejects missing marker 6ms
+ ❯ tests/claude-model-switch.test.ts (55 tests | 2 failed) 96ms
+     × rejects old marker 14ms
+     × rejects missing marker 2ms
 
  Test Files  1 failed (1)
       Tests  2 failed | 53 passed (55)
-   Start at  17:03:15
-   Duration  653ms (transform 226ms, setup 141ms, import 165ms, tests 109ms, environment 0ms)
+   Start at  17:15:57
+   Duration  845ms (transform 394ms, setup 190ms, import 343ms, tests 96ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
@@ -22,7 +22,7 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 - []
 + [
 +   {
-+     "at": 1794560595980,
++     "at": 1794561358739,
 +     "cause": "safeguards",
 +     "id": "notice:notice-A",
 +     "kind": "switch",
@@ -52,7 +52,7 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 - []
 + [
 +   {
-+     "at": 1794560596002,
++     "at": 1794561358757,
 +     "cause": "safeguards",
 +     "id": "notice:notice-A",
 +     "kind": "switch",
