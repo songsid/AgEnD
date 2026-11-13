@@ -333,6 +333,18 @@ directory's ones.
 - Code: `post_decision`, `list_decisions` tool definitions.
 - Refs: —
 
+## usage tools
+
+`get_usage` (or `agend-agent usage`) defaults to compact account rows: plan,
+used percentages and relative resets, vendor-reported binding windows, stale/cache
+hints, and Codex reset tickets/credits. Missing binding evidence is not a guess.
+Use `detail: true` (CLI `--detail`) for the complete JSON including capacity and
+localization metadata; do not request it routinely. A shared capacity footnote
+appears once. `get_usage_report` keeps the API-equivalent basis once at the top
+and omits speed stats by default; `detail: true` restores its full legacy shape.
+Amounts are API-equivalents, never money spent. Both report modes preserve the
+caller scope and estimated/not-priced marks. Web usage and `/usage` are unchanged.
+
 ## credential profile
 
 A named credential set for one backend (`CREDENTIAL_HOMES`), so one fleet can
