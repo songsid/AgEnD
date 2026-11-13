@@ -1,0 +1,265 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-group-label-3824
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts (59 tests | 9 failed) 1863ms
+     × projects group label CN=Owners,DC=example,DC=test without rewriting its grant 50ms
+     × projects group label cn=Owners,DC=example,DC=test without rewriting its grant 27ms
+     × projects group label CN=Ops\, East,DC=example,DC=test without rewriting its grant 22ms
+     × projects group label CN=Ops\+East+UID=42,DC=example,DC=test without rewriting its grant 33ms
+     × projects group label CN=R\C3\A9seau,DC=example,DC=test without rewriting its grant 34ms
+     × projects group label CN=研究者,DC=example,DC=test without rewriting its grant 28ms
+     × projects group label CN=\#Owners\=Core,DC=example,DC=test without rewriting its grant 33ms
+     × projects group label CN=Back\\Office,DC=example,DC=test without rewriting its grant 46ms
+     × projects group label CN=\ Owners\ ,DC=example,DC=test without rewriting its grant 32ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 9 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-grant-subjects-m3016.test.ts > M-3016 owner person/group grants > projects group label CN=Owners,DC=example,DC=test without rewriting its grant
+AssertionError: expected { …(15) } to match object { …(8) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -10,7 +10,7 @@
+      },
+      "kind": "group",
+    },
+    "subjectLabel": "CN=Owners,DC=example,DC=test",
+    "subjectLogin": "",
+-   "subjectName": "Owners",
++   "subjectName": "CN=Owners,DC=example,DC=test",
+  }
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts:85:41
+     83|     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+     84|     expect(view.status).toBe(200);
+     85|     expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.g…
+       |                                         ^
+     86|       subject: { kind: "group", group: w.group }, subjectLabel: label,…
+     87|       startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯
+
+ FAIL  tests/hub-grant-subjects-m3016.test.ts > M-3016 owner person/group grants > projects group label cn=Owners,DC=example,DC=test without rewriting its grant
+AssertionError: expected { …(15) } to match object { …(8) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -10,7 +10,7 @@
+      },
+      "kind": "group",
+    },
+    "subjectLabel": "cn=Owners,DC=example,DC=test",
+    "subjectLogin": "",
+-   "subjectName": "Owners",
++   "subjectName": "cn=Owners,DC=example,DC=test",
+  }
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts:85:41
+     83|     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+     84|     expect(view.status).toBe(200);
+     85|     expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.g…
+       |                                         ^
+     86|       subject: { kind: "group", group: w.group }, subjectLabel: label,…
+     87|       startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯
+
+ FAIL  tests/hub-grant-subjects-m3016.test.ts > M-3016 owner person/group grants > projects group label CN=Ops\, East,DC=example,DC=test without rewriting its grant
+AssertionError: expected { …(15) } to match object { …(8) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -10,7 +10,7 @@
+      },
+      "kind": "group",
+    },
+    "subjectLabel": "CN=Ops\\, East,DC=example,DC=test",
+    "subjectLogin": "",
+-   "subjectName": "Ops, East",
++   "subjectName": "CN=Ops\\, East,DC=example,DC=test",
+  }
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts:85:41
+     83|     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+     84|     expect(view.status).toBe(200);
+     85|     expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.g…
+       |                                         ^
+     86|       subject: { kind: "group", group: w.group }, subjectLabel: label,…
+     87|       startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯
+
+ FAIL  tests/hub-grant-subjects-m3016.test.ts > M-3016 owner person/group grants > projects group label CN=Ops\+East+UID=42,DC=example,DC=test without rewriting its grant
+AssertionError: expected { …(15) } to match object { …(8) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -10,7 +10,7 @@
+      },
+      "kind": "group",
+    },
+    "subjectLabel": "CN=Ops\\+East+UID=42,DC=example,DC=test",
+    "subjectLogin": "",
+-   "subjectName": "Ops+East",
++   "subjectName": "CN=Ops\\+East+UID=42,DC=example,DC=test",
+  }
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts:85:41
+     83|     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+     84|     expect(view.status).toBe(200);
+     85|     expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.g…
+       |                                         ^
+     86|       subject: { kind: "group", group: w.group }, subjectLabel: label,…
+     87|       startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯
+
+ FAIL  tests/hub-grant-subjects-m3016.test.ts > M-3016 owner person/group grants > projects group label CN=R\C3\A9seau,DC=example,DC=test without rewriting its grant
+AssertionError: expected { …(15) } to match object { …(8) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -10,7 +10,7 @@
+      },
+      "kind": "group",
+    },
+    "subjectLabel": "CN=R\\C3\\A9seau,DC=example,DC=test",
+    "subjectLogin": "",
+-   "subjectName": "Réseau",
++   "subjectName": "CN=R\\C3\\A9seau,DC=example,DC=test",
+  }
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts:85:41
+     83|     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+     84|     expect(view.status).toBe(200);
+     85|     expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.g…
+       |                                         ^
+     86|       subject: { kind: "group", group: w.group }, subjectLabel: label,…
+     87|       startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/9]⎯
+
+ FAIL  tests/hub-grant-subjects-m3016.test.ts > M-3016 owner person/group grants > projects group label CN=研究者,DC=example,DC=test without rewriting its grant
+AssertionError: expected { …(15) } to match object { …(8) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -10,7 +10,7 @@
+      },
+      "kind": "group",
+    },
+    "subjectLabel": "CN=研究者,DC=example,DC=test",
+    "subjectLogin": "",
+-   "subjectName": "研究者",
++   "subjectName": "CN=研究者,DC=example,DC=test",
+  }
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts:85:41
+     83|     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+     84|     expect(view.status).toBe(200);
+     85|     expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.g…
+       |                                         ^
+     86|       subject: { kind: "group", group: w.group }, subjectLabel: label,…
+     87|       startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/9]⎯
+
+ FAIL  tests/hub-grant-subjects-m3016.test.ts > M-3016 owner person/group grants > projects group label CN=\#Owners\=Core,DC=example,DC=test without rewriting its grant
+AssertionError: expected { …(15) } to match object { …(8) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -10,7 +10,7 @@
+      },
+      "kind": "group",
+    },
+    "subjectLabel": "CN=\\#Owners\\=Core,DC=example,DC=test",
+    "subjectLogin": "",
+-   "subjectName": "#Owners=Core",
++   "subjectName": "CN=\\#Owners\\=Core,DC=example,DC=test",
+  }
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts:85:41
+     83|     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+     84|     expect(view.status).toBe(200);
+     85|     expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.g…
+       |                                         ^
+     86|       subject: { kind: "group", group: w.group }, subjectLabel: label,…
+     87|       startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/9]⎯
+
+ FAIL  tests/hub-grant-subjects-m3016.test.ts > M-3016 owner person/group grants > projects group label CN=Back\\Office,DC=example,DC=test without rewriting its grant
+AssertionError: expected { …(15) } to match object { …(8) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -10,7 +10,7 @@
+      },
+      "kind": "group",
+    },
+    "subjectLabel": "CN=Back\\\\Office,DC=example,DC=test",
+    "subjectLogin": "",
+-   "subjectName": "Back\\Office",
++   "subjectName": "CN=Back\\\\Office,DC=example,DC=test",
+  }
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts:85:41
+     83|     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+     84|     expect(view.status).toBe(200);
+     85|     expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.g…
+       |                                         ^
+     86|       subject: { kind: "group", group: w.group }, subjectLabel: label,…
+     87|       startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/9]⎯
+
+ FAIL  tests/hub-grant-subjects-m3016.test.ts > M-3016 owner person/group grants > projects group label CN=\ Owners\ ,DC=example,DC=test without rewriting its grant
+AssertionError: expected { …(15) } to match object { …(8) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -10,7 +10,7 @@
+      },
+      "kind": "group",
+    },
+    "subjectLabel": "CN=\\ Owners\\ ,DC=example,DC=test",
+    "subjectLogin": "",
+-   "subjectName": " Owners ",
++   "subjectName": "CN=\\ Owners\\ ,DC=example,DC=test",
+  }
+
+ ❯ tests/hub-grant-subjects-m3016.test.ts:85:41
+     83|     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+     84|     expect(view.status).toBe(200);
+     85|     expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.g…
+       |                                         ^
+     86|       subject: { kind: "group", group: w.group }, subjectLabel: label,…
+     87|       startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.exp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/9]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  9 failed | 50 passed (59)
+   Start at  23:46:27
+   Duration  6.07s (transform 3.18s, setup 107ms, import 3.90s, tests 1.86s, environment 0ms)
+
