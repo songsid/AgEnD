@@ -69,6 +69,7 @@ export interface HubHttp {
   handle(req: IncomingMessage, res: ServerResponse): boolean;
   receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void>;
   close(): Promise<void>;
+  memberClosed?(fleetId: string): void;
   /** #3298 S-89: what this Hub offers its pages ("group-policy-v1" only with deps.groupHttp). Presentation only. */
   readonly features: readonly string[];
   readonly directorySessions: HubDirectoryBrowserSessions;
@@ -346,7 +347,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/sharing$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
-      csrf(); const b = await body(); await guard(() => sharing.change(ctx, uuid(r![1]), b));
+      csrf(); const b = await body(); await guard(() => sharing.change(ctx, uuid(r![1]), b)); groupRooms.agents.publicationChanged(undefined, uuid(r![1]));
       return send(res, 200, { ok: true });
     }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/freeze$/))) {
@@ -667,12 +668,19 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (!live() || !link.current()) throw new HubProtocolError("stale");
     rooms.noteLink(link);
     quota.noteLink(link);
+    groupRooms.agents.noteLink(link);
     deps.pairingNotices?.noteLink(link);
     const reply = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
     switch (frame.type) {
-      // Schemas shared with Track C; no group-agent dispatch is advertised before R2 is composed.
-      case "room.answer": case "agent.state": throw new HubProtocolError("incompatible");
-      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); quota.prune(); return;
+      case "room.answer":
+        try { return { ...reply, type: "room.answer-ack", payload: await groupRooms.agents.answer(frame.payload, link) }; }
+        catch (error) {
+          // No ACK means the Fleet retains its frozen answer. A pause or transient read must not break its member link.
+          if (error instanceof HubProtocolError && ["unavailable", "backpressure", "revoked", "not-found", "stale"].includes(error.code)) return;
+          throw error;
+        }
+      case "agent.state": groupRooms.agents.state(frame.payload, link); return;
+      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); quota.prune(); groupRooms.agents.publicationChanged(link.fleetId); return;
       case "exposure.quota": quota.receive(frame.payload, link); return;
       case "pairing.notice-ack":
         if (!deps.pairingNotices) throw new HubProtocolError("incompatible");
@@ -701,20 +709,21 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const t = setTimeout(() => {
       if (!live() || !link.current()) return;
       void rooms.flush(link.fleetId).then((sent) => { if (!sent && attempt < 5) flushSoon(link, attempt + 1); }, () => {});
+      groupRooms.agents.wake();
       void deps.pairingNotices?.flushFleet(link).catch(() => {});
     }, attempt === 0 ? 0 : 100 * attempt);
     t.unref?.();
   }
 
-  rooms.buttons.start();
+  rooms.buttons.start(); groupRooms.agents.wake();
   return {
     directorySessions: Object.freeze({
       recentAuthentication: actor => sessions.recentAuthentication(actor),
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, features: Object.freeze(["rooms-v1", ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["rooms-v1", "room-ask-v1", ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
-    async close() { closed = true; grantSearch.close(); for (const end of streams) end(); groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
+    async close() { closed = true; grantSearch.close(); for (const end of streams) end(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }
