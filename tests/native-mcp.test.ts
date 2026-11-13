@@ -160,7 +160,7 @@ describe("native MCP dispatch, stable calls and result tracking",()=>{
   });
   it.each([false,true])("retains successful explicit report correlations after close (detail=%s), so the adapter can avoid a duplicate fallback",async(detail)=>{
     const f=fixture(),get=outboundHandlers.get.bind(outboundHandlers);
-    vi.spyOn(outboundHandlers,"get").mockImplementation(tool=>tool==="report_result" ? ((_ctx,_args,respond)=>{respond({queued:true});}) : get(tool));
+    vi.spyOn(outboundHandlers,"get").mockImplementation(tool=>tool==="report_result" ? ((_ctx,_args,respond)=>{respond({sent:true,queued:true,delivery_id:"native-report"});}) : get(tool));
     const reported=await invoke(f,call("report","report_result",{target_instance:"lead",correlation_id:"exchange-1",summary:"Done",detail})).done();
     expect(reported.value.isError).not.toBe(true);
     const ack=JSON.parse(reported.value.content[0].text);expect(ack.queued).toBe(true);
