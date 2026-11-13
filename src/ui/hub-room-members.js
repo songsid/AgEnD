@@ -44,7 +44,9 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [gone, setGone] = useState({});
   useEffect(() => { setPresence({}); setGone({}); }, [detail]);
   useEffect(() => client.subscribeRooms?.({
-    "presence.changed": (e) => { if (e?.roomId === roomId && typeof e.memberId === "string") setPresence(old => ({ ...old, [e.memberId]: { presence: e.presence, presenceNote: e.presenceNote } })); },
+    // The whole state each time: presence, its reason code and note. One the event omits is cleared (undefined), so a
+    // stale reason or note never outlives the presence it came with.
+    "presence.changed": (e) => { if (e?.roomId === roomId && typeof e.memberId === "string") setPresence(old => ({ ...old, [e.memberId]: { presence: e.presence, presenceReason: e.presenceReason, presenceNote: e.presenceNote } })); },
   }) ?? (() => {}), [client, roomId]);
   if (!detail || !Array.isArray(detail.members)) return html`<aside class="hub-room-members" aria-busy="true"></aside>`;
   const data = { role: detail.me?.role === "manager" ? "manager" : "member",
