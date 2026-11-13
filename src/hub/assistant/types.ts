@@ -1,3 +1,11 @@
+export interface RoomAssistantContextMessage {
+  author: string;
+  text: string;
+  at: number;
+  /** The one replied-to room message may be older than the latest thirty. */
+  repliedTo?: true;
+}
+
 /** Seam 4: the rooms service supplies this room's recent messages, never a Fleet conversation. */
 export interface RoomAssistantAsk {
   roomId: string;
@@ -5,7 +13,7 @@ export interface RoomAssistantAsk {
   messageId: string;
   asker: { name: string };
   text: string;
-  context: Array<{ author: string; text: string; at: number }>;
+  context: RoomAssistantContextMessage[];
 }
 
 export interface RoomAssistantConfig {
@@ -31,7 +39,7 @@ export interface RoomAssistant {
   forget(roomId: string): void;
 }
 
-/** A physically owned process/session. stop resolves only after it can no longer run or produce output. */
+/** An owned room controller/session. stop resolves only after all its physical workers are gone. */
 export interface RoomAssistantSession {
   ask(input: RoomAssistantAsk, signal: AbortSignal): Promise<{ text: string }>;
   stop(): Promise<void>;
