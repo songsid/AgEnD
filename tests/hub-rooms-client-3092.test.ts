@@ -158,6 +158,17 @@ describe("rooms (seam 1) against the fixture", () => {
     fx.emit("message.added", { roomId: "r", message: { id: "m3" } });
     expect(added).toHaveLength(2); expect(made).toBe(1);                                                  // closed with the last
   });
+  it("the notices ride the rooms stream at the session's notice version — the contract the rooms server honours (#3858)", async () => {
+    const { client, fx } = await live();
+    const urls: string[] = [], Real = fx.EventSource;
+    (globalThis as any).EventSource = class extends Real { constructor(url: string) { super(url); urls.push(url); } };
+    const got: any[] = [];
+    const off = client.subscribePairingNotices((n: any) => got.push(n), () => {}, 3);
+    expect(urls).toEqual(["/hub/v1/rooms/events?notices=2"]);                                           // this session has no enrolment-code-v1: v2
+    fx.emit("notices", { notices: [{ id: "n1" }] });
+    expect(got).toEqual([[{ id: "n1" }]]);
+    off();
+  });
   it("a name that listens again while the stream stays open is heard once, however often (Fable on #3848)", async () => {
     const { client, fx } = await live();
     const stopRooms = client.subscribeRooms({ "message.added": () => {} });                              // keeps the stream open
