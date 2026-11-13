@@ -37,7 +37,7 @@ try{
  const cases:any[]=[];for(const device of ['desk','phone'])for(const theme of ['light','dark'])for(const lang of ['en','zh-TW'])cases.push({device,theme,lang});
  if(mode==='current')for(const skew of ['old-client','old-group-search','old-words','old-server'])cases.push({device:skew==='old-client'?'phone':'desk',theme:skew==='old-client'?'dark':'light',lang:skew==='old-client'?'zh-TW':'en',skew});
  for(const [index,c] of cases.entries()){
-  if(loadavg()[0]!>10)throw Error('Paused: host load above10');
+  for(let pause=0;loadavg()[0]!>10;pause++){if(pause>=40)throw Error('Paused for10minutes: host load stayed above10');(result.pauses??=[]).push({case:index,load:loadavg()[0],at:new Date().toISOString()});console.log('PAUSED before case',index,'load',loadavg()[0]);await new Promise(done=>setTimeout(done,15000));}
   const id=randomUUID();await rig.http.receive(rig.frame('exposure.snapshot',{revision:index+1,exposures:[{id,fleetId:link.fleetId,owner,displayName:'研究助手 · Research',revision:1,state:'published',dataViewId:'agent',allowedTools:[],policyDigest:'b'.repeat(64)}]},link),link);
   const tag=[c.skew??mode,c.device,c.theme,c.lang].join('-'),ctx=await browser.newContext({viewport:c.device==='desk'?{width:1366,height:1000}:{width:390,height:844},isMobile:c.device==='phone',hasTouch:c.device==='phone',colorScheme:c.theme,ignoreHTTPSErrors:true});
   try{
