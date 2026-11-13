@@ -31,6 +31,7 @@ import { HubCatalogService } from "../catalog.js";
 import { HubGrantSearch } from "../grant-search.js";
 import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
+import { HubRoomAdmin } from "../rooms/admin.js";
 import { HubGroupRooms, HubRoomRefusal } from "../rooms/service.js";
 import { directMessages, directRoomView, directUnread, markDirectRead } from "../rooms/direct-view.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
@@ -132,6 +133,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const grantSearch = new HubGrantSearch(core);
   const rooms = new HubRoomsService(core, policy);
   const groupRooms = new HubGroupRooms(core);
+  const roomAdmin = new HubRoomAdmin(core, event => groupRooms.publish(event), id => { deps.roomAssistant?.forget(id); groupRooms.agents.sweep(); });
   const quota = new HubQuotaService(core);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   const live = () => !closed && core.live();
@@ -361,6 +363,21 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const exposureId = uuid(r[1]);
       await guard(() => quota.setVisible(ctx, exposureId, int(b.revision), b.visible as boolean));
       return send(res, 200, { quotaVisible: b.visible, ...quota.projection(exposureId) });
+    }
+    if (path === "/hub/v1/admin/rooms/creators") {
+      if (method === "GET") { signedIn(); return send(res, 200, await guard(() => roomAdmin.creators(ctx))); }
+      if (method === "PUT") { csrf(); const b = await body(); return send(res, 200, await guard(() => roomAdmin.creators(ctx, b))); }
+      throw new HttpError(405, "method");
+    }
+    if (path === "/hub/v1/admin/rooms") {
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, await guard(() => roomAdmin.list(ctx)));
+    }
+    if ((r = m(/^\/hub\/v1\/admin\/rooms\/([^/]+)(?:\/(join))?$/))) {
+      const roomId = uuid(r[1]); csrf();
+      if (r[2] === "join" && method === "POST") return send(res, 200, await guard(() => roomAdmin.join(ctx, roomId)));
+      if (!r[2] && method === "PATCH") { const b = await body(); return send(res, 200, await guard(() => roomAdmin.archive(ctx, roomId, b))); }
+      throw new HttpError(405, "method");
     }
     if (path === "/hub/v1/rooms/candidates") {
       if (method !== "GET") throw new HttpError(405, "method");

@@ -54,3 +54,7 @@ CREATE INDEX hub_room_deliveries_pending ON hub_room_deliveries(fleet_id,created
 CREATE INDEX hub_room_deliveries_parent ON hub_room_deliveries(parent_id);
 `);
 } });
+
+export const HUB_ROOM_CREATORS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-creators", version: 1, up(db: Database.Database) {
+  db.exec("CREATE TABLE hub_room_creators(kind TEXT NOT NULL CHECK(kind IN ('person','team')),subject TEXT NOT NULL,PRIMARY KEY(kind,subject))");
+} });

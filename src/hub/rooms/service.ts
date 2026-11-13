@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { HubCatalogService, exposureOf, readExposure } from "../catalog.js";
+import { canCreateRoom } from "./admin.js";
 import { HubRoomAgents, type RoomPostRow } from "./agents.js";
 import { personKeyString } from "../identity.js";
 import { HubCore, personFromString, type HubOperationPermit } from "../http/core.js";
@@ -90,12 +91,12 @@ export class HubGroupRooms {
     const me = await this.who(ctx); this.agents.sweep();
     return this.core.atomic(db => ({ rooms: (db.prepare("SELECT * FROM hub_room_members WHERE kind='person' AND subject=?").all(me) as MemberRow[])
       .map(m => this.summary(db, this.room(db, m.room_id), m)).sort((a, b) => b.lastAt - a.lastAt),
-      me: { canCreateRooms: me === personKeyString(this.core.deps.config.administrator), assistant: this.core.deps.roomAssistant?.available().enabled === true }, invitations: 0 }), this.fence(ctx));
+      me: { canCreateRooms: canCreateRoom(this.core, db, me), assistant: this.core.deps.roomAssistant?.available().enabled === true }, invitations: 0 }), this.fence(ctx));
   }
   async candidates(ctx: HubRequestContext, q: string, kind: string) {
     if (q.length > 64 || /[\u0000-\u001f\u007f]/.test(q) || !["person", "team", "group", "agent"].includes(kind)) throw new HubProtocolError("invalid");
     const me = await this.who(ctx);
-    const allowed = (db: DB) => me === personKeyString(this.core.deps.config.administrator) || !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
+    const allowed = (db: DB) => canCreateRoom(this.core, db, me) || !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
       WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0`).get(me);
     if (kind === "agent") {
       this.core.atomic(db => { if (!allowed(db)) throw new HubRoomRefusal(403, "denied"); }, this.fence(ctx));
@@ -118,12 +119,13 @@ export class HubGroupRooms {
   }
   async create(ctx: HubRequestContext, input: unknown) {
     const body = validated(createSchema, input), me = await this.who(ctx);
-    if (me !== personKeyString(this.core.deps.config.administrator)) throw new HubRoomRefusal(403, "denied");
+    this.core.atomic(db => { if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied"); }, this.fence(ctx));
     const people = [...new Set([me, ...body.people])];
     for (const person of people) if (person !== me && !await this.core.eligible(personFromString(person))) throw new HubRoomRefusal(400, "invalid-person");
     const permits = await Promise.all(body.agents.map(id => this.core.groupExposure(id, null, this.core.groupContext(ctx))));
     const room = this.core.atomic((db, tx) => {
       for (const permit of permits) permit.assertCurrent();
+      if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied");
       const id = randomUUID(); db.prepare("INSERT INTO hub_group_rooms(id,name,created_by,created_at) VALUES(?,?,?,?)").run(id, body.name, me, this.core.now());
       for (const person of people) db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,?,0)").run(randomUUID(), id, person, person === me ? "manager" : "member");
       this.insert(db, tx, id, { kind: "system", id: "system", subject: "system", name: "" }, `${this.name(db, me)} created this room.`);
