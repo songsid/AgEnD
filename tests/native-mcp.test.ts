@@ -177,7 +177,7 @@ describe("native MCP dispatch, stable calls and result tracking",()=>{
     expect(f.lease.reportedCorrelations("other")).toEqual(["exchange-1"]);
     expect(f.lease.reportedCorrelations()).toEqual(["exchange-1"]);
   });
-  it("does not mark failed reports as sent",async()=>{
+  it.each([false,true])("does not mark failed reports as sent (detail=%s)",async(detail)=>{
     const f=fixture(),get=outboundHandlers.get.bind(outboundHandlers);
     vi.spyOn(outboundHandlers,"get").mockImplementation(tool=>tool==="report_result" ? ((_ctx,_args,respond)=>{respond(null,"Not queued");}) : get(tool));
     expect((await invoke(f,call("report","report_result",{target_instance:"lead",correlation_id:"exchange-1",summary:"Done",detail})).done()).value.isError).toBe(true);
