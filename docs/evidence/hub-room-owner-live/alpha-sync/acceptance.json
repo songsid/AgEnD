@@ -1,0 +1,37 @@
+{
+  "sourceCheckpoint": "a3d2bd6290f8cb0d1370f1c4b9fd4af04d67ddff",
+  "alpha": "0680313c267f2aaf9044c38ac682783625e59c57",
+  "parentPR": 3866,
+  "parentState": "MERGED verified on GitHub",
+  "previousSourceClearHead": "2766123a83134d9b8b940544f28cd92ea26949d5",
+  "focused": {
+    "files": 7,
+    "passed": 71,
+    "failed": 0,
+    "command": "nice -n10 node_modules/.bin/vitest run tests/hub-rooms-r1.test.ts tests/hub-room-agents-r2.test.ts tests/hub-room-link-r2.test.ts tests/hub-room-client-contract-r3.test.ts tests/hub-shared-modules-a.test.ts tests/hub-room-presence.test.ts tests/hub-room-working.test.ts --maxWorkers=2"
+  },
+  "native": {
+    "source": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exit": 0
+    },
+    "test": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  },
+  "bindings": {
+    "src/hub/http/compose.ts": "022ecfac4cc445697edda3fd7a2a16a7da1ddd5f8d6cc98e72bc36eba4d71f39",
+    "src/hub/rooms/service.ts": "77418077551c0f9d1f64de77576af6de6d765db1f2b1fa1282cbb9d4cf0ce794",
+    "tests/hub-rooms-r1.test.ts": "f35e024fd0d488d88dfb109adc5b8960b915469c952c16edfc5242ba0014974f",
+    "tests/hub-room-agents-r2.test.ts": "b2a832ad9a62c01d628ac198269093ef785a82d2509f63b6078498c3e2a8fb21",
+    "tests/hub-room-link-r2.test.ts": "da7a1f63e60c48d1b6ea35dcf784a049ad1f11fdf00475d2f2bae513ac1859ab",
+    "tests/hub-room-client-contract-r3.test.ts": "055ff308969294778499efbaec5d0ecdf0bf80c02c5a17a72b73917cfbe364e6",
+    "tests/hub-shared-modules-a.test.ts": "4c51922412cafbf72704a97469ad8734693aa7edb59f5170481bdd76d89b48cc",
+    "tests/hub-room-presence.test.ts": "6961fd7dcff5ef1b603db5c5fdfeac6a50cd3d6b89155d62426297be8fdef456",
+    "tests/hub-room-working.test.ts": "7c896d385d8c0c05802ff68dbcc5c108d27214d00c8ab50970d6575f30d4352a",
+    "src/ui/hub-room-presence.js": "1dbfbfcf3b813e530631571f49e5a55cc0cb079af148138d040fce94a85828eb",
+    "src/ui/hub-room-working.js": "d7c0cc5473d0170b0852080ea8b4ab7ac8c1ba308bf94b2daf3c82c20cb06eee"
+  },
+  "scope": "Own cleared code/test changes unchanged; incoming five blobs exact. No new runtime behavior. Fresh71 includes original43, not additive. Pending exact-head ordinary review/CI and predecessor post-merge green."
+}
