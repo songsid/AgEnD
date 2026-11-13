@@ -137,7 +137,7 @@ describe("rooms (seam 1) against the fixture", () => {
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: "/hub/v1/rooms/room-weekly/invitations", body: { agents: ["exp-99"] } });
     expect((await client.teams()).teams[0]).toMatchObject({ name: "研一" });
     await client.saveRoomCreators({ people: ["person-chen"], teams: ["team-1"] });
-    expect(await client.roomCreators()).toMatchObject({ people: ["person-chen"], teams: ["team-1"] });
+    expect(await client.roomCreators()).toMatchObject({ people: [{ id: "person-chen", name: "陳主任" }], teams: [{ id: "team-1", name: "研一", people: 2 }] });   // U2: named
     const admin = await client.adminRooms();
     expect(admin.rooms.map((r: any) => r.name)).toEqual(["研一主管週會", "研發例會", "去年專案"]);
     expect(JSON.stringify(admin)).not.toContain("整理");                                                  // names and members, no content

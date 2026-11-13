@@ -252,7 +252,12 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       return { status: 200, body: {} };
     }
     if (p === "/hub/v1/teams" && method === "GET") return { status: 200, body: { teams } };
-    if (p === "/hub/v1/admin/rooms/creators" && method === "GET") return { status: 200, body: creators };
+    // U2: the creators list names its entries (the admin page shows them as tags); PUT still takes ids.
+    if (p === "/hub/v1/admin/rooms/creators" && method === "GET") {
+      const directory = [...people, { id: "person-lin", name: "林小華" }, { id: "person-zhou", name: "周小明" }];
+      return { status: 200, body: { people: creators.people.map(id => ({ id, name: directory.find(x => x.id === id)?.name ?? id })),
+        teams: creators.teams.map(id => { const team = teams.find(x => x.id === id); return { id, name: team?.name ?? id, people: team?.members.length ?? 0 }; }) } };
+    }
     if (p === "/hub/v1/admin/rooms/creators" && method === "PUT") { creators = { people: req.body?.people ?? [], teams: req.body?.teams ?? [] }; return { status: 200, body: creators }; }
     if (p === "/hub/v1/admin/rooms" && method === "GET")
       return { status: 200, body: { rooms: rooms.filter(r => r.kind === "group").map(r => ({ id: r.id, name: r.name, people: r.members.filter(x => x.kind === "person").length,
