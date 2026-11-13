@@ -32,7 +32,7 @@ Producer basis is Ridge's portable redacted Claude Code2.1.323 handoff; historic
 
 Retained-asset claims cover only the exact listed substitutions, including alpha's old shared Log row. An entirely old already-loaded tab cannot gain new presentation without current modules. Pre-marker local launches become observable on their normal next restart; native baseline history is not replayed. Detection initiates neither restart nor policy/model action.
 
-Alpha merges remain held for the alpha.3 rehearsal until Leader clearance. Coordinator alone merges. Rollback removes optional observation readers/projections/checkpoint; configured selections, policies, transcripts and permissions remain intact.
+Leader resumed ordered alpha gating after the alpha.3 host upgrade. Fresh exact-head parity/CI and the coordinator gate remain required. Coordinator alone merges. Rollback removes optional observation readers/projections/checkpoint; configured selections, policies, transcripts and permissions remain intact.
 
 
 ## Checkpoint intent and startup read-budget repair (R1; historical)
@@ -46,10 +46,19 @@ Fail-first controls use private temp files and real file handles with byte count
 Repair verification at `d41ec09b63267a1a151aebc6e08d7d9d5255ee7d`: **499/499 across 26 suites**, both native type projects exit0, and all **26** isolated reversals have current baseline digests and exact restoration. Six new reversals pin intent serialization/restore/legacy handling and cursor/shared/boundary budgets. The paired fail-first run has16 semantic reds and6 controls. [Repair receipt](review-fixes.json), [checks](checks.json).
 
 
-## Definite recovery and Log cursor repair (R2)
+## Definite recovery and Log cursor repair (R2; historical)
 
 The R1 fixes had two related gaps: conservative legacy intent could keep a quiet incident after definite recovery, and an exhausted generic tail boundary returned0 as a Log forward cursor, replaying old user/answer steps. A fresh original/configured-model response now clears that incident without confirming the missing command or enabling new mismatch inference.
 
 The bounded reader is now startup-specific and exposes no forward cursor. The normal Log reader retains its original boundary lookup and exact shared payload scanner. Actual LogService initial→poll→append controls prove no old-step replay and later new-step delivery; real file-handle counters also prove the monitor uses the bounded startup lane, separately accounting for its inherited baseline lookup. The inherited earlier boundary scans remain unchanged.
 
 At `30b071ed8489d012d658bda47c35c66667b705ca`, **556/556 across28 suites** and both native type projects pass. Six paired regressions are semantic-red on the exact prior head, with copied test sources/digests and exact restoration. Three new isolated compiling reversals pin pending recovery, the Log cursor and the monitor's startup lane; all **29** mutation baseline bindings are current. [Repair/source parity receipt](review-r2.json), [exact before recipe](checks/reproduce-r2-before.py), [checks](checks.json). Existing UI, native source, harness, receipt and all53 PNGs are unchanged. No new browser, vendor API, live transcript or pane operation is claimed.
+
+
+## Alpha sync after #3809
+
+Plain merge `776cf10e2cc6ebf17d9a218f51cea6e2e10601b9` has parents `71eb2b5dfd16448293b9edccbdea2645edcb80fa` and `e77738fe12a021f6794776f5b5f1b2bc86a6509d`. The sole conflict was `log-steps.ts`: it retains #3809's exact ordinary bounded Log reader (including its interior EOF+skip cursor), Codex helpers/parser and the approved separate Claude metadata startup reader/payload scanner. The Claude parser is exact to the approved parent. The other two overlaps, the shared Log row and dashboard skill, auto-merge both sides. All45 incoming and195 own disjoint blobs are exact.
+
+The old integration test expected the prior prefix cursor; that assertion is semantic-red with172 controls passing on the merged source. It now pins the incoming EOF+skip contract, while retaining no-write poll, no old history replay, and newly appended record delivery. **535/535 across21 focused suites**, both native source/test typechecks, and **three fresh isolated compiling reversals** pass their expected outcomes. A restored21/21 control follows exact source restoration. Prior29 mutation bindings and556/28 broad results remain historical R2 evidence; they are not relabelled as new-head runs.
+
+[Sync receipt](review-sync.json) binds the source, parents, exact-reader comparisons, controls and three reversals. All53 original PNGs, the capture harness and receipt are unchanged. They remain the earlier bounded feature captures; no new merged-graph browser run or pixel comparison is claimed. No vendor, live transcript/pane, model, policy or lifecycle operation was performed.

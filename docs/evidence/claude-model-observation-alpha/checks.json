@@ -1,5 +1,5 @@
 {
-  "sourceHead": "30b071ed8489d012d658bda47c35c66667b705ca",
+  "sourceHead": "776cf10e2cc6ebf17d9a218f51cea6e2e10601b9",
   "baseline": "71dbc782956047c413b9f367a572e38c39d53651",
   "main": "f773dc990218e255e59b8bd3773f0eda2bfde429",
   "sourceInputs": [
@@ -28,12 +28,6 @@
       ]
     },
     {
-      "digest": "0e68725920f016bd351051f1ae7ba84de68e0723f92dd893d3165174cbb33f9e",
-      "paths": [
-        "src/log-steps.ts"
-      ]
-    },
-    {
       "digest": "0eed856018ea3d9ff8f100c4f48b8815948ea4178ca87816f3e9f9b0acb0d59a",
       "paths": [
         "tests/web-log-tab-1218.test.ts"
@@ -58,15 +52,15 @@
       ]
     },
     {
-      "digest": "2772b5db2420806fa701810845c2589b50fab6ce5cda6cb49985457e6cbb6483",
-      "paths": [
-        "src/general-knowledge/skills/web-dashboard/SKILL.md"
-      ]
-    },
-    {
       "digest": "29d6e11f576fc40460e883dadc5de024c49281413041fabc10946f80c6222ebf",
       "paths": [
         "src/instance-lifecycle.ts"
+      ]
+    },
+    {
+      "digest": "2bf3ff84e03ce1c0bbd0d0b224639277aae860e22d89e6e2c8d67906eef889a9",
+      "paths": [
+        "src/log-service.ts"
       ]
     },
     {
@@ -118,12 +112,6 @@
       ]
     },
     {
-      "digest": "57ccec33bf378f8f44a1c0c6b1c70e208ffe0c5e3956d81d0e619a8f9e30c9a8",
-      "paths": [
-        "tests/claude-model-checkpoint-tail.test.ts"
-      ]
-    },
-    {
       "digest": "59de925bd2a64869db9fdbf54061900557b058940b836dcfb2a79ae21f11bc88",
       "paths": [
         "src/ui/panel-needs.js"
@@ -139,6 +127,12 @@
       "digest": "5ad406c8dd9ce854023bbc3e93f571feb98c040b4a517517235b714eefcffb15",
       "paths": [
         "tests/needs-you-hub-1386.test.ts"
+      ]
+    },
+    {
+      "digest": "759868a730e80947b6cb30788a3e2dab87129f3cf991c74701fdf50493168b68",
+      "paths": [
+        "src/log-steps.ts"
       ]
     },
     {
@@ -184,12 +178,6 @@
       ]
     },
     {
-      "digest": "920449ae8986c3648277b550e3637dace1d5b804a374c77ac32da44dc2d28672",
-      "paths": [
-        "src/ui/log-row.js"
-      ]
-    },
-    {
       "digest": "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef",
       "paths": [
         "src/ui/shared/model-observation.js"
@@ -214,15 +202,33 @@
       ]
     },
     {
+      "digest": "a82eedf03060acea6df8c942b721e7f317d964f45a44eaaa0989574d236143b0",
+      "paths": [
+        "src/general-knowledge/skills/web-dashboard/SKILL.md"
+      ]
+    },
+    {
       "digest": "acae404f710c2a911e580c598c67fce9613a93c32aa4b40429c56e7186c3c451",
       "paths": [
         "tests/claude-model-switch.test.ts"
       ]
     },
     {
+      "digest": "ae09619242bb191b7bf1e029133c521d6cafdf622ecdfbc0233509fe27f0dcd6",
+      "paths": [
+        "tests/chat-activity-codex-3787.test.ts"
+      ]
+    },
+    {
       "digest": "af619e95ec7451e91c7130abb9ecbc88806ae133118d74d385a0718489ead205",
       "paths": [
         "src/backend/claude-code.ts"
+      ]
+    },
+    {
+      "digest": "afb307609b1ca73333b650d44f51600dcd5f8aa71e962afb88e17ea26c78dc1a",
+      "paths": [
+        "src/transcript-jsonl.ts"
       ]
     },
     {
@@ -274,6 +280,12 @@
       ]
     },
     {
+      "digest": "f53c12f0de4626ca481675ed5c440ceab6fd32f6155358842761ef3865381dff",
+      "paths": [
+        "tests/transcript-jsonl.test.ts"
+      ]
+    },
+    {
       "digest": "fd5d1ceee06b4694d7f6c8f238bf26e1482e17ae36ccb6f00716aa742f7e61ed",
       "paths": [
         "docs/design/claude-model-observation.md"
@@ -290,24 +302,43 @@
       "paths": [
         "src/ui/panel-details.js"
       ]
+    },
+    {
+      "digest": "fe5192f29128302e820bcdf105347600f845a83b4b41be1861a1b3e21a0db565",
+      "paths": [
+        "src/ui/log-row.js"
+      ]
+    },
+    {
+      "digest": "ff3b153216354b77bb2f4a8721f1f7f4c8de2c7eb993c15b11210687a30ce4b8",
+      "paths": [
+        "tests/claude-model-checkpoint-tail.test.ts"
+      ]
     }
   ],
   "focused": {
-    "passed": 469,
-    "files": 23,
+    "passed": 535,
+    "files": 21,
     "workers": 2,
-    "log": "checks/final-controls.log"
+    "log": "checks/sync-focused.log"
   },
   "types": {
-    "compiler": "native TypeScript7.0.2",
     "source": 0,
-    "tests": 0
+    "tests": 0,
+    "sourceLog": "checks/sync-source-types.log",
+    "testLog": "checks/sync-test-types.log",
+    "compiler": "TypeScript native7.0.2"
   },
   "mutations": {
-    "caught": 29,
+    "caught": 3,
     "isolated": true,
     "allRestored": true,
-    "record": "mutations/results.json"
+    "record": "checks/sync-mutations/results.json",
+    "historicalR2": {
+      "caught": 29,
+      "sourceHead": "30b071ed8489d012d658bda47c35c66667b705ca",
+      "record": "mutations/results.json"
+    }
   },
   "browser": {
     "captureHead": "34d236d2d98f10440c0819b20134aee47ee36f63",
@@ -335,7 +366,7 @@
   "livePaneWrites": 0,
   "realNativeMachines": 0,
   "modelOrPolicyActions": 0,
-  "alphaMergeHold": "2.4.0-alpha.3 rehearsal freeze; coordinator/Leader clearance required.",
+  "alphaMergeHold": false,
   "reviewFixes": {
     "sourceHead": "d41ec09b63267a1a151aebc6e08d7d9d5255ee7d",
     "priorHead": "f4a30d470f98116e477c4602732a026847217239",
@@ -411,5 +442,23 @@
     "receipt": "review-r2.json",
     "nativeSourceUiHarnessPngDelta": false,
     "newBrowserExecution": false
-  }
+  },
+  "reviewSync": {
+    "sourceHead": "776cf10e2cc6ebf17d9a218f51cea6e2e10601b9",
+    "receipt": "review-sync.json",
+    "priorApprovedHead": "71eb2b5dfd16448293b9edccbdea2645edcb80fa",
+    "incoming": "e77738fe12a021f6794776f5b5f1b2bc86a6509d",
+    "focused": {
+      "passed": 535,
+      "files": 21,
+      "workers": 2,
+      "log": "checks/sync-focused.log"
+    },
+    "freshCompilingReversals": 3,
+    "ordinaryReaderExactIncoming": true,
+    "startupReaderExactApproved": true,
+    "newBrowserExecution": false,
+    "original53PngsUnchanged": true
+  },
+  "releaseScope": "Leader resumed ordered alpha gating after the alpha.3 host upgrade; fresh exact-head parity/CI and coordinator gate still required."
 }

@@ -18,6 +18,18 @@
     ]
   },
   {
+    "digest": "0f0e5aad8048ec8ac49e0d9f5564a4974061eb22d731dd45a7441afa1c746bca",
+    "paths": [
+      "checks/sync-mutations/results.json"
+    ]
+  },
+  {
+    "digest": "0f3c28e84c79142f7a69f477941c974cd4feadae22dc0fe0679ad2b6de1632e6",
+    "paths": [
+      "README.md"
+    ]
+  },
+  {
     "digest": "0fc90959f074193f13eac9d4fb45a1884a1165aa5381f3e5740709a82f15a49c",
     "paths": [
       "browser/availability-desk-dark-zh-TW-needs.png"
@@ -208,6 +220,12 @@
     ]
   },
   {
+    "digest": "52b44de31485954bbb7bd3217f66c294e6ebfb3b59b03de6a81569d8bf039daa",
+    "paths": [
+      "checks/sync-restored.log"
+    ]
+  },
+  {
     "digest": "53c410a3a5d35aa9e5248a522c47f24317e9e8329fe29a0badb62e8450ff32d6",
     "paths": [
       "browser/after-desk-light-en-card.png"
@@ -217,6 +235,12 @@
     "digest": "5631b432ac3a802b4e333f3542aa74dd60b1a2970e53bb588f3549df4a404862",
     "paths": [
       "browser/after-desk-dark-en-log.png"
+    ]
+  },
+  {
+    "digest": "575f1df514da1845a5ba387330934b7a20d8041c0f5812f922a1c3cc9235bfa0",
+    "paths": [
+      "checks.json"
     ]
   },
   {
@@ -256,9 +280,15 @@
     ]
   },
   {
-    "digest": "60aee75d7d0772debf264129bf83b39e7fc9ade8e1931a611329a0b033fc41ef",
+    "digest": "62ee6ecd90a4ea694d4067fd2b6ea677c3451a1cc2aa017e6d92fa4944c05cb8",
     "paths": [
-      "README.md"
+      "checks/sync-focused.log"
+    ]
+  },
+  {
+    "digest": "63d2d9da749ecb42e1455af98fb065a132aeed5029e190d97d3cf9a3f8a4febf",
+    "paths": [
+      "checks/sync-first-focused.log"
     ]
   },
   {
@@ -359,6 +389,12 @@
     ]
   },
   {
+    "digest": "998b93a7cd66e485e1edaa5e6d21e023d1214ebcf5b70952a10a20475209b95b",
+    "paths": [
+      "review-sync.json"
+    ]
+  },
+  {
     "digest": "9a1be66c14d8c1aa4cdddacf869fc88ec782228cac6fd0314ad218d9e1c478ce",
     "paths": [
       "mutations/run.py"
@@ -374,12 +410,6 @@
     "digest": "9cc5a810a023f156df808d923952900239cf162b6d84baf906e230cd0d971a56",
     "paths": [
       "browser/after-desk-light-en-office-card.png"
-    ]
-  },
-  {
-    "digest": "9dedb263076a80c53ddee8947fc60ca41aab44c1c4be7ea32a6c66c2ce2108da",
-    "paths": [
-      "checks.json"
     ]
   },
   {
@@ -455,6 +485,12 @@
     ]
   },
   {
+    "digest": "b38177255dc1e3dd5f016ab589dfc4bf1930b9fa96141e9c22058fd75b25e201",
+    "paths": [
+      "checks/sync-mutations/S3-startup-budget.log"
+    ]
+  },
+  {
     "digest": "b7e3b920e0ab938b23710be815d0d22f778e66aa96ea6d22a58e2e7a7f386116",
     "paths": [
       "browser/after-desk-light-zh-TW-details.png"
@@ -516,6 +552,12 @@
     ]
   },
   {
+    "digest": "c9e3a85cb669029eac62743e96d81070f2e87a64eba13d5563c147348db09314",
+    "paths": [
+      "checks/sync-checks.json"
+    ]
+  },
+  {
     "digest": "cc1648befaad7747e8b27b7176db57a292fc2c34a73bae4e3225bb5b6cd0bc7e",
     "paths": [
       "mutations/T2-shared-budget.log"
@@ -529,9 +571,27 @@
     ]
   },
   {
+    "digest": "cf87543d06a30a43ca881a18e87ed2f93303aeedccdc847acf0561b359cb3de7",
+    "paths": [
+      "checks/sync-mutations/S2-incoming-skip.log"
+    ]
+  },
+  {
+    "digest": "d39339465ebb70af258bf865962a0da585708a40eec3fa7a54736ddc954783e1",
+    "paths": [
+      "checks/sync-mutations/S1-incoming-cursor.log"
+    ]
+  },
+  {
     "digest": "d4a651e9547999e46ecdbb9a69663282a46945d26cadc72272813bb3e2420db9",
     "paths": [
       "mutations/M3-dedupe.log"
+    ]
+  },
+  {
+    "digest": "da531a0f0a471310dfab328965a5d49341dcd4904157277e0ea0db930fcce4ec",
+    "paths": [
+      "checks/sync-mutations.py"
     ]
   },
   {
@@ -566,6 +626,11 @@
       "checks/r2-source-types.log",
       "checks/r2-test-types.log",
       "checks/source-types.log",
+      "checks/sync-mutations/S1-incoming-cursor-types.log",
+      "checks/sync-mutations/S2-incoming-skip-types.log",
+      "checks/sync-mutations/S3-startup-budget-types.log",
+      "checks/sync-source-types.log",
+      "checks/sync-test-types.log",
       "checks/test-types.log",
       "mutations/A1-native-session-types.log",
       "mutations/A2-native-owner-types.log",
@@ -632,6 +697,12 @@
     "digest": "f19f7f33bc14628e5bdb3b1774ac4c12d7dd622dedbfeec677b09a20b5449deb",
     "paths": [
       "browser/after-phone-light-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "f2f840d67491321b087e3eddba3ffe05af7669619feb255c11e6c53104675c5a",
+    "paths": [
+      "checks/sync-resolution.json"
     ]
   },
   {
