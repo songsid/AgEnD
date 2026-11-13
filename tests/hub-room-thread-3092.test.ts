@@ -64,6 +64,21 @@ describe("the thread's mapping (pure)", () => {
     expect(thread.askState({ total: 1, answered: 0, working: 1, later: 0 })).toEqual({ delivery: "processing" });
     expect(thread.askState({ total: 12, answered: 12, working: 0, later: 0 }).line).toBe("12 個都回答了");
   });
+  it("presence.changed keeps a member's note and reason only while the event carries them (Ridge)", async () => {
+    const fx = createHubRoomsFixture();
+    const prev = g.fetch; g.fetch = (url: string, init?: any) => fx.fetch(url, init); g.EventSource = fx.EventSource;
+    try {
+      const c = client.createHubWebClient(); await c.session();
+      const st = thread.createRoomStore("room-weekly", { client: c });
+      await until(() => st.loaded());
+      const who = () => st.detail().members.find((m: any) => m.id === "exp-02");
+      fx.emit("presence.changed", { roomId: "room-weekly", memberId: "exp-02", presence: "paused", presenceReason: "quota" });
+      expect([who().presence, who().presenceReason, who().presenceNote]).toEqual(["paused", "quota", undefined]);   // reason alone
+      fx.emit("presence.changed", { roomId: "room-weekly", memberId: "exp-02", presence: "idle" });
+      expect([who().presence, "presenceReason" in who()]).toEqual(["idle", false]);                                  // omitted: cleared
+      st.stop();
+    } finally { g.fetch = prev; }
+  });
   it("the @ menu: @All agents (if allowed), the assistant, agents by name or owner, then people; mentions read from the text", async () => {
     const fx = createHubRoomsFixture();
     const weekly = await (await fx.fetch("/hub/v1/rooms/room-weekly")).json(), rd = await (await fx.fetch("/hub/v1/rooms/room-rd")).json();
