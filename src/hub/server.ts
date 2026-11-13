@@ -16,6 +16,7 @@ import { personKeyString } from "./identity.js";
 import { handleCompanyJoin } from "./join/http.js";
 import type { HubCompanyJoin } from "./join/service.js";
 import { HubPublicationRefusal } from "./catalog.js";
+import { HUB_WEB_ORIGIN_CAPABILITY, type HubWebOriginStatement } from "./web-origin.js";
 /** `features`: the optional features both ends listed (the member's hello ∩ this Hub's), set once at hello. */
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout }
@@ -29,6 +30,8 @@ export interface HubServerOptions {
   capabilities?: readonly string[];
   /** Key-proved enrollment lives only on this pinned machine listener. */
   companyJoin?: HubCompanyJoin;
+  /** web-origin-v1 (M-2901): this Hub's current web address, signed for the one Fleet this link authenticated. */
+  webOrigin?(fleetId: string): HubWebOriginStatement;
 }
 export class HubServer {
   private server: Server | null = null;
@@ -126,7 +129,8 @@ export class HubServer {
       await link.send({ v: 1, type: "welcome", requestId: frame.requestId, linkEpoch: context.linkEpoch,
         payload: { selectedVersion: 1, hubId: this.options.hubId, fleetId: context.fleetId, linkEpoch: context.linkEpoch, revocationVersion,
           // Only to a member that asked: an older member's strict welcome schema refuses the field.
-          ...(features.has("welcome-caps-v1") ? { capabilities: [...offered] } : {}) } }); return;
+          ...(features.has("welcome-caps-v1") ? { capabilities: [...offered] } : {}),
+          ...(features.has("welcome-caps-v1") && features.has(HUB_WEB_ORIGIN_CAPABILITY) && this.options.webOrigin ? { webOrigin: this.options.webOrigin(context.fleetId) } : {}) } }); return;
     }
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
     if (!connection.ready && !["exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");

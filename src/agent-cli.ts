@@ -131,19 +131,29 @@ async function main(): Promise<void> {
     // Communication
     case "send":
     case "delegate": {
-      const { flags, positional } = splitFlags(rest, ["--forward"]);
+      const { flags, positional } = splitFlags(rest, ["--forward"], ["--detail"]);
       args = op === "send"
         ? { instance_name: positional[0], message: positional[1] ?? "", request_kind: positional[2] }
         : { target_instance: positional[0], task: positional[1] ?? "", success_criteria: positional[2], context: positional[3] };
       if (flags["--forward"]) args.forwards = flags["--forward"];
+      if (flags["--detail"]) args.detail = true;
       break;
     }
-    case "report": args = { target_instance: rest[0], summary: rest[1] ?? "", correlation_id: rest[2], artifacts: rest[3] }; break;
-    case "ask": args = { target_instance: rest[0], question: rest[1] ?? "", context: rest[2] }; break;
+    case "report": {
+      const { flags, positional } = splitFlags(rest, [], ["--detail"]);
+      args = { target_instance: positional[0], summary: positional[1] ?? "", correlation_id: positional[2], artifacts: positional[3], ...(flags["--detail"] ? { detail: true } : {}) };
+      break;
+    }
+    case "ask": {
+      const { flags, positional } = splitFlags(rest, [], ["--detail"]);
+      args = { target_instance: positional[0], question: positional[1] ?? "", context: positional[2], ...(flags["--detail"] ? { detail: true } : {}) };
+      break;
+    }
     case "delivery-status": {
       for (let i = 0; i < rest.length; i++) {
         const key = rest[i]!.replace(/^--/, "").replaceAll("-", "_");
-        if (!["delivery_id", "operation_id", "correlation_id", "message_id", "limit", "cursor"].includes(key)) {
+        if (key === "detail") { args.detail = true; continue; }
+        if (!["delivery_id", "operation_id", "correlation_id", "message_id", "limit", "cursor", "content_includes"].includes(key)) {
           die(`Unknown delivery-status option: ${rest[i]}`);
         }
         const value = rest[++i];
@@ -152,10 +162,19 @@ async function main(): Promise<void> {
       }
       break;
     }
-    case "broadcast": args = { message: rest[0] ?? "", team: rest[1] }; break;
+    case "broadcast": {
+      const { flags, positional } = splitFlags(rest, [], ["--detail"]);
+      args = { message: positional[0] ?? "", team: positional[1], ...(flags["--detail"] ? { detail: true } : {}) };
+      break;
+    }
 
     // Usage
-    case "usage": args = { ...(rest[0] === "--force" ? { force: true } : {}) }; break;
+    case "usage": {
+      const { flags, positional } = splitFlags(rest, [], ["--force", "--detail"]);
+      if (positional.length) die(`Unknown usage option: ${positional[0]}`);
+      args = { ...(flags["--force"] ? { force: true } : {}), ...(flags["--detail"] ? { detail: true } : {}) };
+      break;
+    }
 
     // Instance management
     case "list": break;
@@ -404,15 +423,6 @@ async function main(): Promise<void> {
 
   try {
     const result = await post(op, args);
-    // `usage` responses carry a pre-rendered text block; print that instead of
-    // one long JSON line so an agent (or a human) can read it directly.
-    if (op === "usage") {
-      try {
-        const parsed = JSON.parse(result) as { formatted?: string; error?: string };
-        console.log(parsed.error ? result : parsed.formatted ?? result);
-        return;
-      } catch { /* fall through to raw */ }
-    }
     // The task board answers in text (a card, your work): printed as text, not as one quoted JSON line.
     if (op === "task") {
       try {

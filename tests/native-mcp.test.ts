@@ -158,11 +158,13 @@ describe("native MCP dispatch, stable calls and result tracking",()=>{
     const invalid=await invoke(f,call("invalid","task",{action:"invented"})).done();expect(invalid.value.isError).toBe(true);
     expect(f.ctx.handleTaskCrudHttp).toHaveBeenCalledTimes(1);
   });
-  it("retains successful explicit report correlations after close, so the adapter can avoid a duplicate fallback",async()=>{
+  it.each([false,true])("retains successful explicit report correlations after close (detail=%s), so the adapter can avoid a duplicate fallback",async(detail)=>{
     const f=fixture(),get=outboundHandlers.get.bind(outboundHandlers);
-    vi.spyOn(outboundHandlers,"get").mockImplementation(tool=>tool==="report_result" ? ((_ctx,_args,respond)=>{respond({queued:true});}) : get(tool));
-    const reported=await invoke(f,call("report","report_result",{target_instance:"lead",correlation_id:"exchange-1",summary:"Done"})).done();
-    expect(reported.value.isError).not.toBe(true);expect(JSON.parse(reported.value.content[0].text).operation_id).toBeTypeOf("string");
+    vi.spyOn(outboundHandlers,"get").mockImplementation(tool=>tool==="report_result" ? ((_ctx,_args,respond)=>{respond({sent:true,queued:true,delivery_id:"native-report"});}) : get(tool));
+    const reported=await invoke(f,call("report","report_result",{target_instance:"lead",correlation_id:"exchange-1",summary:"Done",detail})).done();
+    expect(reported.value.isError).not.toBe(true);
+    const ack=JSON.parse(reported.value.content[0].text);expect(ack.queued).toBe(true);
+    if(detail) expect(ack.operation_id).toBeTypeOf("string");else expect(ack).not.toHaveProperty("operation_id");
     f.lease.close();expect(f.lease.reportedCorrelations()).toEqual(["exchange-1"]);
     expect(f.lease.reportedCorrelations("lead")).toEqual(["exchange-1"]);
   });
@@ -175,10 +177,10 @@ describe("native MCP dispatch, stable calls and result tracking",()=>{
     expect(f.lease.reportedCorrelations("other")).toEqual(["exchange-1"]);
     expect(f.lease.reportedCorrelations()).toEqual(["exchange-1"]);
   });
-  it("does not mark failed reports as sent",async()=>{
+  it.each([false,true])("does not mark failed reports as sent (detail=%s)",async(detail)=>{
     const f=fixture(),get=outboundHandlers.get.bind(outboundHandlers);
     vi.spyOn(outboundHandlers,"get").mockImplementation(tool=>tool==="report_result" ? ((_ctx,_args,respond)=>{respond(null,"Not queued");}) : get(tool));
-    expect((await invoke(f,call("report","report_result",{target_instance:"lead",correlation_id:"exchange-1",summary:"Done"})).done()).value.isError).toBe(true);
+    expect((await invoke(f,call("report","report_result",{target_instance:"lead",correlation_id:"exchange-1",summary:"Done",detail})).done()).value.isError).toBe(true);
     expect(f.lease.reportedCorrelations()).toEqual([]);
   });
 });

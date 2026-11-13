@@ -39,6 +39,17 @@ To restore a previous address, submit a new host-owner operation with the prior 
 
 The UI remains on hold. Its later proposal will use the approved minimal field/confirmation direction and explicitly say that people sign in again. Before that UI is reviewed, provide the requested real-shell EN/zh-TW desktop/phone evidence and the user-facing zh-TW wording to the leader. #3429 member-address migration and re-pairing are separate work.
 
+## Connected Fleets follow the new address (M-2901)
+
+A member keeps the web address it paired with in `pairing.json`, and its own pages build three links to the Hub from it: Settings → Hub's open link, a shared agent's "who may ask" link and the sidebar switcher. A changed address must not leave those dead, and must not make Reconnect see "a different identity".
+
+- **Statement.** On a link where both ends list the optional `web-origin-v1`, the Hub's `welcome` carries `{v, webOrigin, revision, signature}`: an Ed25519 signature by the Hub's issuer key over `["agend-hub-web-origin-v1", v, hubId, issuerKeyId, fleetId, memberOrigin, webOrigin, revision]`. `revision` is the sealed `hub.webAddress.revision` (0 if the address never changed). The member verifies it against the issuer key it pinned at pairing, for its own Fleet and member address, and validates the address as a join does: a bare https origin, never the member address. An older Hub or member doesn't list the capability and never sees the field; its strict welcome schema is untouched.
+- **Kept beside the pairing.** The verified statement is kept verbatim in `hub-member/<hubId>/web-origin.json`. `pairing.json` stays byte-identical, because its digest is an identity key: link state, the retired-binding check, company-join settlement and the holds all use it. Every read re-verifies the kept file; one that doesn't verify is ignored and the paired address applies. A lower revision never replaces a higher one, and the same revision never names two addresses.
+- **Audited.** Each decision is one record in the member's own audit log: `web-origin.updated` (completed, `revision:N`; the file is written inside that record's transaction) or `web-origin.refused` (denied, `unverified` or `stale`). A refusal changes nothing, and the link goes on.
+- **Used.** The pairing view names the verified address, so all three links follow it. The company-join card shows it. Reconnect / 「恢復這次連接」 re-joins at it and expects the pinned identity with that address: the same Hub ID, member key, member address and issuer key. Its trust pin is then made for the new address on first use. Reconnect and Remove accept the saved address too, for a tab from before the change. Without a verified statement nothing changes: a Hub that moved without telling still stops at the identity check.
+
+#3429 (the member address) needs the same pattern and more: re-pairing to a new member endpoint, and the pinned TLS key.
+
 ## Evidence scope
 
 The owned-container backend rehearsal is `scripts/manual/hub-web-address/run.sh`: real Chromium, the host's real D3 route, production Hub HTTPS, verified synthetic LDAPS, and a second FleetManager's real pairing API/member runtime with no Agents. It checks new-address reachability/fresh login, old-session and old-address refusal, and reconnection with identical member credential/pins. The committed PNGs and source-hash-bound receipt are technical backend evidence. They do not approve or implement the held Settings UI, and do not substitute for its later EN/zh-TW desktop/phone/SKEW matrix.

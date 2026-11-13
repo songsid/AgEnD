@@ -31,6 +31,7 @@ import { createHubGroupAdminControl } from "../group-policy/admin-control.js";
 import { createHubGroupAdminInventory } from "../group-policy/admin-inventory.js";
 import { createHubGroupWelcome } from "../group-policy/welcome.js";
 import { signAsker, canonicalArguments, sha256, personKeyString } from "../identity.js";
+import { signHubWebOrigin } from "../web-origin.js";
 import { BIND_SECRET_REL, bindSecretPath } from "../init/layout.js";
 import type { HubMountedService } from "../mount.js";
 import { HubPairingService } from "../pairing.js";
@@ -154,6 +155,8 @@ interface ServerSettings {
   directory: HubDirectoryConfig & { bindPasswordRef: string };
   administrator: PersonKey;
   retention: { contentDays: number; eventDays: number };
+  /** M-2901: the sealed hub.webAddress.revision (#3428), 0 for a Hub whose web address never changed. */
+  webAddressRevision: number;
 }
 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -194,6 +197,7 @@ export function settingsOf(cfg: Record<string, unknown>): ServerSettings {
     directory: directory as unknown as ServerSettings["directory"],
     administrator: { realm: admin.realm, objectId: admin.objectId },
     retention: { contentDays: retention.contentDays as number, eventDays: retention.eventDays as number },
+    webAddressRevision: Number.isSafeInteger(obj(cfg.webAddress).revision) && (obj(cfg.webAddress).revision as number) > 0 ? obj(cfg.webAddress).revision as number : 0,
   };
 }
 
@@ -449,6 +453,9 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         current: live,
         receive: (frame, link) => http.receive(frame, link),
         hold: (fleetId, code) => options.log("warn", "Hub member link held", { fleetId, code }),
+        // M-2901: a connected Fleet learns where this Hub's pages are now (web-origin.ts), signed for its own link.
+        webOrigin: (fleetId) => signHubWebOrigin({ hubId: settings.hubId, issuerKeyId: identity.issuerKeyId, fleetId, memberOrigin: settings.memberOrigin },
+          settings.webOrigin, settings.webAddressRevision, issuerKey),
       });
       teardown.add("the member listener", () => memberServer?.close());
 

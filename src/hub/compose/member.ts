@@ -30,6 +30,7 @@ import { HubMemberClient, type HubMemberLink } from "../client.js";
 import { HUB_MEMBER_JOURNAL_MIGRATION, HubMemberJournal, type HubRestrictedOutbox } from "../member-journal.js";
 import { createHubMemberHandshake } from "../member-reconciliation.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "../profile.js";
+import { createHubWebOriginRecorder, learnHubWebOrigin } from "../web-origin.js";
 import { createQuotaPublisher } from "../member/quota.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import type { HubAuditRecord, HubServerFrame } from "../types.js";
@@ -488,6 +489,18 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         receive,
+        // M-2901: where the Hub's pages are now. Kept beside the pairing (never in it), only when it verifies against the
+        // issuer key pinned at pairing and moves forward; audited in this member's own log either way it is decided.
+        webOrigin: (statement, l) => {
+          if (!live() || !l.current()) return;
+          try {
+            learnHubWebOrigin({ home: options.home, profile, current: () => live() && l.current(), log: options.log,
+              record: createHubWebOriginRecorder({ db, audit, now, fleetId: profile.fleetId, policyVersion: () => l.revocationVersion }) }, statement);
+          } catch (err) {
+            // Not recorded or not kept: the address is unchanged; the next welcome's statement tries again (no second record).
+            options.log("warn", "The Hub's web address was not kept yet", { error: (err as Error).message });
+          }
+        },
         hold: (code) => {
           quota.stop();
           const state = code === "revoked" ? "revoked" : code === "rejected" || code === "invalid" ? "rejected" : "offline";

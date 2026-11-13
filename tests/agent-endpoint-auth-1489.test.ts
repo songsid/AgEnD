@@ -249,7 +249,7 @@ describe("POST /agent: token-first validation (#1489)", () => {
   // Reverse mutation: making the handler always return 500 would fail this
   // test because we assert status 200 and a non-empty JSON result.
 
-  it("returns 200 with a JSON result for a valid token and well-formed body", async () => {
+  it.each([false,true])("returns 200 with a JSON result for a valid token and well-formed body (detail=%s)", async (detail) => {
     const dataDir = mkdtempSync(join(tmpdir(), "agend-ep-ok-"));
     try {
       const ctx = makeCtx(dataDir, "dev", "test-token-not-a-secret");
@@ -272,7 +272,7 @@ describe("POST /agent: token-first validation (#1489)", () => {
       const body = JSON.stringify({
         instance: "dev",
         op: "send",
-        args: { instance_name: "target", message: "hello" },
+        args: { instance_name: "target", message: "hello", detail },
       });
       const req = makeRequest({
         headers: { "x-agend-instance-token": agentTokenHeader("dev", "test-token-not-a-secret") },
@@ -287,7 +287,9 @@ describe("POST /agent: token-first validation (#1489)", () => {
       expect(res.status).toBe(200);
       // Response must be non-empty JSON (actual op result)
       const parsed: unknown = JSON.parse(res.body);
-      expect(parsed).toMatchObject({ operation_id: expect.any(String) });
+      expect(parsed).toMatchObject({ sent:true,queued:true,delivery_id:"d1" });
+      if(detail) expect(parsed).toMatchObject({operation_id:expect.any(String)});
+      else expect(parsed).not.toHaveProperty("operation_id");
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }
