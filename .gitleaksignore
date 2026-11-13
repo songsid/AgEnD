@@ -85,7 +85,8 @@ ce5756066e9faa53ac73c39a4e06a374a30d6a58:docs/evidence/hub-room-consent-track-c/
 
 # PR #3872 inherited R evidence:13 SHA-256 values match public source at each
 # historical finding commit;40 UUIDs are public SSE message idempotency IDs,
-# generated for dedupe, not credentials. Raw owner receipts/PNGs stay untouched.
+# generated for dedupe, not credentials. Original receipts remain in Git;
+# current receipts are losslessly encoded, with all PNG bytes unchanged.
 # Exact nonmerge commit/path/rule/line only; no merge/path/rule/future exemption.
 472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:1007
 472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:1028
