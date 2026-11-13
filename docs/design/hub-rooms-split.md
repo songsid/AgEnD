@@ -104,7 +104,7 @@ interface RoomAssistant {
 GET/PUT /hub/v1/admin/assistant   { enabled, backend, account, cap, idleMinutes }   + GET …/usage
 ```
 
-- A owns how it runs: the Hub host's own AgEnD fleet, one ClassicBot-style instance per room keyed by the room id, started on the first ask (never resident), stopped after `idleMinutes` (default 15, range 1–240), at most `cap` running (default 3, range 1–16). Over the cap, asks queue in arrival order and the longest-idle instance is stopped to free a slot; one ask at a time per room. Its conversation survives idle stops; `forget(roomId)` drops it.
+- A owns how it runs: the Hub host's own AgEnD fleet, one ClassicBot-style instance per room keyed by the room id, started on the first ask (never resident), stopped after `idleMinutes` (default 15, range 1–240), at most `cap` running (default 3, range 1–16). Over the cap, asks queue in arrival order and the longest-idle instance is stopped to free a slot; one ask at a time per room. Pilot choice (2026-11-14): each ask runs a fresh tools-off one-shot worker that sees only the supplied `context` (the last 30 room messages) and exits after its text result; nothing is remembered between asks. The per-room controller, queue, cap and idle stop are unchanged; `forget(roomId)` drops the controller.
 - Backend and account: one for all rooms, set by the Hub admin; the account is a credential profile of the fleet on the Hub host. Not signed in or out of quota: `state: "paused"` with a note.
 - No tools, no files. Its account and quota are the Hub owner's.
 - A person's 1:1 with 「Hub 助理」 is a direct room whose only agent is the assistant; the same `ask` serves it.
