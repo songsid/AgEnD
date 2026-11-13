@@ -20,8 +20,30 @@ const WORD = { online: "stOnline", idle: "stIdle", working: "stWorking", paused:
  * Fixture/server presence-note display text → hubRoom reason key. The note arrives
  * as display text (the fixture's contract), so the known ones map back to their
  * keys here; anything else passes through unchanged (it is text, never a key).
+ * Once R2 serves presenceReason codes, those win over this legacy text path.
  */
 const NOTE_KEY = { "額度用完": "pauseQuota", "等待登入": "pauseSignIn", "等待核准": "pauseApproval", "需要更新 AgEnD": "needsUpdate" };
+
+/**
+ * R2 presenceReason codes → display overrides (hub-rooms track R/C contract).
+ * A mapped reason wins over any legacy presenceNote text; an unmapped code is
+ * ignored so the presence mapping stands and no raw code ever reaches the UI.
+ * - quota/auth/approval/operator/capacity: yellow paused (only the first three
+ *   have a reason word; there is no operator/capacity word in hubRoom yet).
+ * - update: grey with its own word. - idle: no-op, the presence already says
+ *   idle (autowake sleep). - error/stuck/unknown: no mapping defined — the
+ *   presence mapping stands ("unknown" on a paused member is plain Paused).
+ * - stopped/crashed: need a hubRoom stopped word, which does not exist yet —
+ *   deliberately unmapped here; until it lands, the presence mapping stands.
+ */
+const REASON = {
+  quota: { dot: "paused", word: "stPaused", noteKey: "pauseQuota" },
+  auth: { dot: "paused", word: "stPaused", noteKey: "pauseSignIn" },
+  approval: { dot: "paused", word: "stPaused", noteKey: "pauseApproval" },
+  update: { dot: "offline", word: "needsUpdate" },
+  operator: { dot: "paused", word: "stPaused" },
+  capacity: { dot: "paused", word: "stPaused" },
+};
 
 const groupIndex = (presence) => { const i = GROUP_ORDER.indexOf(presence); return i < 0 ? GROUP_ORDER.length : i; };
 
@@ -41,6 +63,8 @@ export function presenceView(member) {
       ? { dot: "paused", word: "stAssistantDown" }
       : { dot: DOT[presence] ?? "offline", word: WORD[presence] ?? "stOffline" };
   }
+  const reason = REASON[member?.presenceReason];
+  if (reason) return { dot: reason.dot, word: reason.word, ...(reason.noteKey ? { noteKey: reason.noteKey } : {}) };
   const noteKey = NOTE_KEY[member?.presenceNote];
   if (presence === "offline" && noteKey === "needsUpdate") return { dot: "offline", word: "needsUpdate" };
   const view = { dot: DOT[presence] ?? "offline", word: WORD[presence] ?? "stOffline" };

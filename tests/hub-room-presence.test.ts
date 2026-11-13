@@ -38,6 +38,24 @@ describe("presenceView", () => {
     expect(P.presenceView(byName(fx, "infra-watch"))).toEqual({ dot: "paused", word: "stPaused", noteKey: "pauseSignIn" });
     expect(P.presenceView(byName(fx, "old-helper"))).toEqual({ dot: "offline", word: "needsUpdate" });
   });
+  it("R2 presenceReason codes win over legacy text; unknown codes are ignored", () => {
+    const r = (presence: string, presenceReason?: string, presenceNote?: string) => P.presenceView({ kind: "agent", name: "x", presence, presenceReason, presenceNote });
+    expect(r("paused", "quota", "額度用完")).toEqual({ dot: "paused", word: "stPaused", noteKey: "pauseQuota" });
+    expect(r("working", "approval")).toEqual({ dot: "paused", word: "stPaused", noteKey: "pauseApproval" });
+    expect(r("idle", "update")).toEqual({ dot: "offline", word: "needsUpdate" });
+    expect(r("paused", "operator")).toEqual({ dot: "paused", word: "stPaused" });
+    expect(r("working", "bogus-code")).toEqual({ dot: "working", word: "stWorking" });
+    expect("noteKey" in r("working", "bogus-code")).toBe(false);
+    // stopped/crashed wait on a hubRoom stopped word: presence mapping stands meanwhile.
+    expect(r("paused", "stopped")).toEqual({ dot: "paused", word: "stPaused" });
+    for (const lang of ["en", "zh-TW"]) {
+      i18n.setLang(lang, { store: false });
+      for (const v of [r("paused", "quota"), r("idle", "update"), r("working", "bogus-code")]) {
+        expect(hroom(v.word), lang).not.toContain("hubRoom.");
+        if (v.noteKey) expect(hroom(v.noteKey), lang).not.toContain("hubRoom.");
+      }
+    }
+  });
   it("an unrecognised note goes to noteText verbatim, never through hroom", () => {
     const odd = { kind: "agent", name: "x", presence: "paused", presenceNote: "Quota exhausted" };
     expect(P.presenceView(odd)).toEqual({ dot: "paused", word: "stPaused", noteText: "Quota exhausted" });
