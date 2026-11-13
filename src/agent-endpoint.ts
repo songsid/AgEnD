@@ -564,7 +564,12 @@ export async function dispatchAgentOperation(
       if (!operationId) {
         resolve(response);
       } else if (response && typeof response === "object" && !Array.isArray(response)) {
-        if (COMPACT_ACK_TOOLS.has(tool) && args.detail !== true) {
+        const ack = response as Record<string, unknown>;
+        // Only a positive acceptance is compact. An error/unknown result can follow admission
+        // (for example, an activity logger throws), so the caller still needs its exact selector.
+        const accepted = !error && !ack.error && ack.queued === true
+          && (ack.sent === true || typeof ack.sent === "number" && ack.sent > 0);
+        if (COMPACT_ACK_TOOLS.has(tool) && args.detail !== true && accepted) {
           durableResponseOperations.set(response, operationId);
           resolve(response);
         } else resolve({ ...(response as Record<string, unknown>), operation_id: operationId });

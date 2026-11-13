@@ -77,3 +77,5 @@ A peer's summary is not the original person's consent. Before an irreversible ac
 CLI mode: `agend-agent send <instance> <text> --forward <verification_id>` (repeat `--forward` for more refs); `agend-agent delegate` accepts the same flags. Lookup: `agend-agent delivery-status --detail --message-id <verification_id>`.
 
 Forward access is read-only and row-scoped. It does not grant commands, visibility of siblings, or access by knowing an ID. Same-uid shell-capable agents are not isolated from one another; use distinct OS users/containers for mutually untrusted agents.
+
+An error or unknown acknowledgement retains `operation_id` for exact recovery even in compact mode. Query that ID with `delivery_status`; an unclear response after admission must never trigger a blind resend.
