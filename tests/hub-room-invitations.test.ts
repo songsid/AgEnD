@@ -53,7 +53,7 @@ describe("Hub room invitations, owner side (section 8)", () => {
     expect(button(pg, "同意")).toBeTruthy(); expect(button(pg, "不要")).toBeTruthy();
   });
 
-  it.each([["Accept", "accept"], ["Decline", "decline"]])("%s answers once, and the invitation leaves the row and the list", async (label, verb) => {
+  it.each([["Agree", "accept"], ["Decline", "decline"]])("%s answers once, and the invitation leaves the row and the list", async (label, verb) => {
     const { pg, client, calls } = await fixture("en");
     await pg.mount(h(inv.InvitationsList, { client })); await settle(20);
     expect(text(pg)).toContain("陳主任 invited your agent “my-notes” to the room “產品規劃”");

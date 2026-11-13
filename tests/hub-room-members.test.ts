@@ -70,10 +70,10 @@ describe("Hub room members panel (section 5)", () => {
     fire(button(pg, "Chat with it one-to-one"), "click"); expect(direct).toEqual(["exp-01"]); await settle(5);
     fire(pg.root.querySelectorAll(".hub-member-agent .hub-member-open")[1], "click"); await settle(5);
     expect(button(pg, "Chat with it one-to-one")).toBeUndefined();                     // budget-check: not mine to ask
-    fire(button(pg, "Remove from the room"), "click"); await settle(20);
+    fire(button(pg, "Remove from room"), "click"); await settle(20);
     expect(calls.filter(c => c.method === "DELETE").map(c => c.path)).toEqual(["/hub/v1/rooms/room-weekly/members/exp-06"]);
     expect(agentRows(pg).map(r => r[0])).not.toContain("budget-check");
-    expect(heads(pg)[1]).toBe("Agents · 11 (8 online)");
+    expect(heads(pg)[1]).toBe("Agents · 11 (online 8)");
   });
 
   it("a plain member: no Room settings, no remove", async () => {
@@ -82,7 +82,7 @@ describe("Hub room members panel (section 5)", () => {
     expect(button(pg, "Room settings")).toBeUndefined();
     expect(pg.root.querySelector(".hub-member").textContent).toBe("王經理 YouOnline");
     fire(pg.root.querySelector(".hub-member-agent .hub-member-open"), "click"); await settle(5);
-    expect(button(pg, "Remove from the room")).toBeUndefined();
+    expect(button(pg, "Remove from room")).toBeUndefined();
     expect(pg.root.querySelector(".hub-member-assistant")).toBeNull();
   });
 

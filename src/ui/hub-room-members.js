@@ -6,6 +6,7 @@
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { hubClient } from "./hub-client.js";
 import { hm } from "./hub-room-members-strings.js";
+import { hroom } from "./hub-room-strings.js";
 
 const AGENT_ORDER = { working: 0, idle: 1, paused: 2, offline: 3, later: 4 };
 const AGENTS_SHOWN = 8;
@@ -14,16 +15,16 @@ const agentOnline = (m) => m.presence === "idle" || m.presence === "working" || 
 
 /** The dot class and words for one member's presence. */
 export function presenceView(m) {
-  if (m.kind === "person") return m.presence === "online" ? { dot: "ok", text: hm("online") } : { dot: "off", text: hm("offline") };
-  if (m.kind === "assistant") return m.presence === "working" ? { dot: "busy", text: hm("assistantWorking") }
-    : m.presence === "paused" ? { dot: "warn", text: hm("assistantPaused") } : { dot: "ok", text: hm("assistantIdle") };
-  if (m.kind === "later") return m.presence === "online" || m.presence === "idle" ? { dot: "ok", text: hm("online") } : { dot: "off", text: hm("later") };
+  if (m.kind === "person") return m.presence === "online" ? { dot: "ok", text: hroom("stOnline") } : { dot: "off", text: hroom("stOffline") };
+  if (m.kind === "assistant") return m.presence === "working" ? { dot: "busy", text: hroom("stWorking") }
+    : m.presence === "paused" ? { dot: "warn", text: hroom("stAssistantDown") } : { dot: "ok", text: hroom("assistantIdleHub") };
+  if (m.kind === "later") return m.presence === "online" || m.presence === "idle" ? { dot: "ok", text: hroom("stOnline") } : { dot: "off", text: hroom("stLater") };
   switch (m.presence) {
-    case "working": return { dot: "busy", text: hm("working") };
-    case "idle": return { dot: "ok", text: hm("idle") };
-    case "paused": return { dot: "warn", text: m.presenceNote ? hm("pausedWhy", m.presenceNote) : hm("paused") };
-    case "later": return { dot: "off", text: hm("later") };
-    default: return { dot: "off", text: m.presenceNote || hm("offline") };   // 「需要更新 AgEnD」 comes as the note
+    case "working": return { dot: "busy", text: hroom("stWorking") };
+    case "idle": return { dot: "ok", text: hroom("stIdle") };
+    case "paused": return { dot: "warn", text: m.presenceNote ? `${hroom("stPaused")} · ${m.presenceNote}` : hroom("stPaused") };
+    case "later": return { dot: "off", text: hroom("stLater") };
+    default: return { dot: "off", text: m.presenceNote || hroom("stOffline") };   // 「需要更新 AgEnD」 comes as the note
   }
 }
 
@@ -66,27 +67,27 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     return html`<span class="hub-member-name">${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span>${v.text}</span>`;
   };
   return html`<aside class="hub-room-members">
-    <section><h4>${hm("people", people.length, people.filter(m => m.presence === "online").length)}</h4>
-      <ul>${people.map(m => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hm("you")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hm("manager")}</span>` : null}`)}</li>`)}</ul>
+    <section><h4>${hroom("membersHead", people.length, people.filter(m => m.presence === "online").length)}</h4>
+      <ul>${people.map(m => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`)}</ul>
     </section>
-    <section><h4>${hm("agents", agents.length, agents.filter(agentOnline).length)}</h4>
+    <section><h4>${hroom("agentsHead", agents.length, agents.filter(agentOnline).length)}</h4>
       <ul>${shown.map(m => html`<li class="hub-member hub-member-agent" key=${m.id}>
         <button type="button" class="hub-member-open" title=${m.owner?.name ? hm("ownerOf", m.owner.name) : ""} aria-expanded=${open === m.id} onClick=${() => { setFailed(false); setOpen(open === m.id ? null : m.id); }}>${row(m)}</button>
         ${open === m.id ? html`<div class="hub-member-card" role="group" aria-label=${m.name}>
           <strong>${m.name}</strong>${m.owner?.name ? html`<small class="note">${hm("ownerOf", m.owner.name)}</small>` : null}
           <small class="note">${presenceView(m).text}</small>
           <div class="field-row">
-            <button type="button" class="btn" onClick=${() => { setOpen(null); onMention?.(m); }}>${hm("mention")}</button>
-            ${m.canAsk === true ? html`<button type="button" class="btn" onClick=${() => { setOpen(null); onOpenChat?.(m); }}>${hm("direct")}</button>` : null}
-            ${manager ? html`<button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => remove(m)}>${hm("remove")}</button>` : null}
+            <button type="button" class="btn" onClick=${() => { setOpen(null); onMention?.(m); }}>${hroom("mentionHere")}</button>
+            ${m.canAsk === true ? html`<button type="button" class="btn" onClick=${() => { setOpen(null); onOpenChat?.(m); }}>${hroom("chatOneToOne")}</button>` : null}
+            ${manager ? html`<button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => remove(m)}>${hroom("removeFromRoom")}</button>` : null}
           </div>
           ${failed ? html`<p class="note" role="alert">${hm("removeFailed")}</p>` : null}
         </div>` : null}
       </li>`)}</ul>
-      ${agents.length > AGENTS_SHOWN ? html`<button type="button" class="btn btn-link hub-members-more" onClick=${() => setExpanded(!expanded)}>${expanded ? hm("fewer") : hm("more", agents.length - AGENTS_SHOWN)}</button>` : null}
+      ${agents.length > AGENTS_SHOWN ? html`<button type="button" class="btn btn-link hub-members-more" onClick=${() => setExpanded(!expanded)}>${expanded ? hm("fewer") : hroom("moreN", agents.length - AGENTS_SHOWN)}</button>` : null}
     </section>
-    ${assistant ? html`<section><ul><li class="hub-member hub-member-assistant">${row({ ...assistant, name: hm("assistantName") })}</li></ul></section>` : null}
-    <section class="hub-room-who"><h4>${hm("whoSees")}</h4><p class="note">${hm("whoSeesText")}</p></section>
-    ${manager ? html`<button type="button" class="btn btn-link hub-room-settings-link" onClick=${() => onSettings?.()}>${hm("settings")}</button>` : null}
+    ${assistant ? html`<section><ul><li class="hub-member hub-member-assistant">${row({ ...assistant, name: hroom("roomAssistant") })}</li></ul></section>` : null}
+    <section class="hub-room-who"><h4>${hroom("whoSees")}</h4><p class="note">${hroom("whoSeesRoom")}</p></section>
+    ${manager ? html`<button type="button" class="btn btn-link hub-room-settings-link" onClick=${() => onSettings?.()}>${hroom("roomSettings")}</button>` : null}
   </aside>`;
 }

@@ -6,6 +6,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { hubClient } from "./hub-client.js";
 import { hi } from "./hub-invitations-strings.js";
+import { hroom } from "./hub-room-strings.js";
 
 /** The pending invitations to my agents: { list (null while loading), error, reload, answer(id, accept) → Promise<boolean> }. */
 export function useInvitations(client = hubClient()) {
@@ -38,7 +39,7 @@ const valid = (x) => x && typeof x.id === "string" && x.room && typeof x.room.na
 export function InvitationsRow({ count = 0, onOpen } = {}) {
   const n = Number(count) || 0;
   if (n <= 0) return null;
-  return html`<button type="button" class="hub-invitations-row" onClick=${() => onOpen?.()}>${hi("row", n)}</button>`;
+  return html`<button type="button" class="hub-invitations-row" onClick=${() => onOpen?.()}>${hroom("invitationsN", n)}</button>`;
 }
 
 /** The invitations themselves, each with 同意 / 不要. Nothing when there are none (My shared agents shows no empty box). */
@@ -54,15 +55,15 @@ export function InvitationsList({ client = hubClient(), heading = true } = {}) {
     inflight.current = false; setBusy(null);
     if (!r?.ok) setNote({ id: item.id, text: r?.status === 404 ? hi("gone") : hi("failed") });
   };
-  return html`<section class="hub-invitations" aria-label=${hi("title")}>
-    ${heading ? html`<h3>${hi("title")}</h3>` : null}
+  return html`<section class="hub-invitations" aria-label=${hroom("invitation")}>
+    ${heading ? html`<h3>${hroom("invitation")}</h3>` : null}
     ${list.map(item => html`<article class="hub-invitation" key=${item.id}>
-      <p>${hi("item", item.by?.name || "", item.agent.name, item.room.name)}</p>
-      <small class="note">${Number(item.room.people) === 1 ? hi("leadOne") : hi("lead", Number(item.room.people) || 0)}</small>
+      <p>${hroom("inviteLead", item.by?.name || "", item.agent.name, item.room.name)}</p>
+      <small class="note">${Number(item.room.people) === 1 ? hi("leadOne") : hroom("inviteHint", Number(item.room.people) || 0)}</small>
       ${note?.id === item.id ? html`<p class="note" role="alert">${note.text}</p>` : null}
       <div class="field-row">
-        <button type="button" class="btn btn-primary" disabled=${busy !== null} onClick=${() => act(item, true)}>${hi("accept")}</button>
-        <button type="button" class="btn" disabled=${busy !== null} onClick=${() => act(item, false)}>${hi("decline")}</button>
+        <button type="button" class="btn btn-primary" disabled=${busy !== null} onClick=${() => act(item, true)}>${hroom("agree")}</button>
+        <button type="button" class="btn" disabled=${busy !== null} onClick=${() => act(item, false)}>${hroom("decline")}</button>
       </div>
     </article>`)}
     ${note && !list.some(x => x.id === note.id) ? html`<p class="note" role="status">${note.text}</p>` : null}
