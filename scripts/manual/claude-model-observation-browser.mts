@@ -60,8 +60,8 @@ try {
       substitutions.push({ path: url, source: `${base}:${path}`, digest: hash(body) });
     }
     const checks: any[] = [];
-    const checkpoint = async (label: string, path: string, expectLine: boolean) => {
-      await page.goto(fx.base + path); await page.waitForTimeout(650); await page.evaluate(() => document.fonts.ready);
+    const checkpoint = async (label: string, path: string, expectLine: boolean, prepare?: () => Promise<void>) => {
+      await page.goto(fx.base + path); await page.waitForTimeout(650); if (prepare) await prepare(); await page.evaluate(() => document.fonts.ready);
       const word = c.lang === "en" ? c.variant === "availability" ? "Model switched due to availability" : "Model switched by safeguards" : c.variant === "availability" ? "模型因供應狀況而切換" : "安全機制已切換模型";
       if (expectLine && !(await page.locator("body").innerText()).includes(word)) throw Error(`${c.variant}/${label}: missing ${word}`);
       const geometry = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - innerWidth,
@@ -81,6 +81,11 @@ try {
       await checkpoint("card", "/ui/fleet/org", true);
     }
     if (c.variant === "after") {
+      await checkpoint("office-card", "/ui/fleet/org", true, async () => {
+        await page.getByRole("button", { name: c.lang === "en" ? "Office" : "辦公室", exact: true }).click();
+        const desk = page.locator(`.oo-desk[data-name="${name}"]`); await desk.waitFor({ state: "attached" });
+        await desk.focus(); await desk.press("Enter"); await page.waitForSelector(".oo-card .model-switch");
+      });
       await page.goto(fx.base + `/ui/fleet/agent/${name}`); await page.waitForSelector(".model-switch");
       observer.observe(parseClaudeModelRecord({ ...response, uuid: "recovery", timestamp: "2026-11-13T07:00:02.000Z", message: { ...response.message, id: "recovery", model: "claude-opus-5-5" } })!, "claude-opus-5-5");
       observed = observer.snapshot(); publish(); await page.waitForFunction(() => !document.querySelector(".model-switch"));
