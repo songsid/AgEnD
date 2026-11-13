@@ -39,7 +39,7 @@ export interface HubHttpDeps {
   companyJoin?: import("../join/service.js").HubCompanyJoin;
   /** Server-owned group permits; absent only in legacy injected compositions. */
   groups?: import("../group-policy/authorization.js").HubGroupAuthorization;
-  management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require">;
+  management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require"> & Partial<Pick<import("../roles/authority.js").HubManagementAuthority, "prepareDirectory">>;
   /** Server-owned image classification only: false retains legacy sessions and repair, never grants a permission. */
   roleSessionMode?(): boolean;
   /**

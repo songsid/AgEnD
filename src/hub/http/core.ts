@@ -13,7 +13,7 @@ import { HubGroupPolicyError, HubGroupReadOverload, type GroupCheckContext } fro
 import { prepareGrantAccess, type HubGrantSubjectProof } from "../grant-access.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { readHubSessionEpoch } from "../session-epoch.js";
-import type { HubDirectoryManagementPreparation, HubManagementPermission } from "../roles/authority.js";
+import type { HubDirectoryManagementPreparation, HubManagementPermission, HubManagementPermit } from "../roles/authority.js";
 import type { HubDirectoryDecisionProof } from "../directory-decision-proof.js";
 import { createHubDirectoryAdmission, type HubDirectoryReads } from "../directory/admission.js";
 export { DIRECTORY_PER_PERSON, DIRECTORY_TOTAL } from "../directory/admission.js";
@@ -38,8 +38,77 @@ export class HubCore {
   /** Internal preparation only; effect authority is acquired afresh by the returned handle. */
   async directoryPreparation(ctx: HubRequestContext): Promise<HubDirectoryManagementPreparation> {
     this.check();
-    if (!this.deps.management) throw new HubProtocolError("unavailable");
-    return this.deps.management.prepareDirectory(ctx);
+    const management = this.deps.management, prepare = management?.prepareDirectory, require = management?.require;
+    if (!management || !prepare) throw new HubProtocolError("unavailable");
+    const config = this.deps.config, image = JSON.stringify(config), directory = this.deps.directory,
+      store = this.deps.store, uow = this.deps.uow, atomic = uow.atomic, mode = this.deps.current, clock = this.deps.now;
+    const caller = { requestId: ctx.requestId, current: ctx.current, isCurrent: ctx.isCurrent, identity: ctx.isIdentityCurrent };
+    let failed = false, closed = false, running = false, raw: HubDirectoryManagementPreparation | undefined;
+    let methods: Pick<HubDirectoryManagementPreparation, "assertCurrent" | "authorize" | "retire"> | undefined;
+    const retireOwner = () => { failed = true; if (raw && methods) methods.retire.call(raw); };
+    const identity = () => {
+      if (failed || this.deps.management !== management || management.require !== require || management.prepareDirectory !== prepare
+        || this.deps.config !== config || JSON.stringify(config) !== image || this.deps.directory !== directory || this.deps.store !== store
+        || this.deps.uow !== uow || uow.atomic !== atomic || this.deps.current !== mode || this.deps.now !== clock
+        || ctx.requestId !== caller.requestId || ctx.current !== caller.current || ctx.isCurrent !== caller.isCurrent || ctx.isIdentityCurrent !== caller.identity
+        || raw && methods && (raw.assertCurrent !== methods.assertCurrent || raw.authorize !== methods.authorize || raw.retire !== methods.retire))
+        throw new HubProtocolError("unavailable");
+    };
+    const owner = () => {
+      try { identity(); this.atomic(() => {}); identity(); }
+      catch (error) { retireOwner(); throw error; }
+    };
+    const refused = async (error: unknown): Promise<never> => {
+      // The real token adapter owns signed-out classification after a held physical read.
+      if (ctx.isCurrent?.() === false) await ctx.current();
+      throw error;
+    };
+    try {
+      owner(); raw = await prepare.call(management, ctx);
+      methods = { assertCurrent: raw.assertCurrent, authorize: raw.authorize, retire: raw.retire };
+      owner();
+      if (raw.requestId !== caller.requestId || raw.directory !== directory
+        || personKeyString(raw.administrator) !== personKeyString(config.administrator)) throw new HubProtocolError("unavailable");
+      const selected = raw, retained = methods;
+      const check = () => {
+        // Consuming/cancelling preparation does not revoke an already acquired effect permit.
+        if (closed) throw new HubProtocolError("unavailable");
+        try { owner(); retained.assertCurrent.call(selected); owner(); }
+        catch (error) { retireOwner(); throw error; }
+      };
+      check();
+      return Object.freeze({ actor: selected.actor, requestId: selected.requestId, directory, administrator: selected.administrator, assertCurrent: check,
+        async authorize() {
+          check();
+          if (running) throw new HubProtocolError("backpressure");
+          running = true;
+          try {
+            const fresh = await retained.authorize.call(selected); owner();
+            if (closed || fresh.permission !== "hub.admin" || fresh.actor.sessionId !== selected.actor.sessionId
+              || personKeyString(fresh.actor.person) !== personKeyString(selected.actor.person)) throw new HubProtocolError("unavailable");
+            const current = fresh.assertCurrent, decision = fresh.assertDirectoryDecision;
+            const assertCurrent = () => {
+              try {
+                owner();
+                if (fresh.assertCurrent !== current) throw new HubProtocolError("unavailable");
+                const sample = current.call(fresh); owner(); return sample;
+              } catch (error) { retireOwner(); throw error; }
+            };
+            const permit: HubManagementPermit = Object.freeze({ ...fresh, assertCurrent,
+              ...(decision ? { assertDirectoryDecision(proof: HubDirectoryDecisionProof) {
+                try {
+                  owner();
+                  if (fresh.assertDirectoryDecision !== decision) throw new HubProtocolError("unavailable");
+                  const sample = decision.call(fresh, proof); owner(); return sample;
+                } catch (error) { retireOwner(); throw error; }
+              } } : {}) });
+            permit.assertCurrent(); return permit;
+          } catch (error) { retireOwner(); return refused(error); }
+          finally { closed = true; retained.retire.call(selected); }
+        },
+        retire() { closed = true; retained.retire.call(selected); },
+      });
+    } catch (error) { retireOwner(); return refused(error); }
   }
   async management(ctx: HubRequestContext, permission: HubManagementPermission) {
     this.check();
