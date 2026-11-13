@@ -1,0 +1,22 @@
+{
+  "producer": "4ef46c70aac923187d54c81426f2c01b0937d3b5",
+  "fixtureHead": "f7490a455",
+  "alphaBase": "95393951296dcdaecc1c300a89eb7da701b2888f",
+  "sourceBindings": {
+    "src/hub/member/room-ask.ts": "f83766db08581ffefd818bc2393b9c88fbf421471c94caebc15d29d51aaae979",
+    "tests/hub-room-ask-track-c.test.ts": "8a9a436470a3f54f6dc745d33a1b1bfcb5e3da00b9df770e0b62839ae3e220f3",
+    "tests/support/hub-rooms-fixture.ts": "9828bce48c14f3737a1c44fb8c9a1611d83278d0657116875eb65998f90be864",
+    "src/ui/hub-client.js": "ef07feb2b968c41e955038dc2e5a696e8c2d78b01023eb67f070c60540487ea4",
+    "tests/hub-rooms-client-3092.test.ts": "0530feb6de2f5ecfef3efda3b4f2191eb9dd1a43a1ebd06b6c6502c45fae1a5d",
+    "docs/design/hub-room-ask-member.md": "af2405875dc6426153dcf970267748fd3ae71a76accf2b0f810725ea979ce929"
+  },
+  "focused": {
+    "files": 5,
+    "passed": 96,
+    "newAdapterTests": 38
+  },
+  "nativeSourceExit": 0,
+  "nativeTestExit": 0,
+  "browserRuns": 0,
+  "productionMount": false
+}

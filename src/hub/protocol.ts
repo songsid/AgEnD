@@ -6,6 +6,8 @@ import { validHubAnswerButtons } from "./buttons-model.js";
 export const HUB_VERSION = 1;
 export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect: "/hub/v1/connect" } as const;
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
+/** Track C's injectable adapter uses these frames; advertised only when live dispatch is composed (R2). */
+export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
@@ -55,6 +57,14 @@ export const answerButtonsSchema = z.strictObject({ id: z.string().regex(/^[a-f0
     showVoters: z.boolean(), question: plain(1200).refine(s => s.length <= 300) }).optional() }).refine(validHubAnswerButtons, "Invalid reply buttons/poll");
 export const answerSchema = z.strictObject({ messageId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer), contentDigest: hash, releaseLease: leaseSchema,
   attachments: attachmentList.optional(), buttons: answerButtonsSchema.optional() });
+export const roomContextSchema = z.strictObject({ author: plain(256), text: plain(HUB_LIMITS.question), at: epoch, repliedTo: z.literal(true).optional() });
+export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roomName: plain(120), exposureId: uuid,
+  asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), context: z.array(roomContextSchema).max(31)
+    .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1) });
+export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer) });
+export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
+export const agentStateSchema = z.strictObject({ exposureId: uuid, state: z.enum(["idle", "working", "paused"]),
+  reason: z.enum(["quota", "auth", "approval", "update", "operator", "idle", "capacity", "error", "stopped", "crashed", "stuck", "unknown"]).optional(), note: plain(256).optional() });
 export const revocationSchema = z.strictObject({ revocationVersion: epoch, reasonCode: reason, scope: z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("person"), personId: z.string().regex(/^[a-z][a-z0-9_-]{0,63}\/[a-f0-9-]{36}$/) }),
   z.strictObject({ kind: z.literal("fleet"), fleetId: uuid }),
@@ -86,6 +96,7 @@ const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.arra
 /** The authenticated link is the target. No caller-supplied Fleet ID, owner or credential. */
 export const memberLeavePayloadSchema = z.strictObject({});
 export const memberFrameSchema = z.union([
+  frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema),
   frame("member.leave", memberLeavePayloadSchema),
   frame("hello", hello), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
   frame("receipt", receiptSchema), frame("answer", answerSchema), frame("reconcile", reconcile),
@@ -98,6 +109,7 @@ export const memberFrameSchema = z.union([
   frame("relocate.ack", z.strictObject({ revision: epoch.min(1), digest: hash })),
 ]);
 export const serverFrameSchema = z.union([
+  frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema),
   frame("welcome", welcome), frame("question", questionSchema), frame("receipt", receiptSchema),
   frame("reconcile", z.strictObject({ receipts: z.array(receiptSchema).max(128), nextReceiptSequence: epoch, more: z.boolean() })),
   frame("authorize.result", z.union([z.strictObject({ ok: z.literal(true), lease: leaseSchema }), z.strictObject({ ok: z.literal(false), reasonCode: reason })])),

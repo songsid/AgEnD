@@ -256,7 +256,7 @@ tab title. Items, grouped by instance, oldest first:
 - the CLI waiting: "Permission needed", "Dangerous command waiting", "Waiting to connect its AI account", "Waiting at a dialog", "May be
   waiting for input", "Waiting at its terminal", "Not responding", "Exited";
 - the instance: "Paused: AI account not connected", "Crashed", and a confirmed Claude model switch (safeguards, availability, or a different served model with cause unknown);
-- deliveries from the last 24 h: "Could not confirm delivery", "Delivery failed" (source → target · kind).
+- deliveries from the last 24 h: "Could not confirm delivery", "Delivery failed" (source → target · kind). Only messages someone must act on: AgEnD's own notices and broadcasts are left out, and a row whose later proof arrives (the CLI's own record shows the message taken) clears itself.
 
 "Asking you a question" is a kiro V3 question card, posted to the instance's chat with a button per answer and a box
 for answering in words (on Discord/Telegram: reply to the post); an MCP input request offers Decline / Cancel and is

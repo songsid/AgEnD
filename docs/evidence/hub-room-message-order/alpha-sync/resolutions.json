@@ -1,0 +1,12 @@
+[
+  {
+    "path": "src/hub/rooms/service.ts",
+    "choice": "retain exact cleared own blob",
+    "blob": "3d2e99a38adaecf14ac1d4ec7502a2687d46c256"
+  },
+  {
+    "path": "tests/hub-room-agents-r2.test.ts",
+    "choice": "retain exact cleared own blob",
+    "blob": "fa1b68508acf71a0704488250e2fcaddcb74a549"
+  }
+]

@@ -65,7 +65,7 @@ const receiptOf = (m: MessageRow): HubReceipt => ({ messageId: m.id, contentDige
 /** A file as the asker's browser sees it: always fetched through the room's own route. */
 export interface HubFileView { id: string; name: string; size: number; mime: string; url: string }
 const fileView = (roomId: string, r: HubAttachmentRef): HubFileView => ({ id: r.id, name: r.name, size: r.size, mime: r.mime, url: `/hub/v1/rooms/${roomId}/files/${r.id}` });
-export interface HubRoomEntryView extends HubRoomEntry { buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; pollResult?: true; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
+export interface HubRoomEntryView extends HubRoomEntry { idempotencyKey?: string; buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; pollResult?: true; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
 const FILES = "attachments-v1";
 const b64 = (data: string): Buffer => { const b = Buffer.from(data, "base64"); if (b.toString("base64") !== data) throw new HubProtocolError("invalid"); return b; };
 
@@ -87,6 +87,12 @@ export class HubRoomsService {
     if (!old || old.linkEpoch <= link.linkEpoch) this.links.set(link.fleetId, link);
   }
   forget(): void { this.links.clear(); this.polls.clear(); }
+  presence(exposureId: string): "idle" | "paused" | "offline" {
+    const exposure = this.core.atomic(db => readExposure(db, exposureId));
+    if (!exposure || exposure.state !== "published" || exposure.frozen_through >= exposure.revision) return "offline";
+    if (exposure.sharing_paused) return "paused";
+    return this.links.get(exposure.fleet_id)?.current() ? "idle" : "offline";
+  }
 
   private store(): HubAttachmentStore { const s = this.core.deps.attachments; if (!s) throw new HubProtocolError("incompatible"); return s; }
   /** The optional features of a fleet's current link (empty while it has none: nothing new is offered or sent). */
@@ -312,15 +318,16 @@ export class HubRoomsService {
   }
 
   /** Keep the HTTP room projection under the same physical-work and disclosure fences as its history. */
-  async readPage(ctx: HubRequestContext, roomId: string, after: number, sessionKey: string): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof }> {
+  async readPage(ctx: HubRequestContext, roomId: string, after: number, sessionKey: string, page?: { before: string | null; limit: number }): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof; more?: boolean }> {
     if (!Number.isSafeInteger(after) || after < 0) throw new HubProtocolError("invalid");
     this.core.check();
     const finish = this.polls.enter(sessionKey);
-    try { return await this.readCurrent(ctx, roomId, after); }
+    try { return await this.readCurrent(ctx, roomId, after, page); }
     finally { finish(); }
   }
 
-  private async readCurrent(ctx: HubRequestContext, roomId: string, after: number): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof }> {
+  private async readCurrent(ctx: HubRequestContext, roomId: string, after: number, page?: { before: string | null; limit: number }): Promise<{ entries: readonly HubRoomEntryView[]; room: HubRoomListItem; grantProof?: HubGrantSubjectProof; more?: boolean }> {
+    if (page && (!Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 100)) throw new HubProtocolError("invalid");
     const asker = await ctx.requirePerson(), me = personKeyString(asker);
     const room = this.core.atomic((db) => db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow | undefined);
     if (!room || room.asker !== me) throw new HubProtocolError("not-found");
@@ -337,8 +344,18 @@ export class HubRoomsService {
       // History stays readable while the grant does (a later exposure revision or a freeze stops new questions only).
       if (grant.state !== "active" || now >= grant.expiresAt || !grantSubjectApplies(grant, asker, permit.grant) || !grant.permissions.includes("read-own-room")
         || exposure.state === "withdrawn") throw new HubProtocolError("revoked");
+      if (page) {
+        let before = Number.MAX_SAFE_INTEGER;
+        if (page.before) {
+          const cursor = db.prepare("SELECT sequence,answer_id FROM hub_messages WHERE id=? AND room_id=?").get(page.before.replace(/:answer$/, ""), roomId) as { sequence: number; answer_id: string | null } | undefined;
+          if (!cursor || page.before.endsWith(":answer") && !cursor.answer_id) throw new HubProtocolError("not-found"); before = cursor.sequence;
+        }
+        return db.prepare(`SELECT * FROM hub_messages WHERE room_id=? AND sequence${page.before?.endsWith(":answer") ? "<=" : "<"}? ORDER BY sequence DESC LIMIT ?`).all(roomId, before, page.limit + 1) as MessageRow[];
+      }
       return db.prepare("SELECT * FROM hub_messages WHERE room_id=? AND sequence>? ORDER BY sequence LIMIT 100").all(roomId, after) as MessageRow[];
     });
+    const more = !!page && rows.length > page.limit;
+    if (page) { rows.splice(page.limit); rows.reverse(); }
     const store = this.core.deps.attachments;
     const files = store ? this.core.atomic((db) => new Map(rows.map(m => [m.id, { question: store.forMessage(db, m.id, "question"), answer: store.forMessage(db, m.id, "answer") }]))) : null;
     const views = this.core.atomic(db => new Map(rows.map(m => [m.id, this.buttons.view(db, m.id)])));
@@ -353,7 +370,7 @@ export class HubRoomsService {
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
       // #3226 B: when it was asked (the chat's time on the question), beside the receipt's stage time; D: the files, as B maps them.
       const f = files?.get(m.id), qf = f?.question.map(r => fileView(roomId, r)) ?? [], af = f?.answer.map(r => fileView(roomId, r)) ?? [];
-      return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m), askedAt: m.created_at, ...(views.get(m.id) ? { buttons: views.get(m.id) } : {}),
+      return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m), askedAt: m.created_at, idempotencyKey: m.idempotency_key, ...(views.get(m.id) ? { buttons: views.get(m.id) } : {}),
         // Explicit blank also replaces the old prompt in a cached tab's merged entry; old renderers show no text.
         ...(pollResults.has(m.id) ? { pollResult: true as const, question: "" } : q?.question !== undefined ? { question: q.question } : {}),
         ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
@@ -363,7 +380,7 @@ export class HubRoomsService {
     // Content and the awaited room projection can cross a grant deadline. Check only after both settle.
     this.core.atomic(db => { this.askerRoom(db, roomId, asker, this.core.now(), "read-own-room", permit.grant); }, permit);
     if (ctx.isCurrent && !ctx.isCurrent()) throw new HubProtocolError("revoked");
-    return { entries, room: view, grantProof: permit.grant };
+    return { entries, room: view, grantProof: permit.grant, ...(page ? { more } : {}) };
   }
 
   /**

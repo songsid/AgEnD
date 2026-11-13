@@ -1,0 +1,427 @@
+{
+  "sourceHead": "0f9b63f6424ab1773cbc81ab159ec60953b20741",
+  "baseRef": "a012b664983786880f78d713e8e2b6dd1df0a5bc",
+  "dirty": [],
+  "inputs": [
+    {
+      "path": "src/ui/panel-hub.js",
+      "base": "fff45bd7b52e5470cd83d7516f1e3587e1339cd98fe54158b7514a48af5d46f8"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "base": "56e67f7b3ea0b80a8966cf21dab6791541e30e41592ff6b3c7d5bb9bbc8c704e"
+    },
+    {
+      "path": "src/ui/shared/hub-chat.css",
+      "base": "9111e3bb953b1b2019f1f0e761d63f71c802e45581c3fe94ad7c7df11722ba0a"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "285ddfb2cec000c7d85628084051feb40c5898dfdf7f31773611ef36f6070d39"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "5aec0f912eecd55b57c306ac6e5a2a89f82f398c3de825ff61ee34d3bab65db7"
+    },
+    {
+      "path": "src/ui/hub-room-list.js",
+      "sha256": "d485fa5ab212a0e852fef4a248e0973d5a01117ce4b7ecd364cc4e0cc2b12040"
+    },
+    {
+      "path": "src/ui/hub-room-strings.js",
+      "sha256": "ae2597d264c17243165fec565b06afe9d38e8a52237a86676e7a35a9a1d37c3b"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "1b7c5257dfc4b8bd9e214b4ac562c7121446925696ac941dcdeb3846be295b9f"
+    },
+    {
+      "path": "src/ui/hub-room-composer.js",
+      "sha256": "ed79763edea2363578f061ea21697f94066b298ae4e14b610b0ea585011ac31f"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "sha256": "a05b6f541c106bcb11d91bb3b765a4426832fbc68df2ed8db749b5e67651d75e"
+    },
+    {
+      "path": "src/ui/shared/hub-chat.css",
+      "sha256": "1653b8f3db9c76a451762a9b2c486708e820bf0091fb7b30d85d0046d73d1858"
+    },
+    {
+      "path": "tests/support/hub-rooms-fixture.ts",
+      "sha256": "630377aa140a6138a3f993bceef50ad70efd20e7e1c7e007c1abaa6dec4e616a"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desktop-en-light before: today's list (three chats, alpha's own rows); no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light room-before: today's chat page opens; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light room-after: the room's header, its progress line, its own lines without tools; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light menu-after: the @ menu leads with @All agents and the room assistant",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark before: today's list (three chats, alpha's own rows); no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark room-before: today's chat page opens; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark room-after: the room's header, its progress line, its own lines without tools; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark menu-after: the @ menu leads with @All agents and the room assistant",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light before: today's list (three chats, alpha's own rows); no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light room-before: today's chat page opens; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light room-after: the room's header, its progress line, its own lines without tools; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light menu-after: the @ menu leads with @All agents and the room assistant",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark before: today's list (three chats, alpha's own rows); no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark room-before: today's chat page opens; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark room-after: the room's header, its progress line, its own lines without tools; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark menu-after: the @ menu leads with @All agents and the room assistant",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light before: today's list (three chats, alpha's own rows); no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light room-before: today's chat page opens; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light room-after: the room's header, its progress line, its own lines without tools; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light menu-after: the @ menu leads with @All agents and the room assistant",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark before: today's list (three chats, alpha's own rows); no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark room-before: today's chat page opens; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark room-after: the room's header, its progress line, its own lines without tools; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark menu-after: the @ menu leads with @All agents and the room assistant",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light before: today's list (three chats, alpha's own rows); no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light room-before: today's chat page opens; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light room-after: the room's header, its progress line, its own lines without tools; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light menu-after: the @ menu leads with @All agents and the room assistant",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark before: today's list (three chats, alpha's own rows); no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark room-before: today's chat page opens; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark room-after: the room's header, its progress line, its own lines without tools; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark menu-after: the @ menu leads with @All agents and the room assistant",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light assistant-after: 「Hub 助理」 by its flag, its own prompt, never the stored English name; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark assistant-after: 「Hub 助理」 by its flag, its own prompt, never the stored English name; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after-limited: today's chats in the new rows — 「Agent」 only, the waiting one with the working dot, the closed one said; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light skew: today's chats in the new rows — 「Agent」 only, the waiting one with the working dot, the closed one said; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark after-limited: today's chats in the new rows — 「Agent」 only, the waiting one with the working dot, the closed one said; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark skew: today's chats in the new rows — 「Agent」 only, the waiting one with the working dot, the closed one said; no page error",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "list.before.desktop-en-light.png",
+      "sha256": "2079fff67858e4a644c2b59511954d443429daf0eafdea585160bfbaba114775"
+    },
+    {
+      "path": "room-before.desktop-en-light.png",
+      "sha256": "630acb7f982237dbf41fc3a897850165da0b25f62c8f24a86c58499fdb6bb749"
+    },
+    {
+      "path": "list.after-live.desktop-en-light.png",
+      "sha256": "d3109de2bbe061ee649d9fc80fa022e31d8d8cd8eb2d1093cff20bf1e2b7f39c"
+    },
+    {
+      "path": "room-after.desktop-en-light.png",
+      "sha256": "1936da8b94651a1aa65a0ecbbd9b1530e298c8ffa83cdd04da1e606203964873"
+    },
+    {
+      "path": "menu-after.desktop-en-light.png",
+      "sha256": "ffd9dda21804cfbaa5b8dea55a24cf97f84a0ffc79139df58373b558f9ab0476"
+    },
+    {
+      "path": "list.before.desktop-en-dark.png",
+      "sha256": "28fc55e1db71e891bd9a40507ab95672e67dd1e29db623ef5e3848cba55e15c1"
+    },
+    {
+      "path": "room-before.desktop-en-dark.png",
+      "sha256": "880dc11680f59950936df6091f7bbee7a02845bedff393a3ae5808d9f38dcc7c"
+    },
+    {
+      "path": "list.after-live.desktop-en-dark.png",
+      "sha256": "85ef1221b00118b375dd8ccb56cd72000a96ed45ae03d1913e7b064a60d6bf3c"
+    },
+    {
+      "path": "room-after.desktop-en-dark.png",
+      "sha256": "572f89eebe5c768e0f57ad88b3e021da6deb4a08a180a6e22a099b75aab32a39"
+    },
+    {
+      "path": "menu-after.desktop-en-dark.png",
+      "sha256": "a5f61c1dd9a5cb3292db394e01c941ede1d7a482f9c45e1be44a8736628c276e"
+    },
+    {
+      "path": "list.before.desktop-zh-TW-light.png",
+      "sha256": "d86eda62723750917b1d7bf35f39178dccc3502803646cd061d4d957790ee89f"
+    },
+    {
+      "path": "room-before.desktop-zh-TW-light.png",
+      "sha256": "8fa3eace3c7d0cbe507569a1767cfcf206127dbaa6adf426cafb64a5b244a9a6"
+    },
+    {
+      "path": "list.after-live.desktop-zh-TW-light.png",
+      "sha256": "88588af1051a7d04284e82b9107501448503f8d7d9f4dc06726b25af6b9fcdff"
+    },
+    {
+      "path": "room-after.desktop-zh-TW-light.png",
+      "sha256": "46ca0360904bbbd8c25584d15caa5e524a862a59c856d18b6fcae78f1a3403ac"
+    },
+    {
+      "path": "menu-after.desktop-zh-TW-light.png",
+      "sha256": "f3eb064864b2f5f7af173c6381bc255e5e8e1c24c94d2a211ebf0bad519e99a9"
+    },
+    {
+      "path": "list.before.desktop-zh-TW-dark.png",
+      "sha256": "94764891fdc782ccdde5acf58b7995c2903ca3c09f89884b43d758f2315f384c"
+    },
+    {
+      "path": "room-before.desktop-zh-TW-dark.png",
+      "sha256": "e383cae50fe496f669a991689231f88d02ab64f5a93f0d3c02350cd8954c81d4"
+    },
+    {
+      "path": "list.after-live.desktop-zh-TW-dark.png",
+      "sha256": "d34107fb634499bb19502ab05a1af2c8a14939757d88e7ce05f3acc9d8b84b8c"
+    },
+    {
+      "path": "room-after.desktop-zh-TW-dark.png",
+      "sha256": "184710cdaecf73464f9e1d0c86f4792c0c59c2d7f454f80fe1bb1f4a197f69e9"
+    },
+    {
+      "path": "menu-after.desktop-zh-TW-dark.png",
+      "sha256": "efd678014886ce6f1bc0c949ebfb511a752fbe11901629719c43177b191ea0a1"
+    },
+    {
+      "path": "list.before.phone-en-light.png",
+      "sha256": "377a38ff6166722157c48a8bd884d0fca6ba632b7c210e03ede5f72a0d2d28da"
+    },
+    {
+      "path": "room-before.phone-en-light.png",
+      "sha256": "ccc18aaabc5e2767a1e7e7d9efb840de99eacda3bd5d7e35c4b830b176d8125b"
+    },
+    {
+      "path": "list.after-live.phone-en-light.png",
+      "sha256": "3bb4b733c127005cf61bab05bed028a033525a447cf644ae771ba81a366495e7"
+    },
+    {
+      "path": "room-after.phone-en-light.png",
+      "sha256": "4ff2fb967b02432278ac763ac7e0b7da40eff0a7fac7d2525130267f58ca16f6"
+    },
+    {
+      "path": "menu-after.phone-en-light.png",
+      "sha256": "538f68575840e995fd2c2f0f8ea5d874758098baa93d60ed3697d1dbe09213ef"
+    },
+    {
+      "path": "list.before.phone-en-dark.png",
+      "sha256": "d05ff01240a47925c0d9cc2c96bf2b32ced180d3b050d574de1f2632f7ad2162"
+    },
+    {
+      "path": "room-before.phone-en-dark.png",
+      "sha256": "05752055c3f5068db906797b5537cea31369a67b82f88fd7bd55890e64c266a8"
+    },
+    {
+      "path": "list.after-live.phone-en-dark.png",
+      "sha256": "67fd9a15a6023add9779199134a63c75cb750355497b8ca4b3f1048293cdd52c"
+    },
+    {
+      "path": "room-after.phone-en-dark.png",
+      "sha256": "9106a67ea1eddad8d2c470aea9685cd40986c79428b1602d2b3449a6062f0db4"
+    },
+    {
+      "path": "menu-after.phone-en-dark.png",
+      "sha256": "2d8ded807a4c388f5cbd3ef7bdc92d2eb0421ec42e0da84ff0fccce42fbf47d9"
+    },
+    {
+      "path": "list.before.phone-zh-TW-light.png",
+      "sha256": "570413b9b993b427406432f7ba55e3afc8a6b32ef64f8179a3f264acf52150af"
+    },
+    {
+      "path": "room-before.phone-zh-TW-light.png",
+      "sha256": "5e13dbca67958d651f9479a5deb7d526df3db2052103788a286c126e4905e473"
+    },
+    {
+      "path": "list.after-live.phone-zh-TW-light.png",
+      "sha256": "59321db077dc083e377eb163ecedc7e98a26d25db9cf16e0d9a169518977499b"
+    },
+    {
+      "path": "room-after.phone-zh-TW-light.png",
+      "sha256": "9ec9bd3741e848d7508ac70ac192e32ac7cd9ff9f31ff471f99f7f3074947dce"
+    },
+    {
+      "path": "menu-after.phone-zh-TW-light.png",
+      "sha256": "72a5e100ab0c9504000c22b6a05561ffbb1d9abc014894255cabdf264d207160"
+    },
+    {
+      "path": "list.before.phone-zh-TW-dark.png",
+      "sha256": "7984e0cc76911767c6842acdd96cbd0702fdba0e8780487c3fed3af60fea1825"
+    },
+    {
+      "path": "room-before.phone-zh-TW-dark.png",
+      "sha256": "0b3f7dcee633957762287775c8f507f9bc638b13f4090d01781a069d98c19281"
+    },
+    {
+      "path": "list.after-live.phone-zh-TW-dark.png",
+      "sha256": "2a9ce154a57c30e46f2584f521c8fdd16daa1fee57759e952ce331cde09e85e9"
+    },
+    {
+      "path": "room-after.phone-zh-TW-dark.png",
+      "sha256": "74928128b330ea3c369a61c5bba89e6b71d786c8c2b76ecfe2c81695e2ab40b3"
+    },
+    {
+      "path": "menu-after.phone-zh-TW-dark.png",
+      "sha256": "90e34bb93848d0a7165af13bac63e086cd311d08ebd014bbf3fcfe88856b9d88"
+    },
+    {
+      "path": "assistant-after.desktop-en-light.png",
+      "sha256": "6876626d1a4b7a1ae663768f8261dd8241a6fcc55c6df1e264d64844d4d2264e"
+    },
+    {
+      "path": "assistant-after.phone-zh-TW-dark.png",
+      "sha256": "c89255d0309e9cffb80c220c37ab8c143f444c36c7671302f8c3ce5b7bd3ec77"
+    },
+    {
+      "path": "list.after-limited.desktop-en-light.png",
+      "sha256": "40b2e250762715242dd15e6c7d34f492777d95900dae622c33697616847f802b"
+    },
+    {
+      "path": "list.skew.desktop-en-light.png",
+      "sha256": "bdf60752f5f3ed84d48aee987a9bc8adf911565dc8a4be78939cd3b10dab62fd"
+    },
+    {
+      "path": "list.after-limited.phone-zh-TW-dark.png",
+      "sha256": "32ccf227adf71b3daf5de88d88f51588efe60abfd48611d92113906039f62bc3"
+    },
+    {
+      "path": "list.skew.phone-zh-TW-dark.png",
+      "sha256": "2f342f61cf1b190c5f4722e2e2fc8b564963ec5af4a7d129c560039bfd79e7b2"
+    }
+  ]
+}
