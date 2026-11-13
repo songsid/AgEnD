@@ -1,0 +1,12 @@
+{
+  "ownedLoopbackListenersClosed": {
+    "34333": true,
+    "33253": true
+  },
+  "ownedTlsKeyDirectoriesRemaining": {
+    "shell-before": 0,
+    "shell-after": 0
+  },
+  "chromeProcessInventoryEmpty": true,
+  "browserSlotReleased": true
+}

@@ -1,7 +1,7 @@
 [
   {
     "path": "docs/evidence/hub-room-compose-track-c/README.md",
-    "sha256": "8ea33505fcddc20566d5cedd2227a7d9a40b3d2f3cc10fede8a952b569f7fec4"
+    "sha256": "c4cc7da0598fcf67a95633745d9c91fb88764360ee7d74dc9f0de22a3c27b379"
   },
   {
     "path": "docs/evidence/hub-room-compose-track-c/baseline-before.log",
@@ -154,6 +154,146 @@
   {
     "path": "docs/evidence/hub-room-compose-track-c/r1/r1-final.log",
     "sha256": "351cf10fb3a4c60e6b7c7cba7a8110e1e49819c791e5d39da808fc936f0de1bc"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/README.md",
+    "sha256": "ae2e05fa74f2213a5ae408dd380dd8c708aad2b345b3ce73a6a6790d968831cd"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/baseline-ci.json",
+    "sha256": "72fdc896dfd63d4e2d3ffb550882837ed34679f26cfa56e76c0aea0015811efa"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/cleanup.json",
+    "sha256": "81e6c7fcb00f8f44f51ca354329554825d9e1c2767452e4f16c5af23d7332ae6"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/r2-sync-focused.log",
+    "sha256": "149c59f8467c444cc3918559e72af544c2b89f19ba334f44e7a5dbbe79b99e8d"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/r2-sync-proof.json",
+    "sha256": "855986de9a1fb33be6828a739c7c140d5448443401b3d60426d072af715afaa8"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/run-shell-gate.py",
+    "sha256": "7293a7ab108e9c11be8c8d38bf8fc11163879ddb40c006096bc62f45141b8ad0"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/desk-light-en-admin.png",
+    "sha256": "df4323f4be3c7822423b8c9d29dda1620b92fa32fba42356b83a6a3232389c69"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/desk-light-en-chats.png",
+    "sha256": "277c6503c2422e42a29a2d178f0a8fde4bac24b7304e3bbf4d870c8cadd6c43a"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/desk-light-en-mine.png",
+    "sha256": "243a6cd52fec8075086e185ccc9dd6db25f2cfb2e84cdafa8b8d935b9ffd77e4"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/desk-light-en-notices.png",
+    "sha256": "e3bef5b20b7bb204d9f3775037a4f47a937b1266747fbf3205b6e5517667b4bd"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/desk-light-en-session-menu.png",
+    "sha256": "c7ec64021ab9a244c464597c55c6f2e1306beb6bf13c60e031026ef0fcbcb884"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/desk-light-en-settings-pop.png",
+    "sha256": "c9431b84d3d973eb7a2694c3d6ad031600d2caa2440c219b37a8c27419fb81c4"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/desk-light-en-signed-out.png",
+    "sha256": "cec23c542a5bc18bebd51d308d476afc98dd525aaadced857dc72dd2c744b29e"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/execution.json",
+    "sha256": "33a16b4abc964a7ef4b51767ecfde43661ad9a867e3252072b0c8e61235b3609"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/inputs.json",
+    "sha256": "c03822cb3e9cbb40467ebcff32ff57a0c9c000865e06a9ecd7945f2fb028ca1b"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-admin-drawer.png",
+    "sha256": "11be5d5ad6505fb6e9bcefacb4b312a7019506f694a5a446740363d27f73111b"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-admin.png",
+    "sha256": "fe2896c25a01f91b4b9239ffb1335a52c9a6ac820c1cca7d5f203be7ddc97596"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-chats-drawer.png",
+    "sha256": "923e77a557ab905fc0db13269cbf6b15d6ea7fef5cf4c741c7709e627099e1c8"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-chats.png",
+    "sha256": "ce918153e4d064095e42485824ec4fec0e217c27d1926ff740b4e8ca140c1ec0"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-mine-drawer.png",
+    "sha256": "d06e56ac8d95b91e0039704d1e69abc3b52fe722bb06ca2102c4117ba76b5b79"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-mine.png",
+    "sha256": "0e7e4c0819fd38dfd8d7778699d173d49f3adc74afeb0f0ec4db894778337f1f"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-notices-drawer.png",
+    "sha256": "981fca0e86257fd415b65c172c3cd47aaa9c413abc6b9eea14e2afd4235034ed"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-notices.png",
+    "sha256": "2888068e32c254a0815fd1b2d3bf6eee916d6d4549b6b7068d4fb99c0e4eb683"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-session-menu.png",
+    "sha256": "9584d27247cd11e1f8e1820bc94f40a935328ebce66ecda75099369715cd1488"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-settings-pop.png",
+    "sha256": "3586141d4dafc154a82a73a50cb9dff654f3054bb0146a5fbd8f9938c04fd4c5"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/phone-dark-zh-TW-signed-out.png",
+    "sha256": "463809da762a9884314b1ca0eb3a7b2bb18d0b76c00d4abdb00385dfb31ffd39"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/result.json",
+    "sha256": "82ce615a22bd49cd0b6499d61b6e491dbd7097001afbe704c4886f815ffb7962"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-after/run.log",
+    "sha256": "aee0e05e2b8e22ab3796b44037154c2fb8d4c90908300b498c713ddfffdbf7f7"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-before/desk-light-en-notices.png",
+    "sha256": "c4db470fd9f58d51f1dea712496663ed54e8069bca94639e69041734187d0464"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-before/execution.json",
+    "sha256": "56c7f65c4be44a8e2aab5b3656923066166736b5c3cf10e3b42541b387c87c69"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-before/inputs.json",
+    "sha256": "d7b82f11baf535589c144090bd775610e9b4979dcfd3b16d6d3638dbbdabbda7"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-before/phone-dark-zh-TW-notices.png",
+    "sha256": "6110f543c445d1151e0830a92f165b0c37cddc2dab66717b5d1cbb4dd4634632"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-before/result.json",
+    "sha256": "0498ced2bb8c22f8631db5a650bede66623a79e419b56ea783e8288379e22b99"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/shell-before/run.log",
+    "sha256": "75b425b22ef9d7f883df19e1439f7cd835376a29f455fffcda2a37ae65c5867f"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r2/visual-review.txt",
+    "sha256": "d8a988ef590e19833ea8a2b3e9bc70573163ccf90da02d3d251185d8cfa0912d"
   },
   {
     "path": "docs/evidence/hub-room-compose-track-c/supplement.log",

@@ -17,3 +17,7 @@ The nine composition cases cover negotiated ask/report/ACK/presence; an uncompos
 Reproduce with `vitest run --maxWorkers=2` (or one file with `--no-file-parallelism`) at host load at most ten. The eleven relevant suites are room-compose-track-c, room-ask-track-c, compose-member, member-repair-3823, member-reconciliation, member-reconnect-network, representative, fleet-hooks, room-link-r2, member-journal and hub-skill, each prefixed `tests/hub-` and suffixed `.test.ts`. Native commands are `node_modules/@typescript/typescript-linux-x64/lib/tsc --noEmit` and the same with `-p tsconfig.test.json`.
 
 This is a draft composition slice, stacked on #3860 and #3863. The shared UI's reason-aware grey Stopped treatment/string and the integrated gallery remain release prerequisites; no PNG or full room-user-flow acceptance is claimed here. Invitation consent, virtual teams and assistant behavior are not implemented in this checkpoint. Coordinator alone gates after ordinary review, exact checks and dependencies.
+
+## R2 current integration and shell gate
+
+See [r2/README.md](r2/README.md): clean R2/alpha plain merge,70/6 focused controls, exact two-failure local baseline and174-check shell gate positive. Own product runtime is unchanged from R1. The18 current shell PNGs are not the outstanding integrated room presence gallery; only two Notices originals were visually inspected. R0/R1 results above remain historical.
