@@ -59,6 +59,7 @@ import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settin
 import { collectPolicyDirectoryGroups, createHubManagementPolicyReader, parseCanonicalPolicy } from "../roles/read.js";
 import { createHubManagementAuthority } from "../roles/authority.js";
 import { createHubRoleAuthorizationClock } from "../roles/clock.js";
+import { createHubRoleExpiryRuntime } from "../roles/expiry-runtime.js";
 import type { HubDirectoryResponse, HubDirectoryResponseListener, HubDirectoryResponseOwner } from "../directory-response-owner.js";
 import { createHubDirectoryAdmission } from "../directory/admission.js";
 
@@ -312,6 +313,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       catch (err) { throw new HubStateError("hub-directory-secret", `the directory bind secret is missing or not private: ${(err as Error).message}`); }
 
       let memberServer: HubServer | null = null;
+      let roleRuntime: ReturnType<typeof createHubRoleExpiryRuntime> | null = null;
       let fenced = false;
       const owned = () => !fenced && current();
       let responseListener: HubDirectoryResponseListener | null = null;
@@ -574,6 +576,20 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             if (withdrawDirectory) teardown.add("the mounted directory control", withdrawDirectory);
             const withdrawAddress = options.webAddressReady?.(addressDecision);
             if (withdrawAddress) teardown.add("the mounted web-address participant", withdrawAddress);
+            // No migration/cutover is registered here. Only an already valid canonical role image
+            // can own a worker; legacy mounts keep their existing behavior.
+            const stored = db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string };
+            if (parseCanonicalPolicy(stored.body).kind === "roles" && !roleRuntime) {
+              roleClock.assertAuthorizationTime();
+              roleRuntime = createHubRoleExpiryRuntime({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
+                generation: groupGeneration, root: settings.administrator, transport: store, audit, directory, reads: directoryReads,
+                current: live, assertAuthorizationTime: roleClock.assertAuthorizationTime, now,
+                refreshAuthorization: () => memberServer?.refreshAuthorization(),
+                warning: code => options.log("warn", "Hub role expiry is waiting to settle", { code }) });
+              const ownedRoleRuntime = roleRuntime;
+              teardown.add("role expiry work", () => ownedRoleRuntime.close());
+              roleRuntime.start();
+            }
           } catch (err) {
             options.report(err instanceof HubStateError ? err.code : "service-unavailable", (err as Error).message);
             throw err;
@@ -581,12 +597,14 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         },
         fence() {
           fenced = true;
+          roleRuntime?.fence();
           directoryReads.fence();
           generation += 1;
           memberServer?.fence();
         },
         async close() {
           fenced = true;
+          roleRuntime?.fence();
           directoryReads.fence();
           // Rejects while any step is unconfirmed; S1 keeps ownership and retries this close before any replacement.
           await teardown.run();

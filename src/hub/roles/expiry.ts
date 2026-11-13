@@ -129,6 +129,12 @@ export function createHubRoleExpirySettlement(options: RoleExpiryOptions) {
     }
   };
   return {
+    /** Scheduling hint only. Live permissions still enforce assignment deadlines themselves. */
+    nextDeadline(): number | null {
+      assertAuthorizationTime();
+      const pending = read().policy.assignments.filter(a => a.expiresAt !== null && !settled(a));
+      return pending.length ? Math.min(...pending.map(a => a.expiresAt!)) : null;
+    },
     settle(): Promise<RoleExpiryResult> {
       if (flight) return flight;
       flight = Promise.resolve().then(run).finally(() => { flight = null; }); return flight;
