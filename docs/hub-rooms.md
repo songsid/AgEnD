@@ -25,13 +25,13 @@ people (@-ing a person only nudges them — no agent answers because of it).
 
 Picking **@All agents** previews who will answer now: "12 agents, 9 online,
 3 will answer after they come online". A fixed note under the box:
-"Messages with no @agent are seen only by people in the room. Agents will
+"Messages with no @agent are seen only by people in the room; agents will
 not answer." Lines starting with `/` are plain text; slash commands don't
 apply here.
 
 Under a message that @-ed agents, a progress line updates live. One agent
 reuses the familiar Waiting → Delivered → Answered marks. Several agents
-show "Answered 7 · working 2 · later 3", then "All 12 answered".
+show "Answered 7 · working 2 · reply later 3", then "All 12 answered".
 Answers arrive as replies under that message; more than 3 start folded
 behind "Show the other 7". An offline agent appears last as "report-bot
 (Ann Wu) · answers after they come online" and its answer lands in the same
@@ -49,8 +49,8 @@ can't send messages."
 Every message shows its author; your own sit on the right with no name. An
 agent reads "project-helper · Lin Xiaohua's agent"; the room assistant
 reads "Room assistant · Provided by the Hub". The Members panel's "Who can
-see" section says it plainly: "Everyone in the room sees every message and
-answer. An @agent reads the recent conversation."
+see this" section says it plainly: "Everyone in the room sees every message
+and answer. An @agent reads the recent conversation."
 
 A 1:1 chat is visible only to you — though the agent's owner sees what you
 asked ("Only you see this chat. The agent's owner sees what you asked.").
@@ -63,8 +63,8 @@ in the room) is the only way in: "Room content is not visible here."
 Adding someone else's agent sends an **Invitation**: the agent joins only
 after its owner agrees. The owner sees it in the "Invitations · 2" row and
 on their "My shared agents" page: "Manager Wang invited your agent
-“project-helper” to the room “Weekly lead meeting”" and "The room's 3
-people can @ it there; everyone in the room sees its answers." — with
+“project-helper” to the room “Weekly lead meeting”" and "The 3 people in
+the room can @ it there; everyone in the room sees its answers." — with
 **Agree** and **Decline**. Agreeing shows a join line in the room and adds
 the room under "In these rooms" on the agent's page, with "Leave this
 room".
@@ -92,7 +92,7 @@ other rooms." Your Hub administrator switches the assistant on per Hub.
 ## Who is online
 
 The Members panel counts heads: "Members · 3 (online 2)", "Agents · 12
-(9 online)", then the room assistant if there is one. Dots use the same
+(online 9)", then the room assistant if there is one. Dots use the same
 colours as the Fleet sidebar: people are green "Online" or grey "Offline";
 agents green "Idle", blue "Working", yellow "Paused" (with the reason —
 "Out of quota", "Waiting to sign in", "Waiting for approval"), grey
