@@ -140,6 +140,10 @@ Ownership of the checks:
 
 **C4. Group grants and real version skew.**
 - **Grant model: M-3016's, the one canonical model (agreed with Cairn).** Room sharing adds no grant migration of its own.
+  - Now public in #3781 (Cairn): `HubGrant.subject` is `{ kind: "person", person: PersonKey } | { kind: "group", group:
+    PersonKey }`, and `subjectLabel` is presentation only. It adds one migration (`s3-grant-subjects`) and the fresh
+    `grantAccess` / `exposureGrant` evaluator. New grants last at most 90 days. Room joins consume exactly these, once
+    #3781 lands.
   - The grant subject keeps the existing tagged shape: `{ kind: "person", person: PersonKey }` or `{ kind: "group",
     group: { realm, objectId } }`, keyed by the immutable AD GUID (objectId) as in group policy.
   - No name or DN is authoritative. A group's label or DN is display data only, and a selection is re-resolved when it
