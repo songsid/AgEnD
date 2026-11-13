@@ -125,14 +125,14 @@ function useMembersPanel() {
  * Fleet chat's thread (panel-hub.js's HubThread, given as `Thread`: the thread wiring is one), the room's composer, and
  * the members panel on the right. `client`: the Hub client; `me`: { id } from the session.
  */
-export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "" }) {
+export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {} }) {
   const store = useMemo(() => createRoomStore(roomId, { client, meId }), [roomId]);
   useEffect(() => () => store.stop(), [store]);
   const [, tick] = useState(0);
   // The first read may land before this subscribes: read once more on subscribing.
   useEffect(() => { const off = store.subscribe(() => tick((n) => n + 1)); tick((n) => n + 1); return off; }, [store]);
   const [reply, setReply] = useState(null), [rail, setRail] = useState(true);
-  const input = useRef(null), threadRef = useRef(null);
+  const input = useRef(null), threadRef = useRef(null), insert = useRef(null);
   const Panel = useMembersPanel();
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
   const hasAssistant = (detail?.members || []).some((m) => m.kind === "assistant");
@@ -155,10 +155,12 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "" }
           onClick=${() => setRail(!rail)}>👥</button>` : null}
       </header>
       <${Thread} store=${store} name=${room.name || ""} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra} />
-      <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} />
+      <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} />
     </section>
     ${rail && Panel && group && detail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>
       <${Panel} client=${client} roomId=${roomId} detail=${detail}
-        onMention=${(m) => { input.current?.focus(); }} onOpenChat=${() => {}} onSettings=${() => {}} /></${RailFrame}>` : null}
+        onMention=${(m) => insert.current?.(`@${m.name}`)}
+        onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
+        onSettings=${() => {}} /></${RailFrame}>` : null}
   </div>`;
 }
