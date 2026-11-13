@@ -26,6 +26,13 @@ export interface HubManagementPermit {
   /** Opt-in, exact synchronous directory decision only. This does not relax assertCurrent(). */
   assertDirectoryDecision?(proof: HubDirectoryDecisionProof): void | number;
 }
+/** Preparation only: effects still require a newly acquired named permit. */
+export interface HubDirectoryManagementPreparation {
+  readonly actor: DirectoryActor;
+  assertCurrent(): void;
+  authorize(): Promise<HubManagementPermit>;
+  retire(): void;
+}
 /** First issuance only: the issuer identity comes from the server's retained approval, never browser input. */
 export interface HubJoinIssuerPermit {
   readonly approvedBy: PersonKey;
@@ -76,7 +83,12 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
     if (selected.kind === "roles") sync(assertAuthorizationTime());
     validated(epoch, version()); return selected;
   };
-  return {
+  const authority = {
+    async prepareDirectory(incoming: HubRequestContext): Promise<HubDirectoryManagementPreparation> {
+      const permit = await authority.require(incoming, "hub.admin");
+      return Object.freeze({ actor: permit.actor, assertCurrent() { permit.assertCurrent(); },
+        async authorize() { permit.assertCurrent(); return permit; }, retire() {} });
+    },
     /** No fabricated browser session. Committed receipt recovery must run before requesting this fresh proof. */
     async requireJoinIssuer(input: PersonKey, incoming: GroupCheckContext): Promise<HubJoinIssuerPermit> {
       const who = Object.freeze(validated(person, input)); validated(identifier, incoming.requestId);
@@ -207,5 +219,6 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
     },
     close() { closed = true; },
   };
+  return authority;
 }
 export type HubManagementAuthority = ReturnType<typeof createHubManagementAuthority>;
