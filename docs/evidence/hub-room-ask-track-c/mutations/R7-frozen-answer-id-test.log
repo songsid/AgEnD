@@ -1,0 +1,150 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (38 tests | 6 failed) 143ms
+     × freezes an answer before send, retries the exact bytes until the matching ACK, and never re-executes 9ms
+     × retains a send failure for reconnect, with the same answerId and no direct-chat release lease 5ms
+     × can consume an ACK during send without overwriting it on completion 4ms
+     × keeps ACK/control handling independent from a held agent delivery 5ms
+     × cannot start two inputs when beforeInput is invoked twice, and report during delivery cannot be overwritten 3ms
+     × reopens a real on-disk journal with the same frozen answer and no plaintext room content 51ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > freezes an answer before send, retries the exact bytes until the matching ACK, and never re-executes
+AssertionError: expected [ { …(5) }, { …(5) } ] to deeply equal [ { …(5) }, { …(5) } ]
+
+- Expected
++ Received
+
+@@ -5,11 +5,11 @@
+      "messageId": "997bfe92-7b92-4941-abc4-7f58d9cb07bc",
+      "roomId": "33dfdc63-885b-4347-bf53-75b2f2c493dd",
+      "text": "Room answer",
+    },
+    {
+-     "answerId": "868c83f3-bc36-4c54-8807-ff928d163e3f",
++     "answerId": "6af2999b-ea85-4277-9a9a-110452596935",
+      "exposureId": "703e09da-8ed8-497f-bb5a-270d9e940b50",
+      "messageId": "997bfe92-7b92-4941-abc4-7f58d9cb07bc",
+      "roomId": "33dfdc63-885b-4347-bf53-75b2f2c493dd",
+      "text": "Room answer",
+    },
+
+ ❯ tests/hub-room-ask-track-c.test.ts:90:45
+     88|     const first = f.sent[0]!; expect(first).toMatchObject({ messageId:…
+     89|     expect(first.answerId).toMatch(/^[a-f0-9-]{36}$/);
+     90|     await f.adapter.flush(); expect(f.sent).toEqual([first, first]);
+       |                                             ^
+     91|     expect(f.adapter.acknowledge({ messageId: first.messageId, answerI…
+     92|     expect(f.adapter.acknowledge(first, f.link)).toBe(true); await f.a…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > retains a send failure for reconnect, with the same answerId and no direct-chat release lease
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-room-ask-track-c.test.ts:106:52
+    104|     expect(f.sent[0]).not.toHaveProperty("releaseLease"); expect(f.inp…
+    105|     expect(reopened.acknowledge(f.sent[0]!, f.link)).toBe(false);
+    106|     expect(reopened.acknowledge(f.sent[0]!, next)).toBe(true);
+       |                                                    ^
+    107|   });
+    108|   it("can consume an ACK during send without overwriting it on complet…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > can consume an ACK during send without overwriting it on completion
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ ❯ tests/hub-room-ask-track-c.test.ts:111:110
+    109|     const f = member(); f.adapter.accept(f.ask, f.link); await f.adapt…
+    110|     vi.mocked(f.link.sendAnswer).mockImplementation(async a => { expec…
+    111|     expect(await f.report()).toMatchObject({ ok: true }); await f.adap…
+       |                                                                                                              ^
+    112|     expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEq…
+    113|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > keeps ACK/control handling independent from a held agent delivery
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-room-ask-track-c.test.ts:120:55
+    118|     const other = { ...f.ask, messageId: randomUUID() };
+    119|     expect(f.adapter.accept(other, f.link)).toBe("accepted");
+    120|     expect(f.adapter.acknowledge(f.sent[0]!, f.link)).toBe(true);
+       |                                                       ^
+    121|     waiting.resolve(true); await f.adapter.settled();
+    122|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > cannot start two inputs when beforeInput is invoked twice, and report during delivery cannot be overwritten
+AssertionError: expected { state: 'answered' } to deeply equal { state: 'acked' }
+
+- Expected
++ Received
+
+  {
+-   "state": "acked",
++   "state": "answered",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:192:127
+    190|       expect(f.adapter.acknowledge(f.sent[0]!, f.link)).toBe(true); re…
+    191|     };
+    192|     f.adapter.accept(f.ask, f.link); await f.adapter.settled(); expect…
+       |                                                                                                                               ^
+    193|   });
+    194|   it("holds answers after local consent changes, and ignores later old…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > reopens a real on-disk journal with the same frozen answer and no plaintext room content
+AssertionError: expected [ { …(5) }, { …(5) } ] to deeply equal [ { …(5) }, { …(5) } ]
+
+- Expected
++ Received
+
+@@ -5,11 +5,11 @@
+      "messageId": "fa432bc8-2a6b-4005-8951-32817c4dfc61",
+      "roomId": "d15b63e0-bd4a-4d57-a544-e8285e3f0f61",
+      "text": "Private room answer",
+    },
+    {
+-     "answerId": "2e326654-88df-4b6c-9825-a9b4cbce474e",
++     "answerId": "0954e074-9e6b-4052-a839-a16666df269b",
+      "exposureId": "b7dca74d-5c3e-43f0-9942-d69585beccff",
+      "messageId": "fa432bc8-2a6b-4005-8951-32817c4dfc61",
+      "roomId": "d15b63e0-bd4a-4d57-a544-e8285e3f0f61",
+      "text": "Private room answer",
+    },
+
+ ❯ tests/hub-room-ask-track-c.test.ts:225:45
+    223|       const bytes = readFileSync(file); expect(bytes.includes(Buffer.f…
+    224|       db = new Database(file); adapter = new HubRoomAskAdapter({ ...f.…
+    225|       await adapter.flush(); expect(f.sent).toEqual([answer, answer]);
+       |                                             ^
+    226|       adapter.accept(f.ask, f.link); await adapter.settled(); expect(f…
+    227|     } finally { adapter?.close(); if (db.open) db.close(); rmSync(dire…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 32 passed (38)
+   Start at  00:57:36
+   Duration  674ms (transform 250ms, setup 114ms, import 270ms, tests 143ms, environment 0ms)
+
