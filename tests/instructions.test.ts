@@ -221,6 +221,9 @@ describe("buildFleetInstructions", () => {
     const result = buildFleetInstructions({ ...base, decisions });
     expect(result).toContain("5 more");
     expect(result).toContain("list_decisions");
+    const overflow = result.split("\n").find(line => line.includes("5 more"));
+    expect(overflow).toContain("next_cursor");
+    expect(overflow).toContain("detail:true");
   });
 
   it("omits decisions section when empty", () => {

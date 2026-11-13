@@ -48,6 +48,8 @@ describe("titles by default; the full text when asked", () => {
     const { db, a, b } = store();
     const r = decisionListAnswer(db.listDecisions(WD)) as any;
     expect(r.hint).toBe(DECISION_TITLES_HINT);
+    expect(r.hint).toContain("next_cursor");
+    expect(r.hint).toContain("{ id, detail: true }");
     expect(r.decisions.map((d: any) => d.title).sort()).toEqual(["Review flow v3", "Use pnpm"]);
     const row = r.decisions.find((d: any) => d.id === a.id);
     expect(row).toEqual({ id: a.id, title: "Review flow v3", scope: "fleet", date: a.updated_at.slice(0, 10), tags: ["review"] });
