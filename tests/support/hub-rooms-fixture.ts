@@ -4,7 +4,8 @@
  *
  * The seed (the split's ask, in the spec's own names):
  * - 研一主管週會: 王經理 (me, manager), 陳主任, 吳小安; 12 agents in every presence state; the room assistant.
- *   An @all with 8 answers, 1 still working (project-helper) and 3 that reply later (answerLater() brings one), and an assistant
+ *   An @all with 6 answers, 1 still working (project-helper) and 5 that reply later (paused, offline, reply-later;
+ *   answerLater() brings one), and an assistant
  *   summary of the answers. One invitation waits for its owner (the room's own list).
  * - 研發例會: I am a member (not a manager) and members may not @all (allMention off).
  * - 去年專案: archived (read-only).
@@ -88,12 +89,13 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   say(group, people[1]!, minutes(5), "這週的進度先各自看一下，十點前整理。");
   say(group, people[0]!, minutes(8), "好，我請大家的 Agent 先回報。");
   const all = say(group, people[0]!, minutes(9), "@所有 Agent 請各自用三行回報這週的進度與風險。", { mentions: ["all"] });
-  const answering = agentMembers.filter(a => a.presence === "idle" || a.presence === "working" || a.presence === "paused");
+  // One rule with send (spec 1.7): 待命 and 處理中 get the question now; 暫停, 離線 and 上線時回答 answer later (Fable via Muse).
+  const answering = agentMembers.filter(a => a.presence === "idle" || a.presence === "working");
   answering.forEach((a, i) => {
     if (a.name === "project-helper") return;                            // still working on it
     say(group, a, minutes(10 + i), `${a.name}：進度 ${60 + i * 3}%；風險：${i % 2 ? "測試資料不足" : "無"}；下週：整理文件。`, { replyTo: all.id, answerTo: all.id, stage: "answered" });
   });
-  for (const a of agentMembers.filter(x => x.presence === "offline" || x.presence === "later"))
+  for (const a of agentMembers.filter(x => x.presence === "paused" || x.presence === "offline" || x.presence === "later"))
     say(group, a, minutes(25), "", { replyTo: all.id, answerTo: all.id, stage: "queued" });
   const answers = group.messages.filter(x => x.answerTo === all.id);
   all.ask = { total: 12, answered: answers.filter(x => x.stage === "answered").length, working: 1, later: answers.filter(x => x.stage === "queued").length };
