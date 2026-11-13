@@ -24,6 +24,12 @@
 @keyframes hub-pulse { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .hub-room-side .pulse { animation: none; } }
 .hub-list-empty, .hub-list-err { margin: var(--s-2); font-size: var(--fs-sm); }
+/* M-3092: the list as the Fleet roster draws it (its row, avatar, dot and nav-count); only what the Hub adds is here. */
+.hub-room-group + .hub-room-group { margin-top: var(--s-2); }
+.av.av-square { border-radius: var(--r-sm); }
+.hub-room-at { flex: none; color: var(--accent); font-weight: var(--fw-semibold); font-size: var(--fs-xs); }
+.inst-line2 > .nav-count { flex: none; height: 18px; min-width: 18px; line-height: 18px; font-size: 10.5px; }
+.hub-room-archived .inst-name { color: var(--text-3); }
 
 /* a name's letter on a tone (the same tones in both themes) */
 .hub-av { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 600; font-size: 14px; color: #fff; flex: none; }
