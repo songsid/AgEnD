@@ -21,8 +21,15 @@ import { join } from "node:path";
 import { atomicWriteFileSync } from "../../atomic-write.js";
 import { ensurePrivateDirectory, privatePath, readPrivateFile } from "../private-files.js";
 import { beginHubPairing as realBegin, claimHubPairing as realClaim } from "../pairing-client.js";
-import { HubMemberProfileStore } from "../profile.js";
+import { HubMemberProfileStore, type HubMemberProfile } from "../profile.js";
 import { HubMemberWebOriginStore } from "../web-origin.js";
+import { HubMemberRelocationStore, knownMemberOrigins } from "../member-origin.js";
+/** #3429 B: the member address this Fleet dials now (its confirmed relocations' end); pairing.json's own otherwise. */
+const memberAnchor = (home: string, p: HubMemberProfile, digest: string | null): string => {
+  if (!digest) return p.hub.memberOrigin;
+  const r = new HubMemberRelocationStore(home, p.hub.hubId).read(p, digest);
+  return r.kind === "corrupt" ? p.hub.memberOrigin : r.anchor;
+};
 import { httpsOrigin, type HubConnectError, type HubPairingHold, type HubPairingView } from "../../hub-pairing-summary.js";
 import { companyBindingSettled, type CompanyBindingMarker } from "../join/local-journal.js";
 export { httpsOrigin, pairingSummary } from "../../hub-pairing-summary.js";
@@ -129,7 +136,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
         if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId, binding };
         // M-2901: the Hub's current web address when it told this Fleet (verified against the pinned issuer key), else the
         // one it paired with — every link this Fleet's pages build to the Hub (open, who may ask, the switcher) follows it.
-        return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: null, memberOrigin: p.hub.memberOrigin, webOrigin: new HubMemberWebOriginStore(deps.home, s.hubId).effective(p), fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
+        return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: null, memberOrigin: memberAnchor(deps.home, p, store.profileDigest()), webOrigin: new HubMemberWebOriginStore(deps.home, s.hubId).effective(p, knownMemberOrigins(deps.home, p, store.profileDigest())), fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
           link: deps.link?.(store.profileDigest()) === "online" ? "online" : "offline" };
       }
       if (f.pending) {

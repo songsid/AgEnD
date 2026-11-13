@@ -11,7 +11,17 @@ import { ensurePrivateDirectory, privatePath, readPrivateFile } from "./private-
 import { hash, uuid, validated, parseStrictJson } from "./validation.js";
 import { issuerKeyId, sha256 } from "./identity.js";
 export interface HubProvisionedIdentity { hubId: string; spkiSha256: string; issuerKeyId: string; issuerPublicKey: string }
-const identitySchema = z.strictObject({ v: z.literal(1), hubId: uuid, memberOrigin: z.string(), spkiSha256: hash, issuerKeyId: hash, issuerPublicKey: z.string().max(2048) });
+const identityFields = { hubId: uuid, memberOrigin: z.string(), spkiSha256: hash, issuerKeyId: hash, issuerPublicKey: z.string().max(2048) };
+const identitySchema = z.discriminatedUnion("v", [
+  z.strictObject({ v: z.literal(1), ...identityFields }),
+  z.strictObject({ v: z.literal(2), ...identityFields, certificateFile: z.string().regex(/^hub\/member-address\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/cert\.pem$/) }),
+]);
+export type HubIdentityMetadata = z.infer<typeof identitySchema>;
+export function parseHubIdentityMetadata(raw: unknown): HubIdentityMetadata {
+  const value = validated(identitySchema, raw);
+  if (hubOrigin(value.memberOrigin) !== value.memberOrigin) throw Error("Hub identity differs");
+  return value;
+}
 export function hubOrigin(input: string, protocol: "https:" | "wss:" = "https:"): string {
   const u = new URL(input);
   if (u.protocol !== protocol || u.username || u.password || u.pathname !== "/" || u.search || u.hash || u.origin === "null" || u.hostname.endsWith(".")) throw Error("Invalid Hub origin");
@@ -59,17 +69,24 @@ export async function provisionHubIdentity(input: { home: string; memberOrigin: 
   return readHubIdentity({ home: input.home, memberOrigin: origin });
 }
 /** Inspection may use the stored origin; all admission/mount callers pass their expected origin explicitly. */
-export function readHubIdentity(input: { home: string; memberOrigin?: string }): HubProvisionedIdentity {
-  const metadata = validated(identitySchema, parseStrictJson(readPrivateFile(input.home, "hub/keys/identity.json")));
+export function readHubMemberTls(input: { home: string; memberOrigin?: string }) {
+  const metadataText = readPrivateFile(input.home, "hub/keys/identity.json"), metadata = parseHubIdentityMetadata(parseStrictJson(metadataText));
   const origin = hubOrigin(input.memberOrigin ?? metadata.memberOrigin);
-  const cert = verifyHubCertificate(readPrivateFile(input.home, "hub/keys/tls-cert.pem"), origin, metadata.spkiSha256);
+  const certificateFile = metadata.v === 1 ? "hub/keys/tls-cert.pem" : metadata.certificateFile;
+  const certificatePem = readPrivateFile(input.home, certificateFile), keyPem = readPrivateFile(input.home, "hub/keys/tls-key.pem");
+  const cert = verifyHubCertificate(certificatePem, origin, metadata.spkiSha256);
   const issuer = createPublicKey(readPrivateFile(input.home, "hub/keys/issuer-public.pem"));
   const privateIssuer = createPrivateKey(readPrivateFile(input.home, "hub/keys/issuer-key.pem"));
-  const privateTls = createPrivateKey(readPrivateFile(input.home, "hub/keys/tls-key.pem"));
+  const privateTls = createPrivateKey(keyPem);
   if (metadata.memberOrigin !== origin || issuer.asymmetricKeyType !== "ed25519" || privateIssuer.asymmetricKeyType !== "ed25519"
     || issuer.export({ type: "spki", format: "pem" }).toString() !== metadata.issuerPublicKey || issuerKeyId(issuer) !== metadata.issuerKeyId
     || issuerKeyId(privateIssuer) !== metadata.issuerKeyId || sha256(createPublicKey(privateTls).export({ type: "spki", format: "der" })) !== sha256(cert.publicKey.export({ type: "spki", format: "der" }))) throw Error("Hub identity files differ");
-  return { hubId: metadata.hubId, spkiSha256: metadata.spkiSha256, issuerKeyId: metadata.issuerKeyId, issuerPublicKey: metadata.issuerPublicKey };
+  const identity: HubProvisionedIdentity = { hubId: metadata.hubId, spkiSha256: metadata.spkiSha256, issuerKeyId: metadata.issuerKeyId, issuerPublicKey: metadata.issuerPublicKey };
+  return { identity, metadata, metadataText, certificateFile, certificatePem, keyPem };
+}
+/** Every material consumer resolves the same validated certificate selection. */
+export function readHubIdentity(input: { home: string; memberOrigin?: string }): HubProvisionedIdentity {
+  return readHubMemberTls(input).identity;
 }
 
 /** Missing means wholly unprovisioned; a partial, untrusted or changed identity is an error, never a fresh start. */

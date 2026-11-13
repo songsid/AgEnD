@@ -109,10 +109,13 @@ export type HubMemberFrame =
   | HubFrame<"attachment.get", { id: string; offset: number }>
   | HubFrame<"attachment.put", HubAttachmentChunk>
   | HubFrame<"exposure.quota", HubExposureQuota>
-  | HubFrame<"pairing.notice-ack", { id: string }>;
+  | HubFrame<"pairing.notice-ack", { id: string }>
+  | HubFrame<"relocate.ack", { revision: Epoch; digest: Sha256 }>;
 export type HubPairingNotice = {
   id: string; fleetId: string; generation: number; label: string; at: number;  revoked: boolean;
 } & ({ source: "group" | "manual"; codeId?: never } | { source: "code"; codeId: string });
+/** #3429 option B: an issuer-signed member-address relocation (member-origin.ts). */
+export interface HubRelocation { v: 1; from: string; to: string; spkiSha256: Sha256; revision: Epoch; signature: string }
 export type HubServerFrame =
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>
@@ -125,7 +128,8 @@ export type HubServerFrame =
   | HubFrame<"attachment.ack", { id: string; offset: number }>
   | HubFrame<"pairing.notice", HubPairingNotice & { source: "group" }>
   | HubFrame<"pairing.notice-v2", Exclude<HubPairingNotice, { source: "code" }>>
-  | HubFrame<"pairing.notice-v3", HubPairingNotice>;
+  | HubFrame<"pairing.notice-v3", HubPairingNotice>
+  | HubFrame<"relocate", HubRelocation>;
 export interface HubServerTransport {
   start(): Promise<void>;
   send(fleetId: FleetId, frame: HubServerFrame): Promise<void>;

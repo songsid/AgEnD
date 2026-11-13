@@ -10,16 +10,21 @@ import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, par
 import { HubSocket, type HubLinkCloseCode } from "./socket.js";
 import { HubProtocolError, parseStrictJson } from "./validation.js";
 import { HubPairingService } from "./pairing.js";
-import { readPrivateFile } from "./private-files.js";
-import { readHubIdentity } from "./tls.js";
+import { readHubMemberTls } from "./tls.js";
 import { personKeyString } from "./identity.js";
 import { handleCompanyJoin } from "./join/http.js";
 import type { HubCompanyJoin } from "./join/service.js";
 import { HubPublicationRefusal } from "./catalog.js";
 import { HUB_WEB_ORIGIN_CAPABILITY, type HubWebOriginStatement } from "./web-origin.js";
+import { HUB_MEMBER_RELOCATION_CAPABILITY } from "./member-origin.js";
+import type { HubRelocation } from "./types.js";
+/** #3429 B: a matched relocation ack — what the decision rechecks (the link object is the server's own Connection). */
+export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: string; revision: number; readonly link: object }
 /** `features`: the optional features both ends listed (the member's hello ∩ this Hub's), set once at hello. */
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
-interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout }
+interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout;
+  /** The credential binding the link authenticated with (#3429 B: what a relocation ack's proof is rechecked against). */
+  binding: { generation: number; revocationVersion: number } }
 export interface HubServerOptions {
   home: string; hubId: string; memberOrigin: string; listen: { host: string; port: number }; pairing: HubPairingService;
   current(): boolean;
@@ -37,6 +42,9 @@ export class HubServer {
   private server: Server | null = null;
   private wss: WebSocketServer | null = null;
   private connections = new Map<string, Connection>();
+  /** #3429 B: relocations sent and not yet acked, by request id (each bound to one link object, epoch, digest, revision). */
+  private relocations = new Map<string, { fleetId: string; connection: Connection; linkEpoch: number; digest: string; revision: number;
+    settle(proof: HubRelocationAck | null): void }>();
   private sockets = new Set<Socket>();
   private stopped = false;
   private accepting = 0;
@@ -46,9 +54,9 @@ export class HubServer {
   address(): AddressInfo | null { const x = this.server?.address(); return x && typeof x !== "string" ? x : null; }
   async start(): Promise<void> {
     if (!this.current() || this.server) throw new HubProtocolError("unavailable");
-    const identity = readHubIdentity(this.options);
+    const material = readHubMemberTls(this.options), identity = material.identity;
     if (identity.hubId !== this.options.hubId) throw new HubProtocolError("invalid");
-    const server = createServer({ key: readPrivateFile(this.options.home, "hub/keys/tls-key.pem"), cert: readPrivateFile(this.options.home, "hub/keys/tls-cert.pem"), minVersion: "TLSv1.2", maxHeaderSize: 8 * 1024 },
+    const server = createServer({ key: material.keyPem, cert: material.certificatePem, minVersion: "TLSv1.2", maxHeaderSize: 8 * 1024 },
       (req, res) => { void this.http(req, res).catch(() => this.response(res, 503, { code: "unavailable" })); });
     this.server = server; this.wss = new WebSocketServer({ noServer: true, maxPayload: HUB_LIMITS.frame, perMessageDeflate: false });
     server.requestTimeout = server.headersTimeout = 5_000; server.keepAliveTimeout = 5_000; server.maxHeadersCount = 16;
@@ -106,10 +114,12 @@ export class HubServer {
           current: () => this.current() && this.connections.get(binding.fleetId) === connection && this.options.pairing.bindingCurrent(binding.fleetId, binding.generation, binding.revocationVersion) };
         const link = new HubSocket(ws, { current: context.current, parse: parseMemberFrame, encode: encodeServerFrame,
           receive: frame => this.receive(frame, connection, binding.revocationVersion), closed: code => {
+            for (const w of [...this.relocations.values()]) if (w.connection === connection) w.settle(null);   // #3429 B: its ack can no longer come
             clearTimeout(connection?.timer); if (this.connections.get(binding.fleetId) === connection) this.connections.delete(binding.fleetId);
             this.options.hold(binding.fleetId, code);
           } });
-        connection = { link, context, ready: false, hello: false, timer: setTimeout(() => link.end(), 5_000) }; connection.timer.unref();
+        connection = { link, context, ready: false, hello: false, timer: setTimeout(() => link.end(), 5_000),
+          binding: { generation: binding.generation, revocationVersion: binding.revocationVersion } }; connection.timer.unref();
         this.connections.set(binding.fleetId, connection);
       });
     } catch (error) {
@@ -139,6 +149,15 @@ export class HubServer {
       this.options.pairing.leave(context, frame.requestId); return;
     }
     if (frame.type === "exposure.quota" && (!context.features.has("quota-band-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "relocate.ack") {
+      if (!context.features.has(HUB_MEMBER_RELOCATION_CAPABILITY) || !context.features.has("welcome-caps-v1")) throw new HubProtocolError("incompatible");
+      // Only the exact relocation sent on this very link and epoch; late, foreign or mismatched acks are ignored.
+      const waiting = this.relocations.get(frame.requestId);
+      if (waiting && waiting.connection === connection && waiting.fleetId === context.fleetId && waiting.linkEpoch === context.linkEpoch
+        && waiting.digest === frame.payload.digest && waiting.revision === frame.payload.revision && context.current())
+        waiting.settle({ fleetId: context.fleetId, linkEpoch: context.linkEpoch, digest: frame.payload.digest, revision: frame.payload.revision, link: connection });
+      return;
+    }
     if (frame.type === "pairing.notice-ack" && (!context.features.has("pairing-notices-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "exposure.snapshot" && frame.payload.exposures.some(e => e.fleetId !== context.fleetId || personKeyString(e.owner) !== personKeyString(context.owner))) throw new HubProtocolError("denied");
     let result: HubServerFrame | void;
@@ -165,6 +184,38 @@ export class HubServer {
     if (frame.type === "pairing.notice-v2" && (!connection.context.features.has("pairing-notices-v2") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v3" && (!connection.context.features.has("pairing-notices-v3") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     await connection.link.send(frame);
+  }
+  /**
+   * #3429 B: send one relocation (already signed for this Fleet) on its current ready link and wait — until `deadline`,
+   * a shared one for the whole attempt — for the ack of exactly it on that same link and epoch. Null: no such link, the
+   * feature not on, the link gone, or no ack in time. The proof names the link object, so the decision can recheck it.
+   */
+  relocate(fleetId: string, statement: HubRelocation, digest: string, deadline: number): Promise<HubRelocationAck | null> {
+    const connection = this.connections.get(fleetId);
+    if (!connection?.ready || !connection.context.current() || !connection.context.features.has(HUB_MEMBER_RELOCATION_CAPABILITY)
+      || !connection.context.features.has("welcome-caps-v1")) return Promise.resolve(null);
+    const requestId = randomUUID(), linkEpoch = connection.context.linkEpoch;
+    return new Promise<HubRelocationAck | null>((resolve) => {
+      let done = false;
+      const timer = setTimeout(() => settle(null), Math.max(0, deadline - Date.now())); timer.unref?.();
+      const settle = (proof: HubRelocationAck | null) => { if (done) return; done = true; clearTimeout(timer); this.relocations.delete(requestId); resolve(proof); };
+      this.relocations.set(requestId, { fleetId, connection, linkEpoch, digest, revision: statement.revision, settle });
+      connection.link.send({ v: 1, type: "relocate", requestId, linkEpoch, payload: statement }).catch(() => settle(null));
+    });
+  }
+  /**
+   * #3429 B: is this ack's link still the Fleet's current, ready one (the decision's recheck)? `advanced`: how many
+   * authorization versions the caller's own uncommitted decision has already published (the member-address decision
+   * advances it by exactly one, and rechecks after its audit with 1) — any other change still fails. With an advance,
+   * the Hub's liveness is not consulted (it already reflects that same decision's head move); the server must not be
+   * stopped, and the link and its exact transport row must be the ones the ack was proven on.
+   */
+  relocationLinkCurrent(proof: HubRelocationAck, advanced = 0): boolean {
+    const connection = this.connections.get(proof.fleetId);
+    // The socket itself must still be open: a CLOSING/ended link can keep its map entry until its close event runs.
+    if (!connection || connection !== proof.link || !connection.ready || !connection.link.open() || connection.context.linkEpoch !== proof.linkEpoch || this.stopped) return false;
+    return advanced === 0 ? this.current() && connection.context.current()
+      : this.options.pairing.bindingRow(proof.fleetId, connection.binding.generation, connection.binding.revocationVersion + advanced);
   }
   /** The enabled optional features of a fleet's ready link, or null while it has none. */
   features(fleetId: string): ReadonlySet<string> | null {

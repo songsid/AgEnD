@@ -9,7 +9,7 @@ export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] a
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
-export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1"];
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
@@ -70,6 +70,9 @@ export const pairingNoticeV3Schema = z.union([pairingNoticeV2Schema, pairingNoti
 /** web-origin-v1 (M-2901): the Hub's current web address, signed with its issuer key; signed and verified in web-origin.ts. */
 export const webOriginStatementSchema = z.strictObject({ v: z.literal(1), webOrigin: z.string().min(1).max(2048), revision: epoch,
   signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/) });
+/** #3429 option B: the Hub's issuer-signed member-address relocation; signed and verified in member-origin.ts. */
+export const relocationStatementSchema = z.strictObject({ v: z.literal(1), from: z.string().min(1).max(2048), to: z.string().min(1).max(2048),
+  spkiSha256: hash, revision: epoch.min(1), signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/) });
 const frame = <T extends string, P extends z.ZodType>(type: T, payload: P) => z.strictObject({ v: z.literal(1), type: z.literal(type), requestId: uuid, linkEpoch: epoch, payload });
 const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(16), memberBootId: uuid });
 const welcome = z.strictObject({ selectedVersion: z.literal(1), hubId: uuid, fleetId: uuid, linkEpoch: epoch.min(1), revocationVersion: epoch,
@@ -91,6 +94,8 @@ export const memberFrameSchema = z.union([
   frame("attachment.get", z.strictObject({ id: uuid, offset: epoch })), frame("attachment.put", attachmentChunk),
   frame("exposure.quota", exposureQuotaSchema),
   frame("pairing.notice-ack", z.strictObject({ id: uuid })),
+  // member-relocation-v1 only: the member stored this exact relocation durably.
+  frame("relocate.ack", z.strictObject({ revision: epoch.min(1), digest: hash })),
 ]);
 export const serverFrameSchema = z.union([
   frame("welcome", welcome), frame("question", questionSchema), frame("receipt", receiptSchema),
@@ -101,6 +106,7 @@ export const serverFrameSchema = z.union([
   frame("pairing.notice", pairingNoticeSchema),
   frame("pairing.notice-v2", pairingNoticeV2Schema),
   frame("pairing.notice-v3", pairingNoticeV3Schema),
+  frame("relocate", relocationStatementSchema),
 ]);
 export const parseMemberFrame = (input: string | Buffer): HubMemberFrame => validated(memberFrameSchema, parseStrictJson(input));
 export const parseServerFrame = (input: string | Buffer): HubServerFrame => validated(serverFrameSchema, parseStrictJson(input));

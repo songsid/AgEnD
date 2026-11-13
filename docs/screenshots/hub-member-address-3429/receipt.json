@@ -1,0 +1,325 @@
+{
+  "checks": [
+    {
+      "name": "real host launch sign-in",
+      "pass": true
+    },
+    {
+      "name": "actual Settings two-level shell",
+      "pass": true
+    },
+    {
+      "name": "initializer prepare",
+      "pass": true
+    },
+    {
+      "name": "verified synthetic LDAPS",
+      "pass": true
+    },
+    {
+      "name": "initializer commit",
+      "pass": true
+    },
+    {
+      "name": "initial Hub ready",
+      "pass": true
+    },
+    {
+      "name": "actual browser directory sign-in",
+      "pass": true
+    },
+    {
+      "name": "public manual pairing offer",
+      "pass": true
+    },
+    {
+      "name": "production member pairing API",
+      "pass": true
+    },
+    {
+      "name": "public pinned connect",
+      "pass": true
+    },
+    {
+      "name": "pending fingerprint",
+      "pass": true
+    },
+    {
+      "name": "exact owner confirmation",
+      "pass": true
+    },
+    {
+      "name": "exact admin confirmation",
+      "pass": true
+    },
+    {
+      "name": "local exact fingerprint confirmation",
+      "pass": true
+    },
+    {
+      "name": "production member reconciled before",
+      "pass": true
+    },
+    {
+      "name": "browser prepares affected fleet",
+      "pass": true
+    },
+    {
+      "name": "saved exact member mount ready",
+      "pass": true
+    },
+    {
+      "name": "old member credential disconnected",
+      "pass": true
+    },
+    {
+      "name": "old local credential is not silently rewritten",
+      "pass": true
+    },
+    {
+      "name": "browser address and Hub id preserved",
+      "pass": true
+    },
+    {
+      "name": "same browser session still signed in",
+      "pass": true
+    },
+    {
+      "name": "durable original owner notice",
+      "pass": true
+    },
+    {
+      "name": "member SPKI and issuer retained",
+      "pass": true
+    },
+    {
+      "name": "old member endpoint refused",
+      "pass": true
+    },
+    {
+      "name": "new endpoint refuses the old credential",
+      "pass": true
+    },
+    {
+      "name": "exact local disconnect",
+      "pass": true
+    },
+    {
+      "name": "explicit start over retires the old profile",
+      "pass": true
+    },
+    {
+      "name": "group policy preview",
+      "pass": true
+    },
+    {
+      "name": "group policy configured once",
+      "pass": true
+    },
+    {
+      "name": "company join enabled once",
+      "pass": true
+    },
+    {
+      "name": "actual member host login",
+      "pass": true
+    },
+    {
+      "name": "real browser company sign-in reconnects",
+      "pass": true
+    },
+    {
+      "name": "fresh exact credential and new member origin",
+      "pass": true
+    },
+    {
+      "name": "reconnected Hub ID and issuer unchanged",
+      "pass": true
+    },
+    {
+      "name": "old row remains revoked; only fresh row is active",
+      "pass": true
+    },
+    {
+      "name": "address notice not duplicated",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "backend-before-hub.zh-TW.png",
+      "sha256": "0838cefd7ea85f081cc7e5be03ca2ddb903397cd73b9cafd9208480e54daa8b4"
+    },
+    {
+      "path": "backend-after-reconnect.zh-TW.png",
+      "sha256": "93eb035487750bdc4866b4e15cd59238c9196548eaf8142ba9bd7fa53f347d6a"
+    }
+  ],
+  "boundary": "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, legacy manual pairing followed by explicit shipped Disconnect/Start over and real browser company sign-in through the second FleetManager/member runtime with empty Agent inventory. Explicit per-client fixture CA/hostname mapping and exact :636-to-owned-wire-port mapping only; no new reconnect widget or automatic trust reset. No new address UI, full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot.",
+  "hubResponses": [
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    }
+  ],
+  "policyPreview": {
+    "status": 200
+  },
+  "reconciliations": 2,
+  "initialProfileSha256": "cf5379cfcb1f80c3c2d762a9693cdf6e055f0205d8fdfb5535516815a805b0e1",
+  "ready": true,
+  "cleaned": true,
+  "production": [
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "e3066ac0153711b139919f3569d901ea0829fdd134b6c530196632c30f3acd9e"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "34d25f8aabeda6185b6a22c60fc09321699f4a0b38485180d26975fa4bdbb627"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "dd733f62b2f8719e8fc20af8d277c4d186acdb9d7950f93213972ed7ff02bf67"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "fe7eb5dfdc7adb19ebbcb03408a9547fb0ea8bf0cd8222c07749d38367409dab"
+    },
+    {
+      "path": "src/hub/init/member-certificate.ts",
+      "sha256": "95d1461b1b353e4a5e9804316a2096d7532acd8f6cdde75fdd20ad4ac7ded5f2"
+    },
+    {
+      "path": "src/hub/init/plan-digest.ts",
+      "sha256": "f54cb3d767e1f7f65a61be0e79f83d844bf760001fda0ce1fa60c555e365a5fb"
+    },
+    {
+      "path": "src/hub/runtime.ts",
+      "sha256": "d975668219b4bc9ae27d9af158184c23c623f9322b51e165df3e51ae1d732d3d"
+    },
+    {
+      "path": "src/hub/server.ts",
+      "sha256": "4c4c7087a89ee1b20ca4a540b63cd1f4522adf13f19337a6a690c68515331fa5"
+    },
+    {
+      "path": "src/hub/settings-commit.ts",
+      "sha256": "4cd4b79a5faa7817c58657f5bc17c331efbecf042c0f10621d8936c2de38c68b"
+    },
+    {
+      "path": "src/hub/settings-directory-recovery.ts",
+      "sha256": "f29eb33caee8c2a6b2bba3801f2aa62c7aa29985ce89678cfcd2ecd8b7fe9581"
+    },
+    {
+      "path": "src/hub/settings-member-address-control.ts",
+      "sha256": "ef49e7395984ca07350821dfdff1d2f4cfd4c8eabb1d634afc23cdf60b4f07d2"
+    },
+    {
+      "path": "src/hub/settings-member-address-decision.ts",
+      "sha256": "1115ddc6ba37c507beecdbd7c127ed67f1c286d40932b56b716c4424a11872e4"
+    },
+    {
+      "path": "src/hub/settings-member-address-http.ts",
+      "sha256": "c995167e2aaa5b1381b476975ecbf4b9373795e7f61b7ea2e08783c45cd86d23"
+    },
+    {
+      "path": "src/hub/settings-member-address-network.ts",
+      "sha256": "7f1849aad9f0721ce84eeefa3a4ed2b27c6dc215ea5b5943f80e133ee45199e6"
+    },
+    {
+      "path": "src/hub/settings-member-address-notices.ts",
+      "sha256": "ab21ab691a9cc4a30f096a39953e9bc91c4e9e5e3bb26378f5b5e85561d4fd5d"
+    },
+    {
+      "path": "src/hub/settings-member-address-policy.ts",
+      "sha256": "5a89cdb03aa4b619281d4cdda40c71b59c8efc409b8188c92ffe82bd41588e4d"
+    },
+    {
+      "path": "src/hub/settings-member-address.ts",
+      "sha256": "fe9293feb70ebe8522ab8d0b05eb3c42f4b6fa1b2e241df63e879a38def64313"
+    },
+    {
+      "path": "src/hub/tls.ts",
+      "sha256": "67c6a1335749aca9506df5e3e55913f9cd4324835084805ec11a51f9b09db6c8"
+    },
+    {
+      "path": "src/settings-api.ts",
+      "sha256": "7700cc3c9a834c2ae4992d0f5a9f73ccfde506ac4cfe88a81fdc6b6c0047ee46"
+    }
+  ],
+  "sourceHead": "a0dd0be8c90e7e9df974a19a2c6ba485a48dcfb0",
+  "sourceBase": "b5fb0888150d6d9fd23ce697dc37b5044a1da5bb",
+  "scope": "Technical existing-shell zh-TW desktop evidence; held Settings UI and final EN/zh desktop/phone/SKEW not implemented. Precommit production hashes equal the owned container snapshot; no exact final commit claim.",
+  "priorFixtureFailures": [
+    "First old-endpoint Chrome error-page navigation reused its page too soon; now an independent probe tab.",
+    "The group-policy setup initially used ephemeral LDAPS port and correctly refused unsupported; exact owned :636 wire mapping added.",
+    "The old .hub-paired selector was obsolete in the current consolidated Settings shell; corrected to actual connected card state."
+  ]
+}
