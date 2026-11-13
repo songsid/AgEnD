@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 1 failed) 151ms
+     × requires room-ask-v1 on the actual current link for both admission and frozen-answer flush 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > requires room-ask-v1 on the actual current link for both admission and frozen-answer flush
+AssertionError: expected [Function] to throw an error
+ ❯ tests/hub-room-ask-track-c.test.ts:157:51
+    155|     const f = member(), features = f.link.features as Set<string>;
+    156|     features.delete("room-ask-v1"); expect(features.has("welcome-caps-…
+    157|     expect(() => f.adapter.accept(f.ask, f.link)).toThrow();
+       |                                                   ^
+    158|     expect(f.db.prepare("SELECT count(*) AS n FROM hub_room_asks").get…
+    159|     features.add("room-ask-v1"); f.adapter.accept(f.ask, f.link); awai…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 45 passed (46)
+   Start at  01:13:55
+   Duration  646ms (transform 230ms, setup 102ms, import 253ms, tests 151ms, environment 0ms)
+

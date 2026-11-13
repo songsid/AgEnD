@@ -1,0 +1,60 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 2 failed) 216ms
+     × exports stable viewer-translated reason codes instead of Fleet-locale display text or crash details 8ms
+     × retries a failed send instead of marking it sent, and gives a bounded state when reading fails 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > exports stable viewer-translated reason codes instead of Fleet-locale display text or crash details
+AssertionError: expected { state: 'paused' } to deeply equal { state: 'paused', reason: 'quota' }
+
+- Expected
++ Received
+
+  {
+-   "reason": "quota",
+    "state": "paused",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:63:94
+     61|   });
+     62|   it("exports stable viewer-translated reason codes instead of Fleet-l…
+     63|     expect(agentPresence({ process: "paused", execution: "working", pa…
+       |                                                                                              ^
+     64|     expect(agentPresence({ process: "paused", execution: "idle", pause…
+     65|     expect(agentPresence({ process: "crashed", execution: "working" })…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C current-link agent.state publisher > retries a failed send instead of marking it sent, and gives a bounded state when reading fails
+AssertionError: expected last "vi.fn()" call to have been called with [ { …(3) } ]
+
+- Expected
++ Received
+
+  [
+    {
+      "exposureId": "59298b13-0a79-4334-861b-5e66500a03b0",
+-     "reason": "unknown",
+      "state": "paused",
+    },
+  ]
+
+ ❯ tests/hub-room-ask-track-c.test.ts:304:30
+    302|     await expect(f.p.refresh()).rejects.toThrow("offline"); await f.p.…
+    303|     f.read.mockRejectedValueOnce(Error("private detailed activity")); …
+    304|     expect(f.link.sendState).toHaveBeenLastCalledWith({ exposureId: f.…
+       |                              ^
+    305|   });
+    306|   it("does not read or export presence when the current link negotiate…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 44 passed (46)
+   Start at  01:14:30
+   Duration  784ms (transform 282ms, setup 106ms, import 315ms, tests 216ms, environment 0ms)
+

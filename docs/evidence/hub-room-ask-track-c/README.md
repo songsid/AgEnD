@@ -1,4 +1,18 @@
-# Track C seam 2: injectable Fleet room asks
+# Track C seam 2 — current R1 revision
+
+Current source/test producer `40a2dd3bf6dc81a85b563dec4c9cb2ca1e62aac6`. [R1 bindings](r1/bindings.json) bind the current product, tests, restored final #3848 client test, fixture and design. The remaining text below this section records the original submission at `985e2753`; its root `bindings.json`, counts and logs are historical and must be checked against that head, not the current source.
+
+R1 adds the actual current-link `welcome-caps-v1`-without-`room-ask-v1` negatives for admission, frozen-answer flush/ACK and presence. It fixes delivery/report callbacks settling after the member DB closes (two failing controls before the guards), and puts room-member content in a JSON data block with EN/zh trust framing. A plain merge restores #3848's final notices-contract test byte-for-byte.
+
+Presence now emits stable reason codes, never Fleet-locale text. Ridge confirmed the optional `agent.state.reason`/HTTP `presenceReason` contract and published the matching schema/type at `563769ff7`. Lumen's `d58564ddc` mapping normalizes stopped/crashed to grey Stopped (distinct from Fleet Offline), makes wakeable sleep Idle, and leaves ordinary pauses yellow. C emits `state:paused, reason:stopped` for stopped/crashed without crash details. The viewer translates these codes; its reply/integration is still pending when this evidence is packaged. This PR remains unmounted and must not advertise the feature before the producer, viewer and composition are ready.
+
+**Current checks:** 105/105 across the same five focused suites, including 46 adapter/presence cases; both native TS7 programs exit 0. Seventeen isolated reversals compile and fail by assertion, with exact restoration (`r1/mutations`). Separate exact old-function replays from reviewed head985e (presence and prompt only, in the new module framework) compile and fail three selected assertions; these are not full old-head runs. Two closed-DB controls were red before the guards. No browser/live input/AD/model/socket/container run was added. The wrapper is prepared only; no currently available browser flow changes.
+
+The initial preliminary timeout remains excluded. Current recipes/logs live under `r1/`; root negative logs and the initial ten-case summary remain historical. All evidence files are hashed by the top-level SHA256SUMS. The runtime source/tests are unchanged by later evidence commits.
+
+---
+
+# Initial submission (historical): injectable Fleet room asks
 
 Producer `4ef46c70aac923187d54c81426f2c01b0937d3b5`. `bindings.json` binds the product, tests, fixture and design. The product is not mounted in the member factory and does not offer a new capability. This is the first Track C preparation PR, not a completed rooms feature or a live Fleet rehearsal.
 

@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 1 failed) 157ms
+     × exports stable viewer-translated reason codes instead of Fleet-locale display text or crash details 9ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > exports stable viewer-translated reason codes instead of Fleet-locale display text or crash details
+AssertionError: expected { state: 'paused', reason: 'crashed' } to deeply equal { state: 'paused', reason: 'stopped' }
+
+- Expected
++ Received
+
+  {
+-   "reason": "stopped",
++   "reason": "crashed",
+    "state": "paused",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:65:73
+     63|     expect(agentPresence({ process: "paused", execution: "working", pa…
+     64|     expect(agentPresence({ process: "paused", execution: "idle", pause…
+     65|     expect(agentPresence({ process: "crashed", execution: "working" })…
+       |                                                                         ^
+     66|     expect(agentPresence({ process: "stopped", execution: "idle" })).t…
+     67|     expect(agentPresence({ process: "running", execution: "working", w…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 45 passed (46)
+   Start at  01:14:25
+   Duration  585ms (transform 178ms, setup 79ms, import 214ms, tests 157ms, environment 0ms)
+
