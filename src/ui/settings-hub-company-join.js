@@ -275,6 +275,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
       ${view.issued && view.state !== "saved" ? html`<p class="note">${hj("issued")}</p>` : null}
       <div class="field-row">${view.state === "awaiting-sign-in" && !view.foreign ? html`<a class="btn btn-sm" href=${root + "/bridge?operationId=" + encodeURIComponent(view.operationId)} target="_blank" rel="noopener">${j1("reopen")}</a>` : null}${view.state === "held" && !["authority", "expired", "denied", "code-denied"].includes(view.reason) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("resume")}>${hj("resume")}</button>` : null}
         ${!["saved", "cancelled", "ended"].includes(view.state) && (!view.foreign || view.state === "held") ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("cancel")}>${view.state === "awaiting-sign-in" ? j1("cancel") : hj("stop")}</button>` : null}
+        ${view.state === "held" && !view.foreign && ["unknown", "uncertain"].includes(view.reason) ? html`<button type="button" class="btn btn-sm hub-join-check" disabled=${busy} onClick=${read}>${hj("retry")}</button>` : null}
         ${view.hubOrigin ? html`<a class="btn btn-sm" href=${view.hubOrigin + "/ui/hub"} target="_blank" rel="noopener noreferrer">${hj("inspect")}</a>` : null}</div>
     </div>` : null}
   </${Frame}>`;

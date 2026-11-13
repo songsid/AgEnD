@@ -108,7 +108,9 @@ describe("the hub skill", () => {
       "Chat with an agent", "Connect your fleet", "Connected fleets", "Company sign-in name", "Create invitation", "Copy invitation",
       "Advanced: connect with a pairing code", "Notices", "Acknowledge", "This Hub", "Hub name", "Set up a Hub", "Set up on this computer",
       "Test connection and review", "Create Hub", "Open Hub sign-in", "Checking whether the Hub is ready…", "Only the Hub administrator can see this",
-      "已帶入加入碼。", "讓同仁加入", "以公司帳號登入", "恢復這次連接", "個別邀請", "還沒登入過 Hub", "停止分享", "分享的 Agent", "登入 Hub", "Hub 位址", "加入碼"];
+      "已帶入加入碼。", "讓同仁加入", "以公司帳號登入", "恢復這次連接", "個別邀請", "還沒登入過 Hub", "停止分享", "分享的 Agent", "登入 Hub", "Hub 位址", "加入碼",
+      // #3776: the colleague-join card's link to the full group editor, and the uncertain card's Check again (zh).
+      "All group permissions", "所有群組權限", "再次檢查"];
     const notQuoted = labels.filter(l => !FLAT.includes(l)), notInUi = labels.filter(l => !SOURCES.includes(l));
     expect(notQuoted, "listed here but not in the skill").toEqual([]);
     expect(notInUi, "quoted by the skill but not a UI string").toEqual([]);

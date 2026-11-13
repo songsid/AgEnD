@@ -14,6 +14,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { GroupSearch } from "./hub-group-search.js";
 import { register, t } from "/assets/app-i18n.js";
 import { hubClient } from "./hub-client.js";
+import { navigate } from "/assets/app-nav.js";
 export const joinStepsV1 = true;
 register("hubJoinSteps", {
   en: {
@@ -220,7 +221,9 @@ export function HubJoinCard({ view, busy = false, error = null, onToggle, onRetr
       <li class=${s1 ? "done" : "now"} data-step="1"><div class="hub-step-body"><span><b>${sw("step1")}${mark(s1)}</b></span>
         ${view ? html`<label class="check"><input type="checkbox" role="switch" class="s-ui-toggle" checked=${view.enabled} disabled=${busy || !!error} onChange=${(e) => onToggle?.(e.target.checked)} /><span>${sw("step1Switch")}</span></label>` : null}</div></li>
       <li class=${s2 ? "done" : s1 ? "now" : ""} data-step="2"><div class="hub-step-body"><span><b>${sw("step2")}${mark(s2)}</b><small class="note">${sw("step2Hint")} ${features.includes("enrolment-code-v1") ? sw("step2Code") : ""}</small></span>
-        ${groups ? html`<${JoinStep2} client=${client} onSaved=${changed} />` : html`<p class="note" role="status">${sw("unsupported")}</p>`}</div></li>
+        ${groups ? html`<${JoinStep2} client=${client} onSaved=${changed} />
+          <div class="field-row hub-join-groups-link"><a class="btn btn-sm" href="/ui/hub/admin?view=groups"
+            onClick=${(e) => { e.preventDefault(); navigate("/ui/hub/admin?view=groups"); }}>${sw("groupsPage")}</a></div>` : html`<p class="note" role="status">${sw("unsupported")}</p>`}</div></li>
       <${JoinStep3} webOrigin=${origin} step1=${s1} step2=${s2} features=${features} client=${client} onChanged=${changed} pending=${!view || reading || readError} />
     </ol>
     ${view && view.enabled && view.companyLink ? html`<details class="s-ui-disclosure hub-join-advanced"><summary>${sw("advanced")}</summary><div class="s-disclosure-body"><p class="note">${sw("advancedHint")}</p>
