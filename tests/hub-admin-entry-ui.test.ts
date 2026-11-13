@@ -97,6 +97,7 @@ describe("the card links to the full group-permissions editor",()=>{
   expect(link).toBeTruthy();
   expect(link.textContent).toBe(lang==="en"?"All group permissions":"所有群組權限");
   expect(link.getAttribute("href")).toBe("/ui/hub/admin?view=groups");
+  for(let el=link;el&&el!==f.p.root;el=el.parentNode){expect(el.hasAttribute?.("hidden")).toBeFalsy();if(el.tagName==="DETAILS")expect(el.open).toBe(true);}   // visible: nothing hides or folds it
   const nav=await import("/assets/app-nav.js");nav.startRouter((globalThis as any).window ?? globalThis);   // as the app shell does at boot
   fire(link,"click");await settle(10);
   const w=(globalThis as any).window ?? globalThis;
