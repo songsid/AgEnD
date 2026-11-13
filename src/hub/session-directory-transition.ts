@@ -168,7 +168,7 @@ export async function prepareHubRoleDirectorySessionRelease(core: HubCore, handl
   if (!state || state.phase !== "committed" || !state.token) throw new HubProtocolError("revoked");
   state.phase = "completing"; // One caller owns release; a second call cannot cancel or join this one.
   const token = state.token;
-  let released = false;
+  let released = false, releaseClaimed = false;
   try {
     const authority = core.deps.management, method = core.management, configuration = core.deps.config,
       directory = core.deps.directory, uow = core.deps.uow;
@@ -204,7 +204,9 @@ export async function prepareHubRoleDirectorySessionRelease(core: HubCore, handl
     return Object.freeze({
       assertCurrent() { void checked(); },
       release() {
-        if (released) throw new HubProtocolError("revoked");
+        if (releaseClaimed) throw new HubProtocolError("revoked");
+        // Claim before clock/proof callbacks. A nested attempt must not cancel this owner.
+        releaseClaimed = true;
         const out = checked();
         released = true; state.token = null; state.phase = "released";
         return out;
