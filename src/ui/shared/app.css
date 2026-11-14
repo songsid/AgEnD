@@ -1601,6 +1601,8 @@ img.amb-p { object-fit: contain; }
 .inst-status.off { background: var(--text-2); }
 .inst-status.hollow { box-sizing: border-box; background: var(--bg-sidebar); border: 2px solid var(--text-2); }
 @media (max-width: 899px), (pointer: coarse) {
+  /* New Settings controls meet the phone tap minimum; existing smaller controls are grandfathered by the UI gate. */
+  .p-settings .prefs.labelled #pref-density { min-height: var(--tap); }
   .inst-nav.compact .v-li, .inst-nav.compact .v-inst { height: 40px; min-height: 40px; }
   .inst-nav.compact .inst-row-menu > .icon-btn { height: 40px; min-height: 40px; min-width: 40px; }
 }

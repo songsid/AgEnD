@@ -30,4 +30,14 @@ The browser rig serves the actual private Sidebar component with fake instances 
 
 Presentation and one optional preference only; no instance state, notifications or tool authority changes. Detailed remains the default and its row rendering is retained. Select Detailed to restore the current layout; clearing `nav.density` also restores it. Reverting the feature leaves no data migration to undo.
 
-Alpha gate is held for the beta.3 release freeze. Coordinator alone merges after the freeze and exact-head review/CI requirements.
+Leader’s forwarded freeze-lift receipt was verified; coordinator alone merges after exact-head review/CI requirements.
+
+## R1: new Settings select tap size
+
+CI ui-gate on the first head reported `phone-dark-zh-TW:preferences:tap` for `select#pref-density`. Local `SECTIONS=preferences GATE=ci` reproduced the same failure. The inherited preference select height was below the 44 px minimum; the older language/name controls have legacy allowances. No allowance was added or changed.
+
+The new density control alone now has `min-height: var(--tap)` on phone/coarse input. Compact agent rows remain 30/40 px. The unrelated cosmetic validator-comment placement was corrected in this same delta.
+
+- `REPO="$PWD" PW_DIR="$PWD" OUT="$PWD/.artifacts/ui-gate-density-after" GATE=ci GATE_PORT=47960 npx tsx scripts/manual/smoke/smoke-settings-ui-gate.mts` — **114/114 checks pass**, all Settings sections, desktop light English + phone dark zh-TW and 1024 px overflow checks. [Result](ui-gate-r1.json).
+- `REPO="$PWD" PW_DIR="$PWD" npx tsx docs/evidence/sidebar-density-3129/settings-control.mts` — scoped real fixture capture after scrolling the control into view: **324 × 44 px**. [Measurement](settings-control.json), [phone Settings PNG](phone-preferences-r1.png).
+- No JS behavior or row rendering changed in R1; prior unit/type/sidebar PNG evidence carries. Both fixture browser/server lifecycles close after the run.
