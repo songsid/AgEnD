@@ -1,5 +1,5 @@
 /**
- * M-3127 (agents' reactions, room-react-v1): an agent's `react` on the Hub room question it was asked —
+ * M-3127 (agents' reactions, riding on room-answer-buttons-v1): an agent's `react` on the Hub room question it was asked —
  * A. the Hub: the `room.react` frame (real HTTP + SQLite, the S3b rig): under the question, one per agent, "" takes it
  *    back, only that delivery's Fleet/owner/exposure, a result (never a broken link) for an archived room;
  * B. the Fleet member: the room adapter's react() and the prompt's line, only where the Hub takes reactions;
@@ -22,7 +22,7 @@ let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; vi.unstubAllEnvs(); });
 
 describe("A. the Hub takes an agent's reaction (room.react)", () => {
-  const CAPS = ["welcome-caps-v1", "room-ask-v1", "room-react-v1"];
+  const CAPS = ["welcome-caps-v1", "room-ask-v1", "room-answer-buttons-v1"];
   async function world(caps = CAPS) {
     r = await s3bRig({ realAudit: true });
     const alex = r.addPerson("alex", "Alex"), a = await r.signIn("alex"), admin = await r.signIn("admin");
@@ -77,17 +77,19 @@ describe("A. the Hub takes an agent's reaction (room.react)", () => {
     expect(await w.react("🍕")).toMatchObject({ payload: { ok: false, code: "invalid" } });
     expect(await w.react("🚀")).toMatchObject({ payload: { ok: true } });
   });
-  it("a link without room-react-v1 takes none", async () => {
+  it("a link without room-answer-buttons-v1 takes none", async () => {
     const w = await world(["welcome-caps-v1", "room-ask-v1"]);
     expect(await w.react("👍")).toMatchObject({ payload: { ok: false, code: "revoked" } });
   });
 });
 
 describe("the member hello's capability list (Fable #3935 info)", () => {
-  it("fits the hello schema's limit of 16 — this PR's room-react-v1 is the 16th: the next one needs a compatibility plan", async () => {
-    const { HUB_CAPABILITIES, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, memberFrameSchema } = await import("../src/hub/protocol.js");
-    const sent = [...HUB_CAPABILITIES, ...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY];   // what compose/member.ts offers
+  it("the fullest hello (a member with the room-post adapter) fits the schema's limit of 16; a 17th is refused — agent reactions add no capability", async () => {
+    const { HUB_CAPABILITIES, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, memberFrameSchema } = await import("../src/hub/protocol.js");
+    const sent = [...HUB_CAPABILITIES, ...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY];   // compose/member.ts at its fullest
     expect(sent).toHaveLength(16);
+    expect(HUB_ROOM_REACT_CAPABILITY).toBe(HUB_ROOM_BUTTONS_CAPABILITY);
+    expect(sent).not.toContain("room-react-v1");
     const hello = (capabilities: string[]) => memberFrameSchema.safeParse({ v: 1, type: "hello", requestId: randomUUID(), linkEpoch: 0,
       payload: { supportedVersions: [1], capabilities, memberBootId: randomUUID() } }).success;
     expect(hello(sent)).toBe(true);
@@ -109,7 +111,7 @@ describe("B. the Fleet member's room adapter", () => {
     return { db, adapter, ask, inputs, reacts, close: () => { adapter.close(); db.close(); } };
   }
   it("sends the reaction for this agent's own room question; the prompt says how, only where the Hub takes it", async () => {
-    const m = member(["welcome-caps-v1", "room-ask-v1", "room-react-v1"]); await m.adapter.settled();
+    const m = member(["welcome-caps-v1", "room-ask-v1", "room-answer-buttons-v1"]); await m.adapter.settled();
     const cid = m.inputs[0]!.correlationId;
     expect(m.inputs[0]!.text).toContain(`use react with message_id="${cid}"`);
     expect(await m.adapter.react({ correlationId: cid, caller: "notes", emoji: "👍" })).toEqual({ ok: true, message: "Reacted in the Hub room." });
@@ -127,7 +129,7 @@ describe("B. the Fleet member's room adapter", () => {
     expect(m.inputs[0]!.text).not.toContain("use react");
     expect(await m.adapter.react({ correlationId: cid, caller: "notes", emoji: "👍" })).toMatchObject({ ok: false, message: expect.stringContaining("report_result") });
     m.close();
-    // A link that could send but did not agree room-react-v1: still refused, nothing sent.
+    // A link that could send but did not agree room-answer-buttons-v1: still refused, nothing sent.
     const n = member(["welcome-caps-v1", "room-ask-v1"], true); await n.adapter.settled();
     expect(await n.adapter.react({ correlationId: n.inputs[0]!.correlationId, caller: "notes", emoji: "👍" })).toMatchObject({ ok: false });
     expect(n.reacts).toEqual([]);

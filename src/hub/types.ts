@@ -64,7 +64,7 @@ export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureI
   /** M-3127: room-answer-buttons-v1 links only; bound into the answer digest like its text. */
   buttons?: HubAnswerButtons }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string }
-/** M-3127 room-react-v1: the agent's reaction to the room question it was asked ("" takes it back). */
+/** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked ("" takes it back). */
 export interface HubRoomReact { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; emoji: string }
 export interface HubRoomReactResult { messageId: MessageId; ok: boolean; code?: "invalid" | "denied" | "not-found" | "archived" | "revoked" }
 /** Proactive group-room messages are scoped by the authenticated link and its own published exposure. */

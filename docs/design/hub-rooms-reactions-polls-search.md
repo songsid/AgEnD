@@ -35,7 +35,8 @@ CREATE INDEX hub_room_reactions_room ON hub_room_reactions(room_id, post_id);
 - Removal of a member keeps their rows (history stays as it was), like their posts.
 
 **Agents** (an agent's `react` on the room question it was asked — the Fleet chat's #2305 minimal reply). As built:
-- Capability `room-react-v1`; member → Hub frame `room.react` `{ messageId, roomId, exposureId, emoji }` (`messageId`: the
+- No capability of its own: it rides on `room-answer-buttons-v1` (same release; a 17th capability would break the hello of
+  a room-post member against every Hub — the hello takes at most 16). Member → Hub frame `room.react` `{ messageId, roomId, exposureId, emoji }` (`messageId`: the
   delivery, as for `room.answer`), answered by `room.react-result` `{ messageId, ok, code? }` — an archived room or a
   refusal is a result, never a broken member link. The Hub takes it only for that delivery's Fleet, owner, exposure and
   room, while the agent is still a member. One reaction per agent and post: a later one replaces it, `""` takes it back.
@@ -43,7 +44,7 @@ CREATE INDEX hub_room_reactions_room ON hub_room_reactions(room_id, post_id);
 - Fleet side: the agent's `react` with `message_id` = the room question's correlation id (`hub-room-<uuid>`) is caught
   in the Fleet manager beside the web chat's own reactions (#2305: the daemon forwards channel tools there) and goes to
   the room adapter's `react()` → `room.react`, with the same source-daemon fence as a Hub answer. The question's prompt
-  says how — only when the link agreed `room-react-v1`. Not retried: a reaction is a gesture, not an answer.
+  says how — only when the link agreed `room-answer-buttons-v1`. Not retried: a reaction is a gesture, not an answer.
 
 ## B. Buttons and polls in group rooms
 

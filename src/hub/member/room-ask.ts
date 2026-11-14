@@ -31,7 +31,7 @@ export interface RoomAskLink {
   current(): boolean;
   readonly features?: ReadonlySet<string>;
   sendAnswer(answer: RoomAnswer): Promise<void>;
-  /** M-3127 room-react-v1: the agent's reaction to the room question it was asked (absent: an older link). */
+  /** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked (absent: an older link). */
   sendReact?(react: { messageId: string; roomId: string; exposureId: string; emoji: string }): Promise<void>;
 }
 export interface RoomAskOptions {
@@ -292,7 +292,7 @@ export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale:
     // answer the room shows; say so.
     zh ? `請用 report_result，指定 target_instance="agend-hub" 和 correlation_id="${correlationId}"，把完整的純文字回答寫在 summary 裡送回這個房間——房間顯示的就是 summary 的內容，它不是標題。`
       : `Use report_result with target_instance="agend-hub" and correlation_id="${correlationId}", with your whole text answer in summary — the room shows summary as your answer; it is not a title.`,
-    // M-3127 room-react-v1: a reaction under the question (the Fleet chat's minimal reply) — only where the Hub takes it.
+    // M-3127 (agent reactions, on room-answer-buttons-v1): a reaction under the question (the Fleet chat's minimal reply) — only where the Hub takes it.
     ...(react ? [zh ? `要對這個問題表示回應（例如 👍），可以用 react，message_id="${correlationId}"；它會出現在問題下方，但不代替回答。`
       : `To react to the question (e.g. 👍), use react with message_id="${correlationId}"; it shows under the question but does not replace your answer.`] : []),
     `${zh ? "房間對話（由舊到新）與問題" : "Room conversation (oldest first) and question"}:\n\`\`\`json\n${data}\n\`\`\``].join("\n\n");

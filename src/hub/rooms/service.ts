@@ -797,7 +797,7 @@ export class HubGroupRooms {
     if (out.some(x => x.line)) this.agents.wake();
   }
   /**
-   * M-3127 room-react-v1: an agent's reaction (its `react`) to the room question it was asked — only on that delivery's
+   * M-3127 (agent reactions, on room-answer-buttons-v1): an agent's reaction (its `react`) to the room question it was asked — only on that delivery's
    * own question, from the Fleet and owner it went to, while the agent is still in the room. One reaction per agent and
    * post (a later one replaces it; "" takes it back), stored under the agent's membership; the post as it now is goes out
    * on the room stream (message.updated).

@@ -12,15 +12,20 @@ export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";
 export const HUB_ROOM_POST_CAPABILITY = "room-post-v1";
 /** M-3127: a room answer may carry the reply's buttons or poll (answerButtonsSchema); both ends list it. */
 export const HUB_ROOM_BUTTONS_CAPABILITY = "room-answer-buttons-v1";
-/** M-3127: an agent reacts to the room question it was asked (its `react` tool, the Fleet chat's minimal reply). */
-export const HUB_ROOM_REACT_CAPABILITY = "room-react-v1";
+/**
+ * M-3127: an agent reacts to the room question it was asked (its `react` tool, the Fleet chat's minimal reply). It rides on
+ * room-answer-buttons-v1 (the same release): a capability of its own would make a 17th in a room-post member's hello, which
+ * every Hub refuses (the hello takes at most 16 — see HUB_OPTIONAL_CAPABILITIES).
+ */
+export const HUB_ROOM_REACT_CAPABILITY = HUB_ROOM_BUTTONS_CAPABILITY;
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending.
- * LIMIT (M-3127): a member's hello sends HUB_CAPABILITIES + these + room-ask-v1, and every Hub's hello schema takes at most
- * 16 — this list makes exactly 16 (pinned by tests/hub-room-agent-react-m3127.test.ts). A 17th breaks the hello against
- * every Hub, older ones too: raise the limit in Hubs first (and ship that), then add the flag. */
-export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1", "room-answer-buttons-v1", "room-react-v1"];
+ * LIMIT (M-3127): a member's hello sends HUB_CAPABILITIES + these + room-ask-v1 (+ room-post-v1 when its agent-room adapter
+ * is composed), and every Hub's hello schema takes at most 16 — that full list makes exactly 16 (pinned by
+ * tests/hub-room-agent-react-m3127.test.ts). A 17th breaks the hello against every Hub, older ones too: raise the limit in
+ * Hubs first (and ship that), then add the flag — or let the new feature ride on a flag of the same release. */
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1", "room-answer-buttons-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
@@ -73,7 +78,7 @@ export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roo
 export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
   buttons: answerButtonsSchema.optional() });
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
-/** room-react-v1: `messageId` is the delivery (the question as the agent got it); "" takes the agent's reaction back. */
+/** M-3127 (room-answer-buttons-v1): `messageId` is the delivery (the question as the agent got it); "" takes the agent's reaction back. */
 export const roomReactSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, emoji: z.string().max(16) });
 export const roomReactResultSchema = z.strictObject({ messageId: uuid, ok: z.boolean(), code: z.enum(["invalid", "denied", "not-found", "archived", "revoked"]).optional() });
 const roomPostRefusalCode = z.enum(["invalid", "denied", "revoked", "not-found", "archived", "ambiguous-room", "rate-limited", "conflict", "unavailable", "stale", "backpressure"]);

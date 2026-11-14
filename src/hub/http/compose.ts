@@ -860,7 +860,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           throw error;
         }
       case "agent.state": groupRooms.agents.state(frame.payload, link); return;
-      // M-3127 room-react-v1: an agent's reaction to the room question it was asked; the result says why not.
+      // M-3127 (agent reactions, on room-answer-buttons-v1): an agent's reaction to the room question it was asked; the result says why not.
       case "room.react":
         try { return { ...reply, type: "room.react-result", payload: await groupRooms.agentReact(frame.payload, link) }; }
         catch (error) { if (!(error instanceof HubProtocolError) || !["invalid", "denied", "not-found", "revoked"].includes(error.code)) throw error;
