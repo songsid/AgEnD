@@ -32,6 +32,6 @@ it("bounds canonical human receipts, read frames and exact post-answer identitie
   expect(roomPostSchema.safeParse({ ...post, onBehalfOf: { receiptId: "hmsg-short" } }).success).toBe(false);
   for (const [type, payload] of [["room.members", { exposureId, room: roomId }], ["people.search", { exposureId, q: "Al" }], ["room.post-answer-ack", { id: randomUUID() }]])
     expect(parseMemberFrame(Buffer.from(JSON.stringify({ v: 1, requestId, linkEpoch: 4, type, payload })))).toMatchObject({ type, payload });
-  const payload = { id: randomUUID(), postId: messageId, roomId, exposureId, receiptId, message: { id: randomUUID(), author: { name: "Planner" }, text: "Answer", at: 123 } };
+  const payload = { id: randomUUID(), idempotencyKey: post.idempotencyKey, postId: messageId, roomId, exposureId, receiptId, message: { id: randomUUID(), author: { name: "Planner" }, text: "Answer", at: 123 } };
   expect(parseServerFrame(Buffer.from(JSON.stringify({ v: 1, requestId, linkEpoch: 4, type: "room.post-answer", payload })))).toMatchObject({ payload });
 });

@@ -90,7 +90,7 @@ export const peopleSearchResultSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(true), people: z.array(z.strictObject({ id: plain(128), name: plain(256), login: plain(256) })).max(20), truncated: z.boolean() }),
   z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional() }),
 ]);
-export const roomPostAnswerSchema = z.strictObject({ id: uuid, postId: uuid, roomId: uuid, exposureId: uuid,
+export const roomPostAnswerSchema = z.strictObject({ id: uuid, idempotencyKey: uuid, postId: uuid, roomId: uuid, exposureId: uuid,
   message: z.strictObject({ id: uuid, author: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.answer), at: epoch }), receiptId: plain(256).optional() });
 export const roomPostAnswerAckSchema = z.strictObject({ id: uuid });
 
