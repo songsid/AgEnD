@@ -57,6 +57,7 @@ register("hubRoom", {
     addAssistant: "Add a room assistant (provided by the Hub)",
     create: "Create", cancel: "Cancel",
     createdSys: "{0} created this room.",
+    sysAdminJoined: "{0} joined as a room manager", composerAssistant: "Ask the Hub assistant", composerDirect: "Ask {0}",
     invitedSys: "{0} agents invited; they join when the owner agrees.",
     nameRequired: "Enter a room name.",
     // §7 settings
@@ -162,6 +163,7 @@ register("hubRoom", {
     addAssistant: "加入房間助理（Hub 提供）",
     create: "建立", cancel: "取消",
     createdSys: "{0} 建立了這個房間。",
+    sysAdminJoined: "{0} 以房間管理的身分加入", composerAssistant: "問 Hub 助理", composerDirect: "問 {0}",
     invitedSys: "已邀請 {0} 個 Agent，擁有者同意後會加入。",
     nameRequired: "請輸入房間名稱。",
     basics: "基本", membersCanAll: "成員可以 @所有 Agent",

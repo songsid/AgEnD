@@ -1,0 +1,49 @@
+{
+  "head": "d92b8cb1425d46c6a7777b5e38772cf07e2ad49d",
+  "command": "ionice -c3 nice -n 10 tsx scripts/manual/hub-room-consent/browser.mts",
+  "exit": 1,
+  "loads": [
+    {
+      "at": 1794597509.3733747,
+      "load1": 2.66064453125
+    },
+    {
+      "at": 1794597511.3748627,
+      "load1": 3.40869140625
+    },
+    {
+      "at": 1794597513.3769555,
+      "load1": 3.40869140625
+    },
+    {
+      "at": 1794597515.378604,
+      "load1": 3.40869140625
+    },
+    {
+      "at": 1794597517.3807576,
+      "load1": 3.37548828125
+    },
+    {
+      "at": 1794597519.3826478,
+      "load1": 3.37548828125
+    },
+    {
+      "at": 1794597521.3839939,
+      "load1": 3.74609375
+    },
+    {
+      "at": 1794597523.3848143,
+      "load1": 3.74609375
+    },
+    {
+      "at": 1794597525.3868253,
+      "load1": 3.74609375
+    }
+  ],
+  "env": {
+    "PW_DIR": "/home/han/.cache/wt-hubdto",
+    "CHROME": "/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+    "FONTCONFIG_FILE": "/etc/fonts/fonts.conf",
+    "OUT": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c/.artifacts/room-invitations-track-c/browser-1"
+  }
+}

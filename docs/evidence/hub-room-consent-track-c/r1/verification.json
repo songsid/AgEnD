@@ -1,0 +1,37 @@
+{
+  "sourceCommit": "8aba948aefdf6464e9b7383b221a1c244a594ac9",
+  "beforeHead": "4bcf218c2bd4172204d487baa950787cc081e740",
+  "sourceSha256": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+  "testSha256": "5535c9d7b91dbbabcd613238481d1b5c8c88d70c1a5652be808679d670fd91ff",
+  "baseline": {
+    "nativeTestTypes": 0,
+    "semanticAssertionReds": 3,
+    "unselected": 15
+  },
+  "current": {
+    "focusedFiles": 4,
+    "focusedCases": 31,
+    "nativeSourceTypes": 0,
+    "nativeTestTypes": 0
+  },
+  "mutations": {
+    "isolatedCompilingAssertionReds": 3,
+    "restoredPositiveSelected": 3,
+    "unselected": 15,
+    "exactSourceRestore": true
+  },
+  "captureLimits": {
+    "UIByteEqual": true,
+    "all25PNGByteEqual": true,
+    "priorServerCaptureHead": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+    "noNewBrowserRun": true,
+    "scope": "R1 is validated by actual HTTP/SQLite regressions, not a fresh browser campaign. Prior8case/120check/16PNG happy-flow capture retains its original service-head scope; all UI inputs are unchanged."
+  },
+  "scan": {
+    "version": "8.24.3",
+    "currentEvidenceFindings": 0,
+    "publicAssetHistoricalExceptions": 3,
+    "localGit": "2.34.1; exact remerge unavailable",
+    "exactFreshCIRequired": true
+  }
+}

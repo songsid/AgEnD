@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (18 tests | 1 failed | 17 skipped) 137ms
+   × clears an expired invitation without restoring consent or deleting its retained history 135ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > clears an expired invitation without restoring consent or deleting its retained history
+AssertionError: expected { code: 'not-found' } to deeply equal { ok: true }
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "code": "not-found",
+  }
+
+ ❯ tests/hub-room-consent-track-c.test.ts:187:102
+    185|   w.setNow(w.now() + 7 * DAY); w.admin = await r!.signIn("admin");
+    186|   expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).…
+    187|   expect((await r!.call(w.admin, "DELETE", `/hub/v1/rooms/${w.roomId}/…
+       |                                                                                                      ^
+    188|   expect((await r!.call(w.admin, "DELETE", `/hub/v1/rooms/${w.roomId}/…
+    189|   expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 skipped (18)
+   Start at  03:43:36
+   Duration  4.47s (transform 3.13s, setup 97ms, import 4.08s, tests 137ms, environment 0ms)
+

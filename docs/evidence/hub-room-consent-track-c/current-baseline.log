@@ -1,0 +1,181 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (15 tests | 8 failed | 7 skipped) 281ms
+   × invites only through a current manager and shows pending consent only to the agent owner 87ms
+   × accepts the exact named agent once without adding its owner as a room person 32ms
+   × decline and manager cancel consume only their exact pending invitations without joining 22ms
+   × keeps duplicate pending invitations at their original absolute seven-day expiry and permits a fresh invite after expiry 29ms
+   × rolls membership and invitation consumption back together when its audit fails 23ms
+   × retains pending invitations through pause, refuses accept while paused, then accepts after resume 22ms
+   × refuses withdrawn or archived targets without consuming pending consent 23ms
+   × lets an owner add their own agent directly without making a pending consent row 40ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > invites only through a current manager and shows pending consent only to the agent owner
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ Object.invite tests/hub-room-consent-track-c.test.ts:36:27
+     34|   const invite = async () => {
+     35|     const result = await r!.call(admin, "POST", `/hub/v1/rooms/${roomI…
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+       |                           ^
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+ ❯ tests/hub-room-consent-track-c.test.ts:43:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > accepts the exact named agent once without adding its owner as a room person
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ Object.invite tests/hub-room-consent-track-c.test.ts:36:27
+     34|   const invite = async () => {
+     35|     const result = await r!.call(admin, "POST", `/hub/v1/rooms/${roomI…
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+       |                           ^
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+ ❯ tests/hub-room-consent-track-c.test.ts:52:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > decline and manager cancel consume only their exact pending invitations without joining
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ Object.invite tests/hub-room-consent-track-c.test.ts:36:27
+     34|   const invite = async () => {
+     35|     const result = await r!.call(admin, "POST", `/hub/v1/rooms/${roomI…
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+       |                           ^
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+ ❯ tests/hub-room-consent-track-c.test.ts:63:36
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > keeps duplicate pending invitations at their original absolute seven-day expiry and permits a fresh invite after expiry
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ Object.invite tests/hub-room-consent-track-c.test.ts:36:27
+     34|   const invite = async () => {
+     35|     const result = await r!.call(admin, "POST", `/hub/v1/rooms/${roomI…
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+       |                           ^
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+ ❯ tests/hub-room-consent-track-c.test.ts:71:36
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > rolls membership and invitation consumption back together when its audit fails
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ Object.invite tests/hub-room-consent-track-c.test.ts:36:27
+     34|   const invite = async () => {
+     35|     const result = await r!.call(admin, "POST", `/hub/v1/rooms/${roomI…
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+       |                           ^
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+ ❯ tests/hub-room-consent-track-c.test.ts:84:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > retains pending invitations through pause, refuses accept while paused, then accepts after resume
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ Object.invite tests/hub-room-consent-track-c.test.ts:36:27
+     34|   const invite = async () => {
+     35|     const result = await r!.call(admin, "POST", `/hub/v1/rooms/${roomI…
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+       |                           ^
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+ ❯ tests/hub-room-consent-track-c.test.ts:93:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > refuses withdrawn or archived targets without consuming pending consent
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ Object.invite tests/hub-room-consent-track-c.test.ts:36:27
+     34|   const invite = async () => {
+     35|     const result = await r!.call(admin, "POST", `/hub/v1/rooms/${roomI…
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+       |                           ^
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+ ❯ tests/hub-room-consent-track-c.test.ts:104:34
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > lets an owner add their own agent directly without making a pending consent row
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ Object.pending tests/hub-room-consent-track-c.test.ts:38:135
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+       |                                                                                                                                       ^
+     39|   return { owner, stranger, admin, o, s, roomId, e, invite, pending, s…
+     40| }
+ ❯ tests/hub-room-consent-track-c.test.ts:121:45
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  8 failed | 7 skipped (15)
+   Start at  03:16:21
+   Duration  4.05s (transform 2.73s, setup 99ms, import 3.52s, tests 281ms, environment 0ms)
+

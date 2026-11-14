@@ -1,0 +1,33 @@
+PASS desktop-en-light members panel uses the intended width layout
+PASS desktop-en-light room counts use viewer language and singular person
+PASS desktop-en-light Notes Idle dot
+PASS desktop-en-light Planner Idle dot
+PASS desktop-en-light member rows show owner without hover
+PASS desktop-en-light plain message has no agent deliveries
+PASS desktop-en-light @agent routes only to Notes
+PASS desktop-en-light Notes Working dot
+PASS desktop-en-light working answer uses the shared work bar
+PASS desktop-en-light working answers create no empty message bubble
+PASS desktop-en-light real answer carries its recorded owner
+PASS desktop-en-light answer shows owner in the author line
+PASS desktop-en-light C answer is acknowledged durably
+PASS desktop-en-light Planner Offline dot
+PASS desktop-en-light @all preflight describes one online and one later
+PASS desktop-en-light Notes Working dot
+PASS desktop-en-light @all sent mention has the same accent
+PASS desktop-en-light progress follows its question without a second time
+PASS desktop-en-light offline Fleet retains exactly one queued delivery
+PASS desktop-en-light Planner Working dot
+PASS desktop-en-light Planner Idle dot
+PASS desktop-en-light completed question returns to the delivered tick
+PASS desktop-en-light answer quotes the @all question: Notes team answer desktop
+PASS desktop-en-light answer quotes the @all question: Planner team answer desktop
+PASS desktop-en-light both @all answers persisted exactly once
+PASS desktop-en-light Notes Paused dot
+PASS desktop-en-light quota reason uses viewer language in live panel
+PASS desktop-en-light quota reason reaches real HTTP projection
+PASS desktop-en-light live SSE carries state reason and completed progress
+PASS desktop-en-light Notes Idle dot
+PASS desktop-en-light idle event clears prior quota reason
+FAIL run completed
+{"checks":32,"failed":1,"pictures":1}

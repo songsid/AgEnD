@@ -1,0 +1,26 @@
+[
+  {
+    "name": "R1-expired-clear",
+    "types": 0,
+    "exit": 1,
+    "assertionRed": true,
+    "mutantSha256": "75eab35ffb8fbcd726986cf3c4affe061ef6e19d96b03b010f65cde97ed41654",
+    "selected": "clears an expired"
+  },
+  {
+    "name": "R2-supersede",
+    "types": 0,
+    "exit": 1,
+    "assertionRed": true,
+    "mutantSha256": "f2f14dd4e2186fd1e7d621b7e90e07c9939cb4803b87d93d2180d389a24586d4",
+    "selected": "re-inviting after expiry"
+  },
+  {
+    "name": "R3-inbox-skew",
+    "types": 0,
+    "exit": 1,
+    "assertionRed": true,
+    "mutantSha256": "d1af64f5893690e07fdcb5e399319b7658122251606c1b28b555fd44111a1e63",
+    "selected": "one future-dated"
+  }
+]

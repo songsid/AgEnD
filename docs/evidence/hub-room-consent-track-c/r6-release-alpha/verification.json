@@ -1,0 +1,96 @@
+{
+  "head": "c0e172f91dd3acfa8079bbd35052f232f7e2f1f2",
+  "results": [
+    {
+      "label": "focused",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-room-consent-track-c.test.ts",
+        "tests/hub-room-invitations.test.ts",
+        "tests/hub-room-integration-r3.test.ts",
+        "tests/hub-room-rc-integration-r3.test.ts",
+        "tests/ui-css-literals-ratchet.test.ts",
+        "tests/web-tokens-1408.test.ts",
+        "tests/hub-rooms-migration-r1.test.ts",
+        "tests/hub-shared-modules-a.test.ts",
+        "tests/hub-rooms-r1.test.ts",
+        "tests/hub-room-agents-r2.test.ts",
+        "tests/hub-room-thread-3092.test.ts",
+        "tests/hub-rooms-client-3092.test.ts",
+        "tests/hub-room-admin-r3.test.ts",
+        "tests/hub-room-assistant-r3.test.ts",
+        "tests/hub-assistant-admin-ui.test.ts",
+        "tests/hub-skill.test.ts",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "startLoad1": 7.84130859375,
+      "seconds": 29.17
+    },
+    {
+      "label": "factory",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-compose.test.ts",
+        "-t",
+        "room consent factory composition|a sealed Hub whose persisted",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "startLoad1": 5.9912109375,
+      "seconds": 9.56
+    },
+    {
+      "label": "inventory",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-compose.test.ts",
+        "-t",
+        "composes S1 \\+ S2 \\+ S3",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "startLoad1": 5.826171875,
+      "seconds": 5.86
+    },
+    {
+      "label": "assistant-integration",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-room-assistant-integration-r3.test.ts",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "startLoad1": 6.16064453125,
+      "seconds": 7.62
+    },
+    {
+      "label": "source-types",
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.json"
+      ],
+      "exit": 0,
+      "startLoad1": 6.3701171875,
+      "seconds": 7.55
+    },
+    {
+      "label": "test-types",
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 6.9013671875,
+      "seconds": 18.05
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "scope": "7/7 desktop originals only; image-only child inspection, no phone claim",
+  "clear": "No clipping, overlap or unreadable content blockers.",
+  "findings": [
+    "Room header/sidebar uses 1 people (U1 correction requested).",
+    "Queued progress versus Notes Idle and completed progress versus Planner Working: inert publisher lifecycle was not updated around held work; harness correction e7a377670, retake pending."
+  ],
+  "phone": "Actual browser assertion finds .hub-member-agent CSS-hidden at390px by shared .u-rail max1199px rule. U1 responsive correction requested."
+}

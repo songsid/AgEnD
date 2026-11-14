@@ -1,0 +1,8 @@
+PASS desktop-en-light Notes Idle dot
+PASS desktop-en-light Planner Idle dot
+PASS desktop-en-light plain message has no agent deliveries
+PASS desktop-en-light @agent routes only to Notes
+PASS desktop-en-light Notes Working dot
+PASS desktop-en-light C answer is acknowledged durably
+FAIL run completed
+{"checks":7,"failed":1,"pictures":2}

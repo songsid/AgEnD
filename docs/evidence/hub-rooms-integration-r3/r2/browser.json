@@ -1,0 +1,659 @@
+{
+  "sourceHead": "5706f1a98c6c72fc0faf210a77f2791cc2920326",
+  "scope": "Real R HTTP/SQLite + A service/runner + shared U1/U2 browser components; inert directory and physical worker; all list/new-room/thread/settings/admin views mounted by the actual Hub shell; invitations/Teams remain uncomposed",
+  "checks": [
+    {
+      "name": "desktop-en-light list reads real room and private assistant",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light New room opens from the actual sidebar",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light complete direct group preview shows singular count",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light create persists complete group and never-signed-in state",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light system sentence follows viewer language without message actions",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light members toggle uses a shared SVG icon",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light human message uses actual SQL",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light room settings is mounted by the actual shell",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Name Save button aligns with the input",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light settings rename persists through actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light settings all-mention switch persists through actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light localized room assistant mention reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light private assistant composer uses its direct prompt",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light plain private ask reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light assistant label follows viewer language",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no page errors",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light admin room card uses named creator projection",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light admin room table contains actual created room",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light signed-in assistant account omits sign-in instructions",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light admin cards keep rooms-assistant-fleets-pairing order",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light admin view has no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark list reads real room and private assistant",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark New room opens from the actual sidebar",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark complete direct group preview shows singular count",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark create persists complete group and never-signed-in state",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark system sentence follows viewer language without message actions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark members toggle uses a shared SVG icon",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark human message uses actual SQL",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark room settings is mounted by the actual shell",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Name Save button aligns with the input",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark settings rename persists through actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark settings all-mention switch persists through actual HTTP",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark localized room assistant mention reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark private assistant composer uses its direct prompt",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark plain private ask reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark assistant label follows viewer language",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark admin room card uses named creator projection",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark admin room table contains actual created room",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark signed-in assistant account omits sign-in instructions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark admin cards keep rooms-assistant-fleets-pairing order",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark admin view has no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark internal room-table scroll exposes row actions",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "desktop-en-light-list.png",
+      "sha256": "6bd9afec2375cd7e4cd3e9951ededac58a91026fe2adfb58bed5dd1101b8190d"
+    },
+    {
+      "path": "desktop-en-light-new-group.png",
+      "sha256": "f399f84431f4e17aea3769d191a8de4ca5fa266c73057a90baf1d7813ec1fc7f"
+    },
+    {
+      "path": "desktop-en-light-thread.png",
+      "sha256": "0fe2ec706d8782499581e664cc3884491cc6ca9f1310c178a935ea48ccbc7ba1"
+    },
+    {
+      "path": "desktop-en-light-settings.png",
+      "sha256": "82188ff8826a07b2623edb5cf37ec3cef47e1afdc8674c1ef476cc346c88ab35"
+    },
+    {
+      "path": "desktop-en-light-assistant.png",
+      "sha256": "1aa56aa8a819ceff98c72a2eca828c3d180abaf46e7044645936884d057bfdf1"
+    },
+    {
+      "path": "desktop-en-light-admin.png",
+      "sha256": "7ba11db6b9657143ed1b71d54e3ee8c9486c3cfd9473ec671a66c30105f8f3f7"
+    },
+    {
+      "path": "desktop-en-light-admin-tail.png",
+      "sha256": "ef979434abaa434e221f3303d888b8c37038dbc1fdd44c61147de25315d36751"
+    },
+    {
+      "path": "phone-zh-TW-dark-list.png",
+      "sha256": "3e3ea115c5a6c28d3500d2e0e5e9a5c9a69f49059d6ead8ce1b9f12203bd1576"
+    },
+    {
+      "path": "phone-zh-TW-dark-new-group.png",
+      "sha256": "bed8db70e8338dcbe1b098b04ea8cef7fe6238d65e25245b02ccaf6b5496567c"
+    },
+    {
+      "path": "phone-zh-TW-dark-thread.png",
+      "sha256": "2fecdc0866ccbcc188cbb746753161690aebe751d134ef5662dfa69a3fb0e8b2"
+    },
+    {
+      "path": "phone-zh-TW-dark-settings.png",
+      "sha256": "3b62cb7c2e8f76768b973c44b7926b700307b8f423c6beb8c526370e94ca2998"
+    },
+    {
+      "path": "phone-zh-TW-dark-assistant.png",
+      "sha256": "0669ee846514e79e3836d6511f63df4a790a547a56bc4af1ec654b8422d8046e"
+    },
+    {
+      "path": "phone-zh-TW-dark-admin.png",
+      "sha256": "9f8b7a27842a88613cf046bf37516fbdeeab13bea3b6a37e415b51689acd0974"
+    },
+    {
+      "path": "phone-zh-TW-dark-admin-table-actions.png",
+      "sha256": "e1b0a7016b00a37ed08cc81d7549a1d94833bbdf1e81826c6b896cf26b35ad46"
+    },
+    {
+      "path": "phone-zh-TW-dark-admin-account.png",
+      "sha256": "f3769767102b6e56f5da453661011cdf9abf59053fe52ca89037812f380ad628"
+    },
+    {
+      "path": "phone-zh-TW-dark-admin-tail.png",
+      "sha256": "846cd809572b881447a2acbe6b65e4bc0157044c3ff6dbd775271233ef0f653e"
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=person",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=team",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=group",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates/group/b87afd3d-0cd9-4ffb-8415-63e248a44605",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/messages?after=0",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/read",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c3dd2fb5-3f86-4525-8e08-8f05ba72b946/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/overview",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/hub",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/rooms/creators",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/assistant",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/assistant/usage",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=person",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=team",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=group",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates/group/b87afd3d-0cd9-4ffb-8415-63e248a44605",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/messages?after=0",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/read",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/698d4f47-8368-493f-9d37-ce444bfe610a/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/68e0d3ab-0ad3-4ada-a53e-7fefaf9f5a10/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/overview",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/hub",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/rooms/creators",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/assistant",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/admin/assistant/usage",
+      "status": 200
+    }
+  ]
+}

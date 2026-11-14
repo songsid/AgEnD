@@ -1,0 +1,101 @@
+[
+  {
+    "path": "docs/evidence/hub-rooms-directory-r3/README.md",
+    "conflictChoice": "incoming historical evidence",
+    "oursSha256": "0ed2d2a199380f7477261739c480bb5698c3b394e771b1c175fd13b7ac874d2c",
+    "incomingSha256": "a5111e9111a17947a2db2e11c96ce6da8942c58cd6d6d914b495ef7d821d9443",
+    "resultSha256": "a5111e9111a17947a2db2e11c96ce6da8942c58cd6d6d914b495ef7d821d9443",
+    "equalsOurs": false,
+    "equalsIncoming": true
+  },
+  {
+    "path": "docs/evidence/hub-rooms-directory-r3/acceptance.json",
+    "conflictChoice": "incoming historical evidence",
+    "oursSha256": "e536d08c1cbd1aad3abe985d9566d4933e68ab14ff21e8424867b8350440d5ce",
+    "incomingSha256": "69a778ce17a5ccf6cf9a7a5b30b5d08931bd524effb77bca3bcfb94727a3a090",
+    "resultSha256": "69a778ce17a5ccf6cf9a7a5b30b5d08931bd524effb77bca3bcfb94727a3a090",
+    "equalsOurs": false,
+    "equalsIncoming": true
+  },
+  {
+    "path": "src/general-knowledge/skills/hub/SKILL.md",
+    "conflictChoice": "current integrated conflict hunk, preserve auto-merged incoming changes",
+    "oursSha256": "aebe5428c38d14b5acbae1252f07e22c7a6a13935a04da2a8b107222c8a559bc",
+    "incomingSha256": "a0f5e3870d3ba59c35d00f80f29d4c7c8526aa5b84bde69405b60b712f6dfc59",
+    "resultSha256": "aebe5428c38d14b5acbae1252f07e22c7a6a13935a04da2a8b107222c8a559bc",
+    "equalsOurs": true,
+    "equalsIncoming": false
+  },
+  {
+    "path": "src/hub/http/compose.ts",
+    "conflictChoice": "current integrated conflict hunk, preserve auto-merged incoming changes",
+    "oursSha256": "ca85b58fc96a87df73ab276150471b01b28ebd32f2e1c7ac7e0ffb125db0a902",
+    "incomingSha256": "31a43528b86ac55872d4c4633a048bde40943dd41f39daa83e76a7dddf41a5b9",
+    "resultSha256": "ca85b58fc96a87df73ab276150471b01b28ebd32f2e1c7ac7e0ffb125db0a902",
+    "equalsOurs": true,
+    "equalsIncoming": false
+  },
+  {
+    "path": "src/hub/http/deps.ts",
+    "conflictChoice": "current integrated conflict hunk, preserve auto-merged incoming changes",
+    "oursSha256": "85cc6620f8408fe97058839541635568408ca1be9a4b361131c699f253ddd06a",
+    "incomingSha256": "ce4ef715f339c19d83aa5162cae61e982f8290bdfca37cb12014946e903a0a8f",
+    "resultSha256": "85cc6620f8408fe97058839541635568408ca1be9a4b361131c699f253ddd06a",
+    "equalsOurs": true,
+    "equalsIncoming": false
+  },
+  {
+    "path": "src/hub/invitations.ts",
+    "conflictChoice": "current integrated conflict hunk, preserve auto-merged incoming changes",
+    "oursSha256": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+    "incomingSha256": "479245737600ad2ed764406779ad6fd8b2b5ed0a36acb5c1fc318034365debca",
+    "resultSha256": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+    "equalsOurs": true,
+    "equalsIncoming": false
+  },
+  {
+    "path": "src/hub/rooms/service.ts",
+    "conflictChoice": "current integrated conflict hunk, preserve auto-merged incoming changes",
+    "oursSha256": "ef5392688f56695957d3069076d827874ea666f55cb5a60749a51b7219e0f762",
+    "incomingSha256": "2ad90b5d2f5877ae2e06936665d6c291e9b67134343275b39890bfd94116fa9f",
+    "resultSha256": "ef5392688f56695957d3069076d827874ea666f55cb5a60749a51b7219e0f762",
+    "equalsOurs": true,
+    "equalsIncoming": false
+  },
+  {
+    "path": "tests/hub-room-admin-r3.test.ts",
+    "conflictChoice": "current integrated conflict hunk, preserve auto-merged incoming changes",
+    "oursSha256": "1d882c8949e36db4d0a4ae69741712fa718ea2b6b6caaa7bab3430a18aea9394",
+    "incomingSha256": "f1135cebefcfb19fe0dfbbce06f7775f47f8198abd4f7fd960e98ed5a6d42231",
+    "resultSha256": "1d882c8949e36db4d0a4ae69741712fa718ea2b6b6caaa7bab3430a18aea9394",
+    "equalsOurs": true,
+    "equalsIncoming": false
+  },
+  {
+    "path": "tests/hub-room-assistant-r3.test.ts",
+    "conflictChoice": "current integrated conflict hunk, preserve auto-merged incoming changes",
+    "oursSha256": "c7ead61cde1184372df3f41e0f037858feeabab0ea3431324016a60e33c12819",
+    "incomingSha256": "e40b9129d495689b056e06b1632f95195728632fe95f56b33db97413848107d5",
+    "resultSha256": "c7ead61cde1184372df3f41e0f037858feeabab0ea3431324016a60e33c12819",
+    "equalsOurs": true,
+    "equalsIncoming": false
+  },
+  {
+    "path": "tests/hub-rooms-client-3092.test.ts",
+    "conflictChoice": "current integrated conflict hunk, preserve auto-merged incoming changes",
+    "oursSha256": "940da6b44249876a68a046d30203c65c703781735e03ff3e2eb0b29f94dd4654",
+    "incomingSha256": "c806c7b506e2dfb4085bc78ad90ca62f73bdd79c841f796658f7f1bbc84132a7",
+    "resultSha256": "940da6b44249876a68a046d30203c65c703781735e03ff3e2eb0b29f94dd4654",
+    "equalsOurs": true,
+    "equalsIncoming": false
+  },
+  {
+    "path": "tests/hub-shared-modules-a.test.ts",
+    "conflictChoice": "current integrated conflict hunk, preserve auto-merged incoming changes",
+    "oursSha256": "4158c73f6e2c3f1133a6fc0776e502c30b9f3ba135100faabcb226725bcdd1f1",
+    "incomingSha256": "12ec793de05b5737d080e757536d8bd2319f34e51fce438005a6bd5dea498d7b",
+    "resultSha256": "4158c73f6e2c3f1133a6fc0776e502c30b9f3ba135100faabcb226725bcdd1f1",
+    "equalsOurs": true,
+    "equalsIncoming": false
+  }
+]

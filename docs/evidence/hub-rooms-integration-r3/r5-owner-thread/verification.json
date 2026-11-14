@@ -1,0 +1,85 @@
+{
+  "sourceCheckpoint": "f22af317bf7173fe3ca4ab2712c9c44ae609a126",
+  "scope": "Actual R HTTP/SQLite and HubServer/HubMemberClient TLS/WSS, C durable adapter/state publisher, shared U1/U2 browser UI. Four owned Fleet fixtures; inert directory and physical input/report hook. Captured bridge composes the two existing test rigs, not a complete FleetManager mount. No Team provider, external service, real agent, account or vendor API.",
+  "browser": {
+    "checks": 76,
+    "failed": 0,
+    "originalPNGs": 14,
+    "servedAssetDigests": 98,
+    "capturedRoomEvents": 132,
+    "recoverableOverloadAttempts": 2
+  },
+  "freshFocused": {
+    "files": 11,
+    "passed": 918,
+    "failed": 0
+  },
+  "nativePrograms": {
+    "source": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exit": 0,
+      "attempt": "independent retry after combined chain terminated143 without a native verdict"
+    },
+    "test": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0,
+      "attempt": "independent retry after combined chain terminated143 without a native verdict"
+    }
+  },
+  "U1": "c6980d1f2949cde6e40b1df956e5433180f26dbb",
+  "U2": "43777ac6ee0bc7da4982f17ea0657bd58a14954b",
+  "alphaMerge": {
+    "commit": "6415aea01",
+    "incoming": "d51240605a11fc279a53c15c99801a8c25bea1b3",
+    "conflictsRetainPreviousBlobs": 8,
+    "freshTests": "43/5 (overlapping)"
+  },
+  "Rowner": "e47d5c1e7fdd7a4e88c508fd58608568e0417f73",
+  "Rstream": "f22af317bf7173fe3ca4ab2712c9c44ae609a126",
+  "bindings": {
+    "scripts/manual/hub-rooms/routing.mts": "52865e3d0be6fe1ad3a33447f26dc7de2b30b5f5a3b5abd69eebe856f7f3d3ab",
+    "tests/helpers/hub-rig.ts": "32882f2454335f6cd463881afa5633519ddf8c825affe496c27dbbd7427983e7",
+    "tests/helpers/hub-s3b-rig.ts": "db4ccc3b2424d487c8c5e94da49fc4dced7fc0c6f6d6f41671bf45e5f1f8d03a",
+    "tests/hub-room-rc-integration-r3.test.ts": "66d01cdecf39200501609e115cd7fb9b147db5682e0df06489628948f5b3a1f7",
+    "tests/hub-room-consent-track-c.test.ts": "5535c9d7b91dbbabcd613238481d1b5c8c88d70c1a5652be808679d670fd91ff",
+    "tests/hub-room-list-3092.test.ts": "dcfd77008d753d439728faa91d05f0ac587817156a3e3df26c2c8fe0522010b4",
+    "tests/hub-room-thread-3092.test.ts": "4263c2759a93d9dc37615941077c9449bbe711d301562ca4f06746ab6cf339eb",
+    "tests/hub-room-members.test.ts": "847f7640344a3697a0960701ac044939f0facb47b8a7cc8ba8754386686636a3",
+    "tests/hub-room-presence.test.ts": "6961fd7dcff5ef1b603db5c5fdfeac6a50cd3d6b89155d62426297be8fdef456",
+    "tests/hub-shared-modules-a.test.ts": "4158c73f6e2c3f1133a6fc0776e502c30b9f3ba135100faabcb226725bcdd1f1",
+    "src/hub/protocol.ts": "0f61a27e699c0d2613c88df047adca11518749b250a8fcd45ac765370765513c",
+    "src/hub/types.ts": "e69e0a4e05ff4f039b1b415b5b7f0885e2d908f4405d7846e454ef4569bb84ae",
+    "src/hub/server.ts": "7bf80bbeea018c3dbfd01c1baacfa7d8d29505322aa5802932e646ed6e43a128",
+    "src/hub/client.ts": "0e3c0755d24273172d997361787d76772e6d6bd9fb45b4870bbe60964b0ad6ad",
+    "src/hub/http/compose.ts": "ca85b58fc96a87df73ab276150471b01b28ebd32f2e1c7ac7e0ffb125db0a902",
+    "src/hub/http/deps.ts": "85cc6620f8408fe97058839541635568408ca1be9a4b361131c699f253ddd06a",
+    "src/hub/rooms/service.ts": "77418077551c0f9d1f64de77576af6de6d765db1f2b1fa1282cbb9d4cf0ce794",
+    "src/hub/rooms/agents.ts": "0539ee9a0c3d819b0b24a66b855fde906d10427cc9c3c61e3c94ed642ab3eb64",
+    "src/hub/rooms/context.ts": "5d52327685ad98a7d44af366f6391fa8dddee8e4f845b48d85d34988a842109e",
+    "src/hub/member/room-ask.ts": "36d930616bb9fdd6dc35c726271bf5a406270699127e0ab96ffc01a512c4b581",
+    "src/hub/invitations.ts": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+    "src/ui/panel-hub.js": "df63ef67841a442e752a9c201945abde074f42e0037e5e6baa00a4c6992a7c98",
+    "src/ui/hub-room-thread.js": "620837cdda80b5d0b5458f8d76708f7921c3685f529bcea3846d8a484cc4f307",
+    "src/ui/hub-room-list.js": "d485fa5ab212a0e852fef4a248e0973d5a01117ce4b7ecd364cc4e0cc2b12040",
+    "src/ui/hub-room-composer.js": "ed79763edea2363578f061ea21697f94066b298ae4e14b610b0ea585011ac31f",
+    "src/ui/hub-room-members.js": "ea683b8ffe10409438a262d05097763a687607b0cc9b2229d307f60adeb15f45",
+    "src/ui/hub-room-presence.js": "1dbfbfcf3b813e530631571f49e5a55cc0cb079af148138d040fce94a85828eb",
+    "src/ui/hub-room-strings.js": "5f234b9328b468ca26af298b5845a1add42615044d6be9f1ac70cf5d538e47cd",
+    "src/ui/shared/app.css": "225a5f1860d7476597af1c7ffc4c6fdfedec663b92f9c8c712bcda149d3b67e7",
+    "src/ui/shared/chat-render.js": "04e3d70c93ffa973c154963d26c3a88f40c477636a33d5978a859d6cf26692c0",
+    "src/ui/shared/chat-thread.js": "a05b6f541c106bcb11d91bb3b765a4426832fbc68df2ed8db749b5e67651d75e",
+    "tests/hub-room-agents-r2.test.ts": "b2a832ad9a62c01d628ac198269093ef785a82d2509f63b6078498c3e2a8fb21",
+    "tests/hub-rooms-r1.test.ts": "f35e024fd0d488d88dfb109adc5b8960b915469c952c16edfc5242ba0014974f",
+    "tests/hub-room-client-contract-r3.test.ts": "055ff308969294778499efbaec5d0ecdf0bf80c02c5a17a72b73917cfbe364e6",
+    "tests/web-chat-c1.test.ts": "e31839081471fa3749d36dddb92306fe5b13e6d5321542ea90229c1d66a785eb",
+    "tests/web-csp-1268.test.ts": "d5b655f8c29e63edab1931f688c8a5b0d797173d47a66cf5e927d321e3abe567",
+    "tests/web-preview-card-1306.test.ts": "4a71f6eedb625862b7d820cd84d33f3a5ebd82f491ff279532dbc7950dab87ab"
+  },
+  "limits": [
+    "Owned composed rigs, not a full FleetManager production mount",
+    "Directory and physical input/report hooks inert; no real AD, vendor API, account or Fleet",
+    "Teams unimplemented/uncomposed; PM routing recheck and fullS142 still open",
+    "Final PNGs do not claim every presence reason",
+    "Earlier tests and browser attempts are historical, overlap, and are not summed with final totals"
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "mergeHead": "55891e0434f25f31a1ce972d19fba7c943e2434c",
+  "parents": [
+    "1696b9e6efd1d5fe5738dc9c46bb44f3734624dd",
+    "8cbb33d31064e4c93ecb801e9b59fa97d3902ace"
+  ],
+  "incomingOwnerHead": "8cbb33d31064e4c93ecb801e9b59fa97d3902ace",
+  "alphaAncestor": "d51240605a11fc279a53c15c99801a8c25bea1b3",
+  "conflictPathsAllByteEqualOwner": [
+    "src/hub/http/compose.ts",
+    "src/hub/http/schema.ts",
+    "src/hub/rooms/agents.ts",
+    "src/hub/rooms/schema.ts",
+    "src/hub/rooms/service.ts",
+    "tests/hub-rooms-migration-r1.test.ts",
+    "tests/hub-shared-modules-a.test.ts"
+  ],
+  "protectedCPathsByteEqualBefore": [
+    "src/hub/invitations.ts",
+    "tests/hub-room-consent-track-c.test.ts",
+    "docs/design/hub-room-owner-consent.md",
+    "changes/3095-room-owner-consent.md",
+    "changes/3095-room-owner-consent.zh-TW.md"
+  ],
+  "nonEvidenceDifferenceVsOwner": [
+    "src/ui/shared/hub-chat.css"
+  ],
+  "differenceScope": "Only the U-owned d19 removal of the literal compact-count font; no R-owned change.",
+  "mergedPaths": 212,
+  "focused": {
+    "cases": 67,
+    "files": 8,
+    "exit": 0
+  },
+  "nativeSourceTypes": 0,
+  "nativeTestTypes": 0,
+  "changedPriorBoundInputs": [
+    "src/general-knowledge/skills/hub/SKILL.md",
+    "src/hub/http/compose.ts",
+    "src/hub/rooms/service.ts",
+    "src/ui/hub-invitations-strings.js",
+    "src/ui/hub-invitations.js",
+    "src/ui/hub-room-strings.js",
+    "src/ui/panel-hub.js",
+    "src/ui/shared/hub-chat.css",
+    "src/ui/shared/hub-rooms-u2.css",
+    "tests/hub-room-invitations.test.ts"
+  ],
+  "captureLimits": "No new browser run after this merge; all43previous PNG bytes retain their recorded heads. R2 shell is dd2ea70a and previous consent gallery is67080f8. Wider presence/integrated-gallery and parent/release holds remain.",
+  "inheritedWhitespace": "Eight incoming raw evidence logs have a trailing blank line; kept byte-identical. Source/test/script diff-check is clean.",
+  "serverScope": "R owns current room service/host/author.owner correction. C service and its own HTTP/SQLite controls stay byte-identical; Team implementation remains absent."
+}
