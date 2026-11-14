@@ -42,8 +42,18 @@ does not claim Fleet/MCP input or vendor execution. [Browser receipt](browser/re
 Reproduce from the repository root with `PW_DIR=<existing Playwright package directory> GOMAXPROCS=2 nice -n 10
 node_modules/.bin/tsx docs/evidence/hub-agent-posts-m3118/browser/walk.mts`.
 
-Fable source-cleared the initial product and the b4ca46b8 delta, including all three P3 repairs. Still to be recorded:
-C's actual MCP-to-server composition, Lumen's image check, exact-head CI and acceptance. This is not final acceptance.
+The single combined journey passes1/1 on isolated integration commit `0c01c30d3338761cbf675a96baa2ab0500162ae2`
+(R b4ca46b8 + C d9fd3dd1). It uses actual stdio MCP, the Fleet factory, pinned WSS, R HTTP/SQLite and real audit;
+physical inputs and directory are inert. It verifies read/post tools, an absent-owner verified @all post, permanent loss
+of its original result, early exact-intent answer recovery, lost ACK/reconnect without duplicate input, current admin
+refusal and held-read disclosure fences. Two test assumptions were repaired during this same journey: refusal responses
+carry the existing operation_id; ACK commit precedes cleanup on the next wake. No runtime repair was needed.
+[Exact scope and bindings](integration/manifest.json), [result](integration/combined-after.log). The C test remains in
+its own PR; this R PR retains the result rather than importing Fleet source.
+
+Fable source-cleared the initial product and the b4ca46b8 delta, including all three P3 repairs. The later plain alpha
+sync imports unrelated generic-name/comment and smoke-script changes; own source/tests are unchanged and were not
+locally re-run. Still to be recorded: Lumen's image check, exact-head CI and acceptance. This is not final acceptance.
 
 ## Risks and rollback
 
