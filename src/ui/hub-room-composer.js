@@ -71,8 +71,10 @@ export function refusalText(r) {
 /**
  * The composer. `store`: the room's (send); `detail`: the room GET; `reply`/`onReply`: the message being answered (the
  * thread's Reply); `closed`: archived or no longer a member (the box says why, nothing is sent).
+ * M-3117 (for M-3125's files): `attach` is ComposerInput's own ({ title, onFiles } — the Fleet's ＋ left of the box), `pending`
+ * the files waiting, drawn first in the box (where the 1:1 chat puts its PendingFiles). Neither given: no Attach.
  */
-export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef }) {
+export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef, attach = null, pending = null }) {
   const [value, setValue] = useState(""), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false), [pick, setPick] = useState(0);
   const own = useRef(null), input = inputRef || own;
   const [caret, setCaret] = useState(0);
@@ -80,6 +82,8 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
   const palette = at && options.length ? options : null, chosen = palette ? palette[Math.min(pick, palette.length - 1)] : null;
   const room = detail?.room || {}, group = room.kind === "group";
   const short = useShortPlaceholder();
+  // M-3117: the Fleet chat's box takes the focus when its conversation opens (panel-chat.js Composer): a room's too.
+  useEffect(() => { if (!closed) input.current?.focus(); }, [room.id || "", closed]);
   // 「在這裡 @ 它」 from the members panel: the mention goes into the box, after what is there.
   if (insertRef) insertRef.current = (text) => { setValue((v) => `${v && !/\s$/.test(v) ? `${v} ` : v}${text} `); setTimeout(() => input.current?.focus(), 0); };
   const complete = (o) => {
@@ -103,8 +107,10 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
   };
   const track = (v) => { setValue(v); setMsg(null); setCaret(input.current ? input.current.selectionStart ?? v.length : v.length); };
   const paletteId = `hubMention-${room.id || "room"}`, optId = (o) => `${paletteId}-${o.key}`;
-  if (closed) return html`<div class="composer-box"><p class="note" role="status">${hroom(detail?.room?.archived ? "errArchived" : "errNotMember")}</p></div>`;
+  // M-3117: as the Fleet chat's dock has it — the box, then a failed send, then the line under it (its .composer-row).
+  if (closed) return html`<p class="hub-banner warn" role="status">${hroom(detail?.room?.archived ? "errArchived" : "errNotMember")}</p>`;
   return html`<div class="composer-box hub-room-composer">
+    ${pending}
     ${palette ? html`<ul data-trust="palette" class="cmd-palette" id=${paletteId} role="listbox" aria-label=${hroom("mentionAll")}>
       ${palette.map((o) => html`<li key=${o.key} id=${optId(o)} role="option" aria-selected=${o === chosen ? "true" : "false"} class=${o === chosen ? "on" : ""}
         onMouseDown=${(e) => { e.preventDefault(); complete(o); }}>
@@ -113,11 +119,11 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     ${group && value.includes(hroom("mentionAll")) ? html`<p class="note hub-room-allbar" role="status">${allBar(detail)}</p>` : null}
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status"><span class="reply-text">${reply.sender ? `${reply.sender} · ` : ""}${String(reply.text || "").slice(0, 80)}</span>
       <button type="button" class="icon-btn reply-cancel" title=${hroom("cancel")} aria-label=${hroom("cancel")} onClick=${() => { onReply(null); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button></div>` : null}
-    <${ComposerInput} inputRef=${input} value=${value} placeholder=${room.assistant ? hroom("composerAssistant") : group ? (short ? hroom("composerShort") : hroom("composer", room.name || "")) : hroom("composerDirect", room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
+    <${ComposerInput} inputRef=${input} value=${value} attach=${attach} placeholder=${room.assistant ? hroom("composerAssistant") : group ? (short ? hroom("composerShort") : hroom("composer", room.name || "")) : hroom("composerDirect", room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
       controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${chosen ? optId(chosen) : undefined}
       stop=${{ hidden: true, disabled: true, title: t("chat.stopReply"), label: t("chat.stopReply"), onClick: () => {} }}
       send=${{ hidden: false, disabled: !value.trim() || busy, label: t("chat.send"), onClick: () => { void send(); } }} />
-    ${msg ? html`<p class="err" role="alert">${msg.text}${msg.retry ? html` <button type="button" class="btn btn-sm" onClick=${send}>${hroom("retrySend")}</button>` : null}</p>` : null}
-    ${group ? html`<p class="note hub-room-hint">${hroom("composerHint")}</p>` : null}
-  </div>`;
+  </div>
+  ${msg ? html`<p class="err" role="alert">${msg.text}${msg.retry ? html` <button type="button" class="btn btn-sm" onClick=${send}>${hroom("retrySend")}</button>` : null}</p>` : null}
+  ${group ? html`<div class="composer-row"><span class="hint hub-room-hint">${hroom("composerHint")}</span></div>` : null}`;
 }
