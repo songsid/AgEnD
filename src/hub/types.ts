@@ -14,6 +14,7 @@ export type PersonId = string;    // personKeyString(key), not a login/name
 export interface HubFrame<T extends string, P> {
   v: 1; type: T; requestId: string; linkEpoch: Epoch; payload: P;
 }
+export interface HubFleetInfo { version: string; runsAsService: boolean }
 export interface HubHello {
   supportedVersions: readonly number[];
   capabilities: readonly string[]; // P1: identity-v1, receipts-v1, reconcile-v1
@@ -138,6 +139,7 @@ export type HubMemberFrame =
   | HubFrame<"agent.state", HubAgentState>
   | HubFrame<"room.react", HubRoomReact>
   | HubFrame<"hello", HubHello>
+  | HubFrame<"fleet.info", HubFleetInfo>
   | HubFrame<"member.leave", Record<string, never>>
   | HubFrame<"exposure.snapshot", HubExposureSnapshot>
   | HubFrame<"receipt", HubReceipt>

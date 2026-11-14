@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-fleet-versions-m3136
+
+ ❯ tests/hub-fleet-versions-m3136.test.ts (4 tests | 1 failed | 3 skipped) 38ms
+   × keeps reconciliation working when the optional connection upsert is unavailable 36ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-fleet-versions-m3136.test.ts > keeps reconciliation working when the optional connection upsert is unavailable
+AssertionError: promise rejected "SqliteError: private diagnostic failure { code: '…' }" instead of resolving
+ ❯ tests/hub-fleet-versions-m3136.test.ts:93:117
+     91|   r.db.exec("CREATE TRIGGER fail_optional_diagnostics BEFORE INSERT ON…
+     92|   const link = r.link(id, owner, 1, ["welcome-caps-v1", "room-ask-v1",…
+     93|   await expect(r.http.receive(r.frame("reconcile", { messages: [], aft…
+       |                                                                                                                     ^
+     94|     .resolves.toMatchObject({ type: "reconcile" });
+     95|   expect(link.current()).toBe(true);
+
+Caused by: SqliteError: private diagnostic failure
+ ❯ src/hub/fleet-versions.ts:43:10
+ ❯ src/hub/http/core.ts:53:19
+ ❯ Function.<anonymous> tests/helpers/hub-s3b-rig.ts:52:22
+ ❯ Function.sqliteTransaction ../../node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ Object.atomic tests/helpers/hub-s3b-rig.ts:53:10
+ ❯ HubCore.atomic src/hub/http/core.ts:47:26
+ ❯ HubFleetVersions.connected src/hub/fleet-versions.ts:39:15
+ ❯ Object.receive src/hub/http/compose.ts:850:19
+ ❯ tests/hub-fleet-versions-m3136.test.ts:93:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'SQLITE_CONSTRAINT_TRIGGER' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 skipped (4)
+   Start at  06:58:58
+   Duration  3.52s (transform 2.53s, setup 86ms, import 3.26s, tests 38ms, environment 0ms)

@@ -22,6 +22,9 @@ import type { HubMountedDirectory } from "./settings-directory-runtime.js";
 import { canonicalArguments } from "./identity.js";
 import { HubDirectoryResponseOwner } from "./directory-response-owner.js";
 import { createHubMemberFactory, type HubMemberComponents, type HubMemberFactoryOptions } from "./compose/member.js";
+import { readFileSync } from "node:fs";
+import { startedByServiceManager } from "../service-owner.js";
+import { isExactVersion } from "../update-check.js";
 import type { HubViewSource } from "./compose/views.js";
 
 /** The member side's slices (S4, S3c, S4b), imported lazily only inside the member factory. */
@@ -84,6 +87,12 @@ export interface HubRuntimeOptions {
   readConfig?(): { hub?: unknown; hub_member?: unknown };
   /** This AgEnD's version (Hub Administration → This Hub). */
   version?: string | null;
+}
+
+function runtimeRunsAsService(): boolean {
+  let ownCgroup: string | null = null;
+  try { ownCgroup = readFileSync("/proc/self/cgroup", "utf8"); } catch { /* non-Linux or unreadable */ }
+  return startedByServiceManager({ platform: process.platform, env: process.env, ownCgroup, ppid: process.ppid, launchdLabel: "com.agend.fleet" });
 }
 
 export type HubServerHealth = "off" | "starting" | "ready" | "unavailable" | "stopped";
@@ -375,6 +384,7 @@ export class HubRuntime {
           home: options.home,
           components: options.memberComponents ?? MEMBER_COMPONENTS,
           ...options.member,
+          ...(options.version && isExactVersion(options.version) ? { fleetInfo: { version: options.version, runsAsService: runtimeRunsAsService() } } : {}),
           ...(options.member.views ? { views: options.member.views } : {}),
           report: (code, detail) => {
             this.reported = { side: "member", code, detail };

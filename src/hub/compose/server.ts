@@ -1,3 +1,4 @@
+import { HUB_FLEET_INFO_CAPABILITY } from "../fleet-info.js";
 import { HUB_WEB_INIT_AUDIT_MIGRATION, importHubWebInitAudit } from "../init/web-audit-import.js";
 /**
  * S5b server factory (S-51; docs/design/hub-composition.md §5 "Server"). Called by S1's HubMount only after the sealed
@@ -118,6 +119,7 @@ export interface HubHttp {
   receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void>;
   close(): Promise<void>;
   memberClosed?(fleetId: string): void;
+  memberConnected?(link: HubLinkContext): void;
   /** #3298 S-89: what the Hub offers its pages ("group-policy-v1" with group permissions composed). Absent on an older entry. */
   readonly features?: readonly string[];
   /** Private adapter only; no token/ref lookup HTTP route or browser capability. */
@@ -507,9 +509,11 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         listen: settings.memberListen,
         pairing,
         companyJoin,
-        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])],
+        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])],
         current: live,
         receive: (frame, link) => http.receive(frame, link),
+        connected: link => http.memberConnected?.(link),
+        log: options.log,
         hold: (fleetId, code) => { options.log("warn", "Hub member link held", { fleetId, code }); if (fleetId) http.memberClosed?.(fleetId); },
         // M-2901: a connected Fleet learns where this Hub's pages are now (web-origin.ts), signed for its own link.
         webOrigin: (fleetId) => signHubWebOrigin({ hubId: settings.hubId, issuerKeyId: identity.issuerKeyId, fleetId, memberOrigin: settings.memberOrigin },
