@@ -621,6 +621,7 @@ export class HubGroupRooms {
       // The listing's own visibility rule (Ridge, M-3118): the post at or after the floor, its lineage's audience at or after it, and the
       // post it answers too — a chained answer after a viewer joined does not reveal a hidden question's files, nor its own.
       const visible = row.state === "bound" && !!row.message_id && !!db.prepare(`SELECT 1 FROM hub_room_posts p WHERE p.id=? AND p.room_id=? AND p.sequence>=?
+        AND (p.stage IS NULL OR p.stage='answered')
         AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=p.id),p.sequence)>=?
         AND (p.answer_to IS NULL OR EXISTS(SELECT 1 FROM hub_room_posts o WHERE o.id=p.answer_to AND o.sequence>=?))`).get(row.message_id, id, member.joined_sequence, member.joined_sequence, member.joined_sequence);
       const own = row.state === "pending" && row.uploader === me && (row.expires_at ?? 0) > now;
