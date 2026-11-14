@@ -692,6 +692,13 @@ export const DelegateTaskArgs = z.object({
     .describe("Optional: thread this onto an existing exchange (from an inbound block)."),
 });
 
+export const HubRoomListArgs = z.strictObject({});
+export const HubRoomPostArgs = z.strictObject({
+  room: z.string().min(1).refine(value => Buffer.byteLength(value,"utf8") <= 128 && !/[\u0000-\u001f\u007f]/.test(value) && value.trim().length > 0).describe("Room UUID or exact unique name from hub_room_list."),
+  text: z.string().min(1).refine(value => value.trim().length > 0 && Buffer.byteLength(value, "utf8") <= 64 * 1024)
+    .describe("Message to post as this agent. Everyone in that room can read it."),
+});
+
 export const ReportResultArgs = z.object({
   detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   target_instance: NonEmptyString.describe("Name of the instance to report to."),

@@ -116,7 +116,7 @@ const BEFORE: Record<string, string[]> = {
 describe("tool profiles include durable delivery lookup", () => {
   it("preserves the prior profile members and adds delivery_status", () => {
     for (const [name, tools] of Object.entries(BEFORE)) {
-      expect([...toolsFor(name as never)].sort(), name).toEqual([...tools].sort());
+      expect([...toolsFor(name as never)].sort(), name).toEqual([...tools, ...(name === "minimal" ? [] : ["hub_room_list", "hub_room_post"])].sort());
     }
   });
 

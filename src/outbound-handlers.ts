@@ -43,6 +43,7 @@ import {
   ListInstancesArgs,
   ListTeamsArgs,
   ReplaceInstanceArgs,
+  HubRoomListArgs, HubRoomPostArgs,
   ReportResultArgs,
   DeliveryStatusArgs,
   RequestInformationArgs,
@@ -125,10 +126,11 @@ export interface OutboundContext {
     payload: Record<string, unknown>,
     options?: OutboundDeliveryOptions,
   ): Promise<void | boolean>;
-  /**
-   * The Hub representative's answer hook (docs/design/hub-representative-agent.md): a report to HUB_REPORT_TARGET with
-   * a live Hub-issued correlation id from the agent it was delivered to. null: not a Hub answer (ordinary routing).
-   */
+  /** Connected, caller-scoped room operations; tool arguments never select an agent. */
+  hubRoomToolsAvailable?(): boolean;
+  hubRoomList?(caller: import("./hub/member/room-post.js").RoomCaller): Promise<import("./hub/member/room-post.js").RoomListResult>;
+  hubRoomPost?(caller: import("./hub/member/room-post.js").RoomCaller, value: {room:string;text:string;operationId:string}): Promise<import("./hub/member/room-post.js").RoomPostResult>;
+  /** Existing one-to-one/room answer hook; null keeps ordinary routing. */
   hubReport?(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null;
   /** Persist a cross-instance action before its MCP call is acknowledged. */
   admitDurableDelivery?(input: {
@@ -212,6 +214,7 @@ export interface OutboundMeta {
   senderSessionName: string | undefined;
   operationId?: string;
   sourceDaemonBootId?: string;
+  callerCurrent?: () => boolean;
   /** report_result's Hub-only fields (files, buttons, poll), already validated for the agend-hub target. */
   hubExtras?: HubReportExtras;
 }
@@ -2549,7 +2552,23 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
 
 // ── Registry ────────────────────────────────────────────────────────────
 
+const hubRoom = (post: boolean): Handler => async (ctx, args, respond, meta) => {
+  if (meta.senderSessionName && meta.senderSessionName !== meta.instanceName) { respond(null, "Hub rooms require the invoking Fleet agent"); return; }
+  const parsed = post ? validateArgs(HubRoomPostArgs, args, "hub_room_post") : validateArgs(HubRoomListArgs, args, "hub_room_list");
+  if (!parsed.ok) { respond(null, parsed.error); return; }
+  const boot = meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName);
+  const current = () => (meta.callerCurrent?.() ?? true) && (!ctx.getDaemonBootId || !!boot && ctx.getDaemonBootId(meta.instanceName) === boot);
+  if (!current() || !ctx.hubRoomToolsAvailable?.()) { respond({ok:false,code:"unavailable"}); return; }
+  const caller = {agent:meta.instanceName,current};
+  if (post) {
+    if (!meta.operationId) { respond(null, "Hub room posts require an operation identity"); return; }
+    respond(await ctx.hubRoomPost?.(caller, {...parsed.data as {room:string;text:string},operationId:meta.operationId}) ?? {ok:false,code:"unavailable"});
+  } else respond(await ctx.hubRoomList?.(caller) ?? {ok:false,code:"unavailable"});
+};
 export const outboundHandlers = new Map<string, Handler>([
+  ["hub_room_status", (ctx, _args, respond, meta) => { respond({available:(!meta.senderSessionName || meta.senderSessionName === meta.instanceName) && ctx.hubRoomToolsAvailable?.() === true}); }],
+  ["hub_room_list", hubRoom(false)],
+  ["hub_room_post", hubRoom(true)],
   ["delivery_status", deliveryStatus],
   ["send_to_instance", sendToInstance],
   ["broadcast", broadcast],

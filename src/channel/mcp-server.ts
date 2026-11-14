@@ -94,6 +94,7 @@ const pendingRequests = new Map<
 >();
 
 const DURABLE_OPERATION_TOOLS = new Set([
+  "hub_room_post",
   "send_to_instance",
   "broadcast",
   "report_result",
@@ -109,6 +110,7 @@ function setupIpcListeners(client: IpcClient): void {
     // and the MCP client cannot respawn a server mid-session. Stay alive and let
     // the ensuing disconnect drive the backoff loop; if the fleet is stopped for
     // good, our own CLI exiting makes isOrphaned() end us.
+    if (msg.type === "hub_room_tools_changed") { void mcp.sendToolListChanged().catch(() => {}); return; }
     if (msg.type === "shutdown") {
       process.stderr.write("agend: daemon shutting down — will reconnect when it returns\n");
       ipcConnected = false;
@@ -138,6 +140,7 @@ function setupIpcListeners(client: IpcClient): void {
 
   client.on("disconnect", () => {
     ipcConnected = false;
+    void mcp.sendToolListChanged().catch(() => {});
     process.stderr.write("agend: IPC disconnected — will reconnect\n");
     // Reject all pending requests
     for (const [id, pending] of pendingRequests) {
@@ -170,6 +173,7 @@ async function connectIpc(): Promise<void> {
     // saw die. Safe to trust on arrival: the pid file is written before
     // connectIpc() runs, so a re-read at this point already sees this process.
     client.send({ type: "mcp_ready", sessionName, pid: process.pid });
+    void mcp.sendToolListChanged().catch(() => {});
     process.stderr.write("agend: connected to daemon IPC\n");
   } catch (err) {
     process.stderr.write(`agend: failed to connect to daemon IPC: ${err}\n`);
@@ -300,9 +304,16 @@ const featureDataDir = SOCKET_PATH ? dirname(dirname(dirname(SOCKET_PATH))) : ge
 const spawnDashboardOff = featuresOffFromEnv(process.env.AGEND_DASHBOARD_OFF);
 const menuInstance = process.env.AGEND_INSTANCE_NAME ?? "";
 const dashboardOffNow = () => (menuInstance ? readDashboardOff(featureDataDir, menuInstance, spawnDashboardOff) : spawnDashboardOff);
-const currentTools = () => withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)), dashboardOffNow());
+const currentTools = async () => {
+  let available = false;
+  if (ipcConnected && allowedTools.has("hub_room_list")) {
+    try { available = (await ipcRequest("hub_room_status", {}) as {available?:boolean})?.available === true; } catch { /* disconnected: hide tools */ }
+  }
+  return withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)
+    && (available || !["hub_room_list", "hub_room_post"].includes(t.name))), dashboardOffNow());
+};
 
-mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentTools() }));
+mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await currentTools() }));
 
 // --- Tool call handler ---
 
@@ -327,7 +338,10 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     return { content: [{ type: "text", text }] };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const outcome = operationId ? encodeOperationError(message, operationId) : `Error: ${message}`;
+    // Room posts use the Hub journal, not the Fleet delivery outbox. Never direct their unknown selector to delivery_status.
+    const outcome = operationId && req.params.name === "hub_room_post"
+      ? JSON.stringify({ok:false,code:/Not connected to daemon IPC|IPC send failed/i.test(message) ? "unavailable" : "uncertain",operation_id:operationId,error:message})
+      : operationId ? encodeOperationError(message, operationId) : `Error: ${message}`;
     return {
       content: [{ type: "text", text: outcome }],
       isError: true,

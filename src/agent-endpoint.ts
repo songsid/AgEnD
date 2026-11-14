@@ -66,6 +66,8 @@ const OP_MAP: Record<string, string> = {
   edit: "edit_message",
   download: "download_attachment",
   // Communication
+  "hub-room-list": "hub_room_list",
+  "hub-room-post": "hub_room_post",
   send: "send_to_instance",
   delegate: "delegate_task",
   report: "report_result",
@@ -124,6 +126,7 @@ export interface AgentEndpointContext extends OutboundContext {
 }
 
 const DURABLE_HTTP_TOOLS = new Set([
+  "hub_room_post",
   "send_to_instance",
   "broadcast",
   "report_result",
@@ -291,7 +294,7 @@ export function handleAgentRequest(
         res.end(JSON.stringify({ error: "Invalid or missing instance token" }));
         return;
       }
-      const result = await dispatchAgentOperation(ctx, instance, op, args);
+      const result = await dispatchAgentOperation(ctx, instance, op, args, undefined, () => ctx.agentCredentials.current(instance, tokenFromHeader!, credentialGeneration));
       res.writeHead(200, { "Content-Type": "application/json" });
       const operationId = result && typeof result === "object" && !Array.isArray(result)
         ? durableResponseOperations.get(result) ?? (typeof (result as Record<string, unknown>).operation_id === "string"
@@ -355,6 +358,7 @@ export async function dispatchAgentOperation(
   op: string,
   args: Record<string, unknown>,
   trustedOperationId?: string,
+  callerCurrent?: () => boolean,
 ): Promise<unknown> {
   if (trustedOperationId !== undefined && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(trustedOperationId)) throw Error("Invalid internal operation identity");
   // Sink 3 of 3, before any branch below: the early-returning ops are as much
@@ -583,6 +587,7 @@ export async function dispatchAgentOperation(
       requestId: undefined,
       fleetRequestId: undefined,
       senderSessionName: undefined,
+      ...(callerCurrent ? {callerCurrent} : {}),
       ...(operationId ? { operationId, sourceDaemonBootId: ctx.getDaemonBootId?.(instance) } : {}),
     });
     void Promise.resolve(returned).catch(err => respond(null, (err as Error).message));

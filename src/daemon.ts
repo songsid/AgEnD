@@ -147,7 +147,7 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
-const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
+const CROSS_INSTANCE_TOOLS = new Set(["hub_room_status", "hub_room_list", "hub_room_post", "send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
@@ -5989,6 +5989,7 @@ export class Daemon extends EventEmitter {
 
   /** Shared Fleet inputs: socket and native transports retain the same wake, epoch and raw-paste semantics. */
   private handleFleetMessage(msg: Record<string, unknown>, send: (reply: Record<string, unknown>) => void, current = () => true): boolean {
+    if (msg.type === "hub_room_tools_changed") { this.ipcServer?.broadcast({type:"hub_room_tools_changed"}); return true; }
     if (msg.type === "query_sessions") {
       send({ type: "query_sessions_response", sessions: [] });
     } else if (msg.type === "fleet_inbound") {
@@ -12459,7 +12460,7 @@ export class Daemon extends EventEmitter {
           type: "fleet_outbound",
           tool,
           args,
-          ...(operationId ? { operationId, sourceDaemonBootId: this.bootId } : {}),
+          ...((operationId || tool.startsWith("hub_room_")) ? { ...(operationId ? {operationId} : {}), sourceDaemonBootId: this.bootId } : {}),
           fleetRequestId: fleetReqId,
           senderSessionName,
         });

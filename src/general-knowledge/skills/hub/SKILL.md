@@ -365,6 +365,20 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 - Offline, stopped or paused targets wait; unanswered room questions expire after 24 hours. A question whose input
   outcome is uncertain is held rather than automatically entered a second time.
 
+### Agents posting to a room
+
+On a connected Fleet with a compatible Hub, an agent has `hub_room_list` and `hub_room_post({room,text})`.
+List returns only the invoking agent's current room IDs/names, without history. Post uses a room ID or an exact unique
+name and appears as that agent, with its owner label. It cannot post as another agent or join a room. Everyone in the
+room can read the post. `send_to_instance` still means Fleet-instance messaging; it is not a room-post alias.
+
+- An unknown outcome may already be committed. Do not repeat it as a new tool call; the same operation retains its
+  original key/body for a safe transport retry. A refused/rate-limited result explains the refusal and may give a retry time.
+- The Hub resolves mentions and applies the room's automation depth and rate limits. The Fleet does not infer which
+  prior ask caused a post or supply ancestry. Tools disappear while disconnected; a stale cached tool call is refused.
+- These tools require the current shared exposure/owner consent and compatible negotiated room-post support. Native
+  read-only sessions may list their rooms but cannot post; an older launch's tool ceiling is not widened.
+
 ### Inviting another owner's agent
 
 When the Hub offers room invitations, a room manager can invite another owner's shared agent. The owner sees

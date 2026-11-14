@@ -6,7 +6,8 @@ import { readFileSync } from "node:fs";
 import Database from "better-sqlite3";
 import { createHubMemberFactory, memberSet, type HubRepresentativeHost } from "../src/hub/compose/member.js";
 import { MEMBER_COMPONENTS } from "../src/hub/runtime.js";
-import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY } from "../src/hub/protocol.js";
+import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY } from "../src/hub/protocol.js";
+import type { AgentRoomPort } from "../src/hub/member/room-post.js";
 import type { HubMountedService } from "../src/hub/mount.js";
 import type { HubMemberExposureApi } from "../src/hub/member/exposure-api.js";
 import type { HubRepresentativeDelivery } from "../src/hub/representative.js";
@@ -18,16 +19,22 @@ import { HubRoomAskAdapter, verifyRoomAskJournal } from "../src/hub/member/room-
 import { HubProtocolError } from "../src/hub/validation.js";
 import { hubRig } from "./helpers/hub-rig.js";
 
-const capabilities = [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY];
+const capabilities = [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY];
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [], services: HubMountedService[] = [];
 afterEach(async () => { for (const s of services.splice(0)) { s.fence(); await s.close(); } for (const r of rigs.splice(0)) await r.close(); });
-async function harness(withState = true) {
+async function harness(withState = true, withPost = false) {
   const r = await hubRig({ serverCapabilities: capabilities }); rigs.push(r); const profile = await r.pair();
   let epoch = 0;
+  const postRoom = randomUUID(), postMessage = randomUUID();
+  let rooms: AgentRoomPort | null = null;
   r.setReceive(async (frame, link) => {
     epoch = link.linkEpoch;
     if (frame.type === "reconcile") return { v: 1, type: "reconcile", requestId: frame.requestId, linkEpoch: link.linkEpoch,
       payload: { receipts: [], nextReceiptSequence: 0, more: false } };
+    if (frame.type === "room.list") return {v:1,type:"room.list-result",requestId:frame.requestId,linkEpoch:link.linkEpoch,
+      payload:{ok:true,exposureId:frame.payload.exposureId,rooms:[{id:postRoom,name:"Weekly"}]}};
+    if (frame.type === "room.post") return {v:1,type:"room.post-result",requestId:frame.requestId,linkEpoch:link.linkEpoch,
+      payload:{ok:true,roomId:postRoom,messageId:postMessage,at:Date.now()}};
   });
   let api: HubMemberExposureApi | null = null, reports: Parameters<HubRepresentativeHost["attachReports"]>[0] = null;
   let failed: Parameters<HubRepresentativeHost["attachReports"]>[1] = null;
@@ -43,6 +50,7 @@ async function harness(withState = true) {
   };
   const create = createHubMemberFactory({ home: r.memberHome, components: MEMBER_COMPONENTS, boundHub: () => profile.hub.hubId,
     agents: () => [{ name: "general", display: "General" }], representative,
+    ...(withPost ? {attachAgentRooms:(value:AgentRoomPort|null)=>{rooms=value;}} : {}),
     attachExposures: value => { api = value; }, attachAttention: () => {}, pokeAttention: () => {}, report: () => {},
     log: (_level, message, meta) => { logs.push({ message, meta }); } });
   const start = async () => { const service = await create({}, () => true); services.push(service); await service.start(); return service; };
@@ -53,11 +61,29 @@ async function harness(withState = true) {
     asker: { name: "Alex" }, text: "What changed?", context: [] });
   const row = (id: string) => { const db = new Database(join(r.memberHome, memberSet(profile.hub.hubId).database), { readonly: true });
     try { return db.prepare("SELECT state FROM hub_room_asks WHERE message_id=?").get(id); } finally { db.close(); } };
-  return { r, profile, inputs, readState, start, publish, ask, send, row, representative, logs, epoch: () => epoch, api: () => api!,
+  return { r, profile, inputs, readState, start, publish, ask, send, row, representative, logs, epoch: () => epoch, api: () => api!, rooms:()=>rooms,
     replace: () => { token = "replacement-agent-token"; },
     report: (text: string) => reports!({ caller: "general", correlationId: inputs.at(-1)!.correlationId, text, callerCurrent: () => true }),
     failed: () => failed!(inputs.at(-1)!.correlationId, "general") };
 }
+
+it("offers room-post only with the composed port and uses the exact current consent on the real member link", async () => {
+  const h=await harness(true,true),service=await h.start(),exposure=h.publish();
+  const caller={agent:"general",current:()=>true};
+  expect(h.rooms()!.available()).toBe(true);
+  expect(await h.rooms()!.rooms(caller)).toMatchObject({ok:true,exposureId:exposure.exposureId,rooms:[{name:"Weekly"}]});
+  const operationId=randomUUID();
+  expect(await h.rooms()!.post(caller,{room:"Weekly",text:"Posted",operationId})).toMatchObject({ok:true});
+  const sent=h.r.received.find(frame=>frame.type==="room.post");
+  expect(sent).toMatchObject({payload:{exposureId:exposure.exposureId,idempotencyKey:operationId,text:"Posted"}});
+  h.replace();expect((await h.rooms()!.rooms(caller)).ok).toBe(false);
+  service.fence();expect(h.rooms()).toBeNull();
+});
+it("does not advertise room-post on a host without the port even when the Hub offers it", async () => {
+  const h=await harness();await h.start();h.publish();
+  await expect(h.r.server.send(h.profile.fleetId,{v:1,type:"room.post-result",requestId:randomUUID(),linkEpoch:h.epoch(),
+    payload:{ok:true,roomId:randomUUID(),messageId:randomUUID(),at:Date.now()}})).rejects.toThrow("incompatible");
+});
 
 it("composes negotiated room delivery, text reports, exact ACK and viewer-neutral presence", async () => {
   const h = await harness(); await h.start(); const exposure = h.publish();
