@@ -379,9 +379,11 @@ export function HubSide({ onPick } = {}) {
   const [q, setQ] = useState("");
   const [filtering, setFiltering] = useState(false);
   const [picking, setPicking] = useState(false), [newRoom, setNewRoom] = useState(false);
+  // M-3127 C: on a Hub with rooms, Ctrl K is the search dialog (names, then messages); before rooms, the list's filter.
+  const [searching, setSearching] = useState(false);
   const filter = useRef(null);
   useEffect(() => { linkHubChatCss(); }, []);
-  const openFilter = () => { setFiltering(true); setTimeout(() => filter.current?.focus(), 0); };
+  const openFilter = () => { if (roomsLive()) { setSearching(true); return; } setFiltering(true); setTimeout(() => filter.current?.focus(), 0); };
   // Ctrl K (⌘K): the conversation filter — the dashboard's search shortcut, on the Hub's own search (no fleet search here).
   useEffect(() => {
     const onKey = (e) => {
@@ -413,9 +415,12 @@ export function HubSide({ onPick } = {}) {
         aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${hc("navSearch")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>
       <button type="button" class="side-row side-new" onClick=${() => setPicking(true)}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>
       ${roomsLive() && rs.me?.canCreateRooms ? html`<button type="button" class="side-row side-new hub-new-room" onClick=${() => setNewRoom(true)}><${Icon} name="room" /><span class="grow">${hroom("newRoomTitle")}</span></button>` : null}
+      ${searching ? html`<${LazyRoomPart} load=${() => import("./hub-room-search.js")} name="RoomSearch" props=${{ client: hubClient(), rooms: rs.rooms || [], onClose: () => setSearching(false),
+        openRoom: (r) => { if (onPick) onPick(); navigate(roomPath(r.id)); },
+        openHit: (h) => { if (onPick) onPick(); navigate(`${roomPath(h.roomId)}&m=${encodeURIComponent(h.messageId)}`); } }} />` : null}
     </nav>
 
-    <${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onPick=${onPick} quietEmpty=${home} />
+    <${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onPick=${onPick} quietEmpty=${home} foot=${roomsLive()} />
     ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
     ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
       onClose: () => setNewRoom(false), onOpenRoom: (id) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(id)); } }} />` : null}`;
@@ -426,7 +431,7 @@ export function HubSide({ onPick } = {}) {
  * count, one-line empty states) — the sidebar's (HubSide) and, on a phone, the chats' home page's (with its own New chat
  * row and the filter always shown): one drawing, not two (Argon #9). `quietEmpty`: the page beside it already says "No chats yet".
  */
-function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null, onNewRoom = null }) {
+function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null, onNewRoom = null, foot = false }) {
   const current = roomParam();
   const star = useRoomStar(rs.rooms, useSession()?.login);   // S-145: favourites, as the Fleet sidebar's
   const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
@@ -437,14 +442,24 @@ function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, 
       ${/* Lumen (spec §2): on the phone's list too, beside New chat — not only in the drawer. */ ""}
       ${onNewRoom ? html`<button type="button" class="side-row side-new hub-new-room" onClick=${onNewRoom}><${Icon} name="room" /><span class="grow">${hroom("newRoomTitle")}</span></button>` : null}
       ${!rs.rooms.length ? html`<div class="inst-head"><h2 class="side-label">${hc("chats")}</h2></div>` : null}
-      ${filtering || q || (always && rs.rooms.length) ? html`<label class="hub-side-filter"><${Icon} name="search" size=${14} /><input ref=${filterRef} type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
+      ${/* M-3127 C (web-claude): on a Hub with rooms the sidebar's filter is the Fleet's, at its foot, always there (below). */ ""}
+      ${!foot && (filtering || q || (always && rs.rooms.length)) ? html`<label class="hub-side-filter"><${Icon} name="search" size=${14} /><input ref=${filterRef} type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
         onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape") { setQ(""); setFiltering(false); } }} /></label>` : null}
       ${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : null}
       ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
       ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length && !quietEmpty ? html`<p class="side-empty muted">${hc("noChats")}</p>` : null}
       ${rs.rooms.length && !shown.length ? html`<p class="side-empty muted">${hc("noMatch")}</p>` : null}
       <${HubRoomRows} rooms=${rs.rooms} q=${q} current=${current} href=${(r) => roomPath(r.id)} onGo=${(e, r) => go(e, roomPath(r.id))} star=${star} />
-    </div></div>`;
+    </div>
+    ${/* The Fleet sidebar's filter box (instance-nav.js .v-filter): a name or an owner; Esc or ✕ clears it. Ctrl K is the search. */ ""}
+    ${foot && rs.rooms.length ? html`<div class="v-filter hub-side-foot-filter">
+      <label class="v-filter-box"><${Icon} name="search" size=${14} /><span class="sr-only">${hroom("filterPh")}</span>
+        <input ref=${filterRef} type="text" autocomplete="off" spellcheck=${false} placeholder=${hroom("filterPh")} value=${q}
+          onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape" && q) { e.preventDefault(); e.stopPropagation(); setQ(""); } }} />
+        ${q ? html`<button type="button" class="icon-btn v-filter-clear" aria-label=${hroom("filterClear")} title=${hroom("filterClear")}
+          onClick=${() => { setQ(""); filterRef.current && filterRef.current.focus(); }}><${Icon} name="close" size=${14} /></button>` : null}
+      </label></div>` : null}
+  </div>`;
 }
 
 /** The phone's chats home: the same roster, with New chat at its head and the filter in place. */

@@ -443,6 +443,13 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
       return call("POST", `/hub/v1/rooms/${id(roomId)}/messages`, { text, mentions, idempotencyKey,
         ...(replyTo ? { replyTo } : {}), ...(Array.isArray(files) && files.length ? { files } : {}) });
     },
+    /** M-3127 C: messages with these words in the group rooms I am in → { hits, cursor? } (newest first). */
+    searchRoomMessages(q, { limit, cursor } = {}) {
+      const p = new URLSearchParams({ q: String(q || "") });
+      if (Number.isSafeInteger(limit) && limit > 0) p.set("limit", String(limit));
+      if (cursor) p.set("cursor", String(cursor));
+      return call("GET", `/hub/v1/rooms/search?${p.toString()}`);
+    },
     /** M-3127: add (`on`) or take back my reaction `emoji` on a group-room message → { reactions }. */
     reactRoomMessage(roomId, messageId, emoji, on) { return call("POST", `/hub/v1/rooms/${id(roomId)}/messages/${id(messageId)}/reactions`, { emoji: String(emoji), on: on === true }); },
     markRoomRead(roomId, upTo) { return call("POST", `/hub/v1/rooms/${id(roomId)}/read`, { upTo }); },

@@ -27,6 +27,8 @@ import { workingLine } from "./hub-room-working.js";
 import { countsLine } from "./hub-room-list.js";
 
 linkRoomsU2Css();   // M-3127: the reaction chips and picker are drawn from hub-rooms-u2.css (a room opened before any U2 panel)
+/** M-3127 C: the message a search hit opens (`?room=…&m=<id>`), or null. */
+export const jumpParam = () => { try { const v = new URLSearchParams(location.search).get("m"); return v && /^[A-Za-z0-9-]{1,64}$/.test(v) ? v : null; } catch { return null; } };
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
 const BOOT = "room";
 
@@ -269,6 +271,24 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
       return r;
     },
     older, findQuoted,
+    /**
+     * M-3127 C: the thread key of message `messageId`, loading older pages (at most 40) until it is here, and opening its
+     * question's folded answers when it is one of them; null when this room no longer has it (or I may not see it).
+     */
+    async find(messageId) {
+      for (let i = 0; i <= 40 && st.live; i++) {
+        const m = st.messages.find((x) => x.id === messageId);
+        if (m) {
+          if (m.answerTo && !expanded.has(m.answerTo)) { expanded.add(m.answerTo); changed(); }
+          const x = st.view.find((v) => v.roomMessage === messageId);
+          return x ? `${x.boot}-${x.id}` : null;
+        }
+        if (!st.more) return null;
+        const before = st.messages.length; await older();
+        if (st.messages.length === before) return null;   // a page that failed or brought nothing new
+      }
+      return null;
+    },
     /** 「展開其餘 N 則」: show every answer of that question. */
     expand(messageId) { if (typeof messageId === "string" && !expanded.has(messageId)) { expanded.add(messageId); changed(); } },
     /** Who is working on an answer in this room now (its answer row has no text yet): their names, in arrival order. */
@@ -341,6 +361,21 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // The Hub assistant's one-to-one is named by its flag, in this viewer's words (its stored name is a fallback).
   const title = room.assistant ? hroom("hubAssistant") : String(room.name || "");
   const hasAssistant = (detail?.members || []).some((m) => m.kind === "assistant");
+  // M-3127 C: a search hit opens the room at its message — loaded back to it, scrolled to and flashed (the thread's reveal),
+  // then the address loses `m` (a reload does not jump again). Read each render: a hit in the room already open jumps too.
+  const jump = jumpParam();
+  useEffect(() => {
+    if (!jump) return undefined;
+    let live = true;
+    void (async () => {
+      if (!store.loaded()) await new Promise((done) => { const off = store.subscribe(() => { if (store.loaded() || store.error()) { off(); done(); } }); });
+      const key = live ? await store.find(jump) : null;
+      if (!live) return;
+      if (key) setTimeout(() => threadRef.current?.reveal(key), 60); else toast(hroom("jumpMissing"), false);
+      try { const u = new URL(location.href); u.searchParams.delete("m"); history.replaceState(history.state, "", `${u.pathname}${u.search}${u.hash}`); } catch { /* the address stays */ }
+    })();
+    return () => { live = false; };
+  }, [store, jump]);
   // Read when shown: the latest message once loaded and again as messages arrive while the page is visible.
   const count = store.raw().length;
   useEffect(() => { if (store.loaded() && (typeof document === "undefined" || !document.hidden)) void store.markRead(); }, [store.loaded(), count]);

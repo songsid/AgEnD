@@ -142,16 +142,34 @@ describe("the sidebar, drawn as the Fleet roster", () => {
       expect(old.pg.root.querySelector("#sidebar .side-nav .hub-new-room")).toBeNull();
     } finally { old.restore(); }
   });
-  it("Ctrl K filters by a name or an owner across both groups; an empty group is left out", async () => {
+  // M-3127 C (web-claude): the Fleet's sidebar — its filter box at the foot, always there; Ctrl K is the search dialog.
+  it("the sidebar-foot filter finds by a name or an owner across both groups; an empty group is left out; Esc clears", async () => {
     const fx = createHubRoomsFixture();
     const { pg, restore } = await hubApp((url: string, init?: any) => fx.fetch(url, init));
     try {
       await until(() => rows(pg).length === 6);
-      fire(pg.document as any, "keydown", { key: "k", ctrlKey: true }); await settle(10);
-      const input = pg.root.querySelector("#sidebar .hub-side-filter input") as any;
+      expect(pg.root.querySelector("#sidebar .hub-side-filter")).toBeNull();   // no filter at the list's head
+      const input = pg.root.querySelector("#sidebar .hub-side-rooms .v-filter input") as any;
       input.value = "吳小安"; fire(input, "input"); await settle(5);
       expect(rows(pg).map((a) => a.querySelector(".inst-name").textContent)).toEqual(["report-bot"]);
       expect([...pg.root.querySelectorAll("#sidebar .hub-room-group")].map((x: any) => x.dataset.group)).toEqual(["agents"]);
+      input.value = "zzz"; fire(input, "input"); await settle(5);
+      expect(pg.root.querySelector("#sidebar .side-empty").textContent).toBeTruthy();   // the no-match line
+      fire(input, "keydown", { key: "Escape" }); await settle(5);
+      expect(rows(pg)).toHaveLength(6);
+    } finally { restore(); }
+  });
+  it("Ctrl K opens the search dialog, which finds an agent chat by its owner too", async () => {
+    const fx = createHubRoomsFixture();
+    const { pg, restore } = await hubApp((url: string, init?: any) => fx.fetch(url, init));
+    try {
+      await until(() => rows(pg).length === 6);
+      fire(pg.document as any, "keydown", { key: "k", ctrlKey: true });
+      await until(() => pg.document.querySelector(".hub-search-dlg[open]"));
+      const dlg = pg.document.querySelector(".hub-search-dlg") as any, input = dlg.querySelector(".search-input");
+      input.value = "吳小安"; fire(input, "input");
+      await until(() => dlg.querySelector(".search-row"));
+      expect([...dlg.querySelectorAll(".search-row .search-who")].map((n: any) => n.textContent)).toContain("report-bot");
     } finally { restore(); }
   });
   it("an open tab whose client is older than this page (rooms() only): today's chats in the same rows", async () => {

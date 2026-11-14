@@ -73,7 +73,7 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // M-3092 S-145: the list's favourites (the Fleet sidebar's #1664 rules; synced per person by the Hub).
   "hub-room-favorites.js",
   // S-148: the working bar's words (#3857), shared by the room thread.
-  "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js"]);
+  "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js", "hub-room-search.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -460,6 +460,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (r[2] === "join" && method === "POST") return send(res, 200, await guard(() => roomAdmin.join(ctx, roomId)));
       if (!r[2] && method === "PATCH") { const b = await body(); return send(res, 200, await guard(() => roomAdmin.archive(ctx, roomId, b))); }
       throw new HttpError(405, "method");
+    }
+    // M-3127 C: message search across the group rooms I am in (Ctrl K).
+    if (path === "/hub/v1/rooms/search") {
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, await guard(() => groupRooms.search(ctx, query.get("q") ?? "", query.get("limit") ?? "20", query.get("cursor"))));
     }
     if (path === "/hub/v1/rooms/candidates") {
       if (method !== "GET") throw new HttpError(405, "method");
