@@ -30,6 +30,14 @@ register("hubRoom", {
     // M-3127 B: an agent's buttons (its asker's) and polls (everyone's)
     onlyAsker: "Only {0} can answer", sysPollClosed: "{0}'s poll closed", buttonFailed: "That didn't go through. Try again.",
     buttonNotAsker: "Only the person who asked can answer these buttons.", buttonExpired: "These buttons are no longer open.",
+    // M-3127 C: Ctrl K
+    searchLabel: "Search", searchPlaceholder: "Search rooms, chats and messages…", searchClose: "Close",
+    searchHint: "Find a room or chat by name, or a message by a word or two from it — in the rooms you're in.",
+    searchSearching: "Searching…", searchNone: "Nothing found", searchNoneYet: "Nothing in the newest messages yet.",
+    searchBusy: "Search is busy — try again in a moment.", searchFailed: "Search failed — try again.",
+    searchResults: "Results", searchRooms: "Rooms and chats", searchBadgeRoom: "Room", searchBadgeChat: "Chat", searchCount: "{0} results",
+    searchOlder: "Search older messages", searchKeys: "↑↓ move · Enter open · Esc close", jumpMissing: "That message is no longer in this room.",
+    filterPh: "Filter: name or owner", filterClear: "Clear the filter",
     laterAnswer: "{0} ({1}) · answers after they come online", noAnswer: "No answer",
     workingOne: "{0} is working on it", workingMany: "{0} agents are working",
     // §4 composer
@@ -148,6 +156,13 @@ register("hubRoom", {
     reactYou: "你", listSep: "、", reactFailed: "表情沒加上，請再試一次。",
     onlyAsker: "只有 {0} 能回答", sysPollClosed: "{0} 的投票已結束", buttonFailed: "沒有送出，請再試一次。",
     buttonNotAsker: "只有提問的人能按這些按鈕。", buttonExpired: "這些按鈕已經關閉。",
+    searchLabel: "搜尋", searchPlaceholder: "搜尋房間、聊天與訊息…", searchClose: "關閉",
+    searchHint: "用名稱找房間或聊天，或輸入訊息裡的一兩個詞找訊息（你所在的房間）。",
+    searchSearching: "搜尋中…", searchNone: "找不到結果", searchNoneYet: "最近的訊息裡還沒找到。",
+    searchBusy: "搜尋忙碌中，請稍後再試。", searchFailed: "搜尋失敗，請再試一次。",
+    searchResults: "結果", searchRooms: "房間與聊天", searchBadgeRoom: "房間", searchBadgeChat: "聊天", searchCount: "{0} 筆結果",
+    searchOlder: "搜尋更早的訊息", searchKeys: "↑↓ 移動 · Enter 開啟 · Esc 關閉", jumpMissing: "這則訊息已不在這個房間裡。",
+    filterPh: "篩選：名稱或擁有者", filterClear: "清除篩選",
     laterAnswer: "{0}（{1}）· 上線後回答", noAnswer: "沒有回答",
     workingOne: "{0} 正在處理", workingMany: "{0} 個 Agent 正在處理",
     composer: "在「{0}」說話；@ 一個 Agent 請它回答",

@@ -90,7 +90,7 @@ CREATE TABLE hub_room_button_operations (
 - Scope: group rooms where I am a person member; posts at or after my joined_sequence; not `system`; answered rows
   only (`stage IS NULL OR stage='answered'`), the same visibility as `messages()`. Archived rooms included (they are
   readable). Newest first across rooms.
-- Matching: q is 2–100 chars after trim; NFKC + case-folded substring on the decrypted text (content.get). **No
+- Matching: q is 1–100 chars after trim (one CJK character is a word); every whitespace-separated word must appear; NFKC + case-folded substring on the decrypted text (content.get). **No
   plaintext index**: the content store is encrypted at rest and retention deletes content; an FTS table would copy
   plaintext out of both. Instead a bounded scan: at most 2000 posts read per request, newest first; if the budget runs
   out before `limit` hits, the answer carries `cursor` (the last scanned `(created_at, id)`), and the UI shows

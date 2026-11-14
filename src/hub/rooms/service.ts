@@ -36,6 +36,27 @@ const clickSchema = z.strictObject({ setId: z.string().regex(/^[a-f0-9]{32}$/), 
   options: z.array(z.number().int().min(0).max(9)).max(10).optional(), idempotencyKey: uuid });
 /** M-3127: one press per set — its click post's idempotency key, a UUID shape derived from the set id. */
 const setKey = (setId: string) => { const h = createHash("sha256").update(`room-button:${setId}`).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`; };
+/** M-3127 C: how many posts one search reads at most, and the most hits it returns. */
+export const ROOM_SEARCH_SCAN = 2000, ROOM_SEARCH_LIMIT = 50, ROOM_SEARCH_PER_MINUTE = 30;
+const fold = (s: string) => s.normalize("NFKC").toLowerCase();
+/**
+ * M-3127 C: a hit's words — up to `width` characters around its first term, on whole characters, with every term's places
+ * in that snippet (`marks`: [start, end) ranges, merged). The page marks them; it never parses HTML.
+ */
+export function searchSnippet(text: string, terms: string[], width = 120): { snippet: string; marks: [number, number][] } {
+  const chars = [...text], lower = fold(text);
+  const first = Math.min(...terms.map(t => lower.indexOf(t)).filter(i => i >= 0), Number.MAX_SAFE_INTEGER);
+  // A code-unit index → a character index (an emoji is two units): count the characters before it.
+  const at = first === Number.MAX_SAFE_INTEGER ? 0 : [...text.slice(0, first)].length;
+  const start = Math.max(0, Math.min(at - Math.floor(width / 3), chars.length - width)), end = Math.min(chars.length, start + width);
+  const snippet = `${start > 0 ? "…" : ""}${chars.slice(start, end).join("").replace(/\s+/g, " ")}${end < chars.length ? "…" : ""}`;
+  const low = snippet.toLowerCase(), ranges: [number, number][] = [];
+  for (const t of terms) for (let i = low.indexOf(t); i !== -1 && ranges.length < 64; i = low.indexOf(t, i + Math.max(1, t.length))) ranges.push([i, i + t.length]);
+  ranges.sort((a, b) => a[0] - b[0]);
+  const marks: [number, number][] = [];
+  for (const r of ranges) { const last = marks[marks.length - 1]; if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]); else marks.push([...r]); }
+  return { snippet, marks };
+}
 const reactSchema = z.strictObject({ emoji: z.string().min(1).max(16), on: z.boolean() });
 /** M-3127: the most distinct emoji one post carries. */
 export const ROOM_REACTION_LIMIT = 12;
@@ -62,6 +83,8 @@ export class HubGroupRooms {
   private readonly buttons: RoomButtons;
   private buttonsTimer: NodeJS.Timeout | null = null;
   private buttonsClosed = false;
+  /** M-3127 C (Fable P3b): each person's recent searches (their times), for ROOM_SEARCH_PER_MINUTE. */
+  private readonly searches = new Map<string, number[]>();
   private readonly agentSearch: HubGrantSearch;
   private readonly agentReadBuckets = new Map<string, { at: number; count: number }>();
   constructor(private readonly core: HubCore) { this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
@@ -776,6 +799,57 @@ export class HubGroupRooms {
   private settleButtons(): void {
     const next = this.core.atomic(db => this.buttons.nextDeadline(db));
     if (next !== null && next <= this.core.now()) { this.closeDueButtons(); this.armButtons(); }
+  }
+  /**
+   * M-3127 C: messages with these words in the group rooms I am in, newest first — exactly what messages() would show me
+   * (since my joined_sequence, the lineage floor, answered rows only, no room lines). The text is encrypted at rest and
+   * retention deletes it, so there is no plaintext index: a bounded scan (ROOM_SEARCH_SCAN posts a request), and `cursor`
+   * when more remain ("search older messages"). Every word must appear (NFKC, case-folded). ROOM_SEARCH_PER_MINUTE each.
+   */
+  async search(ctx: HubRequestContext, q: unknown, limit: unknown = 20, cursor: unknown = null) {
+    const query = typeof q === "string" ? q.trim() : "", n = typeof limit === "number" ? limit : Number(limit);
+    const terms = [...new Set(fold(query).split(/\s+/).filter(Boolean))].slice(0, 8);
+    if (query.length < 1 || query.length > 100 || !terms.length || !Number.isSafeInteger(n) || n < 1 || n > ROOM_SEARCH_LIMIT) throw new HubProtocolError("invalid");
+    let after: { at: number; id: string } | null = null;
+    if (cursor !== null && cursor !== undefined && cursor !== "") {
+      const c = typeof cursor === "string" ? /^(\d{1,15})\.([a-f0-9-]{36})$/.exec(cursor) : null;
+      if (!c) throw new HubProtocolError("invalid");
+      after = { at: Number(c[1]), id: c[2]! };
+    }
+    const me = await this.who(ctx);
+    // A search reads and decrypts up to ROOM_SEARCH_SCAN posts on the event loop: at most ROOM_SEARCH_PER_MINUTE a minute
+    // each (429 busy, the page says to try again in a moment). One person's map entry; old times drop on every call.
+    const now = this.core.now(), recent = (this.searches.get(me) ?? []).filter(t => t > now - 60_000);
+    if (recent.length >= ROOM_SEARCH_PER_MINUTE) { this.searches.set(me, recent); throw new HubRoomRefusal(429, "busy"); }
+    this.searches.set(me, [...recent, now]);
+    if (this.searches.size > 10_000) for (const [k, v] of this.searches) if (!v.some(t => t > now - 60_000)) this.searches.delete(k);
+    {
+      return this.core.atomic(db => {
+        const rows = db.prepare(`SELECT p.*,r.name AS room_name FROM hub_room_posts p
+          JOIN hub_room_members m ON m.room_id=p.room_id AND m.kind='person' AND m.subject=?
+          JOIN hub_group_rooms r ON r.id=p.room_id
+          WHERE p.sequence>=m.joined_sequence AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=p.id),p.sequence)>=m.joined_sequence
+            AND p.author_kind<>'system' AND (p.stage IS NULL OR p.stage='answered')
+            AND (p.answer_to IS NULL OR EXISTS(SELECT 1 FROM hub_room_posts o WHERE o.id=p.answer_to AND o.sequence>=m.joined_sequence))
+            AND (? IS NULL OR p.created_at<? OR p.created_at=? AND p.id<?)
+          ORDER BY p.created_at DESC,p.id DESC LIMIT ?`).all(me, after?.at ?? null, after?.at ?? 0, after?.at ?? 0, after?.id ?? "", ROOM_SEARCH_SCAN) as (PostRow & { room_name: string })[];
+        const hits: { roomId: string; roomName: string; messageId: string; sequence: number; at: number; author: { kind: string; name: string }; snippet: string; marks: [number, number][] }[] = [];
+        let last: PostRow | null = null;
+        for (const row of rows) {
+          last = row;
+          const text = this.core.deps.content.get(row.content_ref)?.question;
+          if (!text) continue;   // retention removed it
+          const lower = fold(text);
+          if (!terms.every(t => lower.includes(t))) continue;
+          const author = this.projection(row).author;
+          hits.push({ roomId: row.room_id, roomName: row.room_name, messageId: row.id, sequence: row.sequence, at: row.created_at,
+            author: { kind: author.kind, name: author.name }, ...searchSnippet(text, terms) });
+          if (hits.length >= n) break;
+        }
+        const more = !!last && (hits.length >= n ? last !== rows[rows.length - 1] || rows.length === ROOM_SEARCH_SCAN : rows.length === ROOM_SEARCH_SCAN);
+        return { hits, ...(more && last ? { cursor: `${last.created_at}.${last.id}` } : {}) };
+      }, this.fence(ctx));
+    }
   }
   async markRead(ctx: HubRequestContext, id: string, upTo: unknown) {
     const target = validated(uuid, upTo), me = await this.who(ctx);

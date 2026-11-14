@@ -214,6 +214,18 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       rooms.push(room); emit("room.changed", { roomId: room.id, room: listItem(room) });
       return { status: 200, body: { room: listItem(room) } };
     }
+    // M-3127 C: message search over the group rooms I am in (every word, case-folded), newest first; `limit`, no cursor.
+    if (p === "/hub/v1/rooms/search" && method === "GET") {
+      const q = (url.searchParams.get("q") ?? "").trim().toLowerCase(), terms = q.split(/\s+/).filter(Boolean);
+      if (!terms.length) return fail(400, "invalid");
+      const limit = Math.min(50, Number(url.searchParams.get("limit")) || 20);
+      const hits = rooms.filter(r => r.kind === "group" && r.members.some(x => x.id === FIXTURE_ME.id))
+        .flatMap(r => r.messages.filter(x => x.author.kind !== "system" && x.text && terms.every(t => x.text.toLowerCase().includes(t)) && (!x.stage || x.stage === "answered"))
+          .map(x => { const at = x.text.toLowerCase().indexOf(terms[0]!);
+            return { roomId: r.id, roomName: r.name, messageId: x.id, sequence: 0, at: x.at, author: { kind: x.author.kind, name: x.author.name }, snippet: x.text, marks: at >= 0 ? [[at, at + terms[0]!.length]] : [] }; }))
+        .sort((a, b) => b.at - a.at).slice(0, limit);
+      return { status: 200, body: { hits } };
+    }
     const m = p.match(/^\/hub\/v1\/rooms\/([^/]+)(?:\/(members|messages|read|invitations|buttons)(?:\/([^/]+)(?:\/reactions)?)?)?$/);
     if (m && m[1] !== "events" && m[1] !== "candidates") {   // candidates: Track U2 below
       const room = roomOf(decodeURIComponent(m[1]!));

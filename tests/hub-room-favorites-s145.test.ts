@@ -216,9 +216,8 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
       await choose(pg, "report-bot", "Move report-bot down");
       expect(names(pg).slice(0, 2)).toEqual(["研發例會", "report-bot"]);
       expect(fav.favoritesStore.get().ids).toEqual(["room-rd", "room-report"]);
-      // Filtered (Ctrl K's filter): the moves are there but off, and say why (the Fleet's favFiltered).
-      fire(pg.root.querySelector("#sidebar .side-search") as any, "click"); await settle(10);
-      const input = pg.root.querySelector("#sidebar .hub-side-filter input") as any;
+      // Filtered (the sidebar-foot filter, M-3127 C): the moves are there but off, and say why (the Fleet's favFiltered).
+      const input = pg.root.querySelector("#sidebar .hub-side-rooms .v-filter input") as any;
       input.value = "週"; fire(input, "input"); await settle(10);   // both favourites still shown (their last lines)
       expect(names(pg).slice(0, 2)).toEqual(["研發例會", "report-bot"]);
       const filtered = await rowMenu(pg, "研發例會");
