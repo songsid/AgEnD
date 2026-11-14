@@ -151,6 +151,29 @@ describe("M-2403: after the coordinator came back (another holder) — positive 
     }
   });
 
+  it.each(["removed", "changed"] as const)("the record %s while a read is in flight (a cancel, another settle): skipped — nothing put back, reported or watched", async (how) => {
+    vi.useFakeTimers();
+    const f = fixture(), pasted = push(f), start = vi.spyOn(consumedWatches, "start").mockReturnValue(true);
+    f.store.put(entry(f.ref));
+    let release!: (v: TranscriptLook) => void;
+    f.reader.look.mockImplementationOnce(() => new Promise<TranscriptLook>((done) => { release = done; }));
+    const run = f.daemon.reconcileQueuedHandoffs();
+    await vi.advanceTimersByTimeAsync(0);
+    if (how === "removed") f.store.remove("h1"); else f.store.put(entry(f.ref, { holder: "someone-else:9" }));
+    release("user");
+    await run;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect([how, f.store.list().map((e) => e.holder), f.events.length, start.mock.calls.length, pasted.mock.calls.length])
+      .toEqual([how, how === "removed" ? [] : ["someone-else:9"], 0, 0, 0]);
+  });
+
+  it("a backlog the first bounded read did not reach: the next read finds it taken (the loop reads on while it moves)", async () => {
+    const f = fixture(), pasted = push(f); f.store.put(entry(f.ref));
+    f.reader.look.mockImplementationOnce(async () => { f.move(4096); return "no-match"; }).mockResolvedValueOnce("user");
+    await f.daemon.reconcileQueuedHandoffs();
+    expect([f.reader.look.mock.calls.length, f.store.list().length, f.events.map(([e]) => e), pasted.mock.calls.length]).toEqual([2, 0, ["message_confirmed"], 0]);
+  });
+
   it("a local record next to it still goes the #3030 way (its own file is read)", async () => {
     const f = fixture(), pasted = push(f);
     f.store.put({ ...entry(f.ref, { id: "local" }), runtime: undefined, path: join(f.dir, "missing.jsonl"), offset: 0 } as never);
