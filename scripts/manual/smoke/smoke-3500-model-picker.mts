@@ -92,10 +92,14 @@ try {
       if (c.device === "phone") {
         const button = page.locator('.jump-latest'); if (await button.count()) {
           const b = await button.boundingBox(), thread = await page.locator('.scroller').boundingBox(), composer = await page.locator('.composer-box').boundingBox();
-          if (!b || !thread || !composer || b.y < thread.y + thread.height - 1 || b.y + b.height > composer.y + 1) throw Error("latest overlaps content");
+          // M-3115 (phone v2): 最新 is a 44 px round button floating at the thread's bottom right (no row of its own).
+          if (!b || !thread || !composer || b.width < 44 || b.height < 44 || b.y + b.height > thread.y + thread.height + 1 || b.y + b.height > composer.y + 1
+            || b.x + b.width < thread.x + thread.width - 80) throw Error(`latest is not the round button at the thread's bottom right: ${JSON.stringify({ b, thread })}`);
           await shot("phone-latest"); await button.click();
         } else throw Error("latest pill not offered");
-        const small = await page.locator('.model-entry-row button').evaluateAll((xs: any[]) => xs.filter(x => { const b = x.getBoundingClientRect(); return b.height < 44 || b.width < 44; }).length); if (small) throw Error("phone controls too small");
+        // M-3115: the row's picker / ring and Send are the phone's model controls now (the old chip row is gone); at least one.
+        const sizes = await page.locator('.composer-tools button, .composer .btn-send').evaluateAll((xs: any[]) => xs.map(x => { const b = x.getBoundingClientRect(); return [b.width, b.height]; }));
+        if (!sizes.length || sizes.some(([w, h]: number[]) => w < 44 || h < 44)) throw Error(`phone controls too small or missing: ${JSON.stringify(sizes)}`);
       }
       if (bodies.some(b => b.args === "__refresh__" || b.args === "__more__")) throw Error("action became model");
       if (!bodies.some(b => b.action === "more")) throw Error("More action not tested");

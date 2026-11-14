@@ -179,6 +179,7 @@ describe("Hub representative adapter (#3145)", () => {
     expect(d.correlationId).toMatch(/^hub-[0-9a-f-]{36}$/);
     expect(d.text).toContain("What is in the folder?");
     expect(d.text).toContain(`report_result to ${HUB_REPORT_TARGET} with correlation_id ${d.correlationId}`);
+    expect(d.text).toContain("your whole answer in summary (the asker sees summary itself; it is not a title)");   // 11-14: a title-only summary showed as the answer
     expect(d.text).not.toMatch(/\[user:/); // never a fleet person's authority header
     // beforeInput took exactly the begin lease and spent it on the input intent; queue acceptance is not delivery.
     expect(f.authorize.mock.calls.map(([r]) => r.phase)).toEqual(["admit", "begin"]);
