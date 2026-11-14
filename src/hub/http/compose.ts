@@ -659,10 +659,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if ((uploading.get(s.sessionId) ?? 0) >= UPLOADS_PER_SESSION || uploadingTotal >= UPLOADS_TOTAL) throw new HubProtocolError("backpressure");
       uploading.set(s.sessionId, (uploading.get(s.sessionId) ?? 0) + 1); uploadingTotal++;
       try {
-        await guard(() => rooms.uploadAdmit(ctx, roomId, Number(declared)));
+        // M-3125: a group room's member uploads the same way (HubGroupRooms has the same three methods).
+        const owner = groupRooms.has(roomId) ? groupRooms : rooms;
+        await guard(() => owner.uploadAdmit(ctx, roomId, Number(declared)));
         const bytes = await readRaw(req, Number(declared)); if (!live()) throw new HubProtocolError("unavailable");
         if (bytes.length !== Number(declared)) throw new HubProtocolError("invalid");
-        return send(res, 200, { file: await guard(() => rooms.upload(ctx, roomId, name, bytes)) });
+        return send(res, 200, { file: await guard(() => owner.upload(ctx, roomId, name, bytes)) });
       } finally {
         const n = (uploading.get(s.sessionId) ?? 1) - 1; if (n > 0) uploading.set(s.sessionId, n); else uploading.delete(s.sessionId); uploadingTotal--;
       }
@@ -671,7 +673,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/files\/([^/]+)(\/inline)?$/))) {
       if (method !== "GET") throw new HttpError(405, "method");
       const roomId = uuid(r[1]), fileId = uuid(r[2]); signedIn();
-      const file = await guard(() => rooms.download(ctx, roomId, fileId));
+      const file = await guard(() => (groupRooms.has(roomId) ? groupRooms : rooms).download(ctx, roomId, fileId));
       // Never executed or sniffed: a download, in a sandbox; only a magic-checked image may show inline when asked.
       const inline = (query.get("inline") === "1" || r[3] === "/inline") && file.image;
       res.writeHead(200, { "Content-Type": file.mime, "Content-Length": String(file.bytes.length), "X-Content-Type-Options": "nosniff",

@@ -12,6 +12,9 @@ import type { HubRequestContext, HubTx } from "../types.js";
 import type { RoomEvent, RoomMessage, RoomSystemEvent } from "./types.js";
 import type { RoomInvitationHost } from "../invitations.js";
 import { RoomDirectoryCandidates, rememberRoomPeople, type RoomPersonSelection } from "./directory.js";
+import type { HubAttachmentStore } from "../attachments/store.js";
+import type { HubAttachmentRef } from "../types.js";
+import { isInlineImage } from "../attachments/limits.js";
 
 type DB = Database.Database;
 interface RoomRow { id: string; name: string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null }
@@ -21,8 +24,12 @@ const label = plain(120).transform(s => s.trim()).refine(s => s.length > 0 && !/
 const personId = z.string().max(128).refine(s => /^[a-z][a-z0-9_-]{0,63}\/[a-f0-9-]{36}$/.test(s));
 const createSchema = z.strictObject({ name: label, people: z.array(personId).max(100).default([]), teams: z.array(uuid).max(100).default([]),
   groups: z.array(uuid).max(100).default([]), agents: z.array(uuid).max(64).default([]), assistant: z.boolean().default(false) });
-const postSchema = z.strictObject({ text: plain(64 * 1024).refine(s => s.trim().length > 0), mentions: z.array(z.string().max(128)).max(100).default([]),
-  replyTo: uuid.optional(), files: z.array(uuid).max(0).optional(), idempotencyKey: uuid });
+// M-3125: a post carries up to 10 of the poster's own pending uploads in this room; with files the text may be empty.
+const postSchema = z.strictObject({ text: plain(64 * 1024), mentions: z.array(z.string().max(128)).max(100).default([]),
+  replyTo: uuid.optional(), files: z.array(uuid).max(10).optional(), idempotencyKey: uuid })
+  .refine(b => b.text.trim().length > 0 || (b.files?.length ?? 0) > 0);
+export interface GroupRoomFileView { id: string; name: string; size: number; mime: string; url: string }
+const groupFileView = (roomId: string, r: HubAttachmentRef): GroupRoomFileView => ({ id: r.id, name: r.name, size: r.size, mime: r.mime, url: `/hub/v1/rooms/${roomId}/files/${r.id}` });
 const patchSchema = z.strictObject({ name: label.optional(), allMention: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional() });
 
 export class HubRoomRefusal extends Error {
@@ -108,10 +115,18 @@ export class HubGroupRooms {
     return { id: row.id, roomId: row.room_id, at: row.created_at, sequence: row.sequence, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...(owner ? { owner } : {}) },
       ...(system ? { system } : {}), text: this.core.deps.content.get(row.content_ref)?.question ?? "", mentions: JSON.parse(row.mentions) as string[],
       ...(row.reply_to ? { replyTo: row.reply_to } : {}), ...(row.idempotency_key ? { idempotencyKey: row.idempotency_key } : {}),
-      ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}),
+      ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}), ...this.filesOf(row),
       ...this.core.atomic(db => { const a = this.agents.progress(db, row.id), b = this.assistant.progress(db, row.id);
         const ask = a || b ? { total: (a?.total ?? 0)+(b?.total ?? 0), answered: (a?.answered ?? 0)+(b?.answered ?? 0), working: (a?.working ?? 0)+(b?.working ?? 0), later: (a?.later ?? 0)+(b?.later ?? 0) } : undefined;
         return { ...(ask ? { ask } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}) }; }) };
+  }
+  private filesStore(): HubAttachmentStore | undefined { return this.core.deps.attachments ?? undefined; }
+  private store(): HubAttachmentStore { const s = this.filesStore(); if (!s) throw new HubProtocolError("incompatible"); return s; }
+  /** M-3125: a post's files, in order (none when the Hub has no attachment store). */
+  private filesOf(row: PostRow): { files?: GroupRoomFileView[] } {
+    const store = this.filesStore(); if (!store) return {};
+    const refs = this.core.atomic(db => store.forMessage(db, row.id, "question"));
+    return refs.length ? { files: refs.map(r => groupFileView(row.room_id, r)) } : {};
   }
   private insert(db: DB, tx: HubTx, roomId: string, author: { kind: PostRow["author_kind"]; id: string; subject: string; name: string }, text: string,
     mentions: string[] = [], key: string | null = null, digest = "", replyTo: string | null = null): PostRow {
@@ -376,7 +391,9 @@ export class HubGroupRooms {
   }
   async post(ctx: HubRequestContext, id: string, input: unknown): Promise<RoomMessage> {
     const body = validated(postSchema, input), me = await this.who(ctx);
-    const digest = createHash("sha256").update(JSON.stringify({ text: body.text, mentions: body.mentions, replyTo: body.replyTo ?? null })).digest("hex");
+    const files = body.files ?? [];
+    const digest = createHash("sha256").update(JSON.stringify(files.length ? { text: body.text, mentions: body.mentions, replyTo: body.replyTo ?? null, files }
+      : { text: body.text, mentions: body.mentions, replyTo: body.replyTo ?? null })).digest("hex");
     let added = false;
     const row = this.core.atomic((db, tx) => {
       const member = this.member(db, id, me), room = this.room(db, id);
@@ -385,7 +402,9 @@ export class HubGroupRooms {
       const old = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND author_subject=? AND idempotency_key=?").get(id, me, body.idempotencyKey) as PostRow | undefined;
       if (old) { if (old.digest !== digest || old.sequence < member.joined_sequence) throw new HubRoomRefusal(409, "conflict"); return old; }
       if (body.replyTo && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(body.replyTo, id, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
+      const refs = files.length ? this.store().pending(db, id, me, files) : [];
       const post = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name: this.name(db, me) }, body.text, body.mentions, body.idempotencyKey, digest, body.replyTo ?? null);
+      if (refs.length) this.store().bindPost(db, refs, post.id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.message", result: "completed", roomId: id, messageId: post.id, contentRef: post.content_ref });
       this.agents.enqueue(db, tx, { ...post, mentions: JSON.stringify(body.mentions.filter(m => m !== "assistant")) }, member.id);
       this.assistant.enqueue(db, tx, post, member.id, room.assistant_for !== null);
@@ -395,6 +414,40 @@ export class HubGroupRooms {
     if (added) { this.emit({ type: "message.added", roomId: id, data: { roomId: id, message }, sequence: row.sequence }); this.emit({ type: "unread.changed", roomId: id, data: { roomId: id } }); }
     if (added) { this.agents.publishQueued(row.id); this.assistant.publishQueued(row.id); }
     this.agents.wake(); this.assistant.wake(); return message;
+  }
+  /** M-3125: before any upload body is read — a member of a room that is not archived, and room in their pending budget. */
+  async uploadAdmit(ctx: HubRequestContext, id: string, declaredBytes: number): Promise<void> {
+    const me = await this.who(ctx), store = this.store();
+    this.core.atomic(db => { this.member(db, id, me); if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived"); store.admit(db, { uploader: me }, declaredBytes); }, this.fence(ctx));
+  }
+  /** M-3125: a member's file for a later post in this room, pending one hour (as in a 1:1 chat). */
+  async upload(ctx: HubRequestContext, id: string, name: string, bytes: Buffer): Promise<GroupRoomFileView> {
+    const me = await this.who(ctx), store = this.store();
+    return this.core.atomic((db, tx) => {
+      this.member(db, id, me); if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived");
+      const ref = store.createUpload(db, { roomId: id, uploader: me, name, bytes });
+      this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "file.upload", result: "allowed",
+        reasonCode: `question:${ref.size}:${ref.mime}:${ref.sha256}`, contentRef: this.core.deps.content.put(tx, { question: ref.name }), roomId: id });
+      return groupFileView(id, ref);
+    }, this.fence(ctx));
+  }
+  /**
+   * M-3125: one of this room's files, for a current member: a file on a post they can see (at or after their join floor, the
+   * room's history rule) or their own pending upload. Every read is audited.
+   */
+  async download(ctx: HubRequestContext, id: string, fileId: string): Promise<{ name: string; mime: string; image: boolean; bytes: Buffer }> {
+    const me = await this.who(ctx), store = this.store(), now = this.core.now();
+    return this.core.atomic((db, tx) => {
+      const member = this.member(db, id, me), row = store.row(db, fileId);
+      if (!row || row.room_id !== id) throw new HubProtocolError("not-found");
+      const post = row.state === "bound" && row.message_id ? db.prepare("SELECT sequence FROM hub_room_posts WHERE id=? AND room_id=?").get(row.message_id, id) as { sequence: number } | undefined : undefined;
+      const own = row.state === "pending" && row.uploader === me && (row.expires_at ?? 0) > now;
+      if (!own && !(post && post.sequence >= member.joined_sequence)) throw new HubProtocolError("not-found");
+      const bytes = store.read(db, row.sha256);
+      this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "file.read", result: "allowed",
+        reasonCode: `${row.direction}:${row.size}:${row.mime}:${row.sha256}`, ...(row.message_id ? { messageId: row.message_id } : {}), roomId: id });
+      return { name: row.name, mime: row.mime, image: isInlineImage(row.mime), bytes };
+    }, this.fence(ctx));
   }
   async markRead(ctx: HubRequestContext, id: string, upTo: unknown) {
     const target = validated(uuid, upTo), me = await this.who(ctx);
