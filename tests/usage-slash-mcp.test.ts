@@ -135,10 +135,10 @@ describe("formatDiscordUsageActivity", () => {
       fetchedAt: PAYLOAD.fetchedAt,
       providers: [{
         id: "kiro", name: "Kiro", plan: "Q Developer Pro", status: "ok",
-        hint: "Not measurable · monthly limit 10,000 chats", metrics: [],
+        hint: "Not measurable · monthly limit 10,000 requests", metrics: [],
       }],
     };
-    expect(formatUsageSummary(payload)).toContain("Not measurable · monthly limit 10,000 chats");
+    expect(formatUsageSummary(payload)).toContain("Not measurable · monthly limit 10,000 requests");
     expect(formatUsageSummary(payload)).not.toContain("no credit usage");
     expect(formatDiscordUsageActivity(payload)).toBe("⚡ Usage unavailable");
     expect(formatUsageSummary(payload)).not.toMatch(/unlimited|♾️/i);

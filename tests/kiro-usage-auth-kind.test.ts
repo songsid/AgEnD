@@ -66,7 +66,7 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     expect(r.status).toBe("ok");
     expect(r.plan).toBe("Q Developer Pro");
     expect(r.unlimited).toBeUndefined();
-    expect(r.hint).toBe("Not measurable · monthly limit 10,000 chats");
+    expect(r.hint).toBe("Not measurable · monthly limit 10,000 requests");
     expect(r.hintI18n).toEqual({ key: "usage.hint.q_developer_monthly_limit" });
     expect(r.hint).not.toMatch(/no credit/i);
     expect(r.metrics).toEqual([]);   // unknown remaining balance, no invented percentage
@@ -77,7 +77,7 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     expect(quotaBand(payload.providers[0], true)).toEqual({ band: "exhausted" });
     try {
       setLocale("zh-TW");
-      expect(usageText(r.hint!, r.hintI18n)).toBe("無法量測 · 每月上限 10,000 次聊天");
+      expect(usageText(r.hint!, r.hintI18n)).toBe("無法量測 · 每月上限 10,000 次請求");
     } finally { setLocale("en"); }
     expect(r.error).toBeUndefined(); // and never a red error
   });
