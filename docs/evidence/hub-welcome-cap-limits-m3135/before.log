@@ -1,0 +1,26 @@
+RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-welcome-cap-limits-m3135
+
+ ❯ tests/hub-protocol.test.ts (29 tests | 1 failed | 27 skipped) 35ms
+     × lets members receive 32 welcome capabilities, refusing 33 26ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-protocol.test.ts > Hub P1 closed protocol > lets members receive 32 welcome capabilities, refusing 33
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ parseServerFrame src/hub/protocol.ts:176:77
+ ❯ tests/hub-protocol.test.ts:18:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 27 skipped (29)
+   Start at  06:16:03
+   Duration  512ms (transform 196ms, setup 91ms, import 230ms, tests 35ms, environment 0ms)
