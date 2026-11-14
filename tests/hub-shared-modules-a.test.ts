@@ -19,7 +19,7 @@ import { fire } from "./helpers/mini-dom.js";
 import { isServedAsset } from "../src/auth-api.js";
 import { HUB_UI_MODULES } from "../src/hub/http/compose.js";
 
-const MOVED = ["chat-thread.js", "chat-render.js", "preview.js", "html-attachment.js", "chat-time.js", "chat-strings.js", "chat-md-strings.js", "chat-msg-actions.js"];
+const MOVED = ["chat-thread.js", "chat-render.js", "preview.js", "html-attachment.js", "chat-time.js", "chat-strings.js", "chat-md-strings.js", "chat-msg-actions.js", "image-lightbox.js", "image-zoom.js", "image-annotate.js"];
 const NEW = ["chat-composer.js", "side-rail.js", "page-head.js"];
 const ui = (...p: string[]) => join(process.cwd(), "src", "ui", ...p);
 

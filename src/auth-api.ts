@@ -222,6 +222,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // S-152: a message's menu (right-click, a phone's long press, swipe to reply), the Hub's rooms too. Its old /ui/js/ path
     // re-exports it.
     "chat-msg-actions.js",
+    // M-3125 PR3: a chat picture full size, its zoom and 「標註」 — the Fleet chat's and a Hub room's (old /ui/js/ paths re-export).
+    "image-lightbox.js", "image-zoom.js", "image-annotate.js",
     // Hub E (#3226): the HTML side panel (versions, pages, Point at it). The fleet-only Files & changes and Share register
     // with it from the fleet's /ui/js/preview-panel.js; the Hub never loads those.
     "preview-panel.js", "preview-panel-actions.js", "preview-versions.js", "preview-pages.js",
