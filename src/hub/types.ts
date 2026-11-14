@@ -67,7 +67,16 @@ export type HubRoomPostRefusalCode = "invalid" | "denied" | "revoked" | "not-fou
 export interface HubRoomListRequest { exposureId: ExposureId }
 export type HubRoomListResult = { ok: true; exposureId: ExposureId; rooms: readonly { id: RoomId; name: string }[]; truncated?: boolean }
   | { ok: false; exposureId: ExposureId; code: HubRoomPostRefusalCode; retryAt?: Millis };
-export interface HubRoomPost { exposureId: ExposureId; room: string; text: string; idempotencyKey: string }
+export interface HubRoomPost { exposureId: ExposureId; room: string; text: string; idempotencyKey: string; onBehalfOf?: { receiptId: string } }
+export interface HubRoomMembersRequest { exposureId: ExposureId; room: string }
+export type HubRoomMembersResult = { ok: true; roomId: RoomId; members: readonly { id: string; kind: "person" | "agent" | "assistant"; name: string; presence: string; owner?: { name: string }; presenceReason?: string; presenceNote?: string }[] }
+  | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis; rooms?: readonly { id: RoomId; name: string }[] };
+export interface HubPeopleSearch { exposureId: ExposureId; q: string }
+export type HubPeopleSearchResult = { ok: true; people: readonly { id: string; name: string; login: string }[]; truncated: boolean }
+  | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis };
+export interface HubRoomPostAnswer { id: string; postId: MessageId; roomId: RoomId; exposureId: ExposureId;
+  message: { id: MessageId; author: { name: string }; text: string; at: Millis }; receiptId?: string }
+export interface HubRoomPostAnswerAck { id: string }
 export type HubRoomPostResult = { ok: true; roomId: RoomId; messageId: MessageId; at: Millis }
   | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis; rooms?: readonly { id: RoomId; name: string }[] };
 
@@ -117,6 +126,9 @@ export interface HubRevocation {
 export type HubMemberFrame =
   | HubFrame<"room.list", HubRoomListRequest>
   | HubFrame<"room.post", HubRoomPost>
+  | HubFrame<"room.members", HubRoomMembersRequest>
+  | HubFrame<"people.search", HubPeopleSearch>
+  | HubFrame<"room.post-answer-ack", HubRoomPostAnswerAck>
   | HubFrame<"room.answer", HubRoomAnswer>
   | HubFrame<"agent.state", HubAgentState>
   | HubFrame<"hello", HubHello>
@@ -140,6 +152,9 @@ export interface HubRelocation { v: 1; from: string; to: string; spkiSha256: Sha
 export type HubServerFrame =
   | HubFrame<"room.list-result", HubRoomListResult>
   | HubFrame<"room.post-result", HubRoomPostResult>
+  | HubFrame<"room.members-result", HubRoomMembersResult>
+  | HubFrame<"people.search-result", HubPeopleSearchResult>
+  | HubFrame<"room.post-answer", HubRoomPostAnswer>
   | HubFrame<"room.ask", HubRoomAsk>
   | HubFrame<"room.answer-ack", HubRoomAnswerAck>
   | HubFrame<"welcome", HubWelcome>

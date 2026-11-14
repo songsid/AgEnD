@@ -151,7 +151,7 @@ export class HubServer {
     }
     if (frame.type === "exposure.quota" && (!context.features.has("quota-band-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.answer" || frame.type === "agent.state") && (!context.features.has(HUB_ROOM_ASK_CAPABILITY) || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
-    if ((frame.type === "room.list" || frame.type === "room.post") && (!context.features.has(HUB_ROOM_POST_CAPABILITY) || !context.features.has(HUB_ROOM_ASK_CAPABILITY) || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if ((frame.type === "room.list" || frame.type === "room.post" || frame.type === "room.members" || frame.type === "people.search" || frame.type === "room.post-answer-ack") && (!context.features.has(HUB_ROOM_POST_CAPABILITY) || !context.features.has(HUB_ROOM_ASK_CAPABILITY) || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "relocate.ack") {
       if (!context.features.has(HUB_MEMBER_RELOCATION_CAPABILITY) || !context.features.has("welcome-caps-v1")) throw new HubProtocolError("incompatible");
       // Only the exact relocation sent on this very link and epoch; late, foreign or mismatched acks are ignored.
@@ -187,7 +187,7 @@ export class HubServer {
     if (frame.type === "pairing.notice-v2" && (!connection.context.features.has("pairing-notices-v2") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v3" && (!connection.context.features.has("pairing-notices-v3") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.ask" || frame.type === "room.answer-ack") && (!connection.context.features.has(HUB_ROOM_ASK_CAPABILITY) || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
-    if ((frame.type === "room.list-result" || frame.type === "room.post-result") && (!connection.context.features.has(HUB_ROOM_POST_CAPABILITY) || !connection.context.features.has(HUB_ROOM_ASK_CAPABILITY) || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if ((frame.type === "room.list-result" || frame.type === "room.post-result" || frame.type === "room.members-result" || frame.type === "people.search-result" || frame.type === "room.post-answer") && (!connection.context.features.has(HUB_ROOM_POST_CAPABILITY) || !connection.context.features.has(HUB_ROOM_ASK_CAPABILITY) || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     await connection.link.send(frame);
   }
   /**
