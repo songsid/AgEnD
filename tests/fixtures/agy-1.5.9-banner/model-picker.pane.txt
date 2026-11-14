@@ -1,0 +1,13 @@
+Switch Model
+
+  Search:
+          ────────────────────
+
+  Gemini 4 Argon
+  Gemini 4 Hydrogen
+  Orchestrator (Argon)
+  Gemini 3.8 Flash (current)
+  Claude Opus 5.5
+  Claude Sonnet 5.5
+  GPT-OSS 120B (Medium)
+> Gemini 4 Carbon

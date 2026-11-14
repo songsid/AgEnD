@@ -57,3 +57,13 @@ not an interactive pane; that path has no wizard-key handler. Do not promise tha
 it has completed onboarding or changed the account's server-side data preference.
 After an interactive setup, the CLI's `/config` page shows **Enable Telemetry off**;
 this is the visible confirmation to inspect, rather than the completion file.
+
+### Antigravity announcement above an idle composer
+
+An agy announcement such as “Introducing Gemini 4 Hydrogen” is not itself proof
+of work. The empty Auto-mode composer may show `> Auto mode: edits & safe
+commands auto-approved (shift+tab to cycle)` instead of a bare `>`. AgEnD accepts
+that exact boxed, bottom-of-pane placeholder; an active spinner still wins.
+Do not send Esc or retry a message just because an announcement is present.
+A model picker’s `(current)` label alone is not evidence of the model that
+served an answer; model switches use the backend’s restart path.
