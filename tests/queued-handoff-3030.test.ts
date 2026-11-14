@@ -194,6 +194,10 @@ describe("a person's message handed to a busy Claude", () => {
     expect(r.events.filter(([e]) => e === "message_confirmed")).toEqual([]);
     expect(r.watches).toHaveLength(1);
     expect(r.watches[0]).toMatchObject({ marker: MARKER, path: "/scratch/t.jsonl", offset: 0 });
+    // #3898: the watch also holds the exact text pasted, so a message the CLI merged with others still proves taken.
+    const wire = r.store.list()[0].wire;
+    expect(wire?.startsWith(`${MARKER}\n`)).toBe(true);
+    expect(r.watches[0].wire).toBe(wire);
     // The running turn's interrupted-turn marker is not overwritten by a message only queued (#1209).
     expect(existsSync(join(r.instanceDir, "in-flight-turn.json"))).toBe(false);
     r.watches[0].consumed("turn", "transcript-consumed:user-entry");
@@ -265,6 +269,21 @@ describe("after a restart: the records of a CLI that is gone", () => {
     expect(r.push).not.toHaveBeenCalled();
     expect(r.events).toEqual([["message_confirmed", { chatId: "chat", messageId: "m1" }]]);
     expect(r.store.list()).toEqual([]);
+  });
+
+  it("#3898: merged by the CLI into one entry with an earlier message: taken by its exact text — ✅, nothing pasted again", async () => {
+    const path = join(scratch("t"), "t.jsonl");
+    const wire = `${MARKER}\n[user:han#1] hello\n(message_id: m1)`;
+    writeFileSync(path, claudeUser(`[agend-human-id:hmsg-earlier]\n[user:han#1] first\n\n${wire}`));
+    const r = fresh([entry({ path, wire })]);
+    await r.daemon.reconcileQueuedHandoffs();
+    expect(r.push).not.toHaveBeenCalled();
+    expect(r.events).toEqual([["message_confirmed", { chatId: "chat", messageId: "m1" }]]);
+    expect(r.store.list()).toEqual([]);
+    // A record without its text (written before the field existed) reads as before: proven not taken, redelivered.
+    const old = fresh([entry({ path })]);
+    await old.daemon.reconcileQueuedHandoffs();
+    expect(old.push).toHaveBeenCalledTimes(1);
   });
 
   it("proven not taken (the whole delta read; only enqueued, or absent): redelivered once with its marker, receipt binding stripped", async () => {

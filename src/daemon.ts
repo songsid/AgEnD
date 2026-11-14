@@ -2830,6 +2830,7 @@ export class Daemon extends EventEmitter {
       path: entry.path,
       offset: entry.offset,
       marker: entry.marker,
+      ...(entry.wire !== undefined ? { wire: entry.wire } : {}),
       // A cancel or stop moves the epoch: the watch ends quietly (a cancel cleared the record, a stop leaves it).
       current: () => !this.deliveryWritesStopping && spawn === this.spawnGeneration && fence === this.launchFenceEpoch
         && epoch === this.deliveryEpoch,
@@ -2894,7 +2895,7 @@ export class Daemon extends EventEmitter {
       && !this.deliveryWritesStopping;
     let redelivered = 0, taken = 0, unverifiable = 0;
     for (const entry of entries) {
-      const kind = await scanTranscriptForDeliveryMarker(entry.path, entry.offset, entry.backend, { marker: entry.marker });
+      const kind = await scanTranscriptForDeliveryMarker(entry.path, entry.offset, entry.backend, { marker: entry.marker, ...(entry.wire !== undefined ? { wire: entry.wire } : {}) });
       // This CLI is gone already, or a cancel came: the next CLI settles them (a cancel cleared them).
       if (!fresh()) return;
       // …and the record is still the one that was read (another reconciliation or a cancel did not change it meanwhile).
