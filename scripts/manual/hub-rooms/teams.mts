@@ -80,6 +80,8 @@ try {
     check(tag + " lead search and save reach actual provider", (await rig.call(lead, "GET", `/hub/v1/teams/${teamId}`)).json.team.members.includes(personKeyString(riley)));
     check(tag + " added roster member is not silently added to the existing room", !(await rig.call(lead, "GET", roomPath)).json.members.some((m: any) => m.name === "Riley"));
     await shot("lead-roster");
+    const labels = await page.locator(".hub-team-editor tbody td:first-child strong").allTextContents();
+    check(tag + " member names survive a roster save", labels.includes("Sam") && labels.includes("Riley"));
     await page.getByRole("button", { name: en ? "Remove Sam" : "移除 Sam", exact: true }).click(); await save("PATCH", `/hub/v1/teams/${teamId}`);
     check(tag + " removed roster member loses direct ask", !await canAsk());
     check(tag + " removed roster member keeps room snapshot", (await rig.call(member, "GET", roomPath)).status === 200);
@@ -97,6 +99,9 @@ try {
     check(tag + " grant history retained", !!rig.db.prepare("SELECT 1 FROM hub_grants WHERE id=? AND state='active'").get(grant.json.grant.id));
     check(tag + " no browser errors", errors.length === 0); await Promise.all(responses); await context.close();
   }
+  receipt.complete = true;
+} catch (error) {
+  receipt.complete = false; receipt.error = { name: (error as Error).name, message: (error as Error).message }; throw error;
 } finally {
   await browser?.close(); server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); await rig.close(); rmSync(keys, { recursive: true, force: true });
   receipt.cleaned = { browser: true, listener: true, sqlite: true, keys: true }; writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2) + "\n");
