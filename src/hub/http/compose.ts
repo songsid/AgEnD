@@ -607,6 +607,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const room = await guard(() => rooms.view(ctx, roomId)); markDirectRead(core, roomId, str(b.upTo));
       groupRooms.publish({ type: "unread.changed", roomId, data: { roomId }, audiencePerson: personKeyString(room.asker) }); return send(res, 200, { ok: true });
     }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/messages\/([^/]+)\/reactions$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const roomId = uuid(r[1]);
+      if (!groupRooms.has(roomId)) throw new HttpError(404, "not-found");
+      const b = await body(); return send(res, 200, await guard(() => groupRooms.react(ctx, roomId, r![2], b)));
+    }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/buttons$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body();

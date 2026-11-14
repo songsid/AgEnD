@@ -15,14 +15,17 @@ import { Icon } from "/assets/ui-icons.js";
 import { Empty } from "/assets/ui-states.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Menu } from "/assets/ui-menu.js";
+import { toast } from "/assets/ui-toast.js";
 import { t } from "/assets/app-i18n.js";
 import "./hub-strings.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
+import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { workingLine } from "./hub-room-working.js";
 import { countsLine } from "./hub-room-list.js";
 
+linkRoomsU2Css();   // M-3127: the reaction chips and picker are drawn from hub-rooms-u2.css (a room opened before any U2 panel)
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
 const BOOT = "room";
 
@@ -85,6 +88,20 @@ function askOf(m, messages) {
   const notAns = messages.filter((x) => x.answerTo === m.id && x.stage === "not-answered").length;
   return notAns ? { ...ask, failed: notAns } : ask;
 }
+/**
+ * M-3127: a message's reactions as the thread's chips — `mine` from my member id, the label naming who (from the room's
+ * members; someone no longer listed counts among "others"): 「Alex、Bob 和其他 3 人 回應了 👍」.
+ */
+export function reactionBar(reactions, { meId = "", names = new Map() } = {}) {
+  if (!Array.isArray(reactions)) return undefined;
+  return reactions.filter((r) => r && typeof r.emoji === "string" && Number(r.count) > 0).map((r) => {
+    const members = Array.isArray(r.members) ? r.members : [], mine = members.includes(meId);
+    const known = members.filter((id) => id !== meId && names.has(id)).map((id) => names.get(id));
+    const who = [...(mine ? [hroom("reactYou")] : []), ...known].slice(0, 3), rest = Number(r.count) - who.length;
+    const list = who.join(hroom("listSep"));
+    return { emoji: r.emoji, count: Number(r.count), mine, label: hroom("reactedWith", rest > 0 ? (who.length ? hroom("reactMore", list, String(rest)) : String(r.count)) : list, r.emoji) };
+  });
+}
 /** How many answers of one question show when they are folded, and from how many they fold (Lumen: all up to 5). */
 export const ANSWERS_SHOWN = 3, FOLD_FROM = 6;
 
@@ -92,7 +109,7 @@ export const ANSWERS_SHOWN = 3, FOLD_FROM = 6;
  * Seam-1 messages (newest last) → the thread's messages. `ids`: a Map from a message id to its number in this thread
  * (the thread's keys and quotes are numbers), extended here in arrival order and kept by the caller.
  */
-export function toThreadMessages(messages, { meId, ids, direct = false, expanded = new Set(), summarise = false }) {
+export function toThreadMessages(messages, { meId, ids, direct = false, expanded = new Set(), summarise = false, names = new Map() }) {
   const stops = messages.filter(m => m?.system?.kind === "agent-mention-stopped"), ordered = messages.filter(m => !stops.includes(m));
   for (const stop of stops) { const parent = ordered.findIndex(m => m.id === stop.system.sourceId); if (parent < 0) ordered.push(stop); else { let i = parent + 1; while (ordered[i]?.system?.sourceId === stop.system.sourceId) i++; ordered.splice(i, 0, stop); } }
   const out = [], byId = new Map(messages.map((m) => [m.id, m]));
@@ -126,6 +143,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     out.push({ boot: BOOT, id, role: kind === "person" && !author.via ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
       ...(kind === "person" && !mine && !author.via ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
       roomMessage: m.id, ...(mine && state?.delivery ? { delivery: state.delivery } : {}),
+      ...(!direct && Array.isArray(m.reactions) && m.reactions.length ? { reactionBar: reactionBar(m.reactions, { meId, names }) } : {}),
       ...(quotedId ? { replyTo: { boot: BOOT, id: num(quotedId), sender: quoted ? authorLine(quoted.author, quoted.author?.id === meId, direct) : "", text: quoted ? String(quoted.text || "").slice(0, 120) : "" } } : {}),
       ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
     if (foldAfter) out.push({ boot: BOOT, id: num(`expand:${foldAfter.arg}`), role: "status", sender: "", text: "", bare: true, fold: true, action: foldAfter });
@@ -156,11 +174,13 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
   const closedNow = () => st.removed || st.detail?.room?.archived === true;
   const ordered = () => { if (st.messages.length && st.messages.every((m) => Number.isSafeInteger(m.sequence))) st.messages.sort((a, b) => a.sequence - b.sequence); };
   const changed = () => { ordered(); st.view = toThreadMessages(st.messages, { meId: st.detail?.me?.id || meId, ids, direct: st.detail?.room?.kind === "direct", expanded,
-    summarise: st.detail?.room?.kind === "group" && (st.detail?.members || []).some((x) => x.kind === "assistant") && !closedNow() }); for (const fn of [...subs]) { try { fn(); } catch { /* a subscriber's own failure */ } } };
+    summarise: st.detail?.room?.kind === "group" && (st.detail?.members || []).some((x) => x.kind === "assistant") && !closedNow(),
+    names: new Map((st.detail?.members || []).filter((x) => x && typeof x.id === "string").map((x) => [x.id, x.kind === "assistant" ? hroom("roomAssistant") : String(x.name || "")])) }); for (const fn of [...subs]) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const upsert = (m) => {
     if (!m || m.roomId !== roomId || typeof m.id !== "string") return;
     const i = st.messages.findIndex((x) => x.id === m.id || (m.idempotencyKey && x.idempotencyKey === m.idempotencyKey));
-    if (i >= 0) st.messages[i] = { ...st.messages[i], ...m }; else st.messages.push(m);
+    // The server always sends the whole message: one without reactions has none left (M-3127), never the old ones.
+    if (i >= 0) { const next = { ...st.messages[i], ...m }; if (!("reactions" in m)) delete next.reactions; st.messages[i] = next; } else st.messages.push(m);
   };
   const readDetail = async () => { const d = await client.room(roomId); if (!st.live) return; if (d.ok) st.detail = d; else if (!st.detail) st.error = d.code || "failed"; };
   async function refresh() {
@@ -238,6 +258,17 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
     working() { return this.workers().map((w) => w.name); },
     /** The same, as members ({ kind, name }) — what workingLine() words (the room assistant by its own name). */
     workers() { return st.messages.filter((m) => m.answerTo && !m.text && m.stage === "working" && m.author?.name).map((m) => ({ kind: m.author.kind === "assistant" ? "assistant" : "agent", name: String(m.author.name) })); },
+    /**
+     * M-3127: add or take back my reaction on a message of this group room. The answer's reactions are drawn at once (the
+     * stream's message.updated brings the same); a refusal leaves the message as it was → the client's answer.
+     */
+    async react(messageId, emoji, on) {
+      if (closedNow() || st.detail?.room?.kind !== "group" || typeof client.reactRoomMessage !== "function") return { ok: false, code: "closed" };
+      const r = await client.reactRoomMessage(roomId, messageId, emoji, on);
+      const m = st.messages.find((x) => x.id === messageId);
+      if (st.live && r?.ok && m && Array.isArray(r.reactions)) { if (r.reactions.length) m.reactions = r.reactions; else delete m.reactions; changed(); }
+      return r;
+    },
     markRead() { const last = st.messages.at(-1); return last ? client.markRoomRead(roomId, last.id) : Promise.resolve({ ok: true }); },
     refresh, clickButton: async () => ({ ok: false, code: "stopped" }), vote: async () => ({ ok: false, code: "stopped" }), busy: () => false, mine: () => [],
     stop() { st.live = false; subs.clear(); unsubscribe(); },
@@ -306,6 +337,12 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     statusAction: (arg) => { if (String(arg).startsWith("summarise:")) { if (!store.closed()) void store.send(hroom("summarisePrompt"), { mentions: ["assistant"] }); } else store.expand(arg); },
     startReply: (x) => { setReply(x); setTimeout(() => input.current?.focus(), 0); },
     findQuoted: (key) => store.findQuoted(key),
+    // M-3127: people's reactions — a group room's messages (not a room line), while the room is open to me. Read when the
+    // thread draws: these options are kept from the first render, before the room's kind is known.
+    react: (x, emoji, on) => { void store.react(x.roomMessage, emoji, on).then((r) => { if (!r?.ok && r?.code !== "closed") toast(hroom("reactFailed"), false); }); },
+    canReact: () => store.detail()?.room?.kind === "group" && !store.closed(),
+    reactText: (k) => (k === "add" ? hroom("reactAdd") : k === "pick" ? hroom("reactPick") : ""),
+    reactLabel: hroom("reactAdd"),   // the message menu's React (web-claude's HubThread, M-3117 PR 2: phones)
   };
   const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : String(room.agent?.owner?.name || "");

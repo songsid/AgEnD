@@ -99,6 +99,8 @@ export function installMessageActions(list, deps) {
     closeMenu();
     const items = [];
     if (deps.canReply?.() !== false) items.push(["reply", deps.t("chat.reply"), () => deps.reply(row)]);
+    // M-3127: a Hub room's messages take a reaction (deps.react: the thread's quick picker under that message); the Fleet passes none.
+    if (typeof deps.react === "function" && deps.canReact?.(row) !== false) items.push(["react", deps.reactLabel || "React", () => deps.react(row)]);
     items.push(["copyText", deps.t("chat.copyText"), async () => { const ok = await deps.copyText(String(row.click?.label ?? row.text ?? "")); deps.notice(deps.t(ok ? "chat.copied" : "chat.copyFailed"), ok); }]);
     if (typeof deps.linkOf === "function") items.push(["copyLink", deps.t("chat.copyLink"), async () => { const ok = await deps.copyText(deps.linkOf(row)); deps.notice(deps.t(ok ? "chat.copied" : "chat.copyFailed"), ok); }]);
     menu = doc.createElement("div");

@@ -102,3 +102,10 @@ CREATE INDEX hub_room_post_returns_pending ON hub_room_post_returns(fleet_id,exp
 CREATE TABLE hub_room_agent_stops(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id),source_id TEXT NOT NULL,reason TEXT NOT NULL,name TEXT NOT NULL,retry_at INTEGER,coalesce_key TEXT NOT NULL UNIQUE);
 CREATE INDEX hub_room_agent_stops_source ON hub_room_agent_stops(source_id);`);
 } });
+
+/** M-3127: people's (and agents') emoji reactions on room posts — set semantics, one row per member and emoji. */
+export const HUB_ROOM_REACTIONS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-reactions", version: 1, up(db: Database.Database) {
+  db.exec(`CREATE TABLE hub_room_reactions(room_id TEXT NOT NULL REFERENCES hub_group_rooms(id),post_id TEXT NOT NULL REFERENCES hub_room_posts(id),
+  member_id TEXT NOT NULL,emoji TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(post_id,member_id,emoji));
+CREATE INDEX hub_room_reactions_room ON hub_room_reactions(room_id,post_id);`);
+} });

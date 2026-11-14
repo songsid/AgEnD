@@ -17,6 +17,8 @@ export interface RoomMessage {
   /** The immediate question's person-member id (same identity as room.me.id), never an agent owner's id. */
   askedBy?: string;
   stage?: "queued" | "working" | "answered" | "not-answered";
+  /** M-3127: who reacted with what, oldest emoji first; `members` are room member ids (the viewer finds its own). */
+  reactions?: { emoji: string; count: number; members: string[] }[];
 }
 export interface RoomAssistantPort {
   available(): { enabled: boolean; backend: string | null; running: number; cap: number; state: "idle" | "busy" | "paused"; note?: string };

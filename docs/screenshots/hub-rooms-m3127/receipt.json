@@ -1,0 +1,176 @@
+{
+  "sourceHead": "4e5c36b837670cc2d753763066efba7d833ff345",
+  "baseRef": "1583d616f6935bbe43103b4d38d87e5dd3e36b24",
+  "dirty": [],
+  "inputs": [
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "base": "2d1af861d01025e168353b562d2acc5474d8e4b44c472a93dd2b1cc3debc62b7"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "base": "a044645a53176e97f4d59e9a0942b03f597a81af420eef1baa567207d7355356"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "1460c19f21f3225506b01c163523c631686fb84e1663aaad0722fae5f1f84990"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "sha256": "ac653bf9e2e571460fef4e943e09611f1ffed31a075dfc8ec56efc2d45874478"
+    },
+    {
+      "path": "src/ui/chat-msg-actions.js",
+      "sha256": "17f732e58ad2da84afa5594eba0b701b1a1e001dcef909c3abccb858b6462091"
+    },
+    {
+      "path": "src/ui/hub-room-strings.js",
+      "sha256": "55af603c751d5dc810a0a44092a5ef2fdb843be737ba3cf17f6f6a756c412bf5"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "dfd6d82f778cf8991b25d7f85264389255b920fb0a32caeb1df6922706c67bda"
+    },
+    {
+      "path": "src/ui/shared/hub-rooms-u2.css",
+      "sha256": "ccdba320529b873b572db4e51000e630e6a43a32f6fab5ff8ea3971ee4179ac6"
+    },
+    {
+      "path": "tests/support/hub-rooms-fixture.ts",
+      "sha256": "bdbc7f3828cd3b83cd4c15a7bfe68d4fe6e84f8108bf2182fbe0762afb1a0935"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desktop-en-light after: the chips as stored — 👍3 mine pressed and named, 🎉1 not mine; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after: Add reaction opens the quick picker (8 emoji), focus on the first",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after: a pick adds mine (🎉1 pressed) beside the others' 👀2, and closes the picker",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after: pressing my chip takes it back (👀2 left); no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light skew: BASE_REF's thread draws the room as before (no chips, no Add reaction) while the Hub sends reactions; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: the chips as stored — 👍3 mine pressed and named, 🎉1 not mine; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: Add reaction opens the quick picker (8 emoji), focus on the first",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: a pick adds mine (🎉1 pressed) beside the others' 👀2, and closes the picker",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: pressing my chip takes it back (👀2 left); no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark skew: BASE_REF's thread draws the room as before (no chips, no Add reaction) while the Hub sends reactions; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: the chips as stored — 👍3 mine pressed and named, 🎉1 not mine; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: Add reaction opens the quick picker (8 emoji), focus on the first",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: a pick adds mine (🎉1 pressed) beside the others' 👀2, and closes the picker",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: pressing my chip takes it back (👀2 left); no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light skew: BASE_REF's thread draws the room as before (no chips, no Add reaction) while the Hub sends reactions; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: the chips as stored — 👍3 mine pressed and named, 🎉1 not mine; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: Add reaction opens the quick picker (8 emoji), focus on the first",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: a pick adds mine (🎉1 pressed) beside the others' 👀2, and closes the picker",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: pressing my chip takes it back (👀2 left); no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark skew: BASE_REF's thread draws the room as before (no chips, no Add reaction) while the Hub sends reactions; no page error",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "reactions-picker.desktop-en-light.png",
+      "sha256": "79b621607bc5e4faeb54b8305c65bcdb6693de9e5536b9a36e1b6dee13c9afe6"
+    },
+    {
+      "path": "reactions-after.desktop-en-light.png",
+      "sha256": "e325af38c87720c0a7259f79889a3a1ce316fce6413ef5a4d5c16b0b8371b28e"
+    },
+    {
+      "path": "reactions-skew.desktop-en-light.png",
+      "sha256": "669abe4ad983b14b57a6c76448c57f80be711b40bce1045c5a2d9df44a2c1578"
+    },
+    {
+      "path": "reactions-picker.desktop-zh-TW-dark.png",
+      "sha256": "8f45b5a4c8dee4a4ab6915b27eb32032ddb7c3e953af366ab0a70f4992134f5d"
+    },
+    {
+      "path": "reactions-after.desktop-zh-TW-dark.png",
+      "sha256": "b09ebad385de7d11c79a402cfda14f3e912d7ae9b2d5a9171a762cc192265df6"
+    },
+    {
+      "path": "reactions-skew.desktop-zh-TW-dark.png",
+      "sha256": "137a0f2194badb7cbdcdf6b61dd9fc6118be5f7c1a759d975fc97070dc9fe722"
+    },
+    {
+      "path": "reactions-picker.phone-zh-TW-light.png",
+      "sha256": "a4d52944d52ee6e2b7aab1ca1cf856c454e62d18bc27b37aeb0220931c829473"
+    },
+    {
+      "path": "reactions-after.phone-zh-TW-light.png",
+      "sha256": "47c1c6b86245c41173f1fe7770a79a23de413cf3f8201a24763c4429e054cb2f"
+    },
+    {
+      "path": "reactions-skew.phone-zh-TW-light.png",
+      "sha256": "ac617fcf4f0c42f4028a9b231ff4dea8b765687169708dc37e1b4a2b208d4131"
+    },
+    {
+      "path": "reactions-picker.phone-en-dark.png",
+      "sha256": "bb2965399302458f810af8953d356fba0c72a65c120f4a9d3c66630215a5790d"
+    },
+    {
+      "path": "reactions-after.phone-en-dark.png",
+      "sha256": "71a7a0cb6559b1222265efe4274e8b5b55a2c29445dab583ed842cba700f880b"
+    },
+    {
+      "path": "reactions-skew.phone-en-dark.png",
+      "sha256": "b21a3f1102591055d5c00d88e9040239f3c20ee81c87b826d9873af95f4e3a62"
+    }
+  ],
+  "passed": true
+}

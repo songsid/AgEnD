@@ -40,6 +40,10 @@ const P = () => globalThis.AgendPreview;
 export const STATUS_FOLD_LINES = 2;
 export const STATUS_LINE_CHARS = 100;
 const REPLY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
+// M-3127 (Hub rooms): add a reaction — a smiley with a plus.
+const REACT = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.56"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/><path d="M19 2v6M16 5h6"/></svg>';
+/** M-3127: the quick reactions a person picks from (a room checks each one again). */
+export const QUICK_REACTIONS = Object.freeze(["👍", "❤️", "😂", "🎉", "🙏", "👀", "✅", "🔥"]);
 const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
 /** Escapes & " ' < >: safe for text and inside a quoted attribute. */
@@ -199,9 +203,57 @@ export function createThread(list, scroller, opts) {
     const clicked = x.role === "user" && x.click && typeof x.click.label === "string";
     // #2272: reply to it — a hover strip at its top right (phones: swipe left or long-press; R on a focused message).
     const key = msgKey(x);
-    const act = opts.canReply?.() === false ? "" : `<div data-trust="thread-control" class="msg-actions"><button type="button" class="chip-btn icon-only" data-act="reply" data-arg="${escAttr(key)}" title="${escAttr(tr("chat.reply"))}" aria-label="${escAttr(tr("chat.reply"))}">${REPLY}</button></div>`;
+    // M-3127: a Hub room (opts.react, a message of the room) also offers Add reaction in the same strip; the Fleet passes none.
+    const reactable = typeof opts.react === "function" && x.roomMessage && opts.canReact?.(x) !== false;
+    const addReact = reactable ? `<button type="button" class="chip-btn icon-only" data-act="reactPick" data-arg="${escAttr(key)}" aria-haspopup="true" aria-expanded="false" title="${escAttr(reactText("add"))}" aria-label="${escAttr(reactText("add"))}">${REACT}</button>` : "";
+    const act = opts.canReply?.() === false ? (addReact ? `<div data-trust="thread-control" class="msg-actions">${addReact}</div>` : "") : `<div data-trust="thread-control" class="msg-actions">${addReact}<button type="button" class="chip-btn icon-only" data-act="reply" data-arg="${escAttr(key)}" title="${escAttr(tr("chat.reply"))}" aria-label="${escAttr(tr("chat.reply"))}">${REPLY}</button></div>`;
     // M-3092 (Hub rooms): another person's message, a bubble on the left (`msg-person`); the fleet never sets x.person.
-    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
+  }
+  /** M-3127: a room's words for its reaction controls (opts.reactText(key)), English when the page gives none. */
+  function reactText(k, ...a) {
+    const own = opts.reactText?.(k, ...a);
+    if (typeof own === "string" && own) return own;
+    return k === "add" ? "Add reaction" : k === "pick" ? "Reactions" : k === "chip" ? `${a[0]} ${a[1]}` : "";
+  }
+  /**
+   * M-3127: a room message's reactions as chips anyone in the room can press: `x.reactionBar` [{ emoji, count, mine, label }]
+   * (label: who reacted, in the page's words). Mine is pressed; pressing toggles mine. Read-only when the room is closed.
+   */
+  function reactBarHtml(x, key, live) {
+    const items = x.reactionBar.filter((r) => r && typeof r.emoji === "string" && r.count > 0).map((r) => {
+      const label = escAttr(r.label || reactText("chip", r.emoji, r.count));
+      return live ? `<button type="button" data-trust="thread-control" class="reaction react-chip${r.mine ? " mine" : ""}" data-act="reactToggle" data-arg="${escAttr(key)}" data-emoji="${escAttr(r.emoji)}" aria-pressed="${r.mine ? "true" : "false"}" title="${label}" aria-label="${label}"><span class="e">${escAttr(r.emoji)}</span><span class="n">${Number(r.count)}</span></button>`
+        : `<span class="reaction react-chip${r.mine ? " mine" : ""}" role="img" title="${label}" aria-label="${label}"><span class="e">${escAttr(r.emoji)}</span><span class="n">${Number(r.count)}</span></span>`;
+    }).join("");
+    return items ? `<div class="msg-reactions react-bar" role="group" aria-label="${escAttr(reactText("pick"))}">${items}</div>` : "";
+  }
+  /** M-3127: a reaction control `el` (its message key and emoji) → the page's react(message, emoji, on). */
+  function reactFrom(el, on) {
+    const x = msgs.find(y => msgKey(y) === el.dataset.arg);
+    if (x && typeof el.dataset.emoji === "string") opts.react?.(x, el.dataset.emoji, on);
+  }
+  /** M-3127: the quick picker under a message's Add reaction (one open at a time; Escape or a pick closes it). */
+  let picker = null;
+  function closePicker(focusBack = false) {
+    if (!picker) return;
+    const { node, button } = picker; picker = null; node.remove(); button.setAttribute("aria-expanded", "false");
+    if (focusBack && button.isConnected) button.focus();
+  }
+  function openPicker(button) {
+    const was = picker && picker.button === button; closePicker();
+    if (was) return;
+    const doc = button.ownerDocument, node = doc.createElement("div");
+    node.className = "react-pick"; node.setAttribute("role", "group"); node.setAttribute("data-trust", "thread-control"); node.setAttribute("aria-label", reactText("pick"));
+    for (const e of QUICK_REACTIONS) {
+      const b = doc.createElement("button");
+      b.type = "button"; b.className = "chip-btn react-opt"; b.dataset.act = "reactAdd"; b.dataset.arg = button.dataset.arg; b.dataset.emoji = e;
+      b.setAttribute("aria-label", e); b.textContent = e; node.append(b);
+    }
+    node.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { ev.stopPropagation(); closePicker(true); } });
+    button.closest(".msg")?.append(node); button.setAttribute("aria-expanded", "true");
+    picker = { node, button };
+    node.querySelector("button")?.focus();
   }
   /**
    * A message this page is sending (chat-store.js): its own bubble at once, dimmed with "Sending…" until the server
@@ -936,6 +988,9 @@ export function createThread(list, scroller, opts) {
       if (m && opts.clickReplyButton) opts.clickReplyButton(m[1], Number(m[2]));
     } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
     else if (act === "reply") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) opts.startReply?.(x); }
+    else if (act === "reactPick") openPicker(el);
+    else if (act === "reactAdd") { closePicker(true); reactFrom(el, true); }                       // a quick pick: mine added
+    else if (act === "reactToggle") reactFrom(el, el.getAttribute("aria-pressed") !== "true");      // a chip: mine on or off
     else if (act === "jumpQuote") void jumpTo(el.dataset.arg);
     else if (act === "retryOut") opts.retryOutgoing?.(el.dataset.arg);                 // a failed send, again
     else if (act === "putBackOut") opts.putBackOutgoing?.(el.dataset.arg);              // back in the composer, to change it
@@ -984,6 +1039,7 @@ export function createThread(list, scroller, opts) {
   }
   /** `own`: only this thread's previews stop (a thread let go while another chat is in view); else every one, as leaving. */
   function dispose(own = false) {
+    closePicker();
     disposed = true;
     if (!parked) watchReader(scroller, false);
     if (ro) ro.disconnect();
@@ -994,5 +1050,11 @@ export function createThread(list, scroller, opts) {
     armPolls();
   }
 
-  return { render, progress, onScroll, onClick, jumpLatest, reveal, jumpTo, messageOf, rove, refreshCards, park, attach, dispose, nodes, get unseen() { return unseen; } };
+  /** M-3127: open the quick reaction picker under message `key` (its Add reaction button) — the message menu's React; false when none. */
+  function pickReaction(key) {
+    const node = nodes.get(key)?.node, button = node && node.querySelector('[data-act="reactPick"]');
+    if (!button) return false;
+    openPicker(button); return true;
+  }
+  return { render, progress, onScroll, onClick, jumpLatest, reveal, jumpTo, messageOf, rove, refreshCards, park, attach, dispose, nodes, pickReaction, get unseen() { return unseen; } };
 }
