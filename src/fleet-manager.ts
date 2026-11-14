@@ -11548,7 +11548,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * #3066 §1: estimate each account's weekly 100% from the quota history (§1d) and the usage ledger's hours — both read
    * asynchronously, the arithmetic small (usage/capacity.ts). An account is its usage provider id ("claude",
-   * "claude:hsinlin", "codex:yanxianchen"): its hours are the ledger sources of that backend under that credential profile
+   * "claude:work", "codex:team"): its hours are the ledger sources of that backend under that credential profile
    * (Codex's "unrecorded" hours are no account's). A per-model weekly ("Sonnet (weekly)") counts only that model's tokens.
    *
    * Prism #3073: no estimate rather than a wrong one —

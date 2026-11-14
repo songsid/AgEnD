@@ -300,8 +300,8 @@ notice 要從 `activity` 反推，規則是「**這個 instance 呼叫過新 pro
 把它們標成 tool_set: coordinator：
 
   team-leader-t1000000000000000001   restart×6 wake×7 replace×1 delete×1 create×1 start×1
-  agend-leader-t1503382358143799511   restart×2 start×3 wake×3 delete×1 update_instance_config×1
-  claude-fable-t1532671461406277715   start×1
+  agend-leader-t1000000000000000002   restart×2 start×3 wake×3 delete×1 update_instance_config×1
+  claude-reviewer-t1000000000000003   start×1
   classic-planning-1234                wake×3        （已不在 fleet.yaml，classicBot 頻道）
 ```
 
