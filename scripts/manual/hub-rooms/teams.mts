@@ -70,6 +70,18 @@ try {
     const grant = await rig.call(admin, "POST", "/hub/v1/grants", { exposureId, exposureRevision: 1, days: 1, subject: { kind: "team", teamId } }); check(tag + " Team grant created", grant.status === 200);
     const group = await rig.call(admin, "POST", "/hub/v1/rooms", { name, teams: [teamId], agents: [exposureId] }); check(tag + " Team snapshot room created", group.status === 200);
     const roomPath = `/hub/v1/rooms/${group.json.room.id}`;
+    // A visual-only repair can revisit just the deletion panel without repeating
+    // the completed roster/grant/creator acceptance sequence.
+    if (process.env.DELETE_PREVIEW_ONLY === "1") {
+      // Match the completed journey: reopen detail after grants/room creation,
+      // so the preview includes the current impact rather than the create reply.
+      await page.goto(origin + "/ui/hub/admin?view=teams");
+      await page.getByRole("button", { name: en ? `Edit ${name}` : `編輯 ${name}`, exact: true }).click();
+      await page.getByRole("button", { name: en ? "Remove Sam" : "移除 Sam", exact: true }).waitFor();
+      await page.getByRole("button", { name: en ? "Delete team" : "刪除團隊", exact: true }).click();
+      const panel = page.locator(".hub-team-delete"); await panel.waitFor(); await panel.scrollIntoViewIfNeeded();
+      await shot("delete-impact"); await Promise.all(responses); await context.close(); continue;
+    }
     await rig.call(admin, "POST", roomPath + "/messages", { text: "Welcome to the team", mentions: [], idempotencyKey: randomUUID() });
     const canAsk = async () => (await rig.call(member, "GET", roomPath)).json.members.find((m: any) => m.id === exposureId).canAsk;
     check(tag + " current Team member can ask directly", await canAsk());
@@ -91,7 +103,7 @@ try {
     check(tag + " other person has a bubble", await page.locator(".msg-person").count() > 0);
     if (device === "phone") check(tag + " room has a back link", await page.locator("a.hub-back:visible").getAttribute("href") === "/ui/hub"); await shot("snapshot-room");
     await cookie(admin); await page.goto(origin + "/ui/hub/admin?view=teams"); await page.getByRole("button", { name: en ? `Edit ${name}` : `編輯 ${name}`, exact: true }).click();
-    await page.getByRole("button", { name: en ? "Delete team" : "刪除團隊", exact: true }).click(); await page.locator(".hub-team-delete").waitFor(); await shot("delete-impact");
+    await page.getByRole("button", { name: en ? "Delete team" : "刪除團隊", exact: true }).click(); await page.locator(".hub-team-delete").waitFor(); await page.locator(".hub-team-delete").scrollIntoViewIfNeeded(); await shot("delete-impact");
     const deleted = page.waitForResponse((response: any) => response.request().method() === "DELETE" && new URL(response.url()).pathname === `/hub/v1/teams/${teamId}`);
     await page.locator(".hub-team-delete").getByRole("button", { name: en ? "Delete team" : "刪除團隊", exact: true }).click(); check(tag + " Team deleted through UI", (await deleted).ok());
     check(tag + " deleting Team ends creator rights", !(await rig.call(lead, "GET", "/hub/v1/rooms?v=2")).json.me.canCreateRooms);

@@ -38,5 +38,24 @@
       "seconds": 24.93
     }
   ],
-  "browser": "Prepared, not yet executed at this checkpoint; no full S-142 acceptance claim."
+  "browser": {
+    "sourceCheckpoint": "6fcc8ad426062a306c06b847d468774da9dc490a",
+    "providerRepair": "6c03c4f2f1d40e7b8f33b4522938a16e4f54d2c9",
+    "complete": true,
+    "passed": 44,
+    "failed": 0,
+    "pictures": 9,
+    "originalScriptSha256": "de6127ac6eec276f395d952f92f95b661cdf7f39b70b1b8243015ccc7196fb00",
+    "receipt": "completed-walk/receipt.json",
+    "scope": "Affected English desktop and previously unrun zh-TW phone journeys;44 distinct checks pass. Nine original images captured; use seven non-deletion originals plus the two current deletion previews.",
+    "visualReview": {
+      "originalImagesViewed": 9,
+      "readableMemberNames": true,
+      "noHorizontalOverflow": true,
+      "deletionPreviews": "delete-preview/receipt.json",
+      "preferredImages": 9,
+      "pmAcceptance": "pending"
+    },
+    "harnessCurrentSha256": "1ca8606ccbb3f5ff39bd16e9af470edef01b85594112b13d31e410bd0f5ade4c"
+  }
 }

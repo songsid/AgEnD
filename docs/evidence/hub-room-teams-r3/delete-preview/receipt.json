@@ -1,0 +1,532 @@
+{
+  "sourceHead": "6fcc8ad426062a306c06b847d468774da9dc490a",
+  "scope": "Visual-only deletion-panel recapture using current Team GET detail after grant/room setup. The12 setup checks repeat completed acceptance prerequisites and do not increase the44 distinct checks.",
+  "checks": [
+    {
+      "name": "desktop-en-light POST Team save",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light fresh Team CSS",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light server roster has selected lead and member",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light page fits",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Team grant created",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Team snapshot room created",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark POST Team save",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark fresh Team CSS",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark server roster has selected lead and member",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark page fits",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Team grant created",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Team snapshot room created",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "desktop-en-light-delete-impact.png",
+      "sha256": "30fa9e7d7f33465ec5d6855300ac5b66343097149d2d04c830a5818dd7849426"
+    },
+    {
+      "path": "phone-zh-TW-dark-delete-impact.png",
+      "sha256": "5d5c51480cd4e82604ec6ca39d6e12327bfbb34fb1b2cd04c4b598e0ec421590"
+    }
+  ],
+  "requests": [
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/teams",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/teams/candidates?kind=group&q=En",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/teams/candidates?kind=person&q=Alex",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/teams/candidates?kind=person&q=Sam",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/teams",
+      "status": 201
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/teams",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/teams/d5fa2899-4719-4cb0-acf0-1eceff98e8e7",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/teams",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/teams/d5fa2899-4719-4cb0-acf0-1eceff98e8e7",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/teams",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/teams/candidates?kind=group&q=En",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/teams/candidates?kind=person&q=Alex",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/teams/candidates?kind=person&q=Sam",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/teams",
+      "status": 201
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/teams",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/teams/1151a9ef-2d7f-476b-bb30-4bc63384e230",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/teams",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/teams/1151a9ef-2d7f-476b-bb30-4bc63384e230",
+      "status": 200
+    }
+  ],
+  "complete": true,
+  "cleaned": {
+    "browser": true,
+    "listener": true,
+    "sqlite": true,
+    "keys": true
+  },
+  "sha256ToPaths": {
+    "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41": {
+      "/assets/read-stream.js": 4
+    },
+    "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814": {
+      "/assets/preview-versions.js": 4
+    },
+    "05aa2e9500aef1e4c9f2e89d80fdc4e2dae86cb552583ce4b5e6db29096e5447": {
+      "/assets/view-strings.js": 4
+    },
+    "0a4ac0cd3d17613fb300df6c8183e551d18b97f56c816fce922fead15cb1988d": {
+      "/ui/js/hub-room-list.js": 4
+    },
+    "0a6b59ad416fe04765c9ec8fcb06aea0d75f1c22cededf746415377fe19c4c35": {
+      "/ui/js/hub-quick-strings.js": 4
+    },
+    "0b675a3860b2f10a40d9557b18d609cb60ddd0e766b6cf9c1b2f27211d930596": {
+      "/assets/app-update.js": 4
+    },
+    "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31": {
+      "/assets/ui-states.js": 4
+    },
+    "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063": {
+      "/ui/js/hub-button-actions.js": 4
+    },
+    "126a3b4c51fae20c7f3f873077fc9f8d5a9033603cf8a557d326754324639089": {
+      "/ui/js/hub-teams-strings.js": 4
+    },
+    "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764": {
+      "/ui/js/hub-join-queue.js": 4
+    },
+    "1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324": {
+      "/ui/js/hub-enrolment-code-strings.js": 4
+    },
+    "1be8bee71352ed41e8b71592b6acc404829f574327f3ab2aab433c64ace4a046": {
+      "/ui/js/hub-read-strings.js": 4
+    },
+    "1dbfbfcf3b813e530631571f49e5a55cc0cb079af148138d040fce94a85828eb": {
+      "/ui/js/hub-room-presence.js": 4
+    },
+    "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076": {
+      "/assets/preview-panel.js": 4
+    },
+    "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227": {
+      "/assets/chat-composer.js": 4
+    },
+    "21a97db54fa0a3fb9ca51e04c595c73b2e8f0ef319c7a7be6a601c03f3563eb3": {
+      "/ui/js/hub-room-favorites.js": 4
+    },
+    "225a5f1860d7476597af1c7ffc4c6fdfedec663b92f9c8c712bcda149d3b67e7": {
+      "/assets/app.css": 4
+    },
+    "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6": {
+      "/assets/ui-dialog.js": 4
+    },
+    "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200": {
+      "/assets/usage-meter.js": 4
+    },
+    "2d2b35917c9114868211f200f4292a43578687934d671b1aabd36b306d8b4e9c": {
+      "/ui/js/hub-teams.js": 4
+    },
+    "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b": {
+      "/assets/chat-md-strings.js": 4
+    },
+    "34116e41de76ca5e7047ee3035f57527a909cf5afbddfc8325c068efc7461fec": {
+      "/assets/hub-chat.css": 4
+    },
+    "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a": {
+      "/assets/text-undo.js": 4
+    },
+    "3c87a7c99b39adb87e624cd7292b37547e33e418b955466109e178795af927b1": {
+      "/assets/web-authorize.js": 4
+    },
+    "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643": {
+      "/assets/html-attachment.js": 4
+    },
+    "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1": {
+      "/assets/settings-width.js": 4
+    },
+    "47fdfcbd3dd53d6d2ef90943ce3cdd2aabb5178454f01a6c90968497a805c8c2": {
+      "/assets/app-needs.js": 4
+    },
+    "49234d50df7b41e005d0221a1a5b5614d30f9b27a9c0d82312c56c694184b58b": {
+      "/assets/app-stream.js": 4
+    },
+    "4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3": {
+      "/ui/js/hub-joincode-flow-strings.js": 4
+    },
+    "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f": {
+      "/assets/app-nav.js": 4
+    },
+    "601074179fe7c9156d05d507f28e3d22f93b49aba43f8d903b40ae4b8b1bba8d": {
+      "/assets/ui-toast.js": 4
+    },
+    "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4": {
+      "/ui/js/hub-grant-strings.js": 4
+    },
+    "68dd23194827d7a83f532b1d7b3161fd27a2e696ef14cf6d593b0a65e3ad9ce8": {
+      "/assets/loading.css": 4
+    },
+    "696e5db1efc6388e3059b9651e3e6a9fa8d4f279010eb53152b85d293ad9a112": {
+      "/ui/js/hub-owner-strings.js": 4
+    },
+    "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48": {
+      "/assets/ui-menu.js": 4
+    },
+    "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925": {
+      "/assets/preview-pages.js": 4
+    },
+    "6b920ce9e8c634f0bff77c896d6c720eb6f64ab62a21fed2b85d3e80daeb888c": {
+      "/assets/chat-thread.js": 4
+    },
+    "6dc9db6cb53e6ce9c82b760d5c94c3a773003abac2c8efa2cb535a9d87c7ecea": {
+      "/assets/inter.woff2": 4
+    },
+    "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50": {
+      "/assets/ui-icons.js": 4
+    },
+    "708d4f612112a930ba8200ff370c4ba240979e062e219c73427560079b6cdc5b": {
+      "/ui/js/hub-room-thread.js": 4
+    },
+    "74a889e94c6f7947b60125bd1ba3d77908f830a623ab482c3d391e5ef10a5c6b": {
+      "/ui/js/hub-room-composer.js": 4
+    },
+    "7840122cfb793af9b9ae44e9081252064c8993274d3fc0a9e485c908259b9f58": {
+      "/ui/js/hub-company-join.js": 4
+    },
+    "7903f0a70ae974c4f562d54efdbf698e4186293db3a2c6067ed1557ece11d76f": {
+      "/ui/js/hub-chat-strings.js": 4
+    },
+    "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56": {
+      "/assets/side-rail.js": 4
+    },
+    "860af1fd638d89ae31c78cdf3be27510caff8149c201f1de86de9c95ada16971": {
+      "/ui/js/hub-room-strings.js": 4
+    },
+    "886b72a54b88f65fbc27a9b86fe786d5a1f2774a24c0cc16dddfd1c6ce1fc2b4": {
+      "/assets/app-themes.js": 4
+    },
+    "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9": {
+      "/assets/app-html.js": 4
+    },
+    "8e2665b14f5df60a7698ba5852a5d217257c495bd4c5c4e81b70acda8c65431f": {
+      "/assets/preview-panel-actions.js": 4
+    },
+    "8e90812b94bad0b93c744a0daa3fc4fe6e02249106604ca013c9d6df4ef25a43": {
+      "/assets/agent-widget.js": 4
+    },
+    "90f089c96321bdf5a45be4921fb6133f9203f0aa4826e796c02f1dc9dcb8896e": {
+      "/ui/js/hub-directory-notice-strings.js": 4
+    },
+    "958ee0b43bc94eb33f1accc2ccf0bd0d70cfeaba6f0d10fbfba22c411824be8b": {
+      "/ui/js/hub-join-steps.js": 4
+    },
+    "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef": {
+      "/assets/model-observation.js": 4
+    },
+    "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae": {
+      "/assets/machine-name.js": 4
+    },
+    "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64": {
+      "/assets/instance-nav.js": 4
+    },
+    "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13": {
+      "/ui/js/hub-quick-pairing.js": 4
+    },
+    "a9e9e71b8e64b54a69e3265395948d15f512f811a03353ccf3c0fa04e2788f2a": {
+      "/assets/page-head.js": 4
+    },
+    "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4": {
+      "/assets/htm.module.js": 4
+    },
+    "abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1": {
+      "/ui/js/hub-join-approval.js": 4
+    },
+    "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946": {
+      "/assets/side-panel.js": 4
+    },
+    "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a": {
+      "/ui/js/hub-group-search.js": 4
+    },
+    "b4cf4c2c4976b3b0ba5d1440579bd89c7b54f1231a33a38b1aef4bd49bdc14d1": {
+      "/ui/js/hub-quota.js": 4
+    },
+    "b653dd4b49b92b91c1db71d6e652a08da06cc8164db5dfad4bdb46fe6ef711d5": {
+      "/ui/js/hub-preview.js": 4
+    },
+    "b7cb7d8f4df081e3d514c869cf6f99d8f64b0b730ddecaf955a8d0ccedf3ca43": {
+      "/assets/usage-dialog.js": 4
+    },
+    "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec": {
+      "/assets/app-session.js": 4
+    },
+    "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b": {
+      "/assets/ui-confirm.js": 4
+    },
+    "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8": {
+      "/assets/preact.module.js": 4
+    },
+    "c4d0a6cf1b12d7fde9bb1e30ab005da1ca9c7916b693cc86e9bf0d28f5a8f9eb": {
+      "/ui/js/hub-directory-notices.js": 4
+    },
+    "c951cb7122e5c3f7c76f3e01ab072f0a5d0ac7433ad1088a9a9e1cffc3fcf657": {
+      "/assets/stale-tab.js": 4
+    },
+    "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c": {
+      "/assets/app.js": 4
+    },
+    "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538": {
+      "/assets/chat-time.js": 4
+    },
+    "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d": {
+      "/assets/device-roles.js": 4
+    },
+    "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842": {
+      "/assets/app-store.js": 4
+    },
+    "cc1690aa8931b111e35166fd8f29120c3a7a4ec7a6720108dc7b7ef7e515ac8c": {
+      "/assets/chat-strings.js": 4
+    },
+    "cd62669f84666fb16e49cf63ebdc8376d3965106eeaf0531744372bdcf70f3c9": {
+      "/assets/tokens.css": 4
+    },
+    "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1": {
+      "/assets/preview.js": 4
+    },
+    "d223ea3ca62d93e8991f3a92efa92de9eb0bb5ad4e72b11ce18f286e372580c2": {
+      "/assets/app-prefs.js": 4
+    },
+    "d38412dd2327ffb4a98248ab8a847eb6abcf18470cd8f5f9635a20df3aace05e": {
+      "/assets/owner-css.js": 4
+    },
+    "d7c0cc5473d0170b0852080ea8b4ab7ac8c1ba308bf94b2daf3c82c20cb06eee": {
+      "/ui/js/hub-room-working.js": 4
+    },
+    "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd": {
+      "/assets/app-route.js": 4
+    },
+    "dbb490b50f06f45d538259cad57f5d130ed29c17f4295d8d3c4c848b037190fb": {
+      "/assets/hub-quota.css": 4
+    },
+    "dedbf75e56c51d5a8d22c449a2869bc04e7c5a9e59bda8d5e0c139e856ba5c09": {
+      "/ui/js/hub-attachments.js": 4
+    },
+    "e11e7cd022cb23c758726f1cd7f07d530608ab38f1907085ae86a8926ac29676": {
+      "/ui/js/hub-company-join-strings.js": 4
+    },
+    "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a": {
+      "/assets/identity-color.js": 4
+    },
+    "e53a87d9ca8f4d97c811f9380b9f8b674db518fce92a268322f1b3c0342a5c9a": {
+      "/assets/app-shell.js": 4
+    },
+    "e599a2fd7849242c4bed1872edb79e9485f3156bc5f566386b908e7f310e5590": {
+      "/assets/hub-teams.css": 4
+    },
+    "e8d9234628f8ac9e1e5a9732d15b6ddefc00fa2eba98d2a32fe52185164264bc": {
+      "/assets/hub-owner.css": 4
+    },
+    "ea8e17c456fe0c1c773de11ca1de086550a9eecb5b1fd7d9afaa7b35c311eef9": {
+      "/ui/js/panel-hub.js": 4
+    },
+    "efa73d2f985b029c8f81e9893c9f8a67df75e67cfb85b8bf7bf070d4c55303cf": {
+      "/assets/app-i18n.js": 4
+    },
+    "f12b3db0cc675c4fde91b793641cd43b8bd9ea1d87afe318bbf6c90cb3a737f2": {
+      "/ui/js/hub-strings.js": 4
+    },
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": {
+      "/assets/app-ctx.js": 4
+    },
+    "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38": {
+      "/assets/preact-hooks.module.js": 4
+    },
+    "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8": {
+      "/assets/view-roster-store.js": 4
+    },
+    "f75ed0aaf89169e60885b0e127167122ffddb174f9412d335914004d73c2d01b": {
+      "/ui/js/hub-chat-store.js": 4
+    },
+    "f89e03373bda671da6a5337da63441928b220174592d66e486abef0c14f85314": {
+      "/ui/js/hub-client.js": 4
+    },
+    "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472": {
+      "/assets/hub.css": 4
+    },
+    "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d": {
+      "/assets/header-tools.js": 4
+    },
+    "fd65d839aa7800272b784cb590963a9fb588e1bc85e5c565a36c3609fe541104": {
+      "/assets/chat-render.js": 4
+    },
+    "feb36efef72b92a5510f881902c0a08140d6940f62304766e3857d13f5e188fa": {
+      "/assets/app-swipe.js": 4
+    },
+    "ffc4f54dd8a2511eeb931a77d25d65ddd0a187e414b9deabe9290184399fe22d": {
+      "/assets/theme.js": 4
+    }
+  },
+  "assetFetches": 396,
+  "assetEncoding": "Grouped digest/path fetch counts preserve values and omit response arrival order.",
+  "originalReceiptSha256": "d13cff11083e69661ee4e32b19436ec7dbfe12aa9612b43d121b28ba0c00d75f",
+  "scriptSha256": "1ca8606ccbb3f5ff39bd16e9af470edef01b85594112b13d31e410bd0f5ade4c"
+}
