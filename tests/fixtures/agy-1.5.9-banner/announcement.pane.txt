@@ -1,0 +1,12 @@
+● Called 2 MCP tools (agend-fleet/set_web_widget, agend-fleet/reply) (ctrl+o to expand)
+
+.
+
+│ Introducing Gemini 4 Hydrogen
+│ Our daily driver for rapid coding and dependable agentic execution!
+│ esc to dismiss
+
+────────────────────────────────────────────────────────────────────────────────
+> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)
+────────────────────────────────────────────────────────────────────────────────
+Context 22% used
