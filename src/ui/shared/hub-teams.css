@@ -1,0 +1,23 @@
+/* Fresh lazy feature rules: retained app.css still gets usable touch controls. */
+.hub-teams .hub-team-button { min-height: var(--tap); min-width: var(--tap); white-space: normal; }
+.hub-team-head, .hub-team-actions, .hub-team-search-line, .hub-team-list > li, .hub-team-hits > li { display: flex; align-items: center; gap: var(--s-3); }
+.hub-team-head { justify-content: space-between; flex-wrap: wrap; }
+.hub-team-actions { flex-wrap: wrap; margin-top: var(--s-4); }
+.hub-team-search-line { align-items: flex-end; }
+.hub-team-search-line .field { margin: 0; min-width: 0; }
+.hub-team-list, .hub-team-hits { list-style: none; padding: 0; margin: 0; }
+.hub-team-list > li, .hub-team-hits > li { padding: var(--s-3) 0; border-bottom: 1px solid var(--border); }
+.hub-team-detail { display: block; }
+.hub-team-picker, .hub-team-delete { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-4); margin: var(--s-3) 0; }
+.hub-team-table-wrap { overflow-x: auto; }
+.hub-team-table { width: 100%; border-collapse: collapse; }
+.hub-team-table :is(th, td) { padding: var(--s-3); text-align: start; vertical-align: middle; border-bottom: 1px solid var(--border); }
+.hub-team-table th { color: var(--text-2); font-weight: var(--fw-medium); }
+.hub-team-table td:first-child { min-width: 8rem; }
+.hub-team-editor :is(input, select) { min-height: var(--tap); min-width: var(--tap); }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-teams :is(input, select) { min-height: var(--tap); min-width: var(--tap); font-size: var(--fs-md); }
+  .hub-team-head { align-items: flex-start; }
+  .hub-team-search-line { flex-wrap: wrap; }
+  .hub-team-search-line .field { flex-basis: 100%; }
+}

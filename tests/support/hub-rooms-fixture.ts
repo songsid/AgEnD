@@ -65,7 +65,7 @@ const AGENTS: Array<[string, string, Presence, string?]> = [
 ];
 
 /** A fresh fixture (each test or smoke owns its own; nothing is shared). */
-export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixture-csrf", features = ["rooms-v1", "attachments-v1"] } = {}) {
+export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixture-csrf", features = ["rooms-v1", "attachments-v1"], teamLead = false } = {}) {
   let seq = 0;
   const nextId = (p: string) => `${p}-${String(++seq).padStart(4, "0")}`;
   const agentMembers: FixtureMember[] = AGENTS.map(([name, owner, presence, note], i) => ({ id: `exp-${String(i + 1).padStart(2, "0")}`, kind: presence === "later" ? "later" : "agent",
@@ -137,7 +137,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   archived.readUpTo = archived.messages.at(-1)!.id;
   const rooms: FixtureRoom[] = [group, meeting, archived, helper, report, hubAssistant];
   const invitations = [{ id: "inv-in-0001", room: { id: "room-other", name: "產品規劃", people: 4 }, agent: { exposureId: "exp-mine-1", name: "my-notes" }, by: { name: "陳主任" }, at: minutes(100) }];
-  const teams = [{ id: "team-1", name: "研一", department: "group-rd1", lead: "person-chen", members: ["person-chen", "person-wu"] }];
+  const teams = [{ id: "team-1", name: "研一", department: "group-rd1", departmentName: "研發一部", revision: 1, lead: teamLead ? FIXTURE_ME.id : "person-chen", leadName: teamLead ? FIXTURE_ME.name : "陳主任", members: teamLead ? [FIXTURE_ME.id, "person-wu"] : ["person-chen", "person-wu"], canManage: true, leadEligible: true }];
+  const teamView = (team: typeof teams[number]) => ({ ...team, memberInfo: team.members.map(id => ({ id, name: people.find(p => p.id === id)?.name || id, login: id === FIXTURE_ME.id ? FIXTURE_ME.login : id.replace("person-", ""), department: "", signedIn: id !== "person-new", agents: id === FIXTURE_ME.id ? [{ id: "exp-mine-1", name: "my-notes" }] : [] })), impact: { grants: [], roomCreator: creators.teams.includes(team.id) } });
   let creators = { people: [FIXTURE_ME.id], teams: [] as string[] };
 
   const sources = new Set<{ emit(name: string, data: unknown): void }>();
@@ -176,7 +177,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
     const url = new URL(req.path, "https://hub.fixture.test"), p = url.pathname, method = req.method.toUpperCase();
     if (method !== "GET" && p.startsWith("/hub/v1/") && p !== "/hub/v1/session" && (req.headers?.["x-agend-hub-csrf"] ?? req.headers?.["X-AgEnD-Hub-CSRF"]) !== csrf) return fail(403, "csrf");
     if (p === "/hub/v1/session" && method === "GET")
-      return { status: 200, body: { signedIn: true, csrf, person: { name: FIXTURE_ME.name }, displayName: FIXTURE_ME.name, login: FIXTURE_ME.login, admin: true, features } };
+      return { status: 200, body: { signedIn: true, csrf, person: { id: FIXTURE_ME.id, name: FIXTURE_ME.name }, displayName: FIXTURE_ME.name, login: FIXTURE_ME.login, admin: true, features } };
     if (p === "/hub/v1/rooms" && method === "GET")
       return { status: 200, body: { rooms: rooms.map(listItem).sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || b.lastAt - a.lastAt),
         me: { canCreateRooms: creators.people.includes(FIXTURE_ME.id), assistant: true }, invitations: invitations.length } };   // U2: me.assistant — the Hub offers the room assistant
@@ -280,6 +281,34 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       return { status: 200, body: { ok: true } };
     }
     if (p === "/hub/v1/teams" && method === "GET") return { status: 200, body: { teams } };
+    if (p === "/hub/v1/teams/candidates" && method === "GET") {
+      const kind = url.searchParams.get("kind"), q = (url.searchParams.get("q") || "").trim().toLowerCase();
+      if (q.length < 2 || q.length > 64 || !["person", "group"].includes(kind || "")) return fail(400, "invalid");
+      const rows = kind === "group" ? Object.entries(GROUPS).map(([id, group]) => ({ kind, id, name: group.name, login: "" }))
+        : [...people, NEW_PERSON].map(row => ({ kind, id: row.id, name: row.name, login: row.id === FIXTURE_ME.id ? FIXTURE_ME.login : row.id.replace("person-", "") }));
+      return { status: 200, body: { candidates: rows.filter(row => `${row.name} ${row.login}`.toLowerCase().includes(q)).slice(0, 20) } };
+    }
+    if (p === "/hub/v1/teams" && method === "POST") {
+      const body = req.body || {}, departmentName = GROUPS[body.department]?.name;
+      if (!body.name?.trim() || !departmentName || !body.lead) return fail(400, "invalid");
+      const team = { id: nextId("team"), name: body.name.trim(), department: body.department, departmentName, lead: body.lead,
+        leadName: people.find(row => row.id === body.lead)?.name || body.lead, members: [...new Set<string>([body.lead, ...(body.members || [])])], revision: 1, canManage: true, leadEligible: true };
+      teams.push(team); return { status: 200, body: { team: teamView(team) } };
+    }
+    const teamMatch = p.match(/^\/hub\/v1\/teams\/([^/]+)$/);
+    if (teamMatch) {
+      const index = teams.findIndex(row => row.id === decodeURIComponent(teamMatch[1]!)), team = teams[index];
+      if (!team) return fail(404, "not-found");
+      if (method === "GET") return { status: 200, body: { team: teamView(team) } };
+      if (method === "DELETE") { teams.splice(index, 1); return { status: 200, body: { ok: true } }; }
+      if (method === "PATCH") {
+        const body = req.body || {}; if (body.revision !== undefined && body.revision !== team.revision) return fail(409, "conflict");
+        if (body.name) team.name = body.name; if (body.department) { team.department = body.department; team.departmentName = GROUPS[body.department]?.name || body.department; }
+        const previousLead = team.lead; if (body.lead) { team.lead = body.lead; team.leadName = people.find(row => row.id === body.lead)?.name || body.lead; }
+        if (body.members || body.lead) team.members = [...new Set<string>([team.lead, previousLead, ...(body.members || team.members)])];
+        team.revision++; return { status: 200, body: { team: teamView(team) } };
+      }
+    }
     // U2: the creators list names its entries (the admin page shows them as tags); PUT still takes ids.
     if (p === "/hub/v1/admin/rooms/creators" && method === "GET") {
       const directory = [...people, { id: "person-lin", name: "林小華" }, { id: "person-zhou", name: "周小明" }];
