@@ -75,6 +75,16 @@ it("a room that takes files: Attach uploads at once, shows the chip, and Send na
   expect(chips(pg)).toEqual([]);
 });
 
+it("files alone: Send is on with ready files and an empty box, and posts the files with no text", async () => {
+  const { pg, posts } = await roomPage({ features: true });
+  const sendBtn = () => pg.root.querySelector(".hub-room-page #sendBtn") as any;
+  expect(sendBtn().disabled).toBe(true);
+  await choose(pg); await until(() => chips(pg).includes("ready"));
+  expect(sendBtn().disabled).toBe(false);
+  fire(sendBtn(), "click"); await until(() => posts.length);
+  expect(posts[0]).toMatchObject({ text: "", files: [FILE_ID] });
+});
+
 it("Send waits while a file is still uploading, and says so", async () => {
   const { pg, posts, release } = await roomPage({ features: true, hold: true });
   await choose(pg);
