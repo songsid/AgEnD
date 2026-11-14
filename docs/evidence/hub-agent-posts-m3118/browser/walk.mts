@@ -1,0 +1,66 @@
+import { createRequire } from 'node:module';
+import { createServer } from 'node:https';
+import { randomUUID,createHash } from 'node:crypto';
+import { readFileSync,writeFileSync,mkdirSync,mkdtempSync,rmSync } from 'node:fs';
+import { join,resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { s3bRig } from '../../../../tests/helpers/hub-s3b-rig.js';
+import { provisionHubIdentity } from '../../../../src/hub/tls.js';
+import { personKeyString } from '../../../../src/hub/identity.js';
+const out=resolve(process.env.OUT??'.artifacts/3118/walk');mkdirSync(out,{recursive:true});
+const temp=mkdtempSync(join(out,'keys-')), port=49200+Math.floor(Math.random()*400),origin=`https://127.0.0.1:${port}`;
+const r=await s3bRig({realAudit:true,webOrigin:origin});const person=r.addPerson('alex','Alex'), alex=await r.signIn('alex'), admin=await r.signIn('admin');
+const link=r.link(randomUUID(),r.admin,1,['welcome-caps-v1','room-ask-v1','room-post-v1']);
+const base={fleetId:link.fleetId,owner:r.admin,revision:1,state:'published',dataViewId:'agent',allowedTools:[],policyDigest:'b'.repeat(64)};
+const a={...base,id:randomUUID(),displayName:'Notes'},b={...base,id:randomUUID(),displayName:'Planner'};
+await r.http.receive(r.frame('exposure.snapshot',{revision:1,exposures:[a,b]},link) as never,link);
+const room=(await r.call(admin,'POST','/hub/v1/rooms',{name:'Team planning',people:[personKeyString(person)]})).json.room.id;
+for(const e of [a,b])await r.call(admin,'POST',`/hub/v1/rooms/${room}/members`,{kind:'agent',id:e.id});
+const detail=(await r.call(alex,'GET',`/hub/v1/rooms/${room}`)).json;
+await r.call(admin,'PATCH',`/hub/v1/rooms/${room}/members/${detail.me.id}`,{role:'manager'});
+await r.call(admin,'DELETE',`/hub/v1/rooms/${room}/members/${detail.members.find((m:any)=>m.role==='manager').id}`);
+const post=(text:string,receiptId?:string)=>r.http.receive(r.frame('room.post',{exposureId:a.id,room,text,idempotencyKey:randomUUID(),...(receiptId?{onBehalfOf:{receiptId}}:{})},link) as never,link);
+await post('Daily update: the plan is ready.');
+await post('@All agents please review the plan.',`hmsg-${randomUUID()}`);
+const q=await r.call(alex,'POST',`/hub/v1/rooms/${room}/messages`,{text:'@Notes start a check.',mentions:[a.id],idempotencyKey:randomUUID()});
+const asks=()=>r.sent.filter(s=>s.frame.type==='room.ask').map(s=>s.frame.payload as any);
+async function wait(fn:()=>boolean){for(let i=0;i<200&&!fn();i++)await new Promise(r=>setTimeout(r,20));if(!fn())throw Error('wait');}
+await wait(()=>asks().length===3);
+const answer=(ask:any,text:string)=>r.http.receive(r.frame('room.answer',{messageId:ask.messageId,roomId:room,exposureId:ask.exposureId,answerId:randomUUID(),text},link) as never,link);
+await answer(asks()[2],'@Planner check the figures.');await wait(()=>asks().length===4);
+await answer(asks()[3],'@Notes the figures match.');await wait(()=>asks().length===5);
+await answer(asks()[4],'@Planner check once more.');
+const messages=(await r.call(alex,'GET',`/hub/v1/rooms/${room}/messages`)).json.messages;
+const report:any={source:execFileSync('git',['-c','gc.auto=0','rev-parse','HEAD'],{encoding:'utf8'}).trim(),scope:'Actual Hub HTTP/SQLite/real audit and shared browser shell. Inert authenticated member link and explicit answer fixtures. No MCP/FleetManager/vendor claim.',checks:[],pictures:[],sha256ToPaths:{},requests:[]};
+const check=(name:string,ok:boolean)=>{report.checks.push({name,ok});if(!ok)throw Error(name);};
+check('proactive has no quoted parent',messages.some((m:any)=>m.proactive&&!m.replyTo&&!m.answerTo));
+check('via all is allowed without agent all stop',messages.some((m:any)=>m.author.via&&m.mentions.includes('all'))&&!messages.some((m:any)=>m.system?.reason==='all'));
+check('owner absent as a person',(await r.call(alex,'GET',`/hub/v1/rooms/${room}`)).json.members.filter((m:any)=>m.kind==='person').length===1);
+await provisionHubIdentity({home:temp,memberOrigin:origin});
+const server=createServer({key:readFileSync(join(temp,'hub/keys/tls-key.pem')),cert:readFileSync(join(temp,'hub/keys/tls-cert.pem'))},(req,res)=>{if(!r.http.handle(req,res)){res.writeHead(404);res.end();}});
+await new Promise<void>(yes=>server.listen(port,'127.0.0.1',yes));
+const pw=createRequire(resolve(process.env.PW_DIR!,'package.json'))('playwright-core');const browser=await pw.chromium.launch({args:['--no-sandbox']});
+try{
+for(const [device,lang,theme] of [['desktop','en','light'],['phone','zh-TW','dark']]){
+ const ctx=await browser.newContext({viewport:device==='phone'?{width:390,height:844}:{width:1366,height:1000},locale:lang,colorScheme:theme,ignoreHTTPSErrors:true,isMobile:device==='phone',hasTouch:device==='phone'});
+ const split=alex.cookie.indexOf('=');await ctx.addCookies([{name:alex.cookie.slice(0,split),value:alex.cookie.slice(split+1),url:origin,httpOnly:true,secure:true,sameSite:'Strict'}]);
+ await ctx.addInitScript(({lang,theme}:any)=>{localStorage.setItem('agend_lang',lang);localStorage.setItem('agend_theme',theme);localStorage.setItem('agend_tour_done','1');localStorage.setItem('agend_firstrun_dismissed','1');},{lang,theme});
+ await ctx.route('**/*',(route:any)=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
+ const page=await ctx.newPage(),errors:string[]=[],responses:Promise<void>[]=[];page.on('pageerror',(e:Error)=>errors.push(e.message));
+ page.on('response',(response:any)=>{const path=new URL(response.url()).pathname;if(path.startsWith('/hub/v1/'))report.requests.push({path,status:response.status()});if(path.startsWith('/assets/')||path.startsWith('/ui/js/'))responses.push(response.body().then((bytes:Buffer)=>{const hash=createHash('sha256').update(bytes).digest('hex');report.sha256ToPaths[hash]=[...new Set([...(report.sha256ToPaths[hash]??[]),path])];}).catch(()=>{}));});
+ await page.goto(`${origin}/ui/hub?room=${room}`);await page.locator('.hub-room-page').waitFor();
+ await page.getByText('Daily update: the plan is ready.',{exact:true}).waitFor();
+ const label=lang==='en'?'Hub Admin via Notes':'Hub Admin 透過 Notes';
+ const via=page.locator('.msg.agent').filter({has:page.locator('.sender').filter({hasText:label})});
+ await via.waitFor();check(`${device} via keeps agent styling`,await via.count()===1&&await via.evaluate((n:any)=>!n.classList.contains('user')&&!n.classList.contains('msg-person')));
+ const line=page.locator('.status-line').filter({hasText:lang==='en'?'Agents have asked each other several times':'Agent 之間已經連續互相提問多次'});
+ await line.waitFor();check(`${device} stop is localized`,await line.count()===1);check(`${device} stop has no own timestamp`,await line.locator('time').count()===0);
+ check(`${device} complete stop wraps without a More control`,await line.evaluate((n:any)=>!n.classList.contains('folded')&&!n.querySelector('.st-more')&&getComputedStyle(n.querySelector('.st-ln')).whiteSpace==='pre-wrap'));
+ check(`${device} no agent-only all refusal`,!(await page.locator('body').innerText()).includes(lang==='en'?"Agents can't use @All agents":'Agent 不能使用 @所有 Agent'));
+ check(`${device} no horizontal overflow`,await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ if(device==='phone')await line.scrollIntoViewIfNeeded();else await page.locator('.hub-scroller').evaluate((n:any)=>{n.scrollTop=0;});
+ const file=`${device}-${lang}-${theme}.png`;await page.screenshot({path:join(out,file),fullPage:true});report.pictures.push({file,sha256:createHash('sha256').update(readFileSync(join(out,file))).digest('hex')});
+ check(`${device} no page errors`,errors.length===0);await ctx.close();await Promise.all(responses);
+}
+}finally{await browser.close();await new Promise<void>(done=>server.close(()=>done()));await r.close();rmSync(temp,{recursive:true,force:true});writeFileSync(join(out,'receipt.json'),JSON.stringify(report,null,2)+'\n');}
+console.log(JSON.stringify({checks:report.checks.length,passed:report.checks.filter((x:any)=>x.ok).length,pictures:report.pictures.map((x:any)=>x.file)}));

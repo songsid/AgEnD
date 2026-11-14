@@ -233,7 +233,7 @@ export class EventLog {
   /**
    * Pending reactions as compact context, grouped by the message they landed on:
    *
-   *   msg 1532964272244523028: 👍×2 from hanhanv, ❓ from user2 | msg 1532965…: 👍 from hanhanv
+   *   msg 1000000000000000003: 👍×2 from user1, ❓ from user2 | msg 1000000…: 👍 from user1
    *
    * The message id is the point (#433): the agent's inbound blocks render each of
    * its own messages' ids, so carrying the id is what lets it tell WHICH of its

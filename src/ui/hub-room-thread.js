@@ -113,7 +113,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
       lastShown = at >= 0 && at === (folded ? ANSWERS_SHOWN - 1 : list.length - 1);
     }
     const id = num(m.id), mine = kind === "person" && !author.via && author.id === meId;
-    if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ...(m.system?.kind === "agent-mention-stopped" ? {} : { ts: iso(m.at) }), text: systemText(m), bare: true }); continue; }
+    if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ...(m.system?.kind === "agent-mention-stopped" ? { wrap: true } : { ts: iso(m.at) }), text: systemText(m), bare: true }); continue; }
     // An answer is a reply to the message that asked for it (the Fleet's reply reference): replyTo, else answerTo.
     const quoted = m.replyTo ? byId.get(m.replyTo) : m.answerTo ? byId.get(m.answerTo) : null;
     const state = mine ? askState(m.ask) : null;
