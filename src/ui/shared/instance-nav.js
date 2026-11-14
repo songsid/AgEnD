@@ -334,6 +334,20 @@ export function labelOf(it) {
   return d || nameOf(it);
 }
 
+// M-3129: one synced density choice; the same row links, groups and menus stay mounted.
+const DENSITY_KEY = "agend_nav_density";
+function readSidebarDensity() {
+  const p = prefInForce("nav.density");
+  return (p ? p.value : stored(DENSITY_KEY)) === "compact" ? "compact" : "detailed";
+}
+export const sidebarDensityStore = createStore({ value: readSidebarDensity() });
+export function setSidebarDensity(value) {
+  const density = value === "compact" ? "compact" : "detailed";
+  sidebarDensityStore.set({ value: density });
+  savePref("nav.density", density);
+}
+onPrefsChanged((keys) => { if (keys.has("nav.density")) sidebarDensityStore.set({ value: readSidebarDensity() }); });
+
 // ── #1722: both names — which one leads is a synced preference (#1665 "names.primary", default the nickname) ──
 const NAMES_KEY = "agend_names_primary";
 function readNamesPrimary() {
@@ -418,6 +432,12 @@ export function InstanceAvatar({ it, state, cli = false }) {
       ? html`<span class="av-cli" aria-hidden="true" title=${backendLabel(it.backend)}>${CLI_MONOGRAM[it.backend] || "·"}</span>` : null}</span>`;
 }
 
+function InstanceStatusDot({ state }) {
+  const [cls] = DOT[state] || DOT.stopped;
+  const label = dotLabel(state);
+  return html`<span class=${`inst-status dot ${cls}`} role="img" aria-label=${label} title=${label}></span>`;
+}
+
 // ── The list ──
 
 const statusText = (facet) => (facet === "needs" ? t("app.needsYou") : facet === "starting" ? t("app.statusStarting") : facet === "working" ? t("app.statusWorking") : facet === "idle" ? t("app.statusIdle")
@@ -499,6 +519,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const workspace = useStore(appStore).chatWorkspace;
   const styledMenus = typeof getComputedStyle === "function" && getComputedStyle(document.documentElement).getPropertyValue?.("--agent-menu-version")?.trim() === "1";
   const names = useStore(namesStore);   // #1722: which name leads
+  const compact = useStore(sidebarDensityStore).value === "compact";
   useIdentityColors();                  // #1958: repaint when the host's colour settings or the themes switch change
   const filterRef = useRef(null);
   const list = useRef(null);
@@ -672,16 +693,17 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           onSelect: () => { if (!shown.active && !favsSorted) { focusRow.current = name; moveFavorite(name, 1, known); } } },
       ] : []),
     ].filter(Boolean);
-    return html`<li key=${name} data-agent-row=${name} class=${`v-li${two ? " two-line" : ""}`}><a class=${`inst v-inst${on ? " active" : ""}${starred ? " inst-favorite" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
+    return html`<li key=${name} data-agent-row=${name} class=${`v-li${!compact && two ? " two-line" : ""}`}><a class=${`inst v-inst${on ? " active" : ""}${starred ? " inst-favorite" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
         ref=${(el) => { paintIdentity(el, id); paintReply(el, fade); }} href=${rowPath(name)} title=${instanceTooltip(it)}
         aria-current=${on ? "page" : undefined} onClick=${onPick} ...${dragProps({ type: "instance", name, group: g }, !fav)}>
-      <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />
+      ${compact ? html`<${InstanceStatusDot} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} />`
+        : html`<${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />`}
       <span class="inst-text"><span class="inst-line"><span class="inst-name" title=${label}>${label}</span>
-          <span class="v-meta">${it.runtime === "windows" ? "Windows" : it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span></span>
-        ${two ? html`<span class="inst-line inst-line2"><span class="inst-alt" title=${secondary || undefined}>${secondary || ""}</span>
+          ${!compact ? html`<span class="v-meta">${it.runtime === "windows" ? "Windows" : it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>` : null}</span>
+        ${two ? html`<span class="inst-line inst-line2">${!compact ? html`<span class="inst-alt" title=${secondary || undefined}>${secondary || ""}</span>` : null}
           ${mins != null ? html`<span class=${`inst-when${fade > 0 ? " fresh" : ""}`} title=${tn("replyTitle", { time: new Date(Date.parse(it.last_reply)).toLocaleString() })}>${replyText(mins)}</span>` : null}</span>` : null}
-        ${it.machine_id ? html`<span class=${`inst-machine${it.machine_status !== "online" ? " offline" : ""}`} title=${tn("tooltipMachine",{value:machineName(it.machine_id,it.machine_name)})}><span class="inst-machine-name">${machineName(it.machine_id,it.machine_name)}</span>${it.machine_status !== "online" ? html`<span class="inst-machine-status">${tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline")}</span>` : null}</span>` : null}
-        ${facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}
+        ${!compact && it.machine_id ? html`<span class=${`inst-machine${it.machine_status !== "online" ? " offline" : ""}`} title=${tn("tooltipMachine",{value:machineName(it.machine_id,it.machine_name)})}><span class="inst-machine-name">${machineName(it.machine_id,it.machine_name)}</span>${it.machine_status !== "online" ? html`<span class="inst-machine-status">${tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline")}</span>` : null}</span>` : null}
+        ${!compact && facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}
         <span class="sr-only">${tn("tooltipBackend", { value: backendLabel(it.backend) })}</span></span>
     </a>${menuItems.length ? html`<${Menu} cls=${`inst-workspace inst-row-menu agent-menu${starred ? " is-favorite" : ""}`} fit=${true} topLayer=${true}
       ownerKey=${name} label=${t("agentRow.actions", label)} items=${menuItems}
@@ -692,7 +714,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const facetSet = f.status.length > 0 || f.cli.length > 0;
   const stacked = (!viewOnly && facetOpen.status) || (facetOpen.cli && backends.length > 1);
   // The list scrolls; the filter under it stays in view (#999), so it sits outside the scrolling section.
-  return html`<div class=${`view-roster inst-nav${editing && canStar ? " fav-editing" : ""}`}>
+  return html`<div class=${`view-roster inst-nav${compact ? " compact" : ""}${editing && canStar ? " fav-editing" : ""}`}>
     <div data-trust="navigation" class="side-section" id="instanceList" ref=${list}>
     <div class="inst-head"><h2 class="side-label">${tn("instancesLabel")}</h2>
       ${canStar && items.length ? html`<${SortMenu} sort=${nav.sort} />`

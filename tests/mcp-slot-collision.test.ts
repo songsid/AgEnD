@@ -7,7 +7,7 @@ import { Daemon } from "../src/daemon.js";
 import { IpcServer } from "../src/channel/ipc-bridge.js";
 
 /**
- * "MCP died" false alarm on a live instance (codex rd1-sd5-server, 2026-09-05).
+ * "MCP died" false alarm on a live instance (codex tm1-sd5-server, 2026-09-05).
  *
  * channel.mcp.pid is a SINGLE last-writer-wins slot, but an instance can have
  * several mcp-server processes at once: a CLI-driven replacement, a codex

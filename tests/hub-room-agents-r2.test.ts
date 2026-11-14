@@ -51,13 +51,19 @@ it("routes @all plus the same explicit agent once and retains exact delivery byt
 
 it("persists one exact answer and ACKs retries without duplicate room posts", async () => {
   const w = await world(), parent = await send(w); await vi.waitFor(() => expect(asks()).toHaveLength(1));
+  const queued = (await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}/messages`)).json.messages.find((m: any) => m.answerTo === parent.id);
+  expect(queued.askedBy).toBe(parent.author.id);
+  expect(parent.askedBy).toBeUndefined();
   const input = lastAsk(), answer = { messageId: input.messageId, roomId: w.id, exposureId: w.e.id, answerId: randomUUID(), text: "Ready" };
   const receive = () => r!.http.receive(r!.frame("room.answer", answer, w.link) as never, w.link);
   expect(await receive()).toMatchObject({ type: "room.answer-ack", payload: { messageId: input.messageId, answerId: answer.answerId } });
   expect(await receive()).toMatchObject({ type: "room.answer-ack" });
   const page = (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/messages`)).json.messages;
   expect(page.filter((m: any) => m.text === "Ready")).toHaveLength(1);
-  expect(page.find((m: any) => m.text === "Ready")).toMatchObject({ answerTo: parent.id, stage: "answered" });
+  expect(page.find((m: any) => m.text === "Ready")).toMatchObject({ answerTo: parent.id, askedBy: parent.author.id, stage: "answered" });
+  // Another device/viewer can identify the asker from an answer-only page, without retaining the question.
+  const other = (await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}/messages?limit=1`)).json.messages;
+  expect(other).toHaveLength(1); expect(other[0]).toMatchObject({ text: "Ready", askedBy: parent.author.id });
   expect(page.find((m: any) => m.id === parent.id).ask).toEqual({ total: 1, answered: 1, working: 0, later: 0 });
   await expect(r!.http.receive(r!.frame("room.answer", { ...answer, text: "Changed" }, w.link) as never, w.link)).rejects.toThrow();
 });
@@ -98,7 +104,7 @@ it("attributes answers to their recorded owner in history and live events after 
     while (!events.includes(text) || !events.slice(events.indexOf(text)).includes("\n\n")) { const chunk = await reader.read(); if (chunk.done) throw Error("stream ended"); events += new TextDecoder().decode(chunk.value); }
     const live = events.split("\n\n").flatMap(block => block.split("\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6))))
       .find(event => event.message?.text === text).message;
-    const expected = { answerTo: parent.id, author: { kind: "agent", name: "Notes", owner: { name: "Hub Admin" } } };
+    const expected = { answerTo: parent.id, askedBy: parent.author.id, author: { kind: "agent", name: "Notes", owner: { name: "Hub Admin" } } };
     expect.soft(live).toMatchObject(expected);
     const history = () => r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/messages`);
     expect.soft((await history()).json.messages.find((m: any) => m.text === text)).toMatchObject(expected);

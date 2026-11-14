@@ -1,5 +1,5 @@
 export type RoomPresence = "online" | "idle" | "working" | "paused" | "offline" | "later";
-export type RoomSystemEvent = { kind: "room-created" | "member-joined" | "admin-joined"; name: string }
+export type RoomSystemEvent = { kind: "room-created" | "member-joined" | "admin-joined" | "poll-closed"; name: string }
   | { kind: "agent-mention-stopped"; reason: "all" | "ambiguous" | "depth" | "rate" | "capacity"; name: string; sourceId: string; retryAt?: number };
 export interface RoomMessage {
   id: string; roomId: string; at: number;
@@ -12,9 +12,15 @@ export interface RoomMessage {
   text: string; mentions: string[]; replyTo?: string; idempotencyKey?: string;
   files?: { id: string; name: string; size: number; mime: string; url: string }[];
   warning?: "assistant-unavailable";
-  ask?: { total: number; answered: number; working: number; later: number };
+  ask?: { total: number; answered: number; working: number; later: number; failed?: number; blocked?: number; reason?: "expired" | "retired" | "unavailable" | "interrupted" | "unknown" };
   answerTo?: string;
+  /** The immediate question's person-member id (same identity as room.me.id), never an agent owner's id. */
+  askedBy?: string;
   stage?: "queued" | "working" | "answered" | "not-answered";
+  /** M-3127: who reacted with what, oldest emoji first; `members` are room member ids (the viewer finds its own). */
+  reactions?: { emoji: string; count: number; members: string[] }[];
+  /** M-3127 B: an agent answer's buttons (its asker only) or poll (everyone in the room). */
+  buttons?: import("./buttons.js").RoomButtonsView;
 }
 export interface RoomAssistantPort {
   available(): { enabled: boolean; backend: string | null; running: number; cap: number; state: "idle" | "busy" | "paused"; note?: string };

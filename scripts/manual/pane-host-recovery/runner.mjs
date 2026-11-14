@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import assert from 'node:assert/strict';
-const [bundle, root] = process.argv.slice(2), approved = 'c:\\users\\changhansung\\agend-adapter-proto\\';
+const [bundle, root] = process.argv.slice(2), approved = 'c:\\users\\demo-account\\agend-adapter-proto\\';
 assert(process.platform === 'win32' && win32.normalize(root).toLowerCase().startsWith(approved));
 const load = name => import(pathToFileURL(join(bundle, 'dist', name + '.js')).href);
 const [{ RuntimeClient, pairRuntime }, { RuntimeClientStore, runtimeJobDigest }, { RuntimePaneLink }, { readPaneHostDescriptor }, { findCli, nativeCliEnvironment }] = await Promise.all(

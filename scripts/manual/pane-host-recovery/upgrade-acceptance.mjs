@@ -12,7 +12,7 @@ const oldRoot = resolve(process.argv[2] || '../pane-upgrade-before');
 const sourceHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 assert(!execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim(), 'Commit source first');
 const mode = process.argv[3] || 'paired'; assert(['paired', 'local'].includes(mode));
-const tag = randomUUID().slice(0, 8), root = '/mnt/c/Users/changhansung/agend-adapter-proto/upgrade-' + tag;
+const tag = randomUUID().slice(0, 8), root = '/mnt/c/Users/demo-account/agend-adapter-proto/upgrade-' + tag;
 const nativeRoot = execFileSync('wslpath', ['-w', root], { encoding: 'utf8' }).trim();
 const scratch = await mkdtemp(join(process.cwd(), '.artifacts/upgrade-native-'));
 process.env.AGEND_HOME = scratch;
@@ -156,7 +156,7 @@ try {
  try { const found = JSON.parse(execFileSync(node, [worker, win32.join(nativeRoot, 'new'), nativeRoot, 'sessions'], { encoding: 'utf8', timeout: 15000, maxBuffer: 16384 })); for (const id of found.ids) threads.add(id); } catch { receipt.sessionEnumerationUnconfirmed = true; }
  // UUIDs were bound by the real lifecycle /status plus scratch cwd and the one owned prompt above.
  for (const id of threads) {
-  try { const output = execFileSync('/mnt/c/Users/changhansung/AppData/Local/Programs/OpenAI/Codex/bin/codex.exe', ['-c', 'check_for_update_on_startup=false', 'archive', id],
+  try { const output = execFileSync('/mnt/c/Users/demo-account/AppData/Local/Programs/OpenAI/Codex/bin/codex.exe', ['-c', 'check_for_update_on_startup=false', 'archive', id],
    { cwd: root, encoding: 'utf8', timeout: 30000, maxBuffer: 8192, input: '' });
   assert(output.includes('Archived session ' + id + '.')); receipt.archived.push(id); } catch {
    try { const state = JSON.parse(execFileSync(node, [worker, win32.join(nativeRoot, 'new'), nativeRoot, 'thread-state', id], { encoding: 'utf8', timeout: 20000, maxBuffer: 4096 }));

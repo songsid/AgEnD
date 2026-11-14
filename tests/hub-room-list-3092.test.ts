@@ -54,12 +54,12 @@ describe("the list's groups and rows (pure)", () => {
     const answer = await (await fx.fetch("/hub/v1/rooms")).json();
     const groups = list.groupRooms(answer.rooms);
     expect(groups.map((x: any) => [x.key, x.items.map((r: any) => r.name)])).toEqual([
-      ["rooms", ["研一主管週會", "研發例會", "去年專案"]],
+      ["rooms", ["每週主管會議", "專案例會", "去年專案"]],
       ["agents", ["project-helper", "report-bot", "Hub assistant"]],   // stored names; the rows name it by its flag
     ]);
     expect(list.groupRooms(answer.rooms, "林小華").map((x: any) => x.items.map((r: any) => r.name))).toEqual([["project-helper"]]);   // by owner
     i18n.setLang("zh-TW", { store: false });
-    expect(list.rowView(answer.rooms.find((r: any) => r.name === "研一主管週會"))).toMatchObject({ line2: "3 人 · 12 個 Agent", avatar: { square: true, text: "研" }, dot: null, unread: 2 });
+    expect(list.rowView(answer.rooms.find((r: any) => r.name === "每週主管會議"))).toMatchObject({ line2: "3 人 · 12 個 Agent", avatar: { square: true, text: "每" }, dot: null, unread: 2 });
     expect(list.rowView(answer.rooms.find((r: any) => r.name === "report-bot"))).toMatchObject({ line2: "吳小安", avatar: { square: false }, dot: "off" });
     expect(list.rowView(answer.rooms.find((r: any) => r.assistant))).toMatchObject({ title: "Hub 助理", line2: "Hub 提供", dot: "ok" });
     expect(list.rowView(answer.rooms.find((r: any) => r.name === "去年專案"))).toMatchObject({ archived: true });
@@ -107,7 +107,7 @@ describe("the sidebar, drawn as the Fleet roster", () => {
       await until(() => rows(pg).length === 6);
       expect([...pg.root.querySelectorAll("#sidebar .hub-room-group .side-label")].map((x: any) => x.textContent)).toEqual(["房間", "Agent"]);
       expect([...pg.root.querySelectorAll("#sidebar .hub-room-group .inst-head .count")].map((x: any) => x.textContent)).toEqual(["3", "3"]);
-      expect(rows(pg).map((a) => a.querySelector(".inst-name").textContent)).toEqual(["研一主管週會", "研發例會", "去年專案", "project-helper", "report-bot", "Hub 助理"]);
+      expect(rows(pg).map((a) => a.querySelector(".inst-name").textContent)).toEqual(["每週主管會議", "專案例會", "去年專案", "project-helper", "report-bot", "Hub 助理"]);
       const weekly = rows(pg)[0];
       expect([weekly.closest("li").className, !!weekly.querySelector(".av.av-square"), weekly.querySelector(".av-dot"), weekly.querySelector(".inst-alt").textContent,
         weekly.querySelector(".nav-count").textContent]).toEqual(["v-li two-line", true, null, "3 人 · 12 個 Agent", "2"]);
@@ -142,16 +142,34 @@ describe("the sidebar, drawn as the Fleet roster", () => {
       expect(old.pg.root.querySelector("#sidebar .side-nav .hub-new-room")).toBeNull();
     } finally { old.restore(); }
   });
-  it("Ctrl K filters by a name or an owner across both groups; an empty group is left out", async () => {
+  // M-3127 C (web-claude): the Fleet's sidebar — its filter box at the foot, always there; Ctrl K is the search dialog.
+  it("the sidebar-foot filter finds by a name or an owner across both groups; an empty group is left out; Esc clears", async () => {
     const fx = createHubRoomsFixture();
     const { pg, restore } = await hubApp((url: string, init?: any) => fx.fetch(url, init));
     try {
       await until(() => rows(pg).length === 6);
-      fire(pg.document as any, "keydown", { key: "k", ctrlKey: true }); await settle(10);
-      const input = pg.root.querySelector("#sidebar .hub-side-filter input") as any;
+      expect(pg.root.querySelector("#sidebar .hub-side-filter")).toBeNull();   // no filter at the list's head
+      const input = pg.root.querySelector("#sidebar .hub-side-rooms .v-filter input") as any;
       input.value = "吳小安"; fire(input, "input"); await settle(5);
       expect(rows(pg).map((a) => a.querySelector(".inst-name").textContent)).toEqual(["report-bot"]);
       expect([...pg.root.querySelectorAll("#sidebar .hub-room-group")].map((x: any) => x.dataset.group)).toEqual(["agents"]);
+      input.value = "zzz"; fire(input, "input"); await settle(5);
+      expect(pg.root.querySelector("#sidebar .side-empty").textContent).toBeTruthy();   // the no-match line
+      fire(input, "keydown", { key: "Escape" }); await settle(5);
+      expect(rows(pg)).toHaveLength(6);
+    } finally { restore(); }
+  });
+  it("Ctrl K opens the search dialog, which finds an agent chat by its owner too", async () => {
+    const fx = createHubRoomsFixture();
+    const { pg, restore } = await hubApp((url: string, init?: any) => fx.fetch(url, init));
+    try {
+      await until(() => rows(pg).length === 6);
+      fire(pg.document as any, "keydown", { key: "k", ctrlKey: true });
+      await until(() => pg.document.querySelector(".hub-search-dlg[open]"));
+      const dlg = pg.document.querySelector(".hub-search-dlg") as any, input = dlg.querySelector(".search-input");
+      input.value = "吳小安"; fire(input, "input");
+      await until(() => dlg.querySelector(".search-row"));
+      expect([...dlg.querySelectorAll(".search-row .search-who")].map((n: any) => n.textContent)).toContain("report-bot");
     } finally { restore(); }
   });
   it("an open tab whose client is older than this page (rooms() only): today's chats in the same rows", async () => {

@@ -1,0 +1,59 @@
+Run 43641659702 attempt1
+2026-11-14T21:20:44.1566566Z  FAIL  tests/hub-web-address-http-3428.test.ts > #3428 actual host address route > a held old sign-in cannot mint after SQL even when completion throws before config publication
+2026-11-14T21:20:44.1573233Z AssertionError: expected [ { side: 'server', …(3) } ] to deeply equal []
+2026-11-14T21:20:44.1573508Z
+2026-11-14T21:20:44.1573659Z - Expected
+2026-11-14T21:20:44.1573952Z + Received
+2026-11-14T21:20:44.1574161Z
+2026-11-14T21:20:44.1574319Z - []
+2026-11-14T21:20:44.1574644Z + [
+2026-11-14T21:20:44.1574972Z +   {
+2026-11-14T21:20:44.1575426Z +     "code": "service-unavailable",
+2026-11-14T21:20:44.1575932Z +     "detail": "listen EADDRINUSE: address already in use 127.0.0.1:39739",
+2026-11-14T21:20:44.1576350Z +     "side": "server",
+2026-11-14T21:20:44.1576703Z +     "since": 1794691085760,
+2026-11-14T21:20:44.1576994Z +   },
+2026-11-14T21:20:44.1577228Z + ]
+2026-11-14T21:20:44.1577335Z
+2026-11-14T21:20:44.1577983Z  ❯ initialize tests/hub-web-address-http-3428.test.ts:97:50
+2026-11-14T21:20:44.1635455Z      95|     r.internal.hubEffectsReady = true;
+2026-11-14T21:20:44.1649831Z      96|     await r.internal.applyHubSwitches();
+2026-11-14T21:20:44.1650489Z
+2026-11-14T21:20:44.1651355Z      97|     expect(r.internal.hubRuntime.currentHolds()).toEqual([]);
+2026-11-14T21:20:44.1652772Z        |                                                  ^
+2026-11-14T21:20:44.1653700Z      98|     return { input, webPort, memberPort, ca: readFileSync(join(r.home,…
+2026-11-14T21:20:44.1654370Z      99| }
+2026-11-14T21:20:44.1655240Z  ❯ tests/hub-web-address-http-3428.test.ts:113:42
+2026-11-14T21:20:44.1655762Z
+2026-11-14T21:20:44.1656147Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+2026-11-14T21:20:44.1656455Z
+
+Run 43636493448 attempt1
+2026-11-14T20:25:45.0503807Z  FAIL  tests/hub-web-address-http-3428.test.ts > #3428 actual host address route > moves real HTTPS, invalidates same-host old cookies, refuses the old port and preserves member identity
+2026-11-14T20:25:45.0509760Z AssertionError: expected 503 to be 200 // Object.is equality
+2026-11-14T20:25:45.0510176Z
+2026-11-14T20:25:45.0510338Z - Expected
+2026-11-14T20:25:45.0510678Z + Received
+2026-11-14T20:25:45.0510833Z
+2026-11-14T20:25:45.0510972Z - 200
+2026-11-14T20:25:45.0511251Z + 503
+2026-11-14T20:25:45.0511356Z
+2026-11-14T20:25:45.0511708Z  ❯ initialize tests/hub-web-address-http-3428.test.ts:94:66
+2026-11-14T20:25:45.0587883Z      92|     expect(p.status, p.body).toBe(200);
+2026-11-14T20:25:45.0610360Z      93|     expect((await route("/test", { ref: p.body.ref })).status).toBe(20…
+2026-11-14T20:25:45.0610835Z
+2026-11-14T20:25:45.0640407Z      94|     expect((await route("/commit", { ref: p.body.ref })).status).toBe(…
+2026-11-14T20:25:45.0641641Z  Test Files  1 failed | 542 passed | 2 skipped (545)
+2026-11-14T20:25:45.0670097Z        |                                                                  ^
+2026-11-14T20:25:45.0671266Z      95|     r.internal.hubEffectsReady = true;
+2026-11-14T20:25:45.0700114Z      96|     await r.internal.applyHubSwitches();
+2026-11-14T20:25:45.0700807Z  ❯ tests/hub-web-address-http-3428.test.ts:156:42
+2026-11-14T20:25:45.0701068Z
+2026-11-14T20:25:45.0701280Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+2026-11-14T20:25:45.0701456Z
+2026-11-14T20:25:45.0739351Z       Tests  1 failed | 9958 passed | 8 skipped (9967)
+2026-11-14T20:25:45.0754141Z    Start at  20:19:51
+2026-11-14T20:25:45.0754973Z    Duration  353.70s (transform 21.60s, setup 18.90s, import 293.59s, tests 676.28s, environment 53ms)
+2026-11-14T20:25:45.0755299Z
+2026-11-14T20:25:45.0826306Z
+2026-11-14T20:25:45.0854445Z ##[error]AssertionError: expected 503 to be 200 // Object.is equality

@@ -102,3 +102,25 @@ CREATE INDEX hub_room_post_returns_pending ON hub_room_post_returns(fleet_id,exp
 CREATE TABLE hub_room_agent_stops(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id),source_id TEXT NOT NULL,reason TEXT NOT NULL,name TEXT NOT NULL,retry_at INTEGER,coalesce_key TEXT NOT NULL UNIQUE);
 CREATE INDEX hub_room_agent_stops_source ON hub_room_agent_stops(source_id);`);
 } });
+
+/** M-3127: people's (and agents') emoji reactions on room posts — set semantics, one row per member and emoji. */
+export const HUB_ROOM_REACTIONS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-reactions", version: 1, up(db: Database.Database) {
+  db.exec(`CREATE TABLE hub_room_reactions(room_id TEXT NOT NULL REFERENCES hub_group_rooms(id),post_id TEXT NOT NULL REFERENCES hub_room_posts(id),
+  member_id TEXT NOT NULL,emoji TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(post_id,member_id,emoji));
+CREATE INDEX hub_room_reactions_room ON hub_room_reactions(room_id,post_id);`);
+} });
+
+/**
+ * M-3127: an agent answer's buttons or poll in a group room. Choices live in the content store (content_ref); a plain
+ * set answers only its asker (asker_member, possibly an agent membership); a poll takes one ballot per person member.
+ */
+export const HUB_ROOM_BUTTONS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-buttons", version: 1, up(db: Database.Database) {
+  db.exec(`CREATE TABLE hub_room_buttons(id TEXT PRIMARY KEY,post_id TEXT NOT NULL UNIQUE REFERENCES hub_room_posts(id),room_id TEXT NOT NULL REFERENCES hub_group_rooms(id),
+  delivery_id TEXT NOT NULL,asker_member TEXT NOT NULL,content_ref TEXT NOT NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('open','chosen','closed','expired')),revision INTEGER NOT NULL DEFAULT 1,
+  chosen_index INTEGER,chosen_member TEXT,closed_at INTEGER,result_post TEXT);
+CREATE INDEX hub_room_buttons_due ON hub_room_buttons(state,expires_at);
+CREATE TABLE hub_room_votes(set_id TEXT NOT NULL REFERENCES hub_room_buttons(id),member_id TEXT NOT NULL,options TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(set_id,member_id));
+CREATE TABLE hub_room_button_operations(room_id TEXT NOT NULL,member_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,set_id TEXT NOT NULL,digest TEXT NOT NULL,
+  PRIMARY KEY(room_id,member_id,idempotency_key));`);
+} });

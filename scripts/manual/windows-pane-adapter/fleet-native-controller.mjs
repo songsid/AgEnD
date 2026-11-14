@@ -7,7 +7,7 @@ const codexRecovery=process.argv[3]==='codex-session-recovery',recoveryMode=code
 import{prepareSafety,watchSafety,safetyPrompt,finishSafety,finishPermission}from'./fleet-native-safety.mjs';
 import{spawn,execFileSync}from'node:child_process';import{mkdir,readFile,writeFile,cp,rm}from'node:fs/promises';import{mkdtempSync}from'node:fs';import{join,resolve,win32}from'node:path';import{pathToFileURL}from'node:url';import{randomUUID,createHash}from'node:crypto';import{createInterface}from'node:readline';import assert from'node:assert/strict';
 const source=sourceReceipt();
-const project=process.cwd(),compiled=resolve(process.argv[2]||'.artifacts/pane-full-compiled'),tag=randomUUID().slice(0,8),nativeBase='C:\\Users\\changhansung\\agend-adapter-proto',nativeRoot=nativeBase+'\\fleet-'+tag,root='/mnt/c/Users/changhansung/agend-adapter-proto/fleet-'+tag;
+const project=process.cwd(),compiled=resolve(process.argv[2]||'.artifacts/pane-full-compiled'),tag=randomUUID().slice(0,8),nativeBase='C:\\Users\\demo-account\\agend-adapter-proto',nativeRoot=nativeBase+'\\fleet-'+tag,root='/mnt/c/Users/demo-account/agend-adapter-proto/fleet-'+tag;
 const permissionOnly=process.argv[3]==='permission-only',safetyMode=permissionOnly||['safety','claude-safety'].includes(process.argv[3]);
 const providers=process.argv[3]==='codex-only'?['codex']:(permissionOnly||process.argv[3]==='claude-safety')?['claude-code']:['codex','claude-code'];
 const coordinator=mkdtempSync(join(project,'.artifacts/native-fleet-proof-'));process.env.AGEND_HOME=coordinator;delete process.env.NOTIFY_SOCKET;delete process.env.WATCHDOG_USEC;delete process.env.WATCHDOG_PID;delete process.env.TMUX;process.env.AGEND_TMUX_SESSION='adapter-proof-'+tag;

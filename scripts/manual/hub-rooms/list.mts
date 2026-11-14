@@ -8,7 +8,7 @@
  *   after-live    — this tree; a Hub with rooms (the fixture: rooms, chats, the Hub assistant, unread, @, presence);
  *   after-limited — this tree; a Hub without rooms yet (today's chats in the new rows: waiting, closed);
  *   skew          — this tree's panel with BASE_REF's hub-client.js (an open tab after an upgrade): the same list, no error.
- * Room pages: `room-before.*` (a chat on BASE_REF's modules: today's room view), `room-after.*` (研一主管週會: authors, the
+ * Room pages: `room-before.*` (a chat on BASE_REF's modules: today's room view), `room-after.*` (每週主管會議: authors, the
  * @all progress line, the room's own lines without tools), `menu-after.*` (the @ menu), and on the quick cases
  * `assistant-after.*` (the Hub assistant's one-to-one: 「問 Hub 助理」, never its stored English name).
  * Writes PNGs and receipt.json (sourceHead, baseRef, inputs' digests, every check, every PNG's sha256) to OUT.
@@ -99,7 +99,7 @@ try {
       if (variant === "after-live") {
         const groups = await p.locator(`${list} .hub-room-group .side-label`).allTextContents();
         check(`${tag} after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error`,
-          groups.length === 2 && names.length === 6 && names[0] === "研一主管週會" && await p.locator(`${list} .nav-count`).count() >= 1 && errors.length === 0, { groups, names, errors });
+          groups.length === 2 && names.length === 6 && names[0] === "每週主管會議" && await p.locator(`${list} .nav-count`).count() >= 1 && errors.length === 0, { groups, names, errors });
       } else check(`${tag} before: today's list (three chats, alpha's own rows); no page error`, names.length === 3 && errors.length === 0, { names, errors });
       await shot(p, device(c) === "phone" ? ".hub-home-list" : "#sidebar", `list.${variant}.${tag}.png`);
       if (variant === "after-live") {
@@ -110,14 +110,14 @@ try {
           await li.hover().catch(() => {});
           await li.locator(".inst-row-menu > button").click(); await p.waitForTimeout(150);
         };
-        for (const n of ["project-helper", "研發例會"]) { await menuOf(n); await p.locator('[role="menuitem"]', { hasText: /Add to favorites|加入最愛/ }).first().click(); await p.waitForTimeout(200); }
+        for (const n of ["project-helper", "專案例會"]) { await menuOf(n); await p.locator('[role="menuitem"]', { hasText: /Add to favorites|加入最愛/ }).first().click(); await p.waitForTimeout(200); }
         const favs = await p.locator(`${list} [data-group="favorites"] .inst-name`).allTextContents();
         const heads = await p.locator(`${list} .hub-room-group .side-label`).allTextContents();
         const kept = await p.evaluate(() => localStorage.getItem("agend_hub_favorites.wang"));
         await menuOf("project-helper");
         const items = await p.locator('[role="menuitem"]').allTextContents();
         check(`${tag} favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error`,
-          favs.join("|") === "project-helper|研發例會" && heads.length === 3 && kept === JSON.stringify(["room-helper", "room-rd"])
+          favs.join("|") === "project-helper|專案例會" && heads.length === 3 && kept === JSON.stringify(["room-helper", "room-rd"])
             && items.some((x) => /Remove from favorites|移出最愛/.test(x)) && errors.length === 0, { favs, heads, kept, items, errors });
         await shot(p, device(c) === "phone" ? ".hub-home-list" : "#sidebar", `favorites-after.${tag}.png`);
         await p.keyboard.press("Escape");

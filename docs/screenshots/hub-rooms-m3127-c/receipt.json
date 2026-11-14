@@ -1,0 +1,164 @@
+{
+  "sourceHead": "ddcd6a528c998f03c7a7ed9ba0a6bf1cc6711757",
+  "baseRef": "49aa5d15cc196154c73da074959c49bfe7027ee3",
+  "dirty": [],
+  "inputs": [
+    {
+      "path": "src/ui/hub-client.js",
+      "base": "2aaeb512d3a8e163195cd080b32b8fefa63874dfed7db9b8b0df499e1678a0e2"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "dacb7c0f6b99cd66accaa39f4220202e3f42645df306506db2f4f926634af01c"
+    },
+    {
+      "path": "src/ui/hub-room-search.js",
+      "sha256": "45b345b3b0e53a8255cb8b75264d2c6bdd7fd495e1ae13b20eb3a411410eeab7"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "4c0d53e86932b0a02b59291c10e8fd0989fde83a4430d4a8a0dc2136d1c47f07"
+    },
+    {
+      "path": "src/ui/hub-room-strings.js",
+      "sha256": "affa1444bfa6498cfc900715747e29bcd69444d4949ea6286db638494c37e475"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "b1c07ceb99a88fac87a9bdea92f6353623a9b5499d96c71b145c57545b634f87"
+    },
+    {
+      "path": "src/ui/shared/hub-rooms-u2.css",
+      "sha256": "ccdba320529b873b572db4e51000e630e6a43a32f6fab5ff8ea3971ee4179ac6"
+    },
+    {
+      "path": "tests/support/hub-rooms-fixture.ts",
+      "sha256": "bdbbaaa2fb35a8334142755cd19c5077eb3eb101e422e66f480bef8c102d7e86"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desktop-en-light sidebar: the filter sits at the sidebar's foot (none at the list's head); an owner's name filters to report-bot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light sidebar: Esc clears the filter",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light dialog: Ctrl K opens it; the messages with the words, grouped by room, the words marked; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light jump: Enter opens the room at the message (flashed); then the address loses m; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light skew: with BASE_REF's hub-client.js the dialog opens and finds names; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark sidebar: the filter sits at the sidebar's foot (none at the list's head); an owner's name filters to report-bot",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark sidebar: Esc clears the filter",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark dialog: Ctrl K opens it; the messages with the words, grouped by room, the words marked; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark jump: Enter opens the room at the message (flashed); then the address loses m; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark skew: with BASE_REF's hub-client.js the dialog opens and finds names; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light dialog: Ctrl K opens it; the messages with the words, grouped by room, the words marked; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light jump: Enter opens the room at the message (flashed); then the address loses m; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light skew: with BASE_REF's hub-client.js the dialog opens and finds names; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark dialog: Ctrl K opens it; the messages with the words, grouped by room, the words marked; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark jump: Enter opens the room at the message (flashed); then the address loses m; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark skew: with BASE_REF's hub-client.js the dialog opens and finds names; no page error",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "hub-sidebar.desktop-en-light.png",
+      "sha256": "a92139eb1340c27b619916bac1c264c3026cb449e12212c8adcc5d725668f023"
+    },
+    {
+      "path": "search-dialog.desktop-en-light.png",
+      "sha256": "e07be1845a5db4555205801b80f94ed1005381d0673799a40d0f24550ee0a862"
+    },
+    {
+      "path": "search-jump.desktop-en-light.png",
+      "sha256": "40295c7ed3a5f5bb3f3874b87feccf3a9d8be2b583408d1236e9eedb993a824a"
+    },
+    {
+      "path": "search-skew.desktop-en-light.png",
+      "sha256": "1eaff7d6a09d3d818e36ba184d3002981ec85579607a434b8c9b045470f5283f"
+    },
+    {
+      "path": "hub-sidebar.desktop-zh-TW-dark.png",
+      "sha256": "9e904104a00f3e0ccb313b1813d8cb72a71a3a438f0b079d3ab8356a30e6cd0f"
+    },
+    {
+      "path": "search-dialog.desktop-zh-TW-dark.png",
+      "sha256": "350f5f7696b94abe13cd1ffbf8256378b62b8ba189ae826580277c0ea27f15fa"
+    },
+    {
+      "path": "search-jump.desktop-zh-TW-dark.png",
+      "sha256": "5fab766b986ef3478f4d0c4432136bbb20e575207a59ca8c059f1c80540f61b7"
+    },
+    {
+      "path": "search-skew.desktop-zh-TW-dark.png",
+      "sha256": "c6775d462d7dd3300c2d933c361a5aa37630104d7a93b9d5b0e9c5104d642f48"
+    },
+    {
+      "path": "search-dialog.phone-zh-TW-light.png",
+      "sha256": "6ba447c057e741325aee7b5c1ecd6e9e504f70b902777f4d0e1e19ab69af1272"
+    },
+    {
+      "path": "search-jump.phone-zh-TW-light.png",
+      "sha256": "7f31ba63f96643d2cd5caa438f08352ab5d71d6c2b3bfa06264dd9d0648d72d5"
+    },
+    {
+      "path": "search-skew.phone-zh-TW-light.png",
+      "sha256": "892f2802ce4981065a4044f02f5e33537c9be4b798bb469c563d3dd16fb8b557"
+    },
+    {
+      "path": "search-dialog.phone-en-dark.png",
+      "sha256": "d7c44fa45f8030b8d1028a3f656b4ef2d01b34931e004767e3091995bbd879d5"
+    },
+    {
+      "path": "search-jump.phone-en-dark.png",
+      "sha256": "cf1a0eb4c72f04692c73e3cad6a4857a697b3668f46e2b54bb9f8bff2a64f7e6"
+    },
+    {
+      "path": "search-skew.phone-en-dark.png",
+      "sha256": "f385d9f4d8e2f6de9ef5f76b16d52976ce1fefa8d8679540ec089895be4a4f0f"
+    }
+  ],
+  "passed": true
+}

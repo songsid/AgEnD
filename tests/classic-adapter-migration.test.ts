@@ -37,7 +37,7 @@ describe("Classic channel adapter migration", () => {
   it("migrates a legacy Telegram row to Telegram even when Discord is primary", () => {
     writeClassic({
       "-5099690129": {
-        name: "HanHanv",
+        name: "Example",
         createdBy: "owner",
         createdAt: "2026-06-18T08:03:35.720Z",
       },
@@ -49,12 +49,12 @@ describe("Classic channel adapter migration", () => {
       { id: "telegram", type: "telegram" },
     ]);
 
-    expect(manager.getInstanceByChannel("-5099690129", "telegram")).toBe("classic-hanhanv-0129");
+    expect(manager.getInstanceByChannel("-5099690129", "telegram")).toBe("classic-example-0129");
     expect(manager.getInstanceByChannel("-5099690129", "discord")).toBeUndefined();
     const persisted = readClassic();
     expect(persisted.channels["-5099690129#telegram"]).toMatchObject({
       adapterId: "telegram",
-      instanceName: "classic-hanhanv-0129",
+      instanceName: "classic-example-0129",
     });
     expect(existsSync(join(dataDir, "classicBot.yaml.pre-adapter-repair.bak"))).toBe(true);
   });
@@ -84,8 +84,8 @@ describe("Classic channel adapter migration", () => {
       "-5099690129#discord": {
         channelId: "-5099690129",
         adapterId: "discord",
-        instanceName: "classic-hanhanv-0129",
-        name: "HanHanv",
+        instanceName: "classic-example-0129",
+        name: "Example",
         createdBy: "owner",
         createdAt: "2026-06-18T08:03:35.720Z",
       },
@@ -97,10 +97,10 @@ describe("Classic channel adapter migration", () => {
       { id: "telegram", type: "telegram" },
     ]);
 
-    expect(manager.getInstanceByChannel("-5099690129", "telegram")).toBe("classic-hanhanv-0129");
+    expect(manager.getInstanceByChannel("-5099690129", "telegram")).toBe("classic-example-0129");
     expect(readClassic().channels["-5099690129#telegram"]).toMatchObject({
       adapterId: "telegram",
-      instanceName: "classic-hanhanv-0129",
+      instanceName: "classic-example-0129",
     });
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ fromAdapterId: "discord", toAdapterId: "telegram" }),
@@ -109,23 +109,23 @@ describe("Classic channel adapter migration", () => {
   });
 
   it("keeps the correctly bound live row and removes a phantom duplicate without deleting instance data", () => {
-    const staleInstanceDir = join(dataDir, "instances", "classic-hanhanv-0129");
+    const staleInstanceDir = join(dataDir, "instances", "classic-example-0129");
     mkdirSync(staleInstanceDir, { recursive: true });
     writeFileSync(join(staleInstanceDir, "session-id"), "keep-me", "utf8");
     writeClassic({
       "-5099690129#discord": {
         channelId: "-5099690129",
         adapterId: "discord",
-        instanceName: "classic-hanhanv-0129",
-        name: "HanHanv",
+        instanceName: "classic-example-0129",
+        name: "Example",
         createdBy: "owner",
         createdAt: "2026-06-18T08:03:35.720Z",
       },
       "-5099690129#telegram": {
         channelId: "-5099690129",
         adapterId: "telegram",
-        instanceName: "classic-hanhanv-0129-telegram",
-        name: "HanHanv",
+        instanceName: "classic-example-0129-telegram",
+        name: "Example",
         createdBy: "owner",
         createdAt: "2026-07-06T07:59:29.902Z",
       },
@@ -139,13 +139,13 @@ describe("Classic channel adapter migration", () => {
 
     expect(manager.getAll()).toHaveLength(1);
     expect(manager.getInstanceByChannel("-5099690129", "telegram"))
-      .toBe("classic-hanhanv-0129-telegram");
+      .toBe("classic-example-0129-telegram");
     const persisted = readClassic();
     expect(persisted.channels["-5099690129#discord"]).toBeUndefined();
     expect(persisted.channels["-5099690129#telegram"]).toBeDefined();
     expect(readFileSync(join(staleInstanceDir, "session-id"), "utf8")).toBe("keep-me");
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ staleInstanceName: "classic-hanhanv-0129" }),
+      expect.objectContaining({ staleInstanceName: "classic-example-0129" }),
       "Removed phantom Classic channel registration; instance data retained on disk",
     );
   });

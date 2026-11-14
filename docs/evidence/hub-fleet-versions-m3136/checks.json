@@ -1,0 +1,40 @@
+{
+  "productCommit": "bae870baf",
+  "base": "52348c90175185f954b266a5145e343496e91884",
+  "commands": [
+    {
+      "command": "vitest run tests/hub-fleet-versions-m3136.test.ts --maxWorkers=2 (unmodified base)",
+      "exit": 1,
+      "failed": 1,
+      "log": "before.log"
+    },
+    {
+      "command": "vitest run tests/hub-fleet-versions-m3136.test.ts tests/hub-fleet-versions-state-m3136.test.ts tests/hub-protocol.test.ts --maxWorkers=2",
+      "exit": 0,
+      "passed": 35,
+      "log": "focused.log"
+    },
+    {
+      "command": "vitest run tests/hub-fleet-versions-link-m3136.test.ts tests/hub-compose-member.test.ts tests/hub-compose.test.ts --maxWorkers=2",
+      "exit": 0,
+      "passed": 146,
+      "log": "composition.log"
+    },
+    {
+      "command": "vitest run tests/hub-fleet-versions-m3136.test.ts --maxWorkers=2 (final added fences)",
+      "exit": 0,
+      "passed": 3,
+      "log": "fences.log"
+    },
+    {
+      "command": "tsc --noEmit",
+      "exit": 0
+    },
+    {
+      "command": "tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  ],
+  "scopesOverlap": true,
+  "liveFleetOrVendor": false
+}

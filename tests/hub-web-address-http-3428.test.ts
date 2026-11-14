@@ -13,7 +13,7 @@ import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { directoryCertificates } from "./support/hub-directory-ca-fixture.js";
 import { groupWirePeer, PERSON_ID } from "./support/hub-group-directory-wire.js";
 import { tempDir } from "./support/hub-init-fixtures.js";
-import { freeHubPort } from "./helpers/hub-rig.js";
+import { hubListenerPorts } from "./helpers/hub-listener-ports.js";
 import { verifyHubInitialization } from "../src/hub/initialization.js";
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import * as directoryDriver from "../src/hub/directory/directory.js";
@@ -74,16 +74,15 @@ async function fixture() {
     };
     const host = await signin(), headers = { origin, cookie: host.cookie, "content-type": "application/json", [WEB_CSRF_HEADER]: csrfTokenFor(host.id) };
     const call = (action: string, body?: unknown, extra: Record<string, string> = {}) => http(port, body === undefined ? "GET" : "POST", "/api/settings/hub/web-address" + action, { ...headers, ...extra }, body);
-    const r = { home, fm, internal, peer, headers, port, origin, token, host, signin, call,
-        async close() { internal.hubEffectsReady = false; await internal.hubRuntime?.close(); await (await internal.hubSetupInit)?.close(); const server = internal.healthServer as Server; internal.healthServer = null; server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); internal.webSessions?.flush?.(); await peer.close(); rmSync(home, { recursive: true, force: true }); } };
+    const ports = hubListenerPorts();
+    const r = { home, fm, internal, peer, headers, port, origin, token, host, signin, call, ports,
+        async close() { internal.hubEffectsReady = false; await internal.hubRuntime?.close(); await (await internal.hubSetupInit)?.close(); const server = internal.healthServer as Server; internal.healthServer = null; server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); internal.webSessions?.flush?.(); await peer.close(); await ports.close(); rmSync(home, { recursive: true, force: true }); } };
     cleanup.push(r.close);
     return r;
 }
-async function initialize(r: Awaited<ReturnType<typeof fixture>>) {
-    const webPort = await freeHubPort();
-    let memberPort = await freeHubPort();
-    while (memberPort === webPort)
-        memberPort = await freeHubPort();
+async function initialize(r: Awaited<ReturnType<typeof fixture>>, allocated?: (ports: number[]) => Promise<void>) {
+    const webPort = await r.ports.next(), memberPort = await r.ports.next();
+    await allocated?.([webPort, memberPort]);
     const input = { name: "Synthetic Hub", webOrigin: `https://127.0.0.1:${webPort}`, memberOrigin: `https://127.0.0.1:${memberPort}`, webListen: { host: "127.0.0.1", port: webPort }, memberListen: { host: "127.0.0.1", port: memberPort },
         directory: { realm: "fictional", url: `ldaps://127.0.0.1:${r.peer.port}`, caPem: certs.ca, baseDn: "DC=example,DC=test", bindDn: "CN=Reader,DC=example,DC=test", profile: "ad" },
         confirmedCa: [new X509Certificate(certs.ca).fingerprint256], bindPassword: "Dummy-service-only", administratorLogin: "avery", retention: { contentDays: 30, eventDays: 90 }, coexistence: "dedicated" };
@@ -91,7 +90,8 @@ async function initialize(r: Awaited<ReturnType<typeof fixture>>) {
     const p = await route("/prepare", input);
     expect(p.status, p.body).toBe(200);
     expect((await route("/test", { ref: p.body.ref })).status).toBe(200);
-    expect((await route("/commit", { ref: p.body.ref })).status).toBe(200);
+    const committed = await route("/commit", { ref: p.body.ref });
+    expect(committed.status, JSON.stringify(committed.body)).toBe(200);
     r.internal.hubEffectsReady = true;
     await r.internal.applyHubSwitches();
     expect(r.internal.hubRuntime.currentHolds()).toEqual([]);
@@ -110,15 +110,29 @@ describe("#3428 actual host address route", () => {
             } return result; };
             return driver;
         });
-        const r = await fixture(), old = await initialize(r);
+        const r = await fixture(), old = await initialize(r, async ports => {
+            // Force the old choose/close/use gap before setup does certificate, directory or SQL work.
+            for (const port of ports) {
+                const competitor = createServer();
+                try {
+                    const outcome = await new Promise<string>(resolve => {
+                        competitor.once("error", error => resolve((error as NodeJS.ErrnoException).code!));
+                        competitor.listen(port, "127.0.0.1", () => resolve("stolen"));
+                    });
+                    expect(outcome).toBe("EADDRINUSE");
+                }
+                finally {
+                    if (competitor.listening)
+                        await new Promise<void>(resolve => competitor.close(() => resolve()));
+                }
+            }
+        });
         armed = true;
         const login = https(old.webPort, old.ca, "POST", "/hub/v1/session", { origin: old.input.webOrigin, "content-type": "application/json" }, { login: "avery", password: "Dummy-person-only" })
             .catch(error => ({ status: 0, headers: {} as import("node:http").IncomingHttpHeaders, text: (error as Error).message }));
         try {
             await enteredPromise;
-            let port = await freeHubPort();
-            while ([old.webPort, old.memberPort].includes(port))
-                port = await freeHubPort();
+            const port = await r.ports.next();
             const p = await r.call("/prepare", { origin: `https://127.0.0.1:${port}`, listen: { host: "127.0.0.1", port }, certificate: { mode: "generate" } });
             expect(p.status, JSON.stringify(p.body)).toBe(200);
             const decision = r.internal.hubRuntime.webAddressDecision() as HubWebAddressDecision, commit = decision.commit.bind(decision);
@@ -157,9 +171,7 @@ describe("#3428 actual host address route", () => {
         const login = await https(old.webPort, old.ca, "POST", "/hub/v1/session", { origin: old.input.webOrigin, "content-type": "application/json" }, { login: "avery", password: "Dummy-person-only" });
         expect(login.status, login.text).toBe(200);
         const cookie = login.headers["set-cookie"]![0]!.split(";")[0]!;
-        let next = await freeHubPort();
-        while ([old.webPort, old.memberPort].includes(next))
-            next = await freeHubPort();
+        const next = await r.ports.next();
         const candidate = { origin: `https://127.0.0.1:${next}`, listen: { host: "127.0.0.1", port: next }, certificate: { mode: "generate" } };
         const prepared = await r.call("/prepare", candidate);
         expect(prepared.status, JSON.stringify(prepared.body)).toBe(200);
@@ -189,16 +201,14 @@ describe("#3428 actual host address route", () => {
     }, 30000);
     it("a bind competitor after SQL returns saved-unavailable without reopening the old address", async () => {
         const r = await fixture(), old = await initialize(r);
-        let port = await freeHubPort();
-        while ([old.webPort, old.memberPort].includes(port))
-            port = await freeHubPort();
+        const port = await r.ports.next();
         const candidate = { origin: `https://127.0.0.1:${port}`, listen: { host: "127.0.0.1", port }, certificate: { mode: "generate" } }, p = await r.call("/prepare", candidate);
         expect(p.status).toBe(200);
         const server = createServer(), realApply = r.internal.applyHubSwitches.bind(r.internal);
         let bound: Promise<void> | undefined;
         const spy = vi.spyOn(r.internal, "applyHubSwitches").mockImplementation(async () => {
             if ((r.fm.getRawFleetConfig().hub as Record<string, unknown> | undefined)?.webOrigin === candidate.origin)
-                await (bound ??= new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); }));
+                await (bound ??= r.ports.release(port).then(() => new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); })));
             await realApply();
         });
         try {
@@ -219,13 +229,12 @@ describe("#3428 actual host address route", () => {
     }, 30000);
     it("rechecks a newly occupied candidate bind before the decision and keeps the old Hub running", async () => {
         const r = await fixture(), old = await initialize(r);
-        let port = await freeHubPort();
-        while ([old.webPort, old.memberPort].includes(port))
-            port = await freeHubPort();
+        const port = await r.ports.next();
         const before = structuredClone(r.fm.getRawFleetConfig().hub), candidate = { origin: `https://127.0.0.1:${port}`, listen: { host: "127.0.0.1", port }, certificate: { mode: "generate" } };
         const p = await r.call("/prepare", candidate);
         expect(p.status, JSON.stringify(p.body)).toBe(200);
         const server = createServer();
+        await r.ports.release(port);
         await new Promise<void>(resolve => server.listen(port, "127.0.0.1", resolve));
         try {
             const result = await r.call("/commit", { ref: p.body.ref });

@@ -42,7 +42,7 @@ describe("M-2815: Claude's per-model weekly is shown at 0%", () => {
 
   it("the rule by row: Claude keeps it, another vendor or an unnamed caller does not", () => {
     expect(isVisibleUsageMetric(fable, { id: "claude" })).toBe(true);
-    expect(isVisibleUsageMetric(fable, { id: "claude:jefflin" })).toBe(true);
+    expect(isVisibleUsageMetric(fable, { id: "claude:jamesli" })).toBe(true);
     expect(isVisibleUsageMetric(spark, { id: "codex" })).toBe(false);
     expect(isVisibleUsageMetric(fable, { id: "claudette" })).toBe(false);
     expect(isVisibleUsageMetric(fable)).toBe(false);

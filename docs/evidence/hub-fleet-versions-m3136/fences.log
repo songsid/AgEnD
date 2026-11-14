@@ -1,0 +1,8 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-fleet-versions-m3136
+
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  06:50:31
+   Duration  4.41s (transform 3.13s, setup 83ms, import 4.03s, tests 155ms, environment 0ms)

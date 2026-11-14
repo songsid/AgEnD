@@ -66,20 +66,20 @@ describe("Hub New room dialog (section 6)", () => {
     expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理"]);
     await search(pg, "hubRoomPeople", "陳"); await pick(pg, "hubRoomPeople", "陳主任");
     // A group's count is read when it is chosen (R #3866: GET candidates/group/:id), so the result row has none.
-    await search(pg, "hubRoomPeople", "研"); expect(results(pg, "hubRoomPeople")).toEqual(["研一 · 2 人", "研發一部", "研發二部"]);
-    await pick(pg, "hubRoomPeople", "研一"); await search(pg, "hubRoomPeople", "研發"); await pick(pg, "hubRoomPeople", "研發一部");
-    expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理", "陳主任", "研一 · 2 人", "研發一部 · 20 人"]);
-    expect(calls.filter(c => c.path.startsWith("/hub/v1/rooms/candidates/group/")).map(c => c.path)).toEqual(["/hub/v1/rooms/candidates/group/group-rd1"]);
+    await search(pg, "hubRoomPeople", "研"); expect(results(pg, "hubRoomPeople")).toEqual(["研發 · 2 人", "研發一部", "研發二部"]);
+    await pick(pg, "hubRoomPeople", "研發"); await search(pg, "hubRoomPeople", "研發"); await pick(pg, "hubRoomPeople", "研發一部");
+    expect(tags(pg, "hubRoomPeople")).toEqual(["你 · 管理", "陳主任", "研發 · 2 人", "研發一部 · 20 人"]);
+    expect(calls.filter(c => c.path.startsWith("/hub/v1/rooms/candidates/group/")).map(c => c.path)).toEqual(["/hub/v1/rooms/candidates/group/group-tm1"]);
     await search(pg, "hubRoomAgents", "my-"); expect(results(pg, "hubRoomAgents")).toEqual(["my-notes 王經理"]);
     await pick(pg, "hubRoomAgents", "my-notes");
     await search(pg, "hubRoomAgents", "spec"); expect(results(pg, "hubRoomAgents")).toEqual(["spec-writer 陳主任 邀請 · 等擁有者同意"]);
     await pick(pg, "hubRoomAgents", "spec-writer");
-    await search(pg, "hubRoomAgents", "研一"); await pick(pg, "hubRoomAgents", "「研一」所有人的 Agent");
-    expect(tags(pg, "hubRoomAgents")).toEqual(["my-notes", "spec-writer · 邀請 · 等擁有者同意", "「研一」所有人的 Agent · 邀請 · 等擁有者同意"]);
+    await search(pg, "hubRoomAgents", "研發"); await pick(pg, "hubRoomAgents", "「研發」所有人的 Agent");
+    expect(tags(pg, "hubRoomAgents")).toEqual(["my-notes", "spec-writer · 邀請 · 等擁有者同意", "「研發」所有人的 Agent · 邀請 · 等擁有者同意"]);
     { const sw = pg.root.querySelector("#hubRoomAssistant"); sw.checked = true; fire(sw, "change"); await settle(5); }
     fire(button(pg, "建立"), "click"); await settle(30);
     const posts = calls.filter(c => c.method === "POST");
-    expect(posts[0]).toEqual({ path: "/hub/v1/rooms", method: "POST", body: { name: "新案子", people: ["person-chen"], teams: ["team-1"], groups: ["group-rd1"], agents: ["exp-mine-1"], assistant: true } });
+    expect(posts[0]).toEqual({ path: "/hub/v1/rooms", method: "POST", body: { name: "新案子", people: ["person-chen"], teams: ["team-1"], groups: ["group-tm1"], agents: ["exp-mine-1"], assistant: true } });
     const roomId = opened[0]!;
     expect(posts.slice(1).map(c => [c.path, c.body])).toEqual([[`/hub/v1/rooms/${roomId}/invitations`, { agents: ["exp-02"] }], [`/hub/v1/rooms/${roomId}/invitations`, { team: "team-1" }]]);
     expect(closed).toBe(1);
@@ -120,7 +120,7 @@ describe("Hub New room dialog (section 6)", () => {
 
   it("a group unreadable at 建立 (503 group-unavailable): that group is dropped, the rest kept, the room not created", async () => {
     let unreadable = true;
-    const { pg, client, calls } = await fixture("en", (path, init) => unreadable && path === "/hub/v1/rooms" && init.method === "POST" ? { status: 503, body: { code: "group-unavailable", group: "group-rd1" } } : null);
+    const { pg, client, calls } = await fixture("en", (path, init) => unreadable && path === "/hub/v1/rooms" && init.method === "POST" ? { status: 503, body: { code: "group-unavailable", group: "group-tm1" } } : null);
     const opened: string[] = [];
     await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false, onOpenRoom: (id: string) => opened.push(id) })); await settle(10);
     await type(pg, "hubRoomName", "R");
@@ -139,7 +139,7 @@ describe("Hub New room dialog (section 6)", () => {
 
   it.each(["en", "zh-TW"] as const)("a group of one reads 「1 person」 in English, 「1 人」 in zh (%s)", async (lang) => {
     {
-      const { pg, client } = await fixture(lang, (path) => path === "/hub/v1/rooms/candidates/group/group-rd1" ? { status: 200, body: { kind: "group", id: "group-rd1", name: "Pilot direct group", people: 1 } } : null);
+      const { pg, client } = await fixture(lang, (path) => path === "/hub/v1/rooms/candidates/group/group-tm1" ? { status: 200, body: { kind: "group", id: "group-tm1", name: "Pilot direct group", people: 1 } } : null);
       await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false })); await settle(10);
       await search(pg, "hubRoomPeople", "研發一"); await pick(pg, "hubRoomPeople", "研發一部"); await settle(10);
       expect(tags(pg, "hubRoomPeople").at(-1)).toBe(lang === "en" ? "Pilot direct group · 1 person" : "Pilot direct group · 1 人");

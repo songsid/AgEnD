@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-room-answer-asker-m3128
+
+
+ Test Files  3 passed (3)
+      Tests  43 passed (43)
+   Start at  02:27:50
+   Duration  13.61s (transform 3.17s, setup 183ms, import 5.85s, tests 7.16s, environment 0ms)
+

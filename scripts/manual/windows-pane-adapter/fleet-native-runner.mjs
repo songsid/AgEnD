@@ -7,7 +7,7 @@ import{RuntimePaneLink}from'../../../dist/runtime-pane-link.js';
 import{readPaneHostDescriptor}from'../../../dist/runtime-pane-private.js';
 import{runtimeJobDigest}from'../../../dist/runtime-client-store.js';
 import{existsSync}from'node:fs';import{readdir,readFile,lstat}from'node:fs/promises';
-const[mode,root,scope,codeRoot,sessionId]=process.argv.slice(2),approved='c:\\users\\changhansung\\agend-adapter-proto';
+const[mode,root,scope,codeRoot,sessionId]=process.argv.slice(2),approved='c:\\users\\demo-account\\agend-adapter-proto';
 if(process.platform!=='win32'||!['host','relay','versions','detached-empty','archive'].includes(mode)||!win32.normalize(root||'').toLowerCase().startsWith(approved+'\\')||!/^[a-f0-9]{64}$/.test(scope||''))throw Error('Explicit approved native scratch scope required');
 const directory=join(root,'LocalData','AgEnD','pane-adapter',scope.slice(0,16),'state','pane-host');
 if(mode==='versions'){

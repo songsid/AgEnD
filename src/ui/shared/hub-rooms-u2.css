@@ -40,3 +40,19 @@
 @media (max-width: 899px), (pointer: coarse) {
   :is(.hub-invitations, .hub-agent-rooms, .hub-room-members, .hub-room-settings, .hub-room-new, .hub-admin-rooms) .btn { min-height: var(--tap); min-width: var(--tap); }
 }
+
+/* M-3127: people's reactions in a group room — the Fleet's reaction chip (app.css .msg-reactions .reaction), pressable:
+   mine is accented; the count beside the emoji. The quick picker opens under the message's Add reaction. */
+.msg-reactions .react-chip { gap: 4px; cursor: pointer; color: var(--text); }
+.msg-reactions span.react-chip { cursor: default; }
+.msg-reactions .react-chip .n { font-family: var(--font-ui, inherit); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--text-2); }
+.msg-reactions .react-chip.mine { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
+.msg-reactions .react-chip.mine .n { color: var(--accent); }
+.msg-reactions button.react-chip:hover { border-color: var(--accent); }
+.msg-reactions button.react-chip:focus-visible, .react-pick .react-opt:focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: 1px; }
+@media (pointer: coarse) { .msg-reactions .react-chip { min-height: 32px; min-width: 40px; } }
+.react-pick { display: flex; flex-wrap: wrap; gap: 2px; width: max-content; max-width: 100%; margin-top: 4px; padding: 4px;
+  border: 1px solid var(--border); border-radius: var(--r-md, 10px); background: var(--surface); box-shadow: var(--shadow-2); }
+.msg.user .react-pick { margin-left: auto; }
+.react-pick .react-opt { width: 36px; height: 36px; padding: 0; justify-content: center; font-family: var(--font-emoji); font-size: var(--fs-xl); line-height: 1; }
+@media (pointer: coarse) { .react-pick .react-opt { width: 44px; height: 44px; } }
