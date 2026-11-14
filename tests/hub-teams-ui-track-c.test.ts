@@ -36,7 +36,7 @@ it("lets a lead edit only the roster, searches the whole company with login disa
   const { p, c } = await mount("lead"); await open(p);
   expect(p.root.querySelector("[data-team-name]")).toBeNull(); expect(button(p, "Delete team")).toBeUndefined(); expect(button(p, "Choose a lead")).toBeUndefined();
   fire(button(p, "Add member"), "click"); await settle(10);
-  const input = p.root.querySelector('input[type="search"]'); expect(input.getAttribute("placeholder")).toBe("Search by name (whole company)");
+  const input = p.root.querySelector('input[type="search"]'); expect(input.getAttribute("placeholder")).toBe("Search everyone by name");
   change(input, "Ca"); await settle(5); fire(button(p, "Search"), "click"); await settle(10);
   expect(c.teamSuggestions).toHaveBeenCalledWith("person", "Ca", "team-a", expect.any(AbortSignal)); expect(p.root.textContent).toContain("other.casey");
   fire(button(p, "Choose"), "click"); await settle(10); fire(p.root.querySelector("form"), "submit"); await settle(20);
@@ -106,4 +106,25 @@ it("sets the browser title for Administration Teams through the Hub panel", asyn
     await p.mount(h(panel.HubPanel, { route: { panel: "hub", tab: "admin" } })); await settle(20);
     expect(p.document.title).toBe("Teams · AgEnD");
   } finally { await p.unmount(); panel.resetHubSession(); clients.setHubClient(null); }
+});
+it.each(["en", "zh-TW"])("names the ask permission being lost when deleting a Team (%s)", async language => {
+  const { p } = await mount("admin", language); await open(p, language);
+  fire(button(p, language === "en" ? "Delete team" : "刪除團隊"), "click"); await settle(10);
+  expect(p.root.querySelector('[role="region"]').textContent).toContain(language === "en" ? "May ask Helper · until" : "可以問 Helper · 到");
+});
+it.each(["en", "zh-TW"])("marks edited rosters unsaved until Save succeeds (%s)", async language => {
+  const { p, c } = await mount("lead", language); await open(p, language);
+  const unsaved = language === "en" ? "Unsaved changes" : "尚未儲存";
+  expect(p.root.textContent).not.toContain(unsaved);
+  const remove = [...p.root.querySelectorAll("button")].find((row: any) => row.getAttribute("aria-label") === `${language === "en" ? "Remove" : "移除"} Casey`);
+  fire(remove, "click"); await settle(10);
+  expect(p.root.querySelector(".hub-team-actions").textContent).toContain(unsaved); expect(c.updateTeam).not.toHaveBeenCalled();
+  fire(p.root.querySelector("form"), "submit"); await settle(20); expect(p.root.textContent).not.toContain(unsaved);
+});
+it.each(["en", "zh-TW"])("distinguishes never-joined members from a pending joined-status observation (%s)", async language => {
+  const value = team(); value.memberInfo.push({ id: "corp/unknown", name: "Unknown status" } as any); value.members.push("corp/unknown");
+  const { p } = await mount("admin", language, { team: vi.fn(async () => ({ ok: true, team: value })) }); await open(p, language);
+  const rows = [...p.root.querySelectorAll("tbody tr")];
+  expect(rows.find((row: any) => row.textContent.includes("Casey")).textContent).toContain(language === "en" ? "Not yet" : "尚未加入");
+  expect(rows.find((row: any) => row.textContent.includes("Unknown status")).textContent).toContain(language === "en" ? "Not checked yet" : "尚未確認");
 });

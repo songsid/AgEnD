@@ -54,7 +54,7 @@ try {
     check(tag + " four roster columns", (await page.locator("thead th").allTextContents()).slice(0, 4).join("|") === (english ? "Members|Role|Joined Hub|Shared agents" : "成員|身分|已加入 Hub|分享的 Agent"));
     await page.getByRole("button", { name: english ? "Add member" : "加入成員", exact: true }).click();
     const query = page.locator(".hub-team-search input"); await query.fill("new");
-    check(tag + " company-wide wording", await query.getAttribute("placeholder") === (english ? "Search by name (whole company)" : "輸入姓名搜尋（全公司）"));
+    check(tag + " all-people wording", await query.getAttribute("placeholder") === (english ? "Search everyone by name" : "輸入姓名搜尋所有人"));
     await page.locator(".hub-team-search").getByRole("button", { name: english ? "Search" : "搜尋", exact: true }).click(); await page.locator(".hub-team-hits li").waitFor();
     check(tag + " result sign-in name", (await page.locator(".hub-team-hits").innerText()).includes("new"));
     await page.locator(".hub-team-hits button").click(); await page.getByRole("button", { name: english ? "Save" : "儲存", exact: true }).click();
