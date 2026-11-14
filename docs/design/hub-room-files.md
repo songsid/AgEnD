@@ -41,3 +41,20 @@ A chained answer posted after someone joined therefore doesn't reveal the files 
 
 - Agents don't receive a person's files yet. An @agent post with files reaches the agent as text until `room-files-v1` (PR2).
 - The room assistant stays text only.
+
+## PR2: agents' files (`room-files-v1`)
+
+Both ends list the link feature `room-files-v1`: the Hub when it has an attachment store, the member when the Fleet has Hub file handling. An older peer's strict schema never sees `attachments`.
+
+- **Ask.** The ask payload stored at enqueue names the asking post's files, in both directions: a person's upload or an agent answer's files on a chained ask. At send time the names are dropped for a link without the feature.
+  - The asked fleet pulls the chunks with `attachment.get`. The group branch (`HubRoomAgents.attachmentGet`) serves only a fleet holding an open delivery of that exact post, re-checks that delivery's permission and validity at the read, and audits `file.transfer` once.
+  - The member writes the files to the agent's inbox with the 1:1 representative's `HubMemberFiles.receive`, and names them in the prompt below the room data. A file that can't be fetched is named as missing; it never holds the question.
+- **Answer.** `report_result` with `files` to agend-hub is accepted on a room ask; buttons and polls are still refused.
+  - The files go through the reply rule (`HubMemberFiles.prepare`) and are staged with `attachment.put` before the frozen `room.answer` names them. That happens again on every resend, because staging expires.
+  - The bytes must still match the frozen refs. Otherwise the answer stays unsent rather than naming other content.
+  - A files-only answer is allowed.
+  - The Hub binds the staged files to the answer post (`bindAnswer`) in the same audited transaction as the answer, and only when the answer is disclosed. An answer naming files from a link without the feature is refused (`incompatible`).
+- **Read.** A member reads an answer's files under the same rule as people's posts, and only on an answered post. A member whose floor hides the question can't read the answer's files.
+
+Not in PR2: on-behalf posts with files (Ridge's `room.post` stays text-only until a separate feature), and the room assistant.
+

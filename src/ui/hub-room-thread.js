@@ -78,7 +78,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
   const out = [], byId = new Map(messages.map((m) => [m.id, m]));
   // Each question's answers that have text, in arrival order: past ANSWERS_SHOWN they wait behind one 「展開其餘 N 則」.
   const answersOf = new Map();
-  const drawn = (m) => !!m.text || m.stage === "not-answered";   // an answer that shows: its text, or that none came (Ridge)
+  const drawn = (m) => !!m.text || (Array.isArray(m.files) && m.files.length > 0) || m.stage === "not-answered";   // its text or files (M-3125), or that none came (Ridge)
   for (const m of messages) if (m && m.answerTo && drawn(m)) answersOf.set(m.answerTo, [...(answersOf.get(m.answerTo) || []), m.id]);
   const num = (id) => { if (!ids.has(id)) ids.set(id, ids.size * 2 + 2); return ids.get(id); };
   for (const m of ordered) {

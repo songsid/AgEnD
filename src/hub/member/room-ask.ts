@@ -3,15 +3,19 @@ import type Database from "better-sqlite3";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { epoch, HubProtocolError, plain, uuid, validated } from "../validation.js";
-import { HUB_LIMITS } from "../protocol.js";
+import { HUB_LIMITS, HUB_ROOM_FILES_CAPABILITY, attachmentRefSchema } from "../protocol.js";
+import { HubFileRefusal, type HubMemberFiles } from "./attachments.js";
+import type { HubAttachmentChunk, HubAttachmentRef } from "../types.js";
 import type { HubRepresentativeDelivery } from "../representative.js";
 import type { HubReportExtras, HubReportOutcome } from "../../hub-report-target.js";
 export interface RoomContextRow { author: string; text: string; at: number; repliedTo?: true }
 export interface RoomAsk {
   messageId: string; roomId: string; roomName: string; exposureId: string;
   asker: { name: string }; text: string; context: readonly RoomContextRow[];
+  /** M-3125 room-files-v1: the asking post's files (pulled into the agent's inbox before the prompt). */
+  attachments?: readonly HubAttachmentRef[];
 }
-export interface RoomAnswer { messageId: string; roomId: string; exposureId: string; answerId: string; text: string }
+export interface RoomAnswer { messageId: string; roomId: string; exposureId: string; answerId: string; text: string; attachments?: HubAttachmentRef[] }
 export interface RoomAnswerAck { messageId: string; answerId: string }
 /** Track R projects reason as presenceReason; the room viewer, not the Fleet, chooses its language. */
 export type RoomPresenceReason = "quota" | "auth" | "approval" | "update" | "operator" | "idle" | "capacity" | "error" | "stopped" | "crashed" | "stuck" | "unknown";
@@ -29,6 +33,9 @@ export interface RoomAskLink {
   current(): boolean;
   readonly features?: ReadonlySet<string>;
   sendAnswer(answer: RoomAnswer): Promise<void>;
+  /** M-3125 room-files-v1: pull one chunk of an ask's file / push one chunk of an answer's file (attachment.get / .put). */
+  fetchFile?(id: string, offset: number): Promise<HubAttachmentChunk>;
+  putFile?(chunk: HubAttachmentChunk): Promise<void>;
 }
 export interface RoomAskOptions {
   db: Database.Database;
@@ -40,6 +47,8 @@ export interface RoomAskOptions {
   localExposure(id: string): RoomExposure | null;
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
   locale?: "en" | "zh-TW";
+  /** M-3125: the Fleet's Hub file handling (the 1:1 representative's): the inbox for an ask's files, the reply rule for an answer's. */
+  files?: HubMemberFiles;
 }
 export function migrateRoomAsks(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS hub_room_asks(message_id TEXT PRIMARY KEY,binding TEXT NOT NULL,state TEXT NOT NULL,cid TEXT NOT NULL UNIQUE,value TEXT NOT NULL);
@@ -51,11 +60,15 @@ const askSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uu
   asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question),
   context: z.array(z.strictObject({ author: plain(256), text: plain(HUB_LIMITS.question), at: epoch, repliedTo: z.literal(true).optional() })).max(31)
     .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1),
+  attachments: z.array(attachmentRefSchema).min(1).max(10).optional(),
 });
 const savedSchema = z.strictObject({ ask: askSchema,
   local: z.strictObject({ agent: z.string().min(1), consentId: z.string().min(1), revision: epoch, token: z.string().min(1) }),
   cid: z.string().regex(/^hub-room-[a-f0-9-]{36}$/),
-  answer: z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer) }).optional(),
+  answer: z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
+    attachments: z.array(attachmentRefSchema).min(1).max(10).optional() }).optional(),
+  /** M-3125: the answer's files as the agent named them; each send re-reads them and must find the frozen refs' bytes. */
+  answerFiles: z.array(z.string().min(1).max(4096)).min(1).max(10).optional(),
 });
 type Saved = z.infer<typeof savedSchema>;
 type State = "queued" | "dispatching" | "input" | "delivered" | "held" | "answered" | "acked";
@@ -168,8 +181,18 @@ export class HubRoomAskAdapter {
     this.save(id, "dispatching", saved);
     const current = () => this.usable(source) && this.admitted.get(id) === source && this.current(saved);
     try {
+      // M-3125: the asking post's files go to the agent's inbox first, with the 1:1 chat's own safe lines; a file that cannot be
+      // fetched is named as missing instead of holding the question.
+      let fileLines: string[] = [];
+      const files = saved.ask.attachments ?? [];
+      if (files.length) {
+        const fetch = source.fetchFile, store = this.options.files;
+        fileLines = store && fetch && source.features?.has(HUB_ROOM_FILES_CAPABILITY)
+          ? await store.receive(saved.local.agent, saved.ask.messageId, files, (fid, offset) => fetch(fid, offset)).catch(() => files.map(f => `(${f.name}: could not be fetched)`))
+          : files.map(f => `(${f.name}: not available on this Fleet)`);
+      }
       const delivered = await this.options.deliver({ agent: saved.local.agent, correlationId: saved.cid,
-        text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale), stillCurrent: current,
+        text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, fileLines), stillCurrent: current,
         beforeInput: async () => {
           if (!current() || this.row(id)?.state !== "dispatching") return false;
           // Durable first-input intent BEFORE handing bytes to the ordinary Fleet delivery path.
@@ -202,11 +225,23 @@ export class HubRoomAskAdapter {
     if (existing?.link === source) return existing.work;
     const work = Promise.resolve().then(async () => {
       if (!this.usable(source) || !this.current(saved) || this.row(id)?.state !== "answered") return;
-      try { await source.sendAnswer(structuredClone(saved.answer!)); } catch { /* The frozen row remains retryable until an exact ACK. */ }
+      try {
+        // M-3125: an answer's files are staged before its frame on every send (staging expires); the bytes must still be the
+        // frozen refs' bytes, or the answer stays unsent rather than naming other content.
+        if (saved.answer!.attachments) await this.stageFiles(saved, source);
+        await source.sendAnswer(structuredClone(saved.answer!));
+      } catch { /* The frozen row remains retryable until an exact ACK. */ }
     });
     const flight = { link: source, work }; this.sending.set(id, flight);
     void work.finally(() => { if (this.sending.get(id) === flight) this.sending.delete(id); }).catch(() => {});
     return work;
+  }
+  private async stageFiles(saved: Saved, source: RoomAskLink): Promise<void> {
+    const store = this.options.files, put = source.putFile, refs = saved.answer!.attachments!;
+    if (!store || !put || !saved.answerFiles || !source.features?.has(HUB_ROOM_FILES_CAPABILITY)) throw new HubProtocolError("incompatible");
+    const prepared = await store.prepare(saved.local.agent, saved.answerFiles);
+    if (prepared.length !== refs.length || prepared.some((p, i) => p.ref.sha256 !== refs[i]!.sha256 || p.ref.size !== refs[i]!.size || p.ref.name !== refs[i]!.name)) throw new HubProtocolError("conflict");
+    for (const [i, file] of prepared.entries()) await store.send({ ref: refs[i]!, bytes: file.bytes }, chunk => put(chunk));
   }
   report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-room-")) return null;
@@ -216,15 +251,31 @@ export class HubRoomAskAdapter {
     if (saved.local.agent !== input.caller) return null;
     const no = (message: string) => Promise.resolve<HubReportOutcome>({ ok: false, message });
     if (!this.current(saved) || input.callerCurrent?.() === false) return no("Not sent: this room question is no longer current.");
-    if (input.extras && Object.values(input.extras).some(v => v !== undefined)) return no("Not sent: room answers currently support text only.");
-    if (!plain(HUB_LIMITS.answer).safeParse(input.text).success || !input.text.trim()) return no("Not sent: enter a text answer within the answer limit.");
+    const { files: paths, ...rest } = input.extras ?? {};
+    if (Object.values(rest).some(v => v !== undefined)) return no("Not sent: room answers support text and files, not buttons or polls.");
+    const files = paths?.length ? [...paths] : [];
+    if (files.length && !(this.options.files && this.link?.putFile && this.link.features?.has(HUB_ROOM_FILES_CAPABILITY)))
+      return no("Not sent: this Hub connection does not take files in rooms yet. Send the answer as text.");
+    if (!plain(HUB_LIMITS.answer).safeParse(input.text).success || !input.text.trim() && !files.length) return no("Not sent: enter a text answer within the answer limit.");
     if (saved.answer) {
-      if (saved.answer.text !== input.text) return no("Not sent: this question already has a different saved answer.");
-    } else {
-      if (!["input", "delivered", "held"].includes(row.state)) return no("Not sent: the question has not reached the agent.");
-      saved.answer = { messageId: saved.ask.messageId, roomId: saved.ask.roomId, exposureId: saved.ask.exposureId, answerId: randomUUID(), text: input.text };
-      this.save(row.message_id, "answered", saved);
+      if (saved.answer.text !== input.text || JSON.stringify(saved.answerFiles ?? []) !== JSON.stringify(files)) return no("Not sent: this question already has a different saved answer.");
+      return this.finish(row, saved);
     }
+    if (!["input", "delivered", "held"].includes(row.state)) return no("Not sent: the question has not reached the agent.");
+    const prepared = files.length ? this.options.files!.prepare(saved.local.agent, files) : Promise.resolve([]);
+    return prepared.then(list => {
+      const latest = this.row(row.message_id);
+      if (!latest || this.closed || !this.current(saved)) return { ok: false, message: "Not sent: this room question is no longer current." };
+      const now = this.read(latest);
+      if (now.answer) return { ok: false, message: "Not sent: this question already has a saved answer." };
+      now.answer = { messageId: now.ask.messageId, roomId: now.ask.roomId, exposureId: now.ask.exposureId, answerId: randomUUID(), text: input.text,
+        ...(list.length ? { attachments: list.map(p => p.ref) } : {}) };
+      if (files.length) now.answerFiles = files;
+      this.save(latest.message_id, "answered", now);
+      return this.finish(this.row(latest.message_id)!, now);
+    }, e => ({ ok: false, message: e instanceof HubFileRefusal ? `Not sent: ${e.message}` : "Not sent: a file could not be read." }));
+  }
+  private finish(row: Row, saved: Saved): Promise<HubReportOutcome> {
     const link = this.link;
     const sent = row.state !== "acked" && this.usable(link) ? this.send(saved, link) : Promise.resolve();
     return sent.then(() => ({ ok: true, message: !this.closed && this.row(row.message_id)?.state === "acked"
@@ -250,7 +301,7 @@ export class HubRoomAskAdapter {
   close(): void { this.closed = true; this.link = null; this.admitted.clear(); }
 }
 
-export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en"): string {
+export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en", fileLines: readonly string[] = []): string {
   const zh = locale === "zh-TW";
   const data = JSON.stringify({ context: ask.context, question: { asker: ask.asker.name, text: ask.text } }, null, 2);
   return [zh ? `Hub 房間 ${JSON.stringify(ask.roomName)}｜${JSON.stringify(ask.asker.name)} 提問`
@@ -262,7 +313,9 @@ export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale:
     // answer the room shows; say so.
     zh ? `請用 report_result，指定 target_instance="agend-hub" 和 correlation_id="${correlationId}"，把完整的純文字回答寫在 summary 裡送回這個房間——房間顯示的就是 summary 的內容，它不是標題。`
       : `Use report_result with target_instance="agend-hub" and correlation_id="${correlationId}", with your whole text answer in summary — the room shows summary as your answer; it is not a title.`,
-    `${zh ? "房間對話（由舊到新）與問題" : "Room conversation (oldest first) and question"}:\n\`\`\`json\n${data}\n\`\`\``].join("\n\n");
+    `${zh ? "房間對話（由舊到新）與問題" : "Room conversation (oldest first) and question"}:\n\`\`\`json\n${data}\n\`\`\``,
+    // M-3125: the asking post's files, saved in your inbox; to answer with files, pass them in report_result's files.
+    ...(fileLines.length ? [`${zh ? "這個問題附的檔案（已存到你的收件匣）" : "Files attached to the question (saved in your inbox)"}:\n${fileLines.join("\n")}`] : [])].join("\n\n");
 }
 export function agentPresence(input: AgentStateInput): AgentPresence {
   // A process crash is not a room-visible detail. The Hub projects stopped as grey Stopped, not link-down Offline.

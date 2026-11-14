@@ -8,6 +8,8 @@ export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
 /** Track C's injectable adapter uses these frames; advertised only when live dispatch is composed (R2). */
 export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";
+/** M-3125: files on a room ask and its answer (both ends list it; an old peer's strict schema never sees `attachments`). */
+export const HUB_ROOM_FILES_CAPABILITY = "room-files-v1";
 /** Opted into by the mounted agent room-post adapter, never by an uncomposed member. */
 export const HUB_ROOM_POST_CAPABILITY = "room-post-v1";
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
@@ -62,8 +64,8 @@ export const answerSchema = z.strictObject({ messageId: uuid, answerId: uuid, te
 export const roomContextSchema = z.strictObject({ author: plain(256), text: plain(HUB_LIMITS.question), at: epoch, repliedTo: z.literal(true).optional() });
 export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roomName: plain(120), exposureId: uuid,
   asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), context: z.array(roomContextSchema).max(31)
-    .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1) });
-export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer) });
+    .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1), attachments: attachmentList.optional() });
+export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer), attachments: attachmentList.optional() });
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
 const roomPostRefusalCode = z.enum(["invalid", "denied", "revoked", "not-found", "archived", "ambiguous-room", "rate-limited", "conflict", "unavailable", "stale", "backpressure"]);
 const roomPostChoice = z.strictObject({ id: uuid, name: plain(120) });
