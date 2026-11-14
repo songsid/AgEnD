@@ -246,6 +246,19 @@ function thread() {
 }
 
 describe("#1672: the thread draws a status line muted, as plain text", () => {
+  it("lets a Hub stop sentence wrap without changing ordinary Fleet status folding", () => {
+    const { dom, list, th } = thread();
+    try {
+      const text = "A complete reason that must stay visible. ".repeat(5);
+      th.render([{ ...status(1, text), wrap: true, bare: true }, status(2, text)]);
+      const [stop, ordinary] = [...list.querySelectorAll(".msg.status-line")] as any[];
+      expect(stop.classList.contains("folded")).toBe(false);
+      expect(stop.querySelector(".st-more")).toBeNull();
+      expect(stop.querySelector(".st-text").textContent).toBe(text);
+      expect(ordinary.classList.contains("folded")).toBe(true);
+      expect(ordinary.querySelector(".st-more")).not.toBeNull();
+    } finally { dom.restore(); }
+  });
   it("not a person's bubble, not an agent's: plain text — no Markdown, no preview card, no html", () => {
     const { dom, list, th } = thread();
     try {

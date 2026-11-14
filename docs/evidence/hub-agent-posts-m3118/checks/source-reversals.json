@@ -1,0 +1,56 @@
+[
+  {
+    "control": "depth",
+    "caught": true,
+    "exit": 1,
+    "seconds": 6.8
+  },
+  {
+    "control": "quiet-pending",
+    "caught": true,
+    "exit": 1,
+    "seconds": 7.15
+  },
+  {
+    "control": "source-rate",
+    "caught": true,
+    "exit": 1,
+    "seconds": 5.57
+  },
+  {
+    "control": "receipt-root",
+    "caught": true,
+    "exit": 1,
+    "seconds": 7.21
+  },
+  {
+    "control": "room-all-policy",
+    "caught": true,
+    "exit": 1,
+    "seconds": 6.95
+  },
+  {
+    "control": "return-content-binding",
+    "caught": true,
+    "exit": 1,
+    "seconds": 8.63
+  },
+  {
+    "control": "source-fleet",
+    "caught": true,
+    "exit": 1,
+    "seconds": 6.65
+  },
+  {
+    "control": "source-audience",
+    "caught": true,
+    "exit": 1,
+    "seconds": 7.36
+  },
+  {
+    "control": "proactive-notify",
+    "caught": true,
+    "exit": 1,
+    "seconds": 1.21
+  }
+]
