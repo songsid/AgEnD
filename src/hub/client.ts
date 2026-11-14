@@ -191,7 +191,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (frame.type === "pairing.notice-v3" && (!view.features.has("pairing-notices-v3") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "relocate" && (!view.features.has(HUB_MEMBER_RELOCATION_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.ask" || frame.type === "room.answer-ack") && (!view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
-    if ((frame.type === "room.list-result" || frame.type === "room.post-result") && (!view.features.has(HUB_ROOM_POST_CAPABILITY) || !view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if ((frame.type === "room.list-result" || frame.type === "room.post-result" || frame.type === "room.members-result" || frame.type === "people.search-result" || frame.type === "room.post-answer") && (!view.features.has(HUB_ROOM_POST_CAPABILITY) || !view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "revoke") {
       if (frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       this.revocation = frame.payload.revocationVersion;
