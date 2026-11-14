@@ -15,8 +15,8 @@ Before (representative IDs; body unchanged):
 
 ```text
 [agend-human-id:hmsg-00000000-0000-4000-8000-000000000000]
-[user:hanhanv via discord, id:368442276000694273] 請看這個問題
-(message_id: 1570789578372157571 | verification_id: hmsg-00000000-0000-4000-8000-000000000000)
+[user:example via discord, id:100000000000000001] 請看這個問題
+(message_id: 1000000000000000002 | verification_id: hmsg-00000000-0000-4000-8000-000000000000)
 (Answer with the reply tool; terminal text does not reach them.)
 ```
 
@@ -24,8 +24,8 @@ After, first message / reminder:
 
 ```text
 [hid:hmsg-00000000-0000-4000-8000-000000000000]
-[user:hanhanv@dc#368442276000694273] 請看這個問題
-(message_id: 1570789578372157571)
+[user:example@dc#100000000000000001] 請看這個問題
+(message_id: 1000000000000000002)
 (Answer with the reply tool; terminal text does not reach them.)
 ```
 
@@ -33,8 +33,8 @@ After, ordinary message:
 
 ```text
 [hid:hmsg-00000000-0000-4000-8000-000000000000]
-[user:hanhanv@dc#368442276000694273] 請看這個問題
-(message_id: 1570789578372157571)
+[user:example@dc#100000000000000001] 請看這個問題
+(message_id: 1000000000000000002)
 ```
 
 `hid` is a display key, not a new identifier or API argument. Pass its unchanged
@@ -48,7 +48,7 @@ omit the `#…` only when the existing trusted metadata has no user ID. A label 
 never authority: the complete receipt's actor/proof/origin remains decisive.
 
 Alternative for the user's choice: keep the full sender on its first message or
-when the sender changes, then use `[user:hanhanv]`. This saves another 22 bytes
+when the sender changes, then use `[user:example]`. This saves another 22 bytes
 in the Discord example, but relies on remembered identity and exact delivery order.
 It makes identical display names and forgotten context harder to interpret. Prefer
 the stable short key set above.

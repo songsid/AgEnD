@@ -60,7 +60,7 @@ function post(op: string, args: Record<string, unknown>): Promise<string> {
     };
     // Include the instance name in the header so the endpoint can verify the
     // token before reading the body (security fix, #1489). The instance name
-    // is percent-encoded so non-ASCII names (e.g. "鬥破開發-opus-…") and names
+    // is percent-encoded so non-ASCII names (e.g. "遊戲開發-opus-…") and names
     // containing ":" survive HTTP header transmission.
     if (token) headers["X-Agend-Instance-Token"] = agentTokenHeader(INSTANCE, token);
     const req = request({

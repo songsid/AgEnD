@@ -228,7 +228,7 @@ const HEALTH_ERROR_NOTIFY_INTERVAL_MS = 10 * 60_000;
  * Whether two working directories belong to the same project, so a fleet-scoped
  * decision recorded in one reaches the other. Covers the worktree/checkout
  * layout AgEnD fleets actually use — `AgEnD`, `AgEnD-dev1`, `AgEnD-dev2`,
- * `AgEnD-reviewer`, `AgEnD-main` are one project; `DouPo_Server` is not.
+ * `AgEnD-reviewer`, `AgEnD-main` are one project; `GameServer` is not.
  * Nesting counts too (a subdirectory of a project belongs to it).
  */
 export function sameProjectFamily(a: string, b: string): boolean {
