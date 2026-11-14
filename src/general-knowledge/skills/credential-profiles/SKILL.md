@@ -277,7 +277,7 @@ while some instance still uses the default login). Codex works the same way:
 Logged-in named profiles remain visible in `get_usage`, `/usage` and the web
 usage panel even when no instance uses them. Such rows say "No agents on this
 profile" and still show their own windows, reset vouchers and credits. This
-applies to Claude Code, Codex and Kiro; moving agents away does not remove the
+applies to Claude Code, Codex, Kiro and Antigravity; moving agents away does not remove the
 account's quota. An unused, signed-out profile directory is not a login row.
 
 Claude Code also has a row per profile: `Claude (work)`, `Claude (personal)`,

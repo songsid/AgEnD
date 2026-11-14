@@ -19,11 +19,12 @@ function login(backend: string, profile: string) {
     const db = new Database(join(home, "data.sqlite3"));
     db.exec("CREATE TABLE auth_kv (key TEXT PRIMARY KEY, value TEXT)");
     db.prepare("INSERT INTO auth_kv VALUES (?, ?)").run("kirocli:odic:token", JSON.stringify({ access_token: "inert-test-token", expires_at: new Date(Date.now() + 3600000).toISOString(), region: "us-east-1", start_url: "https://view.awsapps.com/start" })); db.close();
-  } else writeFileSync(join(home, backend === "codex" ? "auth.json" : ".credentials.json"), JSON.stringify(backend === "codex" ? { tokens: { access_token: "inert-test-token" } } : { claudeAiOauth: { accessToken: "inert-test-token" } }));
+  } else if (backend === "antigravity") writeFileSync(join(home, "antigravity-oauth-token"), JSON.stringify({ token: { access_token: "inert-test-token" } }));
+  else writeFileSync(join(home, backend === "codex" ? "auth.json" : ".credentials.json"), JSON.stringify(backend === "codex" ? { tokens: { access_token: "inert-test-token" } } : { claudeAiOauth: { accessToken: "inert-test-token" } }));
 }
 const metrics = [{ label: "Weekly", type: "percent" as const, used: 100, resetsAt: "2026-12-01T00:00:00Z" }, { label: "Rate limit resets", type: "count" as const, value: 3, unit: "available" }];
 describe("#3883 logged-in profiles survive their last agent moving away", () => {
-  it.each([["codex", "codex"], ["kiro-cli", "kiro"], ["claude-code", "claude"]])("retains %s windows and reset vouchers through the shared web/chat/tool filter", async (backend, id) => {
+  it.each([["codex", "codex"], ["kiro-cli", "kiro"], ["claude-code", "claude"], ["antigravity", "antigravity"]])("retains %s windows and reset vouchers through the shared web/chat/tool filter", async (backend, id) => {
     login(backend!, "full");
     setUsageProvidersForTests([{ id: id!, name: id!, fetch: async home => home ? { status: "ok", metrics } : { status: "no-credentials", metrics: [] } }]);
     const binding = { backend, backend_options: { [backend!]: { credential_profile: "full" } } };
