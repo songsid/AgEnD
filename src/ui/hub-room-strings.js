@@ -24,6 +24,9 @@ register("hubRoom", {
     authorAgent: "{0} · {1}'s agent", authorAssistant: "Room assistant · Provided by the Hub",
     askProgress: "Answered {0} · working {1} · reply later {2}",
     allAnswered: "All {0} answered", expandRest: "Show {0} more",
+    // M-3127 reactions: who reacted ("Alex, Bob and 3 others reacted with 👍"), the add button, the picker
+    reactAdd: "Add reaction", reactPick: "Reactions", reactedWith: "{0} reacted with {1}", reactMore: "{0} and {1} others",
+    reactYou: "You", listSep: ", ", reactFailed: "Couldn't add the reaction. Try again.",
     laterAnswer: "{0} ({1}) · answers after they come online", noAnswer: "No answer",
     workingOne: "{0} is working on it", workingMany: "{0} agents are working",
     // §4 composer
@@ -135,6 +138,8 @@ register("hubRoom", {
     authorAgent: "{0} · {1}的 Agent", authorAssistant: "房間助理 · Hub 提供",
     askProgress: "已回答 {0} · 處理中 {1} · 稍後回覆 {2}",
     allAnswered: "{0} 個都回答了", expandRest: "展開其餘 {0} 則",
+    reactAdd: "加上表情", reactPick: "表情回應", reactedWith: "{0} 回應了 {1}", reactMore: "{0} 和其他 {1} 人",
+    reactYou: "你", listSep: "、", reactFailed: "表情沒加上，請再試一次。",
     laterAnswer: "{0}（{1}）· 上線後回答", noAnswer: "沒有回答",
     workingOne: "{0} 正在處理", workingMany: "{0} 個 Agent 正在處理",
     composer: "在「{0}」說話；@ 一個 Agent 請它回答",

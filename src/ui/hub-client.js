@@ -443,6 +443,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
       return call("POST", `/hub/v1/rooms/${id(roomId)}/messages`, { text, mentions, idempotencyKey,
         ...(replyTo ? { replyTo } : {}), ...(Array.isArray(files) && files.length ? { files } : {}) });
     },
+    /** M-3127: add (`on`) or take back my reaction `emoji` on a group-room message → { reactions }. */
+    reactRoomMessage(roomId, messageId, emoji, on) { return call("POST", `/hub/v1/rooms/${id(roomId)}/messages/${id(messageId)}/reactions`, { emoji: String(emoji), on: on === true }); },
     markRoomRead(roomId, upTo) { return call("POST", `/hub/v1/rooms/${id(roomId)}/read`, { upTo }); },
     /**
      * The one live stream of everything this person may see (seam 1): `handlers[name](data)` for each of ROOM_EVENTS,

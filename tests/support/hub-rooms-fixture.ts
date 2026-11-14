@@ -194,7 +194,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       rooms.push(room); emit("room.changed", { roomId: room.id, room: listItem(room) });
       return { status: 200, body: { room: listItem(room) } };
     }
-    const m = p.match(/^\/hub\/v1\/rooms\/([^/]+)(?:\/(members|messages|read|invitations)(?:\/([^/]+))?)?$/);
+    const m = p.match(/^\/hub\/v1\/rooms\/([^/]+)(?:\/(members|messages|read|invitations)(?:\/([^/]+)(?:\/reactions)?)?)?$/);
     if (m && m[1] !== "events" && m[1] !== "candidates") {   // candidates: Track U2 below
       const room = roomOf(decodeURIComponent(m[1]!));
       if (!room) return fail(404, "not-found");
@@ -239,7 +239,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
         const page = room.messages.slice(Math.max(0, (end < 0 ? room.messages.length : end) - limit), end < 0 ? room.messages.length : end);
         return { status: 200, body: { messages: page, more: page.length > 0 && room.messages[0] !== page[0] } };
       }
-      if (sub === "messages" && method === "POST") {
+      if (sub === "messages" && !m[3] && method === "POST") {
         const b = req.body ?? {};
         if (room.archived) return fail(409, "archived");
         if (!room.members.some(x => x.id === FIXTURE_ME.id)) return fail(403, "not-member");
@@ -259,6 +259,24 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
         room.readUpTo = msg.id;
         emit("message.added", { roomId: room.id, message: msg });
         return { status: 200, body: { message: msg } };
+      }
+      // M-3127: my reaction on a message (`/messages/:id/reactions`): set semantics, the whole message on the stream.
+      if (sub === "messages" && m[3] && p.endsWith("/reactions") && method === "POST") {
+        const b = req.body ?? {}, msg = room.messages.find(x => x.id === m[3]) as any;
+        if (room.archived) return fail(409, "archived");
+        if (!msg) return fail(404, "not-found");
+        if (typeof b.emoji !== "string" || typeof b.on !== "boolean") return fail(400, "invalid");
+        if (b.emoji === "💥") return fail(409, "limit");
+        const list: { emoji: string; count: number; members: string[] }[] = (msg.reactions ?? []).map((r: any) => ({ ...r, members: [...r.members] }));
+        let r = list.find(x => x.emoji === b.emoji);
+        if (b.on && !r) list.push(r = { emoji: b.emoji, count: 0, members: [] });
+        if (r && b.on && !r.members.includes(FIXTURE_ME.id)) r.members.push(FIXTURE_ME.id);
+        if (r && !b.on) r.members = r.members.filter(id => id !== FIXTURE_ME.id);
+        for (const x of list) x.count = x.members.length;
+        const next = list.filter(x => x.count > 0);
+        if (next.length) msg.reactions = next; else delete msg.reactions;
+        emit("message.updated", { roomId: room.id, message: msg });
+        return { status: 200, body: { reactions: next } };
       }
       if (sub === "read" && method === "POST") {
         const upTo = req.body?.upTo;

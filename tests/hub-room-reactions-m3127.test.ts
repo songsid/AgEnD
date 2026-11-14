@@ -57,6 +57,17 @@ it("refuses non-members, unseen history, room lines, archived rooms, bad emoji a
   expect((await react(w.b, w.id, w.post, "😀")).json.code).toBe("archived");
 });
 
+it("follows the M-3118 lineage floor: a post whose question is older than me stays hidden, so no reaction", async () => {
+  const w = await world();
+  await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.id}/members`, { kind: "person", id: personKeyString(w.cara) });
+  const late = await r!.call(w.a, "POST", `/hub/v1/rooms/${w.id}/messages`, { text: "after Cara joined", mentions: [], idempotencyKey: randomUUID() });
+  expect((await react(w.c, w.id, late.json.id, "👍")).status).toBe(200);
+  // An agent's post in a thread rooted before Cara joined (Ridge's lineage row): its audience floor is the old root's.
+  expect(r!.db.prepare("UPDATE hub_room_post_lineage SET root_id=?,depth=1,audience_sequence=1 WHERE post_id=?").run(w.post, late.json.id).changes).toBe(1);
+  expect((await react(w.c, w.id, late.json.id, "🎉")).status).toBe(404);
+  expect((await react(w.a, w.id, late.json.id, "🎉")).status).toBe(200);   // Alex was there: still his to react to
+});
+
 it("pushes the reacted post on the members' stream as message.updated, and nothing for a no-op", async () => {
   const w = await world(), stop = new AbortController(), timer = setTimeout(() => stop.abort(), 5000);
   try {
