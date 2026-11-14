@@ -286,6 +286,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   padding: max(var(--s-1), env(safe-area-inset-top)) max(var(--s-3), env(safe-area-inset-right)) var(--s-1) max(var(--s-3), env(safe-area-inset-left));
 }
 .panel-head .sb-open { display: none; }
+.sb-open .ic-back, .sb-open .sb-badge { display: none; }   /* M-3115: the phone's ‹ (below); elsewhere ☰ only */
 .sb-collapsed .panel-head .sb-open { display: inline-flex; }
 /* #2074: a collapsed sidebar's "New agent", beside its ☰ (a phone opens the drawer, which has the row). */
 .panel-head .sb-new { margin-left: calc(-1 * var(--s-1)); }
@@ -1487,6 +1488,17 @@ img.amb-p { object-fit: contain; }
     padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   .kb-open .tabs { display: none; }
+  /* M-3115 (phone v2): inside an agent's pages there are no bottom tabs — the header's first button (‹, with what Needs
+     you counts) goes back to the agents, and ⋯ reaches Needs you, Fleet and Settings. The lists keep the tabs. */
+  .in-agent .tabs { display: none; }
+  .in-agent .main { padding-bottom: 0; }
+  .sb-back .ic-menu { display: none; }
+  .sb-back .ic-back { display: inline-block; }
+  .sb-back { position: relative; }
+  .sb-back .sb-badge { display: block; position: absolute; top: 2px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--r-full); background: var(--danger-fill); color: var(--on-danger); font-size: var(--fs-xs); line-height: 16px; text-align: center; font-weight: var(--fw-semibold); }
+  /* ✓ Verified moved into ⋯: a line under the composer that would say only that is not drawn (Not verified, waiting for
+     Confirm, and what pressing Authorize answered still are). */
+  .composer-row:has(.webauth-row[data-state="verified"]):not(:has(.webauth-notice, .guest-note)) { display: none; }
   /* #2478: with the keyboard up the line under the composer goes too — the box sits on the keyboard; back on blur. */
   .kb-open .composer-row { display: none; }
   /* M-2733: on a phone the line under the composer was flush with the box's rounded edge, 4px under it and on the tab
