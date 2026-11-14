@@ -1,11 +1,11 @@
 {
-  "sourceHead": "84a78efb22888b3152093b0e57c85c2892a6642d",
-  "baseRef": "3384e3728260d4f909978001a39d4b40804ced62",
+  "sourceHead": "d15b4974ecd1dda00a1875971526da137e710272",
+  "baseRef": "7c12d23c0c0d7e4bc5c242388014b69191df6cf1",
   "dirty": [],
   "inputs": [
     {
       "path": "src/ui/panel-hub.js",
-      "base": "36b2529848b24a4cb9f28455d7766e6d71d6337c4fc243e986fb06b1189ef99f"
+      "base": "1a9307d1cb1deccb2129a82da2dde5206f0496e7a90d21dd97a8b3325c999bf7"
     },
     {
       "path": "src/ui/hub-client.js",
@@ -13,7 +13,7 @@
     },
     {
       "path": "src/ui/shared/hub-chat.css",
-      "base": "296807b220f48f6201ac89a55c4e6ee94609e20d428e11f8b90ea7f517cd669d"
+      "base": "d1592d89b970629e3ecba95c792ba23cab53dc27490556b645f325a6e8c4af58"
     },
     {
       "path": "src/ui/panel-hub.js",
@@ -25,7 +25,7 @@
     },
     {
       "path": "src/ui/hub-room-list.js",
-      "sha256": "618bef4b55ca88d1d628674f8702ed9147fa09be4462eb398bf8ff195d9e86d6"
+      "sha256": "0a4ac0cd3d17613fb300df6c8183e551d18b97f56c816fce922fead15cb1988d"
     },
     {
       "path": "src/ui/hub-room-strings.js",
@@ -33,11 +33,11 @@
     },
     {
       "path": "src/ui/hub-room-thread.js",
-      "sha256": "1b7c5257dfc4b8bd9e214b4ac562c7121446925696ac941dcdeb3846be295b9f"
+      "sha256": "5f2da73793808c5ae09488364abdd6bf24499ecd7da915e21626b6aafa6b489a"
     },
     {
       "path": "src/ui/hub-room-composer.js",
-      "sha256": "ed79763edea2363578f061ea21697f94066b298ae4e14b610b0ea585011ac31f"
+      "sha256": "d9013cbd80c937c850aeea0771d576bab3a99f56dcea4628775eebb683b36205"
     },
     {
       "path": "src/ui/hub-room-favorites.js",
@@ -277,15 +277,15 @@
   "pictures": [
     {
       "path": "list.before.desktop-en-light.png",
-      "sha256": "e6c442023fb490b951ef0e89bd5fbf2e8f89608949c4b633a09e0610abc92f69"
+      "sha256": "403fb7a49da3e4e2b35131f363f052d83731f0b478e4f05b645fce6869f414c5"
     },
     {
       "path": "room-before.desktop-en-light.png",
-      "sha256": "7a357e8d362cc7280d18aa6f0b01bfbdc16a09b39b4ddbc4b4ef4518077b8995"
+      "sha256": "44824b5409b9df0f10d656c1ff4125a0100ba2198365c05bd37933132edcbdd5"
     },
     {
       "path": "list.after-live.desktop-en-light.png",
-      "sha256": "8dd3f0f26e59645881dfb7a0115388f4e329311866810d550237a760248388d7"
+      "sha256": "8c8cbfdd27d809d6f98b873892857ef11709fb8f09e1a076dcc9c1e8918c3336"
     },
     {
       "path": "favorites-after.desktop-en-light.png",
@@ -293,43 +293,43 @@
     },
     {
       "path": "room-after.desktop-en-light.png",
-      "sha256": "35966e0ba47454d5e7b27dded0745a2de5a9c815b919af3ba83305ba91819754"
+      "sha256": "b3a50766b0d4b62ba6eae608ccd31b327cb3d63c832d274d1268c2239c4ec699"
     },
     {
       "path": "menu-after.desktop-en-light.png",
-      "sha256": "4c94d21f599b6f7ad6b0f7d45d0a8dcd8d52bfb6f1f55f89647afc3c21195f94"
+      "sha256": "315388afafa56cbceca23e023babc40463752c143afe09b7052132e4b8dea5d2"
     },
     {
       "path": "list.before.desktop-en-dark.png",
-      "sha256": "a2badd2c0d8b9b094a76f5be50dadc6cef0512c5d71d8414458c6f6338143b56"
+      "sha256": "0b038fa3ce37d84bac48fb76e3561a2b9450c0759ebbf58ee2e903c2605a8a25"
     },
     {
       "path": "room-before.desktop-en-dark.png",
-      "sha256": "d8d24d0f8cdfc1ac583d2c83e2b578c044d79edb371049b2ceb69ded44a13f16"
+      "sha256": "74ec25ee01e2301d26739d7d26062e967eec08bf89d309fce75d46052ea290e0"
     },
     {
       "path": "list.after-live.desktop-en-dark.png",
-      "sha256": "97d979f301ed9f2a536831e86621d1b985fcefa6419714ea27a011ed05d44e93"
+      "sha256": "7bb2b6e0199b1eea131c25b60ff98caf8ea600cd52c01dfadbc1973ccdba2944"
     },
     {
       "path": "favorites-after.desktop-en-dark.png",
-      "sha256": "89f5a6c570e44cc9f0353bd917a56b3a9d32a875709fc26f2395e07f8e1063a5"
+      "sha256": "987bb19f5470027109277d9b86bed55f266d6d60b2965853db5d107585af5bfc"
     },
     {
       "path": "room-after.desktop-en-dark.png",
-      "sha256": "4d38a66dff5b8c6fcda7776dd17cb8871048fde8adf89102e545d5d04d138705"
+      "sha256": "2093d8c3b5057d485faad4d8b0ae1ce43e3a807576e39d6100ff494e3339f3fa"
     },
     {
       "path": "menu-after.desktop-en-dark.png",
-      "sha256": "90fbb1f7b1ff06c578829b172232c040535b1d151875dd308586ded9628e48d6"
+      "sha256": "2f1ba76c36bec7b16771366a68f94dfbc23908be44c8a370fcb7e7d4bf032b1b"
     },
     {
       "path": "list.before.desktop-zh-TW-light.png",
-      "sha256": "c8d6d8bd7999da73b202f6af3a4d456d687af24f08294ff3440e6474bdf641d6"
+      "sha256": "71eb4d5b9174d98f46caa7050eeac2d7bbc02005301e09e1a516eab5034cf338"
     },
     {
       "path": "room-before.desktop-zh-TW-light.png",
-      "sha256": "94eed5f1e44f5ee27e4503792c31d7db78a1c1bb8ba14ea76b203b5449023265"
+      "sha256": "092bcc4b7cd629ae0d8d70e52d057be331bf9623b5b3622a7fc9db0731b3c911"
     },
     {
       "path": "list.after-live.desktop-zh-TW-light.png",
@@ -337,43 +337,43 @@
     },
     {
       "path": "favorites-after.desktop-zh-TW-light.png",
-      "sha256": "4271f924c6c9fc498e73cf3fb1a3e9dd104fea6f9c2eaf973d29f70291400423"
+      "sha256": "53517c1c76143a602460b5fd8281497560f8c7d342815c79aea3bc5df6e4dec9"
     },
     {
       "path": "room-after.desktop-zh-TW-light.png",
-      "sha256": "27e837770f064c593aa07bc7da7653a17e10d381202db6dc9b74fd7773ea8637"
+      "sha256": "a9815d843e4a9312f14e62b873e59d6225aa5980104927b49a3ac44cdbd865ac"
     },
     {
       "path": "menu-after.desktop-zh-TW-light.png",
-      "sha256": "b617a9dfc72a78139b71890fa532ad4ea8440f4766bdcb4bc74aee6ffe012a7e"
+      "sha256": "076e6bbe2e26eaa1313603ee8df4ac35df153ad026afbf4042fed4c0c6c9286c"
     },
     {
       "path": "list.before.desktop-zh-TW-dark.png",
-      "sha256": "c94fcc9258b0e9e9e54a53d5d36ede637612d63de6bc206b63e0da41780bfa1f"
+      "sha256": "71ec877cf3e01d10d8ec99bc590336678687a89c1bab8af001c53882629ba933"
     },
     {
       "path": "room-before.desktop-zh-TW-dark.png",
-      "sha256": "6178dfb3b0fa1f0cfc2b6416a7c5bb32e6b8b704b31a226aa8bff34168aaa2df"
+      "sha256": "c1da8ef7dcc1fb36389d3d1316bc9ec13703a7dd89b57e703b7826ae432efb6d"
     },
     {
       "path": "list.after-live.desktop-zh-TW-dark.png",
-      "sha256": "1118c9245c1b9d2959947f87cb50fd140c36f92494d5a8f9c4f44f1e2999e1e4"
+      "sha256": "c780cc6976224dd0d524ab5d312e38a0f4a9254186741536bf25e2d398f4efae"
     },
     {
       "path": "favorites-after.desktop-zh-TW-dark.png",
-      "sha256": "5e46e4071afe591cd553000affa75b3104ceab09eb707c127982f0785728ba4e"
+      "sha256": "bd98e1589e05910b524732ec2469e66fe1e9d3109338c0892b69c74a76c86de2"
     },
     {
       "path": "room-after.desktop-zh-TW-dark.png",
-      "sha256": "4362d4b132cf1a29df2e76662db22df42a1a185f7dc65f4ae0c65dba7f7ac855"
+      "sha256": "71d00b6fe720375ec2d8aca0c9c1a324fbd5959211838ebfd10dd4f698710f0b"
     },
     {
       "path": "menu-after.desktop-zh-TW-dark.png",
-      "sha256": "808fbeebdd90332fcbfdaa25bab120143dd315787e65d6176c19aa66b3126ca9"
+      "sha256": "ed0c0f3f21b8dbf98acc9c5af1d0458e45c22aa1e49020a293642c770e478475"
     },
     {
       "path": "list.before.phone-en-light.png",
-      "sha256": "b3d46541769d4a02d8e7fa78e0c62f1441108cb979624b0eb82bb91004105791"
+      "sha256": "0ddbc28dd50efb4788a127b68dfadf03500bf716dfa6e606a9c162f7ad40ed1a"
     },
     {
       "path": "room-before.phone-en-light.png",
@@ -385,7 +385,7 @@
     },
     {
       "path": "favorites-after.phone-en-light.png",
-      "sha256": "5d2296b2dc37a8b0b4a9cde73e7c7a89a4bd8346e2d21c0693dd75d8101900a5"
+      "sha256": "e464d6308152ace6ee01e050005de627e953b2ecd43d3e2caa26f47423bfebab"
     },
     {
       "path": "room-after.phone-en-light.png",
@@ -397,7 +397,7 @@
     },
     {
       "path": "list.before.phone-en-dark.png",
-      "sha256": "2f44b570f10451ec466adeb9b995c308c0b0733099217f1eedad2e2826506c31"
+      "sha256": "0712ecfd05c8b1269d47ee4caff156f63bac5fc944822dcafbe09b7435d14f4d"
     },
     {
       "path": "room-before.phone-en-dark.png",
@@ -405,11 +405,11 @@
     },
     {
       "path": "list.after-live.phone-en-dark.png",
-      "sha256": "92b514b8ccac1d87bb8106deda18f20e7dca8fdb1b5a809ace8b19425c198d77"
+      "sha256": "2b58c1ebc89e441ad879568be4a36cc037a2d653737b81cef645e8e8ecf48463"
     },
     {
       "path": "favorites-after.phone-en-dark.png",
-      "sha256": "c54b70e1d543966004afe3cbc4d1c5d49af4ab74f0c95490e966cb4ead5c5644"
+      "sha256": "666a87e3fa4d866c2f64f1f9dc3333087cee27fc29ed9f0e6ec9d476b63f69f8"
     },
     {
       "path": "room-after.phone-en-dark.png",
@@ -417,11 +417,11 @@
     },
     {
       "path": "menu-after.phone-en-dark.png",
-      "sha256": "2d8ded807a4c388f5cbd3ef7bdc92d2eb0421ec42e0da84ff0fccce42fbf47d9"
+      "sha256": "14e30fb69ce55a29a16c0f723feee323e0d15274a676001c26f1dc8f3545d100"
     },
     {
       "path": "list.before.phone-zh-TW-light.png",
-      "sha256": "62b1739143b402fed98b5c2ee71ffc2b7cd975441bafa68db1513f4f9339aa51"
+      "sha256": "684a3b8de5f0dad174619630fcbf8c3a64d4815763feefd21ad87132246c3b95"
     },
     {
       "path": "room-before.phone-zh-TW-light.png",
@@ -429,11 +429,11 @@
     },
     {
       "path": "list.after-live.phone-zh-TW-light.png",
-      "sha256": "bac47f7d0d6e9803a1a13b7acc3351374d761df427ccc34b92cfe90f4028d13c"
+      "sha256": "f1eb5a456b9f1ba5e19addae21fc27b05c3f9b0d7b271fe98b79624d68ea29bf"
     },
     {
       "path": "favorites-after.phone-zh-TW-light.png",
-      "sha256": "eb3976739d024b3fb8b8642625d022c0b0adfdeaa5a78d044fb6f3a6b197ef15"
+      "sha256": "d612657a47aa184db4f5b5ce1ea869604542e3f2188bb4acdb2998041e5c4635"
     },
     {
       "path": "room-after.phone-zh-TW-light.png",
@@ -441,11 +441,11 @@
     },
     {
       "path": "menu-after.phone-zh-TW-light.png",
-      "sha256": "91620856cdbf3a4dd9109805aaea1b10b854fd94ababdd626ffd84f7121d19e5"
+      "sha256": "72a5e100ab0c9504000c22b6a05561ffbb1d9abc014894255cabdf264d207160"
     },
     {
       "path": "list.before.phone-zh-TW-dark.png",
-      "sha256": "dc8c6ada8f97d188e9ce704785c5218bb7af832d471c03d16e0bf94215e7df04"
+      "sha256": "db9777c6960ac0d37a9e87007f88ece3664e6594ba1832a238f259b6f48c06e7"
     },
     {
       "path": "room-before.phone-zh-TW-dark.png",
@@ -453,11 +453,11 @@
     },
     {
       "path": "list.after-live.phone-zh-TW-dark.png",
-      "sha256": "8ed8fa61fc7cea02e12e41e57b5cdf274dd98f58c0e7bd05be634380afe4621a"
+      "sha256": "999a3968b2d19cec96c4bc43ad6bd989bd6d0960a293f35dd3a83c732e120b5a"
     },
     {
       "path": "favorites-after.phone-zh-TW-dark.png",
-      "sha256": "df0cfd8ee2ab9767b5aa8bb4cef957bcf37f1b01bb9f0c45b273610bcdafef92"
+      "sha256": "c27d6123cdd8692279bcf56449160d4eef1d467f9188bb799128082c0a182749"
     },
     {
       "path": "room-after.phone-zh-TW-dark.png",
@@ -465,11 +465,11 @@
     },
     {
       "path": "menu-after.phone-zh-TW-dark.png",
-      "sha256": "1d2dc51c6a46c72b6cedcf7912e74d5ef9b271791a98d805dba415ad2bac4803"
+      "sha256": "bea420a1787820e337ca805c736cdc5eb2c72595596556a10e896dba14babf0a"
     },
     {
       "path": "assistant-after.desktop-en-light.png",
-      "sha256": "9ab1ee90a0b0f06fb7d643b5417d350f274b4ece48525897106fee5b7beb2eef"
+      "sha256": "909de91cf2ab6e282b303e3fb22ee720c86980b9c4ac63369e5376d140239df2"
     },
     {
       "path": "assistant-after.phone-zh-TW-dark.png",
@@ -477,19 +477,19 @@
     },
     {
       "path": "list.after-limited.desktop-en-light.png",
-      "sha256": "6097bff56fc09821b9a58c30baed9c7a0d4ea3b4faa1346bbf1c4c9c02374412"
+      "sha256": "f1c38bd898dc3bcd369f9c48765a92e643e20a913cdda8de0d9c347ffdc8e2c8"
     },
     {
       "path": "list.skew.desktop-en-light.png",
-      "sha256": "ace85c0eb7d764f390f14313c6ed5145a707c5780ff8ae607a1d4dff33bfbc18"
+      "sha256": "f1c38bd898dc3bcd369f9c48765a92e643e20a913cdda8de0d9c347ffdc8e2c8"
     },
     {
       "path": "list.after-limited.phone-zh-TW-dark.png",
-      "sha256": "f71dcd731bee3d7610fea1b3c85287c6ca8bdb4ff1b2b7570d5399cf3e8934e2"
+      "sha256": "b7db552cb0eddba68523f4e3d40ec39ab8288ea7d21e945c4f4256b4e9601645"
     },
     {
       "path": "list.skew.phone-zh-TW-dark.png",
-      "sha256": "939aa05bfbf814a53937f160090690fba2e3005a3ba4419bd69044f65932d265"
+      "sha256": "52685e0435624599b18dada9a5682c0bd70eab1ef423009365364dabf24f2a52"
     }
   ]
 }

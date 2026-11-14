@@ -69,7 +69,9 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // M-3092 (Hub rooms, track U): the conversation list, a room on the shared thread, its composer.
   "hub-room-list.js", "hub-room-thread.js", "hub-room-composer.js", "hub-assistant-admin.js", "hub-assistant-admin-strings.js",
   // M-3092 S-145: the list's favourites (the Fleet sidebar's #1664 rules; per browser until a Hub-side store).
-  "hub-room-favorites.js"]);
+  "hub-room-favorites.js",
+  // S-148: the working bar's words (#3857), shared by the room thread.
+  "hub-room-working.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
