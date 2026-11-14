@@ -21,7 +21,7 @@ beforeAll(async () => {
   g.fetch = async () => ({ ok: true, status: 200, json: async () => ({}), text: async () => "" });
   store = await import("/assets/app-store.js"); router = await import("/assets/app-nav.js"); shell = await import("/assets/app-shell.js");
   i18n = await import("/assets/app-i18n.js"); client = await import("/ui/js/hub-client.js"); hubPanel = await import("/ui/js/panel-hub.js");
-  thread = await import("/ui/js/hub-room-thread.js"); chatThread = await import("/assets/chat-thread.js"); msgActions = await import("/ui/js/chat-msg-actions.js");
+  thread = await import("/ui/js/hub-room-thread.js"); chatThread = await import("/assets/chat-thread.js"); msgActions = await import("/assets/chat-msg-actions.js");
   pg.restore();
 });
 const realES = g.EventSource;
