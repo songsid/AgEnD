@@ -8,15 +8,15 @@ afterEach(() => dbs.splice(0).forEach(db => db.close()));
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 function world() {
   const db = new Database(":memory:"); dbs.push(db); HUB_MEMBER_RECOMMENDATION_MIGRATION.up(db);
-  let mounted = true, connected = true;
+  let mounted = true, connected = true, at = 1_800_000_000_000;
   const lookup = vi.fn(async (_v: string): Promise<"found" | "not-found" | "unavailable"> => "found");
   const changed = vi.fn(), send = vi.fn(async (_f: unknown) => {});
-  const options = { db, hubId: randomUUID(), hubName: "hub.test", version: "2.4.0-beta.3", now: () => 1_800_000_000_000,
+  const options = { db, hubId: randomUUID(), hubName: "hub.test", version: "2.4.0-beta.3", now: () => at,
     current: () => mounted, lookup, changed };
   const receiver = new HubMemberRecommendations(options);
   const link = { current: () => connected, features: new Set(["fleet-recommend-v1"]), linkEpoch: 1, send } as unknown as HubMemberLink;
   const recommendation = (revision = 1, version: string | null = "2.4.0-beta.4") => ({ revision, version, setAt: 1_799_999_999_000 });
-  return { db, receiver, link, lookup, changed, send, options, recommendation, disconnect: () => { connected = false; }, unmount: () => { mounted = false; } };
+  return { db, receiver, link, lookup, changed, send, options, recommendation, advance: (ms: number) => { at += ms; }, disconnect: () => { connected = false; }, unmount: () => { mounted = false; } };
 }
 it("verifies newer advice once, persists it before ACK, and restores it without network in a selected member database", async () => {
   const w = world(); w.receiver.receive(w.recommendation(), w.link); expect(w.receiver.view()).toBeNull(); await settle();
@@ -28,10 +28,11 @@ it("verifies newer advice once, persists it before ACK, and restores it without 
   const restored = new HubMemberRecommendations(w.options); expect(restored.view()).toEqual(w.receiver.view());
   expect(w.lookup).toHaveBeenCalledTimes(1); w.receiver.close(); expect(w.receiver.view()).toBeNull();
 });
-it.each(["not-found", "unavailable"] as const)("does not offer or ACK a version that npm reports as %s; exact replay retries", async result => {
+it.each(["not-found", "unavailable"] as const)("does not offer or ACK a version that npm reports as %s; exact replay retries when due", async result => {
   const w = world(); w.lookup.mockResolvedValueOnce(result); w.receiver.receive(w.recommendation(), w.link); await settle();
   expect(w.receiver.view()).toBeNull(); expect(w.send).not.toHaveBeenCalled();
-  w.receiver.receive(w.recommendation(), w.link); await settle(); expect(w.receiver.view()?.revision).toBe(1); expect(w.send).toHaveBeenCalledTimes(1);
+  w.receiver.receive(w.recommendation(), w.link); await settle(); expect(w.receiver.view()).toBeNull(); expect(w.lookup).toHaveBeenCalledTimes(1);
+  w.advance(5 * 60_000); w.receiver.receive(w.recommendation(), w.link); await settle(); expect(w.receiver.view()?.revision).toBe(1); expect(w.send).toHaveBeenCalledTimes(1);
 });
 it("clears on a newer none/current policy, ignores older revisions, and refuses altered same-revision data", async () => {
   const w = world(); w.receiver.receive(w.recommendation(), w.link); await settle();
@@ -64,4 +65,26 @@ it("recovers a dropped ACK by reusing durable verification on the replacement li
 it("accepts nothing without the negotiated receiver offer", async () => {
   const w = world(); w.receiver.receive(w.recommendation(), { ...w.link, features: new Set() }); await settle();
   expect(w.lookup).not.toHaveBeenCalled(); expect(w.db.prepare("SELECT * FROM hub_member_version_recommendation").all()).toEqual([]);
+});
+
+it.each(["not-found", "unavailable"] as const)("backs off repeated %s checks per revision across replay, reconnect and restart", async result => {
+  const w = world(); w.lookup.mockResolvedValue(result);
+  w.receiver.receive(w.recommendation(), w.link); await settle();
+  for (let i = 0; i < 9; i++) { w.advance(30_000); w.receiver.receive(w.recommendation(), w.link); await settle(); }
+  expect(w.lookup).toHaveBeenCalledTimes(1); expect(w.send).not.toHaveBeenCalled(); expect(w.receiver.view()).toBeNull();
+  w.receiver.close(); const restored = new HubMemberRecommendations(w.options), next = { ...w.link, linkEpoch: 2 };
+  restored.receive(w.recommendation(), next); await settle(); expect(w.lookup).toHaveBeenCalledTimes(1);
+  w.advance(30_000); restored.receive(w.recommendation(), next); await settle(); expect(w.lookup).toHaveBeenCalledTimes(2);
+  // Second failure waits ten minutes, then doubles, with a four-hour ceiling.
+  for (const delay of [10, 20, 40, 80, 160, 240]) {
+    const count = w.lookup.mock.calls.length;
+    w.advance(delay * 60_000 - 1); restored.receive(w.recommendation(), next); await settle(); expect(w.lookup).toHaveBeenCalledTimes(count);
+    w.advance(1); restored.receive(w.recommendation(), next); await settle(); expect(w.lookup).toHaveBeenCalledTimes(count + 1);
+  }
+  const count = w.lookup.mock.calls.length;
+  w.advance(240 * 60_000 - 1); restored.receive(w.recommendation(), next); await settle(); expect(w.lookup).toHaveBeenCalledTimes(count);
+  // A new policy revision can be verified immediately, regardless of the previous deadline.
+  w.lookup.mockResolvedValueOnce("found"); restored.receive(w.recommendation(2), next); await settle();
+  expect(w.lookup).toHaveBeenCalledTimes(count + 1); expect(restored.view()?.revision).toBe(2);
+  expect(w.send).toHaveBeenCalledTimes(1); restored.close();
 });

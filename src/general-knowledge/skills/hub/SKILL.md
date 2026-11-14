@@ -541,7 +541,8 @@ active Fleets are below it or have not reported a version; older Fleets may need
 confirm the version before a recommendation is saved. A changed setting is fenced against another administrator's save.
 
 Supporting Fleets receive only a version, revision and setting time. Each Fleet independently compares with its
-running version and checks AgEnD's package on npm. Only a newer, locally verified version appears in its admin update
+running version and checks AgEnD's package on npm. Failed checks retry with a growing delay (five minutes up to four
+hours), preserved through reconnects and restarts; a changed recommendation starts a fresh check. Only a newer, locally verified version appears in its admin update
 state. The Hub's **Owner notified** time means that Fleet acknowledged this verified offer; it does not prove the
 person read it or installed anything. Advice remains available during a temporary network outage and is cleared when
 the local Hub connection is disabled/replaced or the Hub withdraws it. Neither saving nor receiving advice launches

@@ -14,6 +14,8 @@ admin confirmation. Default is no saved recommendation. The unsaved UI may selec
 
 `version` is the specific literal; effective target is `recommendedVersion`. Unconfigured returns `none`, nulls,
 revision 0. `hub` follows the running Hub after restart, advancing revision/time only when that version changes.
+This effective-version bump is lazy: a GET may write that new revision; ordinary unchanged GETs do not write.
+Overview reads this setting once for the whole response, rather than per Fleet.
 
 `POST .../preview {mode,version?}` returns `{recommendedVersion,affected,revision}` without saving. Affected counts
 active Fleets below the target plus unknown-version Fleets, including older Fleets that cannot receive advice.
@@ -40,7 +42,9 @@ After reconciliation the Hub sends `fleet.recommendation` with `{revision,setAt,
 origin, command or package name. The authenticated selected member database retains the latest candidate and rejects
 older/conflicting revisions. Independent npm verification is asynchronous, outside the member control receive queue.
 Only a newer published version produces an offer; null clears, equal/older marks current. A failed npm read produces
-no offer/ACK and can retry. `fleet.recommendation-ack` carries `{revision,version,status:'offered'|'current'|'cleared'}`.
+no offer/ACK. Failed verification is durably backed off per revision/version: five minutes, doubling to four hours.
+Replays, reconnects and restarts preserve the deadline; a new revision resets it. There is no local retry timer: a later
+Hub delivery checks whether the deadline has passed. `fleet.recommendation-ack` carries `{revision,version,status:'offered'|'current'|'cleared'}`.
 Hub accepts only its exact live-link/revision/version send. Unacknowledged live sends retry every 30 s; reconnect
 resends even after ACK so the selected Fleet refreshes its state. Offline fleets have no polling timer.
 

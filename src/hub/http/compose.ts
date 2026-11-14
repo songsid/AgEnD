@@ -196,8 +196,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       signedIn(); const owner = await guard(() => ctx.requirePerson());
       return core.atomic(() => {
         signedIn();
+        const recommendedVersion = recommendations.settings().recommendedVersion;
         const fleets = deps.store.read().fleets.filter(f => f.status === "active" && personKeyString(f.owner) === personKeyString(owner))
-          .map(f => { const view = fleetVersions.view(f.id, recommendations.settings().recommendedVersion); return { id: f.id, label: f.label ?? null, version: view.version, versionState: view.versionState }; });
+          .map(f => { const view = fleetVersions.view(f.id, recommendedVersion); return { id: f.id, label: f.label ?? null, version: view.version, versionState: view.versionState }; });
         send(res, 200, { fleets });
       });
     }
@@ -769,15 +770,15 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (path === "/hub/v1/admin/overview") {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn(); await guard(() => ctx.requireAdmin());
-      const state = deps.store.read(), now = core.now();
+      const state = deps.store.read(), now = core.now(), recommendation = recommendations.settings();
       const name = (key: { realm: string; objectId: string }) => {
         const id = personKeyString(key);
         const row = core.atomic((db) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined);
         return row ? { name: row.display_name, login: row.login_label } : null;
       };
       return send(res, 200, {
-        recommendedVersion: recommendations.settings().recommendedVersion,
-        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendations.settings().recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id),
+        recommendedVersion: recommendation.recommendedVersion,
+        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendation.recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id, recommendation),
           ...(deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
         pairings: state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
           .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),

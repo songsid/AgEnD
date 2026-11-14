@@ -7,9 +7,9 @@ import { validated, parseStrictJson, HubProtocolError } from "../validation.js";
 import type { HubMemberLink } from "../client.js";
 import { randomUUID } from "node:crypto";
 export const HUB_MEMBER_RECOMMENDATION_MIGRATION = Object.freeze({ component: "s3c-version-recommendation", version: 1, up(db: Database.Database) {
-  db.exec("CREATE TABLE hub_member_version_recommendation(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,body TEXT NOT NULL,received_at INTEGER NOT NULL,verified INTEGER NOT NULL,status TEXT NOT NULL)");
+  db.exec("CREATE TABLE hub_member_version_recommendation(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,body TEXT NOT NULL,received_at INTEGER NOT NULL,verified INTEGER NOT NULL,status TEXT NOT NULL,retry_at INTEGER NOT NULL DEFAULT 0,retry_delay INTEGER NOT NULL DEFAULT 0)");
 } });
-interface Row { revision: number; body: string; received_at: number; verified: number; status: HubRecommendationAck["status"] }
+interface Row { revision: number; body: string; received_at: number; verified: number; status: HubRecommendationAck["status"]; retry_at: number; retry_delay: number }
 export class HubMemberRecommendations {
   private cached: HubRecommendedUpdate | null = null;
   private latestLink: HubMemberLink | null = null;
@@ -42,7 +42,7 @@ export class HubMemberRecommendations {
     if (prior && value.revision < prior.revision) return;
     if (prior && value.revision === prior.revision && body !== prior.body) throw new HubProtocolError("conflict");
     if (!prior || prior.revision !== value.revision) {
-      this.options.db.prepare("INSERT OR REPLACE INTO hub_member_version_recommendation VALUES(1,?,?,?,0,'current')").run(value.revision, body, this.options.now());
+      this.options.db.prepare("INSERT OR REPLACE INTO hub_member_version_recommendation(singleton,revision,body,received_at,verified,status) VALUES(1,?,?,?,0,'current')").run(value.revision, body, this.options.now());
       this.publish();
     }
     this.latestLink = link; void this.flush();
@@ -57,17 +57,25 @@ export class HubMemberRecommendations {
         if (!row.verified) {
           let status: HubRecommendationAck["status"] = value.version === null ? "cleared" : "current";
           if (value.version && compareSemver(value.version, this.options.version) === 1) {
+            if (this.options.now() < row.retry_at) return;
             let found;
             try { found = await this.lookup(value.version); } catch { found = "unavailable"; }
             if (!this.current()) return;
             if (this.row()?.revision !== row.revision || this.latestLink !== link) continue;
             if (!link.current()) return;
-            if (found !== "found") return; // Hub will retry; an unverified version is never exposed or ACKed.
+            if (found !== "found") {
+              // Replays and reconnects must not repeatedly spawn npm on an unreachable/missing registry.
+              // Advice has no authority: a failed check is retained, never exposed or acknowledged.
+              const delay = Math.min(row.retry_delay ? row.retry_delay * 2 : 5 * 60_000, 4 * 60 * 60_000);
+              this.options.db.prepare("UPDATE hub_member_version_recommendation SET retry_at=?,retry_delay=? WHERE singleton=1 AND revision=?")
+                .run(this.options.now() + delay, delay, row.revision);
+              return;
+            }
             status = "offered";
           }
           if (!this.current() || !link.current()) return;
           if (this.row()?.revision !== row.revision) continue;
-          this.options.db.prepare("UPDATE hub_member_version_recommendation SET verified=1,status=? WHERE singleton=1 AND revision=?").run(status, row.revision);
+          this.options.db.prepare("UPDATE hub_member_version_recommendation SET verified=1,status=?,retry_at=0,retry_delay=0 WHERE singleton=1 AND revision=?").run(status, row.revision);
           this.publish(this.row());
         }
         const retained = this.row();

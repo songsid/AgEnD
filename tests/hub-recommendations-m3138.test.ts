@@ -94,3 +94,15 @@ it("follows a restarted Hub, retains settings, retries only live unacknowledged 
   expect(r!.sent.filter(s => s.frame.type === "fleet.recommendation")).toHaveLength(3);
   expect(r!.sent.filter(s => s.frame.type === "fleet.recommendation").at(-1)?.frame.linkEpoch).toBe(2);
 });
+it("reads the recommendation once for an entire 200-Fleet overview", async () => {
+  const w = await world();
+  r!.store.mutate({ requestId: randomUUID(), at: Date.now(), actor: { kind: "local-host" }, action: "fixture", result: "completed" }, state => {
+    while (state.fleets.length < 200) state.fleets.push({ id: randomUUID(), owner: w.owner, generation: 1, credentialHash: "a".repeat(64), status: "active" });
+  });
+  const prepare = vi.spyOn(r!.db, "prepare");
+  try {
+    const response = await r!.call(w.admin, "GET", "/hub/v1/admin/overview");
+    expect(response.status).toBe(200); expect(response.json.fleets).toHaveLength(200);
+    expect(prepare.mock.calls.filter(([sql]) => sql === "SELECT * FROM hub_version_recommendation WHERE singleton=1")).toHaveLength(1);
+  } finally { prepare.mockRestore(); }
+});
