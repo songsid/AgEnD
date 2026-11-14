@@ -50,16 +50,21 @@ Summary line, above the list:
 - All current: "All {0} Fleets are on the recommended version or newer." / 「{0} 個 Fleet 都是建議版本或更新的版本。」
 - Some behind: "{0} of {1} Fleets need an update." / 「{1} 個 Fleet 當中有 {0} 個需要更新。」 with a filter chip
   "Needs update" / 「需要更新」.
-- No recommended version set yet (step 2 not configured): "{0} Fleets connected. Set a recommended version to see
-  which ones are behind." / 「已連接 {0} 個 Fleet。設定建議版本後，就能看出哪些落後。」
+- No recommended version set yet: "{0} active Fleets." / 「{0} 個使用中的 Fleet。」 "Active" means paired Fleets, not
+  the ones online now. Step 1 has no way to set a recommended version, so the line stops there. With step 2 (card 2a)
+  it gains a second sentence: "Set a recommended version to see which ones are behind." /
+  「設定建議版本後，就能看出哪些落後。」
 
 Columns per row (existing label, owner and Revoke menu stay):
 
 | Column | EN | zh-TW | Value |
 |---|---|---|---|
 | Version | AgEnD version | AgEnD 版本 | `2.4.0-beta.1`, or "Unknown" / 「不明」 |
-| Last connected | Last connected | 上次連線 | "Now" / 「連線中」 with a green dot, else a relative time ("3 days ago" / 「3 天前」), else "Never" / 「從未連線」 |
+| Last connected | Last connected | 上次連接 | "Now" / 「目前已連接」 with a green dot, else a relative time ("3 days ago" / 「3 天前」), else "Never" / 「從未連接」 |
 | State | (tag) | (標籤) | see below |
+
+zh-TW uses 連接 for a Fleet's link to the Hub throughout, in line with 「已連接的 Fleet」; the Hub vocabulary gate
+(U3, A-L14) keeps 連線 for network phrases only.
 
 State tags, one per row, in this priority:
 
@@ -70,7 +75,8 @@ State tags, one per row, in this priority:
 | Version unknown | 版本不明 | The Fleet has never reported a version (older than the release that adds reporting). Counted as needing an update. | warn |
 | Up to date | 已是建議版本 | Reported version equals or is higher than the recommended version, or no recommended version is set and nothing is missing. | none |
 
-Hover / tap on a warn tag explains it in one sentence:
+A warn tag's one-sentence reason shows under the row, always visible (a tag is too small to be a tap target on a
+phone, so it is not a hover or tap):
 
 - Too old for rooms: "This Fleet's agents cannot answer in rooms until it is updated." /
   「這個 Fleet 的 Agent 要更新後才能在房間裡回答。」
@@ -237,7 +243,7 @@ Under the row's tag, one status line that replaces the Update button while a req
 
 | State | EN | zh-TW |
 |---|---|---|
-| Sent, Fleet offline | Waiting for the Fleet to connect | 等待 Fleet 連線 |
+| Sent, Fleet offline | Waiting for the Fleet to connect | 等待 Fleet 連接 |
 | Waiting for idle | Waiting for its agents to be idle · since {0} · **Cancel** | 等待 Agent 閒置 · {0} 起 · 「取消」 |
 | Updating | Updating… | 更新中… |
 | Done | Updated to v{0} · {1} | 已更新到 v{0} · {1} |
@@ -247,7 +253,7 @@ Under the row's tag, one status line that replaces the Update button while a req
 | Refused | see 5 | |
 
 A request to an offline Fleet is kept for 7 days, then dropped with "Did not start: the Fleet has not connected for 7
-days." / 「沒有開始：這個 Fleet 已經 7 天沒有連線。」
+days." / 「沒有開始：這個 Fleet 已經 7 天沒有連接。」
 
 ## 5. Failures and edge cases
 
@@ -259,7 +265,7 @@ days." / 「沒有開始：這個 Fleet 已經 7 天沒有連線。」
 | npm unreachable from the Fleet | Fails before anything changes | "That Fleet could not reach the update source. Nothing was changed." / 「那個 Fleet 連不上更新來源，沒有任何變更。」 |
 | No permission to install | Fails before anything changes | "That Fleet has no permission to install updates. Its owner must update it by hand." / 「那個 Fleet 沒有安裝更新的權限，需要擁有者手動更新。」 |
 | New version installed, service did not start | Automatic return to the previous version | "Rolled back" row state |
-| Rollback itself fails | Fleet is down; the Hub sees it offline | "Update failed and the Fleet has not come back. Contact {0}." / 「更新失敗，而且 Fleet 沒有恢復連線。請聯絡 {0}。」 The owner's chat gets today's "did not finish" message with the installer command. |
+| Rollback itself fails | Fleet is down; the Hub sees it offline | "Update failed and the Fleet has not come back. Contact {0}." / 「更新失敗，而且 Fleet 沒有重新連接。請聯絡 {0}。」 The owner's chat gets today's "did not finish" message with the installer command. |
 | Fleet already at or above the version | Nothing to do | "Already on v{0}." / 「已經是 v{0}。」 |
 | Recommendation changed while a request waits | The waiting request keeps its version; a new press replaces it | — |
 | Two administrators press at once | One request per Fleet; the second sees the first's status | — |
