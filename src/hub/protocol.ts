@@ -15,16 +15,16 @@ export const HUB_ROOM_BUTTONS_CAPABILITY = "room-answer-buttons-v1";
 /**
  * M-3127: an agent reacts to the room question it was asked (its `react` tool, the Fleet chat's minimal reply). It rides on
  * room-answer-buttons-v1 (the same release): a capability of its own would make a 17th in a room-post member's hello, which
- * every Hub refuses (the hello takes at most 16 — see HUB_OPTIONAL_CAPABILITIES).
+ * older Hubs refuse and members still must not send (see HUB_OPTIONAL_CAPABILITIES).
  */
 export const HUB_ROOM_REACT_CAPABILITY = HUB_ROOM_BUTTONS_CAPABILITY;
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending.
  * LIMIT (M-3127): a member's hello sends HUB_CAPABILITIES + these + room-ask-v1 (+ room-post-v1 when its agent-room adapter
- * is composed), and every Hub's hello schema takes at most 16 — that full list makes exactly 16 (pinned by
- * tests/hub-room-agent-react-m3127.test.ts). A 17th breaks the hello against every Hub, older ones too: raise the limit in
- * Hubs first (and ship that), then add the flag — or let the new feature ride on a flag of the same release. */
+ * is composed). That full list makes exactly 16 (pinned by tests/hub-room-agent-react-m3127.test.ts), the member's send
+ * limit for older Hubs. This Hub accepts 32 names; raise member sends only in a later release, after that receive bound
+ * ships — or let the new feature ride on a flag of the same release. */
 export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1", "room-answer-buttons-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;

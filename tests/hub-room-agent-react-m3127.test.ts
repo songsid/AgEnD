@@ -84,16 +84,19 @@ describe("A. the Hub takes an agent's reaction (room.react)", () => {
 });
 
 describe("the member hello's capability list (Fable #3935 info)", () => {
-  it("the fullest hello (a member with the room-post adapter) fits the schema's limit of 16; a 17th is refused — agent reactions add no capability", async () => {
-    const { HUB_CAPABILITIES, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, memberFrameSchema } = await import("../src/hub/protocol.js");
+  it("the fullest hello sends 16, refusing a 17th on send while the Hub accepts it — agent reactions add no capability", async () => {
+    const { HUB_CAPABILITIES, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, memberFrameSchema, encodeMemberFrame } = await import("../src/hub/protocol.js");
     const sent = [...HUB_CAPABILITIES, ...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY];   // compose/member.ts at its fullest
     expect(sent).toHaveLength(16);
     expect(HUB_ROOM_REACT_CAPABILITY).toBe(HUB_ROOM_BUTTONS_CAPABILITY);
     expect(sent).not.toContain("room-react-v1");
-    const hello = (capabilities: string[]) => memberFrameSchema.safeParse({ v: 1, type: "hello", requestId: randomUUID(), linkEpoch: 0,
-      payload: { supportedVersions: [1], capabilities, memberBootId: randomUUID() } }).success;
-    expect(hello(sent)).toBe(true);
-    expect(hello([...sent, "one-more-v1"])).toBe(false);   // an older Hub refuses a 17th: raise the limit there first
+    const hello = (capabilities: string[]) => ({ v: 1 as const, type: "hello" as const, requestId: randomUUID(), linkEpoch: 0,
+      payload: { supportedVersions: [1], capabilities, memberBootId: randomUUID() } });
+    expect(memberFrameSchema.safeParse(hello(sent)).success).toBe(true);
+    expect(() => encodeMemberFrame(hello(sent))).not.toThrow();
+    const future = hello([...sent, "one-more-v1"]);
+    expect(memberFrameSchema.safeParse(future).success).toBe(true);
+    expect(() => encodeMemberFrame(future)).toThrow();   // retain the old-Hub send bound during the receive-first rollout
   });
 });
 
