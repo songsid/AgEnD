@@ -144,7 +144,7 @@ import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "/assets/chat-thread.js";
 import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
-import { installMessageActions } from "./chat-msg-actions.js";
+import { installMessageActions } from "/assets/chat-msg-actions.js";
 import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "./chat-quote.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
