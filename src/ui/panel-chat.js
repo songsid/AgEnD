@@ -11,13 +11,13 @@ import { GeneralLocation } from "./general-location.js";
 import { html, Fragment, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, register, t } from "/assets/app-i18n.js";
 import { appStore, createStore, guestPage, guestTrusted, useStore } from "/assets/app-store.js";
-import { ComposerAuth } from "/assets/web-authorize.js";
+import { ComposerAuth, useWebAuthorization } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
 import * as paneContext from "/assets/app-ctx.js";
 import { backendLabel, modelText, namesOf, namesStore, navStore as instanceNavStore, supportsInstanceFeature } from "/assets/instance-nav.js";
 import { machineName } from "/assets/machine-name.js";
-import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
-import { detailsPath, textLinkSegments, sectionPath } from "/assets/app-route.js";
+import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance, needsCount } from "/assets/app-shell.js";
+import { detailsPath, textLinkSegments, sectionPath, NEEDS_PATH, fleetEntryPath, settingsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { navigate, navStore } from "/assets/app-nav.js";
@@ -93,6 +93,51 @@ function CardMenu({ card, ownerKey }) {
       onSelect: () => setChatCardRowHidden(!prefs.rowHidden) },
   ];
   return html`<${Menu} items=${items} label=${t("card.menu")} icon="idcard" cls="chat-card-menu" active=${prefs.open} ownerKey=${ownerKey} />`;
+}
+
+// M-3115 (phone v2): kept beside its caller — a retained chat dictionary has no such words.
+register("chatPhone", {
+  en: { goTo: "Go to", thisChat: "This chat", verifiedUntil: "Verified · speaks as you until {0}", needsToast: "{0} needs you" },
+  "zh-TW": { goTo: "前往", thisChat: "這個對話", verifiedUntil: "已驗證 · 以你的身分發言到 {0}", needsToast: "{0} 正在等你回應" },
+});
+const untilClock = (ms) => { try { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+/** A Needs-you item's identity: its nonce, else its id, else what it says. */
+const needKey = (item) => String(item?.nonce || item?.id || JSON.stringify(item || null));
+/**
+ * The chat's ⋯ (M-3115): on a phone, where an agent's pages have no bottom tabs, it starts with 「前往」 — Needs you (its
+ * count), Fleet, Settings — then this chat's items, and ends with 「✓ 已驗證」 (the line under the composer no longer
+ * says it). A Needs-you item that arrives meanwhile, for another agent, is a short toast. A desk's ⋯ is unchanged.
+ */
+function ChatMoreMenu({ items, name }) {
+  const app = useStore(appStore);
+  const auth = useWebAuthorization();
+  const seen = useRef(null);
+  useEffect(() => {
+    // What Needs you held when last heard, and whether it had loaded then: the first load (or a reconnect's) is not news.
+    const snap = (a) => ({ keys: new Set([...(a.needs || [])].map(needKey)), loaded: a.needsLoaded === true });
+    seen.current = snap(appStore.get());
+    return appStore.subscribe((a) => {
+      const before = seen.current;
+      seen.current = snap(a);
+      if (!before?.loaded || !seen.current.loaded || !narrowScreen()) return;
+      const fresh = (a.needs || []).find((it) => !before.keys.has(needKey(it)) && it.instance && it.instance !== name);
+      if (fresh) toast(t("chatPhone.needsToast", fresh.instance));
+    });
+  }, [name]);
+  if (!narrowScreen()) return html`<${Menu} items=${items} label=${t("app.more")} />`;
+  const waiting = needsCount(app);
+  const route = navStore.get().route;
+  const verified = auth.st?.state === "verified";
+  const all = [
+    { key: "goHead", heading: true, label: t("chatPhone.goTo") },
+    { key: "goNeeds", label: waiting ? `${t("app.needsTab")} · ${waiting}` : t("app.needsTab"), icon: "inbox", onSelect: () => navigate(NEEDS_PATH) },
+    { key: "goFleet", label: t("app.fleet"), icon: "fleet", onSelect: () => navigate(fleetEntryPath(route)) },
+    { key: "goSettings", label: t("app.settings"), icon: "settings", onSelect: () => navigate(settingsPath()) },
+    { key: "chatHead", heading: true, label: t("chatPhone.thisChat") },
+    ...items,
+    ...(verified ? [{ key: "verified", label: `✓ ${t("webauth.verifiedShort")}`, title: t("chatPhone.verifiedUntil", untilClock(auth.st.until)), icon: "check", disabled: true, onSelect: () => {} }] : []),
+  ];
+  return html`<${Menu} items=${all} label=${t("app.more")} />`;
 }
 import "/assets/chat-strings.js";
 import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
@@ -566,7 +611,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub}
       pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage") }} pageActions=${[
         ...items]}
-      nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+      nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${ChatMoreMenu} items=${items} name=${name} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>

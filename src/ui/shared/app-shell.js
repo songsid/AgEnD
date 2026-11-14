@@ -539,8 +539,19 @@ function PrefsPopover() {
  * The header every panel shows: ☰ (phone, or a collapsed sidebar), its title and status, then its actions. `nav`
  * (#1523 N2): an instance page's view switch — beside the title on a wide screen, a row of tabs under it on a phone.
  */
+// M-3115 (phone v2): inside an agent's pages a phone has no bottom tabs; the header's first button goes back to the
+// agents (the drawer) and carries what Needs you counts. Kept beside its caller: a retained dictionary has no such word.
+register("phoneNav", {
+  en: { back: "Back to your agents", backCount: "Back to your agents · {0} waiting" },
+  "zh-TW": { back: "回到 Agent 清單", backCount: "回到 Agent 清單 · {0} 件待處理" },
+});
+/** What Needs you counts: its items and the agents' proposals (the tab's badge, the sidebar's). */
+export function needsCount(app) { return (app.needs || []).length + (app.proposals || []).length; }
+
 export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions }) {
   const shell = useStore(shellStore);
+  const { route } = useStore(navStore), app = useStore(appStore);
+  const agent = !!openInstanceOf(route) && !guestPage(), waiting = agent ? needsCount(app) : 0;
   const admin = useCanCreate();
   const canCreate = admin && !!newInstanceOpener;
   const pane = paneContext.usePane?.();
@@ -549,8 +560,10 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice, pag
   if (pane?.Header) return html`<${pane.Header} title=${title} sub=${sub} headingRef=${headingRef} nav=${nav} notice=${notice}
     pageControls=${pageControls} pageActions=${pageActions} />`;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
-    <button type="button" id="sbOpen" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
-      aria-label=${narrow() ? t("app.openMenu") : t("app.expand")} title=${narrow() ? t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" /></button>
+    <button type="button" id="sbOpen" class=${`icon-btn sb-open${agent ? " sb-back" : ""}`} onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
+      aria-label=${narrow() ? agent ? (waiting ? t("phoneNav.backCount", waiting) : t("phoneNav.back")) : t("app.openMenu") : t("app.expand")}
+      title=${narrow() ? agent ? t("phoneNav.back") : t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" cls="ic-menu" />${agent
+        ? html`<${Icon} name="back" cls="ic-back" />${waiting ? html`<span class="sb-badge" aria-hidden="true">${waiting > 99 ? "99+" : waiting}</span>` : null}` : null}</button>
     ${canCreate && shell.collapsed ? html`<button type="button" class="icon-btn sb-new" onClick=${requestNewInstance} aria-label=${t("app.newAgent")} title=${t("app.newAgent")}><${Icon} name="plus" /></button>` : null}
     ${searchOffered(admin) ? html`<button type="button" class="icon-btn sb-search" onClick=${() => openSearch()} aria-label=${t("app.search")} title=${t("app.searchTitle", searchShortcut())}><${Icon} name="search" /></button>` : null}
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
@@ -1286,7 +1299,9 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   // AgEnD Hub P1 (S3b): a Hub workspace has none of the fleet's lines, rails, tabs or bars (their endpoints are the fleet's).
   const hub = hubMarks().hub;
   const popout = shell.popout === true && !!openInstanceOf(nav.route);
-  const cls = ["shell", popout ? "chat-popout" : "", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
+  // M-3115: an agent's own pages (its chat, View, Log, Details) — a phone shows them without the bottom tabs.
+  const inAgent = !!openInstanceOf(nav.route) && !guest;
+  const cls = ["shell", popout ? "chat-popout" : "", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : "", inAgent ? "in-agent" : ""].filter(Boolean).join(" ");
   return html`<div ref=${root} class=${cls}>
     <a data-trust="navigation" class="skip" href="#main">${t("app.skip")}</a>
     ${popout ? null : html`<${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} viewOnly=${viewOnly} />`}
