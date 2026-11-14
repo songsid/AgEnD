@@ -1,6 +1,6 @@
 {
-  "sourceHead": "bf50c469ebf95e15492361ac4b81822a9ce27809",
-  "baseRef": "3d4b763b29d4e10526ae0f174cf695cacf5fbaf1",
+  "sourceHead": "bf9641117cc6e121e54a1384441012251e0f578b",
+  "baseRef": "4dd0fb2394b81ba22b8c65e60b66ec4c9f16a299",
   "dirty": [],
   "inputs": [
     {
@@ -13,11 +13,11 @@
     },
     {
       "path": "src/ui/hub-room-thread.js",
-      "sha256": "22927e69459ccdec49b0736b2f5cd1ea71605ce179e5d9b29a706fd003153122"
+      "sha256": "9e86021f9b871ef6c4ad5313093994b86cd542a30844401b97cb7aeb05acaf18"
     },
     {
       "path": "src/ui/shared/chat-thread.js",
-      "sha256": "b513aa7eeea5972b2c85b8ec9b34ab7d305403678e9377175349e4f4e54b21f7"
+      "sha256": "ac653bf9e2e571460fef4e943e09611f1ffed31a075dfc8ec56efc2d45874478"
     },
     {
       "path": "src/ui/chat-msg-actions.js",
@@ -33,7 +33,7 @@
     },
     {
       "path": "src/ui/shared/hub-rooms-u2.css",
-      "sha256": "ed5d5eafbb31d1e656bc2d9d1997f0122feabfeeb6b946e1d2fa7c5ee53642ca"
+      "sha256": "ccdba320529b873b572db4e51000e630e6a43a32f6fab5ff8ea3971ee4179ac6"
     },
     {
       "path": "tests/support/hub-rooms-fixture.ts",
@@ -125,19 +125,19 @@
   "pictures": [
     {
       "path": "reactions-picker.desktop-en-light.png",
-      "sha256": "dd5421bd7531121c9790f10a96dee58dc20b76ffc90895b06abb1b8b4b82551d"
+      "sha256": "0cc9e2595369790cd568b69cdcadd51bd3ba6bf48e9237aa7072a55eabc1ec6d"
     },
     {
       "path": "reactions-after.desktop-en-light.png",
-      "sha256": "fe5d0afa65d10c9deae890c932f3a89e96114d010a8bac2475f26588b13c1a59"
+      "sha256": "a5529a074c780fcbcab42e181d0a4487fa276d3b0915611abe296c404d7314cc"
     },
     {
       "path": "reactions-skew.desktop-en-light.png",
-      "sha256": "703bd4c024616add263c64d7ed07f6f551de9f693a886917c9c2d2417df7548d"
+      "sha256": "12a39c2df672652e04415ab816cded2482f579b2e42fb4b0bf60d142f3ff8a59"
     },
     {
       "path": "reactions-picker.desktop-zh-TW-dark.png",
-      "sha256": "20c75b3991118a82ab275df882193cdc80d588f33d3919ce9bf192435e1492ce"
+      "sha256": "234f3bb28c5e4561ee8a024ff5e5e2c6c95618c0beb3958cdd15b437c2478964"
     },
     {
       "path": "reactions-after.desktop-zh-TW-dark.png",
@@ -149,7 +149,7 @@
     },
     {
       "path": "reactions-picker.phone-zh-TW-light.png",
-      "sha256": "46d591f57d1e083be1234e908ed751e3dab275244770736f17cf7c9f3cf14172"
+      "sha256": "4e1c95bf609a31b3141be48de5b829977538e19dbc3db1e20c9e0d4a869017a4"
     },
     {
       "path": "reactions-after.phone-zh-TW-light.png",
@@ -161,7 +161,7 @@
     },
     {
       "path": "reactions-picker.phone-en-dark.png",
-      "sha256": "aa5aaf36b5b06c68c3e41230b9a29b7991fc38b09b2158ed6ab04251f0c75f99"
+      "sha256": "3071564dc840abb8a6caf9d557c2e9b38e0aa450c719c5fd869c438423c878ef"
     },
     {
       "path": "reactions-after.phone-en-dark.png",
