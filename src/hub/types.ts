@@ -74,7 +74,7 @@ export type HubRoomMembersResult = { ok: true; roomId: RoomId; members: readonly
 export interface HubPeopleSearch { exposureId: ExposureId; q: string }
 export type HubPeopleSearchResult = { ok: true; people: readonly { id: string; name: string; login: string }[]; truncated: boolean }
   | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis };
-export interface HubRoomPostAnswer { id: string; postId: MessageId; roomId: RoomId; exposureId: ExposureId;
+export interface HubRoomPostAnswer { id: string; idempotencyKey: string; postId: MessageId; roomId: RoomId; exposureId: ExposureId;
   message: { id: MessageId; author: { name: string }; text: string; at: Millis }; receiptId?: string }
 export interface HubRoomPostAnswerAck { id: string }
 export type HubRoomPostResult = { ok: true; roomId: RoomId; messageId: MessageId; at: Millis }

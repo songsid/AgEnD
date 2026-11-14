@@ -99,8 +99,7 @@ CREATE TABLE hub_room_post_returns(id TEXT PRIMARY KEY,post_id TEXT NOT NULL,ans
   payload_ref TEXT NOT NULL,payload_digest TEXT NOT NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,sent_epoch INTEGER NOT NULL DEFAULT 0,last_sent_at INTEGER NOT NULL DEFAULT 0,acked INTEGER NOT NULL DEFAULT 0,
   UNIQUE(post_id,answer_id));
 CREATE INDEX hub_room_post_returns_pending ON hub_room_post_returns(fleet_id,expires_at) WHERE acked=0;
-CREATE TABLE hub_room_agent_stops(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id),source_id TEXT NOT NULL,reason TEXT NOT NULL,name TEXT NOT NULL,retry_at INTEGER,
-  UNIQUE(source_id,reason,name));
+CREATE TABLE hub_room_agent_stops(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id),source_id TEXT NOT NULL,reason TEXT NOT NULL,name TEXT NOT NULL,retry_at INTEGER,coalesce_key TEXT NOT NULL UNIQUE);
 CREATE INDEX hub_room_agent_stops_source ON hub_room_agent_stops(source_id);`);
 } });
 

@@ -388,7 +388,10 @@ The read tools return current membership/presence and owner-visible name suggest
   message ID. The Fleet checks that administrator's current authority; the Hub attributes it as **person via agent**.
   It uses the agent's room membership, so the owner need not join the Hub room. It opens one human episode per receipt;
   reusing a receipt does not open another. @all obeys the room's normal rule (or the person's room-manager permission).
-  Room answers return to the invoking agent, which relays them to the person. An invalid receipt gives no human privileges.
+  Agent answers return to the invoking agent, which relays them to the person. A person who has not joined the room is
+  absent from its member list: @mentioning that person in a human reply stays plain text and does not reach them. Human
+  replies are not returned through the agent. To be reachable by people in the room, join it as a member. An invalid
+  receipt gives no human privileges.
 - Retry an uncertain post with its original operation identity; do not invent a new post just because an ACK was lost.
   Removing the agent from the room stops its posting and reply return. An older Hub does not offer these tools.
 
