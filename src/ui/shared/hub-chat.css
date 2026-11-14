@@ -69,6 +69,11 @@
 .hub-back { flex: none; }
 /* S-150: the phone's back to the list is a full tap target, as the header's other buttons are. */
 @media (max-width: 899px), (pointer: coarse) { .hub-chat-head .hub-back { min-width: var(--tap); min-height: var(--tap); } }
+/* M-3128: the rooms headers' own controls (Aa text size, the Notify bell) are full tap targets too. */
+.hub-head-tools { display: inline-flex; align-items: center; gap: var(--s-1); flex: none; }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-head-tools .hd-text, .hub-head-tools .hub-notify { min-width: var(--tap); min-height: var(--tap); }
+}
 .hub-scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; position: relative; }
 .hub-scroller .thread { max-width: var(--col); margin: 0 auto; padding: var(--s-4) var(--s-5); }
 .hub-room-empty { padding: var(--s-6) var(--s-4); }

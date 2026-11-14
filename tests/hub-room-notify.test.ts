@@ -195,4 +195,9 @@ describe("module hygiene (precedent: hub-room-unread.test.ts)", () => {
     expect(CSS).not.toMatch(/font-size:\s*11\.5px/);
     expect(CSS).toMatch(/\.hub-room-side\s*\{[^}]*font-size:\s*var\(--fs-xs\)/);
   });
+
+  it("the rooms header controls are full tap targets on a phone (ui-gate tap ratchet)", () => {
+    expect(CSS).toMatch(/\.hub-head-tools\s*\{[^}]*display:\s*inline-flex/);
+    expect(CSS).toMatch(/\.hub-head-tools \.hd-text, \.hub-head-tools \.hub-notify\s*\{[^}]*min-width:\s*var\(--tap\)[^}]*min-height:\s*var\(--tap\)/);
+  });
 });

@@ -561,7 +561,7 @@ function HubChats() {
     onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
-  return html`<${PanelHeader} title=${hc("chats")}><${TextSizeButton} /><${HubNotifyToggle} /></${PanelHeader}>
+  return html`<${PanelHeader} title=${hc("chats")}><span class="hub-head-tools"><${TextSizeButton} /><${HubNotifyToggle} /></span></${PanelHeader}>
   <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
     <div class="hub-home-list"><${HubHomeList} /></div>
     ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true), admin: s.admin === true, features: s.features }} /></div>`

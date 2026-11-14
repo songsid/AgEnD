@@ -113,8 +113,8 @@ export function HubNotifyToggle() {
   const note = support !== "ok" ? hroom("notifyUnavailable") : state === "denied" ? hroom("notifyDenied") : on ? hroom("notifyOn") : hroom("notifyOff");
   const title = `${label} — ${note}`;
   if (support !== "ok") {
-    return html`<span class="icon-btn" aria-disabled="true" title=${title} aria-label=${title}><${Icon} name="bell" size=${16} /></span>`;
+    return html`<span class="icon-btn hub-notify" aria-disabled="true" title=${title} aria-label=${title}><${Icon} name="bell" size=${16} /></span>`;
   }
-  return html`<button type="button" class="icon-btn" aria-pressed=${on ? "true" : "false"} aria-label=${label} title=${title}
+  return html`<button type="button" class="icon-btn hub-notify" aria-pressed=${on ? "true" : "false"} aria-label=${label} title=${title}
     disabled=${asking} onClick=${() => { void setNotify(!on); }}><${Icon} name="bell" size=${16} /></button>`;
 }

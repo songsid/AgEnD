@@ -276,7 +276,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
           detail.me.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
           { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } },
         ].filter(Boolean)} />` : null}
-        <${TextSizeButton} /><${HubNotifyToggle} />
+        <span class="hub-head-tools"><${TextSizeButton} /><${HubNotifyToggle} /></span>
       </header>
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
