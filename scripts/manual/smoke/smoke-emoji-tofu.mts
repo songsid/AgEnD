@@ -68,7 +68,7 @@ for (const theme of ["light", "dark"] as const) for (const [kind, chat] of Objec
   const p = await freshPage(fx, { device: "desk", theme, lang: "zh-TW" });
   await openChat(p, chat);
   fm.emitSseEvent("message", { instance: chat, sender: chat, role: "agent", text: TEXT, ts: new Date().toISOString() });
-  await p.page.waitForFunction(`[...document.querySelectorAll(".msg .md")].some((m) => m.textContent.includes("報告老闆"))`, null, { timeout: 10000 });
+  await p.page.waitForFunction(() => [...document.querySelectorAll(".msg .md")].some((m) => m.textContent?.includes("報告老闆")), null, { timeout: 10000 });
   await p.page.waitForTimeout(1500);                                                  // the emoji list read, the picture's failure
   const m = await p.page.evaluate(MEASURE) as any;
   const c: Record<string, boolean> = {

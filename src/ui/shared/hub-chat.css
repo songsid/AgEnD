@@ -30,6 +30,15 @@
 .hub-room-at { flex: none; color: var(--accent); font-weight: var(--fw-semibold); font-size: var(--fs-xs); }
 .inst-line2 > .nav-count { flex: none; height: 18px; min-width: 18px; line-height: 18px; }
 .hub-room-archived .inst-name { color: var(--text-3); }
+/* M-3117: on a phone the Fleet chat's box has a hairline (model-picker.css, which the Hub does not load): the Hub's too. */
+@media (max-width: 899px) {
+  .hub-dock .composer-box { border: 1px solid var(--border); }
+  /* …and its Send is a full tap target (chat-work-bar.css, linked by the Fleet chat only). */
+  .hub-dock .composer .btn-send { width: var(--tap); min-width: var(--tap); min-height: var(--tap); }
+}
+/* Spec §4: the room's hint (messages without an @agent reach only people) stays under the box on a phone too, where the
+   Fleet chat's own keyboard hint (.hint) is hidden. */
+.hub-room-page .composer-row .hub-room-hint { display: inline; white-space: normal; }
 /* The room composer's fixed hint and @all bar wrap without leaving a lone word on the last line. */
 .hub-room-hint, .hub-room-allbar { text-wrap: pretty; }
 /* A question's folded answers: a left-aligned link under the last one shown (Lumen), not a centred line. */
@@ -75,7 +84,7 @@
   .hub-head-tools .hd-text, .hub-head-tools .hub-notify { min-width: var(--tap); min-height: var(--tap); }
 }
 .hub-scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; position: relative; }
-.hub-scroller .thread { max-width: var(--col); margin: 0 auto; padding: var(--s-4) var(--s-5); }
+/* M-3117: the thread is the Fleet chat's (.thread in app.css: its column, padding and a phone's tighter one) — no Hub copy. */
 .hub-room-empty { padding: var(--s-6) var(--s-4); }
 .hub-banner { margin: 0; padding: var(--s-2) var(--s-3); border-radius: var(--r-md); font-size: var(--fs-sm); background: var(--surface); color: var(--text-2); }
 .hub-banner.danger { background: var(--danger-bg, var(--surface)); color: var(--danger); }

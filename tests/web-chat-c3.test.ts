@@ -772,7 +772,7 @@ describe("the chat panel (the real page modules)", () => {
     await settle();
     expect(sc.scrollTop, "it was not at the bottom: stays").toBe(0);
     expect(jump().querySelector(".jump-text").textContent, "the arrow is an icon; the count is text").toBe("1 new");
-    expect([jump().getAttribute("aria-label"), jump().querySelector(".jump-count")?.textContent], "its name; a phone's round button shows the count as a badge (M-3115)").toEqual(["1 new", "1"]);
+    expect([jump().getAttribute("aria-label"), jump().querySelector(".jump-count")], "its name; no count badge (the user, before beta.3)").toEqual(["1 new", null]);
     c.stream.emit("message", msg(2, "w", "two"));
     await settle();
     expect(jump().querySelector(".jump-text").textContent).toBe("2 new");

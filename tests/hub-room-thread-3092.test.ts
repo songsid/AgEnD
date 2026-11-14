@@ -6,6 +6,8 @@
  * - the composer: the @ menu in the spec's order, the @all bar, the fixed hint; a refusal worded; a soft warning drawn;
  * - an archived room says so instead of a box.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
@@ -340,11 +342,43 @@ describe("a room on the page", () => {
       expect(pg.root.querySelector(".hub-room-page")!.textContent).not.toContain("Hub assistant");
     } finally { restore(); }
   });
-  it("an archived room: the box says so, nothing to send", async () => {
+  it("M-3117: under the thread, the Fleet chat's dock — the box in its column, the hint on the line under it; the box has the focus", async () => {
+    const { pg, restore } = await roomPage("room-weekly");
+    try {
+      const col = pg.root.querySelector(".hub-room-page .hub-chat-main > .dock.hub-dock > .dock-col") as any;
+      expect(col, "the dock's column").toBeTruthy();
+      expect([...col.children].map((n: any) => n.className.split(" ")[0])).toEqual(["composer-box", "composer-row"]);
+      expect(col.querySelector(".composer-row .hint.hub-room-hint")!.textContent).toBe("Messages with no @agent are seen only by people in the room; agents will not answer.");
+      expect(col.querySelector(".composer-box .hub-room-hint")).toBeNull();
+      expect(pg.document.activeElement).toBe(col.querySelector("textarea"));
+    } finally { restore(); }
+  });
+  it("M-3117: the composer's Attach and waiting files (M-3125's slot) — ＋ left of the box, the files first in it; neither: no Attach", async () => {
+    const detail = { room: { id: "room-x", kind: "group", name: "X" }, me: { id: FIXTURE_ME.id, role: "member" }, members: [], settings: {} };
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
+    await pg.mount(h("div", {}, h(composer.RoomComposer, { store: { send: async () => ({ ok: true }) }, detail }),
+      h("div", { class: "with" }, h(composer.RoomComposer, { store: { send: async () => ({ ok: true }) }, detail, attach: { title: "Attach files", onFiles() {} },
+        pending: h("div", { class: "pending-files" }, "a.png") }))));
+    await settle(3);
+    const [plain, withFiles] = [...pg.root.querySelectorAll(".composer-box")] as any[];
+    expect([plain.querySelector("#attachBtn"), plain.querySelector(".pending-files")]).toEqual([null, null]);
+    expect(withFiles.firstElementChild.className).toBe("pending-files");
+    const row = withFiles.querySelector(".composer") as any;
+    expect([row.firstElementChild.id, withFiles.querySelector("#attachBtn").getAttribute("aria-label")]).toEqual(["attachBtn", "Attach files"]);
+  });
+  it("M-3117: the stylesheet — no Hub copy of the thread's rule; a phone's hairline box and full-size Send; the room hint stays on a phone", () => {
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/hub-chat.css"), "utf8");
+    expect(css).not.toMatch(/\.hub-scroller \.thread\s*\{/);
+    expect(css).toContain(".hub-dock .composer-box { border: 1px solid var(--border); }");
+    expect(css).toContain(".hub-dock .composer .btn-send { width: var(--tap); min-width: var(--tap); min-height: var(--tap); }");
+    expect(css).toContain(".hub-room-page .composer-row .hub-room-hint { display: inline; white-space: normal; }");
+  });
+  it("an archived room: the dock says so (a banner, as a closed chat's), nothing to send", async () => {
     const { pg, restore } = await roomPage("room-archived");
     try {
-      await until(() => pg.root.querySelector(".hub-room-page .composer-box .note"));
-      expect(pg.root.querySelector(".hub-room-page .composer-box .note")!.textContent).toBe("This room is archived; you can't send messages.");
+      await until(() => pg.root.querySelector(".hub-room-page .hub-dock .hub-banner"));
+      expect(pg.root.querySelector(".hub-room-page .hub-dock .hub-banner")!.textContent).toBe("This room is archived; you can't send messages.");
+      expect(pg.root.querySelector(".hub-room-page .composer-box")).toBeNull();
       expect(pg.root.querySelector(".hub-room-page textarea")).toBeNull();
     } finally { restore(); }
   });

@@ -56,7 +56,7 @@ try {
       if (geometry.scroll > geometry.width + 1) throw Error(`overflow ${tag}:${label}`);
       await page.screenshot({ path: join(out, `${tag}-${label}.png`) }); records.push({ tag, label, geometry });
     }
-    await page.goto(fx.base + "/settings/agent-defaults"); await mounted(page, ".p-settings"); await page.waitForSelector("#g-model"); await page.locator("#g-model").scrollIntoViewIfNeeded();
+    await page.goto(fx.base + "/settings/agent-defaults"); await mounted(page); await page.waitForSelector(".p-settings"); await page.waitForSelector("#g-model"); await page.locator("#g-model").scrollIntoViewIfNeeded();
     await shot("settings");
     if (!before) {
       const field = page.locator("#g-model").locator(".."); const value = await page.locator("#g-model").inputValue();
@@ -71,7 +71,7 @@ try {
     const row = page.locator(".p-settings .s-row").filter({ has: page.locator(`.s-name[title="${name}"]`) });
     await row.locator("button").filter({ hasText: /^(Settings|設定)$/ }).click(); await page.waitForSelector("#ag-model");
     await page.locator("#ag-model").scrollIntoViewIfNeeded(); await page.waitForTimeout(250); await shot("agent-dialog");
-    await page.goto(fx.base + `/ui/chat/${encodeURIComponent(name)}`); await mounted(page, ".p-chat");
+    await page.goto(fx.base + `/ui/chat/${encodeURIComponent(name)}`); await mounted(page); await page.waitForSelector(".p-chat");
     const open = async (command: string) => { await page.locator("#msgIn").fill(`/${command}`); await page.locator("#sendBtn").click(); };
     await open("model"); await page.waitForSelector(".cmd-card .cmd-choices"); await shot("chat-model");
     if (!before) {
@@ -95,6 +95,10 @@ try {
           // M-3115 (phone v2): 最新 is a 44 px round button floating at the thread's bottom right (no row of its own).
           if (!b || !thread || !composer || b.width < 44 || b.height < 44 || b.y + b.height > thread.y + thread.height + 1 || b.y + b.height > composer.y + 1
             || b.x + b.width < thread.x + thread.width - 80) throw Error(`latest is not the round button at the thread's bottom right: ${JSON.stringify({ b, thread })}`);
+          // The user (before 2.4.0-beta.3): no unread counts — a message arriving while scrolled up adds no badge to it.
+          fx.fm.emitSseEvent("message", { instance: name, sender: name, role: "agent", text: "新的一則回覆。", ts: new Date().toISOString() });
+          await page.waitForFunction(() => /1/.test(document.querySelector(".jump-latest")?.getAttribute("aria-label") || ""), undefined, { timeout: 5000 });
+          if (await page.locator(".jump-latest .jump-count").count()) throw Error("latest shows an unread count");
           await shot("phone-latest"); await button.click();
         } else throw Error("latest pill not offered");
         // M-3115: the row's picker / ring and Send are the phone's model controls now (the old chip row is gone); at least one.

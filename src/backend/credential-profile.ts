@@ -252,7 +252,7 @@ const CLAUDE_HOME: CredentialHomeSpec = {
  * no proof in the other: null — unknown, never "signed out" (#1699).
  */
 export function claudeStoreHasLogin(storeHome: string): boolean | null {
-  // M-2825: a login in .credentials.json that is over is no login, whatever .claude.json still names (the hsinlin case).
+  // M-2825: a login in .credentials.json that is over is no login, whatever .claude.json still names (the second-account case).
   if (claudeStoreEnded(storeHome)) return false;
   let unreadable = false;
   const read = (name: string): Record<string, any> | null => {

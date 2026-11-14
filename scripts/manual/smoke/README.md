@@ -120,8 +120,11 @@ await link.close();
     from-defaults cases on a fixture of their own (or before anything writes prefs).
 - **Errors.** `errors` collects page errors and console errors from before the first navigation. The sign-in page's own
   `/auth/session` 401 before signing in is kept apart in `expected`.
-- **Mounted.** `mounted(page)` waits for the app's visible navigation (the sidebar, or the phone's tab bar) with a
-  control in it. The empty `#app` the page ships with doesn't count.
+- **Mounted.** `mounted(page)` waits for the app's visible navigation (the sidebar, the phone's tab bar, or inside an
+  agent's pages on a phone the header's ‹) with a control in it. The empty `#app` the page ships with doesn't count.
+- **`waitForFunction` takes a function, never a string.** Playwright evals a string expression in the page again on
+  every poll, and the dashboard's CSP has no `'unsafe-eval'`: a wait that polls more than once records an `EvalError`
+  page error and a `script-src eval` violation. Pass values as its argument: `waitForFunction((n) => …, n)`.
 - **Fault injection.** `beforeNavigate(ctx, page)` runs before the first navigation, for negative controls.
 
 **What is not real, exactly** — everything else the browser does goes through the product:

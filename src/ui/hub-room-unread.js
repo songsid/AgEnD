@@ -42,7 +42,8 @@ export function counts(event, me) {
 
 /** Desktop notify only for a row counts() treats as unread, and only while the tab is unfocused. */
 export function shouldNotify(event, me, focus, env = globalThis) {
-  return !focus && counts(event, me).unread > 0 && notifyOn(env);
+  const c = counts(event, me);
+  return !focus && c.unread > 0 && (!event.message?.proactive || c.mentioned) && notifyOn(env);
 }
 
 /** Open room + scrolled to the bottom → mark read (spec §12). */

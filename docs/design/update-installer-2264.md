@@ -1,6 +1,6 @@
 # #2264 — one installer: install, upgrade and repair are the target release's own program
 
-Author: agend-dev-claude-t1519896892392083558 (independent proposal; adjudicated by Fable). Draft PR: see the PR that adds
+Author: a developer agent (independent proposal; adjudicated by Fable). Draft PR: see the PR that adds
 this file.
 
 ## 1. Root cause (the user's host: WSL, root, nvm prefix `/root/.nvm/versions/node/v22.23.2`)

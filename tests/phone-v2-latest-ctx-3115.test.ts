@@ -1,7 +1,7 @@
 /**
  * M-3115 PR 3 (phone v2): on a phone, past 70% the context hint is one thin line in the status line's place — the words,
  * 壓縮 / 清空… as text, and ✕ that puts it away for this tab's session — and 最新 is a small round button floating at the
- * thread's bottom right (its count a badge), not a row across the screen. A desk is unchanged.
+ * thread's bottom right (no count on it: the user, before 2.4.0-beta.3), not a row across the screen. A desk is unchanged.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -72,16 +72,16 @@ describe("M-3115 PR 3: the context hint as one line with ✕ (phone)", () => {
     expect([$(desk, ".quick-actions")?.className, $(desk, ".qa-dismiss")]).toEqual(["quick-actions", null]);
   });
 
-  it("the CSS: the line takes the idle strip's place (the working line takes it back), 22 px; 最新 a round button at the right with a badge", () => {
+  it("the CSS: the line takes the idle strip's place (the working line takes it back), 22 px; 最新 a round button at the right, no badge", () => {
     const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
     const bar = readFileSync(join(process.cwd(), "src/ui/shared/chat-work-bar.css"), "utf8");   // fresh-linked: an older app.css still gets it
     for (const rule of [".p-chat .dock:has(.qa-line) .work-bar.idle { display: none; }", ".p-chat .dock:has(.work-bar:not(.idle)) .qa-line { display: none; }"]) expect(bar).toContain(rule);
-    expect(css).toContain(".jump-count { display: none; }");
+    expect(css).toContain(".jump-count { display: none; }");   // a tab on an older panel-chat.js: its count stays hidden
     expect(bar).toMatch(/\.p-chat \.quick-actions\.qa-line \{ height: 22px;/);
     expect(bar).toMatch(/\.p-chat \.qa-line \.btn \{ min-height: var\(--tap\); min-width: var\(--tap\); height: var\(--tap\); margin-block: calc\(\(22px - var\(--tap\)\) \/ 2\)/);
     const picker = readFileSync(join(process.cwd(), "src/ui/shared/model-picker.css"), "utf8");
     expect(picker).toMatch(/\.p-chat \.jump-latest \{ left: auto; right: var\(--s-3\); transform: none; width: var\(--tap\); height: var\(--tap\)/);
-    expect(picker).toMatch(/\.p-chat \.jump-latest \.jump-count \{ display: block;/);
+    expect(picker, "no count badge on a phone (the user, before beta.3)").not.toMatch(/jump-count/);
     expect(picker).not.toMatch(/\.p-chat \.jump-dock \{ position: static/);   // no row of its own across the screen
   });
 });

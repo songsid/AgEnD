@@ -372,7 +372,7 @@ if (only("switch")) {
     await p.page.setChecked("#vaEnabled", on);                                          // #2347: unsaved at once; the bar's Save writes it
     await p.page.waitForSelector(".s-pending", { timeout: 5000 });
     await p.page.locator(".s-pending button.btn-primary").click();
-    await p.page.waitForFunction(`!document.querySelector(".s-pending")`, null, { timeout: 15000 });
+    await p.page.waitForFunction(() => !document.querySelector(".s-pending"), null, { timeout: 15000 });
     await p.page.waitForTimeout(800);
     return (await p.page.locator(".s-pending").count()) === 0;                           // a failed Apply stages it again
   };
