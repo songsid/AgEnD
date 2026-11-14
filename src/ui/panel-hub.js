@@ -163,6 +163,7 @@ export function HubPanel({ route }) {
         return d && d.ok && d.me && d.me.id ? { id: d.me.id } : null;
       },
       roomName: (id) => { const r = (roomsStore.get().rooms || []).find((x) => x.id === id); return (r && r.name) || ""; },
+      roomKind: (id) => { const r = (roomsStore.get().rooms || []).find((x) => x.id === id); return (r && r.kind) || ""; },
       open: (rid) => navigate(roomPath(rid)),
     });
     return stop;
@@ -182,7 +183,7 @@ export function HubPanel({ route }) {
     <${PanelHeader} title=${hj("title")} /><div data-trust="panel-content" class="panel-body hub-page-body"><${HubCompanyJoinPage} session=${s} /></div></div>`;
   // Security notices stay on their own page. The bound join branch above never renders the chat or notices page.
   if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
-    <${PanelHeader} title=${hc("noticesTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body">
+    <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
       <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
         ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
         ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}</div></div></div>`;
@@ -558,7 +559,7 @@ function HubChats() {
     onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
-  return html`<${PanelHeader} title=${hc("chats")}><span class="hub-head-tools"><${TextSizeButton} /><${HubNotifyToggle} /></span></${PanelHeader}>
+  return html`<${PanelHeader} title=${hc("chats")} />
   <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
     <div class="hub-home-list"><${HubHomeList} /></div>
     ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true), admin: s.admin === true, features: s.features }} /></div>`
@@ -707,6 +708,7 @@ function HubRoomView({ room: given }) {
       <header class="hub-chat-head" data-trust="panel-content">${back}<${Avatar} name=${name} size="sm" />
         <span class="hub-chat-title"><strong>${name}</strong><span class="s">${room.ownerName ? hc("answersFor", room.ownerName) : ""}</span></span>
         ${tag}
+        <span class="hub-head-tools"><${TextSizeButton} /></span>
         <button type="button" class="icon-btn" aria-pressed=${wide ? String(showRail) : undefined} aria-label=${hc("showInfo")} title=${hc("showInfo")} onClick=${toggleInfo}><${Icon} name="info" /></button>
       </header>
       <${HubThread} store=${store} name=${name} panelKey=${panelKey} threadRef=${threadRef} />

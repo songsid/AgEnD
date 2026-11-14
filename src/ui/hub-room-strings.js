@@ -117,7 +117,7 @@ register("hubRoom", {
     notifyUnavailable: "This browser cannot show notifications here.",
     turnOn: "Turn on", turnOff: "Turn off",
     notifyMention: "{0} mentioned you in {1}: {2}", notifyAnswer: "{0} answered in {1}: {2}",
-    notifyInvite: "New invitation: {0}",
+    notifyInvite: "New invitation: {0}", notifyDirect: "{0}: {1}",
     // M-3092: a room's own line when an administrator joins; the prompts of a one-to-one chat (an agent's, the Hub assistant's).
     sysAdminJoined: "{0} joined as a room manager", composerAssistant: "Ask the Hub assistant", composerDirect: "Ask {0}",
     // M-3092 (Lumen's consent walk): an agent its owner shares, in rooms but asked by no one one-to-one; the Invitations page and row.
@@ -226,7 +226,7 @@ register("hubRoom", {
     notifyUnavailable: "這個瀏覽器在這裡無法顯示通知。",
     turnOn: "開啟", turnOff: "關閉",
     notifyMention: "{0} 在「{1}」@ 了你：{2}", notifyAnswer: "{0} 在「{1}」回答了：{2}",
-    notifyInvite: "新邀請：{0}",
+    notifyInvite: "新邀請：{0}", notifyDirect: "{0}：{1}",
     sysAdminJoined: "{0} 以房間管理的身分加入", composerAssistant: "問 Hub 助理", composerDirect: "問 {0}",
     agentNoOneToOne: "還沒有人可以一對一提問", inRoomsOne: "在 1 個房間裡", inRoomsMany: "在 {0} 個房間裡",
     peopleOne: "1 人", peopleMany: "{0} 人", agentsOne: "1 個 Agent", agentsMany: "{0} 個 Agent",

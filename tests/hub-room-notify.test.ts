@@ -51,7 +51,7 @@ function fakeClient() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("notifyKind", () => {
-  it("pings an @ to me, an agent answer and a new invitation — never plain chatter", () => {
+  it("pings an @ to me, an answer to my question, a new invitation and any direct message — never group chatter", () => {
     const fx = createHubRoomsFixture();
     const weekly = fx.rooms.find((r) => r.id === "room-weekly")!;
     const chen = weekly.messages.find((m) => m.author.id === "person-chen")!;
@@ -62,11 +62,18 @@ describe("notifyKind", () => {
     expect(notifyKind(at(chen), fx.me)).toBeNull();
     expect(notifyKind(at(mine), fx.me)).toBeNull();
     expect(notifyKind(at(system), fx.me)).toBeNull();
-    expect(notifyKind({ type: "message.updated", roomId: weekly.id, message: { ...chen, stage: "answered" } }, fx.me)).toBe("answer");
-    expect(notifyKind({ type: "message.updated", roomId: weekly.id, message: { ...chen, stage: "consumed" } }, fx.me)).toBeNull();
+    const answered = (over: object) => ({ type: "message.updated", roomId: weekly.id, message: { ...chen, stage: "answered", answerTo: "q-1", ...over } });
+    expect(notifyKind(answered({ askedBy: fx.me.id }), fx.me)).toBe("answer");
+    expect(notifyKind(answered({}), fx.me)).toBeNull();
+    expect(notifyKind(answered({ askedBy: "person-other" }), fx.me)).toBeNull();
+    expect(notifyKind({ type: "message.updated", roomId: weekly.id, message: { ...chen, stage: "consumed", answerTo: "q-1", askedBy: fx.me.id } }, fx.me)).toBeNull();
     expect(notifyKind({ type: "invitation.changed", invitation: { id: "inv-new", room: { id: "room-x", name: "產品規劃" } } }, fx.me)).toBe("invitation");
     expect(notifyKind({ type: "invitation.changed" }, fx.me)).toBeNull();
     expect(notifyKind({ type: "presence.changed" }, fx.me)).toBeNull();
+    expect(notifyKind(at(chen), fx.me, { direct: true })).toBe("direct");
+    expect(notifyKind(at(chen), fx.me, { direct: false })).toBeNull();
+    expect(notifyKind(at(chen), fx.me)).toBeNull();
+    expect(notifyKind(at(mine), fx.me, { direct: true })).toBeNull();
   });
 });
 
@@ -125,7 +132,7 @@ describe("sign-out and sign-in as someone else (Fable P2 scenario)", () => {
 
 describe("startHubRoomNotifier", () => {
   const fx = createHubRoomsFixture();
-  function started(over: { permission?: string; hidden?: boolean; me?: { id: string } | null } = {}) {
+  function started(over: { permission?: string; hidden?: boolean; me?: { id: string } | null; direct?: boolean } = {}) {
     const env = optedEnv({ permission: over.permission });
     const client = fakeClient();
     const open = vi.fn();
@@ -133,30 +140,50 @@ describe("startHubRoomNotifier", () => {
     const stop = starter({
       client, me: over.me === undefined ? fx.me : over.me,
       roomName: (id: unknown) => (id ? "研一主管週會" : ""),
+      roomKind: () => (over.direct ? "direct" : "group"),
       open, env, doc: { hidden: over.hidden ?? true },
     });
     return { env, client, open, stop };
   }
 
-  it("pings once per row for a mention, an answer and an invitation; plain rows stay silent", () => {
+  it("pings once per row for a mention, my answer and an invitation; plain and others' answers stay silent", () => {
     const fx = createHubRoomsFixture();
     const { env, client, stop } = started();
     const weekly = fx.rooms.find((r) => r.id === "room-weekly")!;
     const chen = weekly.messages.find((m) => m.author.id === "person-chen")!;
     const emit = (type: string, data: Record<string, unknown>) => (client.handlers[type] as (d: unknown) => void)(data);
+    const answer = (over: object) => ({ ...chen, stage: "answered", answerTo: "q-1", ...over });
     emit("message.added", { roomId: weekly.id, message: { ...chen, mentions: [fx.me.id] } });
-    emit("message.updated", { roomId: weekly.id, message: { ...chen, stage: "answered" } });
+    emit("message.updated", { roomId: weekly.id, message: answer({ askedBy: fx.me.id }) });
+    emit("message.updated", { roomId: weekly.id, message: answer({ askedBy: "person-other" }) });
+    emit("message.updated", { roomId: weekly.id, message: answer({}) });
     emit("invitation.changed", { invitation: { id: "inv-new", room: { id: "room-x", name: "產品規劃" } } });
     emit("message.added", { roomId: weekly.id, message: chen });
     expect(env.seen.map((n) => n.title)).toEqual(["研一主管週會", "研一主管週會", "AgEnD Hub"]);
     expect(env.seen[0]!.opts.body).toContain("陳主任");
     expect(env.seen[0]!.opts.body).toContain("研一主管週會");
     expect(env.seen[2]!.opts.body).toContain("產品規劃");
-    // The same rows again: no second ping (tag dedupe).
+    // The same rows again: no second ping (kind + row dedupe).
     emit("message.added", { roomId: weekly.id, message: { ...chen, mentions: [fx.me.id] } });
-    emit("message.updated", { roomId: weekly.id, message: { ...chen, stage: "answered" } });
+    emit("message.updated", { roomId: weekly.id, message: answer({ askedBy: fx.me.id }) });
     expect(env.seen).toHaveLength(3);
     stop();
+  });
+
+  it("pings any new direct-room message with the direct wording", () => {
+    const fx = createHubRoomsFixture();
+    const { env, client, stop } = started({ direct: true });
+    const weekly = fx.rooms.find((r) => r.id === "room-weekly")!;
+    const chen = weekly.messages.find((m) => m.author.id === "person-chen")!;
+    (client.handlers["message.added"] as (d: unknown) => void)({ roomId: "room-direct", message: chen });
+    expect(env.seen).toHaveLength(1);
+    expect(env.seen[0]!.title).toBe("研一主管週會");
+    expect(env.seen[0]!.opts.body).toContain("陳主任");
+    stop();
+    const grouped = started();
+    (grouped.client.handlers["message.added"] as (d: unknown) => void)({ roomId: weekly.id, message: chen });
+    expect(grouped.env.seen).toHaveLength(0);
+    grouped.stop();
   });
 
   it("stays silent when focused, opted out, or for my own rows; a click focuses and opens the room", () => {

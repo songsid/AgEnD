@@ -8,16 +8,20 @@ import { counts, shouldNotify } from "./hub-room-unread.js";
 import { hroom } from "./hub-room-strings.js";
 
 /**
- * Which live events earn a desktop ping: an @ to me, an agent's answer, a new invitation.
- * Plain room chatter only counts toward unread (the list and the tab title show it).
+ * Which live events earn a desktop ping (web-claude M-3117: only what is about me): an @ to me, an answer to
+ * a question I asked (`answerTo` mine, matched by the server-set `askedBy`; a missing `askedBy` is not mine),
+ * a new invitation, and any new message in a direct (1:1) room (`opts.direct`). A group room's chatter and
+ * answers to other people's questions only count toward unread (the list and the tab title show them).
  */
-export function notifyKind(event, me) {
+export function notifyKind(event, me, opts = {}) {
   const c = counts(event, me);
   if (!c || c.unread <= 0) return null;
   if (c.invitation) return "invitation";
   if (c.mentioned) return "mention";
   const m = event && event.message;
-  return m && m.stage === "answered" ? "answer" : null;
+  if (m && m.stage === "answered" && m.answerTo && m.askedBy && me && m.askedBy === me.id) return "answer";
+  if (opts.direct && event.type === "message.added") return "direct";
+  return null;
 }
 
 const excerpt = (text) => {
@@ -33,6 +37,7 @@ function pingBody(kind, event, room) {
   }
   const m = (event && event.message) || {};
   const who = (m.author && m.author.name) || "";
+  if (kind === "direct") return hroom("notifyDirect", String(who), excerpt(m.text));
   return hroom(kind === "mention" ? "notifyMention" : "notifyAnswer", String(who), String(room), excerpt(m.text));
 }
 
@@ -58,10 +63,11 @@ let stopPrev = null;
  * matched before that, while an invitation — which carries no author — still pings).
  * `setMe({ id })`: keeps what `resolveMe()` learns; `resolveMe()`: one async attempt at the id, retried
  * on the next event while still unknown (only while opted in, so an opted-out page never reads for it).
- * `roomName(roomId)`: the ping's title; `open(roomId)`: where a click goes. Returns the stop function;
+ * `roomName(roomId)`: the ping's title; `roomKind(roomId)`: the list's kind for it (`"direct"` rooms ping
+ * on any new message); `open(roomId)`: where a click goes. Returns the stop function;
  * a second start replaces the first.
  */
-export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, open, env = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
+export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, roomKind, open, env = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
   if (stopPrev) stopPrev();
   const seen = new Set();
   let resolving = null;
@@ -82,7 +88,8 @@ export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, o
     let kind = null;
     if (self) {
       if (!shouldNotify(event, self, focus, env)) return;
-      kind = notifyKind(event, self);
+      const direct = typeof roomKind === "function" && roomKind(event.roomId) === "direct";
+      kind = notifyKind(event, self, { direct });
     } else {
       // The page has not learned this person's id yet: message rows cannot be matched, while a new
       // invitation (no author) still pings under the same opt-in + hidden-tab rule.
