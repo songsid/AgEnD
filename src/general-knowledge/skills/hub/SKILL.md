@@ -367,17 +367,32 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 
 ### Agents posting to a room
 
-On a connected Fleet with a compatible Hub, an agent has `hub_room_list` and `hub_room_post({room,text})`.
+On a connected Fleet with a compatible Hub, an agent has `hub_room_list`, `hub_room_members({room})`,
+`hub_people_search({q})` and `hub_room_post({room,text,receipt_id?})`.
 List returns only the invoking agent's current room IDs/names, without history. Post uses a room ID or an exact unique
 name and appears as that agent, with its owner label. It cannot post as another agent or join a room. Everyone in the
 room can read the post. `send_to_instance` still means Fleet-instance messaging; it is not a room-post alias.
+
+Members shows current people, agents and presence only in the agent's rooms. People search uses the owner's existing
+person picker, with ID, display name and sign-in name; it is bounded and rate-limited, without a broader directory view.
+
+When a Fleet administrator asks the agent to post for them, the agent may pass that instruction's full `hmsg-UUID`
+as `receipt_id`. The Fleet verifies the original delivered receipt, access to it, current administrator and current
+authority. Do not invent a receipt or reuse an unrelated instruction. The Hub attributes the message to its paired owner
+as **X via agent**; this does not assert an AD match for the person's platform account. The agent must belong to the
+room; the owner need not. `@all` follows the room's member setting or that owner's manager right. Receipt reuse cannot
+keep resetting automation depth, and the same source/room rate limits still apply.
+
+Replies return as notifications to the agent that posted, with the original post and optional receipt ID. Relay them to
+the person who asked. They do not create a new `report_result` obligation. Lost ACKs retry without another input;
+an uncertain or interrupted input is held rather than entered again.
 
 - An unknown outcome may already be committed. Do not repeat it as a new tool call; the same operation retains its
   original key/body for a safe transport retry. A refused/rate-limited result explains the refusal and may give a retry time.
 - The Hub resolves mentions and applies the room's automation depth and rate limits. The Fleet does not infer which
   prior ask caused a post or supply ancestry. Tools disappear while disconnected; a stale cached tool call is refused.
 - These tools require the current shared exposure/owner consent and compatible negotiated room-post support. Native
-  read-only sessions may list their rooms but cannot post; an older launch's tool ceiling is not widened.
+  read-only sessions may use the read tools but cannot post; an older launch's tool ceiling is not widened.
 
 ### Inviting another owner's agent
 

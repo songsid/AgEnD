@@ -43,7 +43,7 @@ import {
   ListInstancesArgs,
   ListTeamsArgs,
   ReplaceInstanceArgs,
-  HubRoomListArgs, HubRoomPostArgs,
+  HubRoomListArgs, HubRoomPostArgs, HubRoomMembersArgs, HubPeopleSearchArgs,
   ReportResultArgs,
   DeliveryStatusArgs,
   RequestInformationArgs,
@@ -129,7 +129,9 @@ export interface OutboundContext {
   /** Connected, caller-scoped room operations; tool arguments never select an agent. */
   hubRoomToolsAvailable?(): boolean;
   hubRoomList?(caller: import("./hub/member/room-post.js").RoomCaller): Promise<import("./hub/member/room-post.js").RoomListResult>;
-  hubRoomPost?(caller: import("./hub/member/room-post.js").RoomCaller, value: {room:string;text:string;operationId:string}): Promise<import("./hub/member/room-post.js").RoomPostResult>;
+  hubRoomMembers?(caller: import("./hub/member/room-post.js").RoomCaller, room:string): Promise<import("./hub/types.js").HubRoomMembersResult>;
+  hubPeopleSearch?(caller: import("./hub/member/room-post.js").RoomCaller, q:string): Promise<import("./hub/types.js").HubPeopleSearchResult>;
+  hubRoomPost?(caller: import("./hub/member/room-post.js").RoomCaller, value: {room:string;text:string;operationId:string;receiptId?:string}): Promise<import("./hub/member/room-post.js").RoomPostResult>;
   /** Existing one-to-one/room answer hook; null keeps ordinary routing. */
   hubReport?(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null;
   /** Persist a cross-instance action before its MCP call is acknowledged. */
@@ -2552,23 +2554,31 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
 
 // ── Registry ────────────────────────────────────────────────────────────
 
-const hubRoom = (post: boolean): Handler => async (ctx, args, respond, meta) => {
+const hubRoom = (kind: "list"|"post"|"members"|"people"): Handler => async (ctx, args, respond, meta) => {
   if (meta.senderSessionName && meta.senderSessionName !== meta.instanceName) { respond(null, "Hub rooms require the invoking Fleet agent"); return; }
-  const parsed = post ? validateArgs(HubRoomPostArgs, args, "hub_room_post") : validateArgs(HubRoomListArgs, args, "hub_room_list");
+  const parsed = kind === "post" ? validateArgs(HubRoomPostArgs,args,"hub_room_post")
+    : kind === "members" ? validateArgs(HubRoomMembersArgs,args,"hub_room_members")
+    : kind === "people" ? validateArgs(HubPeopleSearchArgs,args,"hub_people_search") : validateArgs(HubRoomListArgs,args,"hub_room_list");
   if (!parsed.ok) { respond(null, parsed.error); return; }
   const boot = meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName);
   const current = () => (meta.callerCurrent?.() ?? true) && (!ctx.getDaemonBootId || !!boot && ctx.getDaemonBootId(meta.instanceName) === boot);
   if (!current() || !ctx.hubRoomToolsAvailable?.()) { respond({ok:false,code:"unavailable"}); return; }
   const caller = {agent:meta.instanceName,current};
-  if (post) {
+  if (kind === "post") {
     if (!meta.operationId) { respond(null, "Hub room posts require an operation identity"); return; }
-    respond(await ctx.hubRoomPost?.(caller, {...parsed.data as {room:string;text:string},operationId:meta.operationId}) ?? {ok:false,code:"unavailable"});
-  } else respond(await ctx.hubRoomList?.(caller) ?? {ok:false,code:"unavailable"});
+    const value=parsed.data as {room:string;text:string;receipt_id?:string};
+    respond(await ctx.hubRoomPost?.(caller, {room:value.room,text:value.text,operationId:meta.operationId,
+      ...(value.receipt_id ? {receiptId:value.receipt_id} : {})}) ?? {ok:false,code:"unavailable"});
+  } else if(kind === "members") respond(await ctx.hubRoomMembers?.(caller,(parsed.data as {room:string}).room)??{ok:false,code:"unavailable"});
+  else if(kind === "people") respond(await ctx.hubPeopleSearch?.(caller,(parsed.data as {q:string}).q)??{ok:false,code:"unavailable"});
+  else respond(await ctx.hubRoomList?.(caller) ?? {ok:false,code:"unavailable"});
 };
 export const outboundHandlers = new Map<string, Handler>([
   ["hub_room_status", (ctx, _args, respond, meta) => { respond({available:(!meta.senderSessionName || meta.senderSessionName === meta.instanceName) && ctx.hubRoomToolsAvailable?.() === true}); }],
-  ["hub_room_list", hubRoom(false)],
-  ["hub_room_post", hubRoom(true)],
+  ["hub_room_list", hubRoom("list")],
+  ["hub_room_post", hubRoom("post")],
+  ["hub_room_members", hubRoom("members")],
+  ["hub_people_search", hubRoom("people")],
   ["delivery_status", deliveryStatus],
   ["send_to_instance", sendToInstance],
   ["broadcast", broadcast],

@@ -20,7 +20,7 @@ function fixture() {
     list: vi.fn(async exposureId => ({ ok: true as const, exposureId, rooms: [{ id: roomId, name: "Weekly" }] })),
     post: vi.fn(async value => { received.push(value); return { ok: true as const, roomId, messageId, at: 1000 }; }) };
   const caller = { agent: "agent-A", current: () => callerCurrent };
-  return { db, adapter, make, link, caller, received, roomId, messageId, changed,
+  return { db, adapter, make, link, caller, received, roomId, messageId, changed, options,
     replace: () => { local = { ...local!, token: "replacement-token" }; }, withdraw: () => { local = null; },
     stop: () => { current = false; }, retireCaller: () => { callerCurrent = false; } };
 }
@@ -48,6 +48,34 @@ it("maps only the invoking agent and uses the authoritative room response", asyn
   expect(h.link.list).toHaveBeenCalledTimes(1);
   expect(await h.adapter.post(h.caller, { room: "Weekly", text: "Update", operationId: randomUUID() })).toMatchObject({ ok: true, messageId: h.messageId });
   expect(h.received[0]).toMatchObject({ exposureId: expect.any(String), room: "Weekly", text: "Update" });
+});
+it("bounds members and people reads to the invoking exposure and retires held disclosures",async()=>{
+  const h=fixture();h.adapter.connected(h.link);
+  h.link.members=vi.fn(async()=>({ok:true as const,roomId:h.roomId,members:[{kind:"person" as const,id:"corp/person-A",name:"Alex",presence:"online"}]}));
+  h.link.people=vi.fn(async()=>({ok:true as const,people:[{id:"corp/person-A",name:"Alex",login:"alex"}],truncated:false}));
+  expect(await h.adapter.members(h.caller,"Weekly")).toMatchObject({ok:true,members:[{name:"Alex"}]});
+  expect(h.link.members).toHaveBeenCalledWith(expect.any(String),"Weekly");
+  expect(await h.adapter.people(h.caller,"Al")).toMatchObject({ok:true,people:[{login:"alex"}]});
+  expect(await h.adapter.people(h.caller,"A")).toMatchObject({ok:false,code:"invalid"});
+  expect(h.link.people).toHaveBeenCalledTimes(1);
+  h.link.people=async()=>{h.replace();return {ok:true,people:[{id:"corp/person-A",name:"Alex",login:"alex"}],truncated:false};};
+  expect(await h.adapter.people(h.caller,"Al")).toEqual({ok:false,code:"stale"});
+  h.link.people=async()=>({ok:true,people:[{id:"corp/person-A",name:"Alex",login:"alex",dn:"not-for-disclosure"}],truncated:false});
+  expect(await h.adapter.people(h.caller,"Al")).toEqual({ok:false,code:"unavailable"});
+  h.link.members=async()=>({ok:false,code:"rate-limited",retryAt:2000});
+  expect(await h.adapter.members(h.caller,"Weekly")).toEqual({ok:false,code:"rate-limited",retryAt:2000});
+});
+it("requires a fresh verified receipt, freezes its identity and rechecks after the post",async()=>{
+  const h=fixture(),receiptId=`hmsg-${randomUUID()}`,operationId=randomUUID();h.adapter.connected(h.link);
+  expect(await h.adapter.post(h.caller,{room:"Weekly",text:"@all Update",operationId,receiptId})).toEqual({ok:false,code:"denied"});
+  expect(h.link.post).not.toHaveBeenCalled();
+  let valid=true;
+  Object.assign(h.options,{receipt:(_caller:unknown,id:string)=>({receiptId:id,current:()=>valid})});
+  expect(await h.adapter.post(h.caller,{room:"Weekly",text:"@all Update",operationId,receiptId})).toMatchObject({ok:true});
+  expect(h.received[0]).toMatchObject({onBehalfOf:{receiptId},idempotencyKey:operationId});
+  expect(await h.adapter.post(h.caller,{room:"Weekly",text:"@all Update",operationId,receiptId:`hmsg-${randomUUID()}`})).toEqual({ok:false,code:"conflict"});
+  h.link.post=async()=>{valid=false;return {ok:true,roomId:h.roomId,messageId:randomUUID(),at:1000};};
+  expect(await h.adapter.post(h.caller,{room:"Weekly",text:"Second",operationId:randomUUID(),receiptId})).toEqual({ok:false,code:"uncertain"});
 });
 it("retires old caller/consent observations across an awaited response", async () => {
   const h = fixture(); h.adapter.connected(h.link);

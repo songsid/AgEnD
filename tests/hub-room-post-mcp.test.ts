@@ -16,6 +16,8 @@ async function harness(profile = "worker") {
   const server = new IpcServer(socket); await server.listen();
   const state = { online: false, boot: "boot-1" }, calls: {name:string;args:any;operationId?:string}[] = [];
   const ctx: any = { getDaemonBootId: () => state.boot, hubRoomToolsAvailable: () => state.online,
+    hubRoomMembers:vi.fn(async(caller:any,room:string)=>({ok:caller.current(),room,members:[{name:"Alex",presence:"online"}]})),
+    hubPeopleSearch:vi.fn(async(caller:any,q:string)=>({ok:caller.current(),q,people:[{name:"Alex",login:"alex"}]})),
     hubRoomList: vi.fn(async (caller:any) => ({ok:true,exposureId:"owned-exposure",rooms:caller.current() ? [{id:"room-A",name:"Weekly"}] : []})),
     hubRoomPost: vi.fn(async (caller:any, value:any) => ({ok:caller.current(),messageId:"message-A",agent:caller.agent,...value})) };
   server.on("message", (message:any, peer:any) => {
@@ -41,7 +43,11 @@ it("actual MCP menu follows connection changes and posts only as its IPC owner",
   const h = await harness();
   expect((await h.client.listTools()).tools.map(t=>t.name)).not.toContain("hub_room_post");
   h.state.online=true; h.server.broadcast({type:"hub_room_tools_changed"});
-  expect((await h.client.listTools()).tools.map(t=>t.name)).toEqual(expect.arrayContaining(["hub_room_list","hub_room_post"]));
+  expect((await h.client.listTools()).tools.map(t=>t.name)).toEqual(expect.arrayContaining(["hub_room_list","hub_room_post","hub_room_members","hub_people_search"]));
+  const members:any=await h.client.callTool({name:"hub_room_members",arguments:{room:"Weekly"}});
+  const people:any=await h.client.callTool({name:"hub_people_search",arguments:{q:"Al"}});
+  expect(JSON.parse(members.content[0].text)).toMatchObject({ok:true,members:[{name:"Alex"}]});
+  expect(JSON.parse(people.content[0].text)).toMatchObject({ok:true,people:[{login:"alex"}]});
   const result:any = await h.client.callTool({name:"hub_room_post",arguments:{room:"Weekly",text:"Update"}});
   expect(result.isError).not.toBe(true);
   const body=JSON.parse(result.content[0].text);
@@ -52,6 +58,7 @@ it("actual MCP menu follows connection changes and posts only as its IPC owner",
   expect(bad.isError).toBe(true); expect(h.ctx.hubRoomPost).toHaveBeenCalledTimes(1);
   h.state.online=false; h.server.broadcast({type:"hub_room_tools_changed"});
   expect((await h.client.listTools()).tools.map(t=>t.name)).not.toContain("hub_room_post");
+  expect((await h.client.listTools()).tools.map(t=>t.name)).not.toContain("hub_people_search");
   const cached:any=await h.client.callTool({name:"hub_room_post",arguments:{room:"Weekly",text:"Cached"}});
   expect(JSON.parse(cached.content[0].text)).toMatchObject({ok:false,code:"unavailable"});
   expect(h.ctx.hubRoomPost).toHaveBeenCalledTimes(1);

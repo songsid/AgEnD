@@ -18,11 +18,11 @@ const TTL_MS = 6 * 60_000;
 const MAX_BYTES = 64 * 1024;
 const MAX_CALLS = 64;
 const OPS: Readonly<Record<string,string>> = Object.freeze({
-  hub_room_list:"hub-room-list", hub_room_post:"hub-room-post",
+  hub_room_list:"hub-room-list", hub_room_post:"hub-room-post", hub_room_members:"hub-room-members", hub_people_search:"hub-people-search",
   list_instances:"list", describe_instance:"describe", task:"task", send_to_instance:"send",
   delegate_task:"delegate", request_information:"ask", report_result:"report", delivery_status:"delivery-status",
 });
-const READ_TOOLS = new Set(["hub_room_list","list_instances","describe_instance","task","delivery_status"]);
+const READ_TOOLS = new Set(["hub_room_list","hub_room_members","hub_people_search","list_instances","describe_instance","task","delivery_status"]);
 const READ_TASK_ACTIONS = ["list","get","mine","projects"];
 type ToolResult = { content:Array<{type:"text";text:string}>;isError?:boolean };
 interface Call { operationId:string; digest:string; result:Promise<ToolResult> }
@@ -130,7 +130,7 @@ export class NativeMcpSessions {
   }
   private allowed(session:Session,name:string):boolean {
     const config=this.ctx.fleetConfig?.instances[session.instance];
-    return (!(name === "hub_room_list" || name === "hub_room_post") || this.ctx.hubRoomToolsAvailable?.() === true)
+    return (!["hub_room_list","hub_room_post","hub_room_members","hub_people_search"].includes(name) || this.ctx.hubRoomToolsAvailable?.() === true)
       && Object.hasOwn(OPS,name) && (!this.readOnly(session) || READ_TOOLS.has(name))
       && mayUseTool(resolveToolSet(config,session.instance),name) && !dashboardRefusalIn(this.ctx.fleetConfig,session.instance,name);
   }
@@ -156,7 +156,7 @@ export class NativeMcpSessions {
       const scoped=readTask
         ? {...tool,description:`Read-only task lookup. Allowed actions: ${READ_TASK_ACTIONS.join(", ")}.`,inputSchema:{...tool.inputSchema,properties:{...tool.inputSchema.properties,action:{type:"string",enum:READ_TASK_ACTIONS}}}}
         : tool;
-      return {...scoped,annotations:{readOnlyHint:tool.name==="list_instances" || tool.name==="describe_instance" || tool.name==="delivery_status" || tool.name==="hub_room_list" || readTask}};
+      return {...scoped,annotations:{readOnlyHint:tool.name==="list_instances" || tool.name==="describe_instance" || tool.name==="delivery_status" || ["hub_room_list","hub_room_members","hub_people_search"].includes(tool.name) || readTask}};
     });
   }
 

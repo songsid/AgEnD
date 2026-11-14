@@ -310,7 +310,7 @@ const currentTools = async () => {
     try { available = (await ipcRequest("hub_room_status", {}) as {available?:boolean})?.available === true; } catch { /* disconnected: hide tools */ }
   }
   return withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)
-    && (available || !["hub_room_list", "hub_room_post"].includes(t.name))), dashboardOffNow());
+    && (available || !["hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search"].includes(t.name))), dashboardOffNow());
 };
 
 mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await currentTools() }));

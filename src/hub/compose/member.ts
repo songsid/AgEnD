@@ -86,6 +86,8 @@ export interface HubMemberFactoryOptions {
   representative: HubRepresentativeHost;
   attachAgentRooms?(port: import("../member/room-post.js").AgentRoomPort | null): void;
   roomToolsChanged?(): void;
+  roomReceipt?(caller: import("../member/room-post.js").RoomCaller, receiptId: string): import("../member/room-post-receipt.js").RoomReceiptProof | null;
+  roomNotify?(input: import("../member/room-post-answers.js").RoomPostNotification): Promise<boolean>;
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
   attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null): void;
   /** Security inbox is available to the current binding's local Settings page, on chat and web-only fleets. */
@@ -500,6 +502,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         deliver: input => options.representative.deliver(input) });
       const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,
+        receipt: options.roomReceipt,
+        notify: options.roomNotify,
+        held: id => options.log("warn", "Hub room reply delivery held", {notificationId:id}),
         changed: () => options.roomToolsChanged?.(),
         local: agent => {
           if (!roomCurrent()) return null;
@@ -529,12 +534,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       };
       let roomTimer: NodeJS.Timeout | null = null;
       const stopRooms = () => { if (roomTimer) clearInterval(roomTimer); roomTimer = null; room.connected(null); roomState.connected(null); posts.connected(null); };
-      const refreshRooms = () => Promise.all([room.flush(), roomState.refresh()]).then(() => undefined);
+      const refreshRooms = () => Promise.all([room.flush(), roomState.refresh(), posts.flushAnswers()]).then(() => undefined);
+      let postLink: import("../member/room-post.js").RoomPostLink | null = null;
       const startRooms = (l: HubMemberLink) => {
         stopRooms();
         if (!options.representative.readState || !l.features.has(HUB_ROOM_ASK_CAPABILITY) || !l.features.has("welcome-caps-v1")) return;
         const view = roomLink(l); room.connected(view); roomState.connected(view);
-        if (options.attachAgentRooms) posts.connected({features:l.features,current:view.current,
+        if (options.attachAgentRooms && options.roomNotify) posts.connected(postLink={features:l.features,current:view.current,
           list: async exposureId => {
             const result = await l.exchange({v:1,type:"room.list",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId}},"room.list-result");
             if (result.type !== "room.list-result") throw new HubProtocolError("invalid");
@@ -544,7 +550,17 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             const result = await l.exchange({v:1,type:"room.post",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload},"room.post-result");
             if (result.type !== "room.post-result") throw new HubProtocolError("invalid");
             return result.payload;
-          }});
+          },
+          members: async (exposureId,room) => {
+            const result=await l.exchange({v:1,type:"room.members",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId,room}},"room.members-result");
+            if(result.type!=="room.members-result")throw new HubProtocolError("invalid");return result.payload;
+          },
+          people: async (exposureId,q) => {
+            const result=await l.exchange({v:1,type:"people.search",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId,q}},"people.search-result");
+            if(result.type!=="people.search-result")throw new HubProtocolError("invalid");return result.payload;
+          },
+          ack: id => l.send({v:1,type:"room.post-answer-ack",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{id}}),
+        });
         roomTimer = setInterval(() => { void refreshRooms().catch(() => {}); }, 5_000); roomTimer.unref();
         void refreshRooms().catch(() => {});
       };
@@ -603,7 +619,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       client = new HubMemberClient({
         home: options.home,
         hubId,
-        ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms ? [HUB_ROOM_POST_CAPABILITY] : [])] } : {}),
+        ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] } : {}),
         memberOrigin: profile.hub.memberOrigin,
         // #3429 B: a pending relocation's `to` first, then the anchor; a relocation state that does not verify: none.
         ...(profileDigest ? { dial: () => relocations.dialOrder(profile, profileDigest) } : {}),
@@ -633,6 +649,10 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         receive: (frame, l) => {
+          if(frame.type === "room.post-answer") {
+            if(postLink && roomLink(l).current())posts.receiveAnswer(frame.payload,postLink);
+            return Promise.resolve();
+          }
           if (frame.type === "room.ask") {
             try { room.accept(frame.payload, roomLink(l)); }
             catch (error) {
@@ -688,6 +708,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           options.attachExposures(api);
           options.attachAgentRooms?.(posts);
           options.representative.attachReports(input => room.report(input) ?? service.report(input), (cid, agent) => {
+            if(cid.startsWith("hub-room-post-answer-"))posts.deliveryFailed(cid.slice("hub-room-post-answer-".length),agent);
             room.deliveryFailed(cid, agent); service.deliveryFailed(cid, agent);
           });
           teardown.add("the fleet attachments", () => {

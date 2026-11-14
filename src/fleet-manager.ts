@@ -196,6 +196,7 @@ import { applyInstanceConfigPatch, outboundHandlers, type OutboundContext } from
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
 import { backendArgs, backendStep, joinBackendArgs, modelNameCarried, planDisplay, type BackendCommandDeps, type BackendStep } from "./backend-command.js";
 import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusItem } from "./delivery-outbox.js";
+import { verifyRoomReceipt } from "./hub/member/room-post-receipt.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
 // deciding to defer before submission. This is an alert threshold only: the
@@ -1664,7 +1665,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { NativePaneManager } = await import("./native-pane-manager.js");
     if (this.paneManager) return this.paneManager;
     const store = windowsAgentsFor(this, this.runtimeWindowsExecutor());
-    const allowed = (name: string, tool: string): boolean => (!["hub_room_list","hub_room_post"].includes(tool) || this.hubRoomToolsAvailable()) && nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
+    const allowed = (name: string, tool: string): boolean => (!["hub_room_list","hub_room_post","hub_room_members","hub_people_search"].includes(tool) || this.hubRoomToolsAvailable()) && nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
@@ -1717,7 +1718,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (!isWindowsInstance(this.fleetConfig?.instances[target])) return { result: null, error: "Native panes can only read Windows runtime model inventories" };
           return { result: await this.listModelCatalog({ instanceName: target }) };
         }
-        const ops: Record<string, string> = { hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
+        const ops: Record<string, string> = { hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",hub_room_members:"hub-room-members",hub_people_search:"hub-people-search",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
           delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
         const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
@@ -2301,6 +2302,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           },
           attachAgentRooms: port => { this.hubAgentRooms = port; this.notifyHubRoomTools(); },
           roomToolsChanged: () => this.notifyHubRoomTools(),
+          roomNotify: input => this.deliverHubRoomPostAnswer(input),
+          roomReceipt: (caller, receiptId) => verifyRoomReceipt({
+            lookup: (agent, id) => {
+              const item = this.queryDurableDeliveryStatus(agent, {messageId:id}).items[0];
+              if (item?.message_id !== id || !item.authority) return null;
+              const row = this.deliveryOutbox?.getHumanReceipt(id.slice(5));
+              return row ? {row,authority:item.authority} : null;
+            },
+            admin: (agent, actor) => actor.adapter_id === HOST_OPERATOR.adapterId && actor.user_id === HOST_OPERATOR.userId
+              ? this.isWebOnlyFleet()
+              : this.getInstanceAdapterId(agent) === actor.adapter_id && this.isFleetAdmin(actor.user_id, actor.adapter_id),
+          }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
           attachPairingNotices: read => { this.hubPairingNotices = read; },
@@ -2559,6 +2572,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: input.beforeInput });
     return result !== false;
   }
+  private async deliverHubRoomPostAnswer(input: import("./hub/member/room-post-answers.js").RoomPostNotification): Promise<boolean> {
+    const { HUB_REPORT_TARGET } = await import("./hub/representative.js");
+    if (this.shuttingDown || !this.fleetConfig?.instances[input.agent] || isNativeExecInstance(this.fleetConfig.instances[input.agent])) return false;
+    const result=await this.deliverToInstance(input.agent,{type:"fleet_inbound",targetSession:input.agent,content:input.text,
+      meta:{chat_id:"",message_id:`hub-room-post-answer-${input.id}`,user:`instance:${HUB_REPORT_TARGET}`,user_id:`instance:${HUB_REPORT_TARGET}`,
+        ts:new Date().toISOString(),thread_id:"",from_instance:HUB_REPORT_TARGET,from_display:"Hub",correlation_id:`hub-room-post-answer-${input.id}`,
+        request_kind:"notification",requires_reply:"false",task_summary:"A reply to your Hub room post"}},
+      {isCrossInstance:true,stillCurrent:input.stillCurrent,beforeInput:input.beforeInput});
+    return result!==false;
+  }
 
   /** S-51: why the Hub (or this fleet's Hub membership) is not running, if it is held. Empty while off or running. */
   getHubHolds(): readonly import("./hub/runtime.js").HubHold[] {
@@ -2651,7 +2674,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubRoomList(caller: import("./hub/member/room-post.js").RoomCaller) {
     return this.hubAgentRooms?.rooms(caller) ?? Promise.resolve({ok:false as const,code:"unavailable"});
   }
-  hubRoomPost(caller: import("./hub/member/room-post.js").RoomCaller, value:{room:string;text:string;operationId:string}) {
+  hubRoomMembers(caller: import("./hub/member/room-post.js").RoomCaller, room:string) {
+    return this.hubAgentRooms?.members(caller,room)??Promise.resolve({ok:false as const,code:"unavailable" as const});
+  }
+  hubPeopleSearch(caller: import("./hub/member/room-post.js").RoomCaller, q:string) {
+    return this.hubAgentRooms?.people(caller,q)??Promise.resolve({ok:false as const,code:"unavailable" as const});
+  }
+  hubRoomPost(caller: import("./hub/member/room-post.js").RoomCaller, value:{room:string;text:string;operationId:string;receiptId?:string}) {
     return this.hubAgentRooms?.post(caller,value) ?? Promise.resolve({ok:false as const,code:"unavailable"});
   }
   private notifyHubRoomTools(): void {

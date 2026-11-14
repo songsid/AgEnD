@@ -68,6 +68,8 @@ const OP_MAP: Record<string, string> = {
   // Communication
   "hub-room-list": "hub_room_list",
   "hub-room-post": "hub_room_post",
+  "hub-room-members": "hub_room_members",
+  "hub-people-search": "hub_people_search",
   send: "send_to_instance",
   delegate: "delegate_task",
   report: "report_result",
