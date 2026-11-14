@@ -1,6 +1,6 @@
 {
   "parentPr": 3886,
-  "parent": "6c03c4f2f1d40e7b8f33b4522938a16e4f54d2c9",
+  "parent": "5704a6a6dd47b4803d522d64712d641262e3a760",
   "sourceCommit": "c2ee6932d2b350e1e7e98fb0ed04404a84d7303e",
   "originalTestedCommit": "6bdff6d9b5f969581bbd464a98a6715213109a77",
   "stablePatchId": "7fc96c1dcc96d1eef5c8c22e81560def4c9f9fbd",
@@ -23,5 +23,7 @@
   "originalParent": "464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a",
   "scopedRepairMerge": "d951bc21bfe67bc945f68b5125ac44ec4993723e",
   "treeUnchangedSince": "62fbd0da65c6051f39406e2899ed562900e7b40c",
-  "unchangedScope": "All six own R product/test paths retain the recorded digests. Only C scoped repair and evidence enter the plain merge; no new local re-verification."
+  "unchangedScope": "All six own R product/test paths retain the recorded digests. Only C scoped repair and evidence enter the plain merge; no new local re-verification.",
+  "finalCopyMerge": "48e250475c3a4e4a59a8a71ade59743924a88bee",
+  "finalCarry": "All six own R code/test blobs remain byte-identical to source-clear62fbd0da; C final UI/copy/tests inherited, no R campaign rerun. PM required copy and unsaved feedback consumed; alpha.4 freeze/parent/current CI/formal gate remain."
 }
