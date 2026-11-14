@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-alpha
+
+ ❯ tests/hub-teams-ui-track-c.test.ts (9 tests | 1 failed | 8 skipped) 185ms
+   × keeps readable members and actions after a bare write response while refreshing the detailed roster 148ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-teams-ui-track-c.test.ts > keeps readable members and actions after a bare write response while refreshing the detailed roster
+AssertionError: expected 'Manage the members of the teams you l…' to contain 'Riley'
+
+Expected: "Riley"
+Received: "Manage the members of the teams you lead. A Hub administrator manages the name, department and lead.Edit ResearchAll teamsDepartment: Choose a departmentMembers · 3Add memberUp to 200 members, including the lead. The lead is always a member. Choose another lead before removing this person.MembersRoleJoined HubShared agentsRemovecorp/leadLead—NoneRemovecorp/memberMember—NoneRemovecorp/newMember—NoneRemoveSaveSaved."
+
+ ❯ tests/hub-teams-ui-track-c.test.ts:66:77
+     64|   change(p.root.querySelector('input[type="search"]'), "Av"); await se…
+     65|   fire(button(p, "Choose"), "click"); await settle(10); fire(p.root.qu…
+     66|   expect(p.root.textContent).toContain("Saved"); expect(p.root.textCon…
+       |                                                                             ^
+     67|   expect(p.root.textContent).not.toContain("corp/");
+     68|   expect(p.root.querySelector('[aria-label="Remove Casey"]').disabled)…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  09:14:45
+   Duration  1.42s (transform 848ms, setup 131ms, import 831ms, tests 185ms, environment 0ms)
+

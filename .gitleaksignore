@@ -141,3 +141,6 @@ a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/
 a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json:generic-api-key:660
 a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json:generic-api-key:798
 b1827bb363eac62e13091de50451437d0c9b69ba:docs/evidence/hub-rooms-integration-r3/r3-consent/browser/receipt.json:generic-api-key:949
+# Exact historical public source digest maps; current maps are losslessly encoded.
+464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a:docs/evidence/hub-virtual-teams-track-c/grant-checkpoint/grant-baseline/verification.json:generic-api-key:31
+464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a:docs/evidence/hub-virtual-teams-track-c/ui/verification.json:generic-api-key:12

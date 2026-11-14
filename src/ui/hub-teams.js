@@ -6,6 +6,7 @@ import { ht } from "./hub-teams-strings.js";
 
 const changes = new Set();
 const changed = () => { for (const fn of changes) fn(); };
+// Only a fallback for older/fixture servers without isLead; real sessions omit person.
 const personId = person => typeof person === "string" ? person : person?.realm && person?.objectId ? `${person.realm}/${person.objectId}` : person?.id || "";
 const leads = (row, me) => row.isLead === true || row.isLead === undefined && !!me && row.lead === me;
 const errorText = (out, writing = false) => out?.status === 429 ? ht("busy") : out?.status === 401 || out?.status === 403 ? ht("denied") : ht(writing ? "saveFailed" : "failed");
@@ -106,7 +107,15 @@ function TeamEditor({ client, id, mode, onSaved, onBack }) {
     let out; try { out = id ? await client.updateTeam(id, { ...value, revision: view.revision }) : await client.createTeam(value); } catch { out = { ok: false }; }
     if (mine !== epoch.current) return;
     writing.current = false; setBusy(false);
-    if (out.ok && out.team) { setView(out.team); setDraft(draftFrom(out.team)); setSaved(true); setPicker(null); changed(); onSaved(out.team); }
+    if (out.ok && out.team) {
+      // Writes may return only the stored Team. Keep known display metadata until
+      // the fenced detail read supplies current names, permissions and status.
+      const detailed = Array.isArray(out.team.memberInfo);
+      const next = detailed ? out.team : { ...view, ...out.team, departmentName: draft.departmentName,
+        memberInfo: out.team.members.map(id => draft.members.find(row => row.id === id) || { id, name: id }) };
+      setView(next); setDraft(draftFrom(next)); setSaved(true); setPicker(null); changed(); onSaved(out.team);
+      if (id && !detailed) setReload(n => n + 1);
+    }
     else setError(errorText(out, true));
   };
   const remove = async () => {

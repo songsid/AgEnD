@@ -156,6 +156,7 @@ class Teams implements HubTeams {
   }
   async get(ctx: HubRequestContext, id: string) {
     const actor = await this.who(ctx), image = this.core.atomic(db => this.snapshot(db, id));
+    if (!actor.admin && actor.id !== image.row.lead) throw new HubProtocolError("denied");
     const directory = this.core.deps.directory;
     let eligible: boolean | null = null;
     try { const result = await this.core.readDirectory(actor.person, this.core.groupContext(ctx), () => directory.checkEligibility(personFromString(image.row.lead)));

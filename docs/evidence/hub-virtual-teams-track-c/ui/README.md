@@ -13,3 +13,7 @@ Initial current UI/client/grant set passed20/3. Later provider/UI/client set pas
 All runs were serial, nice/ionice and load-monitored; maximum recorded1-minute load7.3965. Browser, listeners, SQLite handles and generated keys closed; browser slot released. `verification.json` binds current source/test/harness/skill inputs. `manifest.sha256` covers this packet.
 
 The Team UI and consumer checkpoint is ready for ordinary review; feature advertisement/production HTTP wiring remains with Track R. No release or complete S144 claim.
+
+Input digest maps now use explicit `sha256-to-paths-v1` encoding. Invert `inputs.sha256ToPaths` to recover the original path-to-digest map exactly; see `../scan-repair/verification.json`. Capture receipts remain unchanged.
+
+`save-r1/` pins later actual-server partial-write metadata and ordinary-review details/title/nullable-query repairs. Only the affected provider/UI/client suites were rerun (24/3). The original gallery and gates remain bound to8b831; this repair has no new C browser matrix. R resumes its affected real-server walk.
