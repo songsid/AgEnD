@@ -1,0 +1,34 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+---x-----
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > routes delayed IPC failure to the room intent and detaches reports on fence
+AssertionError: expected { state: 'delivered' } to deeply equal { state: 'held' }
+
+- Expected
++ Received
+
+  {
+-   "state": "held",
++   "state": "delivered",
+  }
+
+ ❯ tests/hub-room-compose-track-c.test.ts:102:44
+    100|   const h = await harness(), service = await h.start(), exposure = h.p…
+    101|   await h.send("room.ask", ask); await vi.waitFor(() => expect(h.input…
+    102|   h.failed(); expect(h.row(ask.messageId)).toEqual({ state: "held" });
+       |                                            ^
+    103|   await h.send("room.ask", ask); expect(h.inputs).toHaveLength(1);
+    104|   service.fence(); await service.close();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  01:49:47
+   Duration  2.63s (transform 1.62s, setup 110ms, import 1.96s, tests 413ms, environment 0ms)
+

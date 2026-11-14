@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 2 failed) 140ms
+     × keeps a wakeable idle sleep green Idle instead of Paused 7ms
+     × keeps a wakeable warm_cap sleep green Idle instead of Paused 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > keeps a wakeable idle sleep green Idle instead of Paused
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > keeps a wakeable warm_cap sleep green Idle instead of Paused
+AssertionError: expected { state: 'paused', reason: 'unknown' } to deeply equal { state: 'idle' }
+
+- Expected
++ Received
+
+  {
+-   "state": "idle",
++   "reason": "unknown",
++   "state": "paused",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:72:82
+     70|   });
+     71|   it.each(["idle", "warm_cap"] as const)("keeps a wakeable %s sleep gr…
+     72|     expect(agentPresence({ process: "paused", execution: "idle", pause…
+       |                                                                                  ^
+     73|   });
+     74| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 44 passed (46)
+   Start at  01:14:20
+   Duration  590ms (transform 208ms, setup 85ms, import 229ms, tests 140ms, environment 0ms)
+

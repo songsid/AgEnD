@@ -1,0 +1,29 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+-------x-
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > holds corrupt room history before an unbound legacy set can adopt a pairing or advance its floor
+AssertionError: expected '3' to be '2' // Object.is equality
+
+Expected: "2"
+Received: "3"
+
+ ❯ tests/hub-room-compose-track-c.test.ts:142:39
+    140|     expect(after.prepare("SELECT value FROM hub_room_asks").get()).toE…
+    141|   finally { after.close(); }
+    142|   expect(readFileSync(floor, "utf8")).toBe(before);
+       |                                       ^
+    143| });
+    144|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  01:49:40
+   Duration  2.45s (transform 1.51s, setup 89ms, import 1.84s, tests 390ms, environment 0ms)
+

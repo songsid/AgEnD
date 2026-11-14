@@ -1,0 +1,50 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (40 tests | 2 failed | 38 skipped) 26ms
+     × does not access a closed member database when a held input callback finishes after teardown 20ms
+     × keeps a frozen answer saved without reading the closed database after a held send settles 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > does not access a closed member database when a held input callback finishes after teardown
+AssertionError: promise rejected "TypeError: The database connection is not…" instead of resolving
+ ❯ tests/hub-room-ask-track-c.test.ts:233:38
+    231|     f.options.deliver = async input => { expect(await input.beforeInpu…
+    232|     f.adapter.accept(f.ask, f.link); await entered.promise; f.adapter.…
+    233|     await expect(f.adapter.settled()).resolves.toBeUndefined();
+       |                                      ^
+    234|   });
+    235|   it("keeps a frozen answer saved without reading the closed database …
+
+Caused by: TypeError: The database connection is not open
+ ❯ Database.prepare ../../node_modules/better-sqlite3/lib/methods/wrappers.js:5:21
+ ❯ HubRoomAskAdapter.row src/hub/member/room-ask.ts:86:69
+ ❯ HubRoomAskAdapter.dispatch src/hub/member/room-ask.ts:170:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > keeps a frozen answer saved without reading the closed database after a held send settles
+AssertionError: promise rejected "TypeError: The database connection is not…" instead of resolving
+ ❯ tests/hub-room-ask-track-c.test.ts:240:25
+    238|     vi.mocked(f.link.sendAnswer).mockImplementation(async () => { send…
+    239|     const report = f.report(); await sending.promise; f.adapter.close(…
+    240|     await expect(report).resolves.toMatchObject({ ok: true, message: e…
+       |                         ^
+    241|   });
+    242| });
+
+Caused by: TypeError: The database connection is not open
+ ❯ Database.prepare ../../node_modules/better-sqlite3/lib/methods/wrappers.js:5:21
+ ❯ HubRoomAskAdapter.row src/hub/member/room-ask.ts:86:69
+ ❯ src/hub/member/room-ask.ts:216:55
+ ❯ tests/hub-room-ask-track-c.test.ts:240:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 38 skipped (40)
+   Start at  01:05:21
+   Duration  494ms (transform 205ms, setup 85ms, import 230ms, tests 26ms, environment 0ms)
+

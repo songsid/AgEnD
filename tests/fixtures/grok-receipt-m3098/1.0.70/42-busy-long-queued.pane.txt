@@ -1,0 +1,36 @@
+
+  /t/c/-/4/s/m/rig/work-1.0.70                                                               1.7K / 256K │ [Dashboard]
+
+
+     ❯ [agend-delivery-id:b6b6b6b6-0000-4000-8000-000000003098]                                              3:01 AM
+       [from:fixture-sender] please stall: an inert three-line fleet message for the M-3098 fixture. Its
+       middle line is long enough to wrap across the echo row, as the incident messages did on the live …
+
+
+
+
+
+
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+
+    #1 [agend-delivery-id:d8d8d8d8-0000-4000-8000-000000003098] (+19 lines)
+
+    ⠙ Waiting for response… 2.6s                                                                    2.6s ⇣1.67k [stop]
+
+   Queued · Enter to send now
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Enter:send now  │  Shift+Tab:mode  │  Ctrl+c:cancel  │  Ctrl+;:queue  │  Ctrl+x:shortcuts
+

@@ -24,6 +24,19 @@
 @keyframes hub-pulse { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .hub-room-side .pulse { animation: none; } }
 .hub-list-empty, .hub-list-err { margin: var(--s-2); font-size: var(--fs-sm); }
+/* M-3092: the list as the Fleet roster draws it (its row, avatar, dot and nav-count); only what the Hub adds is here. */
+.hub-room-group + .hub-room-group { margin-top: var(--s-2); }
+.av.av-square { border-radius: var(--r-sm); }
+.hub-room-at { flex: none; color: var(--accent); font-weight: var(--fw-semibold); font-size: var(--fs-xs); }
+.inst-line2 > .nav-count { flex: none; height: 18px; min-width: 18px; line-height: 18px; }
+.hub-room-archived .inst-name { color: var(--text-3); }
+/* The room composer's fixed hint and @all bar wrap without leaving a lone word on the last line. */
+.hub-room-hint, .hub-room-allbar { text-wrap: pretty; }
+/* A question's folded answers: a left-aligned link under the last one shown (Lumen), not a centred line. */
+.hub-room-page .msg.status-line:has(.st-action) .st-text { display: none; }
+.hub-room-page .msg.status-line:has(.st-action) .body { justify-content: flex-start; }
+.hub-room-page .status-line .st-action { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; }
+.hub-room-page .status-line .st-action:hover { text-decoration: underline; }
 
 /* a name's letter on a tone (the same tones in both themes) */
 .hub-av { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 600; font-size: 14px; color: #fff; flex: none; }
@@ -91,6 +104,10 @@
   background: var(--surface); border-radius: var(--r-sm); color: var(--text-3); }
 .hub-side-filter input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); padding: 7px 0; font: inherit; font-size: var(--fs-sm); outline: none; }
 .hub-side-rooms .inst-head > .count { padding: var(--s-3) var(--s-3) var(--s-1); color: var(--text-3); font-size: var(--fs-xs); }
+/* S-145: 「最愛」's head — the Fleet's star before the name (fav-mark: its colour), the Edit chip after the count. */
+.hub-side-rooms .fav-head > .side-label { display: flex; align-items: center; gap: var(--s-1); }
+.hub-side-rooms .fav-head > .count { padding-right: var(--s-1); }
+.hub-side-rooms .fav-head > .fav-edit { margin-top: var(--s-2); }   /* on the label's line (side-label is padded above) */
 .side-foot > .hub-prefs { flex: 1; min-width: 0; }
 .side-foot > .hub-session-row, .hub-session-row > .menu, .hub-session-row > .menu > .side-row { width: 100%; min-width: 0; }
 /* The foot is the sidebar's bottom: its session menu opens upward (as the dashboard's), never below the screen. */

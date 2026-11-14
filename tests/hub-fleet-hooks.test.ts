@@ -121,6 +121,22 @@ describe("review #3113 regression (single-flight runtime)", () => {
 });
 
 describe("S5b PR 2b: the member side's fleet hooks", () => {
+  it("reads existing process/execution/pause state and only a fresh positive approval observation for room presence", async () => {
+    const { fm } = harness({ hub_member: { enabled: true } }); fm.hubEffectsReady = true; fm.observeHubSwitches(); await settle();
+    fm.getInstanceStatus = () => "running"; fm.getInstanceExecutionState = () => "working";
+    let interaction: any = null; fm.getInstanceInteraction = () => interaction;
+    const read = hub.options.member.representative.readState;
+    expect(read("general")).toEqual({ process: "running", execution: "working", pauseReason: null, waitingForApproval: false });
+    interaction = { phase: "waiting", kind: "permission", stale: false, suspected: false };
+    expect(read("general").waitingForApproval).toBe(true);
+    interaction = { ...interaction, stale: true }; expect(read("general").waitingForApproval).toBe(false);
+    interaction = { ...interaction, stale: false, suspected: true }; expect(read("general").waitingForApproval).toBe(false);
+    interaction = { ...interaction, suspected: false, kind: "login" }; expect(read("general").waitingForApproval).toBe(false);
+    const { writePausedMarker } = await import("../src/pause-marker.js"); writePausedMarker(fm.getInstanceDir("general"), Date.now(), "quota");
+    fm.getInstanceStatus = () => "paused";
+    expect(read("general")).toMatchObject({ process: "paused", pauseReason: "quota" });
+    await fm.stopAll();
+  });
   it("attaches S3c's pairing API only while the member switch is on; the member host reads the fresh binding", async () => {
     const { fm, write } = harness({ hub_member: { enabled: true } });
     fm.hubEffectsReady = true;

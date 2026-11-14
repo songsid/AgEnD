@@ -1,0 +1,53 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (38 tests | 2 failed) 267ms
+     × checks exposure again immediately before the ordinary input handoff 11ms
+     × holds answers after local consent changes, and ignores later old-link ACKs 7ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > checks exposure again immediately before the ordinary input handoff
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-room-ask-track-c.test.ts:129:64
+    127|     await Promise.resolve();
+    128|     if (kind === "link") f.adapter.connected(null); else if (kind === …
+    129|     gate.resolve(); await f.adapter.settled(); expect(allowed).toBe(fa…
+       |                                                                ^
+    130|   });
+    131|   it("refuses unnegotiated/stale sources and unknown exposures without…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > holds answers after local consent changes, and ignores later old-link ACKs
+AssertionError: expected [ { …(5) }, { …(5) } ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/hub-room-ask-track-c.test.ts:198:58
+    196|     const next = { ...f.link }; f.adapter.connected(next);
+    197|     expect(f.adapter.acknowledge(f.sent[0]!, f.link)).toBe(false);
+    198|     f.replace(); await f.adapter.flush(); expect(f.sent).toHaveLength(…
+       |                                                          ^
+    199|     expect(f.adapter.acknowledge(f.sent[0]!, next)).toBe(false);
+    200|     expect(await f.report()).toMatchObject({ ok: false });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 36 passed (38)
+   Start at  00:57:01
+   Duration  968ms (transform 356ms, setup 133ms, import 381ms, tests 267ms, environment 0ms)
+

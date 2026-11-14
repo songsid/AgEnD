@@ -29,12 +29,15 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | needs attention, Recover this connection, queue, timed out, cancel | [Held, refused and queued connections](#held-refused-and-queued-connections) |
 | Shared agents, Share, Not shared, Pause sharing, Resume sharing, Stop sharing, ClassicBot rooms | [Sharing agents](#sharing-agents) |
 | Allow someone to ask, AD group, name search, how long, Revoke, Recent questions | [Who may ask](#who-may-ask) |
-| New chat, asking someone's agent, Waiting / Answered | [Asking an agent](#asking-an-agent) |
+| New chat, asking someone's agent, Waiting / Answered, favorites (最愛) | [Asking an agent](#asking-an-agent) |
+| @agent, @all, room answers, Idle, Paused, Stopped | [Agents in a Hub room](#agents-in-a-hub-room) |
+| room creators, room administration, Hub assistant | [Rooms and the Hub assistant](#rooms-and-the-hub-assistant) |
 | Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
+| Room assistant, backend/account, cap, idle stop, answer counts | [Room assistant administration](#room-assistant-administration) |
 | Connected fleets, Revoke, Individual invitations, pairing code, Notices | [Administration](#administration) |
 | `hub`, `hub_member` in fleet.yaml | [Config keys](#config-keys) |
 | how many, how long | [Limits](#limits) |
-| roles, managers, rooms | [Not available yet](#not-available-yet) |
+| custom roles, virtual teams, sharing a ClassicBot room | [Not available yet](#not-available-yet) |
 | can't connect, certificate, different host names, old tab | [Troubleshooting](#troubleshooting) |
 
 ## What the Hub is
@@ -43,8 +46,11 @@ A **Fleet** is one person's AgEnD: their agents, on their computer. A **Hub** is
 connect to, so colleagues can ask each other's agents. People sign in on the Hub with their **company account** (the
 Active Directory account they use at work).
 
-- The Hub runs no agents. A shared agent answers inside its own conversation on its owner's Fleet, with its own folder
+- A shared agent answers inside its own conversation on its owner's Fleet, with its own folder
   and the tools its Settings allow. Actions that need approval still go to the owner.
+- A Hub with the optional room-assistant provider enabled can also answer through its own assistant. Its backend and
+  account are chosen by the Hub administrator; it is separate from colleagues' shared agents. The pilot assistant
+  runs on the Hub computer without shell, file or other tools and receives only the supplied room conversation.
 - Every agent is private unless its owner shares it, and sharing alone lets nobody ask: the owner also allows each
   person or an AD security group.
 - The Hub administrator manages who may connect and sees connected Fleets, not chats ("You cannot read anyone's chats
@@ -301,12 +307,80 @@ Sharing lets nobody ask yet. The owner allows a person or an AD security group; 
 On the Hub: **Chats** → **New chat** lists only the agents someone allowed you to ask ("Answers for *owner* · you can
 ask until *date*"). Pick one and **Ask**.
 
+The chat list (the sidebar; on a phone, the Chats page) looks like AgEnD's own chat list. Each chat is a row with the
+agent's avatar, its name and its owner below it; a question still waiting shows the working dot and **Waiting for an
+answer**, and a closed chat says **Closed**. Ctrl K (⌘K on a Mac) filters it by an agent's name or its owner. On a Hub
+that has rooms, the list has two groups: **Rooms** (房間: a square avatar, "3 people · 12 agents", unread count, an @
+mark when someone mentioned you) and **Agents** (one-to-one chats, the agent's status dot, **Hub assistant** last).
+Unread chats come first, then the most recent.
+
+Favorites work as in AgEnD's own sidebar: a row's **⋯** menu has **Add to favorites** (加入最愛) and **Remove from
+favorites**. Starred chats and rooms move to **Favorites** (最愛) at the top of the list, in the order you starred them,
+at most 50. With two or more, **Edit** adds **Move up** and **Move down** to their menus; clear the filter first to move
+them. For now, a Hub's favorites are kept in this browser for the person signed in, so another browser or device
+starts without them. A chat or room you leave drops out of Favorites.
+
+In a room (a Hub with rooms), everyone sees every message. Each message says who wrote it: a person by name, an agent as
+"*agent* · *owner*'s agent", the room assistant as "Room assistant · Provided by the Hub". An agent answers only when it is
+@-mentioned: type `@` for the menu — **@All agents** (every agent answers; the line above the box says how many are online
+and how many answer when they're back), **@Room assistant**, each agent (its owner and status dot), then people (an @ to a
+person only reminds them). Under a message that asked several agents a line shows the progress ("Answered 7 · working 2 ·
+reply later 3"); each answer is a reply to that message. A message with no @agent is only for the people in the room. If
+the room doesn't let members @All agents, is archived, or you've left it, the box says so. The **Hub assistant** is the
+last chat under **Agents**: your own chat with the Hub's AI, which can't read your computer or other rooms. Room managers
+have the settings button in the room's header; **New room**, **Invitations** and **Administration → Rooms** are in the
+sidebar, the list and Administration.
+
 - "You're asking as yourself: the owner sees that you asked. The agent answers within what its owner allows."
 - Everyone who asks one agent shares its one conversation, so it may remember what others asked. Don't send what other
   askers shouldn't see.
 - The marks on a question: **Waiting for the owner's fleet**, **At the owner's fleet**, **Answered**; or **Not
   answered** / **Outcome unknown**. "An answer can take a few minutes."
 - "No agents have been shared with you yet. An agent's owner has to give you access." → ask the owner to allow you.
+
+## Agents in a Hub room
+
+On a Hub with rooms, mention a shared agent with **@agent**, or **@all** when the room allows it. A room manager can
+add their own shared agent. Its owner consents to room questions by adding it; this does not grant anyone a private
+one-to-one chat. The separate **Who may ask** list still controls private chats.
+
+- The question reaches the agent's existing conversation on its owner's Fleet. It names the room and asker and
+  includes recent room messages. The agent keeps its own folder and tools; any required approval goes to its owner.
+- Everyone in the room can see the question and answer. The answer returns to the same question, and a reconnect
+  retries the saved answer without entering the question again. Room agent answers are text only for now.
+- **Idle** (待命) means the agent can be woken by a question. **Working** means it is busy. **Paused** (暫停) names a
+  known reason such as quota, sign-in or approval. **Stopped** (已停止, grey) means the Fleet is reachable but its owner
+  must start the agent. **Offline** (離線) means the Fleet cannot be reached; an older Fleet can instead show an update
+  requirement.
+- Offline, stopped or paused targets wait; unanswered room questions expire after 24 hours. A question whose input
+  outcome is uncertain is held rather than automatically entered a second time.
+
+Inviting another owner's agent and virtual-team management arrive in separate slices; do not invent those controls
+on a Hub that does not provide them. The room assistant is also separate.
+
+## Rooms and the Hub assistant
+
+These controls require the rooms UI and its matching server. An older page may still show direct chats only; reload
+after an upgrade. Do not offer an assistant when the Hub has no enabled assistant provider.
+
+- The Hub administrator chooses the people or Teams who may create rooms. Team-based creation follows the current
+  roster. Removing that permission prevents new rooms; existing room managers keep their rooms.
+- People expanded from a Team when a room is created stay room members if the Team later changes or is deleted.
+- An AD group adds its currently eligible direct members, including people who have not signed in to the Hub yet;
+  nested groups are not expanded. Later directory changes do not rewrite the room's member list. A room holds at
+  most 100 people, counting the creator and deduplicating all selected people, groups and Teams. An incomplete
+  directory read or an over-limit selection creates nothing; choose a smaller group or Team, or try again later.
+- A selected person can see the room on their first Hub sign-in. Until then the member list can mark them as not
+  having signed in; selection does not sign them in or create a session.
+- Administration shows room names, member counts, managers and activity times. It does not grant access to room
+  messages. An administrator must explicitly join as a room manager to read or participate, under the room's history
+  setting. Archiving keeps members and saved history, and stops new messages.
+- When enabled, each person has a private Hub-assistant conversation. Plain messages there ask the assistant; in a
+  group room, add the assistant and mention it. If it cannot answer, the person's message stays saved with a warning.
+- Removing the assistant or archiving a room stops its pending work. Stopping it in administration also cancels the
+  room's queued inputs. An interrupted answer is not automatically repeated after a restart.
+- Agent owners can see which rooms their agent is in and remove it. Pausing sharing keeps its room membership;
+  invitations to another owner's agent still require that owner's acceptance when the invitation service is available.
 
 ## Group permissions
 
@@ -327,6 +401,28 @@ approval or a join code.
 - What a colleague sees on the Hub welcome page: cards **Chat with an agent** and **Connect your fleet**, on or off
   with the reason ("Connecting a fleet is not included in your access.", "Paused by your Hub admin.", "Your account
   can sign in, but no actions are allowed yet.").
+
+## Room assistant administration
+
+On a Hub that offers the room-assistant pilot, a Hub administrator opens **Administration → Room assistant**
+(房間助理). An older Hub or cached client without this capability leaves these cards out.
+
+- **Enable the room assistant** (啟用房間助理), **Backend**, **Account**: the pilot offers only a qualified tools-off
+  Claude backend and existing accounts on the Hub computer. Sign in there under AgEnD Settings first; a colleague
+  connecting their own Fleet does not provide the assistant's login. It uses the selected account's quota.
+- **At most this many at once** defaults to 3 (range 1–16); **Stop after this many idle minutes** defaults to 15
+  (range 1–240). Extra asks queue in arrival order, with one answer at a time per room. The oldest idle room
+  controller may be retired to free capacity. A fresh worker answers each ask and then closes.
+- **Now** (現在) lists answering or idle room controllers and their last use. **Stop** stops that room's current
+  assistant; a later ask can start it again. It does not remove the assistant from the room.
+- **Usage** (用量) shows seven UTC calendar days of answer counts and the selected account's coarse quota band.
+  It is not a per-person billing report. A counter-storage warning does not mean an answer was lost.
+- **Save** applies changed settings after old workers stop; saving unchanged settings leaves current answers alone.
+  A failed save leaves the form's edits in place for another try.
+
+Each answer uses the latest 30 supplied room messages, plus a replied-to message when it is older. The assistant
+keeps no earlier model conversation, sees no other room and has no tools. Room membership, mentions and delivery
+are supplied by the rooms-server integration; these admin cards alone do not add a chat room or enable an account.
 
 ## Administration
 
@@ -374,6 +470,7 @@ Say plainly that these are not in the product yet:
 - **Custom roles and a manager's team view** (several administrators, roles assigned to people or AD groups, a team
   list with usage counts). Designed and decided; not shipped. Today there is one Hub administrator.
 - **Sharing a ClassicBot room.** Only fleet agents can be shared.
+- **Virtual teams and team-based grants.** They are separate from the existing AD-group grants.
 - **A second sign-in factor on the Hub.** It uses the company account and password only.
 - **Adding to People excluded from the editor.** The list is shown; it cannot be edited there in this release.
 - **Per-person cost or quota figures on the Hub.** Exact usage stays in each Fleet.

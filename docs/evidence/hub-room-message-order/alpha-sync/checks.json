@@ -1,0 +1,21 @@
+{
+  "sourceCheckpoint": "41a16203f1f27bc3328ad83a9938ceba25e7c2e2",
+  "focused": {
+    "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-agents-r2.test.ts tests/hub-rooms-r1.test.ts tests/hub-room-assistant-r3.test.ts --maxWorkers=2",
+    "passed": 42,
+    "files": 3,
+    "exit": 0
+  },
+  "nativePrograms": {
+    "source": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exit": 0
+    },
+    "test": {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  },
+  "review": "Original source-clear39e575703; renewed plain-sync/current-head verdict and exact CI pending.",
+  "P3": "Absolute room post sequence exposes a rough amount of earlier activity to a since-join viewer; ordinary review marked no current change required. Product note sent to Lumen."
+}

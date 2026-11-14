@@ -301,10 +301,15 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; roomsLive = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
     if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0,
       ...(method === "POST" && path === "/hub/v1/admin/enrolment-codes" && r.status === 429 && json?.code === "backpressure"
-        && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}) };
+        && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}), ...roomRefusal(json) };
     return { ok: true, ...(json && typeof json === "object" ? json : {}) };
   }
   const id = (v) => encodeURIComponent(String(v));
+  // Track U2: a refused room write says what the person is told — 409 people-limit the room's would-be head count (the
+  // deduplicated union, the creator and current members included) and the limit; 503 group-unavailable which group.
+  const roomRefusal = (json) => json?.code === "people-limit" && Number.isSafeInteger(json.people)
+    ? { people: json.people, limit: Number.isSafeInteger(json.limit) ? json.limit : 100 }
+    : json?.code === "group-unavailable" && typeof json.group === "string" ? { group: json.group } : {};
   // One stream per tab (#1580): every live subscription shares one EventSource. A Hub with rooms carries the notices on
   // its rooms stream too (`notices` = the notice version); before that the notices have their own. Listeners are kept
   // per event name; the stream closes with its last listener, and a refused (CLOSED) stream tells every subscriber once.
@@ -457,6 +462,30 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     roomCreators() { return call("GET", "/hub/v1/admin/rooms/creators"); },
     saveRoomCreators(input) { return call("PUT", "/hub/v1/admin/rooms/creators", input); },
     adminRooms() { return call("GET", "/hub/v1/admin/rooms"); },
+    // Track U2 (dev-claude2): pickers, roles, invitations, leave, the agent's rooms, admin rooms.
+    // Leaving is removeRoomMember(roomId, <my id>) (409 last-manager); `me.assistant` comes with roomList()'s answer.
+    /** The new-room and add-member pickers → { ok, candidates: [{ kind: "person" | "team" | "group" | "agent", id, name, people?, owner?: { name }, mine? }] }. */
+    roomCandidates(q, kind, signal) {
+      const s = new URLSearchParams({ q: String(q ?? "") });
+      if (kind) s.set("kind", kind);
+      return call("GET", `/hub/v1/rooms/candidates?${s}`, undefined, signal);
+    },
+    /**
+     * A chosen AD group's label and head count → { ok, kind: "group", id, name, people } (its direct members now, nested
+     * groups not followed; creating the room or adding the group reads the list again). 503 group-unavailable when the
+     * directory cannot read the whole list.
+     */
+    roomGroup(groupId) { return call("GET", `/hub/v1/rooms/candidates/group/${id(groupId)}`); },
+    /** 設為房間管理 / 改為成員. */
+    setRoomMemberRole(roomId, memberId, role) { return call("PATCH", `/hub/v1/rooms/${id(roomId)}/members/${id(memberId)}`, { role }); },
+    /** A room manager withdraws a pending (or clears an expired) invitation; 重新邀請 is a new inviteToRoom(). */
+    cancelRoomInvitation(roomId, invitationId) { return call("DELETE", `/hub/v1/rooms/${id(roomId)}/invitations/${id(invitationId)}`); },
+    /** The rooms one of my shared agents is in → { ok, rooms: [{ id, name, people, memberId }] }; 退出這個房間 is removeRoomMember(id, memberId). */
+    agentRooms(exposureId) { return call("GET", `/hub/v1/exposures/${id(exposureId)}/rooms`); },
+    /** 管理 → 房間: 加入自己成為房間管理 (the room gets a system line). */
+    joinRoomAsAdmin(roomId) { return call("POST", `/hub/v1/admin/rooms/${id(roomId)}/join`, {}); },
+    /** 管理 → 房間: 封存. */
+    archiveRoomAsAdmin(roomId, archived = true) { return call("PATCH", `/hub/v1/admin/rooms/${id(roomId)}`, { archived }); },
     pairings() { return call("GET", "/hub/v1/pairings"); },
     quickPairingV1: true,
     createQuickPairing(label) { return call("POST", "/hub/v1/quick-pairing", { label }); },
@@ -523,6 +552,12 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     fetchDirectoryCa(input, signal) { return call("POST", "/hub/v1/admin/hub/directory/ca/fetch", input, signal); },
     /** This client has the group permissions calls (a cached older client does not: the pages then hide them). */
     groupPolicyV1: true,
+    // Track A (Sentinel): the room assistant's admin page.
+    assistantAdminV1: true,
+    assistantSettings() { return call("GET", "/hub/v1/admin/assistant"); },
+    saveAssistantSettings(input) { return call("PUT", "/hub/v1/admin/assistant", input); },
+    assistantUsage() { return call("GET", "/hub/v1/admin/assistant/usage"); },
+    stopRoomAssistant(roomId) { return call("POST", `/hub/v1/admin/assistant/rooms/${id(roomId)}/stop`); },
   };
 }
 

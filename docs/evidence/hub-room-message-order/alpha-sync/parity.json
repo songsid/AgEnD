@@ -1,0 +1,42 @@
+{
+  "merge": "41a16203f1f27bc3328ad83a9938ceba25e7c2e2",
+  "parents": [
+    "39e575703f97b68414811571175b388999ecb6e6",
+    "a012b664983786880f78d713e8e2b6dd1df0a5bc"
+  ],
+  "incomingAlpha": "a012b664983786880f78d713e8e2b6dd1df0a5bc",
+  "parentMerge": "1752f39b77ed81c8296f2c4c6eb7f98bb068be14",
+  "clearedHead": "39e575703f97b68414811571175b388999ecb6e6",
+  "allThreeOwnCodeTestPaths": [
+    {
+      "path": "src/hub/rooms/service.ts",
+      "modeAndBlob": "100644 blob 3d2e99a38adaecf14ac1d4ec7502a2687d46c256\tsrc/hub/rooms/service.ts",
+      "equalsClearedHead": true
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "modeAndBlob": "100644 blob ada14e3c962a07377ce996eb1b79094966306c08\tsrc/hub/rooms/types.ts",
+      "equalsClearedHead": true
+    },
+    {
+      "path": "tests/hub-room-agents-r2.test.ts",
+      "modeAndBlob": "100644 blob fa1b68508acf71a0704488250e2fcaddcb74a549\ttests/hub-room-agents-r2.test.ts",
+      "equalsClearedHead": true
+    }
+  ],
+  "remainingDiff": [
+    "changes/3856-room-message-order.md",
+    "changes/3856-room-message-order.zh-TW.md",
+    "docs/evidence/hub-room-message-order/README.md",
+    "docs/evidence/hub-room-message-order/before-field.log",
+    "docs/evidence/hub-room-message-order/focused.log",
+    "docs/evidence/hub-room-message-order/source-types.log",
+    "docs/evidence/hub-room-message-order/test-types.log",
+    "docs/evidence/hub-room-message-order/verification.json",
+    "src/hub/rooms/service.ts",
+    "src/hub/rooms/types.ts",
+    "tests/hub-room-agents-r2.test.ts"
+  ],
+  "allOtherPaths": "equal incoming alpha including modes; checked by the complete diff path list",
+  "twoConflictResolution": "Both exact cleared blobs retained; no resolution-only source edit."
+}

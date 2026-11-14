@@ -1,0 +1,34 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+------x--
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > fences a held first input when the local consent becomes replace
+AssertionError: expected { state: 'delivered' } to deeply equal { state: 'queued' }
+
+- Expected
++ Received
+
+  {
+-   "state": "queued",
++   "state": "delivered",
+  }
+
+ ❯ tests/hub-room-compose-track-c.test.ts:125:66
+    123|   await vi.waitFor(() => expect(h.row(ask.messageId)).toEqual({ state:…
+    124|   if (kind === "withdraw") await h.api().withdraw(exposure.exposureId!…
+    125|   release(); await vi.waitFor(() => expect(h.row(ask.messageId)).toEqu…
+       |                                                                  ^
+    126|   expect(h.inputs).toHaveLength(0);
+    127| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  01:49:31
+   Duration  4.08s (transform 1.94s, setup 105ms, import 2.35s, tests 1.46s, environment 0ms)
+

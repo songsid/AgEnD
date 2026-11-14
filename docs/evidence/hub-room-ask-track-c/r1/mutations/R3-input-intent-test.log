@@ -1,0 +1,282 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 13 failed) 10158ms
+     × delivers into the owner's existing agent and preserves the per-agent message identity on replay 25ms
+     × freezes an answer before send, retries the exact bytes until the matching ACK, and never re-executes 5ms
+     × retains a send failure for reconnect, with the same answerId and no direct-chat release lease 4ms
+     × can consume an ACK during send without overwriting it on completion 3ms
+     × keeps ACK/control handling independent from a held agent delivery 4ms
+     × requires room-ask-v1 on the actual current link for both admission and frozen-answer flush 5ms
+     × routes only its own correlation/agent and refuses unsupported answer extras or a stale caller 5ms
+     × holds an interrupted first input instead of replaying executable work, but accepts its eventual answer 4ms
+     × recovers an actual persisted first-input intent as held while its old handoff result is still missing 3ms
+     × cannot start two inputs when beforeInput is invoked twice, and report during delivery cannot be overwritten 3ms
+     × holds answers after local consent changes, and ignores later old-link ACKs 3ms
+     × reopens a real on-disk journal with the same frozen answer and no plaintext room content 36ms
+     × keeps a frozen answer saved without reading the closed database after a held send settles 10002ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > delivers into the owner's existing agent and preserves the per-agent message identity on replay
+AssertionError: expected [ …(2) ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/hub-room-ask-track-c.test.ts:99:22
+     97|     expect(f.inputs[0]!.agent).toBe("existing-agent"); expect(f.inputs…
+     98|     expect(f.adapter.accept(structuredClone(f.ask), f.link)).toBe("dup…
+     99|     expect(f.inputs).toHaveLength(1);
+       |                      ^
+    100|     expect(() => f.adapter.accept({ ...f.ask, text: "different" }, f.l…
+    101|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > freezes an answer before send, retries the exact bytes until the matching ACK, and never re-executes
+AssertionError: expected { ok: false, …(1) } to match object { ok: true }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "ok": false,
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:104:30
+    102|   it("freezes an answer before send, retries the exact bytes until the…
+    103|     const f = member(); f.adapter.accept(f.ask, f.link); await f.adapt…
+    104|     expect(await f.report()).toMatchObject({ ok: true }); expect(f.sen…
+       |                              ^
+    105|     const first = f.sent[0]!; expect(first).toMatchObject({ messageId:…
+    106|     expect(first.answerId).toMatch(/^[a-f0-9-]{36}$/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > retains a send failure for reconnect, with the same answerId and no direct-chat release lease
+AssertionError: expected { ok: false, …(1) } to match object { ok: true }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "ok": false,
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:118:30
+    116|     const f = member(); f.adapter.accept(f.ask, f.link); await f.adapt…
+    117|     vi.mocked(f.link.sendAnswer).mockRejectedValueOnce(Error("offline"…
+    118|     expect(await f.report()).toMatchObject({ ok: true }); f.adapter.cl…
+       |                              ^
+    119|     const reopened = new HubRoomAskAdapter(f.options), next = { ...f.l…
+    120|     reopened.connected(next); await reopened.flush(); expect(f.sent).t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > can consume an ACK during send without overwriting it on completion
+AssertionError: expected { ok: false, …(1) } to match object { ok: true }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "ok": false,
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:128:30
+    126|     const f = member(); f.adapter.accept(f.ask, f.link); await f.adapt…
+    127|     vi.mocked(f.link.sendAnswer).mockImplementation(async a => { expec…
+    128|     expect(await f.report()).toMatchObject({ ok: true }); await f.adap…
+       |                              ^
+    129|     expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEq…
+    130|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > keeps ACK/control handling independent from a held agent delivery
+TypeError: Cannot read properties of undefined (reading 'messageId')
+ ❯ HubRoomAskAdapter.acknowledge src/hub/member/room-ask.ts:227:30
+    225|   acknowledge(ack: RoomAnswerAck, source: RoomAskLink): boolean {
+    226|     if (!this.usable(source)) return false;
+    227|     const row = this.row(ack.messageId);
+       |                              ^
+    228|     if (!row || !["answered", "acked"].includes(row.state)) return fal…
+    229|     const saved = this.read(row);
+ ❯ tests/hub-room-ask-track-c.test.ts:137:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > requires room-ask-v1 on the actual current link for both admission and frozen-answer flush
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/hub-room-ask-track-c.test.ts:159:127
+    157|     expect(() => f.adapter.accept(f.ask, f.link)).toThrow();
+    158|     expect(f.db.prepare("SELECT count(*) AS n FROM hub_room_asks").get…
+    159|     features.add("room-ask-v1"); f.adapter.accept(f.ask, f.link); awai…
+       |                                                                                                                               ^
+    160|     features.delete("room-ask-v1"); await f.adapter.flush(); expect(f.…
+    161|     expect(f.adapter.acknowledge(f.sent[0]!, f.link)).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > routes only its own correlation/agent and refuses unsupported answer extras or a stale caller
+AssertionError: expected { ok: false, …(1) } to match object { ok: true }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "ok": false,
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:170:62
+    168|     expect(await f.adapter.report({ caller: "existing-agent", correlat…
+    169|     expect(await f.adapter.report({ caller: "existing-agent", correlat…
+    170|     expect(f.sent).toHaveLength(0); expect(await f.report()).toMatchOb…
+       |                                                              ^
+    171|   });
+    172|   it("holds an interrupted first input instead of replaying executable…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > holds an interrupted first input instead of replaying executable work, but accepts its eventual answer
+AssertionError: expected { state: 'queued' } to deeply equal { state: 'held' }
+
+- Expected
++ Received
+
+  {
+-   "state": "held",
++   "state": "queued",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:180:67
+    178|     const reopened = new HubRoomAskAdapter(f.options); reopened.connec…
+    179|     reopened.accept(f.ask, f.link); await reopened.settled();
+    180|     expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEq…
+       |                                                                   ^
+    181|     expect(attempted).toHaveBeenCalledTimes(1);
+    182|     expect(await reopened.report({ correlationId: cid, caller: "existi…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > recovers an actual persisted first-input intent as held while its old handoff result is still missing
+AssertionError: expected { state: 'dispatching' } to deeply equal { state: 'input' }
+
+- Expected
++ Received
+
+  {
+-   "state": "input",
++   "state": "dispatching",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:189:67
+    187|     f.options.deliver = vi.fn(async input => { expect(await input.befo…
+    188|     f.adapter.accept(f.ask, f.link); await entered.promise;
+    189|     expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEq…
+       |                                                                   ^
+    190|     const reopened = new HubRoomAskAdapter(f.options);
+    191|     try {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > cannot start two inputs when beforeInput is invoked twice, and report during delivery cannot be overwritten
+AssertionError: expected { state: 'queued' } to deeply equal { state: 'acked' }
+
+- Expected
++ Received
+
+  {
+-   "state": "acked",
++   "state": "queued",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:219:127
+    217|       expect(f.adapter.acknowledge(f.sent[0]!, f.link)).toBe(true); re…
+    218|     };
+    219|     f.adapter.accept(f.ask, f.link); await f.adapter.settled(); expect…
+       |                                                                                                                               ^
+    220|   });
+    221|   it("holds answers after local consent changes, and ignores later old…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > holds answers after local consent changes, and ignores later old-link ACKs
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/hub-room-ask-track-c.test.ts:225:58
+    223|     const next = { ...f.link }; f.adapter.connected(next);
+    224|     expect(f.adapter.acknowledge(f.sent[0]!, f.link)).toBe(false);
+    225|     f.replace(); await f.adapter.flush(); expect(f.sent).toHaveLength(…
+       |                                                          ^
+    226|     expect(f.adapter.acknowledge(f.sent[0]!, next)).toBe(false);
+    227|     expect(await f.report()).toMatchObject({ ok: false });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > reopens a real on-disk journal with the same frozen answer and no plaintext room content
+AssertionError: expected [] to deeply equal [ undefined, undefined ]
+
+- Expected
++ Received
+
+- [
+-   undefined,
+-   undefined,
+- ]
++ []
+
+ ❯ tests/hub-room-ask-track-c.test.ts:252:45
+    250|       const bytes = readFileSync(file); expect(bytes.includes(Buffer.f…
+    251|       db = new Database(file); adapter = new HubRoomAskAdapter({ ...f.…
+    252|       await adapter.flush(); expect(f.sent).toEqual([answer, answer]);
+       |                                             ^
+    253|       adapter.accept(f.ask, f.link); await adapter.settled(); expect(f…
+    254|     } finally { adapter?.close(); if (db.open) db.close(); rmSync(dire…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/13]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > keeps a frozen answer saved without reading the closed database after a held send settles
+Error: Test timed out in 10000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/hub-room-ask-track-c.test.ts:262:3
+    260|     await expect(f.adapter.settled()).resolves.toBeUndefined();
+    261|   });
+    262|   it("keeps a frozen answer saved without reading the closed database …
+       |   ^
+    263|     const f = member(), sending = deferred<void>(), finish = deferred<…
+    264|     f.adapter.accept(f.ask, f.link); await f.adapter.settled();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/13]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  13 failed | 33 passed (46)
+   Start at  01:12:57
+   Duration  10.67s (transform 232ms, setup 91ms, import 274ms, tests 10.16s, environment 0ms)
+

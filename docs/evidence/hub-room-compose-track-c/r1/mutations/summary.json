@@ -1,0 +1,23 @@
+[
+  {
+    "name": "R8-refusal-link",
+    "mutantSha256": "0b7f9007664e4d131a233f74e538e2c3725e52daad4a3a4e2a3d53660c7aa417",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "R9-room-subkey",
+    "mutantSha256": "79344df2b5d12389e155cd5fd15ee2faea254104a5e976caf61bb21f329cb02f",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "R10-backpressure",
+    "mutantSha256": "d011fb941b8cb6ec855bb10bbbfb3a03a9f263dc3f028aed8f7480da845716f5",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  }
+]

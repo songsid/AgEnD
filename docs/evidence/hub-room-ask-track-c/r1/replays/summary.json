@@ -1,0 +1,25 @@
+{
+  "baselineSourceSha256": "e05091c211ec5c3521b2ee81ad8d46533370596de8da57a218a4d4602ba433bb",
+  "testSha256": "d0995f3a18cde51ba851fb8683949905b37105055970ca1dcb29dd7299ff3049",
+  "records": [
+    {
+      "name": "old-presence",
+      "originalHead": "985e2753b6dd8e3880b1cc67e9697a0f3d06f159",
+      "oldFunctionSha256": "695bf900dead7921c5b3cf2334ca9d455dbcd0c5a1728f909eb32abd3ff1d42f",
+      "replayedSourceSha256": "3988796b4943b6806bfae008fafe782723f38981f2d5c40aed50f6239fa2699e",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true
+    },
+    {
+      "name": "old-prompt",
+      "originalHead": "985e2753b6dd8e3880b1cc67e9697a0f3d06f159",
+      "oldFunctionSha256": "a1d45a4f4ffb43a24ac5c2f92f10169c227d61aa1d104095c8947f6fe4e3aecd",
+      "replayedSourceSha256": "dbb69f571459de9af9c7880766aa64c2d608a6bd119da41bd209fd1b62239fce",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true
+    }
+  ],
+  "restored": true
+}

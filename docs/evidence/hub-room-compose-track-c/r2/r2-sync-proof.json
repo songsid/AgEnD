@@ -1,0 +1,73 @@
+{
+  "merge": "a9b69bef9e69953fc1e4d2186d3cdd83524e9dda",
+  "parents": [
+    "548b06e4c83e7aef73ad3e1f8621b7ba3ae05ba2",
+    "8cfe0d5dec79468478246becac2bdc4ed788c3e9"
+  ],
+  "incoming": "8cfe0d5dec79468478246becac2bdc4ed788c3e9",
+  "alpha": "440e613d9346394ea8ef4b129d2e6c8f79bfce06",
+  "ownRuntime": [
+    {
+      "path": "src/hub/compose/member.ts",
+      "before": "aa66225f44f2eed846fe0b1c5b55dffc2268f016",
+      "current": "aa66225f44f2eed846fe0b1c5b55dffc2268f016"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "before": "cb3b6112cbb7fd241ab70036f166e87193d90fe1",
+      "current": "cb3b6112cbb7fd241ab70036f166e87193d90fe1"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "before": "2e3a6640382d3a719349da24c9e080f6d60ec84f",
+      "current": "2e3a6640382d3a719349da24c9e080f6d60ec84f"
+    }
+  ],
+  "rOwnedResolution": [
+    {
+      "path": "src/hub/http/compose.ts",
+      "incoming": "18071deedab968802bca805ca4d7289c9d5ab7a2",
+      "current": "18071deedab968802bca805ca4d7289c9d5ab7a2"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "incoming": "c40f6162ba13b741954848cc4ce4dadacd6b701e",
+      "current": "c40f6162ba13b741954848cc4ce4dadacd6b701e"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "incoming": "4746db5e930f30ca5f49b92fd308c06a551545c6",
+      "current": "4746db5e930f30ca5f49b92fd308c06a551545c6"
+    },
+    {
+      "path": "src/hub/rooms/schema.ts",
+      "incoming": "37b35074f4cc46b0a797ee94a72a72481331aca0",
+      "current": "37b35074f4cc46b0a797ee94a72a72481331aca0"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "incoming": "62cf8586fd92cfe2c237686987f97c83fdeccb8d",
+      "current": "62cf8586fd92cfe2c237686987f97c83fdeccb8d"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "incoming": "422cb873432d291f93298b33d9dd21b28793881f",
+      "current": "422cb873432d291f93298b33d9dd21b28793881f"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "incoming": "83901aca7cfadeb9f203d8fb7e62b2525df41f25",
+      "current": "83901aca7cfadeb9f203d8fb7e62b2525df41f25"
+    },
+    {
+      "path": "tests/hub-groups-mount-s89.test.ts",
+      "incoming": "19474a2a6094ac0deaec7b0a4f0c9d37c11bedc9",
+      "current": "19474a2a6094ac0deaec7b0a4f0c9d37c11bedc9"
+    },
+    {
+      "path": "tests/hub-rooms-migration-r1.test.ts",
+      "incoming": "bf6fdb2a1ee1dd5e0fa36b0aabaf9ec8dd34618b",
+      "current": "bf6fdb2a1ee1dd5e0fa36b0aabaf9ec8dd34618b"
+    }
+  ]
+}

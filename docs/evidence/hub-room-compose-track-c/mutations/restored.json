@@ -1,0 +1,7 @@
+{
+  "restored": true,
+  "sources": {
+    "src/hub/compose/member.ts": "c2e695699a0faed4c7786cf312ffa73fee0e3b45e95b2b28338378abdb41010e",
+    "src/fleet-manager.ts": "693c08ef6faddec7a1d1cd799cbc9845e4cad3b8a2a87e46c600f9405d437e66"
+  }
+}
