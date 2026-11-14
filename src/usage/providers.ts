@@ -1562,13 +1562,13 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
   }
   if (kind === "q-developer-pro") {
     // Seat-licensed subscription: GetUsageLimits describes Builder-ID credit
-    // buckets, not this, so there is nothing to meter and no call to make.
+    // buckets, not this seat. Its monthly limit is known, but remaining usage
+    // is not measurable through this endpoint; never infer unlimited capacity.
     return {
       status: "ok",
       plan: "Q Developer Pro",
-      unlimited: true,
-      hint: "♾️ Unlimited",
-      hintI18n: i18n("usage.value.unlimited"),
+      hint: "Not measurable · monthly limit 10,000 chats",
+      hintI18n: i18n("usage.hint.q_developer_monthly_limit"),
       metrics: [],
     };
   }
