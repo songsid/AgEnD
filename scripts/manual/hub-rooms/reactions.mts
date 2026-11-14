@@ -3,7 +3,7 @@
  * The real Hub listener (tests/helpers/hub-s3b-rig.ts) serves the workspace shell and its modules over HTTPS on loopback;
  * every /hub/v1/* call is answered by the rooms fixture (tests/support/hub-rooms-fixture.ts) — no fleet, CLI or account.
  * Cases: desktop-en-light, desktop-zh-TW-dark, phone-zh-TW-light, phone-en-dark. For each:
- *   reactions-after — 研一主管週會 with reactions already there (mine pressed, others' named), then the quick picker open on
+ *   reactions-after — 研發主管週會 with reactions already there (mine pressed, others' named), then the quick picker open on
  *                     a message, a pick added (its chip pressed, count 1), and mine taken back by pressing it;
  *   reactions-skew  — the same room on BASE_REF's hub-room-thread.js + chat-thread.js (a tab open before the upgrade) while
  *                     the Hub sends messages with `reactions`: drawn as before, no chips, no page error.

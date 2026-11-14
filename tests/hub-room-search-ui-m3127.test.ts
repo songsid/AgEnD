@@ -81,7 +81,7 @@ describe("Ctrl K on a Hub with rooms", () => {
     input.value = "風險"; fire(input, "input");
     await until(() => dlg.querySelectorAll(".search-row").length > 3, 400);
     const heads = [...dlg.querySelectorAll(".search-group-head span:first-child")].map((n: any) => n.textContent);
-    expect(heads[0]).toBe("研一主管週會");
+    expect(heads[0]).toBe("研發主管週會");
     expect(dlg.querySelector(".search-row .search-snippet mark").textContent).toBe("風險");
     // The newest hit is first: Enter opens it.
     const first = dlg.querySelector(".search-row");
