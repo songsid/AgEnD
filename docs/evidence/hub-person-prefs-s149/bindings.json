@@ -1,0 +1,69 @@
+{
+  "sourceCommit": "07625f1b027a4319ae84aced4213e9475a22c777",
+  "baseCommit": "eacc64084e587870fa5a350fec7992b5b4602ba6",
+  "files": [
+    {
+      "path": "changes/149-hub-person-favorites.md",
+      "sha256": "dac3e5bfabdf8f7a1959d71fc30fbbc6dbe5ca85808f1d3b9d0f3fba1f74e5d6"
+    },
+    {
+      "path": "changes/149-hub-person-favorites.zh-TW.md",
+      "sha256": "37d5ec7cd61e8e36c5361f07512abda10e0d46128f2698383da18797f0211d35"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "fd0d44336e24ddb724c7647138e1290b6f5c8d8b03e0a1cf094015f06aae6b9d"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "3ede8f8cf3de591658f79dfaeddc1d6afbfd0f7ef1f1eec0d2b8812dcb8e5545"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "06bc9153216dd6cf3a60078435cd08a2b4b1563f5d5685cb38b430ed056794c4"
+    },
+    {
+      "path": "src/hub/person-prefs.ts",
+      "sha256": "4f0adcae88428dc85a0a28cf17fd4f09e5077ac20f2828d7ac0d576c0c881c20"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "896e881961e7773a529dbd7721c05909d4b35c06a8f6fe5d952650bee8409883"
+    },
+    {
+      "path": "src/ui/hub-room-favorites.js",
+      "sha256": "588bce06acfd85b37ddc48c1c0b7449cc41dd029f30d8164789a4e1283ae508f"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "bc6cd8ec05da693b3d41b10af0072a4bf2900800c7cd670952690993639793fe"
+    },
+    {
+      "path": "tests/hub-groups-mount-s89.test.ts",
+      "sha256": "ccfa236d801a6271fdd4e777158d72acf2f6e490cc6c0c8d7700994c54691d9a"
+    },
+    {
+      "path": "tests/hub-person-prefs-s149.test.ts",
+      "sha256": "5e9279ec144358ed504fb646cf3e77745340ea05c753ef644a93c27f26ff36ba"
+    },
+    {
+      "path": "tests/hub-person-prefs-ui-s149.test.ts",
+      "sha256": "ff04fa7c857df938a50f7f30610bb3f4b2327b0ff42727e6d52eed79ab89dcca"
+    },
+    {
+      "path": "tests/hub-room-favorites-s145.test.ts",
+      "sha256": "b275e1a1014ca868302e19100873f6e4fbd3679a0d25f45251eeb3a63595d111"
+    }
+  ],
+  "checks": {
+    "focused": {
+      "files": 10,
+      "passed": 85,
+      "skipped": 0
+    },
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "reversalsCaught": 4,
+    "changelogFragments": 482
+  }
+}
