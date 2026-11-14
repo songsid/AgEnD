@@ -42,3 +42,11 @@ it("keeps presence reasons portable and rejects arbitrary reason codes", () => {
   expect(parseMemberFrame(JSON.stringify(frame))).toEqual(frame);
   expect(() => parseMemberFrame(JSON.stringify({ ...frame, payload: { ...frame.payload, reason: "private detail" } }))).toThrow();
 });
+
+it("locally refuses every room-post operation on a link that did not negotiate room-post-v1", async()=>{
+  const r=await hubRig({serverCapabilities:capabilities});rigs.push(r);await r.pair();
+  const c=r.client(undefined,undefined,capabilities);await c.value.start();const epoch=c.state.link!.linkEpoch;
+  for(const [type,payload] of [["room.list",{exposureId:randomUUID()}],["room.post",{exposureId:randomUUID(),room:randomUUID(),text:"post",idempotencyKey:randomUUID()}],["room.members",{exposureId:randomUUID(),room:randomUUID()}],["people.search",{exposureId:randomUUID(),q:"Al"}],["room.post-answer-ack",{id:randomUUID()}]])
+    await expect(c.state.link!.send({v:1,type,requestId:randomUUID(),linkEpoch:epoch,payload} as never)).rejects.toMatchObject({code:"incompatible"});
+  expect(c.state.link!.current()).toBe(true);
+});

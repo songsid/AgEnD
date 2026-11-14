@@ -96,13 +96,13 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
       if (folded && at === ANSWERS_SHOWN - 1) foldAfter = { label: hroom("expandRest", String(list.length - ANSWERS_SHOWN)), arg: m.answerTo };
       lastShown = at >= 0 && at === (folded ? ANSWERS_SHOWN - 1 : list.length - 1);
     }
-    const id = num(m.id), mine = kind === "person" && author.id === meId;
+    const id = num(m.id), mine = kind === "person" && !author.via && author.id === meId;
     if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ...(m.system?.kind === "agent-mention-stopped" ? {} : { ts: iso(m.at) }), text: systemText(m), bare: true }); continue; }
     // An answer is a reply to the message that asked for it (the Fleet's reply reference): replyTo, else answerTo.
     const quoted = m.replyTo ? byId.get(m.replyTo) : m.answerTo ? byId.get(m.answerTo) : null;
     const state = mine ? askState(m.ask) : null;
-    out.push({ boot: BOOT, id, role: kind === "person" ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
-      ...(kind === "person" && !mine ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
+    out.push({ boot: BOOT, id, role: kind === "person" && !author.via ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
+      ...(kind === "person" && !mine && !author.via ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
       roomMessage: m.id, ...(state?.delivery ? { delivery: state.delivery } : {}),
       // M-3125: a post's files, as the 1:1 chat maps them (images inline through the Hub's own route; HTML gets its preview card).
       ...(() => { const files = Array.isArray(m.files) ? m.files.map(hubFileAttachment).filter(Boolean) : []; return files.length ? { attachments: files } : {}; })(),
