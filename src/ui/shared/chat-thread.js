@@ -228,6 +228,11 @@ export function createThread(list, scroller, opts) {
     }).join("");
     return items ? `<div class="msg-reactions react-bar" role="group" aria-label="${escAttr(reactText("pick"))}">${items}</div>` : "";
   }
+  /** M-3127: a reaction control `el` (its message key and emoji) → the page's react(message, emoji, on). */
+  function reactFrom(el, on) {
+    const x = msgs.find(y => msgKey(y) === el.dataset.arg);
+    if (x && typeof el.dataset.emoji === "string") opts.react?.(x, el.dataset.emoji, on);
+  }
   /** M-3127: the quick picker under a message's Add reaction (one open at a time; Escape or a pick closes it). */
   let picker = null;
   function closePicker(focusBack = false) {
@@ -240,7 +245,11 @@ export function createThread(list, scroller, opts) {
     if (was) return;
     const doc = button.ownerDocument, node = doc.createElement("div");
     node.className = "react-pick"; node.setAttribute("role", "group"); node.setAttribute("data-trust", "thread-control"); node.setAttribute("aria-label", reactText("pick"));
-    node.innerHTML = QUICK_REACTIONS.map((e) => `<button type="button" class="chip-btn react-opt" data-act="reactAdd" data-arg="${escAttr(button.dataset.arg)}" data-emoji="${escAttr(e)}" aria-label="${escAttr(e)}">${escAttr(e)}</button>`).join("");
+    for (const e of QUICK_REACTIONS) {
+      const b = doc.createElement("button");
+      b.type = "button"; b.className = "chip-btn react-opt"; b.dataset.act = "reactAdd"; b.dataset.arg = button.dataset.arg; b.dataset.emoji = e;
+      b.setAttribute("aria-label", e); b.textContent = e; node.append(b);
+    }
     node.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { ev.stopPropagation(); closePicker(true); } });
     button.closest(".msg")?.append(node); button.setAttribute("aria-expanded", "true");
     picker = { node, button };
@@ -978,11 +987,8 @@ export function createThread(list, scroller, opts) {
     } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
     else if (act === "reply") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) opts.startReply?.(x); }
     else if (act === "reactPick") openPicker(el);
-    else if (act === "reactAdd" || act === "reactToggle") {
-      const x = msgs.find(y => msgKey(y) === el.dataset.arg), on = act === "reactAdd" || el.getAttribute("aria-pressed") !== "true";
-      if (act === "reactAdd") closePicker(true);
-      if (x && typeof el.dataset.emoji === "string") opts.react?.(x, el.dataset.emoji, on);
-    }
+    else if (act === "reactAdd") { closePicker(true); reactFrom(el, true); }                       // a quick pick: mine added
+    else if (act === "reactToggle") reactFrom(el, el.getAttribute("aria-pressed") !== "true");      // a chip: mine on or off
     else if (act === "jumpQuote") void jumpTo(el.dataset.arg);
     else if (act === "retryOut") opts.retryOutgoing?.(el.dataset.arg);                 // a failed send, again
     else if (act === "putBackOut") opts.putBackOutgoing?.(el.dataset.arg);              // back in the composer, to change it
