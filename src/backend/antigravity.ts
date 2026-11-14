@@ -116,6 +116,14 @@ const AGY_WORKING_ROW_ABOVE_COMPOSER = new RegExp(
 );
 
 /**
+ * agy 1.5.9's empty Auto-mode composer (M-3116 screenshot): the mode hint is a
+ * placeholder after `>`, not submitted input. Anchor the entire box and its
+ * optional context footer to the pane end: a draft, quoted box or picker below
+ * it is not a ready prompt. The working-row veto still takes precedence.
+ */
+const AGY_AUTO_MODE_COMPOSER = /^─{20,}[ \t]*\r?\n> Auto mode: edits & safe commands auto-approved \(shift\+tab to cycle\)[ \t]*\r?\n─{20,}[ \t]*(?:\r?\nContext \d+% used[ \t]*)?\s*(?![\s\S])/m;
+
+/**
  * agy's trust prompt, bottom-anchored (captured live, 1.3.1):
  *
  *   Do you trust the contents of this project?
@@ -440,8 +448,9 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
   }
 
   getReadyPattern(): RegExp {
-    // Daily prompts observed in the TUI are either a pie context reading
+    // Earlier prompts observed in the TUI are either a pie context reading
     // ("◑ 42%") on its own footer line, or a standalone ">" between separators.
+    // The newer empty Auto-mode box has its own bounded alternative below.
     // Pie branch is line-anchored so agent prose like "● 45% 完成" cannot
     // false-ready the pane (● is in PIE_CLASS).
     //
@@ -450,7 +459,7 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
     // (same failure as claude-code's old `ok` — see #415). The remaining markers
     // are still visible during generation; getBusyPattern() is what separates
     // idle from working.
-    return new RegExp(`\\? for shortcuts|^\\s*${PIE_CLASS}\\s*\\d+%|^>\\s*$`, "m");
+    return new RegExp(`\\? for shortcuts|^\\s*${PIE_CLASS}\\s*\\d+%|^>\\s*$|${AGY_AUTO_MODE_COMPOSER.source}`, "m");
   }
 
   /**
