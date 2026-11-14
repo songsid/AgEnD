@@ -600,7 +600,10 @@ export class HubGroupRooms {
     const done = this.core.atomic(db => {
       const member = this.member(db, id, me);
       if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived");
-      const post = db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(target, id, member.joined_sequence) as PostRow | undefined;
+      // Exactly what messages() shows me: since my joined_sequence, its lineage's audience floor too (Ridge, M-3118: the
+      // descendants of a question older than me stay hidden), and an answer only when its question is mine to see.
+      const post = db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=? AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=hub_room_posts.id),sequence)>=?")
+        .get(target, id, member.joined_sequence, member.joined_sequence) as PostRow | undefined;
       if (!post || post.answer_to && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(post.answer_to, id, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
       if (post.author_kind === "system" || post.stage && post.stage !== "answered") throw new HubRoomRefusal(409, "invalid");
       let changed: boolean;
