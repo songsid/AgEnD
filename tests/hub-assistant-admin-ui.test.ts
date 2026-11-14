@@ -29,6 +29,14 @@ const change = (element: any, value: unknown, event = "input") => { expect(eleme
 const submit = async (p: AppPage) => { fire(p.root.querySelector("form"), "submit"); await settle(20); };
 
 describe("Hub room-assistant administration with the real shared UI", () => {
+  it.each(["en", "zh-TW"])("distinguishes unavailable quota from a signed-in account (%s)", async language => {
+    const { p } = await fixture(language, { assistantUsage: async () => ({ ok: true, ...usage(), quota: { band: "unknown" } }) });
+    const sections = p.root.querySelectorAll("section.card");
+    expect(sections[0].textContent).toContain(language === "en" ? "Signed in." : "已登入");
+    expect(sections[2].textContent).toContain(language === "en" ? "Quota status not available yet" : "尚未取得額度狀態");
+    expect(sections[2].textContent).not.toContain(language === "en" ? "AI account · Unknown" : "AI 帳號 · 未知");
+  });
+
   it.each(["en", "zh-TW"])("renders shared cards, working versus idle, quota and seven daily counts (%s)", async language => {
     const { p, c } = await fixture(language), text = p.root.textContent;
     expect(p.root.querySelectorAll("section.card")).toHaveLength(3);

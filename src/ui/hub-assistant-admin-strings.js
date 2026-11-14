@@ -8,7 +8,7 @@ register("hubAssistantAdmin", {
     loadFailed: "Could not read room assistant settings. Try again.", saveFailed: "Could not save. Your changes are still here; try again.",
     stoppedRefreshFailed: "Stopped this room assistant. Could not refresh its status; use Refresh to try again.",
     stopFailed: "Could not stop this room assistant. Try again.", usageFailed: "Could not read usage. Try again.",
-    usageNotSaved: "Some answer counts could not be saved. The answers were still sent.",
+    usageNotSaved: "Some answer counts could not be saved. The answers were still sent.", quotaPending: "Quota status not available yet",
     starting: "Starting", stopping: "Stopping", failed: "Needs attention", dateUtc: "{0} UTC", day: "Day (UTC)", answers: "Answers",
   },
   "zh-TW": {
@@ -19,7 +19,7 @@ register("hubAssistantAdmin", {
     loadFailed: "未能讀取房間助理設定，請再試一次。", saveFailed: "未能儲存，修改仍保留在這裡，請再試一次。",
     stoppedRefreshFailed: "已停止這個房間助理，但未能更新狀態，請按「重新整理」再試一次。",
     stopFailed: "未能停止這個房間助理，請再試一次。", usageFailed: "未能讀取用量，請再試一次。",
-    usageNotSaved: "部分回答次數未能儲存，回答仍已送出。",
+    usageNotSaved: "部分回答次數未能儲存，回答仍已送出。", quotaPending: "尚未取得額度狀態",
     starting: "啟動中", stopping: "停止中", failed: "需要處理", dateUtc: "{0} UTC", day: "日期（UTC）", answers: "回答次數",
   },
 });

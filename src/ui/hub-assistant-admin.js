@@ -8,7 +8,7 @@ const validLimits = value => Number.isInteger(Number(value?.cap)) && Number(valu
 const accountWord = row => row.state === "signed-in" ? hroom("signedIn") : row.state === "needs-sign-in" ? hroom("needsSignIn") : ha("unknown");
 const accountHelp = row => ha(row?.state === "signed-in" ? "accountSignedIn" : row?.state === "needs-sign-in" ? "accountNeedsSignIn" : "accountUnknown");
 const stateWord = state => state === "idle" ? hroom("stIdle") : state === "working" ? hroom("stWorking") : ha(["starting", "stopping", "failed"].includes(state) ? state : "unknown");
-const quotaWord = band => band === "available" ? hroom("quotaPlenty") : band === "near_limit" ? hroom("quotaLow") : band === "exhausted" ? hroom("quotaGone") : ha("unknown");
+const quotaWord = band => band === "available" ? hroom("quotaPlenty") : band === "near_limit" ? hroom("quotaLow") : band === "exhausted" ? hroom("quotaGone") : ha("quotaPending");
 
 /** Hub-only admin cards; the existing client owns same-origin session/CSRF. No Fleet endpoint is called. */
 export function HubAssistantAdmin({ client }) {
