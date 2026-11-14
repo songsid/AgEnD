@@ -49,7 +49,7 @@ describe("Hub New room dialog (section 6)", () => {
   it("建立 without a name: nothing is sent; it says 「請輸入房間名稱。」 and the cursor goes to the name", async () => {
     const { pg, client, calls } = await fixture();
     await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false })); await settle(10);
-    expect(pg.root.querySelector("#hubRoomName").getAttribute("placeholder")).toBe("例如：研一主管週會");
+    expect(pg.root.querySelector("#hubRoomName").getAttribute("placeholder")).toBe("例如：每週主管會議");
     expect(button(pg, "建立").disabled).toBe(false);
     fire(button(pg, "建立"), "click"); await settle(10);
     expect(pg.root.querySelector(".hub-room-new-error").textContent).toBe("請輸入房間名稱。");
