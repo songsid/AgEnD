@@ -11,10 +11,16 @@
  * One small JSON file per instance (`queued-handoffs.json` in the instance directory), written atomically. Entries hold
  * what a redelivery needs (the inbound content and its channel metadata) and the transcript checkpoint taken before
  * the paste.
+ *
+ * M-2403: a native (Windows) or remote pane has no local transcript file. Its record keeps the runtime transcript
+ * reference instead (`runtime`: the pane, its launch and the cursor before the paste), read through the runner. Such a
+ * CLI may outlive the coordinator (the runner keeps it), so its record is never redelivered: a later CLI settles it by
+ * positive proof (taken), watches it again while the same launch still holds its queue, or reports it unverifiable.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
+import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 
 export const QUEUED_HANDOFFS_FILE = "queued-handoffs.json";
 /** Entries kept per instance; past this the oldest goes (logged by the caller). */
@@ -22,14 +28,11 @@ export const QUEUED_HANDOFFS_MAX = 50;
 /** A redelivered message lost again is redelivered again, at most this many times in all. */
 export const QUEUED_HANDOFF_MAX_REDELIVERIES = 3;
 
-export interface QueuedHandoff {
+interface QueuedHandoffBase {
   id: string;
   /** The unique leading marker of the pasted body: `[agend-delivery-id:…]`, `[hid:…]` or legacy `[agend-human-id:…]`. */
   marker: string;
   backend: string;
-  /** The transcript and offset before the paste. */
-  path: string;
-  offset: number;
   /** The inbound as pushChannelMessage got it: a redelivery goes through it again. */
   content: string;
   /** New entries retain exact prepared bytes; older records keep their existing formatter path. */
@@ -40,12 +43,23 @@ export interface QueuedHandoff {
   createdAt: number;
   redeliveries: number;
 }
+/** A local CLI's record: the transcript file and its offset before the paste. */
+export interface LocalQueuedHandoff extends QueuedHandoffBase { path: string; offset: number; runtime?: never }
+/** M-2403: a native or remote pane's record: its runtime transcript reference (the cursor before the paste). */
+export interface RuntimeQueuedHandoff extends QueuedHandoffBase { runtime: RuntimeTranscriptReference; path?: never; offset?: never }
+export type QueuedHandoff = LocalQueuedHandoff | RuntimeQueuedHandoff;
+
+function validRuntime(v: unknown): boolean {
+  try { validateRuntimeTranscriptReference(v); return true; } catch { return false; }
+}
 
 function isEntry(v: unknown): v is QueuedHandoff {
   if (!v || typeof v !== "object") return false;
   const e = v as Record<string, unknown>;
+  const local = typeof e.path === "string" && Number.isSafeInteger(e.offset) && (e.offset as number) >= 0 && e.runtime === undefined;
+  const runtime = e.path === undefined && e.offset === undefined && validRuntime(e.runtime);
   return typeof e.id === "string" && typeof e.marker === "string" && typeof e.backend === "string"
-    && typeof e.path === "string" && Number.isSafeInteger(e.offset) && (e.offset as number) >= 0
+    && (local || runtime)
     && typeof e.content === "string" && (e.wire === undefined || typeof e.wire === "string") && !!e.meta && typeof e.meta === "object" && !Array.isArray(e.meta)
     && Object.values(e.meta as object).every(x => typeof x === "string")
     && typeof e.holder === "string" && typeof e.createdAt === "number" && Number.isSafeInteger(e.redeliveries);
