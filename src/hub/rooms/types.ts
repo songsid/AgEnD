@@ -13,6 +13,8 @@ export interface RoomMessage {
   ask?: { total: number; answered: number; working: number; later: number };
   answerTo?: string;
   stage?: "queued" | "working" | "answered" | "not-answered";
+  /** M-3127: who reacted with what, oldest emoji first; `members` are room member ids (the viewer finds its own). */
+  reactions?: { emoji: string; count: number; members: string[] }[];
 }
 export interface RoomAssistantPort {
   available(): { enabled: boolean; backend: string | null; running: number; cap: number; state: "idle" | "busy" | "paused"; note?: string };

@@ -78,3 +78,10 @@ export const HUB_ROOM_DIRECTORY_MIGRATION: HubHttpMigration = Object.freeze({ co
 export const HUB_ROOM_RETRY_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-retry", version: 1, up(db: Database.Database) {
   db.exec("ALTER TABLE hub_room_deliveries ADD COLUMN last_sent_at INTEGER NOT NULL DEFAULT 0");
 } });
+
+/** M-3127: people's (and agents') emoji reactions on room posts — set semantics, one row per member and emoji. */
+export const HUB_ROOM_REACTIONS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-reactions", version: 1, up(db: Database.Database) {
+  db.exec(`CREATE TABLE hub_room_reactions(room_id TEXT NOT NULL REFERENCES hub_group_rooms(id),post_id TEXT NOT NULL REFERENCES hub_room_posts(id),
+  member_id TEXT NOT NULL,emoji TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(post_id,member_id,emoji));
+CREATE INDEX hub_room_reactions_room ON hub_room_reactions(room_id,post_id);`);
+} });

@@ -23,6 +23,15 @@ const createSchema = z.strictObject({ name: label, people: z.array(personId).max
   groups: z.array(uuid).max(100).default([]), agents: z.array(uuid).max(64).default([]), assistant: z.boolean().default(false) });
 const postSchema = z.strictObject({ text: plain(64 * 1024).refine(s => s.trim().length > 0), mentions: z.array(z.string().max(128)).max(100).default([]),
   replyTo: uuid.optional(), files: z.array(uuid).max(0).optional(), idempotencyKey: uuid });
+const reactSchema = z.strictObject({ emoji: z.string().min(1).max(16), on: z.boolean() });
+/** M-3127: the most distinct emoji one post carries. */
+export const ROOM_REACTION_LIMIT = 12;
+/** One emoji as a person picks it: one grapheme, a pictograph (ZWJ sequences, FE0F and skin tones kept), no controls. */
+export function validRoomEmoji(s: unknown): s is string {
+  if (typeof s !== "string" || s.length < 1 || s.length > 16 || /[\u0000-\u001f\u007f\s]/u.test(s)) return false;
+  if (!/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(s)) return false;
+  return [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(s)].length === 1;
+}
 const patchSchema = z.strictObject({ name: label.optional(), allMention: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional() });
 
 export class HubRoomRefusal extends Error {
@@ -111,7 +120,15 @@ export class HubGroupRooms {
       ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}),
       ...this.core.atomic(db => { const a = this.agents.progress(db, row.id), b = this.assistant.progress(db, row.id);
         const ask = a || b ? { total: (a?.total ?? 0)+(b?.total ?? 0), answered: (a?.answered ?? 0)+(b?.answered ?? 0), working: (a?.working ?? 0)+(b?.working ?? 0), later: (a?.later ?? 0)+(b?.later ?? 0) } : undefined;
-        return { ...(ask ? { ask } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}) }; }) };
+        const reactions = this.reactions(db, row.id);
+        return { ...(ask ? { ask } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}) }; }) };
+  }
+  /** M-3127: a post's reactions, each emoji in the order it first appeared, its members in the order they reacted. */
+  private reactions(db: DB, postId: string): NonNullable<RoomMessage["reactions"]> {
+    const rows = db.prepare("SELECT emoji,member_id FROM hub_room_reactions WHERE post_id=? ORDER BY created_at,rowid").all(postId) as { emoji: string; member_id: string }[];
+    const out = new Map<string, string[]>();
+    for (const r of rows) out.set(r.emoji, [...(out.get(r.emoji) ?? []), r.member_id]);
+    return [...out].map(([emoji, members]) => ({ emoji, count: members.length, members }));
   }
   private insert(db: DB, tx: HubTx, roomId: string, author: { kind: PostRow["author_kind"]; id: string; subject: string; name: string }, text: string,
     mentions: string[] = [], key: string | null = null, digest = "", replyTo: string | null = null): PostRow {
@@ -395,6 +412,32 @@ export class HubGroupRooms {
     if (added) { this.emit({ type: "message.added", roomId: id, data: { roomId: id, message }, sequence: row.sequence }); this.emit({ type: "unread.changed", roomId: id, data: { roomId: id } }); }
     if (added) { this.agents.publishQueued(row.id); this.assistant.publishQueued(row.id); }
     this.agents.wake(); this.assistant.wake(); return message;
+  }
+  /**
+   * M-3127: add or take back my reaction on a post I can see (since my joined_sequence; not a room line, not an answer
+   * still to come). Set semantics: adding twice or removing what is not there changes nothing and emits nothing.
+   */
+  async react(ctx: HubRequestContext, id: string, postId: unknown, input: unknown): Promise<{ reactions: NonNullable<RoomMessage["reactions"]> }> {
+    const body = validated(reactSchema, input), target = validated(uuid, postId);
+    if (!validRoomEmoji(body.emoji)) throw new HubProtocolError("invalid");
+    const me = await this.who(ctx);
+    const done = this.core.atomic(db => {
+      const member = this.member(db, id, me);
+      if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived");
+      const post = db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(target, id, member.joined_sequence) as PostRow | undefined;
+      if (!post || post.answer_to && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(post.answer_to, id, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
+      if (post.author_kind === "system" || post.stage && post.stage !== "answered") throw new HubRoomRefusal(409, "invalid");
+      let changed: boolean;
+      if (body.on) {
+        const has = db.prepare("SELECT emoji FROM hub_room_reactions WHERE post_id=? GROUP BY emoji").all(post.id) as { emoji: string }[];
+        if (!has.some(r => r.emoji === body.emoji) && has.length >= ROOM_REACTION_LIMIT) throw new HubRoomRefusal(409, "limit");
+        changed = db.prepare("INSERT OR IGNORE INTO hub_room_reactions(room_id,post_id,member_id,emoji,created_at) VALUES(?,?,?,?,?)").run(id, post.id, member.id, body.emoji, this.core.now()).changes > 0;
+      } else changed = db.prepare("DELETE FROM hub_room_reactions WHERE post_id=? AND member_id=? AND emoji=?").run(post.id, member.id, body.emoji).changes > 0;
+      return { post, changed, reactions: this.reactions(db, post.id) };
+    }, this.fence(ctx));
+    // The post as it now is, on the stream every open tab already reads (message.updated): no new event name.
+    if (done.changed) this.emit({ type: "message.updated", roomId: id, data: { roomId: id, message: this.projection(done.post) }, sequence: done.post.sequence });
+    return { reactions: done.reactions };
   }
   async markRead(ctx: HubRequestContext, id: string, upTo: unknown) {
     const target = validated(uuid, upTo), me = await this.who(ctx);
