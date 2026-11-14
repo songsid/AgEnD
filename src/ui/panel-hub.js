@@ -708,8 +708,8 @@ function HubRoomView({ room: given }) {
       <header class="hub-chat-head" data-trust="panel-content">${back}<${Avatar} name=${name} size="sm" />
         <span class="hub-chat-title"><strong>${name}</strong><span class="s">${room.ownerName ? hc("answersFor", room.ownerName) : ""}</span></span>
         ${tag}
-        <span class="hub-head-tools"><${TextSizeButton} /></span>
         <button type="button" class="icon-btn" aria-pressed=${wide ? String(showRail) : undefined} aria-label=${hc("showInfo")} title=${hc("showInfo")} onClick=${toggleInfo}><${Icon} name="info" /></button>
+        <span class="hub-head-tools"><${TextSizeButton} /></span>
       </header>
       <${HubThread} store=${store} name=${name} panelKey=${panelKey} threadRef=${threadRef} />
       <div class="dock hub-dock" data-trust="composer"><div class="dock-col">
