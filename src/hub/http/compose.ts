@@ -69,7 +69,7 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // 管理 → 房間.
   "hub-room-new.js", "hub-room-new-strings.js", "hub-room-settings.js", "hub-room-settings-strings.js", "hub-room-members.js", "hub-room-members-strings.js", "hub-invitations.js", "hub-invitations-strings.js", "hub-admin-rooms.js", "hub-admin-rooms-strings.js",
   // M-3092 (Hub rooms, track U): the conversation list, a room on the shared thread, its composer.
-  "hub-room-list.js", "hub-room-thread.js", "hub-room-composer.js", "hub-assistant-admin.js", "hub-assistant-admin-strings.js",
+  "hub-room-list.js", "hub-room-thread.js", "hub-room-agent-strings.js", "hub-room-composer.js", "hub-assistant-admin.js", "hub-assistant-admin-strings.js",
   // M-3092 S-145: the list's favourites (the Fleet sidebar's #1664 rules; synced per person by the Hub).
   "hub-room-favorites.js",
   // S-148: the working bar's words (#3857), shared by the room thread.
@@ -814,14 +814,31 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     return false;
   }
 
+  function roomPostCode(error: HubProtocolError): "invalid" | "denied" | "revoked" | "not-found" | "unavailable" | "stale" | "backpressure" {
+    switch (error.code) { case "invalid": case "denied": case "revoked": case "not-found": case "stale": case "backpressure": return error.code; default: return "unavailable"; }
+  }
   async function receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void> {
     if (!live() || !link.current()) throw new HubProtocolError("stale");
     rooms.noteLink(link);
     quota.noteLink(link);
     groupRooms.agents.noteLink(link);
+    groupRooms.postReplies.noteLink(link);
     deps.pairingNotices?.noteLink(link);
     const reply = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
     switch (frame.type) {
+      case "room.list":
+        try { return { ...reply, type: "room.list-result", payload: await groupRooms.agentRooms(frame.payload, link) }; }
+        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "room.list-result", payload: { ok: false, exposureId: frame.payload.exposureId, code: roomPostCode(error) } }; }
+      case "room.post-answer-ack": groupRooms.postReplies.acknowledge(frame.payload, link); return;
+      case "room.members":
+        try { return { ...reply, type: "room.members-result", payload: await groupRooms.agentMembers(frame.payload, link) }; }
+        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "room.members-result", payload: { ok: false, code: roomPostCode(error) } }; }
+      case "people.search":
+        try { return { ...reply, type: "people.search-result", payload: await groupRooms.agentPeople(frame.payload, link) }; }
+        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "people.search-result", payload: { ok: false, code: roomPostCode(error) } }; }
+      case "room.post":
+        try { return { ...reply, type: "room.post-result", payload: await groupRooms.agentPost(frame.payload, link) }; }
+        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "room.post-result", payload: { ok: false, code: roomPostCode(error) } }; }
       case "room.answer":
         try { return { ...reply, type: "room.answer-ack", payload: await groupRooms.agents.answer(frame.payload, link) }; }
         catch (error) {
@@ -872,7 +889,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["rooms-v1", "room-ask-v1", "person-prefs-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["rooms-v1", "room-ask-v1", "room-post-v1", "person-prefs-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; grantSearch.close(); for (const end of streams) end(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };

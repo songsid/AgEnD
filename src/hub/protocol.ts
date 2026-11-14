@@ -73,7 +73,7 @@ export const roomListResultSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(false), exposureId: uuid, code: roomPostRefusalCode, retryAt: epoch.optional() }),
 ]);
 export const roomPostSchema = z.strictObject({ exposureId: uuid, room: plain(128).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s)),
-  text: plain(HUB_LIMITS.question).refine(s => s.trim().length > 0), idempotencyKey: uuid, onBehalfOf: z.strictObject({ receiptId: z.string().regex(/^hmsg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) }).optional() });
+  text: plain(HUB_LIMITS.question).refine(s => s.trim().length > 0), idempotencyKey: uuid, onBehalfOf: z.strictObject({ receiptId: z.string().regex(/^hmsg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).transform(s => s.toLowerCase()) }).optional() });
 export const roomPostResultSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(true), roomId: uuid, messageId: uuid, at: epoch }),
   z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),

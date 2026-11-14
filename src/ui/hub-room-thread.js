@@ -8,6 +8,7 @@
 // The store reads the room (seam 1 of docs/design/hub-rooms-split.md), keeps it live from the tab's one stream, sends with
 // an idempotency key, and answers HubThread's store interface.
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
+import { agentStopText, hra } from "./hub-room-agent-strings.js";
 import { WorkBarView } from "/assets/chat-composer.js";
 import { RailFrame } from "/assets/side-rail.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -31,7 +32,9 @@ const BOOT = "room";
  * 「Hub 助理」 in its own one-to-one (`direct`).
  */
 export function authorLine(author, mine = false, direct = false) {
-  if (!author || mine) return "";
+  if (!author) return "";
+  if (author.via?.name) return hra("via", String(author.name || ""), String(author.via.name));
+  if (mine) return "";
   if (author.kind === "assistant") return direct ? hroom("hubAssistant") : hroom("authorAssistant");
   if (author.kind === "agent") {
     if (!author.owner?.name) return String(author.name || "");
@@ -47,6 +50,7 @@ export function authorLine(author, mine = false, direct = false) {
  */
 const SYSTEM = { "room-created": "createdSys", "member-joined": "sysJoined", "admin-joined": "sysAdminJoined" };
 export function systemText(m) {
+  if (m?.system?.kind === "agent-mention-stopped") return agentStopText(m.system) ?? String(m.text || "");
   const key = m && m.system && SYSTEM[m.system.kind];
   return key && typeof m.system.name === "string" ? hroom(key, m.system.name) : String((m && m.text) || "");
 }
@@ -68,13 +72,15 @@ export const ANSWERS_SHOWN = 3, FOLD_FROM = 6;
  * (the thread's keys and quotes are numbers), extended here in arrival order and kept by the caller.
  */
 export function toThreadMessages(messages, { meId, ids, direct = false, expanded = new Set(), summarise = false }) {
+  const stops = messages.filter(m => m?.system?.kind === "agent-mention-stopped"), ordered = messages.filter(m => !stops.includes(m));
+  for (const stop of stops) { const parent = ordered.findIndex(m => m.id === stop.system.sourceId); if (parent < 0) ordered.push(stop); else { let i = parent + 1; while (ordered[i]?.system?.sourceId === stop.system.sourceId) i++; ordered.splice(i, 0, stop); } }
   const out = [], byId = new Map(messages.map((m) => [m.id, m]));
   // Each question's answers that have text, in arrival order: past ANSWERS_SHOWN they wait behind one 「展開其餘 N 則」.
   const answersOf = new Map();
   const drawn = (m) => !!m.text || m.stage === "not-answered";   // an answer that shows: its text, or that none came (Ridge)
   for (const m of messages) if (m && m.answerTo && drawn(m)) answersOf.set(m.answerTo, [...(answersOf.get(m.answerTo) || []), m.id]);
   const num = (id) => { if (!ids.has(id)) ids.set(id, ids.size * 2 + 2); return ids.get(id); };
-  for (const m of messages) {
+  for (const m of ordered) {
     if (!m || typeof m.id !== "string") continue;
     const author = m.author || {}, kind = author.kind;
     // An answer still to come (queued, or being worked on: the working bar says who) is never an empty bubble.
@@ -90,7 +96,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
       lastShown = at >= 0 && at === (folded ? ANSWERS_SHOWN - 1 : list.length - 1);
     }
     const id = num(m.id), mine = kind === "person" && author.id === meId;
-    if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ts: iso(m.at), text: systemText(m), bare: true }); continue; }
+    if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ...(m.system?.kind === "agent-mention-stopped" ? {} : { ts: iso(m.at) }), text: systemText(m), bare: true }); continue; }
     // An answer is a reply to the message that asked for it (the Fleet's reply reference): replyTo, else answerTo.
     const quoted = m.replyTo ? byId.get(m.replyTo) : m.answerTo ? byId.get(m.answerTo) : null;
     const state = mine ? askState(m.ask) : null;

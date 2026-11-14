@@ -78,3 +78,28 @@ export const HUB_ROOM_DIRECTORY_MIGRATION: HubHttpMigration = Object.freeze({ co
 export const HUB_ROOM_RETRY_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-retry", version: 1, up(db: Database.Database) {
   db.exec("ALTER TABLE hub_room_deliveries ADD COLUMN last_sent_at INTEGER NOT NULL DEFAULT 0");
 } });
+
+/** Agent sources and automation admission are retained separately from human/grant delivery history. */
+export const HUB_ROOM_AGENT_POSTS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-agent-posts", version: 1, up(db: Database.Database) {
+  db.exec(`ALTER TABLE hub_room_deliveries ADD COLUMN source_exposure_id TEXT;
+ALTER TABLE hub_room_deliveries ADD COLUMN source_exposure_revision INTEGER;
+ALTER TABLE hub_room_deliveries ADD COLUMN source_fleet_id TEXT;
+ALTER TABLE hub_room_deliveries ADD COLUMN on_behalf INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE hub_room_automation(room_id TEXT PRIMARY KEY REFERENCES hub_group_rooms(id),root_id TEXT NOT NULL,last_agent_ask INTEGER NOT NULL);
+CREATE TABLE hub_room_post_lineage(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id),root_id TEXT NOT NULL,depth INTEGER NOT NULL,audience_sequence INTEGER NOT NULL,return_post_id TEXT);
+CREATE TABLE hub_room_agent_depths(root_id TEXT NOT NULL,exposure_id TEXT NOT NULL,depth INTEGER NOT NULL,PRIMARY KEY(root_id,exposure_id));
+CREATE TABLE hub_room_agent_actions(id INTEGER PRIMARY KEY,room_id TEXT NOT NULL,exposure_id TEXT NOT NULL,at INTEGER NOT NULL);
+CREATE INDEX hub_room_agent_actions_window ON hub_room_agent_actions(at);
+CREATE INDEX hub_room_agent_actions_source ON hub_room_agent_actions(exposure_id,at);
+CREATE TABLE hub_room_agent_operations(exposure_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,digest TEXT NOT NULL,selector TEXT NOT NULL,
+  room_id TEXT NOT NULL,post_id TEXT NOT NULL REFERENCES hub_room_posts(id),owner TEXT NOT NULL,fleet_id TEXT NOT NULL,at INTEGER NOT NULL,member_id TEXT NOT NULL,receipt_id TEXT,person_name TEXT,via_name TEXT,
+  PRIMARY KEY(exposure_id,idempotency_key));
+CREATE TABLE hub_room_human_receipts(room_id TEXT NOT NULL,owner TEXT NOT NULL,receipt_id TEXT NOT NULL,root_id TEXT NOT NULL,PRIMARY KEY(room_id,owner,receipt_id));
+CREATE TABLE hub_room_post_returns(id TEXT PRIMARY KEY,post_id TEXT NOT NULL,answer_id TEXT NOT NULL,exposure_id TEXT NOT NULL,owner TEXT NOT NULL,fleet_id TEXT NOT NULL,
+  payload_ref TEXT NOT NULL,payload_digest TEXT NOT NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,sent_epoch INTEGER NOT NULL DEFAULT 0,last_sent_at INTEGER NOT NULL DEFAULT 0,acked INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(post_id,answer_id));
+CREATE INDEX hub_room_post_returns_pending ON hub_room_post_returns(fleet_id,expires_at) WHERE acked=0;
+CREATE TABLE hub_room_agent_stops(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id),source_id TEXT NOT NULL,reason TEXT NOT NULL,name TEXT NOT NULL,retry_at INTEGER,
+  UNIQUE(source_id,reason,name));
+CREATE INDEX hub_room_agent_stops_source ON hub_room_agent_stops(source_id);`);
+} });

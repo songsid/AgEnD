@@ -2381,3 +2381,15 @@ describe.skipIf(process.platform === "win32")("room consent factory composition"
     } finally { await r.runtime.close(); }
   });
 });
+
+describe.skipIf(process.platform === "win32")("M-3118 member capability composition", () => {
+  it.each([false,true])("offers room-post only with its mounted HTTP feature (%s)", async offered => {
+    const hub=await initializedHub(), http=fakeHttp(), create=http.entry.createHubHttp;
+    http.entry.createHubHttp=(...args)=>({...create(...args),features:offered?["room-ask-v1","room-post-v1"]:[]});
+    let capabilities:readonly string[]=[];const original=HubServer.prototype.start;
+    const start=vi.spyOn(HubServer.prototype,"start").mockImplementation(async function(this:HubServer){ capabilities=(this as any).options.capabilities;return original.call(this); });
+    const service=await factory(hub.home,http.entry).create(hub.config.hub,()=>true);
+    try {await service.start();expect(capabilities.includes("room-post-v1")).toBe(offered);expect(capabilities.includes("room-ask-v1")).toBe(offered);}
+    finally {await service.close();start.mockRestore();}
+  });
+});
