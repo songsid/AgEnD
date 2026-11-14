@@ -14,7 +14,7 @@ async function world() {
   const room = async (name: string, people: any[]) => (await r!.call(admin, "POST", "/hub/v1/rooms", { name, people: people.map(personKeyString) })).json.room.id as string;
   const weekly = await room("Weekly", [alex, bob]), other = await room("Other", [bob]);
   const say = async (who: any, id: string, text: string) => { at += 1000; const p = await r!.call(who, "POST", `/hub/v1/rooms/${id}/messages`, { text, mentions: [], idempotencyKey: randomUUID() }); expect(p.status).toBe(200); return p.json.id as string; };
-  return { admin, a, b, c, cara, weekly, other, say };
+  return { admin, a, b, c, cara, weekly, other, say, advance: (n: number) => { at += n; } };
 }
 const search = (who: any, q: string, extra = "") => r!.call(who, "GET", `/hub/v1/rooms/search?q=${encodeURIComponent(q)}${extra}`);
 
@@ -64,6 +64,32 @@ it("follows the M-3118 lineage floor: a post in a thread rooted before I joined 
   expect(r!.db.prepare("UPDATE hub_room_post_lineage SET root_id=?,depth=1,audience_sequence=1 WHERE post_id=?").run(root, late).changes).toBe(1);
   expect((await search(w.c, "descendant")).json.hits).toEqual([]);
   expect((await search(w.a, "descendant")).json.hits).toHaveLength(1);   // Alex was there
+});
+
+it("an answer after I joined to a question from before I joined stays hidden (as in messages()); a not-answered row too (Fable P2, P3a)", async () => {
+  const w = await world();
+  const question = await w.say(w.a, w.weekly, "old question about budgets");
+  await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.weekly}/members`, { kind: "person", id: personKeyString(w.cara) });
+  const answer = await w.say(w.b, w.weekly, "budgets answer for the old question");
+  expect((await search(w.c, "budgets answer")).json.hits.map((h: any) => h.messageId)).toEqual([answer]);   // a plain post: found
+  // Made an answer to the question Cara cannot see (its own lineage floor is its own sequence, so only answer_to hides it).
+  expect(r!.db.prepare("UPDATE hub_room_posts SET answer_to=? WHERE id=?").run(question, answer).changes).toBe(1);
+  expect((await r!.call(w.c, "GET", `/hub/v1/rooms/${w.weekly}/messages?limit=100`)).json.messages.some((m: any) => m.id === answer)).toBe(false);
+  expect((await search(w.c, "budgets answer")).json.hits).toEqual([]);
+  expect((await search(w.a, "budgets answer")).json.hits).toHaveLength(1);   // Alex saw the question: the answer is his to find
+  // A row whose answer never came (stage not-answered) is not a message, whatever its stored text.
+  const stale = await w.say(w.a, w.weekly, "unanswered placeholder words");
+  r!.db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(stale);
+  expect((await search(w.a, "placeholder")).json.hits).toEqual([]);
+});
+
+it("at most 30 searches a minute each (429 busy), then again after the minute (Fable P3b)", async () => {
+  const w = await world();
+  for (let i = 0; i < 30; i++) expect((await search(w.a, "x")).status, String(i)).toBe(200);
+  expect((await search(w.a, "x")).json.code).toBe("busy");
+  expect((await search(w.b, "x")).status).toBe(200);   // per person
+  w.advance(60_001);
+  expect((await search(w.a, "x")).status).toBe(200);
 });
 
 it("pages with a cursor when there are more hits than the limit", async () => {

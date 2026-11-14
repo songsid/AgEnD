@@ -37,7 +37,7 @@ const clickSchema = z.strictObject({ setId: z.string().regex(/^[a-f0-9]{32}$/), 
 /** M-3127: one press per set — its click post's idempotency key, a UUID shape derived from the set id. */
 const setKey = (setId: string) => { const h = createHash("sha256").update(`room-button:${setId}`).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`; };
 /** M-3127 C: how many posts one search reads at most, and the most hits it returns. */
-export const ROOM_SEARCH_SCAN = 2000, ROOM_SEARCH_LIMIT = 50;
+export const ROOM_SEARCH_SCAN = 2000, ROOM_SEARCH_LIMIT = 50, ROOM_SEARCH_PER_MINUTE = 30;
 const fold = (s: string) => s.normalize("NFKC").toLowerCase();
 /**
  * M-3127 C: a hit's words — up to `width` characters around its first term, on whole characters, with every term's places
@@ -83,8 +83,8 @@ export class HubGroupRooms {
   private readonly buttons: RoomButtons;
   private buttonsTimer: NodeJS.Timeout | null = null;
   private buttonsClosed = false;
-  /** M-3127 C: the people with a search running (one at a time each). */
-  private readonly searching = new Set<string>();
+  /** M-3127 C (Fable P3b): each person's recent searches (their times), for ROOM_SEARCH_PER_MINUTE. */
+  private readonly searches = new Map<string, number[]>();
   private readonly agentSearch: HubGrantSearch;
   private readonly agentReadBuckets = new Map<string, { at: number; count: number }>();
   constructor(private readonly core: HubCore) { this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
@@ -804,7 +804,7 @@ export class HubGroupRooms {
    * M-3127 C: messages with these words in the group rooms I am in, newest first — exactly what messages() would show me
    * (since my joined_sequence, the lineage floor, answered rows only, no room lines). The text is encrypted at rest and
    * retention deletes it, so there is no plaintext index: a bounded scan (ROOM_SEARCH_SCAN posts a request), and `cursor`
-   * when more remain ("search older messages"). Every word must appear (NFKC, case-folded). One search per person at once.
+   * when more remain ("search older messages"). Every word must appear (NFKC, case-folded). ROOM_SEARCH_PER_MINUTE each.
    */
   async search(ctx: HubRequestContext, q: unknown, limit: unknown = 20, cursor: unknown = null) {
     const query = typeof q === "string" ? q.trim() : "", n = typeof limit === "number" ? limit : Number(limit);
@@ -817,9 +817,13 @@ export class HubGroupRooms {
       after = { at: Number(c[1]), id: c[2]! };
     }
     const me = await this.who(ctx);
-    if (this.searching.has(me)) throw new HubRoomRefusal(429, "busy");
-    this.searching.add(me);
-    try {
+    // A search reads and decrypts up to ROOM_SEARCH_SCAN posts on the event loop: at most ROOM_SEARCH_PER_MINUTE a minute
+    // each (429 busy, the page says to try again in a moment). One person's map entry; old times drop on every call.
+    const now = this.core.now(), recent = (this.searches.get(me) ?? []).filter(t => t > now - 60_000);
+    if (recent.length >= ROOM_SEARCH_PER_MINUTE) { this.searches.set(me, recent); throw new HubRoomRefusal(429, "busy"); }
+    this.searches.set(me, [...recent, now]);
+    if (this.searches.size > 10_000) for (const [k, v] of this.searches) if (!v.some(t => t > now - 60_000)) this.searches.delete(k);
+    {
       return this.core.atomic(db => {
         const rows = db.prepare(`SELECT p.*,r.name AS room_name FROM hub_room_posts p
           JOIN hub_room_members m ON m.room_id=p.room_id AND m.kind='person' AND m.subject=?
@@ -845,7 +849,7 @@ export class HubGroupRooms {
         const more = !!last && (hits.length >= n ? last !== rows[rows.length - 1] || rows.length === ROOM_SEARCH_SCAN : rows.length === ROOM_SEARCH_SCAN);
         return { hits, ...(more && last ? { cursor: `${last.created_at}.${last.id}` } : {}) };
       }, this.fence(ctx));
-    } finally { this.searching.delete(me); }
+    }
   }
   async markRead(ctx: HubRequestContext, id: string, upTo: unknown) {
     const target = validated(uuid, upTo), me = await this.who(ctx);
