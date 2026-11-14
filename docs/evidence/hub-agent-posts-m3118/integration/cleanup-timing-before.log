@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-room-posts-rc-m3118
+
+ ❯ tests/hub-room-post-rc-integration-3118.test.ts (1 test | 1 failed) 4040ms
+   × posts for an absent owner and returns an early answer once through lost ACK/reconnect, with current disclosure fences 4037ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-post-rc-integration-3118.test.ts > posts for an absent owner and returns an early answer once through lost ACK/reconnect, with current disclosure fences
+AssertionError: expected { n: 1 } to deeply equal { n: +0 }
+
+- Expected
++ Received
+
+  {
+-   "n": 0,
++   "n": 1,
+  }
+
+ ❯ tests/hub-room-post-rc-integration-3118.test.ts:132:135
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  01:01:37
+   Duration  11.29s (transform 5.64s, setup 110ms, import 6.96s, tests 4.04s, environment 0ms)
+

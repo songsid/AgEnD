@@ -70,7 +70,7 @@ for (const [i, c] of CASES.entries()) {
   await p.page.screenshot({ path: shotPath(SMOKE, c as any, "2-page"), fullPage: false });
   // One arriving while it is open.
   fm.notifyFleetError(c.lang === "zh-TW" ? `⚠️ 排程 nightly-${i} 沒有執行：agent 離線。` : `⚠️ Schedule nightly-${i} did not run: its agent is offline.`);
-  await p.page.waitForFunction(`document.querySelectorAll(".p-notices .n-item.notice").length === ${rows + 1}`, null, { timeout: 10000 }).catch(() => {});
+  await p.page.waitForFunction((n: number) => document.querySelectorAll(".p-notices .n-item.notice").length === n, rows + 1, { timeout: 10000 }).catch(() => {});
   need((await p.page.locator(".p-notices .n-item.notice").count()) === rows + 1, "a new one shows live");
   await p.page.waitForTimeout(800);
   need(unread() === 0, "…and is read once seen");
