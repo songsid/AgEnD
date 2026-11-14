@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, h, type AppPage } from "./helpers/app-harness.js";
-import { clearHubMeId, rememberedMeId } from "/ui/js/hub-room-notify.js";
+import { clearHubMeId, noteHubMeId, notifyKind, rememberedMeId } from "/ui/js/hub-room-notify.js";
 
 let client: any, hubPanel: any, i18n: any, router: any;
 const mounted: AppPage[] = [];
@@ -78,6 +78,13 @@ describe("remembered id follows the Hub session (Fable P2 wiring)", () => {
     await openRoom();
     await until(() => rememberedMeId() === null);
     expect(rememberedMeId()).toBeNull();
+    // With the id forgotten, an @A row matches nobody: no ping for A (me is null) nor for B (not mentioned).
+    const atA = { type: "message.added", roomId: "room-weekly",
+      message: { id: "m-9", roomId: "room-weekly", at: 1, author: { kind: "person", id: "person-chen", name: "陳主任" }, text: "hi @王經理", mentions: ["person-wang"] } };
+    expect(notifyKind(atA, null)).toBeNull();
+    noteHubMeId("person-chen");
+    expect(notifyKind(atA, { id: "person-chen" })).toBeNull();
+    clearHubMeId();
     releaseDetail([200, { ok: true, room: { id: R1, kind: "group", name: "研一主管週會" }, me: { id: "person-chen", role: "member" }, members: [], settings: { allMention: true, historyForNew: "all" } }]);
     await until(() => rememberedMeId() === "person-chen");
     expect(rememberedMeId()).toBe("person-chen");
