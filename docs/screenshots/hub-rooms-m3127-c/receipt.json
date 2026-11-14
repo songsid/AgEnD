@@ -1,6 +1,6 @@
 {
-  "sourceHead": "3656b3ec387c38fd4077881b3aaf40cc586440a7",
-  "baseRef": "35478214d4a3876ffcf2154120b148676648e06d",
+  "sourceHead": "ddcd6a528c998f03c7a7ed9ba0a6bf1cc6711757",
+  "baseRef": "49aa5d15cc196154c73da074959c49bfe7027ee3",
   "dirty": [],
   "inputs": [
     {
@@ -17,7 +17,7 @@
     },
     {
       "path": "src/ui/panel-hub.js",
-      "sha256": "35705a1a926a89bab3ffdd885dd99e1d546f7dd39f39efc5cf376b9aba56c92b"
+      "sha256": "4c0d53e86932b0a02b59291c10e8fd0989fde83a4430d4a8a0dc2136d1c47f07"
     },
     {
       "path": "src/ui/hub-room-strings.js",
@@ -109,15 +109,15 @@
     },
     {
       "path": "search-dialog.desktop-en-light.png",
-      "sha256": "1921f448bacea357291807e85d95528023d879b6ffb9f4dd886a3d0b5fae4a0f"
+      "sha256": "e07be1845a5db4555205801b80f94ed1005381d0673799a40d0f24550ee0a862"
     },
     {
       "path": "search-jump.desktop-en-light.png",
-      "sha256": "6243a8e82349cb0b7f40512a35c4ea67a455c0e12c7d25b818808a84dfd6b261"
+      "sha256": "40295c7ed3a5f5bb3f3874b87feccf3a9d8be2b583408d1236e9eedb993a824a"
     },
     {
       "path": "search-skew.desktop-en-light.png",
-      "sha256": "2882726aa046a7c527d3d33295f9a1a1ea260e0074c94be942e1df57d792c532"
+      "sha256": "1eaff7d6a09d3d818e36ba184d3002981ec85579607a434b8c9b045470f5283f"
     },
     {
       "path": "hub-sidebar.desktop-zh-TW-dark.png",
@@ -125,15 +125,15 @@
     },
     {
       "path": "search-dialog.desktop-zh-TW-dark.png",
-      "sha256": "89863bdb3fc74ffa3299a59bcca173cf56a23ee6e703a69f54aca7d6971ab6ed"
+      "sha256": "350f5f7696b94abe13cd1ffbf8256378b62b8ba189ae826580277c0ea27f15fa"
     },
     {
       "path": "search-jump.desktop-zh-TW-dark.png",
-      "sha256": "64fb508141d7471493badeda9e3a166e26dfb321c10ff5b8f1b14cc2d26ac7f4"
+      "sha256": "5fab766b986ef3478f4d0c4432136bbb20e575207a59ca8c059f1c80540f61b7"
     },
     {
       "path": "search-skew.desktop-zh-TW-dark.png",
-      "sha256": "ca1af28690eaf3e862d715e140e6bc76e8e95da63b331a712736edf984d8f797"
+      "sha256": "c6775d462d7dd3300c2d933c361a5aa37630104d7a93b9d5b0e9c5104d642f48"
     },
     {
       "path": "search-dialog.phone-zh-TW-light.png",
