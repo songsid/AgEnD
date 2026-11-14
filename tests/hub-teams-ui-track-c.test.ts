@@ -36,7 +36,7 @@ it("lets a lead edit only the roster, searches the whole company with login disa
   const { p, c } = await mount("lead"); await open(p);
   expect(p.root.querySelector("[data-team-name]")).toBeNull(); expect(button(p, "Delete team")).toBeUndefined(); expect(button(p, "Choose a lead")).toBeUndefined();
   fire(button(p, "Add member"), "click"); await settle(10);
-  const input = p.root.querySelector('input[type="search"]'); expect(input.getAttribute("placeholder")).toBe("Search by name (whole company)");
+  const input = p.root.querySelector('input[type="search"]'); expect(input.getAttribute("placeholder")).toBe("Search everyone by name");
   change(input, "Ca"); await settle(5); fire(button(p, "Search"), "click"); await settle(10);
   expect(c.teamSuggestions).toHaveBeenCalledWith("person", "Ca", "team-a", expect.any(AbortSignal)); expect(p.root.textContent).toContain("other.casey");
   fire(button(p, "Choose"), "click"); await settle(10); fire(p.root.querySelector("form"), "submit"); await settle(20);

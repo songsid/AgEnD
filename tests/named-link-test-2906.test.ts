@@ -425,17 +425,12 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
       "Connect this Fleet to Hub {0} using your company account. Agent sharing stays separate.",
       "以公司帳號將這個 Fleet 連接到 Hub {0}。分享 Agent 需另外選擇。",
     ]);
-    // Team directory search is company-wide, not a network claim (Lumen's pilot copy).
-    // Exempt only these exact placeholders in their own dictionary.
-    const teamDirectorySearch = new Set(["Search by name (whole company)", "輸入姓名搜尋（全公司）"]);
     const hits = files.flatMap(f => {
       const source = readFileSync(f, "utf8").replace(/^\s*"hub\.companyJoin\.(?:confirm|repair)":.*$/gm, "")
         .replace(/^\s*\["hub\.company-(?:address|name)".*$/gm, "")
         // Hub UX U3 (spec 1.4: 公司帳號 / company account replaces 組織帳號): the Hub's own sign-in line is company sign-in wording (#3423).
         .replace(f === "src/ui/hub-strings.js" ? /^\s*signInLead: ".*$/gm : /(?!)/g, "");
-      return literalCopy(source).filter(s => !(f === "src/ui/shared/app-shell.js" && hubSummary.has(s))
-        && !(f === "src/ui/hub-teams-strings.js" && teamDirectorySearch.has(s))
-        && (/\bcorporate\b/i.test(s) || !COMPANY_DICTIONARIES.has(f) && /公司|\bcompany\b/i.test(s))).map(s => `${f}: ${s.slice(0, 80)}`);
+      return literalCopy(source).filter(s => !(f === "src/ui/shared/app-shell.js" && hubSummary.has(s)) && (/\bcorporate\b/i.test(s) || !COMPANY_DICTIONARIES.has(f) && /公司|\bcompany\b/i.test(s))).map(s => `${f}: ${s.slice(0, 80)}`);
     });
     expect(hits).toEqual([]);
   });

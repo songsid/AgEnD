@@ -410,7 +410,7 @@ A department groups the team; it does not implicitly add that AD group's members
   My teams entry in this phase. Both paths use the same roster editor.
 - Adding or removing roster members edits a draft until **Save** (儲存). **Unsaved changes** (尚未儲存) appears beside
   Save while the draft differs from the saved team; leaving without saving does not apply those roster edits.
-- People search is **Search by name (whole company)** (輸入姓名搜尋（全公司）), including other departments. Results
+- People search is **Search everyone by name** (輸入姓名搜尋所有人), including other departments. Results
   show the sign-in name beside the display name. The team's department remains context in the header; it is not a
   search filter. A member's own department is shown only when already recorded, without a lookup per roster row.
 - A team holds at most 200 people and a Hub at most 200 teams. Room selection still has its separate 100-person limit.
