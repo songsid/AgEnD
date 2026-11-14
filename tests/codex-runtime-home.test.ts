@@ -13,7 +13,7 @@ let instance: string;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "agend-1034-"));
   shared = join(root, "shared");
-  instance = join(root, "agend", "instances", "runtime-worker-t1503382598640996543");
+  instance = join(root, "agend", "instances", "runtime-worker-t1500000000000996543");
   process.env.AGEND_HOME = join(root, "agend");
   process.env.CODEX_HOME = shared;
   mkdirSync(instance, { recursive: true });

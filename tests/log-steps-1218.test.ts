@@ -155,7 +155,7 @@ describe("masking: only actual secret values, everything else stays readable", (
     expect(maskSecrets('max_tokens="4096" token_limit: \'100\' password=""')).toBe('max_tokens="4096" token_limit: \'100\' password=""');
   });
   it("a git SHA, a UUID, a long instance name and a long path are not secrets", () => {
-    const keep = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b 123e4567-e89b-12d3-a456-426614174000 agend-web-claude-t1554485732591276113 /home/han/Projects/AgEnD-agend-web-claude/src/log-steps.ts";
+    const keep = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b 123e4567-e89b-12d3-a456-426614174000 agend-web-claude-t1500000000000276113 /home/han/Projects/AgEnD-agend-web-claude/src/log-steps.ts";
     expect(maskSecrets(keep)).toBe(keep);
   });
   it("Cookie and Set-Cookie headers are masked whole, including folded continuation lines and structured Cookie fields", () => {

@@ -10,7 +10,7 @@ describe("decisions relevance filter", () => {
     { title: "agend-rule", scope: "fleet", project_root: "/home/han/Projects/AgEnD" },
     { title: "agend-dev1-rule", scope: "fleet", project_root: "/home/han/Projects/AgEnD-dev1" },
     { title: "dopo-workflow", scope: "fleet", project_root: "/home/han/Projects/Games_Leader" },
-    { title: "awp-rule", scope: "fleet", project_root: "/home/han/Projects/OTA-SVC" },
+    { title: "ota-rule", scope: "fleet", project_root: "/home/han/Projects/OTA-SVC" },
     { title: "truly-global", scope: "fleet" },
     { title: "own-project-scoped", scope: "project", project_root: AGEND },
     { title: "other-project-scoped", scope: "project", project_root: "/home/han/Projects/Games_Server" },
@@ -19,7 +19,7 @@ describe("decisions relevance filter", () => {
   it("drops fleet decisions belonging to unrelated projects", () => {
     const kept = selectRelevantDecisions(decisions, AGEND).map(d => d.title);
     expect(kept).not.toContain("dopo-workflow");
-    expect(kept).not.toContain("awp-rule");
+    expect(kept).not.toContain("ota-rule");
   });
 
   it("keeps same-project-family fleet decisions (worktrees of one repo)", () => {
@@ -38,7 +38,7 @@ describe("decisions relevance filter", () => {
   it("a general keeps ALL fleet decisions — it routes across projects", () => {
     const kept = selectRelevantDecisions(decisions, "/home/han/.agend/general", true).map(d => d.title);
     expect(kept).toContain("dopo-workflow");   // cross-project routing rule
-    expect(kept).toContain("awp-rule");
+    expect(kept).toContain("ota-rule");
     expect(kept).toContain("truly-global");
     // still excludes another project's *project*-scoped decisions
     expect(kept).not.toContain("other-project-scoped");

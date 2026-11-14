@@ -6,7 +6,7 @@ import { bootFixture, matrix, caseName, shotPath, seedPerson, seedAvatars, seedC
 
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48900) });
 const names = fx.instances.map(i => i.name);
-const card = [names[4], names[33], "產品官網-t1544335726169165914"];
+const card = [names[4], names[33], "產品官網-t1500000000000165914"];
 seedPerson(fx); await seedAvatars(fx, 30); await seedCards(fx, card); await seedWidgets(fx, card[0]); await seedChat(fx, card, 20); await seedUsage(fx);
 const enc = encodeURIComponent;
 const pages: Array<[string, string]> = [["org", "/ui/fleet/org"], ["chat", `/ui/chat/${enc(card[0])}`], ["details", `/ui/fleet/agent/${enc(card[0])}`],

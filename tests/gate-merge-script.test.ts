@@ -14,7 +14,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 const SCRIPT = join(process.cwd(), "scripts", "gate-merge.sh");
 const REPO = "songsid/AgEnD";
-const PRISM = "agend-reviewer-t1503382598640996543";
+const PRISM = "agend-reviewer-t1500000000000996543";
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 

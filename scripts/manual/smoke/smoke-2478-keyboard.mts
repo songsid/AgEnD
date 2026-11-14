@@ -14,7 +14,7 @@ import { bootFixture, freshPage, mounted, openPublicLink, shotPath } from "../sm
 
 const SMOKE = "2478-keyboard", LABEL = process.env.LABEL ?? "after", KEYBOARD = 336;
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48824), instances: 6 });
-const CHAT = "agend-dev-claude-t1519896892392083558";
+const CHAT = "agend-dev-claude-t1500000000000083558";
 // WebKit's own messages (smoke-composer-row-2215's list): a viewport key it does not know, the sheet it refuses
 // under style-src 'self' for its own controls, and fetches a navigation cancels. Anything else is an error.
 const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";

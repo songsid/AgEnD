@@ -241,7 +241,7 @@ describe.skipIf(!enabled)("real codex: private app-server runtime directories (#
     const mark = "E2E-RESUMED-THREAD-1034";
     const now = Date.now();
     writeState(shared, [{ id, cwd, mark, recency: now, rollout: writeRollout(shared, id, cwd, mark, new Date(now).toISOString()) }]);
-    const instanceDir = join(runtimeRoot, "agend", "instances", "runtime-worker-t1503382598640996543");
+    const instanceDir = join(runtimeRoot, "agend", "instances", "runtime-worker-t1500000000000996543");
     mkdirSync(instanceDir, { recursive: true });
     if (mode === "legacy-links") {
       const legacy = join(instanceDir, "codex-home");

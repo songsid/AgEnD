@@ -109,11 +109,11 @@ describe("read-only resource inventory", () => {
     config(dir, { instances: { fleet: {} }, channels: [{ id: "primary", type: "telegram" }, { id: "second bot", type: "telegram" }] });
     writeFileSync(join(dir, "classicBot.yaml"), yaml.dump({ channels: {
       arbitrary: { instanceName: "persisted-classic", channelId: "123" },
-      "-100111": { name: "研一 Project", adapterId: "primary" },
-      legacy2: { channelId: "-100222", name: "研一 Project", adapterId: "second bot" },
+      "-100111": { name: "研發 Project", adapterId: "primary" },
+      legacy2: { channelId: "-100222", name: "研發 Project", adapterId: "second bot" },
       "987654321098765432": { name: "Legacy" },
     } }));
-    const names = ["fleet", "persisted-classic", "classic-研一-project-0111", "classic-研一-project-0222-second-bot", "classic-legacy-5432"];
+    const names = ["fleet", "persisted-classic", "classic-研發-project-0111", "classic-研發-project-0222-second-bot", "classic-legacy-5432"];
     for (const name of [...names, "retired"]) instance(dir, name);
     const report = await collectResourceReport(dir, probe);
     expect(report.orphans?.map(row => row.names[0])).toEqual(["retired"]);
@@ -196,7 +196,7 @@ describe("read-only resource inventory", () => {
   });
 
   it("measures allocated storage with real du and does not follow descendant symlinks", async () => {
-    const dir = root(); const workspace = join(dir, "workspace $(literal); 研一"); mkdirSync(workspace);
+    const dir = root(); const workspace = join(dir, "workspace $(literal); 研發"); mkdirSync(workspace);
     const outside = join(dir, "large-source"); mkdirSync(outside);
     writeFileSync(join(outside, "large"), Buffer.alloc(4 * MiB, 1));
     symlinkSync(outside, join(workspace, "linked"));
