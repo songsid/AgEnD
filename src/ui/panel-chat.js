@@ -1043,6 +1043,10 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
   const files = s.pendingFiles[name] || [];
   const reply = s.replies[name];                       // #2272: the message this one will reply to
   const content = !!value.trim() || files.length > 0;
+  // M-3115 (phone v2): one row — the box, the context ring and the model picker beside it — and, while the agent works
+  // with nothing typed, Send is Stop (typed: Send again, and Stop is the status line's).
+  const phone = narrowScreen() && !guestPage();
+  const stopNow = phone && busy && !content;
   // A file waiting: what goes is a message with its file, never a command (no palette, no command line). #2855: a guest's
   // palette offers only what it may run on this agent — the table's "anyone" commands (its status frame's `commands`).
   const guest = guestPage();
@@ -1111,9 +1115,6 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
   return html`<div class="composer-box" ref=${bindings.box}>
     ${machineUnavailable ? html`<p class="note runtime-machine-unavailable" role="status">${t(inst.machine_status === "revoked" ? "chat.machineRevokedHint" : "chat.machineUnavailable",machineName(inst.machine_id,inst.machine_name))}</p>` : null}
     ${inst?.native_busy && !busy && !inst?.native_blocked ? html`<p class="note" role="status">${t("chat.nativeBusy")}</p>` : null}
-    ${!guestPage() && supportsInstanceFeature(inst,"commands") ? html`<div class="model-entry-row" role="group" aria-label=${mw("model")}>
-      <button type="button" class="btn btn-sm" onClick=${() => inst?.runtime === "windows" ? navigate(sectionPath("agents")) : store.runCommand(name, "backend", "", { alive: () => lease.current() })}>${backendLabel(inst?.backend)} ▾</button>
-      <button type="button" class="btn btn-sm" onClick=${() => store.runCommand(name, "model", "", { alive: () => lease.current() })}>${modelLabel(inst?.model || modelText(inst || {}))} ▾</button></div>` : null}
     ${palette ? html`<ul data-trust="palette" class="cmd-palette" id=${paletteId} role="listbox" aria-label=${t("chat.cmdCommands")}>
       ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}
           class=${c === pick ? "on" : ""} onMouseDown=${(e) => { e.preventDefault(); complete(c); }}>
@@ -1130,8 +1131,30 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
       onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${pick ? optId(pick) : undefined}
       attach=${attachmentsSupported ? { title: t("chat.attachTitle"), onFiles: (list) => store.addFiles(name, list) } : null}
       stop=${HIDDEN_STOP}
-      send=${{ hidden: false, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
+      tools=${phone ? html`<${ComposerTools} name=${name} inst=${inst} lease=${lease} />` : null}
+      send=${stopNow ? { hidden: false, stop: true, disabled: !!s.cancelling[name], label: t("chat.stopReply"), title: t("chat.stopReplyTitle"), onClick: () => store.cancelReply(name) }
+        : { hidden: false, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
     </div>`;
+}
+
+/**
+ * M-3115 (phone v2): beside the box — the context's ring (from 50%; amber from 70%: /ctx, its use, model and effort) and
+ * one picker for the model and its effort (/model: a phone's list opens each model's efforts) that shows the model (its
+ * name says the effort too; the row leaves the box its room). The backend stays in
+ * Details. The ring's fill is painted through the CSSOM (no inline style attribute under the page's CSP).
+ */
+function ComposerTools({ name, inst, lease }) {
+  const run = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
+  const pct = inst?.context_pct == null ? null : Math.round(inst.context_pct);
+  const effort = supportsInstanceFeature(inst, "effort") && effortChip(inst) ? effortWord(effortChip(inst)) : null;
+  const model = modelLabel(inst?.model || modelText(inst || {}));
+  const pickLabel = effort ? `${model} · ${effort}` : model;
+  return html`<span class="composer-tools">
+    ${pct != null && pct >= 50 ? html`<button type="button" class=${`ctx-ring${pct >= 70 ? " warn" : ""}`} ref=${(el) => el?.style?.setProperty("--pct", String(pct))}
+      title=${t("chat.chipContext", pct)} aria-label=${t("chat.chipContext", pct)} onClick=${() => run("ctx")}><span class="ctx-dial" aria-hidden="true"><span class="ctx-pct">${pct}</span></span></button>` : null}
+    ${supportsInstanceFeature(inst, "commands") ? html`<button type="button" class="composer-pick" title=${t("chat.chipModel", pickLabel)} aria-label=${t("chat.chipModel", pickLabel)}
+      onClick=${() => (inst?.runtime === "windows" ? navigate(sectionPath("agents")) : run("model"))}><b>${model}</b><span class="chev" aria-hidden="true">⌄</span></button>` : null}
+  </span>`;
 }
 
 function FileChip({ f, i, name, bindings }) {
