@@ -1,14 +1,31 @@
 import { describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { parseStrictJson } from "../src/hub/validation.js";
-import { parseMemberFrame, parseServerFrame, encodeMemberFrame, HUB_CAPABILITIES } from "../src/hub/protocol.js";
+import { parseMemberFrame, parseServerFrame, encodeMemberFrame, encodeServerFrame, HUB_CAPABILITIES } from "../src/hub/protocol.js";
 const hello = () => ({ v: 1, type: "hello", requestId: randomUUID(), linkEpoch: 0, payload: { supportedVersions: [1], capabilities: [...HUB_CAPABILITIES], memberBootId: randomUUID() } } as const);
 const helloWithCapabilities = (count: number) => {
   const frame = hello();
   return { ...frame, payload: { ...frame.payload, capabilities: [...HUB_CAPABILITIES,
     ...Array.from({ length: count - HUB_CAPABILITIES.length }, (_, i) => `future-feature-${i}`)] } };
 };
+const welcomeWithCapabilities = (count?: number) => ({ v: 1 as const, type: "welcome" as const, requestId: randomUUID(), linkEpoch: 1,
+  payload: { selectedVersion: 1 as const, hubId: randomUUID(), fleetId: randomUUID(), linkEpoch: 1, revocationVersion: 0,
+    ...(count === undefined ? {} : { capabilities: Array.from({ length: count }, (_, i) => `hub-feature-${i}`) }) } });
 describe("Hub P1 closed protocol", () => {
+  it("lets members receive 32 welcome capabilities, refusing 33", () => {
+    for (const count of [undefined, 0, 16, 17, 32]) {
+      const frame = welcomeWithCapabilities(count);
+      expect(parseServerFrame(JSON.stringify(frame))).toEqual(frame);
+    }
+    expect(() => parseServerFrame(JSON.stringify(welcomeWithCapabilities(33)))).toThrow();
+  });
+  it("keeps the Hub sending at most 16 welcome capabilities for older members", () => {
+    for (const count of [undefined, 0, 16]) {
+      const frame = welcomeWithCapabilities(count);
+      expect(JSON.parse(encodeServerFrame(frame))).toEqual(frame);
+    }
+    for (const count of [17, 32]) expect(() => encodeServerFrame(welcomeWithCapabilities(count))).toThrow();
+  });
   it("lets the Hub receive 32 hello capabilities, refusing 33", () => {
     for (const count of [16, 17, 32]) {
       const frame = helloWithCapabilities(count);

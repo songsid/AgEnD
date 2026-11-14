@@ -135,9 +135,11 @@ const frame = <T extends string, P extends z.ZodType>(type: T, payload: P) => z.
  * for older Hubs. Raise the send bound only in a later release. Version reports travel as values, not capability names. */
 const memberHelloCapabilities = z.array(identifier).max(16);
 const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(32), memberBootId: uuid });
+/** The reverse receive-first rollout: members accept 32 welcome names; Hubs still send at most 16 for older members. */
+const hubWelcomeCapabilities = z.array(identifier).max(16).optional();
 const welcome = z.strictObject({ selectedVersion: z.literal(1), hubId: uuid, fleetId: uuid, linkEpoch: epoch.min(1), revocationVersion: epoch,
   /** Sent only when the hello offered welcome-caps-v1: the Hub's own optional features. */
-  capabilities: z.array(identifier).max(16).optional(),
+  capabilities: z.array(identifier).max(32).optional(),
   /** web-origin-v1 (M-2901): the Hub's current web address, signed with its issuer key (web-origin.ts). Only to a member that asked. */
   webOrigin: webOriginStatementSchema.optional() });
 const chunkData = z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/).max(Math.ceil(HUB_ATTACHMENT_CHUNK / 3) * 4);
@@ -179,6 +181,10 @@ export function encodeMemberFrame(value: HubMemberFrame): string {
   if (frame.type === "hello") validated(memberHelloCapabilities, frame.payload.capabilities);
   return JSON.stringify(frame);
 }
-export function encodeServerFrame(value: HubServerFrame): string { return JSON.stringify(parseServerFrame(JSON.stringify(value))); }
+export function encodeServerFrame(value: HubServerFrame): string {
+  const frame = parseServerFrame(JSON.stringify(value));
+  if (frame.type === "welcome") validated(hubWelcomeCapabilities, frame.payload.capabilities);
+  return JSON.stringify(frame);
+}
 export const validateAsker = (input: unknown): HubAskerEnvelope => validated(askerSchema, input);
 export const validateAuthorization = (input: unknown): HubAuthorizationRequest => validated(authorizationSchema, input);
