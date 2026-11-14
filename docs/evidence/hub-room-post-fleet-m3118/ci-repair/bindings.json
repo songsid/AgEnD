@@ -1,0 +1,5 @@
+{
+  "src/fleet-manager.ts": "20f37b1e5e71d10230c27aa74686c9ca9434b08ba068d7c54a867b61350cc477",
+  "tests/classic-outbound-address-1626.test.ts": "589c2cfb51f7633d491afe10b8bf529d8fbb011b3f588006016399adcdddbcbd",
+  "tests/hub-fleet-hooks.test.ts": "e196e65bcb8b1c9c3ed194ad636234c9b325b73c4dad38b19e473f1023243a42"
+}

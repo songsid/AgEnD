@@ -85,6 +85,30 @@ describe("native MCP capabilities and live menus",()=>{
   });
 });
 
+describe("Hub room native MCP scope",()=>{
+  it("uses live connected menus while preserving the native read-only ceiling",async()=>{
+    const f=fixture();let online=false;f.ctx.hubRoomToolsAvailable=()=>online;
+    expect((await invoke(f,listing).done()).value.tools.map((t:any)=>t.name)).not.toContain("hub_room_post");
+    online=true;
+    expect((await invoke(f,listing).done()).value.tools.map((t:any)=>t.name)).toEqual(expect.arrayContaining(["hub_room_list","hub_room_post"]));
+    const read=fixture("read-only");read.ctx.hubRoomToolsAvailable=()=>true;
+    expect((await invoke(read,listing).done()).value.tools.map((t:any)=>t.name)).toContain("hub_room_list");
+    expect((await invoke(read,call("post","hub_room_post",{room:"Weekly",text:"No"})).done()).status).toBe(403);
+  });
+  it("retains post operation identity and retires the exact native caller during a suspended call",async()=>{
+    const f=fixture();f.ctx.hubRoomToolsAvailable=()=>true;
+    let release!:()=>void;const wait=new Promise<void>(r=>{release=r;});
+    let captured:(()=>boolean)|undefined;const values:any[]=[];
+    f.ctx.hubRoomPost=vi.fn(async(caller:any,value:any)=>{captured=caller.current;values.push(value);await wait;return {ok:caller.current(),code:"uncertain"};});
+    const input=call("same-post","hub_room_post",{room:"Weekly",text:"Frozen"});
+    const first=invoke(f,input);await vi.waitFor(()=>expect(values).toHaveLength(1));
+    const duplicate=invoke(f,input);expect(values[0].operationId).toMatch(/^[a-f0-9-]{36}$/);
+    expect(captured?.()).toBe(true);f.state.current=false;expect(captured?.()).toBe(false);release();
+    expect((await first.done()).status).toBe(401);expect((await duplicate.done()).status).toBe(401);
+    expect(f.ctx.hubRoomPost).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("native MCP HTTP admission",()=>{
   it.each([
     {headers:{"x-agend-native-token":"invalid"},expected:401},
