@@ -8,6 +8,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { HubMemberFrame, HubServerFrame, PersonKey } from "./types.js";
 import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, parseMemberFrame, encodeServerFrame } from "./protocol.js";
 import { HubSocket, type HubLinkCloseCode } from "./socket.js";
+import { HUB_FLEET_INFO_CAPABILITY } from "./fleet-info.js";
 import { HubProtocolError, parseStrictJson } from "./validation.js";
 import { HubPairingService } from "./pairing.js";
 import { readHubMemberTls } from "./tls.js";
@@ -21,12 +22,13 @@ import { HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_POST_CAP
 import type { HubRelocation } from "./types.js";
 /** #3429 B: a matched relocation ack — what the decision rechecks (the link object is the server's own Connection). */
 export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: string; revision: number; readonly link: object }
-/** `features`: the optional features both ends listed (the member's hello ∩ this Hub's), set once at hello. */
+/** Optional operations negotiated at hello, plus the Hub-only fleet-info receiver offer. */
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout;
   /** The credential binding the link authenticated with (#3429 B: what a relocation ack's proof is rechecked against). */
   binding: { generation: number; revocationVersion: number } }
 export interface HubServerOptions {
+  connected?(link: HubLinkContext): void;
   home: string; hubId: string; memberOrigin: string; listen: { host: string; port: number }; pairing: HubPairingService;
   current(): boolean;
   /** S3/S5 authorize and atomically audit before returning a reply. Throwing never falls through to fleet tools. */
@@ -137,6 +139,9 @@ export class HubServer {
       connection.hello = true; clearTimeout(connection.timer);
       const offered = this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES, features = context.features as Set<string>;
       for (const c of offered) if (frame.payload.capabilities.includes(c)) features.add(c);
+      // This is a Hub-only receiver offer; it does not take a slot in a member hello.
+      if (features.has("welcome-caps-v1") && offered.includes(HUB_FLEET_INFO_CAPABILITY)) features.add(HUB_FLEET_INFO_CAPABILITY);
+      this.options.connected?.(context);
       await link.send({ v: 1, type: "welcome", requestId: frame.requestId, linkEpoch: context.linkEpoch,
         payload: { selectedVersion: 1, hubId: this.options.hubId, fleetId: context.fleetId, linkEpoch: context.linkEpoch, revocationVersion,
           // Only to a member that asked: an older member's strict welcome schema refuses the field.
@@ -144,7 +149,8 @@ export class HubServer {
           ...(features.has("welcome-caps-v1") && features.has(HUB_WEB_ORIGIN_CAPABILITY) && this.options.webOrigin ? { webOrigin: this.options.webOrigin(context.fleetId) } : {}) } }); return;
     }
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
-    if (!connection.ready && !["exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
+    if (!connection.ready && !["fleet.info", "exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
+    if (frame.type === "fleet.info" && !context.features.has(HUB_FLEET_INFO_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "member.leave") {
       if (!context.features.has("member-leave-v1") || !context.features.has("welcome-caps-v1")) throw new HubProtocolError("incompatible");
       this.options.pairing.leave(context, frame.requestId); return;

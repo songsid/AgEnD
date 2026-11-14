@@ -75,6 +75,7 @@ export interface HubMemberComponents {
 }
 
 export interface HubMemberFactoryOptions {
+  fleetInfo?: import("../types.js").HubFleetInfo;
   home: string;
   components: HubMemberComponents;
   /** S3c's current binding (its pairing state): the Hub id, or null when unpaired or disconnected. */
@@ -620,6 +621,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
         } });
       client = new HubMemberClient({
+        fleetInfo: options.fleetInfo,
         home: options.home,
         hubId,
         ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] } : {}),

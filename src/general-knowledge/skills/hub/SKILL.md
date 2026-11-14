@@ -527,6 +527,15 @@ Each answer uses the latest 30 supplied room messages, plus a replied-to message
 keeps no earlier model conversation, sees no other room and has no tools. Room membership, mentions and delivery
 are supplied by the rooms-server integration; these admin cards alone do not add a chat room or enable an account.
 
+## Fleet version reports
+
+Newer Fleets report their AgEnD version and whether they run as a service when connecting to a supporting Hub.
+The Hub retains the last report and last connection time across disconnects and restarts. An older Fleet can remain
+connected without reporting; its version is unknown. Room compatibility comes from the capabilities it actually
+negotiated, including for an offline Fleet whose last connection is known. These reports are diagnostic only:
+they do not install updates, require a version, disconnect an older Fleet, or grant the Hub permission to update it.
+Phase 1 supplies the administrator and owner views; no recommended version is configured until the later recommendation setting is available.
+
 ## Administration
 
 - **Connected fleets** lists each Fleet by its name with its owner under it. A row's menu has **Revoke…**: "It
