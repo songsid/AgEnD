@@ -37,7 +37,8 @@ describe("A. the Hub takes an agent's reaction (room.react)", () => {
     const react = (emoji: string, over: Record<string, unknown> = {}) => r!.http.receive(r!.frame("room.react", { messageId: ask.messageId, roomId: id, exposureId: e.id, emoji, ...over }, link) as never, link);
     const question = async () => (await r!.call(a, "GET", `/hub/v1/rooms/${id}/messages`)).json.messages.find((m: any) => m.id === q.id);
     const agentMember = (await r.call(admin, "GET", `/hub/v1/rooms/${id}`)).json.members.find((m: any) => m.kind === "agent").id as string;
-    return { a, admin, e, id, q, react, question, agentMember };
+    const reactVia = (l: any, emoji: string) => r!.http.receive(r!.frame("room.react", { messageId: ask.messageId, roomId: id, exposureId: e.id, emoji }, l) as never, l);
+    return { a, admin, e, id, q, react, reactVia, question, agentMember, fleetId, alex };
   }
   it("shows under the question as the agent's; a later one replaces it; \"\" takes it back", async () => {
     const w = await world();
@@ -57,9 +58,40 @@ describe("A. the Hub takes an agent's reaction (room.react)", () => {
     expect(await w.react("👍")).toMatchObject({ payload: { ok: false, code: "archived" } });
     expect(await w.question()).not.toHaveProperty("reactions");
   });
+  it("another Fleet's link, or another owner's, with the right delivery id: denied, nothing stored (Fable #3935 P2-c)", async () => {
+    const w = await world();
+    expect(await w.reactVia(r!.link(randomUUID(), r!.admin, 1, CAPS), "👍")).toMatchObject({ payload: { ok: false, code: "denied" } });
+    expect(await w.reactVia(r!.link(w.fleetId, w.alex, 2, CAPS), "👍")).toMatchObject({ payload: { ok: false, code: "denied" } });
+    expect(await w.question()).not.toHaveProperty("reactions");
+  });
+  it("an agent removed from the room: revoked, nothing stored (Fable #3935 P2-d)", async () => {
+    const w = await world();
+    expect((await r!.call(w.admin, "DELETE", `/hub/v1/rooms/${w.id}/members/${w.agentMember}`)).status).toBe(200);
+    expect(await w.react("👍")).toMatchObject({ payload: { ok: false, code: "revoked" } });
+    expect(await w.question()).not.toHaveProperty("reactions");
+  });
+  it("the 12-emoji cap holds on the agent path: a 13th new emoji is refused, one already there is fine (Fable #3935 P3)", async () => {
+    const w = await world();
+    for (const emoji of ["😀", "😂", "😍", "🤔", "👏", "🙏", "🔥", "✅", "❤️", "🎉", "👀", "🚀"])
+      expect((await r!.call(w.a, "POST", `/hub/v1/rooms/${w.id}/messages/${w.q.id}/reactions`, { emoji, on: true })).status).toBe(200);
+    expect(await w.react("🍕")).toMatchObject({ payload: { ok: false, code: "invalid" } });
+    expect(await w.react("🚀")).toMatchObject({ payload: { ok: true } });
+  });
   it("a link without room-react-v1 takes none", async () => {
     const w = await world(["welcome-caps-v1", "room-ask-v1"]);
     expect(await w.react("👍")).toMatchObject({ payload: { ok: false, code: "revoked" } });
+  });
+});
+
+describe("the member hello's capability list (Fable #3935 info)", () => {
+  it("fits the hello schema's limit of 16 — this PR's room-react-v1 is the 16th: the next one needs a compatibility plan", async () => {
+    const { HUB_CAPABILITIES, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, memberFrameSchema } = await import("../src/hub/protocol.js");
+    const sent = [...HUB_CAPABILITIES, ...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY];   // what compose/member.ts offers
+    expect(sent).toHaveLength(16);
+    const hello = (capabilities: string[]) => memberFrameSchema.safeParse({ v: 1, type: "hello", requestId: randomUUID(), linkEpoch: 0,
+      payload: { supportedVersions: [1], capabilities, memberBootId: randomUUID() } }).success;
+    expect(hello(sent)).toBe(true);
+    expect(hello([...sent, "one-more-v1"])).toBe(false);   // an older Hub refuses a 17th: raise the limit there first
   });
 });
 

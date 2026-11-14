@@ -16,7 +16,10 @@ export const HUB_ROOM_BUTTONS_CAPABILITY = "room-answer-buttons-v1";
 export const HUB_ROOM_REACT_CAPABILITY = "room-react-v1";
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
- * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
+ * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending.
+ * LIMIT (M-3127): a member's hello sends HUB_CAPABILITIES + these + room-ask-v1, and every Hub's hello schema takes at most
+ * 16 — this list makes exactly 16 (pinned by tests/hub-room-agent-react-m3127.test.ts). A 17th breaks the hello against
+ * every Hub, older ones too: raise the limit in Hubs first (and ship that), then add the flag. */
 export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1", "room-answer-buttons-v1", "room-react-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
