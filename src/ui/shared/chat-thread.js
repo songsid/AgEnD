@@ -361,7 +361,8 @@ export function createThread(list, scroller, opts) {
       const chosen = b.state === "chosen" && b.chosen === i;
       return `<button type="button" class="btn btn-sm rb-btn${chosen ? " chosen" : ""}" data-act="replyButton" data-arg="${escAttr(`${b.id}:${i}`)}"${off ? " disabled" : ""}>${escAttr(chosen ? `✓ ${label}` : label)}</button>`;
     }).join("");
-    const note = b.state === "chosen" ? trf("chat.rbChosen", b.by || "") : b.state === "expired" ? tr("chat.rbExpired") : "";
+    // M-3127: a Hub room's buttons say whose they are (`b.note`, "Only Alex can answer"); the Fleet sets none.
+    const note = b.state === "chosen" ? trf("chat.rbChosen", b.by || "") : b.state === "expired" ? tr("chat.rbExpired") : typeof b.note === "string" ? b.note : "";
     return `<div data-trust="reply" class="rb-row" role="group" aria-label="${escAttr(tr("chat.rbGroup"))}">${items}${note ? `<span class="rb-note">${escAttr(note)}</span>` : ""}</div>`;
   }
   /**

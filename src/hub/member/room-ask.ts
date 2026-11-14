@@ -3,7 +3,9 @@ import type Database from "better-sqlite3";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { epoch, HubProtocolError, plain, uuid, validated } from "../validation.js";
-import { HUB_LIMITS } from "../protocol.js";
+import { answerButtonsSchema, HUB_LIMITS, HUB_ROOM_BUTTONS_CAPABILITY } from "../protocol.js";
+import { prepareHubAnswerButtons } from "../buttons-model.js";
+import type { HubAnswerButtons } from "../types.js";
 import type { HubRepresentativeDelivery } from "../representative.js";
 import type { HubReportExtras, HubReportOutcome } from "../../hub-report-target.js";
 export interface RoomContextRow { author: string; text: string; at: number; repliedTo?: true }
@@ -11,7 +13,7 @@ export interface RoomAsk {
   messageId: string; roomId: string; roomName: string; exposureId: string;
   asker: { name: string }; text: string; context: readonly RoomContextRow[];
 }
-export interface RoomAnswer { messageId: string; roomId: string; exposureId: string; answerId: string; text: string }
+export interface RoomAnswer { messageId: string; roomId: string; exposureId: string; answerId: string; text: string; buttons?: HubAnswerButtons }
 export interface RoomAnswerAck { messageId: string; answerId: string }
 /** Track R projects reason as presenceReason; the room viewer, not the Fleet, chooses its language. */
 export type RoomPresenceReason = "quota" | "auth" | "approval" | "update" | "operator" | "idle" | "capacity" | "error" | "stopped" | "crashed" | "stuck" | "unknown";
@@ -55,7 +57,7 @@ const askSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uu
 const savedSchema = z.strictObject({ ask: askSchema,
   local: z.strictObject({ agent: z.string().min(1), consentId: z.string().min(1), revision: epoch, token: z.string().min(1) }),
   cid: z.string().regex(/^hub-room-[a-f0-9-]{36}$/),
-  answer: z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer) }).optional(),
+  answer: z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer), buttons: answerButtonsSchema.optional() }).optional(),
 });
 type Saved = z.infer<typeof savedSchema>;
 type State = "queued" | "dispatching" | "input" | "delivered" | "held" | "answered" | "acked";
@@ -216,13 +218,19 @@ export class HubRoomAskAdapter {
     if (saved.local.agent !== input.caller) return null;
     const no = (message: string) => Promise.resolve<HubReportOutcome>({ ok: false, message });
     if (!this.current(saved) || input.callerCurrent?.() === false) return no("Not sent: this room question is no longer current.");
-    if (input.extras && Object.values(input.extras).some(v => v !== undefined)) return no("Not sent: room answers currently support text only.");
+    // M-3127: the reply's buttons or poll ride along when this Hub takes them (room-answer-buttons-v1); files never do.
+    if (input.extras?.files !== undefined) return no("Not sent: room answers cannot carry files yet.");
+    const wantsButtons = input.extras?.buttons !== undefined || input.extras?.poll !== undefined;
+    if (wantsButtons && !this.link?.features?.has(HUB_ROOM_BUTTONS_CAPABILITY)) return no("Not sent: this Hub does not take buttons or polls in rooms yet. Send the answer as text.");
+    let buttons: HubAnswerButtons | undefined;
+    if (wantsButtons && !saved.answer) { try { buttons = prepareHubAnswerButtons(input.extras?.buttons, input.extras?.poll); } catch { return no("Not sent: the buttons or poll are not valid for a Hub room."); } }
     if (!plain(HUB_LIMITS.answer).safeParse(input.text).success || !input.text.trim()) return no("Not sent: enter a text answer within the answer limit.");
     if (saved.answer) {
-      if (saved.answer.text !== input.text) return no("Not sent: this question already has a different saved answer.");
+      if (saved.answer.text !== input.text || wantsButtons !== !!saved.answer.buttons) return no("Not sent: this question already has a different saved answer.");
     } else {
       if (!["input", "delivered", "held"].includes(row.state)) return no("Not sent: the question has not reached the agent.");
-      saved.answer = { messageId: saved.ask.messageId, roomId: saved.ask.roomId, exposureId: saved.ask.exposureId, answerId: randomUUID(), text: input.text };
+      saved.answer = { messageId: saved.ask.messageId, roomId: saved.ask.roomId, exposureId: saved.ask.exposureId, answerId: randomUUID(), text: input.text,
+        ...(buttons ? { buttons: { id: buttons.id, labels: [...buttons.labels], ...(buttons.values ? { values: [...buttons.values] } : {}), ...(buttons.poll ? { poll: { ...buttons.poll } } : {}) } } : {}) };
       this.save(row.message_id, "answered", saved);
     }
     const link = this.link;

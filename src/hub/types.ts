@@ -60,7 +60,9 @@ export interface HubAnswer {
 export interface HubRoomContextRow { author: string; text: string; at: Millis; repliedTo?: true }
 export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: string; exposureId: ExposureId;
   asker: { name: string }; text: string; context: readonly HubRoomContextRow[] }
-export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string }
+export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string;
+  /** M-3127: room-answer-buttons-v1 links only; bound into the answer digest like its text. */
+  buttons?: HubAnswerButtons }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string }
 /** Proactive group-room messages are scoped by the authenticated link and its own published exposure. */
 export type HubRoomPostRefusalCode = "invalid" | "denied" | "revoked" | "not-found" | "archived" | "ambiguous-room" | "rate-limited" | "conflict" | "unavailable" | "stale" | "backpressure";

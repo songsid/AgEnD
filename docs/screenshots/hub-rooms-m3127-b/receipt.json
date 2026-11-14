@@ -1,0 +1,144 @@
+{
+  "sourceHead": "561c211db59914218cea147f80274ec731b4965d",
+  "baseRef": "49aa5d15cc196154c73da074959c49bfe7027ee3",
+  "dirty": [],
+  "inputs": [
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "base": "b8929762c4f2921066c13fe5e20d43caa69388dd2bd58c74cf2cc3bf755e16bf"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "base": "a044645a53176e97f4d59e9a0942b03f597a81af420eef1baa567207d7355356"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "113d98136d9e8b03211e326d712b9e0bd6c12be372afc76e4d0630b7ab69692b"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "sha256": "f81f6f4a701ec4d79eeee800aef4bec1dcf4e0030cb006c7b8a08fc0fd7bf05c"
+    },
+    {
+      "path": "src/ui/hub-button-actions.js",
+      "sha256": "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063"
+    },
+    {
+      "path": "src/ui/hub-room-strings.js",
+      "sha256": "c5bd0c79fc6eed212cb457b152b827548986f4b1a4483f7207c64d4bdd759be9"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "dfd6d82f778cf8991b25d7f85264389255b920fb0a32caeb1df6922706c67bda"
+    },
+    {
+      "path": "src/ui/shared/hub-rooms-u2.css",
+      "sha256": "ccdba320529b873b572db4e51000e630e6a43a32f6fab5ff8ea3971ee4179ac6"
+    },
+    {
+      "path": "tests/support/hub-rooms-fixture.ts",
+      "sha256": "f34845fb47bc2ccad57d8a17f6ded353b3a4c6274823ae552c73d2c4d8bade18"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desktop-en-light before: my buttons open, 陳主任's shut and say whose, the poll's live counts; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after: mine chosen (✓, shut, by me), my click posted replying to it; my vote marked, the counts moved; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light skew: BASE_REF's thread draws the room as before (no button rows) while the Hub sends buttons; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark before: my buttons open, 陳主任's shut and say whose, the poll's live counts; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: mine chosen (✓, shut, by me), my click posted replying to it; my vote marked, the counts moved; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark skew: BASE_REF's thread draws the room as before (no button rows) while the Hub sends buttons; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light before: my buttons open, 陳主任's shut and say whose, the poll's live counts; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: mine chosen (✓, shut, by me), my click posted replying to it; my vote marked, the counts moved; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light skew: BASE_REF's thread draws the room as before (no button rows) while the Hub sends buttons; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark before: my buttons open, 陳主任's shut and say whose, the poll's live counts; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: mine chosen (✓, shut, by me), my click posted replying to it; my vote marked, the counts moved; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark skew: BASE_REF's thread draws the room as before (no button rows) while the Hub sends buttons; no page error",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "buttons-before.desktop-en-light.png",
+      "sha256": "01efca5e4a33eab129991a68aadec877866fe7ad7feb170927424a666222ae97"
+    },
+    {
+      "path": "buttons-after.desktop-en-light.png",
+      "sha256": "2c78941bcad848cb3da90be85332b1f5ea0ff91e7190f929931b68b6d9751634"
+    },
+    {
+      "path": "buttons-skew.desktop-en-light.png",
+      "sha256": "426603e2efd0955c7b37da84599eb1769a0c9acefbf797a89f25997bde2af656"
+    },
+    {
+      "path": "buttons-before.desktop-zh-TW-dark.png",
+      "sha256": "1d2f49d44de7f4824fc4977aa5c676fee12acdc8e0a7f46801b0f5a30fc0091d"
+    },
+    {
+      "path": "buttons-after.desktop-zh-TW-dark.png",
+      "sha256": "9dc7b15b531553ac151cf1b81d88580266b315fb3f99505bb9025aefc31a2f40"
+    },
+    {
+      "path": "buttons-skew.desktop-zh-TW-dark.png",
+      "sha256": "04d5ca04e2053d3cbfd54ac627581d9d81fa687ceecccb3b0bcddef173876f2e"
+    },
+    {
+      "path": "buttons-before.phone-zh-TW-light.png",
+      "sha256": "de7bfb19773ec4f24aaebef21fb492cf94fda3b20ef8adf608fbbb4b509f8495"
+    },
+    {
+      "path": "buttons-after.phone-zh-TW-light.png",
+      "sha256": "3d0ed4b3fb62f26e6f705e24a9f9c1dbcd0b43566c51d67a2289e6edf237c9dc"
+    },
+    {
+      "path": "buttons-skew.phone-zh-TW-light.png",
+      "sha256": "ad6f1aa6e28b7b8bea032b9fe07d66fd7c352e7ab69459754b2c355986d79605"
+    },
+    {
+      "path": "buttons-before.phone-en-dark.png",
+      "sha256": "5ed2dd055b63ab6f900607273040707fc7d4bff56eb94fffa18209dd015c0280"
+    },
+    {
+      "path": "buttons-after.phone-en-dark.png",
+      "sha256": "476137212b508ca6712f93d1668c25506a879b95c12f486622941ec4d2e8d886"
+    },
+    {
+      "path": "buttons-skew.phone-en-dark.png",
+      "sha256": "0b84d86d89fe6304546ec03bef61716281591e534585067f75ff2078efd33e9d"
+    }
+  ],
+  "passed": true
+}

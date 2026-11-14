@@ -21,6 +21,7 @@ import "./hub-strings.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
+import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { workingLine } from "./hub-room-working.js";
 import { countsLine } from "./hub-room-list.js";
@@ -51,7 +52,7 @@ export function authorLine(author, mine = false, direct = false) {
  * A room's own line in this viewer's words (Ridge: `system` { kind, name } beside the stored text): a kind this page does
  * not know, or an older row without `system`, keeps the stored text.
  */
-const SYSTEM = { "room-created": "createdSys", "member-joined": "sysJoined", "admin-joined": "sysAdminJoined" };
+const SYSTEM = { "room-created": "createdSys", "member-joined": "sysJoined", "admin-joined": "sysAdminJoined", "poll-closed": "sysPollClosed" };
 export function systemText(m) {
   if (m?.system?.kind === "agent-mention-stopped") return agentStopText(m.system) ?? String(m.text || "");
   const key = m && m.system && SYSTEM[m.system.kind];
@@ -102,6 +103,16 @@ export function reactionBar(reactions, { meId = "", names = new Map() } = {}) {
     return { emoji: r.emoji, count: Number(r.count), mine, label: hroom("reactedWith", rest > 0 ? (who.length ? hroom("reactMore", list, String(rest)) : String(r.count)) : list, r.emoji) };
   });
 }
+/**
+ * M-3127 B: an answer's buttons as the thread draws them. A poll is everyone's. Plain buttons answer only the question's
+ * asker: anyone else sees them shut, with whose they are (「只有 Alex 能回答」); the asker sees them open.
+ */
+export function roomButtons(b, meId = "") {
+  if (!b || typeof b.id !== "string" || !Array.isArray(b.labels)) return undefined;
+  const { asker, ...view } = b;
+  if (view.poll || !asker || asker.id === meId || view.state !== "open") return view;
+  return { ...view, state: "locked", note: hroom("onlyAsker", String(asker.name || "")) };
+}
 /** How many answers of one question show when they are folded, and from how many they fold (Lumen: all up to 5). */
 export const ANSWERS_SHOWN = 3, FOLD_FROM = 6;
 
@@ -144,6 +155,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
       ...(kind === "person" && !mine && !author.via ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
       roomMessage: m.id, ...(mine && state?.delivery ? { delivery: state.delivery } : {}),
       ...(!direct && Array.isArray(m.reactions) && m.reactions.length ? { reactionBar: reactionBar(m.reactions, { meId, names }) } : {}),
+      ...(!direct && kind !== "person" && m.buttons ? { buttons: roomButtons(m.buttons, meId) } : {}),
       ...(quotedId ? { replyTo: { boot: BOOT, id: num(quotedId), sender: quoted ? authorLine(quoted.author, quoted.author?.id === meId, direct) : "", text: quoted ? String(quoted.text || "").slice(0, 120) : "" } } : {}),
       ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
     if (foldAfter) out.push({ boot: BOOT, id: num(`expand:${foldAfter.arg}`), role: "status", sender: "", text: "", bare: true, fold: true, action: foldAfter });
@@ -163,7 +175,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
  * One room's store: `subscribe(fn)` → unsubscribe; `detail()` (the room GET: room, me, members, settings), `messages()`
  * (the thread's), `raw()` (seam-1 messages), `loaded()`, `error()`, `closed()` (archived, or I am no longer in it), `room()`;
  * `send(text, { mentions, replyTo })` → the client's answer (a refusal's code is the caller's to word; a soft warning is
- * stored and drawn), `older()`, `findQuoted(key)`, `markRead()`, `refresh()`, `stop()`. Reply buttons are not part of rooms: their calls are inert.
+ * stored and drawn), `older()`, `findQuoted(key)`, `markRead()`, `refresh()`, `stop()`. M-3127 B: `clickButton` / `vote` / `busy` / `mine` are the direct chat's button actions (hub-button-actions.js), on group rooms only.
  */
 export function createRoomStore(roomId, { client, meId = "" } = {}) {
   const subs = new Set(), ids = new Map(), expanded = new Set();
@@ -192,6 +204,11 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
     changed();
   }
   const on = (fn) => (data) => { if (st.live && data && data.roomId === roomId) { fn(data); changed(); } };
+  // M-3127 B: an answer's buttons and polls — the direct chat's own actions (one key per intent, my vote kept in this tab),
+  // on this room's messages; the Hub says who may press (403 not-asker) and closes polls.
+  const actions = createHubButtonActions({ id: roomId, get features() { return closedNow() || st.detail?.room?.kind !== "group" ? [] : ["buttons-v1"]; } }, {
+    client, entries: () => st.view, refresh: () => refresh(), changed: () => { for (const fn of [...subs]) { try { fn(); } catch { /* a subscriber's own failure */ } } },
+  });
   const unsubscribe = typeof client.subscribeRooms === "function" ? client.subscribeRooms({
     "message.added": on((d) => upsert(d.message)),
     "message.updated": on((d) => { upsert(d.message); if (d.parent) { const p = st.messages.find((x) => x.id === d.parent.id); if (p) p.ask = d.parent.ask; } }),
@@ -270,8 +287,8 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
       return r;
     },
     markRead() { const last = st.messages.at(-1); return last ? client.markRoomRead(roomId, last.id) : Promise.resolve({ ok: true }); },
-    refresh, clickButton: async () => ({ ok: false, code: "stopped" }), vote: async () => ({ ok: false, code: "stopped" }), busy: () => false, mine: () => [],
-    stop() { st.live = false; subs.clear(); unsubscribe(); },
+    refresh, clickButton: actions.clickButton, vote: actions.vote, busy: actions.busy, mine: actions.mine,
+    stop() { st.live = false; subs.clear(); unsubscribe(); actions.stop(); },
   };
 }
 

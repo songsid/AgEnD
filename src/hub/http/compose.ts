@@ -615,8 +615,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/buttons$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
-      csrf(); const b = await body();
-      return send(res, 200, { receipt: await guard(() => rooms.buttons.click(ctx, uuid(r![1]), b)) });
+      csrf(); const b = await body(), roomId = uuid(r[1]);
+      // M-3127: a group room's answer buttons and polls (the same body as a direct chat's).
+      if (groupRooms.has(roomId)) return send(res, 200, await guard(() => groupRooms.click(ctx, roomId, b)));
+      return send(res, 200, { receipt: await guard(() => rooms.buttons.click(ctx, roomId, b)) });
     }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/messages$/))) {
       const roomId = uuid(r[1]);
