@@ -373,6 +373,18 @@ describe("a room on the page", () => {
     expect(css).toContain(".hub-dock .composer .btn-send { width: var(--tap); min-width: var(--tap); min-height: var(--tap); }");
     expect(css).toContain(".hub-room-page .composer-row .hub-room-hint { display: inline; white-space: normal; }");
   });
+  it("S-152: a message's menu, as the Fleet chat's — right-click (a phone's long press): Reply, Copy text; no Copy link; Reply opens the reply bar", async () => {
+    const { pg, restore } = await roomPage("room-weekly");
+    try {
+      const msg = msgs(pg).filter((m) => !m.classList.contains("status-line")).at(-1);
+      fire(msg.querySelector(".body"), "contextmenu"); await settle(3);
+      const menu = pg.document.querySelector(".msg-menu") as any;
+      expect([...menu.querySelectorAll("button")].map((b: any) => b.textContent)).toEqual(["Reply", "Copy text"]);
+      fire(menu.querySelector('[data-item="reply"]'), "click"); await settle(4);
+      expect(pg.document.querySelector(".msg-menu")).toBeNull();
+      expect(pg.root.querySelector(".hub-room-page .reply-bar")).toBeTruthy();
+    } finally { restore(); }
+  });
   it("an archived room: the dock says so (a banner, as a closed chat's), nothing to send", async () => {
     const { pg, restore } = await roomPage("room-archived");
     try {
