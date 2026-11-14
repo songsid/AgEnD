@@ -289,6 +289,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     react: (x, emoji, on) => { void store.react(x.roomMessage, emoji, on).then((r) => { if (!r?.ok && r?.code !== "closed") toast(hroom("reactFailed"), false); }); },
     canReact: () => store.detail()?.room?.kind === "group" && !store.closed(),
     reactText: (k) => (k === "add" ? hroom("reactAdd") : k === "pick" ? hroom("reactPick") : ""),
+    reactLabel: hroom("reactAdd"),   // the message menu's React (web-claude's HubThread, M-3117 PR 2: phones)
   };
   const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : String(room.agent?.owner?.name || "");
