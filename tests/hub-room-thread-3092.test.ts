@@ -234,7 +234,7 @@ describe("older pages and a quote jump (M-3126)", () => {
     weekly.messages = [
       ...Array.from({ length: 60 }, (_, i) => ({
         id: `hist-${String(i).padStart(3, "0")}`, roomId: "room-weekly", at: i, sequence: i,
-        author: { kind: "person", id: "p2", name: "Sam" }, text: `hist ${i}`, mentions: [] as string[],
+        author: { kind: "person" as const, id: "p2", name: "Sam" }, text: `hist ${i}`, mentions: [] as string[],
       })),
       ...weekly.messages,
     ];
