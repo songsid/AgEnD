@@ -122,6 +122,8 @@ export interface HubRepresentativeHost {
     handler: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("../../hub-report-target.js").HubReportExtras }) => Promise<HubReportOutcome> | null) | null,
     failed: ((correlationId: string, agent: string) => void) | null,
   ): void;
+  /** M-3127: the `react` hook for a room question's correlation id (null: detached). Absent: this Fleet has none. */
+  attachReacts?(handler: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<HubReportOutcome> | null) | null): void;
 }
 
 /** Ordered cleanup that stops at the first unconfirmed step (same rules as the server factory). */
@@ -527,7 +529,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           view = { features: l.features,
             current: () => roomCurrent() && online === l && links.link() === l && l.current() && l.revocationVersion === version,
             sendAnswer: payload => l.send({ v: 1, type: "room.answer", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
-            sendState: payload => l.send({ v: 1, type: "agent.state", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }) };
+            sendState: payload => l.send({ v: 1, type: "agent.state", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
+            sendReact: payload => l.send({ v: 1, type: "room.react", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }) };
           roomLinks.set(l, view);
         }
         return view;
@@ -663,6 +666,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             return Promise.resolve();
           }
           if (frame.type === "room.answer-ack") { room.acknowledge(frame.payload, roomLink(l)); return Promise.resolve(); }
+          // M-3127: a reaction's result — a refusal is logged; nothing is retried (a gesture, not an answer).
+          if (frame.type === "room.react-result") { if (!frame.payload.ok) options.log("warn", "Hub room reaction not taken", { messageId: frame.payload.messageId, reason: frame.payload.code }); return Promise.resolve(); }
           return receive(frame, l);
         },
         // M-2901: where the Hub's pages are now. Kept beside the pairing (never in it), only when it verifies against the
@@ -711,7 +716,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             if(cid.startsWith("hub-room-post-answer-"))posts.deliveryFailed(cid.slice("hub-room-post-answer-".length),agent);
             room.deliveryFailed(cid, agent); service.deliveryFailed(cid, agent);
           });
+          options.representative.attachReacts?.(input => room.react(input));
           teardown.add("the fleet attachments", () => {
+            options.representative.attachReacts?.(null);
             options.representative.attachReports(null, null);
             options.attachExposures(null);
             options.attachAgentRooms?.(null);

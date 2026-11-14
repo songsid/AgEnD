@@ -50,6 +50,9 @@ async function open(variant: "after" | "skew", [device, lang, theme]: string[]) 
   const room = fx.rooms.find((x: any) => x.id === "room-weekly"), said = room.messages.filter((m: any) => m.author?.kind === "person" && m.text);
   said.at(-1).reactions = [{ emoji: "👍", count: 3, members: ["person-chen", FIXTURE_ME.id, "person-wu"] }, { emoji: "🎉", count: 1, members: ["person-chen"] }];
   said.at(-2).reactions = [{ emoji: "👀", count: 2, members: ["person-wu", "person-chen"] }];
+  // An agent's own reaction (room-react-v1) on the @所有 Agent question: stored under the agent's id, named on the chip.
+  const askAll = room.messages.find((m: any) => m.mentions?.includes("all")), budget = room.members.find((m: any) => m.name === "budget-check");
+  askAll.reactions = [{ emoji: "👍", count: 1, members: [budget.id] }];
   const ctx = await browser.newContext({ viewport: VIEW[device], colorScheme: theme, ignoreHTTPSErrors: true, locale: lang === "en" ? "en-US" : "zh-TW", isMobile: device === "phone", hasTouch: device === "phone" });
   await ctx.addInitScript(() => { localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1"); });
   await ctx.route("**/hub/v1/**", async (q: any) => {
@@ -83,6 +86,8 @@ try {
       const before = await chipsOf(p, last);
       check(`${tag} after: the chips as stored — 👍3 mine pressed and named, 🎉1 not mine; no page error`,
         before?.length === 2 && /^👍3\*\|/.test(before[0]) && /^🎉1\|/.test(before[1]) && /(You|你)/.test(before[0]) && errors.length === 0, { before, errors });
+      const agentChip = await chipsOf(p, "請各自用三行回報");
+      check(`${tag} after: an agent's reaction is named as the agent (budget-check), not as "others"`, agentChip?.length === 1 && /budget-check/.test(agentChip[0]), { agentChip });
       // The target message on screen, its picker open (phone: the hover strip is hidden; the button is still the thread's).
       const target = p.locator(".hub-room-page .thread .msg[data-key]", { has: p.locator(".md", { hasText: prev }) }).first();
       await target.scrollIntoViewIfNeeded();

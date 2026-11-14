@@ -1,0 +1,32 @@
+RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-held-signin-race-m3134
+
+(node:4958) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-web-address-http-3428.test.ts (5 tests | 1 failed | 4 skipped) 440ms
+     × a held old sign-in cannot mint after SQL even when completion throws before config publication 314ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-web-address-http-3428.test.ts > #3428 actual host address route > a held old sign-in cannot mint after SQL even when completion throws before config publication
+AssertionError: expected 'stolen' to be 'EADDRINUSE' // Object.is equality
+
+Expected: "EADDRINUSE"
+Received: "stolen"
+
+ ❯ tests/hub-web-address-http-3428.test.ts:124:37
+    122|                         competitor.listen(port, "127.0.0.1", () => res…
+    123|                     });
+    124|                     expect(outcome).toBe("EADDRINUSE");
+       |                                     ^
+    125|                 }
+    126|                 finally {
+ ❯ initialize tests/hub-web-address-http-3428.test.ts:87:5
+ ❯ tests/hub-web-address-http-3428.test.ts:115:42
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  05:30:04
+   Duration  9.52s (transform 6.84s, setup 104ms, import 8.78s, tests 440ms, environment 0ms)

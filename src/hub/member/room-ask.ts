@@ -3,7 +3,7 @@ import type Database from "better-sqlite3";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { epoch, HubProtocolError, plain, uuid, validated } from "../validation.js";
-import { answerButtonsSchema, HUB_LIMITS, HUB_ROOM_BUTTONS_CAPABILITY } from "../protocol.js";
+import { answerButtonsSchema, HUB_LIMITS, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_REACT_CAPABILITY } from "../protocol.js";
 import { prepareHubAnswerButtons } from "../buttons-model.js";
 import type { HubAnswerButtons } from "../types.js";
 import type { HubRepresentativeDelivery } from "../representative.js";
@@ -31,6 +31,8 @@ export interface RoomAskLink {
   current(): boolean;
   readonly features?: ReadonlySet<string>;
   sendAnswer(answer: RoomAnswer): Promise<void>;
+  /** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked (absent: an older link). */
+  sendReact?(react: { messageId: string; roomId: string; exposureId: string; emoji: string }): Promise<void>;
 }
 export interface RoomAskOptions {
   db: Database.Database;
@@ -171,7 +173,7 @@ export class HubRoomAskAdapter {
     const current = () => this.usable(source) && this.admitted.get(id) === source && this.current(saved);
     try {
       const delivered = await this.options.deliver({ agent: saved.local.agent, correlationId: saved.cid,
-        text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale), stillCurrent: current,
+        text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function" }), stillCurrent: current,
         beforeInput: async () => {
           if (!current() || this.row(id)?.state !== "dispatching") return false;
           // Durable first-input intent BEFORE handing bytes to the ordinary Fleet delivery path.
@@ -209,6 +211,26 @@ export class HubRoomAskAdapter {
     const flight = { link: source, work }; this.sending.set(id, flight);
     void work.finally(() => { if (this.sending.get(id) === flight) this.sending.delete(id); }).catch(() => {});
     return work;
+  }
+  /**
+   * M-3127: the agent's `react` with message_id = this room question's correlation id → its reaction in the room, under
+   * the question (one per agent; "" is not a reaction here — the Fleet's react always names one). null: not a room question
+   * of this agent's (the ordinary react takes it). Sent once, not retried: a reaction is a gesture, not an answer.
+   */
+  react(input: { correlationId: string; caller: string; emoji: string; callerCurrent?: () => boolean }): Promise<HubReportOutcome> | null {
+    if (this.closed || !input.correlationId.startsWith("hub-room-")) return null;
+    const row = this.options.db.prepare("SELECT * FROM hub_room_asks WHERE cid=?").get(input.correlationId) as Row | undefined;
+    if (!row) return null;
+    const saved = this.read(row);
+    if (saved.local.agent !== input.caller) return null;
+    const no = (message: string) => Promise.resolve<HubReportOutcome>({ ok: false, message });
+    if (!this.current(saved) || input.callerCurrent?.() === false) return no("Not sent: this room question is no longer current.");
+    const emoji = String(input.emoji || "");
+    if (!emoji || emoji.length > 16) return no("Not sent: name one emoji to react with.");
+    const link = this.link;
+    if (!this.usable(link) || !link!.features?.has(HUB_ROOM_REACT_CAPABILITY) || typeof link!.sendReact !== "function") return no("Not sent: this Hub does not take reactions in rooms yet. Answer with report_result instead.");
+    return link!.sendReact({ messageId: saved.ask.messageId, roomId: saved.ask.roomId, exposureId: saved.ask.exposureId, emoji })
+      .then(() => ({ ok: true, message: "Reacted in the Hub room." }), () => ({ ok: false, message: "Not sent: the Hub link dropped. Try again." }));
   }
   report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-room-")) return null;
@@ -258,7 +280,7 @@ export class HubRoomAskAdapter {
   close(): void { this.closed = true; this.link = null; this.admitted.clear(); }
 }
 
-export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en"): string {
+export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en", { react = false }: { react?: boolean } = {}): string {
   const zh = locale === "zh-TW";
   const data = JSON.stringify({ context: ask.context, question: { asker: ask.asker.name, text: ask.text } }, null, 2);
   return [zh ? `Hub 房間 ${JSON.stringify(ask.roomName)}｜${JSON.stringify(ask.asker.name)} 提問`
@@ -270,6 +292,9 @@ export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale:
     // answer the room shows; say so.
     zh ? `請用 report_result，指定 target_instance="agend-hub" 和 correlation_id="${correlationId}"，把完整的純文字回答寫在 summary 裡送回這個房間——房間顯示的就是 summary 的內容，它不是標題。`
       : `Use report_result with target_instance="agend-hub" and correlation_id="${correlationId}", with your whole text answer in summary — the room shows summary as your answer; it is not a title.`,
+    // M-3127 (agent reactions, on room-answer-buttons-v1): a reaction under the question (the Fleet chat's minimal reply) — only where the Hub takes it.
+    ...(react ? [zh ? `要對這個問題表示回應（例如 👍），可以用 react，message_id="${correlationId}"；它會出現在問題下方，但不代替回答。`
+      : `To react to the question (e.g. 👍), use react with message_id="${correlationId}"; it shows under the question but does not replace your answer.`] : []),
     `${zh ? "房間對話（由舊到新）與問題" : "Room conversation (oldest first) and question"}:\n\`\`\`json\n${data}\n\`\`\``].join("\n\n");
 }
 export function agentPresence(input: AgentStateInput): AgentPresence {
