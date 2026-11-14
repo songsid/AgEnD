@@ -17,7 +17,7 @@ const IDLE_PANE = [
   "Ask a question or describe a task",
 ].join("\n");
 
-// Captured from doupo-leader after a completed report_result (2026-08-14).
+// Captured from games-leader after a completed report_result (2026-08-14).
 // Kiro left the old spinner in the visible pane, then painted a fresh ready
 // footer below it. #572's pane-wide busy match pinned this state as working
 // until the 15-minute stuck deadline fired.

@@ -54,12 +54,12 @@ describe("the list's groups and rows (pure)", () => {
     const answer = await (await fx.fetch("/hub/v1/rooms")).json();
     const groups = list.groupRooms(answer.rooms);
     expect(groups.map((x: any) => [x.key, x.items.map((r: any) => r.name)])).toEqual([
-      ["rooms", ["研一主管週會", "研發例會", "去年專案"]],
+      ["rooms", ["研發主管週會", "研發例會", "去年專案"]],
       ["agents", ["project-helper", "report-bot", "Hub assistant"]],   // stored names; the rows name it by its flag
     ]);
     expect(list.groupRooms(answer.rooms, "林小華").map((x: any) => x.items.map((r: any) => r.name))).toEqual([["project-helper"]]);   // by owner
     i18n.setLang("zh-TW", { store: false });
-    expect(list.rowView(answer.rooms.find((r: any) => r.name === "研一主管週會"))).toMatchObject({ line2: "3 人 · 12 個 Agent", avatar: { square: true, text: "研" }, dot: null, unread: 2 });
+    expect(list.rowView(answer.rooms.find((r: any) => r.name === "研發主管週會"))).toMatchObject({ line2: "3 人 · 12 個 Agent", avatar: { square: true, text: "研" }, dot: null, unread: 2 });
     expect(list.rowView(answer.rooms.find((r: any) => r.name === "report-bot"))).toMatchObject({ line2: "吳小安", avatar: { square: false }, dot: "off" });
     expect(list.rowView(answer.rooms.find((r: any) => r.assistant))).toMatchObject({ title: "Hub 助理", line2: "Hub 提供", dot: "ok" });
     expect(list.rowView(answer.rooms.find((r: any) => r.name === "去年專案"))).toMatchObject({ archived: true });
@@ -107,7 +107,7 @@ describe("the sidebar, drawn as the Fleet roster", () => {
       await until(() => rows(pg).length === 6);
       expect([...pg.root.querySelectorAll("#sidebar .hub-room-group .side-label")].map((x: any) => x.textContent)).toEqual(["房間", "Agent"]);
       expect([...pg.root.querySelectorAll("#sidebar .hub-room-group .inst-head .count")].map((x: any) => x.textContent)).toEqual(["3", "3"]);
-      expect(rows(pg).map((a) => a.querySelector(".inst-name").textContent)).toEqual(["研一主管週會", "研發例會", "去年專案", "project-helper", "report-bot", "Hub 助理"]);
+      expect(rows(pg).map((a) => a.querySelector(".inst-name").textContent)).toEqual(["研發主管週會", "研發例會", "去年專案", "project-helper", "report-bot", "Hub 助理"]);
       const weekly = rows(pg)[0];
       expect([weekly.closest("li").className, !!weekly.querySelector(".av.av-square"), weekly.querySelector(".av-dot"), weekly.querySelector(".inst-alt").textContent,
         weekly.querySelector(".nav-count").textContent]).toEqual(["v-li two-line", true, null, "3 人 · 12 個 Agent", "2"]);

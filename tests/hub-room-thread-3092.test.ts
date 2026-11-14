@@ -342,7 +342,7 @@ describe("a room on the page", () => {
     const W = await import("/ui/js/hub-room-working.js");
     const { pg, fx, restore } = await roomPage("room-weekly");
     try {
-      expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("研一主管週會");
+      expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("研發主管週會");
       // Another person's @ of an agent is accented once the room's members are known (the labels are read live).
       const chen = msgs(pg).find((m) => (m.textContent || "").includes("剛剛那一點再說清楚")) as any;
       expect(chen.querySelector(".mention")?.textContent).toBe("@project-helper");

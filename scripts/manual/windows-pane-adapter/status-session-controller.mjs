@@ -2,7 +2,7 @@
 import {spawn}from'node:child_process';import{createInterface}from'node:readline';import{win32}from'node:path';import{CodexPaneDetectors}from'../../../dist/backend/codex.js';import{ClaudePaneDetectors,claudeTrustDialogState}from'../../../dist/backend/claude-code.js';
 const provider=process.argv.includes('--claude')?'claude-code':'codex';
 const exe='/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
-const child=spawn(exe,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File','C:\\Users\\changhansung\\agend-adapter-proto\\run-status-session.ps1','-Provider',provider],{stdio:['pipe','pipe','pipe']});
+const child=spawn(exe,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File','C:\\Users\\demo-account\\agend-adapter-proto\\run-status-session.ps1','-Provider',provider],{stdio:['pipe','pipe','pipe']});
 child.stderr.resume();const input=createInterface({input:child.stdout}),pending=new Map();let id=0,exited=false;
 input.on('line',line=>{try{const v=JSON.parse(line);const waiter=pending.get(v.id);if(waiter){pending.delete(v.id);v.ok?waiter.resolve(v):waiter.reject(Error('Native status driver refused'));}}catch{/* Never echo native screen/account output. */}});
 child.on('close',()=>{exited=true;for(const waiter of pending.values())waiter.reject(Error('Native status driver exited'));pending.clear();});
@@ -21,7 +21,7 @@ const shape=pane=>({inputReady:inputReady(pane),busy:detector.getBusyPattern().t
 const pause=()=>new Promise(r=>setTimeout(r,250));let receipt,trustMoved=false,trustAccepted=false,trustStepAt=0;
 const trustedScratch=pane=>{
  const paths=pane.split('\n').map(row=>/^(?:Accessing workspace:\s*)?([a-z]:[\\/][^\r\n]*)$/i.exec(row.trim())?.[1]).filter(Boolean).map(path=>win32.normalize(path).toLowerCase());
- const approved='c:\\users\\changhansung\\agend-adapter-proto';
+ const approved='c:\\users\\demo-account\\agend-adapter-proto';
  if(paths.length!==1||!(paths[0]===approved||paths[0].startsWith(approved+'\\')))throw Error('Trust screen does not name exactly the approved scratch workspace');
  const extra=detector.getStartupDialogs().filter(d=>d.pattern.test(pane)&&(!d.isActive||d.isActive(pane))&&!d.description.startsWith('Claude workspace trust dialog')&&!d.description.startsWith('Claude trust/Bypass Permissions screen'));
  if(extra.length||detector.getErrorPatterns().some(d=>d.pattern.test(pane)))throw Error('Another dialog or error is present; no trust key sent');
@@ -48,7 +48,7 @@ try{
  await call('status');deadline=Date.now()+15000;
  for(;;){after=(await call('capture')).text;const ids=[...after.matchAll(/\bSession:\s*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\b/gi)].map(m=>m[1]);if(ids.length===1&&ready(after)){sessionId=ids[0];break;}if(Date.now()>deadline)throw Error('Status did not yield one exact identity and an idle composer: '+JSON.stringify({identities:ids.length,pendingStatus:/^[>›]\s*\/status/m.test(after),shape:shape(after)}));await pause();}
  }
- const metadata=await call('metadata',{sessionId});receipt={passed:true,provider,kind:'native exact session identity, no model turn',idleDetector:true,statusIdentity:provider==='codex',reservedIdentity:provider==='claude-code',sessionId,metadataState:metadata.state,metadataRecords:metadata.records,noRawCaptureSaved:true,trustAccepted,...(trustAccepted?{trustPath:'C:\\Users\\changhansung\\agend-adapter-proto',trustCursorVerified:true}: {})};
+ const metadata=await call('metadata',{sessionId});receipt={passed:true,provider,kind:'native exact session identity, no model turn',idleDetector:true,statusIdentity:provider==='codex',reservedIdentity:provider==='claude-code',sessionId,metadataState:metadata.state,metadataRecords:metadata.records,noRawCaptureSaved:true,trustAccepted,...(trustAccepted?{trustPath:'C:\\Users\\demo-account\\agend-adapter-proto',trustCursorVerified:true}: {})};
  if(process.argv.includes('--turn')){
   await call('turn');deadline=Date.now()+90000;let result;
   for(;;){result=await call('metadata',{sessionId});const pane=(await call('capture')).text;if(result.answer&&result.ownedUser&&ready(pane))break;if(Date.now()>deadline)throw Error('Owned minimal turn did not produce exact transcript and idle proofs');await pause();}

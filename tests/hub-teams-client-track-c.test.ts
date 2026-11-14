@@ -21,7 +21,7 @@ it("keeps the worked Teams fixture compatible through CRUD and feedback without 
   const before = await c.roomMessages("room-weekly", { limit: 100 });
   expect((await c.teams()).teams[0].lead).toBe(FIXTURE_ME.id);
   const people = await c.teamSuggestions("person", "wang"); expect(people.candidates[0]).toMatchObject({ name: FIXTURE_ME.name, login: "wang" });
-  const created = await c.createTeam({ name: "Project", department: "group-rd1", lead: FIXTURE_ME.id });
+  const created = await c.createTeam({ name: "Project", department: "group-tm1", lead: FIXTURE_ME.id });
   expect(created.team.memberInfo).toHaveLength(1);
   const updated = await c.updateTeam(created.team.id, { revision: 1, name: "Renamed" }); expect(updated.team.name).toBe("Renamed");
   expect((await c.team(created.team.id)).team.name).toBe("Renamed");

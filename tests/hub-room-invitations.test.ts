@@ -119,7 +119,7 @@ describe("Hub room invitations, owner side (section 8)", () => {
     const items = () => [...pg.root.querySelectorAll(".hub-agent-rooms li span")].map((x: any) => x.textContent);
     expect(pg.root.querySelectorAll(".hub-agent-rooms")).toHaveLength(1);
     expect(pg.root.querySelector(".hub-agent-rooms h4").textContent).toBe("在這些房間裡");
-    expect(items()).toEqual(["研一主管週會 · 3 人", "研發例會 · 2 人"]);
+    expect(items()).toEqual(["研發主管週會 · 3 人", "研發例會 · 2 人"]);
     fire(button(pg, "退出這個房間"), "click"); await settle(20);
     expect(calls.filter(c => c.method === "DELETE").map(c => c.path)).toEqual(["/hub/v1/rooms/room-weekly/members/exp-02"]);
     expect(items()).toEqual(["研發例會 · 2 人"]);

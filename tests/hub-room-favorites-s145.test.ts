@@ -129,7 +129,7 @@ describe("the favourites' rules (pure, #1664's)", () => {
     const groups = list.groupRooms(answer.rooms, "", [helper.id, rd.id, "gone"]);
     expect(groups.map((x: any) => [x.key, x.items.map((r: any) => r.name)])).toEqual([
       ["favorites", ["project-helper", "研發例會"]],
-      ["rooms", ["研一主管週會", "去年專案"]],
+      ["rooms", ["研發主管週會", "去年專案"]],
       ["agents", ["report-bot", "Hub assistant"]],
     ]);
     expect(list.groupRooms(answer.rooms, "林小華", [helper.id, rd.id]).map((x: any) => [x.key, x.items.map((r: any) => r.name)]))
@@ -184,7 +184,7 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
       await choose(pg, "研發例會", "加入最愛");
       expect(heads(pg)).toEqual(["最愛", "房間", "Agent"]);
       expect([...pg.root.querySelectorAll("#sidebar .hub-room-group .inst-head .count")].map((x: any) => x.textContent)).toEqual(["2", "2", "2"]);
-      expect(names(pg)).toEqual(["project-helper", "研發例會", "研一主管週會", "去年專案", "report-bot", "Hub 助理"]);
+      expect(names(pg)).toEqual(["project-helper", "研發例會", "研發主管週會", "去年專案", "report-bot", "Hub 助理"]);
       const group = pg.root.querySelector('#sidebar [data-group="favorites"]') as any;
       expect([group.getAttribute("role"), group.getAttribute("aria-label"), !!group.querySelector(".fav-head .fav-mark")]).toEqual(["group", "最愛", true]);
       expect(rows(pg)[0].className).toContain("inst-favorite");
@@ -195,7 +195,7 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
       expect(JSON.parse(g.localStorage.getItem(`agend_hub_favorites.${FIXTURE_ME.login}`))).toEqual(["room-helper", "room-rd"]);
       // Unstarred: back in its own group, in its place there.
       await choose(pg, "project-helper", "移出最愛");
-      expect(names(pg)).toEqual(["研發例會", "研一主管週會", "去年專案", "project-helper", "report-bot", "Hub 助理"]);
+      expect(names(pg)).toEqual(["研發例會", "研發主管週會", "去年專案", "project-helper", "report-bot", "Hub 助理"]);
     } finally { restore(); }
   });
 
@@ -239,7 +239,7 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
       await until(() => heads(pg)[0] === "Favorites");
       expect(names(pg)[0]).toBe("去年專案");
       expect(rows(pg)[0].className).toContain("hub-room-archived");
-      expect(names(pg)).toContain("研一主管週會");
+      expect(names(pg)).toContain("研發主管週會");
     } finally { restore(); }
   });
 });

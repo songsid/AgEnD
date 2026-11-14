@@ -2,7 +2,7 @@
 import {sourceReceipt,codeBundleReceipt} from './source-receipt.mjs';
 import {createServer} from 'node:http';import {spawn,execFileSync} from 'node:child_process';import {once} from 'node:events';import {createInterface} from 'node:readline';
 import {mkdir,cp,rm,writeFile} from 'node:fs/promises';import {mkdtempSync} from 'node:fs';import {join,resolve,win32} from 'node:path';import {pathToFileURL} from 'node:url';import {randomUUID} from 'node:crypto';import assert from 'node:assert/strict';
-const compiled=resolve(process.argv[2]||'.artifacts/pane-full-package/dist'),bundle=resolve(process.argv[3]||'.artifacts/pane-stage4-bundle'),tag=randomUUID().slice(0,8),root='/mnt/c/Users/changhansung/agend-adapter-proto/remote-'+tag,nativeRoot='C:\\Users\\changhansung\\agend-adapter-proto\\remote-'+tag;
+const compiled=resolve(process.argv[2]||'.artifacts/pane-full-package/dist'),bundle=resolve(process.argv[3]||'.artifacts/pane-stage4-bundle'),tag=randomUUID().slice(0,8),root='/mnt/c/Users/demo-account/agend-adapter-proto/remote-'+tag,nativeRoot='C:\\Users\\demo-account\\agend-adapter-proto\\remote-'+tag;
 const source={...sourceReceipt(),...await codeBundleReceipt(bundle)};
 const home=mkdtempSync(join(process.cwd(),'.artifacts/remote-native-proof-'));
 const [{RuntimeCoordinator},{PaneMcpAuthorityLease}]=await Promise.all(['runtime-coordinator.js','runtime-pane-mcp.js'].map(name=>import(pathToFileURL(join(compiled,name)).href)));

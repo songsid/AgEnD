@@ -69,13 +69,13 @@ describe("Hub Room settings (section 7)", () => {
     const { pg, client, calls } = await fixture();
     const changed = await mountSettings(pg, client); calls.length = 0;
     const name = pg.root.querySelector("#hubRoomSettingsName");
-    expect(name.value).toBe("研一主管週會"); expect(button(pg, "儲存").disabled).toBe(true);
-    name.value = "研一週會"; fire(name, "input"); await settle(5);
+    expect(name.value).toBe("研發主管週會"); expect(button(pg, "儲存").disabled).toBe(true);
+    name.value = "研發週會"; fire(name, "input"); await settle(5);
     fire(button(pg, "儲存"), "click"); await settle(30);
     const allMention = pg.root.querySelector("#hubRoomAllMention"); expect(allMention.checked).toBe(true);
     allMention.checked = false; fire(allMention, "change"); await settle(30);
     const all = [...pg.root.querySelectorAll("input[name=hubRoomHistory]")].find((x: any) => x.value === "all"); all.checked = true; fire(all, "change"); await settle(30);
-    expect(writes(calls)).toEqual([["PATCH", "/hub/v1/rooms/room-weekly", { name: "研一週會" }], ["PATCH", "/hub/v1/rooms/room-weekly", { allMention: false }], ["PATCH", "/hub/v1/rooms/room-weekly", { historyForNew: "all" }]]);
+    expect(writes(calls)).toEqual([["PATCH", "/hub/v1/rooms/room-weekly", { name: "研發週會" }], ["PATCH", "/hub/v1/rooms/room-weekly", { allMention: false }], ["PATCH", "/hub/v1/rooms/room-weekly", { historyForNew: "all" }]]);
     expect(changed).toHaveLength(3);
     expect(pg.root.querySelector("#hubRoomAllMention").checked).toBe(false);
     name.value = "  "; fire(name, "input"); await settle(5); fire(button(pg, "儲存"), "click"); await settle(10);
@@ -108,7 +108,7 @@ describe("Hub Room settings (section 7)", () => {
     await search(pg, "hubRoomAddPeople", "吳"); await pick(pg, "hubRoomAddPeople", "吳小安");
     await search(pg, "hubRoomAddAgents", "my-"); await pick(pg, "hubRoomAddAgents", "my-notes");
     await search(pg, "hubRoomAddAgents", "budget"); await pick(pg, "hubRoomAddAgents", "budget-check");
-    await search(pg, "hubRoomAddAgents", "研一"); await pick(pg, "hubRoomAddAgents", "「研一」所有人的 Agent");
+    await search(pg, "hubRoomAddAgents", "研發"); await pick(pg, "hubRoomAddAgents", "「研發」所有人的 Agent");
     expect(writes(calls)).toEqual([
       ["POST", "/hub/v1/rooms/room-rd/members", { kind: "person", id: "person-wu" }],
       ["POST", "/hub/v1/rooms/room-rd/members", { kind: "agent", id: "exp-mine-1" }],
@@ -119,7 +119,7 @@ describe("Hub Room settings (section 7)", () => {
 
   it("adding an AD group: its people join now (one has never signed in: 還沒登入過 Hub); too many or unreadable is said under the field and adds nothing", async () => {
     let unreadable = false;
-    const r = await fixture("zh-TW", (path, init) => unreadable && path === "/hub/v1/rooms/room-rd/members" && init.method === "POST" ? { status: 503, body: { code: "group-unavailable", group: "group-rd1" } } : null);
+    const r = await fixture("zh-TW", (path, init) => unreadable && path === "/hub/v1/rooms/room-rd/members" && init.method === "POST" ? { status: 503, body: { code: "group-unavailable", group: "group-tm1" } } : null);
     const changed = await mountSettings(r.pg, r.client, "room-rd"); r.calls.length = 0;
     const note = () => r.pg.root.querySelector("#hubRoomAddPeople").parentElement.querySelector(".hub-room-picker-note")?.textContent ?? null;
     await search(r.pg, "hubRoomAddPeople", "全"); await pick(r.pg, "hubRoomAddPeople", "全公司");
@@ -132,7 +132,7 @@ describe("Hub Room settings (section 7)", () => {
     unreadable = false;
     await search(r.pg, "hubRoomAddPeople", "研發一"); await pick(r.pg, "hubRoomAddPeople", "研發一部");
     expect(note()).toBeNull(); expect(changed).toHaveLength(1);
-    expect(r.calls.filter(c => c.method === "POST").map(c => c.body)).toEqual([{ kind: "group", id: "group-all" }, { kind: "group", id: "group-rd1" }, { kind: "group", id: "group-rd1" }]);
+    expect(r.calls.filter(c => c.method === "POST").map(c => c.body)).toEqual([{ kind: "group", id: "group-all" }, { kind: "group", id: "group-tm1" }, { kind: "group", id: "group-tm1" }]);
     expect(r.pg.root.querySelector('[data-member="person-new"]').textContent).toContain("張新人 還沒登入過 Hub");
   });
 
@@ -170,7 +170,7 @@ describe("Hub Room settings (section 7)", () => {
     let closed = 0;
     await mountSettings(pg, client, "room-weekly", { onClose: () => { closed++; } }); calls.length = 0;
     fire(button(pg, "封存房間"), "click"); await settle(10);
-    expect((pg.document as any).body.textContent).toContain("要封存「研一主管週會」嗎？房間會變成唯讀，內容仍然看得到。");
+    expect((pg.document as any).body.textContent).toContain("要封存「研發主管週會」嗎？房間會變成唯讀，內容仍然看得到。");
     fire(button(pg, "取消"), "click"); await settle(20);
     expect(writes(calls)).toEqual([]);
     fire(button(pg, "封存房間"), "click"); await settle(10);
