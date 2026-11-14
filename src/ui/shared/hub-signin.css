@@ -11,6 +11,8 @@ body.hub-signed-out #sidebar, body.hub-signed-out nav.tabs { visibility: hidden;
 .hub-signin-brand span { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .hub-signin-card h1 { margin: 0 0 6px; font-size: var(--fs-xl); font-weight: var(--fw-semibold); }
 .hub-signin-lead { margin: 0 0 18px; color: var(--text-2); }
+/* M-3108: the Preview line under the lead, with the same gap before the form. */
+.hub-signin-preview { margin: -8px 0 18px; }
 .hub-signin-form { display: flex; flex-direction: column; }
 .hub-signin-form label { display: block; margin: 0 0 6px; font-size: var(--fs-sm); color: var(--text-2); font-weight: var(--fw-medium); }
 .hub-signin-form input { width: 100%; box-sizing: border-box; margin: 0 0 14px; padding: 11px 12px; font: inherit; background: var(--bg); color: var(--text);
