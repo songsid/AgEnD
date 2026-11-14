@@ -117,7 +117,7 @@ describe("M-2901 Settings → Hub → Hub address (the host owner's card)", () =
     ["port_in_use", 409, "Another program on this computer is using that port."],
     ["port_conflict", 409, "That address or port is the one Fleets connect to."],
     ["certificate", 400, "The certificate doesn't fit"],
-    ["busy", 409, "or a device is finishing its sign-in"],
+    ["busy", 409, "Another settings change is still in progress. Try again in a moment."],
     ["unchanged", 409, "That is already the Hub's address."],
     ["something_new", 503, "The address wasn't changed. Try again."],
   ])("a Check refused with %s says so in words and stays on the form", async (code, status, words) => {
@@ -125,6 +125,26 @@ describe("M-2901 Settings → Hub → Hub address (the host owner's card)", () =
     await f.click("Change address"); await f.type("#hubAddrNew", "hub2.example.com"); await f.submit();
     expect(f.q('[role="alert"]').textContent).toContain(words);
     expect(f.text()).not.toMatch(/err_|port_in_use|port_conflict|something_new/);                 // words, never a raw code
+    expect(f.q("#hubAddrNew").value).toBe("hub2.example.com");
+  });
+
+  it.each([
+    ["en", "Change address", "Confirm change", "02:06 PM"],
+    ["zh-TW", "變更位址", "確認變更", "下午02:06"],
+  ])("%s: the join window shows local retry time and keeps the typed address", async (language, change, confirm, time) => {
+    const retryAt = new Date(2026, 10, 14, 14, 5, 1).getTime();
+    const f = await fixture({ language, commit: () => ({ status: 409, body: { ok: false, code: "joining", retryAt } }) });
+    await f.click(change); await f.type("#hubAddrNew", "hub2.example.com"); await f.submit(); await f.click(confirm);
+    expect(f.q('[role="alert"]').textContent).toBe(language === "en"
+      ? `A colleague's Fleet is joining this Hub right now, so the Hub address can't be changed. Try again after ${time}.`
+      : `有同仁的 Fleet 正在加入這個 Hub，這段時間不能變更 Hub 位址。請在 ${time} 之後再試一次。`);
+    expect(f.q("#hubAddrNew").value).toBe("hub2.example.com");
+  });
+  it.each(["en", "zh-TW"])("%s: joining without a deadline asks to retry in a few minutes", async language => {
+    const f = await fixture({ language, prepare: () => ({ status: 409, body: { ok: false, code: "joining" } }) });
+    await f.click(language === "en" ? "Change address" : "變更位址");
+    await f.type("#hubAddrNew", "hub2.example.com"); await f.submit();
+    expect(f.q('[role="alert"]').textContent).toContain(language === "en" ? "Try again in a few minutes." : "請過幾分鐘再試一次。");
     expect(f.q("#hubAddrNew").value).toBe("hub2.example.com");
   });
 

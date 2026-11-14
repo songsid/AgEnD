@@ -6,7 +6,7 @@
 // Own lazy module with its own words. Shared components: card, field, btn, note, err, s-web-ro, s-ui-disclosure, Skeleton.
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
-import { register, t } from "/assets/app-i18n.js";
+import { register, t, lang } from "/assets/app-i18n.js";
 import { api } from "./settings-confirm.js";
 import { typedOrigin, shownAddress, defaultListen } from "./settings-hub-web-address.js";
 
@@ -39,7 +39,9 @@ register("hubMemberAddress", {
     err_unchanged: "That is already the Fleet connection address.",
     err_stale: "Something changed meanwhile (a Fleet connected, left or was revoked). Check again.",
     err_expired: "That took too long. Check again.",
-    err_busy: "Another change is still finishing, or a device is finishing its sign-in. Try again in a moment.",
+    err_busy: "Another settings change is still in progress. Try again in a moment.",
+    err_joining: "A colleague's Fleet is joining this Hub right now, so the Hub address can't be changed. Try again after {0}.",
+    err_joining_no_time: "A colleague's Fleet is joining this Hub right now, so the Hub address can't be changed. Try again in a few minutes.",
     err_denied: "Only this computer's own dashboard can change it. Reload this page and try again.",
     err_unavailable: "It can't be changed right now. Reload this page and try again.",
     err_recovery: "The change didn't finish. Reload this page to see the current address.",
@@ -73,7 +75,9 @@ register("hubMemberAddress", {
     err_unchanged: "這已經是目前的 Fleet 連接位址。",
     err_stale: "剛剛有變動（有 Fleet 連接、離開或被撤銷）。請再檢查一次。",
     err_expired: "等候太久了，請再檢查一次。",
-    err_busy: "另一項變更還在完成中，或有裝置正在完成登入，請稍後再試。",
+    err_busy: "另一項設定變更還在進行，請稍候再試。",
+    err_joining: "有同仁的 Fleet 正在加入這個 Hub，這段時間不能變更 Hub 位址。請在 {0} 之後再試一次。",
+    err_joining_no_time: "有同仁的 Fleet 正在加入這個 Hub，這段時間不能變更 Hub 位址。請過幾分鐘再試一次。",
     err_denied: "只有這台電腦自己的儀表板可以變更。請重新載入這個頁面後再試。",
     err_unavailable: "目前無法變更。請重新載入這個頁面後再試。",
     err_recovery: "變更沒有完成。請重新載入這個頁面查看目前的位址。",
@@ -84,13 +88,24 @@ const copy = (key, ...a) => t(`hubMemberAddress.${key}`, ...a);
 const PREFIX = "/api/settings/hub/member-address";
 const ERR = new Set(["invalid", "port_conflict", "port_in_use", "certificate", "unchanged", "stale", "expired", "busy", "denied", "unavailable", "recovery"]);
 const errKey = (code) => `err_${ERR.has(code) ? code : "failed"}`;
+const errorText = (r) => {
+  if (r.code !== "joining") return copy(errKey(r.code));
+  let time = "";
+  if (Number.isSafeInteger(r.retryAt) && r.retryAt > 0) {
+    try {
+      const at = new Date(Math.ceil(r.retryAt / 60_000) * 60_000);
+      if (!Number.isNaN(at.getTime())) time = new Intl.DateTimeFormat(lang(), { hour: "2-digit", minute: "2-digit" }).format(at);
+    } catch { /* Fall back to the no-time wording. */ }
+  }
+  return copy(time ? "err_joining" : "err_joining_no_time", time);
+};
 const names = (fleets) => (fleets || []).map((f) => f.label || copy("unnamed")).join(copy("sep"));
 
 export function createMemberAddressClient() {
   const call = async (action, body) => {
     try {
       const r = await api(PREFIX + action, { credentials: "same-origin", cache: "no-store", ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) }) });
-      return r.ok && r.body?.ok ? r.body : { ok: false, code: r.body?.code || "unavailable" };
+      return r.ok && r.body?.ok ? r.body : { ok: false, code: r.body?.code || "unavailable", ...(Number.isSafeInteger(r.body?.retryAt) ? { retryAt: r.body.retryAt } : {}) };
     } catch { return { ok: false, code: "unavailable" }; }
   };
   return { read: () => call(""), prepare: (candidate) => call("/prepare", candidate), commit: (ref) => call("/commit", { ref }) };
@@ -139,7 +154,7 @@ export function HubMemberAddressSettings({ client: given = null } = {}) {
     setBusy(true); setError("");
     const r = await client.prepare({ origin, listen });
     setBusy(false);
-    if (!r.ok) { setError(copy(errKey(r.code))); return; }
+    if (!r.ok) { setError(errorText(r)); return; }
     setProposal(r); setStep("confirm");
   };
   const confirm = async () => {
@@ -147,7 +162,7 @@ export function HubMemberAddressSettings({ client: given = null } = {}) {
     setBusy(true); setError("");
     const r = await client.commit(proposal.ref);
     setBusy(false);
-    if (!r.ok) { setError(copy(errKey(r.code))); if (r.code === "expired" || r.code === "stale") { setProposal(null); setStep("edit"); } return; }
+    if (!r.ok) { setError(errorText(r)); if (r.code === "expired" || r.code === "stale" || r.code === "joining") { setProposal(null); setStep("edit"); } return; }
     setOutcome(r); setStep("show");
     // Connected now: only the Fleets that followed (the rest were disconnected and must reconnect).
     const gone = new Set((Array.isArray(r.reconnect) ? r.reconnect : []).map((f) => f.id));

@@ -92,7 +92,7 @@ describe("#3428 authoritative web-address SQL", () => {
     });
     it.each(["issued", "acknowledged"] as const)("%s receipt blocks an address decision until its original outer deadline", stage => {
         const r = rig(), join = r.addJoin(stage), op = r.request();
-        expect(() => r.decision.commit(op, () => true)).toThrow("busy");
+        expect(() => r.decision.commit(op, () => true)).toThrowError(expect.objectContaining({ code: "joining", retryAt: join.outerDeadline }));
         expect(r.decision.head().revision).toBe(0);
         expect(r.records.get(join.binding.requestId)).toEqual(join);
         expect(r.db.prepare("SELECT state FROM hub_sessions").get()).toEqual({ state: "active" });
@@ -100,6 +100,19 @@ describe("#3428 authoritative web-address SQL", () => {
         r.clock.now = join.outerDeadline;
         r.decision.commit(op, () => true);
         expect(r.records.get(join.binding.requestId)).toEqual(join);
+        expect(r.decision.head().revision).toBe(1);
+    });
+    it("reports the latest blocking join deadline and permits the change at that deadline", () => {
+        const r = rig(), first = r.addJoin("issued"), op = r.request();
+        r.clock.now += 60_000;
+        const last = r.addJoin("acknowledged");
+        for (const now of [r.clock.now, first.outerDeadline, last.outerDeadline - 1]) {
+            r.clock.now = now;
+            expect(() => r.decision.commit(op, () => true)).toThrowError(expect.objectContaining({ code: "joining", retryAt: last.outerDeadline }));
+            expect(r.decision.head().revision).toBe(0);
+        }
+        r.clock.now = last.outerDeadline;
+        r.decision.commit(op, () => true);
         expect(r.decision.head().revision).toBe(1);
     });
     it("retires old browser bindings and deletes only unconsumed invitations permanently", () => {

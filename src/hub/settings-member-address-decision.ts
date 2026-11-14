@@ -6,7 +6,7 @@ import type { HubTransportStore } from "./store.js";
 import { canonicalArguments, personKeyString, sha256 } from "./identity.js";
 import { hubOrigin, readHubMemberTls } from "./tls.js";
 import { hash, uuid, epoch, person, plain, parseStrictJson, HubProtocolError } from "./validation.js";
-import { retireCompanyJoinForWebAddress } from "./join/store.js";
+import { retireCompanyJoinForWebAddress, CompanyJoinWindowError } from "./join/store.js";
 import { HubMemberAddressError, hubMemberAddressBoundary } from "./settings-member-address-policy.js";
 import type { PersonKey } from "./types.js";
 
@@ -171,7 +171,11 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
         check();
         if ((db.prepare("SELECT count(*) n FROM hub_member_address_notices").get() as { n: number }).n >= 1024) throw new HubMemberAddressError("busy");
         try { retireCompanyJoinForWebAddress(db, options.now?.() ?? Date.now()); }
-        catch (e) { if (e instanceof HubProtocolError && e.code === "backpressure") throw new HubMemberAddressError("busy"); throw e; }
+        catch (e) {
+          if (e instanceof CompanyJoinWindowError) throw new HubMemberAddressError("joining", e.retryAt);
+          if (e instanceof HubProtocolError && e.code === "backpressure") throw new HubMemberAddressError("busy");
+          throw e;
+        }
         // #3429 B: the kept Fleets must be from this exact reservation (its base head and target), signed rows included.
         const kept = new Map((op.relocation?.kept ?? []).map(k => [k.id, k]));
         if (op.sameOrigin && op.relocation) return refuse();

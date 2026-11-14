@@ -7,7 +7,7 @@ import type { HubAuditStore } from "./audit/index.js";
 import { readPrivateFile } from "./private-files.js";
 import { canonicalArguments } from "./identity.js";
 import { HubWebAddressError, hubWebAddressBoundary } from "./settings-web-address-policy.js";
-import { retireCompanyJoinForWebAddress } from "./join/store.js";
+import { retireCompanyJoinForWebAddress, CompanyJoinWindowError } from "./join/store.js";
 import { HubProtocolError } from "./validation.js";
 const hash = z.string().regex(/^[0-9a-f]{64}$/), id = z.string().uuid(), revision = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const actor = z.strictObject({ kind: z.literal("host-owner"), sessionId: z.string().min(1).max(256), requestId: z.string().min(1).max(256) });
@@ -173,6 +173,8 @@ export function createHubWebAddressDecision(options: {
                     retireCompanyJoinForWebAddress(db, options.now?.() ?? Date.now());
                 }
                 catch (error) {
+                    if (error instanceof CompanyJoinWindowError)
+                        throw new HubWebAddressError("joining", error.retryAt);
                     if (error instanceof HubProtocolError && error.code === "backpressure")
                         throw new HubWebAddressError("busy");
                     throw error;

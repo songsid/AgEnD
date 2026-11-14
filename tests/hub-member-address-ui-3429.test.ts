@@ -99,12 +99,32 @@ describe("#3429 Settings → Hub → Fleet connection address", () => {
     ["port_in_use", "Another program on this computer is using that port."],
     ["port_conflict", "That is the Hub address or its port."],
     ["stale", "Something changed meanwhile"],
+    ["busy", "Another settings change is still in progress. Try again in a moment."],
     ["something_new", "The address wasn't changed. Try again."],
   ])("a Check refused with %s says so in words", async (code, words) => {
     const f = await fixture({ prepare: () => ({ status: 409, body: { ok: false, code } }) });
     await f.click("Change connection address"); await f.type("#hubMemberNew", "hub.example.com:9555"); await f.submit();
     expect(f.q('[role="alert"]').textContent).toContain(words);
     expect(f.text()).not.toMatch(/port_in_use|port_conflict|something_new/);
+  });
+  it.each([
+    ["en", "Change connection address", "Confirm change", "02:06 PM"],
+    ["zh-TW", "變更連接位址", "確認變更", "下午02:06"],
+  ])("%s: the join window shows local retry time and keeps the typed address", async (language, change, confirm, time) => {
+    const retryAt = new Date(2026, 10, 14, 14, 5, 1).getTime();
+    const f = await fixture({ language, commit: () => ({ status: 409, body: { ok: false, code: "joining", retryAt } }) });
+    await f.click(change); await f.type("#hubMemberNew", "hub.example.com:9555"); await f.submit(); await f.click(confirm);
+    expect(f.q('[role="alert"]').textContent).toBe(language === "en"
+      ? `A colleague's Fleet is joining this Hub right now, so the Hub address can't be changed. Try again after ${time}.`
+      : `有同仁的 Fleet 正在加入這個 Hub，這段時間不能變更 Hub 位址。請在 ${time} 之後再試一次。`);
+    expect(f.q("#hubMemberNew").value).toBe("hub.example.com:9555");
+  });
+  it.each(["en", "zh-TW"])("%s: joining without a deadline asks to retry in a few minutes", async language => {
+    const f = await fixture({ language, prepare: () => ({ status: 409, body: { ok: false, code: "joining" } }) });
+    await f.click(language === "en" ? "Change connection address" : "變更連接位址");
+    await f.type("#hubMemberNew", "hub.example.com:9555"); await f.submit();
+    expect(f.q('[role="alert"]').textContent).toContain(language === "en" ? "Try again in a few minutes." : "請過幾分鐘再試一次。");
+    expect(f.q("#hubMemberNew").value).toBe("hub.example.com:9555");
   });
   it("an expired Confirm goes back to the form; nothing changed locally is refused before any request", async () => {
     const f = await fixture({ commit: () => ({ status: 410, body: { ok: false, code: "expired" } }) });
