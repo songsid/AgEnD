@@ -3,9 +3,8 @@
 // 「最愛」 above 「房間」 and 「Agent」 in the order they were starred (or moved in Edit), at most MAX_FAVORITES, and one that
 // is gone from the list (left, removed) is dropped on the next change, never shown.
 //
-// Where they are kept: a per-person seam (`favoritesSource`). The Hub has no per-person preference store yet, so today's
-// source is this browser's storage, one key per Hub sign-in (the Hub's own origin; `login` keeps two people on one browser
-// apart); another tab follows through the storage event. A Hub-side store replaces the source, not this module's rules.
+// A Hub with person-prefs-v1 keeps them per directory person. This browser's old list seeds an unset Hub record once;
+// an older Hub still uses local storage. The source changes, not the list's rules.
 import { useEffect, useState } from "/assets/app-html.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { MAX_FAVORITES } from "/assets/instance-nav.js";
@@ -36,8 +35,67 @@ export const localFavoritesSource = {
 };
 
 let source = localFavoritesSource;
-/** Tests (and a later Hub-side store) swap where favourites are kept. */
+/** Tests swap where favourites are kept. */
 export function setFavoritesSource(next) { source = next || localFavoritesSource; }
+
+/** A session-owned cache: serialized writes, first-write migration, and refresh on focus or another tab's write. */
+export function createHubFavoritesSource(client, session) {
+  let ids = [], ready = false, active = false, pending = null, writing = null, refreshing = null, revision = 0, edits = 0;
+  let changed = () => {};
+  const apply = (out) => {
+    if (!active || !out.ok || !Number.isSafeInteger(out.revision) || out.revision < revision) return;
+    revision = out.revision; ids = cleanIds(out.favorites); ready = true;
+    localFavoritesSource.write(session.login, ids);
+    changed();
+  };
+  const drain = () => writing ??= (async () => {
+    while (active && ready && pending) {
+      const sent = pending;
+      let out;
+      try { out = await client.savePersonPrefs(session.csrf, sent); } catch { break; }
+      if (!active || !out.ok) break; // retain the pending change for focus/the next edit
+      if (pending === sent) { pending = null; apply(out); }
+      else revision = Math.max(revision, out.revision || 0);
+    }
+  })().finally(() => { writing = null; });
+  const refresh = () => refreshing ??= (async () => {
+    await drain();
+    if (!active || pending) return;
+    const before = edits;
+    let out;
+    try {
+      out = await client.personPrefs(session.csrf);
+      if (!active || !out.ok || edits !== before) return;
+      if (!out.initialized) out = await client.savePersonPrefs(session.csrf, localFavoritesSource.read(session.login), true);
+    } catch { return; }
+    if (edits === before) apply(out);
+  })().finally(() => { refreshing = null; });
+  return {
+    ready: () => ready,
+    read: () => ids,
+    write(_login, value) { ids = cleanIds(value); pending = ids; edits++; void drain(); },
+    watch(_login, onChange) {
+      active = true; changed = onChange;
+      const unwatch = localFavoritesSource.watch(session.login, () => { void refresh(); });
+      const focus = () => { void refresh(); };
+      globalThis.addEventListener?.("focus", focus);
+      void refresh();
+      return () => { active = false; changed = () => {}; unwatch(); globalThis.removeEventListener?.("focus", focus); };
+    },
+  };
+}
+
+let configuredClient, configuredCsrf;
+/** Called by the session owner; optional from the shell so an older cached module still loads. */
+export function configureHubFavorites(client, session) {
+  const remote = session?.features?.includes("person-prefs-v1") && typeof client.personPrefs === "function" && typeof client.savePersonPrefs === "function";
+  const csrf = remote ? session.csrf : null;
+  if (configuredClient === client && configuredCsrf === csrf) return;
+  configuredClient = client; configuredCsrf = csrf;
+  loadFavorites(null); // retire the previous person's listener and late responses
+  source = remote ? createHubFavoritesSource(client, session) : localFavoritesSource;
+  loadFavorites(session?.login);
+}
 
 /** { login, ids }: whose favourites are loaded, and their ids in order. */
 export const favoritesStore = createStore({ login: null, ids: [] });
@@ -83,7 +141,7 @@ export function useRoomStar(rooms, login) {
   const fav = useStore(favoritesStore);
   const [editing, setEditing] = useState(false);
   useEffect(() => { loadFavorites(login); }, [login]);
-  if (!login || fav.login !== login) return null;
+  if (!login || fav.login !== login || source.ready?.(login) === false) return null;
   const known = new Set((Array.isArray(rooms) ? rooms : []).map((r) => r && r.id).filter(Boolean));
   return { ids: liveFavorites(known, fav.ids), editing, setEditing,
     toggle: (id) => toggleFavorite(id, known), move: (id, delta) => moveFavorite(id, delta, known) };

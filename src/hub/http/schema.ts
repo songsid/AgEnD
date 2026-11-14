@@ -6,6 +6,7 @@
  * secrets are kept only as SHA-256 digests.
  */
 import type Database from "better-sqlite3";
+import { HUB_PERSON_PREFS_MIGRATION } from "../person-prefs.js";
 import { HUB_BUTTONS_MIGRATION } from "../buttons.js";
 import { HUB_SESSION_AUTHENTICATION_MIGRATION } from "../session-directory-transition.js";
 import { HUB_SESSION_EPOCH_MIGRATION } from "../session-epoch.js";
@@ -109,4 +110,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_ROOM_CREATORS_MIGRATION,
   HUB_ROOM_ASSISTANT_MIGRATION,
   HUB_ROOM_DIRECTORY_MIGRATION,
+  HUB_PERSON_PREFS_MIGRATION,
 ]);

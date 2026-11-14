@@ -1,0 +1,38 @@
+[
+  {
+    "id": "I1",
+    "source": "src/hub/person-prefs.ts",
+    "baseSha256": "4f0adcae88428dc85a0a28cf17fd4f09e5077ac20f2828d7ac0d576c0c881c20",
+    "replacementSha256": "3db5522fc817b6190f1a4ec4ccb02477b3b7d60cf3eb7f4a9f9267fb44de38e2",
+    "testSha256": "5e9279ec144358ed504fb646cf3e77745340ea05c753ef644a93c27f26ff36ba",
+    "exit": 1,
+    "semanticRed": true
+  },
+  {
+    "id": "I2",
+    "source": "src/hub/person-prefs.ts",
+    "baseSha256": "4f0adcae88428dc85a0a28cf17fd4f09e5077ac20f2828d7ac0d576c0c881c20",
+    "replacementSha256": "0c5dbe50ef80cd7cd3637c25f5a2a0d133b77cebde845bf7527ef317fb69f3ef",
+    "testSha256": "5e9279ec144358ed504fb646cf3e77745340ea05c753ef644a93c27f26ff36ba",
+    "exit": 1,
+    "semanticRed": true
+  },
+  {
+    "id": "I3",
+    "source": "src/hub/http/compose.ts",
+    "baseSha256": "3ede8f8cf3de591658f79dfaeddc1d6afbfd0f7ef1f1eec0d2b8812dcb8e5545",
+    "replacementSha256": "a6f6e09e634874991919b83d5bdc233117c2aa387d984e8d0704817caa83f358",
+    "testSha256": "5e9279ec144358ed504fb646cf3e77745340ea05c753ef644a93c27f26ff36ba",
+    "exit": 1,
+    "semanticRed": true
+  },
+  {
+    "id": "I4",
+    "source": "src/ui/hub-client.js",
+    "baseSha256": "896e881961e7773a529dbd7721c05909d4b35c06a8f6fe5d952650bee8409883",
+    "replacementSha256": "d686c77130924c5b812fb406bacadff265d662c8616088af452552575fc19693",
+    "testSha256": "ff04fa7c857df938a50f7f30610bb3f4b2327b0ff42727e6d52eed79ab89dcca",
+    "exit": 1,
+    "semanticRed": true
+  }
+]
