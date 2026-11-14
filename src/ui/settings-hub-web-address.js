@@ -35,7 +35,9 @@ register("hubWebAddress", {
     err_unchanged: "That is already the Hub's address.",
     err_stale: "The Hub's settings changed meanwhile. Check the address and try again.",
     err_expired: "That took too long. Check again.",
-    err_busy: "Another change is still finishing, or a device is finishing its sign-in. Try again in a moment.",
+    err_busy: "Another settings change is still in progress. Try again in a moment.",
+    err_joining: "A colleague's Fleet is joining this Hub right now, so the Hub address can't be changed. Try again after {0}.",
+    err_joining_no_time: "A colleague's Fleet is joining this Hub right now, so the Hub address can't be changed. Try again in a few minutes.",
     err_denied: "Only this computer's own dashboard can change the Hub's address. Reload this page and try again.",
     err_unavailable: "The Hub's address can't be changed right now. Reload this page and try again.",
     err_recovery: "The change didn't finish. Reload this page to see the Hub's current address.",
@@ -66,7 +68,9 @@ register("hubWebAddress", {
     err_unchanged: "這已經是 Hub 目前的位址。",
     err_stale: "Hub 的設定剛剛有變更。請確認位址後再試一次。",
     err_expired: "等候太久了，請再檢查一次。",
-    err_busy: "另一項變更還在完成中，或有裝置正在完成登入，請稍後再試。",
+    err_busy: "另一項設定變更還在進行，請稍候再試。",
+    err_joining: "有同仁的 Fleet 正在加入這個 Hub，這段時間不能變更 Hub 位址。請在 {0} 之後再試一次。",
+    err_joining_no_time: "有同仁的 Fleet 正在加入這個 Hub，這段時間不能變更 Hub 位址。請過幾分鐘再試一次。",
     err_denied: "只有這台電腦自己的儀表板可以變更 Hub 的位址。請重新載入這個頁面後再試。",
     err_unavailable: "目前無法變更 Hub 的位址。請重新載入這個頁面後再試。",
     err_recovery: "變更沒有完成。請重新載入這個頁面查看 Hub 目前的位址。",
@@ -77,6 +81,18 @@ const copy = (key, ...a) => t(`hubWebAddress.${key}`, ...a);
 const PREFIX = "/api/settings/hub/web-address";
 const ERR = new Set(["invalid", "port_conflict", "port_in_use", "certificate", "unchanged", "stale", "expired", "busy", "denied", "unavailable", "recovery"]);
 const errKey = (code) => `err_${ERR.has(code) ? code : "failed"}`;
+const errorText = (r) => {
+  if (r.code !== "joining") return copy(errKey(r.code));
+  let time = "";
+  if (Number.isSafeInteger(r.retryAt) && r.retryAt > 0) {
+    try {
+      // Round up: the displayed minute must not invite a retry before the exact deadline.
+      const at = new Date(Math.ceil(r.retryAt / 60_000) * 60_000);
+      if (!Number.isNaN(at.getTime())) time = new Intl.DateTimeFormat(lang(), { hour: "2-digit", minute: "2-digit" }).format(at);
+    } catch { /* The no-time wording also supports an older response or browser. */ }
+  }
+  return copy(time ? "err_joining" : "err_joining_no_time", time);
+};
 
 /** What was typed, as the https origin the server is asked for ("hub.example.com" → "https://hub.example.com"); null if not one. */
 export function typedOrigin(text) {
@@ -105,7 +121,7 @@ export function createWebAddressClient() {
   const call = async (action, body) => {
     try {
       const r = await api(PREFIX + action, { credentials: "same-origin", cache: "no-store", ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) }) });
-      return r.ok && r.body?.ok ? r.body : { ok: false, code: r.body?.code || "unavailable" };
+      return r.ok && r.body?.ok ? r.body : { ok: false, code: r.body?.code || "unavailable", ...(Number.isSafeInteger(r.body?.retryAt) ? { retryAt: r.body.retryAt } : {}) };
     } catch { return { ok: false, code: "unavailable" }; }
   };
   return { read: () => call(""), prepare: (candidate) => call("/prepare", candidate), commit: (ref) => call("/commit", { ref }) };
@@ -160,7 +176,7 @@ export function HubWebAddressSettings({ client: given = null } = {}) {
     const certificate = mode === "import" ? { mode, certPem, keyPem } : { mode };
     const r = await client.prepare({ origin, listen, certificate });
     setBusy(false);
-    if (!r.ok) { setError(copy(errKey(r.code))); return; }
+    if (!r.ok) { setError(errorText(r)); return; }
     setKeyPem("");                                        // sent once; never kept in the page
     setProposal(r); setStep("confirm");
   };
@@ -169,7 +185,7 @@ export function HubWebAddressSettings({ client: given = null } = {}) {
     setBusy(true); setError("");
     const r = await client.commit(proposal.ref);
     setBusy(false);
-    if (!r.ok) { setError(copy(errKey(r.code))); if (r.code === "expired" || r.code === "stale") { setProposal(null); setStep("edit"); } return; }
+    if (!r.ok) { setError(errorText(r)); if (r.code === "expired" || r.code === "stale" || r.code === "joining") { setProposal(null); setStep("edit"); } return; }
     setOutcome(r); setProposal(null); setStep("done");
     setView((v) => ({ ...v, origin: r.origin || proposal.summary?.to, listen: proposal.summary?.listen || v.listen, certificate: proposal.certificate || v.certificate }));
   };

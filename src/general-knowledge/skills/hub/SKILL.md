@@ -95,9 +95,12 @@ this Hub**. Only that computer's own sign-in sees it, as with **Set up a Hub**.
   working. Connected Fleets stay connected. Tell colleagues the new address: it's the one they type in Settings → Hub,
   and **Tell colleagues how to join** shows it.
 - Messages: "Another program on this computer is using that port." → another port under **Advanced**; "That address or
-  port is the one Fleets connect to." → another port; "Another change is still finishing, or a device is finishing its
-  sign-in." → try again in a moment; "Saved, but the Hub doesn't answer at the new address yet…" → free that port, then
+  port is the one Fleets connect to." → another port; "Another settings change is still in progress." → try again in a
+  moment; "Saved, but the Hub doesn't answer at the new address yet…" → free that port, then
   turn **Run this Hub** off and on.
+- If a colleague's Fleet is joining, either address card shows when to retry in your local time. A recent join can hold
+  the change for up to ten minutes after it began, even if its Fleet already looks connected. Wait until the displayed
+  time, then **Check** again; the form keeps the address you typed. With no time shown, try again in a few minutes.
 - The address Fleets connect to (the member address) is separate and isn't changed here.
 
 ## Changing the Fleet connection address
@@ -113,6 +116,8 @@ Rarely needed. On the Hub's computer: **Settings → Hub**, the folded card **Fl
   reconnect from their own Settings → Hub: *name*."
 - On a Fleet whose connection the Hub ended, Settings → Hub shows **Reconnect** with "The Hub ended this Fleet's
   connection, for example after it moved the address Fleets connect to."
+- The same recent-join wait and local retry time described under [Changing the Hub's address](#changing-the-hubs-address)
+  apply here.
 
 ## Signing in to the Hub
 

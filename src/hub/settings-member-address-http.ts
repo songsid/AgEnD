@@ -78,8 +78,9 @@ export function handleHubMemberAddressHttp(req: IncomingMessage, res: ServerResp
         send(res, 200, result);
     })().catch(error => {
         const code = error instanceof HubMemberAddressError ? error.code : error instanceof z.ZodError ? "invalid" : "unavailable";
-        const status = code === "denied" ? 403 : code === "expired" ? 410 : ["invalid", "certificate"].includes(code) ? 400 : ["stale", "busy", "port_conflict", "port_in_use", "unchanged"].includes(code) ? 409 : 503;
-        send(res, status, { ok: false, code });
+        const status = code === "denied" ? 403 : code === "expired" ? 410 : ["invalid", "certificate"].includes(code) ? 400 : ["stale", "busy", "joining", "port_conflict", "port_in_use", "unchanged"].includes(code) ? 409 : 503;
+        const retry = error instanceof HubMemberAddressError && code === "joining" && Number.isSafeInteger(error.retryAt) && error.retryAt! > 0 ? { retryAt: error.retryAt } : {};
+        send(res, status, { ok: false, code, ...retry });
     });
     return true;
 }

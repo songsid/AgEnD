@@ -84,6 +84,10 @@ export class CompanyJoinRecords {
   bindingDigest(binding: JoinBinding): string { return sha256(canonicalArguments(validateJoinBinding(binding))); }
 }
 
+export class CompanyJoinWindowError extends HubProtocolError {
+  constructor(readonly retryAt: number) { super("backpressure"); this.name = "CompanyJoinWindowError"; }
+}
+
 /** Called by the sealed web-address decision in its owning IMMEDIATE transaction.
  * Never retarget issued receipts. An ACK response can be lost after the Hub's
  * commit, so even acknowledged delivery retains the original outer window.
@@ -96,8 +100,9 @@ export function retireCompanyJoinForWebAddress(db: Database.Database, now: numbe
   if (rows.length > 1024 || offers.length > 1024) throw new HubProtocolError("uncertain");
   const current = rows.map(row => records.get(row.id));
   const byId = new Map(current.map(record => [record.binding.requestId, record]));
-  if (current.some(r => r.issuedHash !== null && ["issued", "acknowledged"].includes(r.stage) && now < r.outerDeadline))
-    throw new HubProtocolError("backpressure");
+  const retryAt = current.reduce((latest, r) => r.issuedHash !== null && ["issued", "acknowledged"].includes(r.stage) && now < r.outerDeadline
+    ? Math.max(latest, r.outerDeadline) : latest, 0);
+  if (retryAt > now) throw new CompanyJoinWindowError(retryAt);
   for (const row of offers) {
     const offer = validated(companyInvitationRecord, parseStrictJson(row.body));
     if (offer.claims.id !== row.id || offer.claims.expiresAt !== offer.claims.createdAt + 600_000)

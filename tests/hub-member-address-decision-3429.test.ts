@@ -1,13 +1,13 @@
 /** Real SQLite/transport/floor logic and private synthetic Hub identity; no live fleet or directory. */
 import Database from "better-sqlite3";
-import { randomUUID } from "node:crypto";
+import { randomUUID, generateKeyPairSync, randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { HUB_MEMBER_ADDRESS_MIGRATION, HUB_MEMBER_RELOCATION_MIGRATION, createHubMemberAddressDecision, type HubMemberAddressOperation } from "../src/hub/settings-member-address-decision.js";
-import { HUB_COMPANY_JOIN_MIGRATION } from "../src/hub/join/store.js";
+import { HUB_COMPANY_JOIN_MIGRATION, CompanyJoinRecords, type JoinRecord } from "../src/hub/join/store.js";
 import { HubTransportStore, migrateHubTransportStore } from "../src/hub/store.js";
 import { canonicalArguments, personKeyString, sha256 } from "../src/hub/identity.js";
 const owned: Array<() => void> = [];
@@ -28,7 +28,8 @@ async function rig() {
     for (const state of ["offered", "pending", "claimed"] as const) s.pairings.push({ id: randomUUID(), owner: alice, codeHash: state === "claimed" ? null : "c".repeat(64),
       expiresAt: 601000, fleetId: null, claimHash: state === "pending" ? "d".repeat(64) : null, fingerprint: null, ownerConfirmed: false, adminApproved: false, state });
   });
-  const decision = createHubMemberAddressDecision({ db, home, hubId: identity.hubId, transport: store, now: () => 2000 });
+  const clock = { now: 2000 };
+  const decision = createHubMemberAddressDecision({ db, home, hubId: identity.hubId, transport: store, now: () => clock.now });
   const operation = (): HubMemberAddressOperation => {
     const expected = decision.inspect();
     return { v: 1, kind: "member-address", id: randomUUID(), revision: expected.revision + 1, expected,
@@ -37,9 +38,24 @@ async function rig() {
       receiptSha: "8".repeat(64), actor: { kind: "host-owner", sessionId: "host-session", requestId: "move" }, at: 2000,
       webOrigin: "https://hub.example.test", affected: decision.affected(), administrator: admin };
   };
-  return { db, home, identity, store, decision, operation, audit, alice, bob, admin, a, b, old, floor: () => floor };
+  return { db, home, identity, store, decision, operation, audit, alice, bob, admin, a, b, old, clock, floor: () => floor };
 }
 describe("#3429 same-transaction transport address decision", () => {
+  it("reports a joining deadline without transport changes, then succeeds when the window ends", async () => {
+    const r = await rig(), pem = generateKeyPairSync("ed25519").publicKey.export({ type: "spki", format: "pem" }).toString();
+    const record: JoinRecord = { v: 1, binding: { hub: { hubId: r.identity.hubId, webOrigin: "https://hub.example.test", memberOrigin: "https://member.example.test", spkiSha256: "a".repeat(64), issuerPublicKey: pem },
+      publicKey: pem, fleetOrigin: "http://127.0.0.1:8080", requestId: randomUUID(), operationId: randomUUID(), fleetId: randomUUID(), verifierS256: randomBytes(32).toString("base64url") },
+      version: 1, label: "Join window fixture", stateHash: "b".repeat(64), stage: "acknowledged", createdAt: r.clock.now, outerDeadline: r.clock.now + 600_000, retainUntil: r.clock.now + 1_200_000,
+      browserHash: null, browserOrigin: null, owner: null, sessionId: null, approvedAt: null, redeemDeadline: null, deliveryDeadline: null, issuedHash: "d".repeat(64), reason: null, delivery: null, receipt: null, invitationId: null, approvedBy: null, supersedesFleetId: null, enrolmentCodeId: null };
+    const records = new CompanyJoinRecords(r.db, () => r.clock.now);
+    r.db.transaction(() => records.insert(record)).immediate();
+    const op = r.operation(), before = r.store.read(), floor = r.floor(); r.audit.mockClear();
+    expect(() => r.decision.commit(op, () => true)).toThrowError(expect.objectContaining({ code: "joining", retryAt: record.outerDeadline }));
+    expect(r.store.read()).toEqual(before); expect(r.floor()).toBe(floor); expect(r.audit).not.toHaveBeenCalled();
+    r.clock.now = record.outerDeadline;
+    r.decision.commit(op, () => true);
+    expect(r.decision.head().revision).toBe(1);
+  });
   it("revokes exactly retained active credentials and pending codes, with one version/audit and durable owner/admin/host notices", async () => {
     const r = await rig(), before = r.store.read(), op = r.operation(); r.audit.mockClear(); r.decision.commit(op, () => true);
     const after = r.store.read();

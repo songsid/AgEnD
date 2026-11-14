@@ -3,7 +3,7 @@ import { z } from "zod";
 import { listenProblems, originProblems } from "./init/initializer.js";
 import { hubPreviewSettings } from "./preview.js";
 export class HubMemberAddressError extends Error {
-  constructor(readonly code: "invalid" | "port_conflict" | "port_in_use" | "certificate" | "unavailable" | "stale" | "denied" | "busy" | "expired" | "unchanged" | "recovery") { super(code); this.name = "HubMemberAddressError"; }
+  constructor(readonly code: "invalid" | "port_conflict" | "port_in_use" | "certificate" | "unavailable" | "stale" | "denied" | "busy" | "joining" | "expired" | "unchanged" | "recovery", readonly retryAt?: number) { super(code); this.name = "HubMemberAddressError"; }
 }
 const listener = z.strictObject({ host: z.string().min(1).max(253), port: z.number().int().min(1).max(65535) });
 const candidate = z.strictObject({ origin: z.string().min(1).max(2048), listen: listener });

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { listenProblems, originProblems } from "./init/initializer.js";
 import { hubPreviewSettings } from "./preview.js";
 export class HubWebAddressError extends Error {
-    constructor(readonly code: "invalid" | "port_conflict" | "port_in_use" | "certificate" | "unavailable" | "stale" | "denied" | "busy" | "expired" | "unchanged" | "recovery") {
+    constructor(readonly code: "invalid" | "port_conflict" | "port_in_use" | "certificate" | "unavailable" | "stale" | "denied" | "busy" | "joining" | "expired" | "unchanged" | "recovery", readonly retryAt?: number) {
         super(code);
         this.name = "HubWebAddressError";
     }
