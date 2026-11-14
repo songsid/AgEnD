@@ -1,5 +1,5 @@
 /** Actual SQLite/UOW and Hub session contexts; directory facts are inert, no external AD or agent calls. */
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
@@ -41,6 +41,13 @@ it("identifies the current lead for navigation without requiring a person key in
   expect((await w.teams.list(w.l))[0]).toMatchObject({ id: team.id, isLead: true });
   expect((await w.teams.list(w.admin))[0]).toMatchObject({ id: team.id, canManage: true, isLead: false });
   expect((await w.teams.list(w.o))[0]).toMatchObject({ id: team.id, isLead: false });
+});
+it("denies Team detail to a plain member before spending the lead directory read", async () => {
+  const w = await world(), team = await w.create(), read = vi.spyOn(w.core, "readDirectory");
+  await expect(w.teams.get(w.o, team.id)).rejects.toMatchObject({ code: "denied" });
+  expect(read).not.toHaveBeenCalled();
+  expect((await w.teams.get(w.l, team.id)).memberInfo).toHaveLength(2);
+  expect((await w.teams.get(w.admin, team.id)).memberInfo).toHaveLength(2);
 });
 it("only the admin or current lead changes members; only the admin changes the Team's name or lead", async () => {
   const w = await world(), team = await w.create();

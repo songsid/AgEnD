@@ -53,6 +53,24 @@ it("keeps edits and known roster after a failed write, and fences a held refresh
   resolve({ ok: true, team: { ...team(), name: "Stale" } }); await settle(15);
   expect(p.root.querySelector("[data-team-name]").value).toBe("Saved"); expect(p.root.textContent).not.toContain("Stale");
 });
+it("keeps readable members and actions after a bare write response while refreshing the detailed roster", async () => {
+  let finish!: (value: any) => void;
+  const members = [lead, member, "corp/new"];
+  const bare = { id: "team-a", name: "Research", department: "department-a", revision: 4, lead, members };
+  const get = vi.fn().mockResolvedValueOnce({ ok: true, team: team() }).mockImplementationOnce(() => new Promise(r => { finish = r; }));
+  const { p, c } = await mount("lead", "en", { team: get, updateTeam: vi.fn(async () => ({ ok: true, team: bare })),
+    teamSuggestions: vi.fn(async () => ({ ok: true, candidates: [{ kind: "person", id: "corp/new", name: "Avery", login: "avery" }] })) });
+  await open(p); fire(button(p, "Add member"), "click"); await settle(10);
+  change(p.root.querySelector('input[type="search"]'), "Av"); await settle(5); fire(button(p, "Search"), "click"); await settle(10);
+  fire(button(p, "Choose"), "click"); await settle(10); fire(p.root.querySelector("form"), "submit"); await settle(20);
+  expect(p.root.textContent).toContain("Saved"); expect(p.root.textContent).toContain("Riley"); expect(p.root.textContent).toContain("Avery");
+  expect(p.root.textContent).not.toContain("corp/");
+  expect([...p.root.querySelectorAll("button")].map((row: any) => row.getAttribute("aria-label"))).toContain("Remove Casey");
+  expect([...p.root.querySelectorAll("button")].find((row: any) => row.getAttribute("aria-label") === "Remove Casey").disabled).toBe(false);
+  expect(c.team).toHaveBeenCalledTimes(2);
+  finish({ ok: true, team: { ...team(), ...bare, memberInfo: [...team().memberInfo, { id: "corp/new", name: "Avery Updated", signedIn: true, agents: [] }] } }); await settle(20);
+  expect(p.root.textContent).toContain("Avery Updated"); expect([...p.root.querySelectorAll("button")].find((row: any) => row.getAttribute("aria-label") === "Remove Casey").disabled).toBe(false);
+});
 it("shows affected grants and room creation before an explicit delete", async () => {
   const { p, c } = await mount(); await open(p); fire(button(p, "Delete team"), "click"); await settle(10);
   const region = p.root.querySelector('[role="region"]'); expect(region.textContent).toContain("Helper"); expect(region.textContent).toContain("May create rooms"); expect(region.textContent).toContain("already accepted into rooms stay");
@@ -77,4 +95,15 @@ it("does not show suggestions from an old query after the user changes it", asyn
   fire(button(p, "Add member"), "click"); await settle(10); const input = p.root.querySelector('input[type="search"]'); change(input, "Ca"); await settle(5); fire(button(p, "Search"), "click"); await settle(10);
   change(input, "New"); await settle(5); resolve({ ok: true, candidates: [{ kind: "person", id: "corp/stale", name: "Stale" }] }); await settle(15);
   expect(p.root.textContent).not.toContain("Stale"); expect(c.updateTeam).not.toHaveBeenCalled();
+});
+it("sets the browser title for Administration Teams through the Hub panel", async () => {
+  const panel = await import("/ui/js/panel-hub.js"), clients = await import("/ui/js/hub-client.js");
+  const p = page({ url: "https://hub.example.test/ui/hub/admin?view=teams" }); pages.push(p); words.setLang("en", { store: false });
+  p.document.title = "Previous page"; panel.resetHubSession();
+  clients.setHubClient({ session: async () => ({ signedIn: true, admin: true, features: ["teams-v1"] }), teamsLive: () => true,
+    teams: async () => ({ ok: true, teams: [] }), onSignedOut: () => () => {} });
+  try {
+    await p.mount(h(panel.HubPanel, { route: { panel: "hub", tab: "admin" } })); await settle(20);
+    expect(p.document.title).toBe("Teams · AgEnD");
+  } finally { await p.unmount(); panel.resetHubSession(); clients.setHubClient(null); }
 });

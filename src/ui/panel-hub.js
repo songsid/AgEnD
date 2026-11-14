@@ -143,7 +143,7 @@ export function HubPanel({ route }) {
   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
   const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : hc("admin") : view === "notices" ? hc("noticesTitle")
     : view === "invitations" ? hroom("invitationsTitle") : view === "teams" ? ht("mine") : hc("chats");
-  useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && ["groups", "teams"].includes(view))) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
+  useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && view === "groups")) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
     : html`<${Skeleton} variant="rows" lines=${4} />`;

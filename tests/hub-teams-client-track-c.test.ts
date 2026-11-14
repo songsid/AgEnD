@@ -48,4 +48,6 @@ it("encodes Team feedback queries and quietly retires an aborted search", async 
   controller.abort(); release();
   expect(await held).toMatchObject({ ok: false, status: 0 });
   expect(calls[1]!.init.signal.aborted).toBe(true);
+  await c.teamSuggestions("person", "Riley", null);
+  expect(calls[2]!.path).toBe("/hub/v1/teams/candidates?kind=person&q=Riley");
 });
