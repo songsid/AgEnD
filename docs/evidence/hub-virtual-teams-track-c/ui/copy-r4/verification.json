@@ -1,0 +1,12 @@
+{
+  "baselineHead": "911ab6d147d0ca1c6d7e68a924bb1608e5b81961",
+  "selectedBaselineFailures": 6,
+  "unselectedBaseline": 10,
+  "candidateTests": 16,
+  "files": 1,
+  "maxWorkers": 2,
+  "unknownLabelExpectationRefined": true,
+  "newBrowserRun": false,
+  "newNativeOrMutationCampaign": false,
+  "pmSaidNoNewScreenshots": true
+}

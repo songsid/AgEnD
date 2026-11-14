@@ -107,3 +107,24 @@ it("sets the browser title for Administration Teams through the Hub panel", asyn
     expect(p.document.title).toBe("Teams · AgEnD");
   } finally { await p.unmount(); panel.resetHubSession(); clients.setHubClient(null); }
 });
+it.each(["en", "zh-TW"])("names the ask permission being lost when deleting a Team (%s)", async language => {
+  const { p } = await mount("admin", language); await open(p, language);
+  fire(button(p, language === "en" ? "Delete team" : "刪除團隊"), "click"); await settle(10);
+  expect(p.root.querySelector('[role="region"]').textContent).toContain(language === "en" ? "May ask Helper · until" : "可以問 Helper · 到");
+});
+it.each(["en", "zh-TW"])("marks edited rosters unsaved until Save succeeds (%s)", async language => {
+  const { p, c } = await mount("lead", language); await open(p, language);
+  const unsaved = language === "en" ? "Unsaved changes" : "尚未儲存";
+  expect(p.root.textContent).not.toContain(unsaved);
+  const remove = [...p.root.querySelectorAll("button")].find((row: any) => row.getAttribute("aria-label") === `${language === "en" ? "Remove" : "移除"} Casey`);
+  fire(remove, "click"); await settle(10);
+  expect(p.root.querySelector(".hub-team-actions").textContent).toContain(unsaved); expect(c.updateTeam).not.toHaveBeenCalled();
+  fire(p.root.querySelector("form"), "submit"); await settle(20); expect(p.root.textContent).not.toContain(unsaved);
+});
+it.each(["en", "zh-TW"])("distinguishes never-joined members from a pending joined-status observation (%s)", async language => {
+  const value = team(); value.memberInfo.push({ id: "corp/unknown", name: "Unknown status" } as any); value.members.push("corp/unknown");
+  const { p } = await mount("admin", language, { team: vi.fn(async () => ({ ok: true, team: value })) }); await open(p, language);
+  const rows = [...p.root.querySelectorAll("tbody tr")];
+  expect(rows.find((row: any) => row.textContent.includes("Casey")).textContent).toContain(language === "en" ? "Not yet" : "尚未加入");
+  expect(rows.find((row: any) => row.textContent.includes("Unknown status")).textContent).toContain(language === "en" ? "Not checked yet" : "尚未確認");
+});

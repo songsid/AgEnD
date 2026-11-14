@@ -85,6 +85,7 @@ export function TeamSuggestions({ client, kind = "person", teamId, disabled, onP
 }
 const draftFrom = team => ({ name: team?.name || "", department: team?.department || "", departmentName: team?.departmentName || "", lead: team?.lead || "",
   members: (team?.memberInfo || (team?.members || []).map(id => ({ id, name: id }))).map(row => ({ ...row })) });
+const editableImage = draft => JSON.stringify([draft.name.trim(), draft.department, draft.lead, draft.members.map(row => row.id).sort()]);
 function TeamEditor({ client, id, mode, onSaved, onBack }) {
   const [view, setView] = useState(null), [draft, setDraft] = useState(draftFrom(null)), [error, setError] = useState(null), [busy, setBusy] = useState(false), [picker, setPicker] = useState(id ? null : "department"), [deleting, setDeleting] = useState(false), [reload, setReload] = useState(0), [saved, setSaved] = useState(false);
   const epoch = useRef(0), writing = useRef(false), admin = mode === "admin";
@@ -99,6 +100,7 @@ function TeamEditor({ client, id, mode, onSaved, onBack }) {
     return () => { live = false; epoch.current++; end?.(); };
   }, [client, id, reload]);
   const allowed = !id || view?.canManage === true;
+  const dirty = editableImage(draft) !== editableImage(draftFrom(view));
   const save = async e => {
     e?.preventDefault?.(); if (writing.current || !allowed || !draft.lead || !draft.department || !draft.name.trim()) return;
     writing.current = true; setBusy(true); setError(null); setSaved(false); const mine = ++epoch.current;
@@ -143,9 +145,9 @@ function TeamEditor({ client, id, mode, onSaved, onBack }) {
       <p class="note">${ht("limit")} ${ht("leadRequired")}</p>
       <div class="hub-team-table-wrap"><table class="hub-team-table"><thead><tr><th>${ht("members")}</th><th>${ht("role")}</th><th>${ht("signedIn")}</th><th>${ht("agents")}</th><th><span class="sr-only">${ht("remove")}</span></th></tr></thead><tbody>
         ${draft.members.map(row => html`<tr key=${row.id}><td><strong>${row.name}</strong>${row.login ? html`<small class="note hub-team-detail">${row.login}</small>` : null}${row.department ? html`<small class="note hub-team-detail">${row.department}</small>` : null}</td><td data-label=${ht("role")}>${ht(row.id === draft.lead ? "roleLead" : "roleMember")}</td>
-          <td data-label=${ht("signedIn")}>${row.signedIn === true ? ht("yes") : row.signedIn === false ? ht("notYet") : "—"}</td><td data-label=${ht("agents")}>${row.agents?.length ? row.agents.map(agent => agent.name).join(", ") : ht("none")}</td><td><button type="button" class="btn hub-team-button" disabled=${busy || !allowed || row.id === draft.lead || row.id === view?.lead} aria-label=${`${ht("remove")} ${row.name}`} onClick=${() => { setDraft(old => ({ ...old, members: old.members.filter(member => member.id !== row.id) })); setSaved(false); }}>${ht("remove")}</button></td></tr>`)}
+          <td data-label=${ht("signedIn")}>${row.signedIn === true ? ht("yes") : row.signedIn === false ? ht("notYet") : ht("unobserved")}</td><td data-label=${ht("agents")}>${row.agents?.length ? row.agents.map(agent => agent.name).join(", ") : ht("none")}</td><td><button type="button" class="btn hub-team-button" disabled=${busy || !allowed || row.id === draft.lead || row.id === view?.lead} aria-label=${`${ht("remove")} ${row.name}`} onClick=${() => { setDraft(old => ({ ...old, members: old.members.filter(member => member.id !== row.id) })); setSaved(false); }}>${ht("remove")}</button></td></tr>`)}
       </tbody></table></div>
-      <div class="hub-team-actions"><button type="submit" class="btn btn-primary hub-team-button" disabled=${busy || !allowed || !draft.name.trim() || !draft.department || !draft.lead}>${ht(busy ? "saving" : "save")}</button>${saved ? html`<span role="status">${ht("saved")}</span>` : null}
+      <div class="hub-team-actions"><button type="submit" class="btn btn-primary hub-team-button" disabled=${busy || !allowed || !draft.name.trim() || !draft.department || !draft.lead}>${ht(busy ? "saving" : "save")}</button>${dirty || saved ? html`<span role="status">${ht(dirty ? "unsaved" : "saved")}</span>` : null}
         ${admin && id ? html`<button type="button" class="btn btn-danger hub-team-button" disabled=${busy || !allowed} onClick=${() => setDeleting(true)}>${ht("delete")}</button>` : null}</div>
     </form>`}
     ${deleting ? html`<div class="hub-team-delete" role="region" aria-label=${ht("deleteTitle", view.name)}><h4>${ht("deleteTitle", view.name)}</h4><p>${ht("deleteLead")}</p>
