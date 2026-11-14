@@ -1,6 +1,6 @@
 {
   "parentPr": 3886,
-  "parent": "464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a",
+  "parent": "6c03c4f2f1d40e7b8f33b4522938a16e4f54d2c9",
   "sourceCommit": "c2ee6932d2b350e1e7e98fb0ed04404a84d7303e",
   "originalTestedCommit": "6bdff6d9b5f969581bbd464a98a6715213109a77",
   "stablePatchId": "7fc96c1dcc96d1eef5c8c22e81560def4c9f9fbd",
@@ -19,5 +19,9 @@
     "combinedSourceTypes": 0,
     "combinedTestTypes": 0
   },
-  "teamWalk": "First actual integration walk stopped after11checks on the C editor partial-response bug. Public diagnostic at integration/hub-rooms-rac-u9d8586fd4; not a passing walk."
+  "teamWalk": "Scoped C repair consumed in integration6fcc8ad42; affected desktop and unrun phone actual-server journeys pass44checks. Initial failure retained. PM Team acceptance remains pending.",
+  "originalParent": "464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a",
+  "scopedRepairMerge": "d951bc21bfe67bc945f68b5125ac44ec4993723e",
+  "treeUnchangedSince": "62fbd0da65c6051f39406e2899ed562900e7b40c",
+  "unchangedScope": "All six own R product/test paths retain the recorded digests. Only C scoped repair and evidence enter the plain merge; no new local re-verification."
 }
