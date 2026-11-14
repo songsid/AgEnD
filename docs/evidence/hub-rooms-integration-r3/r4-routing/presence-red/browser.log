@@ -1,0 +1,20 @@
+PASS desktop-en-light Notes Idle dot
+PASS desktop-en-light Planner Idle dot
+PASS desktop-en-light plain message has no agent deliveries
+PASS desktop-en-light @agent routes only to Notes
+PASS desktop-en-light Notes Working dot
+PASS desktop-en-light C answer is acknowledged durably
+PASS desktop-en-light Planner Offline dot
+PASS desktop-en-light @all preflight describes one online and one later
+PASS desktop-en-light Notes Working dot
+PASS desktop-en-light offline Fleet retains exactly one queued delivery
+PASS desktop-en-light Planner Working dot
+PASS desktop-en-light Planner Idle dot
+PASS desktop-en-light both @all answers persisted exactly once
+PASS desktop-en-light Notes Paused dot
+FAIL desktop-en-light quota reason uses viewer language in live panel
+PASS desktop-en-light quota reason reaches real HTTP projection
+PASS desktop-en-light live SSE carries state reason and completed progress
+PASS desktop-en-light no browser error
+PASS desktop-en-light no horizontal document overflow
+{"checks":19,"failed":1,"pictures":7}

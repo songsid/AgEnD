@@ -1,0 +1,19 @@
+# Real shared-shell rooms walk, revision1
+
+Source `7ce5d52798704ca3000b313a30bc7d1da111c5ef` follows public checkpoint0529469f. It consumes U1 full-shell mounts and the four Lumen corrections from249c2d6e, U2 singular-count/member-order/empty-Agent changes from2925fc93, and R structured system metadata from509b940cb. NewRoom opens from the actual sidebar; the component-harness route is removed. Both A Admin and Room Admin mounts survive the merge. The two U2 list test intercepts use the author's query-insensitive version. Three new U1 dictionary keys are copied by the strings owner's explicit instruction for this combined branch only.
+
+One focused run passes106/106 across15 server/UI files, including actual R/C durable lost-ACK/reconnect and actual A service lifecycle/physical drain. Both native TypeScript programs exit0. Browser-only harness edits followed these checks; source/test bodies did not change. Changelog checks465 fragments and whitespace is clean. Historical78/10,46/5 and16/8 scopes remain in the parent packet and overlap this revision; they are not added.
+
+The real HTTPS/SQLite browser walk passes38/38 and produces12 original PNGs: desktop EN/light and phone zh-TW/dark each show list, New room, thread, settings, private assistant and administration. It covers complete direct-group count/snapshot, never-Hub-sign-in feedback, human posts, viewer-localized system creation without Copy actions, the shared members SVG, settings rename and @all switch persistence, a localized room-assistant mention, plain private-assistant requests, correct direct prompts and named creator/admin projections. There are no API response fixtures. Directory and physical assistant worker are inert, and external origins are blocked. No vendor API/account/real AD/Fleet is used.
+
+The first capture's36/38 was a harness error: it read the native textarea placeholder, which the shared composer intentionally sets to one space while drawing `.composer-ph` and `aria-label`. A follow-up wait on the same wrong attribute timed out. Images already showed the correct prompts. The final receipt checks the actual drawn text and accessible label; no product fix was needed for that assertion.
+
+C invitation/Team services and production exports are still pending, so these optional ports remain uncomposed. This is the bounded shared-shell subset, not a claim that invitations, Teams, all agent presence/@all paths or fullS142 are complete. Those remain in the next walkthrough. Ordinary parity/source and parent-first/current-CI controls retain their own scopes.
+
+## PM subset follow-up
+
+Lumen reported no blocker at23d2db2f after closely inspecting six of the12 images (settings/admin/thread in both locales). This scope is narrower than the image-only child's12-image inspection above. The PM confirmed localized system text, working icons, viewer-first members, the empty-Agent sentence, the room settings/history/menu/not-yet-signed-in presentation, phone sheet/admin and NewRoom placement.
+
+The next bounded pass will consume three owner changes: TrackA removes the sign-in how-to when the selected account is already signed in; TrackU2 aligns the Name Save button; TrackU1 orders Administration as Let colleagues join, Rooms, Room assistant, Connected fleets, pairing. These are routed on the existing integration threads.
+
+The unfolded pairing card in this rig is expected: the owned s3bRig/real-server script does not compose companyJoin. The existing ManualFrame folds it when company sign-in and the entry marks are present. This screenshot therefore does not establish a one-way-in regression. Invitations, Teams, agent routing/@all and wider presence remain for the full walk.

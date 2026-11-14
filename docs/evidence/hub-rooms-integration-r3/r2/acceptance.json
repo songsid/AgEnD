@@ -1,0 +1,209 @@
+{
+  "sourceHead": "5706f1a98c6c72fc0faf210a77f2791cc2920326",
+  "previousPublishedCheckpoint": "6b72e67bacf42b911673f8c9222c38d83b1ac131",
+  "consumed": {
+    "TrackU1": "ea9cc1a9c7f2aec902445570b0bcf18f3168c633",
+    "TrackA": "4786525eba0b148be73dffff675b6bae2c0d66f0",
+    "TrackU2": "cd430adb68226a1c8dd64a4220fe492f70932336",
+    "TrackACopy": "993c742606528352b8944a3aca038be1d8680ed9"
+  },
+  "merge": "Plain merges; one panel-hub conflict moves the original gated A mount to the U1 slot and removes the old trailing Rooms placement. U2 plain merge is clean; own R/C/A TypeScript runtime sources stay unchanged from revision1. Final A478 placement conflict retains the current combined panel byte-identically (e7c6b05af310f729bf16d9428d6aa584d8f29969); consumes its extra actual-panel order assertion.",
+  "checks": [
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-admin-entry-ui.test.ts tests/hub-assistant-admin-ui.test.ts tests/hub-room-settings.test.ts tests/hub-admin-rooms.test.ts --maxWorkers=2",
+      "result": "51/51 across4 files on06c7558c2. Final A placement adds one assertion to the existing assistant file, rerun23/23; all runtime src files remain byte-identical from06c through final source. Raw outputs included, counts overlap."
+    },
+    {
+      "command": "PW_DIR=<owned install> PLAYWRIGHT_BROWSERS_PATH=<owned cache> OUT=.artifacts/rooms-integration/r2/browser-complete nice -n10 node_modules/.bin/tsx scripts/manual/hub-rooms/real-server.mts",
+      "result": "45/45 checks,16 original PNGs on final source; actual R HTTPS/SQLite +A service/inert worker and U shell, including real phone horizontal table scroll and row menu. Raw output and per-request status receipt included."
+    },
+    {
+      "name": "native-scope",
+      "result": "Earlier two native programs0 remain historical at revision1; no new native run for the JS/copy/CSS move. Source TypeScript files are byte-unchanged; new author UI tests had separately reported native test types0."
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-assistant-admin-ui.test.ts --maxWorkers=2",
+      "result": "23/23 after final A placement assertion; overlaps51/4 above."
+    }
+  ],
+  "bindings": [
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "0cb41071e33cc758f061bdece3191b84f700edd29a38e28d89f29d765af14ae5"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "85cc6620f8408fe97058839541635568408ca1be9a4b361131c699f253ddd06a"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "2ad90b5d2f5877ae2e06936665d6c291e9b67134343275b39890bfd94116fa9f"
+    },
+    {
+      "path": "src/hub/rooms/admin.ts",
+      "sha256": "6c9acbfd88226cea40d942efade23fc56be061c5fdb2e2b43b61692721375494"
+    },
+    {
+      "path": "src/hub/rooms/assistant.ts",
+      "sha256": "6edc4304b8ead380c43b9c76fd741d823c8fc0ace19df48eb24f9eb3cee51904"
+    },
+    {
+      "path": "src/hub/rooms/directory.ts",
+      "sha256": "2e2fe034190b84b6d2d3d6afeac497f1804e631ad7c4d2003bc2608e828b0061"
+    },
+    {
+      "path": "src/hub/assistant/service.ts",
+      "sha256": "f08f8287bf02920615c7ac05d00d5be672c7bdceb9e76cd8eb21700340a345e6"
+    },
+    {
+      "path": "src/hub/assistant/runner.ts",
+      "sha256": "659cf7aeb5b0d9d4f92af72f408bbc424b72ab8e34e942b031f2c2f3ab947a00"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "sha256": "36d930616bb9fdd6dc35c726271bf5a406270699127e0ab96ffc01a512c4b581"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "cca7ea85c2288b67a7c7b6292625ebd4ca11682be5fca105ac1293972b35035a"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "98ac233c173e4f34e18a96378db7c3a92427d12fd336ca5a633f59ebbfbb51b2"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "16c865fa7ce2f556818918a1a86e72d4b2744590c532c209e4f0e23626488fc8"
+    },
+    {
+      "path": "src/ui/hub-room-list.js",
+      "sha256": "407952de0a63ebae59adc7870258e4ae69396fc79507fccf61d06cd8323b7f31"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "bbec7589f17896c6f73a6a3d56f4dc82638d4d916bda9ac1ca44ae65bcf0f5a2"
+    },
+    {
+      "path": "src/ui/hub-room-composer.js",
+      "sha256": "ed79763edea2363578f061ea21697f94066b298ae4e14b610b0ea585011ac31f"
+    },
+    {
+      "path": "src/ui/hub-room-new.js",
+      "sha256": "f4ade027d0733418d22f42d333dca9453f2f496eb58eaec4cd2ab0ee76459286"
+    },
+    {
+      "path": "src/ui/hub-room-members.js",
+      "sha256": "6412d130351d049dcad325732b3f3cbbc42e24eb2655ca9f7c7cc109eaf085e3"
+    },
+    {
+      "path": "scripts/manual/hub-rooms/real-server.mts",
+      "sha256": "304ed6eaab9a7d8988171ba24bbc16e7b26f06915332c6a1b054e6a8f80cc268"
+    },
+    {
+      "path": "tests/hub-room-assistant-integration-r3.test.ts",
+      "sha256": "5dadcf4c1f6641ee9cdd4f0ead2a2786c3ff41a30f40bd28d3b6045fdb9ce8ad"
+    },
+    {
+      "path": "tests/hub-room-rc-integration-r3.test.ts",
+      "sha256": "66d01cdecf39200501609e115cd7fb9b147db5682e0df06489628948f5b3a1f7"
+    },
+    {
+      "path": "tests/hub-room-client-contract-r3.test.ts",
+      "sha256": "055ff308969294778499efbaec5d0ecdf0bf80c02c5a17a72b73917cfbe364e6"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "d416279bac416c4b616a9660f1d7d1104199ea6a832361c17051fe3909b59da5"
+    },
+    {
+      "path": "src/ui/hub-room-strings.js",
+      "sha256": "a854bad193477756a421d4d4a01af8ef56c53b6fb2af5ab4c18b846224dff6c9"
+    },
+    {
+      "path": "src/ui/hub-room-new-strings.js",
+      "sha256": "33f6cca50137fb9bc3c60bb878299ff452dbe1378b8907888e5fd02c051c397e"
+    },
+    {
+      "path": "src/ui/hub-room-members-strings.js",
+      "sha256": "109ecc9238c2a5ccbd77f5faaf20148fdad12b1502c50d70277ef36ff69ea32a"
+    },
+    {
+      "path": "src/ui/hub-room-settings.js",
+      "sha256": "e96d99d9ec5af3e20a3a537ef3f9cd77ca6a5cca749aabb2b386926b6f8c076a"
+    },
+    {
+      "path": "src/ui/hub-admin-rooms.js",
+      "sha256": "9263e3d8afb9c5a00082059e9cdb116a39e2c2fd2ff35f65c191afc387e0ac95"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "sha256": "94572a0b13850df731507e44a8f160083ea08fb1fc36ea7fc5450d163e911075"
+    },
+    {
+      "path": "tests/hub-room-system-r3.test.ts",
+      "sha256": "4428bc5176e1bd82314a562cdfa91766df1954737f9f401329d4f25be923a75f"
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "sha256": "4d0f39f5feef8aa330f71dbe55c89f9f1a8411cc5c0b68805df33f3555e2bc79"
+    },
+    {
+      "path": "tests/hub-room-new.test.ts",
+      "sha256": "3ac5b61792fa834fcd8df8527ee1b5d0a37beda73adc4d653ba3e0b19d3ce0d6"
+    },
+    {
+      "path": "tests/hub-room-members.test.ts",
+      "sha256": "dfa48672593d1dec806c3abd02bb151dbf7f18bd8d8d59fa1dfc141381508c74"
+    },
+    {
+      "path": "tests/hub-room-settings.test.ts",
+      "sha256": "c684ffbd9a0db4da7246d5759ba46c04999cdb08c8fcfd0ad0326d84df05086a"
+    },
+    {
+      "path": "tests/hub-room-thread-3092.test.ts",
+      "sha256": "928b1dcd2732e7d5d7a65b18cd76ad306abb7671f02ecbc40bd98b451b549561"
+    },
+    {
+      "path": "tests/hub-room-list-3092.test.ts",
+      "sha256": "0f8a6ec74ee161fa3a3171da857f80b412f3850228db80e07b086748225c17ff"
+    },
+    {
+      "path": "src/ui/hub-assistant-admin.js",
+      "sha256": "183eece7eed0cd2190a96fb86f10876f3c0bf285064fab091e9209778978320c"
+    },
+    {
+      "path": "src/ui/hub-assistant-admin-strings.js",
+      "sha256": "58837fd4348ca9cf8dbcc0666ffc347513281c933b1ab6b03625050e1cc37442"
+    },
+    {
+      "path": "src/ui/shared/hub-rooms-u2.css",
+      "sha256": "c43f4ddbd4ec468ec6cc5db41aa56533d77dd5a989e9bf160353ab49e317a73c"
+    },
+    {
+      "path": "tests/hub-assistant-admin-ui.test.ts",
+      "sha256": "468983405a92b34ad99c419415bb2c6a72d0f0ef26eb149fab038b3b01f785da"
+    },
+    {
+      "path": "tests/hub-admin-entry-ui.test.ts",
+      "sha256": "3524ca82c01f47fc13d2f334f52e164e30e8eaae3a025e75a289a7d6866116cb"
+    },
+    {
+      "path": "tests/hub-admin-rooms.test.ts",
+      "sha256": "80b04cf8f7ea2768565f94c31ef031364a00383f159b18f63437a3e9d289b920"
+    }
+  ],
+  "newJudgments": [
+    "Name input and Save top edge/height agree within2px in both actual layouts.",
+    "Signed-in helper is exactly Signed in. / \u5df2\u767b\u5165 with no sign-in instructions.",
+    "Admin Rooms\u2192Room assistant\u2192Connected fleets\u2192pairing in document order; the rig has no companyJoin service.",
+    "Prior system/SVG/direct-prompt/singular and shared-shell/actual-service controls still pass.",
+    "Phone internal table scroll exposes at least2 actual menu actions within the viewport; supplemental account and lower-card captures resolve the first image pass limitations."
+  ],
+  "remaining": [
+    "Concrete C invitation/Team service+migration+factory and full agent-routing/presence walkthrough remain pending. Optional C services stay uncomposed.",
+    "R3/R4 parent-first sync/currentCI/ordinary parity/coordinator merge control remain; this WIP packet is not fullS142 completion."
+  ],
+  "rollback": "Retain DB/content keys/input history and use a compatible correction; do not remove retained data for a UI change.",
+  "runtimeUnchangedFromFirstR2Capture": true,
+  "imageReview": "Image-only child inspected all16 final images: no visible layout blocker. Supplemental phone table view exposes timestamps/status/actions and readable open menu; account helper reads \u5df2\u767b\u5165, desktop Signed in.; core+tail images establish Rooms\u2192A\u2192Fleets\u2192pairing and both settings align Name/Save."
+}

@@ -1,0 +1,122 @@
+{
+  "tool": "gitleaks8.24.3",
+  "localGit": "2.34.1 (no remerge support)",
+  "conservativeAllParentFindings": [
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json",
+      "Commit": "4bcf218c2bd4172204d487baa950787cc081e740",
+      "StartLine": 95,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "4bcf218c2bd4172204d487baa950787cc081e740:docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json:generic-api-key:95",
+      "publicAssetMatches": true,
+      "mergeParents": 2
+    },
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
+      "Commit": "4bcf218c2bd4172204d487baa950787cc081e740",
+      "StartLine": 867,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "4bcf218c2bd4172204d487baa950787cc081e740:docs/evidence/hub-room-consent-track-c/browser-1/receipt.json:generic-api-key:867",
+      "publicAssetMatches": true,
+      "mergeParents": 2
+    },
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/browser-final/receipt.json",
+      "Commit": "4bcf218c2bd4172204d487baa950787cc081e740",
+      "StartLine": 1607,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "4bcf218c2bd4172204d487baa950787cc081e740:docs/evidence/hub-room-consent-track-c/browser-final/receipt.json:generic-api-key:1607",
+      "publicAssetMatches": true,
+      "mergeParents": 2
+    },
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/browser-final/receipt.json",
+      "Commit": "96c207feaf0a546622347f9c2a38c7e5a631dc66",
+      "StartLine": 1607,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "96c207feaf0a546622347f9c2a38c7e5a631dc66:docs/evidence/hub-room-consent-track-c/browser-final/receipt.json:generic-api-key:1607",
+      "publicAssetMatches": true,
+      "mergeParents": 1
+    },
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
+      "Commit": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+      "StartLine": 867,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "67080f8bc4c57a48b134ba052480f70b8e8deb33:docs/evidence/hub-room-consent-track-c/browser-1/receipt.json:generic-api-key:867",
+      "publicAssetMatches": true,
+      "mergeParents": 2
+    },
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json",
+      "Commit": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+      "StartLine": 95,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "67080f8bc4c57a48b134ba052480f70b8e8deb33:docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json:generic-api-key:95",
+      "publicAssetMatches": true,
+      "mergeParents": 2
+    },
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json",
+      "Commit": "0157d85ba7071c03d1137f04a32f314ed79db87a",
+      "StartLine": 95,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "0157d85ba7071c03d1137f04a32f314ed79db87a:docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json:generic-api-key:95",
+      "publicAssetMatches": true,
+      "mergeParents": 2
+    },
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
+      "Commit": "0157d85ba7071c03d1137f04a32f314ed79db87a",
+      "StartLine": 867,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "0157d85ba7071c03d1137f04a32f314ed79db87a:docs/evidence/hub-room-consent-track-c/browser-1/receipt.json:generic-api-key:867",
+      "publicAssetMatches": true,
+      "mergeParents": 2
+    },
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json",
+      "Commit": "ce5756066e9faa53ac73c39a4e06a374a30d6a58",
+      "StartLine": 95,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "ce5756066e9faa53ac73c39a4e06a374a30d6a58:docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json:generic-api-key:95",
+      "publicAssetMatches": true,
+      "mergeParents": 1
+    },
+    {
+      "File": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
+      "Commit": "ce5756066e9faa53ac73c39a4e06a374a30d6a58",
+      "StartLine": 867,
+      "RuleID": "generic-api-key",
+      "Fingerprint": "ce5756066e9faa53ac73c39a4e06a374a30d6a58:docs/evidence/hub-room-consent-track-c/browser-1/receipt.json:generic-api-key:867",
+      "publicAssetMatches": true,
+      "mergeParents": 1
+    }
+  ],
+  "minimalLinearHistoryExceptions": [
+    "96c207feaf0a546622347f9c2a38c7e5a631dc66:docs/evidence/hub-room-consent-track-c/browser-final/receipt.json:generic-api-key:1607",
+    "ce5756066e9faa53ac73c39a4e06a374a30d6a58:docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json:generic-api-key:95",
+    "ce5756066e9faa53ac73c39a4e06a374a30d6a58:docs/evidence/hub-room-consent-track-c/browser-1/receipt.json:generic-api-key:867"
+  ],
+  "currentReceiptTransforms": [
+    {
+      "path": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
+      "entries": 98,
+      "digestGroups": 98,
+      "lossless": true
+    },
+    {
+      "path": "docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json",
+      "entries": 98,
+      "digestGroups": 98,
+      "lossless": true
+    },
+    {
+      "path": "docs/evidence/hub-room-consent-track-c/browser-final/receipt.json",
+      "entries": 98,
+      "digestGroups": 98,
+      "lossless": true
+    }
+  ],
+  "scope": "All ten all-parent findings prove public asset hashes. Only the three non-merge occurrences visible to CI remerge are exempted; seven automatic-parent copies are not extra exemptions. Fresh exact CI remerge remains required."
+}

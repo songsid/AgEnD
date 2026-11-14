@@ -1,0 +1,144 @@
+{
+  "sourceHead": "5ca70231b519db8ee3c24aacc6046116ddeeef4c",
+  "parents": {
+    "R2": "8cfe0d5dec79468478246becac2bdc4ed788c3e9",
+    "R3": "5b71d3f4d0d2496278fb90f26f326ebabf19c8ed",
+    "R4": "ddd450f07f7113007926b5b5807448a41eba0bf9",
+    "AService": "65d1433cb724a15f1c0f00b809962a02e7e06971",
+    "AUI": "f2b896ca699e16927808c72932f4aa96d346a642",
+    "U1": "485f0d30f245067e28898b017df8d483304f1d25",
+    "U2": "8443594357f63352e22f6dc7fd645828e5513b67",
+    "C2": "548b06e4c83e7aef73ad3e1f8621b7ba3ae05ba2"
+  },
+  "checks": [
+    {
+      "name": "actual-RC-A-server",
+      "tests": 78,
+      "files": 10,
+      "outcome": "pass"
+    },
+    {
+      "name": "UI-scope",
+      "tests": 46,
+      "files": 5,
+      "outcome": "pass"
+    },
+    {
+      "name": "native-source",
+      "outcome": "exit0"
+    },
+    {
+      "name": "native-tests",
+      "outcome": "exit0"
+    },
+    {
+      "name": "browser",
+      "checks": 16,
+      "pictures": 8,
+      "outcome": "pass"
+    },
+    {
+      "name": "changelog",
+      "outcome": "465 fragments OK"
+    }
+  ],
+  "bindings": [
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "0cb41071e33cc758f061bdece3191b84f700edd29a38e28d89f29d765af14ae5"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "85cc6620f8408fe97058839541635568408ca1be9a4b361131c699f253ddd06a"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "6be7306341b65808c72f918fbf7dfecc4234c07a5746f3b8b53d2d6190d31fb3"
+    },
+    {
+      "path": "src/hub/rooms/admin.ts",
+      "sha256": "711fd40255afb7917ecceb6646e1a24e60f38d293eac262665fb4dbf695ed00b"
+    },
+    {
+      "path": "src/hub/rooms/assistant.ts",
+      "sha256": "6edc4304b8ead380c43b9c76fd741d823c8fc0ace19df48eb24f9eb3cee51904"
+    },
+    {
+      "path": "src/hub/rooms/directory.ts",
+      "sha256": "2e2fe034190b84b6d2d3d6afeac497f1804e631ad7c4d2003bc2608e828b0061"
+    },
+    {
+      "path": "src/hub/assistant/service.ts",
+      "sha256": "f08f8287bf02920615c7ac05d00d5be672c7bdceb9e76cd8eb21700340a345e6"
+    },
+    {
+      "path": "src/hub/assistant/runner.ts",
+      "sha256": "659cf7aeb5b0d9d4f92af72f408bbc424b72ab8e34e942b031f2c2f3ab947a00"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "sha256": "36d930616bb9fdd6dc35c726271bf5a406270699127e0ab96ffc01a512c4b581"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "cca7ea85c2288b67a7c7b6292625ebd4ca11682be5fca105ac1293972b35035a"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "d26d7302e8506e4f9b7cc33bdf02c44e18e659aad1b4297ca2a2d213f337f8d5"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "16c865fa7ce2f556818918a1a86e72d4b2744590c532c209e4f0e23626488fc8"
+    },
+    {
+      "path": "src/ui/hub-room-list.js",
+      "sha256": "407952de0a63ebae59adc7870258e4ae69396fc79507fccf61d06cd8323b7f31"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "ef9b0dca8e90f203c063857edd09181dacee014011d9f4780a8fe4b19404e79e"
+    },
+    {
+      "path": "src/ui/hub-room-composer.js",
+      "sha256": "e82d8e2f387d67fb45f69d0dde7db08c951662957aa04f2d7d2c569c7569e24b"
+    },
+    {
+      "path": "src/ui/hub-room-new.js",
+      "sha256": "d7a4531a3ddcec79362e3ee2e0247957973b502c830ffd55ab5dffe75229fea6"
+    },
+    {
+      "path": "src/ui/hub-room-members.js",
+      "sha256": "6698ee91c9726c9a4505f16ead62cb1276dc078747b3fbd3b45b6382262bc7f8"
+    },
+    {
+      "path": "scripts/manual/hub-rooms/real-server.mts",
+      "sha256": "dbd735a0a41472cde44d7de584c61f63ea0792af1ca43da800834a07059e41d1"
+    },
+    {
+      "path": "tests/hub-room-assistant-integration-r3.test.ts",
+      "sha256": "5dadcf4c1f6641ee9cdd4f0ead2a2786c3ff41a30f40bd28d3b6045fdb9ce8ad"
+    },
+    {
+      "path": "tests/hub-room-rc-integration-r3.test.ts",
+      "sha256": "66d01cdecf39200501609e115cd7fb9b147db5682e0df06489628948f5b3a1f7"
+    },
+    {
+      "path": "tests/hub-room-client-contract-r3.test.ts",
+      "sha256": "055ff308969294778499efbaec5d0ecdf0bf80c02c5a17a72b73917cfbe364e6"
+    }
+  ],
+  "remaining": [
+    "C invitation/Team service+factory implementation",
+    "NewRoom/settings/admin UI shell mounts",
+    "Lumen full workflow walkthrough and ordinary current-head parent-first review/CI"
+  ],
+  "boundaries": [
+    "owned HTTP/SQLite and pinned TLS/WSS",
+    "actual R dispatcher, C durable adapter, A service/runner and shared U1/U2 components",
+    "physical agent/assistant execution and directory are inert",
+    "NewRoom uses component harness; list/thread/private assistant use actual shell",
+    "no real Fleet/directory/account/vendor CLI/host operation",
+    "historical counts overlap; no summed total"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "exit": 143,
+  "focusedVerdict": "918/918 across11 files passed before native commands",
+  "nativeVerdict": "none: combined chain terminated with empty native logs",
+  "followUp": "Both programs independently rerun, exit0; final source/test logs bound at sourcef22"
+}

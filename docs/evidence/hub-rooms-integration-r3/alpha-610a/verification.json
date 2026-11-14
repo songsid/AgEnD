@@ -1,0 +1,24 @@
+{
+  "merge": "5454d910cad5d6673f488d7592f1e7cb50425625",
+  "parents": [
+    "628635432f8e2c912e6e6eb7028289b5983b2419",
+    "610a3ec8778c922d9b24514e728698582c5d336b"
+  ],
+  "incoming": "610a3ec8778c922d9b24514e728698582c5d336b",
+  "priorIntegration": "628635432f8e2c912e6e6eb7028289b5983b2419",
+  "testedSource": "500ee6d50130894cae39121ea556414a2864d4bb",
+  "deltaFromPrior": [
+    "docs/evidence/hub-rooms-directory-r3/README.md",
+    "docs/evidence/hub-rooms-directory-r3/acceptance.json",
+    "docs/evidence/hub-rooms-directory-r3/ready/README.md",
+    "docs/evidence/hub-rooms-directory-r3/ready/bindings.json",
+    "docs/evidence/hub-rooms-directory-r3/ready/doc-client.log",
+    "docs/evidence/hub-rooms-directory-r3/ready/focused.log",
+    "docs/evidence/hub-rooms-directory-r3/ready/r2-alpha-sync/README.md",
+    "docs/evidence/hub-rooms-directory-r3/ready/r2-alpha-sync/focused.log",
+    "docs/evidence/hub-rooms-directory-r3/ready/r2-alpha-sync/verification.json"
+  ],
+  "runtimeAndTests": "No non-document path differs from the prior integration. All final88browser/42server/37UI/source+test-native scopes carry only by unchanged source bytes. No fresh post-merge execution claimed.",
+  "resolutions": "Two directory evidence files equal incoming; other9conflict files equal prior integrated blobs. Runtime ports, C service, official A types, owner/sequence/SSE and all UI inventory entries remain exact.",
+  "whitespace": "Three incoming historical logs retain their original extra blank line at EOF. No own runtime/test whitespace change."
+}

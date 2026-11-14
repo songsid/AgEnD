@@ -1,0 +1,12 @@
+{
+  "baselineRef": "0529469f",
+  "baselineSourceSha256": "479245737600ad2ed764406779ad6fd8b2b5ed0a36acb5c1fc318034365debca",
+  "currentTestSha256": "9b15cd2d748e6f4cbe0f367d9e338aa6c3b8d0081dc7ded2b6fb52073429ef19",
+  "selected": "invites only through|accepts the exact named|decline and manager|keeps duplicate pending|rolls membership and invitation|retains pending|refuses withdrawn|lets an owner",
+  "types": 0,
+  "testExit": 1,
+  "assertionFailures": 8,
+  "restoredSourceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
+  "restored": true,
+  "restoredTests": 0
+}

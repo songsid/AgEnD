@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3
+
+ ❯ tests/hub-compose.test.ts (132 tests | 1 failed) 84678ms
+     × composes S1 + S2 + S3 + DB + audit; serves /hub/v1 on the Hub web listener; fence → unavailable; close leaves nothing listening 674ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-compose.test.ts > Hub server factory (S5b) over a really initialized Hub > composes S1 + S2 + S3 + DB + audit; serves /hub/v1 on the Hub web listener; fence → unavailable; close leaves nothing listening
+AssertionError: expected [ 'company-join', …(19) ] to deeply equal [ 'company-join', …(18) ]
+
+- Expected
++ Received
+
+@@ -1,10 +1,11 @@
+  [
+    "company-join",
+    "enrolment-code",
+    "s1-transport",
+    "s3-http",
++   "s3-room-invitations",
+    "s3-session-epoch",
+    "s5-audit",
+    "s5-browser-tls",
+    "s5-directory-mount-intent",
+    "s5-directory-settings",
+
+ ❯ tests/hub-compose.test.ts:310:147
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 3 passed (4)
+      Tests  1 failed | 149 passed (150)
+   Start at  03:20:50
+   Duration  87.46s (transform 6.71s, setup 484ms, import 13.91s, tests 88.21s, environment 15ms)
+

@@ -1,0 +1,8 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3
+
+
+ Test Files  3 passed (3)
+      Tests  37 passed (37)
+   Start at  04:51:57
+   Duration  5.51s (transform 1.10s, setup 234ms, import 452ms, tests 5.74s, environment 0ms)

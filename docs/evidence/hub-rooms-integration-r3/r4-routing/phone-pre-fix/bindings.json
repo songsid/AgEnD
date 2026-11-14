@@ -1,0 +1,22 @@
+{
+  "sourceCheckpoint": "5a921fdca1f8dd6111f676256444a5ba729abab2",
+  "bindings": {
+    "scripts/manual/hub-rooms/routing.mts": "b98947646c54493d7224bbc8a71649658da20748ebf3c2f026ce1d12839ca477",
+    "src/ui/hub-room-thread.js": "d5a2f2178161b683477e2c8e5c0f5dbf5317e71570d431c1aab8e63f864f8234",
+    "src/ui/hub-room-members.js": "f7466a4aecbf6d8f23a118ab88074c79fd3f6d967f5045db55820f02774ecc3a",
+    "src/ui/hub-room-presence.js": "1dbfbfcf3b813e530631571f49e5a55cc0cb079af148138d040fce94a85828eb",
+    "src/ui/hub-room-list.js": "d485fa5ab212a0e852fef4a248e0973d5a01117ce4b7ecd364cc4e0cc2b12040",
+    "src/ui/hub-room-strings.js": "8f34191fed0611636caad342b813d7a5379d02a3c5bbf1bdfa6af9bb3f199a27",
+    "src/hub/invitations.ts": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+    "src/hub/http/compose.ts": "cfacd92d60cdc2023c05215f28351ce7eb04cb81dcbf72df4517442acf990fa4",
+    "src/hub/rooms/agents.ts": "0539ee9a0c3d819b0b24a66b855fde906d10427cc9c3c61e3c94ed642ab3eb64",
+    "src/hub/member/room-ask.ts": "36d930616bb9fdd6dc35c726271bf5a406270699127e0ab96ffc01a512c4b581"
+  },
+  "uiSources": {
+    "U1": "af4d198e1b4acd2f1d4425bee47b7846d3699c0c",
+    "U2": "9517a304abd88f8b88b39b19a1bf5860556d7062",
+    "M1Module": "0be82ce1546e1fca5c1a8b624f7aa51c65e9d246"
+  },
+  "Cconsent": "8a1974312ba09a589b85c8eb563e76cae19f0aa7",
+  "result": "18/19checks; onlylocalizedquotareasonfails;7/7phonePNGsvisuallyclearapartfromknownreason."
+}

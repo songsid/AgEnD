@@ -1,0 +1,20 @@
+{
+  "sourceMerge": "970114695900320371fec4929de9003f7d0851c9",
+  "parents": [
+    "aaddc19f781b578128640eab650ec9df3691ae6a",
+    "7c12d23c0c0d7e4bc5c242388014b69191df6cf1"
+  ],
+  "alpha": "7c12d23c0c0d7e4bc5c242388014b69191df6cf1",
+  "unchangedSince": "aaddc19f781b578128640eab650ec9df3691ae6a",
+  "ownPaths": [
+    "src/hub/invitations.ts",
+    "tests/hub-room-consent-track-c.test.ts",
+    "src/hub/compose/server.ts",
+    "tests/hub-compose.test.ts",
+    "src/hub/member/room-ask.ts",
+    "src/hub/compose/member.ts"
+  ],
+  "localVerification": "Not rerun: unchanged own source/tests, per decision5afe2996. Fresh exact-head CI and formal re-APPROVE required.",
+  "carryScope": "179/18 and both native programs at c0e172f91 retain that source scope;43owned PNGs unchanged. Incoming #3877 gallery remains its owner evidence.",
+  "nits": "Previously cleared duplicate string keys and skill heading blank remain deferred."
+}

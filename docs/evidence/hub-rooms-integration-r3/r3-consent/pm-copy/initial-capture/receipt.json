@@ -1,0 +1,9 @@
+{
+  "sourceHead": "1e0bdbb0602755d8b7b05e1fda5695fadc6c4efc",
+  "image": "phone-zh-TW-dark-consent-nav.png",
+  "sha256": "5158efe89ffa5d547853bf4a67a439750427e6ecf5bcf55932e517d363569f76",
+  "browserChecks": 80,
+  "browserFailures": 0,
+  "visualFinding": "One of22 screenshots captured the phone drawer during its slide; labels are clipped. Other21 visuallyclear. This image cannot verify the full navigation row.",
+  "correction": "Harness waits for sidebar left/right to settle inside viewport before measuring/capturing; no product change."
+}

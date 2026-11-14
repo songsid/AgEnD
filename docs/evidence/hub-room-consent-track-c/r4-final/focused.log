@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+(node:53103) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  9 passed (9)
+      Tests  84 passed (84)
+   Start at  04:42:03
+   Duration  14.59s (transform 9.82s, setup 463ms, import 15.54s, tests 8.93s, environment 1ms)
+
