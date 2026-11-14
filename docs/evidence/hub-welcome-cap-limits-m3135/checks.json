@@ -1,0 +1,25 @@
+{
+  "product": "ee932dce53b1e024e87d5678c1cb1077a5581940",
+  "parent": "7b5870c9eaf5385e4b1940236b7a4d737a64f927",
+  "welcomeReceiveMax": 32,
+  "HubWelcomeSendMax": 16,
+  "helloReceiveMax": 32,
+  "memberHelloSendMax": 16,
+  "before": {
+    "failed": 1,
+    "passed": 1,
+    "skipped": 27
+  },
+  "receiveOnly": {
+    "failed": 1,
+    "passed": 1,
+    "skipped": 27
+  },
+  "final": {
+    "passed": 29
+  },
+  "sourceTypesExit": 0,
+  "testTypesExit": 0,
+  "absentAndEmptyListsAccepted": true,
+  "newCapabilities": []
+}
