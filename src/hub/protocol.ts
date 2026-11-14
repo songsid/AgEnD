@@ -118,7 +118,10 @@ export const webOriginStatementSchema = z.strictObject({ v: z.literal(1), webOri
 export const relocationStatementSchema = z.strictObject({ v: z.literal(1), from: z.string().min(1).max(2048), to: z.string().min(1).max(2048),
   spkiSha256: hash, revision: epoch.min(1), signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/) });
 const frame = <T extends string, P extends z.ZodType>(type: T, payload: P) => z.strictObject({ v: z.literal(1), type: z.literal(type), requestId: uuid, linkEpoch: epoch, payload });
-const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(16), memberBootId: uuid });
+/** Receive-first rollout: Hubs accept 32 names, but this build's members still emit at most 16 (mandatory included)
+ * for older Hubs. Raise the send bound only in a later release. Version reports travel as values, not capability names. */
+const memberHelloCapabilities = z.array(identifier).max(16);
+const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(32), memberBootId: uuid });
 const welcome = z.strictObject({ selectedVersion: z.literal(1), hubId: uuid, fleetId: uuid, linkEpoch: epoch.min(1), revocationVersion: epoch,
   /** Sent only when the hello offered welcome-caps-v1: the Hub's own optional features. */
   capabilities: z.array(identifier).max(16).optional(),
@@ -158,7 +161,11 @@ export const serverFrameSchema = z.union([
 ]);
 export const parseMemberFrame = (input: string | Buffer): HubMemberFrame => validated(memberFrameSchema, parseStrictJson(input));
 export const parseServerFrame = (input: string | Buffer): HubServerFrame => validated(serverFrameSchema, parseStrictJson(input));
-export function encodeMemberFrame(value: HubMemberFrame): string { return JSON.stringify(parseMemberFrame(JSON.stringify(value))); }
+export function encodeMemberFrame(value: HubMemberFrame): string {
+  const frame = parseMemberFrame(JSON.stringify(value));
+  if (frame.type === "hello") validated(memberHelloCapabilities, frame.payload.capabilities);
+  return JSON.stringify(frame);
+}
 export function encodeServerFrame(value: HubServerFrame): string { return JSON.stringify(parseServerFrame(JSON.stringify(value))); }
 export const validateAsker = (input: unknown): HubAskerEnvelope => validated(askerSchema, input);
 export const validateAuthorization = (input: unknown): HubAuthorizationRequest => validated(authorizationSchema, input);
