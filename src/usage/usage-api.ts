@@ -2,7 +2,7 @@
  * AI usage HTTP API.
  *
  *   GET /api/ai-usage → { fetchedAt, providers: [...] } — live subscription
- *   usage for providers used by running or paused instances (see providers.ts).
+ *   usage for active providers and logged-in credential profiles (see providers.ts).
  *
  * Auth: read-only GET, open like the other /view data routes (the caller's
  * global token gate exempts isUsagePath, mirroring isViewPath). Server binds
@@ -72,7 +72,7 @@ export function filterUsageProviders(
   return {
     ...payload,
     providers: payload.providers
-      // #2236: with `hostLogins`, a Claude login on the host stays though no running instance uses it.
+      // #2236: with `hostLogins`, a host credential profile stays though no running instance uses it.
       .filter(provider => !active || active.has(provider.id) || (opts.hostLogins === true && isHostLoginUsageProvider(provider.id)))
       .map(provider => ({
         ...provider,
@@ -207,7 +207,7 @@ function isLastGood(v: unknown, now: number): v is LastGood {
   const p = v.provider;
   return isObj(p) && isStr(p.id) && isStr(p.name) && p.status === "ok" && Array.isArray(p.metrics) && p.metrics.every(isUsageMetric)
     && opt(p.plan, x => x === null || isStr(x)) && opt(p.unlimited, x => typeof x === "boolean") && opt(p.profile, isStr)
-    && opt(p.defaultLogin, x => x === true) && opt(p.hint, isStr) && opt(p.hintI18n, isI18n);
+    && opt(p.noAgents, x => x === true) && opt(p.defaultLogin, x => x === true) && opt(p.hint, isStr) && opt(p.hintI18n, isI18n);
 }
 
 /** Read the persisted rows once (a missing or unreadable file is no rows); a row read since wins. */
@@ -294,11 +294,11 @@ function lastKnown(p: ProviderUsage, now: number, cause: UsageStaleCause, hint: 
   try { return lastKnownRow(p, good, now, cause, hint); } catch { return null; }   // never break the read: the error row stands
 }
 function lastKnownRow(p: ProviderUsage, good: LastGood, now: number, cause: UsageStaleCause, hint: Pick<ProviderUsage, "hint" | "hintI18n">): ProviderUsage {
-  const { hint: _hint, hintI18n: _hintI18n, profile: _profile, defaultLogin: _defaultLogin, ...row } = good.provider;
+  const { hint: _hint, hintI18n: _hintI18n, profile: _profile, defaultLogin: _defaultLogin, noAgents: _noAgents, ...row } = good.provider;
   return {
     ...row,
     // The row as it is now (its name, a profile, the default login), with the numbers as they were.
-    id: p.id, name: p.name, ...(p.profile ? { profile: p.profile } : {}), ...(p.defaultLogin ? { defaultLogin: true as const } : {}),
+    id: p.id, name: p.name, ...(p.noAgents ? { noAgents: true as const } : {}), ...(p.profile ? { profile: p.profile } : {}), ...(p.defaultLogin ? { defaultLogin: true as const } : {}),
     stale: true, cachedAt: new Date(good.at).toISOString(), staleCause: cause,
     ...(hint.hint !== undefined ? { hint: hint.hint } : {}), ...(hint.hintI18n ? { hintI18n: hint.hintI18n } : {}),
     metrics: good.provider.metrics.map(m => ageMetric(m, now)),
