@@ -135,8 +135,14 @@ export class HubGroupRooms {
         const ask = a || b ? { total, answered: (a?.answered ?? 0)+(b?.answered ?? 0), working: (a?.working ?? 0)+(b?.working ?? 0), later: (a?.later ?? 0)+(b?.later ?? 0),
           ...(failed ? { failed } : {}), ...(blocked ? { blocked } : {}),
           ...(total === 1 && (failed === 1 || blocked === 1) && (a?.reason || b?.reason) ? { reason: (a?.reason || b?.reason)! } : {}) } : undefined;
+        // The retained parent records who asked when the answer was queued. Do not infer from this viewer or the
+        // delivery's owner: an agent can ask too, and an absent owner's via post uses its agent member as a fallback id.
+        const asker = row.answer_to ? db.prepare(`SELECT p.author_id AS id FROM hub_room_posts p
+          WHERE p.id=? AND p.room_id=? AND p.author_kind='person' AND NOT EXISTS
+          (SELECT 1 FROM hub_room_agent_operations op WHERE op.post_id=p.id AND op.member_id=p.author_id)`)
+          .get(row.answer_to, row.room_id) as { id: string } | undefined : undefined;
         const reactions = this.reactions(db, row.id);
-        return { ...(ask ? { ask } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}) }; }) };
+        return { ...(ask ? { ask } : {}), ...(asker ? { askedBy: asker.id } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}) }; }) };
   }
   /** M-3127: a post's reactions, each emoji in the order it first appeared, its members in the order they reacted. */
   private reactions(db: DB, postId: string): NonNullable<RoomMessage["reactions"]> {

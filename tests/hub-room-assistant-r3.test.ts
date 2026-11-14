@@ -20,7 +20,7 @@ it("gives each person one private Hub-assistant row and answers a plain direct m
   expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${row.id}`)).status).toBe(403);
   const posted = await r!.call(w.a, "POST", `/hub/v1/rooms/${row.id}/messages`, { text: "Hello", mentions: [], idempotencyKey: randomUUID() }); expect(posted.status).toBe(200);
   await vi.waitFor(() => expect(w.calls).toHaveLength(1));
-  await vi.waitFor(async () => expect((await r!.call(w.a, "GET", `/hub/v1/rooms/${row.id}/messages`)).json.messages.some((m: any) => m.text === "Assistant reply" && m.answerTo === posted.json.id)).toBe(true));
+  await vi.waitFor(async () => expect((await r!.call(w.a, "GET", `/hub/v1/rooms/${row.id}/messages`)).json.messages.find((m: any) => m.text === "Assistant reply")).toMatchObject({ answerTo: posted.json.id, askedBy: posted.json.author.id }));
 });
 it("uses @assistant in a group, and stores the message with a soft warning when unavailable", async () => {
   const w = await world(), made = await r!.call(w.admin, "POST", "/hub/v1/rooms", { name: "With assistant", people: [personKeyString(w.alex)], assistant: true });

@@ -14,6 +14,8 @@ export interface RoomMessage {
   warning?: "assistant-unavailable";
   ask?: { total: number; answered: number; working: number; later: number; failed?: number; blocked?: number; reason?: "expired" | "retired" | "unavailable" | "interrupted" | "unknown" };
   answerTo?: string;
+  /** The immediate question's person-member id (same identity as room.me.id), never an agent owner's id. */
+  askedBy?: string;
   stage?: "queued" | "working" | "answered" | "not-answered";
   /** M-3127: who reacted with what, oldest emoji first; `members` are room member ids (the viewer finds its own). */
   reactions?: { emoji: string; count: number; members: string[] }[];
