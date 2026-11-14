@@ -510,7 +510,7 @@ describe("FleetManager", () => {
         defaults: {},
         channels: [discordConfig, telegramConfig],
         instances: {
-          "doupo-leader": { working_directory: tmpDir, topic_id: "1503382159321464899", channel_id: "discord" },
+          "games-leader": { working_directory: tmpDir, topic_id: "1503382159321464899", channel_id: "discord" },
         },
       } as any;
       fm.adapter = discord;
@@ -522,7 +522,7 @@ describe("FleetManager", () => {
 
       await (fm as any).handleScheduleTrigger({
         id: "d399355e", cron: "0 9 * * *", at: null,
-        message: "daily work log", source: "doupo-leader-t245", target: "doupo-leader",
+        message: "daily work log", source: "games-leader-t245", target: "games-leader",
         reply_chat_id: "-1003833855730",   // Telegram group
         reply_thread_id: "245",            // Telegram forum topic
         label: "Dopo 每日工作日誌回報", enabled: true, timezone: "Asia/Taipei", silent: false,
@@ -547,7 +547,7 @@ describe("FleetManager", () => {
         defaults: {},
         channels: [discordConfig, telegramConfig],
         instances: {
-          "doupo-leader": { working_directory: tmpDir, topic_id: "1503382159321464899", channel_id: "discord" },
+          "games-leader": { working_directory: tmpDir, topic_id: "1503382159321464899", channel_id: "discord" },
         },
       } as any;
       fm.adapter = discord;
@@ -558,7 +558,7 @@ describe("FleetManager", () => {
 
       await (fm as any).handleScheduleTrigger({
         id: "same-world", cron: "0 9 * * *", at: null,
-        message: "daily work log", source: "doupo-leader", target: "doupo-leader",
+        message: "daily work log", source: "games-leader", target: "games-leader",
         reply_chat_id: "1496407196106494055",
         reply_thread_id: "1503382159321464899",
         label: "in-world", enabled: true, timezone: "Asia/Taipei", silent: false,

@@ -12,7 +12,7 @@ const SPEC: CompletionSpec = {
   fleetInstanceCommands: ["start", "stop", "restart"],
 };
 
-const INSTANCES = ["agend-dev1-t1503", "agend-leader-t1503", "agend-sol-t1527", "doupo-server-t1503"];
+const INSTANCES = ["agend-dev1-t1503", "agend-leader-t1503", "agend-sol-t1527", "games-server-t1503"];
 
 function have(bin: string): boolean {
   try { execFileSync("sh", ["-c", `command -v ${bin}`], { stdio: "ignore" }); return true; }
@@ -89,7 +89,7 @@ describe.skipIf(!have("bash"))("bash completion, executed in a real shell", () =
     expect(bashComplete("agend attach agen", 2)).toEqual([
       "agend-dev1-t1503", "agend-leader-t1503", "agend-sol-t1527",
     ]);
-    expect(bashComplete("agend attach doupo", 2)).toEqual(["doupo-server-t1503"]);
+    expect(bashComplete("agend attach games", 2)).toEqual(["games-server-t1503"]);
   });
 
   it("offers every instance when the prefix is empty", () => {

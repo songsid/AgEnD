@@ -31,7 +31,7 @@ function fakeAttachment(id: string, url: string, contentType = "image/png") {
 
 function fakeMessage(overrides: Record<string, unknown> = {}) {
   return {
-    author: { id: "user-1", bot: false, username: "hanhanv" },
+    author: { id: "user-1", bot: false, username: "example" },
     guildId: "guild-1",
     channelId: "topic-1",
     id: "message-1",
@@ -151,7 +151,7 @@ describe("Discord forwarded message images", () => {
       id: "1500000000000000001",
       channel_id: "topic-1",
       guild_id: "guild-1",
-      author: { id: "user-1", username: "hanhanv", discriminator: "0", avatar: null, bot: false },
+      author: { id: "user-1", username: "example", discriminator: "0", avatar: null, bot: false },
       content,
       timestamp: now,
       edited_timestamp: null,

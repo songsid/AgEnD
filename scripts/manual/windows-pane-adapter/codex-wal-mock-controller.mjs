@@ -10,7 +10,7 @@ import{sourceReceipt}from'./source-receipt.mjs';
 import{spawn,execFileSync}from'node:child_process';import{mkdir,readFile,writeFile,cp,rm,rename,stat,readdir}from'node:fs/promises';import{mkdtempSync,existsSync}from'node:fs';
 import{join,resolve,win32}from'node:path';import{pathToFileURL}from'node:url';import{randomUUID,createHash}from'node:crypto';import{createInterface}from'node:readline';import assert from'node:assert/strict';
 const source=sourceReceipt(),project=process.cwd(),compiled=resolve(process.argv[2]||'dist'),tag=randomUUID().slice(0,8);
-const nativeRoot='C:\\Users\\changhansung\\agend-adapter-proto\\codexwal-'+tag,root='/mnt/c/Users/changhansung/agend-adapter-proto/codexwal-'+tag;
+const nativeRoot='C:\\Users\\demo-account\\agend-adapter-proto\\codexwal-'+tag,root='/mnt/c/Users/demo-account/agend-adapter-proto/codexwal-'+tag;
 const codexHomeWin=nativeRoot+'\\codex-home',codexHome=root+'/codex-home',workWin=nativeRoot+'\\work',PORT=18000+Math.floor(Math.random()*2000);
 const coordinator=mkdtempSync(join(project,'.artifacts/codex-wal-proof-'));process.env.AGEND_HOME=coordinator;
 for(const k of ['NOTIFY_SOCKET','WATCHDOG_USEC','WATCHDOG_PID','TMUX'])delete process.env[k];process.env.AGEND_TMUX_SESSION='codexwal-'+tag;

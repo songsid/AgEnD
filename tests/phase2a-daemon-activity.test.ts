@@ -1,6 +1,6 @@
 /**
  * Phase 2a (design: docs/design/phase2-submit-contract.md §3.3, §1.6), daemon
- * side of "woke, then slept again" (Bug2). Live evidence: doupo-dev-claude's
+ * side of "woke, then slept again" (Bug2). Live evidence: games-dev-claude's
  * last-inbound-at was a week old (only user channel messages updated it), so a
  * daemon created to wake it paused 1–2 s after it became ready
  * (14:46:42→44, 14:48:08→09) — before the queued work could reach it.

@@ -9,11 +9,11 @@ describe("decisions relevance filter", () => {
   const decisions = [
     { title: "agend-rule", scope: "fleet", project_root: "/home/han/Projects/AgEnD" },
     { title: "agend-dev1-rule", scope: "fleet", project_root: "/home/han/Projects/AgEnD-dev1" },
-    { title: "dopo-workflow", scope: "fleet", project_root: "/home/han/Projects/DouPo_Leader" },
-    { title: "awp-rule", scope: "fleet", project_root: "/home/han/Projects/AWP-OTA" },
+    { title: "dopo-workflow", scope: "fleet", project_root: "/home/han/Projects/Games_Leader" },
+    { title: "awp-rule", scope: "fleet", project_root: "/home/han/Projects/OTA-SVC" },
     { title: "truly-global", scope: "fleet" },
     { title: "own-project-scoped", scope: "project", project_root: AGEND },
-    { title: "other-project-scoped", scope: "project", project_root: "/home/han/Projects/DouPo_Server" },
+    { title: "other-project-scoped", scope: "project", project_root: "/home/han/Projects/Games_Server" },
   ];
 
   it("drops fleet decisions belonging to unrelated projects", () => {
@@ -55,10 +55,10 @@ describe("sameProjectFamily", () => {
 
   it("keeps genuinely different projects apart", () => {
     const P = "/home/han/Projects/";
-    expect(sameProjectFamily(P + "AgEnD", P + "DouPo_Server")).toBe(false);
-    expect(sameProjectFamily(P + "AgEnD", P + "AWP-OTA")).toBe(false);
+    expect(sameProjectFamily(P + "AgEnD", P + "Games_Server")).toBe(false);
+    expect(sameProjectFamily(P + "AgEnD", P + "OTA-SVC")).toBe(false);
     // near-miss: different repos that merely share a prefix word
-    expect(sameProjectFamily(P + "DouPo_Server", P + "DouPo_Leader")).toBe(false);
+    expect(sameProjectFamily(P + "Games_Server", P + "Games_Leader")).toBe(false);
   });
 
   it("handles nesting and trailing slashes", () => {

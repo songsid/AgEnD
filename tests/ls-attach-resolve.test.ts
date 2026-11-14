@@ -46,7 +46,7 @@ describe("resolveCandidate — CJK display names", () => {
   it("resolves CJK display name by exact match", () => {
     const cs = fleet(
       { name: "agend-reviewer-t1503382598640996543", displayLabel: "稜鏡 Prism" },
-      { name: "rd1-a89-dev-fable-t1532671461406277715", displayLabel: "鑄碼副手 Fable" },
+      { name: "tm1-a89-dev-fable-t1532671461406277715", displayLabel: "鑄碼副手 Fable" },
     );
     expect(resolveCandidate("稜鏡 Prism", cs)).toEqual({ kind: "exact", candidate: cs[0] });
   });
@@ -62,7 +62,7 @@ describe("resolveCandidate — CJK display names", () => {
 
   it("resolves partial CJK substring when unique", () => {
     const cs = fleet(
-      { name: "rd1-a89-dev-fable-t123", displayLabel: "鑄碼副手 Fable" },
+      { name: "tm1-a89-dev-fable-t123", displayLabel: "鑄碼副手 Fable" },
       { name: "other-t000", displayLabel: "Sentinel" },
     );
     expect(resolveCandidate("鑄碼副手", cs)).toEqual({ kind: "exact", candidate: cs[0] });
@@ -115,7 +115,7 @@ describe("resolveCandidate — no-match suggestions", () => {
       { name: "agend-reviewer-t001", displayLabel: "稜鏡 Prism" },
       { name: "agend-leader-t002", displayLabel: "Leader" },
       { name: "agend-coordinator-t003", displayLabel: "Coord" },
-      { name: "doupo-server-t004", displayLabel: "Server" },
+      { name: "games-server-t004", displayLabel: "Server" },
       { name: "unrelated-t005", displayLabel: "Zephyr" },
       { name: "unrelated-t006", displayLabel: "Alpha" },
       { name: "unrelated-t007", displayLabel: "Beta" },
@@ -365,7 +365,7 @@ describe("P2-4: pickerDefaultIdx uses first displayed candidate", () => {
 // ── Long real name never truncated in picker/ambiguity lines ─────────────────
 
 describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
-  const LONG = "rd1-a89-dev-fable-t1532671461406277715"; // 38 chars
+  const LONG = "tm1-a89-dev-fable-t1532671461406277715"; // 38 chars
   const SHORT = "alpha-t1";
 
   const cLong: Candidate = {

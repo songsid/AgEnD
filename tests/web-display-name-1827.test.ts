@@ -212,7 +212,7 @@ describe("a web name: checked in full, refused with a reason, never silently rew
     expect(webNameInUse(undefined)).toBe(WEB_NAME_FALLBACK);
   });
   it("an account's display name is made safe: what the rules refuse is dropped, cut to 32; nothing usable is the fallback", () => {
-    expect(safeWebName("hanhanv")).toBe("hanhanv");
+    expect(safeWebName("example")).toBe("example");
     expect(safeWebName("[x] <@1> hi")).toBe("x 1 hi");
     expect(safeWebName("a".repeat(40))).toBe("a".repeat(32));
     expect(safeWebName("Ann" + ch(0x202e) + "Lee")).toBe("AnnLee");

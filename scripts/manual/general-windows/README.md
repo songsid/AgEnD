@@ -1,6 +1,6 @@
 # General Windows backend acceptance (#3007)
 
-This is an opt-in signed-in Windows proof. Obtain the exclusive Windows CLI window before running. It creates only a fresh folder under `C:\Users\changhansung\agend-adapter-proto\general-*`, a scratch AGEND_HOME and a loopback authenticated coordinator. It runs no systemd unit or live fleet. It keeps the person's native CLI home, uses minimal turns, and archives its own written Codex session through `codex archive` after the processes stop. It never edits provider/account configuration or copies credentials.
+This is an opt-in signed-in Windows proof. Obtain the exclusive Windows CLI window before running. It creates only a fresh folder under `C:\Users\demo-account\agend-adapter-proto\general-*`, a scratch AGEND_HOME and a loopback authenticated coordinator. It runs no systemd unit or live fleet. It keeps the person's native CLI home, uses minimal turns, and archives its own written Codex session through `codex archive` after the processes stop. It never edits provider/account configuration or copies credentials.
 
 From a committed source head, build with `npm run build && npm run build:runtime`, then run:
 

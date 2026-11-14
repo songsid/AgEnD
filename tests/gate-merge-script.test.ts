@@ -1013,7 +1013,7 @@ describe("gate-merge: Co-authored-by trailers on the squash", { timeout: 30_000 
   it("a carry PR (external author + ours) gets real Co-authored-by trailers; the merger and bots do not", { timeout: 30_000 }, () => {
     const w = world();
     w.state.prs[7]!.body = [
-      "Carry of #2391 by @igs-willyliao.",
+      "Carry of #2391 by @octo-contrib.",
       "",
       "> **To whoever merges:** Put this in the squash message:",
       "> `Co-authored-by: quoted-should-not-count <1+quoted@users.noreply.github.com>`",
@@ -1021,7 +1021,7 @@ describe("gate-merge: Co-authored-by trailers on the squash", { timeout: 30_000 
     w.state.prs[7]!.commits = [
       {
         authors: [
-          { login: "igs-willyliao", name: "igs-willyliao", email: "139523521+igs-willyliao@users.noreply.github.com", id: "U_kgDOCFD1wQ" },
+          { login: "octo-contrib", name: "octo-contrib", email: "100000001+octo-contrib@users.noreply.github.com", id: "U_kgDOAAAAAQ" },
         ],
         messageHeadline: "feat: permissions",
         messageBody: "",
@@ -1042,7 +1042,7 @@ describe("gate-merge: Co-authored-by trailers on the squash", { timeout: 30_000 
     const r = w.run(["7", w.approved, "xmsg-approve-1"]);
     expect(r.status, r.stderr + r.line).toBe(0);
     const trailers = interpretTrailers(w.state.lastBody ?? "");
-    expect(trailers).toContain("Co-authored-by: igs-willyliao <139523521+igs-willyliao@users.noreply.github.com>");
+    expect(trailers).toContain("Co-authored-by: octo-contrib <100000001+octo-contrib@users.noreply.github.com>");
     expect(trailers).toContain("Co-authored-by: AgEnD <agend-web-claude@users.noreply.github.com>");
     expect(trailers).toContain("Co-authored-by: Extra Helper <222+helper@users.noreply.github.com>");
     expect(trailers).not.toMatch(/quoted-should-not-count/);

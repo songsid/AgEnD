@@ -12,11 +12,11 @@ const width = (s: string) => Array.from(s).reduce((w, ch) => w + (/[⺀-꓏＀-�
 
 describe("clipText (#2047)", () => {
   it("keeps Latin text as before: 15 characters fit, 16 become 14 + …", () => {
-    expect(C.clipText("rd1-platform-be", 15)).toBe("rd1-platform-be");
-    expect(C.clipText("rd1-platform-backend", 15)).toBe("rd1-platform-b…");
+    expect(C.clipText("tm1-platform-be", 15)).toBe("tm1-platform-be");
+    expect(C.clipText("tm1-platform-backend", 15)).toBe("tm1-platform-b…");
   });
   it("shortens CJK by width: the result never exceeds the budget", () => {
-    for (const s of ["平台基礎設施與發佈工程負責人（主要）", "效能分析與火焰圖解讀", "研一官網-t1544335726169165914", "資料平台 dbt 模型新鮮度監控", "多語系翻譯校對（繁中）"]) {
+    for (const s of ["平台基礎設施與發佈工程負責人（主要）", "效能分析與火焰圖解讀", "產品官網-t1544335726169165914", "資料平台 dbt 模型新鮮度監控", "多語系翻譯校對（繁中）"]) {
       for (const n of [15, 20, 27]) expect(width(C.clipText(s, n))).toBeLessThanOrEqual(n);
     }
     expect(C.clipText("效能分析與火焰圖解讀", 15)).toBe("效能分析與火焰圖…");   // 10 CJK = 16 > 15

@@ -7,7 +7,7 @@ import { CodexBackend } from "../src/backend/codex.js";
 
 /**
  * Regression for the silent message loss reported on a codex instance
- * (doupo-server-codex, 2026-09-14): after a wake, two messages sat UNSUBMITTED
+ * (games-server-codex, 2026-09-14): after a wake, two messages sat UNSUBMITTED
  * in the codex input row while the daemon reported idle and the channel showed
  * ✅ — a single manual Enter flushed both and the instance went straight to
  * work. There was no WARN or ERROR anywhere in the stranded window, which is
@@ -747,7 +747,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     const repeated = "carry on with the migration and report back when it is done";
     h.state.pane = [
       "• Working (9s • esc to interrupt)",
-      `› [user:hanhanv via discord] ${repeated}`,
+      `› [user:example via discord] ${repeated}`,
       "  (message_id: old-1 | correlation_id: cid-older)",
       "› Ask Codex to do anything",
       "  Context 63% left",
@@ -755,7 +755,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     // Ours is submitted and echoed; the older copy has scrolled out of view.
     h.state.afterPaste = [
       "• You have 1 usage limit reset available. Run /usage to use one.",
-      `› [user:hanhanv via discord] ${repeated}`,
+      `› [user:example via discord] ${repeated}`,
       "  (message_id: new-1 | correlation_id: cid-now)",
       "• Working (1s • esc to interrupt)",
       "› Ask Codex to do anything",
@@ -763,7 +763,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     ].join("\n");
 
     h.daemon.pushChannelMessage(repeated, {
-      user: "hanhanv", source: "discord", chat_id: "c",
+      user: "example", source: "discord", chat_id: "c",
       message_id: "new-1", correlation_id: "cid-now",
     });
     await settle(Promise.resolve().then(async () => {

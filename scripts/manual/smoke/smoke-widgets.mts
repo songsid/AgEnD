@@ -12,8 +12,8 @@ const SMOKE = "smoke-widgets";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48410) });
 const enc = encodeURIComponent;
 
-const WITH = "rd1-platform-backend-sr4-server-t1547091841202130997"; // the agent with a chat header strip and a Details card
-const OTHER = "研一官網-t1544335726169165914";                       // another instance, no widgets: the strip must not follow
+const WITH = "tm1-platform-backend-sr4-server-t1547091841202130997"; // the agent with a chat header strip and a Details card
+const OTHER = "產品官網-t1544335726169165914";                       // another instance, no widgets: the strip must not follow
 
 await seedAvatars(fx, 30);
 const seeded = { widgets: await seedWidgets(fx, WITH) };

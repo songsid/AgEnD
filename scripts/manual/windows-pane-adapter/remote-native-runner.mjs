@@ -5,7 +5,7 @@ import {createInterface} from 'node:readline';
 import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 const [bundle,root]=process.argv.slice(2);
-assert(process.platform==='win32'&&win32.normalize(root).toLowerCase().startsWith('c:\\users\\changhansung\\agend-adapter-proto\\'));
+assert(process.platform==='win32'&&win32.normalize(root).toLowerCase().startsWith('c:\\users\\demo-account\\agend-adapter-proto\\'));
 const lines=createInterface({input:process.stdin}),send=value=>process.stdout.write(JSON.stringify(value)+'\n');
 const first=await new Promise(resolve=>lines.once('line',line=>resolve(JSON.parse(line))));
 const bin=join(root,'bin'),script=join(bin,'node_modules','@openai','codex','bin','codex.js');await mkdir(dirname(script),{recursive:true});

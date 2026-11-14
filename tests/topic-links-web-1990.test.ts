@@ -35,8 +35,8 @@ afterEach(() => { setLocale("en"); dirs.splice(0).forEach(d => rmSync(d, { recur
 describe("routes and their validation", () => {
   it("webRoute: an instance's chat or View, as the client's table parses it", () => {
     expect(webRoute("chat", "dev-a")).toBe("/ui/chat/dev-a");
-    expect(webRoute("view", "研一官網-t1")).toBe(`/view/${encodeURIComponent("研一官網-t1")}`);
-    expect(parseRoute(webRoute("chat", "研一官網-t1"))).toEqual({ panel: "chat", instance: "研一官網-t1" });
+    expect(webRoute("view", "產品官網-t1")).toBe(`/view/${encodeURIComponent("產品官網-t1")}`);
+    expect(parseRoute(webRoute("chat", "產品官網-t1"))).toEqual({ panel: "chat", instance: "產品官網-t1" });
     for (const bad of ["", "a/b", "..", "a..b", ".", "x\u0001", "a\\b", "x".repeat(129)]) expect(webRoute("chat", bad), bad).toBeUndefined();
   });
   it("webTextLinks (server): only in-text, ordered ranges with an app route; the rest dropped", () => {
