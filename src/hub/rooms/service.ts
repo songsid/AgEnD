@@ -123,7 +123,13 @@ export class HubGroupRooms {
       ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}),
       ...this.core.atomic(db => { const a = this.agents.progress(db, row.id), b = this.assistant.progress(db, row.id);
         const ask = a || b ? { total: (a?.total ?? 0)+(b?.total ?? 0), answered: (a?.answered ?? 0)+(b?.answered ?? 0), working: (a?.working ?? 0)+(b?.working ?? 0), later: (a?.later ?? 0)+(b?.later ?? 0) } : undefined;
-        return { ...(ask ? { ask } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}) }; }) };
+        // The retained parent records who asked when the answer was queued. Do not infer from this viewer or the
+        // delivery's owner: an agent can ask too, and an absent owner's via post uses its agent member as a fallback id.
+        const asker = row.answer_to ? db.prepare(`SELECT p.author_id AS id FROM hub_room_posts p
+          WHERE p.id=? AND p.room_id=? AND p.author_kind='person' AND NOT EXISTS
+          (SELECT 1 FROM hub_room_agent_operations op WHERE op.post_id=p.id AND op.member_id=p.author_id)`)
+          .get(row.answer_to, row.room_id) as { id: string } | undefined : undefined;
+        return { ...(ask ? { ask } : {}), ...(asker ? { askedBy: asker.id } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}) }; }) };
   }
   private viaAuthor(row: PostRow): { name?: string; via?: { id: string; name: string } } {
     return this.core.atomic(db => { const op = db.prepare("SELECT exposure_id,person_name,via_name FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NOT NULL").get(row.id) as { exposure_id: string; person_name: string; via_name: string } | undefined;

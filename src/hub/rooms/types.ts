@@ -14,6 +14,8 @@ export interface RoomMessage {
   warning?: "assistant-unavailable";
   ask?: { total: number; answered: number; working: number; later: number };
   answerTo?: string;
+  /** The immediate question's person-member id (same identity as room.me.id), never an agent owner's id. */
+  askedBy?: string;
   stage?: "queued" | "working" | "answered" | "not-answered";
 }
 export interface RoomAssistantPort {

@@ -41,6 +41,10 @@ it("turns an agent answer's @person into a real mention and @agent into an attri
   await vi.waitFor(() => expect(w.asks()).toHaveLength(2));
   expect(w.asks()[1]).toMatchObject({ exposureId: w.b.id, text: "@Alex please review. @Planner can you check?" });
   expect(w.asks()[1]!.asker.name).toContain("Notes");
+  const child = (await w.page()).find(m => m.answerTo === answer.id);
+  expect(answer.askedBy).toBe(detail.me.id); expect(child.askedBy).toBeUndefined();
+  await w.answer(w.asks()[1]!, "Checked by Planner");
+  expect((await w.page()).find(m => m.text === "Checked by Planner").askedBy).toBeUndefined();
   const list = (await r!.call(w.alex, "GET", "/hub/v1/rooms?v=2")).json.rooms;
   expect(list.find((room: any) => room.id === w.id)).toMatchObject({ mentioned: true });
 });
@@ -149,6 +153,7 @@ it("posts a verified owner's request via the agent without fabricating person me
   const post=(await w.page()).find(m=>m.id===(result as any).payload.messageId);
   expect(post.author).toMatchObject({kind:"person",via:{id:w.a.id,name:"Notes"}});
   expect(post.proactive).toBeUndefined(); expect(post.mentions).toContain("all");
+  expect((await w.page()).filter(m => m.answerTo === post.id).every(m => m.askedBy === undefined)).toBe(true);
   expect(r!.db.prepare("SELECT COUNT(*) n FROM hub_room_members WHERE room_id=? AND kind='person'").get(w.id)).toEqual({n:1});
 });
 
