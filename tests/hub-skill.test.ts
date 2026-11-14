@@ -14,6 +14,7 @@ import { GENERAL_SKILL_NAMES } from "../src/general-role.js";
 import { AGENT_WHATS_NEW } from "../src/agent-whats-new.js";
 import { enrolmentCreate } from "../src/hub/enrolment-code.js";
 import { HUB_EXPOSURE_MAX } from "../src/hub/member/exposures.js";
+import { hubPilotTrustSettings } from "../src/hub-pilot-trust-settings.js";
 
 const PATH = join(process.cwd(), "src/general-knowledge/skills/hub/SKILL.md");
 const SKILL = readFileSync(PATH, "utf8");
@@ -155,6 +156,18 @@ describe("the hub skill", () => {
     expect(SKILL).not.toMatch(/ldaps?:\/\//i);                                                  // no directory server
     const hosts = [...SKILL.matchAll(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|test|local|tw|io)\b/gi)].map(m => m[0].toLowerCase());
     expect([...new Set(hosts)]).toEqual(["hub.example.com"]);
+  });
+
+  // M-3108 (2.4.0-beta.1, leader): the Hub is a preview, and pilot trust defaults on for alpha AND beta builds, off for stable.
+  it("calls the Hub a preview and states the beta pilot-trust default the code uses", () => {
+    expect(SKILL).toMatch(/^description: How the AgEnD Hub works from the user's side \(preview, off by default\)/m);
+    expect(FLAT).toContain("The Hub is **a preview and off by default**");
+    expect(FLAT).not.toMatch(/experimental|alpha line only/i);
+    expect(FLAT).toContain("A Fleet running an alpha or beta (prerelease) build permits pilot trust by default; stable builds default off.");
+    for (const doc of ["docs/hub-join-trust.md", "docs/hub-join-trust.zh-TW.md"]) expect(readFileSync(doc, "utf8").replace(/\s+/g, " ")).toMatch(/alpha (?:and|與) beta/);
+    expect(hubPilotTrustSettings({}, "2.4.0-beta.1").enabled).toBe(true);
+    expect(hubPilotTrustSettings({}, "2.4.0-alpha.4").enabled).toBe(true);
+    expect(hubPilotTrustSettings({}, "2.4.0").enabled).toBe(false);
   });
 
   it("agents are told once that the skill exists", () => {

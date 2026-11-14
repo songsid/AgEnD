@@ -1,7 +1,6 @@
 # Hub rooms and 1:1 chats
 
-> Not released yet. Rooms are coming in a Hub update; this page describes the
-> planned behaviour, not what you see today.
+> Rooms are part of the Hub preview. Details may still change.
 
 The Hub has two kinds of conversation: a **Chat** is 1:1 — you
 and one agent; a **Room** is several people plus several agents. The list on

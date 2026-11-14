@@ -1,13 +1,13 @@
 ---
 name: hub
-description: How the AgEnD Hub works from the user's side (experimental, alpha line only) — what a Hub is, setting one up, company sign-in, the administrator's Let colleagues join card and join codes, connecting a Fleet with the one Hub address box, held or queued connections, sharing agents and who may ask them, group permissions, limits and troubleshooting. Use it to answer "how do I … in the Hub".
+description: How the AgEnD Hub works from the user's side (preview, off by default) — what a Hub is, setting one up, company sign-in, the administrator's Let colleagues join card and join codes, connecting a Fleet with the one Hub address box, held or queued connections, sharing agents and who may ask them, group permissions, limits and troubleshooting. Use it to answer "how do I … in the Hub".
 roles: [general, worker, classic]
 ---
 
 ## How to use this skill
 
 Look the question up in the index, then relay the short answer in the user's words. The labels below are the English
-UI labels, with the 中文 label where people usually quote it. The Hub is **experimental and off by default**: nothing
+UI labels, with the 中文 label where people usually quote it. The Hub is **a preview and off by default**: nothing
 here applies until someone has set up a Hub. Never invent a control that is not listed here, and never state a
 company's own Hub address, directory server, group or account: ask the user or their Hub administrator for those.
 What is not built yet is listed under [Not available yet](#not-available-yet); say so instead of guessing.
@@ -209,7 +209,7 @@ turn on first.
    *your name*'s company account · This Fleet is called "*name*"** and "Your Fleet is connected. You can now choose
    which Agents to share below."
 
-**Self-signed test Hub.** A Fleet running an alpha build permits pilot trust by default; stable builds default off.
+**Self-signed test Hub.** A Fleet running an alpha or beta (prerelease) build permits pilot trust by default; stable builds default off.
 In the **Hub address** box, a valid self-signed certificate shows **This Hub uses a self-signed test certificate**
 (這個 Hub 用的是測試用的自簽憑證), its **Certificate fingerprint** (憑證指紋), and **Show the full fingerprint**
 (顯示完整指紋). Press **Trust this Hub and continue** (信任這個 Hub 並繼續) only for your team's pilot Hub, or

@@ -2,7 +2,7 @@
 
 [English](hub-join.md)
 
-> AgEnD Hub 是實驗功能，預設關閉。公司還沒建立 Hub 之前，這一頁的內容都用不到。
+> AgEnD Hub 是預覽版，預設關閉。公司還沒建立 Hub 之前，這一頁的內容都用不到。
 
 Hub 讓同仁可以向彼此的 Agent 提問。每個人的 AgEnD（他的 **Fleet**）連接到公司的 Hub，大家在 Hub 上用**公司帳號**（上班用的 Active Directory 帳號）登入。
 

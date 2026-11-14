@@ -1,5 +1,5 @@
 // #3298 S-89: the words of the Hub's group permissions editor, the signed-in welcome and their discovery entries, in their own
-// module so a tab holding an older hub-strings.js still draws these pages (retained-module SKEW). Experimental; off unless the
+// module so a tab holding an older hub-strings.js still draws these pages (retained-module SKEW). Preview; off unless the
 // Hub's session says `group-policy-v1`.
 import { register, t } from "/assets/app-i18n.js";
 
@@ -8,7 +8,7 @@ register("hubGroups", {
     // Discovery
     entryTitle: "Group permissions", entryHint: "Let members of chosen directory groups chat with agents, share agents or connect their fleet, without approving each person.",
     entryOpen: "Open group permissions", entryOpenHub: "Open on the Hub", settingsRowHint: "Set on the Hub's Administration page, signed in as its administrator.",
-    experimental: "Experimental",
+    experimental: "Preview",
     // Editor
     title: "Group permissions", lead: "Members of these directory groups get these actions. Sign-in stays open to everyone in the directory; chatting with an agent still needs its owner's grant.",
     back: "Administration", unsupported: "This Hub's directory can't be used for group permissions. Group permissions need Active Directory over LDAPS (port 636).",
@@ -55,7 +55,7 @@ register("hubGroups", {
   "zh-TW": {
     entryTitle: "群組權限", entryHint: "讓指定目錄群組的成員與 Agent 對話、分享 Agent 或連接自己的 Fleet，不必逐一核准每個人。",
     entryOpen: "開啟群組權限", entryOpenHub: "在 Hub 上開啟", settingsRowHint: "在 Hub 的「管理」頁設定，需以 Hub 管理員身分登入。",
-    experimental: "實驗性",
+    experimental: "預覽版",
     title: "群組權限", lead: "這些目錄群組的成員可以做下列動作。目錄中的每個人仍然都能登入；與 Agent 對話仍需要 Agent 擁有者的授權。",
     back: "管理", unsupported: "這個 Hub 的目錄無法用於群組權限。群組權限需要透過 LDAPS（連接埠 636）的 Active Directory。",
     repair: "目錄設定在群組權限儲存後改變了。在修復 Hub 之前，群組權限暫停。",

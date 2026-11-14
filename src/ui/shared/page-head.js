@@ -3,6 +3,7 @@
 // Drawing only: the words are the caller's (Settings' SettingsPageHead passes its own).
 import { html } from "./app-html.js";
 
-export function PageHead({ title, scope, lead, children }) {
-  return html`<header class="s-page-head"><div><div class="s-page-title"><h2>${title}</h2><span class="s-scope">${scope}</span></div><p class="s-page-lead">${lead}</p></div>${children ? html`<div class="s-page-actions">${children}</div>` : null}</header>`;
+// M-3108: an optional `tag` beside the title (the Hub's "Preview") and a `note` line under the lead.
+export function PageHead({ title, scope, lead, tag, note, children }) {
+  return html`<header class="s-page-head"><div><div class="s-page-title"><h2>${title}</h2>${tag ? html`<span class="tag warn s-page-tag">${tag}</span>` : null}<span class="s-scope">${scope}</span></div><p class="s-page-lead">${lead}</p>${note ? html`<p class="note s-page-note">${note}</p>` : null}</div>${children ? html`<div class="s-page-actions">${children}</div>` : null}</header>`;
 }

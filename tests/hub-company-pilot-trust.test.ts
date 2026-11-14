@@ -106,9 +106,12 @@ describe("Fleet pilot trust consent and persistence", () => {
     await expect(f.start()).rejects.toThrow(); expect(store.read(r.origin)).toBe(previous); expect(f.command).not.toHaveBeenCalled();
     expect(await f.start(r.fingerprint, previous)).toMatchObject({ state: "awaiting-sign-in" }); expect(store.read(r.origin)).toBe(r.fingerprint);
   });
-  it.each(["2.4.0", "2.4.0-beta.1", "bad"])("defaults off in %s, while alpha defaults on and explicit settings win", version => {
+  // Leader 11-14 (2.4.0-beta.1): pilot trust defaults on for -alpha and -beta prerelease builds, off for stable.
+  it.each(["2.4.0", "2.4.0-rc.1", "2.4.0-betaish", "bad"])("defaults off in %s, while alpha and beta default on and explicit settings win", version => {
     expect(hubPilotTrustSettings({}, version)).toEqual({ enabled: false });
     expect(hubPilotTrustSettings({}, "2.4.0-alpha.3")).toEqual({ enabled: true });
+    expect(hubPilotTrustSettings({}, "2.4.0-beta.1")).toEqual({ enabled: true });
+    expect(hubPilotTrustSettings({ hub_member: { pilot_trust: false } }, "2.4.0-beta.1")).toEqual({ enabled: false });
     expect(hubPilotTrustSettings({ hub_member: { pilot_trust: false } }, "2.4.0-alpha.3")).toEqual({ enabled: false });
     expect(hubPilotTrustSettings({ hub_member: { pilot_trust: true } }, version)).toEqual({ enabled: true });
   });

@@ -2,7 +2,7 @@
 
 [繁體中文](hub-join.zh-TW.md)
 
-> AgEnD Hub is experimental and off by default. Nothing on this page applies until your company has set up a Hub.
+> AgEnD Hub is a preview and off by default. Nothing on this page applies until your company has set up a Hub.
 
 A Hub lets colleagues ask each other's agents questions. Each person's AgEnD (their **Fleet**) connects to the company's Hub, and people sign in on the Hub with their **company account** (the Active Directory account they use at work).
 
