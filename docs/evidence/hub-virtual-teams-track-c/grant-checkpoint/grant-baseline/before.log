@@ -1,0 +1,163 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-team-grants-track-c.test.ts (7 tests | 7 failed) 277ms
+   × creates one immutable Team subject, caps new expiry at90d, and keeps the stored grant across Team rename 103ms
+   × live roster removal ends catalog visibility and access to an existing private conversation without changing its grant 36ms
+   × deleting the Team ends its future permission while preserving the recorded grant and room history 31ms
+   × a finite durable operation proof needs its exact asker, current roster and provider, independently of a browser 25ms
+   × Team grant feedback is bounded, owner/exposure-scoped, and conveys no permission 28ms
+   × a Team owner grant remains ANDed with the Hub operational ask gate 31ms
+   × retains immutable GUID validation when reading a group next to the new Team subject 22ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > creates one immutable Team subject, caps new expiry at90d, and keeps the stored grant across Team rename
+AssertionError: expected 400 to be 404 // Object.is equality
+
+- Expected
++ Received
+
+- 404
++ 400
+
+ ❯ tests/hub-team-grants-track-c.test.ts:42:47
+     40|   expect((await w.grant({ days: 91 })).status).toBe(400);
+     41|   expect((await w.grant({ subject: { kind: "team", teamId: "Project" }…
+     42|   expect((await w.grant({}, w.other)).status).toBe(404);
+       |                                               ^
+     43|   const out = await w.grant(); expect(out.status).toBe(200);
+     44|   expect(out.json.grant).toMatchObject({ subject: { kind: "team", team…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > live roster removal ends catalog visibility and access to an existing private conversation without changing its grant
+AssertionError: expected 400 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 400
+
+ ❯ tests/hub-team-grants-track-c.test.ts:53:70
+     51|
+     52| it("live roster removal ends catalog visibility and access to an exist…
+     53|   const w = await world(), out = await w.grant(); expect(out.status).t…
+       |                                                                      ^
+     54|   const room = await w.r.call(w.asker, "POST", "/hub/v1/rooms", { expo…
+     55|   expect(room.status).toBe(200);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > deleting the Team ends its future permission while preserving the recorded grant and room history
+AssertionError: expected 400 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 400
+
+ ❯ tests/hub-team-grants-track-c.test.ts:65:70
+     63|
+     64| it("deleting the Team ends its future permission while preserving the …
+     65|   const w = await world(), out = await w.grant(); expect(out.status).t…
+       |                                                                      ^
+     66|   const room = await w.r.call(w.asker, "POST", "/hub/v1/rooms", { expo…
+     67|   expect(room.status).toBe(200);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > a finite durable operation proof needs its exact asker, current roster and provider, independently of a browser
+AssertionError: expected 400 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 400
+
+ ❯ tests/hub-team-grants-track-c.test.ts:76:70
+     74|
+     75| it("a finite durable operation proof needs its exact asker, current ro…
+     76|   const w = await world(), out = await w.grant(); expect(out.status).t…
+       |                                                                      ^
+     77|   const grant = w.read(out.json.grant.id), ctx = { requestId: randomUU…
+     78|   const proof = await w.core.grantAccess([grant.id], w.recipient, ctx);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > Team grant feedback is bounded, owner/exposure-scoped, and conveys no permission
+AssertionError: expected { code: 'invalid' } to deeply equal { ok: true, teams: [ { …(3) } ], …(1) }
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
+-   "teams": [
+-     {
+-       "id": "24214099-dc60-4431-b181-a7214bdb3f6c",
+-       "name": "Project",
+-       "people": 2,
+-     },
+-   ],
+-   "truncated": false,
++   "code": "invalid",
+  }
+
+ ❯ tests/hub-team-grants-track-c.test.ts:95:33
+     93|   const search = (browser = w.browser, revision = 1) => w.r.call(brows…
+     94|     { exposureRevision: revision, kind: "team", q: "Pro" });
+     95|   expect((await search()).json).toEqual({ ok: true, teams: [{ id: w.te…
+       |                                 ^
+     96|   expect((await search(w.other)).status).toBe(404); expect((await sear…
+     97|   expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get()).to…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > a Team owner grant remains ANDed with the Hub operational ask gate
+AssertionError: expected 400 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 400
+
+ ❯ tests/hub-team-grants-track-c.test.ts:101:70
+     99|
+    100| it("a Team owner grant remains ANDed with the Hub operational ask gate…
+    101|   const w = await world(), out = await w.grant(); expect(out.status).t…
+       |                                                                      ^
+    102|   w.r.httpDeps.groups = { asker: async () => { throw new HubProtocolEr…
+    103|   const view = await w.r.call(w.asker, "GET", "/hub/v1/exposures"); ex…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > retains immutable GUID validation when reading a group next to the new Team subject
+AssertionError: expected 400 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 400
+
+ ❯ tests/hub-team-grants-track-c.test.ts:108:70
+    106|
+    107| it("retains immutable GUID validation when reading a group next to the…
+    108|   const w = await world(), out = await w.grant(); expect(out.status).t…
+       |                                                                      ^
+    109|   const row = w.r.db.prepare("SELECT * FROM hub_grants WHERE id=?").ge…
+    110|   expect(() => grantOf({ ...row, subject_kind: "group", subject: "corp…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed (7)
+   Start at  07:55:47
+   Duration  4.58s (transform 3.20s, setup 128ms, import 4.03s, tests 277ms, environment 0ms)
+

@@ -1,0 +1,34 @@
+{
+  "head": "8b831103abb13b807adcec34b4da367af169056d",
+  "script": "scripts/manual/hub-teams-track-c.mts",
+  "exit": 0,
+  "loads": [
+    {
+      "at": 1794617422.2853634,
+      "load1": 3.98193359375
+    },
+    {
+      "at": 1794617424.2873538,
+      "load1": 3.98193359375
+    },
+    {
+      "at": 1794617426.288093,
+      "load1": 4.2236328125
+    },
+    {
+      "at": 1794617428.2883885,
+      "load1": 4.2236328125
+    },
+    {
+      "at": 1794617430.292099,
+      "load1": 3.88525390625
+    }
+  ],
+  "env": {
+    "PW_DIR": "/home/han/.cache/wt-hubdto",
+    "CHROME": "/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+    "FONTCONFIG_FILE": "/etc/fonts/fonts.conf",
+    "OUT": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c/.artifacts/teams-track-c/gallery",
+    "GATE": "full"
+  }
+}

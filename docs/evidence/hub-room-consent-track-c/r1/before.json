@@ -1,0 +1,10 @@
+{
+  "priorHead": "4bcf218c2bd4172204d487baa950787cc081e740",
+  "testSha256": "5535c9d7b91dbbabcd613238481d1b5c8c88d70c1a5652be808679d670fd91ff",
+  "beforeSourceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
+  "types": 0,
+  "exit": 1,
+  "assertionFailures": 3,
+  "restored": true,
+  "restoredSourceSha256": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa"
+}

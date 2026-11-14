@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (15 tests | 1 failed | 14 skipped) 117ms
+   × keeps duplicate pending invitations at their original absolute seven-day expiry and permits a fresh invite after expiry 114ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > keeps duplicate pending invitations at their original absolute seven-day expiry and permits a fresh invite after expiry
+AssertionError: expected 200 to be 404 // Object.is equality
+
+- Expected
++ Received
+
+- 404
++ 200
+
+ ❯ tests/hub-room-consent-track-c.test.ts:76:93
+     74|   // Renew browser sessions after the deliberate clock jump; the invit…
+     75|   w.o = await r!.signIn("owner"); w.admin = await r!.signIn("admin");
+     76|   expect((await r!.call(w.o, "POST", `/hub/v1/invitations/${first.id}/…
+       |                                                                                             ^
+     77|   const detail = await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.room…
+     78|   expect(detail.json.invited).toContainEqual(expect.objectContaining({…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  03:08:02
+   Duration  4.04s (transform 2.82s, setup 104ms, import 3.67s, tests 117ms, environment 0ms)
+

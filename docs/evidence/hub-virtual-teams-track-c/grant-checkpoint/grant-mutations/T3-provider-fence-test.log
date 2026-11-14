@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-team-grants-track-c.test.ts (9 tests | 1 failed | 8 skipped) 94ms
+   × a finite durable operation proof needs its exact asker, current roster and provider, independently of a browser 93ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > a finite durable operation proof needs its exact asker, current roster and provider, independently of a browser
+AssertionError: expected [Function] to throw an error
+ ❯ tests/hub-team-grants-track-c.test.ts:91:42
+     89|   const replaced = await w.core.grantAccess([grant.id], w.recipient, c…
+     90|   w.r.httpDeps.roomTeams = { ...w.teams, read: w.teams.read, expand: w…
+     91|   expect(() => replaced.assertCurrent()).toThrow();
+       |                                          ^
+     92| });
+     93|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  08:00:00
+   Duration  4.19s (transform 3.01s, setup 123ms, import 3.80s, tests 94ms, environment 0ms)
+

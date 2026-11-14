@@ -26,6 +26,7 @@ import { groupPolicyMigration, createHubGroupPolicyStore, inspectHubGroupPolicyB
 import { HUB_GROUP_RESOURCES_MIGRATION } from "../group-policy/resources.js";
 import { createHubGroupAuthorization, type HubGroupAuthorization } from "../group-policy/authorization.js";
 import { HUB_ENROLMENT_CODE_MIGRATION } from "../enrolment-code.js";
+import { createHubRoomInvitations, HUB_ROOM_INVITATIONS_MIGRATION } from "../invitations.js";
 import { HubPairingNotices, HUB_PAIRING_NOTICES_MIGRATION } from "../pairing-notices.js";
 import { createHubGroupAdminControl } from "../group-policy/admin-control.js";
 import { createHubGroupAdminInventory } from "../group-policy/admin-inventory.js";
@@ -71,6 +72,7 @@ export { SERVER_SET } from "./storage.js";
 
 /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
 export interface HubHttpDeps {
+  roomInvitations?: import("../http/deps.js").HubHttpDeps["roomInvitations"];
   roomAssistant?: import("../assistant/types.js").RoomAssistant;
   assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
   /** Host-lifetime control; acquired only after the request proves configured-admin authority. */
@@ -225,6 +227,7 @@ export function hubServerDatabasePlan(cfg: Record<string, unknown>, httpMigratio
     loginAttribute: resolvedDirectory.loginAttribute, userFilter: resolvedDirectory.userFilter,
     caSha256: resolvedDirectory.caPem === undefined ? null : sha256(resolvedDirectory.caPem) }));
   const migrations = [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_WEB_INIT_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpMigrations,
+    HUB_ROOM_INVITATIONS_MIGRATION,
     retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
     groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION,
     HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION, HUB_ENROLMENT_CODE_MIGRATION, HUB_DIRECTORY_SETTINGS_MIGRATION, HUB_DIRECTORY_RECOVERY_MIGRATION, HUB_WEB_ADDRESS_MIGRATION, HUB_MEMBER_ADDRESS_MIGRATION, HUB_MEMBER_RELOCATION_MIGRATION];
@@ -453,6 +456,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const roomAssistant = options.roomAssistant?.();
       if (roomAssistant) teardown.add("the room assistant", () => roomAssistant.close());
       const http = httpEntry.createHubHttp({
+        roomInvitations: createHubRoomInvitations,
         ...(roomAssistant ? { roomAssistant, assistantAdmin: roomAssistant } : {}),
         uow,
         audit,

@@ -1,0 +1,96 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (18 tests | 3 failed | 15 skipped) 234ms
+   × clears an expired invitation without restoring consent or deleting its retained history 111ms
+   × re-inviting after expiry lists only the fresh pending row and rolls supersession back if audit fails 73ms
+   × one future-dated invitation does not hide another current invitation from the owner's inbox 48ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > clears an expired invitation without restoring consent or deleting its retained history
+AssertionError: expected { code: 'not-found' } to deeply equal { ok: true }
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
++   "code": "not-found",
+  }
+
+ ❯ tests/hub-room-consent-track-c.test.ts:187:102
+    185|   w.setNow(w.now() + 7 * DAY); w.admin = await r!.signIn("admin");
+    186|   expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).…
+    187|   expect((await r!.call(w.admin, "DELETE", `/hub/v1/rooms/${w.roomId}/…
+       |                                                                                                      ^
+    188|   expect((await r!.call(w.admin, "DELETE", `/hub/v1/rooms/${w.roomId}/…
+    189|   expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > re-inviting after expiry lists only the fresh pending row and rolls supersession back if audit fails
+AssertionError: expected [ { …(6) }, { …(6) } ] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+  [
+    {
++     "at": 1794592800000,
++     "exposureId": "8e55aea4-f82e-4922-a745-fa05a293dc56",
++     "id": "887b85f1-7e31-43d5-a647-fa0069730d2d",
++     "name": "Notes",
++     "owner": {
++       "name": "Agent owner",
++     },
++     "state": "expired",
++   },
++   {
++     "at": 1795197600000,
++     "exposureId": "8e55aea4-f82e-4922-a745-fa05a293dc56",
+      "id": "dbaae9b7-576a-41a9-97ea-190a5fc24f22",
++     "name": "Notes",
++     "owner": {
++       "name": "Agent owner",
++     },
+      "state": "pending",
+    },
+  ]
+
+ ❯ tests/hub-room-consent-track-c.test.ts:202:85
+    200|   const retry = await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.room…
+    201|   const fresh = retry.json.invited[0]; expect(fresh.id).not.toBe(old.i…
+    202|   expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).…
+       |                                                                                     ^
+    203|   expect(r!.db.prepare("SELECT state FROM hub_room_invitations WHERE i…
+    204|   expect(members()).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > one future-dated invitation does not hide another current invitation from the owner's inbox
+AssertionError: expected 503 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 503
+
+ ❯ Object.pending tests/hub-room-consent-track-c.test.ts:38:135
+     36|     expect(result.status).toBe(200); return result.json.invited[0];
+     37|   };
+     38|   const pending = async (browser = o) => { const result = await r!.cal…
+       |                                                                                                                                       ^
+     39|   return { owner, stranger, admin, o, s, roomId, e, invite, pending, s…
+     40| }
+ ❯ tests/hub-room-consent-track-c.test.ts:211:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 15 skipped (18)
+   Start at  03:42:46
+   Duration  4.00s (transform 2.77s, setup 91ms, import 3.53s, tests 234ms, environment 0ms)
+

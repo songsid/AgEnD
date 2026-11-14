@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3
+
+(node:48769) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  7 passed (7)
+      Tests  71 passed (71)
+   Start at  03:35:56
+   Duration  27.71s (transform 20.60s, setup 2.81s, import 20.98s, tests 17.40s, environment 4ms)
+

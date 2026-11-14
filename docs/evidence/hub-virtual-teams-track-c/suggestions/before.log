@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-team-suggestions-track-c.test.ts (5 tests | 1 failed | 4 skipped) 83ms
+   × offers feedback to an admin or the current Team lead, without granting department search to leads or writing people 81ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-suggestions-track-c.test.ts > offers feedback to an admin or the current Team lead, without granting department search to leads or writing people
+AssertionError: expected undefined to be type of 'function'
+
+Expected: "function"
+Received: "undefined"
+
+ ❯ suggestions tests/hub-team-suggestions-track-c.test.ts:31:68
+     29| }
+     30| function suggestions(teams: HubTeams, ctx: HubRequestContext, input: u…
+     31|   const method = Reflect.get(teams, "suggestions"); expect(method).toB…
+       |                                                                    ^
+     32|   return Reflect.apply(method, teams, [ctx, input]);
+     33| }
+ ❯ tests/hub-team-suggestions-track-c.test.ts:37:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  08:12:55
+   Duration  7.33s (transform 5.67s, setup 142ms, import 6.88s, tests 83ms, environment 0ms)
+

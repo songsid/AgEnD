@@ -39,6 +39,8 @@ import { hubTxDatabase } from "../src/hub/db.js";
 import { createHubRoleCutover } from "../src/hub/roles/cutover.js";
 import { parseRolePolicy } from "../src/hub/roles/model.js";
 import { RoomAssistantService } from "../src/hub/assistant/service.js";
+import { HUB_ROOM_INVITATIONS_MIGRATION } from "../src/hub/invitations.js";
+import { personKeyString } from "../src/hub/identity.js";
 
 const roots: string[] = [];
 let sourceCerts: TestCerts;
@@ -305,7 +307,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     // Private state set, created together.
     for (const p of ["hub/hub.sqlite", "hub/floors/transport", "hub/keys/content.key"]) expect(statSync(join(hub.home, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(hub.home, "hub/hub.sqlite"), { readonly: true });
-    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["company-join", "enrolment-code", "s1-transport", "s3-http", "s3-session-epoch", "s5-audit", "s5-browser-tls", "s5-directory-mount-intent", "s5-directory-settings", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-member-address", "s5-member-relocation", "s5-retention", "s5-web-address", "s5-web-initialization-audit", "s7-attachments", "s90-pairing-notices"]);
+    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["company-join", "enrolment-code", "s1-transport", "s3-http", "s3-room-invitations", "s3-session-epoch", "s5-audit", "s5-browser-tls", "s5-directory-mount-intent", "s5-directory-settings", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-member-address", "s5-member-relocation", "s5-retention", "s5-web-address", "s5-web-initialization-audit", "s7-attachments", "s90-pairing-notices"]);
     expect((db.prepare("SELECT hub_id FROM hub_instance").get() as { hub_id: string }).hub_id).toBe(hub.config.hub.hubId);
     db.close();
 
@@ -2293,6 +2295,69 @@ describe.skipIf(process.platform === "win32")("directory Save decision borrowing
       let retained: HubDirectorySettingsDecision | undefined;
       await r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId), d => { retained = d; return 0; }, () => true);
       expect(() => retained!.inspect()).toThrow("owner changed");
+    } finally { await r.runtime.close(); }
+  });
+});
+
+/** Production factory wiring: no manual consent migration or dependency injection in this fixture. */
+describe.skipIf(process.platform === "win32")("room consent factory composition", () => {
+  it("registers consent once after the room schema before mounting the real HTTP entry", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      const plan = hubServerDatabasePlan(r.hub.config.hub, r.entry.migrations);
+      const index = plan.migrations.findIndex(m => m.component === HUB_ROOM_INVITATIONS_MIGRATION.component);
+      const roomsIndex = plan.migrations.findIndex(m => m.component === "s3-rooms");
+      expect(plan.migrations.filter(m => m.component === HUB_ROOM_INVITATIONS_MIGRATION.component)).toHaveLength(1);
+      expect(roomsIndex).toBeGreaterThanOrEqual(0); expect(index).toBeGreaterThan(roomsIndex);
+      expect(Reflect.get(r.deps, "roomInvitations")).toBeTypeOf("function");
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx);
+        expect(db.prepare("SELECT version FROM hub_schema WHERE component=?").get(HUB_ROOM_INVITATIONS_MIGRATION.component)).toEqual({ version: 1 });
+        expect(db.prepare("SELECT COUNT(*) AS n FROM hub_room_invitations").get()).toEqual({ n: 0 });
+      });
+    } finally { await r.runtime.close(); }
+  });
+
+  it("retains pending consent across a sealed-Hub restart, then accepts and removes only the owner's agent over HTTPS", async () => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] });
+    try {
+      const root = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      const headers = { "X-AgEnD-Hub-CSRF": root.json.csrf };
+      const created = await directoryBrowser(r.hub, root.cookie, { name: "Consent project" }, "/hub/v1/rooms", { headers });
+      expect(created.status).toBe(200);
+      const roomId = created.json.room.id, fleetId = randomUUID(), exposureId = randomUUID();
+      r.deps.store.mutate({ at: Date.now(), requestId: randomUUID(), actor: { kind: "person", person: ADMIN.key }, action: "test.fleet", result: "completed" }, state => {
+        state.fleets.push({ id: fleetId, owner: NOTICE_READER.key, credentialHash: "a".repeat(64), generation: 1, status: "active" });
+      });
+      await r.http.receive({ v: 1, type: "exposure.snapshot", requestId: randomUUID(), linkEpoch: 1, payload: { revision: 1,
+        exposures: [{ id: exposureId, fleetId, owner: NOTICE_READER.key, displayName: "Project notes", revision: 1,
+          state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] } },
+      { fleetId, owner: NOTICE_READER.key, linkEpoch: 1, features: new Set(), current: () => true });
+      const invited = await directoryBrowser(r.hub, root.cookie, { agents: [exposureId] }, `/hub/v1/rooms/${roomId}/invitations`, { headers });
+      expect(invited.status).toBe(200);
+      const invitationId = invited.json.invited[0].id;
+      await r.runtime.close();
+      await r.build().apply(r.hub.config);
+      expect(r.runtime.serverHealth(r.hub.config.hub)).toBe("ready");
+      const owner = await directoryBrowser(r.hub, undefined, { login: NOTICE_READER.login, password: "Dummy-browser-only" });
+      const ownerHeaders = { "X-AgEnD-Hub-CSRF": owner.json.csrf };
+      const pending = await directoryBrowser(r.hub, owner.cookie, undefined, "/hub/v1/invitations");
+      expect(pending.status).toBe(200);
+      expect(pending.json.invitations).toEqual([expect.objectContaining({ id: invitationId, agent: { exposureId, name: "Project notes" } })]);
+      const accepted = await directoryBrowser(r.hub, owner.cookie, {}, `/hub/v1/invitations/${invitationId}/accept`, { headers: ownerHeaders });
+      expect(accepted).toMatchObject({ status: 200, json: { ok: true } });
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx);
+        expect(db.prepare("SELECT COUNT(*) AS n FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(roomId, exposureId)).toEqual({ n: 1 });
+        expect(db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(roomId, personKeyString(NOTICE_READER.key))).toBeUndefined();
+      });
+      const rooms = await directoryBrowser(r.hub, owner.cookie, undefined, `/hub/v1/exposures/${exposureId}/rooms`);
+      expect(rooms.status).toBe(200); expect(rooms.json.rooms).toHaveLength(1);
+      expect(rooms.json.rooms[0]).toMatchObject({ id: roomId, name: "Consent project" });
+      const left = await directoryBrowser(r.hub, owner.cookie, undefined, `/hub/v1/rooms/${roomId}/members/${rooms.json.rooms[0].memberId}`,
+        { method: "DELETE", headers: ownerHeaders });
+      expect(left.status).toBe(200);
+      expect((await directoryBrowser(r.hub, owner.cookie, undefined, `/hub/v1/exposures/${exposureId}/rooms`)).json).toEqual({ rooms: [] });
     } finally { await r.runtime.close(); }
   });
 });

@@ -1,0 +1,54 @@
+{
+  "sourceHead": "23329b7b5bc5718487417ec2700c8cf903d8d19e",
+  "currentFocused": {
+    "files": [
+      "tests/hub-teams-client-track-c.test.ts",
+      "tests/hub-teams-ui-track-c.test.ts",
+      "tests/hub-grant-picker-m3016.test.ts"
+    ],
+    "passed": 20,
+    "exit": 0
+  },
+  "compatibilityEarlier": {
+    "passed": 48,
+    "files": 6,
+    "overlap": true,
+    "notAddedToCurrentCount": true
+  },
+  "vocabulary": {
+    "command": "vitest run tests/hub-teams-client-track-c.test.ts tests/hub-teams-ui-track-c.test.ts tests/hub-u3-vocabulary-gate-2933.test.ts --maxWorkers=2",
+    "passed": 95,
+    "files": 3,
+    "overlap": true
+  },
+  "native": {
+    "source": 0,
+    "tests": 0,
+    "initialTestTypeError": "nullable MiniDOM link test fixture; corrected, subsequent tests program exit0"
+  },
+  "baseline": {
+    "head": "fc09d60c6a6689fbfe230082d5154bbf890f3797",
+    "command": "vitest run tests/hub-teams-client-track-c.test.ts --maxWorkers=2",
+    "assertionReds": 2,
+    "messages": [
+      "teamsLive undefined, expected function",
+      "teamSuggestions undefined, expected function"
+    ],
+    "scope": "Initial tool-captured output; no baseline rerun"
+  },
+  "mutations": "Existing once-only grant campaign carried; no repeated UI mutation campaign",
+  "inputs": {
+    "src/ui/hub-teams.js": "2fb66527da4857311ea75d26025ce3f957bc7cd87f85a8cb09b2c22721ec7b47",
+    "src/ui/hub-teams-strings.js": "126a3b4c51fae20c7f3f873077fc9f8d5a9033603cf8a557d326754324639089",
+    "src/ui/shared/hub-teams.css": "dbeb3e4d5dbbe952752c32287ba06ce9a9c13625b13edbd44cce605362bc7c61",
+    "src/ui/hub-client.js": "38bc8b8a403c19b96c7e2e4db2ed7e785fd2f47ea4799d32498a9e8fb65655de",
+    "src/ui/panel-hub.js": "d0f625be3fd625270458bbe5df0ad5c7b997f7c6c23bb5be72d570de733d5334",
+    "src/ui/hub-grant-picker.js": "da2f20cc10c2151773331f1d188ca7fa8bf3122b8d49cb5748e140266e5ce870",
+    "src/hub/teams/index.ts": "46d237b408938c252added7358ac584937ad0d430bd50f7f9313d1c5a4be7da8",
+    "src/hub/teams/types.ts": "1d0ba81b18c5cc330484d81184ac0063f8ac07de749b980bc24fbc4a9735feb8",
+    "tests/hub-teams-ui-track-c.test.ts": "0a8820488164ee2e49630871d8ff4cf55f78aba58335fa8090d2d3b57c79725b",
+    "tests/hub-teams-client-track-c.test.ts": "c5490c27c6eae08bf271482267690864db5c88ad6488a945a6efa45fb02c55e3",
+    "tests/hub-grant-picker-m3016.test.ts": "89e4ed872bcc645cb9cc2762fe82492d7b9d005f7dc401b82f2b05a71992077d",
+    "tests/support/hub-rooms-fixture.ts": "d9de99ca35c47d2b3dd0912d3c2f66c53904d1ed2c49ce6364d330a6028eabc0"
+  }
+}

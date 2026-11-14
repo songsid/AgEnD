@@ -1,0 +1,15 @@
+# Real room routing walkthrough
+
+Current final packet: `final/`, source7f8aad05c4,48/48browser checks,16original PNGs all visually clear,72/7fresh focused and both native programs0. It covers real @agent/@all queue/reconnect and live Idle/Working/Offline/quota behavior in the shared browser. FullS142/Teams and final PM acceptance remain open. Historical failures below and in their named directories are retained, not presented as current results.
+
+The first actual routing walkthrough uses the R HTTP/SQLite dispatcher, HubServer/HubMemberClient over pinned TLS/WSS, C durable room adapter and state publisher, and the shared U browser shell. Two owned Fleet fixtures publish Notes and Planner. The physical agent input and reporting hook are inert. The captured bridge joins two existing test rigs; this is not a full FleetManager production mount. No real directory, account, vendor API, or agent process is used. Teams remain uncomposed.
+
+At source ee9b222fd the desktop pass has 16 passing checks and seven original PNGs. It proves a plain room message creates no delivery, @Notes reaches only Notes, the C answer becomes durably acknowledged, and @all leaves exactly one delivery queued while Planner is offline. Reconnecting Planner delivers that input, each answer is stored once, progress reaches All 2 answered, and actual SSE/HTTP carry presence and quota reason. The overall run fails on the phone because the shared CSS hides the members rail under 1200px and the Hub toggle has no visible mobile panel. No phone acceptance is claimed.
+
+The image-only child inspected all seven desktop originals. No clipping or unreadable content was found. It identified 1 people in room counts (U1 correction requested) and two stale inert-state captures (harness lifecycle correction e7a377670, retake pending). These originals and their receipts remain historical; they are not presented as final screenshots.
+
+An earlier source 8f5fe5d40 run reached six passing desktop checks and then timed out on Offline. The fixture had called the rooms-service close notification before the server observed the WSS close. The harness now waits for HubServer.features(fleet) to become null before invoking that captured notification. Its original receipt, log and two PNGs are under initial-harness. This is separate from the phone product finding.
+
+The invitation/consent subset at80a63f8da is now PM-clear: Lumen inspected all six final consent views and accepted every requested follow-up. The optional empty Who-may-ask line can later be qualified as one-to-one; it does not block this walkthrough.
+
+Next: consume the U1 responsive/count correction, retake desktop and phone routing states with accurate inert lifecycle, then request Lumen's routing/presence walk. Team service/storage and full S142 acceptance remain open. No new source/test/type campaign or security gate is claimed here. Runtime rollback is unchanged: this packet and its manual script can be removed independently of room data, migrations and authority.

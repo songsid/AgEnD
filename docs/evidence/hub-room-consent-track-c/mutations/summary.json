@@ -1,0 +1,50 @@
+[
+  {
+    "name": "I1-owner-decline",
+    "selected": "invites only through",
+    "mutantSha256": "a7e482306ab3c6799b72dc9f9c4789d449bce57cb65e26b04a71ff5a661842fa",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "I2-audit-rollback",
+    "selected": "rolls membership and invitation",
+    "mutantSha256": "b0ea88ff9b9b40e51a75b20b972038466bac843d0fd4b7ebc62512e0b9ee0089",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "I3-seven-days",
+    "selected": "keeps duplicate pending",
+    "mutantSha256": "51cd4163a6883efb215a040e308a5c087781217fe9ec4dce8ee8f45aa83f5f73",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "I4-final-row",
+    "selected": "changed invitation during audit",
+    "mutantSha256": "c8a9c7680f51ac48fc8edc7507597f20ce8eef1889058d36e00a9c3631fec200",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "I6-session-fence",
+    "selected": "actual browser session",
+    "mutantSha256": "35bc7906bb53d220483c84e5e1ba643d180729281efbd196ad130bb6cbc07fbd",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "I5-postcommit",
+    "selected": "publishes refresh events",
+    "mutantSha256": "61a1343486de61f410482b5f0795dcbeaa20e7ba4343c0bdf81853fa820a4fa7",
+    "types": 0,
+    "testExit": 1,
+    "assertionRed": true
+  }
+]

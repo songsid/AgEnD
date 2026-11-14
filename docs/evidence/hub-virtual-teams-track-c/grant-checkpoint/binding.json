@@ -1,0 +1,25 @@
+{
+  "sourceHead": "9c18949552a0fdca45fa0422d5697b841eb27edb",
+  "aggregateDistinct": {
+    "cases": 80,
+    "files": 5,
+    "basis": "78/5 run before two added controls +9/1 final,7case overlap; no combined80case rerun."
+  },
+  "baseline": {
+    "nativeExit": 0,
+    "semanticAssertionReds": 7,
+    "restored": true,
+    "scope": "Previous consumer bodies/types at aadd with new provider/migration fixtures."
+  },
+  "mutation": {
+    "isolated": 9,
+    "caughtCompilingAssertionReversals": 8,
+    "equivalent": 1,
+    "exactRestored": true
+  },
+  "native": {
+    "sourceExit": 0,
+    "testExit": 0
+  },
+  "limits": "Actual SQLite/session/HTTP with inert directory/link. No production Team mount, external AD, real Fleet/agent input, browser/UI, full Team acceptance or release claim. Earlier impact-fixture failure omitted from feature baseline; the fixture now records its independently required active transport Fleet."
+}

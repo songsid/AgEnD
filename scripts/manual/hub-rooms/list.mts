@@ -24,7 +24,7 @@ import { createHash } from "node:crypto";
 const repo = resolve(process.env.REPO ?? "."), out = resolve(process.env.OUT ?? join(repo, ".artifacts/hub-rooms-list"));
 const base = process.env.BASE_REF ?? "origin/release/2.3.5-alpha";
 mkdirSync(out, { recursive: true });
-const git = (...a: string[]) => execFileSync("git", ["-C", repo, ...a], { encoding: "utf8" }).trim();
+const git = (...a: string[]) => execFileSync("git", ["-c", "gc.auto=0", "-C", repo, ...a], { encoding: "utf8" }).trim();
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const { s3bRig } = await import(repo + "/tests/helpers/hub-s3b-rig.ts");
 const { provisionHubIdentity } = await import(repo + "/src/hub/tls.ts");

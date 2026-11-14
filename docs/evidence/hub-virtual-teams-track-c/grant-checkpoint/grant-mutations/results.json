@@ -1,0 +1,282 @@
+[
+  {
+    "name": "T1-live-membership",
+    "path": "src/hub/grant-access.ts",
+    "beforeSha256": "11f9afdee44488ddae698127951cd7919628dc8666f9303721341ffee3cb8617",
+    "test": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grants-track-c.test.ts",
+        "-t",
+        "live roster removal",
+        "--maxWorkers=2"
+      ],
+      "exit": 1,
+      "startLoad1": 3.33935546875
+    },
+    "selection": "live roster removal",
+    "mutantSha256": "a4453cd53560f4345e9b49040b481e3a9a06da69ae541299426379e31d73eedc",
+    "types": {
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 2.21044921875
+    },
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "T2-roster-fence",
+    "path": "src/hub/grant-access.ts",
+    "beforeSha256": "11f9afdee44488ddae698127951cd7919628dc8666f9303721341ffee3cb8617",
+    "test": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grants-track-c.test.ts",
+        "-t",
+        "finite durable",
+        "--maxWorkers=2"
+      ],
+      "exit": 1,
+      "startLoad1": 3.35009765625
+    },
+    "selection": "finite durable",
+    "mutantSha256": "1294a53b4e408d8c86166cf6dbb5c9485b6ba71653624779c12e378b24aad9dd",
+    "types": {
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 3.23193359375
+    },
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "T3-provider-fence",
+    "path": "src/hub/grant-access.ts",
+    "beforeSha256": "11f9afdee44488ddae698127951cd7919628dc8666f9303721341ffee3cb8617",
+    "test": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grants-track-c.test.ts",
+        "-t",
+        "finite durable",
+        "--maxWorkers=2"
+      ],
+      "exit": 1,
+      "startLoad1": 4.19189453125
+    },
+    "selection": "finite durable",
+    "mutantSha256": "605f6ae7e9258fc02f6d8af3d8fac4988b501f1b7edd5a8dbbabe4f8d8cb4f61",
+    "types": {
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 3.24169921875
+    },
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "T4-search-owner",
+    "path": "src/hub/grant-search.ts",
+    "beforeSha256": "cb7947b02be7938bac7e17f5cafc7696322b73a0d92ae5809d6b1850617b23e1",
+    "test": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grants-track-c.test.ts",
+        "-t",
+        "Team grant feedback",
+        "--maxWorkers=2"
+      ],
+      "exit": 1,
+      "startLoad1": 4.86328125
+    },
+    "selection": "Team grant feedback",
+    "mutantSha256": "e3b37946b4ee44264093b7ef1b97b69e5106e47ab73ed5039b40d358d5e5e8c4",
+    "types": {
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 4.01611328125
+    },
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "T5-team-identity",
+    "path": "src/hub/catalog.ts",
+    "beforeSha256": "a0e8c9111ab38ebf223ec30ab253ec6ff2f70f327fb6f7211bbdf318f2ada259",
+    "test": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grants-track-c.test.ts",
+        "-t",
+        "creates one immutable",
+        "--maxWorkers=2"
+      ],
+      "exit": 1,
+      "startLoad1": 5.5458984375
+    },
+    "selection": "creates one immutable",
+    "mutantSha256": "1b42b303c2bae18b0f2c8538d053f77ecf99831d616b7a1cd3bfbf42598f3561",
+    "types": {
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 4.7138671875
+    },
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "T6-policy-impact",
+    "path": "src/hub/group-policy/impact-inventory.ts",
+    "beforeSha256": "ef8bed163901514564bee8407e599bfabd944c4a2c96188f6b1d42ce5ff3dc5c",
+    "test": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grants-track-c.test.ts",
+        "-t",
+        "policy impact observes",
+        "--maxWorkers=2"
+      ],
+      "exit": 1,
+      "startLoad1": 6.18701171875
+    },
+    "selection": "policy impact observes",
+    "mutantSha256": "639f15edc26cae60ea38f47a2cea48f494d7d1408e4a8226138c1adf693a4a41",
+    "types": {
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 5.421875
+    },
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "T7-group-identity",
+    "path": "src/hub/catalog.ts",
+    "beforeSha256": "a0e8c9111ab38ebf223ec30ab253ec6ff2f70f327fb6f7211bbdf318f2ada259",
+    "test": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grants-track-c.test.ts",
+        "-t",
+        "retains immutable GUID",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "startLoad1": 6.634765625
+    },
+    "selection": "retains immutable GUID",
+    "mutantSha256": "4d5cb99809f414953fd9fe896d0937e2850d00748df72ee2b0343d1d3ca6d790",
+    "types": {
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 5.771484375
+    },
+    "caught": false,
+    "restored": true,
+    "equivalentReason": "The additional group UUID guard duplicates validation.person.objectId:uuid, so removing only it preserves GUID validation."
+  },
+  {
+    "name": "T8-retained-grants",
+    "path": "src/hub/teams/grant-schema.ts",
+    "beforeSha256": "5a59d7dbdbe2ebd4f24831ce64ecb62456fb359afe2b78f25a6e6796d19a997d",
+    "test": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grant-migration.test.ts",
+        "-t",
+        "preserves every retained",
+        "--maxWorkers=2"
+      ],
+      "exit": 1,
+      "startLoad1": 8.5048828125
+    },
+    "selection": "preserves every retained",
+    "mutantSha256": "d6976bd7f75429cc8434ff97701052468b79092e2a7fac29c38b2fd6e09aaef2",
+    "types": {
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 6.77001953125
+    },
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "T9-selection-fence",
+    "path": "src/hub/catalog.ts",
+    "beforeSha256": "a0e8c9111ab38ebf223ec30ab253ec6ff2f70f327fb6f7211bbdf318f2ada259",
+    "test": {
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grants-track-c.test.ts",
+        "-t",
+        "selected roster changes",
+        "--maxWorkers=2"
+      ],
+      "exit": 1,
+      "startLoad1": 9.77880859375
+    },
+    "selection": "selected roster changes",
+    "mutantSha256": "c0bca05a1a2dd8976765ebc2c6ddb649bba6a03c58c5016f537d01e3f2eee8c0",
+    "types": {
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 8.5048828125
+    },
+    "caught": true,
+    "restored": true
+  }
+]

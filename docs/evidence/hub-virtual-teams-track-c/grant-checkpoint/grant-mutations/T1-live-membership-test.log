@@ -1,0 +1,78 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-team-grants-track-c.test.ts (9 tests | 1 failed | 8 skipped) 129ms
+   × live roster removal ends catalog visibility and access to an existing private conversation without changing its grant 127ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > live roster removal ends catalog visibility and access to an existing private conversation without changing its grant
+AssertionError: expected [ { exposure: { …(9) }, …(2) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "exposure": {
++       "allowedTools": [],
++       "dataViewId": "agent",
++       "displayName": "Shared agent",
++       "fleetId": "26105b41-ceab-4396-b910-a05fc926378d",
++       "id": "2f06cbc8-bde1-4800-ae46-8d3326ab62ee",
++       "owner": {
++         "objectId": "f945ed30-ef7b-4a86-865c-04f7efe23c0a",
++         "realm": "corp",
++       },
++       "policyDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
++       "revision": 1,
++       "state": "published",
++     },
++     "grant": {
++       "approvedAt": 1794614370066,
++       "approvedBy": {
++         "objectId": "f945ed30-ef7b-4a86-865c-04f7efe23c0a",
++         "realm": "corp",
++       },
++       "expiresAt": 1802390370066,
++       "exposureId": "2f06cbc8-bde1-4800-ae46-8d3326ab62ee",
++       "exposureRevision": 1,
++       "id": "eb7012f7-1c72-4bc0-9963-f5ba87a763f1",
++       "owner": {
++         "objectId": "f945ed30-ef7b-4a86-865c-04f7efe23c0a",
++         "realm": "corp",
++       },
++       "permissions": [
++         "ask",
++         "read-own-room",
++       ],
++       "revision": 1,
++       "startsAt": 1794614370066,
++       "state": "active",
++       "subject": {
++         "kind": "team",
++         "teamId": "5ca61e80-8628-4a39-b3b6-966aaf4c275e",
++       },
++       "subjectLabel": "Project",
++     },
++     "ownerName": "olivia",
++   },
++ ]
+
+ ❯ tests/hub-team-grants-track-c.test.ts:60:78
+     58|   expect(room.status).toBe(200);
+     59|   expect((await w.r.call(w.asker, "GET", "/hub/v1/exposures")).json.as…
+     60|   expect((await w.r.call(w.other, "GET", "/hub/v1/exposures")).json.as…
+       |                                                                              ^
+     61|   await w.teams.update(w.ctx, w.team.id, { members: [personKeyString(w…
+     62|   expect((await w.r.call(w.asker, "GET", "/hub/v1/exposures")).json.as…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  07:59:25
+   Duration  4.77s (transform 3.34s, setup 131ms, import 4.33s, tests 129ms, environment 0ms)
+

@@ -1,0 +1,5 @@
+{
+  "scope": "7/7 phone originals inspected by image-only child.",
+  "result": "Members sheets fully visible/readable, Close and Room settings controls available; @all preflight/queued/progress/reconnect/allanswered fit; header1\u4eba; lifecycle states consistent; no additional clipping/overlap.",
+  "knownFinding": "Quota displays plain\u66ab\u505c because live UI drops presenceReason; U1/U2 repairs pending. HTTP/SSE quota reason passes."
+}

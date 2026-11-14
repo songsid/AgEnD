@@ -27,6 +27,17 @@ export async function prepareGrantAccess(core: HubCore, ids: readonly string[], 
   })));
   const epoch = core.revocationVersion(), directory = core.deps.directory, read = directory.readPolicyGroups;
   const groupNeeded = [...grants.values()].some(g => g?.subject.kind === "group" && g.state === "active" && g.startsAt <= time() && time() < g.expiresAt);
+  const teamReader = core.deps.roomTeams, teamMethod = teamReader?.isMember;
+  const teamIds = [...new Set([...grants.values()].flatMap(g => g?.subject.kind === "team" ? [g.subject.teamId] : []))];
+  if (teamIds.length && (!teamReader || !teamMethod)) throw new HubProtocolError("unavailable");
+  const teamObservations = core.atomic(db => new Map(teamIds.map(id => [id, teamMethod!.call(teamReader!, db, id, personKeyString(asker))] as const)));
+  const assertTeams = () => {
+    if (!teamIds.length) return;
+    if (core.deps.roomTeams !== teamReader || teamReader!.isMember !== teamMethod) throw new HubProtocolError("unavailable");
+    core.atomic(db => { for (const [id, observed] of teamObservations) {
+      if (JSON.stringify(teamMethod!.call(teamReader!, db, id, personKeyString(asker))) !== JSON.stringify(observed)) throw new HubProtocolError("revoked");
+    } });
+  };
   let facts: PolicyGroupFacts = { kind: "unknown" }, physical: HubOperationPermit | undefined;
   if (groupNeeded) {
     if (directory.groupPolicy !== "ad-direct-guid" || !read || directory.realm !== asker.realm) throw new HubProtocolError("unavailable");
@@ -44,9 +55,12 @@ export async function prepareGrantAccess(core: HubCore, ids: readonly string[], 
   }
   // A finite operation proof, not a session grant. Each use is also bounded by THAT grant's own recorded expiry.
   const created = time();
+  const subjectMatches = (g: HubGrant) => g.subject.kind === "person" ? same(g.subject.person, asker)
+    : g.subject.kind === "team" ? teamObservations.get(g.subject.teamId)?.member === true
+    : facts.kind === "complete" && g.subject.group.realm === asker.realm && facts.groups.includes(g.subject.group.objectId);
   let deadline = Math.min(created + 5_000, facts.kind === "complete" ? facts.observedAt + 5_000 : Infinity);
   for (const g of grants.values()) if (g && g.state === "active" && g.startsAt <= created && created < g.expiresAt
-    && (g.subject.kind === "person" ? same(g.subject.person, asker) : facts.kind === "complete" && g.subject.group.realm === asker.realm && facts.groups.includes(g.subject.group.objectId))) deadline = Math.min(deadline, g.expiresAt);
+    && subjectMatches(g)) deadline = Math.min(deadline, g.expiresAt);
   if (facts.kind === "complete" && facts.observedAt > created) throw new HubProtocolError("unavailable");
   const used = new Map<string, HubGrant>();
   let lastObserved = created, clockRetired = false, actionRetired = false;
@@ -60,7 +74,7 @@ export async function prepareGrantAccess(core: HubCore, ids: readonly string[], 
   };
   const assertSelectionCurrent = () => {
     proofTime();
-    assertContext(); physical?.assertCurrent();
+    assertContext(); physical?.assertCurrent(); assertTeams();
     core.atomic(db => { for (const [id, g] of used) {
       const row = readGrant(db, id);
       if (!row || bytes(grantOf(row)) !== bytes(g) || proofTime() < g.startsAt || proofTime() >= g.expiresAt) throw new HubProtocolError("revoked");
@@ -77,8 +91,7 @@ export async function prepareGrantAccess(core: HubCore, ids: readonly string[], 
     assertCurrent();
     const captured = grants.get(g.id), now = proofTime();
     if (!same(who, asker) || !captured || bytes(captured) !== bytes(g) || g.state !== "active" || now < g.startsAt || now >= g.expiresAt) return false;
-    const match = g.subject.kind === "person" ? same(g.subject.person, asker)
-      : g.subject.group.realm === asker.realm && facts.kind === "complete" && facts.groups.includes(g.subject.group.objectId);
+    const match = subjectMatches(g);
     if (!match) return false;
     const fresh = core.atomic(db => readGrant(db, g.id));
     if (!fresh || bytes(grantOf(fresh)) !== bytes(g)) return false;

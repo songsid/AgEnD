@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-teams-track-c.test.ts (10 tests | 1 failed | 9 skipped) 70ms
+   × identifies the current lead for navigation without requiring a person key in the public session 68ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-teams-track-c.test.ts > identifies the current lead for navigation without requiring a person key in the public session
+AssertionError: expected { …(10) } to match object { …(2) }
+(9 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "id": "bbfa6155-df32-4346-b118-0f3e1eb9a34d",
+-   "isLead": true,
+  }
+
+ ❯ tests/hub-teams-track-c.test.ts:41:40
+     39| it("identifies the current lead for navigation without requiring a per…
+     40|   const w = await world(), team = await w.create();
+     41|   expect((await w.teams.list(w.l))[0]).toMatchObject({ id: team.id, is…
+       |                                        ^
+     42|   expect((await w.teams.list(w.admin))[0]).toMatchObject({ id: team.id…
+     43|   expect((await w.teams.list(w.o))[0]).toMatchObject({ id: team.id, is…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 skipped (10)
+   Start at  08:47:55
+   Duration  4.17s (transform 3.01s, setup 86ms, import 3.86s, tests 70ms, environment 0ms)
+

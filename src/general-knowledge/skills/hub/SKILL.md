@@ -37,7 +37,8 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | Connected fleets, Revoke, Individual invitations, pairing code, Notices | [Administration](#administration) |
 | `hub`, `hub_member` in fleet.yaml | [Config keys](#config-keys) |
 | how many, how long | [Limits](#limits) |
-| custom roles, virtual teams, sharing a ClassicBot room | [Not available yet](#not-available-yet) |
+| virtual teams, My teams, team lead, team grants | [Teams](#teams) |
+| custom roles, sharing a ClassicBot room | [Not available yet](#not-available-yet) |
 | can't connect, certificate, different host names, old tab | [Troubleshooting](#troubleshooting) |
 
 ## What the Hub is
@@ -286,13 +287,13 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
 
 ## Who may ask
 
-Sharing lets nobody ask yet. The owner allows a person or an AD security group; Hub eligibility and operational group permissions still apply.
+Sharing lets nobody ask yet. The owner allows a person, an AD security group, or a Team when Teams is offered; Hub eligibility and operational group permissions still apply.
 
 - From the Fleet row, **Allow someone to ask…** opens the Hub at the agent's page; or on the Hub: **My shared agents**
   → the agent → **Who may ask** → **Allow…**.
 - On a supported AD Hub, **Allow access to** *agent* offers **A person** (search the beginning of their name or login) or **An AD security group** (the same group-search control as Let colleagues join). Select a result, choose **Access lasts** 1, 7 (default), 30 or 90 days, then **Allow**.
 - Group grants bind the directory's immutable GUID, not its name. Every action checks fresh direct membership; nested and primary groups are not included. An AD group manager can change who may ask, as the dialog explains. Each person's chat stays private. Joining or leaving takes effect on the next check. Unknown membership is unavailable, not a grant removal.
-- New personal and group grants are capped at 90 days server-side. Existing longer grants keep their recorded expiry, ID and revision, and remain revocable; show their actual date without shortening it.
+- New personal, group and Team grants are capped at 90 days server-side. Existing longer grants keep their recorded expiry, ID and revision, and remain revocable; show their actual date without shortening it.
 - An older tab or unsupported directory retains the dialog **Allow someone to ask** *agent*: **Their sign-in name**, by exact login, and **For** 1, 7, 30 or 90 days.
 - A person covered by several grants sees one agent entry, preferring an existing still-authorized conversation. History is never transferred to a different grant.
 - Each row shows the person or group and "until *date*"; a group has an **AD group** tag. A person allowed before they ever used the Hub is tagged **Hasn't
@@ -355,8 +356,22 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 - Offline, stopped or paused targets wait; unanswered room questions expire after 24 hours. A question whose input
   outcome is uncertain is held rather than automatically entered a second time.
 
-Inviting another owner's agent and virtual-team management arrive in separate slices; do not invent those controls
-on a Hub that does not provide them. The room assistant is also separate.
+### Inviting another owner's agent
+
+When the Hub offers room invitations, a room manager can invite another owner's shared agent. The owner sees
+**Invitations** (邀請) above the chat list and at the top of **My shared agents**. The invitation names the inviter,
+agent and room, and says how many people will see the answers. **Agree** (同意) adds the agent; **Decline** (不要)
+does not. The owner does not become a person in that room and cannot read its messages just by accepting.
+
+- An invitation lasts seven days from when it was sent. Repeating a pending invitation does not extend it. The
+  manager can clear an expired invitation or send a new one; the replacement takes the old entry’s place.
+- Pausing sharing keeps existing room membership and pending invitations, while their expiry clocks keep running.
+  Resume sharing before accepting a pending invitation; an expired invitation needs a new invitation.
+- On the shared agent's page, **In these rooms** (在這些房間裡) lists its rooms. **Leave this room** removes the agent.
+  Replaying the old acceptance does not join it again; a new invitation is needed.
+- A manager can add their own shared agent directly. This remains separate from private **Who may ask** grants.
+
+These controls need the matching invitation service and room UI. Do not invent them on an older Hub. Team controls also require the matching Teams service. The Hub room assistant is described in the next section.
 
 ## Rooms and the Hub assistant
 
@@ -381,6 +396,32 @@ after an upgrade. Do not offer an assistant when the Hub has no enabled assistan
   room's queued inputs. An interrupted answer is not automatically repeated after a restart.
 - Agent owners can see which rooms their agent is in and remove it. Pausing sharing keeps its room membership;
   invitations to another owner's agent still require that owner's acceptance when the invitation service is available.
+
+## Teams
+
+These controls appear only when the Hub offers Teams. The Hub administrator opens **Administration → Teams**
+(管理 → 團隊), between Let colleagues join and Rooms. **New team** needs a name, an AD department and a lead.
+A department groups the team; it does not implicitly add that AD group's members. Each person is explicitly selected.
+
+- The lead is always a member. Changing the lead adds the new person in the same save; the former lead stays until
+  removed later. A disabled lead stays named, with a warning to choose a replacement; nobody is promoted automatically.
+- Administrators can create, rename, change department or lead, delete, and edit any roster. A lead uses **My teams**
+  (我的團隊), in the shared desktop sidebar or phone ☰ drawer, to add or remove members only. A plain member has no
+  My teams entry in this phase. Both paths use the same roster editor.
+- People search is **Search by name (whole company)** (輸入姓名搜尋（全公司）), including other departments. Results
+  show the sign-in name beside the display name. The team's department remains context in the header; it is not a
+  search filter. A member's own department is shown only when already recorded, without a lookup per roster row.
+- A team holds at most 200 people and a Hub at most 200 teams. Room selection still has its separate 100-person limit.
+  The roster shows each person's role, whether they ever signed in to Hub, and their shared agents. Selecting someone
+  does not sign them in or create a Hub session.
+- Adding a Team's people to a room, or inviting its agents, takes a snapshot. Later roster edits and deletion do not
+  remove explicit room people or already-consented agents. Repeating Add team adds newly selected people only;
+  another owner's agent still needs owner consent.
+- **Who may ask → Allow → A team** follows the current roster on every check, as do Team-based room-creation rights.
+  Removing a member or deleting the Team ends those future permissions. Team grants expire after the chosen 1, 7,
+  30 or 90 days, with absolute expiry continuing during sharing pauses. Existing longer grants keep their original date.
+- Delete lists the active Team grants and room-creation entry that will stop applying. Saved room membership and
+  accepted agent consent stay. Deleted teams and their history are retained internally; deletion does not erase them.
 
 ## Group permissions
 
@@ -470,7 +511,6 @@ Say plainly that these are not in the product yet:
 - **Custom roles and a manager's team view** (several administrators, roles assigned to people or AD groups, a team
   list with usage counts). Designed and decided; not shipped. Today there is one Hub administrator.
 - **Sharing a ClassicBot room.** Only fleet agents can be shared.
-- **Virtual teams and team-based grants.** They are separate from the existing AD-group grants.
 - **A second sign-in factor on the Hub.** It uses the company account and password only.
 - **Adding to People excluded from the editor.** The list is shown; it cannot be edited there in this release.
 - **Per-person cost or quota figures on the Hub.** Exact usage stays in each Fleet.

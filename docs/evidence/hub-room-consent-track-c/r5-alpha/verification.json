@@ -1,0 +1,49 @@
+{
+  "head": "cc27e56cea98de04e0bcd0b008cb24a13314d3db",
+  "results": [
+    {
+      "label": "focused",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-room-consent-track-c.test.ts",
+        "tests/hub-room-invitations.test.ts",
+        "tests/hub-room-integration-r3.test.ts",
+        "tests/hub-room-rc-integration-r3.test.ts",
+        "tests/ui-css-literals-ratchet.test.ts",
+        "tests/web-tokens-1408.test.ts",
+        "tests/hub-rooms-migration-r1.test.ts",
+        "tests/hub-shared-modules-a.test.ts",
+        "tests/hub-rooms-r1.test.ts",
+        "tests/hub-room-agents-r2.test.ts",
+        "tests/hub-room-thread-3092.test.ts",
+        "tests/hub-rooms-client-3092.test.ts",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "startLoad1": 2.12890625
+    },
+    {
+      "label": "source-types",
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.json"
+      ],
+      "exit": 0,
+      "startLoad1": 1.95556640625
+    },
+    {
+      "label": "test-types",
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 4.44189453125
+    }
+  ]
+}

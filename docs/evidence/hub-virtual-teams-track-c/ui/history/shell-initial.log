@@ -1,0 +1,32 @@
+Hub shell gate listener: https://127.0.0.1:38045
+FAIL desk-light-en:chats:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+FAIL desk-light-en:chats:sidebar:search: {"text":"New chat","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL desk-light-en:mine:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+FAIL desk-light-en:mine:sidebar:search: {"text":"New chat","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL desk-light-en:admin:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+FAIL desk-light-en:admin:sidebar:search: {"text":"New chat","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL desk-light-en:notices:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+FAIL desk-light-en:notices:sidebar:search: {"text":"New chat","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL desk-light-zh-TW:chats:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+FAIL desk-light-zh-TW:chats:sidebar:search: {"text":"新對話","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL desk-light-zh-TW:mine:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+FAIL desk-light-zh-TW:mine:sidebar:search: {"text":"新對話","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL desk-light-zh-TW:admin:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+FAIL desk-light-zh-TW:admin:sidebar:search: {"text":"新對話","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL desk-light-zh-TW:notices:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+FAIL desk-light-zh-TW:notices:sidebar:search: {"text":"新對話","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL phone-light-en:chats:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+FAIL phone-light-en:chats:sidebar:search: {"text":"New chat","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL phone-light-en:mine:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+FAIL phone-light-en:mine:sidebar:search: {"text":"New chat","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL phone-light-en:admin:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+FAIL phone-light-en:admin:sidebar:search: {"text":"New chat","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL phone-light-en:notices:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+FAIL phone-light-en:notices:sidebar:search: {"text":"New chat","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL phone-light-zh-TW:chats:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+FAIL phone-light-zh-TW:chats:sidebar:search: {"text":"新對話","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL phone-light-zh-TW:mine:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+FAIL phone-light-zh-TW:mine:sidebar:search: {"text":"新對話","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+FAIL phone-light-zh-TW:admin:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+FAIL phone-light-zh-TW:admin:sidebar:search: {"text":"新對話","h":36,"iconX":12,"current":false,"count":false,"kbd":"","cls":"side-row side-new"}
+Hub shell gate FAILED (32) in 81s — pictures and result.json in /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c/.artifacts/teams-track-c/shell/smoke-hub-shell-gate

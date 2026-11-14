@@ -1,0 +1,99 @@
+{
+  "sourceHead": "8b831103abb13b807adcec34b4da367af169056d",
+  "inputs": {
+    "src/ui/hub-teams.js": "44c273accfe1ed9fd87bda0771da311737b5a9d8bc4b31139b5aee0254acabfc",
+    "src/ui/hub-teams-strings.js": "126a3b4c51fae20c7f3f873077fc9f8d5a9033603cf8a557d326754324639089",
+    "src/ui/shared/hub-teams.css": "e599a2fd7849242c4bed1872edb79e9485f3156bc5f566386b908e7f310e5590",
+    "src/ui/hub-client.js": "38bc8b8a403c19b96c7e2e4db2ed7e785fd2f47ea4799d32498a9e8fb65655de",
+    "src/ui/panel-hub.js": "d0f625be3fd625270458bbe5df0ad5c7b997f7c6c23bb5be72d570de733d5334",
+    "src/ui/hub-grant-picker.js": "da2f20cc10c2151773331f1d188ca7fa8bf3122b8d49cb5748e140266e5ce870",
+    "src/hub/teams/index.ts": "b91716b4acc5e14e8aab7900128ed088bbb686631d0e169a48082d539a5f44e0",
+    "src/hub/teams/types.ts": "b91f1c57fc04242bd4b22867cd078f932ca14de464accd380ff7db1801d4a52f",
+    "src/auth-api.ts": "0de79cff2895bcf16984c9dd4ebc07ff89098269f54a4725fea2437a1ef0aa17",
+    "src/hub/http/compose.ts": "3213d9388446e59e52e2bec5a75345912ca6fe01735e5b65dfa2c24eba51b725",
+    "tests/hub-teams-ui-track-c.test.ts": "75777494f229ba256eddbece6c34aaeda12965829c8308d14285d4a07a3e7e9b",
+    "tests/hub-teams-client-track-c.test.ts": "c5490c27c6eae08bf271482267690864db5c88ad6488a945a6efa45fb02c55e3",
+    "tests/hub-teams-track-c.test.ts": "1c22035d131b12f1fe4a2d13b3f8f74bed5787dbd12cf06c7b0cab24aaf46c47",
+    "tests/hub-grant-picker-m3016.test.ts": "89e4ed872bcc645cb9cc2762fe82492d7b9d005f7dc401b82f2b05a71992077d",
+    "tests/support/hub-rooms-fixture.ts": "d55c655f8fbe6524a89e92ce0dc49b383f076373a69a9acc3906783e9b1c3519",
+    "scripts/manual/hub-teams-track-c.mts": "a1aba2b10659ca16d78f6e663ec925bdeab84de8a60bd82b8740c1babb428d49",
+    "scripts/manual/smoke/smoke-hub-shell-gate.mts": "39cd26c23f9799e7b6ed0375a55d44a9b7571f65912ee29d81295a01d9673575",
+    "src/general-knowledge/skills/hub/SKILL.md": "9b9c26c1e0942687b3af4069c5496978c0840a2e04410ed89688cdd3c83defaf"
+  },
+  "acceptedPng": {
+    "desktop": {
+      "count": 8,
+      "captureHead": "23329b7b5bc5718487417ec2700c8cf903d8d19e",
+      "scope": "Retained desktop layout only; no post-isLead API/browser rerun claim"
+    },
+    "phone": {
+      "count": 12,
+      "captureHead": "8b831103abb13b807adcec34b4da367af169056d",
+      "checks": 44,
+      "visualOriginals": 12
+    }
+  },
+  "history": {
+    "phoneInitial": 12,
+    "scope": "Negative clipped roster/drawer originals, excluded from accepted PNG count"
+  },
+  "browserChecks": {
+    "initial": 88,
+    "phoneAffected": 44,
+    "notAddedAsDistinct": true
+  },
+  "shellGate": {
+    "initialFull": {
+      "passed": 664,
+      "failed": 32,
+      "cases": 8,
+      "source": "23329b7b5"
+    },
+    "affectedRetake": {
+      "passed": 348,
+      "failed": 0,
+      "cases": 4,
+      "source": "8b831103a",
+      "selection": "desk/phone \u00d7 light \u00d7 en/zh-TW"
+    },
+    "unchangedDark": {
+      "passed": 348,
+      "cases": 4,
+      "source": "23329b7b5",
+      "scope": "No lead row; no repeated matrix"
+    },
+    "scope": "696 checks covered by affected retake plus carried unchanged dark cases; not one full-green run at8b"
+  },
+  "uiGate": {
+    "gate": "full",
+    "checks": 314,
+    "allPass": true,
+    "source": "8b831103a"
+  },
+  "newLeadControl": {
+    "before": {
+      "assertionRed": 1,
+      "deselected": 9
+    },
+    "after": {
+      "selected": 2,
+      "deselected": 16,
+      "files": 2
+    },
+    "reason": "Public session has no person key; service observes isLead without changing current mutation authority"
+  },
+  "native": {
+    "source": 0,
+    "tests": 0
+  },
+  "resources": {
+    "browserReleased": true,
+    "maxLoad1": 7.396484375,
+    "privateKeysRemaining": 0
+  },
+  "limitations": [
+    "Team HTTP API is the worked fixture, not production Team factory/routes",
+    "No real AD/account/Fleet/input or new security co-review",
+    "Prior provider/grant mutation campaign carried; none repeated for this UI repair"
+  ]
+}
