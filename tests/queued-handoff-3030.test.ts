@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { ConsumedWatch, consumedWatches, type ConsumedWatchTarget } from "../src/delivery-consumed-watch.js";
-import { QUEUED_HANDOFFS_FILE, QUEUED_HANDOFFS_MAX, QueuedHandoffStore, type QueuedHandoff } from "../src/queued-handoffs.js";
+import { QUEUED_HANDOFFS_FILE, QUEUED_HANDOFFS_MAX, QueuedHandoffStore, type QueuedHandoff, type LocalQueuedHandoff } from "../src/queued-handoffs.js";
 
 const FIX = join(__dirname, "fixtures");
 const pane = (name: string) => readFileSync(join(FIX, `claude-2.1.293-${name}.pane.txt`), "utf8");
@@ -36,7 +36,7 @@ const scratch = (tag: string) => { const r = mkdtempSync(join(tmpdir(), `agend-3
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); consumedWatches.stopAll(); for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 
-function entry(over: Partial<QueuedHandoff> = {}): QueuedHandoff {
+function entry(over: Partial<LocalQueuedHandoff> = {}): LocalQueuedHandoff {
   return { id: "h1", marker: MARKER, backend: "claude-code", path: "/nonexistent", offset: 0, content: "hello",
     meta: { user: "han", user_id: "1", chat_id: "chat", message_id: "m1", verification_id: VID }, holder: "gone:1",
     createdAt: 1, redeliveries: 0, ...over };
