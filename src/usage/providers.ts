@@ -1567,7 +1567,7 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
     return {
       status: "ok",
       plan: "Q Developer Pro",
-      hint: "Not measurable · monthly limit 10,000 chats",
+      hint: "Not measurable · monthly limit 10,000 requests",
       hintI18n: i18n("usage.hint.q_developer_monthly_limit"),
       metrics: [],
     };

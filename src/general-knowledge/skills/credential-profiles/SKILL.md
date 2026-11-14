@@ -302,7 +302,7 @@ and log it in, so report it as such rather than as a missing subscription.
 ### Q Developer Pro usage
 
 A Kiro IAM Identity Center (Q Developer Pro) seat is not unlimited. Usage shows
-“Not measurable · monthly limit 10,000 chats”: its remaining monthly balance is
+“Not measurable · monthly limit 10,000 requests”: its remaining monthly balance is
 not available through the Builder-ID credit endpoint. Do not infer a remaining
 percentage or available capacity from the seat login. AWS calls the quota
 10,000 agentic inference requests per month (IDE and CLI combined); a chat may
