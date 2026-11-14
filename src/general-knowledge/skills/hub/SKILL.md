@@ -434,6 +434,10 @@ On a Hub that offers the room-assistant pilot, a Hub administrator opens **Admin
 - **Save** applies changed settings after old workers stop; saving unchanged settings leaves current answers alone.
   A failed save leaves the form's edits in place for another try.
 
+If an assistant turn is not answered, the Hub host's log records `Hub room assistant could not answer` with its
+request/room IDs and processing phase (and a protocol code when available), without the room text or raw vendor
+error. Previously failed turns are not replayed after an upgrade; send a new message to retry.
+
 Each answer uses the latest 30 supplied room messages, plus a replied-to message when it is older. The assistant
 keeps no earlier model conversation, sees no other room and has no tools. Room membership, mentions and delivery
 are supplied by the rooms-server integration; these admin cards alone do not add a chat room or enable an account.

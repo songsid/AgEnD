@@ -37,9 +37,11 @@ export class HubRoomAssistant {
     db.prepare(`INSERT INTO hub_room_posts(id,room_id,sequence,author_kind,author_id,author_subject,author_name,content_ref,digest,mentions,created_at,answer_to,delivery_id,stage)
       VALUES(?,?,?,'assistant','assistant','assistant','Hub assistant',?,'','[]',?,?,?,?)`).run(reply, parent.room_id, sequence,
         this.core.deps.content.put(tx, { question: "" }), now, parent.id, id, available ? "queued" : "not-answered");
+    const payloadRef = this.core.deps.content.put(tx, { question: bytes });
+    this.core.audit(tx, { requestId: id, actor: { kind: "person", person: personFromString(parent.author_subject) }, action: "room.assistant-queued", result: "completed", roomId: parent.room_id, messageId: parent.id, contentRef: payloadRef });
     db.prepare(`INSERT INTO hub_room_assistant_calls(id,room_id,parent_id,reply_id,asker,asker_member,assistant_member,payload_ref,payload_digest,state,reason,created_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, parent.room_id, parent.id, reply, parent.author_subject, askerMember, member.id,
-        this.core.deps.content.put(tx, { question: bytes }), hash(bytes), available ? "queued" : "failed", available ? null : "unavailable", now);
+        payloadRef, hash(bytes), available ? "queued" : "failed", available ? null : "unavailable", now);
   }
   private valid(db: DB, call: Call): boolean {
     return !!db.prepare("SELECT 1 FROM hub_room_assistant_calls WHERE id=? AND state IN ('queued','working')").get(call.id)
@@ -56,7 +58,7 @@ export class HubRoomAssistant {
   }
   publishQueued(parent: string): void {
     const call = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_assistant_calls WHERE parent_id=?").get(parent) as Call | undefined);
-    if (call) this.changed(call, true);
+    if (call) { if (call.state === "failed") this.warn(call, "provider-unavailable"); this.changed(call, true); }
   }
   start(): void {
     // A prior external call has an uncertain result after a crash; never run that input again automatically.
@@ -74,18 +76,28 @@ export class HubRoomAssistant {
       this.emit({ type: "presence.changed", roomId: call.room_id, data: { roomId: call.room_id, memberId: "assistant", presence: this.presence(call.room_id) } });
     }
   }
-  private fail(call: Call): void {
+  private warn(call: Call, phase: string, code?: string): void {
+    try { this.core.deps.log?.("warn", "Hub room assistant could not answer", { requestId: call.id, roomId: call.room_id, phase, ...(code ? { code } : {}) }); } catch { /* diagnostics cannot prevent settlement */ }
+  }
+  private fail(call: Call, phase = "unavailable", code?: string): void {
     if (!this.live()) return;
-    this.core.atomic(db => { db.prepare("UPDATE hub_room_assistant_calls SET state='failed',reason='unavailable' WHERE id=? AND state IN ('queued','working')").run(call.id);
-      db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=? AND stage<>'answered'").run(call.reply_id); }); this.changed(call);
+    const changed = this.core.atomic(db => { const result = db.prepare("UPDATE hub_room_assistant_calls SET state='failed',reason='unavailable' WHERE id=? AND state IN ('queued','working')").run(call.id);
+      db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=? AND stage<>'answered'").run(call.reply_id); return result.changes; });
+    if (changed) { this.warn(call, phase, code); this.changed(call); }
   }
   private async run(call: Call): Promise<void> {
+    let phase = "provider-unavailable";
     try {
       const port = this.core.deps.roomAssistant;
-      if (!port || !this.availability()?.enabled || !await this.core.eligible(personFromString(call.asker))) { this.fail(call); return; }
+      if (!port || !this.availability()?.enabled) { this.fail(call, phase); return; }
+      phase = "asker-eligibility";
+      if (!await this.core.eligible(personFromString(call.asker))) { this.fail(call, phase); return; }
+      phase = "authorization";
       const context = { requestId: call.id, current: () => this.live() }, permission = await this.core.groupAsker(personFromString(call.asker), context);
+      phase = "dispatch";
       const payload = this.core.atomic((db, tx) => {
         if (!this.valid(db, call)) throw new HubProtocolError("revoked");
+        phase = "payload-read";
         const bytes = this.core.deps.content.get(call.payload_ref)?.question;
         if (!bytes || hash(bytes) !== call.payload_digest) throw new HubProtocolError("uncertain");
         db.prepare("UPDATE hub_room_assistant_calls SET state='working' WHERE id=? AND state='queued'").run(call.id);
@@ -93,20 +105,26 @@ export class HubRoomAssistant {
         this.core.audit(tx, { requestId: call.id, actor: { kind: "person", person: personFromString(call.asker) }, action: "room.assistant-started", result: "completed", roomId: call.room_id, messageId: call.parent_id });
         return JSON.parse(bytes) as Input;
       }, permission);
+      phase = "worker";
       this.changed(call); const answer = await port.ask(payload);
       if (!this.live()) return;
+      phase = "answer-validation";
       validated(plain(128 * 1024), answer.text);
+      phase = "asker-eligibility";
       if (!await this.core.eligible(personFromString(call.asker))) throw new HubProtocolError("revoked");
+      phase = "authorization";
       const final = await this.core.groupAsker(personFromString(call.asker), context);
+      phase = "answer-commit";
       this.core.atomic((db, tx) => {
         if (this.core.deps.roomAssistant !== port || !this.valid(db, call)) throw new HubProtocolError("revoked");
         const seq = (db.prepare("SELECT COALESCE(MAX(sequence),0)+1 n FROM hub_room_posts WHERE room_id=?").get(call.room_id) as { n: number }).n;
-        db.prepare("UPDATE hub_room_posts SET stage='answered',sequence=?,created_at=?,content_ref=? WHERE id=?").run(seq, this.core.now(), this.core.deps.content.put(tx, { question: answer.text }), call.reply_id);
+        const answerRef = this.core.deps.content.put(tx, { question: answer.text });
+        db.prepare("UPDATE hub_room_posts SET stage='answered',sequence=?,created_at=?,content_ref=? WHERE id=?").run(seq, this.core.now(), answerRef, call.reply_id);
         db.prepare("UPDATE hub_room_assistant_calls SET state='answered',reason=NULL WHERE id=?").run(call.id);
-        this.core.audit(tx, { requestId: call.id, actor: { kind: "person", person: personFromString(call.asker) }, action: "room.assistant-answer", result: "completed", roomId: call.room_id, messageId: call.reply_id });
+        this.core.audit(tx, { requestId: call.id, actor: { kind: "person", person: personFromString(call.asker) }, action: "room.assistant-answer", result: "completed", roomId: call.room_id, messageId: call.reply_id, contentRef: answerRef });
       }, final);
       this.changed(call);
-    } catch { this.fail(call); }
+    } catch (error) { this.fail(call, phase, error instanceof HubProtocolError ? error.code : undefined); }
   }
   cancel(roomId: string): void {
     const rows = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_assistant_calls WHERE room_id=? AND state IN ('queued','working')").all(roomId) as Call[]);

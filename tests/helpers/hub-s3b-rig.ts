@@ -7,6 +7,8 @@
  * that records frames. Nothing listens except the test's own HTTP server on 127.0.0.1.
  */
 import Database from "better-sqlite3";
+import { createHubAudit, HUB_AUDIT_MIGRATION } from "../../src/hub/audit/index.js";
+import { createHubUnitOfWork, hubTxDatabase } from "../../src/hub/db.js";
 import { createServer, type Server } from "node:http";
 import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { HubTransportStore, migrateHubTransportStore } from "../../src/hub/store.js";
@@ -20,7 +22,7 @@ import type { HubLinkContext } from "../../src/hub/server.js";
 export const WEB_ORIGIN = "https://hub.example.test";
 export const person = (): PersonKey => ({ realm: "corp", objectId: randomUUID() });
 
-export async function s3bRig(opts: { directory?: HubDirectory; now?: () => number; webOrigin?: string; administrator?: PersonKey; attachments?: boolean;
+export async function s3bRig(opts: { directory?: HubDirectory; now?: () => number; webOrigin?: string; administrator?: PersonKey; attachments?: boolean; realAudit?: boolean;
   /** #3226 E: what the Hub shell says about previews (hubPreviewView); the smoke serves the /frame listener itself. */
   preview?: Readonly<import("../../src/hub/preview.js").HubPreviewView>;
   /** #3298 S-89: the group routes' control and welcome (absent: the routes 404 and the session has no mark). */
@@ -34,12 +36,16 @@ export async function s3bRig(opts: { directory?: HubDirectory; now?: () => numbe
   if (opts.attachments) HUB_ATTACHMENTS_MIGRATION.up(db);
   const attachments = opts.attachments ? new HubAttachmentStore({ contentKey: randomBytes(32), ...(opts.now ? { now: opts.now } : {}) }) : undefined;
   db.exec("CREATE TABLE audit_rows (value TEXT NOT NULL)");
+  if (opts.realAudit) HUB_AUDIT_MIGRATION.up(db);
+  const realAudit = opts.realAudit ? createHubAudit({ db, contentKey: randomBytes(32) }) : undefined;
+  const realUow = opts.realAudit ? createHubUnitOfWork(db) : undefined;
   const live = new WeakMap<HubTx, Database.Database>();
   let auditFails = false;
   let auditFailAction: string | undefined;
   const audits: HubAuditRecord[] = [];
   const uow = {
     atomic<T>(work: (tx: HubTx) => T): T {
+      if (realUow) return realUow.atomic(work);
       return db.transaction(() => {
         const tx: HubTx = { id: randomUUID() };
         live.set(tx, db);
@@ -47,10 +53,11 @@ export async function s3bRig(opts: { directory?: HubDirectory; now?: () => numbe
       }).immediate();
     },
   };
-  const sql = (tx: HubTx) => { const d = live.get(tx); if (!d) throw new Error("tx is not running"); return d; };
+  const sql = (tx: HubTx) => { if (realUow) return hubTxDatabase(tx); const d = live.get(tx); if (!d) throw new Error("tx is not running"); return d; };
   const audit = {
     append(tx: HubTx, record: HubAuditRecord) {
       if (auditFails && (!auditFailAction || auditFailAction === record.action)) throw new Error("disk full");
+      if (realAudit) return realAudit.append(tx, record);
       sql(tx).prepare("INSERT INTO audit_rows VALUES(?)").run(JSON.stringify(record));
       audits.push(record);
     },
@@ -59,8 +66,8 @@ export async function s3bRig(opts: { directory?: HubDirectory; now?: () => numbe
   };
   const contents = new Map<string, { question?: string; answer?: string }>();
   const content = {
-    put(tx: HubTx, payload: { question?: string; answer?: string }) { sql(tx); const ref = randomBytes(16).toString("hex"); contents.set(ref, { ...payload }); return ref; },
-    get(ref: string) { const v = contents.get(ref); return v ? { ...v } : undefined; },
+    put(tx: HubTx, payload: { question?: string; answer?: string }) { if (realAudit) return realAudit.content.put(tx, payload); sql(tx); const ref = randomBytes(16).toString("hex"); contents.set(ref, { ...payload }); return ref; },
+    get(ref: string) { if (realAudit) return realAudit.content.get(ref); const v = contents.get(ref); return v ? { ...v } : undefined; },
   };
   let floor = 0;
   const store = new HubTransportStore(db, { floor: { read: () => floor, raise: (n) => { floor = n; } },
