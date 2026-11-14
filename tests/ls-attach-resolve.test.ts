@@ -45,15 +45,15 @@ describe("resolveCandidate — row numbers", () => {
 describe("resolveCandidate — CJK display names", () => {
   it("resolves CJK display name by exact match", () => {
     const cs = fleet(
-      { name: "agend-reviewer-t1503382598640996543", displayLabel: "稜鏡 Prism" },
-      { name: "rd1-a89-dev-fable-t1532671461406277715", displayLabel: "鑄碼副手 Fable" },
+      { name: "agend-reviewer-t1500000000000996543", displayLabel: "稜鏡 Prism" },
+      { name: "tm1-a89-dev-fable-t1500000000000277715", displayLabel: "鑄碼副手 Fable" },
     );
     expect(resolveCandidate("稜鏡 Prism", cs)).toEqual({ kind: "exact", candidate: cs[0] });
   });
 
   it("resolves CJK display name substring (unique)", () => {
     const cs = fleet(
-      { name: "agend-reviewer-t1503382598640996543", displayLabel: "稜鏡 Prism" },
+      { name: "agend-reviewer-t1500000000000996543", displayLabel: "稜鏡 Prism" },
       { name: "other-t000", displayLabel: "Sentinel" },
     );
     const r = resolveCandidate("鑄碼副手", cs);
@@ -62,7 +62,7 @@ describe("resolveCandidate — CJK display names", () => {
 
   it("resolves partial CJK substring when unique", () => {
     const cs = fleet(
-      { name: "rd1-a89-dev-fable-t123", displayLabel: "鑄碼副手 Fable" },
+      { name: "tm1-a89-dev-fable-t123", displayLabel: "鑄碼副手 Fable" },
       { name: "other-t000", displayLabel: "Sentinel" },
     );
     expect(resolveCandidate("鑄碼副手", cs)).toEqual({ kind: "exact", candidate: cs[0] });
@@ -115,7 +115,7 @@ describe("resolveCandidate — no-match suggestions", () => {
       { name: "agend-reviewer-t001", displayLabel: "稜鏡 Prism" },
       { name: "agend-leader-t002", displayLabel: "Leader" },
       { name: "agend-coordinator-t003", displayLabel: "Coord" },
-      { name: "doupo-server-t004", displayLabel: "Server" },
+      { name: "games-server-t004", displayLabel: "Server" },
       { name: "unrelated-t005", displayLabel: "Zephyr" },
       { name: "unrelated-t006", displayLabel: "Alpha" },
       { name: "unrelated-t007", displayLabel: "Beta" },
@@ -139,14 +139,14 @@ describe("resolveCandidate — no-match suggestions", () => {
   it("leading-char typo still gets a suggestion (charOverlapScore, not greedy LCS)", () => {
     // "xreviewer" vs "agend-reviewer": shared chars r,e,v,i,e,w,e,r → score > 0
     const cs = fleet(
-      { name: "agend-reviewer-t1503382598640996543", displayLabel: "稜鏡 Prism" },
+      { name: "agend-reviewer-t1500000000000996543", displayLabel: "稜鏡 Prism" },
       { name: "unrelated-t000", displayLabel: "Zephyr" },
     );
     const r = resolveCandidate("xreviewer", cs);
     expect(r.kind).toBe("none");
     if (r.kind === "none") {
       expect(r.suggestions.length).toBeGreaterThan(0);
-      expect(r.suggestions[0]?.realName).toBe("agend-reviewer-t1503382598640996543");
+      expect(r.suggestions[0]?.realName).toBe("agend-reviewer-t1500000000000996543");
     }
   });
 });
@@ -163,17 +163,17 @@ describe("resolveCandidate — real name resolution", () => {
 
   it("real name prefix resolves uniquely", () => {
     const cs = fleet(
-      { name: "agend-reviewer-t1503382598640996543" },
-      { name: "agend-leader-t1503382358143799511" },
+      { name: "agend-reviewer-t1500000000000996543" },
+      { name: "agend-leader-t1500000000000799511" },
     );
     const r = resolveCandidate("agend-reviewer", cs);
     expect(r.kind).toBe("exact");
-    if (r.kind === "exact") expect(r.candidate.realName).toBe("agend-reviewer-t1503382598640996543");
+    if (r.kind === "exact") expect(r.candidate.realName).toBe("agend-reviewer-t1500000000000996543");
   });
 
   it("short -tNNNNNN display label resolves", () => {
     const cs = fleet(
-      { name: "agend-dev1-t1503382407284265082", displayLabel: "agend-dev1-t265082" },
+      { name: "agend-dev1-t1500000000000265082", displayLabel: "agend-dev1-t265082" },
     );
     expect(resolveCandidate("agend-dev1-t265082", cs)).toEqual({ kind: "exact", candidate: cs[0] });
   });
@@ -365,7 +365,7 @@ describe("P2-4: pickerDefaultIdx uses first displayed candidate", () => {
 // ── Long real name never truncated in picker/ambiguity lines ─────────────────
 
 describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
-  const LONG = "rd1-a89-dev-fable-t1532671461406277715"; // 38 chars
+  const LONG = "tm1-a89-dev-fable-t1500000000000277715"; // 38 chars
   const SHORT = "alpha-t1";
 
   const cLong: Candidate = {
@@ -432,7 +432,7 @@ describe("P2-3: lsDisplayAnnotation (agend ls --display flag)", () => {
   });
 
   it("returns '  (label)' when show=true and label differs from realName", () => {
-    const a = lsDisplayAnnotation("agend-reviewer-t1503382598640996543", "稜鏡 Prism", true);
+    const a = lsDisplayAnnotation("agend-reviewer-t1500000000000996543", "稜鏡 Prism", true);
     expect(a).toBe("  (稜鏡 Prism)");
   });
 

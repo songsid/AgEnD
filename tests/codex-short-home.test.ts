@@ -50,7 +50,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
   it("uses a short path under cx/ instead of instanceDir/codex-home", () => {
     const root = mkdtempSync(join(tmpdir(), "agend-953-"));
     dirs.push(root);
-    const instanceDir = join(root, "instances", "agend-very-long-name-t1503382598640996543");
+    const instanceDir = join(root, "instances", "agend-very-long-name-t1500000000000996543");
     mkdirSync(instanceDir, { recursive: true });
 
     withAgendHome(root, () => {
@@ -203,7 +203,7 @@ describe("CodexBackend short CODEX_HOME (#953)", () => {
     const root = mkdtempSync(join(tmpdir(), "agend-953-"));
     dirs.push(root);
     // A real-world long name that was failing before
-    const instanceDir = join(root, "instances", "agend-reviewer-t1503382598640996543");
+    const instanceDir = join(root, "instances", "agend-reviewer-t1500000000000996543");
     mkdirSync(instanceDir, { recursive: true });
 
     withAgendHome(root, () => {
@@ -267,7 +267,7 @@ describe("B1: delete_instance cleans up the codex short home (#953)", () => {
     //     lifecycle.remove → test fails (falls back to fleet default "claude-code")
     const root = mkdtempSync(join(tmpdir(), "agend-953-b1-"));
     dirs.push(root);
-    const name = "codex-long-name-t1503382598640996543";
+    const name = "codex-long-name-t1500000000000996543";
     const instanceDir = join(root, "instances", name);
     mkdirSync(instanceDir, { recursive: true });
 

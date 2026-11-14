@@ -148,7 +148,7 @@ describe("the Notify Discord step, run for real", () => {
           HEAD_REF: "",
           SHA: "a6a4121a1b2c3d4e5f60718293a4b5c6d7e8f901",
           EVENT: "push",
-          ACTOR: "changhansung",
+          ACTOR: "demo-account",
           RUN_URL: "https://github.com/songsid/AgEnD/actions/runs/1234567890",
           COMMIT_MESSAGE: "chore: nothing in particular",
           ...env,

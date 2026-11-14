@@ -40,7 +40,7 @@ if (!fm.eventLog) { const { EventLog } = await import(REPO + "/src/event-log.ts"
 // Two audit rows (Recent changes): Bob given an agent (confirmed in General), Carol's earlier agent taken away.
 fm.noteGuestGrantChange({ by: null, via: "confirmed", account: `demo:${PEOPLE.bob.id}`, added: [AGENTS[2]], removed: [], endedSessions: 0 });
 fm.noteGuestGrantChange({ by: "session:smoke", via: "direct", account: `demo:${PEOPLE.carol.id}`, added: [], removed: [AGENTS[1]], endedSessions: 1 });
-const REAL = /agend-|t15\d{6}|web-claude|\bsol\b|\bfable\b|qa-1|rd1-|awp-|doupo-|研一|鬥破|己把鳩/;
+const REAL = /agend-|t15\d{6}|web-claude|\bsol\b|\bfable\b|qa-1|tm1-|ota-svc|games-|研發|遊戲|產品專案/;
 
 const results: Array<Record<string, unknown>> = [];
 let failed = 0;
