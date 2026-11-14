@@ -1,0 +1,7 @@
+RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-hello-cap-limits-m3132
+
+
+ Test Files  1 passed (1)
+      Tests  27 passed (27)
+   Start at  05:56:04
+   Duration  533ms (transform 198ms, setup 103ms, import 226ms, tests 47ms, environment 0ms)
