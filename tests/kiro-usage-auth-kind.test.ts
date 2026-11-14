@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { fetchKiroUsage, kiroAuthKind } from "../src/usage/providers.js";
+import { agentUsage } from "../src/usage/agent-output.js";
+import { setLocale } from "../src/locale.js";
+import { usageText } from "../src/usage/i18n.js";
 
 /**
  * Token shapes below are the REAL ones observed in a kiro-cli auth store:
@@ -61,10 +64,18 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     const r = await fetchKiroUsage();
     expect(r.status).toBe("ok");
     expect(r.plan).toBe("Q Developer Pro");
-    expect(r.unlimited).toBe(true);
-    expect(r.hint).toMatch(/unlimited/i);
+    expect(r.unlimited).toBeUndefined();
+    expect(r.hint).toBe("Not measurable · monthly limit 10,000 requests");
+    expect(r.hintI18n).toEqual({ key: "usage.hint.q_developer_monthly_limit" });
     expect(r.hint).not.toMatch(/no credit/i);
-    expect(r.metrics).toEqual([]);   // nothing metered → no credit bars
+    expect(r.metrics).toEqual([]);   // unknown remaining balance, no invented percentage
+    const payload = { fetchedAt: new Date().toISOString(), providers: [{ id: "kiro", name: "Kiro", ...r }] };
+    expect(agentUsage(payload).providers[0]).toMatchObject({ status: r.hint, windows: [] });
+    expect(agentUsage(payload, true)).toBe(payload);
+    try {
+      setLocale("zh-TW");
+      expect(usageText(r.hint!, r.hintI18n)).toBe("無法量測 · 每月上限 10,000 次請求");
+    } finally { setLocale("en"); }
     expect(r.error).toBeUndefined(); // and never a red error
   });
 

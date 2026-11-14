@@ -298,3 +298,13 @@ and log it in, so report it as such rather than as a missing subscription.
   `conversation_carried_over` is true — relay the actual reply.
 - Do not use a profile name with slashes or spaces — it becomes a directory
   name and is rejected.
+
+### Q Developer Pro usage
+
+A Kiro IAM Identity Center (Q Developer Pro) seat is not unlimited. Usage shows
+“Not measurable · monthly limit 10,000 requests”: its remaining monthly balance is
+not available through the Builder-ID credit endpoint. Do not infer a remaining
+percentage or available capacity from the seat login. AWS calls the quota
+10,000 agentic inference requests per month (IDE and CLI combined); a chat may
+make multiple requests. No local chat count is a vendor balance.
+Source: https://docs.aws.amazon.com/general/latest/gr/amazonqdev.html
