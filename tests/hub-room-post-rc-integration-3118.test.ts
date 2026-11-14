@@ -129,7 +129,7 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
     await vi.waitFor(()=>expect(net.received.some(f=>f.type==="room.post-answer-ack")).toBe(true));
     expect(web.db.prepare("SELECT acked FROM hub_room_post_returns").get()).toEqual({acked:0});
     net.server.refreshAuthorization();expect((await pending).body).toMatchObject({ok:false,code:"uncertain"});
-    await vi.waitFor(()=>expect(web.db.prepare("SELECT acked FROM hub_room_post_returns").get()).toEqual({acked:1}));
+    await vi.waitFor(()=>expect(web.db.prepare("SELECT COUNT(*) n FROM hub_room_post_returns WHERE post_id=?").get(postId.messageId)).toEqual({n:0}));
     expect(notifications).toHaveLength(1);expect(returns.length).toBeGreaterThanOrEqual(2);
     adminCurrent=false;const old=count();expect((await call("hub_room_post",{room:roomId,text:"Old admin",receipt_id:receipt.message_id})).body).toEqual({ok:false,code:"denied"});expect(count()).toBe(old);
     let finish!:(value:any)=>void;web.directory.searchGrantPeople=()=>new Promise(resolve=>{finish=resolve;});
