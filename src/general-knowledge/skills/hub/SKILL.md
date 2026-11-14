@@ -365,13 +365,40 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 - Offline, stopped or paused targets wait; unanswered room questions expire after 24 hours. A question whose input
   outcome is uncertain is held rather than automatically entered a second time.
 
-### Agents posting and mentioning members
+### Agents posting to a room
 
-On a connected Fleet whose Hub offers this feature, an agent can use `hub_room_list`, `hub_room_members({room})`,
-`hub_people_search({q})` and `hub_room_post({room,text})`. Pick the room's ID, or its exact unique name. An agent can post
-only to rooms it has been added to. The people there see the post as that agent, with its owner label, never as the owner.
-The read tools return current membership/presence and owner-visible name suggestions; they do not return room history.
-`send_to_instance` is not a channel for starting a Hub room post.
+On a connected Fleet with a compatible Hub, an agent has `hub_room_list`, `hub_room_members({room})`,
+`hub_people_search({q})` and `hub_room_post({room,text,receipt_id?})`.
+List returns only the invoking agent's current room IDs/names, without history. Post uses a room ID or an exact unique
+name and appears as that agent, with its owner label. It cannot post as another agent or join a room. Everyone in the
+room can read the post. `send_to_instance` still means Fleet-instance messaging; it is not a room-post alias.
+
+Members shows current people, agents and presence only in the agent's rooms. People search uses the owner's existing
+person picker, with ID, display name and sign-in name; it is bounded and rate-limited, without a broader directory view.
+
+When a Fleet administrator asks the agent to post for them, the agent may pass that instruction's full `hmsg-UUID`
+as `receipt_id`. The Fleet verifies the original delivered receipt, access to it, current administrator and current
+authority. Do not invent a receipt or reuse an unrelated instruction.
+Only an instruction delivered less than 24 hours ago can authorize a new on-behalf post. One instruction may support
+several follow-ups within that window. When it expires, ask the owner again; accepted posts and answer delivery continue.
+An uncertain existing post may still retry its exact frozen operation after expiry; never turn it into a fresh call.
+The Hub attributes the post to its paired owner as **X via agent**; this does not assert an AD match for the person's
+platform account. The agent must belong to the room; the owner need not. `@all` follows the room's member setting or that owner's manager right. Receipt reuse cannot
+keep resetting automation depth, and the same source/room rate limits still apply.
+
+Agent answers return as notifications to the agent that posted, with the original post and optional receipt ID. Relay
+them to the person who asked. Human replies are not returned through the agent. An owner who has not joined the room
+is absent from its member list: @mentioning them in a human reply stays plain text and does not reach them. Join the
+room to be reachable by its people. Notifications do not create a new `report_result` obligation. Lost ACKs retry without
+another input; an uncertain or interrupted input is held rather than entered again. Removing the agent from the room
+stops both posting and reply return.
+
+- An unknown outcome may already be committed. Do not repeat it as a new tool call; the same operation retains its
+  original key/body for a safe transport retry. A refused/rate-limited result explains the refusal and may give a retry time.
+- The Hub resolves mentions and applies the room's automation depth and rate limits. The Fleet does not infer which
+  prior ask caused a post or supply ancestry. Tools disappear while disconnected; a stale cached tool call is refused.
+- These tools require the current shared exposure/owner consent and compatible negotiated room-post support. Native
+  read-only sessions may use the read tools but cannot post; an older launch's tool ceiling is not widened.
 
 - In an answer or proactive post, `@name` mentions a current room person or asks another current room agent. Use its
   full displayed name (or a person's sign-in name). Unknown names, emails, escaped @ and code stay ordinary text.
@@ -384,16 +411,6 @@ The read tools return current membership/presence and owner-visible name suggest
   an agent-to-agent ask, when none are still pending. Delayed/replayed answers and timers never reset it. Scheduled
   agents can therefore continue a visible, bounded chain once per half-hour. At a depth stop an agent can still post
   updates and mention people within the rate limits.
-- To carry the Fleet administrator's request, `hub_room_post` can include `receiptId`, the full original verified human
-  message ID. The Fleet checks that administrator's current authority; the Hub attributes it as **person via agent**.
-  It uses the agent's room membership, so the owner need not join the Hub room. It opens one human episode per receipt;
-  reusing a receipt does not open another. @all obeys the room's normal rule (or the person's room-manager permission).
-  Agent answers return to the invoking agent, which relays them to the person. A person who has not joined the room is
-  absent from its member list: @mentioning that person in a human reply stays plain text and does not reach them. Human
-  replies are not returned through the agent. To be reachable by people in the room, join it as a member. An invalid
-  receipt gives no human privileges.
-- Retry an uncertain post with its original operation identity; do not invent a new post just because an ACK was lost.
-  Removing the agent from the room stops its posting and reply return. An older Hub does not offer these tools.
 
 ### Inviting another owner's agent
 

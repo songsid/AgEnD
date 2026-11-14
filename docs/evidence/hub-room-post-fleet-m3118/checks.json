@@ -1,0 +1,177 @@
+{
+  "sourceCommit": "4da174e090b0a6ca78252151a5ee3d830bc49666",
+  "sharedCheckpoint": "dd5eb7b4e2bb57460589b8f946fcf1920671203d",
+  "normalCheckpoint": "6795e0fbb4c6dc720683e6c181b9bd6661e8bcc1",
+  "sourceBindings": [
+    {
+      "path": "changes/3118-hub-room-post-fleet.md",
+      "sha256": "7d5da21e52a11414af93ef5e659c615af9b5003d68971745169195d360a05b83"
+    },
+    {
+      "path": "changes/3118-hub-room-post-fleet.zh-TW.md",
+      "sha256": "797927e9ebf392a27d4444a7d762a92bce5bd7a1cef83f3416849a29a139d8a7"
+    },
+    {
+      "path": "docs/design/hub-room-post-fleet.md",
+      "sha256": "57f541739857a9370a95698ce4367e1aa07ab8d8417b2357ef3509575176ea0a"
+    },
+    {
+      "path": "src/agent-endpoint.ts",
+      "sha256": "a26368b57aa724da4bea37aae39a2264d95dfe763f390caffc5ac228185fe5a5"
+    },
+    {
+      "path": "src/channel/mcp-server.ts",
+      "sha256": "f6e1003b3c6a57d737138469ecff54f0ae09307ae5acb97574bf9b63f3372f39"
+    },
+    {
+      "path": "src/channel/mcp-tools.ts",
+      "sha256": "35fd19f273bc0dbacc5b6ba6a60cb7908997875cbc9854c061c005d1ff55ec92"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "9665f94a8593f6311323d6fcc82719d749077f86903d430f5192fd782a125a03"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "60434893828b14068e7602b26ecd50ba35a8f21e6a6f274984952b273eb56934"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "c565052681a392877813b63e8e6a40443640bfc0619546fbf0d053d6a913faed"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "f2c0fd4e3193577c4290160705338290d1b0e676acdb08c371ab441d23e81dd7"
+    },
+    {
+      "path": "src/hub/member/room-post-answers.ts",
+      "sha256": "bc43a7f36dd3c7adf418df77edaf567d580b234db231419fc4aa33891285bb75"
+    },
+    {
+      "path": "src/hub/member/room-post-receipt.ts",
+      "sha256": "1fa46efb3f245b1d078a005c178d85584d157fe43e58387e1fd31d535cc534de"
+    },
+    {
+      "path": "src/hub/member/room-post.ts",
+      "sha256": "bc8831c4957e2c55dca0052d8cd0335e6258bde07ec6be52cc19be7e40eecfe7"
+    },
+    {
+      "path": "src/hub/runtime.ts",
+      "sha256": "505e6b22612a7f7c4537f59936bdeb633113e119431bbb53bac9a593989ffa43"
+    },
+    {
+      "path": "src/native-mcp.ts",
+      "sha256": "13434350b59f68797346a050c0435d9f4a5dc473005abc4aa20a4c1878e05137"
+    },
+    {
+      "path": "src/outbound-handlers.ts",
+      "sha256": "7b85edd9e568e2495503b217b79a7aac803d4cd8a004d11b3c3a4677f479dc5e"
+    },
+    {
+      "path": "src/outbound-schemas.ts",
+      "sha256": "7c63f621a2c031afa4299e68181b745d4fd88b6dd27ed5414581475e6a2f6b5a"
+    },
+    {
+      "path": "src/tool-permissions.ts",
+      "sha256": "3a93eff67ad466b36263048080434c47b96f13377b85f286edd90bde3ead0bc4"
+    },
+    {
+      "path": "tests/hub-room-compose-track-c.test.ts",
+      "sha256": "e3a1180ec473c0848c4545243677bdedb0ad78cdad4f227016347b81fee76d82"
+    },
+    {
+      "path": "tests/hub-room-post-answers.test.ts",
+      "sha256": "c1d808b8be8fc2a3b68d872f63f672ea4abd30d6c7da96957221c437b4cea3f9"
+    },
+    {
+      "path": "tests/hub-room-post-fleet.test.ts",
+      "sha256": "003b1f6f0fb6bf74802fbdb58e091f36bb6d5b0de38e3e4ae11f0ded3bf48bb9"
+    },
+    {
+      "path": "tests/hub-room-post-mcp.test.ts",
+      "sha256": "32f9861a63d51141689a83c3a917dcfed81f75e6dce51c96867bd2923e8c8450"
+    },
+    {
+      "path": "tests/hub-room-post-receipt.test.ts",
+      "sha256": "610918a415fc4af0dc8303e90c77d625826339639b1fea473d9ea1ced4ebed9a"
+    },
+    {
+      "path": "tests/native-mcp.test.ts",
+      "sha256": "753203329b6a0bb5b368dc1fa33f41bab71b497a7715fbe138cf7db7d59322f0"
+    },
+    {
+      "path": "tests/tool-permissions.test.ts",
+      "sha256": "4616c4f63fbc02a62049a5e4d08862b8dfe97bf6dfc0491828778108d52a5095"
+    }
+  ],
+  "checks": [
+    {
+      "log": "before.log",
+      "stage": "initial normal adapter and tool definitions",
+      "exit": 1,
+      "result": "six loaded assertion reds; no live service"
+    },
+    {
+      "log": "concurrent-before.log",
+      "stage": "normal concurrent identity regression",
+      "exit": 1,
+      "result": "one selected assertion red; 10 deselected"
+    },
+    {
+      "log": "own-final.log",
+      "stage": "normal checkpoint",
+      "exit": 0,
+      "result": "13 tests in 2 files"
+    },
+    {
+      "log": "receipt-before.log",
+      "stage": "new verifier baseline",
+      "exit": 1,
+      "result": "one positive-receipt semantic red; separate web fixture-shape error excluded"
+    },
+    {
+      "log": "receipt-final.log",
+      "stage": "corrected real receipt fixtures and verifier",
+      "exit": 0,
+      "result": "3/3"
+    },
+    {
+      "log": "expanded-suite.log",
+      "stage": "expanded code before two final factory cases and final stored-source validation",
+      "exit": 0,
+      "result": "121 tests / 7 files"
+    },
+    {
+      "log": "expanded-final.log",
+      "stage": "expanded adapter/MCP/receipt/reply/factory, before final stored-source validation",
+      "exit": 0,
+      "result": "40 tests / 5 files"
+    },
+    {
+      "log": "answers-current.log",
+      "stage": "final stored-source validation at sourceCommit",
+      "exit": 0,
+      "result": "5/5 affected notification tests"
+    },
+    {
+      "log": "expanded-types-current.log",
+      "stage": "sourceCommit",
+      "exit": 0,
+      "result": "tsc --noEmit -p tsconfig.test.json"
+    },
+    {
+      "log": "expanded-source-types.log",
+      "stage": "sourceCommit",
+      "exit": 0,
+      "result": "tsc --noEmit -p tsconfig.json"
+    }
+  ],
+  "limits": [
+    "Owned stdio MCP child and IPC stub; no vendor CLI or live Fleet",
+    "Factory controls use pinned TLS/WSS and SQLite with an inert R request handler, not the full Hub room service",
+    "Full R service integration and ordinary review are pending",
+    "No browser, screenshot, AD, account or live input operation",
+    "No new broad rerun or mutation campaign for the expanded scope",
+    "Uncertain input holds; ACK is delivery completion, not vendor consumption"
+  ]
+}

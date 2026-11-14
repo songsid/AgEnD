@@ -1,0 +1,40 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-post-m3118
+
+ ❯ tests/hub-room-post-receipt.test.ts (4 tests | 1 failed | 3 skipped) 59ms
+   × allows follow-ups before 24 h, refuses new posts at the boundary, and preserves accepted posts and answers 54ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-post-receipt.test.ts > allows follow-ups before 24 h, refuses new posts at the boundary, and preserves accepted posts and answers
+AssertionError: expected { ok: false, code: 'denied', …(1) } to deeply equal { ok: true, …(3) }
+
+- Expected
++ Received
+
+  {
+-   "at": 1794762710494,
+-   "messageId": "787d80c8-7e53-400f-87b3-2b99db35400d",
+-   "ok": true,
+-   "roomId": "fd3487b4-83b6-4fab-a744-b9d65e56bad7",
++   "code": "denied",
++   "ok": false,
++   "reason": "This instruction is over 24 hours old. Ask your owner again.",
+  }
+
+ ❯ tests/hub-room-post-receipt.test.ts:83:45
+     81|     expect(await adapter.post(caller,input)).toEqual(accepted);
+     82|     vi.mocked(link.post).mockResolvedValueOnce(committed);
+     83|     expect(await adapter.post(caller,lost)).toEqual(committed);
+       |                                             ^
+     84|     expect(link.post).toHaveBeenLastCalledWith({exposureId,room:roomId…
+     85|     if(!accepted.ok)throw Error("Expected accepted post");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 skipped (4)
+   Start at  01:11:49
+   Duration  598ms (transform 252ms, setup 90ms, import 299ms, tests 59ms, environment 0ms)
+

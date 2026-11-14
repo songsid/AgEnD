@@ -1,0 +1,59 @@
+{
+  "sourceCommit": "9ffe13ffc0328326e5a23b047c22f52f3e03ed4d",
+  "rParent": "d9a07d79a1d9923d4a932d3c778434f9110485ad",
+  "sourceBindings": [
+    {
+      "path": "src/hub/member/room-post.ts",
+      "sha256": "ff03341f93b159dee7e0474587ef66170a1733fefedfd91c9a4a02b07cf80471"
+    },
+    {
+      "path": "src/hub/member/room-post-answers.ts",
+      "sha256": "9ef12338e62d82de617dfe4a240aa463c5d3b130c0f4c769881e057b5fe6fdf8"
+    },
+    {
+      "path": "tests/hub-room-post-fleet.test.ts",
+      "sha256": "40ec62ae9a6a305c9daa98d2b40d4208a7c9bfc62afe1cf75de817d2e8e70c7b"
+    },
+    {
+      "path": "tests/hub-room-post-answers.test.ts",
+      "sha256": "1bfe85cea72f3aeb7f5d19076d72ad7a6e2ee0d83afdfc19d33001aa10653c14"
+    },
+    {
+      "path": "tests/hub-room-compose-track-c.test.ts",
+      "sha256": "4d59d50b8b1fa3a8bf39b8b759939a7cc42538370a2643ea5ae17ae4c4e4bd32"
+    },
+    {
+      "path": "tests/hub-room-post-rc-integration-3118.test.ts",
+      "sha256": "beb41a7ed30c36b7b6ad5cdaf1b84c43f366f13698bd36629c4b90eb36a7347b"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "c620281cda6e2bb7ee5a748650dd6bb1b3f700142db7c6db0576c9492bf0121c"
+    },
+    {
+      "path": "docs/design/hub-room-post-fleet.md",
+      "sha256": "fc4fecf584ac056e5e0036630420131a430582d75285d919dc1226623a5aee25"
+    }
+  ],
+  "checks": [
+    {
+      "log": "recovery-before.log",
+      "exit": 1,
+      "result": "2 selected assertion reds; 13 deselected"
+    },
+    {
+      "log": "recovery-after.log",
+      "exit": 0,
+      "result": "20/20 across the adapter and notification suites"
+    },
+    {
+      "log": "recovery-types-current.log",
+      "exit": 0,
+      "result": "tsc --noEmit -p tsconfig.test.json, including the new integration journey"
+    }
+  ],
+  "unrun": [
+    "tests/hub-room-post-rc-integration-3118.test.ts \u2014 Ridge owns the one combined execution; no duplicate C integration run"
+  ],
+  "carry": "Initial stdio/native/TLS/receipt/source evidence retains its earlier source and scope. No local sync rerun or new matrix."
+}
