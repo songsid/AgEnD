@@ -17,3 +17,5 @@ The Team UI and consumer checkpoint is ready for ordinary review; feature advert
 Input digest maps now use explicit `sha256-to-paths-v1` encoding. Invert `inputs.sha256ToPaths` to recover the original path-to-digest map exactly; see `../scan-repair/verification.json`. Capture receipts remain unchanged.
 
 `save-r1/` pins later actual-server partial-write metadata and ordinary-review details/title/nullable-query repairs. Only the affected provider/UI/client suites were rerun (24/3). The original gallery and gates remain bound to8b831; this repair has no new C browser matrix. R resumes its affected real-server walk.
+
+`copy-r4/` records the PM-required deletion verb, never-joined/unobserved wording and visible unsaved-draft mark. The affected UI file passes16/16; no new screenshot matrix was requested. R integration44/44 and nine preferred views retain their scoped carry.

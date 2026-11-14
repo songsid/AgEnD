@@ -1,0 +1,115 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-alpha
+
+ ❯ tests/hub-teams-ui-track-c.test.ts (16 tests | 6 failed | 10 skipped) 462ms
+   × names the ask permission being lost when deleting a Team (en) 91ms
+   × names the ask permission being lost when deleting a Team (zh-TW) 70ms
+   × marks edited rosters unsaved until Save succeeds (en) 70ms
+   × marks edited rosters unsaved until Save succeeds (zh-TW) 70ms
+   × distinguishes never-joined members from a pending joined-status observation (en) 63ms
+   × distinguishes never-joined members from a pending joined-status observation (zh-TW) 61ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-teams-ui-track-c.test.ts > names the ask permission being lost when deleting a Team (en)
+AssertionError: expected 'Delete Research?These team-based perm…' to contain 'May ask Helper · until'
+
+Expected: "May ask Helper · until"
+Received: "Delete Research?These team-based permissions will stop applying. Existing room members and agents already accepted into rooms stay.Helper · until 1/15/2027May create roomsCancelDelete team"
+
+ ❯ tests/hub-teams-ui-track-c.test.ts:113:63
+    111|   const { p } = await mount("admin", language); await open(p, language…
+    112|   fire(button(p, language === "en" ? "Delete team" : "刪除團隊"), "click")…
+    113|   expect(p.root.querySelector('[role="region"]').textContent).toContai…
+       |                                                               ^
+    114| });
+    115| it.each(["en", "zh-TW"])("marks edited rosters unsaved until Save succ…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/hub-teams-ui-track-c.test.ts > names the ask permission being lost when deleting a Team (zh-TW)
+AssertionError: expected '刪除「Research」？以下以團隊授予的權限將停止適用。已加入房間的成員…' to contain '可以問 Helper · 到'
+
+Expected: "可以問 Helper · 到"
+Received: "刪除「Research」？以下以團隊授予的權限將停止適用。已加入房間的成員與已同意加入的 Agent 都會保留。Helper · 到 1/15/2027可以建立房間取消刪除團隊"
+
+ ❯ tests/hub-teams-ui-track-c.test.ts:113:63
+    111|   const { p } = await mount("admin", language); await open(p, language…
+    112|   fire(button(p, language === "en" ? "Delete team" : "刪除團隊"), "click")…
+    113|   expect(p.root.querySelector('[role="region"]').textContent).toContai…
+       |                                                               ^
+    114| });
+    115| it.each(["en", "zh-TW"])("marks edited rosters unsaved until Save succ…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/hub-teams-ui-track-c.test.ts > marks edited rosters unsaved until Save succeeds (en)
+AssertionError: expected 'Save' to contain 'Unsaved changes'
+
+Expected: "Unsaved changes"
+Received: "Save"
+
+ ❯ tests/hub-teams-ui-track-c.test.ts:121:65
+    119|   const remove = [...p.root.querySelectorAll("button")].find((row: any…
+    120|   fire(remove, "click"); await settle(10);
+    121|   expect(p.root.querySelector(".hub-team-actions").textContent).toCont…
+       |                                                                 ^
+    122|   fire(p.root.querySelector("form"), "submit"); await settle(20); expe…
+    123| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/hub-teams-ui-track-c.test.ts > marks edited rosters unsaved until Save succeeds (zh-TW)
+AssertionError: expected '儲存' to contain '尚未儲存'
+
+Expected: "尚未儲存"
+Received: "儲存"
+
+ ❯ tests/hub-teams-ui-track-c.test.ts:121:65
+    119|   const remove = [...p.root.querySelectorAll("button")].find((row: any…
+    120|   fire(remove, "click"); await settle(10);
+    121|   expect(p.root.querySelector(".hub-team-actions").textContent).toCont…
+       |                                                                 ^
+    122|   fire(p.root.querySelector("form"), "submit"); await settle(20); expe…
+    123| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/hub-teams-ui-track-c.test.ts > distinguishes never-joined members from a pending joined-status observation (en)
+AssertionError: expected 'Unknown statusMember—NoneRemove' to contain 'Checking…'
+
+Expected: "Checking…"
+Received: "Unknown statusMember—NoneRemove"
+
+ ❯ tests/hub-teams-ui-track-c.test.ts:129:91
+    127|   const rows = [...p.root.querySelectorAll("tbody tr")];
+    128|   expect(rows.find((row: any) => row.textContent.includes("Casey")).te…
+    129|   expect(rows.find((row: any) => row.textContent.includes("Unknown sta…
+       |                                                                                           ^
+    130| });
+    131|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  tests/hub-teams-ui-track-c.test.ts > distinguishes never-joined members from a pending joined-status observation (zh-TW)
+AssertionError: expected 'Unknown status成員—無移除' to contain '正在確認…'
+
+Expected: "正在確認…"
+Received: "Unknown status成員—無移除"
+
+ ❯ tests/hub-teams-ui-track-c.test.ts:129:91
+    127|   const rows = [...p.root.querySelectorAll("tbody tr")];
+    128|   expect(rows.find((row: any) => row.textContent.includes("Casey")).te…
+    129|   expect(rows.find((row: any) => row.textContent.includes("Unknown sta…
+       |                                                                                           ^
+    130| });
+    131|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 10 skipped (16)
+   Start at  09:33:54
+   Duration  1.07s (transform 355ms, setup 83ms, import 362ms, tests 462ms, environment 0ms)
+
