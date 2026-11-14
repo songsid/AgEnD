@@ -115,7 +115,8 @@
     // @username rule (which cannot take a space, a hyphen or CJK). Only a page that passes them gets any: the fleet passes none.
     if (store.labels) for (var li = 0; li < store.labels.length; li++) {
       var lab = escapeHtml(store.labels[li]);
-      s = s.replace(new RegExp(lab.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w-])", "g"), function () { return stash(store, '<span class="mention tg">' + lab + "</span>"); });
+      // Bounded on both sides: "x@project-helper.com" is an address, not a mention (Fable on #3867).
+      s = s.replace(new RegExp("(?<![\\w@.-])" + lab.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w-])", "g"), function () { return stash(store, '<span class="mention tg">' + lab + "</span>"); });
     }
     // #1682: a Telegram @username — after the links (a link is stashed by now, so an @ inside a URL is never touched).
     s = s.replace(TG_MENTION_RE, function (_m, pre, user) { return pre + stash(store, '<span class="mention tg">@' + user + "</span>"); });

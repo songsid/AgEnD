@@ -1,0 +1,25 @@
+{
+  "source": "finding-time backup from stopped sealed rehearsal container",
+  "databaseSha256": "9d932b6a18d8c85ab3c988d8f3af14316deaf37a7080240007191c50109e0ee8",
+  "bindingAbsent": true,
+  "floorMatches": true,
+  "rows": [
+    {
+      "messageId": "03785aac-b1bb-4f51-9ca3-53eb14d4f27d",
+      "journalStage": "queued",
+      "inputIntentAbsent": true,
+      "representativeState": "held",
+      "contextAuthenticated": true,
+      "representativeMatchesContext": true,
+      "representativeMatchesContent": false,
+      "sourceMatches": true,
+      "exposureMatches": true
+    }
+  ],
+  "fixedCopy": {
+    "adopted": true,
+    "knownMessages": 1,
+    "questionRowsUnchanged": true,
+    "representativeRowsUnchanged": true
+  }
+}

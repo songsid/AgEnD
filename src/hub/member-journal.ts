@@ -95,7 +95,8 @@ export class HubMemberJournal {
     if (observed && has("hub_representative_questions")) {
       for (const r of this.db.prepare("SELECT source,message_id,digest,exposure_id,revision FROM hub_representative_questions").all() as { source: string; message_id: string; digest: string; exposure_id: string; revision: number }[]) {
         const e = identities.get(r.message_id);
-        if (!e || r.source !== this.source(e.messageId) || r.digest !== e.contentDigest || r.exposure_id !== e.exposureId || r.revision !== e.exposureRevision) throw new HubProtocolError("uncertain");
+        // The representative binds the complete question context, not just its text/content digest.
+        if (!e || r.source !== this.source(e.messageId) || r.digest !== this.row(e.messageId)!.contextDigest || r.exposure_id !== e.exposureId || r.revision !== e.exposureRevision) throw new HubProtocolError("uncertain");
       }
     }
     if (observed && has("hub_execution_queue")) {

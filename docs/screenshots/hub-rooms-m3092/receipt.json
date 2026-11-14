@@ -1,31 +1,31 @@
 {
-  "sourceHead": "0f9b63f6424ab1773cbc81ab159ec60953b20741",
-  "baseRef": "a012b664983786880f78d713e8e2b6dd1df0a5bc",
+  "sourceHead": "d15b4974ecd1dda00a1875971526da137e710272",
+  "baseRef": "7c12d23c0c0d7e4bc5c242388014b69191df6cf1",
   "dirty": [],
   "inputs": [
     {
       "path": "src/ui/panel-hub.js",
-      "base": "fff45bd7b52e5470cd83d7516f1e3587e1339cd98fe54158b7514a48af5d46f8"
+      "base": "1a9307d1cb1deccb2129a82da2dde5206f0496e7a90d21dd97a8b3325c999bf7"
     },
     {
       "path": "src/ui/hub-client.js",
-      "base": "56e67f7b3ea0b80a8966cf21dab6791541e30e41592ff6b3c7d5bb9bbc8c704e"
+      "base": "b413cf3d8d377ac0445e12ab07370a1b955ad43d71ef7cd5df29ce17f7dfb919"
     },
     {
       "path": "src/ui/shared/hub-chat.css",
-      "base": "9111e3bb953b1b2019f1f0e761d63f71c802e45581c3fe94ad7c7df11722ba0a"
+      "base": "d1592d89b970629e3ecba95c792ba23cab53dc27490556b645f325a6e8c4af58"
     },
     {
       "path": "src/ui/panel-hub.js",
-      "sha256": "285ddfb2cec000c7d85628084051feb40c5898dfdf7f31773611ef36f6070d39"
+      "sha256": "9f3cc624c2b373e89618f9011f6d5bac8b86fed0d1a0c434760a61db1d181f9a"
     },
     {
       "path": "src/ui/hub-client.js",
-      "sha256": "5aec0f912eecd55b57c306ac6e5a2a89f82f398c3de825ff61ee34d3bab65db7"
+      "sha256": "16c865fa7ce2f556818918a1a86e72d4b2744590c532c209e4f0e23626488fc8"
     },
     {
       "path": "src/ui/hub-room-list.js",
-      "sha256": "d485fa5ab212a0e852fef4a248e0973d5a01117ce4b7ecd364cc4e0cc2b12040"
+      "sha256": "0a4ac0cd3d17613fb300df6c8183e551d18b97f56c816fce922fead15cb1988d"
     },
     {
       "path": "src/ui/hub-room-strings.js",
@@ -33,11 +33,15 @@
     },
     {
       "path": "src/ui/hub-room-thread.js",
-      "sha256": "1b7c5257dfc4b8bd9e214b4ac562c7121446925696ac941dcdeb3846be295b9f"
+      "sha256": "5f2da73793808c5ae09488364abdd6bf24499ecd7da915e21626b6aafa6b489a"
     },
     {
       "path": "src/ui/hub-room-composer.js",
-      "sha256": "ed79763edea2363578f061ea21697f94066b298ae4e14b610b0ea585011ac31f"
+      "sha256": "d9013cbd80c937c850aeea0771d576bab3a99f56dcea4628775eebb683b36205"
+    },
+    {
+      "path": "src/ui/hub-room-favorites.js",
+      "sha256": "21a97db54fa0a3fb9ca51e04c595c73b2e8f0ef319c7a7be6a601c03f3563eb3"
     },
     {
       "path": "src/ui/shared/chat-thread.js",
@@ -45,11 +49,11 @@
     },
     {
       "path": "src/ui/shared/hub-chat.css",
-      "sha256": "1653b8f3db9c76a451762a9b2c486708e820bf0091fb7b30d85d0046d73d1858"
+      "sha256": "e2e58bb7bdaf6045a7b04a39fb9044fbf00072b83d8d54f80516083d2fd20568"
     },
     {
       "path": "tests/support/hub-rooms-fixture.ts",
-      "sha256": "630377aa140a6138a3f993bceef50ad70efd20e7e1c7e007c1abaa6dec4e616a"
+      "sha256": "76b42cdfb3e7d36e45aacfe0247b2d50150e253a19be6bbda8016248f5f85776"
     }
   ],
   "checks": [
@@ -63,6 +67,10 @@
     },
     {
       "name": "desktop-en-light after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error",
       "ok": true
     },
     {
@@ -86,6 +94,10 @@
       "ok": true
     },
     {
+      "name": "desktop-en-dark favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error",
+      "ok": true
+    },
+    {
       "name": "desktop-en-dark room-after: the room's header, its progress line, its own lines without tools; no page error",
       "ok": true
     },
@@ -103,6 +115,10 @@
     },
     {
       "name": "desktop-zh-TW-light after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error",
       "ok": true
     },
     {
@@ -126,6 +142,10 @@
       "ok": true
     },
     {
+      "name": "desktop-zh-TW-dark favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error",
+      "ok": true
+    },
+    {
       "name": "desktop-zh-TW-dark room-after: the room's header, its progress line, its own lines without tools; no page error",
       "ok": true
     },
@@ -143,6 +163,10 @@
     },
     {
       "name": "phone-en-light after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error",
       "ok": true
     },
     {
@@ -166,6 +190,10 @@
       "ok": true
     },
     {
+      "name": "phone-en-dark favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error",
+      "ok": true
+    },
+    {
       "name": "phone-en-dark room-after: the room's header, its progress line, its own lines without tools; no page error",
       "ok": true
     },
@@ -186,6 +214,10 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-light favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-light room-after: the room's header, its progress line, its own lines without tools; no page error",
       "ok": true
     },
@@ -203,6 +235,10 @@
     },
     {
       "name": "phone-zh-TW-dark after-live: 「房間」 then 「Agent」, six rows in the spec's order; unread and @ shown; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error",
       "ok": true
     },
     {
@@ -241,87 +277,103 @@
   "pictures": [
     {
       "path": "list.before.desktop-en-light.png",
-      "sha256": "2079fff67858e4a644c2b59511954d443429daf0eafdea585160bfbaba114775"
+      "sha256": "403fb7a49da3e4e2b35131f363f052d83731f0b478e4f05b645fce6869f414c5"
     },
     {
       "path": "room-before.desktop-en-light.png",
-      "sha256": "630acb7f982237dbf41fc3a897850165da0b25f62c8f24a86c58499fdb6bb749"
+      "sha256": "44824b5409b9df0f10d656c1ff4125a0100ba2198365c05bd37933132edcbdd5"
     },
     {
       "path": "list.after-live.desktop-en-light.png",
-      "sha256": "d3109de2bbe061ee649d9fc80fa022e31d8d8cd8eb2d1093cff20bf1e2b7f39c"
+      "sha256": "8c8cbfdd27d809d6f98b873892857ef11709fb8f09e1a076dcc9c1e8918c3336"
+    },
+    {
+      "path": "favorites-after.desktop-en-light.png",
+      "sha256": "f06d7243a0a3f28c694df6f6619f867ed246298e7fe98be0b96db1182a40dbbc"
     },
     {
       "path": "room-after.desktop-en-light.png",
-      "sha256": "1936da8b94651a1aa65a0ecbbd9b1530e298c8ffa83cdd04da1e606203964873"
+      "sha256": "b3a50766b0d4b62ba6eae608ccd31b327cb3d63c832d274d1268c2239c4ec699"
     },
     {
       "path": "menu-after.desktop-en-light.png",
-      "sha256": "ffd9dda21804cfbaa5b8dea55a24cf97f84a0ffc79139df58373b558f9ab0476"
+      "sha256": "315388afafa56cbceca23e023babc40463752c143afe09b7052132e4b8dea5d2"
     },
     {
       "path": "list.before.desktop-en-dark.png",
-      "sha256": "28fc55e1db71e891bd9a40507ab95672e67dd1e29db623ef5e3848cba55e15c1"
+      "sha256": "0b038fa3ce37d84bac48fb76e3561a2b9450c0759ebbf58ee2e903c2605a8a25"
     },
     {
       "path": "room-before.desktop-en-dark.png",
-      "sha256": "880dc11680f59950936df6091f7bbee7a02845bedff393a3ae5808d9f38dcc7c"
+      "sha256": "74ec25ee01e2301d26739d7d26062e967eec08bf89d309fce75d46052ea290e0"
     },
     {
       "path": "list.after-live.desktop-en-dark.png",
-      "sha256": "85ef1221b00118b375dd8ccb56cd72000a96ed45ae03d1913e7b064a60d6bf3c"
+      "sha256": "7bb2b6e0199b1eea131c25b60ff98caf8ea600cd52c01dfadbc1973ccdba2944"
+    },
+    {
+      "path": "favorites-after.desktop-en-dark.png",
+      "sha256": "987bb19f5470027109277d9b86bed55f266d6d60b2965853db5d107585af5bfc"
     },
     {
       "path": "room-after.desktop-en-dark.png",
-      "sha256": "572f89eebe5c768e0f57ad88b3e021da6deb4a08a180a6e22a099b75aab32a39"
+      "sha256": "2093d8c3b5057d485faad4d8b0ae1ce43e3a807576e39d6100ff494e3339f3fa"
     },
     {
       "path": "menu-after.desktop-en-dark.png",
-      "sha256": "a5f61c1dd9a5cb3292db394e01c941ede1d7a482f9c45e1be44a8736628c276e"
+      "sha256": "2f1ba76c36bec7b16771366a68f94dfbc23908be44c8a370fcb7e7d4bf032b1b"
     },
     {
       "path": "list.before.desktop-zh-TW-light.png",
-      "sha256": "d86eda62723750917b1d7bf35f39178dccc3502803646cd061d4d957790ee89f"
+      "sha256": "71eb4d5b9174d98f46caa7050eeac2d7bbc02005301e09e1a516eab5034cf338"
     },
     {
       "path": "room-before.desktop-zh-TW-light.png",
-      "sha256": "8fa3eace3c7d0cbe507569a1767cfcf206127dbaa6adf426cafb64a5b244a9a6"
+      "sha256": "092bcc4b7cd629ae0d8d70e52d057be331bf9623b5b3622a7fc9db0731b3c911"
     },
     {
       "path": "list.after-live.desktop-zh-TW-light.png",
-      "sha256": "88588af1051a7d04284e82b9107501448503f8d7d9f4dc06726b25af6b9fcdff"
+      "sha256": "7e441c6a65fdd4812293ff272ab2bc0d2aaae429f6289160d8eff4c3bfc55797"
+    },
+    {
+      "path": "favorites-after.desktop-zh-TW-light.png",
+      "sha256": "53517c1c76143a602460b5fd8281497560f8c7d342815c79aea3bc5df6e4dec9"
     },
     {
       "path": "room-after.desktop-zh-TW-light.png",
-      "sha256": "46ca0360904bbbd8c25584d15caa5e524a862a59c856d18b6fcae78f1a3403ac"
+      "sha256": "a9815d843e4a9312f14e62b873e59d6225aa5980104927b49a3ac44cdbd865ac"
     },
     {
       "path": "menu-after.desktop-zh-TW-light.png",
-      "sha256": "f3eb064864b2f5f7af173c6381bc255e5e8e1c24c94d2a211ebf0bad519e99a9"
+      "sha256": "076e6bbe2e26eaa1313603ee8df4ac35df153ad026afbf4042fed4c0c6c9286c"
     },
     {
       "path": "list.before.desktop-zh-TW-dark.png",
-      "sha256": "94764891fdc782ccdde5acf58b7995c2903ca3c09f89884b43d758f2315f384c"
+      "sha256": "71ec877cf3e01d10d8ec99bc590336678687a89c1bab8af001c53882629ba933"
     },
     {
       "path": "room-before.desktop-zh-TW-dark.png",
-      "sha256": "e383cae50fe496f669a991689231f88d02ab64f5a93f0d3c02350cd8954c81d4"
+      "sha256": "c1da8ef7dcc1fb36389d3d1316bc9ec13703a7dd89b57e703b7826ae432efb6d"
     },
     {
       "path": "list.after-live.desktop-zh-TW-dark.png",
-      "sha256": "d34107fb634499bb19502ab05a1af2c8a14939757d88e7ce05f3acc9d8b84b8c"
+      "sha256": "c780cc6976224dd0d524ab5d312e38a0f4a9254186741536bf25e2d398f4efae"
+    },
+    {
+      "path": "favorites-after.desktop-zh-TW-dark.png",
+      "sha256": "bd98e1589e05910b524732ec2469e66fe1e9d3109338c0892b69c74a76c86de2"
     },
     {
       "path": "room-after.desktop-zh-TW-dark.png",
-      "sha256": "184710cdaecf73464f9e1d0c86f4792c0c59c2d7f454f80fe1bb1f4a197f69e9"
+      "sha256": "71d00b6fe720375ec2d8aca0c9c1a324fbd5959211838ebfd10dd4f698710f0b"
     },
     {
       "path": "menu-after.desktop-zh-TW-dark.png",
-      "sha256": "efd678014886ce6f1bc0c949ebfb511a752fbe11901629719c43177b191ea0a1"
+      "sha256": "ed0c0f3f21b8dbf98acc9c5af1d0458e45c22aa1e49020a293642c770e478475"
     },
     {
       "path": "list.before.phone-en-light.png",
-      "sha256": "377a38ff6166722157c48a8bd884d0fca6ba632b7c210e03ede5f72a0d2d28da"
+      "sha256": "0ddbc28dd50efb4788a127b68dfadf03500bf716dfa6e606a9c162f7ad40ed1a"
     },
     {
       "path": "room-before.phone-en-light.png",
@@ -329,7 +381,11 @@
     },
     {
       "path": "list.after-live.phone-en-light.png",
-      "sha256": "3bb4b733c127005cf61bab05bed028a033525a447cf644ae771ba81a366495e7"
+      "sha256": "5a363e29ad132e9fe1b96c3746cfa0dcc260bcf820a1fa113d6d5d68ea43609e"
+    },
+    {
+      "path": "favorites-after.phone-en-light.png",
+      "sha256": "e464d6308152ace6ee01e050005de627e953b2ecd43d3e2caa26f47423bfebab"
     },
     {
       "path": "room-after.phone-en-light.png",
@@ -341,7 +397,7 @@
     },
     {
       "path": "list.before.phone-en-dark.png",
-      "sha256": "d05ff01240a47925c0d9cc2c96bf2b32ced180d3b050d574de1f2632f7ad2162"
+      "sha256": "0712ecfd05c8b1269d47ee4caff156f63bac5fc944822dcafbe09b7435d14f4d"
     },
     {
       "path": "room-before.phone-en-dark.png",
@@ -349,7 +405,11 @@
     },
     {
       "path": "list.after-live.phone-en-dark.png",
-      "sha256": "67fd9a15a6023add9779199134a63c75cb750355497b8ca4b3f1048293cdd52c"
+      "sha256": "2b58c1ebc89e441ad879568be4a36cc037a2d653737b81cef645e8e8ecf48463"
+    },
+    {
+      "path": "favorites-after.phone-en-dark.png",
+      "sha256": "666a87e3fa4d866c2f64f1f9dc3333087cee27fc29ed9f0e6ec9d476b63f69f8"
     },
     {
       "path": "room-after.phone-en-dark.png",
@@ -357,11 +417,11 @@
     },
     {
       "path": "menu-after.phone-en-dark.png",
-      "sha256": "2d8ded807a4c388f5cbd3ef7bdc92d2eb0421ec42e0da84ff0fccce42fbf47d9"
+      "sha256": "14e30fb69ce55a29a16c0f723feee323e0d15274a676001c26f1dc8f3545d100"
     },
     {
       "path": "list.before.phone-zh-TW-light.png",
-      "sha256": "570413b9b993b427406432f7ba55e3afc8a6b32ef64f8179a3f264acf52150af"
+      "sha256": "684a3b8de5f0dad174619630fcbf8c3a64d4815763feefd21ad87132246c3b95"
     },
     {
       "path": "room-before.phone-zh-TW-light.png",
@@ -369,7 +429,11 @@
     },
     {
       "path": "list.after-live.phone-zh-TW-light.png",
-      "sha256": "59321db077dc083e377eb163ecedc7e98a26d25db9cf16e0d9a169518977499b"
+      "sha256": "f1eb5a456b9f1ba5e19addae21fc27b05c3f9b0d7b271fe98b79624d68ea29bf"
+    },
+    {
+      "path": "favorites-after.phone-zh-TW-light.png",
+      "sha256": "d612657a47aa184db4f5b5ce1ea869604542e3f2188bb4acdb2998041e5c4635"
     },
     {
       "path": "room-after.phone-zh-TW-light.png",
@@ -381,7 +445,7 @@
     },
     {
       "path": "list.before.phone-zh-TW-dark.png",
-      "sha256": "7984e0cc76911767c6842acdd96cbd0702fdba0e8780487c3fed3af60fea1825"
+      "sha256": "db9777c6960ac0d37a9e87007f88ece3664e6594ba1832a238f259b6f48c06e7"
     },
     {
       "path": "room-before.phone-zh-TW-dark.png",
@@ -389,7 +453,11 @@
     },
     {
       "path": "list.after-live.phone-zh-TW-dark.png",
-      "sha256": "2a9ce154a57c30e46f2584f521c8fdd16daa1fee57759e952ce331cde09e85e9"
+      "sha256": "999a3968b2d19cec96c4bc43ad6bd989bd6d0960a293f35dd3a83c732e120b5a"
+    },
+    {
+      "path": "favorites-after.phone-zh-TW-dark.png",
+      "sha256": "c27d6123cdd8692279bcf56449160d4eef1d467f9188bb799128082c0a182749"
     },
     {
       "path": "room-after.phone-zh-TW-dark.png",
@@ -397,11 +465,11 @@
     },
     {
       "path": "menu-after.phone-zh-TW-dark.png",
-      "sha256": "90e34bb93848d0a7165af13bac63e086cd311d08ebd014bbf3fcfe88856b9d88"
+      "sha256": "bea420a1787820e337ca805c736cdc5eb2c72595596556a10e896dba14babf0a"
     },
     {
       "path": "assistant-after.desktop-en-light.png",
-      "sha256": "6876626d1a4b7a1ae663768f8261dd8241a6fcc55c6df1e264d64844d4d2264e"
+      "sha256": "909de91cf2ab6e282b303e3fb22ee720c86980b9c4ac63369e5376d140239df2"
     },
     {
       "path": "assistant-after.phone-zh-TW-dark.png",
@@ -409,19 +477,19 @@
     },
     {
       "path": "list.after-limited.desktop-en-light.png",
-      "sha256": "40b2e250762715242dd15e6c7d34f492777d95900dae622c33697616847f802b"
+      "sha256": "f1c38bd898dc3bcd369f9c48765a92e643e20a913cdda8de0d9c347ffdc8e2c8"
     },
     {
       "path": "list.skew.desktop-en-light.png",
-      "sha256": "bdf60752f5f3ed84d48aee987a9bc8adf911565dc8a4be78939cd3b10dab62fd"
+      "sha256": "f1c38bd898dc3bcd369f9c48765a92e643e20a913cdda8de0d9c347ffdc8e2c8"
     },
     {
       "path": "list.after-limited.phone-zh-TW-dark.png",
-      "sha256": "32ccf227adf71b3daf5de88d88f51588efe60abfd48611d92113906039f62bc3"
+      "sha256": "b7db552cb0eddba68523f4e3d40ec39ab8288ea7d21e945c4f4256b4e9601645"
     },
     {
       "path": "list.skew.phone-zh-TW-dark.png",
-      "sha256": "2f342f61cf1b190c5f4722e2e2fc8b564963ec5af4a7d129c560039bfd79e7b2"
+      "sha256": "52685e0435624599b18dada9a5682c0bd70eab1ef423009365364dabf24f2a52"
     }
   ]
 }

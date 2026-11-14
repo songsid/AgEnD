@@ -1,0 +1,58 @@
+{
+  "exit": 0,
+  "loads": [
+    {
+      "at": 1794594225.0386312,
+      "load1": 0.8525390625
+    },
+    {
+      "at": 1794594227.040548,
+      "load1": 0.8525390625
+    },
+    {
+      "at": 1794594229.0422237,
+      "load1": 0.7841796875
+    },
+    {
+      "at": 1794594231.043361,
+      "load1": 0.7841796875
+    },
+    {
+      "at": 1794594233.0454888,
+      "load1": 0.7841796875
+    },
+    {
+      "at": 1794594235.0473812,
+      "load1": 1.4423828125
+    },
+    {
+      "at": 1794594237.0486944,
+      "load1": 1.4423828125
+    },
+    {
+      "at": 1794594239.0502954,
+      "load1": 1.40673828125
+    },
+    {
+      "at": 1794594241.0514207,
+      "load1": 1.40673828125
+    },
+    {
+      "at": 1794594243.053552,
+      "load1": 1.40673828125
+    },
+    {
+      "at": 1794594245.0554385,
+      "load1": 1.53466796875
+    }
+  ],
+  "command": "tsx scripts/manual/smoke/smoke-hub-shell-gate.mts",
+  "env": {
+    "PW_DIR": "/home/han/.cache/wt-hubdto",
+    "REPO": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c",
+    "OUT": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c/.artifacts/room-compose-track-c/shell-after",
+    "GATE": "ci",
+    "CHROME": "/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+    "FONTCONFIG_FILE": "/etc/fonts/fonts.conf"
+  }
+}

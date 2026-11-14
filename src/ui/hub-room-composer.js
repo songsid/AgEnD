@@ -10,7 +10,7 @@ import { ComposerInput, touchScreen } from "/assets/chat-composer.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { hroom } from "./hub-room-strings.js";
-import { presenceDot } from "./hub-room-list.js";
+import { presenceDot } from "./hub-room-presence.js";
 
 const ONLINE = new Set(["online", "idle", "working"]);
 const agentsOf = (detail) => (detail?.members || []).filter((m) => m.kind === "agent" || m.kind === "later");

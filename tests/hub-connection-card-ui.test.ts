@@ -18,7 +18,7 @@ afterEach(async () => {
   for (const p of pages.splice(0)) { await p.unmount(); p.restore(); }
   confirmations.resetConfirmations(); clientModule.setHubClient(null); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
-async function fixture(options: { enabled?: boolean; pairing?: any; language?: string; legacy?: boolean; public?: boolean; bad?: any; heldRead?: Promise<any>; write?: Promise<any>; pending?: boolean; operation?: any; failedAfterWrite?: number; display?: any; probe?: (address: string) => any } = {}) {
+async function fixture(options: { enabled?: boolean; pairing?: any; language?: string; legacy?: boolean; public?: boolean; bad?: any; heldRead?: Promise<any>; write?: Promise<any>; pending?: boolean; operation?: any; failedAfterWrite?: number; display?: any; probe?: (address: string) => any; start?: (body: any) => any } = {}) {
   const p = page({ url: "http://127.0.0.1:19290/settings/hub", storage: { agend_lang: options.language ?? "en" } }); pages.push(p);
   vi.stubGlobal("crypto", webcrypto); if (options.public) p.document.body.dataset.publicLink = "1";
   words.setLang(options.language ?? "en");
@@ -43,6 +43,8 @@ async function fixture(options: { enabled?: boolean; pairing?: any; language?: s
       return response(options.bad ?? { ok: true, enabled, ...(!options.legacy && path.includes("?v=2") ? { connectionCardV1: true, pairing } : {}) });
     }
     if (path.endsWith("/company-join/probe") && options.probe) return response(options.probe(JSON.parse(init.body).address));
+    if (path.endsWith("/company-join/cancel") && options.start) return response({ ok: true, operation: { operationId: id, state: "cancelled", issued: false, outcomeKnown: true } });
+    if (path.endsWith("/company-join/start") && options.start) { const r = options.start(JSON.parse(init.body)); if (r === "throw") throw new TypeError("network"); return response(r.body, r.status); }
     if (path === "/api/hub/member/company-join") return response({ ok: true, bound: pairing.state !== "unpaired", operation: options.operation ?? null, display: options.display ?? null });
     if (path.endsWith("/company-join/reconnect") || path.endsWith("/company-join/remove")) { pairing = { state: "unpaired" }; return response({ ok: true, operation: { operationId: id, state: "awaiting-sign-in" } }); }
     if (path.endsWith("/confirm")) { enabled = true; return response({ result: "pending_confirmation", pending_change: { id: pendingId, state: "applied", outcome: { result: { ok: true } } } }, 202); }
@@ -200,6 +202,36 @@ describe("M-2921: the connected and held card (spec 1.1 / 1.3)", () => {
     const f = await fixture({ probe: () => answer }); await until(() => f.p.root.querySelector("#hubCompanyAddress"));
     await typeAddress(f, "hub.example.test");
     expect(f.calls.some(c => c.path.endsWith("/probe"))).toBe(true);
+    expect(f.p.root.querySelector(".hub-connection-manual")).toBeTruthy();
+  });
+  // Lumen (alpha.4 rehearsal leg P): pressing 「信任這個 Hub 並繼續」 continues straight into company sign-in, so from that press the
+  // Hub counts as one that takes company sign-in — Other ways goes. A Hub that then turns out to have no company sign-in brings it back.
+  const selfSigned = { ok: false, reason: "certificate", selfSigned: true, trust: { fingerprint: "c".repeat(64), previous: null } };
+  const signingIn = { status: 200, body: { ok: true, operation: { operationId: id, state: "awaiting-sign-in", issued: false, outcomeKnown: true, hubOrigin: "https://hub.example.test" } } };
+  it.each(["en", "zh-TW"])("P6 + pilot trust (%s): from the trust press, Other ways is hidden while signing in", async language => {
+    vi.stubGlobal("open", vi.fn());
+    const f = await fixture({ language, probe: () => selfSigned, start: () => signingIn }); await until(() => f.p.root.querySelector("#hubCompanyAddress"));
+    await typeAddress(f, "hub.example.test");
+    expect(f.p.root.querySelector(".hub-connection-manual")).toBeTruthy();   // untrusted: the page can't tell yet
+    await click(f.p, language === "en" ? "Trust this Hub and continue" : "信任這個 Hub 並繼續"); await settle(20);
+    expect(f.calls.filter(c => c.path.endsWith("/company-join/start"))).toHaveLength(1);
+    expect(f.p.root.querySelector(".hub-connection-manual")).toBeNull();
+  });
+  it.each([["no company sign-in", { status: 409, body: { ok: false, error: "incompatible" } }], ["the start fails", { status: 503, body: { ok: false, error: "unavailable" } }], ["the start request throws", "throw"]])("P6 + pilot trust: %s after the trust press brings Other ways back", async (_label, answer: any) => {
+    vi.stubGlobal("open", vi.fn());
+    const f = await fixture({ probe: () => selfSigned, start: () => answer }); await until(() => f.p.root.querySelector("#hubCompanyAddress"));
+    await typeAddress(f, "hub.example.test");
+    await click(f.p, "Trust this Hub and continue"); await settle(20);
+    expect(f.calls.filter(c => c.path.endsWith("/company-join/start"))).toHaveLength(1);
+    expect(f.p.root.querySelector(".hub-connection-manual")).toBeTruthy();
+  });
+  it("P6 + pilot trust: Cancel the sign-in, then another address — Other ways is back", async () => {
+    vi.stubGlobal("open", vi.fn());
+    const f = await fixture({ probe: a => a === "https://hub.example.test" ? selfSigned : { ok: false, reason: "unreachable" }, start: () => signingIn }); await until(() => f.p.root.querySelector("#hubCompanyAddress"));
+    await typeAddress(f, "hub.example.test"); await click(f.p, "Trust this Hub and continue"); await settle(20);
+    expect(f.p.root.querySelector(".hub-connection-manual")).toBeNull();
+    await click(f.p, "Cancel"); await until(() => f.p.root.querySelector("#hubCompanyAddress"));
+    await typeAddress(f, "other.example.test");
     expect(f.p.root.querySelector(".hub-connection-manual")).toBeTruthy();
   });
 });

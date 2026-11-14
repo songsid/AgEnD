@@ -53,7 +53,7 @@ export interface FixtureRoom {
 type Reply = { status: number; body: unknown; headers?: Record<string, string> };
 type Listener = (event: { data: string }) => void;
 
-export const FIXTURE_ME = { id: "person-wang", name: "王經理" };
+export const FIXTURE_ME = { id: "person-wang", name: "王經理", login: "wang" };   // login: the session's, as the Hub answers it (S-145 keys favourites by it)
 const T0 = Date.UTC(2026, 10, 13, 2, 0, 0);
 const minutes = (n: number) => T0 + n * 60_000;
 
@@ -176,7 +176,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
     const url = new URL(req.path, "https://hub.fixture.test"), p = url.pathname, method = req.method.toUpperCase();
     if (method !== "GET" && p.startsWith("/hub/v1/") && p !== "/hub/v1/session" && (req.headers?.["x-agend-hub-csrf"] ?? req.headers?.["X-AgEnD-Hub-CSRF"]) !== csrf) return fail(403, "csrf");
     if (p === "/hub/v1/session" && method === "GET")
-      return { status: 200, body: { signedIn: true, csrf, person: { name: FIXTURE_ME.name }, admin: true, features } };
+      return { status: 200, body: { signedIn: true, csrf, person: { name: FIXTURE_ME.name }, displayName: FIXTURE_ME.name, login: FIXTURE_ME.login, admin: true, features } };
     if (p === "/hub/v1/rooms" && method === "GET")
       return { status: 200, body: { rooms: rooms.map(listItem).sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || b.lastAt - a.lastAt),
         me: { canCreateRooms: creators.people.includes(FIXTURE_ME.id), assistant: true }, invitations: invitations.length } };   // U2: me.assistant — the Hub offers the room assistant

@@ -1,0 +1,38 @@
+{
+  "head": "c6f1716ff92a5cca41bb173af078f79185bcd215",
+  "scope": "clean candidate c6f1716; same runtime as before; only the shell fixture changes",
+  "inputs": [
+    {
+      "path": "scripts/manual/smoke/smoke-hub-shell-gate.mts",
+      "sha256": "ac0b0c750afcaa9e6ef18ea57abc89f65a7019dac2e202f7165fca1a04a94f29"
+    },
+    {
+      "path": "tests/helpers/hub-s3b-rig.ts",
+      "sha256": "db4ccc3b2424d487c8c5e94da49fc4dced7fc0c6f6d6f41671bf45e5f1f8d03a"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "994e94ea066c7a2e7f75a8904e3173b9597011f6719348fbd8c68cdc2b4fb03a"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "ef07feb2b968c41e955038dc2e5a696e8c2d78b01023eb67f070c60540487ea4"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "c3266a7411060b11f2a4f511389e7813c1558a06f33982fe1ebc2de9ba24b171"
+    },
+    {
+      "path": "src/ui/hub-quick-pairing.js",
+      "sha256": "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "225a5f1860d7476597af1c7ffc4c6fdfedec663b92f9c8c712bcda149d3b67e7"
+    },
+    {
+      "path": "src/ui/shared/tokens.css",
+      "sha256": "cd62669f84666fb16e49cf63ebdc8376d3965106eeaf0531744372bdcf70f3c9"
+    }
+  ]
+}

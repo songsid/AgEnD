@@ -35,6 +35,7 @@ import { compareGroups, hubClient } from "./hub-client.js";
 import { hw, linkHubCss } from "./hub-strings.js";
 import { hc, linkHubChatCss } from "./hub-chat-strings.js";
 import { HubRoomRows, readRoomList } from "./hub-room-list.js";
+import { useRoomStar } from "./hub-room-favorites.js";
 import { HubRoomPage } from "./hub-room-thread.js";
 import { hroom } from "./hub-room-strings.js";
 import { hr } from "./hub-read-strings.js";
@@ -334,6 +335,7 @@ export function HubNav({ onPick } = {}) {
   const rs = useRooms();
   const [q, setQ] = useState("");
   const [picking, setPicking] = useState(false);
+  const star = useRoomStar(rs.rooms, s?.login);
   useEffect(() => { linkHubChatCss(); }, []);
   if (!s) return null;
   const current = roomParam();
@@ -348,7 +350,7 @@ export function HubNav({ onPick } = {}) {
     ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
     ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChats")}</p>` : null}
     ${rs.rooms.length && !shown.length ? html`<p class="note hub-list-empty">${hc("noMatch")}</p>` : null}
-    <div class="view-roster inst-nav hub-side-rooms"><${HubRoomRows} rooms=${rs.rooms} q=${q} current=${current} href=${(r) => roomPath(r.id)} onGo=${pick} /></div>
+    <div class="view-roster inst-nav hub-side-rooms"><${HubRoomRows} rooms=${rs.rooms} q=${q} current=${current} href=${(r) => roomPath(r.id)} onGo=${pick} star=${star} /></div>
     ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
   </div>`;
 }
@@ -416,6 +418,7 @@ export function HubSide({ onPick } = {}) {
  */
 function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null }) {
   const current = roomParam();
+  const star = useRoomStar(rs.rooms, useSession()?.login);   // S-145: favourites, as the Fleet sidebar's
   const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
   const shown = rs.rooms.filter((r) => !q.trim() || [r.name, r.agent?.owner?.name, r.lastText].some((v) => String(v || "").toLowerCase().includes(q.trim().toLowerCase())));
   const always = !!onNew;                              // the home page's list: its filter is always there (when there's a list to filter)
@@ -428,7 +431,7 @@ function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, 
       ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
       ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length && !quietEmpty ? html`<p class="side-empty muted">${hc("noChats")}</p>` : null}
       ${rs.rooms.length && !shown.length ? html`<p class="side-empty muted">${hc("noMatch")}</p>` : null}
-      <${HubRoomRows} rooms=${rs.rooms} q=${q} current=${current} href=${(r) => roomPath(r.id)} onGo=${(e, r) => go(e, roomPath(r.id))} />
+      <${HubRoomRows} rooms=${rs.rooms} q=${q} current=${current} href=${(r) => roomPath(r.id)} onGo=${(e, r) => go(e, roomPath(r.id))} star=${star} />
     </div></div>`;
 }
 
@@ -1037,7 +1040,7 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     <div class="s-section-layout">
       ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
       ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
-      ${/* Lumen's order (M-3092): Let colleagues join → Rooms → Room assistant (track A's card, next) → Connected fleets → pairing. */ ""}
+      ${/* Lumen's order: Let colleagues join → Rooms → Room assistant → Connected fleets → pairing. */ ""}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
       ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}

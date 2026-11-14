@@ -29,7 +29,8 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | needs attention, Recover this connection, queue, timed out, cancel | [Held, refused and queued connections](#held-refused-and-queued-connections) |
 | Shared agents, Share, Not shared, Pause sharing, Resume sharing, Stop sharing, ClassicBot rooms | [Sharing agents](#sharing-agents) |
 | Allow someone to ask, AD group, name search, how long, Revoke, Recent questions | [Who may ask](#who-may-ask) |
-| New chat, asking someone's agent, Waiting / Answered | [Asking an agent](#asking-an-agent) |
+| New chat, asking someone's agent, Waiting / Answered, favorites (最愛) | [Asking an agent](#asking-an-agent) |
+| @agent, @all, room answers, Idle, Paused, Stopped | [Agents in a Hub room](#agents-in-a-hub-room) |
 | room creators, room administration, Hub assistant | [Rooms and the Hub assistant](#rooms-and-the-hub-assistant) |
 | @agent, @all, room answers, Idle, Paused, Stopped | [Agents in a Hub room](#agents-in-a-hub-room) |
 | Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
@@ -46,10 +47,11 @@ A **Fleet** is one person's AgEnD: their agents, on their computer. A **Hub** is
 connect to, so colleagues can ask each other's agents. People sign in on the Hub with their **company account** (the
 Active Directory account they use at work).
 
-- A shared agent answers inside its own conversation on its owner's Fleet, with its own folder and allowed tools.
-  Actions that need approval still go to the owner.
-  Separately, the optional room-assistant pilot runs on the Hub computer, under the Hub owner's selected account,
-  with no shell, file or other tools. It receives only the supplied room conversation.
+- A shared agent answers inside its own conversation on its owner's Fleet, with its own folder
+  and the tools its Settings allow. Actions that need approval still go to the owner.
+- A Hub with the optional room-assistant provider enabled can also answer through its own assistant. Its backend and
+  account are chosen by the Hub administrator; it is separate from colleagues' shared agents. The pilot assistant
+  runs on the Hub computer without shell, file or other tools and receives only the supplied room conversation.
 - Every agent is private unless its owner shares it, and sharing alone lets nobody ask: the owner also allows each
   person or an AD security group.
 - The Hub administrator manages who may connect and sees connected Fleets, not chats ("You cannot read anyone's chats
@@ -313,6 +315,12 @@ that has rooms, the list has two groups: **Rooms** (房間: a square avatar, "3 
 mark when someone mentioned you) and **Agents** (one-to-one chats, the agent's status dot, **Hub assistant** last).
 Unread chats come first, then the most recent.
 
+Favorites work as in AgEnD's own sidebar: a row's **⋯** menu has **Add to favorites** (加入最愛) and **Remove from
+favorites**. Starred chats and rooms move to **Favorites** (最愛) at the top of the list, in the order you starred them,
+at most 50. With two or more, **Edit** adds **Move up** and **Move down** to their menus; clear the filter first to move
+them. For now, a Hub's favorites are kept in this browser for the person signed in, so another browser or device
+starts without them. A chat or room you leave drops out of Favorites.
+
 In a room (a Hub with rooms), everyone sees every message. Each message says who wrote it: a person by name, an agent as
 "*agent* · *owner*'s agent", the room assistant as "Room assistant · Provided by the Hub". An agent answers only when it is
 @-mentioned: type `@` for the menu — **@All agents** (every agent answers; the line above the box says how many are online
@@ -330,6 +338,26 @@ sidebar, the list and Administration.
 - The marks on a question: **Waiting for the owner's fleet**, **At the owner's fleet**, **Answered**; or **Not
   answered** / **Outcome unknown**. "An answer can take a few minutes."
 - "No agents have been shared with you yet. An agent's owner has to give you access." → ask the owner to allow you.
+
+## Agents in a Hub room
+
+On a Hub with rooms, mention a shared agent with **@agent**, or **@all** when the room allows it. A room manager can
+add their own shared agent. Its owner consents to room questions by adding it; this does not grant anyone a private
+one-to-one chat. The separate **Who may ask** list still controls private chats.
+
+- The question reaches the agent's existing conversation on its owner's Fleet. It names the room and asker and
+  includes recent room messages. The agent keeps its own folder and tools; any required approval goes to its owner.
+- Everyone in the room can see the question and answer. The answer returns to the same question, and a reconnect
+  retries the saved answer without entering the question again. Room agent answers are text only for now.
+- **Idle** (待命) means the agent can be woken by a question. **Working** means it is busy. **Paused** (暫停) names a
+  known reason such as quota, sign-in or approval. **Stopped** (已停止, grey) means the Fleet is reachable but its owner
+  must start the agent. **Offline** (離線) means the Fleet cannot be reached; an older Fleet can instead show an update
+  requirement.
+- Offline, stopped or paused targets wait; unanswered room questions expire after 24 hours. A question whose input
+  outcome is uncertain is held rather than automatically entered a second time.
+
+Inviting another owner's agent and virtual-team management arrive in separate slices; do not invent those controls
+on a Hub that does not provide them. The room assistant is also separate.
 
 ## Rooms and the Hub assistant
 
