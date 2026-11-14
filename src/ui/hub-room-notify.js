@@ -56,6 +56,8 @@ export function clearHubMeId() { hubMeId = null; }
 export function rememberedMeId() { return hubMeId; }
 
 let stopPrev = null;
+/** The live starter's generation: a lazy resolve from a replaced or stopped watcher never writes. */
+let liveGen = 0;
 
 /**
  * Ping while a Hub tab is open but hidden (a visible page shows the rows; what it showed is seen).
@@ -69,6 +71,7 @@ let stopPrev = null;
  */
 export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, roomKind, open, env = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
   if (stopPrev) stopPrev();
+  const gen = ++liveGen;
   const seen = new Set();
   let resolving = null;
   const meOf = () => (typeof me === "function" ? me() : me);
@@ -78,7 +81,9 @@ export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, r
     if (typeof resolveMe !== "function" || typeof setMe !== "function" || !notifyOn(env)) return;
     resolving ??= Promise.resolve()
       .then(resolveMe)
-      .then((got) => { if (got && got.id) setMe(got); }, () => {})
+      // A resolve that lands after a restart (sign-in change) or stop belongs to the old watcher: drop it,
+      // or B would inherit A's id right after the clear.
+      .then((got) => { if (gen === liveGen && got && got.id) setMe(got); }, () => {})
       .finally(() => { resolving = null; });
   };
   const onEvent = (type) => (data) => {
@@ -120,7 +125,7 @@ export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, r
   const off = client && typeof client.subscribeRooms === "function"
     ? client.subscribeRooms({ "message.added": onEvent("message.added"), "message.updated": onEvent("message.updated"), "invitation.changed": onEvent("invitation.changed") })
     : () => {};
-  stopPrev = () => { stopPrev = null; try { off(); } catch { /* already stopped */ } };
+  stopPrev = () => { stopPrev = null; liveGen++; try { off(); } catch { /* already stopped */ } };
   return stopPrev;
 }
 

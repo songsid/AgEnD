@@ -252,6 +252,30 @@ describe("startHubRoomNotifier", () => {
     stop();
   });
 
+  it("drops a lazy resolve that lands after a restart or stop (Fable: no stale A id for B)", async () => {
+    const fx = createHubRoomsFixture();
+    let release = (v: { id: string } | null) => {};
+    const gate = new Promise<{ id: string } | null>((r) => { release = r; });
+    const env = optedEnv();
+    const starter = startHubRoomNotifier as (...args: Array<Record<string, unknown>>) => () => void;
+    const seen: unknown[] = [];
+    const one = fakeClient(), two = fakeClient();
+    starter({ client: one, me: () => null, setMe: (m: unknown) => seen.push(m),
+      resolveMe: () => gate, roomName: () => "", open: vi.fn(), env, doc: { hidden: true } });
+    const weekly = fx.rooms.find((r) => r.id === "room-weekly")!;
+    const chen = weekly.messages.find((m) => m.author.id === "person-chen")!;
+    // An event while me is unknown starts the lazy resolve on the first watcher.
+    (one.handlers["message.added"] as (d: unknown) => void)({ roomId: weekly.id, message: chen });
+    // A restart (sign-in change) replaces the watcher before the resolve lands.
+    const stop = starter({ client: two, me: () => null, setMe: (m: unknown) => seen.push(m),
+      resolveMe: async () => null, roomName: () => "", open: vi.fn(), env, doc: { hidden: true } });
+    release({ id: fx.me.id });
+    await gate;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toEqual([]);
+    stop();
+  });
+
   it("a second start replaces the first", () => {
     const a = started();
     const b = started();
