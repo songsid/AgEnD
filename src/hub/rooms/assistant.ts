@@ -19,9 +19,13 @@ export class HubRoomAssistant {
   private live() { return !this.stopped && this.core.live(); }
   availability() { try { return this.core.deps.roomAssistant?.available(); } catch { return undefined; } }
   presence(roomId: string) { const x = this.availability(); return !x?.enabled || x.state === "paused" ? "paused" as const : this.jobs.has(roomId) ? "working" as const : "idle" as const; }
-  progress(db: DB, parent: string) {
-    const row = db.prepare("SELECT state FROM hub_room_assistant_calls WHERE parent_id=?").get(parent) as { state: Call["state"] } | undefined;
-    return row ? { total: 1, answered: Number(row.state === "answered"), working: Number(row.state === "working"), later: Number(row.state === "queued") } : undefined;
+  progress(db: DB, parent: string): RoomMessage["ask"] {
+    const row = db.prepare("SELECT state,reason FROM hub_room_assistant_calls WHERE parent_id=?").get(parent) as { state: Call["state"]; reason: string | null } | undefined;
+    if (!row) return undefined;
+    const failed = Number(row.state === "failed");
+    const reason = failed ? (row.reason === "unavailable" || row.reason === "interrupted" ? row.reason : "unknown" as const) : undefined;
+    return { total: 1, answered: Number(row.state === "answered"), working: Number(row.state === "working"), later: Number(row.state === "queued"),
+      ...(failed ? { failed } : {}), ...(reason ? { reason } : {}) };
   }
   warning(db: DB, parent: string): boolean { return !!db.prepare("SELECT 1 FROM hub_room_assistant_calls WHERE parent_id=? AND reason='unavailable'").get(parent); }
   enqueue(db: DB, tx: HubTx, parent: RoomPostRow, askerMember: string, direct: boolean): void {

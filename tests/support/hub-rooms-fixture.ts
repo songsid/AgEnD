@@ -40,7 +40,7 @@ export interface FixtureMember {
 export interface FixtureMessage {
   id: string; roomId: string; at: number; author: { kind: "person" | "agent" | "assistant" | "system"; id: string; name: string; owner?: { name: string } };
   text: string; mentions: string[]; replyTo?: string; files?: Array<{ id: string; name: string; size: number; mime: string; url: string }>;
-  ask?: { total: number; answered: number; working: number; later: number };
+  ask?: { total: number; answered: number; working: number; later: number; failed?: number; blocked?: number; reason?: string };
   answerTo?: string; stage?: "queued" | "working" | "answered" | "not-answered"; idempotencyKey?: string;
   /** Ridge: a soft warning on a stored message (HTTP 200) — never a resend. */
   warning?: "assistant-unavailable";

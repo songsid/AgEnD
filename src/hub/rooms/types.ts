@@ -12,7 +12,7 @@ export interface RoomMessage {
   text: string; mentions: string[]; replyTo?: string; idempotencyKey?: string;
   files?: { id: string; name: string; size: number; mime: string; url: string }[];
   warning?: "assistant-unavailable";
-  ask?: { total: number; answered: number; working: number; later: number };
+  ask?: { total: number; answered: number; working: number; later: number; failed?: number; blocked?: number; reason?: "expired" | "retired" | "unavailable" | "interrupted" | "unknown" };
   answerTo?: string;
   stage?: "queued" | "working" | "answered" | "not-answered";
   /** M-3127: who reacted with what, oldest emoji first; `members` are room member ids (the viewer finds its own). */

@@ -89,11 +89,14 @@ export class HubRoomAgents {
     });
     this.states.set(body.exposureId, { link, value: body }); this.presenceChanged(body.exposureId); this.wake();
   }
-  progress(db: DB, parentId: string) {
+  progress(db: DB, parentId: string): RoomMessage["ask"] {
     const rows = db.prepare("SELECT state,COUNT(*) AS n FROM hub_room_deliveries WHERE parent_id=? GROUP BY state").all(parentId) as { state: Delivery["state"]; n: number }[];
     if (!rows.length) return undefined;
     const n = (state: Delivery["state"]) => rows.find(r => r.state === state)?.n ?? 0;
-    return { total: rows.reduce((v, r) => v + r.n, 0), answered: n("answered"), working: n("sent"), later: n("queued") };
+    const total = rows.reduce((v, r) => v + r.n, 0), failed = n("expired"), blocked = n("retired");
+    return { total, answered: n("answered"), working: n("sent"), later: n("queued"),
+      ...(failed ? { failed } : {}), ...(blocked ? { blocked } : {}),
+      ...(total === 1 && failed === 1 ? { reason: "expired" as const } : total === 1 && blocked === 1 ? { reason: "retired" as const } : {}) };
   }
   /** Called inside the person's message transaction, once per idempotency key. */
   enqueue(db: DB, tx: HubTx, parent: RoomPostRow, askerMember: string): void {

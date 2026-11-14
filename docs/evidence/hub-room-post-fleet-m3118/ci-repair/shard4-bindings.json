@@ -1,0 +1,4 @@
+{
+  "src/channel/mcp-server.ts": "ba2da9228f0065559147b14db7d2c77a0658dc0f6546f6ecb9cf6edb56ecb8bf",
+  "tests/dashboard-permissions.test.ts": "a1a34eb17bf776362577c1e3edbb275f29c983eead651581966357ea262a43e0"
+}

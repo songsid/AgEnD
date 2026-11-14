@@ -96,7 +96,27 @@ describe("the thread's mapping (pure)", () => {
     expect(thread.askState({ total: 3, answered: 1, working: 1, later: 0 }).line).toBe("已回答 1 · 處理中 1");           // a 0 is left out
     i18n.setLang("en", { store: false });
     expect(thread.askState({ total: 3, answered: 1, working: 0, later: 2 }).line).toBe("Answered 1 · Reply later 2");
+    expect(thread.askState({ total: 1, answered: 0, working: 0, later: 0, failed: 1, reason: "expired" })).toEqual({ delivery: "failed", reason: "expired" });
+    expect(thread.askState({ total: 1, answered: 0, working: 0, later: 0, blocked: 1 })).toEqual({ delivery: "cancelled" });
+    expect(thread.askState({ total: 2, answered: 0, working: 0, later: 0, failed: 1, blocked: 1 }).line).toBe("Failed 1 · Blocked 1");
+    expect(thread.askReason("expired")).toBe("The question expired before an answer");
     i18n.setLang("zh-TW", { store: false });
+    expect(thread.askState({ total: 3, answered: 1, working: 0, later: 0, failed: 1, blocked: 1 }).line).toBe("已回答 1 · 未回答 1 · 無法回答 1");
+    expect(thread.askReason("expired")).toBe("問題在回答前就過期了");
+    // A not-answered child, without ask.failed from the server, is the failed tick on my ask.
+    const missQ = { id: "mq", roomId: "r", at: 1, author: { kind: "person", id: FIXTURE_ME.id, name: "王經理" }, text: "@Notes ?", mentions: ["n"], ask: { total: 1, answered: 0, working: 0, later: 0 } };
+    const missA = { id: "ma", roomId: "r", at: 2, author: { kind: "agent", id: "n", name: "Notes" }, text: "", mentions: [], answerTo: "mq", stage: "not-answered" };
+    const missed = thread.toThreadMessages([missQ, missA], { meId: FIXTURE_ME.id, ids: new Map() });
+    expect(missed.find((x: any) => x.mine).delivery).toBe("failed");
+    // A quote of a message not in this page still has a jump key (findQuoted pages until it is held).
+    const ids = new Map();
+    const onlyReply = thread.toThreadMessages([{ id: "r1", roomId: "r", at: 2, author: { kind: "person", id: "p2", name: "陳主任" }, text: "later", mentions: [], replyTo: "old1" }], { meId: FIXTURE_ME.id, ids });
+    expect(onlyReply[0].replyTo).toMatchObject({ boot: "room", id: ids.get("old1"), sender: "", text: "" });
+    const withOrig = thread.toThreadMessages([
+      { id: "old1", roomId: "r", at: 1, author: { kind: "person", id: "p2", name: "陳主任" }, text: "ancient", mentions: [] },
+      { id: "r1", roomId: "r", at: 2, author: { kind: "person", id: "p2", name: "陳主任" }, text: "later", mentions: [], replyTo: "old1" },
+    ], { meId: FIXTURE_ME.id, ids });
+    expect(withOrig.find((x: any) => x.text === "later").replyTo).toMatchObject({ id: ids.get("old1"), text: "ancient", sender: "陳主任" });
   });
   it("presence.changed keeps a member's note and reason only while the event carries them (Ridge)", async () => {
     const fx = createHubRoomsFixture();
@@ -157,6 +177,82 @@ describe("a send answered with the bare message, before any stream (Ridge's serv
     expect(st.raw().length).toBe(before + 1);
     expect(st.messages().some((x: any) => x.text === "bare answer please")).toBe(true);
     st.stop();
+  });
+});
+
+describe("older pages and a quote jump (M-3126)", () => {
+  const room = { id: "g1", kind: "group", name: "Long", people: 2, agents: 0 };
+  const history = Array.from({ length: 80 }, (_, i) => ({
+    id: `m${i}`, roomId: "g1", at: i + 1, sequence: i + 1,
+    author: { kind: "person", id: i === 79 ? "me" : "p2", name: i === 79 ? "Me" : "Sam" },
+    text: i === 79 ? "quote" : `old ${i}`, mentions: [] as string[],
+    ...(i === 79 ? { replyTo: "m0" } : {}),
+  }));
+  function pagingClient() {
+    const calls: Array<{ before?: string; limit?: number }> = [];
+    const client = {
+      room: async () => ({ ok: true, room, me: { id: "me", role: "member" }, members: [], settings: {} }),
+      roomMessages: async (_id: string, { before, limit = 50 }: { before?: string; limit?: number } = {}) => {
+        calls.push({ before, limit });
+        const end = before ? history.findIndex((m) => m.id === before) : history.length;
+        const at = end < 0 ? history.length : end;
+        const page = history.slice(Math.max(0, at - limit), at);
+        return { ok: true, messages: page, more: page.length > 0 && history[0] !== page[0] };
+      },
+      subscribeRooms: () => () => {},
+      markRoomRead: async () => ({ ok: true }),
+    };
+    return { client, calls };
+  }
+  it("older() prepends the previous page; findQuoted pages until the quoted id is loaded", async () => {
+    const { client, calls } = pagingClient();
+    const st = thread.createRoomStore("g1", { client, meId: "me" });
+    await until(() => st.loaded());
+    expect(st.raw().map((m: any) => m.id)).toEqual(history.slice(30).map((m) => m.id));
+    expect(st.more()).toBe(true);
+    const quote = st.messages().find((x: any) => x.text === "quote");
+    expect(quote.replyTo).toMatchObject({ boot: "room", text: "" });
+    expect(await st.findQuoted(`room-${quote.replyTo.id}`)).toBe(true);
+    expect(st.raw().some((m: any) => m.id === "m0")).toBe(true);
+    expect(st.more()).toBe(false);
+    expect(calls.some((c) => c.before)).toBe(true);
+    expect(st.messages().find((x: any) => x.text === "quote").replyTo.text).toBe("old 0");
+    st.stop();
+  });
+  it("older() is a no-op when there is no further page", async () => {
+    const { client, calls } = pagingClient();
+    const st = thread.createRoomStore("g1", { client, meId: "me" });
+    await until(() => st.loaded());
+    await st.older();
+    await st.older();
+    expect(st.raw()[0].id).toBe("m0");
+    expect(calls.filter((c) => c.before).length).toBe(1);
+    st.stop();
+  });
+  it("a short first page with more loads one older page on open", async () => {
+    const fx = createHubRoomsFixture(), weekly = fx.rooms.find((r: any) => r.id === "room-weekly")!;
+    weekly.messages = [
+      ...Array.from({ length: 60 }, (_, i) => ({
+        id: `hist-${String(i).padStart(3, "0")}`, roomId: "room-weekly", at: i, sequence: i,
+        author: { kind: "person" as const, id: "p2", name: "Sam" }, text: `hist ${i}`, mentions: [] as string[],
+      })),
+      ...weekly.messages,
+    ];
+    const befores: string[] = [], realFetch = g.fetch;
+    g.fetch = (url: string, init?: any) => {
+      if (/\/messages\b/.test(String(url)) && /[?&]before=/.test(String(url))) befores.push(String(url));
+      return fx.fetch(url, init);
+    };
+    g.EventSource = fx.EventSource;
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub?room=room-weekly", storage: { agend_tour_done: "1" } });
+    pg.document.body.setAttribute("data-hub", "hub"); pg.document.body.setAttribute("data-hub-name", "Team Hub"); mounted.push(pg);
+    i18n.setLang("en", { store: false });
+    client.setHubClient(client.createHubWebClient()); hubPanel.resetHubSession(); router.startRouter(pg.window); store.applyStatus({ instances: [] });
+    try {
+      await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel || (() => null) }]]), onNewInstance() {} }));
+      await until(() => befores.length >= 1);
+      expect(befores).toHaveLength(1);
+    } finally { g.fetch = realFetch; }
   });
 });
 
