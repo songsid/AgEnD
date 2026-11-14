@@ -85,11 +85,11 @@ deploy:  "deploy_template",
 
 ```
 delegate_task   574 total    general 2    非-general 572    橫跨 20 個 instance
-  doupo-leader:327  agend-leader:101  classic-鬥破企劃:22  rd1-a89-dev:23
-  classic-鬥破串接:18  doupo-server-codex:13  m365:12  …
+  team-leader:327  agend-leader:101  classic-planning:22  team-a-dev:23
+  classic-room:18  game-server-codex:13  m365:12  …
 ```
 
-原因是**這個 fleet 有 coordinator，而 config 表達不了它**。`agend-leader`、`doupo-leader` 是實質的 Tech Lead，但它們身上沒有任何欄位這樣說——只有 `description` 裡的一句人話。`teams` 只有 `members`，**沒有 leader 欄位**。
+原因是**這個 fleet 有 coordinator，而 config 表達不了它**。`agend-leader`、`team-leader` 是實質的 Tech Lead，但它們身上沒有任何欄位這樣說——只有 `description` 裡的一句人話。`teams` 只有 `members`，**沒有 leader 欄位**。
 
 所以第一版那條「`general_topic` 是 coordinator，其餘皆 worker」**是錯的模型**，照它做會讓這個 fleet 裡每一個 team leader 失去派工能力。
 
@@ -105,12 +105,12 @@ delegate_task   574 total    general 2    非-general 572    橫跨 20 個 insta
 
 | 工具 | 非-general 次數 | 誰 |
 |---|---|---|
-| `wake_instance` | 13 | doupo-leader 7、agend-leader 3、classic-鬥破企劃 3 |
-| `restart_instance` | 8 | doupo-leader 6、agend-leader 2 |
-| `start_instance` | 5 | agend-leader 3、fable 1、doupo-leader 1 |
-| `delete_instance` | 2 | agend-leader 1、doupo-leader 1 |
-| `create_instance` | **1** | doupo-leader |
-| `replace_instance` | 1 | doupo-leader |
+| `wake_instance` | 13 | team-leader 7、agend-leader 3、classic-planning 3 |
+| `restart_instance` | 8 | team-leader 6、agend-leader 2 |
+| `start_instance` | 5 | agend-leader 3、fable 1、team-leader 1 |
+| `delete_instance` | 2 | agend-leader 1、team-leader 1 |
+| `create_instance` | **1** | team-leader |
+| `replace_instance` | 1 | team-leader |
 | `update_instance_config` | 1 | agend-leader |
 
 **整個月零使用的被移工具有 12 個**：create/update/delete_schedule、create/delete/update_team（`update_team` 的 8 次全是 general）、deploy_template、teardown_deployment、list_deployments、pause_instance、stop_instance、update_decision。這些沒有遷移成本。
@@ -269,7 +269,7 @@ fleet_set_display_name / fleet_set_description   → handleSetDisplayName / hand
 **這是一個會讓既有 fleet 的 worker 少掉工具的改動**，不能無聲。
 
 1. **`full` 留著，可以手設。** 任何真的需要完整工具面的 instance，在 fleet.yaml 寫 `tool_set: full` 就回到今天的行為。這是逃生閥，而且是顯式的。
-2. **真 coordinator 先標起來**（`tool_set: coordinator`）。依 §2.3，這個 fleet 需要標的是 `agend-leader`、`doupo-leader`、`claude-fable`、以及 `classic-鬥破企劃` 那類 classic 頻道——**四到五個，不是五十三個**。這一步必須在切預設之前做完。
+2. **真 coordinator 先標起來**（`tool_set: coordinator`）。依 §2.3，這個 fleet 需要標的是 `agend-leader`、`team-leader`、`claude-fable`、以及 `classic-planning` 那類 classic 頻道——**四到五個，不是五十三個**。這一步必須在切預設之前做完。
 3. **預設改成 `worker`**（非 general 且未指定時）。這一步才是真正修好 #804 的動作。
 
 ### 6.1 🔴 換「程式碼預設」對既有 fleet 沒有效果
@@ -299,15 +299,15 @@ notice 要從 `activity` 反推，規則是「**這個 instance 呼叫過新 pro
 你的 fleet 有 4 個 instance 用過 worker 拿不到的工具。改預設之前，
 把它們標成 tool_set: coordinator：
 
-  doupo-leader-t1503382159321464899   restart×6 wake×7 replace×1 delete×1 create×1 start×1
+  team-leader-t1000000000000000001   restart×6 wake×7 replace×1 delete×1 create×1 start×1
   agend-leader-t1503382358143799511   restart×2 start×3 wake×3 delete×1 update_instance_config×1
   claude-fable-t1532671461406277715   start×1
-  classic-鬥破企劃-7393                wake×3        （已不在 fleet.yaml，classicBot 頻道）
+  classic-planning-1234                wake×3        （已不在 fleet.yaml，classicBot 頻道）
 ```
 
 （上面是本機 2026-08-22 → 09-21 的實際結果。）
 
-**刻意不點名「只用 delegate_task」的 instance**：`delegate_task` 留在 worker（§2.2），所以 `rd1-a89-dev`（23 次）、`classic-鬥破串接`（18 次）這些**不會壞**，把它們列進來只會讓使用者標一堆不需要標的東西，然後對這則 notice 失去信任。**名單的定義是「會壞的」，不是「看起來像 coordinator 的」。**
+**刻意不點名「只用 delegate_task」的 instance**：`delegate_task` 留在 worker（§2.2），所以 `team-a-dev`（23 次）、`classic-room`（18 次）這些**不會壞**，把它們列進來只會讓使用者標一堆不需要標的東西，然後對這則 notice 失去信任。**名單的定義是「會壞的」，不是「看起來像 coordinator 的」。**
 
 一個實作前提：這份反推**只看得到 `handleOutboundFromInstance` 那一條路**（§2.5）。所以 notice 的措辭要留餘地（「用過…的有這些」而不是「只有這些需要標」），而 S1 在三個 sink 都記錄之後，這份名單才會完整。
 4. **被擋下時的回應要能自我解釋**：不是 "unknown tool"，而是「這個 instance 是 worker，`create_instance` 是 coordinator 的工具；請 `report_result` 說明你需要什麼，或由管理員設 `tool_set: full`」。**被擋住的 agent 會把錯誤訊息當指示讀**，所以那句話就是遷移文件。
