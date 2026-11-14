@@ -1,0 +1,41 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-fleet-versions-m3136
+
+ ❯ tests/hub-recommendations-m3138.test.ts (4 tests | 1 failed | 3 skipped) 90ms
+   × starts unconfigured, previews without saving, and saves the Hub-following recommendation explicitly 87ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-recommendations-m3138.test.ts > starts unconfigured, previews without saving, and saves the Hub-following recommendation explicitly
+AssertionError: expected { code: 'not-found' } to match object { mode: 'none', …(5) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "configured": false,
+-   "mode": "none",
+-   "recommendedVersion": null,
+-   "revision": 0,
+-   "setAt": null,
+-   "version": null,
++   "code": "not-found",
+  }
+
+ ❯ tests/hub-recommendations-m3138.test.ts:21:54
+     19| it("starts unconfigured, previews without saving, and saves the Hub-fo…
+     20|   const w = await world();
+     21|   expect((await r!.call(w.admin, "GET", path)).json).toMatchObject({ m…
+       |                                                      ^
+     22|   expect((await r!.call(w.admin, "POST", path + "/preview", { mode: "h…
+     23|   expect((await r!.call(w.admin, "GET", path)).json.configured).toBe(f…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 skipped (4)
+   Start at  07:31:11
+   Duration  4.16s (transform 2.98s, setup 89ms, import 3.83s, tests 90ms, environment 0ms)
+
