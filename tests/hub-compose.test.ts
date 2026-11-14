@@ -2301,6 +2301,26 @@ describe.skipIf(process.platform === "win32")("directory Save decision borrowing
 
 /** Production factory wiring: no manual consent migration or dependency injection in this fixture. */
 describe.skipIf(process.platform === "win32")("room consent factory composition", () => {
+  it("registers Team migrations and mounts Team routes through the sealed Hub factory", async () => {
+    const r = await directoryRuntimeRig();
+    try {
+      const plan = hubServerDatabasePlan(r.hub.config.hub, r.entry.migrations);
+      const names = plan.migrations.map(m => m.component);
+      expect(names.filter(name => name === "s5-teams")).toHaveLength(1);
+      expect(names.filter(name => name === "s3-team-grants")).toHaveLength(1);
+      expect(names.indexOf("s3-team-grants")).toBeGreaterThan(names.indexOf("s3-grant-subjects"));
+      expect(Reflect.get(r.deps, "teams")).toBeTypeOf("function");
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx);
+        expect(db.prepare("SELECT COUNT(*) AS n FROM hub_teams").get()).toEqual({ n: 0 });
+        expect(db.prepare("SELECT version FROM hub_schema WHERE component='s3-team-grants'").get()).toEqual({ version: 1 });
+      });
+      const root = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      expect(root.json.features).toContain("teams-v1");
+      expect((await directoryBrowser(r.hub, root.cookie, undefined, "/hub/v1/teams")).json).toEqual({ teams: [] });
+    } finally { await r.runtime.close(); }
+  });
+
   it("registers consent once after the room schema before mounting the real HTTP entry", async () => {
     const r = await directoryRuntimeRig();
     try {
