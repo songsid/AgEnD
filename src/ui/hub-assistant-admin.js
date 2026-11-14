@@ -8,7 +8,7 @@ const validLimits = value => Number.isInteger(Number(value?.cap)) && Number(valu
 const accountWord = row => row.state === "signed-in" ? hroom("signedIn") : row.state === "needs-sign-in" ? hroom("needsSignIn") : ha("unknown");
 const accountHelp = row => ha(row?.state === "signed-in" ? "accountSignedIn" : row?.state === "needs-sign-in" ? "accountNeedsSignIn" : "accountUnknown");
 const stateWord = state => state === "idle" ? hroom("stIdle") : state === "working" ? hroom("stWorking") : ha(["starting", "stopping", "failed"].includes(state) ? state : "unknown");
-const quotaWord = band => band === "available" ? hroom("quotaPlenty") : band === "near_limit" ? hroom("quotaLow") : band === "exhausted" ? hroom("quotaGone") : ha("unknown");
+const quotaWord = band => band === "available" ? hroom("quotaPlenty") : band === "near_limit" ? hroom("quotaLow") : band === "exhausted" ? hroom("quotaGone") : ha("quotaPending");
 
 /** Hub-only admin cards; the existing client owns same-origin session/CSRF. No Fleet endpoint is called. */
 export function HubAssistantAdmin({ client }) {
@@ -79,7 +79,7 @@ export function HubAssistantAdmin({ client }) {
       <span class=${`tag ${row.state === "failed" ? "warn" : ""}`}>${stateWord(row.state)}</span><button type="button" class="btn btn-sm" disabled=${busy || row.state === "stopping"} onClick=${() => stop(row.roomId)}>${hroom("stop")}</button></div>`)}</div>` : html`<p class="note">${ha("noneRunning")}</p>`}
   </section>
   <section class="card" aria-label=${hroom("usage")}><h3>${hroom("usage")}</h3><p class="note">${hroom("usageLead")}</p>
-    ${usage?.ok ? html`<div class="hub-rows">${usage.days.map(row => html`<div class="s-row" key=${row.day}><span>${ha("dateUtc", row.day)}</span><strong>${row.count}</strong></div>`)}</div><p>${hroom("aiAccount")} · <span class="tag">${quotaWord(usage.quota?.band)}</span></p>
+    ${usage?.ok ? html`<div class="s-row note"><span>${ha("day")}</span><span>${ha("answers")}</span></div><div class="hub-rows">${usage.days.map(row => html`<div class="s-row" key=${row.day}><time datetime=${row.day}>${new Date(`${row.day}T00:00:00Z`).toLocaleDateString(undefined, { month: "numeric", day: "numeric", timeZone: "UTC" })}</time><strong>${row.count}</strong></div>`)}</div><p>${hroom("aiAccount")} · <span class="tag">${quotaWord(usage.quota?.band)}</span></p>
       ${usage.note === "usage-not-saved" ? html`<p class="note" role="status">${ha("usageNotSaved")}</p>` : null}` : html`<${ErrorState} message=${ha("usageFailed")} onRetry=${() => load(false)} />`}
   </section>`;
 }

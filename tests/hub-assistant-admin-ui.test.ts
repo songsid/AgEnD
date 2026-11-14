@@ -29,6 +29,14 @@ const change = (element: any, value: unknown, event = "input") => { expect(eleme
 const submit = async (p: AppPage) => { fire(p.root.querySelector("form"), "submit"); await settle(20); };
 
 describe("Hub room-assistant administration with the real shared UI", () => {
+  it.each(["en", "zh-TW"])("distinguishes unavailable quota from a signed-in account (%s)", async language => {
+    const { p } = await fixture(language, { assistantUsage: async () => ({ ok: true, ...usage(), quota: { band: "unknown" } }) });
+    const sections = p.root.querySelectorAll("section.card");
+    expect(sections[0].textContent).toContain(language === "en" ? "Signed in." : "已登入");
+    expect(sections[2].textContent).toContain(language === "en" ? "Quota status not available yet" : "尚未取得額度狀態");
+    expect(sections[2].textContent).not.toContain(language === "en" ? "AI account · Unknown" : "AI 帳號 · 未知");
+  });
+
   it.each(["en", "zh-TW"])("renders shared cards, working versus idle, quota and seven daily counts (%s)", async language => {
     const { p, c } = await fixture(language), text = p.root.textContent;
     expect(p.root.querySelectorAll("section.card")).toHaveLength(3);
@@ -37,7 +45,12 @@ describe("Hub room-assistant administration with the real shared UI", () => {
     expect(text).toContain(language === "en" ? "Idle" : "待命");
     expect(text).toContain(language === "en" ? "Running low" : "快用完");
     expect(text).not.toContain("hubAssistantAdmin."); expect(text).not.toContain("hubRoom.");
-    for (const row of usage().days) expect(text).toContain(row.day);
+    expect(text).toContain(language === "en" ? "Date (UTC)" : "日期（UTC）");
+    expect(text.match(/UTC/g)).toHaveLength(1);
+    const dates = p.root.querySelectorAll("time");
+    expect([...dates].map((row: any) => row.getAttribute("datetime"))).toEqual(usage().days.map(row => row.day));
+    expect([...dates].map((row: any) => row.textContent)).toEqual(usage().days.map(row => new Intl.DateTimeFormat(undefined, { month: "numeric", day: "numeric", timeZone: "UTC" }).format(Date.parse(`${row.day}T00:00:00Z`))));
+    for (const row of dates) expect(row.textContent).not.toMatch(/2026|UTC/);
     const numbers = p.root.querySelectorAll('input[type="number"]');
     expect(numbers[0].getAttribute("min")).toBe("1"); expect(numbers[0].getAttribute("max")).toBe("16");
     expect(numbers[1].getAttribute("max")).toBe("240");
