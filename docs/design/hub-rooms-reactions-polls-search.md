@@ -26,11 +26,12 @@ CREATE INDEX hub_room_reactions_room ON hub_room_reactions(room_id, post_id);
   the post at or after my joined_sequence; archived → 409 `archived`; a system row → 409 `invalid`).
 - `emoji`: one grapheme, `\p{Extended_Pictographic}` (with ZWJ/FE0F/skin tone), ≤ 16 UTF-16 units. Limits: 12
   distinct emoji per post (a 13th new one → 409 `limit`); a member's own rows per post ≤ 12.
-- Projection, per viewer: `RoomMessage.reactions?: { emoji: string; count: number; mine: boolean; by: string[] }[]`
-  — `by`: up to 10 display names, oldest first (the tooltip "Alex, Ming and 3 others"). Agents' rows count the
-  same way, named as the author line names them.
-- Event: `message.reactions` `{ roomId, messageId }`, `sequence` = the post's (so a member who joined later never
-  gets it); `event()` projects `{ roomId, messageId, reactions }` for that viewer (the `mine` flag is per viewer).
+- Projection (the same for every viewer): `RoomMessage.reactions?: { emoji: string; count: number; members: string[] }[]`
+  — each emoji in the order of its oldest current row, its members (room member ids) oldest first. The page finds its
+  own (`me.id`) and names the others from the room's members ("You, Bob and 3 others reacted with 👍"). Absent when none.
+- Event: `message.updated` with the whole post (Ridge: the existing client already handles it; a dedicated event would
+  need its own consumer), `sequence` = the post's. No event for a no-op. Visibility = `messages()` exactly, including
+  M-3118's `hub_room_post_lineage.audience_sequence`.
 - Removal of a member keeps their rows (history stays as it was), like their posts.
 
 **Agents** (an agent's `react` on the room question it was asked — the Fleet chat's #2305 minimal reply).
