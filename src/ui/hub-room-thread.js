@@ -22,6 +22,7 @@ import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
 import { workingLine } from "./hub-room-working.js";
 import { countsLine } from "./hub-room-list.js";
+import { hubFileAttachment } from "./hub-attachments.js";
 
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
 const BOOT = "room";
@@ -103,6 +104,8 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     out.push({ boot: BOOT, id, role: kind === "person" ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
       ...(kind === "person" && !mine ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
       roomMessage: m.id, ...(state?.delivery ? { delivery: state.delivery } : {}),
+      // M-3125: a post's files, as the 1:1 chat maps them (images inline through the Hub's own route; HTML gets its preview card).
+      ...(() => { const files = Array.isArray(m.files) ? m.files.map(hubFileAttachment).filter(Boolean) : []; return files.length ? { attachments: files } : {}; })(),
       ...(quoted ? { replyTo: { boot: BOOT, id: num(quoted.id), sender: authorLine(quoted.author, quoted.author?.id === meId, direct), text: String(quoted.text || "").slice(0, 120) } } : {}),
       ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
     if (foldAfter) out.push({ boot: BOOT, id: num(`expand:${foldAfter.arg}`), role: "status", sender: "", text: "", bare: true, fold: true, action: foldAfter });
