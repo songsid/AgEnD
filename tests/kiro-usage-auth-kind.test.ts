@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { fetchKiroUsage, kiroAuthKind } from "../src/usage/providers.js";
+import { quotaBand } from "../src/hub/member/quota.js";
 import { agentUsage } from "../src/usage/agent-output.js";
 import { setLocale } from "../src/locale.js";
 import { usageText } from "../src/usage/i18n.js";
@@ -72,6 +73,8 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     const payload = { fetchedAt: new Date().toISOString(), providers: [{ id: "kiro", name: "Kiro", ...r }] };
     expect(agentUsage(payload).providers[0]).toMatchObject({ status: r.hint, windows: [] });
     expect(agentUsage(payload, true)).toBe(payload);
+    expect(quotaBand(payload.providers[0])).toEqual({ band: "unknown" });
+    expect(quotaBand(payload.providers[0], true)).toEqual({ band: "exhausted" });
     try {
       setLocale("zh-TW");
       expect(usageText(r.hint!, r.hintI18n)).toBe("無法量測 · 每月上限 10,000 次聊天");
