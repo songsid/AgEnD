@@ -551,8 +551,8 @@ Newer Hub features (rooms, agent posts) need a Fleet that is new enough. The Hub
 a Fleet itself (yet).
 
 - **Administration → Connected fleets** shows, per Fleet, its **AgEnD version** (AgEnD 版本; "Unknown" / 不明 for a
-  Fleet too old to report it), **Last connected** (上次連線: "Now" / 連線中 with a green dot, a relative time, or
-  "Never" / 從未連線) and one state tag. A line above the list counts them — "*n* of *m* Fleets need an update." — and
+  Fleet too old to report it), **Last connected** (上次連接: "Now" / 目前已連接 with a green dot, a relative time, or
+  "Never" / 從未連接) and one state tag. A line above the list counts them — "*n* of *m* Fleets need an update." — and
   the **Needs update** (需要更新) chip shows only those.
 - The tags, in this order (the first that applies):
 

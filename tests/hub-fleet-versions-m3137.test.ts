@@ -55,7 +55,7 @@ describe("the words (pure)", () => {
     words.setLang("en");
     expect([v.lastConnectedText(FLEETS[0], NOW), v.lastConnectedText(FLEETS[1], NOW), v.lastConnectedText(FLEETS[2], NOW)]).toEqual(["Now", "3 days ago", "Never"]);
     words.setLang("zh-TW");
-    expect([v.lastConnectedText(FLEETS[0], NOW), v.lastConnectedText(FLEETS[1], NOW), v.lastConnectedText(FLEETS[2], NOW)]).toEqual(["連線中", "3 天前", "從未連線"]);
+    expect([v.lastConnectedText(FLEETS[0], NOW), v.lastConnectedText(FLEETS[1], NOW), v.lastConnectedText(FLEETS[2], NOW)]).toEqual(["目前已連接", "3 天前", "從未連接"]);
   });
   it("a warn tag's sentence; Up to date has none", () => {
     words.setLang("en");
