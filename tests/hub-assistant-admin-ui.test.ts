@@ -45,7 +45,12 @@ describe("Hub room-assistant administration with the real shared UI", () => {
     expect(text).toContain(language === "en" ? "Idle" : "待命");
     expect(text).toContain(language === "en" ? "Running low" : "快用完");
     expect(text).not.toContain("hubAssistantAdmin."); expect(text).not.toContain("hubRoom.");
-    for (const row of usage().days) expect(text).toContain(row.day);
+    expect(text).toContain(language === "en" ? "Date (UTC)" : "日期（UTC）");
+    expect(text.match(/UTC/g)).toHaveLength(1);
+    const dates = p.root.querySelectorAll("time");
+    expect([...dates].map((row: any) => row.getAttribute("datetime"))).toEqual(usage().days.map(row => row.day));
+    expect([...dates].map((row: any) => row.textContent)).toEqual(usage().days.map(row => new Intl.DateTimeFormat(undefined, { month: "numeric", day: "numeric", timeZone: "UTC" }).format(Date.parse(`${row.day}T00:00:00Z`))));
+    for (const row of dates) expect(row.textContent).not.toMatch(/2026|UTC/);
     const numbers = p.root.querySelectorAll('input[type="number"]');
     expect(numbers[0].getAttribute("min")).toBe("1"); expect(numbers[0].getAttribute("max")).toBe("16");
     expect(numbers[1].getAttribute("max")).toBe("240");

@@ -9,7 +9,7 @@ register("hubAssistantAdmin", {
     stoppedRefreshFailed: "Stopped this room assistant. Could not refresh its status; use Refresh to try again.",
     stopFailed: "Could not stop this room assistant. Try again.", usageFailed: "Could not read usage. Try again.",
     usageNotSaved: "Some answer counts could not be saved. The answers were still sent.", quotaPending: "Quota status not available yet",
-    starting: "Starting", stopping: "Stopping", failed: "Needs attention", dateUtc: "{0} UTC", day: "Day (UTC)", answers: "Answers",
+    starting: "Starting", stopping: "Stopping", failed: "Needs attention", day: "Date (UTC)", answers: "Answers",
   },
   "zh-TW": {
     accountSignedIn: "已登入", accountNeedsSignIn: "需要登入。請在 Hub 這台電腦的 AgEnD 設定裡登入。",
@@ -20,7 +20,7 @@ register("hubAssistantAdmin", {
     stoppedRefreshFailed: "已停止這個房間助理，但未能更新狀態，請按「重新整理」再試一次。",
     stopFailed: "未能停止這個房間助理，請再試一次。", usageFailed: "未能讀取用量，請再試一次。",
     usageNotSaved: "部分回答次數未能儲存，回答仍已送出。", quotaPending: "尚未取得額度狀態",
-    starting: "啟動中", stopping: "停止中", failed: "需要處理", dateUtc: "{0} UTC", day: "日期（UTC）", answers: "回答次數",
+    starting: "啟動中", stopping: "停止中", failed: "需要處理", day: "日期（UTC）", answers: "回答次數",
   },
 });
 export const ha = (key, ...args) => t(`hubAssistantAdmin.${key}`, ...args);
