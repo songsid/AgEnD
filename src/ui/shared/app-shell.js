@@ -1215,6 +1215,35 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // in has lost focus or left the page (a composition can end without its compositionend: #2517 review).
     let width = -1, tallest = 0, held = false, lowest = 0, upLowest = 0, composing = null;
     const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    // M-3111 (iPhone, alpha.4): with the keyboard up, and while it rises or falls, the shell is the visible view itself —
+    // its height and where the browser has panned it, set on the shell itself only then (its stylesheet height otherwise:
+    // no transform the rest of the time, so nothing fixed inside it moves; a browser without dvh is untouched). The page's own height
+    // (100dvh) is not that view then: iOS (under this page's interactive-widget=resizes-content) sized it a toolbar short of
+    // the keyboard, so the page's background showed between the composer and the keyboard, and on the way down it stayed
+    // short until the keyboard had gone, then snapped. Pinch-zoomed, the view is not the screen: nothing is set then.
+    // The keyboard rises and falls over a few hundred ms, and the view's resize comes when it has settled (iOS): for that
+    // long after a field gains or loses focus the shell follows the view every frame — both ways — instead of jumping.
+    const FOLLOW_MS = 800;
+    let raf = 0, followUntil = 0;
+    const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+    const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : null;
+    const unfit = (el) => { if (el?.style) { el.style.removeProperty("height"); el.style.removeProperty("transform"); } };
+    const fit = () => {
+      const el = root.current;
+      if (!el?.style) return;
+      const on = coarse() && (shellStore.get().keyboard || now() < followUntil) && Math.abs((Number(vv.scale) || 1) - 1) < 0.01;
+      if (!on) { unfit(el); return; }
+      el.style.setProperty("height", `${Math.round(vv.height)}px`);
+      const top = Math.max(0, Math.round(Number(vv.offsetTop) || 0));
+      if (top) el.style.setProperty("transform", `translateY(${top}px)`); else el.style.removeProperty("transform");
+    };
+    const follow = () => {
+      if (!frame || !coarse()) return;
+      followUntil = now() + FOLLOW_MS;
+      if (raf) return;
+      const step = () => { raf = 0; check(); if (now() < followUntil) raf = frame(step); };
+      raf = frame(step);
+    };
     const check = () => {
       if (composing && composing.isConnected !== false && document.activeElement === composing) return;
       composing = null;
@@ -1234,17 +1263,22 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       if (!up && was && typing && h - upLowest <= KEYBOARD_MIN_PX) up = true;          // a bar's height, not the keyboard
       upLowest = up ? (was ? Math.min(upLowest, h) : h) : 0;
       if (up !== was) shellStore.set({ keyboard: up });
+      fit();
     };
+    const focusChanged = () => { check(); follow(); };
     const start = (e) => { composing = (e && e.target) || document.activeElement || null; };
     const end = () => { composing = null; check(); };
     check();
     vv.addEventListener("resize", check);
-    document.addEventListener("focusin", check);
-    document.addEventListener("focusout", check);
+    vv.addEventListener("scroll", fit);
+    document.addEventListener("focusin", focusChanged);
+    document.addEventListener("focusout", focusChanged);
     document.addEventListener("compositionstart", start, true);
     document.addEventListener("compositionend", end, true);
     return () => {
-      vv.removeEventListener("resize", check); document.removeEventListener("focusin", check); document.removeEventListener("focusout", check);
+      vv.removeEventListener("resize", check); vv.removeEventListener("scroll", fit); document.removeEventListener("focusin", focusChanged); document.removeEventListener("focusout", focusChanged);
+      if (raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf);
+      unfit(root.current);
       document.removeEventListener("compositionstart", start, true); document.removeEventListener("compositionend", end, true);
     };
   }, []);
