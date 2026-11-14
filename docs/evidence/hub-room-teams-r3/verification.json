@@ -57,5 +57,13 @@
       "pmAcceptance": "pending"
     },
     "harnessCurrentSha256": "1ca8606ccbb3f5ff39bd16e9af470edef01b85594112b13d31e410bd0f5ade4c"
+  },
+  "fixtureCorrection": {
+    "source": "dbe23d029b719630e163d207708745b5130f8fc2",
+    "testSha256": "ab32e85e3e9a3b9f6a786ef5c599af41003cfeb7572019f27ebf4ca941633228",
+    "reason": "Member detail expectation updated for the C6c03c4f2 admin/current-lead restriction; old member response403 was dereferenced.",
+    "affectedFilePassed": 6,
+    "execution": "Executed once on narrow R child, byte-identical test copied here; no repeat. Four R product files and factory test unchanged.",
+    "evidence": "docs/evidence/hub-team-mount-r3/detail-ci-r1 on feat/hub-teams-mount-r3"
   }
 }
