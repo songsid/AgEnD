@@ -38,6 +38,8 @@ import { HubRoomRows, readRoomList } from "./hub-room-list.js";
 import * as roomFavorites from "./hub-room-favorites.js";
 const { useRoomStar } = roomFavorites;
 import { HubRoomPage } from "./hub-room-thread.js";
+import { TextSizeButton } from "/assets/header-tools.js";
+import { HubNotifyToggle, startHubRoomNotifier } from "./hub-room-notify.js";
 import { hroom } from "./hub-room-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { ht } from "./hub-teams-strings.js";
@@ -117,6 +119,12 @@ function readSession() {
     .finally(() => { reading = null; });
 }
 let watchingEnd = false;
+// This person's id for the rooms desktop notifier (counts() matches message authors and @mentions by id;
+// the Hub session carries only login and display name). Set from any room detail the page reads, or once from
+// the first listed room when notifications are opted in — message rows cannot be matched before that, while an
+// invitation (no author) still pings.
+let hubMeId = null;
+export function noteHubMeId(id) { if (typeof id === "string" && id) hubMeId = id; }
 function useSession() {
   const [s, set] = useState(session);
   useEffect(() => {
@@ -142,6 +150,26 @@ export function HubPanel({ route }) {
   const view = viewParam();
   // The owner stylesheet holds the page column (.hub-owner, 860 px) every page with a column uses — Notices too (Argon #12).
   useEffect(() => { linkHubCss(); linkHubOwnerCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
+  // Rooms desktop notifications (§12): one page-level watcher over every room this person may see. The person's id
+  // comes from a room detail once read; while still unknown the watcher reads the first listed room for it,
+  // once per event and only while opted in.
+  useEffect(() => {
+    if (!s || !s.login) return undefined;
+    const stop = startHubRoomNotifier({
+      client: hubClient(), me: () => (hubMeId ? { id: hubMeId } : null),
+      setMe: (m) => noteHubMeId(m && m.id),
+      resolveMe: async () => {
+        const rooms = roomsStore.get().rooms || [];
+        const first = rooms.find((r) => r && !r.legacy);
+        if (!first || typeof hubClient().room !== "function") return null;
+        const d = await hubClient().room(first.id).catch(() => null);
+        return d && d.ok && d.me && d.me.id ? { id: d.me.id } : null;
+      },
+      roomName: (id) => { const r = (roomsStore.get().rooms || []).find((x) => x.id === id); return (r && r.name) || ""; },
+      open: (rid) => navigate(roomPath(rid)),
+    });
+    return stop;
+  }, [s && s.login]);
   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
   const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : hc("admin") : view === "notices" ? hc("noticesTitle")
     : view === "invitations" ? hroom("invitationsTitle") : view === "teams" ? ht("mine") : hc("chats");
@@ -530,10 +558,10 @@ function HubChats() {
   // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
   if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()}
     rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} goList=${() => navigate("/ui/hub")}
-    onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} />`;
+    onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
-  return html`<${PanelHeader} title=${hc("chats")} />
+  return html`<${PanelHeader} title=${hc("chats")}><${TextSizeButton} /><${HubNotifyToggle} /></${PanelHeader}>
   <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
     <div class="hub-home-list"><${HubHomeList} /></div>
     ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true), admin: s.admin === true, features: s.features }} /></div>`

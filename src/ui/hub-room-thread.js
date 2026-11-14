@@ -19,6 +19,8 @@ import "./hub-strings.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
+import { TextSizeButton } from "/assets/header-tools.js";
+import { HubNotifyToggle } from "./hub-room-notify.js";
 import { workingLine } from "./hub-room-working.js";
 import { countsLine } from "./hub-room-list.js";
 
@@ -208,7 +210,7 @@ function useMembersPanel() {
  * Fleet chat's thread (panel-hub.js's HubThread, given as `Thread`: the thread wiring is one), the room's composer, and
  * the members panel on the right. `client`: the Hub client; `me`: { id } from the session.
  */
-export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {} }) {
+export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {}, onMe = () => {} }) {
   const store = useMemo(() => createRoomStore(roomId, { client, meId }), [roomId]);
   useEffect(() => () => store.stop(), [store]);
   const [, tick] = useState(0);
@@ -231,6 +233,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     if (r.ok) onLeft(); else setLeaveError(r.text);
   };
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
+  // The page-level rooms notifier learns this person's id from any room detail (§12).
+  useEffect(() => { const id = detail && detail.me && detail.me.id; if (id) onMe(id); }, [detail && detail.me && detail.me.id]);
   // The Hub assistant's one-to-one is named by its flag, in this viewer's words (its stored name is a fallback).
   const title = room.assistant ? hroom("hubAssistant") : String(room.name || "");
   const hasAssistant = (detail?.members || []).some((m) => m.kind === "assistant");
@@ -272,6 +276,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
           detail.me.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
           { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } },
         ].filter(Boolean)} />` : null}
+        <${TextSizeButton} /><${HubNotifyToggle} />
       </header>
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}

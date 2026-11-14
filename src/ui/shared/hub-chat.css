@@ -19,7 +19,7 @@
 .hub-room-text { min-width: 0; display: flex; flex-direction: column; }
 .hub-room-text .t { font-weight: var(--fw-semibold, 600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hub-room-text .s { color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hub-room-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.hub-room-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .hub-room-side .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); animation: hub-pulse 1.4s ease-in-out infinite; }
 @keyframes hub-pulse { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .hub-room-side .pulse { animation: none; } }

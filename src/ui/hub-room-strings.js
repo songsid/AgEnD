@@ -110,6 +110,14 @@ register("hubRoom", {
     joinAsManager: "Join as a room manager",
     // §12 unread: unreadN is the list-row count tooltip; mentionedYou is the row's @ mark.
     unreadPrefix: "({0})", unreadN: "{0} unread", mentionMark: "@", mentionedYou: "Mentioned you",
+    // §12 desktop notification (opt-in, like the Fleet's Notify me): the header toggle and one ping per kind.
+    notifyTitle: "Notify me on this device", notifyOn: "Notifications are on while a Hub tab is open.",
+    notifyOff: "Get a desktop notification when someone @mentions you, an agent answers, or a new invitation arrives.",
+    notifyDenied: "This browser blocked notifications. Allow them in the site settings to turn this on.",
+    notifyUnavailable: "This browser cannot show notifications here.",
+    turnOn: "Turn on", turnOff: "Turn off",
+    notifyMention: "{0} mentioned you in {1}: {2}", notifyAnswer: "{0} answered in {1}: {2}",
+    notifyInvite: "New invitation: {0}",
     // M-3092: a room's own line when an administrator joins; the prompts of a one-to-one chat (an agent's, the Hub assistant's).
     sysAdminJoined: "{0} joined as a room manager", composerAssistant: "Ask the Hub assistant", composerDirect: "Ask {0}",
     // M-3092 (Lumen's consent walk): an agent its owner shares, in rooms but asked by no one one-to-one; the Invitations page and row.
@@ -212,6 +220,13 @@ register("hubRoom", {
     noContent: "這裡看不到任何房間的內容。",
     joinAsManager: "加入自己成為房間管理",
     unreadPrefix: "({0})", unreadN: "{0} 則未讀", mentionMark: "@", mentionedYou: "有人 @ 你",
+    notifyTitle: "在這個裝置上通知我", notifyOn: "Hub 分頁開著時會收到通知。",
+    notifyOff: "有人 @ 你、Agent 回答或有新邀請時，收到桌面通知。",
+    notifyDenied: "這個瀏覽器封鎖了通知。請在網站設定中允許，才能開啟。",
+    notifyUnavailable: "這個瀏覽器在這裡無法顯示通知。",
+    turnOn: "開啟", turnOff: "關閉",
+    notifyMention: "{0} 在「{1}」@ 了你：{2}", notifyAnswer: "{0} 在「{1}」回答了：{2}",
+    notifyInvite: "新邀請：{0}",
     sysAdminJoined: "{0} 以房間管理的身分加入", composerAssistant: "問 Hub 助理", composerDirect: "問 {0}",
     agentNoOneToOne: "還沒有人可以一對一提問", inRoomsOne: "在 1 個房間裡", inRoomsMany: "在 {0} 個房間裡",
     peopleOne: "1 人", peopleMany: "{0} 人", agentsOne: "1 個 Agent", agentsMany: "{0} 個 Agent",
