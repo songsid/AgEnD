@@ -227,6 +227,31 @@ describe("older pages and a quote jump (M-3126)", () => {
     expect(calls.filter((c) => c.before).length).toBe(1);
     st.stop();
   });
+  it("a short first page with more loads one older page on open", async () => {
+    const fx = createHubRoomsFixture(), weekly = fx.rooms.find((r: any) => r.id === "room-weekly")!;
+    weekly.messages = [
+      ...Array.from({ length: 60 }, (_, i) => ({
+        id: `hist-${String(i).padStart(3, "0")}`, roomId: "room-weekly", at: i, sequence: i,
+        author: { kind: "person", id: "p2", name: "Sam" }, text: `hist ${i}`, mentions: [] as string[],
+      })),
+      ...weekly.messages,
+    ];
+    const befores: string[] = [], realFetch = g.fetch;
+    g.fetch = (url: string, init?: any) => {
+      if (/\/messages\b/.test(String(url)) && /[?&]before=/.test(String(url))) befores.push(String(url));
+      return fx.fetch(url, init);
+    };
+    g.EventSource = fx.EventSource;
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub?room=room-weekly", storage: { agend_tour_done: "1" } });
+    pg.document.body.setAttribute("data-hub", "hub"); pg.document.body.setAttribute("data-hub-name", "Team Hub"); mounted.push(pg);
+    i18n.setLang("en", { store: false });
+    client.setHubClient(client.createHubWebClient()); hubPanel.resetHubSession(); router.startRouter(pg.window); store.applyStatus({ instances: [] });
+    try {
+      await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel || (() => null) }]]), onNewInstance() {} }));
+      await until(() => befores.length >= 1);
+      expect(befores).toHaveLength(1);
+    } finally { g.fetch = realFetch; }
+  });
 });
 
 describe("a room's committed order (Ridge's `sequence`)", () => {
