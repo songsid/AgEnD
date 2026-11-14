@@ -171,12 +171,12 @@ it("retains one episode per receipt and never resets it by reusing the same owne
 });
 
 it("durably returns an answer against the original postId until an exact current-link ACK, across HTTP restart", async () => {
-  const w=await world(), receipt=`hmsg-${randomUUID()}`, result=await w.post(w.a,"@Planner answer my manager",w.id,randomUUID(),receipt);
+  const w=await world(), receipt=`hmsg-${randomUUID()}`, operation=randomUUID(), result=await w.post(w.a,"@Planner answer my manager",w.id,operation,receipt);
   await vi.waitFor(()=>expect(w.asks()).toHaveLength(1));
   const answerId=randomUUID(); await w.answer(w.asks()[0]!,"The answer",answerId);
   const returns=()=>r!.sent.filter(s=>s.frame.type==="room.post-answer").map(s=>s.frame.payload as any);
   await vi.waitFor(()=>expect(returns()).toHaveLength(1));
-  const value=returns()[0]; expect(value).toMatchObject({postId:(result as any).payload.messageId,roomId:w.id,exposureId:w.a.id,receiptId:receipt,message:{text:"The answer",author:{name:"Planner"}}});
+  const value=returns()[0]; expect(value).toMatchObject({idempotencyKey:operation,postId:(result as any).payload.messageId,roomId:w.id,exposureId:w.a.id,receiptId:receipt,message:{text:"The answer",author:{name:"Planner"}}});
   await w.answer(w.asks()[0]!,"The answer",answerId);
   expect(r!.db.prepare("SELECT COUNT(*) n FROM hub_room_post_returns").get()).toEqual({n:1});
   w.link.alive=false; await r!.restartHttp(); const link=r!.link(w.link.fleetId,w.link.owner,2,caps);
@@ -248,4 +248,20 @@ it("retains the complete long answer while forwarding a bounded question to anot
   const w=await world();await w.human();const text="@Planner "+"x".repeat(100_000);
   await w.answer(w.asks()[0]!,text);await vi.waitFor(()=>expect(w.asks()).toHaveLength(2));
   expect((await w.page()).find(m=>m.text===text)).toBeDefined();expect(Buffer.byteLength(w.asks()[1]!.text)).toBeLessThanOrEqual(64*1024);
+});
+
+it("refuses a foreign Fleet, missing capability, paused publication, and an operation replay after membership replacement", async () => {
+  const w=await world(), input={exposureId:w.a.id,room:w.id,text:"owned",idempotencyKey:randomUUID()};
+  const send=(link:typeof w.link)=>r!.http.receive(r!.frame("room.post",input,link) as never,link);
+  const foreign=r!.link(randomUUID(),w.link.owner,1,caps);
+  expect(await send(foreign)).toMatchObject({payload:{ok:false,code:"denied"}});
+  const old=r!.link(w.link.fleetId,w.link.owner,2,["welcome-caps-v1","room-ask-v1"]);
+  expect(await send(old)).toMatchObject({payload:{ok:false,code:"denied"}});
+  r!.db.prepare("UPDATE hub_exposures SET sharing_paused=1 WHERE id=?").run(w.a.id);
+  expect(await send(w.link)).toMatchObject({payload:{ok:false,code:"denied"}});
+  r!.db.prepare("UPDATE hub_exposures SET sharing_paused=0 WHERE id=?").run(w.a.id);
+  expect(await send(w.link)).toMatchObject({payload:{ok:true}});
+  const member=r!.db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(w.id,w.a.id) as any;
+  r!.db.prepare("UPDATE hub_room_members SET id=? WHERE id=?").run(randomUUID(),member.id);
+  expect(await send(w.link)).toMatchObject({payload:{ok:false,code:"denied"}});
 });

@@ -24,9 +24,9 @@ export class RoomPostReplies {
   enqueue(db: DB, tx: HubTx, answer: RoomPostRow): void {
     const line = db.prepare("SELECT return_post_id FROM hub_room_post_lineage WHERE post_id=?").get(answer.id) as { return_post_id: string | null } | undefined;
     if (!line?.return_post_id) return;
-    const op = db.prepare("SELECT * FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NOT NULL").get(line.return_post_id) as { post_id: string; exposure_id: string; owner: string; fleet_id: string; receipt_id: string } | undefined;
+    const op = db.prepare("SELECT * FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NOT NULL").get(line.return_post_id) as { post_id: string; exposure_id: string; owner: string; fleet_id: string; receipt_id: string; idempotency_key: string } | undefined;
     if (!op || db.prepare("SELECT 1 FROM hub_room_post_returns WHERE post_id=? AND answer_id=?").get(op.post_id, answer.id)) return;
-    const id = randomUUID(), payload: HubRoomPostAnswer = { id, postId: op.post_id, roomId: answer.room_id, exposureId: op.exposure_id, receiptId: op.receipt_id,
+    const id = randomUUID(), payload: HubRoomPostAnswer = { id, idempotencyKey: op.idempotency_key, postId: op.post_id, roomId: answer.room_id, exposureId: op.exposure_id, receiptId: op.receipt_id,
       message: { id: answer.id, author: { name: answer.author_name }, text: this.core.deps.content.get(answer.content_ref)?.question ?? "", at: answer.created_at } };
     const bytes = JSON.stringify(validated(roomPostAnswerSchema, payload)), ref = this.core.deps.content.put(tx, { question: bytes });
     this.core.audit(tx, { requestId: id, actor: { kind: "person", person: personFromString(op.owner) }, action: "room.agent-reply-queued", result: "completed", roomId: answer.room_id, messageId: answer.id, exposureId: op.exposure_id, fleetId: op.fleet_id, contentRef: ref });

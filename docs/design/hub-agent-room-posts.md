@@ -116,7 +116,8 @@ reads per owner per minute. Members contains no history. People search reuses Hu
 published exposure, including its directory admission and current-policy fences; only id/name/login are projected.
 
 An on-behalf post's descendant answers carry the original post ID in durable `room.post-answer` notifications.
-The Hub retries the same encrypted, audit-bound notification on reconnect or at thirty seconds on a live link, until
+The notification also carries the retained original post idempotencyKey. The Fleet can recover only its exact saved
+operation if the result was permanently lost, without guessing a post ID or latest ask. The Hub retries the same encrypted, audit-bound notification on reconnect or at thirty seconds on a live link, until
 `room.post-answer-ack` acknowledges its exact ID, or twenty-four hours expires. It does not assume the Fleet has already
 seen the post result. Removal, publication/owner checks and the current link still gate every return. The Fleet's saved
 post-to-invoking-agent mapping owns local delivery, deduplication, and the uncertain-input hold.
