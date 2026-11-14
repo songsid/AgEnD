@@ -771,10 +771,11 @@ describe("the chat panel (the real page modules)", () => {
     c.stream.emit("message", msg(1, "w", "one"));
     await settle();
     expect(sc.scrollTop, "it was not at the bottom: stays").toBe(0);
-    expect(jump().textContent, "the arrow is an icon; the count is text").toBe("1 new");
+    expect(jump().querySelector(".jump-text").textContent, "the arrow is an icon; the count is text").toBe("1 new");
+    expect([jump().getAttribute("aria-label"), jump().querySelector(".jump-count")?.textContent], "its name; a phone's round button shows the count as a badge (M-3115)").toEqual(["1 new", "1"]);
     c.stream.emit("message", msg(2, "w", "two"));
     await settle();
-    expect(jump().textContent).toBe("2 new");
+    expect(jump().querySelector(".jump-text").textContent).toBe("2 new");
     fire(jump(), "click");
     await settle();
     expect(sc.scrollTop).toBe(2000);

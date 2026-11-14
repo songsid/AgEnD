@@ -40,7 +40,7 @@ The verifier proves a current Fleet-admin instruction; it does not claim that a 
 The approved product policy attributes the post to the current paired `link.owner`, shown as X via agent. The agent's room
 membership suffices even if the owner is not a room person. The Hub retains one human episode root per owner+receipt;
 reuse does not repeatedly reset depth. `@all` still requires the room's allMention setting or that owner's room-manager
-right. Five posts per source agent/minute and 30 per room/minute remain in force. Receipt identity is frozen with the post.
+right. Five actions per source agent/minute and 30 per room/minute remain in force; the post and each routed mention count. Receipt identity is frozen with the post.
 
 An accepted original post ID maps back to the exact saved invoking agent/exposure/consent/lifecycle. A `room.post-answer`
 notification must match that post, room, exposure and optional receipt. Unknown post results are not guessed: the Hub keeps

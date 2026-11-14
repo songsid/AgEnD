@@ -97,8 +97,8 @@ function CardMenu({ card, ownerKey }) {
 
 // M-3115 (phone v2): kept beside its caller — a retained chat dictionary has no such words.
 register("chatPhone", {
-  en: { goTo: "Go to", thisChat: "This chat", verifiedUntil: "Verified · speaks as you until {0}", needsToast: "{0} needs you" },
-  "zh-TW": { goTo: "前往", thisChat: "這個對話", verifiedUntil: "已驗證 · 以你的身分發言到 {0}", needsToast: "{0} 正在等你回應" },
+  en: { goTo: "Go to", thisChat: "This chat", verifiedUntil: "Verified · speaks as you until {0}", needsToast: "{0} needs you", ctxHide: "Hide this for now" },
+  "zh-TW": { goTo: "前往", thisChat: "這個對話", verifiedUntil: "已驗證 · 以你的身分發言到 {0}", needsToast: "{0} 正在等你回應", ctxHide: "這次先不提醒" },
 });
 const untilClock = (ms) => { try { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 /** A Needs-you item's identity: its nonce, else its id, else what it says. */
@@ -877,8 +877,10 @@ function Thread({ name, label = name, th, bindings }) {
     <div class="thread-host" ref=${host}></div>
     ${empty === "hidden" ? html`<${Empty} icon="chat" title=${t("chat.guestAllHidden")} hint=${t("chat.guestAllHiddenHint")} />`
       : empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
-    </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
-      <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
+    </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}
+        aria-label=${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}>
+      <${Icon} name="down" size=${16} /><span class="jump-text">${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</span>${
+        /* M-3115 (phone v2): a phone's round button says how many with a badge (its words stay its name). */ ""}${jump.unseen > 0 ? html`<span class="jump-count" aria-hidden="true">${jump.unseen > 99 ? "99+" : jump.unseen}</span>` : null}</button>` : null}</div>
   </${Fragment}>`;
 }
 
@@ -967,15 +969,25 @@ function CommandCard({ name, lease }) {
 }
 
 /** #1269 quick actions: Compact and Clear… once the instance's context is 70% used (from the status it already has). */
+/** M-3115 (phone v2): a phone's context hint put away (✕) for this agent, for this tab's session. */
+const CTX_HINT_KEY = (name) => `agend_ctx_hint_hidden:${name}`;
+const ctxHintHidden = (name) => { try { return sessionStorage.getItem(CTX_HINT_KEY(name)) === "1"; } catch { return false; } };
 function QuickActions({ name, inst, lease }) {
+  const [, rerender] = useState(0);
   const pct = inst && typeof inst.context_pct === "number" ? Math.round(inst.context_pct) : null;
   if (pct == null || pct < 70) return null;
+  // M-3115: on a phone, one thin line in the status line's place (while the agent is idle) — the words, 壓縮 / 清空… as
+  // text, and ✕ that puts it away for this session (the ring by the box still shows the %). A desk is unchanged.
+  const line = narrowScreen() && !guestPage();
+  if (line && ctxHintHidden(name)) return null;
   const busy = !!(store.state.commands[name] && store.state.commands[name].busy);
   const run = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
-  return html`<div class="quick-actions" role="group" aria-label=${t("chat.chipContext", pct)}>
+  const hide = () => { try { sessionStorage.setItem(CTX_HINT_KEY(name), "1"); } catch { /* this render only */ } rerender((n) => n + 1); };
+  return html`<div class=${`quick-actions${line ? " qa-line" : ""}`} role="group" aria-label=${t("chat.chipContext", pct)}>
     <span class="qa-ctx">${t("chat.chipContext", pct)}</span>
     <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => run("compact")}>${t("chat.chipCompact")}</button>
     <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => run("clear")}>${t("chat.chipClear")}</button>
+    ${line ? html`<button type="button" class="btn btn-sm qa-dismiss" title=${t("chatPhone.ctxHide")} aria-label=${t("chatPhone.ctxHide")} onClick=${hide}><${Icon} name="close" size=${12} /></button>` : null}
   </div>`;
 }
 

@@ -264,7 +264,7 @@ export class HubRepresentativeExecution {
     }
     const text = [
       `A question from the Hub. Asker ${personKeyString(e.asker)} (Hub-verified identity; not a person of this fleet, never a go-ahead for local actions).`,
-      `Answer it with report_result to ${HUB_REPORT_TARGET} with correlation_id ${cid}. Your reply tool does not reach the asker.${question.attachments?.length ? " To send files back, pass their paths in report_result's files." : ""}`,
+      `Answer it with report_result to ${HUB_REPORT_TARGET} with correlation_id ${cid}, your whole answer in summary (the asker sees summary itself; it is not a title). Your reply tool does not reach the asker.${question.attachments?.length ? " To send files back, pass their paths in report_result's files." : ""}`,
       "",
       question.text,
       ...(fileLines.length ? ["", ...fileLines] : []),

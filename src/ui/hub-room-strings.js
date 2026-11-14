@@ -159,7 +159,7 @@ register("hubRoom", {
     stAssistantDown: "暫時無法回答",
     stStopped: "已停止",
     mentionHere: "在這裡 @ 它", chatOneToOne: "和它一對一對話", removeFromRoom: "從房間移除",
-    newRoomTitle: "新房間", name: "名稱", namePlaceholder: "例如：研一主管週會",
+    newRoomTitle: "新房間", name: "名稱", namePlaceholder: "例如：每週主管會議",
     addPeople: "加入人、團隊或 AD 群組：輸入名稱搜尋",
     addAgents: "加入自己的 Agent，或邀請別人的",
     invitePending: "邀請 · 等擁有者同意",
