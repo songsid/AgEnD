@@ -754,7 +754,7 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
     const maybeOlder = () => {
       if (!paging || !sc || typeof store.older !== "function" || !store.more?.()) return;
       const high = sc.scrollHeight, view = sc.clientHeight;
-      if (high <= view || sc.scrollTop >= 96) return;
+      if (high > view && sc.scrollTop >= 96) return;
       void store.older();
     };
     const off = store.subscribe(() => { thread.render(store.messages()); maybeOlder(); });
