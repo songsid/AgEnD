@@ -47,6 +47,7 @@ register("hubRoom", {
     pauseQuota: "Out of quota", pauseSignIn: "Waiting to sign in", pauseApproval: "Waiting for approval",
     needsUpdate: "Needs an AgEnD update", stLater: "Answers when online",
     stAssistantDown: "Cannot answer right now",
+    stStopped: "Stopped",
     mentionHere: "@ it here", chatOneToOne: "Chat with it one-to-one", removeFromRoom: "Remove from room",
     // §6 new room
     newRoomTitle: "New room", name: "Name", namePlaceholder: "For example: Weekly leads meeting",
@@ -144,6 +145,7 @@ register("hubRoom", {
     pauseQuota: "額度用完", pauseSignIn: "等待登入", pauseApproval: "等待核准",
     needsUpdate: "需要更新 AgEnD", stLater: "上線時回答",
     stAssistantDown: "暫時無法回答",
+    stStopped: "已停止",
     mentionHere: "在這裡 @ 它", chatOneToOne: "和它一對一對話", removeFromRoom: "從房間移除",
     newRoomTitle: "新房間", name: "名稱", namePlaceholder: "例如：研一主管週會",
     addPeople: "加入人、團隊或 AD 群組：輸入名稱搜尋",
