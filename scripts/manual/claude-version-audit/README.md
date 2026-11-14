@@ -274,3 +274,25 @@ The binaries were 2.1.319 (sha256 `dabafec82ca1319fa43d8be36a10fc61b1d11821cb98a
   - The answer was one-shot, so the scan never sent it again. It then read the menu's own `❯` row as ready, and the runtime scanner skipped the claimed prompt too: deliveries stayed blocked, but the agent sat on the prompt until a person pressed Escape.
   - The fix: the answer is `retrySafe` (Escape is the prompt's own "resume" or "dismiss", and both keep the conversation). It is sent again while the same exact prompt is still up, at most 3 sends in all and each at least 1 s after the last. No answered dialog still on screen passes the startup ready check. Fixed, `live.mts` passed 8 of 8 launches of the focus case (four each on 2.1.322 and 2.1.319); the pass test now accepts one to three Escapes and checks that the prompt is gone.
   - Fixtures `tests/fixtures/claude-2.1.322-cold-resume-live-*.pane.txt`, held by `tests/claude-cold-resume-retry-2322.test.ts`.
+
+## 2.1.323 → 2.1.325: no detector change (2026-11-14, M-3113)
+
+The binaries were 2.1.323 (sha256 `604d29a6869409106b6a1110bdadcc8b72e8654a5a865d23258f938a696e348e`) and 2.1.325 (sha256 `0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf`). Both are byte-identical to the host's `~/.local/share/claude/versions` copies; the host had already self-updated to 2.1.325. The daily precheck said MAJOR (hard=1).
+
+- **Passes:** `OLD=323 NEW=325 PORT=18325`, pass1 and extra–extra6. Host tmux sessions were unchanged before and after. All 62 captures and the error frames are read the same by the production predicates, except `132-danger-fast`.
+- **`132-danger-fast`** is the known instant Down+Enter race. I repeated it six times per version (`rep-danger.sh`, not committed): both versions keep the cursor on **No** and drop the Enter (12/12). The production "confirm No" entry's follow-up Enter then answers it on both, and the command does not run (4/4).
+- **The precheck's hard hit is changelog prose.** "a wait chosen in the usage limit menu silently moving to a later reset…" is a 2.1.325 changelog line. The other new strings are changelog lines or internal schema descriptions.
+- **The "gone" strings:**
+  - "Yes, and manually approve edits" and "resume the wrong conversation" were 2.1.323 changelog lines.
+  - "Resume this session with" is still printed on exit. It is now part of a template string the precheck's prompt extraction does not split out. AgEnD does not read it.
+- **`Enter to confirm` 3 → 1:**
+  - In both versions the live footers are composed from parts, so the literal appears only in a bun helper string and in changelog prose.
+  - The composed footers on AgEnD's path still read the same: the resume picker, the confirm dialogs and the cold-resume prompt (below).
+- **Literals** (`predlits.py`, 325 checked, 90 in the binaries): 14 counts moved, all in embedded changelog lines or generic words. That includes "Background work is running" 3 → 2 and "launch after" 3 → 2, whose live dialog strings are unchanged.
+- **Visible but not on a detector:**
+  - The bypass footer gains "· ← for agents".
+  - The `/effort` line shows on more frames; it is matched by shape in `CLAUDE_LIVE_TAIL`.
+  - The OAuth URL asks one more scope (`user:privacy_consents:write`).
+- **Cold-resume prompt, live** (`cold-resume/live.mts`, 325 cases added): `325-lookup`, `325-summary-lookup` and `325-summary-newfocus` PASS 3/3. The prompt was seen, Escape was sent, history was kept and the prompt was gone.
+- **Fixtures:** `tests/fixtures/claude-2.1.325-*.pane.txt`, held by `tests/claude-2.1.325-surfaces.test.ts` (27 tests). They are the 33 screens of the 2.1.322 set, each from the same capture of this pass, plus the two live cold-resume frames.
+  - The file-send card fixtures are not re-made. That card cannot be reached offline (see `scripts/manual/claude-2317-file-send/README.md`), and its literals are unchanged.
