@@ -100,7 +100,11 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   // User decision 2aeecd58 (P6, "one way in"): the Hub typed here answered that it takes company sign-in, so the other
   // join paths (the pairing-code form under Other ways) are not offered. Unknown (no answer yet, an untrusted
   // certificate, an unreachable Hub) is not an offer: the pairing path stays (#3839's workaround).
-  const offered = kind.kind === "address" && !!probe?.ok && probe.address === kind.address && probe.companyJoin === true;
+  // Lumen (alpha.4 leg P): pressing 「信任這個 Hub 並繼續」 goes straight on to company sign-in, so from that press a trusted
+  // self-signed Hub counts as one that takes company sign-in. A start that fails (no company sign-in, or any other refusal)
+  // puts it back to unknown, and the pairing path returns; the press counts only for the address it was made for.
+  const [trustedStart, setTrustedStart] = useState(null);
+  const offered = kind.kind === "address" && (!!probe?.ok && probe.address === kind.address && probe.companyJoin === true || trustedStart === kind.address);
   useEffect(() => { onOffer?.(offered); }, [offered]);
   const read = () => {
     if (reading.current) return reading.current; // one physical status read, including Retry and slow networks
@@ -175,6 +179,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   const start = async (e, trust) => {
     e.preventDefault(); if (busy || (!trust && !ready) || trust && (trust !== trustCandidate || probing)) return;
     const gen = ++token.current; setBusy(true); setError(null); setNotice(null); setPending(null); setIdentityChanged(false); setCode(""); setCodeError(null);
+    if (trust) setTrustedStart(kind.address);
     const handoffId = crypto.randomUUID(); submittedHandoff.current = handoffId;
     // Open the Fleet-owned waiting page during the user gesture, with no opener or cross-origin messaging.
     let target = ""; try { target = new URL(kind.address).origin; } catch {}
@@ -184,12 +189,12 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
       const body = { address: kind.address, label: fleetLabel, handoffId, ...(kind.code ? { code: kind.code } : {}), ...(trust ? { trust: { fingerprint: trust.fingerprint, previous: trust.previous } } : {}) };
       const result = await confirmedWrite(root + "/start", { body, label: hj("title"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
-      if (!result.ok || !result.body?.operation) { await read();
+      if (!result.ok || !result.body?.operation) { if (trust) setTrustedStart(null); await read();
         if (result.confirmed?.state === "rejected" && result.confirmed.outcome?.reason_code === "withdrawn") { setError(null); setNotice(jw("localWithdrawn")); return; }
         const code = joinResponseCode(result); setError(result.confirmed?.state === "expired" ? jw("localExpired") : code === "conflict" ? jc("blocked") : joinError(code)); setIdentityChanged(code === "identity-changed"); return; }
       const operation = result.body.operation; setView(operation); setError(null);
 
-    } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
+    } catch { if (live.current && gen === token.current) { if (trust) setTrustedStart(null); setError(hj("unknown")); } }
     finally { if (live.current && gen === token.current) { setBusy(false); setPending(null); } }
   };
   const repair = async () => {
