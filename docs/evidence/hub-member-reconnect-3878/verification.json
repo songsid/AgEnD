@@ -1,0 +1,33 @@
+{
+  "base": "62fa94711ca2172e7075a7187c7e5b2962f36241",
+  "checks": {
+    "fiveSuites": 90,
+    "factory": 1,
+    "nativeSource": 0,
+    "nativeTests": 0
+  },
+  "bindings": [
+    {
+      "path": "src/hub/member-journal.ts",
+      "sha256": "3d8e59b7930edb68aa9631a1a10cccec9a56b2b816f6c2023913db702e67d1fa"
+    },
+    {
+      "path": "tests/hub-member-journal.test.ts",
+      "sha256": "0d9a9026400084049706d173615e99683cdc5ac9e0cbde5247a3243b95ded1d9"
+    },
+    {
+      "path": "tests/hub-representative.test.ts",
+      "sha256": "6ee063d7cff109d12176c6721051857e70f2f792f60e314b7d64ff34779612c7"
+    },
+    {
+      "path": "tests/hub-member-upgrade-3878.test.ts",
+      "sha256": "bfd2bd6ba8212cf3f62036011c0e54b06f85037143c312f68bae27ebd3c93ff0"
+    }
+  ],
+  "followup": {
+    "fixture": "one clock sample binds issuedAt/expiresAt; no product change",
+    "factory": 1,
+    "nativeTests": 0,
+    "unchangedProductSource": "5d3ea25825136b955b405b13c33ac21a1becdfa5"
+  }
+}

@@ -184,6 +184,20 @@ describe("a room's committed order (Ridge's `sequence`)", () => {
     expect(st.messages().filter((x: any) => x.role !== "status" && !x.action).map((x: any) => x.text)).toEqual(["q", "A done", "B done", "C done", "between"]);
     st.stop();
   });
+  it("who is working on an answer: the answers still being worked on, as members (an agent, the room assistant by its kind)", async () => {
+    const q = msg("q", 1, { mentions: ["all", "assistant"] });
+    const { client, h } = fake([q]);
+    const st = thread.createRoomStore("g1", { client });
+    await until(() => st.loaded());
+    h["message.added"]({ roomId: "g1", message: msg("a1", 2, { author: { kind: "agent", id: "e-a", name: "budget-check" }, text: "", answerTo: "q", stage: "working" }) });
+    h["message.added"]({ roomId: "g1", message: msg("a2", 3, { author: { kind: "assistant", id: "asst", name: "房間助理" }, text: "", answerTo: "q", stage: "working" }) });
+    h["message.added"]({ roomId: "g1", message: msg("a3", 4, { author: { kind: "agent", id: "e-b", name: "later-bot" }, text: "", answerTo: "q", stage: "queued" }) });
+    expect(st.workers()).toEqual([{ kind: "agent", name: "budget-check" }, { kind: "assistant", name: "房間助理" }]);
+    expect(st.working()).toEqual(["budget-check", "房間助理"]);
+    h["message.updated"]({ roomId: "g1", message: msg("a1", 2, { author: { kind: "agent", id: "e-a", name: "budget-check" }, text: "done", answerTo: "q", stage: "answered" }) });
+    expect(st.workers()).toEqual([{ kind: "assistant", name: "房間助理" }]);
+    st.stop();
+  });
   it("without a sequence (a direct chat, an older Hub) the arrival order stays", async () => {
     const { client, h } = fake([msg("a", undefined), msg("b", undefined)]);
     const st = thread.createRoomStore("g1", { client });
@@ -204,11 +218,31 @@ describe("the shared renderer's mention labels (Hub-only opt-in)", () => {
     const plain = R.renderMarkdown("@所有 Agent 和 @project-helper", {});
     expect(plain).not.toContain("@所有 Agent</span>");
   });
+  it("a label inside an address or another word is not a mention (bounded on both sides, S-148); at a sentence's end it is", async () => {
+    const R = (globalThis as any).AgendChatRender || (await import("/assets/chat-render.js"), (globalThis as any).AgendChatRender);
+    const labels = { mentionLabels: ["@project-helper"] };
+    for (const text of ["寄到 x@project-helper.com", "see a.@project-helper", "a-@project-helper", "@@project-helper", "@project-helpers", "@project-helper-2"])
+      expect(R.renderMarkdown(text, labels), text).not.toContain('<span class="mention tg">@project-helper</span>');
+    for (const text of ["@project-helper 看一下", "請 @project-helper。", "(@project-helper)", "@project-helper."])
+      expect(R.renderMarkdown(text, labels), text).toContain('<span class="mention tg">@project-helper</span>');
+  });
+});
+
+describe("the working bar's words come from workingLine (#3857, S-148)", () => {
+  it("one agent by its name, several by their count, the room assistant by its own name; none: no bar", async () => {
+    const W = await import("/ui/js/hub-room-working.js");
+    const line = (ws: Array<{ kind: string; name: string }>) => W.workingLine({ members: ws.map((w) => ({ ...w, presence: "working" })) })?.text ?? null;
+    expect(line([])).toBeNull();
+    expect(line([{ kind: "agent", name: "budget-check" }])).toMatch(/budget-check/);
+    expect(line([{ kind: "agent", name: "a" }, { kind: "agent", name: "b" }])).toMatch(/2/);
+    expect(line([{ kind: "assistant", name: "Hub assistant" }])).not.toMatch(/Hub assistant/);
+  });
 });
 
 describe("a room on the page", () => {
   it("the header, the shared thread with authors and progress; send an @all: its bar, then the message and its line arrive", async () => {
-    const { pg, restore } = await roomPage("room-weekly");
+    const W = await import("/ui/js/hub-room-working.js");
+    const { pg, fx, restore } = await roomPage("room-weekly");
     try {
       expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("研一主管週會");
       // Another person's @ of an agent is accented once the room's members are known (the labels are read live).
@@ -218,6 +252,14 @@ describe("a room on the page", () => {
       expect([...pg.root.querySelectorAll(".hub-room-page .thread .status-line")].every((el: any) => !el.querySelector(".msg-tools"))).toBe(true);
       expect(msgs(pg).filter((m) => m.classList.contains("user") && m.querySelector(".sender").textContent === "")).not.toHaveLength(0);
       expect(pg.root.querySelector(".hub-room-page .hub-room-hint")!.textContent).toContain("seen only by people in the room");
+      // The working bar: who is on an answer now (project-helper's answer row arrives, still being worked on), worded by
+      // workingLine() (S-148); none before it.
+      expect(pg.root.querySelector(".hub-room-page .work-bar.working")).toBeNull();
+      const asked = fx.rooms.find((r: any) => r.id === "room-weekly")!.messages.find((m: any) => m.mentions?.includes("all"))!;
+      fx.emit("message.added", { roomId: "room-weekly", message: { id: "ans-ph", roomId: "room-weekly", at: asked.at + 1, author: { kind: "agent", id: "exp-01", name: "project-helper" },
+        text: "", mentions: [], replyTo: asked.id, answerTo: asked.id, stage: "working" } });
+      await until(() => pg.root.querySelector(".hub-room-page .work-bar.working"));
+      expect(pg.root.querySelector(".hub-room-page .work-bar.working .lbl")?.textContent).toBe(W.workingLine({ members: [{ kind: "agent", name: "project-helper", presence: "working" }] }).text);
       const box = pg.root.querySelector(".hub-room-page #msgIn, .hub-room-page textarea") as any;
       box.value = "@"; box.selectionStart = 1; fire(box, "input"); await settle(5);
       expect([...pg.root.querySelectorAll(".hub-room-page .cmd-palette .cmd-name")].slice(0, 2).map((x: any) => x.textContent.trim())).toEqual(["@All agents", "@Room assistant"]);

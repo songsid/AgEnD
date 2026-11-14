@@ -115,13 +115,49 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean; buttons?: boolean;
   const publish = () => db.transaction(() => rep.readinessCandidate({ ...local, exposure: { ...local.exposure, state: "withdrawn" } })).immediate();
   const stage = (id: string) => (JSON.parse((db.prepare("SELECT value FROM hub_member_messages WHERE message_id=?").get(id) as { value: string }).value) as { stage: string }).stage;
   const state = (id: string) => (db.prepare("SELECT state, reason FROM hub_representative_questions WHERE message_id=?").get(id) as { state: string; reason: string | null } | undefined);
-  return { puts, db, rep, admission, journal, question, publish, authorize, deliveries, handed, frames, audit, stage, state, local, link,
+  return { puts, db, rep, admission, journal, options, profile, question, publish, authorize, deliveries, handed, frames, audit, stage, state, local, link,
     setToken: (t: string | null) => { token = t; }, withdraw: () => { current = null; }, stop: () => { live = false; }, offline: () => { online = null; }, online: () => { online = link; },
     setHandOff: (v: boolean) => { handOff = v; }, whileWaiting: (fn: () => void) => { onDeliver = fn; },
     failAuditOf: (action: string | null) => { failAudit = action; }, exchange: (mode: "ok" | "reject" | "bad-ack") => { exchangeMode = mode; } };
 }
 
 describe("Hub representative adapter (#3145)", () => {
+  it("#3878: adopts a legacy queued representative question and completes it once after the link returns", async () => {
+    const f = fixture(); f.publish(); f.offline();
+    const q = f.question(), first = await f.admission.admit(q);
+    expect(first.stage).toBe("queued");
+    expect(f.deliveries).toHaveLength(0);
+    // A pre-binding journal and the actual representative writer, not a fabricated source-row digest.
+    expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null });
+    const reopened = new HubMemberJournal(f.db, f.options);
+    expect(reopened.bindPairing(f.profile, [{ committed: f.local, staged: null }])).toBe(true);
+    expect(reopened.knownMessages().messages).toEqual([{ messageId: q.identity.messageId, contentDigest: q.identity.contentDigest }]);
+    f.online(); f.rep.pump();
+    await until(() => f.deliveries.length === 1 && f.handed.length === 1, "retained question delivered once");
+    const d = f.deliveries[0]!;
+    expect(await f.rep.report({ correlationId: d.correlationId, caller: "rep", text: "Retained answer." })!).toMatchObject({ ok: true });
+    expect(f.stage(q.identity.messageId)).toBe("answered");
+    await f.admission.admit(q); f.rep.pump(); await tick();
+    expect(f.deliveries).toHaveLength(1);
+    expect(f.frames.filter(frame => frame.type === "answer")).toHaveLength(1);
+  });
+
+  it("#3878: adopts a question held before input without replaying its hand-off", async () => {
+    const f = fixture(); f.publish(); f.offline();
+    const q = f.question(); await f.admission.admit(q);
+    f.authorize.mockRejectedValueOnce(new Error("Hub authorization unavailable"));
+    f.online(); f.rep.pump();
+    await until(() => f.state(q.identity.messageId)?.state === "held", "held before input");
+    expect(f.handed).toEqual([false]);
+    const before = f.db.prepare("SELECT value FROM hub_member_messages").get();
+    const reopened = new HubMemberJournal(f.db, f.options);
+    expect(reopened.bindPairing(f.profile, [{ committed: f.local, staged: null }])).toBe(true);
+    expect(f.db.prepare("SELECT value FROM hub_member_messages").get()).toEqual(before);
+    f.rep.pump(); await tick();
+    expect(f.deliveries).toHaveLength(1); expect(f.handed).toEqual([false]);
+    expect(f.state(q.identity.messageId)?.state).toBe("held");
+  });
+
   it("the agent tuple is exact: all four fields, the digest over {mode:'agent', agent}", () => {
     const f = fixture();
     expect(isAgentTuple(f.local)).toBe(true);

@@ -14,7 +14,7 @@ import { firstCharacter, MAX_FAVORITES } from "/assets/instance-nav.js";
 import { Menu } from "/assets/ui-menu.js";
 import { Icon } from "/assets/ui-icons.js";
 import "./hub-room-strings.js";
-import { presenceDot as sharedPresenceDot } from "./hub-room-presence.js";
+import { presenceDot } from "./hub-room-presence.js";
 
 const tr = (key, ...a) => t(`hubRoom.${key}`, ...a);
 /** The Fleet sidebar's own words for favourites (view.*, with named values; agentRow.*): no Hub copy of them. */
@@ -35,16 +35,6 @@ export function listRoomOf(item) {
 export function readRoomList(client) {
   if (typeof client.roomList === "function") return client.roomList();
   return client.rooms().then((r) => (r && r.ok ? { ...r, rooms: (Array.isArray(r.rooms) ? r.rooms : []).map(listRoomOf).filter(Boolean) } : r));
-}
-
-/**
- * The shared presence dot (spec §5's colours): hub-room-presence.js owns the
- * mapping, including the stopped reason's grey. Null/undefined presence means
- * no dot on list rows.
- */
-export function presenceDot(presence, reason) {
-  if (presence == null) return null;
-  return sharedPresenceDot(presence, reason);
 }
 
 /** A room's counts, "3 人 · 12 個 Agent" / "1 person · 2 agents" — singular when one. */
@@ -87,7 +77,9 @@ export function rowView(r) {
     title: r.assistant ? tr("hubAssistant") : String(r.name || ""), line2,
     avatar: { square: group, text: firstCharacter(r.assistant ? tr("hubAssistant") : String(r.name || "?")) || "?" },
     // The Hub assistant's dot is its own state (spec §10: 待命, or 暫時無法回答 when it can't answer): `presence` on its row.
-    dot: group ? null : limited ? waiting ? "busy" : null : r.assistant ? presenceDot(r.presence || "idle") : presenceDot(r.agent?.presence),
+    dot: group ? null : limited ? waiting ? "busy" : null : r.assistant ? presenceDot(r.presence || "idle")
+      // The shared mapping (hub-room-presence.js, #3853); a row whose agent has no presence yet shows no dot (not "offline").
+      : r.agent?.presence ? presenceDot(r.agent.presence) : null,
     closed,
     unread: limited ? 0 : Math.max(0, Number(r.unread) || 0), mentioned: !limited && r.mentioned === true, archived: r.archived === true || closed,
   };
