@@ -94,12 +94,16 @@ describe("the server keeps the last known numbers", () => {
     const row = await read();
     expect([row.id, row.name, row.defaultLogin, row.stale, row.metrics[1]!.used]).toEqual(["claude", "Claude (default)", true, true, 64]);
     await later(10 * 60_000);
-    s.next = { ...good(Date.now()), id: "claude:work", name: "Claude (work)", profile: "work", defaultLogin: true } as ProviderUsage;
+    s.next = { ...good(Date.now()), id: "claude:work", name: "Claude (work)", profile: "work", defaultLogin: true, noAgents: true } as ProviderUsage;
     await read();
     await later(10 * 60_000);
     s.next = { ...expired, id: "claude:work", name: "Claude (work)", profile: "work" };
     const prof = await read();
     expect([prof.profile, prof.defaultLogin, prof.stale], "nothing of the cached row's own tags").toEqual(["work", undefined, true]);
+    expect(prof.noAgents).toBeUndefined(); // A returned agent clears the cached no-agents tag.
+    await later(10 * 60_000);
+    s.next = { ...s.next!, noAgents: true };
+    expect((await read()).noAgents).toBe(true); // A new move-away is shown beside the last-good quota.
   });
   it("never made up: a provider never read successfully keeps its error row; a signed-out row is left as it is", async () => {
     vi.useFakeTimers({ now: Date.UTC(2030, 0, 1, 6, 0) });
