@@ -26,8 +26,10 @@
   .cmd-card.cmd-model .cmd-choice > .btn:first-child { flex: 1; min-width: 0; justify-content: flex-start; text-align: start; }
   .cmd-card.cmd-model .cmd-effort-go { display: inline-flex; align-items: center; gap: var(--s-1); color: var(--text-2); white-space: nowrap; }
   .cmd-card .cmd-sub { display: flex; margin-bottom: var(--s-1); }
-  /* The latest button lives in a dedicated dock row, clear of message text and the command/composer content. */
-  .p-chat .jump-dock { position: static; height: auto; display: flex; justify-content: center; padding: var(--s-1); }
+  /* M-3115 (phone v2): 最新 is a small round button floating at the thread's bottom right, with its own shadow — not a
+     row of its own across the screen. Its words are its name; how many are new is its badge. */
   .p-chat .jump-dock:empty { display: none; }
-  .p-chat .jump-latest { position: static; transform: none; min-height: var(--tap); }
+  .p-chat .jump-latest { left: auto; right: var(--s-3); transform: none; width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; justify-content: center; }
+  .p-chat .jump-latest .jump-text { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .p-chat .jump-latest .jump-count { display: block; position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-full); background: var(--accent-fill); color: var(--on-accent); font-size: var(--fs-xs); line-height: 18px; text-align: center; }
 }

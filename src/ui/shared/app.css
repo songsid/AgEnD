@@ -1226,6 +1226,7 @@ img.amb-p { object-fit: contain; }
    hiding it 48 px from the bottom took that room away under a reader still scrolling — the wheel's last step was cut
    short, or the view clamped back. Its dock is sticky and 0 px tall; the pill floats above it. */
 .jump-dock { position: sticky; bottom: 0; height: 0; z-index: 5; }
+.jump-count { display: none; }   /* M-3115: the phone's round 最新 shows it (model-picker.css); the desk's pill says it in words */
 .jump-latest {
   position: absolute; bottom: var(--s-3); left: 50%; transform: translateX(-50%); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--s-1);
   background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-2);
