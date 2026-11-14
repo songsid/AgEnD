@@ -1,5 +1,5 @@
 {
-  "sourceHead": "9893cdfa82b84ce6c3a67365215fbfef8564d02f",
+  "sourceHead": "215b9ae63c43e2d1e688011173cf0ad2b0fee44b",
   "dirty": [],
   "checks": [
     {
@@ -142,7 +142,7 @@
     },
     {
       "path": "banner.desktop-en-light.png",
-      "sha256": "06cd2a7215d08f20da1b2199175a0da5fc172d9e478dddc054438e910cc9ed0c"
+      "sha256": "968603cdfba61dd9c510fcfabbb4909e8459cfa3d40d8631d3d6daf51ca20e1b"
     },
     {
       "path": "members.desktop-en-light.png",
@@ -158,7 +158,7 @@
     },
     {
       "path": "banner.desktop-en-dark.png",
-      "sha256": "96dd31d61d98ae87d29216cb751f5e1571b656a4c778f29d57d80b532a32a185"
+      "sha256": "55be571b9cb74ca57fdf0da262b0ebbce82faa309c3de8dae15b9445ddd53ea9"
     },
     {
       "path": "members.desktop-en-dark.png",
@@ -166,15 +166,15 @@
     },
     {
       "path": "admin.desktop-zh-TW-light.png",
-      "sha256": "d7b12a9f1d984cf35712b8c81eb1f3d82d376669b559e16d4c8b624353f4118d"
+      "sha256": "7053c9f66a2c6f9a7678a5725a268cdecf70d859338b17e240e79089adba2385"
     },
     {
       "path": "filtered.desktop-zh-TW-light.png",
-      "sha256": "e44930278e408e52cd25133ea25f3a850425495e40bc118d88250246857f2430"
+      "sha256": "d63348584a938b5cd5b618a21642ce804fcd6932b13c4c0b089c443158e5785f"
     },
     {
       "path": "banner.desktop-zh-TW-light.png",
-      "sha256": "f8be8288c2108248f00e4b0603f60374bbab1b686a79d2526c9e42324dae439a"
+      "sha256": "b2b0b09a3f98a0df929127357bc2a64b167db493ebc05caca7a9cfe7e22b1962"
     },
     {
       "path": "members.desktop-zh-TW-light.png",
@@ -182,11 +182,11 @@
     },
     {
       "path": "admin.desktop-zh-TW-dark.png",
-      "sha256": "546b7eb53b1acf498532ea4c920cb97f6c56d3e34d41334a36654b5026ecfab8"
+      "sha256": "1f66bd903db2322c25708f9bb26a9eea65d1c152cdcb2ba7fecef72983b18356"
     },
     {
       "path": "filtered.desktop-zh-TW-dark.png",
-      "sha256": "120640d8433d088f378a45126fab888f8b3a93e8acb09c32666206c9268fce41"
+      "sha256": "a3cf7440778674f5fd1ee78892dd678aba343d77b05944f559e2f1334f4efa1d"
     },
     {
       "path": "banner.desktop-zh-TW-dark.png",
@@ -194,7 +194,7 @@
     },
     {
       "path": "members.desktop-zh-TW-dark.png",
-      "sha256": "e09d2e9e21ea9c3ef563468779e680097229bedcaad099456e2f7f5454a5808a"
+      "sha256": "205de5da41dcd156228bebddb49925ba67a04b78922128ec956a6d8770ce5f24"
     },
     {
       "path": "admin.phone-en-light.png",
@@ -206,11 +206,11 @@
     },
     {
       "path": "banner.phone-en-light.png",
-      "sha256": "522a2cc3f39b76ddd08b6202cfc152382c25d6bdf54b663a5a2d5e92f194497e"
+      "sha256": "54bfc764746edfc1cb5db66fd85b4a899eab934fa647009b2c5c479a057b72bf"
     },
     {
       "path": "members.phone-en-light.png",
-      "sha256": "ded09cc71b2190eeef2089f0c52e9bf84f28078f3f2b124afdb8c4bc0a77b53a"
+      "sha256": "ef5a375ad60b530d48fe2f04ef252c532c4bbeba95eeaab0f3a8efb18ac162a4"
     },
     {
       "path": "admin.phone-en-dark.png",
@@ -222,19 +222,19 @@
     },
     {
       "path": "banner.phone-en-dark.png",
-      "sha256": "8ceab51c7586f29f4c2c33e70b566447976236c14966fa53c7d10fe34511994e"
+      "sha256": "286ea6695969b1a0416e6cd3c9be7f65ec131d9895e454dead4698da94b39757"
     },
     {
       "path": "members.phone-en-dark.png",
-      "sha256": "1a90ebc8bec498bee7edada203edcfa1e941288dc72c6547f6f46e3e7035dad1"
+      "sha256": "4f7b508101077214e1d1ec70f1d244394f10d33499dc2acf7ba1c9a46b36d408"
     },
     {
       "path": "admin.phone-zh-TW-light.png",
-      "sha256": "a90d31328396ab5c67019e3c36db505975b59ea2b60fa573a7d1a95f763412b5"
+      "sha256": "1267d5aeca07929e0495b8f5e1bd7061863b5fedc1e62babc152a4b4c4bf9d1d"
     },
     {
       "path": "filtered.phone-zh-TW-light.png",
-      "sha256": "bd5c8d6cacea2eb75e474ef47286476c714c45a35e889d1ed2b7305ca7c94242"
+      "sha256": "3e24867b98cc383022895c1401ed20de25e3914181fe417784a0118ee8233a4b"
     },
     {
       "path": "banner.phone-zh-TW-light.png",
@@ -246,11 +246,11 @@
     },
     {
       "path": "admin.phone-zh-TW-dark.png",
-      "sha256": "cafd0654ac653b0478d8c81fa00def645b5923d44d94b13dc2c081928fd6b0bc"
+      "sha256": "877c8fa634b85c4c1a4768a5db088307e2dd637fa9e2d4b66141af7de1ff4fa6"
     },
     {
       "path": "filtered.phone-zh-TW-dark.png",
-      "sha256": "0cf9869ca2eae2bea946b0e4baa403bd3eaba68eb47a67bd652ae592416a2d3a"
+      "sha256": "97e1cef068f5a75a61eca224ab2ef9d27583c5e8051852c82363c7ebaf109f3d"
     },
     {
       "path": "banner.phone-zh-TW-dark.png",
@@ -258,7 +258,7 @@
     },
     {
       "path": "members.phone-zh-TW-dark.png",
-      "sha256": "ff181fb97c68bea5af34289d528fb6d802170aa691968e20922ab246992be85e"
+      "sha256": "f47da65923cbd0dabceaa7a5197beb1dc8c2f1119a866bfee2ecfbf6bb74b54a"
     }
   ]
 }
