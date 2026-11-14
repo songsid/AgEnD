@@ -141,7 +141,14 @@ const int = (v: unknown): number => { const n = typeof v === "string" && /^\d{1,
 /** Build S3's HTTP handler and member receiver over S5's deps. `sql` is S5's `hubTxDatabase`. */
 export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   let closed = false;
-  const core = new HubCore(deps, sql, () => !closed);
+  const teamFactory = deps.teams;
+  // Keep the caller's other dependency reads live, without installing Team state on its shared object.
+  const mountedDeps: HubHttpDeps = teamFactory ? Object.create(deps) : deps;
+  const core = new HubCore(mountedDeps, sql, () => !closed);
+  const teams = teamFactory?.(core);
+  if (teams) Object.defineProperties(mountedDeps, {
+    roomTeams: { value: teams }, roomTeamCandidates: { value: teams.candidates.bind(teams) },
+  });
   const sharing = new HubSharingService(core);
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
   const grantSearch = new HubGrantSearch(core);
@@ -175,7 +182,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     };
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = ["rooms-v1", ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    const offered = ["rooms-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
@@ -382,6 +389,28 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const exposureId = uuid(r[1]);
       await guard(() => quota.setVisible(ctx, exposureId, int(b.revision), b.visible as boolean));
       return send(res, 200, { quotaVisible: b.visible, ...quota.projection(exposureId) });
+    }
+    if (path === "/hub/v1/teams/candidates") {
+      if (!teams) throw new HttpError(404, "not-found");
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn();
+      return send(res, 200, { candidates: await guard(() => teams.suggestions(ctx, {
+        kind: query.get("kind"), q: query.get("q"), ...(query.has("teamId") ? { teamId: query.get("teamId") } : {}),
+      })) });
+    }
+    if (path === "/hub/v1/teams") {
+      if (!teams) throw new HttpError(404, "not-found");
+      if (method === "GET") { signedIn(); return send(res, 200, { teams: await guard(() => teams.list(ctx)) }); }
+      if (method === "POST") { csrf(); const b = await body(); return send(res, 201, { team: await guard(() => teams.create(ctx, b)) }); }
+      throw new HttpError(405, "method");
+    }
+    if ((r = m(/^\/hub\/v1\/teams\/([^/]+)$/))) {
+      if (!teams) throw new HttpError(404, "not-found");
+      const id = uuid(r[1]);
+      if (method === "GET") { signedIn(); return send(res, 200, { team: await guard(() => teams.get(ctx, id)) }); }
+      if (method === "PATCH") { csrf(); const b = await body(); return send(res, 200, { team: await guard(() => teams.update(ctx, id, b)) }); }
+      if (method === "DELETE") { csrf(); await guard(() => teams.remove(ctx, id)); return send(res, 200, { ok: true }); }
+      throw new HttpError(405, "method");
     }
     if (path === "/hub/v1/admin/assistant" || path === "/hub/v1/admin/assistant/usage" || /^\/hub\/v1\/admin\/assistant\/rooms\/[^/]+\/stop$/.test(path)) {
       const port = deps.roomAssistant && deps.assistantAdmin;
@@ -830,7 +859,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["rooms-v1", "room-ask-v1", ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["rooms-v1", "room-ask-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; grantSearch.close(); for (const end of streams) end(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };

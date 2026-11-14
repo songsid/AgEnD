@@ -27,6 +27,7 @@ import { HUB_GROUP_RESOURCES_MIGRATION } from "../group-policy/resources.js";
 import { createHubGroupAuthorization, type HubGroupAuthorization } from "../group-policy/authorization.js";
 import { HUB_ENROLMENT_CODE_MIGRATION } from "../enrolment-code.js";
 import { createHubRoomInvitations, HUB_ROOM_INVITATIONS_MIGRATION } from "../invitations.js";
+import { createHubTeams, HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION } from "../teams/index.js";
 import { HubPairingNotices, HUB_PAIRING_NOTICES_MIGRATION } from "../pairing-notices.js";
 import { createHubGroupAdminControl } from "../group-policy/admin-control.js";
 import { createHubGroupAdminInventory } from "../group-policy/admin-inventory.js";
@@ -72,6 +73,7 @@ export { SERVER_SET } from "./storage.js";
 
 /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
 export interface HubHttpDeps {
+  teams?: import("../http/deps.js").HubHttpDeps["teams"];
   log?: import("../http/deps.js").HubHttpDeps["log"];
   roomInvitations?: import("../http/deps.js").HubHttpDeps["roomInvitations"];
   roomAssistant?: import("../assistant/types.js").RoomAssistant;
@@ -227,7 +229,11 @@ export function hubServerDatabasePlan(cfg: Record<string, unknown>, httpMigratio
     profile: resolvedDirectory.profile, baseDn: resolvedDirectory.baseDn, bindDn: resolvedDirectory.bindDn,
     loginAttribute: resolvedDirectory.loginAttribute, userFilter: resolvedDirectory.userFilter,
     caSha256: resolvedDirectory.caPem === undefined ? null : sha256(resolvedDirectory.caPem) }));
+  // An injected older HTTP entry has no owner-grant subjects or Team routes to migrate.
+  const teamMigrations = httpMigrations.some(m => m.component === "s3-grant-subjects")
+    ? [HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION] : [];
   const migrations = [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_WEB_INIT_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpMigrations,
+    ...teamMigrations,
     HUB_ROOM_INVITATIONS_MIGRATION,
     retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
     groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION,
@@ -457,6 +463,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const roomAssistant = options.roomAssistant?.();
       if (roomAssistant) teardown.add("the room assistant", () => roomAssistant.close());
       const http = httpEntry.createHubHttp({
+        ...(migrations.some(m => m.component === HUB_TEAMS_MIGRATION.component) ? { teams: createHubTeams } : {}),
         log: (level, message, meta) => options.log(level, message, meta),
         roomInvitations: createHubRoomInvitations,
         ...(roomAssistant ? { roomAssistant, assistantAdmin: roomAssistant } : {}),

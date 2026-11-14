@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-teams-mount-r3
+
+ ❯ tests/hub-room-teams-integration-r3.test.ts (6 tests | 1 failed | 5 skipped) 86ms
+   × mounts one Team instance for CRUD, static suggestions and room candidates 84ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-teams-integration-r3.test.ts > mounts one Team instance for CRUD, static suggestions and room candidates
+TypeError: Cannot read properties of undefined (reading 'id')
+ ❯ tests/hub-room-teams-integration-r3.test.ts:35:76
+     33|   expect(team).toMatchObject({ name: "Project", department: w.departme…
+     34|   expect((await r!.call(w.m, "GET", "/hub/v1/teams")).json.teams).toCo…
+     35|   expect((await r!.call(w.m, "GET", `/hub/v1/teams/${team.id}`)).json.…
+       |                                                                            ^
+     36|   expect((await r!.call(w.admin, "GET", "/hub/v1/teams/candidates?kind…
+     37|   expect((await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 skipped (6)
+   Start at  09:53:23
+   Duration  3.73s (transform 2.62s, setup 148ms, import 3.35s, tests 86ms, environment 0ms)
+

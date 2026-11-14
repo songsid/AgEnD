@@ -1,0 +1,32 @@
+{
+  "parentPr": 3886,
+  "parent": "5704a6a6dd47b4803d522d64712d641262e3a760",
+  "sourceCommit": "c2ee6932d2b350e1e7e98fb0ed04404a84d7303e",
+  "originalTestedCommit": "6bdff6d9b5f969581bbd464a98a6715213109a77",
+  "stablePatchId": "7fc96c1dcc96d1eef5c8c22e81560def4c9f9fbd",
+  "bindings": {
+    "src/hub/compose/server.ts": "5d73c807f0a2e1ad43a4e56107b8a1aa6588b1a9c0db37a417497df662b389e3",
+    "src/hub/http/compose.ts": "23c66d156da9b141b606f4c7721afd26c2cad11ce1415d6e373f5410bf5a24e5",
+    "src/hub/http/deps.ts": "5699526abb4decd37f19bcab93f49b2a0f40cf23ac431ec6983eb8d042dbe9ee",
+    "src/hub/rooms/service.ts": "a42c9de2cd98e31089d479693bb9592be3c9c55112dccf211897acda4e73419e",
+    "tests/hub-compose.test.ts": "970e9b9e4e586ded4956230145d81deb67afa58f7287b8c176b16772fa3e08d0",
+    "tests/hub-room-teams-integration-r3.test.ts": "ab32e85e3e9a3b9f6a786ef5c599af41003cfeb7572019f27ebf4ca941633228"
+  },
+  "verificationScope": "Unchanged R patch extracted onto published C parent. No new local campaign. Exact-head CI and ordinary R source review remain required.",
+  "priorLocalResults": {
+    "mountHttpAndActualFactory": 7,
+    "factoryCompatibilityCorrection": 2,
+    "combinedSourceTypes": 0,
+    "combinedTestTypes": 0
+  },
+  "teamWalk": "Scoped C repair consumed in integration6fcc8ad42; affected desktop and unrun phone actual-server journeys pass44checks. Initial failure retained. PM Team acceptance remains pending.",
+  "originalParent": "464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a",
+  "scopedRepairMerge": "d951bc21bfe67bc945f68b5125ac44ec4993723e",
+  "unchangedScope": "All six own R product/test paths retain the recorded digests. Only C scoped repair and evidence enter the plain merge; no new local re-verification.",
+  "finalCopyMerge": "48e250475c3a4e4a59a8a71ade59743924a88bee",
+  "finalCarry": "Four product files and the factory test remain unchanged since source-clear62fbd0da. One HTTP integration expectation now follows C admin/current-lead detail access; affected file6/6. Release/CI/parent holds retained.",
+  "previousIntegrationTestSha256": "8aa5a71695536e9fa43da2eeb5a2669f80e5ea3781e13281cad4e337b5135c2d",
+  "sourceUnchangedSince": "62fbd0da65c6051f39406e2899ed562900e7b40c",
+  "stablePatchIdScope": "Historical original R extraction, before this test-only fixture correction.",
+  "latestCorrection": "detail-ci-r1/verification.json"
+}
