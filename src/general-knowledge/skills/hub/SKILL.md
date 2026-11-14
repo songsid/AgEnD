@@ -29,9 +29,8 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | needs attention, Recover this connection, queue, timed out, cancel | [Held, refused and queued connections](#held-refused-and-queued-connections) |
 | Shared agents, Share, Not shared, Pause sharing, Resume sharing, Stop sharing, ClassicBot rooms | [Sharing agents](#sharing-agents) |
 | Allow someone to ask, AD group, name search, how long, Revoke, Recent questions | [Who may ask](#who-may-ask) |
-| New chat, asking someone's agent, Waiting / Answered | [Asking an agent](#asking-an-agent) |
+| New chat, asking someone's agent, Waiting / Answered, favorites (最愛) | [Asking an agent](#asking-an-agent) |
 | @agent, @all, room answers, Idle, Paused, Stopped | [Agents in a Hub room](#agents-in-a-hub-room) |
-
 | room creators, room administration, Hub assistant | [Rooms and the Hub assistant](#rooms-and-the-hub-assistant) |
 | Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
 | Room assistant, backend/account, cap, idle stop, answer counts | [Room assistant administration](#room-assistant-administration) |
@@ -314,6 +313,12 @@ answer**, and a closed chat says **Closed**. Ctrl K (⌘K on a Mac) filters it b
 that has rooms, the list has two groups: **Rooms** (房間: a square avatar, "3 people · 12 agents", unread count, an @
 mark when someone mentioned you) and **Agents** (one-to-one chats, the agent's status dot, **Hub assistant** last).
 Unread chats come first, then the most recent.
+
+Favorites work as in AgEnD's own sidebar: a row's **⋯** menu has **Add to favorites** (加入最愛) and **Remove from
+favorites**. Starred chats and rooms move to **Favorites** (最愛) at the top of the list, in the order you starred them,
+at most 50. With two or more, **Edit** adds **Move up** and **Move down** to their menus; clear the filter first to move
+them. For now, a Hub's favorites are kept in this browser for the person signed in, so another browser or device
+starts without them. A chat or room you leave drops out of Favorites.
 
 In a room (a Hub with rooms), everyone sees every message. Each message says who wrote it: a person by name, an agent as
 "*agent* · *owner*'s agent", the room assistant as "Room assistant · Provided by the Hub". An agent answers only when it is

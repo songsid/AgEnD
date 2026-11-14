@@ -50,7 +50,7 @@ const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwrig
 const browser = await pw.chromium.launch({ args: ["--no-sandbox"] });
 const receipt: any = { sourceHead: git("rev-parse", "HEAD"), baseRef: git("rev-parse", base), dirty: git("status", "--porcelain").split("\n").filter(Boolean),
   inputs: [...Object.values(BASE_FILES).map(p => ({ path: p, base: sha(baseOf(p)) })),
-    ...["src/ui/panel-hub.js", "src/ui/hub-client.js", "src/ui/hub-room-list.js", "src/ui/hub-room-strings.js", "src/ui/hub-room-thread.js", "src/ui/hub-room-composer.js", "src/ui/shared/chat-thread.js", "src/ui/shared/hub-chat.css", "tests/support/hub-rooms-fixture.ts"].map(p => ({ path: p, sha256: sha(readFileSync(join(repo, p))) }))],
+    ...["src/ui/panel-hub.js", "src/ui/hub-client.js", "src/ui/hub-room-list.js", "src/ui/hub-room-strings.js", "src/ui/hub-room-thread.js", "src/ui/hub-room-composer.js", "src/ui/hub-room-favorites.js", "src/ui/shared/chat-thread.js", "src/ui/shared/hub-chat.css", "tests/support/hub-rooms-fixture.ts"].map(p => ({ path: p, sha256: sha(readFileSync(join(repo, p))) }))],
   checks: [], pictures: [] };
 const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!ok, ...(ok ? {} : { detail }) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}`); };
 const cases = (process.env.MATRIX ?? "full") === "quick"
@@ -102,6 +102,26 @@ try {
           groups.length === 2 && names.length === 6 && names[0] === "研一主管週會" && await p.locator(`${list} .nav-count`).count() >= 1 && errors.length === 0, { groups, names, errors });
       } else check(`${tag} before: today's list (three chats, alpha's own rows); no page error`, names.length === 3 && errors.length === 0, { names, errors });
       await shot(p, device(c) === "phone" ? ".hub-home-list" : "#sidebar", `list.${variant}.${tag}.png`);
+      if (variant === "after-live") {
+        // S-145: star two from their row menus (the Fleet's words) — 「最愛」 on top, in that order, kept for this sign-in;
+        // the picture has a favourite's menu open (移出最愛). list.after-live (above) is the same list before.
+        const menuOf = async (name: string) => {
+          const li = p.locator(`${list} li`, { has: p.locator(".inst-name", { hasText: name }) }).first();
+          await li.hover().catch(() => {});
+          await li.locator(".inst-row-menu > button").click(); await p.waitForTimeout(150);
+        };
+        for (const n of ["project-helper", "研發例會"]) { await menuOf(n); await p.locator('[role="menuitem"]', { hasText: /Add to favorites|加入最愛/ }).first().click(); await p.waitForTimeout(200); }
+        const favs = await p.locator(`${list} [data-group="favorites"] .inst-name`).allTextContents();
+        const heads = await p.locator(`${list} .hub-room-group .side-label`).allTextContents();
+        const kept = await p.evaluate(() => localStorage.getItem("agend_hub_favorites.wang"));
+        await menuOf("project-helper");
+        const items = await p.locator('[role="menuitem"]').allTextContents();
+        check(`${tag} favorites-after: 「最愛」 first with the two starred in order, out of their groups; kept for this sign-in; the menu says remove; no page error`,
+          favs.join("|") === "project-helper|研發例會" && heads.length === 3 && kept === JSON.stringify(["room-helper", "room-rd"])
+            && items.some((x) => /Remove from favorites|移出最愛/.test(x)) && errors.length === 0, { favs, heads, kept, items, errors });
+        await shot(p, device(c) === "phone" ? ".hub-home-list" : "#sidebar", `favorites-after.${tag}.png`);
+        await p.keyboard.press("Escape");
+      }
       // The room page: today's chat on the base's modules, or a room of a Hub with rooms on the shared thread.
       if (variant === "before") {
         await p.goto(`${origin}/ui/hub?room=${LEGACY[1]!.id}`);
