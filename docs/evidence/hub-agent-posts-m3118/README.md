@@ -53,7 +53,9 @@ its own PR; this R PR retains the result rather than importing Fleet source.
 
 Fable source-cleared the initial product and the b4ca46b8 delta, including all three P3 repairs. The later plain alpha
 sync imports unrelated generic-name/comment and smoke-script changes; own source/tests are unchanged and were not
-locally re-run. Still to be recorded: Lumen's image check, exact-head CI and acceptance. This is not final acceptance.
+locally re-run. Lumen opened both PNGs at37bf08bb and accepted the scoped room feedback: proactive/no quote, via agent
+styling, allowed @all, and the complete wrapped depth stop with quoted agent ancestry. The two working agents in the
+capture are the earlier inert @all asks, not the refused chain hop. Exact-head CI and the formal gate remain external.
 
 ## Risks and rollback
 
