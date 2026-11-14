@@ -17,6 +17,9 @@ import { resolveRoomMentions, type MentionMember } from "./mentions.js";
 import type { HubRoomListResult, HubRoomPostResult, HubRoomMembersResult, HubPeopleSearchResult, HubRequestContext, HubTx } from "../types.js";
 import type { RoomEvent, RoomMessage, RoomSystemEvent } from "./types.js";
 import type { RoomInvitationHost } from "../invitations.js";
+import { RoomButtons } from "./buttons.js";
+import { replyButtonClickText } from "../../reply-buttons.js";
+import { pollResultsText, type PollBallot } from "../../reply-polls.js";
 import { RoomDirectoryCandidates, rememberRoomPeople, type RoomPersonSelection } from "./directory.js";
 
 type DB = Database.Database;
@@ -29,6 +32,10 @@ const createSchema = z.strictObject({ name: label, people: z.array(personId).max
   groups: z.array(uuid).max(100).default([]), agents: z.array(uuid).max(64).default([]), assistant: z.boolean().default(false) });
 const postSchema = z.strictObject({ text: plain(64 * 1024).refine(s => s.trim().length > 0), mentions: z.array(z.string().max(128)).max(100).default([]),
   replyTo: uuid.optional(), files: z.array(uuid).max(0).optional(), idempotencyKey: uuid });
+const clickSchema = z.strictObject({ setId: z.string().regex(/^[a-f0-9]{32}$/), index: z.number().int().min(0).max(9).optional(),
+  options: z.array(z.number().int().min(0).max(9)).max(10).optional(), idempotencyKey: uuid });
+/** M-3127: one press per set — its click post's idempotency key, a UUID shape derived from the set id. */
+const setKey = (setId: string) => { const h = createHash("sha256").update(`room-button:${setId}`).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`; };
 const reactSchema = z.strictObject({ emoji: z.string().min(1).max(16), on: z.boolean() });
 /** M-3127: the most distinct emoji one post carries. */
 export const ROOM_REACTION_LIMIT = 12;
@@ -51,12 +58,23 @@ export class HubGroupRooms {
   readonly postReplies: RoomPostReplies;
   private readonly directory: RoomDirectoryCandidates;
   private readonly automation: RoomAutomation;
+  /** M-3127 B: answers' buttons and polls; one timer for the next deadline (cleared by close()). */
+  private readonly buttons: RoomButtons;
+  private buttonsTimer: NodeJS.Timeout | null = null;
+  private buttonsClosed = false;
   private readonly agentSearch: HubGrantSearch;
   private readonly agentReadBuckets = new Map<string, { at: number; count: number }>();
   constructor(private readonly core: HubCore) { this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
     this.agents = new HubRoomAgents(core, event => this.emit(event), post => this.projection(post), this.automation,
       (db, tx, post) => { this.agentMentions(db, tx, post); this.postReplies.enqueue(db, tx, post); }, id => { this.agentEffects(id); this.postReplies.wake(); });
-    this.assistant = new HubRoomAssistant(core, event => this.emit(event), post => this.projection(post)); this.directory = new RoomDirectoryCandidates(core); }
+    this.assistant = new HubRoomAssistant(core, event => this.emit(event), post => this.projection(post)); this.directory = new RoomDirectoryCandidates(core);
+    this.buttons = new RoomButtons(core.deps.content, () => core.now());
+    this.agents.onAnswerButtons = (db, tx, d, b) => {
+      const ref = this.buttons.record(db, tx, d, b);
+      this.core.audit(tx, { requestId: d.id, actor: { kind: "local-host" }, action: b.poll ? "room.poll-opened" : "room.buttons-opened", result: "completed", roomId: d.room_id, messageId: d.reply_id, contentRef: ref });
+      queueMicrotask(() => this.armButtons());
+    };
+    this.armButtons(); }
   has(id: string): boolean { return this.core.atomic(db => !!db.prepare("SELECT 1 FROM hub_group_rooms WHERE id=?").get(id)); }
   subscribe(listener: (event: RoomEvent) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   /** Cheap queue admission only; event() still freshly authorizes and projects the eventual disclosure. */
@@ -64,7 +82,7 @@ export class HubGroupRooms {
     if (event.removedPerson) return event.removedPerson === person;
     return this.core.atomic(db => !!db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(event.roomId, person));
   }
-  async close(): Promise<void> { this.listeners.clear(); this.directory.close(); this.agentSearch.close(); this.agentReadBuckets.clear(); this.assistant.close(); await this.agents.close(); await this.postReplies.close(); }
+  async close(): Promise<void> { this.buttonsClosed = true; if (this.buttonsTimer) clearTimeout(this.buttonsTimer); this.buttonsTimer = null; this.listeners.clear(); this.directory.close(); this.agentSearch.close(); this.agentReadBuckets.clear(); this.assistant.close(); await this.agents.close(); await this.postReplies.close(); }
   /** The direct-chat receiver shares this stream without changing its grant-backed delivery path. */
   publish(event: RoomEvent): void { this.emit(event); }
   /** C owns invitation checks; these synchronous effects remain on its current SQL transaction. */
@@ -122,8 +140,8 @@ export class HubGroupRooms {
   }
   private maximum(db: DB, id: string): number { return (db.prepare("SELECT COALESCE(MAX(sequence),0) AS n FROM hub_room_posts WHERE room_id=?").get(id) as { n: number }).n; }
   private projection(row: PostRow): RoomMessage {
-    const system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined"].includes(row.author_id)
-      ? { kind: row.author_id as "room-created" | "member-joined" | "admin-joined", name: row.author_name } : undefined;
+    const system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined", "poll-closed"].includes(row.author_id)
+      ? { kind: row.author_id as "room-created" | "member-joined" | "admin-joined" | "poll-closed", name: row.author_name } : undefined;
     // Agent rows retain their owner-at-message in author_subject; a later exposure transfer must not relabel history.
     const owner = row.author_kind === "agent" ? this.core.atomic(db => ({ name: this.name(db, row.author_subject) })) : undefined;
     return { id: row.id, roomId: row.room_id, at: row.created_at, sequence: row.sequence, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...(owner ? { owner } : {}), ...this.viaAuthor(row) },
@@ -141,8 +159,8 @@ export class HubGroupRooms {
           WHERE p.id=? AND p.room_id=? AND p.author_kind='person' AND NOT EXISTS
           (SELECT 1 FROM hub_room_agent_operations op WHERE op.post_id=p.id AND op.member_id=p.author_id)`)
           .get(row.answer_to, row.room_id) as { id: string } | undefined : undefined;
-        const reactions = this.reactions(db, row.id);
-        return { ...(ask ? { ask } : {}), ...(asker ? { askedBy: asker.id } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}) }; }) };
+        const reactions = this.reactions(db, row.id), buttons = row.author_kind === "agent" ? this.buttons.view(db, row.id, id => this.memberName(db, id)) : undefined;
+        return { ...(ask ? { ask } : {}), ...(asker ? { askedBy: asker.id } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}), ...(buttons ? { buttons } : {}) }; }) };
   }
   /** M-3127: a post's reactions, each emoji in the order it first appeared, its members in the order they reacted. */
   private reactions(db: DB, postId: string): NonNullable<RoomMessage["reactions"]> {
@@ -568,7 +586,7 @@ export class HubGroupRooms {
   }
   async messages(ctx: HubRequestContext, id: string, before: string | null, limit = 50) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new HubProtocolError("invalid");
-    const me = await this.who(ctx); this.agents.sweep(id);
+    const me = await this.who(ctx); this.agents.sweep(id); this.settleButtons();
     return this.core.atomic(db => {
       const member = this.member(db, id, me); let until = Number.MAX_SAFE_INTEGER;
       if (before) { const row = db.prepare("SELECT sequence FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(validated(uuid, before), id, member.joined_sequence) as { sequence: number } | undefined;
@@ -611,11 +629,7 @@ export class HubGroupRooms {
     const done = this.core.atomic(db => {
       const member = this.member(db, id, me);
       if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived");
-      // Exactly what messages() shows me: since my joined_sequence, its lineage's audience floor too (Ridge, M-3118: the
-      // descendants of a question older than me stay hidden), and an answer only when its question is mine to see.
-      const post = db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=? AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=hub_room_posts.id),sequence)>=?")
-        .get(target, id, member.joined_sequence, member.joined_sequence) as PostRow | undefined;
-      if (!post || post.answer_to && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(post.answer_to, id, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
+      const post = this.visiblePost(db, id, member, target);
       if (post.author_kind === "system" || post.stage && post.stage !== "answered") throw new HubRoomRefusal(409, "invalid");
       let changed: boolean;
       if (body.on) {
@@ -628,6 +642,139 @@ export class HubGroupRooms {
     // The post as it now is, on the stream every open tab already reads (message.updated): no new event name.
     if (done.changed) this.emit({ type: "message.updated", roomId: id, data: { roomId: id, message: this.projection(done.post) }, sequence: done.post.sequence });
     return { reactions: done.reactions };
+  }
+  /**
+   * M-3127: a post exactly as messages() shows it to `member` — since their joined_sequence, its lineage's audience floor
+   * too (Ridge, M-3118: the descendants of a question older than them stay hidden), and an answer only when its question
+   * is theirs to see. 404 otherwise.
+   */
+  private visiblePost(db: DB, roomId: string, member: MemberRow, postId: string): PostRow {
+    const post = db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=? AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=hub_room_posts.id),sequence)>=?")
+      .get(postId, roomId, member.joined_sequence, member.joined_sequence) as PostRow | undefined;
+    if (!post || post.answer_to && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(post.answer_to, roomId, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
+    return post;
+  }
+  /** M-3127: a member's name as the room shows it (a person's display name, an agent's exposure name, the assistant). */
+  private memberName(db: DB, memberId: string): string {
+    const m = db.prepare("SELECT * FROM hub_room_members WHERE id=?").get(memberId) as MemberRow | undefined;
+    if (!m) return "";
+    if (m.kind === "person") return this.name(db, m.subject);
+    if (m.kind === "assistant") return "Room assistant";
+    return readExposure(db, m.subject)?.display_name ?? "";
+  }
+  /**
+   * M-3127 B: press an answer's button, or vote in its poll (the direct chat's body: { setId, index | options,
+   * idempotencyKey }). Plain buttons: the question's asker only (403 not-asker), the first press wins, and it becomes the
+   * asker's own room message — the button's label, replying to the answer, to that agent — delivered by the ordinary room
+   * ask (the agent gets the click line). Polls: every person who can see it; a later vote replaces mine until it closes.
+   */
+  async click(ctx: HubRequestContext, id: string, input: unknown): Promise<{ ok: true }> {
+    const body = validated(clickSchema, input), me = await this.who(ctx);
+    this.settleButtons();
+    const done = this.core.atomic((db, tx) => {
+      const member = this.member(db, id, me);
+      if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived");
+      const row = this.buttons.row(db, body.setId);
+      if (!row || row.room_id !== id) throw new HubRoomRefusal(404, "not-found");
+      const answer = this.visiblePost(db, id, member, row.post_id), b = this.buttons.choices(row);
+      if (!b) throw new HubRoomRefusal(409, "expired");
+      let picked: number[];
+      if (b.poll) {
+        const o = body.options;
+        if (body.index !== undefined || !o || o.some(i => i >= b.labels.length) || new Set(o).size !== o.length || !b.poll.multi && o.length !== 1) throw new HubProtocolError("invalid");
+        picked = [...o].sort((x, y) => x - y);
+      } else {
+        if (body.options !== undefined || body.index === undefined || body.index >= b.labels.length) throw new HubProtocolError("invalid");
+        picked = [body.index];
+      }
+      const digest = createHash("sha256").update(JSON.stringify([body.setId, !!b.poll, picked])).digest("hex");
+      const dup = db.prepare("SELECT set_id,digest FROM hub_room_button_operations WHERE room_id=? AND member_id=? AND idempotency_key=?").get(id, member.id, body.idempotencyKey) as { set_id: string; digest: string } | undefined;
+      if (dup) { if (dup.set_id !== body.setId || dup.digest !== digest) throw new HubRoomRefusal(409, "conflict"); return { answer, click: null as PostRow | null, changed: false }; }
+      if (row.state !== "open" || this.core.now() >= row.expires_at) throw new HubRoomRefusal(409, "expired");
+      let click: PostRow | null = null;
+      if (!b.poll) {
+        if (row.asker_member !== member.id) throw new HubRoomRefusal(403, "not-asker");
+        const i = picked[0]!, label = b.labels[i]!, value = b.values?.[i] ?? label, name = this.name(db, me);
+        // One click per set, whatever the browser's key: the set's own key makes a second press a conflict, not a post.
+        const key = setKey(body.setId), clickDigest = createHash("sha256").update(JSON.stringify({ text: label, mentions: [answer.author_id], replyTo: answer.id })).digest("hex");
+        click = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name }, label, [answer.author_id], key, clickDigest, answer.id);
+        this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.message", result: "completed", roomId: id, messageId: click.id, contentRef: click.content_ref });
+        this.automation.human(db, click);
+        if (db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(id, answer.author_id))
+          this.agents.enqueue(db, tx, click, member.id, { asker: me, name, text: replyButtonClickText({ label, value }) });
+        db.prepare("UPDATE hub_room_buttons SET state='chosen',chosen_index=?,chosen_member=?,closed_at=?,revision=revision+1 WHERE id=? AND state='open'").run(i, member.id, this.core.now(), row.id);
+      } else {
+        db.prepare("INSERT INTO hub_room_votes(set_id,member_id,options,at) VALUES(?,?,?,?) ON CONFLICT(set_id,member_id) DO UPDATE SET options=excluded.options,at=excluded.at")
+          .run(row.id, member.id, JSON.stringify(picked), this.core.now());
+        db.prepare("UPDATE hub_room_buttons SET revision=revision+1 WHERE id=?").run(row.id);
+      }
+      db.prepare("INSERT INTO hub_room_button_operations VALUES(?,?,?,?,?)").run(id, member.id, body.idempotencyKey, body.setId, digest);
+      return { answer, click, changed: true };
+    }, this.fence(ctx));
+    if (done.changed) this.emit({ type: "message.updated", roomId: id, data: { roomId: id, message: this.projection(done.answer) }, sequence: done.answer.sequence });
+    if (done.click) {
+      this.emit({ type: "message.added", roomId: id, data: { roomId: id, message: this.projection(done.click) }, sequence: done.click.sequence });
+      this.emit({ type: "unread.changed", roomId: id, data: { roomId: id } });
+      this.agents.publishQueued(done.click.id); this.agents.wake();
+    }
+    return { ok: true };
+  }
+  /** M-3127 B: the next open set's deadline, once; closes what is due and arms again (30 s after a failure). */
+  private armButtons(delay?: number): void {
+    if (this.buttonsClosed || !this.core.live()) return;
+    if (this.buttonsTimer) clearTimeout(this.buttonsTimer);
+    let wait = delay;
+    if (wait === undefined) {
+      const next = this.core.atomic(db => this.buttons.nextDeadline(db));
+      if (next === null) { this.buttonsTimer = null; return; }
+      wait = Math.max(0, next - this.core.now());
+    }
+    this.buttonsTimer = setTimeout(() => { this.buttonsTimer = null; try { this.closeDueButtons(); this.armButtons(); } catch { this.armButtons(30_000); } }, Math.min(wait, 2 ** 31 - 1));
+    this.buttonsTimer.unref?.();
+  }
+  /**
+   * M-3127 B: sets past their deadline. Buttons expire. A poll closes: one room line (「投票結束」, in the poll's lineage —
+   * Ridge: a system consequence, never a fresh human root) and the results delivered to the agent that asked it, on behalf
+   * of that question's asker (the Fleet chat's [poll results]).
+   */
+  private closeDueButtons(): void {
+    if (this.buttonsClosed || !this.core.live()) return;
+    const out = this.core.atomic((db, tx) => {
+      const changed: { answer: PostRow; line: PostRow | null }[] = [];
+      for (const row of this.buttons.due(db)) {
+        const b = this.buttons.choices(row), now = this.core.now();
+        const answer = db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(row.post_id) as PostRow | undefined;
+        if (!b?.poll || !answer) { db.prepare("UPDATE hub_room_buttons SET state='expired',closed_at=?,revision=revision+1 WHERE id=? AND state='open'").run(now, row.id); if (answer) changed.push({ answer, line: null }); continue; }
+        db.prepare("UPDATE hub_room_buttons SET state='closed',closed_at=?,revision=revision+1 WHERE id=? AND state='open'").run(now, row.id);
+        const votes = this.buttons.votes(db, row.id);
+        const ballots: PollBallot[] = votes.map(v => ({ voter: v.member_id, name: this.memberName(db, v.member_id), options: v.options, at: v.at }));
+        const text = pollResultsText({ id: row.id, buttons: b.labels.map((label, i) => ({ label, value: b.values?.[i] ?? label })), createdAt: row.created_at, expiresAt: row.expires_at }, b.poll, ballots, now);
+        // The room line says only that it closed (counts are on the poll; names only with showVoters, on the poll too).
+        const line = this.insert(db, tx, row.room_id, { kind: "system", id: "poll-closed", subject: "system", name: answer.author_name }, `Poll closed · ${votes.length} voted`);
+        const l = this.automation.lineage(db, answer);
+        db.prepare("INSERT INTO hub_room_post_lineage VALUES(?,?,?,?,NULL)").run(line.id, l.root_id, l.depth, l.audience_sequence);
+        db.prepare("UPDATE hub_room_buttons SET result_post=? WHERE id=?").run(line.id, row.id);
+        const d = db.prepare("SELECT asker,asker_member FROM hub_room_deliveries WHERE id=?").get(row.delivery_id) as { asker: string; asker_member: string } | undefined;
+        const room = this.room(db, row.room_id);
+        const agentHere = db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(row.room_id, answer.author_id);
+        const askerHere = d && db.prepare("SELECT 1 FROM hub_room_members WHERE id=? AND room_id=?").get(d.asker_member, row.room_id);
+        if (d && agentHere && askerHere && !room.archived)
+          this.agents.enqueue(db, tx, { ...line, mentions: JSON.stringify([answer.author_id]) }, d.asker_member, { asker: d.asker, name: "Poll results", text });
+        this.core.audit(tx, { requestId: row.id, actor: { kind: "local-host" }, action: "room.poll-closed", result: "completed", roomId: row.room_id, messageId: line.id, contentRef: line.content_ref });
+        changed.push({ answer, line });
+      }
+      return changed;
+    });
+    for (const { answer, line } of out) {
+      this.emit({ type: "message.updated", roomId: answer.room_id, data: { roomId: answer.room_id, message: this.projection(answer) }, sequence: answer.sequence });
+      if (line) { this.emit({ type: "message.added", roomId: line.room_id, data: { roomId: line.room_id, message: this.projection(line) }, sequence: line.sequence }); this.agents.publishQueued(line.id); }
+    }
+    if (out.some(x => x.line)) this.agents.wake();
+  }
+  /** A read or a press first closes what is already due (a suspended host's timer may be late): never a stale open poll. */
+  private settleButtons(): void {
+    const next = this.core.atomic(db => this.buttons.nextDeadline(db));
+    if (next !== null && next <= this.core.now()) { this.closeDueButtons(); this.armButtons(); }
   }
   async markRead(ctx: HubRequestContext, id: string, upTo: unknown) {
     const target = validated(uuid, upTo), me = await this.who(ctx);

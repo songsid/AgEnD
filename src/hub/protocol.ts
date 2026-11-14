@@ -10,10 +10,12 @@ export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] a
 export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";
 /** Opted into by the mounted agent room-post adapter, never by an uncomposed member. */
 export const HUB_ROOM_POST_CAPABILITY = "room-post-v1";
+/** M-3127: a room answer may carry the reply's buttons or poll (answerButtonsSchema); both ends list it. */
+export const HUB_ROOM_BUTTONS_CAPABILITY = "room-answer-buttons-v1";
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
-export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1"];
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1", "room-answer-buttons-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
@@ -63,7 +65,8 @@ export const roomContextSchema = z.strictObject({ author: plain(256), text: plai
 export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roomName: plain(120), exposureId: uuid,
   asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), context: z.array(roomContextSchema).max(31)
     .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1) });
-export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer) });
+export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
+  buttons: answerButtonsSchema.optional() });
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
 const roomPostRefusalCode = z.enum(["invalid", "denied", "revoked", "not-found", "archived", "ambiguous-room", "rate-limited", "conflict", "unavailable", "stale", "backpressure"]);
 const roomPostChoice = z.strictObject({ id: uuid, name: plain(120) });
