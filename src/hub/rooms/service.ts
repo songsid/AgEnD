@@ -71,6 +71,7 @@ export class HubGroupRooms {
     this.buttons = new RoomButtons(core.deps.content, () => core.now());
     this.agents.onAnswerButtons = (db, tx, d, b) => {
       const ref = this.buttons.record(db, tx, d, b);
+      if (!ref) return;   // that set id is taken: no buttons on this answer, nothing opened
       this.core.audit(tx, { requestId: d.id, actor: { kind: "local-host" }, action: b.poll ? "room.poll-opened" : "room.buttons-opened", result: "completed", roomId: d.room_id, messageId: d.reply_id, contentRef: ref });
       queueMicrotask(() => this.armButtons());
     };

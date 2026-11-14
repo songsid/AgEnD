@@ -28,10 +28,15 @@ export interface RoomButtonsView {
 export class RoomButtons {
   constructor(private readonly content: HubContentStore, private readonly now: () => number) {}
   /** At the answer's disclosure, in its transaction: the set opens (a poll for its seconds, buttons for a day). */
-  /** Returns the choices' content ref: the caller audits it (the content store reads only what an audit record binds). */
-  record(db: DB, tx: HubTx, d: { id: string; room_id: string; reply_id: string; asker_member: string }, b: HubAnswerButtons): string {
+  /**
+   * Returns the choices' content ref (the caller audits it: the content store reads only what an audit record binds), or
+   * null when that set id (the Fleet's) is already taken — the answer then carries no buttons, and nothing is stored or
+   * audited for it (Fable #3931 P3: never an "opened" audit for a set that was not opened).
+   */
+  record(db: DB, tx: HubTx, d: { id: string; room_id: string; reply_id: string; asker_member: string }, b: HubAnswerButtons): string | null {
+    if (db.prepare("SELECT 1 FROM hub_room_buttons WHERE id=? OR post_id=?").get(b.id, d.reply_id)) return null;
     const now = this.now(), ref = this.content.put(tx, { buttons: b });
-    db.prepare(`INSERT OR IGNORE INTO hub_room_buttons(id,post_id,room_id,delivery_id,asker_member,content_ref,created_at,expires_at,state)
+    db.prepare(`INSERT INTO hub_room_buttons(id,post_id,room_id,delivery_id,asker_member,content_ref,created_at,expires_at,state)
       VALUES(?,?,?,?,?,?,?,?,'open')`).run(b.id, d.reply_id, d.room_id, d.id, d.asker_member, ref, now, now + (b.poll ? b.poll.seconds * 1000 : REPLY_BUTTON_TTL_MS));
     return ref;
   }

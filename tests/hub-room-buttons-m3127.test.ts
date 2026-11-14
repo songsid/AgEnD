@@ -59,6 +59,42 @@ it("plain buttons answer only their asker: the first press is the asker's own po
   expect((await press(w, w.a, { setId: id, index: 0, idempotencyKey: key })).json.code).toBe("conflict");
 });
 
+it("a member who joined after the poll's question cannot vote or press: 404 (Fable #3931 P2-a)", async () => {
+  const w = await world(), id = set(), cara = r!.db.prepare("SELECT person FROM hub_people WHERE display_name='Cara'").get() as { person: string } | undefined;
+  await answered(w, { id, labels: ["A", "B"], poll: { seconds: 60, multi: false, reveal: "live", showVoters: false, question: "Pick one" } });
+  const caraKey = cara?.person ?? (await r!.call(w.c, "GET", "/hub/v1/session")).json.person;
+  expect((await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.id}/members`, { kind: "person", id: caraKey })).status).toBe(200);
+  expect((await press(w, w.c, { setId: id, options: [0] })).status).toBe(404);
+  expect((await press(w, w.c, { setId: id, index: 0 })).status).toBe(404);
+  expect((await press(w, w.b, { setId: id, options: [0] })).status).toBe(200);   // Bob was there
+});
+
+it("a poll whose asker has left the room closes with its room line but delivers no results to the agent (Fable #3931 P2-b)", async () => {
+  const w = await world(), id = set();
+  const answer = await answered(w, { id, labels: ["A", "B"], poll: { seconds: 60, multi: false, reveal: "live", showVoters: false, question: "Pick one" } });
+  await press(w, w.b, { setId: id, options: [1] });
+  const alexMember = await w.me(w.a);
+  expect((await r!.call(w.admin, "DELETE", `/hub/v1/rooms/${w.id}/members/${alexMember}`)).status).toBe(200);
+  const before = asks().length;
+  w.advance(61_000);
+  const after = await page(w, w.b);
+  expect(after.find((m: any) => m.id === answer.id).buttons.state).toBe("closed");
+  expect(after.some((m: any) => m.system?.kind === "poll-closed")).toBe(true);
+  await new Promise(done => setTimeout(done, 300));
+  expect(asks().length).toBe(before);
+  expect(r!.db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE parent_id=(SELECT result_post FROM hub_room_buttons WHERE id=?)").get(id)).toEqual({ n: 0 });
+});
+
+it("a set id the Hub already has: that answer carries no buttons and nothing is audited as opened (Fable #3931 P3)", async () => {
+  const w = await world(), id = set();
+  await answered(w, { id, labels: ["A", "B"] });
+  const opened = () => (r!.db.prepare("SELECT COUNT(*) n FROM hub_audit WHERE action IN ('room.buttons-opened','room.poll-opened')").get() as { n: number }).n;
+  const n = opened();
+  const second = await answered(w, { id, labels: ["C", "D"] }, "Again");
+  expect(second).not.toHaveProperty("buttons");
+  expect(opened()).toBe(n);
+});
+
 it("refuses bad presses: unknown set, index out of range, options on buttons, extra keys", async () => {
   const w = await world(), id = set();
   await answered(w, { id, labels: ["A", "B"] });
