@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-agent-posts-m3118
+
+
+ Test Files  2 passed (2)
+      Tests  23 passed (23)
+   Start at  00:48:12
+   Duration  10.79s (transform 4.91s, setup 149ms, import 6.23s, tests 4.05s, environment 0ms)
+

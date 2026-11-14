@@ -9,6 +9,7 @@ import type { HubLinkContext } from "../server.js";
 import type { HubAgentState, HubRoomAsk, HubRoomAnswer, HubRoomAnswerAck, HubTx } from "../types.js";
 import { HubProtocolError, validated } from "../validation.js";
 import { boundedRoomText as trim, roomContext } from "./context.js";
+import { RoomAutomation } from "./automation.js";
 import type { RoomEvent, RoomMessage } from "./types.js";
 
 type DB = Database.Database;
@@ -22,6 +23,7 @@ interface Delivery {
   asker: string; asker_member: string; agent_member: string; payload_ref: string; payload_digest: string;
   state: "queued" | "sent" | "answered" | "retired" | "expired"; sent_epoch: number; last_sent_at: number; created_at: number; expires_at: number;
   answer_id: string | null; answer_digest: string | null;
+  source_exposure_id: string | null; source_exposure_revision: number | null; source_fleet_id: string | null; on_behalf: number;
 }
 interface Member { id: string; subject: string; joined_sequence: number; owner_at_join: string | null }
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -34,7 +36,10 @@ export class HubRoomAgents {
   private timerAt = Number.POSITIVE_INFINITY;
   private stopped = false;
   constructor(private readonly core: HubCore, private readonly emit: (event: RoomEvent) => void,
-    private readonly project: (post: RoomPostRow) => RoomMessage) {}
+    private readonly project: (post: RoomPostRow) => RoomMessage,
+    private readonly automation = new RoomAutomation(() => core.now()),
+    private readonly onAgentMessage: (db: DB, tx: HubTx, post: RoomPostRow) => void = () => {},
+    private readonly committed: (postId: string) => void = () => {}) {}
   private live(): boolean { return !this.stopped && this.core.live(); }
   private supports(link: HubLinkContext): boolean { return link.current() && link.features.has("welcome-caps-v1") && link.features.has(HUB_ROOM_ASK_CAPABILITY); }
   noteLink(link: HubLinkContext): void {
@@ -97,17 +102,21 @@ export class HubRoomAgents {
     const room = db.prepare("SELECT name FROM hub_group_rooms WHERE id=?").get(parent.room_id) as { name: string };
     const agents = db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent'").all(parent.room_id) as Member[];
     const selected = agents.filter(m => mentions.includes("all") || mentions.includes(m.subject));
+    const operation = db.prepare("SELECT exposure_id,receipt_id FROM hub_room_agent_operations WHERE post_id=?").get(parent.id) as { exposure_id: string; receipt_id: string | null } | undefined;
+    const source = parent.author_kind === "agent" || operation ? readExposure(db, operation?.exposure_id ?? parent.author_id) : undefined;
     const people = db.prepare("SELECT id,subject FROM hub_room_members WHERE room_id=? AND kind='person'").all(parent.room_id) as { id: string; subject: string }[];
     if (mentions.some(m => m !== "all" && !agents.some(a => a.subject === m) && !people.some(p => p.id === m || p.subject === m))) throw new HubProtocolError("invalid");
     if ((db.prepare("SELECT COUNT(*) AS n FROM hub_room_deliveries WHERE state IN ('queued','sent')").get() as { n: number }).n + selected.length > 4096) throw new HubProtocolError("backpressure");
-    const personMember = db.prepare("SELECT joined_sequence FROM hub_room_members WHERE id=?").get(askerMember) as { joined_sequence: number };
+    const sourceMember = db.prepare("SELECT joined_sequence FROM hub_room_members WHERE id=?").get(askerMember) as { joined_sequence: number } | undefined;
+    if (!sourceMember || parent.author_kind === "agent" && !source) throw new HubProtocolError("revoked");
     for (const m of selected) {
       const e = readExposure(db, m.subject);
       if (!e || e.owner !== m.owner_at_join) throw new HubProtocolError("revoked");
-      const context = roomContext(this.core, db, parent, Math.max(m.joined_sequence, personMember.joined_sequence));
+      if (this.automation.lineage(db, parent).audience_sequence < m.joined_sequence) continue;
+      const context = roomContext(this.core, db, parent, Math.max(m.joined_sequence, sourceMember.joined_sequence));
       const id = randomUUID(), replyId = randomUUID(), now = this.core.now();
       const payload: HubRoomAsk = validated(roomAskSchema, { messageId: id, roomId: parent.room_id, roomName: trim(room.name, 120), exposureId: e.id,
-        asker: { name: trim(parent.author_name, 256) }, text: this.core.deps.content.get(parent.content_ref)?.question ?? "", context });
+        asker: { name: trim(source && !operation?.receipt_id ? `${parent.author_name} · ${this.project(parent).author.owner?.name ?? ""}'s agent` : parent.author_name, 256) }, text: trim(this.core.deps.content.get(parent.content_ref)?.question ?? "", HUB_LIMITS.question), context });
       const bytes = JSON.stringify(payload);
       if (Buffer.byteLength(bytes) + 512 > HUB_LIMITS.frame) throw new HubProtocolError("backpressure");
       const max = (db.prepare("SELECT MAX(sequence) AS n FROM hub_room_posts WHERE room_id=?").get(parent.room_id) as { n: number }).n;
@@ -116,9 +125,10 @@ export class HubRoomAgents {
           this.core.deps.content.put(tx, { question: "" }), "", now, parent.id, id);
       const payloadRef = this.core.deps.content.put(tx, { question: bytes });
       this.core.audit(tx, { requestId: id, actor: { kind: "person", person: personFromString(parent.author_subject) }, action: "room.ask-queued", result: "completed", roomId: parent.room_id, messageId: parent.id, exposureId: e.id, fleetId: e.fleet_id, contentRef: payloadRef });
-      db.prepare(`INSERT INTO hub_room_deliveries(id,room_id,parent_id,reply_id,exposure_id,exposure_revision,fleet_id,owner,asker,asker_member,agent_member,payload_ref,payload_digest,state,created_at,expires_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)`).run(id, parent.room_id, parent.id, replyId, e.id, e.revision, e.fleet_id, e.owner, parent.author_subject, askerMember, m.id,
-          payloadRef, digest(bytes), now, now + 24 * 60 * 60_000);
+      db.prepare(`INSERT INTO hub_room_deliveries(id,room_id,parent_id,reply_id,exposure_id,exposure_revision,fleet_id,owner,asker,asker_member,agent_member,payload_ref,payload_digest,state,created_at,expires_at,source_exposure_id,source_exposure_revision,source_fleet_id,on_behalf)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?)`).run(id, parent.room_id, parent.id, replyId, e.id, e.revision, e.fleet_id, e.owner, parent.author_subject, askerMember, m.id,
+          payloadRef, digest(bytes), now, now + 24 * 60 * 60_000, source?.id ?? null, source?.revision ?? null, source?.fleet_id ?? null, operation?.receipt_id ? 1 : 0);
+      this.automation.child(db, parent, replyId, e.id);
     }
   }
   publishQueued(parentId: string): void {
@@ -129,8 +139,24 @@ export class HubRoomAgents {
     const room = db.prepare("SELECT archived FROM hub_group_rooms WHERE id=?").get(d.room_id) as { archived: number } | undefined;
     const e = readExposure(db, d.exposure_id);
     return !!room && !room.archived && !!e && e.owner === d.owner && e.fleet_id === d.fleet_id && e.revision === d.exposure_revision
-      && !!db.prepare("SELECT 1 FROM hub_room_members WHERE id=? AND room_id=? AND kind='person' AND subject=?").get(d.asker_member, d.room_id, d.asker)
+      && this.sourceValid(db, d)
       && !!db.prepare("SELECT 1 FROM hub_room_members WHERE id=? AND room_id=? AND kind='agent' AND subject=? AND owner_at_join=?").get(d.agent_member, d.room_id, d.exposure_id, d.owner);
+  }
+  private sourceValid(db: DB, d: Delivery): boolean {
+    if (!d.source_exposure_id) return !!db.prepare("SELECT 1 FROM hub_room_members WHERE id=? AND room_id=? AND kind='person' AND subject=?").get(d.asker_member, d.room_id, d.asker);
+    const e = readExposure(db, d.source_exposure_id);
+    return !!e && e.owner === d.asker && e.revision === d.source_exposure_revision && e.fleet_id === d.source_fleet_id
+      && !!db.prepare("SELECT 1 FROM hub_room_members WHERE id=? AND room_id=? AND kind='agent' AND subject=? AND owner_at_join=?").get(d.asker_member, d.room_id, e.id, d.asker);
+  }
+  private sourcePublished(db: DB, d: Delivery): boolean {
+    const e = d.source_exposure_id ? readExposure(db, d.source_exposure_id) : undefined;
+    return !d.source_exposure_id || !!e && exposureOf(e).state === "published";
+  }
+  private async permission(d: Delivery, link: HubLinkContext) {
+    const ctx = { requestId: d.id, current: () => this.live() && link.current() && this.links.get(link.fleetId) === link };
+    const target = await this.core.groupExposure(d.exposure_id, d.source_exposure_id && !d.on_behalf ? null : personFromString(d.asker), ctx);
+    const source = d.source_exposure_id ? await this.core.groupExposure(d.source_exposure_id, null, ctx) : undefined;
+    return { assertCurrent: () => { target.assertCurrent(); source?.assertCurrent(); } };
   }
   private update(d: Delivery, added = false): void {
     const data = this.core.atomic(db => {
@@ -191,11 +217,11 @@ export class HubRoomAgents {
       if (!this.live() || !this.supports(link) || this.links.get(fleetId) !== link) return false;
       try {
         if (!await this.core.eligible(personFromString(d.asker)) || !await this.core.eligible(personFromString(d.owner))) continue;
-        const permit = await this.core.groupExposure(d.exposure_id, personFromString(d.asker), { requestId: d.id, current: () => this.live() && link.current() && this.links.get(fleetId) === link });
+        const permit = await this.permission(d, link);
         const payload = this.core.atomic(db => {
           const current = db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(d.id) as Delivery;
           const e = readExposure(db, d.exposure_id);
-          if (!pending(current) || !this.valid(db, current) || this.core.now() >= current.expires_at || !e || exposureOf(e).state !== "published") return null;
+          if (!pending(current) || !this.valid(db, current) || this.core.now() >= current.expires_at || !e || exposureOf(e).state !== "published" || !this.sourcePublished(db, current)) return null;
           const state = this.states.get(d.exposure_id); if (state?.link === link && state.value.state === "paused") return null;
           const bytes = this.core.deps.content.get(d.payload_ref)?.question;
           if (bytes === undefined || digest(bytes) !== d.payload_digest) throw new HubProtocolError("uncertain");
@@ -204,7 +230,7 @@ export class HubRoomAgents {
         if (!payload || !link.current()) continue;
         // Persist dispatch intent before the socket write: a fast member answer may arrive before send() settles.
         this.core.atomic(db => {
-          if (!this.valid(db, d) || this.core.now() >= d.expires_at) throw new HubProtocolError("stale");
+          if (!this.valid(db, d) || !this.sourcePublished(db, d) || this.core.now() >= d.expires_at) throw new HubProtocolError("stale");
           db.prepare("UPDATE hub_room_deliveries SET state='sent',sent_epoch=?,last_sent_at=? WHERE id=? AND state IN ('queued','sent')").run(link.linkEpoch, this.core.now(), d.id);
           db.prepare("UPDATE hub_room_posts SET stage='working' WHERE id=? AND stage='queued'").run(d.reply_id);
         }, permit);
@@ -243,14 +269,14 @@ export class HubRoomAgents {
       });
       this.update(d); return { messageId: d.id, answerId: body.answerId };
     }
-    const permit = await this.core.groupExposure(d.exposure_id, personFromString(d.asker), { requestId: d.id, current: () => this.live() && link.current() });
+    const permit = await this.permission(d, link);
     if (!await this.core.eligible(personFromString(d.asker)) || !await this.core.eligible(personFromString(d.owner))) throw new HubProtocolError("unavailable");
     this.core.atomic((db, tx) => {
       if (!link.current()) throw new HubProtocolError("stale");
       const current = db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(d.id) as Delivery;
       if (current.answer_id) { if (current.answer_id !== body.answerId || current.answer_digest !== hash) throw new HubProtocolError("conflict"); return; }
       const e = readExposure(db, d.exposure_id);
-      if (pending(current) && this.valid(db, current) && e && exposureOf(e).state !== "published") throw new HubProtocolError("unavailable");
+      if (pending(current) && this.valid(db, current) && e && (exposureOf(e).state !== "published" || !this.sourcePublished(db, current))) throw new HubProtocolError("unavailable");
       const disclose = pending(current) && this.valid(db, current) && this.core.now() < current.expires_at && !!e && exposureOf(e).state === "published";
       db.prepare("UPDATE hub_room_deliveries SET state=?,answer_id=?,answer_digest=? WHERE id=?").run(disclose ? "answered" : "retired", body.answerId, hash, d.id);
       if (disclose) {
@@ -258,9 +284,10 @@ export class HubRoomAgents {
         const answerRef = this.core.deps.content.put(tx, { question: body.text });
         db.prepare("UPDATE hub_room_posts SET content_ref=?,stage='answered',sequence=?,created_at=? WHERE id=?").run(answerRef, seq, this.core.now(), d.reply_id);
         this.core.audit(tx, { requestId: d.id, actor: { kind: "person", person: link.owner }, action: "room.answer", result: "completed", roomId: d.room_id, messageId: d.reply_id, exposureId: d.exposure_id, fleetId: d.fleet_id, contentRef: answerRef });
+        this.onAgentMessage(db, tx, db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(d.reply_id) as RoomPostRow);
       } else db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id);
     }, permit);
-    this.update(d); return { messageId: d.id, answerId: body.answerId };
+    this.update(d); this.committed(d.reply_id); this.wake(); return { messageId: d.id, answerId: body.answerId };
   }
   async close(): Promise<void> {
     this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = null;
