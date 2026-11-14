@@ -49,7 +49,7 @@ export class RoomPostReplies {
   wake(): void {
     if (this.stopped || !this.core.live()) return;
     if (this.timer) clearTimeout(this.timer); this.timer = undefined;
-    this.core.atomic(db => db.prepare("UPDATE hub_room_post_returns SET acked=1 WHERE acked=0 AND expires_at<=?").run(this.core.now()));
+    this.core.atomic(db => db.prepare("DELETE FROM hub_room_post_returns WHERE acked=1 OR expires_at<=?").run(this.core.now()));
     const fleets = this.core.atomic(db => db.prepare("SELECT DISTINCT fleet_id FROM hub_room_post_returns WHERE acked=0").all() as { fleet_id: string }[]);
     let live = false;
     for (const { fleet_id } of fleets) { const link = this.links.get(fleet_id); if (!link || !this.supports(link)) continue; live = true;

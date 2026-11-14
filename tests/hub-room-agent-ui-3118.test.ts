@@ -24,4 +24,7 @@ it("localizes a stop directly below its source without a timestamp, retaining ca
   expect(thread.systemText({...stop,system:{kind:"future",name:""}})).toBe("English fallback");
   expect(thread.authorLine({kind:"person",name:"Alex",via:{id:"notes",name:"Notes"}})).toBe("Alex 透過 Notes");
   i18n.setLang("en",{store:false});expect(thread.authorLine({kind:"person",name:"Alex",via:{name:"Notes"}})).toBe("Alex via Notes");
+  const via={...post,author:{kind:"person",id:"viewer",name:"Alex",via:{id:"notes",name:"Notes"}}};
+  const row=thread.toThreadMessages([via],{meId:"viewer",ids:new Map()})[0];
+  expect(row).toMatchObject({role:"agent",mine:false,sender:"Alex via Notes"});expect(row.person).toBeUndefined();
 });

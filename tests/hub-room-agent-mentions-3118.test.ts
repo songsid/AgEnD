@@ -187,6 +187,8 @@ it("durably returns an answer against the original postId until an exact current
   expect(r!.db.prepare("SELECT acked FROM hub_room_post_returns").get()).toEqual({acked:0});
   await r!.http.receive(r!.frame("room.post-answer-ack",{id:value.id},link) as never,link);
   expect(r!.db.prepare("SELECT acked FROM hub_room_post_returns").get()).toEqual({acked:1});
+  await r!.http.receive(r!.frame("agent.state",{exposureId:w.a.id,state:"idle"},link) as never,link);
+  expect(r!.db.prepare("SELECT COUNT(*) n FROM hub_room_post_returns").get()).toEqual({n:0});
 });
 
 it("returns only the agent's current room members, with presence, and bounds read calls", async () => {
@@ -264,4 +266,18 @@ it("refuses a foreign Fleet, missing capability, paused publication, and an oper
   const member=r!.db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(w.id,w.a.id) as any;
   r!.db.prepare("UPDATE hub_room_members SET id=? WHERE id=?").run(randomUUID(),member.id);
   expect(await send(w.link)).toMatchObject({payload:{ok:false,code:"denied"}});
+});
+
+it("coalesces tool-rate stops within a window and refreshes them in a later window without a new post in that room",async()=>{
+  let now=Date.now();const w=await world(()=>now);
+  const other=(await r!.call(w.admin,"POST","/hub/v1/rooms",{name:"Other"})).json.room.id;
+  await r!.call(w.admin,"POST",`/hub/v1/rooms/${other}/members`,{kind:"agent",id:w.a.id});
+  for(let i=0;i<5;i++) await w.post(w.a,`first${i}`);
+  await w.post(w.a,"refused");await w.post(w.a,"refused again");
+  expect((await w.page()).filter(m=>m.system?.reason==="rate")).toHaveLength(1);
+  now+=60_000;
+  for(let i=0;i<5;i++) await w.post(w.a,`other${i}`,other);
+  await w.post(w.a,"refused next window");
+  const stops=(await w.page()).filter(m=>m.system?.reason==="rate");expect(stops).toHaveLength(2);
+  expect(stops[1].system.retryAt).toBeGreaterThan(stops[0].system.retryAt);
 });

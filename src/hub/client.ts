@@ -153,7 +153,7 @@ export class HubMemberClient implements HubMemberTransport {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
           if (value.type === "exposure.quota" && !features.has("quota-band-v1")) return Promise.reject(new HubAuthorizationError("unavailable", "incompatible"));
           if ((value.type === "room.answer" || value.type === "agent.state") && (!features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
-          if ((value.type === "room.list" || value.type === "room.post") && (!features.has(HUB_ROOM_POST_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
+          if ((value.type === "room.list" || value.type === "room.post" || value.type === "room.members" || value.type === "people.search" || value.type === "room.post-answer-ack") && (!features.has(HUB_ROOM_POST_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
           return link.send(value);
         },
         exchange: (value, type) => this.exchange(value, type, view) };

@@ -137,16 +137,18 @@ export class HubGroupRooms {
     });
   }
   private stop(db: DB, tx: HubTx, source: PostRow, reason: "all" | "ambiguous" | "depth" | "rate" | "capacity", name = source.author_name, retryAt?: number): void {
-    if (db.prepare("SELECT 1 FROM hub_room_agent_stops WHERE source_id=? AND reason=? AND name=?").get(source.id, reason, name)) return;
+    const sourceAgent = (db.prepare("SELECT exposure_id FROM hub_room_agent_operations WHERE post_id=?").get(source.id) as { exposure_id: string } | undefined)?.exposure_id ?? source.author_id;
+    const coalesce = reason === "rate" ? JSON.stringify(["rate", source.room_id, sourceAgent, Math.ceil(retryAt! / 60_000)]) : JSON.stringify([source.id, reason, name]);
+    if (db.prepare("SELECT 1 FROM hub_room_agent_stops WHERE coalesce_key=?").get(coalesce)) return;
     const text = reason === "all" ? "Agents can't use @All agents. This message was not sent to other agents."
       : reason === "ambiguous" ? `More than one member is named "${name}", so this mention was not delivered.`
       : reason === "depth" ? "Agents have asked each other several times in a row, so this stops here. They can ask each other again after a person writes in the room."
-      : reason === "capacity" ? "The Hub is busy. This mention was not delivered. Try again later."
+      : reason === "capacity" ? "The Hub is busy, so this mention was not delivered."
       : `${name} is posting too often, so this mention was not delivered. It can try again after ${new Date(retryAt!).toISOString()}.`;
     const row = this.insert(db, tx, source.room_id, { kind: "system", id: "agent-mention-stopped", subject: "system", name }, text);
     if (source.sequence !== undefined) { const l = this.automation.lineage(db, source);
       db.prepare("INSERT INTO hub_room_post_lineage VALUES(?,?,?,?,NULL)").run(row.id, l.root_id, l.depth, l.audience_sequence); }
-    db.prepare("INSERT INTO hub_room_agent_stops VALUES(?,?,?,?,?)").run(row.id, source.id, reason, name, retryAt ?? null);
+    db.prepare("INSERT INTO hub_room_agent_stops VALUES(?,?,?,?,?,?)").run(row.id, source.id, reason, name, retryAt ?? null, coalesce);
     this.core.audit(tx, { requestId: source.id, actor: { kind: "person", person: personFromString(source.author_subject) }, action: "room.agent-mention-stopped", result: "completed", roomId: source.room_id, messageId: row.id, contentRef: row.content_ref });
   }
   /** Both answers and proactive posts use this transaction, once, before any external delivery. */
@@ -265,7 +267,7 @@ export class HubGroupRooms {
       const retryAt = this.automation.admit(db, room.id, source.id);
       if (retryAt !== null) {
         const prior = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND author_kind='agent' AND author_id=? AND stage IS NULL ORDER BY sequence DESC LIMIT 1").get(room.id, source.id) as PostRow | undefined;
-        const notice = prior ?? { id: `rate:${source.id}:${room.id}:${retryAt}`, room_id: room.id, author_name: source.display_name, author_subject: source.owner } as PostRow;
+        const notice = prior ?? { id: `rate:${source.id}:${room.id}:${retryAt}`, room_id: room.id, author_id: source.id, author_name: source.display_name, author_subject: source.owner } as PostRow;
         this.stop(db, tx, notice, "rate", source.display_name, retryAt); refusedEffects = notice.id;
         return { ok: false, code: "rate-limited", retryAt };
       }
