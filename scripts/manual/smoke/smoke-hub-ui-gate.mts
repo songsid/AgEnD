@@ -23,6 +23,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { createServer } from "node:https";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { listenLoopback } from "../smoke-fixture/listen-loopback.mts";
 
 const REPO = process.env.REPO ?? process.cwd(), PW = process.env.PW_DIR ?? REPO;
 const GATE = process.env.GATE === "full" ? "full" : "ci";
@@ -88,7 +89,13 @@ const MEASURE = `(() => {
 
 const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
 const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
-const port = Number(process.env.HUB_GATE_PORT ?? 48930), origin = `https://127.0.0.1:${port}`;
+function hubGatePort(): number {
+  const raw = process.env.HUB_GATE_PORT;
+  if (raw === undefined || raw === "") return 0;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`HUB_GATE_PORT must be a TCP port, got ${JSON.stringify(raw)}`);
+  return n;
+}
 const ID1 = "0f1e2d3c-4b5a-4968-8776-655443322110";
 const POLICY = { realm: "corp", generation: "gen-1", revision: 4, state: "enabled", denies: [], groups: [
   { group: { realm: "corp", objectId: ID1 }, dn: "CN=Hub-Owners-With-A-Long-Group-Name,OU=Groups,DC=example,DC=test", allow: ["ask_agents", "publish_agents", "pair_fleet"], maxFleets: 1 }] };
@@ -105,12 +112,16 @@ const welcome = async (ctx: any) => { await ctx.requirePerson();
 const hubSettings = { info: { hubId: "4c3b2a19-0e8f-4d7c-9b6a-5f4e3d2c1b0a", memberSpkiSha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
   issuerKeyId: "ed25519-7Qm2xLk9pV4sT8wR1nB6yH3jF5cD0aZe", version: "2.3.5-alpha.9", coexistence: "same-user-pilot" },
   writer: { prepare: () => { throw new Error("not in the gate"); }, commit: () => { throw new Error("not in the gate"); }, recover() {}, pending: () => false } };
-const rig = await s3bRig({ webOrigin: origin, groupHttp: { control, welcome }, ...(await import(REPO + "/src/hub/settings-api.ts").then(() => ({ hubSettings }), () => ({}))) });
+// Bind first (port 0, or HUB_GATE_PORT). 48930 sat in the Linux ephemeral range, so the
+// settings-ui-gate step's Chrome connections could occupy it as a client port (EADDRINUSE).
+const server = createServer();
 const keys = mkdtempSync(join(OUT, ".keys-")); chmodSync(keys, 0o700);
+const port = await listenLoopback(server, { port: hubGatePort() }), origin = `https://127.0.0.1:${port}`;
 await provisionHubIdentity({ home: keys, memberOrigin: origin });
-const server = createServer({ key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) },
-  (req, res) => { if (!rig.http.handle(req, res)) { res.writeHead(404); res.end(); } });
-await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
+server.setSecureContext({ key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) });
+const rig = await s3bRig({ webOrigin: origin, groupHttp: { control, welcome }, ...(await import(REPO + "/src/hub/settings-api.ts").then(() => ({ hubSettings }), () => ({}))) });
+server.on("request", (req, res) => { if (!rig.http.handle(req, res)) { res.writeHead(404); res.end(); } });
+console.log(`Hub UI gate listener: ${origin}`);
 
 // People and content with long values (rule 7): a long name, a long agent name, a long message.
 const olivia = rig.addPerson("olivia", "Olivia Chen-Montgomery of the Platform Reliability Engineering Group");
