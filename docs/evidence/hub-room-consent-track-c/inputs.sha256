@@ -4,9 +4,9 @@ f1c33a340220e32a418d84231f2c2c743dc40243b25ddb396fe508a5fbe76a95  changes/3095-r
 b2bdade7705753fff2fede34164e56edaafc986343e55971cef4d85c632d33fa  docs/design/hub-room-owner-consent.md
 a5eaea84bd84bdec6e7537d1840a1e4ee93ea8853f6cd32db48ff5e3c4a8a10b  scripts/manual/hub-room-consent/browser.mts
 ea016dd9b0b019f472fd061ccedc7f0a1890f3864de0029189b63125f5ac59cb  scripts/manual/smoke/smoke-hub-shell-gate.mts
-ab54dbd7be035c5a55ae614b26d511fdb796f4e36dbf1bd829460684611a64ba  src/general-knowledge/skills/hub/SKILL.md
+2ad52f1a0276b8220794e4aa1d3ffc4eefaf4276490655d226dc50a28aeadb72  src/general-knowledge/skills/hub/SKILL.md
 26bc9fe524f9e40e405ea6e49d1041255f98d7fd5e9169fe00f1de911956f7b7  src/hub/compose/server.ts
-f69d76f77d2ff7527acf2f2f1b674583fedda7cd3fdc433bb3918e29a5a80e9a  src/hub/http/compose.ts
+30e288be9c13ea3183ab25498379cf9ec8c62d54d87e2ba8476145d87e96d73d  src/hub/http/compose.ts
 5c272a8d47c2a60617e04053c2cc8bd29c359474e7f7107e94a56172ab44ee79  src/hub/http/core.ts
 b2dcb4492f95aab74e812053df44fb3fc0f52d8e2c7f6dc721bc715b33b5a29b  src/hub/http/deps.ts
 7e4cca0dc550537eddab8b0f1d820aad1663a1acc39daa59a81406c6f35364ca  src/hub/http/schema.ts
@@ -23,8 +23,8 @@ ab8162ab1193cfd7ddd0c1e6873e82cb6771f2b8693143e00b3933217dd0e5be  src/ui/hub-inv
 1b7c5257dfc4b8bd9e214b4ac562c7121446925696ac941dcdeb3846be295b9f  src/ui/hub-room-thread.js
 5f134b23c9c0938d999cd82bb4ac06c535a14082f11b198847d77f59a80ebe05  src/ui/hub-room-unread.js
 d7c0cc5473d0170b0852080ea8b4ab7ac8c1ba308bf94b2daf3c82c20cb06eee  src/ui/hub-room-working.js
-a3e27623cfa29374266c249742c7cc3da6d21b959899812823b084ba423a9894  src/ui/panel-hub.js
-1653b8f3db9c76a451762a9b2c486708e820bf0091fb7b30d85d0046d73d1858  src/ui/shared/hub-chat.css
+9f3cc624c2b373e89618f9011f6d5bac8b86fed0d1a0c434760a61db1d181f9a  src/ui/panel-hub.js
+e2e58bb7bdaf6045a7b04a39fb9044fbf00072b83d8d54f80516083d2fd20568  src/ui/shared/hub-chat.css
 33a2fad62e9d7a7c09e0fdc154085bfe4d25b70d09ba273192329bd0922e8505  src/ui/shared/hub-rooms-u2.css
 db4ccc3b2424d487c8c5e94da49fc4dced7fc0c6f6d6f41671bf45e5f1f8d03a  tests/helpers/hub-s3b-rig.ts
 c29584ad814502c1e7302c63988ce501b115bb857fee9b952e64d86bea65c0b6  tests/hub-assistant-admin-ui.test.ts
@@ -42,5 +42,5 @@ fcb6abfaa6e66fed850bb83b9d2313c8f9639bff0b1196d4402c450ea362c907  tests/hub-room
 940da6b44249876a68a046d30203c65c703781735e03ff3e2eb0b29f94dd4654  tests/hub-rooms-client-3092.test.ts
 12fd2cf2dbd0b61cf0e4cf1fe36cab7caa19722427e10fff4115dc407635bb2a  tests/hub-rooms-migration-r1.test.ts
 f35e024fd0d488d88dfb109adc5b8960b915469c952c16edfc5242ba0014974f  tests/hub-rooms-r1.test.ts
-c7a9771b2ae9227ed3cff06a238f0001ffd9f728135ef05c616a03a9c642d4af  tests/hub-shared-modules-a.test.ts
+17caf98b52a165d3424d503b1d3fa3f76cb5c359b0b8a6c21d229b6b6e7e856f  tests/hub-shared-modules-a.test.ts
 ff40dee56b994eb1dedc0fb66124148bcfbfa3b1578d3c956571e6c1dcffd523  tests/hub-skill.test.ts

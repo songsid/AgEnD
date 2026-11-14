@@ -104,6 +104,10 @@
   background: var(--surface); border-radius: var(--r-sm); color: var(--text-3); }
 .hub-side-filter input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); padding: 7px 0; font: inherit; font-size: var(--fs-sm); outline: none; }
 .hub-side-rooms .inst-head > .count { padding: var(--s-3) var(--s-3) var(--s-1); color: var(--text-3); font-size: var(--fs-xs); }
+/* S-145: 「最愛」's head — the Fleet's star before the name (fav-mark: its colour), the Edit chip after the count. */
+.hub-side-rooms .fav-head > .side-label { display: flex; align-items: center; gap: var(--s-1); }
+.hub-side-rooms .fav-head > .count { padding-right: var(--s-1); }
+.hub-side-rooms .fav-head > .fav-edit { margin-top: var(--s-2); }   /* on the label's line (side-label is padded above) */
 .side-foot > .hub-prefs { flex: 1; min-width: 0; }
 .side-foot > .hub-session-row, .hub-session-row > .menu, .hub-session-row > .menu > .side-row { width: 100%; min-width: 0; }
 /* The foot is the sidebar's bottom: its session menu opens upward (as the dashboard's), never below the screen. */
