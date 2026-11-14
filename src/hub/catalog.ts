@@ -73,6 +73,7 @@ export function grantOf(row: GrantRow): HubGrant {
   const subject: HubGrant["subject"] = row.subject_kind === "team" ? { kind: "team", teamId: validated(uuid, row.subject) }
     : row.subject_kind === "group" ? { kind: "group", group: validated(personSchema, personFromString(row.subject)) }
     : { kind: "person", person: validated(personSchema, personFromString(row.subject)) };
+  if (subject.kind === "group") validated(uuid, subject.group.objectId);
   return { id: row.id, revision: row.revision, owner: personFromString(row.owner), exposureId: row.exposure_id, exposureRevision: row.exposure_revision,
     approvedBy: personFromString(row.approved_by), approvedAt: row.approved_at,
     subject, ...((row.subject_kind === "group" || row.subject_kind === "team") && row.subject_label ? { subjectLabel: row.subject_label } : {}),
