@@ -14,6 +14,7 @@ import { firstCharacter, MAX_FAVORITES } from "/assets/instance-nav.js";
 import { Menu } from "/assets/ui-menu.js";
 import { Icon } from "/assets/ui-icons.js";
 import "./hub-room-strings.js";
+import { presenceDot as sharedPresenceDot } from "./hub-room-presence.js";
 
 const tr = (key, ...a) => t(`hubRoom.${key}`, ...a);
 /** The Fleet sidebar's own words for favourites (view.*, with named values; agentRow.*): no Hub copy of them. */
@@ -36,10 +37,14 @@ export function readRoomList(client) {
   return client.rooms().then((r) => (r && r.ok ? { ...r, rooms: (Array.isArray(r.rooms) ? r.rooms : []).map(listRoomOf).filter(Boolean) } : r));
 }
 
-/** A member's presence as the Fleet sidebar's dot classes (spec §5's colours): null for none. */
-export function presenceDot(presence) {
-  return presence === "online" || presence === "idle" ? "ok" : presence === "working" ? "busy" : presence === "paused" ? "warn"
-    : presence === "offline" || presence === "later" ? "off" : null;
+/**
+ * The shared presence dot (spec §5's colours): hub-room-presence.js owns the
+ * mapping, including the stopped reason's grey. Null/undefined presence means
+ * no dot on list rows.
+ */
+export function presenceDot(presence, reason) {
+  if (presence == null) return null;
+  return sharedPresenceDot(presence, reason);
 }
 
 /** A room's counts, "3 人 · 12 個 Agent" / "1 person · 2 agents" — singular when one. */
