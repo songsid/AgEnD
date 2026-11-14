@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-team-grants-track-c.test.ts (9 tests | 1 failed | 8 skipped) 107ms
+   × policy impact observes live Team grants for known Hub people only and invalidates a preview on roster change 105ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > policy impact observes live Team grants for known Hub people only and invalidates a preview on roster change
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-team-grants-track-c.test.ts:144:105
+    142|     current: () => true, now: w.now });
+    143|   const before = impact.snapshot();
+    144|   expect(before.people.find(p => personKeyString(p.key) === personKeyS…
+       |                                                                                                         ^
+    145|   expect(before.people.some(p => personKeyString(p.key) === personKeyS…
+    146|   expect(w.r.db.prepare("SELECT 1 FROM hub_people WHERE person=?").get…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  08:00:52
+   Duration  3.87s (transform 2.76s, setup 86ms, import 3.54s, tests 107ms, environment 0ms)
+

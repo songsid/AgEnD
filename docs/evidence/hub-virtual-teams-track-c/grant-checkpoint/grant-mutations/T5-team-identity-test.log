@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-team-grants-track-c.test.ts (9 tests | 1 failed | 8 skipped) 98ms
+   × creates one immutable Team subject, caps new expiry at90d, and keeps the stored grant across Team rename 96ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > creates one immutable Team subject, caps new expiry at90d, and keeps the stored grant across Team rename
+AssertionError: expected 404 to be 400 // Object.is equality
+
+- Expected
++ Received
+
+- 400
++ 404
+
+ ❯ tests/hub-team-grants-track-c.test.ts:44:84
+     42|   const w = await world();
+     43|   expect((await w.grant({ days: 91 })).status).toBe(400);
+     44|   expect((await w.grant({ subject: { kind: "team", teamId: "Project" }…
+       |                                                                                    ^
+     45|   expect((await w.grant({}, w.other)).status).toBe(404);
+     46|   const out = await w.grant(); expect(out.status).toBe(200);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  08:00:35
+   Duration  4.45s (transform 3.07s, setup 170ms, import 3.93s, tests 98ms, environment 0ms)
+

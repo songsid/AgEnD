@@ -1,0 +1,60 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-team-grants-track-c.test.ts (9 tests | 1 failed | 8 skipped) 139ms
+   × refuses a Team grant if its selected roster changes while the owner reauthentication is held 136ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > refuses a Team grant if its selected roster changes while the owner reauthentication is held
+AssertionError: promise resolved "{ …(13) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "approvedAt": 1794614594309,
++   "approvedBy": {
++     "objectId": "519709c5-2395-4c32-a5e5-2f44ba3bfd16",
++     "realm": "corp",
++   },
++   "expiresAt": 1795219394309,
++   "exposureId": "40a4cc36-4bae-4ff2-9ea1-9fdb4a2f2fa2",
++   "exposureRevision": 1,
++   "id": "8db98483-566d-4c62-9437-93116ded1ebb",
++   "owner": {
++     "objectId": "519709c5-2395-4c32-a5e5-2f44ba3bfd16",
++     "realm": "corp",
++   },
++   "permissions": [
++     "ask",
++     "read-own-room",
++   ],
++   "revision": 1,
++   "startsAt": 1794614594309,
++   "state": "active",
++   "subject": {
++     "kind": "team",
++     "teamId": "45b1b868-912b-4efb-915c-b69ac45aba70",
++   },
++   "subjectLabel": "Project",
+  }
+
+ ❯ tests/hub-team-grants-track-c.test.ts:113:25
+    111|   await started;
+    112|   await w.teams.update(w.ctx, w.team.id, { members: [personKeyString(w…
+    113|   await expect(changing).rejects.toMatchObject({ code: "conflict" });
+       |                         ^
+    114|   expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get()).to…
+    115| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  08:03:07
+   Duration  7.28s (transform 5.53s, setup 151ms, import 6.78s, tests 139ms, environment 0ms)
+
