@@ -1,6 +1,6 @@
 # Hub ↔ Fleet versions — M-3130
 
-Status: spec for review. Source read: `release/2.3.5-alpha` (survey of 2026-11-15). Pilot rule: features and UX first;
+Status: accepted by the leader on 2026-11-15, V1–V5 as recommended. Source read: `release/2.3.5-alpha` (survey of 2026-11-15). Pilot rule: features and UX first;
 no separate security review. What each step costs is stated in section 7 so it can be picked up before launch.
 
 ## 0. The problem and the three steps
@@ -348,9 +348,9 @@ After the room features. Owners are suggestions from who holds the code today.
 - 3f (skill + docs), then one rehearsal: a service-managed Fleet updated from the Hub, one forced failure that rolls
   back, one busy Fleet that expires.
 
-Open points for the leader, with my recommendation:
+Decided (leader, 2026-11-15), as recommended:
 
-| # | Question | Recommendation |
+| # | Question | Decision |
 |---|---|---|
 | V1 | Default recommendation | None until the administrator saves the card; then "Same as this Hub". |
 | V2 | Chat reminder cadence | Once, then every 7 days while behind. |
