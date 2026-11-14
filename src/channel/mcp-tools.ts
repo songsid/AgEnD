@@ -57,6 +57,14 @@ type ToolDef = {
  * terse and guarantee every tool has both a description and a schema.
  */
 const DEFS: Array<[string, ZodType, string]> = [
+  ["hub_room_list", schemas.HubRoomListArgs,
+    "List the Hub rooms this agent belongs to (IDs and names only, no history). Available only while connected to a compatible Hub."],
+  ["hub_room_post", schemas.HubRoomPostArgs,
+    "Post as this agent in one of its Hub rooms. Use hub_room_list for eligible IDs/names. An uncertain outcome may already be committed: do not resend as a fresh call. Hub mention/depth/rate rules apply."],
+  ["hub_room_members", schemas.HubRoomMembersArgs,
+    "List current people, agents and presence in one of this agent's rooms, without message history. Use returned names and IDs for mentions."],
+  ["hub_people_search", schemas.HubPeopleSearchArgs,
+    "Search people by name through the invoking agent owner's existing Hub person picker. Bounded and rate-limited; names and sign-in names only, no broader directory fields."],
   ["reply", schemas.ReplyArgs,
     "Reply on the channel. Routing is handled automatically — do not pass chat_id or thread_id. Add `buttons` to offer choices people can click."],
   ["react", schemas.ReactArgs,

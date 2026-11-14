@@ -1,0 +1,48 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-post-m3118
+
+ ❯ tests/hub-room-post-receipt.test.ts (3 tests | 2 failed) 26ms
+   × requires an accessible delivered receipt with an owned positive proof and original bytes 18ms
+   × rechecks current admin and web authority without accepting peer or guest authority 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-post-receipt.test.ts > requires an accessible delivered receipt with an owned positive proof and original bytes
+AssertionError: expected undefined to be true // Object.is equality
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-post-receipt.test.ts:29:78
+     27|   const h=fixture();expect(verifyRoomReceipt(h.options,"agent-A",h.row…
+     28|   expect(h.settle()).toBe(true);
+     29|   expect(verifyRoomReceipt(h.options,"agent-A",h.row.message_id)?.curr…
+       |                                                                              ^
+     30|   expect(verifyRoomReceipt(h.options,"agent-A",h.row.message_id.slice(…
+     31|   expect(verifyRoomReceipt(h.options,"agent-B",h.row.message_id)).toBe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-post-receipt.test.ts > rechecks current admin and web authority without accepting peer or guest authority
+Error: Human verification evidence is unavailable
+ ❯ createHumanReceipt src/human-delivery-receipts.ts:141:62
+    139|     // #1939: only web admission writes authority, and only the shape …
+    140|     || (input.origin.authority !== undefined && (input.origin.platform…
+    141|       || input.origin.authority.kind === "platform"))) throw new Error…
+       |                                                              ^
+    142|   const { authority: webAuthority, ...stored } = input.origin;
+    143|   const authority = JSON.stringify(stored.platform === "web" ? webAuth…
+ ❯ fixture tests/hub-room-post-receipt.test.ts:14:13
+ ❯ tests/hub-room-post-receipt.test.ts:38:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)
+   Start at  00:24:27
+   Duration  473ms (transform 197ms, setup 101ms, import 174ms, tests 26ms, environment 0ms)
+
