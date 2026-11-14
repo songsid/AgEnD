@@ -1,6 +1,6 @@
 {
-  "sourceHead": "a46e6b4a9fbe76545f39cccee717e98513bbced7",
-  "baseRef": "35478214d4a3876ffcf2154120b148676648e06d",
+  "sourceHead": "863679e9b0ab720fc838696b8a5359a194f01f80",
+  "baseRef": "49aa5d15cc196154c73da074959c49bfe7027ee3",
   "dirty": [],
   "inputs": [
     {
@@ -21,7 +21,7 @@
     },
     {
       "path": "src/ui/chat-msg-actions.js",
-      "sha256": "1ee5a6bf123324062ff20643ff6cbc07d00a5ea0b68170a8be3fd232cca5d6e3"
+      "sha256": "17f732e58ad2da84afa5594eba0b701b1a1e001dcef909c3abccb858b6462091"
     },
     {
       "path": "src/ui/hub-room-strings.js",
@@ -133,15 +133,15 @@
     },
     {
       "path": "reactions-skew.desktop-en-light.png",
-      "sha256": "4e43732e3fceb959303a13b067c28a267b210ec77221a8287b85e529360e2105"
+      "sha256": "669abe4ad983b14b57a6c76448c57f80be711b40bce1045c5a2d9df44a2c1578"
     },
     {
       "path": "reactions-picker.desktop-zh-TW-dark.png",
-      "sha256": "88db94d43d9a4db336de3809582bf7ec946e108433ead784e0ee4f4a9351c665"
+      "sha256": "8f45b5a4c8dee4a4ab6915b27eb32032ddb7c3e953af366ab0a70f4992134f5d"
     },
     {
       "path": "reactions-after.desktop-zh-TW-dark.png",
-      "sha256": "c85a791fc4436fb7316ec49eae63d4bce82f15ab88055080433b79de1abab395"
+      "sha256": "bd6445703cc416bc3c0308dcd3246f7bc595c39c71e4900e5d88c94cb58d27ed"
     },
     {
       "path": "reactions-skew.desktop-zh-TW-dark.png",
