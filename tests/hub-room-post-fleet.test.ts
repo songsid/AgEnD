@@ -104,6 +104,27 @@ it("does not replay a prepared operation after the local consent changed", async
   await h.adapter.post(h.caller, { room: h.roomId, text: "Frozen", operationId }); h.replace();
   expect(await h.adapter.post(h.caller, { room: h.roomId, text: "Frozen", operationId })).toMatchObject({ ok: false, code: "stale" });
 });
+it("recovers a permanently lost post result only from the exact retained operation in a Hub reply",async()=>{
+  const h=fixture(),operationId=randomUUID(),inputs:unknown[]=[];
+  Object.assign(h.options,{notify:async(input:any)=>{if(!await input.beforeInput())return false;inputs.push(input);return true;}});
+  h.link.ack=vi.fn();h.adapter.connected(h.link);h.link.post=async()=>{throw Error("post result permanently lost");};
+  expect(await h.adapter.post(h.caller,{room:h.roomId,text:"Frozen",operationId})).toMatchObject({ok:false,code:"uncertain"});
+  const reply={id:randomUUID(),idempotencyKey:operationId,postId:h.messageId,roomId:h.roomId,exposureId:h.options.local("agent-A")!.exposureId,
+    message:{id:randomUUID(),author:{name:"Alex"},text:"Reply",at:1000}};
+  expect(h.adapter.receiveAnswer(reply,h.link)).toBe(true);await h.adapter.answersSettled();expect(inputs).toHaveLength(1);
+  expect(h.link.ack).toHaveBeenCalledWith(reply.id);h.adapter.close();
+  const restored=h.make();restored.connected(h.link);expect(restored.receiveAnswer(reply,h.link)).toBe(true);await restored.answersSettled();expect(inputs).toHaveLength(1);
+});
+it("refuses reply recovery for an unknown operation, foreign body binding, retired consent or changed canonical post",async()=>{
+  const h=fixture(),operationId=randomUUID();h.link.ack=vi.fn();h.adapter.connected(h.link);h.link.post=async()=>{throw Error("lost");};
+  await h.adapter.post(h.caller,{room:h.roomId,text:"Frozen",operationId});
+  const reply={id:randomUUID(),idempotencyKey:operationId,postId:h.messageId,roomId:h.roomId,exposureId:h.options.local("agent-A")!.exposureId,
+    message:{id:randomUUID(),author:{name:"Alex"},text:"Reply",at:1000}};
+  for(const change of [{idempotencyKey:randomUUID()},{roomId:randomUUID()},{exposureId:randomUUID()},{receiptId:`hmsg-${randomUUID()}`}])expect(h.adapter.receiveAnswer({...reply,...change},h.link)).toBe(false);
+  expect(h.adapter.receiveAnswer(reply,h.link)).toBe(true);
+  expect(h.adapter.receiveAnswer({...reply,id:randomUUID(),postId:randomUUID()},h.link)).toBe(false);
+  h.replace();expect(h.adapter.receiveAnswer({...reply,id:randomUUID()},h.link)).toBe(false);
+});
 it("holds concurrent calls to the same durable identity and refuses a changed body", async () => {
   const h=fixture(),operationId=randomUUID(); h.adapter.connected(h.link);
   let release!:()=>void; const wait=new Promise<void>(r=>{release=r;});

@@ -89,8 +89,8 @@ it("offers room-post only with the composed port and uses the exact current cons
 });
 it("routes a reply by the saved post, durably inputs once and ACKs it without affecting room asks",async()=>{
   const h=await harness(true,true);await h.start();const exposure=h.publish(),caller={agent:"general",current:()=>true};
-  await h.rooms()!.post(caller,{room:"Weekly",text:"Update",operationId:randomUUID()});
-  const frame={id:randomUUID(),postId:h.postMessage,roomId:h.postRoom,exposureId:exposure.exposureId!,message:{id:randomUUID(),author:{name:"Alex"},text:"Reply",at:Date.now()}};
+  const operationId=randomUUID();await h.rooms()!.post(caller,{room:"Weekly",text:"Update",operationId});
+  const frame={id:randomUUID(),idempotencyKey:operationId,postId:h.postMessage,roomId:h.postRoom,exposureId:exposure.exposureId!,message:{id:randomUUID(),author:{name:"Alex"},text:"Reply",at:Date.now()}};
   await h.send("room.post-answer",{...frame,postId:randomUUID()});
   expect(h.notifications).toHaveLength(0);
   await h.send("room.post-answer",frame);await vi.waitFor(()=>expect(h.notifications).toHaveLength(1));

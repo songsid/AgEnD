@@ -34,7 +34,8 @@ export interface RoomPostOptions {
 }
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-interface Saved { agent: string; local: RoomIdentity; room: string; text: string; receiptId?: string; result?: RoomPostResult }
+interface Saved { agent: string; local: RoomIdentity; room: string; text: string; receiptId?: string;
+  accepted?: {postId:string;roomId:string}; result?: RoomPostResult }
 const aad = (binding: string, id: string) => Buffer.from(JSON.stringify(["agend-room-post-v1", binding, id]));
 type JournalOptions = Pick<RoomPostOptions, "db" | "binding" | "encryptionKey">;
 function read(options: JournalOptions, id: string, value: string): Saved {
@@ -47,6 +48,8 @@ function read(options: JournalOptions, id: string, value: string): Saved {
     || !Number.isSafeInteger(saved.local.revision) || typeof saved.room !== "string" || typeof saved.text !== "string"
     || saved.receiptId !== undefined && !ROOM_HUMAN_RECEIPT.test(saved.receiptId)) throw Error("Invalid room post journal");
   if (saved.result && (!saved.result.ok || !roomPostResultSchema.safeParse(saved.result).success)) throw Error("Invalid saved post result");
+  if (saved.accepted && (!UUID.test(saved.accepted.postId) || !UUID.test(saved.accepted.roomId)
+    || saved.result?.ok && (saved.result.messageId !== saved.accepted.postId || saved.result.roomId !== saved.accepted.roomId))) throw Error("Conflicting saved post acceptance");
   return saved;
 }
 /** Authenticate retained posts before any recovery/adoption; never fall back to an empty journal. */
@@ -63,24 +66,26 @@ export class HubRoomPostAdapter implements AgentRoomPort {
   private link: RoomPostLink | null = null;
   private closed = false;
   private pending = new Map<string, Promise<RoomPostResult>>();
-  private byPost = new Map<string,string>();
   private answers: HubRoomPostAnswers;
   private answerLink: RoomPostAnswerLink | null = null;
   constructor(private options: RoomPostOptions) {
     verifyRoomPostJournal(options);
-    for (const row of options.db.prepare("SELECT operation_id,value FROM hub_room_posts").all() as {operation_id:string;value:string}[]) {
-      const saved=read(options,row.operation_id,row.value);
-      if(saved.result?.ok){if(this.byPost.has(saved.result.messageId))throw Error("Conflicting retained room post");this.byPost.set(saved.result.messageId,row.operation_id);}
-    }
-    this.answers=new HubRoomPostAnswers({...options,source:id=>this.source(id),
+    this.answers=new HubRoomPostAnswers({...options,source:answer=>this.source(answer),
       current:source=>same(this.local(source.agent),source.local)&&this.available(),deliver:input=>options.notify?.(input)??Promise.resolve(false)});
   }
-  private source(postId: string): RoomPostSource | null {
-    const id=this.byPost.get(postId);if(!id)return null;
-    const row=this.options.db.prepare("SELECT value FROM hub_room_posts WHERE operation_id=?").get(id) as {value:string}|undefined;
-    if(!row)return null;const saved=read(this.options,id,row.value);
-    return saved.result?.ok&&saved.result.messageId===postId?{agent:saved.agent,local:saved.local,roomId:saved.result.roomId,
-      ...(saved.receiptId?{receiptId:saved.receiptId}:{})}:null;
+  private source(answer: HubRoomPostAnswer): RoomPostSource | null {
+    const id=answer.idempotencyKey;
+    const row=this.options.db.prepare("SELECT binding,value FROM hub_room_posts WHERE operation_id=?").get(id) as {binding:string;value:string}|undefined;
+    if(!row || row.binding!==this.options.binding)return null;
+    const saved=read(this.options,id,row.value), accepted=saved.result?.ok?{postId:saved.result.messageId,roomId:saved.result.roomId}:saved.accepted;
+    if(saved.local.exposureId!==answer.exposureId || saved.receiptId!==answer.receiptId
+      || !same(this.local(saved.agent),saved.local) || !this.available()
+      || UUID.test(saved.room) && saved.room.toLowerCase()!==answer.roomId.toLowerCase()
+      || accepted && (accepted.postId!==answer.postId || accepted.roomId!==answer.roomId))return null;
+    // The authenticated Hub identifies its accepted operation, never a guessed latest ask or exposure-only match.
+    // Retain only the canonical mapping: the original post timestamp is unknown until its real result arrives.
+    if(!accepted)this.write(id,{...saved,accepted:{postId:answer.postId,roomId:answer.roomId}});
+    return {agent:saved.agent,local:saved.local,roomId:answer.roomId,...(saved.receiptId?{receiptId:saved.receiptId}:{})};
   }
   connected(link: RoomPostLink | null): void {
     this.link = link;
@@ -133,7 +138,6 @@ export class HubRoomPostAdapter implements AgentRoomPort {
     const content = Buffer.concat([cipher.update(JSON.stringify(saved)), cipher.final()]);
     const value = Buffer.concat([iv, cipher.getAuthTag(), content]).toString("base64");
     this.options.db.prepare("INSERT INTO hub_room_posts VALUES(?,?,?) ON CONFLICT(operation_id) DO UPDATE SET value=excluded.value").run(id, this.options.binding, value);
-    if(saved.result?.ok)this.byPost.set(saved.result.messageId,id);
   }
   async post(caller: RoomCaller, input: { room: string; text: string; operationId: string; receiptId?: string }): Promise<RoomPostResult> {
     const link = this.link, local = this.local(caller.agent), id = input.operationId;
@@ -160,7 +164,12 @@ export class HubRoomPostAdapter implements AgentRoomPort {
               ...(saved.receiptId ? {onBehalfOf:{receiptId:saved.receiptId}} : {}) }));
             // A lost owner/link can hide a committed result; never claim that the post failed or retry with a new key.
             if (!authorized()) return { ok: false, code: "uncertain" };
-            if (result.ok) this.write(id, { ...saved, result });
+            if (result.ok) {
+              const latest=this.options.db.prepare("SELECT value FROM hub_room_posts WHERE operation_id=?").get(id) as {value:string};
+              const frozen=read(this.options,id,latest.value);
+              if(frozen.accepted && (frozen.accepted.postId!==result.messageId || frozen.accepted.roomId!==result.roomId))return {ok:false,code:"uncertain"};
+              this.write(id, { ...frozen, result });
+            }
             return result;
           } catch { return { ok: false, code: "uncertain" }; }
         })();

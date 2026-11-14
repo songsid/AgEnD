@@ -43,8 +43,10 @@ reuse does not repeatedly reset depth. `@all` still requires the room's allMenti
 right. Five actions per source agent/minute and 30 per room/minute remain in force; the post and each routed mention count. Receipt identity is frozen with the post.
 
 An accepted original post ID maps back to the exact saved invoking agent/exposure/consent/lifecycle. A `room.post-answer`
-notification must match that post, room, exposure and optional receipt. Unknown post results are not guessed: the Hub keeps
-the notification queued for retry. Each exact notification is encrypted before delivery and records input intent immediately
+notification carries the Hub's retained original idempotency key and must match that frozen intent, room, exposure and
+optional receipt. If the result was lost, this authenticated frame establishes only the canonical post/room mapping; it
+does not manufacture an original post timestamp or a successful RPC result. Unknown operations, changed canonical mappings
+and old consent are refused. Each exact notification is encrypted before delivery and records input intent immediately
 before the normal Fleet handoff. Successful delivery persists before its exact ACK; a lost ACK retries without another
 input. Interrupted or uncertain input is held, never replayed. Reconnect alone does not execute queued local history.
 The message includes original post/receipt IDs so the invoking agent can relay the answer to the person. It is a notification,

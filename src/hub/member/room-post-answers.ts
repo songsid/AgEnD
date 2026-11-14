@@ -13,7 +13,7 @@ export interface RoomPostNotification {
 }
 interface Options {
   db: Database.Database; binding: string; encryptionKey: Buffer;
-  source(postId: string): RoomPostSource | null;
+  source(answer: RoomPostAnswer): RoomPostSource | null;
   current(source: RoomPostSource): boolean;
   deliver(input: RoomPostNotification): Promise<boolean>;
   held?(id: string): void;
@@ -60,11 +60,11 @@ export class HubRoomPostAnswers {
   }
   private current(saved: Saved, link: RoomPostAnswerLink): boolean {
     try { return !this.closed && this.link === link && link.current() && this.options.current(saved.source)
-      && same(this.options.source(saved.answer.postId),saved.source); } catch { return false; }
+      && same(this.options.source(saved.answer),saved.source); } catch { return false; }
   }
   receive(answer: RoomPostAnswer, link: RoomPostAnswerLink): boolean {
     if (this.closed || this.link !== link || !link.current() || !roomPostAnswerSchema.safeParse(answer).success) return false;
-    const source = this.options.source(answer.postId);
+    const source = this.options.source(answer);
     if (!source || source.local.exposureId !== answer.exposureId || source.roomId !== answer.roomId || source.receiptId !== answer.receiptId) return false;
     const saved: Saved = {answer:structuredClone(answer),source:structuredClone(source)};
     if (!this.current(saved,link)) return false;

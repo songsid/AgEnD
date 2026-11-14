@@ -8,11 +8,11 @@ afterEach(()=>{for(const db of dbs.splice(0))db.close();});
 function fixture() {
   const db=new Database(":memory:");dbs.push(db);let active=true;
   const source:RoomPostSource={agent:"agent-A",local:{exposureId:randomUUID(),revision:1,consentId:randomUUID(),token:"owned-token"},roomId:randomUUID()};
-  const frame:RoomPostAnswer={id:randomUUID(),postId:randomUUID(),roomId:source.roomId,exposureId:source.local.exposureId,
+  const frame:RoomPostAnswer={id:randomUUID(),idempotencyKey:randomUUID(),postId:randomUUID(),roomId:source.roomId,exposureId:source.local.exposureId,
     message:{id:randomUUID(),author:{name:"Alex"},text:"Room reply",at:1000}};
   let known=true;const inputs:RoomPostNotification[]=[];
   const options={db,binding:"binding-A",encryptionKey:Buffer.alloc(32,23),
-    source:(id:string)=>known&&id===frame.postId?structuredClone(source):null,current:()=>active,
+    source:(answer:RoomPostAnswer)=>known&&answer.postId===frame.postId&&answer.idempotencyKey===frame.idempotencyKey?structuredClone(source):null,current:()=>active,
     deliver:vi.fn(async(input:RoomPostNotification)=>{inputs.push(input);return await input.beforeInput();}),held:vi.fn()};
   const make=()=>new HubRoomPostAnswers(options),adapter=make();
   const link={current:()=>active,ack:vi.fn(async(_id:string)=>{})};adapter.connected(link);
