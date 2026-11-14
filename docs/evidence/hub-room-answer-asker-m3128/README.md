@@ -15,3 +15,5 @@ Validation:
 Commands: GOMAXPROCS=2 nice -n10 node_modules/.bin/vitest run tests/hub-room-agents-r2.test.ts tests/hub-room-assistant-r3.test.ts tests/hub-room-agent-mentions-3118.test.ts --maxWorkers=1; node_modules/.bin/tsc --noEmit; node_modules/.bin/tsc --noEmit -p tsconfig.test.json.
 
 This additive field is ignored by older clients. A notifier should fail closed when askedBy is absent. Rollback is the code change only; no retained schema or authority changes.
+
+Alpha sync: 996da3b42977e14b6fe6b3a7392c53c4cea27538 merges reviewed f178f33d with alpha1583d616 (#3927). The sole conflict keeps the incoming progress sums and the original askedBy query/return. An isolated-index application of the exact reviewed patch onto alpha reproduces the entire resolved tree; all own added/removed lines match. See alpha-sync.json. Source and tests are unchanged, so no local re-verification was run; fresh exact-head CI and formal re-approval apply.
