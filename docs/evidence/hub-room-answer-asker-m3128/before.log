@@ -1,0 +1,155 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-room-answer-asker-m3128
+
+ ❯ tests/hub-room-agents-r2.test.ts (20 tests | 2 failed | 18 skipped) 229ms
+   × persists one exact answer and ACKs retries without duplicate room posts 126ms
+   × attributes answers to their recorded owner in history and live events after an exposure changes owner 99ms
+ ❯ tests/hub-room-agent-mentions-3118.test.ts (18 tests | 1 failed | 16 skipped) 348ms
+   × turns an agent answer's @person into a real mention and @agent into an attributed ask 190ms
+ ❯ tests/hub-room-assistant-r3.test.ts (5 tests | 1 failed | 4 skipped) 1152ms
+   × gives each person one private Hub-assistant row and answers a plain direct message 1149ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-agent-mentions-3118.test.ts > turns an agent answer's @person into a real mention and @agent into an attributed ask
+AssertionError: expected undefined to be '5a6b6da8-c460-42ce-a813-10849a578638' // Object.is equality
+
+- Expected:
+"5a6b6da8-c460-42ce-a813-10849a578638"
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-agent-mentions-3118.test.ts:45:26
+     43|   expect(w.asks()[1]!.asker.name).toContain("Notes");
+     44|   const child = (await w.page()).find(m => m.answerTo === answer.id);
+     45|   expect(answer.askedBy).toBe(detail.me.id); expect(child.askedBy).toB…
+       |                          ^
+     46|   await w.answer(w.asks()[1]!, "Checked by Planner");
+     47|   expect((await w.page()).find(m => m.text === "Checked by Planner").a…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > persists one exact answer and ACKs retries without duplicate room posts
+AssertionError: expected undefined to be 'd873d279-37ab-408f-9f16-f029a63b75ab' // Object.is equality
+
+- Expected:
+"d873d279-37ab-408f-9f16-f029a63b75ab"
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-agents-r2.test.ts:55:26
+     53|   const w = await world(), parent = await send(w); await vi.waitFor(()…
+     54|   const queued = (await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}…
+     55|   expect(queued.askedBy).toBe(parent.author.id);
+       |                          ^
+     56|   expect(parent.askedBy).toBeUndefined();
+     57|   const input = lastAsk(), answer = { messageId: input.messageId, room…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > attributes answers to their recorded owner in history and live events after an exposure changes owner
+AssertionError: expected { …(9) } to match object { …(3) }
+(7 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -1,8 +1,7 @@
+  {
+    "answerTo": "ba746eb7-4594-48ae-a513-5e29a07d9cef",
+-   "askedBy": "577b6f8c-7d7f-4230-9525-c4f1368c24ac",
+    "author": {
+      "kind": "agent",
+      "name": "Notes",
+      "owner": {
+        "name": "Hub Admin",
+
+ ❯ tests/hub-room-agents-r2.test.ts:108:23
+    106|       .find(event => event.message?.text === text).message;
+    107|     const expected = { answerTo: parent.id, askedBy: parent.author.id,…
+    108|     expect.soft(live).toMatchObject(expected);
+       |                       ^
+    109|     const history = () => r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/m…
+    110|     expect.soft((await history()).json.messages.find((m: any) => m.tex…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > attributes answers to their recorded owner in history and live events after an exposure changes owner
+AssertionError: expected { …(9) } to match object { …(3) }
+(7 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -1,8 +1,7 @@
+  {
+    "answerTo": "ba746eb7-4594-48ae-a513-5e29a07d9cef",
+-   "askedBy": "577b6f8c-7d7f-4230-9525-c4f1368c24ac",
+    "author": {
+      "kind": "agent",
+      "name": "Notes",
+      "owner": {
+        "name": "Hub Admin",
+
+ ❯ tests/hub-room-agents-r2.test.ts:110:84
+    108|     expect.soft(live).toMatchObject(expected);
+    109|     const history = () => r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/m…
+    110|     expect.soft((await history()).json.messages.find((m: any) => m.tex…
+       |                                                                                    ^
+    111|     r!.db.prepare("UPDATE hub_exposures SET owner=? WHERE id=?").run(p…
+    112|     await r!.restartHttp();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > attributes answers to their recorded owner in history and live events after an exposure changes owner
+AssertionError: expected { …(9) } to match object { …(3) }
+(7 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -1,8 +1,7 @@
+  {
+    "answerTo": "ba746eb7-4594-48ae-a513-5e29a07d9cef",
+-   "askedBy": "577b6f8c-7d7f-4230-9525-c4f1368c24ac",
+    "author": {
+      "kind": "agent",
+      "name": "Notes",
+      "owner": {
+        "name": "Hub Admin",
+
+ ❯ tests/hub-room-agents-r2.test.ts:113:79
+    111|     r!.db.prepare("UPDATE hub_exposures SET owner=? WHERE id=?").run(p…
+    112|     await r!.restartHttp();
+    113|     expect((await history()).json.messages.find((m: any) => m.text ===…
+       |                                                                               ^
+    114|   } finally { clearTimeout(deadline); stop.abort(); }
+    115| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  tests/hub-room-assistant-r3.test.ts > gives each person one private Hub-assistant row and answers a plain direct message
+AssertionError: expected { …(9) } to match object { …(2) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "answerTo": "929b9d1a-e92b-485b-84fa-afe1f22e1b41",
+-   "askedBy": "6958aefc-ccec-4403-85ee-06209b1d632d",
+  }
+
+ ❯ tests/hub-room-assistant-r3.test.ts:23:165
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  4 failed | 1 passed | 38 skipped (43)
+   Start at  02:27:12
+   Duration  8.18s (transform 3.33s, setup 182ms, import 5.84s, tests 1.73s, environment 0ms)
+
