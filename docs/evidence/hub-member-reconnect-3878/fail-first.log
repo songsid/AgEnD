@@ -1,0 +1,22 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-reconnect-3878
+
+ ❯ tests/hub-representative.test.ts (30 tests | 1 failed | 29 skipped) 53ms
+     × #3878: adopts a legacy queued representative question and completes it once after the link returns 49ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-representative.test.ts > Hub representative adapter (#3145) > #3878: adopts a legacy queued representative question and completes it once after the link returns
+Error: Hub protocol: uncertain
+ ❯ HubMemberJournal.bindPairing src/hub/member-journal.ts:98:167
+
+ ❯ tests/hub-representative.test.ts:133:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 29 skipped (30)
+   Start at  07:42:50
+   Duration  679ms (transform 317ms, setup 99ms, import 371ms, tests 53ms, environment 0ms)
+
