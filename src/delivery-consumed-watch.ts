@@ -65,6 +65,8 @@ export interface ConsumedWatchTarget {
   consumed(via: ConsumedVia, evidence: string): void;
   /** #3030: the leading marker to look for; default the delivery's own `[agend-delivery-id:<deliveryId>]`. */
   marker?: string;
+  /** #3898: with `marker`, the exact text pasted: also proves a message the CLI merged into one entry with others. */
+  wire?: string;
   /**
    * #3030: how long (ms, monotonic) the CLI has been idle without a break, or null while it is busy or unknown. With
    * `notTaken`, an idle stretch of CONSUMED_WATCH.notTakenIdleMs after the transcript was read to its end, and no
@@ -215,7 +217,7 @@ export class ConsumedWatch {
         const kind = this.target.backend === "grok"
           ? grokConsumedMarker(text, this.target.grokSessionId ?? "", this.target.marker ?? `[agend-delivery-id:${this.target.deliveryId}]`)
           : this.target.marker
-          ? transcriptDeltaMarkerKind(text, this.target.backend, this.target.marker)
+          ? transcriptDeltaMarkerKind(text, this.target.backend, this.target.marker, this.target.wire)
           : transcriptDeltaDeliveryMarker(text, this.target.backend, this.target.deliveryId);
         if (kind === "user") found = { via: "turn", evidence: "transcript-consumed:user-entry" };
         else if (kind === "absorbed") found = { via: "mid_turn", evidence: "transcript-consumed:absorbed-mid-turn" };
