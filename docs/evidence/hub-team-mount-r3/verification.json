@@ -1,0 +1,23 @@
+{
+  "parentPr": 3886,
+  "parent": "464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a",
+  "sourceCommit": "c2ee6932d2b350e1e7e98fb0ed04404a84d7303e",
+  "originalTestedCommit": "6bdff6d9b5f969581bbd464a98a6715213109a77",
+  "stablePatchId": "7fc96c1dcc96d1eef5c8c22e81560def4c9f9fbd",
+  "bindings": {
+    "src/hub/compose/server.ts": "5d73c807f0a2e1ad43a4e56107b8a1aa6588b1a9c0db37a417497df662b389e3",
+    "src/hub/http/compose.ts": "23c66d156da9b141b606f4c7721afd26c2cad11ce1415d6e373f5410bf5a24e5",
+    "src/hub/http/deps.ts": "5699526abb4decd37f19bcab93f49b2a0f40cf23ac431ec6983eb8d042dbe9ee",
+    "src/hub/rooms/service.ts": "a42c9de2cd98e31089d479693bb9592be3c9c55112dccf211897acda4e73419e",
+    "tests/hub-compose.test.ts": "970e9b9e4e586ded4956230145d81deb67afa58f7287b8c176b16772fa3e08d0",
+    "tests/hub-room-teams-integration-r3.test.ts": "8aa5a71695536e9fa43da2eeb5a2669f80e5ea3781e13281cad4e337b5135c2d"
+  },
+  "verificationScope": "Unchanged R patch extracted onto published C parent. No new local campaign. Exact-head CI and ordinary R source review remain required.",
+  "priorLocalResults": {
+    "mountHttpAndActualFactory": 7,
+    "factoryCompatibilityCorrection": 2,
+    "combinedSourceTypes": 0,
+    "combinedTestTypes": 0
+  },
+  "teamWalk": "First actual integration walk stopped after11checks on the C editor partial-response bug. Public diagnostic at integration/hub-rooms-rac-u9d8586fd4; not a passing walk."
+}
