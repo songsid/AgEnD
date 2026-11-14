@@ -52,13 +52,34 @@ export function systemText(m) {
 }
 /**
  * The progress of a message that asked agents (spec §3, Lumen): one agent → its delivery mark; several → one line, its
- * parts without a 0 ("Answered 1 · Working 1"); every one answered → the delivered tick again, no line.
+ * parts without a 0 ("Answered 1 · Working 1"); every one answered → the delivered tick again, no line. Failed (!) and
+ * blocked (⊘) use the Fleet ticks: `failed` / `blocked` on `ask` when the server sends them, else a `not-answered`
+ * child counts as failed.
  */
+const count = (v) => (Number.isSafeInteger(v) && v > 0 ? v : 0);
+const REASON = { expired: "reasonExpired", unavailable: "reasonUnavailable", interrupted: "reasonInterrupted", retired: "reasonRetired", unknown: "reasonUnknown" };
+export function askReason(code) { return REASON[code] ? hroom(REASON[code]) : ""; }
 export function askState(ask) {
   if (!ask || !Number.isSafeInteger(ask.total) || ask.total < 1) return null;
-  if (ask.total === 1 || ask.answered >= ask.total) return { delivery: ask.answered >= ask.total ? "delivered" : ask.working >= 1 ? "processing" : "queued" };
-  const parts = [[ask.answered, "progAnswered"], [ask.working, "progWorking"], [ask.later, "progLater"]].filter(([n]) => Number(n) > 0).map(([n, k]) => hroom(k, String(n)));
-  return { line: parts.join(" · ") };
+  const answered = count(ask.answered), working = count(ask.working), later = count(ask.later);
+  const failed = count(ask.failed), blocked = count(ask.blocked);
+  const reason = typeof ask.reason === "string" && ask.reason ? ask.reason : "";
+  const parts = [[answered, "progAnswered"], [working, "progWorking"], [later, "progLater"], [failed, "progFailed"], [blocked, "progBlocked"]]
+    .filter(([n]) => n > 0).map(([n, k]) => hroom(k, String(n)));
+  const allIn = answered + failed + blocked >= ask.total && working < 1 && later < 1;
+  if (ask.total === 1 || (allIn && failed < 1 && blocked < 1)) {
+    const delivery = answered >= ask.total ? "delivered" : working >= 1 ? "processing" : failed >= 1 ? "failed" : blocked >= 1 ? "cancelled" : "queued";
+    return { delivery, ...(reason && (delivery === "failed" || delivery === "cancelled") ? { reason } : {}) };
+  }
+  return { line: parts.join(" · "), ...(reason ? { reason } : {}) };
+}
+/** When the server has not yet named failed/blocked, a stored `not-answered` child is failed. */
+function askOf(m, messages) {
+  const ask = m && m.ask;
+  if (!ask) return ask;
+  if (Number.isSafeInteger(ask.failed) || Number.isSafeInteger(ask.blocked)) return ask;
+  const notAns = messages.filter((x) => x.answerTo === m.id && x.stage === "not-answered").length;
+  return notAns ? { ...ask, failed: notAns } : ask;
 }
 /** How many answers of one question show when they are folded, and from how many they fold (Lumen: all up to 5). */
 export const ANSWERS_SHOWN = 3, FOLD_FROM = 6;
@@ -92,20 +113,23 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     const id = num(m.id), mine = kind === "person" && author.id === meId;
     if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ts: iso(m.at), text: systemText(m), bare: true }); continue; }
     // An answer is a reply to the message that asked for it (the Fleet's reply reference): replyTo, else answerTo.
-    const quoted = m.replyTo ? byId.get(m.replyTo) : m.answerTo ? byId.get(m.answerTo) : null;
-    const state = mine ? askState(m.ask) : null;
+    // The quote chip keeps a stable key even when that original is not in this page (scroll-up / findQuoted loads it).
+    const quotedId = m.replyTo || m.answerTo || "";
+    const quoted = quotedId ? byId.get(quotedId) : null;
+    const state = askState(askOf(m, messages));
     out.push({ boot: BOOT, id, role: kind === "person" ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
       ...(kind === "person" && !mine ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
-      roomMessage: m.id, ...(state?.delivery ? { delivery: state.delivery } : {}),
-      ...(quoted ? { replyTo: { boot: BOOT, id: num(quoted.id), sender: authorLine(quoted.author, quoted.author?.id === meId, direct), text: String(quoted.text || "").slice(0, 120) } } : {}),
+      roomMessage: m.id, ...(mine && state?.delivery ? { delivery: state.delivery } : {}),
+      ...(quotedId ? { replyTo: { boot: BOOT, id: num(quotedId), sender: quoted ? authorLine(quoted.author, quoted.author?.id === meId, direct) : "", text: quoted ? String(quoted.text || "").slice(0, 120) : "" } } : {}),
       ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
     if (foldAfter) out.push({ boot: BOOT, id: num(`expand:${foldAfter.arg}`), role: "status", sender: "", text: "", bare: true, fold: true, action: foldAfter });
     // Spec §10: once an @所有 Agent has answers, under the last one shown, 「請房間助理整理」 (it sends 「@房間助理 整理上面的回答」).
     if (summarise && lastShown && byId.get(m.answerTo)?.mentions?.includes("all"))
       out.push({ boot: BOOT, id: num(`summarise:${m.answerTo}`), role: "status", sender: "", text: "", bare: true, action: { label: hroom("askSummarise"), arg: `summarise:${m.answerTo}` } });
-    const line = askState(m.ask)?.line;
+    const line = state?.line, why = !line && mine ? askReason(state?.reason) : "";
     // Its status, not an event: under it, without a time of its own.
     if (line) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", text: line, progressOf: m.id, bare: true });
+    else if (why) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", text: why, progressOf: m.id, bare: true });
     if (mine && m.warning === "assistant-unavailable") out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: hroom("errAssistant"), bare: true });
   }
   return out;
@@ -115,11 +139,12 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
  * One room's store: `subscribe(fn)` → unsubscribe; `detail()` (the room GET: room, me, members, settings), `messages()`
  * (the thread's), `raw()` (seam-1 messages), `loaded()`, `error()`, `closed()` (archived, or I am no longer in it), `room()`;
  * `send(text, { mentions, replyTo })` → the client's answer (a refusal's code is the caller's to word; a soft warning is
- * stored and drawn), `older()`, `markRead()`, `refresh()`, `stop()`. Reply buttons are not part of rooms: their calls are inert.
+ * stored and drawn), `older()`, `findQuoted(key)`, `markRead()`, `refresh()`, `stop()`. Reply buttons are not part of rooms: their calls are inert.
  */
 export function createRoomStore(roomId, { client, meId = "" } = {}) {
   const subs = new Set(), ids = new Map(), expanded = new Set();
   const st = { live: true, detail: null, messages: [], loaded: false, error: null, removed: false, more: false, view: [] };
+  let loadingOlder = false;
   // The room's committed order (Ridge: `sequence`, from the stored row): a waiting answer replaced in place, or an event that
   // arrives out of order, is drawn where the room has it. Rows without it (a direct chat, an older Hub) keep arrival order.
   const closedNow = () => st.removed || st.detail?.room?.archived === true;
@@ -151,6 +176,39 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
     "member.changed": on(() => { void readDetail().then(changed); }),
     "room.changed": on((d) => { if (d.removed) st.removed = true; else if (d.room && st.detail) st.detail = { ...st.detail, room: { ...st.detail.room, ...d.room } }; }),
   }) : () => {};
+  /** One page older than what is held (the server's `before=`). False when there was nothing to fetch. */
+  async function older() {
+    if (!st.live || loadingOlder || !st.more) return false;
+    const first = st.messages[0]; if (!first) return false;
+    loadingOlder = true;
+    let did = false;
+    try {
+      const page = await client.roomMessages(roomId, { before: first.id, limit: 50 });
+      if (!st.live || !page.ok) return false;
+      const incoming = (page.messages || []).filter((m) => !st.messages.some((x) => x.id === m.id));
+      if (!incoming.length) st.more = false;
+      else { st.messages = [...incoming, ...st.messages]; st.more = page.more === true; did = true; }
+    } finally { loadingOlder = false; }
+    changed();
+    return did;
+  }
+  /** The thread's quote key (`room-N`) or a stored message id: load pages until that row is held, then true. */
+  async function findQuoted(key) {
+    if (typeof key !== "string" || !key) return false;
+    const wanted = st.messages.some((m) => m.id === key) ? key : (() => {
+      const n = Number(key.startsWith(`${BOOT}-`) ? key.slice(BOOT.length + 1) : key);
+      if (!Number.isSafeInteger(n)) return null;
+      for (const [id, v] of ids) if (v === n) return id;
+      return null;
+    })();
+    if (!wanted) return false;
+    while (st.live && !st.messages.some((m) => m.id === wanted) && st.more) {
+      const n = st.messages.length;
+      await older();
+      if (st.messages.length === n) break;
+    }
+    return st.messages.some((m) => m.id === wanted);
+  }
   void refresh();
   return {
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
@@ -167,12 +225,7 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
       if (ok && sent) { upsert(sent); changed(); }
       return r;
     },
-    async older() {
-      const first = st.messages[0]; if (!first || !st.more) return;
-      const page = await client.roomMessages(roomId, { before: first.id, limit: 50 });
-      if (!st.live || !page.ok) return;
-      st.messages = [...(page.messages || []).filter((m) => !st.messages.some((x) => x.id === m.id)), ...st.messages]; st.more = page.more === true; changed();
-    },
+    older, findQuoted,
     /** 「展開其餘 N 則」: show every answer of that question. */
     expand(messageId) { if (typeof messageId === "string" && !expanded.has(messageId)) { expanded.add(messageId); changed(); } },
     /** Who is working on an answer in this room now (its answer row has no text yet): their names, in arrival order. */
@@ -246,7 +299,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     // A line's one action: 「展開其餘 N 則」, or 「請房間助理整理」 (spec §10: the same as sending 「@房間助理 整理上面的回答」).
     statusAction: (arg) => { if (String(arg).startsWith("summarise:")) { if (!store.closed()) void store.send(hroom("summarisePrompt"), { mentions: ["assistant"] }); } else store.expand(arg); },
     startReply: (x) => { setReply(x); setTimeout(() => input.current?.focus(), 0); },
-    findQuoted: async () => { await store.older(); return false; },
+    findQuoted: (key) => store.findQuoted(key),
   };
   const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : String(room.agent?.owner?.name || "");
