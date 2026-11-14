@@ -37,6 +37,8 @@ const agentRows = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-member-age
 const owners = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-member-agent .hub-member-open")].map((b: any) => [b.querySelector(".hub-member-name").textContent, b.querySelector(".hub-member-owner")?.textContent ?? null]);
 const openAgent = (pg: AppPage, name: string) => fire([...pg.root.querySelectorAll(".hub-member-agent .hub-member-open")].find((b: any) => b.querySelector(".hub-member-name").textContent === name), "click");
 const button = (pg: AppPage, label: string) => [...pg.root.querySelectorAll("button")].find((b: any) => b.textContent === label);
+/** The folded agents (「…其餘 N 個」 / "… N more") opened, so every agent row is drawn. */
+const showAll = async (pg: AppPage) => { const more = [...pg.root.querySelectorAll("button")].find((b: any) => /^…/.test(b.textContent)); if (more) { fire(more, "click"); await settle(5); } };
 
 describe("Hub room members panel (section 5)", () => {
   it("counts people and agents online (paused is not online); me and the manager are marked; agents in presence order, by name within one, with the Fleet dots; 8 then a fold", async () => {
@@ -170,6 +172,20 @@ describe("Hub room members panel (section 5)", () => {
     i18n.setLang("en", { store: false }); await pg.unmount();
     await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: d })); await settle(20);
     expect(owners(pg)[1]).toEqual(["project-helper", "· 林小華's agent"]);
+  });
+
+  it("M-3137 (versions spec §2.4): an agent whose Fleet needs an AgEnD update says whom to ask — 「請通知 {owner}」 / \"ask {owner}\"", async () => {
+    const { pg, client } = await fixture();
+    const d = await detailOf(client, "room-weekly");
+    await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: d })); await settle(20);
+    await showAll(pg);
+    const row = [...pg.root.querySelectorAll(".hub-member-agent .hub-member-open")].find((b: any) => b.querySelector(".hub-member-name").textContent === "old-helper") as any;
+    expect([row.querySelector(".hub-member-state").textContent, row.querySelector(".hub-member-owner").textContent]).toEqual(["需要更新 AgEnD· 請通知 林小華", "· 請通知 林小華"]);
+    expect(owners(pg).find(([n]) => n === "budget-check")).toEqual(["budget-check", "· 吳小安的 Agent"]);   // the others: whose it is, as before
+    i18n.setLang("en", { store: false }); await pg.unmount();
+    await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: d })); await settle(20);
+    await showAll(pg);
+    expect(owners(pg).find(([n]) => n === "old-helper")).toEqual(["old-helper", "· ask 林小華"]);
   });
 
   it("a Latin owner name takes a space before 的 in zh (「Alex 的 Agent」); a CJK one does not; English is unchanged", () => {
