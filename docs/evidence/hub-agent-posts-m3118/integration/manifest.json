@@ -1,0 +1,33 @@
+{
+  "roomRuntime": "b4ca46b8723e2152387150e76336278329c855d7",
+  "fleetHead": "d9fd3dd1816f0bcfd901b76f65a74b136f758df8",
+  "combinedCommit": "0c01c30d3338761cbf675a96baa2ab0500162ae2",
+  "combinedTree": "7dfda98fb0d7456b47d784716c545eb5ddf6425e",
+  "testSha256": "1dc6e7a84d86b692c4378d0f64c7c1433e08af107b0fc0e0a37d4ae12707a2bf",
+  "command": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/vitest run tests/hub-room-post-rc-integration-3118.test.ts --maxWorkers=2",
+  "exit": 0,
+  "tests": {
+    "passed": 1,
+    "failed": 0
+  },
+  "fixtureRepairs": [
+    "MCP refusal assertions include the existing operation_id",
+    "ACK committed first; next current-link room.list triggers retained-row cleanup"
+  ],
+  "runtimeRepairs": [],
+  "scope": "Actual stdio MCP, Fleet factory, pinned WSS, R HTTP/SQLite and real audit. Inert physical inputs and directory; no vendor/AD/browser claim.",
+  "checks": [
+    "connected-only tool menu and four read/post operations",
+    "normal proactive post",
+    "forged receipt denied before any Hub post",
+    "verified receipt on behalf of owner absent from room",
+    "on-behalf @all with normal room permission",
+    "permanently dropped original post result recovers exact frozen operation",
+    "one answer notification before original post RPC settles",
+    "first ACK lost, reconnect retries exact return without duplicate input",
+    "new current-link read triggers acknowledged-row cleanup",
+    "revoked current Fleet admin receipt denied before Hub post",
+    "held person search does not disclose after caller retirement",
+    "fence removes room tools and cached tool calls refuse"
+  ]
+}

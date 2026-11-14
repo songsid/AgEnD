@@ -18,7 +18,7 @@ import type { ProviderUsage } from "./providers.js";
 export interface QuotaReading {
   /** When the reading was made (ms). */
   t: number;
-  /** The usage row's id: "claude", "claude:hsinlin", "codex:yanxianchen", … — one account. */
+  /** The usage row's id: "claude", "claude:work", "codex:team", … — one account. */
   provider: string;
   /** The credential profile, when the row has one. */
   profile?: string;

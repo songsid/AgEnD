@@ -292,7 +292,9 @@ export function createThread(list, scroller, opts) {
     // M-3092: a Hub room's line may carry one action (「展開其餘 N 則」): a button the page answers through opts.statusAction.
     const action = x.action && typeof x.action.label === "string" && typeof x.action.arg === "string"
       ? `<button type="button" data-trust="thread-control" class="chip-btn st-action" data-act="statusAction" data-arg="${escAttr(x.action.arg)}">${escAttr(x.action.label)}</button>` : "";
-    return `<div class="msg status-line folded${overflows ? " overflows" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}${action}</div>${x.bare === true ? "" : tools}</div>`;
+    // A Hub mention-stop sentence must stay readable at phone width. Ordinary Fleet status rows still fold.
+    const folded = x.wrap === true ? "" : ` folded${overflows ? " overflows" : ""}`;
+    return `<div class="msg status-line${folded}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${x.wrap === true ? "" : more}${action}</div>${x.bare === true ? "" : tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,

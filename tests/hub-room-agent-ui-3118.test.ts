@@ -20,7 +20,7 @@ it("localizes a stop directly below its source without a timestamp, retaining ca
   const stop={...post,id:"stop",author:{kind:"system",name:"",id:"system"},text:"English fallback",system:{kind:"agent-mention-stopped",sourceId:"post",reason:"depth",name:"Notes"}};
   i18n.setLang("zh-TW",{store:false});
   const rows=thread.toThreadMessages([post,human,stop],{meId:"viewer",ids:new Map()});
-  expect(rows[1].text).toContain("先停在這裡");expect(rows[1].ts).toBeUndefined();expect(rows[2].text).toBe(human.text);
+  expect(rows[1].text).toContain("先停在這裡");expect(rows[1].ts).toBeUndefined();expect(rows[1].wrap).toBe(true);expect(rows[2].text).toBe(human.text);
   expect(thread.systemText({...stop,system:{kind:"future",name:""}})).toBe("English fallback");
   expect(thread.authorLine({kind:"person",name:"Alex",via:{id:"notes",name:"Notes"}})).toBe("Alex 透過 Notes");
   i18n.setLang("en",{store:false});expect(thread.authorLine({kind:"person",name:"Alex",via:{name:"Notes"}})).toBe("Alex via Notes");

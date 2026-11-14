@@ -250,9 +250,9 @@ Gitea 在尚未設定時，於同一個埠提供 setup 頁；**管理員帳號�
 │   ✓ general：log_level → debug                │
 │                                               │
 │  🔄 需重啟                                     │
-│   ✓ doupo-leader   已重啟 (4.2s)              │
-│   ⟳ doupo-server   重新啟動中… (12s)          │
-│   ○ doupo-devenv   等待中                     │
+│   ✓ team-leader   已重啟 (4.2s)              │
+│   ⟳ game-server   重新啟動中… (12s)          │
+│   ○ game-devenv   等待中                     │
 │                                               │
 │  ⚠ 仍在重啟中的 Agent 會自己回來，不需要手動處理 │
 │                        [在背景繼續] [關閉]      │
