@@ -29,6 +29,7 @@ import {
   CHAT_PROFILE_LOGIN_BACKENDS,
   credentialHomeSpec,
   credentialProfileHome,
+  credentialProfileLogin,
   credentialProfileStoreHome,
   instanceCredentialProfile,
   isCredentialProfileName,
@@ -98,6 +99,8 @@ export interface ProviderUsage {
   name: string;
   /** #2014: the credential profile this row reads (its `name` ends in ` (<profile>)`); the page shows it on its own line. */
   profile?: string;
+  /** No configured Fleet or Classic instance currently uses this credential profile. */
+  noAgents?: true;
   /**
    * The default (shared) login's row beside profiles: its `name` ends in ` (default)`. The page shows "default", in the
    * page's language, on its own line, as a profile row shows its profile; the chat text says it in the fleet's.
@@ -1680,7 +1683,7 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
-type UsageProvider = { id: string; name: string; profile?: string; defaultLogin?: true; fetch: (storeHome?: string, scope?: ClaudeUsageScope) => Promise<Omit<ProviderUsage, "id" | "name">> };
+type UsageProvider = { id: string; name: string; profile?: string; noAgents?: true; defaultLogin?: true; fetch: (storeHome?: string, scope?: ClaudeUsageScope) => Promise<Omit<ProviderUsage, "id" | "name">> };
 
 type UsageFleetConfig = Parameters<typeof listConfiguredProfiles>[0];
 
@@ -1772,14 +1775,16 @@ export function providersForConfig(
     const backendName = usageBackendForProviderId(provider.id);
     if (!backendName || !credentialHomeSpec(backendName)) return [provider];
     if (provider.id === "claude") return claudeHostRows(config, provider, backendName);
-    const profiles = effectiveCredentialProfiles(config, backendName);
+    const hostProfiles = profilesOnHost(backendName).filter(profile =>
+      credentialProfileLogin(getAgendHome(), backendName, profile).state === "logged-in");
+    const profiles = [...new Set([...effectiveCredentialProfiles(config, backendName), ...hostProfiles])].sort();
     if (profiles.length === 0) return [provider];
 
     // A fleet can mix profiled and legacy instances.  The old expansion
     // returned only profile rows whenever *any* profile existed, which hid the
     // shared subscription from a running legacy instance.  Include the shared
-    // source only when an effective binding actually uses it; active-provider
-    // filtering then removes sources that are stopped or otherwise unused.
+    // source only when an effective binding actually uses it. Named host
+    // logins remain visible even after their last instance moves away.
     const rows: UsageProvider[] = [];
     // Keep the shared Codex row available so active-provider filtering can
     // retain a shared binding the config cannot see (a classic channel added
@@ -1798,6 +1803,7 @@ export function providersForConfig(
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
       profile,
+      ...profileActivity(config, backendName, profile),
       fetch: () => provider.fetch(credentialProfileStoreHome(getAgendHome(), backendName, profile), { profile }),
     })));
     return rows;
@@ -1818,7 +1824,7 @@ function fleetHasChat(config: UsageFleetConfig | null | undefined): boolean {
 
 function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backendName: string): UsageProvider[] {
   const inUse = effectiveCredentialProfiles(config, backendName);
-  const profiles = [...new Set([...inUse, ...claudeProfilesOnHost()])].sort();
+  const profiles = [...new Set([...inUse, ...profilesOnHost(backendName)])].sort();
   if (profiles.length === 0) return [provider];
   const homes = profiles.map(profile => credentialProfileStoreHome(getAgendHome(), backendName, profile));
   const hasChat = fleetHasChat(config);
@@ -1828,20 +1834,21 @@ function claudeHostRows(config: UsageFleetConfig, provider: UsageProvider, backe
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
       profile,
+      ...profileActivity(config, backendName, profile),
       fetch: () => provider.fetch(homes[i], inUse.includes(profile) ? { profile, hasChat } : { profile, hostOnly: true, hasChat }),
     })),
   ];
 }
 
 /** What a row says about whose login it reads: its profile (#2014), or that it is the default login beside profiles. */
-function rowTags(p: UsageProvider): Pick<ProviderUsage, "profile" | "defaultLogin"> {
-  return { ...(p.profile ? { profile: p.profile } : {}), ...(p.defaultLogin ? { defaultLogin: true as const } : {}) };
+function rowTags(p: UsageProvider): Pick<ProviderUsage, "profile" | "defaultLogin" | "noAgents"> {
+  return { ...(p.profile ? { profile: p.profile } : {}), ...(p.noAgents ? { noAgents: true as const } : {}), ...(p.defaultLogin ? { defaultLogin: true as const } : {}) };
 }
 
-/** #2236: the Claude credential profiles on this host (their directories), whether or not an instance uses them. */
-function claudeProfilesOnHost(): string[] {
+/** Named profile directories only; never scan instance-private homes or follow directory links. */
+function profilesOnHost(backendName: string): string[] {
   try {
-    return readdirSync(dirname(credentialProfileHome(getAgendHome(), "claude-code", "x")), { withFileTypes: true })
+    return readdirSync(dirname(credentialProfileHome(getAgendHome(), backendName, "x")), { withFileTypes: true })
       .filter(e => e.isDirectory() && isCredentialProfileName(e.name))
       .map(e => e.name);
   } catch {
@@ -1849,9 +1856,18 @@ function claudeProfilesOnHost(): string[] {
   }
 }
 
-/** #2236: a Claude login's row — kept on screen whether or not a running instance uses it. */
+/** Host profile rows survive the dashboard/chat/tool active-instance filter. */
 export function isHostLoginUsageProvider(id: string): boolean {
-  return id === "claude" || id.startsWith("claude:");
+  return id === "claude" || ["claude:", "codex:", "kiro:"].some(prefix => id.startsWith(prefix));
+}
+
+/** Configured bindings, including Classic bindings merged by readFleetConfigForUsage. */
+function profileActivity(config: UsageFleetConfig, backendName: string, profile: string): { noAgents?: true } {
+  if (!config) return {}; // Unknown config is not proof of no agents.
+  const used = Object.values(config.instances ?? {}).some(instance =>
+    (instance.backend ?? defaultBackend(config.defaults)) === backendName
+    && bindingProfile(instance, config.defaults, backendName) === profile);
+  return used ? {} : { noAgents: true };
 }
 
 /**
