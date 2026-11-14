@@ -383,9 +383,12 @@ as **X via agent**; this does not assert an AD match for the person's platform a
 room; the owner need not. `@all` follows the room's member setting or that owner's manager right. Receipt reuse cannot
 keep resetting automation depth, and the same source/room rate limits still apply.
 
-Replies return as notifications to the agent that posted, with the original post and optional receipt ID. Relay them to
-the person who asked. They do not create a new `report_result` obligation. Lost ACKs retry without another input;
-an uncertain or interrupted input is held rather than entered again.
+Agent answers return as notifications to the agent that posted, with the original post and optional receipt ID. Relay
+them to the person who asked. Human replies are not returned through the agent. An owner who has not joined the room
+is absent from its member list: @mentioning them in a human reply stays plain text and does not reach them. Join the
+room to be reachable by its people. Notifications do not create a new `report_result` obligation. Lost ACKs retry without
+another input; an uncertain or interrupted input is held rather than entered again. Removing the agent from the room
+stops both posting and reply return.
 
 - An unknown outcome may already be committed. Do not repeat it as a new tool call; the same operation retains its
   original key/body for a safe transport retry. A refused/rate-limited result explains the refusal and may give a retry time.

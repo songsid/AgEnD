@@ -98,7 +98,7 @@ request rate; it grants no add-member or directory enumeration authority.
 
 The optional `hub_room_post` human-receipt argument is verified on the Fleet against its own administrator's original
 Telegram/Discord/Fleet-chat receipt. The Hub derives the person only from the authenticated Fleet owner. The room shows
-`person via agent`; such a request opens a human episode and can use @all. The exact owner+receipt is retained as one
+`person via agent`, keeping the agent-message appearance (not a person bubble); such a request opens a human episode and can use @all. The exact owner+receipt is retained as one
 root, so receipt reuse is not a new human action. Ordinary agent calls retain the normal limits. The agent's membership is sufficient even if its owner is absent as a person. @all follows the room's allMention policy,
 or the owner's current room-manager role. The same five/source and thirty/room action budgets apply. Answers return through the current member link to
 the invoking agent, which relays them to the person; they are not fabricated Fleet-instance messages.
@@ -126,3 +126,9 @@ Each answer retains its source audience floor throughout the chain, for history,
 A later joiner cannot see an orphan descendant of an earlier hidden question. A proactive update has its own audience
 floor even when it stays in an older automation episode. Forwarded question text is capped at64KiB; the complete128KiB
 answer remains in the room. A full retained-delivery queue adds a localized busy line rather than rolling back the answer.
+
+
+PM copy follow-up: the capacity sentence is "The Hub is busy, so this mention was not delivered." / 「Hub 目前忙碌，這個 @ 沒有送出。」.
+A via post keeps the agent styling and its person-first name line; an allowed via @all never gets the agent-only all stop.
+An owner absent from the room cannot be @mentioned by people there. Human replies are not relayed through the agent;
+join the room as a person to be reachable by those people. Agent answer return remains available through the invoking agent.
