@@ -1,6 +1,6 @@
 {
-  "sourceHead": "c1c8d28d6c9dd58cef5bbda3d8ae2d9b39b47886",
-  "baseRef": "35478214d4a3876ffcf2154120b148676648e06d",
+  "sourceHead": "561c211db59914218cea147f80274ec731b4965d",
+  "baseRef": "49aa5d15cc196154c73da074959c49bfe7027ee3",
   "dirty": [],
   "inputs": [
     {
@@ -93,27 +93,27 @@
   "pictures": [
     {
       "path": "buttons-before.desktop-en-light.png",
-      "sha256": "b537b37755ea4df285ce8843035c1cf6fa25ba3caa5f7b78f3888d20aea1f7fd"
+      "sha256": "01efca5e4a33eab129991a68aadec877866fe7ad7feb170927424a666222ae97"
     },
     {
       "path": "buttons-after.desktop-en-light.png",
-      "sha256": "334d14b4ed23bebaa4a7aa93fdfd04b15824d4cec4ba15bff359427001f2db51"
+      "sha256": "2c78941bcad848cb3da90be85332b1f5ea0ff91e7190f929931b68b6d9751634"
     },
     {
       "path": "buttons-skew.desktop-en-light.png",
-      "sha256": "c80803c5b0edcbbb816218a4c82c8468b5f75921c6c66a2f9355656fcfa46e08"
+      "sha256": "426603e2efd0955c7b37da84599eb1769a0c9acefbf797a89f25997bde2af656"
     },
     {
       "path": "buttons-before.desktop-zh-TW-dark.png",
-      "sha256": "9fddd3ebfd7c0c36d4c842be3803706464d74c61ce41cfe9e8d94f54c59116a3"
+      "sha256": "1d2f49d44de7f4824fc4977aa5c676fee12acdc8e0a7f46801b0f5a30fc0091d"
     },
     {
       "path": "buttons-after.desktop-zh-TW-dark.png",
-      "sha256": "853fcf1b9b5147d91053addce88f3f055bf9de66381a987eb0aa7ef23548abfa"
+      "sha256": "9dc7b15b531553ac151cf1b81d88580266b315fb3f99505bb9025aefc31a2f40"
     },
     {
       "path": "buttons-skew.desktop-zh-TW-dark.png",
-      "sha256": "e184b9346e2fbd2c6666cca67f919027de20773911f26731e93c5d8a2bed4eb1"
+      "sha256": "04d5ca04e2053d3cbfd54ac627581d9d81fa687ceecccb3b0bcddef173876f2e"
     },
     {
       "path": "buttons-before.phone-zh-TW-light.png",
