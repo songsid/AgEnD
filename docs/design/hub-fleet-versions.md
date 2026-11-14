@@ -23,7 +23,7 @@ Each step works without the next one. Step 1 alone already lets an administrator
 
 | Need | Exists today | Gap |
 |---|---|---|
-| Hub knows a Fleet's version | No. The link's `hello` carries protocol version and capability names only; the Fleet record has no version field. | Fleet reports its version; Hub stores it. Note for the builder: the capability list is capped at 16 and 14 are used, so the version must travel as a value, not as more capability names. |
+| Hub knows a Fleet's version | No. The link's `hello` carries protocol version and capability names only; the Fleet record has no version field. | Fleet reports its version; Hub stores it. Note for the builder: the capability list is capped at 16 and 14 are used (15 once #3920 adds `room-post-v1`), so the version must travel as a value, not as more capability names. |
 | Admin list of Fleets | Hub → Administration, card "Connected fleets · N": label, owner, Active/Revoked, Revoke. "Connected" means paired, not online. | Version, last-connected time and a state tag per row. |
 | Skew signal | Per agent in a room: "Needs an AgEnD update" / 「需要更新 AgEnD」 when the Fleet lacks the room capabilities. | Same fact, shown once per Fleet where the administrator and the owner can act on it. |
 | Fleet Update, web | Banner "AgEnD v{0} is available (current v{1})" with **Update now** / **Later**, a confirm, four progress steps, failure texts, **Reload**. Settings → Advanced → "Version and update". Admin web session only. | Reuse as is. Needs a second reason to appear ("your Hub recommends…") and a pinned target version. |
