@@ -108,7 +108,8 @@ async function signIn(page: any, code: string, home: string) {
   await page.fill("#code", code);
   const went = await page.waitForURL(home, { timeout: 3000 }).then(() => true, () => false);
   if (went) return;
-  await page.click("#go");
+  // Still signing in by itself on a slow host (the button disabled, "Signing in…"): wait for it; else press it (Fable).
+  if (await page.locator("#go").isEnabled()) await page.click("#go");
   await page.waitForURL(home, { timeout: 15000 });
 }
 

@@ -133,7 +133,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
     release();
     await sent;
     await page.unroute("**/ui/send");
-    const putBack = page.locator(".btn-primary", { hasText: "Put back" });
+    const putBack = page.locator('[data-act="putBackOut"]');                     // M-3131: the failed message's own (a small button now)
     await putBack.waitFor({ timeout: 5000 });
     await shot("2-put-back-offered");
     await putBack.click();
@@ -170,7 +170,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
     const prevented = await page.locator("#sendBtn").evaluate((b: any) => { const e = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true }); b.dispatchEvent(e); return e.defaultPrevented; });
     ok(res, "buttonNotTaken", prevented === false);
     // 9. Settings → Web: the session-hours number box keeps what was typed ("1.50"), undoable.
-    await page.goto(new URL("/settings/web", page.url()).href);
+    await page.goto(new URL("/settings/access#webAuthority", page.url()).href);   // M-3131: the card's own place (its tab opens)
     const hours = page.locator("#vaHours");
     await hours.waitFor({ timeout: 10000 });
     await hours.click(); await keys("Control+a", "Delete"); await page.keyboard.type("1.50");
