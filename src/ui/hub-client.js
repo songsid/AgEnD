@@ -557,6 +557,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
       return call("POST", "/hub/v1/admin/group-policy/resources/resume", { resource, expectedPolicyRevision, expectedLifecycleRevision });
     },
     welcome() { return call("GET", "/hub/v1/me/welcome"); },
+    // M-3137 / M-3136 (versions spec §2.3): the signed-in person's own active Fleets with their version state (the banner).
+    myFleets() { return call("GET", "/hub/v1/me/fleets"); },
     // M-2682: Administration → This Hub — what it is, and its rename (two steps: the server binds the second to the first).
     thisHub() { return call("GET", "/hub/v1/admin/hub"); },
     prepareHubName(name) { return call("POST", "/hub/v1/admin/hub/name/prepare", { name }); },

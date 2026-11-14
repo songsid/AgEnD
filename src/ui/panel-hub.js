@@ -28,6 +28,7 @@ import { toast } from "/assets/ui-toast.js";
 // #3226 B: the chat is the fleet chat's own drawing (PR A's shared modules), in the fleet chat's words.
 import { createThread, msgKey } from "/assets/chat-thread.js";
 import { installMessageActions } from "/assets/chat-msg-actions.js";
+import { OlderFleetBanner, FleetVersionCells, FleetVersionsSummary, hasVersions, behind } from "./hub-fleet-versions.js";
 import { PreviewPanel, closePanel, panelStore } from "/assets/preview-panel.js";
 import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
 import { RailFrame } from "/assets/side-rail.js";
@@ -550,6 +551,8 @@ function HubChats() {
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
+  ${/* M-3137 (versions spec §2.3): the signed-in person whose own Fleet is behind is told here, once per sign-in. */ ""}
+  <${OlderFleetBanner} client=${hubClient()} signIn=${s?.csrf || ""} />
   <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
     <div class="hub-home-list"><${HubHomeList} /></div>
     ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true), admin: s.admin === true, features: s.features }} /></div>`
@@ -885,7 +888,7 @@ function HubMine() {
   // lands nowhere (useRead's own liveness ends with that page).
   if (x) return html`<${HubAgentPage} key=${x.id} x=${x} act=${act} msg=${msg} />`;
   // Nothing shared yet: the empty state below says where to share from, so the lead doesn't say it too (Argon #20).
-  return html`<div class="col hub-owner"><p class="s-page-lead hub-page-lead">${ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
+  return html`<div class="col hub-owner"><${OlderFleetBanner} client=${hubClient()} signIn=${session?.csrf || ""} /><p class="s-page-lead hub-page-lead">${ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
     <div class="s-section-layout">
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: true }} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
@@ -1054,6 +1057,7 @@ function GroupPermissionsEntry() {
 function HubAdminPage({ groups = false, companyJoin = false, directory = false } = {}) {
   const assistantSession = useSession();
   const [view, reload] = useRead(() => hubClient().adminOverview());
+  const [needsOnly, setNeedsOnly] = useState(false);   // M-3137: Connected fleets' "Needs update" filter
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -1103,15 +1107,18 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
+        ${/* M-3137 (versions spec §2.2): the summary line and its filter, when this Hub reports versions. */ ""}
+        ${hasVersions(fleets) ? html`<${FleetVersionsSummary} fleets=${fleets} recommended=${view.recommendedVersion ?? null} filtered=${needsOnly} onFilter=${setNeedsOnly} />` : null}
         ${fleets.length ? (() => {
           // Spec 1.2: the row's title is the Fleet's label (S1 overview), its subtitle the owner; active first, revoked folded.
           const row = (f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
             <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
             <span class="hub-row-text"><strong>${typeof f.label === "string" && f.label ? f.label : ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note">${f.owner.name}${f.owner.login ? html` · <code>${f.owner.login}</code>` : null}</small>` : null}</span>
+            ${hasVersions(fleets) && f.status !== "revoked" ? html`<${FleetVersionCells} fleet=${f} recommended=${view.recommendedVersion ?? null} />` : null}
             ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.label || (f.owner ? f.owner.name : f.id))} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
               : html`<span class="tag">${ho("revokedTag")}</span>`}
           </div>`;
-          const current = fleets.filter((f) => f.status !== "revoked").sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1));
+          const current = fleets.filter((f) => f.status !== "revoked" && (!needsOnly || behind(f))).sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1));
           const revoked = fleets.filter((f) => f.status === "revoked");
           return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
             ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;
