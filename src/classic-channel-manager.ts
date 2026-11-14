@@ -620,7 +620,7 @@ export class ClassicChannelManager {
    *
    * A YAML number below 2^53 (every Telegram group id) round-trips exactly, so
    * String() genuinely repairs it. A Discord snowflake does NOT: YAML already
-   * truncated it at parse time (1496407196106494055 arrives as ...494000), so
+   * truncated it at parse time (1234567890123456789 arrives as ...456800), so
    * String() would write a plausible-looking WRONG id back to disk and erase
    * the one clue that something is broken — that the entry is a number rather
    * than a quoted string. Leave those untouched and say so; nothing but the
