@@ -50,7 +50,7 @@ describe("Hub Administration → Rooms (section 11)", () => {
     expect(tags(pg)).toEqual(["王經理"]);
     expect(pg.root.textContent).toContain("每個人都可以開一對一對話。");
     expect(pg.root.textContent).toContain("這裡看不到任何房間的內容。");
-    expect(rows(pg)).toEqual([["研發主管週會", "3", "12", "王經理", "time", "使用中"], ["研發例會", "2", "4", "陳主任", "time", "使用中"], ["去年專案", "2", "1", "王經理", "time", "已封存"]]);
+    expect(rows(pg)).toEqual([["每週主管會議", "3", "12", "王經理", "time", "使用中"], ["專案例會", "2", "4", "陳主任", "time", "使用中"], ["去年專案", "2", "1", "王經理", "time", "已封存"]]);
     const el = pg.root.querySelector("#hubRoomCreators"); el.value = "研發"; fire(el, "input"); await wait(260); await settle(10);
     fire([...pg.root.querySelectorAll(".hub-room-result")].find((b: any) => b.textContent.startsWith("研發")), "click"); await settle(30);
     expect(tags(pg)).toEqual(["王經理", "研發 · 2 人"]);
@@ -69,10 +69,10 @@ describe("Hub Administration → Rooms (section 11)", () => {
     const prior = (globalThis as any).confirm; (globalThis as any).confirm = undefined;
     try {
       await menu(pg, "room-rd", "加入自己成為房間管理");
-      expect(pg.root.querySelector("[role=status]").textContent).toBe("你現在是「研發例會」的房間管理，房間裡會出現一則說明。");
+      expect(pg.root.querySelector("[role=status]").textContent).toBe("你現在是「專案例會」的房間管理，房間裡會出現一則說明。");
       expect(rows(pg)[1][3]).toBe("王經理、陳主任");
       await menu(pg, "room-rd", "封存");
-      expect((pg.document as any).body.textContent).toContain("要封存「研發例會」嗎？房間會變成唯讀，成員仍然看得到內容。");
+      expect((pg.document as any).body.textContent).toContain("要封存「專案例會」嗎？房間會變成唯讀，成員仍然看得到內容。");
       fire((pg.document as any).querySelector("[data-confirm=yes]"), "click"); await settle(40);
       expect(rows(pg)[1][5]).toBe("已封存");
       fire(pg.root.querySelector('[data-room="room-archived"] button'), "click"); await settle(10);

@@ -47,9 +47,9 @@ describe("rooms (seam 1) against the fixture", () => {
     const r = await client.roomList();
     expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/rooms?v=2" });              // Ridge #3858: /rooms stays direct-only for old tabs
     expect(r.me).toEqual({ canCreateRooms: true, assistant: true }); expect(r.invitations).toBe(1);
-    expect(r.rooms.map((x: any) => x.name)).toEqual(["研發主管週會", "project-helper", "研發例會", "report-bot", "去年專案", "Hub assistant"].filter(n => r.rooms.some((x: any) => x.name === n)).sort((a, b) =>
+    expect(r.rooms.map((x: any) => x.name)).toEqual(["每週主管會議", "project-helper", "專案例會", "report-bot", "去年專案", "Hub assistant"].filter(n => r.rooms.some((x: any) => x.name === n)).sort((a, b) =>
       r.rooms.findIndex((x: any) => x.name === a) - r.rooms.findIndex((x: any) => x.name === b)));
-    const weekly = r.rooms.find((x: any) => x.name === "研發主管週會");
+    const weekly = r.rooms.find((x: any) => x.name === "每週主管會議");
     expect(weekly).toMatchObject({ kind: "group", people: 3, agents: 12, unread: 2 });
     expect(r.rooms[0].id).toBe("room-weekly");                                                          // the only one with unread
     expect(r.rooms.find((x: any) => x.name === "去年專案")).toMatchObject({ archived: true });
@@ -140,7 +140,7 @@ describe("rooms (seam 1) against the fixture", () => {
     await client.saveRoomCreators({ people: ["person-chen"], teams: ["team-1"] });
     expect(await client.roomCreators()).toMatchObject({ people: [{ id: "person-chen", name: "陳主任" }], teams: [{ id: "team-1", name: "研發", people: 2 }] });   // U2: named
     const admin = await client.adminRooms();
-    expect(admin.rooms.map((r: any) => r.name)).toEqual(["研發主管週會", "研發例會", "去年專案"]);
+    expect(admin.rooms.map((r: any) => r.name)).toEqual(["每週主管會議", "專案例會", "去年專案"]);
     expect(JSON.stringify(admin)).not.toContain("整理");                                                  // names and members, no content
   });
   it("one stream per tab (#1580): the notices ride the rooms stream; it stays while either listens and closes with the last", async () => {

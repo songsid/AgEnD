@@ -69,7 +69,7 @@ try {
     await page.waitForSelector("body[data-ready='1']", { timeout: 15000 });
     await page.waitForTimeout(500);
     if (view === "new") {
-      await page.fill("#hubRoomName", zh ? "研發主管週會" : "Weekly leads meeting");
+      await page.fill("#hubRoomName", zh ? "每週主管會議" : "Weekly leads meeting");
       await page.fill("#hubRoomPeople", "陳"); await page.waitForTimeout(400); await page.click(".hub-room-result");
       await page.fill("#hubRoomPeople", "研"); await page.waitForTimeout(400); await page.locator(".hub-room-result").first().click();
       await page.fill("#hubRoomAgents", "my-"); await page.waitForTimeout(400); await page.click(".hub-room-result");
@@ -88,7 +88,7 @@ try {
         settings: zh ? ["房間設定", "基本", "成員可以 @所有 Agent", "成員與 Agent", "audit-helper（周小明）· 已邀請，等擁有者同意", "old-audit（林小華）· 邀請已過期", "重新邀請", "封存房間"] : ["Room settings", "Invite again", "Archive room"],
         members: zh ? ["成員 · 3（線上 2）", "Agent · 12（線上 7）", "… 其餘 4 個", "房間助理", "誰看得到", "在這裡 @ 它"] : ["Members · 3 (online 2)", "Agents · 12 (online 7)", "@ it here"],
         invitations: zh ? ["邀請", "被 @ 時，它會讀到房間最近的訊息。", "陳主任 邀請你的 Agent「my-notes」加入房間「產品規劃」", "同意", "不要", "在這些房間裡", "退出這個房間"] : ["Invitations", "When @-ed, it reads the room's recent messages.", "Agree", "Leave this room"],
-        admin: zh ? ["誰可以開房間", "每個人都可以開一對一對話。", "所有房間", "這裡看不到任何房間的內容。", "研發主管週會", "已封存"] : ["Who can start rooms", "All rooms", "Archived"],
+        admin: zh ? ["誰可以開房間", "每個人都可以開一對一對話。", "所有房間", "這裡看不到任何房間的內容。", "每週主管會議", "已封存"] : ["Who can start rooms", "All rooms", "Archived"],
       };
       const missing = want[view]!.filter(w => !facts.text.toLowerCase().includes(w.toLowerCase()));   // headings may be drawn upper-case
       if (missing.length || errors.length || facts.scroll) fail.push(`${tag}-${view}: missing ${JSON.stringify(missing)} errors ${JSON.stringify(errors)} scroll ${facts.scroll}`);

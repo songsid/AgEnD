@@ -3,11 +3,11 @@
  * Track U builds against it until the rooms server (track R) replaces it. Screens and words: docs/design/hub-rooms-ux.md.
  *
  * The seed (the split's ask, in the spec's own names):
- * - 研發主管週會: 王經理 (me, manager), 陳主任, 吳小安; 12 agents in every presence state; the room assistant.
+ * - 每週主管會議: 王經理 (me, manager), 陳主任, 吳小安; 12 agents in every presence state; the room assistant.
  *   An @all with 6 answers, 1 still working (project-helper) and 5 that reply later (paused, offline, reply-later;
  *   answerLater() brings one), and an assistant
  *   summary of the answers. One invitation waits for its owner (the room's own list).
- * - 研發例會: I am a member (not a manager) and members may not @all (allMention off).
+ * - 專案例會: I am a member (not a manager) and members may not @all (allMention off).
  * - 去年專案: archived (read-only).
  * - Direct chats (「對話」, the list's 「Agent」 group): project-helper (林小華) with a short history, report-bot (offline),
  *   and 「Hub 助理」 (the assistant). One invitation to my own agent waits for me (GET /hub/v1/invitations).
@@ -85,8 +85,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   const assistant: FixtureMember = { id: "assistant", kind: "assistant", name: "房間助理", role: "member", presence: "idle" };
   const author = (m: FixtureMember) => ({ kind: m.kind === "later" ? "agent" as const : m.kind, id: m.id, name: m.name, ...(m.owner ? { owner: m.owner } : {}) });
 
-  // 研發主管週會: people talk, an @all with answers (9 answered, 1 working, 2 later), the assistant's summary.
-  const group: FixtureRoom = { id: "room-weekly", kind: "group", name: "研發主管週會", members: [...people, ...agentMembers, assistant], messages: [],
+  // 每週主管會議: people talk, an @all with answers (9 answered, 1 working, 2 later), the assistant's summary.
+  const group: FixtureRoom = { id: "room-weekly", kind: "group", name: "每週主管會議", members: [...people, ...agentMembers, assistant], messages: [],
     settings: { allMention: true, historyForNew: "since-join" }, archived: false, readUpTo: null, assistant: true,
     // U2: one pending invitation and one that lapsed after 7 days (the manager can 重新邀請 it).
     invited: [{ id: "inv-0001", exposureId: "exp-90", name: "audit-helper", owner: { name: "周小明" }, at: minutes(10), state: "pending" },
@@ -144,8 +144,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   report.messages[0]!.stage = "queued";
   // Stored as the server stores it: an English fallback name; the page names it by its flag in the viewer's words (Ridge).
   const hubAssistant = direct("room-assistant", { ...assistant, name: "Hub assistant" }, []);
-  // 研發例會: I am only a member here, and members may not @all.
-  const meeting: FixtureRoom = { id: "room-rd", kind: "group", name: "研發例會", members: [{ ...people[0]!, role: "member" }, { ...people[1]!, role: "manager" }, ...agentMembers.slice(0, 4)],
+  // 專案例會: I am only a member here, and members may not @all.
+  const meeting: FixtureRoom = { id: "room-rd", kind: "group", name: "專案例會", members: [{ ...people[0]!, role: "member" }, { ...people[1]!, role: "manager" }, ...agentMembers.slice(0, 4)],
     messages: [], settings: { allMention: false, historyForNew: "since-join" }, archived: false, readUpTo: null, assistant: false, invited: [] };
   say(meeting, system, minutes(1), "陳主任 建立了這個房間。");
   say(meeting, people[1]!, minutes(60), "下週例會改到週三。");

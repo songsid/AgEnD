@@ -51,7 +51,7 @@ describe("rooms client, track U2", () => {
   it("agentRooms: the group rooms an agent is in, with the member id to remove it by", async () => {
     const { client, calls } = await live();
     const r = await client.agentRooms("exp-02");
-    expect(r.rooms).toEqual([{ id: "room-weekly", name: "研發主管週會", people: 3, memberId: "exp-02" }, { id: "room-rd", name: "研發例會", people: 2, memberId: "exp-02" }]);
+    expect(r.rooms).toEqual([{ id: "room-weekly", name: "每週主管會議", people: 3, memberId: "exp-02" }, { id: "room-rd", name: "專案例會", people: 2, memberId: "exp-02" }]);
     expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/exposures/exp-02/rooms" });
   });
 

@@ -125,11 +125,11 @@ describe("the favourites' rules (pure, #1664's)", () => {
   it("the groups: 「最愛」 first in the order starred, each out of its own group; the filter applies to it too", async () => {
     const fx = createHubRoomsFixture();
     const answer = await (await fx.fetch("/hub/v1/rooms")).json();
-    const helper = answer.rooms.find((r: any) => r.name === "project-helper"), rd = answer.rooms.find((r: any) => r.name === "研發例會");
+    const helper = answer.rooms.find((r: any) => r.name === "project-helper"), rd = answer.rooms.find((r: any) => r.name === "專案例會");
     const groups = list.groupRooms(answer.rooms, "", [helper.id, rd.id, "gone"]);
     expect(groups.map((x: any) => [x.key, x.items.map((r: any) => r.name)])).toEqual([
-      ["favorites", ["project-helper", "研發例會"]],
-      ["rooms", ["研發主管週會", "去年專案"]],
+      ["favorites", ["project-helper", "專案例會"]],
+      ["rooms", ["每週主管會議", "去年專案"]],
       ["agents", ["report-bot", "Hub assistant"]],
     ]);
     expect(list.groupRooms(answer.rooms, "林小華", [helper.id, rd.id]).map((x: any) => [x.key, x.items.map((r: any) => r.name)]))
@@ -181,10 +181,10 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
       await until(() => rows(pg).length === 6);
       expect(heads(pg)).toEqual(["房間", "Agent"]);
       await choose(pg, "project-helper", "加入最愛");
-      await choose(pg, "研發例會", "加入最愛");
+      await choose(pg, "專案例會", "加入最愛");
       expect(heads(pg)).toEqual(["最愛", "房間", "Agent"]);
       expect([...pg.root.querySelectorAll("#sidebar .hub-room-group .inst-head .count")].map((x: any) => x.textContent)).toEqual(["2", "2", "2"]);
-      expect(names(pg)).toEqual(["project-helper", "研發例會", "研發主管週會", "去年專案", "report-bot", "Hub 助理"]);
+      expect(names(pg)).toEqual(["project-helper", "專案例會", "每週主管會議", "去年專案", "report-bot", "Hub 助理"]);
       const group = pg.root.querySelector('#sidebar [data-group="favorites"]') as any;
       expect([group.getAttribute("role"), group.getAttribute("aria-label"), !!group.querySelector(".fav-head .fav-mark")]).toEqual(["group", "最愛", true]);
       expect(rows(pg)[0].className).toContain("inst-favorite");
@@ -195,7 +195,7 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
       expect(JSON.parse(g.localStorage.getItem(`agend_hub_favorites.${FIXTURE_ME.login}`))).toEqual(["room-helper", "room-rd"]);
       // Unstarred: back in its own group, in its place there.
       await choose(pg, "project-helper", "移出最愛");
-      expect(names(pg)).toEqual(["研發例會", "研發主管週會", "去年專案", "project-helper", "report-bot", "Hub 助理"]);
+      expect(names(pg)).toEqual(["專案例會", "每週主管會議", "去年專案", "project-helper", "report-bot", "Hub 助理"]);
     } finally { restore(); }
   });
 
@@ -206,7 +206,7 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
       await until(() => rows(pg).length === 6);
       await choose(pg, "report-bot", "Add to favorites");
       expect(pg.root.querySelector("#sidebar .fav-edit")).toBeNull();          // one favourite: nothing to move
-      await choose(pg, "研發例會", "Add to favorites");
+      await choose(pg, "專案例會", "Add to favorites");
       const edit = pg.root.querySelector("#sidebar .fav-edit") as any;
       expect([edit.textContent.trim(), edit.getAttribute("aria-pressed")]).toEqual(["Edit", "false"]);
       fire(edit, "click"); await settle(10);
@@ -214,13 +214,13 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
       const first = await rowMenu(pg, "report-bot");
       expect(first.items.map((b) => [b.textContent.trim(), b.disabled])).toEqual([["Remove from favorites", false], ["Move report-bot up", true], ["Move report-bot down", false]]);
       await choose(pg, "report-bot", "Move report-bot down");
-      expect(names(pg).slice(0, 2)).toEqual(["研發例會", "report-bot"]);
+      expect(names(pg).slice(0, 2)).toEqual(["專案例會", "report-bot"]);
       expect(fav.favoritesStore.get().ids).toEqual(["room-rd", "room-report"]);
       // Filtered (the sidebar-foot filter, M-3127 C): the moves are there but off, and say why (the Fleet's favFiltered).
       const input = pg.root.querySelector("#sidebar .hub-side-rooms .v-filter input") as any;
       input.value = "週"; fire(input, "input"); await settle(10);   // both favourites still shown (their last lines)
-      expect(names(pg).slice(0, 2)).toEqual(["研發例會", "report-bot"]);
-      const filtered = await rowMenu(pg, "研發例會");
+      expect(names(pg).slice(0, 2)).toEqual(["專案例會", "report-bot"]);
+      const filtered = await rowMenu(pg, "專案例會");
       expect(filtered.items.slice(1).map((b) => [b.disabled, b.getAttribute("title")])).toEqual([
         [true, "Clear the filter to reorder favorites"], [true, "Clear the filter to reorder favorites"]]);
       expect((await rowMenu(pg, "report-bot")).items[1].disabled).toBe(true);   // its up: off for the filter alone
@@ -238,7 +238,7 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
       await until(() => heads(pg)[0] === "Favorites");
       expect(names(pg)[0]).toBe("去年專案");
       expect(rows(pg)[0].className).toContain("hub-room-archived");
-      expect(names(pg)).toContain("研發主管週會");
+      expect(names(pg)).toContain("每週主管會議");
     } finally { restore(); }
   });
 });
@@ -268,7 +268,7 @@ it("S-149: the production session wires Hub preferences into the existing sideba
     await until(() => heads(pg)[0] === "Favorites");
     expect(writes).toEqual([{ favorites: ["room-report"], onlyIfUnset: true }]);
     expect(names(pg)[0]).toBe("report-bot");
-    await choose(pg, "研發例會", "Add to favorites");
+    await choose(pg, "專案例會", "Add to favorites");
     await until(() => remote.revision === 2);
     expect(remote.favorites).toEqual(["room-report", "room-rd"]);
   } finally { restore(); }

@@ -81,7 +81,7 @@ describe("Ctrl K on a Hub with rooms", () => {
     input.value = "風險"; fire(input, "input");
     await until(() => dlg.querySelectorAll(".search-row").length > 3, 400);
     const heads = [...dlg.querySelectorAll(".search-group-head span:first-child")].map((n: any) => n.textContent);
-    expect(heads[0]).toBe("研發主管週會");
+    expect(heads[0]).toBe("每週主管會議");
     expect(dlg.querySelector(".search-row .search-snippet mark").textContent).toBe("風險");
     // The newest hit is first: Enter opens it.
     const first = dlg.querySelector(".search-row");
@@ -99,7 +99,7 @@ describe("Ctrl K on a Hub with rooms", () => {
     const { pg } = await hubPage("/ui/hub");
     ctrlK(pg); await until(() => pg.root.ownerDocument.querySelector(".hub-search-dlg[open]"));
     const dlg = pg.root.ownerDocument.querySelector(".hub-search-dlg") as any, input = dlg.querySelector(".search-input");
-    input.value = "研發例會"; fire(input, "input");
+    input.value = "專案例會"; fire(input, "input");
     await until(() => dlg.querySelector(".search-row"), 400);
     expect(dlg.querySelector(".search-row .search-badge").textContent).toBe("房間");
     input.value = "zzzz-none"; fire(input, "input");

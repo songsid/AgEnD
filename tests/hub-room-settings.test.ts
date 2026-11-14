@@ -69,7 +69,7 @@ describe("Hub Room settings (section 7)", () => {
     const { pg, client, calls } = await fixture();
     const changed = await mountSettings(pg, client); calls.length = 0;
     const name = pg.root.querySelector("#hubRoomSettingsName");
-    expect(name.value).toBe("研發主管週會"); expect(button(pg, "儲存").disabled).toBe(true);
+    expect(name.value).toBe("每週主管會議"); expect(button(pg, "儲存").disabled).toBe(true);
     name.value = "研發週會"; fire(name, "input"); await settle(5);
     fire(button(pg, "儲存"), "click"); await settle(30);
     const allMention = pg.root.querySelector("#hubRoomAllMention"); expect(allMention.checked).toBe(true);
@@ -170,7 +170,7 @@ describe("Hub Room settings (section 7)", () => {
     let closed = 0;
     await mountSettings(pg, client, "room-weekly", { onClose: () => { closed++; } }); calls.length = 0;
     fire(button(pg, "封存房間"), "click"); await settle(10);
-    expect((pg.document as any).body.textContent).toContain("要封存「研發主管週會」嗎？房間會變成唯讀，內容仍然看得到。");
+    expect((pg.document as any).body.textContent).toContain("要封存「每週主管會議」嗎？房間會變成唯讀，內容仍然看得到。");
     fire(button(pg, "取消"), "click"); await settle(20);
     expect(writes(calls)).toEqual([]);
     fire(button(pg, "封存房間"), "click"); await settle(10);
