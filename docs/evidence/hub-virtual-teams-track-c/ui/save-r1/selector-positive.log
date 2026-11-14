@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-alpha
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 8 skipped (9)
+   Start at  09:16:02
+   Duration  767ms (transform 346ms, setup 89ms, import 346ms, tests 188ms, environment 0ms)
+

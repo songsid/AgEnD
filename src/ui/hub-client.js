@@ -463,7 +463,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     deleteTeam(teamId) { return call("DELETE", `/hub/v1/teams/${id(teamId)}`); },
     async teamSuggestions(kind, q, teamId, signal) {
       const s = new URLSearchParams({ kind: String(kind), q: String(q ?? "") });
-      if (teamId !== undefined) s.set("teamId", decodeURIComponent(id(teamId)));
+      if (teamId != null) s.set("teamId", String(teamId));
       const out = await call("GET", `/hub/v1/teams/candidates?${s}`, undefined, signal);
       return signal?.aborted ? { ok: false, status: 0, code: "unreachable" } : out;
     },

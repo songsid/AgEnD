@@ -1,0 +1,25 @@
+{
+  "findingReceipts": [
+    "xmsg-1794618751222-r6qji2",
+    "xmsg-1794618847237-becaw8",
+    "xmsg-1794618913997-y4fynr"
+  ],
+  "baselineHead": "4e928fc4d5ce561c7efd49c7cf5ae9b54788b275",
+  "partialResponseBaseline": {
+    "selectedAssertionFailures": 1,
+    "unselected": 8
+  },
+  "reviewBaseline": {
+    "selectedAssertionFailures": 3,
+    "unselected": 21
+  },
+  "candidate": {
+    "tests": 24,
+    "files": 3,
+    "maxWorkers": 2
+  },
+  "excluded": "first candidate partial-response run failed on unsupported mini-DOM attribute selector, corrected in test only",
+  "newBrowserRun": false,
+  "newMutationRun": false,
+  "nativePrograms": "new-head CI; prior scopes retained"
+}
