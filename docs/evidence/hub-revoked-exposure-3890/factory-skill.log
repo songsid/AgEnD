@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-revoked-exposure-3890
+
+(node:26116) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  2 passed (2)
+      Tests  10 passed | 131 skipped (141)
+   Start at  11:28:17
+   Duration  10.58s (transform 10.77s, setup 270ms, import 15.17s, tests 1.18s, environment 0ms)
+

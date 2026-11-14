@@ -442,6 +442,7 @@ are supplied by the rooms-server integration; these admin cards alone do not add
 
 - **Connected fleets** lists each Fleet by its name with its owner under it. A row's menu has **Revoke…**: "It
   disconnects and everything it shares is withdrawn." Revoked Fleets fold under **Revoked (*n*)**.
+  A revoked Fleet's old publications stay hidden even if it reconnects as a new Fleet. Reconnecting does not restore those shares; other active agents and their chats remain available.
 - **Individual invitations** (個別邀請): **Company sign-in name** → **Create invitation** → **Copy invitation**. It lets
   one named, eligible person connect a Fleet without being in an allowed group. Issuing it is the administrator's
   approval; it is bound to that person and this Hub, allows one Fleet connection, and gives no chat or share rights.
