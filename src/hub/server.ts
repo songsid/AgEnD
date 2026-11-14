@@ -17,7 +17,7 @@ import type { HubCompanyJoin } from "./join/service.js";
 import { HubPublicationRefusal } from "./catalog.js";
 import { HUB_WEB_ORIGIN_CAPABILITY, type HubWebOriginStatement } from "./web-origin.js";
 import { HUB_MEMBER_RELOCATION_CAPABILITY } from "./member-origin.js";
-import { HUB_ROOM_ASK_CAPABILITY } from "./protocol.js";
+import { HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY } from "./protocol.js";
 import type { HubRelocation } from "./types.js";
 /** #3429 B: a matched relocation ack — what the decision rechecks (the link object is the server's own Connection). */
 export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: string; revision: number; readonly link: object }
@@ -151,6 +151,7 @@ export class HubServer {
     }
     if (frame.type === "exposure.quota" && (!context.features.has("quota-band-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.answer" || frame.type === "agent.state") && (!context.features.has(HUB_ROOM_ASK_CAPABILITY) || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if ((frame.type === "room.list" || frame.type === "room.post") && (!context.features.has(HUB_ROOM_POST_CAPABILITY) || !context.features.has(HUB_ROOM_ASK_CAPABILITY) || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "relocate.ack") {
       if (!context.features.has(HUB_MEMBER_RELOCATION_CAPABILITY) || !context.features.has("welcome-caps-v1")) throw new HubProtocolError("incompatible");
       // Only the exact relocation sent on this very link and epoch; late, foreign or mismatched acks are ignored.
@@ -186,6 +187,7 @@ export class HubServer {
     if (frame.type === "pairing.notice-v2" && (!connection.context.features.has("pairing-notices-v2") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v3" && (!connection.context.features.has("pairing-notices-v3") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.ask" || frame.type === "room.answer-ack") && (!connection.context.features.has(HUB_ROOM_ASK_CAPABILITY) || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if ((frame.type === "room.list-result" || frame.type === "room.post-result") && (!connection.context.features.has(HUB_ROOM_POST_CAPABILITY) || !connection.context.features.has(HUB_ROOM_ASK_CAPABILITY) || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     await connection.link.send(frame);
   }
   /**

@@ -62,6 +62,15 @@ export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: st
   asker: { name: string }; text: string; context: readonly HubRoomContextRow[] }
 export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string }
+/** Proactive group-room messages are scoped by the authenticated link and its own published exposure. */
+export type HubRoomPostRefusalCode = "invalid" | "denied" | "revoked" | "not-found" | "archived" | "ambiguous-room" | "rate-limited" | "conflict" | "unavailable" | "stale" | "backpressure";
+export interface HubRoomListRequest { exposureId: ExposureId }
+export type HubRoomListResult = { ok: true; exposureId: ExposureId; rooms: readonly { id: RoomId; name: string }[]; truncated?: boolean }
+  | { ok: false; exposureId: ExposureId; code: HubRoomPostRefusalCode; retryAt?: Millis };
+export interface HubRoomPost { exposureId: ExposureId; room: string; text: string; idempotencyKey: string }
+export type HubRoomPostResult = { ok: true; roomId: RoomId; messageId: MessageId; at: Millis }
+  | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis; rooms?: readonly { id: RoomId; name: string }[] };
+
 export type HubAgentStateReason = "quota" | "auth" | "approval" | "update" | "operator" | "idle" | "capacity" | "error" | "stopped" | "crashed" | "stuck" | "unknown";
 export interface HubAgentState { exposureId: ExposureId; state: "idle" | "working" | "paused"; reason?: HubAgentStateReason; note?: string }
 export interface HubAnswerButtons {
@@ -106,6 +115,8 @@ export interface HubRevocation {
 }
 
 export type HubMemberFrame =
+  | HubFrame<"room.list", HubRoomListRequest>
+  | HubFrame<"room.post", HubRoomPost>
   | HubFrame<"room.answer", HubRoomAnswer>
   | HubFrame<"agent.state", HubAgentState>
   | HubFrame<"hello", HubHello>
@@ -127,6 +138,8 @@ export type HubPairingNotice = {
 /** #3429 option B: an issuer-signed member-address relocation (member-origin.ts). */
 export interface HubRelocation { v: 1; from: string; to: string; spkiSha256: Sha256; revision: Epoch; signature: string }
 export type HubServerFrame =
+  | HubFrame<"room.list-result", HubRoomListResult>
+  | HubFrame<"room.post-result", HubRoomPostResult>
   | HubFrame<"room.ask", HubRoomAsk>
   | HubFrame<"room.answer-ack", HubRoomAnswerAck>
   | HubFrame<"welcome", HubWelcome>
