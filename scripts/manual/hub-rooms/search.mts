@@ -61,7 +61,7 @@ async function open(variant: "after" | "skew", [device, lang, theme]: string[]) 
   p.on("pageerror", (e: Error) => errors.push(e.message));
   p.on("console", (m: any) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text().slice(0, 200)); });
   if (lang !== "en") await p.addInitScript(() => localStorage.setItem("agend_lang", "zh-TW"));
-  // Another room open (研發例會): a hit in 研發主管週會 is a jump across rooms.
+  // Another room open (專案例會): a hit in 每週主管會議 is a jump across rooms.
   await p.goto(`${origin}/ui/hub?room=room-rd`);
   await p.waitForSelector(".hub-room-page .thread .msg", { timeout: 15000 });
   await p.waitForTimeout(500);
@@ -93,7 +93,7 @@ try {
       const groups = await p.locator(".hub-search-dlg .search-group-head span:first-child").allTextContents();
       const marked = await p.locator(".hub-search-dlg .search-row .search-snippet mark").first().textContent();
       check(`${tag} dialog: Ctrl K opens it; the messages with the words, grouped by room, the words marked; no page error`,
-        groups[0] === "研發主管週會" && marked === "風險" && errors.length === 0, { groups, marked, errors });
+        groups[0] === "每週主管會議" && marked === "風險" && errors.length === 0, { groups, marked, errors });
       await shotPage(p, `search-dialog.${tag}.png`);
       await p.keyboard.press("Enter");
       await p.waitForSelector(".hub-room-page .thread .msg.flash", { timeout: 8000 }).catch(() => {});

@@ -26,12 +26,12 @@ describe("§13 smoke walk (one fixture)", () => {
     const heard: Array<[string, unknown]> = [];
     const stop = client.subscribeRooms(Object.fromEntries(ROOM_EVENTS.map((n: string) => [n, (d: unknown) => heard.push([n, d])])));
 
-    // 1. 王經理 may open rooms; 研發主管週會 has two other people, own agents, a waiting invite, and the assistant.
+    // 1. 王經理 may open rooms; 每週主管會議 has two other people, own agents, a waiting invite, and the assistant.
     const creators = await client.roomCreators();
     expect(creators.people.map((p: { id: string }) => p.id)).toContain(FIXTURE_ME.id);
     const list = await client.roomList();
     expect(list.me).toMatchObject({ canCreateRooms: true });
-    const weeklyRow = list.rooms.find((r: { name: string }) => r.name === "研發主管週會");
+    const weeklyRow = list.rooms.find((r: { name: string }) => r.name === "每週主管會議");
     expect(weeklyRow).toMatchObject({ kind: "group", people: 3, unread: 2 });
     const weekly = await client.room("room-weekly");
     expect(weekly.me).toEqual({ id: FIXTURE_ME.id, role: "manager" });
@@ -74,7 +74,7 @@ describe("§13 smoke walk (one fixture)", () => {
     expect(afterMention.unread).toBe(beforeMention.unread + 1);
     expect(afterMention.mentioned).toBe(true);
 
-    // 6. Turn off @all on the weekly room. 房間管理 still may @all there; a member (研發例會, already off) is refused.
+    // 6. Turn off @all on the weekly room. 房間管理 still may @all there; a member (專案例會, already off) is refused.
     await client.updateRoom("room-weekly", { allMention: false });
     expect((await client.room("room-weekly")).settings.allMention).toBe(false);
     expect(await client.sendRoomMessage("room-weekly", { text: "@所有 Agent", mentions: ["all"], idempotencyKey: "walk-mgr-all" }))

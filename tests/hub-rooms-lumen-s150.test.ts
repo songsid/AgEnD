@@ -109,7 +109,7 @@ describe("3. New room on the phone's list", () => {
 
 describe("4. a phone's room composer: the short placeholder", () => {
   it("narrow: 「說話，或 @ Agent 請它回答」; wide: the room's own; a one-to-one keeps 「問 …」", async () => {
-    for (const [narrow, want] of [[true, "說話，或 @ Agent 請它回答"], [false, "在「研發主管週會」說話；@ 一個 Agent 請它回答"]] as const) {
+    for (const [narrow, want] of [[true, "說話，或 @ Agent 請它回答"], [false, "在「每週主管會議」說話；@ 一個 Agent 請它回答"]] as const) {
       const { pg, restore } = await hubAt("/ui/hub?room=room-weekly", { lang: "zh-TW", narrow });
       try {
         await roomOpen(pg);
@@ -129,8 +129,8 @@ describe("5. the header menu: Leave room", () => {
       fire(items[0], "click");
       await until(() => !pg.root.querySelector(".hub-room-page"));
       expect(pg.window.location.search).toBe("");
-      await until(() => ![...pg.root.querySelectorAll("#sidebar .inst-name")].some((n: any) => n.textContent === "研發例會"));
-      expect([...pg.root.querySelectorAll("#sidebar .inst-name")].map((n: any) => n.textContent)).not.toContain("研發例會");
+      await until(() => ![...pg.root.querySelectorAll("#sidebar .inst-name")].some((n: any) => n.textContent === "專案例會"));
+      expect([...pg.root.querySelectorAll("#sidebar .inst-name")].map((n: any) => n.textContent)).not.toContain("專案例會");
     } finally { await restore(); }
   });
   it("the last manager is told to hand the role on first, and stays", async () => {
