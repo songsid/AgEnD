@@ -74,6 +74,7 @@ export { SERVER_SET } from "./storage.js";
 /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
 export interface HubHttpDeps {
   teams?: import("../http/deps.js").HubHttpDeps["teams"];
+  log?: import("../http/deps.js").HubHttpDeps["log"];
   roomInvitations?: import("../http/deps.js").HubHttpDeps["roomInvitations"];
   roomAssistant?: import("../assistant/types.js").RoomAssistant;
   assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
@@ -463,6 +464,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       if (roomAssistant) teardown.add("the room assistant", () => roomAssistant.close());
       const http = httpEntry.createHubHttp({
         ...(migrations.some(m => m.component === HUB_TEAMS_MIGRATION.component) ? { teams: createHubTeams } : {}),
+        log: (level, message, meta) => options.log(level, message, meta),
         roomInvitations: createHubRoomInvitations,
         ...(roomAssistant ? { roomAssistant, assistantAdmin: roomAssistant } : {}),
         uow,

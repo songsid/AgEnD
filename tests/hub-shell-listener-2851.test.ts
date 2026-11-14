@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { listenLoopback } from "../scripts/manual/smoke-fixture/listen-loopback.mjs";
@@ -28,7 +29,7 @@ describe("the Hub shell gate's owned listener", () => {
   it("keeps occupied listeners and concurrent gate reservations distinct", async () => {
     const blocker = makeServer("occupied"), occupied = await listenLoopback(blocker);
     const candidates = Array.from({ length: 8 }, () => makeServer());
-    const ports = await Promise.all(candidates.map(listenLoopback));
+    const ports = await Promise.all(candidates.map((s) => listenLoopback(s)));
     expect(new Set([occupied, ...ports]).size).toBe(9);
     expect([blocker, ...candidates].every(server => server.listening)).toBe(true);
     expect(await (await fetch(`http://127.0.0.1:${occupied}`)).text()).toBe("occupied");
@@ -51,5 +52,28 @@ describe("the Hub shell gate's owned listener", () => {
     expect(listen).toHaveBeenCalledOnce();
     expect(server.listenerCount("error")).toBe(0);
     expect(await (await fetch(`http://127.0.0.1:${port}`)).text()).toBe("ready");
+  });
+
+  it("an explicit port binds that port (HUB_GATE_PORT)", async () => {
+    const probe = makeServer(), port = await listenLoopback(probe);
+    probe.closeAllConnections();
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    const server = makeServer();
+    expect(await listenLoopback(server, { port })).toBe(port);
+    expect(server.address()).toMatchObject({ address: "127.0.0.1", port });
+  });
+
+  it("an explicit occupied port fails once with EADDRINUSE", async () => {
+    const blocker = makeServer("occupied"), port = await listenLoopback(blocker);
+    const server = makeServer(), listen = vi.spyOn(server, "listen");
+    await expect(listenLoopback(server, { port })).rejects.toMatchObject({ code: "EADDRINUSE" });
+    expect(listen).toHaveBeenCalledOnce();
+    expect(await (await fetch(`http://127.0.0.1:${port}`)).text()).toBe("occupied");
+  });
+
+  it("the Hub UI gate binds through listenLoopback, not a fixed 48930", () => {
+    const src = readFileSync(new URL("../scripts/manual/smoke/smoke-hub-ui-gate.mts", import.meta.url), "utf8");
+    expect(src).toContain("listenLoopback");
+    expect(src).not.toMatch(/\?\? 48930/);
   });
 });

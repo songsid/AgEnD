@@ -13,6 +13,7 @@
  * - `receive(frame, link)` is S1's HubServer callback for an authenticated member link.
  * - `close()` forgets the links. S5 closes the DB.
  */
+import { HubGroupPolicyError } from "../group-policy/errors.js";
 import { GROUP_POLICY_FEATURE, handleGroupHttp } from "../group-policy/admin-api.js";
 import { handleHubDirectorySettingsHttp, HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE } from "../settings-directory-http.js";
 import { handleHubSettingsHttp } from "../settings-api.js";
@@ -748,7 +749,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     throw new HttpError(404, "not-found");
   }
 
-  function fail(res: ServerResponse, e: unknown): void {
+  function fail(res: ServerResponse, e: unknown, method: string, path: string): void {
     if (e instanceof HubRoomRefusal) return send(res, e.status, { code: e.code, ...e.details });
     if (e instanceof HubEnrolmentCodeLimit) return send(res, 429, { code: "backpressure", reason: e.reason });
     if (e instanceof CompanyJoinCodeRefusal) return send(res, 403, { code: "denied", reason: e.reason });
@@ -761,6 +762,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (e instanceof HubAttachmentRefused) return send(res, 415, { code: e.refusal });
     if (e instanceof HubProtocolError) {
       const status = STATUS[e.code] ?? 400;
+      if (status === 503) {
+        try { deps.log?.("warn", "Hub HTTP unavailable", { method, path, code: e.code,
+          cause: e.cause instanceof HubGroupPolicyError ? e.cause.message : e.code }); } catch { /* diagnostics cannot replace the response */ }
+      }
       return send(res, status, { code: e.code }, status === 429 ? { "Retry-After": "10" } : {});
     }
     send(res, 500, { code: "unavailable" });
@@ -772,7 +777,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const path = url.pathname, method = req.method ?? "GET";
     if (deps.companyJoin && live() && handleCompanyJoin(req, res, deps.companyJoin)) return true;
     if (path.startsWith("/hub/v1/")) {
-      void api(req, res, path, url.searchParams).catch((e) => fail(res, e));
+      void api(req, res, path, url.searchParams).catch((e) => fail(res, e, method, path));
       return true;
     }
     if (method !== "GET" && method !== "HEAD") return false;

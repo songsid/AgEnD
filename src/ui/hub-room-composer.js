@@ -31,7 +31,7 @@ export function mentionOptions(detail, query = "") {
     out.push({ kind: "all", key: "all", label: hroom("mentionAll"), hint: hroom("mentionAllHint", String(agents.length)) });
   if ((detail?.members || []).some((m) => m.kind === "assistant") && hit(hroom("mentionAssistant")))
     out.push({ kind: "assistant", key: "assistant", label: hroom("mentionAssistant"), hint: hroom("mentionAssistantHint") });
-  for (const a of agents) if (hit(a.name, a.owner?.name)) out.push({ kind: "agent", key: a.id, label: `@${a.name}`, hint: a.owner?.name || "", dot: presenceDot(a.presence) });
+  for (const a of agents) if (hit(a.name, a.owner?.name)) out.push({ kind: "agent", key: a.id, label: `@${a.name}`, hint: a.owner?.name || "", dot: presenceDot(a.presence, a.presenceReason) });
   for (const p of (detail?.members || []).filter((m) => m.kind === "person" && m.id !== detail?.me?.id)) if (hit(p.name)) out.push({ kind: "person", key: p.id, label: `@${p.name}`, hint: "" });
   return out;
 }

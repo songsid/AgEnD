@@ -127,6 +127,17 @@ describe("the thread's mapping (pure)", () => {
     expect(composer.allBar(weekly)).toBe("12 個 Agent 中 7 個在線上，5 個上線後回答");
     expect(composer.refusalText({ ok: false, code: "all-mention-off" })).toBe("這個房間只有房間管理可以 @所有 Agent。");
   });
+  it("a stopped agent reads grey in the @ menu, not yellow", async () => {
+    const detail: any = {
+      members: [
+        { kind: "agent", id: "e9", name: "stuck-bot", owner: { name: "Ann" }, presence: "paused", presenceReason: "stopped" },
+        { kind: "agent", id: "e10", name: "ok-bot", owner: { name: "Ann" }, presence: "idle" },
+      ],
+      settings: {},
+    };
+    const dots = Object.fromEntries(composer.mentionOptions(detail, "").filter((o: any) => o.kind === "agent").map((o: any) => [o.label, o.dot]));
+    expect(dots).toEqual({ "@stuck-bot": "off", "@ok-bot": "ok" });
+  });
 });
 
 describe("a send answered with the bare message, before any stream (Ridge's server)", () => {

@@ -9,7 +9,7 @@ let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; });
 const caps = ["welcome-caps-v1", "room-ask-v1"];
 async function world() {
-  let at = Date.now(); r = await s3bRig({ now: () => at });
+  let at = Date.now(); r = await s3bRig({ now: () => at, realAudit: true });
   const alex = r.addPerson("alex", "Alex"), a = await r.signIn("alex"), admin = await r.signIn("admin");
   const fleetId = randomUUID(), link = r.link(fleetId, r.admin, 1, caps);
   const e: HubExposure = { id: randomUUID(), fleetId, owner: r.admin, displayName: "Notes", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) };

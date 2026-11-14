@@ -258,7 +258,9 @@ export class HubCatalogService {
     const person = await ctx.requirePerson(), me = personKeyString(person), now = this.core.now();
     const initial = this.core.atomic((db) => {
       const names = (id: string) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
-      const mine = (db.prepare("SELECT * FROM hub_exposures WHERE owner=? AND state<>'withdrawn' ORDER BY display_name").all(me) as ExposureRow[]).map((row) => {
+      const retired = new Set(this.core.deps.store.read().fleets.filter(f => f.status === "revoked").map(f => f.id));
+      const mine = (db.prepare("SELECT * FROM hub_exposures WHERE owner=? AND state<>'withdrawn' ORDER BY display_name").all(me) as ExposureRow[])
+        .filter(row => !retired.has(row.fleet_id)).map((row) => {
         const grants = (db.prepare("SELECT * FROM hub_grants WHERE exposure_id=? AND state='active' AND expires_at>? ORDER BY approved_at").all(row.id, now) as GrantRow[])
           .map((g) => { const n = g.subject_kind === "group" || g.subject_kind === "team" ? null : names(g.subject);
             return { ...grantOf(g), subjectName: g.subject_kind === "team" ? this.core.deps.roomTeams?.read(db, g.subject)?.name ?? g.subject_label ?? ""
@@ -313,7 +315,8 @@ export class HubCatalogService {
     // sign-in permanently; directory eligibility checks and ended sessions cannot manufacture or erase it.
     return this.core.atomic(db => ({ mine: mine.filter(candidate => {
       const row = readExposure(db, candidate.id);
-      return row && row.owner === me && row.state !== "withdrawn" && row.revision === candidate.revision;
+      return row && row.owner === me && row.state !== "withdrawn" && row.revision === candidate.revision
+        && this.core.deps.store.read().fleets.find(f => f.id === row.fleet_id)?.status !== "revoked";
     }).map(exposure => ({ ...exposure, grants: exposure.grants.filter(grant => {
       const row = readGrant(db, grant.id);
       return row && row.revision === grant.revision && row.state === "active" && row.expires_at > this.core.now();

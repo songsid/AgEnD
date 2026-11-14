@@ -1,0 +1,35 @@
+{
+  "parent": "6b80348708cf21aaff4b7fca6a8ce9e0c66e538a",
+  "beforeHead": "dbe23d029b719630e163d207708745b5130f8fc2",
+  "ownDeltaUnchanged": true,
+  "canonicalDeltaSha256": "21246318e6b404046d58ccb54354822b696760abbed4d66ad671261f8fb4c5a9",
+  "canonicalization": "Zero-context diff; omit blob index lines and numeric hunk ranges only. All paths, function contexts and added/deleted lines remain exact.",
+  "changedVsParent": [
+    "changes/3887.md",
+    "changes/3887.zh-TW.md",
+    "docs/evidence/hub-team-mount-r3/README.md",
+    "docs/evidence/hub-team-mount-r3/detail-ci-r1/README.md",
+    "docs/evidence/hub-team-mount-r3/detail-ci-r1/detail-after.log",
+    "docs/evidence/hub-team-mount-r3/detail-ci-r1/detail-before.log",
+    "docs/evidence/hub-team-mount-r3/detail-ci-r1/verification.json",
+    "docs/evidence/hub-team-mount-r3/verification.json",
+    "src/hub/compose/server.ts",
+    "src/hub/http/compose.ts",
+    "src/hub/http/deps.ts",
+    "src/hub/rooms/service.ts",
+    "tests/hub-compose.test.ts",
+    "tests/hub-room-teams-integration-r3.test.ts"
+  ],
+  "unchangedWholeTests": {
+    "tests/hub-compose.test.ts": true,
+    "tests/hub-room-teams-integration-r3.test.ts": true
+  },
+  "alpha": "51f14fbd554df1970d1d75e931f938766eb8f900",
+  "conflicts": [
+    "src/hub/compose/server.ts",
+    "src/hub/http/deps.ts"
+  ],
+  "resolution": "Retain both the reviewed Team mount fields and incoming server-owned log fields/forwarding. No other conflict.",
+  "checks": "Diff/carry inspection only; no local test, typecheck, mutation or browser rerun under5afe2996. Exact-head CI and formal approval follow push.",
+  "reviewReference": "tree unchanged since dbe23d029b719630e163d207708745b5130f8fc2 (own source/test delta)"
+}

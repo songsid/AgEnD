@@ -31,6 +31,8 @@ export interface HubContentStore {
 export interface HubHttpDeps {
   /** One mount-local Team service supplies routes, live permission reads and snapshot pickers. */
   teams?(core: import("./core.js").HubCore): import("../teams/types.js").HubTeams;
+  /** Server-owned diagnostics; protocol responses never disclose internal causes. */
+  log?(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   /** C supplies consent/expiry storage; R supplies current room effects on the same Core/DB. */
   roomInvitations?(core: import("./core.js").HubCore, host: import("../invitations.js").RoomInvitationHost): import("../invitations.js").HubRoomInvitations;
   roomTeams?: import("../teams/types.js").HubTeamReader;

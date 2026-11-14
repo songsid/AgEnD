@@ -37,9 +37,9 @@ const NOTE_KEY = { "額度用完": "pauseQuota", "等待登入": "pauseSignIn", 
  * - update applies to offline only (grey with its own word).
  * - idle: no-op, the presence already says idle (autowake sleep).
  * - error/stuck/unknown: no mapping defined — the presence mapping stands.
- * - stopped/crashed: need a hubRoom stopped word, which does not exist yet —
- *   deliberately unmapped here; until it lands, the presence mapping stands.
- *   (When it lands: grey dot + the new word, gated on presence "paused".)
+ * - stopped/crashed: grey dot (offline) + the "stopped" word, gated on
+ *   presence "paused" as C only sends these paused (crashed is normalised
+ *   to stopped server-side, so both map to stStopped here).
  */
 const REASON = {
   quota: { when: ["paused"], dot: "paused", word: "stPaused", noteKey: "pauseQuota" },
@@ -48,6 +48,8 @@ const REASON = {
   update: { when: ["offline"], dot: "offline", word: "needsUpdate" },
   operator: { when: ["paused"], dot: "paused", word: "stPaused" },
   capacity: { when: ["paused"], dot: "paused", word: "stPaused" },
+  stopped: { when: ["paused"], dot: "offline", word: "stStopped" },
+  crashed: { when: ["paused"], dot: "offline", word: "stStopped" },
 };
 
 const groupIndex = (presence) => { const i = GROUP_ORDER.indexOf(presence); return i < 0 ? GROUP_ORDER.length : i; };
@@ -78,10 +80,17 @@ export function presenceView(member) {
   return view;
 }
 
-/** The Fleet sidebar dot class for a presence value (shared with the list rows). */
+/**
+ * The Fleet sidebar dot class for a presence value, or for a presence + reason
+ * pair (shared with the list rows). A reason the table knows wins when its
+ * `when` gate matches the presence — so a stopped agent reads grey, not yellow.
+ * Unknown or gated-out reasons fall back to the plain presence dot.
+ */
 const DOT_CLASS = { online: "ok", idle: "ok", working: "busy", paused: "warn", offline: "off", later: "off" };
-export function presenceDot(presence) {
-  return DOT_CLASS[presence] ?? "off";
+export function presenceDot(presence, reason) {
+  const r = typeof reason === "string" ? REASON[reason] : undefined;
+  const dot = (r && r.when.includes(presence) ? r.dot : undefined) ?? DOT[presence] ?? "offline";
+  return DOT_CLASS[dot] ?? "off";
 }
 
 /**

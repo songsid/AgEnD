@@ -1,0 +1,33 @@
+{
+  "sourceBase": "c3dc173f2c97202ea202079934f9a8d46b428260",
+  "copySha256": "1af44c00e5a636e2ba6c47ae25d9eb853ae73d10a58ad71e0924d3da78815556",
+  "mode": "Read-only SQLite backup from live failing rig; actual group authority/Core, directory/audit writes inert and forbidden. Raw DB and daemon logs remain private.",
+  "liveGet": {
+    "path": "/hub/v1/exposures",
+    "actor": "carol",
+    "status": 503,
+    "code": "unavailable"
+  },
+  "before": {
+    "groupCheck": "HubGroupPolicyError:invalid",
+    "coreCheck": "HubProtocolError:unavailable"
+  },
+  "after": {
+    "fleet": {
+      "id": "f43c1631-7909-4783-b04a-f44820cd43fd",
+      "status": "revoked",
+      "generation": 2
+    },
+    "resourcePresent": false,
+    "groupCheck": {
+      "name": "HubGroupPolicyError",
+      "code": "invalid",
+      "message": "group_policy_invalid"
+    },
+    "coreCheck": {
+      "name": "HubProtocolError",
+      "code": "revoked",
+      "message": "Hub protocol: revoked"
+    }
+  }
+}
