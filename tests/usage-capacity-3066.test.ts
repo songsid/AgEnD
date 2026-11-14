@@ -14,7 +14,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 
 const H = 3_600_000, T0 = Date.parse("2026-11-02T00:00:00.000Z"), WEEK = 7 * 24 * H;
-const rd = (t: number, used: number, resetsAt = "2026-11-09T00:00:00.000Z", metric = "Weekly"): QuotaReading => ({ t, provider: "claude:hsinlin", profile: "hsinlin", metric, used, resetsAt, windowMs: WEEK });
+const rd = (t: number, used: number, resetsAt = "2026-11-09T00:00:00.000Z", metric = "Weekly"): QuotaReading => ({ t, provider: "claude:helenwu", profile: "helenwu", metric, used, resetsAt, windowMs: WEEK });
 /** The estimate, never null where a test expects one. */
 const estimateCapacity = (...a: Parameters<typeof estimateOrNull>): any => { const e = estimateOrNull(...a); expect(e).not.toBeNull(); return e!; };
 const capacityText = (e: CapacityEstimate) => { const c = textOrNull(e); expect(c).not.toBeNull(); return c!; };
@@ -160,9 +160,9 @@ describe("served (#3066 §1)", () => {
     expect(textOrNull({ status: "ok", windows: 1, deltaPct: 30, bases: {}, bestFit: null, mixed: false })).toBeNull();
   });
   it("a weekly percent metric gets `capacity`; the session window does not; the cached payload stays as read", async () => {
-    setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), providers: [{ id: "claude:hsinlin", name: "Claude", status: "ok", profile: "hsinlin", metrics: [
+    setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), providers: [{ id: "claude:helenwu", name: "Claude", status: "ok", profile: "helenwu", metrics: [
       { label: "Session", type: "percent", used: 4, windowMs: 5 * H }, { label: "Weekly", type: "percent", used: 62, windowMs: WEEK }] }] }) as any);
-    setCapacityLookup((p, m) => (p === "claude:hsinlin" && m === "Weekly" ? { status: "not_enough", deltaPct: 6 } : null));
+    setCapacityLookup((p, m) => (p === "claude:helenwu" && m === "Weekly" ? { status: "not_enough", deltaPct: 6 } : null));
     const metrics = (await getUsageSnapshot(true)).providers[0]!.metrics as any[];
     expect(metrics.map((m) => !!m.capacity)).toEqual([false, true]);
     expect(metrics[1].capacity.line.i18n.key).toBe("usage.capacity.not_enough");
@@ -201,7 +201,7 @@ describe("the fleet's refresh (#3066 §1)", () => {
     expect([...named.keys()]).toEqual([]);                        // never credited to the host account
     // Control: an ordinary named profile beside the host — the host is estimated from its own hours. (Its history
     // holds no "claude:default": that alone would make it ambiguous, r2.)
-    const control = await fleetWith(lines.slice(0, 2), [{ hours: hoursOf("claude:default", "claude-opus-4-5", 20) }], cfg("hsinlin"));
+    const control = await fleetWith(lines.slice(0, 2), [{ hours: hoursOf("claude:default", "claude-opus-4-5", 20) }], cfg("helenwu"));
     expect(control.get("claude\u0000Weekly")?.status).toBe("ok");
     // "unrecorded" named for codex: its hours are not dropped as no one's while the account is estimated without them.
     const cx = [{ ...rd(T0, 0), provider: "codex:unrecorded", profile: "unrecorded" }, { ...rd(T0 + 20 * H, 20), provider: "codex:unrecorded", profile: "unrecorded" }];
@@ -217,38 +217,38 @@ describe("the fleet's refresh (#3066 §1)", () => {
     // … or only its profile directory is left on this host.
     expect([...(await fleetWith(hostLines, buckets, undefined, ["claude-code/default"])).keys()]).toEqual([]);
     // Control: no trace of a named "default" — the host's own hours are its.
-    expect((await fleetWith(hostLines, buckets, undefined, ["claude-code/hsinlin"])).get("claude\u0000Weekly")?.status).toBe("ok");
+    expect((await fleetWith(hostLines, buckets, undefined, ["claude-code/helenwu"])).get("claude\u0000Weekly")?.status).toBe("ok");
   });
   it("Prism #3073 r2: an instance of the backend still waiting for its first scan (no hours, no coverage) holds the estimate back", async () => {
     const lines = [rd(T0, 0), rd(T0 + 20 * H, 20)];
-    const hs = { hours: hoursOf("claude:hsinlin", "claude-opus-4-5", 20) };
-    expect((await fleetWith(lines, [hs, { hours: {}, days: { coverage: [] } }])).has("claude:hsinlin\u0000Weekly")).toBe(false);
+    const hs = { hours: hoursOf("claude:helenwu", "claude-opus-4-5", 20) };
+    expect((await fleetWith(lines, [hs, { hours: {}, days: { coverage: [] } }])).has("claude:helenwu\u0000Weekly")).toBe(false);
     // Control: the sibling was scanned and used nothing — zero is known, the estimate stands.
-    expect((await fleetWith(lines, [hs, { hours: {} }])).get("claude:hsinlin\u0000Weekly")?.status).toBe("ok");
+    expect((await fleetWith(lines, [hs, { hours: {} }])).get("claude:helenwu\u0000Weekly")?.status).toBe("ok");
     // Another backend's pending instance is no contributor.
-    expect((await fleetWith(lines, [hs, { hours: {}, days: { coverage: [] }, backend: "codex" }])).get("claude:hsinlin\u0000Weekly")?.status).toBe("ok");
+    expect((await fleetWith(lines, [hs, { hours: {}, days: { coverage: [] }, backend: "codex" }])).get("claude:helenwu\u0000Weekly")?.status).toBe("ok");
   });
   it("Prism #3073 P2: only a vendor per-model weekly is filtered by model; a named pool (Luna Reserve) gets no estimate", async () => {
     const lines = [rd(T0, 0, undefined, "Luna Reserve (weekly)"), rd(T0 + 20 * H, 20, undefined, "Luna Reserve (weekly)"),
       { ...rd(T0, 0, undefined, "Sonnet (weekly)"), scope: "model" as const }, { ...rd(T0 + 20 * H, 20, undefined, "Sonnet (weekly)"), scope: "model" as const }];
     // Even a model whose name has the pool's word in it does not make the pool a per-model quota.
-    const est = await fleetWith(lines, [{ hours: { ...hoursOf("claude:hsinlin", "claude-sonnet-4-5", 20) } }, { hours: hoursOf("claude:hsinlin", "luna reserve", 20) }]);
-    expect(est.has("claude:hsinlin\u0000Luna Reserve (weekly)")).toBe(false);
-    expect(est.get("claude:hsinlin\u0000Sonnet (weekly)")?.status).toBe("ok");
+    const est = await fleetWith(lines, [{ hours: { ...hoursOf("claude:helenwu", "claude-sonnet-4-5", 20) } }, { hours: hoursOf("claude:helenwu", "luna reserve", 20) }]);
+    expect(est.has("claude:helenwu\u0000Luna Reserve (weekly)")).toBe(false);
+    expect(est.get("claude:helenwu\u0000Sonnet (weekly)")?.status).toBe("ok");
   });
   it("Prism #3073 P2: a window outside the scanned hours of an instance using the account is left out", async () => {
     const lines = [rd(T0, 0), rd(T0 + 20 * H, 20)];
-    const hs = hoursOf("claude:hsinlin", "claude-opus-4-5", 20);
+    const hs = hoursOf("claude:helenwu", "claude-opus-4-5", 20);
     // Instance b scanned only from T0 + 10 h: the window's first hours may hold its use — no estimate.
-    const partly = await fleetWith(lines, [{ hours: hs }, { hours: hoursOf("claude:hsinlin", "claude-opus-4-5", 5, T0 + 12 * H), days: { coverage: [[T0 + 10 * H, T0 + 3 * 24 * H]] } }]);
-    expect(partly.has("claude:hsinlin\u0000Weekly")).toBe(false);
+    const partly = await fleetWith(lines, [{ hours: hs }, { hours: hoursOf("claude:helenwu", "claude-opus-4-5", 5, T0 + 12 * H), days: { coverage: [[T0 + 10 * H, T0 + 3 * 24 * H]] } }]);
+    expect(partly.has("claude:helenwu\u0000Weekly")).toBe(false);
     // Control: both scanned through the window.
-    const whole = await fleetWith(lines, [{ hours: hs }, { hours: hoursOf("claude:hsinlin", "claude-opus-4-5", 5, T0 + 12 * H) }]);
-    expect(whole.get("claude:hsinlin\u0000Weekly")?.status).toBe("ok");
+    const whole = await fleetWith(lines, [{ hours: hs }, { hours: hoursOf("claude:helenwu", "claude-opus-4-5", 5, T0 + 12 * H) }]);
+    expect(whole.get("claude:helenwu\u0000Weekly")?.status).toBe("ok");
     // Older than the ledger keeps (31 days): out, though the quota history still has it.
     vi.setSystemTime(T0 + 32 * 24 * H);
     const old = await fleetWith(lines, [{ hours: hs, days: { coverage: [[T0 - 40 * 24 * H, T0 + 40 * 24 * H]] } }]);
-    expect(old.has("claude:hsinlin\u0000Weekly")).toBe(false);
+    expect(old.has("claude:helenwu\u0000Weekly")).toBe(false);
   });
   it("by account (provider id ↔ ledger source by profile) and, for a per-model weekly, that model's tokens only", async () => {
     const home = join(dir, "home"); mkdirSync(home);
@@ -260,13 +260,13 @@ describe("the fleet's refresh (#3066 §1)", () => {
     writeFileSync(hist, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
     await setQuotaHistoryFileForTests(hist);
     vi.spyOn(fm as any, "cacheServiceFor").mockReturnValue({ usageData: async () => ({ scanning: {}, instances: [
-      { inst: { name: "a" }, status: "ok", ledger: { hours: { ...hoursOf("claude:hsinlin", "claude-opus-4-5", 20) } }, days: scanned() },
-      { inst: { name: "b" }, status: "ok", ledger: { hours: Object.fromEntries(Object.entries(hoursOf("claude:hsinlin", "claude-sonnet-4-5", 20)).map(([k, v]) => [String(Number(k) + 30 * 60_000 - 30 * 60_000), v])) }, days: scanned() },
+      { inst: { name: "a" }, status: "ok", ledger: { hours: { ...hoursOf("claude:helenwu", "claude-opus-4-5", 20) } }, days: scanned() },
+      { inst: { name: "b" }, status: "ok", ledger: { hours: Object.fromEntries(Object.entries(hoursOf("claude:helenwu", "claude-sonnet-4-5", 20)).map(([k, v]) => [String(Number(k) + 30 * 60_000 - 30 * 60_000), v])) }, days: scanned() },
       { inst: { name: "c" }, status: "ok", ledger: { hours: hoursOf("codex:unrecorded", "gpt-5.5", 20) }, days: scanned() },
     ] }) });
     expect(await fm.refreshCapacity()).toBe(2);
     const est = (fm as any).capacityEstimates as Map<string, any>;
-    const weekly = est.get("claude:hsinlin\u0000Weekly"), sonnet = est.get("claude:hsinlin\u0000Sonnet (weekly)"), codex = est.get("codex\u0000Weekly");
+    const weekly = est.get("claude:helenwu\u0000Weekly"), sonnet = est.get("claude:helenwu\u0000Sonnet (weekly)"), codex = est.get("codex\u0000Weekly");
     expect(weekly.status).toBe("ok");
     expect(sonnet.status).toBe("ok");
     // Weekly counts both models (2 × 1000 tokens an hour), Sonnet's only its own (1000), over 20% vs 10%.

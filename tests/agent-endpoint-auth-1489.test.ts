@@ -212,7 +212,7 @@ describe("POST /agent: token-first validation (#1489)", () => {
   // characters are codepoints > 0x7F.
 
   it("agentTokenHeader produces ASCII-safe header and endpoint authenticates non-ASCII instance", async () => {
-    const instanceName = "\u9B25\u7834\u4F01\u5283-7393"; // 鬥破企劃-7393
+    const instanceName = "\u9B25\u7834\u4F01\u5283-7393"; // 遊戲企劃-7393
     const token = "test-token-not-a-secret"; // gitleaks:allow
     const dataDir = mkdtempSync(join(tmpdir(), "agend-ep-nonascii-"));
     try {

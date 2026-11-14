@@ -6,7 +6,7 @@ import {createInterface} from 'node:readline';
 import {randomUUID} from 'node:crypto';
 import {mkdirSync,readFileSync,writeFileSync,rmSync,symlinkSync} from 'node:fs';
 const [bundle,root]=process.argv.slice(2);
-assert(process.platform==='win32'&&win32.normalize(root).toLowerCase().startsWith('c:\\users\\changhansung\\agend-adapter-proto\\general-'));
+assert(process.platform==='win32'&&win32.normalize(root).toLowerCase().startsWith('c:\\users\\demo-account\\agend-adapter-proto\\general-'));
 const load=name=>import(pathToFileURL(join(bundle,'dist',name+'.js')).href);
 const [{RuntimeClient,pairRuntime},{RuntimeClientStore,runtimeJobDigest},{startPaneService},{RuntimePaneLink},{findCli,nativeCliEnvironment,readNativeCodexModels},{execFile},{promisify}]=await Promise.all([
  ...['runtime-client','runtime-client-store','runtime-pane-service','runtime-pane-link','windows-cli-worker'].map(load),import('node:child_process'),import('node:util')]);

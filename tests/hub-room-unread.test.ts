@@ -41,7 +41,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("tabTitle / readWhen", () => {
   it('prefixes "(3) base" and restores base at 0', () => {
     expect(tabTitle("AgEnD Hub", 3)).toBe("(3) AgEnD Hub");
-    expect(tabTitle("研一主管週會", 1)).toBe("(1) 研一主管週會");
+    expect(tabTitle("研發主管週會", 1)).toBe("(1) 研發主管週會");
     expect(tabTitle("AgEnD Hub", 0)).toBe("AgEnD Hub");
     expect(tabTitle("AgEnD Hub", -1)).toBe("AgEnD Hub");
   });

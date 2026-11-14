@@ -37,7 +37,7 @@ const names = ["general", ...MEMBERS, "release-notes-drafter", "nightly-benchmar
 fm.fleetConfig.instances = Object.fromEntries(names.map((name, i) => [name, { working_directory: dir, backend: ["claude-code", "codex", "kiro-cli"][i % 3], ...(name === "general" ? { general_topic: true } : {}) }]));
 fm.fleetConfig.teams = { [TEAM]: { members: MEMBERS } };
 fm.getInstanceStatus = () => "running";
-const REAL = /agend-|t15\d{6}|web-claude|\bsol\b|\bfable\b|qa-1|rd1-|awp-|doupo-|研一官網-t|鬥破|己把鳩/;
+const REAL = /agend-|t15\d{6}|web-claude|\bsol\b|\bfable\b|qa-1|tm1-|ota-svc|games-|產品官網-t|遊戲|產品專案/;
 
 const results: Array<Record<string, unknown>> = [];
 let failed = 0;

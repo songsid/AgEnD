@@ -1,14 +1,14 @@
 // #2182 from defaults (fleet decision a78ebdc5): the org canvas's traffic lines routed around the cards and through the
 // team boxes' doors (libavoid in a worker). Each case is a fresh profile with nothing seeded, signed in through the
 // visible /signin, reaching Fleet → Org chart through visible navigation. Demo names only.
-// The user's screenshot case: a sender outside every team box (General) delegating to two cards inside awp-ota and one
+// The user's screenshot case: a sender outside every team box (General) delegating to two cards inside ota-svc and one
 // in the box of instances in no team; plus a ×3 bundle between two teams and lines into a folded team.
 // Per case, measured on the page (each line's points are the path's corners): every line is routed by the worker
 // (data-routed), starts and ends on a card (or on a folded team's box — its end), never runs along a box border,
 // never crosses a header band or a card, its arrowhead clears every border, and no two lines share a run (4 px apart
 // or less along more than 8 px). And:
 // - desk (light, loopback): #2135 kept — the delegations stay until their report_result (and go after it); a message
-//   lingers while it fades (12 s), then goes; ×3 on a bundle; folding awp-ota ends its lines on the box. The policies:
+//   lingers while it fades (12 s), then goes; ×3 on a bundle; folding ota-svc ends its lines on the box. The policies:
 //   /ui keeps the dashboard's (no WebAssembly; the page cannot compile any), the worker's script has its own.
 // - phone (dark, zh-TW, a LAN origin in Chromium, reduced motion): the same lines routed on the phone's packing; no
 //   horizontal overflow.
@@ -31,9 +31,9 @@ const fx = await bootFixture({ port: Number(process.env.HP ?? 48620), classic: f
 const fm = fx.fm;
 const dir = fm.dataDir ?? fx.dir;
 
-// ── The fleet: General outside every box; awp-ota and two more teams; three in no team ──
+// ── The fleet: General outside every box; ota-svc and two more teams; three in no team ──
 const SMALL = {
-  teams: { "platform": ["infra-terraform", "ci-runner", "log-shipper", "secrets-rotator"], "awp-ota": ["ota-builder", "ota-signer", "ota-rollout", "ota-canary", "ota-metrics"],
+  teams: { "platform": ["infra-terraform", "ci-runner", "log-shipper", "secrets-rotator"], "ota-svc": ["ota-builder", "ota-signer", "ota-rollout", "ota-canary", "ota-metrics"],
     "data": ["etl-nightly", "warehouse-sync", "report-builder"] } as Record<string, string[]>,
   rest: ["docs-site-builder", "release-notes-drafter", "grok-scout"],
 };
@@ -56,7 +56,7 @@ async function message(from: string, to: string, kind: string, corr: string | nu
   for (const s of ["queued", "delivering", "delivered"]) { fm.publishTraffic(row(from, to, kind, corr, s, id)); await wait(gap); }
   fm.publishTraffic(row(from, to, kind, corr, "delivered", id), "consumed");
 }
-/** The screenshot case: General → two in awp-ota and one in no team, as open delegations. */
+/** The screenshot case: General → two in ota-svc and one in no team, as open delegations. */
 const DELEGATIONS: Array<[string, string]> = [["general", "ota-builder"], ["general", "ota-canary"], ["general", "release-notes-drafter"]];
 /** Each case its own correlation ids (a closed delegation's id is done for good). */
 async function openDelegations(tag: string) { for (const [i, [a, z]] of DELEGATIONS.entries()) await message(a, z, "task", `cid-${tag}-${i}`, 60); }
@@ -200,13 +200,13 @@ if (only("desk")) {
   c.messageLingersFading = fading.ok;
   const faded = await until(p, (m) => !m.lines.some((l) => l.cls.includes("ph-fading")), 16000);
   c.messageGoesAfterFading = faded.ok;
-  // Fold awp-ota: its lines end on its box (the box is their end), routed.
-  await p.page.locator('.oc-team-head[data-team="awp-ota"] .oc-toggle').click();
-  const f = await until(p, (m) => allRouted(2)(m) && ends(work(m)).filter(([, z]) => z === "box:awp-ota").length === 1);
+  // Fold ota-svc: its lines end on its box (the box is their end), routed.
+  await p.page.locator('.oc-team-head[data-team="ota-svc"] .oc-toggle').click();
+  const f = await until(p, (m) => allRouted(2)(m) && ends(work(m)).filter(([, z]) => z === "box:ota-svc").length === 1);
   const pf = problems(f.m);
   c.foldedEndsOnBox = f.ok && pf.length === 0;
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-desk-light-en`, "3-folded") });
-  await p.page.locator('.oc-team-head[data-team="awp-ota"] .oc-toggle').click();
+  await p.page.locator('.oc-team-head[data-team="ota-svc"] .oc-toggle').click();
   // The report_result closes each delegation: its return, then nothing — no line left over.
   await closeDelegations("desk");
   const done = await until(p, (m) => m.lines.length === 0, 18000);   // the reports' own lines fade for 12 s
@@ -290,7 +290,7 @@ if (only("blocked")) {
 if (only("timing")) {
   const teams: Record<string, string[]> = {};
   const sizes = [8, 6, 9, 4, 7, 5, 3, 6];
-  sizes.forEach((n, i) => { teams[i === 1 ? "awp-ota" : `team-${i}`] = Array.from({ length: n }, (_, k) => `t${i}-agent-${k + 1}`); });
+  sizes.forEach((n, i) => { teams[i === 1 ? "ota-svc" : `team-${i}`] = Array.from({ length: n }, (_, k) => `t${i}-agent-${k + 1}`); });
   const restN = 60 - 1 - sizes.reduce((x, y) => x + y, 0);
   useFleet({ teams, rest: Array.from({ length: restN }, (_, k) => `solo-${k + 1}`) });
   const names = ["general", ...Object.values(teams).flat(), ...Array.from({ length: restN }, (_, k) => `solo-${k + 1}`)];

@@ -19,7 +19,7 @@ const fx = await bootFixture({ port: Number(process.env.HP ?? 48780), classic: f
 const fm = fx.fm;
 const CHAT = Object.keys(fm.fleetConfig.instances).find((n: string) => !fm.fleetConfig.instances[n].general_topic)!;
 const LONG = [
-  "Weaver → rd1-web-dev-claude-t695268:",
+  "Weaver → tm1-web-dev-claude-t695268:",
   "補充給 cid-1793608048938-h1813m 的 B（item 15 API 金鑰）用：這是共用後台正式機 ApiKeyGuard log 的呼叫端盤點，依來源 IP 與 key 前綴分組。",
   "1. 10.2.3.4 — key ak_live_7f… — 1,204 次／日",
   "2. 10.2.3.9 — key ak_live_19… — 311 次／日",
@@ -28,7 +28,7 @@ const LONG = [
   "請依這份清單確認哪些呼叫端要換新金鑰。",
   "— Weaver",
 ].join("\n");
-const SHORT = "Weaver → rd1-web-dev-claude-t695268:\nreceived, thanks";
+const SHORT = "Weaver → tm1-web-dev-claude-t695268:\nreceived, thanks";
 const at = (min: number) => new Date(Date.now() - min * 60000).toISOString();
 fm.emitSseEvent("message", { instance: CHAT, sender: "agend-weaver", role: "status", text: LONG, ts: at(3) });
 fm.emitSseEvent("message", { instance: CHAT, sender: "agend-weaver", role: "status", text: SHORT, ts: at(2) });

@@ -13,7 +13,7 @@ import {deliverStates} from '../windows-pane-adapter/session-recovery-cases.mjs'
 const locationMode=process.argv.includes('--location');
 const source=sourceReceipt();assert(source.sourceTrackedClean,'Commit the source before acceptance');
 const compiled=resolve('dist'),bundle=resolve('.artifacts/runtime-bundle'),tag=randomUUID().slice(0,8);
-const root='/mnt/c/Users/changhansung/agend-adapter-proto/general-'+tag,nativeRoot='C:\\Users\\changhansung\\agend-adapter-proto\\general-'+tag;
+const root='/mnt/c/Users/demo-account/agend-adapter-proto/general-'+tag,nativeRoot='C:\\Users\\demo-account\\agend-adapter-proto\\general-'+tag;
 const home=await mkdtemp(join(process.cwd(),'.artifacts/general-proof-'));
 process.env.AGEND_HOME=home;process.env.AGEND_TMUX_SESSION='general-proof-'+tag;
 for(const key of ['NOTIFY_SOCKET','WATCHDOG_USEC','WATCHDOG_PID','TMUX','AGEND_REMOTE_RUNTIME'])delete process.env[key];

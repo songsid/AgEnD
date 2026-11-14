@@ -73,7 +73,7 @@
 2026-10-23T01:12:44+0800 fixture-host kernel: R10: 0000000000000000 R11: a58e26dbf538af1b R12: 0000000000000000
 2026-10-23T01:12:44+0800 fixture-host kernel: R13: 0000000000000003 R14: 000055ee3c686b70 R15: 0000000000000001
 2026-10-23T01:12:44+0800 fixture-host kernel: FS:  000076260c62b900 GS:  0000000000000000
-2026-10-23T01:12:44+0800 changhansung1 unknown: WSL (1468052 - CaptureCrash): Capturing crash for pid: 918786, executable: !usr!lib!systemd!systemd-journald, signal: 6, port: 50005
+2026-10-23T01:12:44+0800 demo-account1 unknown: WSL (1468052 - CaptureCrash): Capturing crash for pid: 918786, executable: !usr!lib!systemd!systemd-journald, signal: 6, port: 50005
 2026-10-23T01:12:44+0800 fixture-host kernel: elasticsearch[1: page allocation failure: order:4, mode:0x40c40(GFP_NOFS|__GFP_COMP), nodemask=(null),cpuset=199015de769d20e292f30660eb54121d273f95ace5e74f50dcce770aaa9c3669,mems_allowed=0
 2026-10-23T01:12:44+0800 fixture-host kernel: CPU: 2 PID: 15439 Comm: elasticsearch[1 Not tainted 6.6.114.1-microsoft-standard-WSL2 #1
 2026-10-23T01:12:44+0800 fixture-host kernel: Call Trace:
@@ -299,12 +299,12 @@
 2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages HighMem/MovableOnly
 2026-10-23T01:12:44+0800 fixture-host kernel: 171013 pages reserved
 2026-10-23T01:12:44+0800 fixture-host kernel: 0 pages hwpoisoned
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1223]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1221]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1803]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1223]: /dev/kmsg buffer overrun, some messages lost.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1221]: /dev/kmsg buffer overrun, some messages lost.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1803]: /dev/kmsg buffer overrun, some messages lost.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1223]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1221]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1803]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1223]: /dev/kmsg buffer overrun, some messages lost.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1221]: /dev/kmsg buffer overrun, some messages lost.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1803]: /dev/kmsg buffer overrun, some messages lost.
 2026-10-23T01:12:44+0800 fixture-host kernel: node invoked oom-killer: gfp_mask=0x140cca(GFP_HIGHUSER_MOVABLE|__GFP_COMP), order=0, oom_score_adj=0
 2026-10-23T01:12:44+0800 fixture-host kernel: CPU: 0 PID: 1467805 Comm: node Not tainted 6.6.114.1-microsoft-standard-WSL2 #1
 2026-10-23T01:12:44+0800 fixture-host kernel: Call Trace:
@@ -645,16 +645,16 @@
 2026-10-23T01:12:44+0800 fixture-host kernel: [1468756]     0 1468756     1314      314    53248        0             0 bash
 2026-10-23T01:12:44+0800 fixture-host kernel: oom-kill:constraint=CONSTRAINT_NONE,nodemask=(null),cpuset=1eeb4094342de82a1e03c8369807f35893a34d987e70017a3aee016c5c42bd22,mems_allowed=0,global_oom,task_memcg=/docker/746ee888c333e4469f54504c53d53b549dc05ecd824ddd22031b746b42f57cb3,task=apache2,pid=1456326,uid=33
 2026-10-23T01:12:44+0800 fixture-host kernel: Out of memory: Killed process 1456326 (apache2) total-vm:33781976kB, anon-rss:28607512kB, file-rss:128kB, shmem-rss:0kB, UID:33 pgtables:65672kB oom_score_adj:0
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1103]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1114]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1465]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1219]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1221]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/user-1000.journal corrupted or uncleanly shut down, renaming and replacing.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1803]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/user-1000.journal corrupted or uncleanly shut down, renaming and replacing.
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1221]: Received SIGTERM from PID 1 (systemd).
-2026-10-23T01:12:44+0800 changhansung1 systemd-journald[1219]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/user-1000.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1103]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1114]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1465]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1219]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/system.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1221]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/user-1000.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1803]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/user-1000.journal corrupted or uncleanly shut down, renaming and replacing.
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1221]: Received SIGTERM from PID 1 (systemd).
+2026-10-23T01:12:44+0800 demo-account1 systemd-journald[1219]: File /var/log/journal/a7ba828f14ad45c5a94fa3765612aa07/user-1000.journal corrupted or uncleanly shut down, renaming and replacing.
 2026-10-23T01:12:44+0800 fixture-host kernel: oom_reaper: reaped process 1456326 (apache2), now anon-rss:68kB, file-rss:128kB, shmem-rss:0kB
-2026-10-23T01:12:46+0800 changhansung1 systemd-journald[920561]: Received SIGTERM from PID 1 (systemd).
+2026-10-23T01:12:46+0800 demo-account1 systemd-journald[920561]: Received SIGTERM from PID 1 (systemd).
 2026-10-23T01:12:48+0800 fixture-host kernel: br-c09132179cd2: port 2(vetha674809) entered disabled state
 2026-10-23T01:12:48+0800 fixture-host kernel: vethcaaf9ea: renamed from eth0
 2026-10-23T01:12:48+0800 fixture-host kernel: br-c09132179cd2: port 2(vetha674809) entered disabled state

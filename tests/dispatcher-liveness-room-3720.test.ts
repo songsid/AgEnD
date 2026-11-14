@@ -18,7 +18,7 @@ vi.mock("../src/logger.js", () => ({
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
-const ROOM = "classic-宋承翰的ai-4716";
+const ROOM = "classic-王小明的ai-4716";
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r)); };
 
 async function fleet(dispatcher: { kind: "person" | "instance"; name: string }, opts: { roomListed?: boolean; roomRunning?: boolean } = {}) {

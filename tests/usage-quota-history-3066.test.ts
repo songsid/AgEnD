@@ -31,16 +31,16 @@ const row = (id: string, weekly: number, resetsAt = "2026-11-10T00:00:00.000Z", 
 describe("the quota history (#3066 §1d)", () => {
   it("records only weekly-or-longer percents, and a line only when the percent or the reset moved", async () => {
     const path = join(dir, "h.jsonl"); await setQuotaHistoryFileForTests(path);
-    recordQuotaReadings(row("claude:hsinlin", 62), 1000);
-    recordQuotaReadings(row("claude:hsinlin", 62), 2000);                       // nothing moved
-    recordQuotaReadings(row("claude:hsinlin", 63), 3000);                       // Weekly moved
-    recordQuotaReadings(row("claude:hsinlin", 63, "2026-11-17T00:00:00.000Z"), 4000); // a reset: both weekly lines
+    recordQuotaReadings(row("claude:helenwu", 62), 1000);
+    recordQuotaReadings(row("claude:helenwu", 62), 2000);                       // nothing moved
+    recordQuotaReadings(row("claude:helenwu", 63), 3000);                       // Weekly moved
+    recordQuotaReadings(row("claude:helenwu", 63, "2026-11-17T00:00:00.000Z"), 4000); // a reset: both weekly lines
     await flushQuotaHistory();
     const h = await readQuotaHistory();
     expect(h.map((r) => [r.t, r.metric, r.used])).toEqual([
       [1000, "Weekly", 62], [1000, "Sonnet (weekly)", 3], [3000, "Weekly", 63], [4000, "Weekly", 63], [4000, "Sonnet (weekly)", 3],
     ]);
-    expect(h.every((r) => r.provider === "claude:hsinlin" && r.profile === "hsinlin")).toBe(true);
+    expect(h.every((r) => r.provider === "claude:helenwu" && r.profile === "helenwu")).toBe(true);
     expect(h.some((r) => r.metric === "Session")).toBe(false);                 // the 5-hour window is not a quota to match
   });
 
@@ -79,12 +79,12 @@ describe("the quota history (#3066 §1d)", () => {
   }, 20_000);
 
   it("usage-api: a good read records its weekly readings (the hook), a failed read records nothing", async () => {
-    setUsageFetcherForTests(async () => ({ providers: [row("claude:jefflin", 84), { id: "codex", name: "Codex", status: "error", error: "x", metrics: [] }], fetchedAt: new Date().toISOString() }) as any);
+    setUsageFetcherForTests(async () => ({ providers: [row("claude:jamesli", 84), { id: "codex", name: "Codex", status: "error", error: "x", metrics: [] }], fetchedAt: new Date().toISOString() }) as any);
     const path = join(dir, "h.jsonl"); await setQuotaHistoryFileForTests(path);
     await getUsageSnapshot(true);
     await flushQuotaHistory();
     const h = await readQuotaHistory();
-    expect(h.map((r) => `${r.provider} ${r.metric} ${r.used}`)).toEqual(["claude:jefflin Weekly 84", "claude:jefflin Sonnet (weekly) 3"]);
+    expect(h.map((r) => `${r.provider} ${r.metric} ${r.used}`)).toEqual(["claude:jamesli Weekly 84", "claude:jamesli Sonnet (weekly) 3"]);
   });
 });
 
@@ -93,8 +93,8 @@ describe("Codex usage by credential profile (#3066 §1d)", () => {
     const path = join(dir, PROFILE_TIMELINE_FILE);
     await recordProfileLaunch(path, "default", 100);
     await recordProfileLaunch(path, "default", 200);
-    await recordProfileLaunch(path, "yanxianchen", 300);
-    expect(await readProfileTimeline(path)).toEqual([{ t: 100, profile: "default" }, { t: 300, profile: "yanxianchen" }]);
+    await recordProfileLaunch(path, "yvonnechang", 300);
+    expect(await readProfileTimeline(path)).toEqual([{ t: 100, profile: "default" }, { t: 300, profile: "yvonnechang" }]);
     for (let i = 0; i < PROFILE_TIMELINE_MAX + 10; i++) await recordProfileLaunch(path, i % 2 ? "a" : "b", 1000 + i);
     expect((await readProfileTimeline(path)).length).toBe(PROFILE_TIMELINE_MAX);
   });
@@ -134,11 +134,11 @@ describe("the fleet's hooks (#3066 §1d)", () => {
     mkdirSync(fm.getInstanceDir("cx"), { recursive: true });                    // an instance's dir exists once it has launched
     (fm as any).daemons.set("cx", { bootId: "b1" });
     vi.spyOn(fm as any, "listenForWorkingState").mockImplementation(() => {});
-    vi.spyOn(fm as any, "credentialProfileOf").mockReturnValue("yanxianchen");
+    vi.spyOn(fm as any, "credentialProfileOf").mockReturnValue("yvonnechang");
     fm.onDaemonReady("cx", "b1");
     const path = join(fm.getInstanceDir("cx"), PROFILE_TIMELINE_FILE);
     expect((fm as any).backendNameOf("cx")).toBe("codex");
-    await vi.waitFor(async () => expect((await readProfileTimeline(path)).map((s) => s.profile)).toEqual(["yanxianchen"]));
+    await vi.waitFor(async () => expect((await readProfileTimeline(path)).map((s) => s.profile)).toEqual(["yvonnechang"]));
   });
   it("the background read: only with no Discord bot reading, and only while an account has a running agent", async () => {
     const fm = rig();
