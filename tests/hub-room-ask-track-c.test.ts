@@ -25,6 +25,9 @@ describe("Track C room question presentation", () => {
     for (const row of ask.context) { expect(text).toContain(row.author); expect(text).toContain(row.text); }
     expect(text.indexOf(ask.context[0]!.text)).toBeLessThan(text.indexOf(ask.context[1]!.text));
     expect(text).toContain(locale === "en" ? "Everyone in this room" : "房間裡的每個人");
+    // The user's room (11-14): the answer goes in summary, which the room shows as it is — not a title.
+    expect(text).toContain(locale === "en" ? "with your whole text answer in summary — the room shows summary as your answer; it is not a title."
+      : "把完整的純文字回答寫在 summary 裡送回這個房間——房間顯示的就是 summary 的內容，它不是標題。");
   });
   it("keeps the older replied-to row plus the latest30 in order without duplicating it", () => {
     const ask = example(); ask.context = [
