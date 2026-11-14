@@ -242,19 +242,48 @@ export function transcriptDeltaDeliveryMarker(rawDelta: string, backend: string,
   return transcriptDeltaMarkerKind(rawDelta, backend, ENTER_MARKER(deliveryId));
 }
 
+/** AgEnD's own lead markers: a delivery's `[agend-delivery-id:…]`, a person's `[hid:…]` or `[agend-human-id:…]`. */
+const AGEND_LEAD_MARKER = /^\[(?:agend-(?:delivery|human)-id|hid):[^\]\r\n]+\]/;
+
+/**
+ * #3898: queued messages the CLI merged into ONE user entry. Claude Code re-sends a turn whose request had no answer
+ * yet with a message queued meanwhile appended (2.1.325: `…</pasted_content id="…">\n\n[hid:…]…`, one entry); Codex
+ * 0.16x submitted several queued messages as one input_text, back to back (`…)[agend-delivery-id:…]`). A later message's
+ * marker then never leads the entry. It counts only where the entry is AgEnD's own (it leads with one of AgEnD's
+ * markers) and holds this message's exact pasted text, whole — its unique marker with every byte after it — ending
+ * the entry or followed by whitespace or the next piece (`[`, `<`). A marker alone inside a body (a quote) never does.
+ */
+function mergedWithWire(texts: string[], backend: string, marker: string, wire: string): boolean {
+  const whole = wire.trimEnd();
+  const first = texts[0];
+  if (first === undefined || !whole.startsWith(marker)) return false;
+  const opened = backend === "claude-code" ? CLAUDE_PASTE_WRAPPER.exec(first) : null;
+  if (!AGEND_LEAD_MARKER.test(first.slice(opened ? opened[0].length : 0))) return false;
+  return texts.some((text, block) => {
+    for (let at = text.indexOf(whole, block === 0 ? 1 : 0); at >= 0; at = text.indexOf(whole, at + 1)) {
+      const next = text.charAt(at + whole.length);
+      if (next === "" || /\s/.test(next) || next === "[" || next === "<") return true;
+    }
+    return false;
+  });
+}
+
 /**
  * #3030: the same reading for any unique leading marker — a delivery's `[agend-delivery-id:…]` or a person's
- * `[hid:…]` (or legacy `[agend-human-id:…]`); all lead the pasted body.
+ * `[hid:…]` (or legacy `[agend-human-id:…]`); all lead the pasted body. With `wire` (the exact text pasted), also a
+ * message the CLI merged into one user entry with others (#3898, mergedWithWire).
  */
-export function transcriptDeltaMarkerKind(rawDelta: string, backend: string, marker: string): TranscriptMarkerKind | null {
+export function transcriptDeltaMarkerKind(rawDelta: string, backend: string, marker: string, wire?: string): TranscriptMarkerKind | null {
   let queued = false;
   let absorbed = false;
   for (const line of rawDelta.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
       const entry = JSON.parse(line) as unknown;
-      const firstUserText = userTextsFromEntry(entry, backend)[0];
+      const userTexts = userTextsFromEntry(entry, backend);
+      const firstUserText = userTexts[0];
       if (firstUserText !== undefined && leadsWithMarker(firstUserText, backend, marker)) return "user";
+      if (wire !== undefined && mergedWithWire(userTexts, backend, marker, wire)) return "user";
       const value = entry as Record<string, any> | null;
       if (backend !== "claude-code" || !value || typeof value !== "object") continue;
       const absorbedText = claudeAbsorbedText(value);
@@ -304,7 +333,7 @@ function withoutPasteWrapper(text: string, backend: string): string {
  * What a transcript proof looks for: an enveloped delivery's id marker (a delivery id string), or — for a raw paste,
  * which carries no envelope (a silent schedule, a system command) — its exact text (#1647).
  */
-export type TranscriptNeedle = string | { readonly rawText: string } | { readonly marker: string };
+export type TranscriptNeedle = string | { readonly rawText: string } | { readonly marker: string; readonly wire?: string };
 
 /**
  * #1647: a raw paste's exact text as a user entry of the CLI's own — a message that, whitespace aside and without Claude
@@ -330,7 +359,7 @@ export function transcriptDeltaHasRawText(rawDelta: string, backend: string, raw
 /** One needle against one delta: the marker's kind, `user` for a raw paste's own entry, or null. */
 export function transcriptDeltaNeedle(rawDelta: string, backend: string, needle: TranscriptNeedle): TranscriptMarkerKind | null {
   if (typeof needle === "string") return transcriptDeltaDeliveryMarker(rawDelta, backend, needle);
-  if ("marker" in needle) return transcriptDeltaMarkerKind(rawDelta, backend, needle.marker);
+  if ("marker" in needle) return transcriptDeltaMarkerKind(rawDelta, backend, needle.marker, needle.wire);
   return transcriptDeltaHasRawText(rawDelta, backend, needle.rawText) ? "user" : null;
 }
 
