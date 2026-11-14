@@ -36,6 +36,12 @@ it("an admin creates an explicit cross-department roster and the lead is always 
   expect(r!.db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(w.nextId)).toBeUndefined();
   await expect(w.teams.create(w.l, { name: "No", department: w.department, lead: w.leadId })).rejects.toMatchObject({ code: "denied" });
 });
+it("identifies the current lead for navigation without requiring a person key in the public session", async () => {
+  const w = await world(), team = await w.create();
+  expect((await w.teams.list(w.l))[0]).toMatchObject({ id: team.id, isLead: true });
+  expect((await w.teams.list(w.admin))[0]).toMatchObject({ id: team.id, canManage: true, isLead: false });
+  expect((await w.teams.list(w.o))[0]).toMatchObject({ id: team.id, isLead: false });
+});
 it("only the admin or current lead changes members; only the admin changes the Team's name or lead", async () => {
   const w = await world(), team = await w.create();
   await expect(w.teams.update(w.o, team.id, { members: [w.leadId] })).rejects.toMatchObject({ code: "denied" });

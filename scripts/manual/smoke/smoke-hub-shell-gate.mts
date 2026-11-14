@@ -34,7 +34,7 @@ const PW = process.env.PW_DIR ?? REPO;
 const GATE = process.env.GATE === "full" ? "full" : "ci";
 const OUT = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
 mkdirSync(OUT, { recursive: true });
-const CASES: MatrixCase[] = GATE === "full" ? matrix("full") : matrix("desk-light-en,phone-dark-zh-TW");
+const CASES: MatrixCase[] = process.env.CASES ? matrix(process.env.CASES) : GATE === "full" ? matrix("full") : matrix("desk-light-en,phone-dark-zh-TW");
 const r: Record<string, unknown> = { gate: GATE };
 const fail: string[] = [];
 const check = (name: string, ok: boolean, detail?: unknown) => { r[name] = ok ? "PASS" : { FAIL: detail ?? true }; if (!ok) fail.push(name); };
@@ -192,7 +192,7 @@ try {
       await route.fulfill({ response: res, json });
     });
     // Team service is not mounted in this shell rig: light cases lead one team, dark cases lead none.
-    await ctx.route(/\/hub\/v1\/teams$/, (route: any) => route.fulfill({ status: 200, json: { teams: [{ id: "shell-team", name: "Research", departmentName: "Engineering", lead: teamLead ? teamPerson : "corp/other", members: [teamPerson], canManage: true }] } }));
+    await ctx.route(/\/hub\/v1\/teams$/, (route: any) => route.fulfill({ status: 200, json: { teams: [{ id: "shell-team", name: "Research", departmentName: "Engineering", lead: teamLead ? teamPerson : "corp/other", members: [teamPerson], canManage: true, isLead: teamLead }] } }));
     const noticeStreams: string[] = [];
     // rooms-v1 moves notices onto the tab's one rooms stream. Match its version query as well as the older notices URL;
     // otherwise the real rooms stream opens with no composed notice service and this fixture's notice never arrives.

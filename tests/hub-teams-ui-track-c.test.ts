@@ -64,6 +64,13 @@ it("shows the navigation entry only to a current lead and retires a held result 
   await p.mount(h(ui.HubMyTeamsEntry, { client: c, person: lead, active: true })); await settle(15); expect(p.root.querySelector("a")?.getAttribute("aria-current")).toBe("page");
   end(); await settle(10); expect(p.root.querySelector("a")).toBeNull();
 });
+it("uses the server's current-lead observation when session responses contain no person key", async () => {
+  const { p, c } = await mount(); c.teams.mockResolvedValue({ ok: true, teams: [{ ...team(), isLead: true }] });
+  await p.mount(h(ui.HubMyTeamsEntry, { client: c })); await settle(15);
+  expect(p.root.querySelector("a")?.getAttribute("href")).toBe("/ui/hub?view=teams");
+  await p.mount(h(ui.HubTeamsPage, { client: c, mode: "lead" })); await settle(15);
+  expect(p.root.textContent).toContain("Research");
+});
 it("does not show suggestions from an old query after the user changes it", async () => {
   let resolve!: (value: any) => void;
   const { p, c } = await mount("lead", "en", { teamSuggestions: vi.fn(() => new Promise(r => { resolve = r; })) }); await open(p);

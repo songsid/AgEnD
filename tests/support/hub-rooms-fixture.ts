@@ -137,8 +137,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   archived.readUpTo = archived.messages.at(-1)!.id;
   const rooms: FixtureRoom[] = [group, meeting, archived, helper, report, hubAssistant];
   const invitations = [{ id: "inv-in-0001", room: { id: "room-other", name: "產品規劃", people: 4 }, agent: { exposureId: "exp-mine-1", name: "my-notes" }, by: { name: "陳主任" }, at: minutes(100) }];
-  const teams = [{ id: "team-1", name: "研一", department: "group-rd1", departmentName: "研發一部", revision: 1, lead: teamLead ? FIXTURE_ME.id : "person-chen", leadName: teamLead ? FIXTURE_ME.name : "陳主任", members: teamLead ? [FIXTURE_ME.id, "person-wu"] : ["person-chen", "person-wu"], canManage: true, leadEligible: true }];
-  const teamView = (team: typeof teams[number]) => ({ ...team, memberInfo: team.members.map(id => ({ id, name: people.find(p => p.id === id)?.name || id, login: id === FIXTURE_ME.id ? FIXTURE_ME.login : id.replace("person-", ""), department: "", signedIn: id !== "person-new", agents: id === FIXTURE_ME.id ? [{ id: "exp-mine-1", name: "my-notes" }] : [] })), impact: { grants: [], roomCreator: creators.teams.includes(team.id) } });
+  const teams = [{ id: "team-1", name: "研一", department: "group-rd1", departmentName: "研發一部", revision: 1, lead: teamLead ? FIXTURE_ME.id : "person-chen", leadName: teamLead ? FIXTURE_ME.name : "陳主任", members: teamLead ? [FIXTURE_ME.id, "person-wu"] : ["person-chen", "person-wu"], canManage: true, isLead: teamLead, leadEligible: true }];
+  const teamView = (team: typeof teams[number]) => ({ ...team, memberInfo: team.members.map(id => ({ id, name: [...people, NEW_PERSON].find(p => p.id === id)?.name || id, login: id === FIXTURE_ME.id ? FIXTURE_ME.login : id.replace("person-", ""), department: "", signedIn: id !== "person-new", agents: id === FIXTURE_ME.id ? [{ id: "exp-mine-1", name: "my-notes" }] : [] })), impact: { grants: [], roomCreator: creators.teams.includes(team.id) } });
   let creators = { people: [FIXTURE_ME.id], teams: [] as string[] };
 
   const sources = new Set<{ emit(name: string, data: unknown): void }>();
@@ -292,7 +292,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       const body = req.body || {}, departmentName = GROUPS[body.department]?.name;
       if (!body.name?.trim() || !departmentName || !body.lead) return fail(400, "invalid");
       const team = { id: nextId("team"), name: body.name.trim(), department: body.department, departmentName, lead: body.lead,
-        leadName: people.find(row => row.id === body.lead)?.name || body.lead, members: [...new Set<string>([body.lead, ...(body.members || [])])], revision: 1, canManage: true, leadEligible: true };
+        leadName: people.find(row => row.id === body.lead)?.name || body.lead, members: [...new Set<string>([body.lead, ...(body.members || [])])], revision: 1, canManage: true, isLead: teamLead, leadEligible: true };
       teams.push(team); return { status: 200, body: { team: teamView(team) } };
     }
     const teamMatch = p.match(/^\/hub\/v1\/teams\/([^/]+)$/);
