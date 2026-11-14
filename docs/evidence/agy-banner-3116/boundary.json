@@ -1,0 +1,22 @@
+{
+  "home": "/home/audit",
+  "hostHomeHidden": true,
+  "netns": "net:[4026533276]",
+  "routes": "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT                                                       \n",
+  "envKeys": [
+    "BROWSER",
+    "GIT_CONFIG_NOSYSTEM",
+    "HOME",
+    "LANG",
+    "PATH",
+    "PWD",
+    "TERM",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME"
+  ],
+  "model": "gemini-4-argon-medium",
+  "sentKeys": [],
+  "killSession": 0,
+  "killServer": 1
+}
