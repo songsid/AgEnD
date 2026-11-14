@@ -48,7 +48,7 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
       "hub-room-unread.js",   // Hub rooms §12
       "hub-room-new.js", "hub-room-new-strings.js", "hub-room-settings.js", "hub-room-settings-strings.js", "hub-room-members.js", "hub-room-members-strings.js", "hub-invitations.js", "hub-invitations-strings.js", "hub-admin-rooms.js", "hub-admin-rooms-strings.js",   // Hub rooms, track U2
       "hub-room-list.js", "hub-room-thread.js", "hub-room-composer.js", "hub-assistant-admin.js", "hub-assistant-admin-strings.js",   // M-3092 (Hub rooms, track U)
-      "hub-room-favorites.js"]);   // M-3092 S-145
+      "hub-room-favorites.js", "hub-teams.js", "hub-teams-strings.js"]);   // M-3092 S-145
   });
 });
 

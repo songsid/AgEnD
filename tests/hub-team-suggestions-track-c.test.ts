@@ -35,7 +35,7 @@ function suggestions(teams: HubTeams, ctx: HubRequestContext, input: unknown): P
 it("offers feedback to an admin or the current Team lead, without granting department search to leads or writing people", async () => {
   const w = await world();
   expect(await suggestions(w.teams, w.admin, { kind: "group", q: "En" })).toEqual([{ kind: "group", id: w.department, name: "Engineering" }]);
-  expect(await suggestions(w.teams, w.admin, { kind: "person", q: "Ri" })).toEqual([{ kind: "person", id: personKeyString(w.member), name: "Riley" }]);
+  expect(await suggestions(w.teams, w.admin, { kind: "person", q: "Ri" })).toEqual([{ kind: "person", id: personKeyString(w.member), name: "Riley", login: "member" }]);
   expect(await suggestions(w.teams, w.leadCtx, { kind: "person", q: "Ri", teamId: w.team.id })).toHaveLength(1);
   await expect(suggestions(w.teams, w.leadCtx, { kind: "person", q: "Ri" })).rejects.toMatchObject({ code: "denied" });
   await expect(suggestions(w.teams, w.leadCtx, { kind: "group", q: "En", teamId: w.team.id })).rejects.toMatchObject({ code: "denied" });

@@ -80,7 +80,7 @@ class Teams implements HubTeams {
         || (query.kind === "group" && directory.groupPolicy !== "ad-direct-guid")) throw new HubProtocolError("unavailable");
       if (image) this.core.atomic(db => this.checkImage(db, image));
     };
-    let outcome: { kind: "person" | "group"; id: string; name: string }[] = [], failure: unknown;
+    let outcome: { kind: "person" | "group"; id: string; name: string; login?: string }[] = [], failure: unknown;
     try {
       const result = await this.core.readDirectory<GrantPersonSearch | PolicyGroupSearch>(actor.person, this.core.groupContext(ctx), () => query.kind === "group"
         ? groups!.call(directory, query.q) : people!.call(directory, query.q));
@@ -90,7 +90,7 @@ class Teams implements HubTeams {
       } else if (query.kind === "person" && "people" in result) {
         const found = validated(z.array(suggestedPerson).max(20), result.people);
         if (found.some(row => row.person.realm !== realm)) throw new HubProtocolError("unavailable");
-        outcome = found.map(row => ({ kind: "person", id: personKeyString(row.person), name: row.displayName || row.login }));
+        outcome = found.map(row => ({ kind: "person", id: personKeyString(row.person), name: row.displayName || row.login, login: row.login }));
       } else throw new HubProtocolError("unavailable");
       if (new Set(outcome.map(row => row.id)).size !== outcome.length) throw new HubProtocolError("unavailable");
     } catch (error) { failure = error instanceof HubProtocolError && error.code !== "invalid" ? error : new HubProtocolError("unavailable"); }
