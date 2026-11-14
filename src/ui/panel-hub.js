@@ -35,7 +35,8 @@ import { compareGroups, hubClient } from "./hub-client.js";
 import { hw, linkHubCss } from "./hub-strings.js";
 import { hc, linkHubChatCss } from "./hub-chat-strings.js";
 import { HubRoomRows, readRoomList } from "./hub-room-list.js";
-import { useRoomStar } from "./hub-room-favorites.js";
+import * as roomFavorites from "./hub-room-favorites.js";
+const { useRoomStar } = roomFavorites;
 import { HubRoomPage } from "./hub-room-thread.js";
 import { hroom } from "./hub-room-strings.js";
 import { hr } from "./hub-read-strings.js";
@@ -102,6 +103,7 @@ const sessionSubs = new Set();
 function setSession(next) {
   const was = session;
   session = next;
+  roomFavorites.configureHubFavorites?.(hubClient(), next);
   // #3226 B: the conversation list is this person's: cleared when no one is signed in, read again when someone is.
   if (!next) roomsStore.set({ loaded: false, rooms: [], error: null });
   else if (!was || was.login !== next.login) void refreshRooms();

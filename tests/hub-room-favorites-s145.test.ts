@@ -243,3 +243,34 @@ describe("the sidebar: the Fleet's favourites on the Hub list", () => {
     } finally { restore(); }
   });
 });
+
+
+it("S-149: the production session wires Hub preferences into the existing sidebar and row menu", async () => {
+  const fx = createHubRoomsFixture();
+  let remote = { favorites: [] as string[], initialized: false, revision: 0 };
+  const writes: any[] = [];
+  const fetchImpl = async (url: string, init?: any) => {
+    if (url === "/hub/v1/me/prefs") {
+      if (init?.method === "PUT") {
+        const input = JSON.parse(init.body); writes.push(input);
+        if (!input.onlyIfUnset || !remote.initialized) remote = { favorites: input.favorites, initialized: true, revision: remote.revision + 1 };
+      }
+      return new Response(JSON.stringify(remote), { status: 200 });
+    }
+    const answer = await fx.fetch(url, init);
+    if (url === "/hub/v1/session") {
+      const value = await answer.json(); value.features.push("person-prefs-v1");
+      return new Response(JSON.stringify(value), { status: 200 });
+    }
+    return answer;
+  };
+  const { pg, restore } = await hubApp(fetchImpl, "en", { [`agend_hub_favorites.${FIXTURE_ME.login}`]: '["room-report"]' });
+  try {
+    await until(() => heads(pg)[0] === "Favorites");
+    expect(writes).toEqual([{ favorites: ["room-report"], onlyIfUnset: true }]);
+    expect(names(pg)[0]).toBe("report-bot");
+    await choose(pg, "研發例會", "Add to favorites");
+    await until(() => remote.revision === 2);
+    expect(remote.favorites).toEqual(["room-report", "room-rd"]);
+  } finally { restore(); }
+});

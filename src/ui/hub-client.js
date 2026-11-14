@@ -361,6 +361,11 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; roomsLive = r.signedIn === true && r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.signedIn === true && r.features?.includes(TEAMS_FEATURE) === true; } return r; },
     async signIn(login, password) { retireReads(); teamsLive = false; const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; roomsLive = r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.features?.includes(TEAMS_FEATURE) === true; } return r; },
     async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; roomsLive = false; teamsLive = false; return r; },
+    // A source captures the session CSRF: a queued write from a previous sign-in cannot use the new person's cookie.
+    personPrefs(sessionCsrf) { return sessionCsrf && sessionCsrf === csrf ? call("GET", "/hub/v1/me/prefs") : Promise.resolve(retired()); },
+    savePersonPrefs(sessionCsrf, favorites, onlyIfUnset = false) {
+      return sessionCsrf && sessionCsrf === csrf ? call("PUT", "/hub/v1/me/prefs", { favorites, onlyIfUnset }) : Promise.resolve(retired());
+    },
     catalog() { return call("GET", "/hub/v1/exposures"); },
     sharingPauseV1: true,
     sharing(exposureId, revision, sharingEpoch, paused) { return call("POST", `/hub/v1/exposures/${id(exposureId)}/sharing`, { revision, sharingEpoch, paused }); },

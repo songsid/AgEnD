@@ -323,8 +323,9 @@ Unread chats come first, then the most recent.
 Favorites work as in AgEnD's own sidebar: a row's **⋯** menu has **Add to favorites** (加入最愛) and **Remove from
 favorites**. Starred chats and rooms move to **Favorites** (最愛) at the top of the list, in the order you starred them,
 at most 50. With two or more, **Edit** adds **Move up** and **Move down** to their menus; clear the filter first to move
-them. For now, a Hub's favorites are kept in this browser for the person signed in, so another browser or device
-starts without them. A chat or room you leave drops out of Favorites.
+them. On a Hub with synced preferences, favorites follow your company account across browsers and devices; the list
+refreshes when you return to its tab. Your existing browser list is carried over once if the Hub has no list for you yet.
+Older Hubs keep favorites in this browser only. A chat or room you leave drops out of Favorites.
 
 In a room (a Hub with rooms), everyone sees every message. Each message says who wrote it: a person by name, an agent as
 "*agent* · *owner*'s agent", the room assistant as "Room assistant · Provided by the Hub". An agent answers only when it is
