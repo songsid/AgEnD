@@ -219,7 +219,7 @@ export function CompactRow({ p, onExpand }) {
   const name = title.profile || title.base;
   const models = !pools && metrics.some((m) => m.scope === "model");
   return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}${pools ? " is-pooled" : ""}${models ? " has-models" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
-    <span class="u-crow-head"><span class="u-crow-name">${name}</span>
+    <span class="u-crow-head"><span class="u-crow-name">${name}</span>${p.noAgents ? html`<span class="note">${tn("usage.no_agents")}</span>` : null}
       ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
       ${stale && metrics.length ? html`<span class="u-crow-stale" title=${detail}>${p.cachedAt ? tn("usageCachedAt", { at: usageClock(p.cachedAt) }) : stale.mark}<span class="sr-only"> (${detail})</span></span>` : null}</span>
     ${pools ? pools.map((x) => html`<${CompactMeter} key=${x.pool.label} m=${x.worst} tag=${usageText(x.pool.label, x.pool.labelI18n)}
@@ -308,6 +308,7 @@ export function UsageBody({ owner }) {
             <button type="button" class="icon-btn" disabled=${i === providers.length - 1} aria-label=${tn("usageMoveDown")} title=${tn("usageMoveDown")} onClick=${() => move(key(p), 1, data.providers)}><${Icon} name="down" size=${14} /></button>
           </span></div>
         ${providerTitle(p).profile ? html`<div class="u-profile" title=${p.name}>${providerTitle(p).profile}</div>` : null}
+        ${p.noAgents ? html`<p class="note">${tn("usage.no_agents")}</p>` : null}
         ${p.stale ? html`<p class="note u-stale" title=${staleNote(p).detail || null}>${staleNote(p).mark}</p>${staleNote(p).detail ? html`<p class="note u-stale-detail">${staleNote(p).detail}</p>` : null}` : null}
         ${p.status === "error" && !p.transient ? html`<p class="u-err">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
           : p.status === "error" && p.transient ? html`<p class="note">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`

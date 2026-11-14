@@ -274,9 +274,15 @@ neither. An agent with no profile appears under the plain `Kiro` row (shown only
 while some instance still uses the default login). Codex works the same way:
 `Codex (<profile>)` rows next to `Codex (default)`.
 
+Logged-in named profiles remain visible in `get_usage`, `/usage` and the web
+usage panel even when no instance uses them. Such rows say "No agents on this
+profile" and still show their own windows, reset vouchers and credits. This
+applies to Claude Code, Codex, Kiro and Antigravity; moving agents away does not remove the
+account's quota. An unused, signed-out profile directory is not a login row.
+
 Claude Code also has a row per profile: `Claude (work)`, `Claude (personal)`,
-next to the plain `Claude` for the default login (again only while some instance
-uses it). A profile reads quota from its own login; a profile that is configured
+next to the default Claude login when it is present on the host. A profile reads
+quota from its own login; a profile that is configured
 but has never been signed in shows **Not logged in — sign in with
 `/login claude-code <profile>`** (in chat, it adds the host command too).
 

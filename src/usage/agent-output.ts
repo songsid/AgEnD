@@ -33,6 +33,7 @@ function account(p: ProviderUsage, now: number) {
   const binding = p.metrics.filter(m => /^binding\b/.test(m.note ?? "")).map(label);
   const status = [
     p.status !== "ok" ? p.status : "",
+    p.noAgents ? "no agents on this profile" : "",
     p.stale ? `stale${p.staleCause ? ` (${p.staleCause})` : ""}` : p.transient ? "temporarily unavailable" : "",
     p.cachedAt ? `cached ${p.cachedAt}` : "",
     ...new Set([p.error, p.hint].filter(Boolean)),
