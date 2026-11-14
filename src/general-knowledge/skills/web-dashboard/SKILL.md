@@ -470,7 +470,11 @@ every 5 s.
 
 **The sidebar list.** Grouped by team (an instance in `teams.<name>.members` under its first team, whatever its tags), else by
 its first tag ("#" before the heading), ClassicBot rooms under Classic, the rest under Other; Settings → Agents the same (#2172).
-Each row (#2179): name and context % on the first line, the time of the agent's last reply to a person at the end of the
+Settings → Preferences → **Sidebar agent list** chooses **Detailed** (default) or **Compact** (`nav.density`, synced;
+Save/Discard like the other preferences). Compact uses a status dot (working pulses), name and muted last-reply time,
+without an avatar: 30 px on desktop, 40 px on phones. Hover shows the existing details tooltip. Filters, favorites,
+groups, sorting and keyboard links are the same. Detailed keeps the current presentation.
+Each detailed row (#2179): name and context % on the first line, the time of the agent's last reply to a person at the end of the
 second ("2 min ago"; cross-instance messages don't count); a reply under 10 minutes old is highlighted, fading by itself
 (nothing to mark read). The sort button beside Edit: **Custom** (default; a reply never moves a row) or **Recent replies**
 (the rest by last reply, no groups, no dragging; favorites pinned in their order, or **Sorted by last reply too**); synced

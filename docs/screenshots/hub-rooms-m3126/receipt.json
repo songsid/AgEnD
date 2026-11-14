@@ -1,0 +1,80 @@
+{
+  "sourceHead": "eed6b6e8c9d857162b794a03542a5f75210b3625",
+  "dirty": [
+    "M src/ui/hub-room-strings.js",
+    " M src/ui/hub-room-thread.js",
+    " M src/ui/panel-hub.js",
+    " M tests/hub-room-thread-3092.test.ts",
+    " M tests/support/hub-rooms-fixture.ts",
+    "?? changes/3126-hub-room-scroll-quote.md",
+    "?? changes/3126-hub-room-scroll-quote.zh-TW.md",
+    "?? docs/screenshots/hub-rooms-m3126/",
+    "?? scripts/manual/hub-rooms/scroll-quote.mts"
+  ],
+  "inputs": [
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "c173478fa7ff91c6667ef512b96a0886813642249a76a3aef4a2c739d0807c53"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "dcf9ec0b0ad8e3375a7bb0dc9139bc39f17f5daba10122beb957d78bb8acbb5d"
+    },
+    {
+      "path": "src/ui/hub-room-strings.js",
+      "sha256": "3766436f4aadc76e5c756641209388af02acc66c14974b76e1b78fd8119c22a9"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desktop-en-light failed and blocked ticks, quote chip of an off-page original",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light scroll-up loaded the oldest history row",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light quote click jumps to the original",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark failed and blocked ticks, quote chip of an off-page original",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark scroll-up loaded the oldest history row",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark quote click jumps to the original",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "ticks.desktop-en-light.png",
+      "sha256": "7d991d22a1f74369e7df32781b675d3920fcecce623131e93fd070b34a466793"
+    },
+    {
+      "path": "older.desktop-en-light.png",
+      "sha256": "c02cdde951462d3012bdd290046579790dc1fa3c935a354b36c234fb24ab8436"
+    },
+    {
+      "path": "jump.desktop-en-light.png",
+      "sha256": "67a34799c30901cdecd857d52ecfe9c0e3180a2c258b4a386fa1d12cdbfd8e78"
+    },
+    {
+      "path": "ticks.phone-zh-TW-dark.png",
+      "sha256": "32661d76cb373007d528498267cfc86db8023aafcff75e532b657d392723e646"
+    },
+    {
+      "path": "older.phone-zh-TW-dark.png",
+      "sha256": "3d97c6dec5b97673022e55538b40a3cc93b6a71470cb81f6d97d9c47486e3ca8"
+    },
+    {
+      "path": "jump.phone-zh-TW-dark.png",
+      "sha256": "02754f42f598a0bc41f6cd8d04b1978fa5cd565193f9f3398849474b633cbd1b"
+    }
+  ]
+}

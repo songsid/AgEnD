@@ -122,7 +122,10 @@ export class HubGroupRooms {
       ...(row.reply_to ? { replyTo: row.reply_to } : {}), ...(row.idempotency_key ? { idempotencyKey: row.idempotency_key } : {}),
       ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}),
       ...this.core.atomic(db => { const a = this.agents.progress(db, row.id), b = this.assistant.progress(db, row.id);
-        const ask = a || b ? { total: (a?.total ?? 0)+(b?.total ?? 0), answered: (a?.answered ?? 0)+(b?.answered ?? 0), working: (a?.working ?? 0)+(b?.working ?? 0), later: (a?.later ?? 0)+(b?.later ?? 0) } : undefined;
+        const total = (a?.total ?? 0)+(b?.total ?? 0), failed = (a?.failed ?? 0)+(b?.failed ?? 0), blocked = (a?.blocked ?? 0)+(b?.blocked ?? 0);
+        const ask = a || b ? { total, answered: (a?.answered ?? 0)+(b?.answered ?? 0), working: (a?.working ?? 0)+(b?.working ?? 0), later: (a?.later ?? 0)+(b?.later ?? 0),
+          ...(failed ? { failed } : {}), ...(blocked ? { blocked } : {}),
+          ...(total === 1 && (failed === 1 || blocked === 1) && (a?.reason || b?.reason) ? { reason: (a?.reason || b?.reason)! } : {}) } : undefined;
         // The retained parent records who asked when the answer was queued. Do not infer from this viewer or the
         // delivery's owner: an agent can ask too, and an absent owner's via post uses its agent member as a fallback id.
         const asker = row.answer_to ? db.prepare(`SELECT p.author_id AS id FROM hub_room_posts p

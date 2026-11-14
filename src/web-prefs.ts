@@ -155,6 +155,7 @@ const VALIDATORS = new Map<string, (v: unknown) => unknown>([
   }],
   // The AI usage view's compact mode (one line per login), in the dialog and the rail alike; unset: the full cards.
   ["usage.compact", (v) => (typeof v === "boolean" ? v : bad("usage.compact: true or false"))],
+  ["nav.density", (v) => (v === "detailed" || v === "compact" ? v : bad("nav.density: detailed or compact"))],
   // #1722: which name leads where the web shows an instance — its nickname (display name) or its real instance name.
   ["names.primary", (v) => (v === "nickname" || v === "instance" ? v : bad("names.primary: nickname or instance"))],
   // #1827: a web person's own profile — the name they chose, and their account's display name at their last sign-in.

@@ -1,0 +1,6 @@
+{
+  "src/hub/member/room-post-receipt.ts": "0513744ab2d6f9de6f6d4d8db5b78b84d337067b30a1b2a48193a5689528bccf",
+  "src/hub/member/room-post.ts": "41556fa36b2128afa6b946689915eb963a4b13a8a890476e8f33ea48d0e8afb7",
+  "tests/hub-room-post-receipt.test.ts": "6efdbdebc69079e7b707b0ba28d279e21cac09460c36d636d09b6f792de86531",
+  "tests/hub-room-post-fleet.test.ts": "227485ec8f2fbfc8373b2ab04a4277cd001601284231704b8570cc7c64918fed"
+}

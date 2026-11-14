@@ -1590,6 +1590,22 @@ img.amb-p { object-fit: contain; }
 .inst.just:not(.active) { animation: inst-just 2.4s ease-out 1; }
 @keyframes inst-just { from { box-shadow: inset 0 0 0 1.5px var(--accent); } to { box-shadow: inset 0 0 0 1.5px transparent; } }
 @media (prefers-reduced-motion: reduce) { .inst.just:not(.active) { animation: none; } }   /* as specific as the rule it stops */
+/* M-3129: v4 compact sidebar. Same tokens, links, hover/selection and group headers; no avatar. */
+.inst-nav.compact .v-li { height: 30px; }
+.inst-nav.compact .v-inst { height: 30px; min-height: 30px; padding-block: 0; gap: var(--s-2); }
+.inst-nav.compact .inst-text { flex-direction: row; align-items: center; gap: var(--s-2); }
+.inst-nav.compact .inst-line { flex: 1; min-width: 0; }
+.inst-nav.compact .inst-line2 { flex: none; }
+.inst-nav.compact .inst-when { color: var(--text-3); font-weight: var(--fw-normal); }
+.inst-nav.compact .inst-row-menu > .icon-btn { height: 28px; min-height: 28px; }
+.inst-status.off { background: var(--text-2); }
+.inst-status.hollow { box-sizing: border-box; background: var(--bg-sidebar); border: 2px solid var(--text-2); }
+@media (max-width: 899px), (pointer: coarse) {
+  /* New Settings controls meet the phone tap minimum; existing smaller controls are grandfathered by the UI gate. */
+  .p-settings .prefs.labelled #pref-density { min-height: var(--tap); }
+  .inst-nav.compact .v-li, .inst-nav.compact .v-inst { height: 40px; min-height: 40px; }
+  .inst-nav.compact .inst-row-menu > .icon-btn { height: 40px; min-height: 40px; min-width: 40px; }
+}
 /* #2179: how the list sorts — the button says it (the accent while "Recent replies" is on); its menu under it. */
 .inst-head { position: relative; }
 .nav-sort { position: static; flex: none; }   /* the menu spans the header's width, under it — never past the sidebar's edge */
