@@ -179,7 +179,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
     if (p === "/hub/v1/session" && method === "GET")
       return { status: 200, body: { signedIn: true, csrf, person: { id: FIXTURE_ME.id, name: FIXTURE_ME.name }, displayName: FIXTURE_ME.name, login: FIXTURE_ME.login, admin: true, features } };
     if (p === "/hub/v1/rooms" && method === "GET")
-      return { status: 200, body: { rooms: rooms.map(listItem).sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || b.lastAt - a.lastAt),
+      // Only the rooms I am in, as the Hub lists them (S-150: a room I left is gone from my list).
+      return { status: 200, body: { rooms: rooms.filter(r => r.members.some(m => m.id === FIXTURE_ME.id)).map(listItem).sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || b.lastAt - a.lastAt),
         me: { canCreateRooms: creators.people.includes(FIXTURE_ME.id), assistant: true }, invitations: invitations.length } };   // U2: me.assistant — the Hub offers the room assistant
     if (p === "/hub/v1/rooms" && method === "POST") {
       const b = req.body ?? {};

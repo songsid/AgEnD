@@ -37,6 +37,9 @@
 .hub-room-page .msg.status-line:has(.st-action) .body { justify-content: flex-start; }
 .hub-room-page .status-line .st-action { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; }
 .hub-room-page .status-line .st-action:hover { text-decoration: underline; }
+/* Lumen (spec §3): another person's message — your own bubble, mirrored to the left; agent answers stay unbubbled. */
+.hub-room-page .msg.msg-person { max-width: min(80%, 620px); }
+.hub-room-page .msg.msg-person .body { background: var(--user-bubble); border-radius: var(--r-xl); padding: 10px var(--s-4); width: fit-content; max-width: 100%; }
 
 /* a name's letter on a tone (the same tones in both themes) */
 .hub-av { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 600; font-size: 14px; color: #fff; flex: none; }
@@ -64,6 +67,8 @@
 .hub-chat-title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hub-chat-title .s { color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hub-back { flex: none; }
+/* S-150: the phone's back to the list is a full tap target, as the header's other buttons are. */
+@media (max-width: 899px), (pointer: coarse) { .hub-chat-head .hub-back { min-width: var(--tap); min-height: var(--tap); } }
 .hub-scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; position: relative; }
 .hub-scroller .thread { max-width: var(--col); margin: 0 auto; padding: var(--s-4) var(--s-5); }
 .hub-room-empty { padding: var(--s-6) var(--s-4); }

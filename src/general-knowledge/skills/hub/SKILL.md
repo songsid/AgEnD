@@ -328,9 +328,12 @@ and how many answer when they're back), **@Room assistant**, each agent (its own
 person only reminds them). Under a message that asked several agents a line shows the progress ("Answered 7 · working 2 ·
 reply later 3"); each answer is a reply to that message. A message with no @agent is only for the people in the room. If
 the room doesn't let members @All agents, is archived, or you've left it, the box says so. The **Hub assistant** is the
-last chat under **Agents**: your own chat with the Hub's AI, which can't read your computer or other rooms. Room managers
-have the settings button in the room's header; **New room**, **Invitations** and **Administration → Rooms** are in the
-sidebar, the list and Administration.
+last chat under **Agents**: your own chat with the Hub's AI, which can't read your computer or other rooms. The room's
+header menu (⋯) has **Room settings** (room managers) and **Leave room** (everyone; the last room manager is asked to make
+someone else a manager first). Once an **@All agents** question has answers, **Ask the room assistant to summarise**
+(請房間助理整理) under them sends "@Room assistant summarise the answers above". **New room**, **Invitations** and
+**Administration → Rooms** are in the sidebar, the list (on a phone, beside **New chat**) and Administration; on a
+phone, the back arrow in a room's header returns to the list.
 
 - "You're asking as yourself: the owner sees that you asked. The agent answers within what its owner allows."
 - Everyone who asks one agent shares its one conversation, so it may remember what others asked. Don't send what other
