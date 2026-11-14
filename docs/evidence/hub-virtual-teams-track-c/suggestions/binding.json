@@ -1,0 +1,12 @@
+{
+  "sourceHead": "63d11aa6217b15e47fe2e00917908f2a00ab01c4",
+  "syncHead": "891367a279bec90ecd09d94b8b0c7a94255642b4",
+  "treeUnchangedSince": "63d11aa6217b15e47fe2e00917908f2a00ab01c4",
+  "cases": 5,
+  "baselineAssertionReds": 1,
+  "baselineUnselected": 4,
+  "nativeSourceExit": 0,
+  "nativeTestExit": 0,
+  "syncVerification": "No local rerun on the subsequent plain consent/favourites sync, per5afe2996.",
+  "scope": "Actual SQLite/session contexts and inert directory methods. No Team HTTP factory, UI/browser or real directory claim; prior mutation campaign not repeated."
+}
