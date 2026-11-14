@@ -12712,7 +12712,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * A reaction is context, not a message (#432, reworking #413): it never triggers
    * an agent turn and never wakes anything. It is queued in the event log and rides
    * into the instance's NEXT real message as one compact leading line —
-   * `[Recent reactions: 👍×2 from hanhanv]` — after which it is marked consumed.
+   * `[Recent reactions: 👍×2 from user1]` — after which it is marked consumed.
    * No pending reactions → no line → zero context spent, which is the common case.
    */
   private async handleInboundReaction(r: InboundReaction): Promise<void> {
