@@ -31,6 +31,15 @@
   .composer-pick b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: var(--fw-semibold); }
   .composer-pick .pick-effort { flex: none; }
   .composer-pick .chev { flex: none; color: var(--text-3); }
+  /* M-3115 PR 3: past 70% the context hint is one thin line in the status line's place — the idle strip gives way to it,
+     and while the agent works the working line has the place (the ring by the box still says the %). 22 px either way;
+     its words are links, each a full tap target drawn as text. */
+  .p-chat .quick-actions.qa-line { height: 22px; margin: 0; padding: 0 var(--s-1); flex-wrap: nowrap; gap: var(--s-1); color: var(--warn); white-space: nowrap; overflow: visible; }
+  .p-chat .qa-line .qa-ctx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .p-chat .qa-line .btn { min-height: var(--tap); min-width: var(--tap); height: var(--tap); margin-block: calc((22px - var(--tap)) / 2); padding: 0 var(--s-1); border: 0; background: none; color: var(--accent); font-weight: var(--fw-semibold); }
+  .p-chat .qa-line .qa-dismiss { margin-left: auto; color: var(--text-3); }
+  .p-chat .dock:has(.qa-line) .work-bar.idle { display: none; }
+  .p-chat .dock:has(.work-bar:not(.idle)) .qa-line { display: none; }
   /* (These live here, not in app.css: a tab on an older app.css links this file fresh, and the row must not crush the box.) */
   /* Send is Stop while the box is empty and the agent works: one size in both, a full tap target (the box keeps one
      width). Here, not in app.css: a tab on an older app.css links this file fresh. */

@@ -213,6 +213,16 @@ Access & security → **Shared pages** lists the live ones.
 At 70% context, quick actions **Compact** and **Clear…** appear. `/raw <text>` (local only) passes text to the CLI
 unwrapped.
 
+**On a phone (M-3115).** Inside an agent's pages (chat, View, Log, Settings) there are no bottom tabs. **‹** at the top
+left goes back to the agents and shows the **Needs you** count, and **⋯** starts with **Go to: Needs you · N / Fleet /
+Settings**, then this chat's items, and ends with **✓ Verified** when this browser is verified (the line under the box no
+longer says only that). A new Needs-you item for another agent shows a short toast. The composer is one row: **＋**, the
+box, a context ring (from 50%, amber from 70%; tap it for `/ctx`), one **model · effort** picker (opens `/model`; the
+backend stays in the agent's Settings), and Send. While the agent works and nothing is typed, Send is **Stop**; typing
+turns it back into Send and moves **Stop reply** into the thin status line above the box. Past 70% context that line
+shows **Context N% used · Compact · Clear…** with **✕** to hide it for this tab. **Latest** is a small round button at the
+bottom right with a count badge. A desk is unchanged.
+
 **History.** The server keeps the last 500 messages (about 1M characters) per instance in its workspace
 `web-chat.json`; the page loads the last 200. There is no "load older". After a restart, buttons and ticks are not
 restored; files that can't be served again show as unavailable.
