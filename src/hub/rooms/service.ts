@@ -247,7 +247,7 @@ export class HubGroupRooms {
     this.core.atomic(db => { this.member(db, id, me); }, this.fence(ctx));
     const canAsk = new Set<string>(), directProofs: HubOperationPermit[] = [];
     const candidates = this.core.atomic(db => db.prepare(`SELECT g.id,g.exposure_id FROM hub_grants g JOIN hub_room_members m ON m.subject=g.exposure_id
-      WHERE m.room_id=? AND m.kind='agent' AND g.state='active' AND g.starts_at<=? AND g.expires_at>? AND (g.subject_kind='group' OR g.subject=?)`)
+      WHERE m.room_id=? AND m.kind='agent' AND g.state='active' AND g.starts_at<=? AND g.expires_at>? AND (g.subject_kind IN ('group','team') OR g.subject=?)`)
       .all(id, this.core.now(), this.core.now(), me) as { id: string; exposure_id: string }[]);
     for (const g of candidates) {
       try { const permit = await this.core.exposureGrant(g.exposure_id, g.id, personFromString(me), this.core.groupContext(ctx)); permit.assertCurrent(); directProofs.push(permit); canAsk.add(g.exposure_id); }
