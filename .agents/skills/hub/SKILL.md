@@ -1,0 +1,361 @@
+---
+name: hub
+description: How the AgEnD Hub works from the user's side (experimental, alpha line only) — what a Hub is, setting one up, company sign-in, the administrator's Let colleagues join card and join codes, connecting a Fleet with the one Hub address box, held or queued connections, sharing agents and who may ask them, group permissions, limits and troubleshooting. Use it to answer "how do I … in the Hub".
+roles: [general, worker, classic]
+---
+
+## How to use this skill
+
+Look the question up in the index, then relay the short answer in the user's words. The labels below are the English
+UI labels, with the 中文 label where people usually quote it. The Hub is **experimental and off by default**: nothing
+here applies until someone has set up a Hub. Never invent a control that is not listed here, and never state a
+company's own Hub address, directory server, group or account: ask the user or their Hub administrator for those.
+What is not built yet is listed under [Not available yet](#not-available-yet); say so instead of guessing.
+
+For signing in to a person's *own* dashboard (`/web`, codes, the authenticator app), load `web-dashboard`.
+
+## Index
+
+| The user asks about… | Section |
+|---|---|
+| what a Hub is, Hub vs Fleet, who can see what | [What the Hub is](#what-the-hub-is) |
+| `agend hub init`, Set up a Hub, first administrator | [Setting up a Hub](#setting-up-a-hub) |
+| move the Hub to another address or port, Hub address (Hub 位址) on the Hub's computer | [Changing the Hub's address](#changing-the-hubs-address) |
+| the Hub's sign-in page, which account, wrong password | [Signing in to the Hub](#signing-in-to-the-hub) |
+| Let colleagues join, 讓同仁加入, which groups, the sentence to send | [Letting colleagues join](#letting-colleagues-join) |
+| join codes, 加入碼, create, end, used up, limits | [Join codes](#join-codes) |
+| Settings → Hub, Hub address, "address space code", Join code included | [Connecting a Fleet](#connecting-a-fleet) |
+| needs attention, Recover this connection, queue, timed out, cancel | [Held, refused and queued connections](#held-refused-and-queued-connections) |
+| Shared agents, Share, Not shared, Pause sharing, Resume sharing, Stop sharing, ClassicBot rooms | [Sharing agents](#sharing-agents) |
+| Allow someone to ask, AD group, name search, how long, Revoke, Recent questions | [Who may ask](#who-may-ask) |
+| New chat, asking someone's agent, Waiting / Answered | [Asking an agent](#asking-an-agent) |
+| Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
+| Connected fleets, Revoke, Individual invitations, pairing code, Notices | [Administration](#administration) |
+| `hub`, `hub_member` in fleet.yaml | [Config keys](#config-keys) |
+| how many, how long | [Limits](#limits) |
+| roles, managers, rooms | [Not available yet](#not-available-yet) |
+| can't connect, certificate, different host names, old tab | [Troubleshooting](#troubleshooting) |
+
+## What the Hub is
+
+A **Fleet** is one person's AgEnD: their agents, on their computer. A **Hub** is a separate company server that Fleets
+connect to, so colleagues can ask each other's agents. People sign in on the Hub with their **company account** (the
+Active Directory account they use at work).
+
+- The Hub runs no agents. A shared agent answers inside its own conversation on its owner's Fleet, with its own folder
+  and the tools its Settings allow. Actions that need approval still go to the owner.
+- Every agent is private unless its owner shares it, and sharing alone lets nobody ask: the owner also allows each
+  person or an AD security group.
+- The Hub administrator manages who may connect and sees connected Fleets, not chats ("You cannot read anyone's chats
+  here."). What was asked stays in the owner's Fleet chat.
+- The Hub's pages are at `https://<hub address>/ui/hub`: **Chats**, **My shared agents** (who may ask them, until
+  when), **Administration** (administrator only) and **Notices**.
+
+## Setting up a Hub
+
+Two front ends for the same setup; use either. Both need a directory reachable over **LDAPS** and a read-only service
+account.
+
+- **Terminal:** `agend hub init` on the computer that will run the Hub (it needs an interactive terminal). It asks for
+  the Hub name, the address colleagues will open, the directory, and the first administrator's directory sign-in name,
+  then for the word `initialize` to write the settings. `agend hub handoff` prints the hand-off notes again.
+- **Browser:** on that computer's own dashboard, **Settings → Hub**, card **Set up a Hub** → **Set up on this
+  computer**. Fill in the steps, **Test connection and review**, then **Create Hub**. The page then checks startup by
+  itself ("Checking whether the Hub is ready…") and offers **Open Hub sign-in** once "The Hub is ready. You can open
+  sign-in."
+  - Only this computer's own sign-in gets the button. Anyone else reads: "To set up a Hub, go to the computer running
+    AgEnD, run agend web in a terminal there, and set it up on the page it opens."
+- **First administrator:** no personal password is asked during setup. The named person becomes administrator the
+  first time they sign in to the Hub in a browser.
+- The Hub and a Fleet's dashboard must have **different host names**; a different port is not enough.
+- A generated browser certificate causes a browser warning until people trust it; its fingerprint is shown before the
+  Hub is created.
+
+## Changing the Hub's address
+
+On the computer that runs the Hub, its own dashboard: **Settings → Hub**, card **Hub address** (Hub 位址), below **Run
+this Hub**. Only that computer's own sign-in sees it, as with **Set up a Hub**.
+
+- It shows the address, where the Hub listens and its certificate's fingerprint. **Change address** (變更位址) → **New
+  address** (`hub.example.com` is enough, without `https://`; add `:port` if it isn't 443) → **Check** (檢查) → "Change the Hub's
+  address?" → **Confirm change** (確認變更). **Back** changes nothing.
+- The Hub listens on the address's own port. The current certificate is kept when the host name stays the same;
+  another host name gets a new self-signed one (browsers warn until it's trusted; compare the fingerprint shown).
+  **Advanced** (進階) sets the listening interface and port (for a router or reverse proxy that forwards another port), or **Use
+  my own certificate** (paste the certificate and private key as PEM).
+- After the change everyone, the administrator too, signs in to the Hub's pages again, and the old address stops
+  working. Connected Fleets stay connected. Tell colleagues the new address: it's the one they type in Settings → Hub,
+  and **Tell colleagues how to join** shows it.
+- Messages: "Another program on this computer is using that port." → another port under **Advanced**; "That address or
+  port is the one Fleets connect to." → another port; "Another change is still finishing, or a device is finishing its
+  sign-in." → try again in a moment; "Saved, but the Hub doesn't answer at the new address yet…" → free that port, then
+  turn **Run this Hub** off and on.
+- The address Fleets connect to (the member address) is separate and isn't changed here.
+
+## Signing in to the Hub
+
+The page is **Sign in to the Hub** (登入 Hub): "Use your company account. Your password goes to the directory only and
+is never kept." Fields **Account** and **Password**, button **Sign in**.
+
+- The Hub signs in with the company account and password only. A code from `/web` or an authenticator app is for a
+  person's own dashboard and does nothing here.
+- "That account and password didn't work." → wrong account or password. "The directory can't be reached right now. Try
+  again later." → the Hub cannot reach the company directory; nothing the user typed is wrong.
+- When the page was opened from a Fleet that is connecting, the button reads **Sign in and connect Fleet**: that one
+  press signs in and approves the connection.
+
+## Letting colleagues join
+
+For the Hub administrator. **Administration** opens with the **Let colleagues join** card (讓同仁加入); while no Fleet is
+connected, the same card is also on the administrator's welcome page. Three steps; steps 1 and 2 show **Done** from
+what the Hub has saved.
+
+1. **Let colleagues connect Fleets with their company account** — turn on **Allow company-account Fleet connections**.
+2. **Who can join** — search for the AD groups whose members may connect (type the start of the name) and add them. For
+   each group set **Each person up to** *N* **Fleets**, and whether its members may also **Chat with agents** and
+   **Share agents**. The card shows what the change does before **Save**. A group the search does not find goes under
+   **Add by distinguished name**. A live join code also completes this step.
+   - Group search needs Active Directory over LDAPS. If the directory cannot list groups the card says so: check it
+     with **Edit AD connection** on the Administration page, or use individual invitations or a join code.
+3. **Tell colleagues how to join** — once 1 and 2 are done the card shows one sentence with the Hub's address ("In
+   AgEnD, open Settings → Hub, enter *hub.example.com*, then sign in with the company account.") and **Copy these
+   instructions**. Before that the button is off: "Finish steps 1 and 2 first." Join codes are created here too.
+
+Under the card: **Individual invitations** (see [Administration](#administration)) and **Link with key fingerprint
+(Advanced)**, a long link that also carries the Hub's identity, for a colleague who must check the fingerprint by
+hand. Step 2's **All group permissions** opens the full group editor, described under
+[Group permissions](#group-permissions).
+
+## Join codes
+
+A join code (加入碼) lets many people connect at once without adding a group first, for example everyone at a workshop.
+Only the configured Hub administrator can manage them.
+
+**Create.** In step 3 of the card, **Create join code**:
+- **Valid until:** In 1 hour, End of today (the default), or In 7 days. A code cannot be extended.
+- **Maximum Fleets:** 1–200, 30 by default.
+- **Who can use it:** Anyone in the company directory, or One company group (search, or **Use the group's
+  distinguished name** → **Find group**).
+- Under **More**, **Fleets per person:** 1–8, 1 by default.
+
+The card then shows the code (8 characters, `XXXX-XXXX`) and "In AgEnD Settings → Hub, enter *hub.example.com* and this
+code." **Copy** copies that sentence with the code on the next line.
+
+**While it is live** the row shows **Active**, **Connected** *n* / *max*, how many connections are in progress, and
+**Recent connections** (Fleet, owner, time). If the Hub has fewer free places than the code allows: "Only *n* Fleet
+spaces remain on this Hub. This code allows up to *m* connections; extra connections will be refused."
+
+**End.** **End this code now** asks first, **End this join code?**: "This code cannot be used again.", the Fleet
+connections still in progress with it stop (it names them), and "Fleets already connected are unchanged." A code also
+ends by itself as **Expired** or **Used up**; ended codes stay listed for 7 days.
+
+**Limits.** "At most 8 join codes can be live. End one before creating another." and "At most 10 join codes can be
+created in one hour. Try again later."
+
+**What a code is.** It stands in for the administrator's approval of the connection only: "A company account is still
+required. This code allows a Fleet connection; it does not allow asking or sharing Agents." Treat a live code like a
+key: anyone in its scope who gets it can connect a Fleet under their own name until it ends.
+
+**After joining by code.** The code adds nothing beyond the connection, and takes nothing away. What the person can do
+next is what they could do without it:
+- **Asking, group permissions never turned on:** they can ask an agent as soon as its owner allows them, like anyone
+  who signs in. Do not tell them to have group permissions turned on for this: that switch changes access for everyone.
+- **Asking, group permissions on:** they need **Chat with agents** from one of their groups *and* the owner's
+  allowance. In no allowed group, they cannot chat until a group allows it.
+- **Sharing** is never given by a code. The Hub has to allow that person to share; until it does, the row reads "Not
+  shared: your Hub administrator hasn't allowed you to share agents."
+- Either way the owner still allows each asker ([Who may ask](#who-may-ask)); no code or group replaces that.
+
+## Connecting a Fleet
+
+For everyone. On your own dashboard: **Settings → Hub**. There is one box, **Hub address** (Hub 位址), and no switch to
+turn on first.
+
+1. Type the address the administrator gave you; `hub.example.com` is enough, without `https://`.
+   - **With a join code:** the address, a space, then the code: `hub.example.com ABCD-EFGH`. Pasting the
+     administrator's whole message works too. The page then says **Join code included.** (已帶入加入碼。)
+   - A code on its own gets: "That is a join code. Put the Hub address before it, with a space: …"
+   - A link from the administrator (`https://…/join-info#…`) goes in the same box.
+2. The page looks the Hub up ("Looking up the Hub…") and shows **Found "*Hub name*". This Fleet will appear as
+   "*name*".** The name is this computer's name; **Rename** changes it.
+3. Press **Sign in with company account** (以公司帳號登入). A Hub tab opens; sign in there and press **Sign in and
+   connect Fleet**.
+   - If the page first asks you to confirm it is really you, do that on the confirm card (**Go to the confirm card**),
+     or press Confirm on the card in General when the page names Discord or Telegram. The Hub sign-in opens after
+     that. A dashboard that asks for your authenticator code shows the field in the same card.
+4. The Hub tab says "Connected. You can close this tab." and closes by itself. The Fleet page shows **Connected with
+   *your name*'s company account · This Fleet is called "*name*"** and "Your Fleet is connected. You can now choose
+   which Agents to share below."
+
+Connecting shares nothing. **Reconnect** appears when the connection stopped (revoked, expired or refused): one press
+ends the old connection and opens the Hub sign-in again. **Remove this connection** ends it from your side ("Agents
+you share will stop answering.").
+
+**Other ways** holds the older **pairing code** method for a Hub without company sign-in; a pairing code pasted into
+the address box opens it filled in. Its switch **Allow this fleet to connect to a Hub** (under **Hub membership**)
+applies as soon as it is changed.
+
+## Held, refused and queued connections
+
+One attempt lasts at most 10 minutes. The page says what happened; do what it names rather than starting again.
+
+| The page says | What to do |
+|---|---|
+| Many people are connecting at once. Waiting in the queue… / Waiting in the queue… Retry *n* of 8. | Nothing. The Hub tab retries the same request by itself, up to 8 times a few seconds apart. It never creates a second Fleet. |
+| The Hub is handling other connections and will retry shortly. | Nothing; same queue, seen from the Fleet page. |
+| The Hub is busy. Check this same connection again shortly. | Press the retry on that message; it is still the same request. |
+| **Connection needs attention** | The attempt is held. **Recover this connection** (恢復這次連接) continues the same saved attempt; **Cancel connection** ends it. When the result is unknown, **Check again** (再次檢查) also appears: it asks the Hub how the attempt ended. |
+| Another connection attempt is still open (shown above). | Use **Recover this connection** or **Cancel connection** on it, then start again. A refused or held attempt no longer blocks the next one for 10 minutes once it is cancelled. |
+| This attempt was started in another browser tab or session. | Recover or cancel it here, or finish it there. |
+| The result could not be confirmed. | Use **Check again** on that connection. Do not start another one: a Fleet may already exist on the Hub. |
+| This attempt timed out and nothing was created. | Press **Sign in with company account** again. |
+| This connection request expired. | If a Fleet was already created, inspect or revoke that exact Fleet on the Hub (**Open Hub**) before starting again. |
+| Your company account may not connect a Fleet. | Ask the Hub administrator to add you or one of your groups, or for a join code. |
+| The Hub did not accept this join code… | It ended, was mistyped, or your account may not connect. Ask for a current code, then start again. |
+| This join code is no longer valid or has been used up. / You are outside the scope of this join code. | Ask the Hub administrator for a new code, or one for your group. |
+| You have reached the limit of connected Fleets. | Revoke one of your Fleets on the Hub first. |
+| "*Hub*" presents a different identity than before. | Nothing was connected. Confirm with the Hub administrator before choosing **Replace saved Hub identity**. |
+
+## Sharing agents
+
+On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), once connected.
+
+- Each agent has a switch, **Share** *name*. Turning it on asks for your confirmation first ("Waiting for your
+  confirmation"): on the confirm card at the top of the page, or on the card in General when the page names Discord or
+  Telegram. Then the row reads "Shared: Hub questions go to this agent's own conversation."
+- Turning the switch off withdraws the agent.
+- **Who may share:** when group permissions are on, only people whose group has **Share agents**. Otherwise the row
+  reads "Not shared: your Hub administrator hasn't allowed you to share agents. It will be shared once they do."
+  (未分享：Hub 管理員還沒有允許你分享 Agent。) with **Don't share it** to take the request back.
+- Only fleet agents can be shared for now: "ClassicBot rooms can't be shared yet." A Fleet with nothing to share reads
+  "This fleet has no agents to share yet."
+- "Shared under the older restricted mode. Hub questions are refused until you share this agent again." → **Share
+  again**.
+- On the Hub, under **My shared agents**, an owner can **Pause sharing** (暫停分享) and **Resume sharing** (繼續分享). Pause hides the agent from new-chat choices and refuses new questions; existing authorized chats say **Sharing paused** and stay readable. Person and AD group grants, IDs and original expiry dates are kept. Expiry time keeps running: resume does not extend or resurrect an expired/revoked grant, and live AD membership and Hub group permissions still apply. Reconnecting the Fleet or restarting the Hub never resumes sharing.
+- Pause is not instantaneous cancellation: a pre-Pause authorization whose result is already travelling to the Fleet may start its one first input within its existing lease (at most five seconds). Already-running work may finish. The committed authorization version makes members reconnect; after a member observes that fence, old capabilities stay unusable even after Resume. No new authorization is admitted while paused, and old answer-release leases are retired immediately. Do not promise an instant halt or automatic replay.
+- **Stop sharing…** (停止分享) is separate and permanent for the current publication. It means: "No one can ask it any more. To share it again, it has to
+  be shared again from its fleet, and everyone has to be allowed to ask again. What was asked stays readable." Its
+  state then reads **Sharing stopped on the Hub**. Resume cannot undo Stop sharing or a Hub policy hold. The Fleet Share switch still controls publication; use the Hub page for a resumable pause.
+
+## Who may ask
+
+Sharing lets nobody ask yet. The owner allows a person or an AD security group; Hub eligibility and operational group permissions still apply.
+
+- From the Fleet row, **Allow someone to ask…** opens the Hub at the agent's page; or on the Hub: **My shared agents**
+  → the agent → **Who may ask** → **Allow…**.
+- On a supported AD Hub, **Allow access to** *agent* offers **A person** (search the beginning of their name or login) or **An AD security group** (the same group-search control as Let colleagues join). Select a result, choose **Access lasts** 1, 7 (default), 30 or 90 days, then **Allow**.
+- Group grants bind the directory's immutable GUID, not its name. Every action checks fresh direct membership; nested and primary groups are not included. An AD group manager can change who may ask, as the dialog explains. Each person's chat stays private. Joining or leaving takes effect on the next check. Unknown membership is unavailable, not a grant removal.
+- New personal and group grants are capped at 90 days server-side. Existing longer grants keep their recorded expiry, ID and revision, and remain revocable; show their actual date without shortening it.
+- An older tab or unsupported directory retains the dialog **Allow someone to ask** *agent*: **Their sign-in name**, by exact login, and **For** 1, 7, 30 or 90 days.
+- A person covered by several grants sees one agent entry, preferring an existing still-authorized conversation. History is never transferred to a different grant.
+- Each row shows the person or group and "until *date*"; a group has an **AD group** tag. A person allowed before they ever used the Hub is tagged **Hasn't
+  signed in to Hub yet** (還沒登入過 Hub).
+- **Revoke…** on a row: "Revoke *name*'s access? Their conversation closes."
+- **Recent questions**: who asked, when, and whether it was answered. What they asked stays in the Fleet's chat.
+- **Subscription quota** → **Show quota to people asking**: shares only a broad band (Available, Near limit,
+  Exhausted, Unknown). Exact usage stays in the Fleet.
+
+## Asking an agent
+
+On the Hub: **Chats** → **New chat** lists only the agents someone allowed you to ask ("Answers for *owner* · you can
+ask until *date*"). Pick one and **Ask**.
+
+- "You're asking as yourself: the owner sees that you asked. The agent answers within what its owner allows."
+- Everyone who asks one agent shares its one conversation, so it may remember what others asked. Don't send what other
+  askers shouldn't see.
+- The marks on a question: **Waiting for the owner's fleet**, **At the owner's fleet**, **Answered**; or **Not
+  answered** / **Outcome unknown**. "An answer can take a few minutes."
+- "No agents have been shared with you yet. An agent's owner has to give you access." → ask the owner to allow you.
+
+## Group permissions
+
+Optional, for the Hub administrator; needs Active Directory over LDAPS (port 636). Step 2 of **Let colleagues join**
+covers the everyday case. The full editor (turn off, **Paused**, **People excluded**) is a separate page: on
+**Administration**, step 2 of **Let colleagues join** has **All group permissions** (所有群組權限), which opens it;
+from the dashboard of the Fleet that hosts the Hub, **Settings → Hub**, card **Group permissions** → **Open on the Hub**;
+or, signed in as the administrator, the address `https://<hub address>/ui/hub/admin?view=groups`. Until group permissions
+are turned on, the Hub behaves as before: everyone who signs in can chat, and connecting needs the administrator's
+approval or a join code.
+
+- Three permissions per AD security group: **Chat with agents**, **Share agents**, **Connect a fleet** with a
+  **Fleets** number (0–8). A person in several groups gets everything any group allows and the highest Fleets number.
+  **People excluded** win over any group.
+- The editor shows **What this change does** before **Save** (**Turn on and save** the first time).
+- **Turn off** pauses what depends on groups (chatting, sharing, self-service connecting), for the administrator too.
+  Turning it on again resumes nothing by itself: **Resume** each paused item under **Paused**.
+- What a colleague sees on the Hub welcome page: cards **Chat with an agent** and **Connect your fleet**, on or off
+  with the reason ("Connecting a fleet is not included in your access.", "Paused by your Hub admin.", "Your account
+  can sign in, but no actions are allowed yet.").
+
+## Administration
+
+- **Connected fleets** lists each Fleet by its name with its owner under it. A row's menu has **Revoke…**: "It
+  disconnects and everything it shares is withdrawn." Revoked Fleets fold under **Revoked (*n*)**.
+- **Individual invitations** (個別邀請): **Company sign-in name** → **Create invitation** → **Copy invitation**. It lets
+  one named, eligible person connect a Fleet without being in an allowed group. Issuing it is the administrator's
+  approval; it is bound to that person and this Hub, allows one Fleet connection, and gives no chat or share rights.
+- **Advanced: connect with a pairing code** is the older three-step pairing (make a code, the owner checks the
+  fingerprint, the administrator approves). A refusal there names the owner: "*name* can't connect a Fleet right now:
+  they aren't in the allowed groups, or they've been blocked from connecting."
+- **Notices**: "When a new fleet connects to this Hub, you're told here. If you don't recognize it, revoke it." A Fleet
+  that joined by code reads "Approved with a join code by your Hub administrator." Directory connection changes are
+  listed there too and need **Acknowledge**.
+- **This Hub** shows the Hub's name (**Hub name**, up to 64 characters) and what identifies it; **Edit AD connection**
+  opens the directory settings.
+
+## Config keys
+
+Two keys in `fleet.yaml`, both off unless something turned them on. Prefer the pages above to editing them.
+
+| Key | Meaning |
+|---|---|
+| `hub.enabled` | This installation runs a Hub. Set by `agend hub init` or **Set up a Hub**. The Hub's own settings are written by setup and changed on the pages, not by hand: its address in **Settings → Hub → Hub address** on the Hub's computer, its directory and name on the Hub's Administration page. |
+| `hub_member.enabled` | This Fleet may connect to a Hub. Connecting with the Hub address box turns it on by itself; the switch is **Allow this fleet to connect to a Hub**. |
+
+## Limits
+
+| What | Limit |
+|---|---|
+| Fleets connected to one Hub | 256 |
+| Fleets per person | set per group or per join code, 0–8 |
+| Agents one Fleet can share | 64 ("At most 64 agents can be shared.") |
+| Join codes | 8 live at once, 10 created per hour; 1–200 Fleets each (30 by default); valid 1 hour, to the end of today, or 7 days |
+| One connection attempt | 10 minutes |
+| Queue retries when the Hub is busy | 8 |
+| An individual invitation | valid 10 minutes |
+| A pairing code (Other ways) | 10 minutes, single use |
+| Allow someone to ask | 1, 7, 30 or 90 days |
+
+## Not available yet
+
+Say plainly that these are not in the product yet:
+
+- **Custom roles and a manager's team view** (several administrators, roles assigned to people or AD groups, a team
+  list with usage counts). Designed and decided; not shipped. Today there is one Hub administrator.
+- **Sharing a ClassicBot room.** Only fleet agents can be shared.
+- **A second sign-in factor on the Hub.** It uses the company account and password only.
+- **Adding to People excluded from the editor.** The list is shown; it cannot be edited there in this release.
+- **Per-person cost or quota figures on the Hub.** Exact usage stays in each Fleet.
+
+## Troubleshooting
+
+- **"That is not a Hub address."** Enter just the address (`hub.example.com`), or the address, a space and the join
+  code. **"A Hub address must use https."** Drop `http://`.
+- **"*host* cannot be reached."** Check the address, and that this computer is on the company network.
+- **"This computer does not trust *host*'s certificate."** Nothing was connected. The Hub's certificate must be
+  trusted by the computer running the Fleet; check with the Hub administrator.
+- **"*host* is not an AgEnD Hub."** Wrong address; ask the Hub administrator.
+- **""*Hub*" does not accept company-account connections yet."** The administrator has not turned on step 1 of **Let
+  colleagues join**.
+- **"The Hub and this Fleet need different host names."** Open the Fleet's dashboard under a different host name than
+  the Hub's; a different port is not enough.
+- **Connected, but the share switch says Not shared.** The Hub has not allowed you to share agents; with group
+  permissions on, no group gives you **Share agents**. This is expected after joining by code alone; ask the Hub
+  administrator.
+- **Nothing to ask in New chat.** No owner has allowed you yet; being connected is not enough.
+- **A question stays at "Waiting for the owner's fleet".** It has not reached the owner's Fleet yet; ask the owner
+  whether their AgEnD is running and connected.
+- **The Set up a Hub card has no button.** Only this computer's own sign-in can set up a Hub: run `agend web` on the
+  computer running AgEnD.
+- **Pages look half old after an upgrade.** A tab opened before the upgrade can mix old and new pages. Reload it once.
+- **"Only the Hub administrator can see this"** on Administration: you are signed in, but not as the administrator.
