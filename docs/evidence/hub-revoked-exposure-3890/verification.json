@@ -1,0 +1,78 @@
+{
+  "base": "c3dc173f2c97202ea202079934f9a8d46b428260",
+  "bindings": {
+    "src/hub/catalog.ts": "4733097cef1654cf311bd0b9aad73fb6dacf5a1f3b5357158d9dc8984fd97095",
+    "src/hub/compose/server.ts": "7dafbed0456e414c828b2df0c4bcc033387a4191f760ee78d5beedc8c716731e",
+    "src/hub/http/compose.ts": "0e7b1ae5fb5fbc927d3456f5ca9eb23a3c63e6ef01b72c5232aef9f6d1f83a39",
+    "src/hub/http/core.ts": "d0321e1d84f72eee327b27b64a09f3455184199ae3bcd40478e8203fe967fc80",
+    "src/hub/http/deps.ts": "50dcfbbf2b610615de90f07f4b7c9526d5b73fb5576f52ef8db803c4c95627e6",
+    "src/hub/validation.ts": "a68306277bbaecd0b6aa35304e1fb483d73027f8b000796dc75efd547ac6f029",
+    "tests/hub-revoked-exposure-3890.test.ts": "49c8801b09b5a8e6ba23366f5c8f1cb1e9c3c4d3966fbb59cb67b4ecdde4713f",
+    "src/general-knowledge/skills/hub/SKILL.md": "e1338375c84615f5ee57714465a3e0d280e0e4f2aef29618b345d9fb32c021fb"
+  },
+  "checks": [
+    {
+      "command": "env GOMAXPROCS=2 nice -n 10 node_modules/.bin/vitest run tests/hub-revoked-exposure-3890.test.ts --maxWorkers=2",
+      "passed": 3,
+      "files": 1
+    },
+    {
+      "command": "env GOMAXPROCS=2 nice -n 10 node_modules/.bin/vitest run tests/hub-group-authorization.test.ts tests/hub-s3b-flow.test.ts tests/hub-sharing-pause-m3015.test.ts --maxWorkers=2",
+      "passed": 79,
+      "files": 3
+    },
+    {
+      "command": "env GOMAXPROCS=2 nice -n 10 node_modules/.bin/vitest run tests/hub-skill.test.ts tests/hub-compose.test.ts -t 'composes S1|hub skill|Hub skill' --maxWorkers=2",
+      "passed": 10,
+      "skipped": 131,
+      "files": 2
+    },
+    {
+      "command": "env GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.json",
+      "exit": 0
+    },
+    {
+      "command": "env GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    },
+    {
+      "command": "node scripts/changelog-assemble.mjs --check",
+      "exit": 0,
+      "fragments": 475
+    }
+  ],
+  "semanticBefore": {
+    "catalogAndOwnerCases": {
+      "failed": 2,
+      "outcomes": [
+        "503 instead of200",
+        "revoked publication still in owner catalogue"
+      ]
+    },
+    "loggingCase": {
+      "failed": 1,
+      "skipped": 2,
+      "outcome": "503 has no diagnostic event"
+    }
+  },
+  "excludedSetupFailures": [
+    "HTTP revoke route is absent in bare S3b rig without pairing-notice composition; switched to real pairing.revoke with inert administrator context.",
+    "Initial test types caught incomplete mock cast, missing actor sessionId and implicit resource type; corrected before final zero exit.",
+    "Initial changelog fragments lacked frontmatter/list prefix; final checker passes."
+  ],
+  "scope": "Actual HTTP/session/SQLite with modeled group-port missing-generation outcome; copied-real-DB diagnostic independently executes real group authority/Core. No browser/mutation/new container campaign. One allowed live read-only GET; no rig restart/install or DB write.",
+  "reviewChecklist": {
+    "1": "Known revoked state is handled separately; active unknown policy failure remains503.",
+    "3": "Existing operation fences retained; owner catalogue rechecks revoked state at final projection.",
+    "9": "Old publication is not transferred to the new Fleet identity.",
+    "11": "Semantic failures plus healthy positive controls, restart and inert real pairing revocation; copied-DB real authority diagnostic separately bounded.",
+    "12": "Files hashed; original DB/logs private; execution scopes distinguished."
+  },
+  "pending": [
+    "exact-head CI",
+    "Fable ordinary exact-head APPROVE",
+    "dev-claude2 legS against packed candidate",
+    "Leader naming this fix to coordinator under freeze"
+  ],
+  "rollback": "Code revert only; no migration or retained-row rewrite."
+}

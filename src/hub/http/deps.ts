@@ -29,6 +29,8 @@ export interface HubContentStore {
   get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
+  /** Server-owned diagnostics; protocol responses never disclose internal causes. */
+  log?(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   /** C supplies consent/expiry storage; R supplies current room effects on the same Core/DB. */
   roomInvitations?(core: import("./core.js").HubCore, host: import("../invitations.js").RoomInvitationHost): import("../invitations.js").HubRoomInvitations;
   roomTeams?: import("../teams/types.js").HubTeamReader;

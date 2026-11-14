@@ -463,6 +463,10 @@ On a Hub that offers the room-assistant pilot, a Hub administrator opens **Admin
 - **Save** applies changed settings after old workers stop; saving unchanged settings leaves current answers alone.
   A failed save leaves the form's edits in place for another try.
 
+If an assistant turn is not answered, the Hub host's log records `Hub room assistant could not answer` with its
+request/room IDs and processing phase (and a protocol code when available), without the room text or raw vendor
+error. Previously failed turns are not replayed after an upgrade; send a new message to retry.
+
 Each answer uses the latest 30 supplied room messages, plus a replied-to message when it is older. The assistant
 keeps no earlier model conversation, sees no other room and has no tools. Room membership, mentions and delivery
 are supplied by the rooms-server integration; these admin cards alone do not add a chat room or enable an account.
@@ -471,6 +475,7 @@ are supplied by the rooms-server integration; these admin cards alone do not add
 
 - **Connected fleets** lists each Fleet by its name with its owner under it. A row's menu has **Revoke…**: "It
   disconnects and everything it shares is withdrawn." Revoked Fleets fold under **Revoked (*n*)**.
+  A revoked Fleet's old publications stay hidden even if it reconnects as a new Fleet. Reconnecting does not restore those shares; other active agents and their chats remain available.
 - **Individual invitations** (個別邀請): **Company sign-in name** → **Create invitation** → **Copy invitation**. It lets
   one named, eligible person connect a Fleet without being in an allowed group. Issuing it is the administrator's
   approval; it is bound to that person and this Hub, allows one Fleet connection, and gives no chat or share rights.
