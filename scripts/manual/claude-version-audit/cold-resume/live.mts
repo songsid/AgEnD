@@ -7,7 +7,7 @@
 // scratch CA (flags.mjs). The home is claude.ai-shaped with FAKE tokens; no real account, nothing leaves the host.
 // IS_SANDBOX=1 only because the namespace maps us to uid 0 and Claude refuses --dangerously-skip-permissions as root.
 //
-//   RIG=<dir with sock, envs3, h1-aged-backup, w1, proxy.port, ca.pem, flags.json> BIN=<dir with 2.1.318/2.1.319/2.1.322> \
+//   RIG=<dir with sock, envs3, h1-aged-backup, w1, proxy.port, ca.pem, flags.json> BIN=<dir with 2.1.318/2.1.319/2.1.322/2.1.325> \
 //     npx tsx scripts/manual/claude-version-audit/cold-resume/live.mts [case ...]
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
@@ -31,6 +31,9 @@ const CASES: Record<string, { v: string; width: number; flags: Record<string, un
   "322-lookup": { v: "322", width: 160, flags: { tengu_amber_tally: TIER } },
   "322-summary-lookup": { v: "322", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
   "322-summary-newfocus": { v: "322", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  "325-lookup": { v: "325", width: 160, flags: { tengu_amber_tally: TIER } },
+  "325-summary-lookup": { v: "325", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
+  "325-summary-newfocus": { v: "325", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 
