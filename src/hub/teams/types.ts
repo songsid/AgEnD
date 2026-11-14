@@ -51,6 +51,8 @@ export interface HubTeamView {
 /** One mounted instance supplies CRUD and the existing room/permission reader ports. R wraps HTTP envelopes. */
 export interface HubTeams extends HubTeamReader {
   candidates(db: Database.Database, prefix: string): readonly { readonly id: string; readonly name: string; readonly people: number }[];
+  /** Directory feedback only; the selected people/group are re-proved by create/update. */
+  suggestions(ctx: HubRequestContext, input: unknown): Promise<readonly { readonly kind: "person" | "group"; readonly id: string; readonly name: string }[]>;
   list(ctx: HubRequestContext): Promise<readonly HubTeamView[]>;
   get(ctx: HubRequestContext, id: string): Promise<HubTeamView>;
   create(ctx: HubRequestContext, input: unknown): Promise<HubTeamView>;

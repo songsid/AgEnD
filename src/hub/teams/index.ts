@@ -6,6 +6,8 @@ import type { HubCore } from "../http/core.js";
 import { personFromString } from "../http/core.js";
 import { personKeyString } from "../identity.js";
 import type { HubRequestContext, PersonKey } from "../types.js";
+import type { GrantPersonSearch } from "../directory/types.js";
+import type { PolicyGroupSearch } from "../directory/groups.js";
 import { HubProtocolError, person, plain, uuid, validated } from "../validation.js";
 import type { HubTeams, HubTeamView } from "./types.js";
 import { hubTeamReader, hubTeamCandidates, readTeamRow, teamMembers, type TeamMemberRow, type TeamRow } from "./store.js";
@@ -21,6 +23,11 @@ const createInput = z.strictObject({ name, department: uuid, lead: personId,
 const updateInput = z.strictObject({ name: name.optional(), department: uuid.optional(), lead: personId.optional(),
   members: z.array(personId).max(TEAM_MEMBER_LIMIT).optional(), revision: z.number().int().min(1).optional() })
   .refine(value => Object.keys(value).some(key => key !== "revision"));
+const feedbackText = plain(1024).max(256).regex(/^[^\u0000-\u001f\u007f]*$/);
+const suggestionInput = z.strictObject({ kind: z.enum(["person", "group"]), teamId: uuid.optional(),
+  q: plain(256).min(2).max(64).regex(/^[^\u0000-\u001f\u007f]+$/).refine(value => value === value.trim()) });
+const suggestedPerson = z.strictObject({ person, login: feedbackText.min(1), displayName: feedbackText });
+const suggestedGroup = z.strictObject({ objectId: uuid, cn: feedbackText.min(1), dn: plain(4096).min(1).max(1024) });
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 type Actor = { person: PersonKey; id: string; admin: boolean };
 type DB = Database.Database;
@@ -28,6 +35,7 @@ type DB = Database.Database;
 export function createHubTeams(core: HubCore): HubTeams { return new Teams(core); }
 
 class Teams implements HubTeams {
+  private readonly feedbackBuckets = new Map<string, { at: number; count: number }>();
   constructor(private readonly core: HubCore) {}
   readonly read = hubTeamReader.read;
   readonly expand = hubTeamReader.expand;
@@ -48,6 +56,50 @@ class Teams implements HubTeams {
   private snapshot(db: DB, id: string) { return { row: this.required(db, id), members: teamMembers(db, id) }; }
   private checkImage(db: DB, image: ReturnType<Teams["snapshot"]>): void {
     if (!same(this.snapshot(db, image.row.id), image)) throw new HubProtocolError("conflict");
+  }
+  async suggestions(ctx: HubRequestContext, input: unknown) {
+    const query = validated(suggestionInput, input), actor = await this.who(ctx);
+    const image = query.teamId ? this.core.atomic(db => this.snapshot(db, query.teamId!)) : null;
+    if (!actor.admin && (query.kind === "group" || !image || image.row.lead !== actor.id)) throw new HubProtocolError("denied");
+    const session = await ctx.current();
+    if (session.kind !== "directory" || personKeyString(session.person) !== actor.id) throw new HubProtocolError("denied");
+    const at = this.core.now();
+    if (!Number.isSafeInteger(at) || at < 0) throw new HubProtocolError("unavailable");
+    for (const [key, bucket] of this.feedbackBuckets) if (at < bucket.at || at - bucket.at >= 60_000) this.feedbackBuckets.delete(key);
+    const key = JSON.stringify([actor.id, session.sessionId]), bucket = this.feedbackBuckets.get(key);
+    if (bucket ? bucket.count >= 30 : this.feedbackBuckets.size >= 1024) throw new HubProtocolError("backpressure");
+    this.feedbackBuckets.set(key, { at: bucket?.at ?? at, count: (bucket?.count ?? 0) + 1 });
+    const directory = this.core.deps.directory, realm = directory.realm;
+    const groups = directory.searchPolicyGroups, people = directory.searchGrantPeople;
+    const lookup = query.kind === "group" ? groups : people;
+    if (!lookup || (query.kind === "group" && directory.groupPolicy !== "ad-direct-guid")) throw new HubProtocolError("unavailable");
+    const assertCurrent = () => {
+      this.fence(ctx).assertCurrent();
+      if (this.core.deps.directory !== directory || directory.realm !== realm
+        || lookup !== (query.kind === "group" ? directory.searchPolicyGroups : directory.searchGrantPeople)
+        || (query.kind === "group" && directory.groupPolicy !== "ad-direct-guid")) throw new HubProtocolError("unavailable");
+      if (image) this.core.atomic(db => this.checkImage(db, image));
+    };
+    let outcome: { kind: "person" | "group"; id: string; name: string }[] = [], failure: unknown;
+    try {
+      const result = await this.core.readDirectory<GrantPersonSearch | PolicyGroupSearch>(actor.person, this.core.groupContext(ctx), () => query.kind === "group"
+        ? groups!.call(directory, query.q) : people!.call(directory, query.q));
+      if (!result.ok || typeof result.truncated !== "boolean") throw new HubProtocolError("unavailable");
+      if (query.kind === "group" && "groups" in result) {
+        outcome = validated(z.array(suggestedGroup).max(20), result.groups).map(row => ({ kind: "group", id: row.objectId, name: row.cn }));
+      } else if (query.kind === "person" && "people" in result) {
+        const found = validated(z.array(suggestedPerson).max(20), result.people);
+        if (found.some(row => row.person.realm !== realm)) throw new HubProtocolError("unavailable");
+        outcome = found.map(row => ({ kind: "person", id: personKeyString(row.person), name: row.displayName || row.login }));
+      } else throw new HubProtocolError("unavailable");
+      if (new Set(outcome.map(row => row.id)).size !== outcome.length) throw new HubProtocolError("unavailable");
+    } catch (error) { failure = error instanceof HubProtocolError && error.code !== "invalid" ? error : new HubProtocolError("unavailable"); }
+    const fresh = await ctx.current();
+    if (fresh.kind !== "directory" || fresh.sessionId !== session.sessionId || personKeyString(fresh.person) !== actor.id) throw new HubProtocolError("denied");
+    if (actor.admin) await ctx.requireAdmin();
+    assertCurrent();
+    if (failure) throw failure instanceof HubProtocolError ? failure : new HubProtocolError("unavailable");
+    return outcome;
   }
   private roster(input: readonly string[], lead: string, formerLead?: string): string[] {
     const members = [...new Set([...input, lead, ...(formerLead ? [formerLead] : [])])].sort();
