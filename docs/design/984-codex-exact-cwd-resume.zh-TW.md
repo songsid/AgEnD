@@ -22,7 +22,7 @@
 - 手動 `f` fork 後，新的 thread（01a0ebb6、01a0ebc6）在 `state_5.sqlite` 裡的 cwd 記的是 **designer 的目錄**。Forge 的 codex 子程序（MCP server）也跑在 designer 的目錄裡。
 - 下次 designer 重啟，它的 `--last` 很可能拿到 Forge 的 fork，污染會連鎖下去。
 
-目前 fleet 裡「與兄弟 instance 共用 git repo」的 codex instance 共 7 個：AgEnD（Prism、sol）、GameServer（2 個）、AWP-OTA（3 個）。同 repo 內**新建**的 instance 第一次啟動就會拿到兄弟的 session。
+目前 fleet 裡「與兄弟 instance 共用 git repo」的 codex instance 共 7 個：AgEnD（Prism、sol）、GameServer（2 個）、OtaService（3 個）。同 repo 內**新建**的 instance 第一次啟動就會拿到兄弟的 session。
 
 ## 2. 目標 / 非目標
 

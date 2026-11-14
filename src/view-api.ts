@@ -252,7 +252,7 @@ function allInstanceNames(ctx: ViewApiContext): Set<string> {
  * exact-match against the known-instances set IS the whitelist (a traversal or
  * injected name simply won't be in it), so we only additionally block path
  * separators / null bytes — the previous ASCII-only regex wrongly rejected
- * legitimate non-ASCII names (e.g. `classic-room-1843`). */
+ * legitimate non-ASCII names (e.g. `classic-企劃室-1843`). */
 function knownInstance(ctx: ViewApiContext, name: string): boolean {
   return /^[^\\/\x00]+$/.test(name) && allInstanceNames(ctx).has(name);
 }
