@@ -32,7 +32,16 @@ it("mounts one Team instance for CRUD, static suggestions and room candidates", 
   const team = made.json.team;
   expect(team).toMatchObject({ name: "Project", department: w.department, lead: w.leadId, members: [w.leadId, w.memberId].sort() });
   expect((await r!.call(w.m, "GET", "/hub/v1/teams")).json.teams).toContainEqual(expect.objectContaining({ id: team.id }));
-  expect((await r!.call(w.m, "GET", `/hub/v1/teams/${team.id}`)).json.team.id).toBe(team.id);
+  for (const viewer of [w.admin, w.l]) {
+    const detail = await r!.call(viewer, "GET", `/hub/v1/teams/${team.id}`);
+    expect(detail.status).toBe(200);
+    expect(detail.json.team).toMatchObject({ id: team.id });
+  }
+  for (const viewer of [w.m, w.o]) {
+    const detail = await r!.call(viewer, "GET", `/hub/v1/teams/${team.id}`);
+    expect(detail.status).toBe(403);
+    expect(detail.json.team).toBeUndefined();
+  }
   expect((await r!.call(w.admin, "GET", "/hub/v1/teams/candidates?kind=group&q=En")).json).toEqual({ candidates: [{ kind: "group", id: w.department, name: "Engineering" }] });
   expect((await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=team&q=Pro")).json.candidates).toEqual([{ kind: "team", id: team.id, name: "Project", people: 2 }]);
   expect((await r!.call(w.m, "GET", "/hub/v1/session")).json.features).toContain("teams-v1");

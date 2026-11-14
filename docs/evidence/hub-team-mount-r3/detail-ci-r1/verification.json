@@ -1,0 +1,21 @@
+{
+  "failedHead": "8d831e453363dad5847425e4ee22ce9fd8604ef2",
+  "ciRun": 43542227947,
+  "rootCause": "The existing mount fixture expected an ordinary member to read Team detail. C6c03c4f2 intentionally restricts full detail to admin/current lead, so the real route returned403 without team and the test dereferenced undefined. No response-shape/product regression.",
+  "change": "Use admin/current lead for status200 + Team identity; assert ordinary member/outsider403 with no Team payload. Summary-list behavior remains tested.",
+  "priorTestSha256": "8aa5a71695536e9fa43da2eeb5a2669f80e5ea3781e13281cad4e337b5135c2d",
+  "testSha256": "ab32e85e3e9a3b9f6a786ef5c599af41003cfeb7572019f27ebf4ca941633228",
+  "before": {
+    "command": "env GOMAXPROCS=2 nice -n 10 node_modules/.bin/vitest run tests/hub-room-teams-integration-r3.test.ts -t 'mounts one Team instance' --maxWorkers=2",
+    "failed": 1,
+    "skipped": 5
+  },
+  "after": {
+    "command": "env GOMAXPROCS=2 nice -n 10 node_modules/.bin/vitest run tests/hub-room-teams-integration-r3.test.ts --maxWorkers=2",
+    "passed": 6,
+    "failed": 0
+  },
+  "productScope": "Four R product files and the sealed factory test are unchanged. Only the HTTP integration expectation and evidence change. No browser/type/mutation campaign repeated.",
+  "rollback": "Test/evidence-only revision; no runtime or migration change.",
+  "hold": "Fresh exact CI/formal approval and parent readiness remain; alpha.4 freeze retained."
+}

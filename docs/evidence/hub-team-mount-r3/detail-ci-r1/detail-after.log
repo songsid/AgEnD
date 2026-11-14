@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-teams-mount-r3
+
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  09:53:57
+   Duration  4.78s (transform 3.17s, setup 101ms, import 4.05s, tests 491ms, environment 0ms)
+
