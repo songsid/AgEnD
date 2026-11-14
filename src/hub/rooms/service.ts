@@ -18,6 +18,7 @@ import type { HubRoomListResult, HubRoomPostResult, HubRoomMembersResult, HubPeo
 import type { RoomEvent, RoomMessage, RoomSystemEvent } from "./types.js";
 import type { RoomInvitationHost } from "../invitations.js";
 import { RoomButtons } from "./buttons.js";
+import { HUB_ROOM_REACT_CAPABILITY, roomReactSchema } from "../protocol.js";
 import { replyButtonClickText } from "../../reply-buttons.js";
 import { pollResultsText, type PollBallot } from "../../reply-polls.js";
 import { RoomDirectoryCandidates, rememberRoomPeople, type RoomPersonSelection } from "./directory.js";
@@ -794,6 +795,39 @@ export class HubGroupRooms {
       if (line) { this.emit({ type: "message.added", roomId: line.room_id, data: { roomId: line.room_id, message: this.projection(line) }, sequence: line.sequence }); this.agents.publishQueued(line.id); }
     }
     if (out.some(x => x.line)) this.agents.wake();
+  }
+  /**
+   * M-3127 room-react-v1: an agent's reaction (its `react`) to the room question it was asked — only on that delivery's
+   * own question, from the Fleet and owner it went to, while the agent is still in the room. One reaction per agent and
+   * post (a later one replaces it; "" takes it back), stored under the agent's membership; the post as it now is goes out
+   * on the room stream (message.updated).
+   */
+  async agentReact(input: import("../types.js").HubRoomReact, link: import("../server.js").HubLinkContext): Promise<import("../types.js").HubRoomReactResult> {
+    const body = validated(roomReactSchema, input);
+    if (body.emoji !== "" && !validRoomEmoji(body.emoji)) throw new HubProtocolError("invalid");
+    if (!link.current() || !link.features.has(HUB_ROOM_REACT_CAPABILITY)) throw new HubProtocolError("revoked");
+    const done = this.core.atomic(db => {
+      const d = db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(body.messageId) as { room_id: string; parent_id: string; exposure_id: string; fleet_id: string; owner: string; agent_member: string } | undefined;
+      if (!d || d.fleet_id !== link.fleetId || d.owner !== personKeyString(link.owner) || d.room_id !== body.roomId || d.exposure_id !== body.exposureId) throw new HubProtocolError("denied");
+      const room = this.room(db, d.room_id);
+      if (room.archived) return { post: null, changed: false, archived: true };   // a result, never a broken member link
+      if (!db.prepare("SELECT 1 FROM hub_room_members WHERE id=? AND room_id=? AND kind='agent' AND subject=?").get(d.agent_member, d.room_id, d.exposure_id)) throw new HubProtocolError("revoked");
+      const post = db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=?").get(d.parent_id, d.room_id) as PostRow | undefined;
+      if (!post) throw new HubProtocolError("not-found");
+      // Under the agent as the room lists it (its exposure id: the members panel's id for an agent), so the page can name it.
+      const who = d.exposure_id;
+      const had = db.prepare("SELECT emoji FROM hub_room_reactions WHERE post_id=? AND member_id=?").all(post.id, who) as { emoji: string }[];
+      if (had.length === (body.emoji ? 1 : 0) && (!body.emoji || had[0]!.emoji === body.emoji)) return { post, changed: false };
+      if (body.emoji && !had.some(r => r.emoji === body.emoji)
+        && (db.prepare("SELECT COUNT(DISTINCT emoji) n FROM hub_room_reactions WHERE post_id=? AND member_id<>?").get(post.id, who) as { n: number }).n >= ROOM_REACTION_LIMIT
+        && !(db.prepare("SELECT 1 FROM hub_room_reactions WHERE post_id=? AND emoji=?").get(post.id, body.emoji))) throw new HubProtocolError("invalid");
+      db.prepare("DELETE FROM hub_room_reactions WHERE post_id=? AND member_id=?").run(post.id, who);
+      if (body.emoji) db.prepare("INSERT INTO hub_room_reactions(room_id,post_id,member_id,emoji,created_at) VALUES(?,?,?,?,?)").run(d.room_id, post.id, who, body.emoji, this.core.now());
+      return { post, changed: true };
+    });
+    if ("archived" in done) return { messageId: body.messageId, ok: false, code: "archived" };
+    if (done.changed && done.post) this.emit({ type: "message.updated", roomId: done.post.room_id, data: { roomId: done.post.room_id, message: this.projection(done.post) }, sequence: done.post.sequence });
+    return { messageId: body.messageId, ok: true };
   }
   /** A read or a press first closes what is already due (a suspended host's timer may be late): never a stale open poll. */
   private settleButtons(): void {

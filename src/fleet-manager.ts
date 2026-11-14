@@ -2299,6 +2299,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               inboxDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "inbox") : null,
               scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
+            attachReacts: handler => { this.hubReacts = handler; },
           },
           attachAgentRooms: port => { this.hubAgentRooms = port; this.notifyHubRoomTools(); },
           roomToolsChanged: () => this.notifyHubRoomTools(),
@@ -2666,6 +2667,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     return this.hubReports?.(input) ?? null;
   }
+  /** M-3127 OutboundContext: an agent's `react` on a Hub room question (its correlation id as message_id); null: not one. */
+  hubReact(input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+    return this.hubReacts?.(input) ?? null;
+  }
+  private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
   /** The connected member adapter; never an agent-selectable identity. */
@@ -13907,6 +13913,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    // M-3127: a reaction to a Hub room question (message_id = the correlation id it came with) goes to that room, under
+    // the question — never to a chat. Only that question's agent; the same source-daemon fence as its Hub answer.
+    if (tool === "react" && typeof args.message_id === "string" && /^hub-room-[0-9a-f-]{36}$/.test(args.message_id)) {
+      const bootNow = this.getDaemonBootId(instanceName), bootSent = sourceDaemonBootId ?? bootNow;
+      if (!bootNow || bootSent !== bootNow) { respond(null, "Source daemon generation is no longer current; outcome is unknown"); return; }
+      const claimed = this.hubReact({ correlationId: args.message_id, caller: instanceName, emoji: typeof args.emoji === "string" ? args.emoji : "",
+        callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent });
+      if (!claimed) { respond(null, "That message_id is not a Hub room question you were asked."); return; }
+      const outcome = await claimed;
+      if (outcome.ok) respond("ok"); else respond(null, outcome.message);
+      return;
+    }
     // #2305: a reaction to a web chat message is the web chat's own (any fleet, web-only included): never an adapter's.
     if (tool === "react" && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
       // The socket's own instance, never a session name the caller wrote itself (as checkToolPermission: it was not

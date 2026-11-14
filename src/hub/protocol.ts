@@ -12,10 +12,12 @@ export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";
 export const HUB_ROOM_POST_CAPABILITY = "room-post-v1";
 /** M-3127: a room answer may carry the reply's buttons or poll (answerButtonsSchema); both ends list it. */
 export const HUB_ROOM_BUTTONS_CAPABILITY = "room-answer-buttons-v1";
+/** M-3127: an agent reacts to the room question it was asked (its `react` tool, the Fleet chat's minimal reply). */
+export const HUB_ROOM_REACT_CAPABILITY = "room-react-v1";
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
-export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1", "room-answer-buttons-v1"];
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1", "room-answer-buttons-v1", "room-react-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
@@ -68,6 +70,9 @@ export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roo
 export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
   buttons: answerButtonsSchema.optional() });
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
+/** room-react-v1: `messageId` is the delivery (the question as the agent got it); "" takes the agent's reaction back. */
+export const roomReactSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, emoji: z.string().max(16) });
+export const roomReactResultSchema = z.strictObject({ messageId: uuid, ok: z.boolean(), code: z.enum(["invalid", "denied", "not-found", "archived", "revoked"]).optional() });
 const roomPostRefusalCode = z.enum(["invalid", "denied", "revoked", "not-found", "archived", "ambiguous-room", "rate-limited", "conflict", "unavailable", "stale", "backpressure"]);
 const roomPostChoice = z.strictObject({ id: uuid, name: plain(120) });
 export const roomListSchema = z.strictObject({ exposureId: uuid });
@@ -131,7 +136,7 @@ const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.arra
 export const memberLeavePayloadSchema = z.strictObject({});
 export const memberFrameSchema = z.union([
   frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
-  frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema),
+  frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema), frame("room.react", roomReactSchema),
   frame("member.leave", memberLeavePayloadSchema),
   frame("hello", hello), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
   frame("receipt", receiptSchema), frame("answer", answerSchema), frame("reconcile", reconcile),
@@ -145,7 +150,7 @@ export const memberFrameSchema = z.union([
 ]);
 export const serverFrameSchema = z.union([
   frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
-  frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema),
+  frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema), frame("room.react-result", roomReactResultSchema),
   frame("welcome", welcome), frame("question", questionSchema), frame("receipt", receiptSchema),
   frame("reconcile", z.strictObject({ receipts: z.array(receiptSchema).max(128), nextReceiptSequence: epoch, more: z.boolean() })),
   frame("authorize.result", z.union([z.strictObject({ ok: z.literal(true), lease: leaseSchema }), z.strictObject({ ok: z.literal(false), reasonCode: reason })])),

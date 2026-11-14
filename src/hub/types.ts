@@ -64,6 +64,9 @@ export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureI
   /** M-3127: room-answer-buttons-v1 links only; bound into the answer digest like its text. */
   buttons?: HubAnswerButtons }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string }
+/** M-3127 room-react-v1: the agent's reaction to the room question it was asked ("" takes it back). */
+export interface HubRoomReact { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; emoji: string }
+export interface HubRoomReactResult { messageId: MessageId; ok: boolean; code?: "invalid" | "denied" | "not-found" | "archived" | "revoked" }
 /** Proactive group-room messages are scoped by the authenticated link and its own published exposure. */
 export type HubRoomPostRefusalCode = "invalid" | "denied" | "revoked" | "not-found" | "archived" | "ambiguous-room" | "rate-limited" | "conflict" | "unavailable" | "stale" | "backpressure";
 export interface HubRoomListRequest { exposureId: ExposureId }
@@ -133,6 +136,7 @@ export type HubMemberFrame =
   | HubFrame<"room.post-answer-ack", HubRoomPostAnswerAck>
   | HubFrame<"room.answer", HubRoomAnswer>
   | HubFrame<"agent.state", HubAgentState>
+  | HubFrame<"room.react", HubRoomReact>
   | HubFrame<"hello", HubHello>
   | HubFrame<"member.leave", Record<string, never>>
   | HubFrame<"exposure.snapshot", HubExposureSnapshot>
@@ -159,6 +163,7 @@ export type HubServerFrame =
   | HubFrame<"room.post-answer", HubRoomPostAnswer>
   | HubFrame<"room.ask", HubRoomAsk>
   | HubFrame<"room.answer-ack", HubRoomAnswerAck>
+  | HubFrame<"room.react-result", HubRoomReactResult>
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>
   | HubFrame<"receipt", HubReceipt> // acknowledgment of durably retained member evidence

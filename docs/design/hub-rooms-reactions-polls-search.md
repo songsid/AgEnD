@@ -34,12 +34,16 @@ CREATE INDEX hub_room_reactions_room ON hub_room_reactions(room_id, post_id);
   M-3118's `hub_room_post_lineage.audience_sequence`.
 - Removal of a member keeps their rows (history stays as it was), like their posts.
 
-**Agents** (an agent's `react` on the room question it was asked — the Fleet chat's #2305 minimal reply).
-- Capability `room-react-v1`; member → Hub frame `room.react` `{ messageId, roomId, exposureId, emoji }` where
-  `messageId` is the room question delivered to that exposure. The Hub accepts it only for a delivery row of that
-  exposure on that post (any state but `retired`/`expired`), and stores it with the agent's member id.
-- Fleet side: room-ask.ts maps the agent's `react` tool on that delivery to the frame (today it has no path).
-  One frame per emoji; the agent's later `react` replaces its own set on that post (Fleet semantics).
+**Agents** (an agent's `react` on the room question it was asked — the Fleet chat's #2305 minimal reply). As built:
+- Capability `room-react-v1`; member → Hub frame `room.react` `{ messageId, roomId, exposureId, emoji }` (`messageId`: the
+  delivery, as for `room.answer`), answered by `room.react-result` `{ messageId, ok, code? }` — an archived room or a
+  refusal is a result, never a broken member link. The Hub takes it only for that delivery's Fleet, owner, exposure and
+  room, while the agent is still a member. One reaction per agent and post: a later one replaces it, `""` takes it back.
+  Stored under the agent's exposure id (the id the room's member list gives an agent), so the page can name it.
+- Fleet side: the agent's `react` with `message_id` = the room question's correlation id (`hub-room-<uuid>`) is caught
+  in the Fleet manager beside the web chat's own reactions (#2305: the daemon forwards channel tools there) and goes to
+  the room adapter's `react()` → `room.react`, with the same source-daemon fence as a Hub answer. The question's prompt
+  says how — only when the link agreed `room-react-v1`. Not retried: a reaction is a gesture, not an answer.
 
 ## B. Buttons and polls in group rooms
 
