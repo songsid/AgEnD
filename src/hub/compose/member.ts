@@ -39,6 +39,7 @@ import type { HubAuditRecord, HubServerFrame } from "../types.js";
 import { EMPTY_VIEW_SOURCE, type HubViewSource } from "./views.js";
 import { HUB_REPRESENTATIVE_MIGRATION, HubRepresentativeExecution, type HubReportOutcome, type HubRepresentativeDelivery } from "../representative.js";
 import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
+import { HubMemberRecommendations, HUB_MEMBER_RECOMMENDATION_MIGRATION } from "../member/recommendations.js";
 import { HubMemberFiles } from "../member/attachments.js";
 import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../member/pairing-notices.js";
 import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY } from "../protocol.js";
@@ -76,6 +77,9 @@ export interface HubMemberComponents {
 
 export interface HubMemberFactoryOptions {
   fleetInfo?: import("../types.js").HubFleetInfo;
+  versionRegistry?: import("../published-version.js").PublishedVersionLookup;
+  attachRecommendations?(read: (() => import("../recommendation-model.js").HubRecommendedUpdate | null) | null): void;
+  recommendationChanged?(): void;
   home: string;
   components: HubMemberComponents;
   /** S3c's current binding (its pairing state): the Hub id, or null when unpaired or disconnected. */
@@ -312,7 +316,7 @@ function openMemberState(options: {
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_MEMBER_JOURNAL_MIGRATION,
         { component: "s4-execution", version: 1, up: execution.migrateHubExecution }, exposureStore.HUB_EXPOSURE_MIGRATION,
-        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION]);
+        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION, HUB_MEMBER_RECOMMENDATION_MIGRATION]);
       bindHubInstance(db, hubId, state, now());
       // P1 never initialized S4, so its absent meta row is valid only with the untouched zero floor.
       const executionMeta = db.prepare("SELECT revision FROM hub_execution_meta WHERE singleton=1").get() as { revision: number } | undefined;
@@ -592,6 +596,12 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         hold: (messageId, reason) => options.log("warn", "Hub question held", { messageId, reason }),
         now,
       });
+      const recommendations = options.fleetInfo ? new HubMemberRecommendations({ db, hubId,
+        hubName: new URL(profile.hub.webOrigin).hostname, version: options.fleetInfo.version, current: live, now,
+        lookup: options.versionRegistry, changed: options.recommendationChanged, log: options.log }) : null;
+      options.attachRecommendations?.(recommendations ? () => recommendations.view() : null);
+      if (recommendations?.view()) options.recommendationChanged?.();
+      teardown.add("version advice", () => { recommendations?.close(); options.attachRecommendations?.(null); options.recommendationChanged?.(); });
       const notices = createHubPairingNoticeInbox({ db, audit, current: live, now,
         changed: () => options.pokeAttention() });
       options.attachPairingNotices?.(() => notices.list());
@@ -622,6 +632,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         } });
       client = new HubMemberClient({
         fleetInfo: options.fleetInfo,
+        receiveRecommendations: !!recommendations,
         home: options.home,
         hubId,
         ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] } : {}),
@@ -654,6 +665,11 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         receive: (frame, l) => {
+          if (frame.type === "fleet.recommendation" && recommendations) {
+            try { recommendations.receive(frame.payload, l); }
+            catch { options.log("warn", "Hub version advice was refused", { phase: "receive" }); }
+            return Promise.resolve();
+          }
           if(frame.type === "room.post-answer") {
             if(postLink && roomLink(l).current())posts.receiveAnswer(frame.payload,postLink);
             return Promise.resolve();

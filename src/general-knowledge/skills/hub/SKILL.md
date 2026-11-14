@@ -534,7 +534,18 @@ The Hub retains the last report and last connection time across disconnects and 
 connected without reporting; its version is unknown. Room compatibility comes from the capabilities it actually
 negotiated, including for an offline Fleet whose last connection is known. These reports are diagnostic only:
 they do not install updates, require a version, disconnect an older Fleet, or grant the Hub permission to update it.
-Phase 1 supplies the administrator and owner views; no recommended version is configured until the later recommendation setting is available.
+No version is recommended until an administrator saves **Recommended AgEnD version**. They can follow this Hub's
+running version, choose one exact published AgEnD version, or turn the recommendation off. Preview shows how many
+active Fleets are below it or have not reported a version; older Fleets may need to be contacted directly. npm must
+confirm the version before a recommendation is saved. A changed setting is fenced against another administrator's save.
+
+Supporting Fleets receive only a version, revision and setting time. Each Fleet independently compares with its
+running version and checks AgEnD's package on npm. Only a newer, locally verified version appears in its admin update
+state. The Hub's **Owner notified** time means that Fleet acknowledged this verified offer; it does not prove the
+person read it or installed anything. Advice remains available during a temporary network outage and is cleared when
+the local Hub connection is disabled/replaced or the Hub withdraws it. Neither saving nor receiving advice launches
+an update or grants remote update permission; local admin confirmation remains required. The banner and chat reminder
+are separate UI work; do not claim those screens or a remote-update switch from this protocol alone.
 
 ## Administration
 

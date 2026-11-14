@@ -13,6 +13,7 @@
  * - `receive(frame, link)` is S1's HubServer callback for an authenticated member link.
  * - `close()` forgets the links. S5 closes the DB.
  */
+import { HubVersionRecommendations, HubRecommendationRefusal } from "../recommendations.js";
 import { HubFleetVersions } from "../fleet-versions.js";
 import { HubGroupPolicyError } from "../group-policy/errors.js";
 import { GROUP_POLICY_FEATURE, handleGroupHttp } from "../group-policy/admin-api.js";
@@ -88,6 +89,7 @@ export interface HubHttp {
   close(): Promise<void>;
   memberClosed?(fleetId: string): void;
   memberConnected?(link: HubLinkContext): void;
+  memberReady?(link: HubLinkContext): void;
   /** #3298 S-89: what this Hub offers its pages ("group-policy-v1" only with deps.groupHttp). Presentation only. */
   readonly features: readonly string[];
   readonly directorySessions: HubDirectoryBrowserSessions;
@@ -161,6 +163,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const roomAdmin = new HubRoomAdmin(core, event => groupRooms.publish(event), id => { groupRooms.assistant.forget(id); groupRooms.agents.sweep(id); });
   const quota = new HubQuotaService(core);
   const fleetVersions = new HubFleetVersions(core);
+  const recommendations = new HubVersionRecommendations(core, fleetVersions);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   const live = () => !closed && core.live();
   const grantSubjectsOffered = () => !!deps.grantDirectory && deps.directory.groupPolicy === "ad-direct-guid"
@@ -192,7 +195,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       return core.atomic(() => {
         signedIn();
         const fleets = deps.store.read().fleets.filter(f => f.status === "active" && personKeyString(f.owner) === personKeyString(owner))
-          .map(f => { const view = fleetVersions.view(f.id); return { id: f.id, label: f.label ?? null, version: view.version, versionState: view.versionState }; });
+          .map(f => { const view = fleetVersions.view(f.id, recommendations.settings().recommendedVersion); return { id: f.id, label: f.label ?? null, version: view.version, versionState: view.versionState }; });
         send(res, 200, { fleets });
       });
     }
@@ -747,6 +750,20 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   async function admin(req: IncomingMessage, res: ServerResponse, path: string, ctx: ReturnType<HubSessions["context"]>, method: string,
     signedIn: () => unknown, csrf: () => unknown, body: () => Promise<Record<string, unknown>>, guard: <T>(w: () => Promise<T>) => Promise<T>): Promise<void> {
     let r: RegExpExecArray | null;
+    if (path === "/hub/v1/admin/recommended-version" || path === "/hub/v1/admin/recommended-version/preview") {
+      try {
+        if (path.endsWith("/preview")) {
+          if (method !== "POST") throw new HttpError(405, "method");
+          csrf(); return send(res, 200, await recommendations.preview(ctx, await body()));
+        }
+        if (method === "GET") { signedIn(); const permit = await core.management(ctx, "hub.admin"); permit.assertCurrent(); return send(res, 200, recommendations.settings()); }
+        if (method !== "PUT") throw new HttpError(405, "method");
+        csrf(); return send(res, 200, await recommendations.save(ctx, await body()));
+      } catch (error) {
+        if (!(error instanceof HubRecommendationRefusal)) throw error;
+        return send(res, error.status, { code: error.code, ...(error.version ? { version: error.version } : {}) });
+      }
+    }
     if (path === "/hub/v1/admin/overview") {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn(); await guard(() => ctx.requireAdmin());
@@ -757,8 +774,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         return row ? { name: row.display_name, login: row.login_label } : null;
       };
       return send(res, 200, {
-        recommendedVersion: null,
-        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id),
+        recommendedVersion: recommendations.settings().recommendedVersion,
+        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendations.settings().recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id),
           ...(deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
         pairings: state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
           .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),
@@ -855,6 +872,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     deps.pairingNotices?.noteLink(link);
     const reply = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
     switch (frame.type) {
+      case "fleet.recommendation-ack": recommendations.acknowledge(frame.payload, link); return;
       case "fleet.info": fleetVersions.report(frame.payload, link); return;
       case "room.list":
         try { return { ...reply, type: "room.list-result", payload: await groupRooms.agentRooms(frame.payload, link) }; }
@@ -924,8 +942,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberConnected: link => fleetVersions.connected(link), memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["rooms-v1", "room-ask-v1", "room-post-v1", "person-prefs-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberReady: link => recommendations.ready(link), memberConnected: link => fleetVersions.connected(link), memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["rooms-v1", "room-ask-v1", "room-post-v1", "person-prefs-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
-    async close() { closed = true; fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
+    async close() { closed = true; recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

@@ -29,6 +29,7 @@ export interface HubContentStore {
   get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
+  versionRegistry?: import("../published-version.js").PublishedVersionLookup;
   /** One mount-local Team service supplies routes, live permission reads and snapshot pickers. */
   teams?(core: import("./core.js").HubCore): import("../teams/types.js").HubTeams;
   /** Server-owned diagnostics; protocol responses never disclose internal causes. */
