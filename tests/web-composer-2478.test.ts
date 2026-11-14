@@ -40,8 +40,8 @@ describe("#2478: the chat composer (the real page modules)", () => {
     const stream = fakeStream();
     stream.on("status", app.applyStatus);
     panel.boot({ stream, boot: null, deps: { fetch, toast() {}, setTimeout: () => 0 } });
-    stream.emit("status", { uptime: 1, instances: [inst("agend-leader-t1503382358143799511", o.over)] });
-    await p.mount(harness.h("main", { id: "main" }, harness.h(panel.ChatPanel, { route: { panel: "chat", instance: "agend-leader-t1503382358143799511" }, navKey: "chat|w" })));
+    stream.emit("status", { uptime: 1, instances: [inst("agend-leader-t1500000000000799511", o.over)] });
+    await p.mount(harness.h("main", { id: "main" }, harness.h(panel.ChatPanel, { route: { panel: "chat", instance: "agend-leader-t1500000000000799511" }, navKey: "chat|w" })));
     await settle();
     const box = () => p.root.querySelector("#msgIn");
     const type = async (text: string) => { box().value = text; fire(box(), "input"); await settle(); };
@@ -59,7 +59,7 @@ describe("#2478: the chat composer (the real page modules)", () => {
       .toEqual(["Message Release captain…", "true", "Message Release captain…", " "]);
     for (const over of [{}, { display_name: "   " }]) {
       const c = await chatPage({ over });
-      expect([ph(c)?.textContent, c.box().getAttribute("aria-label")], JSON.stringify(over)).toEqual(["Message agend-leader-t1503382358143799511…", "Message agend-leader-t1503382358143799511…"]);
+      expect([ph(c)?.textContent, c.box().getAttribute("aria-label")], JSON.stringify(over)).toEqual(["Message agend-leader-t1500000000000799511…", "Message agend-leader-t1500000000000799511…"]);
     }
   });
 
@@ -93,7 +93,7 @@ describe("#2478: the chat composer (the real page modules)", () => {
     fire(c.box(), "compositionstart", { data: "" });
     c.box().value = "今天ㄓ"; fire(c.box(), "input", { isComposing: true, data: "ㄓ" }); await settle();
     const app = await import("/assets/app-store.js" as string);
-    app.applyStatus({ uptime: 2, instances: [inst("agend-leader-t1503382358143799511", { state: "working" })] }); await settle();
+    app.applyStatus({ uptime: 2, instances: [inst("agend-leader-t1500000000000799511", { state: "working" })] }); await settle();
     expect(c.box().value).toBe("今天ㄓ");
     c.box().value = "今天找"; fire(c.box(), "compositionend", { data: "找" }); await settle();
     await c.key("Enter", { ctrlKey: false });

@@ -1,0 +1,192 @@
+{
+  "sourceHead": "cabd15db774da7a54cdc8274aec0a3ed80544371",
+  "baseRef": "80889d0f70d3a785ca243ebd75b7413a188efa7c",
+  "dirty": [],
+  "inputs": [
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "base": "b8929762c4f2921066c13fe5e20d43caa69388dd2bd58c74cf2cc3bf755e16bf"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "base": "a044645a53176e97f4d59e9a0942b03f597a81af420eef1baa567207d7355356"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "dacb7c0f6b99cd66accaa39f4220202e3f42645df306506db2f4f926634af01c"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "sha256": "f81f6f4a701ec4d79eeee800aef4bec1dcf4e0030cb006c7b8a08fc0fd7bf05c"
+    },
+    {
+      "path": "src/ui/chat-msg-actions.js",
+      "sha256": "17f732e58ad2da84afa5594eba0b701b1a1e001dcef909c3abccb858b6462091"
+    },
+    {
+      "path": "src/ui/hub-room-strings.js",
+      "sha256": "affa1444bfa6498cfc900715747e29bcd69444d4949ea6286db638494c37e475"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "b1c07ceb99a88fac87a9bdea92f6353623a9b5499d96c71b145c57545b634f87"
+    },
+    {
+      "path": "src/ui/shared/hub-rooms-u2.css",
+      "sha256": "ccdba320529b873b572db4e51000e630e6a43a32f6fab5ff8ea3971ee4179ac6"
+    },
+    {
+      "path": "tests/support/hub-rooms-fixture.ts",
+      "sha256": "bdbbaaa2fb35a8334142755cd19c5077eb3eb101e422e66f480bef8c102d7e86"
+    }
+  ],
+  "checks": [
+    {
+      "name": "desktop-en-light after: the chips as stored — 👍3 mine pressed and named, 🎉1 not mine; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after: an agent's reaction is named as the agent (budget-check), not as \"others\"",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after: Add reaction opens the quick picker (8 emoji), focus on the first",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after: a pick adds mine (🎉1 pressed) beside the others' 👀2, and closes the picker",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light after: pressing my chip takes it back (👀2 left); no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light skew: BASE_REF's thread draws the room as before (no chips, no Add reaction) while the Hub sends reactions; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: the chips as stored — 👍3 mine pressed and named, 🎉1 not mine; no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: an agent's reaction is named as the agent (budget-check), not as \"others\"",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: Add reaction opens the quick picker (8 emoji), focus on the first",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: a pick adds mine (🎉1 pressed) beside the others' 👀2, and closes the picker",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark after: pressing my chip takes it back (👀2 left); no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark skew: BASE_REF's thread draws the room as before (no chips, no Add reaction) while the Hub sends reactions; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: the chips as stored — 👍3 mine pressed and named, 🎉1 not mine; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: an agent's reaction is named as the agent (budget-check), not as \"others\"",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: Add reaction opens the quick picker (8 emoji), focus on the first",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: a pick adds mine (🎉1 pressed) beside the others' 👀2, and closes the picker",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light after: pressing my chip takes it back (👀2 left); no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light skew: BASE_REF's thread draws the room as before (no chips, no Add reaction) while the Hub sends reactions; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: the chips as stored — 👍3 mine pressed and named, 🎉1 not mine; no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: an agent's reaction is named as the agent (budget-check), not as \"others\"",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: Add reaction opens the quick picker (8 emoji), focus on the first",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: a pick adds mine (🎉1 pressed) beside the others' 👀2, and closes the picker",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark after: pressing my chip takes it back (👀2 left); no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark skew: BASE_REF's thread draws the room as before (no chips, no Add reaction) while the Hub sends reactions; no page error",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "reactions-picker.desktop-en-light.png",
+      "sha256": "f3c132e231bb0e52d135454d078098454db47f4904257b616b624ad7e69e0528"
+    },
+    {
+      "path": "reactions-after.desktop-en-light.png",
+      "sha256": "bed52f7eef9755b96aad0b2a7be15590dcc3801b92f40b86d9db4e40385d7a74"
+    },
+    {
+      "path": "reactions-skew.desktop-en-light.png",
+      "sha256": "92bd1edacb9486f2790755f0f9f28837418a2fe9c62fd3f5219d6b627add6275"
+    },
+    {
+      "path": "reactions-picker.desktop-zh-TW-dark.png",
+      "sha256": "25e55f00ee658f97e15afec162cf8d5b7c682070a2ccbc23605d288f407c7804"
+    },
+    {
+      "path": "reactions-after.desktop-zh-TW-dark.png",
+      "sha256": "d9bfcc4286a4245281bf6a25b26c3568f7bbd762f9ae9099ae62ddddde3602e7"
+    },
+    {
+      "path": "reactions-skew.desktop-zh-TW-dark.png",
+      "sha256": "3c39b33d3383d009f7f4f1849b6b7f059abd16a8075a7815363508d37397f312"
+    },
+    {
+      "path": "reactions-picker.phone-zh-TW-light.png",
+      "sha256": "a4d52944d52ee6e2b7aab1ca1cf856c454e62d18bc27b37aeb0220931c829473"
+    },
+    {
+      "path": "reactions-after.phone-zh-TW-light.png",
+      "sha256": "d1793ce441b328c5fca0838dbb4bd32b6bcf24c6c876dfb3d07b947fddca52d7"
+    },
+    {
+      "path": "reactions-skew.phone-zh-TW-light.png",
+      "sha256": "ac617fcf4f0c42f4028a9b231ff4dea8b765687169708dc37e1b4a2b208d4131"
+    },
+    {
+      "path": "reactions-picker.phone-en-dark.png",
+      "sha256": "bb2965399302458f810af8953d356fba0c72a65c120f4a9d3c66630215a5790d"
+    },
+    {
+      "path": "reactions-after.phone-en-dark.png",
+      "sha256": "ac88cfe8f129d0858abf72e066b9379c35e72d80040f4f40bbe329496986fbf7"
+    },
+    {
+      "path": "reactions-skew.phone-en-dark.png",
+      "sha256": "b21a3f1102591055d5c00d88e9040239f3c20ee81c87b826d9873af95f4e3a62"
+    }
+  ],
+  "passed": true
+}

@@ -1,0 +1,143 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-post-m3118
+
+ ❯ tests/hub-room-post-fleet.test.ts (6 tests | 6 failed) 32ms
+   × offers the two MCP schemas and actual outbound handlers without caller identity arguments 5ms
+   × requires all negotiated capabilities and a current reconciled link 17ms
+   × maps only the invoking agent and uses the authoritative room response 4ms
+   × retires old caller/consent observations across an awaited response 1ms
+   × retains exact operation identity/body across an uncertain outcome and adapter restart 1ms
+   × does not replay a prepared operation after the local consent changed 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-post-fleet.test.ts > offers the two MCP schemas and actual outbound handlers without caller identity arguments
+AssertionError: expected undefined to be defined
+ ❯ tests/hub-room-post-fleet.test.ts:29:65
+     27| it("offers the two MCP schemas and actual outbound handlers without ca…
+     28|   for (const name of ["hub_room_list", "hub_room_post"]) {
+     29|     const tool = TOOLS.find(t => t.name === name); expect(tool).toBeDe…
+       |                                                                 ^
+     30|     expect(tool!.inputSchema.properties).not.toHaveProperty("agent");
+     31|     expect(outboundHandlers.has(name)).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/hub-room-post-fleet.test.ts > requires all negotiated capabilities and a current reconciled link
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-room-post-fleet.test.ts:36:62
+     34| it("requires all negotiated capabilities and a current reconciled link…
+     35|   const h = fixture(); expect(h.adapter.available()).toBe(false);
+     36|   h.adapter.connected(h.link); expect(h.adapter.available()).toBe(true…
+       |                                                              ^
+     37|   for (const cap of ["welcome-caps-v1", "room-ask-v1", "room-post-v1"]…
+     38|     const features = new Set(h.link.features); features.delete(cap);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/hub-room-post-fleet.test.ts > maps only the invoking agent and uses the authoritative room response
+AssertionError: expected { ok: false, code: 'unavailable' } to match object { ok: true, …(1) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
+-   "rooms": [
+-     {
+-       "name": "Weekly",
+-     },
+-   ],
++   "ok": false,
+  }
+
+ ❯ tests/hub-room-post-fleet.test.ts:46:43
+     44| it("maps only the invoking agent and uses the authoritative room respo…
+     45|   const h = fixture(); h.adapter.connected(h.link);
+     46|   expect(await h.adapter.rooms(h.caller)).toMatchObject({ ok: true, ro…
+       |                                           ^
+     47|   expect(await h.adapter.rooms({ ...h.caller, agent: "agent-B" })).toM…
+     48|   expect(h.link.list).toHaveBeenCalledTimes(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/hub-room-post-fleet.test.ts > retires old caller/consent observations across an awaited response
+AssertionError: expected { ok: false, code: 'unavailable' } to match object { ok: false, code: 'stale' }
+
+- Expected
++ Received
+
+  {
+-   "code": "stale",
++   "code": "unavailable",
+    "ok": false,
+  }
+
+ ❯ tests/hub-room-post-fleet.test.ts:55:43
+     53|   const h = fixture(); h.adapter.connected(h.link);
+     54|   h.link.list = async exposureId => { h.replace(); return { ok: true, …
+     55|   expect(await h.adapter.rooms(h.caller)).toMatchObject({ ok: false, c…
+       |                                           ^
+     56|   h.link.post = async () => { h.retireCaller(); return { ok: true, roo…
+     57|   expect(await h.adapter.post(h.caller, { room: h.roomId, text: "Updat…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/hub-room-post-fleet.test.ts > retains exact operation identity/body across an uncertain outcome and adapter restart
+AssertionError: expected { ok: false, code: 'unavailable' } to match object { ok: false, code: 'uncertain' }
+
+- Expected
++ Received
+
+  {
+-   "code": "uncertain",
++   "code": "unavailable",
+    "ok": false,
+  }
+
+ ❯ tests/hub-room-post-fleet.test.ts:63:91
+     61|   const post = h.link.post;
+     62|   h.link.post = vi.fn(async value => { h.received.push(value); throw E…
+     63|   expect(await h.adapter.post(h.caller, { room: h.roomId, text: "Froze…
+       |                                                                                           ^
+     64|   h.adapter.close(); h.link.post = post;
+     65|   const second = h.make(); second.connected(h.link);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  tests/hub-room-post-fleet.test.ts > does not replay a prepared operation after the local consent changed
+AssertionError: expected { ok: false, code: 'unavailable' } to match object { ok: false, code: 'stale' }
+
+- Expected
++ Received
+
+  {
+-   "code": "stale",
++   "code": "unavailable",
+    "ok": false,
+  }
+
+ ❯ tests/hub-room-post-fleet.test.ts:77:91
+     75|   h.link.post = async () => { throw Error("unknown"); };
+     76|   await h.adapter.post(h.caller, { room: h.roomId, text: "Frozen", ope…
+     77|   expect(await h.adapter.post(h.caller, { room: h.roomId, text: "Froze…
+       |                                                                                           ^
+     78| });
+     79|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed (6)
+   Start at  00:05:03
+   Duration  2.33s (transform 1.47s, setup 117ms, import 1.99s, tests 32ms, environment 0ms)
+

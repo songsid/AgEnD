@@ -57,8 +57,8 @@ describe("Discord adapter rejects another world's chat id", () => {
   it("passes a normal snowflake through to Discord", async () => {
     const { a, fetch } = adapter();
     fetch.mockResolvedValue({ isTextBased: () => true, send: vi.fn().mockResolvedValue({ id: "m1" }) });
-    await a.sendText("1503382159321464899", "hi");
-    expect(fetch).toHaveBeenCalledWith("1503382159321464899");
+    await a.sendText("1500000000000464899", "hi");
+    expect(fetch).toHaveBeenCalledWith("1500000000000464899");
   });
 
   it("does not reject a non-numeric id it cannot attribute", async () => {
@@ -100,7 +100,7 @@ describe("daemon keeps chat context and its adapter paired", () => {
 
     // A different chat, no adapter named: the telegram binding is not evidence
     // about this one.
-    d.pushChannelMessage("second", { chat_id: "1496407196106494055", thread_id: "1503382159321464899", user: "u" });
+    d.pushChannelMessage("second", { chat_id: "1496407196106494055", thread_id: "1500000000000464899", user: "u" });
     expect(d.lastChatId).toBe("1496407196106494055");
     expect(d.lastAdapterId, "an unproven pairing must not be carried over").toBeUndefined();
   });

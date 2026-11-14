@@ -692,6 +692,19 @@ export const DelegateTaskArgs = z.object({
     .describe("Optional: thread this onto an existing exchange (from an inbound block)."),
 });
 
+export const HubRoomListArgs = z.strictObject({});
+const HubRoomSelector = z.string().min(1).refine(value => Buffer.byteLength(value,"utf8") <= 128 && !/[\u0000-\u001f\u007f]/.test(value) && value.trim().length > 0);
+export const HubRoomMembersArgs = z.strictObject({ room: HubRoomSelector.describe("Room UUID or exact unique member-room name.") });
+export const HubPeopleSearchArgs = z.strictObject({ q: z.string().min(2).refine(value => value.trim() === value && Buffer.byteLength(value,"utf8") <= 64 && !/[\u0000-\u001f\u007f]/.test(value))
+  .describe("Name prefix, 2–64 bytes. Returns only the owner's existing grant-person search fields; not a directory export.") });
+export const HubRoomPostArgs = z.strictObject({
+  room: HubRoomSelector.describe("Room UUID or exact unique name from hub_room_list."),
+  text: z.string().min(1).refine(value => value.trim().length > 0 && Buffer.byteLength(value, "utf8") <= 64 * 1024)
+    .describe("Message to post as this agent. Everyone in that room can read it."),
+  receipt_id: z.string().regex(/^hmsg-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/).optional()
+    .describe("Only when a Fleet admin asked you to post for them: their full delivered hmsg receipt ID, readable by you. The Fleet verifies current admin authority; never invent an ID or use an unrelated instruction."),
+});
+
 export const ReportResultArgs = z.object({
   detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   target_instance: NonEmptyString.describe("Name of the instance to report to."),

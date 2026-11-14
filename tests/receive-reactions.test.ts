@@ -19,7 +19,7 @@ const reaction = (over: Partial<InboundReaction> = {}): InboundReaction => ({
   threadId: "chan-1",
   messageId: "msg-99",
   userId: "user-7",
-  username: "hanhanv",
+  username: "example",
   emoji: "👍",
   action: "add",
   timestamp: new Date("2026-08-01T00:00:00Z"),
@@ -68,7 +68,7 @@ describe("handleInboundReaction stores instead of delivering", () => {
       await internals.handleInboundReaction(reaction({ emoji: "❓", username: "user2", messageId: "msg-3" }));
 
       const pending = internals.eventLog.pendingReactions("alpha");
-      expect(pending?.summary).toBe("msg msg-99: 👍 from hanhanv | msg msg-3: ❓ from user2");
+      expect(pending?.summary).toBe("msg msg-99: 👍 from example | msg msg-3: ❓ from user2");
     } finally {
       cleanup();
     }
@@ -85,7 +85,7 @@ describe("handleInboundReaction stores instead of delivering", () => {
       await internals.handleInboundReaction(reaction({ messageId: "msg-B", emoji: "🎉" }));
 
       expect(internals.eventLog.pendingReactions("alpha")?.summary)
-        .toBe("msg msg-A: 👍×2 from hanhanv | msg msg-B: 🎉 from hanhanv");
+        .toBe("msg msg-A: 👍×2 from example | msg msg-B: 🎉 from example");
     } finally {
       cleanup();
     }
@@ -159,7 +159,7 @@ describe("pending reactions ride the next real message", () => {
       await internals.handleInboundReaction(reaction({ messageId: "msg-100" }));
       await internals.handleInboundReaction(reaction({ emoji: "❓", username: "user2" }));
 
-      const expected = "msg msg-99: 👍 from hanhanv, ❓ from user2 | msg msg-100: 👍 from hanhanv";
+      const expected = "msg msg-99: 👍 from example, ❓ from user2 | msg msg-100: 👍 from example";
       const first = internals.pendingReactionsMeta("alpha");
       expect(first.meta.pending_reactions).toBe(expected);
 
@@ -197,7 +197,7 @@ describe("pending reactions ride the next real message", () => {
       await internals.handleInboundReaction(reaction({ emoji: "🚀", messageId: "msg-7" }));
       inFlight.consume();
 
-      expect(internals.pendingReactionsMeta("alpha").meta.pending_reactions).toBe("msg msg-7: 🚀 from hanhanv");
+      expect(internals.pendingReactionsMeta("alpha").meta.pending_reactions).toBe("msg msg-7: 🚀 from example");
     } finally {
       cleanup();
     }
@@ -206,9 +206,9 @@ describe("pending reactions ride the next real message", () => {
   it("scopes the queue per instance", async () => {
     const { internals, cleanup } = makeFleet();
     try {
-      internals.eventLog.addReaction("beta", "m1", "hanhanv", "👍");
+      internals.eventLog.addReaction("beta", "m1", "example", "👍");
       expect(internals.pendingReactionsMeta("alpha").meta).toEqual({});
-      expect(internals.pendingReactionsMeta("beta").meta.pending_reactions).toBe("msg m1: 👍 from hanhanv");
+      expect(internals.pendingReactionsMeta("beta").meta.pending_reactions).toBe("msg m1: 👍 from example");
     } finally {
       cleanup();
     }
@@ -238,12 +238,12 @@ describe("classic channels get their pending reactions too", () => {
       await internals.handleInboundReaction(reaction({ emoji: "🚀" }));
 
       await fm.forwardToClassicInstance("alpha", "hello", {
-        chatId: "chan-1", messageId: "m1", userId: "u1", username: "hanhanv",
+        chatId: "chan-1", messageId: "m1", userId: "u1", username: "example",
         source: "discord", timestamp: new Date(),
       });
 
       const meta = (deliver.mock.calls[0][1] as { meta: Record<string, string> }).meta;
-      expect(meta.pending_reactions).toBe("msg msg-99: 🚀 from hanhanv");
+      expect(meta.pending_reactions).toBe("msg msg-99: 🚀 from example");
       // Delivered → consumed: the next classic message must not repeat it.
       expect(internals.pendingReactionsMeta("alpha").meta).toEqual({});
     } finally {
@@ -266,7 +266,7 @@ describe("classic channels get their pending reactions too", () => {
     try {
       await internals.handleInboundReaction(reaction({ emoji: "🚀" }));
       await fm.forwardToClassicInstance("alpha", "hello", {
-        chatId: "chan-1", messageId: "m1", userId: "u1", username: "hanhanv",
+        chatId: "chan-1", messageId: "m1", userId: "u1", username: "example",
         source: "discord", timestamp: new Date(),
       });
 
@@ -282,7 +282,7 @@ describe("reaction retention", () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-react-prune-"));
     const log = new EventLog(join(dir, "events.db"));
     try {
-      log.addReaction("alpha", "m1", "hanhanv", "👍");
+      log.addReaction("alpha", "m1", "example", "👍");
       // Backdate past the 7-day horizon, as time passing would.
       (log as unknown as { db: import("better-sqlite3").Database }).db
         .prepare("UPDATE reactions SET created_at = datetime('now', '-8 days')")
@@ -319,14 +319,14 @@ describe("daemon renders the pending line ahead of the message", () => {
 
     try {
       daemon.pushChannelMessage("進度如何?", {
-        user: "hanhanv", source: "discord",
-        pending_reactions: "👍×2 from hanhanv, ❓ from user2",
+        user: "example", source: "discord",
+        pending_reactions: "👍×2 from example, ❓ from user2",
       });
-      daemon.pushChannelMessage("second message", { user: "hanhanv", source: "discord" });
+      daemon.pushChannelMessage("second message", { user: "example", source: "discord" });
       await vi.waitFor(() => expect(delivered).toHaveLength(2));
 
       // One compact line, ahead of the [user:] block, once.
-      expect(delivered[0].startsWith("[Recent reactions: 👍×2 from hanhanv, ❓ from user2]\n[user:hanhanv")).toBe(true);
+      expect(delivered[0].startsWith("[Recent reactions: 👍×2 from example, ❓ from user2]\n[user:example")).toBe(true);
       expect(delivered[0].match(/Recent reactions/g)).toHaveLength(1);
       // The common case must carry nothing.
       expect(delivered[1]).not.toContain("Recent reactions");

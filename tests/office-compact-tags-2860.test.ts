@@ -18,9 +18,9 @@ beforeAll(async () => {
 });
 afterAll(async () => { await p.unmount(); p.restore(); });
 
-const NAMES = ["研一官網前端 claude", "grok-scout", "General 總管", "資料平台 dbt 模型新增", "agend-dev-claude", "qa-1", "infra-terraform-state",
-  "codex-refactor-bot", "mobile-ios-release", "rd1-platform", "Release captain", "data-warehouse", "web-claude", "agend-reviewer",
-  "doupo-manifests", "Grok — answers in threads", "nightly-bench", "sol", "kiro-steering", "awp-ota-frontend"];
+const NAMES = ["產品官網前端 claude", "grok-scout", "General 總管", "資料平台 dbt 模型新增", "agend-dev-claude", "qa-1", "infra-terraform-state",
+  "codex-refactor-bot", "mobile-ios-release", "tm1-platform", "Release captain", "data-warehouse", "web-claude", "agend-reviewer",
+  "games-manifests", "Grok — answers in threads", "nightly-bench", "sol", "kiro-steering", "ota-svc-frontend"];
 const LEVELS = [12, 27, 3, 12, 27, 27, 40, 40, 8, 50, 120, 3, 8, 40, 1500, 120, 50, 3, 12, 27];
 
 /** Cozy (the built-in pack, its picture not loaded) with every tag drawn recorded: [label, x, y, compact]. */

@@ -52,14 +52,14 @@ describe("the rows", () => {
 describe("the chat and MCP text", () => {
   const payload = (): UsagePayload => ({ fetchedAt: new Date().toISOString(), providers: [
     { id: "claude", name: "Claude (default)", defaultLogin: true, status: "ok", plan: "Max (20x)", metrics: [] },
-    { id: "claude:hsinlin", name: "Claude (hsinlin)", profile: "hsinlin", status: "no-credentials", metrics: [] },
+    { id: "claude:helenwu", name: "Claude (helenwu)", profile: "helenwu", status: "no-credentials", metrics: [] },
   ] });
   it("say \"default\" in the fleet's language; a profile row is as it was", () => {
     setLocale("zh-TW");
     for (const text of [renderUsageMarkdown(payload()), renderUsageHtml(payload()), formatUsageSummary(payload())]) {
       expect(text).toContain("Claude (預設)");
       expect(text).not.toContain("(default)");
-      expect(text).toContain("Claude (hsinlin)");
+      expect(text).toContain("Claude (helenwu)");
     }
     setLocale("en");
     for (const text of [renderUsageMarkdown(payload()), renderUsageHtml(payload()), formatUsageSummary(payload())]) expect(text).toContain("Claude (default)");
@@ -70,7 +70,7 @@ let usage: any, i18n: any;
 let pg: AppPage | null = null;
 const SNAPSHOT = { fetchedAt: Date.now(), providers: [
   { id: "claude", name: "Claude (default)", defaultLogin: true, status: "ok", plan: "Team Premium (6.25x)", metrics: [] },
-  { id: "claude:hsinlin", name: "Claude (hsinlin)", profile: "hsinlin", status: "ok", plan: "Max (20x)", metrics: [] },
+  { id: "claude:helenwu", name: "Claude (helenwu)", profile: "helenwu", status: "ok", plan: "Max (20x)", metrics: [] },
   { id: "claude:default", name: "Claude (default)", profile: "default", status: "ok", metrics: [] },
   { id: "codex", name: "Codex (default)", status: "ok", metrics: [] },
 ] };
@@ -105,7 +105,7 @@ describe("the page", () => {
       expect(line.parentNode, "its own line under the head, not beside the badge").toBe(def);
       expect(def.querySelector(".u-head").textContent, "never \"(default)\" or \"(d…\" on the title line").not.toMatch(/\(d/);
       expect(def.querySelector(".u-head .u-plan").textContent).toContain("Team ×6.25");
-      expect([prof.querySelector(".u-head strong").textContent, prof.querySelector(".u-profile").textContent]).toEqual(["Claude", "hsinlin"]);
+      expect([prof.querySelector(".u-head strong").textContent, prof.querySelector(".u-profile").textContent]).toEqual(["Claude", "helenwu"]);
       expect([named.querySelector(".u-head strong").textContent, named.querySelector(".u-profile").textContent], "a profile named default").toEqual(["Claude", "default"]);
       expect([codex.querySelector(".u-head strong").textContent, codex.querySelector(".u-profile")]).toEqual(["Codex (default)", null]);
     });

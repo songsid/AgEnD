@@ -60,6 +60,8 @@ function harness(type: "discord" | "telegram" = "discord", classic = true) {
 }
 
 const samples: Record<string, Record<string, unknown>> = {
+  hub_room_list: {}, hub_room_post: { room: "Weekly", text: "Update" },
+  hub_room_members: { room: "Weekly" }, hub_people_search: { q: "Alex" },
   reply: { text: "hello" }, react: { message_id: "m", emoji: "👍" },
   edit_message: { message_id: "m", text: "edited" }, download_attachment: { file_id: "file" },
   validate_config: {}, create_schedule: { cron: "0 7 * * *", message: "hello" }, list_schedules: {},

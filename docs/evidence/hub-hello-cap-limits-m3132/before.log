@@ -1,0 +1,26 @@
+RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-hello-cap-limits-m3132
+
+ ❯ tests/hub-protocol.test.ts (27 tests | 1 failed) 56ms
+     × lets the Hub receive 32 hello capabilities, refusing 33 19ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-protocol.test.ts > Hub P1 closed protocol > lets the Hub receive 32 hello capabilities, refusing 33
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ parseMemberFrame src/hub/protocol.ts:159:77
+ ❯ tests/hub-protocol.test.ts:15:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 26 passed (27)
+   Start at  05:55:44
+   Duration  487ms (transform 179ms, setup 84ms, import 207ms, tests 56ms, environment 0ms)

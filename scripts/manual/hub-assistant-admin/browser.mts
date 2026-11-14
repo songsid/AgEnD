@@ -11,7 +11,7 @@ for (const path of ["src/ui/hub-assistant-admin.js", "src/ui/hub-assistant-admin
 const check = (name: string, value: unknown) => { record.checks.push({ name, pass: !!value }); if (!value) throw Error(name); };
 const initial = () => ({ enabled: true, backend: "claude-code", account: null as string | null, cap: 3, idleMinutes: 15,
   backends: [{ id: "claude-code", name: "Claude", accounts: [{ id: null, name: "Default", state: "signed-in" }, { id: "team", name: "Team", state: "signed-in" }] }],
-  running: [{ roomId: "planning", roomName: "產品研發主管週會 · Product planning", state: "working", lastUsed: Date.now() }, { roomId: "design", roomName: "Design review", state: "idle", lastUsed: Date.now() - 300000 }] });
+  running: [{ roomId: "planning", roomName: "每週產品會議 · Product planning", state: "working", lastUsed: Date.now() }, { roomId: "design", roomName: "Design review", state: "idle", lastUsed: Date.now() - 300000 }] });
 let settings = initial(), failSave = false, writes: any[] = [];
 const send = (res: any, body: unknown, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); };
 const server = createServer(async (req, res) => {
@@ -78,7 +78,7 @@ try {
       await card.getByLabel(label("At most this many at once", "同時最多幾個"), { exact: true }).fill("4");
       const now = page.getByRole("region", { name: label("Now", "現在"), exact: true });
       await now.getByRole("button", { name: label("Stop", "停止"), exact: true }).first().click();
-      await now.getByText("產品研發主管週會 · Product planning", { exact: true }).waitFor({ state: "detached" });
+      await now.getByText("每週產品會議 · Product planning", { exact: true }).waitFor({ state: "detached" });
       check(tag + " stop keeps unsaved edit", await card.getByLabel(label("At most this many at once", "同時最多幾個"), { exact: true }).inputValue() === "4");
       failSave = true; await card.getByRole("button", { name: label("Save", "儲存"), exact: true }).click();
       await card.getByRole("alert").waitFor();

@@ -144,7 +144,7 @@ import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "/assets/chat-thread.js";
 import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
-import { installMessageActions } from "./chat-msg-actions.js";
+import { installMessageActions } from "/assets/chat-msg-actions.js";
 import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "./chat-quote.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
@@ -880,7 +880,7 @@ function Thread({ name, label = name, th, bindings }) {
     </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}
         aria-label=${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}>
       <${Icon} name="down" size=${16} /><span class="jump-text">${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</span>${
-        /* M-3115 (phone v2): a phone's round button says how many with a badge (its words stay its name). */ ""}${jump.unseen > 0 ? html`<span class="jump-count" aria-hidden="true">${jump.unseen > 99 ? "99+" : jump.unseen}</span>` : null}</button>` : null}</div>
+        /* The user (before 2.4.0-beta.3): no unread counts for now — a phone's round button has no badge. */ ""}</button>` : null}</div>
   </${Fragment}>`;
 }
 

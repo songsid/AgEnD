@@ -510,7 +510,7 @@ describe("FleetManager", () => {
         defaults: {},
         channels: [discordConfig, telegramConfig],
         instances: {
-          "doupo-leader": { working_directory: tmpDir, topic_id: "1503382159321464899", channel_id: "discord" },
+          "games-leader": { working_directory: tmpDir, topic_id: "1500000000000464899", channel_id: "discord" },
         },
       } as any;
       fm.adapter = discord;
@@ -522,7 +522,7 @@ describe("FleetManager", () => {
 
       await (fm as any).handleScheduleTrigger({
         id: "d399355e", cron: "0 9 * * *", at: null,
-        message: "daily work log", source: "doupo-leader-t245", target: "doupo-leader",
+        message: "daily work log", source: "games-leader-t245", target: "games-leader",
         reply_chat_id: "-1003833855730",   // Telegram group
         reply_thread_id: "245",            // Telegram forum topic
         label: "Dopo 每日工作日誌回報", enabled: true, timezone: "Asia/Taipei", silent: false,
@@ -547,7 +547,7 @@ describe("FleetManager", () => {
         defaults: {},
         channels: [discordConfig, telegramConfig],
         instances: {
-          "doupo-leader": { working_directory: tmpDir, topic_id: "1503382159321464899", channel_id: "discord" },
+          "games-leader": { working_directory: tmpDir, topic_id: "1500000000000464899", channel_id: "discord" },
         },
       } as any;
       fm.adapter = discord;
@@ -558,16 +558,16 @@ describe("FleetManager", () => {
 
       await (fm as any).handleScheduleTrigger({
         id: "same-world", cron: "0 9 * * *", at: null,
-        message: "daily work log", source: "doupo-leader", target: "doupo-leader",
+        message: "daily work log", source: "games-leader", target: "games-leader",
         reply_chat_id: "1496407196106494055",
-        reply_thread_id: "1503382159321464899",
+        reply_thread_id: "1500000000000464899",
         label: "in-world", enabled: true, timezone: "Asia/Taipei", silent: false,
         created_at: "2026-08-17T00:00:00.000Z", last_triggered_at: null, last_status: null,
       });
 
       const meta = (deliver.mock.calls[0][1] as any).meta;
       expect(meta.chat_id).toBe("1496407196106494055");
-      expect(meta.thread_id).toBe("1503382159321464899");
+      expect(meta.thread_id).toBe("1500000000000464899");
     });
 
     /**
@@ -624,7 +624,7 @@ describe("FleetManager", () => {
         defaults: {},
         channels: [primaryConfig, personaConfig],
         instances: {
-          "persona-bound": { working_directory: tmpDir, topic_id: "1503382159321464899", channel_id: "persona" },
+          "persona-bound": { working_directory: tmpDir, topic_id: "1500000000000464899", channel_id: "persona" },
         },
       } as any;
       fm.adapter = primary;
@@ -637,14 +637,14 @@ describe("FleetManager", () => {
       await (fm as any).handleScheduleTrigger({
         id: "persona-schedule", cron: "0 9 * * *", at: null,
         message: "daily", source: "persona-bound", target: "persona-bound",
-        reply_chat_id: guild, reply_thread_id: "1503382159321464899",
+        reply_chat_id: guild, reply_thread_id: "1500000000000464899",
         label: "persona", enabled: true, timezone: "Asia/Taipei", silent: false,
         created_at: "2026-08-17T00:00:00.000Z", last_triggered_at: null, last_status: null,
       });
 
       const meta = (deliver.mock.calls[0][1] as any).meta;
       expect(meta.chat_id, "the persona shares this guild — it is not another world").toBe(guild);
-      expect(meta.thread_id).toBe("1503382159321464899");
+      expect(meta.thread_id).toBe("1500000000000464899");
       expect(meta.adapter_id).toBe("persona");
     });
 

@@ -24,6 +24,20 @@ register("hubRoom", {
     authorAgent: "{0} · {1}'s agent", authorAssistant: "Room assistant · Provided by the Hub",
     askProgress: "Answered {0} · working {1} · reply later {2}",
     allAnswered: "All {0} answered", expandRest: "Show {0} more",
+    // M-3127 reactions: who reacted ("Alex, Bob and 3 others reacted with 👍"), the add button, the picker
+    reactAdd: "Add reaction", reactPick: "Reactions", reactedWith: "{0} reacted with {1}", reactMore: "{0} and {1} others",
+    reactYou: "You", listSep: ", ", reactFailed: "Couldn't add the reaction. Try again.",
+    // M-3127 B: an agent's buttons (its asker's) and polls (everyone's)
+    onlyAsker: "Only {0} can answer", sysPollClosed: "{0}'s poll closed", buttonFailed: "That didn't go through. Try again.",
+    buttonNotAsker: "Only the person who asked can answer these buttons.", buttonExpired: "These buttons are no longer open.",
+    // M-3127 C: Ctrl K
+    searchLabel: "Search", searchPlaceholder: "Search rooms, chats and messages…", searchClose: "Close",
+    searchHint: "Find a room or chat by name, or a message by a word or two from it — in the rooms you're in.",
+    searchSearching: "Searching…", searchNone: "Nothing found", searchNoneYet: "Nothing in the newest messages yet.",
+    searchBusy: "Search is busy — try again in a moment.", searchFailed: "Search failed — try again.",
+    searchResults: "Results", searchRooms: "Rooms and chats", searchBadgeRoom: "Room", searchBadgeChat: "Chat", searchCount: "{0} results",
+    searchOlder: "Search older messages", searchKeys: "↑↓ move · Enter open · Esc close", jumpMissing: "That message is no longer in this room.",
+    filterPh: "Filter: name or owner", filterClear: "Clear the filter",
     laterAnswer: "{0} ({1}) · answers after they come online", noAnswer: "No answer",
     workingOne: "{0} is working on it", workingMany: "{0} agents are working",
     // §4 composer
@@ -118,6 +132,9 @@ register("hubRoom", {
     peopleOne: "1 person", peopleMany: "{0} people", agentsOne: "1 agent", agentsMany: "{0} agents",
     // The @ progress line in parts, a part with 0 left out (Lumen): "Answered 1 · Working 1".
     progAnswered: "Answered {0}", progWorking: "Working {0}", progLater: "Reply later {0}",
+    progFailed: "Failed {0}", progBlocked: "Blocked {0}",
+    reasonExpired: "The question expired before an answer", reasonUnavailable: "The room assistant could not answer",
+    reasonInterrupted: "The answer was interrupted", reasonRetired: "This agent could not answer", reasonUnknown: "No reason given",
     roomsCanAskIt: "People in its rooms can @ it there. See In these rooms.", invitationsTitle: "Invitations",
   },
   "zh-TW": {
@@ -135,6 +152,17 @@ register("hubRoom", {
     authorAgent: "{0} · {1}的 Agent", authorAssistant: "房間助理 · Hub 提供",
     askProgress: "已回答 {0} · 處理中 {1} · 稍後回覆 {2}",
     allAnswered: "{0} 個都回答了", expandRest: "展開其餘 {0} 則",
+    reactAdd: "加上表情", reactPick: "表情回應", reactedWith: "{0} 回應了 {1}", reactMore: "{0} 和其他 {1} 人",
+    reactYou: "你", listSep: "、", reactFailed: "表情沒加上，請再試一次。",
+    onlyAsker: "只有 {0} 能回答", sysPollClosed: "{0} 的投票已結束", buttonFailed: "沒有送出，請再試一次。",
+    buttonNotAsker: "只有提問的人能按這些按鈕。", buttonExpired: "這些按鈕已經關閉。",
+    searchLabel: "搜尋", searchPlaceholder: "搜尋房間、聊天與訊息…", searchClose: "關閉",
+    searchHint: "用名稱找房間或聊天，或輸入訊息裡的一兩個詞找訊息（你所在的房間）。",
+    searchSearching: "搜尋中…", searchNone: "找不到結果", searchNoneYet: "最近的訊息裡還沒找到。",
+    searchBusy: "搜尋忙碌中，請稍後再試。", searchFailed: "搜尋失敗，請再試一次。",
+    searchResults: "結果", searchRooms: "房間與聊天", searchBadgeRoom: "房間", searchBadgeChat: "聊天", searchCount: "{0} 筆結果",
+    searchOlder: "搜尋更早的訊息", searchKeys: "↑↓ 移動 · Enter 開啟 · Esc 關閉", jumpMissing: "這則訊息已不在這個房間裡。",
+    filterPh: "篩選：名稱或擁有者", filterClear: "清除篩選",
     laterAnswer: "{0}（{1}）· 上線後回答", noAnswer: "沒有回答",
     workingOne: "{0} 正在處理", workingMany: "{0} 個 Agent 正在處理",
     composer: "在「{0}」說話；@ 一個 Agent 請它回答",
@@ -216,6 +244,9 @@ register("hubRoom", {
     agentNoOneToOne: "還沒有人可以一對一提問", inRoomsOne: "在 1 個房間裡", inRoomsMany: "在 {0} 個房間裡",
     peopleOne: "1 人", peopleMany: "{0} 人", agentsOne: "1 個 Agent", agentsMany: "{0} 個 Agent",
     progAnswered: "已回答 {0}", progWorking: "處理中 {0}", progLater: "稍後回覆 {0}",
+    progFailed: "未回答 {0}", progBlocked: "無法回答 {0}",
+    reasonExpired: "問題在回答前就過期了", reasonUnavailable: "房間助理暫時無法回答",
+    reasonInterrupted: "回答被中斷", reasonRetired: "這個 Agent 無法回答", reasonUnknown: "沒有說明原因",
     roomsCanAskIt: "房間裡的人可以在房間裡 @ 它，見「在這些房間裡」。", invitationsTitle: "邀請",
   },
 });

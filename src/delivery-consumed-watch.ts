@@ -165,6 +165,8 @@ export class ConsumedWatch {
         }
         if (found === "unavailable") return this.end("unavailable");
         if (this.offset > before) { this.idleLooks = 0; return this.schedule(CONSUMED_WATCH.catchUpMs); }
+        // M-2403: a complete read that moved nothing (not one still in flight: "pending") is the transcript's end.
+        if (found === "no-match" && this.notTakenNow()) return;
         if (++this.idleLooks >= CONSUMED_WATCH.idleLooksBeforeBackoff) {
           this.idleLooks = 0; this.interval = Math.min(this.interval * 2, CONSUMED_WATCH.maxTickMs);
         }

@@ -15,10 +15,10 @@ const { setUsageFetcherForTests, setCapacityLookup } = await import(process.env.
 const at = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
 const WEEK = 6048e5;
 setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), providers: [
-  { id: "claude:hsinlin", name: "Claude", status: "ok", plan: "Max 20x", profile: "hsinlin",
+  { id: "claude:helenwu", name: "Claude", status: "ok", plan: "Max 20x", profile: "helenwu",
     metrics: [{ type: "percent", label: "Session", labelI18n: { key: "usage.metric.session" }, used: 4, resetsAt: at(3), windowMs: 18e6 },
       { type: "percent", label: "Weekly", labelI18n: { key: "usage.metric.weekly" }, used: 62, resetsAt: at(60), windowMs: WEEK }] },
-  { id: "codex:yanxianchen", name: "Codex", status: "ok", plan: "Pro", profile: "yanxianchen",
+  { id: "codex:yvonnechang", name: "Codex", status: "ok", plan: "Pro", profile: "yvonnechang",
     metrics: [{ type: "percent", label: "Weekly", labelI18n: { key: "usage.metric.weekly" }, used: 8, resetsAt: at(100), windowMs: WEEK }] },
   // Prism #3073 P1: an estimate with no basis (the lookup below) — the read must not fail; the bar stays, no capacity.
   { id: "claude", name: "Claude", status: "ok", plan: "Pro",
@@ -26,9 +26,9 @@ setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), prov
 ] }));
 setCapacityLookup((provider: string, metric: string) => {
   if (metric !== "Weekly") return null;
-  if (provider === "claude:hsinlin") return { status: "ok", windows: 3, deltaPct: 40, bestFit: "api", mixed: false,
+  if (provider === "claude:helenwu") return { status: "ok", windows: 3, deltaPct: 40, bestFit: "api", mixed: false,
     bases: { api: { median: 412, low: 378, high: 455, cv: 0.07, windows: 3 }, all: { median: 31e6, low: 29e6, high: 34e6, cv: 0.21, windows: 3 }, output: { median: 2e6, low: 1.7e6, high: 2.4e6, cv: 0.3, windows: 3 } } };
-  if (provider === "codex:yanxianchen") return { status: "not_enough", deltaPct: 6 };
+  if (provider === "codex:yvonnechang") return { status: "not_enough", deltaPct: 6 };
   if (provider === "claude") return { status: "ok", windows: 1, deltaPct: 30, bestFit: null, mixed: false, bases: {} };
   return null;
 });

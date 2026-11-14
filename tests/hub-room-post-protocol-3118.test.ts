@@ -10,7 +10,7 @@ it("encodes strict room list/post member frames without caller or ancestry selec
   for (const field of ["caller", "owner", "depth", "sourceMessageId"]) expect(roomPostSchema.safeParse({ ...post, [field]: "forged" }).success).toBe(false);
 });
 it("bounds posting inputs and preserves exact unique room names", () => {
-  expect(roomPostSchema.parse({ ...post, room: "研發例會" }).room).toBe("研發例會");
+  expect(roomPostSchema.parse({ ...post, room: "專案例會" }).room).toBe("專案例會");
   for (const room of ["", "\n", "x".repeat(129)]) expect(roomPostSchema.safeParse({ ...post, room }).success).toBe(false);
   expect(roomPostSchema.safeParse({ ...post, text: " " }).success).toBe(false);
 });

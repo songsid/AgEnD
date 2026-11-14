@@ -1,0 +1,7 @@
+RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-welcome-cap-limits-m3135
+
+
+ Test Files  1 passed (1)
+      Tests  29 passed (29)
+   Start at  06:16:29
+   Duration  556ms (transform 202ms, setup 105ms, import 227ms, tests 62ms, environment 0ms)

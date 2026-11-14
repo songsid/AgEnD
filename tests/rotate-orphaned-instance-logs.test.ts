@@ -75,7 +75,7 @@ describe("instance log sweep", () => {
     const { dir, fm, sweep, writeLog } = makeFleet();
     try {
       fm.fleetConfig = { defaults: {}, instances: {} } as never;
-      const classic = writeLog("classic-hanhanv-4522", OVER_LIMIT);
+      const classic = writeLog("classic-example-4522", OVER_LIMIT);
 
       sweep();
 
