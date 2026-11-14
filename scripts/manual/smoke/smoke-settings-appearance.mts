@@ -6,7 +6,7 @@ import { bootFixture, matrix, caseName, shotPath, seedPerson, seedAvatars, seedC
 
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48700) });
 const names = fx.instances.map(i => i.name);
-const card = [names[4], names[33], "產品官網-t1544335726169165914"];
+const card = [names[4], names[33], "產品官網-t1500000000000165914"];
 const seeded: any = { person: seedPerson(fx), avatars: Object.keys(await seedAvatars(fx, 20)).length, cards: await seedCards(fx, card), widgets: await seedWidgets(fx, card[0]) };
 try { const id = addSnowEffect(fx, { kind: "human", id: "operator" }); seeded.effect = fx.fm.effectTools.apply(card[1], { id }); } catch (e) { seeded.effect = String(e).slice(0, 200); }
 const PERSON = "person:operator";

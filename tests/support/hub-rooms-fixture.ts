@@ -3,7 +3,7 @@
  * Track U builds against it until the rooms server (track R) replaces it. Screens and words: docs/design/hub-rooms-ux.md.
  *
  * The seed (the split's ask, in the spec's own names):
- * - 研一主管週會: 王經理 (me, manager), 陳主任, 吳小安; 12 agents in every presence state; the room assistant.
+ * - 研發主管週會: 王經理 (me, manager), 陳主任, 吳小安; 12 agents in every presence state; the room assistant.
  *   An @all with 6 answers, 1 still working (project-helper) and 5 that reply later (paused, offline, reply-later;
  *   answerLater() brings one), and an assistant
  *   summary of the answers. One invitation waits for its owner (the room's own list).
@@ -80,8 +80,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   const assistant: FixtureMember = { id: "assistant", kind: "assistant", name: "房間助理", role: "member", presence: "idle" };
   const author = (m: FixtureMember) => ({ kind: m.kind === "later" ? "agent" as const : m.kind, id: m.id, name: m.name, ...(m.owner ? { owner: m.owner } : {}) });
 
-  // 研一主管週會: people talk, an @all with answers (9 answered, 1 working, 2 later), the assistant's summary.
-  const group: FixtureRoom = { id: "room-weekly", kind: "group", name: "研一主管週會", members: [...people, ...agentMembers, assistant], messages: [],
+  // 研發主管週會: people talk, an @all with answers (9 answered, 1 working, 2 later), the assistant's summary.
+  const group: FixtureRoom = { id: "room-weekly", kind: "group", name: "研發主管週會", members: [...people, ...agentMembers, assistant], messages: [],
     settings: { allMention: true, historyForNew: "since-join" }, archived: false, readUpTo: null, assistant: true,
     // U2: one pending invitation and one that lapsed after 7 days (the manager can 重新邀請 it).
     invited: [{ id: "inv-0001", exposureId: "exp-90", name: "audit-helper", owner: { name: "周小明" }, at: minutes(10), state: "pending" },
@@ -137,7 +137,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   archived.readUpTo = archived.messages.at(-1)!.id;
   const rooms: FixtureRoom[] = [group, meeting, archived, helper, report, hubAssistant];
   const invitations = [{ id: "inv-in-0001", room: { id: "room-other", name: "產品規劃", people: 4 }, agent: { exposureId: "exp-mine-1", name: "my-notes" }, by: { name: "陳主任" }, at: minutes(100) }];
-  const teams = [{ id: "team-1", name: "研一", department: "group-rd1", departmentName: "研發一部", revision: 1, lead: teamLead ? FIXTURE_ME.id : "person-chen", leadName: teamLead ? FIXTURE_ME.name : "陳主任", members: teamLead ? [FIXTURE_ME.id, "person-wu"] : ["person-chen", "person-wu"], canManage: true, isLead: teamLead, leadEligible: true }];
+  const teams = [{ id: "team-1", name: "研發", department: "group-tm1", departmentName: "研發一部", revision: 1, lead: teamLead ? FIXTURE_ME.id : "person-chen", leadName: teamLead ? FIXTURE_ME.name : "陳主任", members: teamLead ? [FIXTURE_ME.id, "person-wu"] : ["person-chen", "person-wu"], canManage: true, isLead: teamLead, leadEligible: true }];
   const teamView = (team: typeof teams[number]) => ({ ...team, memberInfo: team.members.map(id => ({ id, name: [...people, NEW_PERSON].find(p => p.id === id)?.name || id, login: id === FIXTURE_ME.id ? FIXTURE_ME.login : id.replace("person-", ""), department: "", signedIn: id !== "person-new", agents: id === FIXTURE_ME.id ? [{ id: "exp-mine-1", name: "my-notes" }] : [] })), impact: { grants: [], roomCreator: creators.teams.includes(team.id) } });
   let creators = { people: [FIXTURE_ME.id], teams: [] as string[] };
 
@@ -161,7 +161,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   const fail = (status: number, code: string, extra: Record<string, unknown> = {}): Reply => ({ status, body: { code, ...extra } });
   // U2 (R #3866): AD groups. 研發一部 reads whole (20 direct members, 張新人 among them has never signed in), 研發二部 the
   // directory cannot read whole (503 group-unavailable), 全公司 is too big for a room (over 100 → 409 people-limit).
-  const GROUPS: Record<string, { name: string; people: number }> = { "group-rd1": { name: "研發一部", people: 20 }, "group-rd2": { name: "研發二部", people: 8 }, "group-all": { name: "全公司", people: 132 } };
+  const GROUPS: Record<string, { name: string; people: number }> = { "group-tm1": { name: "研發一部", people: 20 }, "group-rd2": { name: "研發二部", people: 8 }, "group-all": { name: "全公司", people: 132 } };
   const NEW_PERSON: FixtureMember = { id: "person-new", kind: "person", name: "張新人", role: "member", presence: "offline", signedIn: false };
   /** A room write's people check: the deduplicated union (the room's people, chosen people, teams' members, groups' heads). */
   const peopleCheck = (current: string[], chosen: { people?: unknown; teams?: unknown; groups?: unknown }): Reply | null => {

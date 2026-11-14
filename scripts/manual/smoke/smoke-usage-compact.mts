@@ -32,7 +32,7 @@ const names = ["general", "studio-layout", "studio-copy", "release-notes-drafter
 fm.fleetConfig.instances = Object.fromEntries(names.map((name, i) => [name, { working_directory: dir, backend: ["claude-code", "codex", "kiro-cli"][i % 3], ...(name === "general" ? { general_topic: true } : {}) }]));
 fm.fleetConfig.teams = {};
 fm.getInstanceStatus = () => "running";
-const REAL = /agend-|t15\d{6}|web-claude|\bsol\b|\bfable\b|qa-1|tm1-|awp-|games-|產品官網-t|遊戲|己把鳩/;
+const REAL = /agend-|t15\d{6}|web-claude|\bsol\b|\bfable\b|qa-1|tm1-|ota-svc|games-|產品官網-t|遊戲|產品專案/;
 
 // ── Seven logins ──
 const H = 3_600_000;

@@ -162,16 +162,16 @@ describe("the scene", () => {
   it("cards and General have pins; each open box its header band and wall pieces in front of its cards (the gaps are its doors)", () => {
     const L = screenshotLayout();
     const { shapes } = routeScene(L, []);
-    const awp = L.boxes.find((b: any) => b.name === "ota-svc");
-    const inBox = shapes.filter((s: any) => s.x >= awp.x - 1 && s.x + s.w <= awp.x + awp.w + 1 && s.y >= awp.y - 1 && s.y + s.h <= awp.y + awp.h + 1);
-    const cols = awp.cells.slice(0, awp.cols).map((c: any) => c.x), rows = [...new Set(awp.cells.map((c: any) => c.y))];
+    const ota = L.boxes.find((b: any) => b.name === "ota-svc");
+    const inBox = shapes.filter((s: any) => s.x >= ota.x - 1 && s.x + s.w <= ota.x + ota.w + 1 && s.y >= ota.y - 1 && s.y + s.h <= ota.y + ota.h + 1);
+    const cols = ota.cells.slice(0, ota.cols).map((c: any) => c.x), rows = [...new Set(ota.cells.map((c: any) => c.y))];
     expect([
       inBox.filter((s: any) => s.pins === 1).length,                                        // its 5 cards
-      inBox.some((s: any) => s.pins === 0 && s.y === awp.y - 1 && s.h === OC.HEAD + 1),      // the header band
+      inBox.some((s: any) => s.pins === 0 && s.y === ota.y - 1 && s.h === OC.HEAD + 1),      // the header band
       inBox.filter((s: any) => s.pins === 0 && s.h === 2).map((s: any) => [s.x, s.w]),       // below each column
       inBox.filter((s: any) => s.pins === 0 && s.w === 2).map((s: any) => [s.x, s.y, s.h]),  // beside each row, both sides
       shapes.filter((s: any) => s.pins === 1).length,                                        // every card
-    ]).toEqual([5, true, cols.map((x: number) => [x, OC.NW]), [awp.x - 1, awp.x + awp.w - 1].flatMap((x: number) => rows.map((y) => [x, y, OC.NH])), 1 + 4 + 5 + 3 + 3]);
+    ]).toEqual([5, true, cols.map((x: number) => [x, OC.NW]), [ota.x - 1, ota.x + ota.w - 1].flatMap((x: number) => rows.map((y) => [x, y, OC.NH])), 1 + 4 + 5 + 3 + 3]);
   });
   it("a folded team is one shape with pins (a line to it ends on it); a line to an open box (a broadcast bundle) is left to its lane", () => {
     const L = screenshotLayout(new Set(["data"]));

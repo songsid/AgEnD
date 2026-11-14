@@ -26,12 +26,12 @@ describe("§13 smoke walk (one fixture)", () => {
     const heard: Array<[string, unknown]> = [];
     const stop = client.subscribeRooms(Object.fromEntries(ROOM_EVENTS.map((n: string) => [n, (d: unknown) => heard.push([n, d])])));
 
-    // 1. 王經理 may open rooms; 研一主管週會 has two other people, own agents, a waiting invite, and the assistant.
+    // 1. 王經理 may open rooms; 研發主管週會 has two other people, own agents, a waiting invite, and the assistant.
     const creators = await client.roomCreators();
     expect(creators.people.map((p: { id: string }) => p.id)).toContain(FIXTURE_ME.id);
     const list = await client.roomList();
     expect(list.me).toMatchObject({ canCreateRooms: true });
-    const weeklyRow = list.rooms.find((r: { name: string }) => r.name === "研一主管週會");
+    const weeklyRow = list.rooms.find((r: { name: string }) => r.name === "研發主管週會");
     expect(weeklyRow).toMatchObject({ kind: "group", people: 3, unread: 2 });
     const weekly = await client.room("room-weekly");
     expect(weekly.me).toEqual({ id: FIXTURE_ME.id, role: "manager" });

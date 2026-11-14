@@ -25,7 +25,7 @@ describe("rooms client, track U2", () => {
     const { client, calls } = await live();
     const all = await client.roomCandidates("");
     expect(new Set(all.candidates.map((c: any) => c.kind))).toEqual(new Set(["person", "team", "group", "agent"]));
-    expect(all.candidates.find((c: any) => c.kind === "team")).toEqual({ kind: "team", id: "team-1", name: "研一", people: 2 });
+    expect(all.candidates.find((c: any) => c.kind === "team")).toEqual({ kind: "team", id: "team-1", name: "研發", people: 2 });
     const mine = await client.roomCandidates("MY-", "agent");
     expect(mine.candidates).toEqual([{ kind: "agent", id: "exp-mine-1", name: "my-notes", owner: { name: FIXTURE_ME.name }, mine: true }]);
     expect(calls.map(c => [c.method, c.path])).toEqual([["GET", "/hub/v1/rooms/candidates?q="], ["GET", "/hub/v1/rooms/candidates?q=MY-&kind=agent"]]);
@@ -51,14 +51,14 @@ describe("rooms client, track U2", () => {
   it("agentRooms: the group rooms an agent is in, with the member id to remove it by", async () => {
     const { client, calls } = await live();
     const r = await client.agentRooms("exp-02");
-    expect(r.rooms).toEqual([{ id: "room-weekly", name: "研一主管週會", people: 3, memberId: "exp-02" }, { id: "room-rd", name: "研發例會", people: 2, memberId: "exp-02" }]);
+    expect(r.rooms).toEqual([{ id: "room-weekly", name: "研發主管週會", people: 3, memberId: "exp-02" }, { id: "room-rd", name: "研發例會", people: 2, memberId: "exp-02" }]);
     expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/exposures/exp-02/rooms" });
   });
 
   it("roomGroup: a chosen AD group's count; a refused room write carries people/limit (409 people-limit) or group (503 group-unavailable)", async () => {
     const { client, calls } = await live();
-    expect(await client.roomGroup("group-rd1")).toEqual({ ok: true, kind: "group", id: "group-rd1", name: "研發一部", people: 20 });
-    expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/rooms/candidates/group/group-rd1" });
+    expect(await client.roomGroup("group-tm1")).toEqual({ ok: true, kind: "group", id: "group-tm1", name: "研發一部", people: 20 });
+    expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/rooms/candidates/group/group-tm1" });
     expect(await client.roomGroup("group-rd2")).toMatchObject({ ok: false, status: 503, code: "group-unavailable", group: "group-rd2" });
     expect(await client.createRoom({ name: "R", groups: ["group-all"] })).toMatchObject({ ok: false, status: 409, code: "people-limit", people: 133, limit: 100 });
     expect(await client.addRoomMember("room-rd", { kind: "group", id: "group-rd2" })).toMatchObject({ ok: false, status: 503, code: "group-unavailable", group: "group-rd2" });

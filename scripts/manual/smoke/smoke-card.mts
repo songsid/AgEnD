@@ -8,7 +8,7 @@ import { bootFixture, matrix, caseName, shotPath, labelOf, PICTURES, TEXT } from
 const SMOKE = "smoke-card";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48340) });
 const fm = fx.fm;
-const LONG = "tm1-platform-backend-sr4-server-t1547091841202130997", CJK = "產品官網-t1544335726169165914";
+const LONG = "tm1-platform-backend-sr4-server-t1500000000000130997", CJK = "產品官網-t1500000000000165914";
 const enc = encodeURIComponent;
 
 const P = fm.themeStore.addAsset(LONG, "portrait", await fx.picture(PICTURES.portrait));

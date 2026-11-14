@@ -109,7 +109,7 @@ describe("3. New room on the phone's list", () => {
 
 describe("4. a phone's room composer: the short placeholder", () => {
   it("narrow: 「說話，或 @ Agent 請它回答」; wide: the room's own; a one-to-one keeps 「問 …」", async () => {
-    for (const [narrow, want] of [[true, "說話，或 @ Agent 請它回答"], [false, "在「研一主管週會」說話；@ 一個 Agent 請它回答"]] as const) {
+    for (const [narrow, want] of [[true, "說話，或 @ Agent 請它回答"], [false, "在「研發主管週會」說話；@ 一個 Agent 請它回答"]] as const) {
       const { pg, restore } = await hubAt("/ui/hub?room=room-weekly", { lang: "zh-TW", narrow });
       try {
         await roomOpen(pg);

@@ -140,7 +140,7 @@ describe("persistent dashboard token", () => {
 
   it("exposes effective model and effort summaries for fleet and ClassicBot settings", async () => {
     const fm = new FleetManager(tempDir());
-    const fleetName = "worker-t1503382262756937728";
+    const fleetName = "worker-t1500000000000937728";
     const classicName = "classic-room-1234";
     (fm as any).fleetConfig = {
       defaults: { backend: "codex", model: "gpt-default", effort: "high" },

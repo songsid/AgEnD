@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { bootFixture, matrix, caseName, shotPath, seedPerson, seedAvatars, seedCards, seedIdentityColors, seedWidgets, seedChat, seedUsage, addSnowEffect } from "../smoke-fixture/index.mts";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48100) });
 const names = fx.instances.map(i => i.name);
-const card = [names[4], names[33], "產品官網-t1544335726169165914"];
+const card = [names[4], names[33], "產品官網-t1500000000000165914"];
 const seeded = {
   person: seedPerson(fx),
   avatars: await seedAvatars(fx, 30),
