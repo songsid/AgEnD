@@ -27,6 +27,7 @@ import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
 // #3226 B: the chat is the fleet chat's own drawing (PR A's shared modules), in the fleet chat's words.
 import { createThread, msgKey } from "/assets/chat-thread.js";
+import { installMessageActions } from "/assets/chat-msg-actions.js";
 import { PreviewPanel, closePanel, panelStore } from "/assets/preview-panel.js";
 import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
 import { RailFrame } from "/assets/side-rail.js";
@@ -756,7 +757,18 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
     const onScroll = () => thread.onScroll();
     sc.addEventListener("scroll", onScroll, { passive: true });
     list.addEventListener("click", thread.onClick);
+    // S-152 (M-3117): the Fleet chat's message menu — right-click, a phone's long press (where the hover strip is hidden),
+    // swipe left to reply, R on a focused message. Reply where this page may reply (a room), Copy text everywhere; no Copy
+    // link (a Hub message has no address). React when the page gives it (M-3127: extra.react / canReact / reactLabel).
+    const ex = extra || {};
+    const offActions = installMessageActions(list, {
+      t: threadT, messageOf: thread.messageOf, rove: thread.rove, copyText, notice: (text, ok = true) => toast(text, ok),
+      canReply: () => (typeof ex.canReply === "function" ? ex.canReply() !== false : false) && typeof ex.startReply === "function",
+      reply: (x) => ex.startReply?.(x),
+      ...(typeof ex.react === "function" ? { react: ex.react, canReact: ex.canReact, reactLabel: ex.reactLabel } : {}),
+    });
     return () => {
+      offActions();
       off(); offOpt(); offPanel(); sc.removeEventListener("scroll", onScroll); list.removeEventListener("click", thread.onClick);
       thread.dispose(true); list.remove(); th.current = null; if (threadRef && threadRef.current === thread) threadRef.current = null;
     };
