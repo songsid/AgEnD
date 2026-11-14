@@ -79,3 +79,20 @@ it("refuses malformed, unoffered and foreign-owner reports without changing stor
   const expired = await r.signIn("other");
   expect((await r.call(expired, "GET", "/hub/v1/me/fleets?owner=other")).status).toBe(400);
 });
+
+it("keeps reconciliation working when the optional connection upsert is unavailable", async () => {
+  r = await s3bRig();
+  const owner = r.addPerson("owner"), id = randomUUID();
+  const warnings: unknown[][] = [];
+  r.httpDeps.log = (...args) => { warnings.push(args); };
+  r.store.mutate({ requestId: randomUUID(), at: Date.now(), actor: { kind: "local-host" }, action: "fixture", result: "completed" }, state => {
+    state.fleets.push({ id, owner, generation: 1, credentialHash: "a".repeat(64), status: "active" });
+  });
+  r.db.exec("CREATE TRIGGER fail_optional_diagnostics BEFORE INSERT ON hub_fleet_versions BEGIN SELECT RAISE(ABORT,'private diagnostic failure'); END");
+  const link = r.link(id, owner, 1, ["welcome-caps-v1", "room-ask-v1", "fleet-info-v1"]);
+  await expect(r.http.receive(r.frame("reconcile", { messages: [], afterReceiptSequence: 0 }, link) as never, link))
+    .resolves.toMatchObject({ type: "reconcile" });
+  expect(link.current()).toBe(true);
+  expect(warnings).toEqual([["warn", "Hub Fleet diagnostics were not recorded", { fleetId: id, phase: "connect" }]]);
+  expect(JSON.stringify(warnings)).not.toContain("private diagnostic failure");
+});

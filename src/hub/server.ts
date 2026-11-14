@@ -8,7 +8,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { HubMemberFrame, HubServerFrame, PersonKey } from "./types.js";
 import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, parseMemberFrame, encodeServerFrame } from "./protocol.js";
 import { HubSocket, type HubLinkCloseCode } from "./socket.js";
-import { HUB_FLEET_INFO_CAPABILITY } from "./fleet-info.js";
+import { HUB_FLEET_INFO_CAPABILITY, warnFleetDiagnostics } from "./fleet-info.js";
 import { HubProtocolError, parseStrictJson } from "./validation.js";
 import { HubPairingService } from "./pairing.js";
 import { readHubMemberTls } from "./tls.js";
@@ -29,6 +29,7 @@ interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context:
   binding: { generation: number; revocationVersion: number } }
 export interface HubServerOptions {
   connected?(link: HubLinkContext): void;
+  log?(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   home: string; hubId: string; memberOrigin: string; listen: { host: string; port: number }; pairing: HubPairingService;
   current(): boolean;
   /** S3/S5 authorize and atomically audit before returning a reply. Throwing never falls through to fleet tools. */
@@ -141,7 +142,7 @@ export class HubServer {
       for (const c of offered) if (frame.payload.capabilities.includes(c)) features.add(c);
       // This is a Hub-only receiver offer; it does not take a slot in a member hello.
       if (features.has("welcome-caps-v1") && offered.includes(HUB_FLEET_INFO_CAPABILITY)) features.add(HUB_FLEET_INFO_CAPABILITY);
-      this.options.connected?.(context);
+      try { this.options.connected?.(context); } catch { warnFleetDiagnostics(this.options.log, context.fleetId, "connect"); }
       await link.send({ v: 1, type: "welcome", requestId: frame.requestId, linkEpoch: context.linkEpoch,
         payload: { selectedVersion: 1, hubId: this.options.hubId, fleetId: context.fleetId, linkEpoch: context.linkEpoch, revocationVersion,
           // Only to a member that asked: an older member's strict welcome schema refuses the field.
@@ -150,7 +151,14 @@ export class HubServer {
     }
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
     if (!connection.ready && !["fleet.info", "exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
-    if (frame.type === "fleet.info" && !context.features.has(HUB_FLEET_INFO_CAPABILITY)) throw new HubProtocolError("incompatible");
+    if (frame.type === "fleet.info") {
+      // A diagnostic refusal or failed write never changes the link's authority or availability.
+      try {
+        if (!context.features.has(HUB_FLEET_INFO_CAPABILITY)) throw new HubProtocolError("incompatible");
+        await this.options.receive(frame, context);
+      } catch { warnFleetDiagnostics(this.options.log, context.fleetId, "report"); }
+      return;
+    }
     if (frame.type === "member.leave") {
       if (!context.features.has("member-leave-v1") || !context.features.has("welcome-caps-v1")) throw new HubProtocolError("incompatible");
       this.options.pairing.leave(context, frame.requestId); return;

@@ -33,3 +33,16 @@ Fleets remain connectable and do not need to report.
 The additive s3-fleet-versions schema is registered in the ordinary HTTP migration plan. Rolling back the feature
 removes the report offer/codec/API wiring; a downgrade to an older binary follows the ordinary backup restore because
 older migration registries correctly refuse the newer component. No authorization rows/floors are rewritten.
+
+## Review correction: best-effort diagnostic writes
+
+Fable found that throwing connection/report hooks could end the link. Two new regressions fail first on 7015e369:
+hello/welcome fails when the connection hook throws (`resilience-before.log`), and ordinary reconciliation fails
+when the optional connection INSERT is refused by a SQLite trigger (`upsert-before.log`).
+
+Connection observation and fleet.info handling now isolate diagnostic failures and emit a bounded warning with
+only Fleet ID and phase. The ordinary handshake/reconciliation/authorization paths keep their existing refusals.
+The affected HTTP plus owned loopback TLS cases pass 5/5 (`resilience-after.log`), including a second successful
+reconciliation after both hooks failed. State/schema/logger cases pass 4/4 (`state-r2.log`); a throwing diagnostic
+logger also cannot affect the link. Both TypeScript programs pass. This is the review-requested focused resilience
+packet; the earlier 146-case composition campaign was not repeated. API fields remain unchanged.

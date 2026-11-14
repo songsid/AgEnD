@@ -35,3 +35,8 @@ it("adds its own schema component, retains a report, and makes an older migratio
     expect(() => applyHubMigrations(db, [])).toThrow("s3-fleet-versions");
   } finally { db.close(); }
 });
+
+it("keeps even a failing diagnostic logger out of the connection path", async () => {
+  const { warnFleetDiagnostics } = await import("../src/hub/fleet-info.js");
+  expect(() => warnFleetDiagnostics(() => { throw Error("logger unavailable"); }, randomUUID(), "connect")).not.toThrow();
+});

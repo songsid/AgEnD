@@ -35,3 +35,10 @@ The mounted runtime supplies its package version and service mode using the exis
 `s3-fleet-versions` is an additive diagnostic table. It stores no credentials and changes no authorization floor.
 Rollback disables the reporting offer and routes; retaining the table needs a binary that understands the migration.
 An older binary must refuse that newer schema, so an actual downgrade uses the ordinary pre-upgrade Hub backup.
+
+Diagnostics are best effort: a connection/report storage refusal or failed diagnostic logger cannot stop the
+hello/welcome or later ordinary work. Warnings name only Fleet ID and connect/report phase, never raw SQL errors.
+If an observation could not be retained, an unknown or older retained diagnostic may remain until the next connection.
+
+`too-old-rooms` describes negotiated room support, not a proven minimum binary version. A current Fleet composed
+without a room representative can also lack room-ask-v1 and receive that state in phase 1.

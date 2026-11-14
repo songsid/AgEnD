@@ -513,6 +513,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         current: live,
         receive: (frame, link) => http.receive(frame, link),
         connected: link => http.memberConnected?.(link),
+        log: options.log,
         hold: (fleetId, code) => { options.log("warn", "Hub member link held", { fleetId, code }); if (fleetId) http.memberClosed?.(fleetId); },
         // M-2901: a connected Fleet learns where this Hub's pages are now (web-origin.ts), signed for its own link.
         webOrigin: (fleetId) => signHubWebOrigin({ hubId: settings.hubId, issuerKeyId: identity.issuerKeyId, fleetId, memberOrigin: settings.memberOrigin },

@@ -16,7 +16,7 @@ export async function freeHubPort(): Promise<number> {
   const server = netServer(); await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as { port: number }).port; await new Promise<void>(resolve => server.close(() => resolve())); return port;
 }
-export async function hubRig(options: { serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[];
+export async function hubRig(options: { serverConnected?: HubServerOptions["connected"]; serverLog?: HubServerOptions["log"]; serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[];
   /** M-2901: the Hub's signed web-address statement (server) and the member's receiver of it (client). */
   serverWebOrigin?: HubServerOptions["webOrigin"]; clientWebOrigin?: HubClientOptions["webOrigin"];
   /** Phase 1 Fleet values; offered only to a reporting Hub. */
@@ -37,6 +37,7 @@ export async function hubRig(options: { serverCapabilities?: readonly string[]; 
   let serverGate: (() => Promise<void>) | undefined;
   let receiver: HubServerOptions["receive"] | undefined;
   server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing, capabilities: options.serverCapabilities, webOrigin: options.serverWebOrigin,
+    connected: options.serverConnected, log: options.serverLog,
     current: () => enabled, hold: (fleet, code) => holds.push({ fleet, code }), receive: async (frame, link) => {
       received.push(frame); await serverGate?.(); if (!link.current()) return;
       if (receiver) return receiver(frame, link);

@@ -6,7 +6,7 @@ import type { HubCore } from "./http/core.js";
 import type { HubLinkContext } from "./server.js";
 import type { HubFleetInfo } from "./types.js";
 
-import { HUB_FLEET_INFO_CAPABILITY, fleetInfoSchema } from "./fleet-info.js";
+import { HUB_FLEET_INFO_CAPABILITY, fleetInfoSchema, warnFleetDiagnostics } from "./fleet-info.js";
 export const HUB_FLEET_VERSIONS_MIGRATION = Object.freeze({ component: "s3-fleet-versions", version: 1, up(db: import("better-sqlite3").Database) {
   db.exec(`CREATE TABLE hub_fleet_versions (
     fleet_id TEXT PRIMARY KEY, version TEXT, runs_as_service INTEGER CHECK(runs_as_service IN (0,1)),
@@ -34,15 +34,18 @@ export class HubFleetVersions {
   }
   connected(link: HubLinkContext): void {
     if (this.links.get(link.fleetId) === link) return;
-    // Legacy injected transports sometimes have no stored Fleet. Never invent one for diagnostics.
-    if (!this.eligible(link)) return;
-    this.core.atomic(db => {
-      if (!this.eligible(link)) throw new HubProtocolError("revoked");
-      db.prepare(`INSERT INTO hub_fleet_versions(fleet_id,last_connected_at,capabilities) VALUES(?,?,?)
-        ON CONFLICT(fleet_id) DO UPDATE SET last_connected_at=excluded.last_connected_at, capabilities=excluded.capabilities`)
-        .run(link.fleetId, this.core.now(), JSON.stringify([...link.features]));
-    });
-    this.links.set(link.fleetId, link);
+    try {
+      // Legacy injected transports sometimes have no stored Fleet. Never invent one for diagnostics.
+      if (!this.eligible(link)) return;
+      // Observe the live connection even if its optional SQL write fails; do not retry that write on every frame.
+      this.links.set(link.fleetId, link);
+      this.core.atomic(db => {
+        if (!this.eligible(link)) throw new HubProtocolError("revoked");
+        db.prepare(`INSERT INTO hub_fleet_versions(fleet_id,last_connected_at,capabilities) VALUES(?,?,?)
+          ON CONFLICT(fleet_id) DO UPDATE SET last_connected_at=excluded.last_connected_at, capabilities=excluded.capabilities`)
+          .run(link.fleetId, this.core.now(), JSON.stringify([...link.features]));
+      });
+    } catch { warnFleetDiagnostics(this.core.deps.log, link.fleetId, "connect"); }
   }
   report(value: unknown, link: HubLinkContext): void {
     const info: HubFleetInfo = validated(fleetInfoSchema, value);
