@@ -34,7 +34,7 @@ const PW = process.env.PW_DIR ?? REPO;
 const GATE = process.env.GATE === "full" ? "full" : "ci";
 const OUT = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
 mkdirSync(OUT, { recursive: true });
-const CASES: MatrixCase[] = GATE === "full" ? matrix("full") : matrix("desk-light-en,phone-dark-zh-TW");
+const CASES: MatrixCase[] = process.env.CASES ? matrix(process.env.CASES) : GATE === "full" ? matrix("full") : matrix("desk-light-en,phone-dark-zh-TW");
 const r: Record<string, unknown> = { gate: GATE };
 const fail: string[] = [];
 const check = (name: string, ok: boolean, detail?: unknown) => { r[name] = ok ? "PASS" : { FAIL: detail ?? true }; if (!ok) fail.push(name); };
@@ -176,7 +176,8 @@ const PAGES = [
 ] as const;
 try {
   for (const c of CASES) {
-    const cn = caseName(c), phone = c.device === "phone";
+    const cn = caseName(c), phone = c.device === "phone", teamLead = c.theme === "light";
+    let teamPerson = "";
     const ctx = await browser.newContext({ viewport: VIEWPORTS[c.device], colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true,
       isMobile: phone, hasTouch: phone, deviceScaleFactor: Number(process.env.PW_DPR ?? 1) });
     await ctx.addInitScript({ content: `try { localStorage.setItem("agend_lang", ${JSON.stringify(c.lang)}); localStorage.setItem("agend_tour_done", "1"); } catch {}
@@ -185,10 +186,13 @@ try {
     await ctx.route(/\/hub\/v1\/session$/, async (route: any) => {
       if (route.request().method() !== "GET") return route.continue();
       const res = await route.fetch(); const json = await res.json().catch(() => null);
-      if (json && json.signedIn) json.features = [...new Set([...(json.features ?? []), "quick-pairing-v1"])];
+      if (json && json.signedIn) json.features = [...new Set([...(json.features ?? []), "quick-pairing-v1", "teams-v1"])];
+      if (json && json.signedIn) teamPerson = `${json.person?.realm}/${json.person?.objectId}`;
       if (json && json.signedIn) roomsOffered = (json.features ?? []).includes("rooms-v1");
       await route.fulfill({ response: res, json });
     });
+    // Team service is not mounted in this shell rig: light cases lead one team, dark cases lead none.
+    await ctx.route(/\/hub\/v1\/teams$/, (route: any) => route.fulfill({ status: 200, json: { teams: [{ id: "shell-team", name: "Research", departmentName: "Engineering", lead: teamLead ? teamPerson : "corp/other", members: [teamPerson], canManage: true, isLead: teamLead }] } }));
     const noticeStreams: string[] = [];
     // rooms-v1 moves notices onto the tab's one rooms stream. Match its version query as well as the older notices URL;
     // otherwise the real rooms stream opens with no composed notice service and this fixture's notice never arrives.
@@ -238,7 +242,7 @@ try {
       const sb = await page.evaluate(SIDEBAR) as any;
       if (sb.missing) { check(`${tag}:sidebar`, false, "no #sidebar"); continue; }
       // M-3092: a Hub with rooms adds 「新房間」 for someone who may open rooms (the administrator, by default).
-      const want = [...(c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", "Administration", "Notices", "Search", "New chat"]),
+      const want = [...(c.lang === "zh-TW" ? ["對話", "我分享的 Agent", ...(teamLead ? ["我的團隊"] : []), "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", ...(teamLead ? ["My teams"] : []), "Administration", "Notices", "Search", "New chat"]),
         ...(roomsOffered ? [c.lang === "zh-TW" ? "新房間" : "New room"] : [])];
       const rows = sb.rows as any[];
       check(`${tag}:sidebar:brand`, !!sb.brand && sb.brand.text === "AgEnD Hub" && sb.brand.title === "Team Hub" && sb.brand.lines === 1, sb.brand);
@@ -246,8 +250,8 @@ try {
       check(`${tag}:sidebar:row-shape`, new Set(rows.map((x) => x.h)).size === 1 && new Set(rows.map((x) => x.iconX)).size === 1 && rows.every((x) => x.iconX !== null), rows.map((x) => [x.text, x.h, x.iconX]));
       check(`${tag}:sidebar:current`, rows.filter((x) => x.current).map((x) => x.text).join() === p.current[c.lang], rows.filter((x) => x.current).map((x) => x.text));
       check(`${tag}:sidebar:notices-no-count`, rows.every((x) => !x.count), rows.filter((x) => x.count).map((x) => x.text));
-      check(`${tag}:sidebar:search`, /side-search/.test(rows[4]?.cls ?? "") && (phone || /K$/.test(rows[4]?.kbd ?? "")), rows[4]);
-      check(`${tag}:sidebar:new`, /side-new/.test(rows[5]?.cls ?? "") && sb.legacy.length === 0, { row: rows[5], legacy: sb.legacy });
+      check(`${tag}:sidebar:search`, /side-search/.test(rows[teamLead ? 5 : 4]?.cls ?? "") && (phone || /K$/.test(rows[teamLead ? 5 : 4]?.kbd ?? "")), rows[teamLead ? 5 : 4]);
+      check(`${tag}:sidebar:new`, /side-new/.test(rows[teamLead ? 6 : 5]?.cls ?? "") && sb.legacy.length === 0, { row: rows[teamLead ? 6 : 5], legacy: sb.legacy });
       // No chat yet: one line in the list — except on the chats' home, where the page itself says it (Argon #19).
       check(`${tag}:sidebar:list`, sb.label === (c.lang === "zh-TW" ? "對話" : "Chats") && (p.key === "chats" ? !sb.empty : !!sb.empty && sb.empty.lines === 1), { label: sb.label, empty: sb.empty });
       if (p.key === "chats") try {   // the session menu, opened: every item shown — inside the screen and topmost at its centre

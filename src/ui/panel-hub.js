@@ -39,6 +39,7 @@ import { useRoomStar } from "./hub-room-favorites.js";
 import { HubRoomPage } from "./hub-room-thread.js";
 import { hroom } from "./hub-room-strings.js";
 import { hr } from "./hub-read-strings.js";
+import { ht } from "./hub-teams-strings.js";
 import { ho, linkHubOwnerCss } from "./hub-owner-strings.js";
 import { hg } from "./hub-grant-strings.js";
 import { createHubChatStore } from "./hub-chat-store.js";
@@ -53,8 +54,8 @@ register("hubAccess", {
 const ha = key => t(`hubAccess.${key}`);
 // Kept with the fresh renderer: retained owner dictionaries do not know this label.
 register("hubGrantStatus", {
-  en: { grantNeverSignedIn: "Hasn't signed in to Hub yet", grantADGroup: "AD group", grantSubjects: "People and groups allowed: {0}" },
-  "zh-TW": { grantNeverSignedIn: "還沒登入過 Hub", grantADGroup: "AD 群組", grantSubjects: "已允許的個人與群組：{0}" },
+  en: { grantNeverSignedIn: "Hasn't signed in to Hub yet", grantADGroup: "AD group", grantTeam: "Team", grantSubjects: "People, groups and teams allowed: {0}" },
+  "zh-TW": { grantNeverSignedIn: "還沒登入過 Hub", grantADGroup: "AD 群組", grantTeam: "團隊", grantSubjects: "已允許的個人、群組與團隊：{0}" },
 });
 
 // These words travel with the renderer; retained dictionaries need no new exports.
@@ -140,8 +141,8 @@ export function HubPanel({ route }) {
   // The owner stylesheet holds the page column (.hub-owner, 860 px) every page with a column uses — Notices too (Argon #12).
   useEffect(() => { linkHubCss(); linkHubOwnerCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
-  const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? hc("admin") : view === "notices" ? hc("noticesTitle")
-    : view === "invitations" ? hroom("invitationsTitle") : hc("chats");
+  const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : hc("admin") : view === "notices" ? hc("noticesTitle")
+    : view === "invitations" ? hroom("invitationsTitle") : view === "teams" ? ht("mine") : hc("chats");
   useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && view === "groups")) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
@@ -162,6 +163,9 @@ export function HubPanel({ route }) {
   if (s && tab === "ask" && view === "invitations" && roomsLive()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-invitations">
     <${PanelHeader} title=${hroom("invitationsTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body"><div class="col hub-owner">
       <${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: false }} /></div></div></div>`;
+  if (s && tab === "ask" && view === "teams" && teamsLive()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-teams">
+    <${PanelHeader} title=${ht("mine")} /><div data-trust="panel-content" class="panel-body hub-page-body"><div class="col hub-owner">
+      <${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsPage" props=${{ client: hubClient(), mode: "lead", person: s.person }} /></div></div></div>`;
   // The chats draw their own header (the room's); the other pages keep the panel's.
   if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
   // #3226 C: My shared agents and Administration are Settings-like pages. The panel's header names the page once, its scope
@@ -317,6 +321,7 @@ const viewParam = () => { try { return new URLSearchParams(location.search).get(
 export const NOTICES_PATH = "/ui/hub?view=notices";
 /** M-3092: the owner's invitations (spec §8). */
 export const INVITATIONS_PATH = "/ui/hub?view=invitations";
+export const MY_TEAMS_PATH = "/ui/hub?view=teams";
 const pairingNoticesOffered = (s) => !!s && Array.isArray(s.features) && s.features.includes("quick-pairing-v1") && !!hubClient().quickPairingV1;
 const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient());
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
@@ -386,7 +391,7 @@ export function HubSide({ onPick } = {}) {
   if (!s) return null;
   const tab = route && route.panel === "hub" ? route.tab : "ask";
   const view = viewParam();
-  const here = (key) => key === "notices" || key === "invitations" ? tab === "ask" && view === key : key === "ask" ? tab === "ask" && view !== "notices" && view !== "invitations" : tab === key;
+  const here = (key) => ["notices", "invitations", "teams"].includes(key) ? tab === "ask" && view === key : key === "ask" ? tab === "ask" && view !== "notices" && view !== "invitations" && view !== "teams" : tab === key;
   const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
   const row = (key, href, icon, label) => html`<a class=${`side-row${here(key) ? " active" : ""}`} href=${href} aria-current=${here(key) ? "page" : undefined}
     onClick=${(e) => go(e, href)}><${Icon} name=${icon} /><span class="grow">${label}</span></a>`;
@@ -395,10 +400,11 @@ export function HubSide({ onPick } = {}) {
   return html`<nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${row("ask", "/ui/hub", "chat", hc("chats"))}
       ${row("exposures", "/ui/hub/exposures", "globe", hc("mine"))}
-      ${s.admin ? row("admin", "/ui/hub/admin", "key", hc("admin")) : null}
-      ${noticesOffered(s) ? row("notices", NOTICES_PATH, "bell", hc("notices")) : null}
+      ${teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubMyTeamsEntry" props=${{ client: hubClient(), person: s.person, active: here("teams"), onPick }} />` : null}
       ${roomsLive() && rs.invitations > 0 ? html`<a class=${`side-row${here("invitations") ? " active" : ""}`} href=${INVITATIONS_PATH} aria-current=${here("invitations") ? "page" : undefined}
         onClick=${(e) => go(e, INVITATIONS_PATH)}><${Icon} name="inbox" /><span class="grow">${hroom("invitationsTitle")}</span><span class="nav-count" title=${hroom("invitationsN", String(rs.invitations))}>${rs.invitations}</span></a>` : null}
+      ${s.admin ? row("admin", "/ui/hub/admin", "key", hc("admin")) : null}
+      ${noticesOffered(s) ? row("notices", NOTICES_PATH, "bell", hc("notices")) : null}
       <button type="button" class="side-row side-search" onClick=${openFilter} title=${`${hc("search")} (${searchShortcut()})`}
         aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${hc("navSearch")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>
       <button type="button" class="side-row side-new" onClick=${() => setPicking(true)}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>
@@ -787,7 +793,7 @@ const stateTag = (state) => state === "published" ? html`<span class="tag ok">${
   : state === "paused" ? html`<span class="tag warn">${t("hubSharing.paused")}</span>`
   : state === "frozen" ? html`<span class="tag warn">${ho("statePaused")}</span>` : html`<span class="tag">${ho("stateWithdrawn")}</span>`;
 const mayAsk = (n) => (n === 0 ? ho("mayAskNone") : n === 1 ? ho("mayAskOne") : ho("mayAsk", n));
-const grantSummary = (grants = []) => grants.some(g => g.subject?.kind === "group") ? t("hubGrantStatus.grantSubjects", grants.length) : mayAsk(grants.length);
+const grantSummary = (grants = []) => grants.some(g => ["group", "team"].includes(g.subject?.kind)) ? t("hubGrantStatus.grantSubjects", grants.length) : mayAsk(grants.length);
 const agentParam = () => { try { const v = new URLSearchParams(location.search).get("agent"); return v && /^[a-f0-9-]{36}$/.test(v) ? v : null; } catch { return null; } };
 
 /**
@@ -887,7 +893,7 @@ function HubAgentPage({ x, act, msg }) {
       <section class="card"><div class="hub-card-head"><h3>${ho("whoMayAsk")}</h3>${shared ? html`<button type="button" class="btn btn-sm" onClick=${() => setAllowing(true)}><${Icon} name="plus" size=${14} />${ho("allow")}</button>` : null}</div>
         ${grants.length ? html`<div class="hub-rows">${grants.map((g) => html`<div key=${g.id} class="s-row hub-row">
           <${Avatar} name=${g.subjectName || g.subjectLogin} size="sm" />
-          <span class="hub-row-text"><strong>${g.subjectName || g.subjectLogin}</strong><small class="note">${g.subjectLogin ? html`<code>${g.subjectLogin}</code> · ` : null}${ho("untilLeft", dateOnly(g.expiresAt), DAYS_LEFT(g.expiresAt))}</small>${g.subject?.kind === "group" ? html`<small class="tag">${t("hubGrantStatus.grantADGroup")}</small>` : g.subjectSignedIn === false ? html`<small class="tag warn">${t("hubGrantStatus.grantNeverSignedIn")}</small>` : null}</span>
+          <span class="hub-row-text"><strong>${g.subjectName || g.subjectLogin}</strong><small class="note">${g.subjectLogin ? html`<code>${g.subjectLogin}</code> · ` : null}${ho("untilLeft", dateOnly(g.expiresAt), DAYS_LEFT(g.expiresAt))}</small>${g.subject?.kind === "group" ? html`<small class="tag">${t("hubGrantStatus.grantADGroup")}</small>` : g.subject?.kind === "team" ? html`<small class="tag">${t("hubGrantStatus.grantTeam")}</small>` : g.subjectSignedIn === false ? html`<small class="tag warn">${t("hubGrantStatus.grantNeverSignedIn")}</small>` : null}</span>
           <${Menu} label=${ho("rowMenu", g.subjectName || g.subjectLogin)} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(g) }]} />
         </div>`)}</div>` : html`<p class="note">${roomCount > 0 ? hroom("agentNoOneToOne") : hw("noGrants")}</p>`}
         ${roomCount > 0 ? html`<p class="note hub-rooms-can-ask">${hroom("roomsCanAskIt")}</p>` : null}
@@ -958,6 +964,7 @@ function HubAdmin({ admin }) {
   const directory = s?.features?.includes("directory-editor-v1") && hubClient()?.directoryEditorV1 === true;
   if (directory && adminView() === "directory") return html`<${LazyDirectory} session=${s} />`;
   if (groupPolicyOn(s, hubClient()) && adminView() === "groups") return html`<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
+  if (teamsLive() && adminView() === "teams") return html`<div class="col hub-owner"><h2 class="sr-only">${ht("title")}</h2><${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsPage" props=${{ client: hubClient(), mode: "admin", person: s?.person }} /></div>`;
   // Reached from a fleet's Settings link on a Hub (or a tab) without group permissions: say so instead of a silent admin page.
   const unavailable = adminView() === "groups" && !groupPolicyOn(s, hubClient());
   return html`${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${t("hubGroupsNote.unavailable")}</p>` : null}
@@ -978,6 +985,7 @@ function LazyRoomPart({ load, name, props = {} }) {
   useEffect(() => { let live = true; load().then((m) => { if (live && typeof m[name] === "function") setC(() => m[name]); }, () => {}); return () => { live = false; }; }, []);
   return C ? html`<${C} ...${props} />` : null;
 }
+const teamsLive = () => { const c = hubClient(); return typeof c.teamsLive === "function" && c.teamsLive() === true; };
 const roomsLive = () => { const c = hubClient(); return typeof c.roomsLive === "function" && c.roomsLive() === true; };
 function LazyThisHub({ directory }) {
   const [C, setC] = useState(null);
@@ -1040,7 +1048,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     <div class="s-section-layout">
       ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
       ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
-      ${/* Lumen's order: Let colleagues join → Rooms → Room assistant → Connected fleets → pairing. */ ""}
+      ${/* Lumen's order: Let colleagues join → Teams → Rooms → Room assistant → Connected fleets → pairing. */ ""}
+      ${teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
       ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}

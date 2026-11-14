@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-alpha
+
+ ❯ tests/hub-teams-ui-track-c.test.ts (9 tests | 1 failed) 960ms
+   × keeps readable members and actions after a bare write response while refreshing the detailed roster 136ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-teams-ui-track-c.test.ts > keeps readable members and actions after a bare write response while refreshing the detailed roster
+TypeError: Cannot read properties of null (reading 'disabled')
+ ❯ tests/hub-teams-ui-track-c.test.ts:68:61
+     66|   expect(p.root.textContent).toContain("Saved"); expect(p.root.textCon…
+     67|   expect(p.root.textContent).not.toContain("corp/");
+     68|   expect(p.root.querySelector('[aria-label="Remove Casey"]').disabled)…
+       |                                                             ^
+     69|   expect(c.team).toHaveBeenCalledTimes(2);
+     70|   finish({ ok: true, team: { ...team(), ...bare, memberInfo: [...team(…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 passed (9)
+   Start at  09:14:59
+   Duration  1.80s (transform 517ms, setup 159ms, import 494ms, tests 960ms, environment 0ms)
+

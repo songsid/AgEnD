@@ -7,7 +7,7 @@ import { personKeyString } from "./identity.js";
 import { exposureOf, readExposure } from "./catalog.js";
 
 const text = z.string().min(1).max(1024).regex(/^[^\u0000-\u001f\u007f]+$/);
-const input = z.strictObject({ exposureRevision: epoch, kind: z.enum(["person", "group"]), q: text.max(64).min(2).refine(s => s === s.trim()) });
+const input = z.strictObject({ exposureRevision: epoch, kind: z.enum(["person", "group", "team"]), q: text.max(64).min(2).refine(s => s === s.trim()) });
 const group = z.strictObject({ objectId: uuid, cn: text.max(256), dn: text });
 const candidate = z.strictObject({ person, login: text.max(256), displayName: text.max(256) });
 export class HubGrantSearch {
@@ -29,6 +29,15 @@ export class HubGrantSearch {
     const key = JSON.stringify([me, session]), bucket = this.buckets.get(key);
     if (bucket ? bucket.count >= 30 : this.buckets.size >= 1024) return { ok: false as const, reason: "limited" as const };
     this.buckets.set(key, { at: bucket?.at ?? at, count: (bucket?.count ?? 0) + 1 });
+    if (query.kind === "team") {
+      const candidates = this.core.deps.roomTeamCandidates;
+      if (!candidates) return { ok: false as const, reason: "unsupported" as const };
+      const teams = this.core.atomic(db => validated(z.array(z.strictObject({ id: uuid, name: text.max(256), people: z.number().int().min(1).max(200) })).max(20), candidates(db, query.q)));
+      const fresh = await ctx.current();
+      if (fresh.kind !== "directory" || fresh.sessionId !== session || personKeyString(fresh.person) !== me) throw new HubProtocolError("denied");
+      if (!context.current() || owned() !== image || this.core.deps.roomTeamCandidates !== candidates) throw new HubProtocolError("unavailable");
+      return { ok: true, teams, truncated: teams.length === 20 };
+    }
     const groupLookup = directory.searchPolicyGroups, personLookup = directory.searchGrantPeople;
     const lookup = query.kind === "group" ? groupLookup : personLookup;
     if (!lookup || (query.kind === "group" && directory.groupPolicy !== "ad-direct-guid")) return { ok: false as const, reason: "unsupported" as const };

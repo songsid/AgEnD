@@ -102,6 +102,7 @@ export function setHubClient(next) { client = next; }
 /** UX checks only (the server parses and canonicalizes): an https:// origin, and a code of the shape people type. */
 /** The session feature a Hub with rooms (seam 1) lists. */
 export const ROOMS_FEATURE = "rooms-v1";
+export const TEAMS_FEATURE = "teams-v1";
 /** The live stream's events (seam 1). */
 /**
  * The live stream's events (seam 1, as agreed with Lumen): message.added / message.updated { roomId, message, parent?:
@@ -228,7 +229,7 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
 export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTimeoutMs = 120_000 } = {}) {
   // The factory override is for owned transports/rehearsals; the page uses the finite default.
   const readBudget = Number.isInteger(readTimeoutMs) && readTimeoutMs > 0 && readTimeoutMs <= 300_000 ? readTimeoutMs : 120_000;
-  let csrf = null, codeNotices = false, roomsLive = false, generation = 0;
+  let csrf = null, codeNotices = false, roomsLive = false, teamsLive = false, generation = 0;
   const ended = new Set(), pendingReads = new Map(), waits = new Set(), readControllers = new Set();
   let readTail = Promise.resolve();
   const retired = () => ({ ok: false, status: 401, code: "unauthenticated" });
@@ -298,7 +299,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     let json = null;
     try { json = await r.json(); } catch { json = null; }
     if (method === "GET" && signal?.aborted) return unreachable();
-    if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; roomsLive = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+    if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; roomsLive = false; teamsLive = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
     if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0,
       ...(method === "POST" && path === "/hub/v1/admin/enrolment-codes" && r.status === 429 && json?.code === "backpressure"
         && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}), ...roomRefusal(json) };
@@ -357,9 +358,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     stub: false, web: true,
     /** Hear the session end (a 401 anywhere). @returns {() => void} */
     onSignedOut(fn) { ended.add(fn); return () => ended.delete(fn); },
-    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; roomsLive = r.signedIn === true && r.features?.includes(ROOMS_FEATURE) === true; } return r; },
-    async signIn(login, password) { retireReads(); const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; roomsLive = r.features?.includes(ROOMS_FEATURE) === true; } return r; },
-    async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; roomsLive = false; return r; },
+    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; roomsLive = r.signedIn === true && r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.signedIn === true && r.features?.includes(TEAMS_FEATURE) === true; } return r; },
+    async signIn(login, password) { retireReads(); teamsLive = false; const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; roomsLive = r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.features?.includes(TEAMS_FEATURE) === true; } return r; },
+    async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; roomsLive = false; teamsLive = false; return r; },
     catalog() { return call("GET", "/hub/v1/exposures"); },
     sharingPauseV1: true,
     sharing(exposureId, revision, sharingEpoch, paused) { return call("POST", `/hub/v1/exposures/${id(exposureId)}/sharing`, { revision, sharingEpoch, paused }); },
@@ -404,6 +405,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     roomsV1: true,
     /** The Hub answers the rooms calls (seam 1) — otherwise only roomList() is meaningful. */
     roomsLive() { return roomsLive; },
+    teamsLive() { return teamsLive; },
     /**
      * → { ok, rooms: [{ id, kind: "direct" | "group", name, people, agents, online, unread, lastAt, lastText, lastAuthor }] }.
      * `?v=2` (Ridge, #3858): the combined list; GET /hub/v1/rooms itself stays direct-only for older cached tabs, and a
@@ -459,6 +461,12 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     createTeam(input) { return call("POST", "/hub/v1/teams", input); },
     updateTeam(teamId, patch) { return call("PATCH", `/hub/v1/teams/${id(teamId)}`, patch); },
     deleteTeam(teamId) { return call("DELETE", `/hub/v1/teams/${id(teamId)}`); },
+    async teamSuggestions(kind, q, teamId, signal) {
+      const s = new URLSearchParams({ kind: String(kind), q: String(q ?? "") });
+      if (teamId != null) s.set("teamId", String(teamId));
+      const out = await call("GET", `/hub/v1/teams/candidates?${s}`, undefined, signal);
+      return signal?.aborted ? { ok: false, status: 0, code: "unreachable" } : out;
+    },
     roomCreators() { return call("GET", "/hub/v1/admin/rooms/creators"); },
     saveRoomCreators(input) { return call("PUT", "/hub/v1/admin/rooms/creators", input); },
     adminRooms() { return call("GET", "/hub/v1/admin/rooms"); },

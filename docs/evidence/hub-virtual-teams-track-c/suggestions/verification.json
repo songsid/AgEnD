@@ -1,0 +1,35 @@
+[
+  {
+    "label": "after",
+    "command": [
+      "node_modules/.bin/vitest",
+      "run",
+      "tests/hub-team-suggestions-track-c.test.ts",
+      "--maxWorkers=2"
+    ],
+    "exit": 0,
+    "startLoad1": 2.01953125
+  },
+  {
+    "label": "source-types",
+    "command": [
+      "node_modules/.bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.json"
+    ],
+    "exit": 0,
+    "startLoad1": 1.65869140625
+  },
+  {
+    "label": "test-types",
+    "command": [
+      "node_modules/.bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "exit": 0,
+    "startLoad1": 2.48681640625
+  }
+]

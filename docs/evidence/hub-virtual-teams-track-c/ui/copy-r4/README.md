@@ -1,0 +1,9 @@
+# PM Team copy and draft feedback
+
+PM inspected all nine preferred actual-Team views on R integrationa930369fa and found no model/layout blocker. Required follow-ups: a verb on lost ask grants, a clear never-joined zh-TW value, and a visible unsaved roster mark because Add/Remove apply only on Save. Forwarded original receipt: xmsg-1794619804099-qe07qc; scoped instruction: xmsg-1794619906757-fzsdpf.
+
+Deletion now says “May ask {agent} · until…” / 「可以問 {agent} · 到…」. A known false signedIn still says “Not yet” / 「尚未加入」 and is pinned in both languages. A draft member without any observation previously showed a dash; it now explicitly says “Not checked yet” / 「尚未確認」, never inferring a false sign-in witness. The initial baseline's two unknown-state expectations used provisional “Checking…” wording; the final copy avoids implying an active check for an unsaved selection.
+
+The editor compares editable metadata and the selected person-ID set against the saved view; label/status refreshes and roster ordering do not make the draft dirty. A localized Unsaved changes mark appears beside Save and clears after a successful save. Roster changes remain draft-only; no write occurs on Add/Remove. The Hub skill explains this. Optional lead/colon/order/heading polish remains outside this required repair.
+
+Six new UI cases were assertion-red with10unselected; two of those baseline expectations changed from provisional checking to final unobserved wording as noted above. Final affected UI file16/16PASS. Previous24/3 and word-gate10selected/49unselected retain their separate overlapping scopes. No new screenshots, matrix, native, mutation or live rig: PM explicitly requested none; R's44 actual journey checks and nine preferred views carry as the scoped integration evidence. Current-head exact CI and ordinary delta clearance remain required; alpha.4 merge freeze remains.

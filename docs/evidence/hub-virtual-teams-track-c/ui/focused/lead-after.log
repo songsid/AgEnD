@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+
+ Test Files  2 passed (2)
+      Tests  2 passed | 16 skipped (18)
+   Start at  08:50:02
+   Duration  3.74s (transform 3.25s, setup 202ms, import 4.05s, tests 207ms, environment 0ms)
+

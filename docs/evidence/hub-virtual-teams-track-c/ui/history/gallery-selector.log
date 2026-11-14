@@ -1,0 +1,18 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+locator.click: Error: strict mode violation: getByRole('button', { name: 'Search', exact: true }) resolved to 2 elements:
+    1) <button type="button" class="side-row side-search" title="Search chats (Ctrl K)" aria-keyshortcuts="Control+K">…</button> aka getByRole('button', { name: 'Search', description: 'Search chats (Ctrl K)' })
+    2) <button type="button" class="btn hub-team-button">Search</button> aka locator('#main').getByRole('button', { name: 'Search' })
+
+Call log:
+[2m  - waiting for getByRole('button', { name: 'Search', exact: true })[22m
+
+    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c/scripts/manual/hub-teams-track-c.mts:57:86) {
+  log: [
+    "  - waiting for getByRole('button', { name: 'Search', exact: true })"
+  ]
+}
+
+Node.js v22.22.2

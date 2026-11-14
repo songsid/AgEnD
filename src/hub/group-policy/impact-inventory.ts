@@ -11,6 +11,7 @@ import { parseStoredHubGroupResource } from "./resources.js";
 import { HubGroupPolicyError } from "./store.js";
 import type { HubGroupAdminInventory } from "./admin-inventory.js";
 import type { HubGroupImpactPerson, HubGroupImpactResource } from "./admin-impact.js";
+import { hubTeamReader } from "../teams/store.js";
 
 export function createHubGroupImpactInventory(options: {
   db: Database.Database; transport: Pick<HubTransportStore, "read">; administrator: PersonKey;
@@ -47,10 +48,20 @@ export function createHubGroupImpactInventory(options: {
       const { resource } = parseStoredHubGroupResource(parseStrictJson(row.body), row.source);
       if (resource.kind === "asker") addResource(resource);
     }
-    const grants: unknown[] = [], groupSubjects = new Map<string, PersonKey>(), at = now();
+    const grants: unknown[] = [], teamObservations: unknown[] = [], groupSubjects = new Map<string, PersonKey>(), at = now();
     for (const row of db.prepare("SELECT * FROM hub_grants WHERE state='active' AND starts_at<=? AND expires_at>? ORDER BY id").all(at, at) as Parameters<typeof grantOf>[0][]) {
       const grant = grantOf(row), exposure = readExposure(db, grant.exposureId); if (!exposure) continue;
       const currentExposure = exposureOf(exposure);
+      if (grant.subject.kind === "team") {
+        if (!["published", "paused"].includes(currentExposure.state) || grant.exposureRevision !== currentExposure.revision
+          || personKeyString(grant.owner) !== personKeyString(currentExposure.owner) || !grant.permissions.includes("ask")
+          || !inventory.current({ kind: "exposure", id: exposure.id, revision: exposure.revision })) continue;
+        const team = hubTeamReader.read(db, grant.subject.teamId);
+        teamObservations.push([grant.subject.teamId, team]); grants.push(grant);
+        // Explicit local rosters, never AD enumeration. Only known Hub people enter the policy preview.
+        if (team) for (const id of team.members) if (labels.has(id)) addPerson(personFromString(id), true);
+        continue;
+      }
       if (grant.subject.kind === "group") {
         if (!["published", "paused"].includes(currentExposure.state) || grant.exposureRevision !== currentExposure.revision
           || personKeyString(grant.owner) !== personKeyString(currentExposure.owner) || !grant.permissions.includes("ask")
@@ -72,7 +83,7 @@ export function createHubGroupImpactInventory(options: {
     const entries = [...resources].sort(([a], [b]) => a.localeCompare(b)).map(([, r]) => r);
     ordinary.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-    const ordinaryFingerprint = digest({ people: persons, resources: ordinary, grants });
+    const ordinaryFingerprint = digest({ people: persons, resources: ordinary, grants, teamObservations });
     return { people: persons, resources: entries, ordinaryFingerprint,
       fingerprint: digest({ ordinaryFingerprint, lifecycle: entries.map(e => [e.resource, e.lifecycle]) }) };
   } };

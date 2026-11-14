@@ -186,7 +186,7 @@ export interface HubExposure {
 export interface HubGrant {
   id: GrantId; revision: Epoch; owner: PersonKey; exposureId: ExposureId;
   exposureRevision: Epoch; approvedBy: PersonKey; approvedAt: Millis;
-  subject: { kind: "person"; person: PersonKey } | { kind: "group"; group: PersonKey };
+  subject: { kind: "person"; person: PersonKey } | { kind: "group"; group: PersonKey } | { kind: "team"; teamId: string };
   /** Presentation only; the immutable subject key, never this label, determines access. */
   subjectLabel?: string;
   permissions: readonly ("ask" | "read-own-room")[];

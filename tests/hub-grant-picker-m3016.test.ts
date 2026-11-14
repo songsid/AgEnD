@@ -11,10 +11,11 @@ beforeAll(async () => {
 });
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } clients.setHubClient(null); panels.resetHubSession(); words.setLang("en", { store: false }); });
 const until = async (f: () => unknown) => { for (let i = 0; i < 100 && !f(); i++) await settle(5); };
-async function mount(mark = true, clientMark = true, overrides: Record<string, (body: any) => unknown> = {}) {
+async function mount(mark = true, clientMark = true, overrides: Record<string, (body: any) => unknown> = {}, teamMark = false) {
   const calls: any[] = [], c = clients.createHubWebClient({ fetchImpl: async (path: string, options: any) => {
     const body = options.body ? JSON.parse(options.body) : undefined; calls.push({ path, method: options.method, body });
-    const data = overrides[path] ? await overrides[path](body) : path === "/hub/v1/session" ? { signedIn: true, admin: false, csrf: "owned-fixture", displayName: "Owner", login: "owner", hub: { name: "Team Hub" }, features: mark ? ["grant-subjects-v1"] : [] }
+    const data = overrides[path] ? await overrides[path](body) : path === "/hub/v1/session" ? { signedIn: true, admin: false, csrf: "owned-fixture", displayName: "Owner", login: "owner", hub: { name: "Team Hub" }, features: [...(mark ? ["grant-subjects-v1"] : []), ...(teamMark ? ["teams-v1"] : [])] }
+      : path === "/hub/v1/teams" ? { teams: [{ id: group, name: "Project team" }] }
       : path === "/hub/v1/exposures" ? { mine: [{ id, owner: { realm: "corp", objectId: id }, revision: 3, displayName: "Research", state: "published", grants: [] }], askable: [] }
       : path.endsWith("/grant-subjects/search") ? body.kind === "group" ? { ok: true, groups: [{ objectId: group, cn: "Engineering", dn }], truncated: false } : { ok: true, people: [{ person, login: "alex", displayName: "Alex Chen" }], truncated: false }
       : path.endsWith("/activity") ? { activity: [] } : { pairings: [] };
@@ -84,4 +85,14 @@ it("a401 session end closes a picker with a held read; its late response cannot 
   await until(()=>p.root.querySelector("[data-grant-picker]"));const q=p.root.querySelector("input[type=search]") as any;q.value="Al";fire(q,"input");await until(()=>entered);
   ended=true;await c.activity(id);await settle(10);expect(p.root.querySelector("[data-grant-picker]")).toBeNull();release({ok:true,people:[{person,login:"alex",displayName:"Alex Stale"}],truncated:false});await settle(20);
   expect(p.root.querySelector("[data-grant-picker]")).toBeNull();expect(calls.filter(c=>c.path==="/hub/v1/grants")).toHaveLength(0);
+});
+
+it("offers a live Team subject with the same explicit expiry, only when Teams is offered", async () => {
+  const { p, calls } = await mount(true, true, {}, true); await until(() => p.root.querySelector("[data-grant-picker]"));
+  const kind = p.root.querySelector("[data-grant-kind]") as any; kind.value = "team"; fire(kind, "change"); await until(() => p.root.querySelector("[data-grant-team]"));
+  expect(p.root.textContent).toContain("current members");
+  const select = p.root.querySelector("[data-grant-team]") as any; select.value = group; fire(select, "change"); await settle(5);
+  const days = p.root.querySelector("[data-grant-days]") as any; days.value = "90"; fire(days, "change"); await settle(5); fire(p.root.querySelector("form")!, "submit");
+  await until(() => calls.some(c => c.path === "/hub/v1/grants"));
+  expect(calls.find(c => c.path === "/hub/v1/grants").body).toEqual({ exposureId: id, exposureRevision: 3, days: 90, subject: { kind: "team", teamId: group } });
 });
