@@ -5,7 +5,7 @@
 // - with @所有 Agent in the text, a line above says how many answer now and how many after they come back;
 // - under the box, always: messages with no @agent are seen only by the people in the room;
 // - `/` is plain text here (no slash commands); a refusal is worded where the Fleet chat words "Not sent: …".
-import { html, useState, useRef } from "/assets/app-html.js";
+import { html, useEffect, useState, useRef } from "/assets/app-html.js";
 import { ComposerInput, touchScreen } from "/assets/chat-composer.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -14,6 +14,15 @@ import { presenceDot } from "./hub-room-presence.js";
 
 const ONLINE = new Set(["online", "idle", "working"]);
 const agentsOf = (detail) => (detail?.members || []).filter((m) => m.kind === "agent" || m.kind === "later");
+
+/** Lumen (spec §4): where the room's long placeholder doesn't fit (a phone), the short one. */
+const SHORT_QUERY = "(max-width: 599px)";
+function useShortPlaceholder() {
+  const q = typeof matchMedia === "function" ? matchMedia(SHORT_QUERY) : null;
+  const [short, setShort] = useState(() => !!q?.matches);
+  useEffect(() => { if (!q) return; const on = () => setShort(q.matches); q.addEventListener?.("change", on); return () => q.removeEventListener?.("change", on); }, []);
+  return short;
+}
 
 /** The @ token being typed at `caret` (from an `@` after a space or the start to the caret), or null. */
 export function mentionAt(value, caret) {
@@ -70,6 +79,7 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
   const at = mentionAt(value, caret), options = at ? mentionOptions(detail, at.query) : [];
   const palette = at && options.length ? options : null, chosen = palette ? palette[Math.min(pick, palette.length - 1)] : null;
   const room = detail?.room || {}, group = room.kind === "group";
+  const short = useShortPlaceholder();
   // 「在這裡 @ 它」 from the members panel: the mention goes into the box, after what is there.
   if (insertRef) insertRef.current = (text) => { setValue((v) => `${v && !/\s$/.test(v) ? `${v} ` : v}${text} `); setTimeout(() => input.current?.focus(), 0); };
   const complete = (o) => {
@@ -103,7 +113,7 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     ${group && value.includes(hroom("mentionAll")) ? html`<p class="note hub-room-allbar" role="status">${allBar(detail)}</p>` : null}
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status"><span class="reply-text">${reply.sender ? `${reply.sender} · ` : ""}${String(reply.text || "").slice(0, 80)}</span>
       <button type="button" class="icon-btn reply-cancel" title=${hroom("cancel")} aria-label=${hroom("cancel")} onClick=${() => { onReply(null); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button></div>` : null}
-    <${ComposerInput} inputRef=${input} value=${value} placeholder=${room.assistant ? hroom("composerAssistant") : group ? hroom("composer", room.name || "") : hroom("composerDirect", room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
+    <${ComposerInput} inputRef=${input} value=${value} placeholder=${room.assistant ? hroom("composerAssistant") : group ? (short ? hroom("composerShort") : hroom("composer", room.name || "")) : hroom("composerDirect", room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
       controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${chosen ? optId(chosen) : undefined}
       stop=${{ hidden: true, disabled: true, title: t("chat.stopReply"), label: t("chat.stopReply"), onClick: () => {} }}
       send=${{ hidden: false, disabled: !value.trim() || busy, label: t("chat.send"), onClick: () => { void send(); } }} />

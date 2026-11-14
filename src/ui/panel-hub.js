@@ -416,7 +416,7 @@ export function HubSide({ onPick } = {}) {
  * count, one-line empty states) — the sidebar's (HubSide) and, on a phone, the chats' home page's (with its own New chat
  * row and the filter always shown): one drawing, not two (Argon #9). `quietEmpty`: the page beside it already says "No chats yet".
  */
-function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null }) {
+function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null, onNewRoom = null }) {
   const current = roomParam();
   const star = useRoomStar(rs.rooms, useSession()?.login);   // S-145: favourites, as the Fleet sidebar's
   const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
@@ -424,6 +424,8 @@ function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, 
   const always = !!onNew;                              // the home page's list: its filter is always there (when there's a list to filter)
   return html`<div class="view-roster inst-nav hub-side-rooms"><div data-trust="navigation" class="side-section">
       ${onNew ? html`<button type="button" class="side-row side-new" onClick=${onNew}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>` : null}
+      ${/* Lumen (spec §2): on the phone's list too, beside New chat — not only in the drawer. */ ""}
+      ${onNewRoom ? html`<button type="button" class="side-row side-new hub-new-room" onClick=${onNewRoom}><${Icon} name="room" /><span class="grow">${hroom("newRoomTitle")}</span></button>` : null}
       ${!rs.rooms.length ? html`<div class="inst-head"><h2 class="side-label">${hc("chats")}</h2></div>` : null}
       ${filtering || q || (always && rs.rooms.length) ? html`<label class="hub-side-filter"><${Icon} name="search" size=${14} /><input ref=${filterRef} type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
         onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape") { setQ(""); setFiltering(false); } }} /></label>` : null}
@@ -438,10 +440,13 @@ function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, 
 /** The phone's chats home: the same roster, with New chat at its head and the filter in place. */
 function HubHomeList() {
   const rs = useRooms();
-  const [q, setQ] = useState(""), [filtering, setFiltering] = useState(false), [picking, setPicking] = useState(false);
+  const [q, setQ] = useState(""), [filtering, setFiltering] = useState(false), [picking, setPicking] = useState(false), [newRoom, setNewRoom] = useState(false);
   const filter = useRef(null);
-  return html`<${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onNew=${() => setPicking(true)} />
-    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}`;
+  return html`<${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onNew=${() => setPicking(true)}
+      onNewRoom=${roomsLive() && rs.me?.canCreateRooms ? () => setNewRoom(true) : null} />
+    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
+    ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
+      onClose: () => setNewRoom(false), onOpenRoom: (id) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(id)); } }} />` : null}`;
 }
 
 /**
@@ -515,7 +520,8 @@ function HubChats() {
   const room = id ? (listed ? listed.legacy || listed : rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
   // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
   if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()}
-    rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} />`;
+    rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} goList=${() => navigate("/ui/hub")}
+    onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />

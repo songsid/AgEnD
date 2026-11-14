@@ -13,6 +13,9 @@ import { RailFrame } from "/assets/side-rail.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Empty } from "/assets/ui-states.js";
 import { Dialog } from "/assets/ui-dialog.js";
+import { Menu } from "/assets/ui-menu.js";
+import { t } from "/assets/app-i18n.js";
+import "./hub-strings.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
@@ -64,7 +67,7 @@ export const ANSWERS_SHOWN = 3, FOLD_FROM = 6;
  * Seam-1 messages (newest last) → the thread's messages. `ids`: a Map from a message id to its number in this thread
  * (the thread's keys and quotes are numbers), extended here in arrival order and kept by the caller.
  */
-export function toThreadMessages(messages, { meId, ids, direct = false, expanded = new Set() }) {
+export function toThreadMessages(messages, { meId, ids, direct = false, expanded = new Set(), summarise = false }) {
   const out = [], byId = new Map(messages.map((m) => [m.id, m]));
   // Each question's answers that have text, in arrival order: past ANSWERS_SHOWN they wait behind one 「展開其餘 N 則」.
   const answersOf = new Map();
@@ -78,13 +81,13 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     if (m.answerTo && !m.text && (m.stage === "queued" || m.stage === "working")) continue;
     // A question with FOLD_FROM answers or more shows its first ANSWERS_SHOWN; the rest wait behind one link right under the
     // last one shown (until it is opened). Fewer than FOLD_FROM: every answer shows.
-    let foldAfter = null;
-    if (m.answerTo && !direct && !expanded.has(m.answerTo)) {
+    let foldAfter = null, lastShown = false;
+    if (m.answerTo) {
       const list = answersOf.get(m.answerTo) || [], at = list.indexOf(m.id);
-      if (list.length >= FOLD_FROM) {
-        if (at >= ANSWERS_SHOWN) continue;
-        if (at === ANSWERS_SHOWN - 1) foldAfter = { label: hroom("expandRest", String(list.length - ANSWERS_SHOWN)), arg: m.answerTo };
-      }
+      const folded = !direct && !expanded.has(m.answerTo) && list.length >= FOLD_FROM;
+      if (folded && at >= ANSWERS_SHOWN) continue;
+      if (folded && at === ANSWERS_SHOWN - 1) foldAfter = { label: hroom("expandRest", String(list.length - ANSWERS_SHOWN)), arg: m.answerTo };
+      lastShown = at >= 0 && at === (folded ? ANSWERS_SHOWN - 1 : list.length - 1);
     }
     const id = num(m.id), mine = kind === "person" && author.id === meId;
     if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ts: iso(m.at), text: systemText(m), bare: true }); continue; }
@@ -92,10 +95,14 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     const quoted = m.replyTo ? byId.get(m.replyTo) : m.answerTo ? byId.get(m.answerTo) : null;
     const state = mine ? askState(m.ask) : null;
     out.push({ boot: BOOT, id, role: kind === "person" ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
+      ...(kind === "person" && !mine ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
       roomMessage: m.id, ...(state?.delivery ? { delivery: state.delivery } : {}),
       ...(quoted ? { replyTo: { boot: BOOT, id: num(quoted.id), sender: authorLine(quoted.author, quoted.author?.id === meId, direct), text: String(quoted.text || "").slice(0, 120) } } : {}),
       ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
     if (foldAfter) out.push({ boot: BOOT, id: num(`expand:${foldAfter.arg}`), role: "status", sender: "", text: "", bare: true, fold: true, action: foldAfter });
+    // Spec §10: once an @所有 Agent has answers, under the last one shown, 「請房間助理整理」 (it sends 「@房間助理 整理上面的回答」).
+    if (summarise && lastShown && byId.get(m.answerTo)?.mentions?.includes("all"))
+      out.push({ boot: BOOT, id: num(`summarise:${m.answerTo}`), role: "status", sender: "", text: "", bare: true, action: { label: hroom("askSummarise"), arg: `summarise:${m.answerTo}` } });
     const line = askState(m.ask)?.line;
     // Its status, not an event: under it, without a time of its own.
     if (line) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", text: line, progressOf: m.id, bare: true });
@@ -115,8 +122,10 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
   const st = { live: true, detail: null, messages: [], loaded: false, error: null, removed: false, more: false, view: [] };
   // The room's committed order (Ridge: `sequence`, from the stored row): a waiting answer replaced in place, or an event that
   // arrives out of order, is drawn where the room has it. Rows without it (a direct chat, an older Hub) keep arrival order.
+  const closedNow = () => st.removed || st.detail?.room?.archived === true;
   const ordered = () => { if (st.messages.length && st.messages.every((m) => Number.isSafeInteger(m.sequence))) st.messages.sort((a, b) => a.sequence - b.sequence); };
-  const changed = () => { ordered(); st.view = toThreadMessages(st.messages, { meId: st.detail?.me?.id || meId, ids, direct: st.detail?.room?.kind === "direct", expanded }); for (const fn of [...subs]) { try { fn(); } catch { /* a subscriber's own failure */ } } };
+  const changed = () => { ordered(); st.view = toThreadMessages(st.messages, { meId: st.detail?.me?.id || meId, ids, direct: st.detail?.room?.kind === "direct", expanded,
+    summarise: st.detail?.room?.kind === "group" && (st.detail?.members || []).some((x) => x.kind === "assistant") && !closedNow() }); for (const fn of [...subs]) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const upsert = (m) => {
     if (!m || m.roomId !== roomId || typeof m.id !== "string") return;
     const i = st.messages.findIndex((x) => x.id === m.id || (m.idempotencyKey && x.idempotencyKey === m.idempotencyKey));
@@ -146,7 +155,7 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
   return {
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     detail: () => st.detail, raw: () => st.messages, messages: () => st.view, loaded: () => st.loaded, error: () => st.error,
-    closed: () => st.removed || st.detail?.room?.archived === true, removed: () => st.removed, more: () => st.more,
+    closed: closedNow, removed: () => st.removed, more: () => st.more,
     room: () => ({ ...(st.detail?.room || {}), ownerName: "" }),
     async send(text, { mentions = [], replyTo } = {}) {
       const idempotencyKey = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^A-Za-z0-9-]/g, "");
@@ -199,7 +208,7 @@ function useMembersPanel() {
  * Fleet chat's thread (panel-hub.js's HubThread, given as `Thread`: the thread wiring is one), the room's composer, and
  * the members panel on the right. `client`: the Hub client; `me`: { id } from the session.
  */
-export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {} }) {
+export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {} }) {
   const store = useMemo(() => createRoomStore(roomId, { client, meId }), [roomId]);
   useEffect(() => () => store.stop(), [store]);
   const [, tick] = useState(0);
@@ -212,6 +221,15 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // dev-claude2's room settings (hub-room-settings.js), opened from the header or the members panel.
   const [settings, setSettings] = useState(null);
   const openSettings = () => { import("./hub-room-settings.js").then((m) => { if (typeof m.RoomSettings === "function") setSettings(() => m.RoomSettings); }, () => {}); };
+  // Lumen (spec §3, §7): 「離開房間」 for everyone in a group room, through U2's leaveRoom (the last manager is told why not).
+  const [leaveError, setLeaveError] = useState("");
+  const leave = async () => {
+    setLeaveError("");
+    const m = await import("./hub-room-settings.js").catch(() => null);
+    if (typeof m?.leaveRoom !== "function") return;
+    const r = await m.leaveRoom(client, roomId, store.detail()?.me?.id || meId);
+    if (r.ok) onLeft(); else setLeaveError(r.text);
+  };
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
   // The Hub assistant's one-to-one is named by its flag, in this viewer's words (its stored name is a fallback).
   const title = room.assistant ? hroom("hubAssistant") : String(room.name || "");
@@ -224,7 +242,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const labels = () => [hroom("mentionAll"), hroom("mentionAssistant"), ...(store.detail()?.members || []).filter((m) => m.kind !== "assistant").map((m) => `@${m.name}`)];
   const extra = {
     isUser: (x) => x.mine === true, canReply: () => !store.closed(),
-    mentionLabels: labels, statusAction: (arg) => store.expand(arg),
+    mentionLabels: labels,
+    // A line's one action: 「展開其餘 N 則」, or 「請房間助理整理」 (spec §10: the same as sending 「@房間助理 整理上面的回答」).
+    statusAction: (arg) => { if (String(arg).startsWith("summarise:")) { if (!store.closed()) void store.send(hroom("summarisePrompt"), { mentions: ["assistant"] }); } else store.expand(arg); },
     startReply: (x) => { setReply(x); setTimeout(() => input.current?.focus(), 0); },
     findQuoted: async () => { await store.older(); return false; },
   };
@@ -241,13 +261,19 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId}>
     <section class="hub-chat-main">
       <header class="hub-chat-head" data-trust="panel-content">
+        ${/* Lumen (spec §2): on a phone the header starts with the Fleet chat's back to the list. */ ""}
+        <a class="icon-btn hub-back only-narrow" href="/ui/hub" aria-label=${t("hub.back")} title=${t("hub.back")}
+          onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); goList(); }}><${Icon} name="back" /></a>
         <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
         <span class="hub-chat-title"><strong>${title}</strong><span class="s">${line2}</span></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}
-        ${group && detail?.me?.role === "manager" ? html`<button type="button" class="icon-btn hub-room-settings-open" title=${hroom("roomSettings")} aria-label=${hroom("roomSettings")}
-          onClick=${openSettings}><${Icon} name="settings" size=${18} /></button>` : null}
+        ${group && detail?.me ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${[
+          detail.me.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
+          { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } },
+        ].filter(Boolean)} />` : null}
       </header>
+      ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
         emptyView=${room.assistant ? html`<div class="hub-assistant-empty"><${Empty} icon="bot" title=${hroom("hubAssistant")} hint=${hroom("hubAssistantEmpty")} /></div>`
           : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />

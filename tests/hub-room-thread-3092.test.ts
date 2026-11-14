@@ -261,20 +261,25 @@ describe("a room on the page", () => {
       expect(msgs(pg).some((m) => m.textContent.includes("please report"))).toBe(true);
     } finally { restore(); }
   });
-  it("a room manager has the room settings button; a member does not; the members toggle is the team icon", async () => {
+  // Lumen (spec §3, S-150): the header's menu holds Room settings (managers) and Leave room (everyone).
+  const headerMenu = async (pg: AppPage) => {
+    await until(() => pg.root.querySelector(".hub-room-page .hub-room-menu > button"));
+    const trigger = pg.root.querySelector(".hub-room-page .hub-room-menu > button") as any;
+    fire(trigger, "pointerdown"); fire(trigger, "click"); await settle(5);
+    return [...pg.root.querySelectorAll(".hub-room-page .hub-room-menu [role=menuitem]")].map((b: any) => b.textContent.trim());
+  };
+  it("a room manager's header menu: Room settings, Leave room; the members toggle is the team icon", async () => {
     const mgr = await roomPage("room-weekly");
     try {
-      await until(() => mgr.pg.root.querySelector(".hub-room-page .hub-room-settings-open"));
-      expect(mgr.pg.root.querySelector(".hub-room-page .hub-room-settings-open")!.getAttribute("aria-label")).toBe("Room settings");
+      expect(await headerMenu(mgr.pg)).toEqual(["Room settings", "Leave room"]);
+      expect(mgr.pg.root.querySelector(".hub-room-page .hub-room-menu > button")!.getAttribute("aria-label")).toBe("Menu");
       expect(mgr.pg.root.querySelector(".hub-room-page .hub-chat-head")!.textContent).not.toContain("\u{1F465}");
     } finally { mgr.restore(); }
   });
-  it("a room member has no room settings button", async () => {
+  it("a room member's header menu has Leave room only (no Room settings)", async () => {
     const member = await roomPage("room-rd");
     try {
-      await until(() => member.pg.root.querySelector(".hub-room-page .composer-box"));
-      await settle(20);
-      expect(member.pg.root.querySelector(".hub-room-page .hub-room-settings-open")).toBeNull();
+      expect(await headerMenu(member.pg)).toEqual(["Leave room"]);
     } finally { member.restore(); }
   });
   it("「Show the other N」 opens a question's remaining answers in place (the thread's own click)", async () => {
@@ -285,7 +290,8 @@ describe("a room on the page", () => {
       const btn = pg.root.querySelector(".hub-room-page .thread .st-action") as any;
       expect(btn.textContent).toBe("Show 3 more");
       fire(btn, "click"); await until(() => answers() === 6);
-      expect([answers(), pg.root.querySelector(".hub-room-page .thread .st-action")]).toEqual([6, null]);
+      // The fold link is gone; what stays under the last answer is 「請房間助理整理」 (spec §10, S-150).
+      expect([answers(), [...pg.root.querySelectorAll(".hub-room-page .thread .st-action")].map((b: any) => b.textContent)]).toEqual([6, ["Ask the room assistant to summarise"]]);
     } finally { restore(); }
   });
   it("members may not @all here: the refusal is worded, no resend offered", async () => {

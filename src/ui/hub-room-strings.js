@@ -28,6 +28,7 @@ register("hubRoom", {
     workingOne: "{0} is working on it", workingMany: "{0} agents are working",
     // §4 composer
     composer: "Speak in “{0}”; @ an agent to have it answer",
+    composerShort: "Message, or @ an agent to ask",   // Lumen (spec §4): a phone's width
     mentionAllHint: "{0} will all answer", mentionAssistant: "@Room assistant",
     mentionAssistantHint: "Provided by the Hub",
     allBar: "{0} agents, {1} online, {2} will answer after they come online",
@@ -135,6 +136,7 @@ register("hubRoom", {
     laterAnswer: "{0}（{1}）· 上線後回答", noAnswer: "沒有回答",
     workingOne: "{0} 正在處理", workingMany: "{0} 個 Agent 正在處理",
     composer: "在「{0}」說話；@ 一個 Agent 請它回答",
+    composerShort: "說話，或 @ Agent 請它回答",
     mentionAllHint: "{0} 個都會回答", mentionAssistant: "@房間助理",
     mentionAssistantHint: "Hub 提供",
     allBar: "{0} 個 Agent 中 {1} 個在線上，{2} 個上線後回答",
