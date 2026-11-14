@@ -1,0 +1,11 @@
+# Team composition checkpoint
+
+The Team provider, grants and shared editor come from Track C. This change mounts one Team service for HTTP CRUD, roster suggestions, room pickers, creator rights and grant evaluation. `/teams/candidates` precedes the ID route. The service retains admin/lead rules; the HTTP adapter applies the existing session and CSRF handling. Caller dependencies remain live through a mount-local prototype, and the caller's dependency object is not modified.
+
+The production database plan registers the Team and Team-grant migrations after the owner-grant subject schema. An injected older HTTP entry without that schema receives neither the Team migrations nor the Team factory. The session advertises `teams-v1` only with the mounted service. Room detail includes Team grants among its candidates and still proves each through the existing grant path.
+
+The new HTTP regression first failed because `/teams` returned 404. Six HTTP/SQLite cases and the sealed production factory case then passed (7 selected checks). A separate existing older-entry factory case exposed the missing grant-schema dependency; after the registry correction, both it and the production Team factory case passed. Source and test typechecks also pass on the combined provider/UI head recorded in verification.json.
+
+`scripts/manual/hub-rooms/teams.mts` prepares two journeys against the real routes and shared UI: English desktop and zh-TW phone. It uses inert directory facts and agent input, with no API response fixture. It checks admin creation, lead editing, live Team grants/creator rights, room membership snapshots and Team deletion. The combined browser run and Lumen's Team acceptance remain pending at this checkpoint. Earlier consent/routing evidence retains its original scope.
+
+The new schema is a forward migration. Preserve the pre-upgrade database backup for a downgrade; do not erase Team, grant or room records. Removing the mount makes the routes unavailable and does not reverse stored migrations.

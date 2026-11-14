@@ -1,0 +1,42 @@
+{
+  "sourceCheckpoint": "7fe8690ea9648882ffd56a088dccc6bc781df93a",
+  "rMountCommit": "6bdff6d9b5f969581bbd464a98a6715213109a77",
+  "provider": "8b831103abb13b807adcec34b4da367af169056d",
+  "u1": "d67f4f70aa16aa9228cad2c8f514996dc83c0995",
+  "assistantUsage": "e19b78b8a0336931060380089046865c2fe6078d",
+  "bindings": {
+    "src/hub/compose/server.ts": "5d73c807f0a2e1ad43a4e56107b8a1aa6588b1a9c0db37a417497df662b389e3",
+    "src/hub/http/compose.ts": "21d4631ba4fdb70e5e291057aad5c0e6033c5ba1b5c926168850bb1a381d63bf",
+    "src/hub/http/deps.ts": "5699526abb4decd37f19bcab93f49b2a0f40cf23ac431ec6983eb8d042dbe9ee",
+    "src/hub/rooms/service.ts": "a42c9de2cd98e31089d479693bb9592be3c9c55112dccf211897acda4e73419e",
+    "tests/hub-compose.test.ts": "970e9b9e4e586ded4956230145d81deb67afa58f7287b8c176b16772fa3e08d0",
+    "tests/hub-room-teams-integration-r3.test.ts": "8aa5a71695536e9fa43da2eeb5a2669f80e5ea3781e13281cad4e337b5135c2d",
+    "scripts/manual/hub-rooms/teams.mts": "1eeda8de7c719823bb6c2add4f47dc9c0523360286d6806be5659900f3e93138"
+  },
+  "focused": {
+    "initialMount": {
+      "passed": 7,
+      "files": 2,
+      "skipped": 132
+    },
+    "olderEntryCorrection": {
+      "passed": 2,
+      "files": 1,
+      "skipped": 131
+    },
+    "failFirst": "Missing Team HTTP route returned404; existing older injected entry then caught missing grant subject schema."
+  },
+  "types": [
+    {
+      "command": "node_modules/.bin/tsc --noEmit -p tsconfig.json",
+      "exit": 0,
+      "seconds": 8.56
+    },
+    {
+      "command": "node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0,
+      "seconds": 24.93
+    }
+  ],
+  "browser": "Prepared, not yet executed at this checkpoint; no full S-142 acceptance claim."
+}
