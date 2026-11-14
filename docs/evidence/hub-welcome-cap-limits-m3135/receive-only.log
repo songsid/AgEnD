@@ -1,0 +1,24 @@
+RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-welcome-cap-limits-m3135
+
+ ❯ tests/hub-protocol.test.ts (29 tests | 1 failed | 27 skipped) 28ms
+     × keeps the Hub sending at most 16 welcome capabilities for older members 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-protocol.test.ts > Hub P1 closed protocol > keeps the Hub sending at most 16 welcome capabilities for older members
+AssertionError: expected [Function] to throw an error
+ ❯ tests/hub-protocol.test.ts:27:99
+     25|       expect(JSON.parse(encodeServerFrame(frame))).toEqual(frame);
+     26|     }
+     27|     for (const count of [17, 32]) expect(() => encodeServerFrame(welco…
+       |                                                                                                   ^
+     28|   });
+     29|   it("lets the Hub receive 32 hello capabilities, refusing 33", () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 27 skipped (29)
+   Start at  06:16:13
+   Duration  511ms (transform 198ms, setup 97ms, import 228ms, tests 28ms, environment 0ms)

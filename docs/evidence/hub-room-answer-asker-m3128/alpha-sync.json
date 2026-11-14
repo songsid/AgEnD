@@ -1,0 +1,12 @@
+{
+  "reviewedBase": "49aa5d15cc196154c73da074959c49bfe7027ee3",
+  "reviewedHead": "f178f33d4a4d035f470466ec7a0d7312ff779c98",
+  "incomingAlpha": "1583d616f6935bbe43103b4d38d87e5dd3e36b24",
+  "syncCommit": "996da3b42977e14b6fe6b3a7392c53c4cea27538",
+  "expectedTree": "493d257db5d470d62fc08681f3042fc46cd3a64f",
+  "resolvedTree": "493d257db5d470d62fc08681f3042fc46cd3a64f",
+  "wholeTreeEqual": true,
+  "ownPatchLinesEqual": true,
+  "proof": "In an isolated index, read incomingAlpha then apply the exact binary, full-index, zero-context diff from reviewedBase to reviewedHead with git apply --cached --unidiff-zero. The resulting tree equals syncCommit's tree. Every own added/removed line also equals the reviewed patch.",
+  "testsRerun": false
+}

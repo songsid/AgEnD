@@ -7,7 +7,8 @@
  *                        chat panel on a desk (the sidebar is the fixture's, not the conversation);
  *   room.<case>.png    — a Hub room (the real Hub listener, tests/support/hub-rooms-fixture.ts with this transcript), its
  *                        conversation column on a desk;
- *   parity.<case>.png  — the two next to each other, Fleet on the left.
+ *   parity.<case>.png  — the two next to each other, Fleet on the left;
+ *   menu.<case>.png    — S-152: the room's message menu (a desk's right-click, a phone's long press).
  * Cases: the smoke fixture's matrix (MATRIX=quick: desk-light-en + phone-dark-zh-TW). No account, no network, no fleet.
  *   PW_DIR=<dir whose node_modules has playwright-core> REPO=$PWD OUT=<dir> [MATRIX=quick] npx tsx scripts/manual/hub-rooms/parity.mts
  */
@@ -133,6 +134,18 @@ try {
     await hp.evaluate(async () => { await document.fonts.ready; }); await hp.waitForTimeout(500);
     await (c.device === "desk" ? hp.locator(".hub-chat-main").first() : hp).screenshot({ path: join(out, `room.${tag}.png`) }); keep(`room.${tag}.png`);
     await hp.evaluate(SHIM); const roomLook = await hp.evaluate(MEASURE, ".hub-room-page");
+    // S-152: the room's message menu — a desk's right-click, a phone's long press (a real touch, 700 ms) on an answer's
+    // header (its words would be the browser's text selection): Reply and Copy text, as the Fleet chat's menu.
+    const head = hp.locator(".hub-room-page .thread .msg.agent .meta").last(), box = await head.boundingBox();
+    if (c.device === "desk") await head.click({ button: "right" });
+    else {
+      const cdp = await hctx.newCDPSession(hp), at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] }); await hp.waitForTimeout(700);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    }
+    await hp.waitForSelector(".msg-menu", { timeout: 5000 });
+    const menuItems = await hp.locator(".msg-menu button").allTextContents();
+    await hp.screenshot({ path: join(out, `menu.${tag}.png`) }); keep(`menu.${tag}.png`);
     await hctx.close();
     // Side by side.
     const v = VIEWPORTS[c.device], sctx = await fx.browser.newContext({ viewport: { width: v.width * 2 + 24, height: v.height + 40 } }), sp = await sctx.newPage();
@@ -141,7 +154,7 @@ try {
     await sp.setContent(`<body style="margin:0;background:#888;font:14px sans-serif;display:flex;gap:24px">${[["Fleet chat", `fleet.${tag}.png`], ["Hub room", `room.${tag}.png`]]
       .map(([t, n]) => `<figure style="margin:0"><figcaption style="height:40px;line-height:40px;color:#fff;font-weight:600;padding-left:8px">${t}</figcaption><img src="${img(n)}" width="${dims(n).w}" height="${dims(n).h}"></figure>`).join("")}</body>`);
     await sp.screenshot({ path: join(out, `parity.${tag}.png`), fullPage: true }); keep(`parity.${tag}.png`); await sctx.close();
-    receipt.cases[tag] = { errors, fleetCsp, look: { fleet: fleetLook, room: roomLook } };
+    receipt.cases[tag] = { errors, fleetCsp, menuItems, look: { fleet: fleetLook, room: roomLook } };
     console.log(`${errors.length || fleetCsp.length ? "FAIL" : "PASS"} ${tag}`, errors.length ? JSON.stringify(errors) : "");
   }
 } finally {

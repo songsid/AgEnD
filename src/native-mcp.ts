@@ -3,7 +3,7 @@ import { agentCredentialPolicy } from "./agent-credentials.js";
 import { nativeAgentAdmissionContext } from "./native-agent-admission.js";
 import { windowsCliEnabled } from "./windows-cli.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { dispatchAgentOperation, type AgentEndpointContext } from "./agent-endpoint.js";
 import { TOOLS, OUTBOUND_TOOL_SCHEMAS } from "./channel/mcp-tools.js";
 import { dashboardRefusalIn } from "./dashboard-permissions.js";
@@ -18,13 +18,14 @@ const TTL_MS = 6 * 60_000;
 const MAX_BYTES = 64 * 1024;
 const MAX_CALLS = 64;
 const OPS: Readonly<Record<string,string>> = Object.freeze({
+  hub_room_list:"hub-room-list", hub_room_post:"hub-room-post", hub_room_members:"hub-room-members", hub_people_search:"hub-people-search",
   list_instances:"list", describe_instance:"describe", task:"task", send_to_instance:"send",
   delegate_task:"delegate", request_information:"ask", report_result:"report", delivery_status:"delivery-status",
 });
-const READ_TOOLS = new Set(["list_instances","describe_instance","task","delivery_status"]);
+const READ_TOOLS = new Set(["hub_room_list","hub_room_members","hub_people_search","list_instances","describe_instance","task","delivery_status"]);
 const READ_TASK_ACTIONS = ["list","get","mine","projects"];
 type ToolResult = { content:Array<{type:"text";text:string}>;isError?:boolean };
-interface Call { digest:string; result:Promise<ToolResult> }
+interface Call { operationId:string; digest:string; result:Promise<ToolResult> }
 interface Session {
   token:string; instance:string; requestId:string; agentId:string; backend:string;
   sandbox:NativeSandbox; policy:string; expires:number; stillCurrent:()=>boolean; closed:boolean;
@@ -129,7 +130,8 @@ export class NativeMcpSessions {
   }
   private allowed(session:Session,name:string):boolean {
     const config=this.ctx.fleetConfig?.instances[session.instance];
-    return Object.hasOwn(OPS,name) && (!this.readOnly(session) || READ_TOOLS.has(name))
+    return (!["hub_room_list","hub_room_post","hub_room_members","hub_people_search"].includes(name) || this.ctx.hubRoomToolsAvailable?.() === true)
+      && Object.hasOwn(OPS,name) && (!this.readOnly(session) || READ_TOOLS.has(name))
       && mayUseTool(resolveToolSet(config,session.instance),name) && !dashboardRefusalIn(this.ctx.fleetConfig,session.instance,name);
   }
   private canCall(session:Session,name:string,args:Record<string,unknown>):boolean {
@@ -154,7 +156,7 @@ export class NativeMcpSessions {
       const scoped=readTask
         ? {...tool,description:`Read-only task lookup. Allowed actions: ${READ_TASK_ACTIONS.join(", ")}.`,inputSchema:{...tool.inputSchema,properties:{...tool.inputSchema.properties,action:{type:"string",enum:READ_TASK_ACTIONS}}}}
         : tool;
-      return {...scoped,annotations:{readOnlyHint:tool.name==="list_instances" || tool.name==="describe_instance" || tool.name==="delivery_status" || readTask}};
+      return {...scoped,annotations:{readOnlyHint:tool.name==="list_instances" || tool.name==="describe_instance" || tool.name==="delivery_status" || ["hub_room_list","hub_room_members","hub_people_search"].includes(tool.name) || readTask}};
     });
   }
 
@@ -199,10 +201,11 @@ export class NativeMcpSessions {
       const old=session.calls.get(body.callId);
       if(old && old.digest!==digest){json(res,409,{error:"Native MCP callId belongs to different arguments"});return;}
       if(!old && session.calls.size>=MAX_CALLS){json(res,429,{error:"Native MCP turn call limit reached"});return;}
-      const call=old ?? {digest,result:Promise.resolve().then(async()=>{
+      const operationId=old?.operationId ?? randomUUID();
+      const call=old ?? {operationId,digest,result:Promise.resolve().then(async()=>{
         if(!this.current(session) || !this.canCall(session,name,args))return toolError("Native MCP capability or tool access was revoked");
         try {
-          const value=await dispatchAgentOperation(this.dispatcherContext(session,name,args),session.instance,OPS[name]!,args);
+          const value=await dispatchAgentOperation(this.dispatcherContext(session,name,args),session.instance,OPS[name]!,args,operationId,()=>this.current(session) && this.canCall(session,name,args));
           if(name==="report_result" && !failed(value) && value!==undefined && typeof args.target_instance==="string" && args.target_instance
             && typeof args.correlation_id==="string" && args.correlation_id) {
             const reported=session.reported.get(args.target_instance) ?? new Set<string>();

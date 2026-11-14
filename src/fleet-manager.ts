@@ -1664,7 +1664,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { NativePaneManager } = await import("./native-pane-manager.js");
     if (this.paneManager) return this.paneManager;
     const store = windowsAgentsFor(this, this.runtimeWindowsExecutor());
-    const allowed = (name: string, tool: string): boolean => nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
+    const allowed = (name: string, tool: string): boolean => (!["hub_room_list","hub_room_post","hub_room_members","hub_people_search"].includes(tool) || this.hubRoomToolsAvailable()) && nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
@@ -1717,14 +1717,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (!isWindowsInstance(this.fleetConfig?.instances[target])) return { result: null, error: "Native panes can only read Windows runtime model inventories" };
           return { result: await this.listModelCatalog({ instanceName: target }) };
         }
-        const ops: Record<string, string> = { list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
+        const ops: Record<string, string> = { hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",hub_room_members:"hub-room-members",hub_people_search:"hub-people-search",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
           delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
         const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
         return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool),
           dispatch: (tool, args) => ops[tool] ? dispatchAgentOperation(nativeAgentAdmissionContext(this, {
             instance: name, current: () => current() && allowed(name, tool), taskAllowed: () => current() && allowed(name, "task"),
-          }), name, ops[tool], args, input.operationId) : undefined });
+          }), name, ops[tool], args, input.operationId, () => current() && allowed(name,tool)) : undefined });
       },
     });
   }
@@ -2233,6 +2233,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubRuntimeCreated(): Promise<import("./hub/runtime.js").HubRuntime> {
     this.hubRuntimeInit ??= (async () => {
       const { HubRuntime } = await import("./hub/runtime.js");
+      const { verifyRoomReceipt } = await import("./hub/member/room-post-receipt.js");
       // M-2682: the one writer for sealed Hub settings (a rename from Hub Administration). It saves hub.* through this
       // fleet's own synchronous writer, so nothing else here runs between its commit point and the new pair in force.
       const { createHubSettingsWriter } = await import("./hub/settings-commit.js");
@@ -2298,7 +2299,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               inboxDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "inbox") : null,
               scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
+            attachReacts: handler => { this.hubReacts = handler; },
           },
+          attachAgentRooms: port => { this.hubAgentRooms = port; this.notifyHubRoomTools(); },
+          roomToolsChanged: () => this.notifyHubRoomTools(),
+          roomNotify: input => this.deliverHubRoomPostAnswer(input),
+          roomReceipt: (caller, receiptId) => verifyRoomReceipt({
+            lookup: (agent, id) => {
+              const item = this.queryDurableDeliveryStatus(agent, {messageId:id}).items[0];
+              if (item?.message_id !== id || !item.authority) return null;
+              const row = this.deliveryOutbox?.getHumanReceipt(id.slice(5));
+              return row ? {row,authority:item.authority} : null;
+            },
+            admin: (agent, actor) => actor.adapter_id === HOST_OPERATOR.adapterId && actor.user_id === HOST_OPERATOR.userId
+              ? this.isWebOnlyFleet()
+              : this.getInstanceAdapterId(agent) === actor.adapter_id && this.isFleetAdmin(actor.user_id, actor.adapter_id),
+          }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
           attachPairingNotices: read => { this.hubPairingNotices = read; },
@@ -2557,6 +2573,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: input.beforeInput });
     return result !== false;
   }
+  private async deliverHubRoomPostAnswer(input: import("./hub/member/room-post-answers.js").RoomPostNotification): Promise<boolean> {
+    const { HUB_REPORT_TARGET } = await import("./hub/representative.js");
+    if (this.shuttingDown || !this.fleetConfig?.instances[input.agent] || isNativeExecInstance(this.fleetConfig.instances[input.agent])) return false;
+    const result=await this.deliverToInstance(input.agent,{type:"fleet_inbound",targetSession:input.agent,content:input.text,
+      meta:{chat_id:"",message_id:`hub-room-post-answer-${input.id}`,user:`instance:${HUB_REPORT_TARGET}`,user_id:`instance:${HUB_REPORT_TARGET}`,
+        ts:new Date().toISOString(),thread_id:"",from_instance:HUB_REPORT_TARGET,from_display:"Hub",correlation_id:`hub-room-post-answer-${input.id}`,
+        request_kind:"notification",requires_reply:"false",task_summary:"A reply to your Hub room post"}},
+      {isCrossInstance:true,stillCurrent:input.stillCurrent,beforeInput:input.beforeInput});
+    return result!==false;
+  }
 
   /** S-51: why the Hub (or this fleet's Hub membership) is not running, if it is held. Empty while off or running. */
   getHubHolds(): readonly import("./hub/runtime.js").HubHold[] {
@@ -2641,8 +2667,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     return this.hubReports?.(input) ?? null;
   }
+  /** M-3127 OutboundContext: an agent's `react` on a Hub room question (its correlation id as message_id); null: not one. */
+  hubReact(input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+    return this.hubReacts?.(input) ?? null;
+  }
+  private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
+  /** The connected member adapter; never an agent-selectable identity. */
+  private hubAgentRooms: import("./hub/member/room-post.js").AgentRoomPort | null = null;
+  hubRoomToolsAvailable(): boolean { return this.hubAgentRooms?.available() === true; }
+  hubRoomList(caller: import("./hub/member/room-post.js").RoomCaller) {
+    return this.hubAgentRooms?.rooms(caller) ?? Promise.resolve({ok:false as const,code:"unavailable"});
+  }
+  hubRoomMembers(caller: import("./hub/member/room-post.js").RoomCaller, room:string) {
+    return this.hubAgentRooms?.members(caller,room)??Promise.resolve({ok:false as const,code:"unavailable" as const});
+  }
+  hubPeopleSearch(caller: import("./hub/member/room-post.js").RoomCaller, q:string) {
+    return this.hubAgentRooms?.people(caller,q)??Promise.resolve({ok:false as const,code:"unavailable" as const});
+  }
+  hubRoomPost(caller: import("./hub/member/room-post.js").RoomCaller, value:{room:string;text:string;operationId:string;receiptId?:string}) {
+    return this.hubAgentRooms?.post(caller,value) ?? Promise.resolve({ok:false as const,code:"unavailable"});
+  }
+  private notifyHubRoomTools(): void {
+    for (const ipc of this.instanceIpcClients.values()) ipc.send({type:"hub_room_tools_changed"});
+  }
   /** The member side's report_result hook for HUB_REPORT_TARGET while a representative service runs (else null). */
   private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
@@ -13847,7 +13896,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Above the adapter check on purpose: "retry shortly" is the wrong answer
     // to a call that will never be allowed, and an agent that believes it is a
     // timing problem will keep trying.
-    const permitted = this.checkToolPermission("ipc-outbound", instanceName, tool);
+    const permitted = this.checkToolPermission("ipc-outbound", instanceName, tool === "hub_room_status" ? "hub_room_list" : tool);
     if (!permitted.allowed) {
       respond(null, permitted.message);
       return;
@@ -13864,6 +13913,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    // M-3127: a reaction to a Hub room question (message_id = the correlation id it came with) goes to that room, under
+    // the question — never to a chat. Only that question's agent; the same source-daemon fence as its Hub answer.
+    if (tool === "react" && typeof args.message_id === "string" && /^hub-room-[0-9a-f-]{36}$/.test(args.message_id)) {
+      const bootNow = this.getDaemonBootId(instanceName), bootSent = sourceDaemonBootId ?? bootNow;
+      if (!bootNow || bootSent !== bootNow) { respond(null, "Source daemon generation is no longer current; outcome is unknown"); return; }
+      const claimed = this.hubReact({ correlationId: args.message_id, caller: instanceName, emoji: typeof args.emoji === "string" ? args.emoji : "",
+        callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent });
+      if (!claimed) { respond(null, "That message_id is not a Hub room question you were asked."); return; }
+      const outcome = await claimed;
+      if (outcome.ok) respond("ok"); else respond(null, outcome.message);
+      return;
+    }
     // #2305: a reaction to a web chat message is the web chat's own (any fleet, web-only included): never an adapter's.
     if (tool === "react" && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
       // The socket's own instance, never a session name the caller wrote itself (as checkToolPermission: it was not

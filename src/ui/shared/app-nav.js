@@ -95,7 +95,11 @@ export function onLinkClick(e) {
   if ((a.getAttribute("href") || "").startsWith("#")) return;
   const url = new URL(a.getAttribute("href"), win.location.href);
   if (url.hash && url.pathname === win.location.pathname && url.search === win.location.search) return;
-  if (url.origin !== win.location.origin || !parseRoute(url.pathname)) return;
+  const route = url.origin === win.location.origin ? parseRoute(url.pathname) : null;
+  if (!route) return;
   e.preventDefault();
-  navigate(url.pathname + url.search + (navigation && (navStore.get().workspace || url.searchParams.has("compare")) ? url.hash : ""));
+  // M-3131: a place in Settings (/settings/access#webAuthority) keeps its hash — Settings reveals the tab that owns it
+  // (#2347), as it does for a typed or pasted address.
+  const keepHash = route.panel === "settings" || (navigation && (navStore.get().workspace || url.searchParams.has("compare")));
+  navigate(url.pathname + url.search + (keepHash ? url.hash : ""));
 }

@@ -23,7 +23,7 @@ const names = ["general", "studio-layout", AGENT, "billing-reconciliation"];
 fm.fleetConfig.instances = Object.fromEntries(names.map((name) => [name, { working_directory: dir, backend: "claude-code", ...(name === "general" ? { general_topic: true } : {}) }]));
 fm.fleetConfig.teams = {};
 fm.getInstanceStatus = () => "running";
-const REAL = /agend-|t15\d{6}|web-claude|\bsol\b|\bfable\b|qa-1|rd1-|awp-|doupo-|研一|鬥破|己把鳩/;
+const REAL = /agend-|t15\d{6}|web-claude|\bsol\b|\bfable\b|qa-1|tm1-|ota-svc|games-|研發|遊戲|產品專案/;
 
 const H = 3_600_000;
 const soon = (h: number) => new Date(Date.now() + h * H).toISOString();

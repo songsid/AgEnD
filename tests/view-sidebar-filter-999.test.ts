@@ -22,7 +22,7 @@ let roster: Array<Record<string, unknown>> = [];
 
 const ROSTER = [
   { instance_name: "agend-dev-claude", display_name: "Sentinel", model: "claude-opus-5-5", backend: "claude-code", tags: ["AgEnD"], status: "running", context_pct: 12 },
-  { instance_name: "doupo-server-codex", display_name: null, model: "gpt-5.6-sol", backend: "codex", tags: ["DouPo"], status: "running", context_pct: null },
+  { instance_name: "games-server-codex", display_name: null, model: "gpt-5.6-sol", backend: "codex", tags: ["Games"], status: "running", context_pct: null },
   { instance_name: "leader", display_name: "Captain", model: "", backend: "kiro-cli", tags: ["AgEnD"], status: "stopped", context_pct: null },
   { instance_name: "grok-scout", model: null, backend: "grok", tags: [], status: "running", context_pct: null },
 ];
@@ -62,10 +62,10 @@ const count = () => p.root.querySelector(".v-filter .note")!.textContent;
 
 // The pure part: the same fixtures as the wiring, with the public labels.
 const byName = new Map(ROSTER.map(r => [r.instance_name as string, r as Record<string, unknown>]));
-const groups = ["AgEnD", "DouPo", "Other"];
+const groups = ["AgEnD", "Games", "Other"];
 const byGroup = new Map([
   ["AgEnD", ["agend-dev-claude", "leader"]],
-  ["DouPo", ["doupo-server-codex", "gone-from-roster"]],
+  ["Games", ["games-server-codex", "gone-from-roster"]],
   ["Other", ["grok-scout"]],
 ]);
 const shownNames = (query: string) => view.filterSidebar(groups, byGroup, byName, query, view.backendLabel).groups.flatMap((g: any) => g.names);
@@ -75,20 +75,20 @@ describe("sidebar filter logic (#999)", () => {
     for (const query of ["", "   ", "\t"]) {
       const v = view.filterSidebar(groups, byGroup, byName, query, view.backendLabel);
       expect(v).toMatchObject({ shown: 4, total: 4, active: false });
-      expect(v.groups.map((g: any) => g.group)).toEqual(["AgEnD", "DouPo", "Other"]);
+      expect(v.groups.map((g: any) => g.group)).toEqual(["AgEnD", "Games", "Other"]);
     }
   });
 
   it("matches name, display name, model and backend (id or label), case-insensitively", () => {
-    expect(shownNames("DOUPO")).toEqual(["doupo-server-codex"]);             // name
+    expect(shownNames("GAMES")).toEqual(["games-server-codex"]);             // name
     expect(shownNames("captain")).toEqual(["leader"]);                        // display name
     expect(shownNames("opus")).toEqual(["agend-dev-claude"]);                 // model
-    expect(shownNames("codex")).toEqual(["doupo-server-codex"]);              // backend id (and name)
+    expect(shownNames("codex")).toEqual(["games-server-codex"]);              // backend id (and name)
     expect(shownNames("kiro")).toEqual(["leader"]);                           // backend id
     expect(shownNames("kiro-cli")).toEqual(["leader"]);                       // backend id only (label is "Kiro CLI")
     expect(shownNames("claude-code")).toEqual(["agend-dev-claude"]);          // backend id only (label is "Claude Code")
     expect(shownNames("build")).toEqual(["grok-scout"]);                      // backend label only
-    expect(shownNames("  Sol  ")).toEqual(["doupo-server-codex"]);            // trimmed
+    expect(shownNames("  Sol  ")).toEqual(["games-server-codex"]);            // trimmed
   });
 
   it("is a substring match, and a miss hides everything", () => {
@@ -99,7 +99,7 @@ describe("sidebar filter logic (#999)", () => {
 
   it("drops groups with no match, keeps display order, and counts N / M over live roster rows", () => {
     const v = view.filterSidebar(groups, byGroup, byName, "o", view.backendLabel);
-    expect(v.groups.map((g: any) => g.group)).toEqual(["AgEnD", "DouPo", "Other"]);
+    expect(v.groups.map((g: any) => g.group)).toEqual(["AgEnD", "Games", "Other"]);
     const claude = view.filterSidebar(groups, byGroup, byName, "claude", view.backendLabel);
     expect(claude.groups).toEqual([{ group: "AgEnD", names: ["agend-dev-claude"] }]);
     // "gone-from-roster" is in the saved order but not the roster: never counted.
@@ -116,8 +116,8 @@ describe("sidebar filter logic (#999)", () => {
 describe("sidebar filter wiring (#999)", () => {
   it("lists the groups and their instances, each linking to its own View page", async () => {
     await mountView();
-    expect(groupHeads()).toEqual(["AgEnD", "DouPo", "Other"]);
-    expect(rowNames()).toEqual(["agend-dev-claude", "leader", "doupo-server-codex", "grok-scout"]);
+    expect(groupHeads()).toEqual(["AgEnD", "Games", "Other"]);
+    expect(rowNames()).toEqual(["agend-dev-claude", "leader", "games-server-codex", "grok-scout"]);
     expect(p.root.querySelectorAll(".v-inst").map((a: any) => a.getAttribute("href"))).toContain("/view/leader");
     expect(count()).toBe("4 / 4");
   });
@@ -147,8 +147,8 @@ describe("sidebar filter wiring (#999)", () => {
   it("filters on every keystroke, through the roster's render", async () => {
     await mountView();
     await typeInto("codex");
-    expect(rowNames()).toEqual(["doupo-server-codex"]);
-    expect(groupHeads()).toEqual(["DouPo"]);
+    expect(rowNames()).toEqual(["games-server-codex"]);
+    expect(groupHeads()).toEqual(["Games"]);
     expect(count()).toBe("1 / 4 shown");
     await typeInto("");
     expect(rowNames()).toHaveLength(4);
@@ -160,12 +160,12 @@ describe("sidebar filter wiring (#999)", () => {
     await typeInto("codex");
     roster = [...ROSTER,
       { instance_name: "new-claude", display_name: null, model: "claude", backend: "claude-code", tags: ["AgEnD"], status: "running", context_pct: null },
-      { instance_name: "new-codex", display_name: null, model: "gpt", backend: "codex", tags: ["DouPo"], status: "running", context_pct: null }];
+      { instance_name: "new-codex", display_name: null, model: "gpt", backend: "codex", tags: ["Games"], status: "running", context_pct: null }];
     // The refresh runs on a visible tab's focus change (visibilitychange), the same load() the 5-second timer calls.
     fire(p.document as any, "visibilitychange");
     await settle(8);
     expect(input().value).toBe("codex");
-    expect(rowNames()).toEqual(["doupo-server-codex", "new-codex"]);
+    expect(rowNames()).toEqual(["games-server-codex", "new-codex"]);
     expect(count()).toBe("2 / 6 shown");
   });
 

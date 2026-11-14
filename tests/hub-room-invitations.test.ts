@@ -69,7 +69,7 @@ describe("Hub room invitations, owner side (section 8)", () => {
   it("an answer from another tab, or a new invitation, reaches this one by the stream", async () => {
     const { pg, client, fx } = await fixture();
     await pg.mount(h(inv.InvitationsList, { client })); await settle(20);
-    fx.invitations.push({ id: "inv-in-0002", room: { id: "room-x", name: "研發例會", people: 1 }, agent: { exposureId: "exp-mine-1", name: "my-notes" }, by: { name: "吳小安" }, at: 1 });
+    fx.invitations.push({ id: "inv-in-0002", room: { id: "room-x", name: "專案例會", people: 1 }, agent: { exposureId: "exp-mine-1", name: "my-notes" }, by: { name: "吳小安" }, at: 1 });
     fx.emit("invitation.changed", {}); await settle(20);
     expect(pg.root.querySelectorAll(".hub-invitation")).toHaveLength(2);
     expect(pg.root.querySelectorAll(".hub-invitation")[1].querySelector("small").textContent).toBe("房間裡的 1 個人可以在那裡 @ 它；它的回答房間裡的人都看得到。");
@@ -119,10 +119,10 @@ describe("Hub room invitations, owner side (section 8)", () => {
     const items = () => [...pg.root.querySelectorAll(".hub-agent-rooms li span")].map((x: any) => x.textContent);
     expect(pg.root.querySelectorAll(".hub-agent-rooms")).toHaveLength(1);
     expect(pg.root.querySelector(".hub-agent-rooms h4").textContent).toBe("在這些房間裡");
-    expect(items()).toEqual(["研一主管週會 · 3 人", "研發例會 · 2 人"]);
+    expect(items()).toEqual(["每週主管會議 · 3 人", "專案例會 · 2 人"]);
     fire(button(pg, "退出這個房間"), "click"); await settle(20);
     expect(calls.filter(c => c.method === "DELETE").map(c => c.path)).toEqual(["/hub/v1/rooms/room-weekly/members/exp-02"]);
-    expect(items()).toEqual(["研發例會 · 2 人"]);
+    expect(items()).toEqual(["專案例會 · 2 人"]);
     expect(told.at(-1)).toBe(1); expect(told[0]).toBe(2);                               // and follows 退出這個房間
     fx.rooms.find((r: any) => r.id === "room-rd")!.members.push({ id: "exp-mine-1", kind: "agent", name: "my-notes", owner: { name: "王經理" }, role: "member", presence: "idle" });
     fx.emit("member.changed", { roomId: "room-rd" }); await settle(20);

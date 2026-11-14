@@ -2,7 +2,7 @@
 import {cp,mkdir,writeFile,rm,readFile} from 'node:fs/promises';import {join,win32,resolve} from 'node:path';import {randomUUID} from 'node:crypto';import {execFileSync} from 'node:child_process';
 import {sourceReceipt,codeBundleReceipt} from './source-receipt.mjs';
 const bundle=resolve(process.argv[2]||'.artifacts/pane-stage4-bundle'),source={...sourceReceipt(),...await codeBundleReceipt(bundle)};
-const tag=randomUUID().slice(0,8),root=join('/mnt/c/Users/changhansung/agend-adapter-proto','offline4-'+tag),win='C:\\Users\\changhansung\\agend-adapter-proto\\offline4-'+tag;
+const tag=randomUUID().slice(0,8),root=join('/mnt/c/Users/demo-account/agend-adapter-proto','offline4-'+tag),win='C:\\Users\\demo-account\\agend-adapter-proto\\offline4-'+tag;
 await mkdir(root,{recursive:false});await cp(bundle,join(root,'bundle'),{recursive:true});await cp('scripts/manual/windows-pane-adapter/native-screen.mjs',join(root,'native-screen.mjs'));
 const code="$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::Write((Get-Command node.exe -CommandType Application | Select-Object -First 1).Source)",ps='/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe',nodeWin=execFileSync(ps,['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(code,'utf16le').toString('base64')],{encoding:'utf8',timeout:10000,maxBuffer:8192,stdio:['ignore','pipe','pipe']}).trim(),node=execFileSync('wslpath',['-u',nodeWin],{encoding:'utf8',timeout:5000}).trim();
 let receipt;

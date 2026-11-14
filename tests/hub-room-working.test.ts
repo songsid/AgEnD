@@ -16,7 +16,7 @@ const assistant = (over: Partial<Member> = {}): Member => ({ id: "asst", kind: "
 const person = (over: Partial<Member> = {}): Member => ({ id: "person-chen", kind: "person", name: "陳主任", presence: "online", ...over });
 const later = (over: Partial<Member> = {}): Member => ({ id: "exp-rb", kind: "later", name: "report-bot", owner: { name: "吳小安" }, presence: "offline", ...over });
 const detail = (members: Member[]) => ({
-  room: { id: "room-weekly", name: "研一主管週會" },
+  room: { id: "room-weekly", name: "每週主管會議" },
   me: { id: "person-wang", role: "manager" },
   members,
 });

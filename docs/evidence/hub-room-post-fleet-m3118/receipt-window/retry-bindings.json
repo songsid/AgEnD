@@ -1,0 +1,4 @@
+{
+  "src/hub/member/room-post.ts": "cffbc193d28cf006e90a95e1276e0654a00ad76f7ada0f26aa7c32d8579782d8",
+  "tests/hub-room-post-receipt.test.ts": "125a59b9abd0450df6f215eff77aca68e23191f6cc92e4af69d22849f1aaea5f"
+}

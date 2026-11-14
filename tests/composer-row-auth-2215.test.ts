@@ -94,7 +94,7 @@ describe("the composer row's authority: a few words, the rest in its tooltip", (
     const off = await row({ state: "none", reason: "disabled" });
     const why = off.querySelector("button.webauth-why");
     expect([why.textContent, why.getAttribute("title"), why.getAttribute("aria-label"), why.getAttribute("aria-controls") === tip().id, tip().hidden,
-      off.querySelector('a[href="/settings/access"]')?.textContent])
+      off.querySelector('a[href="/settings/access#webAuthority"]')?.textContent])
       .toEqual(["Not verified", "Web authority is turned off.", "Not verified: Web authority is turned off.", true, true, "Settings"]);
     const admin = await row({ state: "none", reason: "not_admin" });
     expect([admin.querySelector("button.webauth-why").getAttribute("title"), admin.querySelector("a")]).toEqual(["Your account is not a fleet admin here.", null]);
@@ -173,7 +173,7 @@ describe("#2889: a tap on 'Not verified' shows why it can't be authorized here",
   });
   it("the Settings link stays beside it where the reason is fixable; over the public link, none", async () => {
     const r = await row({ state: "none", reason: "loopback_only" });
-    expect([r.querySelector("button.webauth-why")?.textContent, r.querySelector('a[href="/settings/access"]')?.textContent]).toEqual(["Not verified", "Settings"]);
+    expect([r.querySelector("button.webauth-why")?.textContent, r.querySelector('a[href="/settings/access#webAuthority"]')?.textContent]).toEqual(["Not verified", "Settings"]);
     p.document.body.setAttribute("data-public-link", "1");
     const pub = await row({ state: "none", reason: "disabled" });
     expect([pub.querySelector("button.webauth-why")?.textContent, pub.querySelector("a")]).toEqual(["Not verified", null]);

@@ -1,0 +1,12 @@
+{
+  "checks": [
+    {
+      "name": "desk-light-en: the Fleet's filter box is at the sidebar's foot, below its Search row",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW: the Fleet's filter box is at the sidebar's foot, below its Search row",
+      "ok": true
+    }
+  ]
+}

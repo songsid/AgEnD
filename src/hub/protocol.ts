@@ -3,6 +3,7 @@ import { z } from "zod";
 import { epoch, hash, identifier, person, plain, reason, uuid, validated, parseStrictJson } from "./validation.js";
 import type { HubMemberFrame, HubServerFrame, HubAuthorizationRequest, HubAskerEnvelope } from "./types.js";
 import { validHubAnswerButtons } from "./buttons-model.js";
+import { fleetInfoSchema } from "./fleet-info.js";
 export const HUB_VERSION = 1;
 export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect: "/hub/v1/connect" } as const;
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
@@ -12,10 +13,22 @@ export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";
 export const HUB_ROOM_FILES_CAPABILITY = "room-files-v1";
 /** Opted into by the mounted agent room-post adapter, never by an uncomposed member. */
 export const HUB_ROOM_POST_CAPABILITY = "room-post-v1";
+/** M-3127: a room answer may carry the reply's buttons or poll (answerButtonsSchema); both ends list it. */
+export const HUB_ROOM_BUTTONS_CAPABILITY = "room-answer-buttons-v1";
+/**
+ * M-3127: an agent reacts to the room question it was asked (its `react` tool, the Fleet chat's minimal reply). It rides on
+ * room-answer-buttons-v1 (the same release): a capability of its own would make a 17th in a room-post member's hello, which
+ * older Hubs refuse and members still must not send (see HUB_OPTIONAL_CAPABILITIES).
+ */
+export const HUB_ROOM_REACT_CAPABILITY = HUB_ROOM_BUTTONS_CAPABILITY;
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
- * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
-export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1"];
+ * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending.
+ * LIMIT (M-3127): a member's hello sends HUB_CAPABILITIES + these + room-ask-v1 (+ room-post-v1 when its agent-room adapter
+ * is composed). That full list makes exactly 16 (pinned by tests/hub-room-agent-react-m3127.test.ts), the member's send
+ * limit for older Hubs. This Hub accepts 32 names; raise member sends only in a later release, after that receive bound
+ * ships — or let the new feature ride on a flag of the same release. */
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1", "room-answer-buttons-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
@@ -65,8 +78,12 @@ export const roomContextSchema = z.strictObject({ author: plain(256), text: plai
 export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roomName: plain(120), exposureId: uuid,
   asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), context: z.array(roomContextSchema).max(31)
     .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1), attachments: attachmentList.optional() });
-export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer), attachments: attachmentList.optional() });
+export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
+  buttons: answerButtonsSchema.optional(), attachments: attachmentList.optional() });
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
+/** M-3127 (room-answer-buttons-v1): `messageId` is the delivery (the question as the agent got it); "" takes the agent's reaction back. */
+export const roomReactSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, emoji: z.string().max(16) });
+export const roomReactResultSchema = z.strictObject({ messageId: uuid, ok: z.boolean(), code: z.enum(["invalid", "denied", "not-found", "archived", "revoked"]).optional() });
 const roomPostRefusalCode = z.enum(["invalid", "denied", "revoked", "not-found", "archived", "ambiguous-room", "rate-limited", "conflict", "unavailable", "stale", "backpressure"]);
 const roomPostChoice = z.strictObject({ id: uuid, name: plain(120) });
 export const roomListSchema = z.strictObject({ exposureId: uuid });
@@ -117,10 +134,15 @@ export const webOriginStatementSchema = z.strictObject({ v: z.literal(1), webOri
 export const relocationStatementSchema = z.strictObject({ v: z.literal(1), from: z.string().min(1).max(2048), to: z.string().min(1).max(2048),
   spkiSha256: hash, revision: epoch.min(1), signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/) });
 const frame = <T extends string, P extends z.ZodType>(type: T, payload: P) => z.strictObject({ v: z.literal(1), type: z.literal(type), requestId: uuid, linkEpoch: epoch, payload });
-const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(16), memberBootId: uuid });
+/** Receive-first rollout: Hubs accept 32 names, but this build's members still emit at most 16 (mandatory included)
+ * for older Hubs. Raise the send bound only in a later release. Version reports travel as values, not capability names. */
+const memberHelloCapabilities = z.array(identifier).max(16);
+const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(32), memberBootId: uuid });
+/** The reverse receive-first rollout: members accept 32 welcome names; Hubs still send at most 16 for older members. */
+const hubWelcomeCapabilities = z.array(identifier).max(16).optional();
 const welcome = z.strictObject({ selectedVersion: z.literal(1), hubId: uuid, fleetId: uuid, linkEpoch: epoch.min(1), revocationVersion: epoch,
   /** Sent only when the hello offered welcome-caps-v1: the Hub's own optional features. */
-  capabilities: z.array(identifier).max(16).optional(),
+  capabilities: z.array(identifier).max(32).optional(),
   /** web-origin-v1 (M-2901): the Hub's current web address, signed with its issuer key (web-origin.ts). Only to a member that asked. */
   webOrigin: webOriginStatementSchema.optional() });
 const chunkData = z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/).max(Math.ceil(HUB_ATTACHMENT_CHUNK / 3) * 4);
@@ -130,9 +152,9 @@ const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.arra
 export const memberLeavePayloadSchema = z.strictObject({});
 export const memberFrameSchema = z.union([
   frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
-  frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema),
+  frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema), frame("room.react", roomReactSchema),
   frame("member.leave", memberLeavePayloadSchema),
-  frame("hello", hello), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
+  frame("hello", hello), frame("fleet.info", fleetInfoSchema), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
   frame("receipt", receiptSchema), frame("answer", answerSchema), frame("reconcile", reconcile),
   frame("authorize.request", authorizationSchema), frame("error", errorSchema),
   // attachments-v1 only: pull a question's file; push an answer's file before its answer frame.
@@ -144,7 +166,7 @@ export const memberFrameSchema = z.union([
 ]);
 export const serverFrameSchema = z.union([
   frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
-  frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema),
+  frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema), frame("room.react-result", roomReactResultSchema),
   frame("welcome", welcome), frame("question", questionSchema), frame("receipt", receiptSchema),
   frame("reconcile", z.strictObject({ receipts: z.array(receiptSchema).max(128), nextReceiptSequence: epoch, more: z.boolean() })),
   frame("authorize.result", z.union([z.strictObject({ ok: z.literal(true), lease: leaseSchema }), z.strictObject({ ok: z.literal(false), reasonCode: reason })])),
@@ -157,7 +179,15 @@ export const serverFrameSchema = z.union([
 ]);
 export const parseMemberFrame = (input: string | Buffer): HubMemberFrame => validated(memberFrameSchema, parseStrictJson(input));
 export const parseServerFrame = (input: string | Buffer): HubServerFrame => validated(serverFrameSchema, parseStrictJson(input));
-export function encodeMemberFrame(value: HubMemberFrame): string { return JSON.stringify(parseMemberFrame(JSON.stringify(value))); }
-export function encodeServerFrame(value: HubServerFrame): string { return JSON.stringify(parseServerFrame(JSON.stringify(value))); }
+export function encodeMemberFrame(value: HubMemberFrame): string {
+  const frame = parseMemberFrame(JSON.stringify(value));
+  if (frame.type === "hello") validated(memberHelloCapabilities, frame.payload.capabilities);
+  return JSON.stringify(frame);
+}
+export function encodeServerFrame(value: HubServerFrame): string {
+  const frame = parseServerFrame(JSON.stringify(value));
+  if (frame.type === "welcome") validated(hubWelcomeCapabilities, frame.payload.capabilities);
+  return JSON.stringify(frame);
+}
 export const validateAsker = (input: unknown): HubAskerEnvelope => validated(askerSchema, input);
 export const validateAuthorization = (input: unknown): HubAuthorizationRequest => validated(authorizationSchema, input);

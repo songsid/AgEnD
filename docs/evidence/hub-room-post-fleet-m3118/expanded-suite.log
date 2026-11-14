@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-post-m3118
+
+(node:88507) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  7 passed (7)
+      Tests  121 passed (121)
+   Start at  00:32:51
+   Duration  13.77s (transform 8.04s, setup 400ms, import 12.20s, tests 13.57s, environment 1ms)
+

@@ -70,7 +70,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   }, [f, original, overview]);
   // A fleet with no chat connection is worded for the authenticator (the reference page); one with Discord / Telegram keeps the confirm-card words.
   const webOnly = !!overview && overview.webOnly === true;
-  const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note s-authority-brief">${layoutText(webOnly ? "revAuthorityBriefWeb" : "revAuthorityBrief")}</p><p class="note s-authority-rule">${layoutText("revAuthorityRule")}</p>${body}<details class="s-setting-details"><summary>${layoutText("revAuthorityDetails")}</summary><p class="note">${tn("vaHint")}</p><p class="note">${tn("vaEnabledHint")}</p><p class="note">${tn("vaLoopbackOnlyHint")}</p></details></section>`;
+  const card = (body) => html`<section class="card s-web-authority" id="webAuthority"><h3>${tn("vaTitle")}</h3><p class="note s-authority-brief">${layoutText(webOnly ? "revAuthorityBriefWeb" : "revAuthorityBrief")}</p><p class="note s-authority-rule">${layoutText("revAuthorityRule")}</p>${body}<details class="s-setting-details"><summary>${layoutText("revAuthorityDetails")}</summary><p class="note">${tn("vaHint")}</p><p class="note">${tn("vaEnabledHint")}</p><p class="note">${tn("vaLoopbackOnlyHint")}</p></details></section>`;
   if (failed) return card(html`<p class="note" role="status">${tn("vaLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`);
   if (!overview || !f) return card(html`<${Skeleton} variant="rows" lines=${3} />`);
 

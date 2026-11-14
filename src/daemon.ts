@@ -93,9 +93,9 @@ import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvi
 import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { markerConsumed, scanTranscriptForDeliveryMarker, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
-import { QUEUED_HANDOFF_MAX_REDELIVERIES, QueuedHandoffStore, type QueuedHandoff } from "./queued-handoffs.js";
+import { QUEUED_HANDOFF_MAX_REDELIVERIES, QueuedHandoffStore, type QueuedHandoff, type RuntimeQueuedHandoff } from "./queued-handoffs.js";
 import { measureSyncWork, noteSyncWork } from "./sync-work-attribution.js";
-import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
+import { TranscriptDeltaReader, type TranscriptLook } from "./transcript-delta-reader.js";
 import type { NativePaneLifecycle } from "./native-pane-lifecycle.js";
 import type { RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { checkpointCodexPane } from "./codex-pane-ownership.js";
@@ -147,7 +147,7 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
-const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
+const CROSS_INSTANCE_TOOLS = new Set(["hub_room_status", "hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search", "send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
@@ -2756,17 +2756,19 @@ export class Daemon extends EventEmitter {
     const marker = durableAttempt ? `[agend-delivery-id:${durableAttempt.deliveryId}]`
       : humanVerificationId ? verdict.humanReceipt?.marker ?? `[agend-human-id:${humanVerificationId}]` : null;
     if (!marker || !formatted.startsWith(marker)) return;
-    let found: { path?: string; offset?: number } | null = verdict.transcriptCheckpoint ?? null;
+    let found: { path?: string; offset?: number; runtime?: RuntimeTranscriptReference } | null = verdict.transcriptCheckpoint ?? null;
     if (!found) {
-      try { found = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
-      catch (err) { this.logger.debug({ err }, "Could not checkpoint the transcript before a queued hand-off"); }
+      try {
+        // M-2403: a native or remote pane checkpoints its runtime transcript (no local file); a local CLI, its file.
+        const runtime = this.nativePaneLifecycle ? await this.transcriptMonitor?.reconciliationRuntimeCheckpoint() ?? null : null;
+        found = runtime ? { runtime } : await this.transcriptMonitor?.reconciliationCheckpoint() ?? null;
+      } catch (err) { this.logger.debug({ err }, "Could not checkpoint the transcript before a queued hand-off"); }
     }
-    // main→alpha sync: a hand-off record is judged against a local transcript file. A native or remote runtime's
-    // transcript (no local path) has none: it runs as before (✅ at the hand-off), as with no checkpoint at all.
-    const checkpoint = found && typeof found.path === "string" && typeof found.offset === "number" ? { path: found.path, offset: found.offset } : null;
+    const checkpoint = found?.runtime ? { runtime: found.runtime }
+      : found && typeof found.path === "string" && typeof found.offset === "number" ? { path: found.path, offset: found.offset } : null;
     if (!checkpoint) return; // nothing could judge it later: it runs as before (✅ at the hand-off)
     const entry: QueuedHandoff = {
-      id: track.id ?? randomUUID(), marker, backend, path: checkpoint.path, offset: checkpoint.offset,
+      id: track.id ?? randomUUID(), marker, backend, ...checkpoint,
       content: track.content, meta: track.meta, wire: formatted, holder: this.handoffHolder(), createdAt: Date.now(),
       redeliveries: track.redeliveries ?? 0,
     };
@@ -2823,12 +2825,17 @@ export class Daemon extends EventEmitter {
    */
   private watchQueuedHandoff(entry: QueuedHandoff): void {
     const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, epoch = this.deliveryEpoch;
+    // M-2403: a native or remote pane's record is read through its runner (the runtime reader), a local one from its file.
+    let source: { path: string; offset: number } | { reader: ReturnType<Daemon["nativeTranscriptReader"]> };
+    if (entry.runtime) {
+      try { source = { reader: this.nativeTranscriptReader(entry.runtime, { marker: entry.marker, ...(entry.wire !== undefined ? { wire: entry.wire } : {}) }) }; }
+      catch (err) { this.logger.debug({ err, handoff: entry.id }, "Queued hand-off: its pane's transcript is not readable now"); return this.settleQueuedHandoff(entry, "unverifiable", "transcript:unavailable"); }
+    } else source = { path: entry.path, offset: entry.offset };
     const started = consumedWatches.start({
       deliveryId: `handoff:${entry.id}`,
       attemptNo: entry.redeliveries,
       backend: entry.backend,
-      path: entry.path,
-      offset: entry.offset,
+      ...source,
       marker: entry.marker,
       ...(entry.wire !== undefined ? { wire: entry.wire } : {}),
       // A cancel or stop moves the epoch: the watch ends quietly (a cancel cleared the record, a stop leaves it).
@@ -2893,8 +2900,14 @@ export class Daemon extends EventEmitter {
     const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, epoch = this.deliveryEpoch;
     const fresh = () => spawn === this.spawnGeneration && fence === this.launchFenceEpoch && epoch === this.deliveryEpoch
       && !this.deliveryWritesStopping;
-    let redelivered = 0, taken = 0, unverifiable = 0;
+    let redelivered = 0, taken = 0, unverifiable = 0, watching = 0;
     for (const entry of entries) {
+      if (entry.runtime) {
+        const outcome = await this.reconcileRuntimeHandoff(entry, holder, fresh);
+        if (outcome === "stale") return;
+        if (outcome === "taken") taken++; else if (outcome === "unverifiable") unverifiable++; else if (outcome === "watching") watching++;
+        continue;
+      }
       const kind = await scanTranscriptForDeliveryMarker(entry.path, entry.offset, entry.backend, { marker: entry.marker, ...(entry.wire !== undefined ? { wire: entry.wire } : {}) });
       // This CLI is gone already, or a cancel came: the next CLI settles them (a cancel cleared them).
       if (!fresh()) return;
@@ -2918,8 +2931,51 @@ export class Daemon extends EventEmitter {
       this.pushChannelMessage(entry.content, { ...meta, handoff_redelivery: entry.id,
         handoff_redeliveries: String(next.redeliveries), handoff_holder: next.holder }, undefined, epoch);
     }
-    this.logger.info({ instance: this.name, redelivered, taken, unverifiable, proof: "transcript" },
+    this.logger.info({ instance: this.name, redelivered, taken, unverifiable, watching, proof: "transcript" },
       "Queued hand-offs left by the previous CLI settled");
+  }
+
+  /**
+   * M-2403: a native or remote pane's record, after this daemon came up. Its runner may have kept the CLI (and its queue)
+   * across the coordinator's restart, so nothing here proves the queue is gone, and a runtime record is never
+   * redelivered. Read through the runner from its checkpoint (bounded, as reconcileNativePaneTarget): taken → ✅; the
+   * same launch still current with the marker not taken yet → watched again under this CLI; that launch gone, or its
+   * transcript unreadable → unverifiable (reported, never pasted again).
+   */
+  private async reconcileRuntimeHandoff(entry: RuntimeQueuedHandoff, holder: string, fresh: () => boolean): Promise<"taken" | "watching" | "unverifiable" | "skipped" | "stale"> {
+    const still = (): boolean => {
+      let current: QueuedHandoff | undefined;
+      try { current = this.handoffStore().get(entry.id); } catch { current = undefined; }
+      return !!current && current.holder === entry.holder && current.redeliveries === entry.redeliveries;
+    };
+    const native = this.nativePaneLifecycle;
+    let kind: TranscriptLook | null = null;
+    if (native?.current(entry.runtime)) {
+      let reader: ReturnType<NativePaneLifecycle["proofReader"]> | undefined;
+      try {
+        reader = this.nativeTranscriptReader(entry.runtime, { marker: entry.marker, ...(entry.wire !== undefined ? { wire: entry.wire } : {}) });
+        for (let n = 0; n < 8; n++) {
+          const before = reader.readPosition, look = await reader.look();
+          if (!fresh()) return "stale";
+          kind = look;
+          if (markerConsumed(look as TranscriptMarkerKind) || look === "unavailable" || look === "pending" || reader.readPosition === before) break;
+        }
+      } catch { kind = "unavailable"; }
+      finally { reader?.close?.(); }
+    }
+    if (!fresh()) return "stale";
+    if (!still()) return "skipped";
+    if (kind && markerConsumed(kind as TranscriptMarkerKind)) { this.settleQueuedHandoff(entry, "taken", `restart-transcript:${kind}`); return "taken"; }
+    if (kind === null || kind === "unavailable" || !native?.current(entry.runtime)) {
+      this.settleQueuedHandoff(entry, "unverifiable", "restart-transcript:unavailable");
+      return "unverifiable";
+    }
+    // The same launch still holds it in its queue: this CLI watches it from where the read stopped.
+    const next: RuntimeQueuedHandoff = { ...entry, holder };
+    try { this.handoffStore().put(next); }
+    catch (err) { this.logger.warn({ err, handoff: entry.id }, "Could not update a queued hand-off record"); return "skipped"; }
+    this.watchQueuedHandoff(next);
+    return "watching";
   }
 
   private finishDurableSubmission(
@@ -5989,6 +6045,7 @@ export class Daemon extends EventEmitter {
 
   /** Shared Fleet inputs: socket and native transports retain the same wake, epoch and raw-paste semantics. */
   private handleFleetMessage(msg: Record<string, unknown>, send: (reply: Record<string, unknown>) => void, current = () => true): boolean {
+    if (msg.type === "hub_room_tools_changed") { this.ipcServer?.broadcast({type:"hub_room_tools_changed"}); return true; }
     if (msg.type === "query_sessions") {
       send({ type: "query_sessions_response", sessions: [] });
     } else if (msg.type === "fleet_inbound") {
@@ -12459,7 +12516,7 @@ export class Daemon extends EventEmitter {
           type: "fleet_outbound",
           tool,
           args,
-          ...(operationId ? { operationId, sourceDaemonBootId: this.bootId } : {}),
+          ...((operationId || (tool.startsWith("hub_room_") || tool === "hub_people_search")) ? { ...(operationId ? {operationId} : {}), sourceDaemonBootId: this.bootId } : {}),
           fleetRequestId: fleetReqId,
           senderSessionName,
         });

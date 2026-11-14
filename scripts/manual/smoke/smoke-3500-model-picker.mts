@@ -95,6 +95,10 @@ try {
           // M-3115 (phone v2): 最新 is a 44 px round button floating at the thread's bottom right (no row of its own).
           if (!b || !thread || !composer || b.width < 44 || b.height < 44 || b.y + b.height > thread.y + thread.height + 1 || b.y + b.height > composer.y + 1
             || b.x + b.width < thread.x + thread.width - 80) throw Error(`latest is not the round button at the thread's bottom right: ${JSON.stringify({ b, thread })}`);
+          // The user (before 2.4.0-beta.3): no unread counts — a message arriving while scrolled up adds no badge to it.
+          fx.fm.emitSseEvent("message", { instance: name, sender: name, role: "agent", text: "新的一則回覆。", ts: new Date().toISOString() });
+          await page.waitForFunction(() => /1/.test(document.querySelector(".jump-latest")?.getAttribute("aria-label") || ""), undefined, { timeout: 5000 });
+          if (await page.locator(".jump-latest .jump-count").count()) throw Error("latest shows an unread count");
           await shot("phone-latest"); await button.click();
         } else throw Error("latest pill not offered");
         // M-3115: the row's picker / ring and Send are the phone's model controls now (the old chip row is gone); at least one.

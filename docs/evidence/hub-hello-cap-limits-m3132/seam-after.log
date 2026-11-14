@@ -1,0 +1,9 @@
+RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-hello-cap-limits-m3132
+
+(node:40633) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  2 passed (2)
+      Tests  3 passed | 37 skipped (40)
+   Start at  06:12:03
+   Duration  10.17s (transform 7.49s, setup 168ms, import 9.64s, tests 51ms, environment 0ms)
