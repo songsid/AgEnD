@@ -35,6 +35,7 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
 | Room assistant, backend/account, cap, idle stop, answer counts | [Room assistant administration](#room-assistant-administration) |
 | Connected fleets, Revoke, Individual invitations, pairing code, Notices | [Administration](#administration) |
+| AgEnD version of a Fleet, Needs update (需要更新), Too old for rooms, Version unknown, "Your Fleet runs an older AgEnD" | [Fleet versions](#fleet-versions) |
 | `hub`, `hub_member` in fleet.yaml | [Config keys](#config-keys) |
 | how many, how long | [Limits](#limits) |
 | virtual teams, My teams, team lead, team grants | [Teams](#teams) |
@@ -552,6 +553,35 @@ Phase 1 supplies the administrator and owner views; no recommended version is co
   listed there too and need **Acknowledge**.
 - **This Hub** shows the Hub's name (**Hub name**, up to 64 characters) and what identifies it; **Edit AD connection**
   opens the directory settings.
+
+## Fleet versions
+
+Newer Hub features (rooms, agent posts) need a Fleet that is new enough. The Hub shows who is behind; it does not update
+a Fleet itself (yet).
+
+- **Administration → Connected fleets** shows, per Fleet, its **AgEnD version** (AgEnD 版本; "Unknown" / 不明 for a
+  Fleet too old to report it), **Last connected** (上次連接: "Now" / 目前已連接 with a green dot, a relative time, or
+  "Never" / 從未連接) and one state tag. A line above the list counts them — "*n* of *m* Fleets need an update." — and
+  the **Needs update** (需要更新) chip shows only those.
+- The tags, in this order (the first that applies):
+
+  | Tag | Means |
+  |---|---|
+  | **Too old for rooms** (版本太舊，無法使用房間) | "This Fleet's agents cannot answer in rooms until it is updated." The same condition as "Needs an AgEnD update" on an agent in a room. |
+  | **Needs update** (需要更新) | "This Fleet runs *x*; the recommended version is *y*." |
+  | **Version unknown** (版本不明) | "This Fleet is too old to report its version. Ask its owner to update it." Counted as needing an update. |
+  | **Up to date** (已是建議版本) | On the recommended version or newer, or none is set and nothing is missing. |
+
+  They are plain tags: no red badges or counts.
+- **The owner is told on the Hub.** A person whose own Fleet is flagged sees, after signing in: "Your Fleet "*name*"
+  runs an older AgEnD (*version*). Some features here will not work until you update it. Open your AgEnD dashboard and
+  press Update." (With several: "*n* of your Fleets run an older AgEnD.") Close it and it stays away for that sign-in;
+  it comes back next time while still true.
+- **In a room**, an agent whose Fleet is too old reads "Needs an AgEnD update · ask *owner*" (「需要更新 AgEnD · 請通知
+  *owner*」), so people know whom to tell.
+- **The fix is the owner's Update**: on their AgEnD dashboard, the update banner's **Update now**, or Settings →
+  Advanced → **Version and update**; in chat, `/update`. A recommended version set by the Hub, and updating a Fleet
+  from the Hub, are not available yet.
 
 ## Config keys
 
