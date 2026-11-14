@@ -26,10 +26,23 @@
   ],
   "restored": true,
   "restoredHashes": {
-    "src/hub/types.ts": "fd3326d74ab639bd5df8874c014eee833f077fd41046a1e2994a6f469f65d154",
-    "src/hub/catalog.ts": "a0e8c9111ab38ebf223ec30ab253ec6ff2f70f327fb6f7211bbdf318f2ada259",
-    "src/hub/grant-access.ts": "11f9afdee44488ddae698127951cd7919628dc8666f9303721341ffee3cb8617",
-    "src/hub/grant-search.ts": "cb7947b02be7938bac7e17f5cafc7696322b73a0d92ae5809d6b1850617b23e1",
-    "src/hub/group-policy/impact-inventory.ts": "ef8bed163901514564bee8407e599bfabd944c4a2c96188f6b1d42ce5ff3dc5c"
+    "encoding": "sha256-to-paths-v1",
+    "sha256ToPaths": {
+      "fd3326d74ab639bd5df8874c014eee833f077fd41046a1e2994a6f469f65d154": [
+        "src/hub/types.ts"
+      ],
+      "a0e8c9111ab38ebf223ec30ab253ec6ff2f70f327fb6f7211bbdf318f2ada259": [
+        "src/hub/catalog.ts"
+      ],
+      "11f9afdee44488ddae698127951cd7919628dc8666f9303721341ffee3cb8617": [
+        "src/hub/grant-access.ts"
+      ],
+      "cb7947b02be7938bac7e17f5cafc7696322b73a0d92ae5809d6b1850617b23e1": [
+        "src/hub/grant-search.ts"
+      ],
+      "ef8bed163901514564bee8407e599bfabd944c4a2c96188f6b1d42ce5ff3dc5c": [
+        "src/hub/group-policy/impact-inventory.ts"
+      ]
+    }
   }
 }

@@ -1,0 +1,31 @@
+{
+  "scanner": "8.24.3",
+  "historicalHead": "464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a",
+  "findings": 2,
+  "classification": "public source SHA-256 metadata",
+  "maps": [
+    {
+      "file": "grant-checkpoint/grant-baseline/verification.json",
+      "field": "restoredHashes",
+      "source": "557763aa3e3132c10cf8f7a05113eb5db8c86fe7",
+      "entries": 5,
+      "canonicalMapSha256": "433574f2e9810597f28455b5bd04407e4656ed46afff9fc6ccb008dc920b87e0",
+      "sourceBlobsVerified": true,
+      "inverseEqual": true
+    },
+    {
+      "file": "ui/verification.json",
+      "field": "inputs",
+      "source": "8b831103abb13b807adcec34b4da367af169056d",
+      "entries": 18,
+      "canonicalMapSha256": "bd5037604fae98fc435aedca98b539517b93ded243b4dc7f3f7e7620e4fc580f",
+      "sourceBlobsVerified": true,
+      "inverseEqual": true
+    }
+  ],
+  "fingerprints": [
+    "464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a:docs/evidence/hub-virtual-teams-track-c/grant-checkpoint/grant-baseline/verification.json:generic-api-key:31",
+    "464c4b3c12b08a116ab2ce4e5ec1e3f1b752739a:docs/evidence/hub-virtual-teams-track-c/ui/verification.json:generic-api-key:12"
+  ],
+  "runtimeTestsHarnessAndPngUnchanged": true
+}
