@@ -37,7 +37,7 @@ export async function s3bRig(opts: { directory?: HubDirectory; now?: () => numbe
   const attachments = opts.attachments ? new HubAttachmentStore({ contentKey: randomBytes(32), ...(opts.now ? { now: opts.now } : {}) }) : undefined;
   db.exec("CREATE TABLE audit_rows (value TEXT NOT NULL)");
   if (opts.realAudit) HUB_AUDIT_MIGRATION.up(db);
-  const realAudit = opts.realAudit ? createHubAudit({ db, contentKey: randomBytes(32) }) : undefined;
+  const realAudit = opts.realAudit ? createHubAudit({ db, contentKey: randomBytes(32), now: opts.now }) : undefined;
   const realUow = opts.realAudit ? createHubUnitOfWork(db) : undefined;
   const live = new WeakMap<HubTx, Database.Database>();
   let auditFails = false;

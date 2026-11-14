@@ -114,9 +114,11 @@ export class HubRoomAgents {
       db.prepare(`INSERT INTO hub_room_posts(id,room_id,sequence,author_kind,author_id,author_subject,author_name,content_ref,digest,mentions,created_at,answer_to,delivery_id,stage)
         VALUES(?,?,?,'agent',?,?,?,?,?,'[]',?,?,?,'queued')`).run(replyId, parent.room_id, max + 1, e.id, e.owner, e.display_name,
           this.core.deps.content.put(tx, { question: "" }), "", now, parent.id, id);
+      const payloadRef = this.core.deps.content.put(tx, { question: bytes });
+      this.core.audit(tx, { requestId: id, actor: { kind: "person", person: personFromString(parent.author_subject) }, action: "room.ask-queued", result: "completed", roomId: parent.room_id, messageId: parent.id, exposureId: e.id, fleetId: e.fleet_id, contentRef: payloadRef });
       db.prepare(`INSERT INTO hub_room_deliveries(id,room_id,parent_id,reply_id,exposure_id,exposure_revision,fleet_id,owner,asker,asker_member,agent_member,payload_ref,payload_digest,state,created_at,expires_at)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)`).run(id, parent.room_id, parent.id, replyId, e.id, e.revision, e.fleet_id, e.owner, parent.author_subject, askerMember, m.id,
-          this.core.deps.content.put(tx, { question: bytes }), digest(bytes), now, now + 24 * 60 * 60_000);
+          payloadRef, digest(bytes), now, now + 24 * 60 * 60_000);
     }
   }
   publishQueued(parentId: string): void {
@@ -253,8 +255,9 @@ export class HubRoomAgents {
       db.prepare("UPDATE hub_room_deliveries SET state=?,answer_id=?,answer_digest=? WHERE id=?").run(disclose ? "answered" : "retired", body.answerId, hash, d.id);
       if (disclose) {
         const seq = (db.prepare("SELECT MAX(sequence) AS n FROM hub_room_posts WHERE room_id=?").get(d.room_id) as { n: number }).n + 1;
-        db.prepare("UPDATE hub_room_posts SET content_ref=?,stage='answered',sequence=?,created_at=? WHERE id=?").run(this.core.deps.content.put(tx, { question: body.text }), seq, this.core.now(), d.reply_id);
-        this.core.audit(tx, { requestId: d.id, actor: { kind: "person", person: link.owner }, action: "room.answer", result: "completed", roomId: d.room_id, messageId: d.reply_id, exposureId: d.exposure_id, fleetId: d.fleet_id });
+        const answerRef = this.core.deps.content.put(tx, { question: body.text });
+        db.prepare("UPDATE hub_room_posts SET content_ref=?,stage='answered',sequence=?,created_at=? WHERE id=?").run(answerRef, seq, this.core.now(), d.reply_id);
+        this.core.audit(tx, { requestId: d.id, actor: { kind: "person", person: link.owner }, action: "room.answer", result: "completed", roomId: d.room_id, messageId: d.reply_id, exposureId: d.exposure_id, fleetId: d.fleet_id, contentRef: answerRef });
       } else db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id);
     }, permit);
     this.update(d); return { messageId: d.id, answerId: body.answerId };
