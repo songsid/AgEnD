@@ -25,6 +25,7 @@ try {
   const auth = await rig.signIn("admin"), pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core");
   browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
   for (const device of ["desktop", "phone"]) for (const lang of ["en", "zh-TW"]) for (const theme of ["light", "dark"]) {
+    if (process.env.DEVICE && device !== process.env.DEVICE) continue;
     const tag = `${device}-${lang}-${theme}`, english = lang === "en", errors: string[] = [], fx = createHubRoomsFixture({ csrf: auth.csrf, features: ["rooms-v1", "teams-v1"], teamLead: true });
     const context = await browser.newContext({ viewport: device === "phone" ? { width: 390, height: 844 } : { width: 1366, height: 1000 }, locale: english ? "en-US" : "zh-TW", colorScheme: theme,
       ignoreHTTPSErrors: true, isMobile: device === "phone", hasTouch: device === "phone" });
@@ -65,7 +66,7 @@ try {
     const sizes = await page.locator(".hub-teams button, .hub-teams input, .hub-teams select").evaluateAll((els: HTMLElement[]) => els.filter(el => !el.hidden && el.getBoundingClientRect().width > 0).map(el => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height })));
     receipt.geometry.push({ tag, fields: sizes }); check(tag + " touch fields", device !== "phone" || sizes.every((s: any) => s.width >= 44 && s.height >= 44));
     check(tag + " page fits", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await shot("lead-roster");
-    if (device === "phone") { await page.locator("#sbOpen").click(); await page.locator('.side-nav a[href="/ui/hub?view=teams"]').waitFor({ state: "visible" }); await shot("lead-drawer"); }
+    if (device === "phone") { await page.locator("#sbOpen").click(); await page.waitForFunction(() => { const box = document.querySelector("#sidebar")?.getBoundingClientRect(); return !!box && box.left >= -1 && box.width >= 200; }); await page.waitForTimeout(250); await page.locator('.side-nav a[href="/ui/hub?view=teams"]').waitFor({ state: "visible" }); await shot("lead-drawer"); }
     else await page.locator('.side-nav a[href="/ui/hub?view=teams"]').waitFor({ state: "visible" });
     check(tag + " no page errors", errors.length === 0); await Promise.all(responseWork); await context.close();
   }
@@ -74,4 +75,4 @@ try {
   receipt.servedAssets = [...assets].map(([path, sha256]) => ({ path, sha256 })); receipt.cleaned = { browser: true, listener: true, sqlite: true, keys: true };
   writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2) + "\n");
 }
-console.log(JSON.stringify({ cases: 8, checks: receipt.checks.length, png: receipt.pictures.length }));
+console.log(JSON.stringify({ cases: receipt.pictures.filter((row: any) => row.path.endsWith("admin-roster.png")).length, checks: receipt.checks.length, png: receipt.pictures.length }));

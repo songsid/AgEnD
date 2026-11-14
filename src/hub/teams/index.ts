@@ -140,7 +140,7 @@ class Teams implements HubTeams {
     const members = teamMembers(db, row.id), lead = members.find(member => member.person === row.lead);
     return { id: row.id, revision: row.revision, name: row.name, department: row.department_guid,
       departmentName: row.department_name, lead: row.lead, leadName: lead?.display_name || row.lead,
-      members: members.map(member => member.person), canManage: actor.admin || actor.id === row.lead, leadEligible,
+      members: members.map(member => member.person), canManage: actor.admin || actor.id === row.lead, isLead: actor.id === row.lead, leadEligible,
       ...(details ? { memberInfo: members.map(member => ({ id: member.person, name: member.display_name, login: member.login_label,
         department: member.department, signedIn: !!db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(member.person),
         agents: db.prepare("SELECT id,display_name AS name FROM hub_exposures WHERE owner=? AND state='published' ORDER BY display_name,id")

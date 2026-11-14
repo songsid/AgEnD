@@ -20,4 +20,12 @@
   .hub-team-head { align-items: flex-start; }
   .hub-team-search-line { flex-wrap: wrap; }
   .hub-team-search-line .field { flex-basis: 100%; }
+  .hub-team-table-wrap { overflow: visible; }
+  .hub-team-table, .hub-team-table tbody { display: block; }
+  .hub-team-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .hub-team-table tr { display: flex; flex-direction: column; padding: var(--s-3) 0; border-bottom: 1px solid var(--border); }
+  .hub-team-table td { display: block; min-width: 0; padding: var(--s-1) 0; border: 0; overflow-wrap: anywhere; }
+  .hub-team-table td:first-child { min-width: 0; }
+  .hub-team-table td[data-label]::before { content: attr(data-label); color: var(--text-2); margin-inline-end: var(--s-2); }
+  .hub-team-table td:last-child { align-self: flex-end; }
 }

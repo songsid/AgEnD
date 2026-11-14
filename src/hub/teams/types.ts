@@ -38,6 +38,8 @@ export interface HubTeamView {
   readonly department: string; readonly departmentName: string;
   readonly lead: PersonId; readonly leadName: string; readonly members: readonly PersonId[];
   readonly canManage: boolean;
+  /** Presentation of this request's actor, not a replacement for current mutation authority. */
+  readonly isLead?: boolean;
   /** null means not observed, not a disabled account. Reads never choose a replacement lead. */
   readonly leadEligible: boolean | null;
   readonly memberInfo?: readonly {

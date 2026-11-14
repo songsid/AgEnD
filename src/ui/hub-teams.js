@@ -7,6 +7,7 @@ import { ht } from "./hub-teams-strings.js";
 const changes = new Set();
 const changed = () => { for (const fn of changes) fn(); };
 const personId = person => typeof person === "string" ? person : person?.realm && person?.objectId ? `${person.realm}/${person.objectId}` : person?.id || "";
+const leads = (row, me) => row.isLead === true || row.isLead === undefined && !!me && row.lead === me;
 const errorText = (out, writing = false) => out?.status === 429 ? ht("busy") : out?.status === 401 || out?.status === 403 ? ht("denied") : ht(writing ? "saveFailed" : "failed");
 const date = value => new Date(value).toLocaleDateString();
 const cssLoads = new WeakMap();
@@ -51,7 +52,7 @@ export function HubTeamsEntry() {
 }
 export function HubMyTeamsEntry({ client, person, active, onPick }) {
   const { rows } = useTeams(client), me = personId(person);
-  if (!me || !rows?.some(row => row.lead === me)) return null;
+  if (!rows?.some(row => leads(row, me))) return null;
   const href = "/ui/hub?view=teams";
   return html`<a class=${`side-row${active ? " active" : ""}`} href=${href} aria-current=${active ? "page" : undefined}
     onClick=${e => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); onPick?.(); navigate(href); }}><${Icon} name="user" /><span class="grow">${ht("mine")}</span></a>`;
@@ -132,8 +133,8 @@ function TeamEditor({ client, id, mode, onSaved, onBack }) {
       <div class="hub-team-head"><h4>${ht("members")} · ${draft.members.length}</h4><button type="button" class="btn hub-team-button" disabled=${busy || !allowed || draft.members.length >= 200} onClick=${() => setPicker("member")}>${ht("add")}</button></div>
       <p class="note">${ht("limit")} ${ht("leadRequired")}</p>
       <div class="hub-team-table-wrap"><table class="hub-team-table"><thead><tr><th>${ht("members")}</th><th>${ht("role")}</th><th>${ht("signedIn")}</th><th>${ht("agents")}</th><th><span class="sr-only">${ht("remove")}</span></th></tr></thead><tbody>
-        ${draft.members.map(row => html`<tr key=${row.id}><td><strong>${row.name}</strong>${row.login ? html`<small class="note hub-team-detail">${row.login}</small>` : null}${row.department ? html`<small class="note hub-team-detail">${row.department}</small>` : null}</td><td>${ht(row.id === draft.lead ? "roleLead" : "roleMember")}</td>
-          <td>${row.signedIn === true ? ht("yes") : row.signedIn === false ? ht("notYet") : "—"}</td><td>${row.agents?.length ? row.agents.map(agent => agent.name).join(", ") : ht("none")}</td><td><button type="button" class="btn hub-team-button" disabled=${busy || !allowed || row.id === draft.lead || row.id === view?.lead} aria-label=${`${ht("remove")} ${row.name}`} onClick=${() => { setDraft(old => ({ ...old, members: old.members.filter(member => member.id !== row.id) })); setSaved(false); }}>${ht("remove")}</button></td></tr>`)}
+        ${draft.members.map(row => html`<tr key=${row.id}><td><strong>${row.name}</strong>${row.login ? html`<small class="note hub-team-detail">${row.login}</small>` : null}${row.department ? html`<small class="note hub-team-detail">${row.department}</small>` : null}</td><td data-label=${ht("role")}>${ht(row.id === draft.lead ? "roleLead" : "roleMember")}</td>
+          <td data-label=${ht("signedIn")}>${row.signedIn === true ? ht("yes") : row.signedIn === false ? ht("notYet") : "—"}</td><td data-label=${ht("agents")}>${row.agents?.length ? row.agents.map(agent => agent.name).join(", ") : ht("none")}</td><td><button type="button" class="btn hub-team-button" disabled=${busy || !allowed || row.id === draft.lead || row.id === view?.lead} aria-label=${`${ht("remove")} ${row.name}`} onClick=${() => { setDraft(old => ({ ...old, members: old.members.filter(member => member.id !== row.id) })); setSaved(false); }}>${ht("remove")}</button></td></tr>`)}
       </tbody></table></div>
       <div class="hub-team-actions"><button type="submit" class="btn btn-primary hub-team-button" disabled=${busy || !allowed || !draft.name.trim() || !draft.department || !draft.lead}>${ht(busy ? "saving" : "save")}</button>${saved ? html`<span role="status">${ht("saved")}</span>` : null}
         ${admin && id ? html`<button type="button" class="btn btn-danger hub-team-button" disabled=${busy || !allowed} onClick=${() => setDeleting(true)}>${ht("delete")}</button>` : null}</div>
@@ -145,7 +146,7 @@ function TeamEditor({ client, id, mode, onSaved, onBack }) {
 }
 export function HubTeamsPage({ client, mode = "lead", person }) {
   const [ready, retry] = useStyle(), { rows, error, refresh } = useTeams(client), [selected, setSelected] = useState(null), me = personId(person);
-  const shown = (rows || []).filter(row => mode === "admin" || row.lead === me);
+  const shown = (rows || []).filter(row => mode === "admin" || leads(row, me));
   return html`<div class="hub-teams"><p class="s-page-lead hub-page-lead">${ht(mode === "admin" ? "pageLead" : "myLead")}</p>
     ${!ready ? html`<${StyleWait} ready=${ready} retry=${retry} />` : html`<div class="s-section-layout">
       ${selected !== null ? html`<${TeamEditor} key=${selected} client=${client} id=${selected || null} mode=${mode} onBack=${() => { setSelected(null); refresh(); }} onSaved=${team => { setSelected(team.id); refresh(); }} />`
