@@ -7,7 +7,7 @@ import { bootFixture, matrix, caseName, shotPath, PICTURES, TEXT } from "../smok
 
 const SMOKE = "smoke-themes";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48320) });
-const LONG = "rd1-platform-backend-sr4-server-t1547091841202130997", CJK = "研一官網-t1544335726169165914";
+const LONG = "tm1-platform-backend-sr4-server-t1547091841202130997", CJK = "產品官網-t1544335726169165914";
 const enc = encodeURIComponent;
 const fm = fx.fm;
 

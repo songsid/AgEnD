@@ -45,13 +45,13 @@ DONE-MARKER
 ⠋ Thinking... - Completed in 9.6s
 > DONE
  ▸ Time: 15s
-2% !> [user:hanhanv via discord, id:368442276000694273] MSG-1 pasted while kiro was busy
+2% !> [user:example via discord, id:368442276000694273] MSG-1 pasted while kiro was busy
 `;
 
 /** Both messages submitted together; the CLI is generating its reply. */
 const GENERATING = `
-2% !> [user:hanhanv via discord, id:368442276000694273] MSG-1 pasted while kiro was busy
-[user:hanhanv via discord, id:368442276000694273] MSG-2 pasted after idle
+2% !> [user:example via discord, id:368442276000694273] MSG-1 pasted while kiro was busy
+[user:example via discord, id:368442276000694273] MSG-2 pasted after idle
 ⠇ Thinking...
 `;
 
@@ -83,7 +83,7 @@ const STRANDED_WRAPPED = `
 const SUBMITTED_WITH_AGENT_OUTPUT = `
  ▸ Time: 9s
 32% λ !>
-[user:hanhanv via discord, id:368442276000694273] 繼續確認目前進度推進
+[user:example via discord, id:368442276000694273] 繼續確認目前進度推進
 (message_id: 1547447698142138419)
 我會繼續確認目前的進度。
 Running tool: list_instances
@@ -132,7 +132,7 @@ describe("pane-input-residue: bottom-anchored readiness", () => {
 
 describe("pane-input-residue: input area text", () => {
   it("returns the text after the last prompt marker", () => {
-    expect(inputAreaText(STRANDED, PROMPT)).toBe("[user:hanhanv via discord, id:368442276000694273] MSG-1 pasted while kiro was busy");
+    expect(inputAreaText(STRANDED, PROMPT)).toBe("[user:example via discord, id:368442276000694273] MSG-1 pasted while kiro was busy");
   });
 
   it("joins wrapped continuation rows below the prompt row", () => {
@@ -148,7 +148,7 @@ describe("pane-input-residue: input area text", () => {
 });
 
 describe("pane-input-residue: did our paste get submitted?", () => {
-  const formatted = "[user:hanhanv via discord, id:368442276000694273] MSG-1 pasted while kiro was busy\n(message_id: 1)";
+  const formatted = "[user:example via discord, id:368442276000694273] MSG-1 pasted while kiro was busy\n(message_id: 1)";
 
   it("detects the pasted text still sitting in the input row", () => {
     expect(pasteLeftInInput(STRANDED, PROMPT, formatted)).toBe(true);
@@ -166,12 +166,12 @@ describe("pane-input-residue: did our paste get submitted?", () => {
   });
 
   it("does not mistake a submitted transcript followed by agent output for active input", () => {
-    const submitted = "[user:hanhanv via discord, id:368442276000694273] 繼續確認目前進度推進\n(message_id: 1547447698142138419)";
+    const submitted = "[user:example via discord, id:368442276000694273] 繼續確認目前進度推進\n(message_id: 1547447698142138419)";
     expect(pasteLeftInInput(SUBMITTED_WITH_AGENT_OUTPUT, PROMPT, submitted)).toBe(false);
   });
 
   it("is a whitespace-insensitive prefix match, so a different message is not mistaken for ours", () => {
-    expect(pasteLeftInInput(STRANDED, PROMPT, "[user:hanhanv via discord, id:368442276000694273] MSG-9 something else")).toBe(false);
+    expect(pasteLeftInInput(STRANDED, PROMPT, "[user:example via discord, id:368442276000694273] MSG-9 something else")).toBe(false);
   });
 });
 

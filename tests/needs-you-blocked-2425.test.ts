@@ -26,7 +26,7 @@ function fixture() {
   const legacy = board.createCards(dev, { cards: [{ title: "Old server migration" }, { title: "Waiting on art" }] }).cards;
   for (const c of legacy) { board.moveCard(dev, c.code, "claimed"); board.moveCard(dev, c.code, "blocked", { reason: "waiting on the designer" }); }
   const raw = (scheduler.db as any).db;
-  raw.prepare("UPDATE tasks SET created_by = 'doupo-leader', updated_at = '2026-07-30T00:00:00.000Z' WHERE id = ?").run(legacy[0]!.uuid);
+  raw.prepare("UPDATE tasks SET created_by = 'games-leader', updated_at = '2026-07-30T00:00:00.000Z' WHERE id = ?").run(legacy[0]!.uuid);
   // A reviewer's own card, blocked "waiting on the author".
   const review = board.createCards(rev, { cards: [{ title: "Review PR #1730" }] }).cards[0]!;
   board.moveCard(rev, review.code, "claimed"); board.moveCard(rev, review.code, "blocked", { reason: "waiting on the author" });

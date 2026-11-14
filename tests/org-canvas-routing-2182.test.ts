@@ -1,7 +1,7 @@
 /**
  * #2182: the org canvas's traffic lines routed by libavoid (libavoid-js 0.4.5, the real WebAssembly build, in Node)
  * around the cards and through the team boxes' doors — the issue's acceptance on the screenshot's case (a sender
- * outside the awp-ota box, targets inside it and in the box of instances in no team) and on a busier fleet; the scene,
+ * outside the ota-svc box, targets inside it and in the box of instances in no team) and on a busier fleet; the scene,
  * the checks on what crosses to and from the worker, the page's client, the lines' fallback to their lanes, and the
  * server side (the worker's own CSP, libavoid's two files, the public link).
  */
@@ -34,14 +34,14 @@ beforeAll(async () => {
 // ── Fixtures: demo names only ──
 const N = (name: string) => ({ name });
 const team = (name: string, n: number, from: number) => ({ name, nodes: Array.from({ length: n }, (_, i) => N(`${name}-${i + from}`)), counts: [] });
-/** The screenshot's shape: General on top; awp-ota and other teams; instances in no team. */
+/** The screenshot's shape: General on top; ota-svc and other teams; instances in no team. */
 function screenshotLayout(folded = new Set<string>(), narrow = false) {
-  return canvasLayout({ top: [N("general")], teams: [team("platform", 4, 1), team("awp-ota", 5, 1), team("data", 3, 1)], rest: { nodes: [N("loner-1"), N("loner-2"), N("loner-3")], counts: [] } }, folded, { narrow });
+  return canvasLayout({ top: [N("general")], teams: [team("platform", 4, 1), team("ota-svc", 5, 1), team("data", 3, 1)], rest: { nodes: [N("loner-1"), N("loner-2"), N("loner-3")], counts: [] } }, folded, { narrow });
 }
 /** A busier fleet: 60 cards in eight teams and no team. */
 function fleet60() {
   const sizes = [8, 6, 9, 4, 7, 5, 3, 6];
-  const teams = sizes.map((n, i) => team(i === 1 ? "awp-ota" : `team${i}`, n, 1));
+  const teams = sizes.map((n, i) => team(i === 1 ? "ota-svc" : `team${i}`, n, 1));
   const used = 1 + sizes.reduce((a, b) => a + b, 0);
   return canvasLayout({ top: [N("general")], teams, rest: { nodes: Array.from({ length: 60 - used }, (_, i) => N(`loner-${i + 1}`)), counts: [] } });
 }
@@ -106,8 +106,8 @@ function problems(L: any, edges: any[]) {
 }
 const length = (p: Pt[]) => p.slice(1).reduce((n, q, i) => n + Math.abs(q.x - p[i].x) + Math.abs(q.y - p[i].y), 0);
 
-describe("the screenshot's case: General → two in awp-ota and one in no team", () => {
-  const items = [msg("1", "general", "awp-ota-1"), msg("2", "general", "awp-ota-4"), msg("3", "general", "loner-2")];
+describe("the screenshot's case: General → two in ota-svc and one in no team", () => {
+  const items = [msg("1", "general", "ota-svc-1"), msg("2", "general", "ota-svc-4"), msg("3", "general", "loner-2")];
   it("every line is routed, starts and ends on its cards, and meets the acceptance — no shared run, no border, no header, no arrowhead on a border", () => {
     const L = screenshotLayout();
     const { edges, map } = routed(L, items);
@@ -133,13 +133,13 @@ describe("the screenshot's case: General → two in awp-ota and one in no team",
   });
   it("the same two ends and kind are one line with ×N (stacked, never two lines on one run)", () => {
     const L = screenshotLayout();
-    const { edges } = routed(L, [...items, msg("4", "general", "awp-ota-1"), msg("5", "general", "awp-ota-1")]);
-    const one = edges.filter((e: any) => e.names.includes("awp-ota-1"));
+    const { edges } = routed(L, [...items, msg("4", "general", "ota-svc-1"), msg("5", "general", "ota-svc-1")]);
+    const one = edges.filter((e: any) => e.names.includes("ota-svc-1"));
     expect([one.length, one[0].n, one[0].badge !== null, problems(L, edges)]).toEqual([1, 3, true, []]);
   });
   it("a task, its report back and a message between the same two cards: three lines, apart", () => {
     const L = screenshotLayout();
-    const { edges, map } = routed(L, [msg("1", "general", "awp-ota-1"), msg("2", "awp-ota-1", "general", "report"), msg("3", "general", "awp-ota-1", "send")]);
+    const { edges, map } = routed(L, [msg("1", "general", "ota-svc-1"), msg("2", "ota-svc-1", "general", "report"), msg("3", "general", "ota-svc-1", "send")]);
     expect([edges.length, map.size, problems(L, edges)]).toEqual([3, 3, []]);
   });
 });
@@ -162,7 +162,7 @@ describe("the scene", () => {
   it("cards and General have pins; each open box its header band and wall pieces in front of its cards (the gaps are its doors)", () => {
     const L = screenshotLayout();
     const { shapes } = routeScene(L, []);
-    const awp = L.boxes.find((b: any) => b.name === "awp-ota");
+    const awp = L.boxes.find((b: any) => b.name === "ota-svc");
     const inBox = shapes.filter((s: any) => s.x >= awp.x - 1 && s.x + s.w <= awp.x + awp.w + 1 && s.y >= awp.y - 1 && s.y + s.h <= awp.y + awp.h + 1);
     const cols = awp.cells.slice(0, awp.cols).map((c: any) => c.x), rows = [...new Set(awp.cells.map((c: any) => c.y))];
     expect([
@@ -272,7 +272,7 @@ describe("what crosses to and from the worker is checked", () => {
 describe("the worker's answer (#2194 review)", () => {
   it("checks the scene before libavoid sees it: a scene sceneOk refuses gets no routes, though libavoid could route it", () => {
     const L = screenshotLayout();
-    const good = routeScene(L, trafficEdges([msg("1", "general", "awp-ota-1")], L));
+    const good = routeScene(L, trafficEdges([msg("1", "general", "ota-svc-1")], L));
     // One card with more pins than ROUTE.MAX_PINS: sceneOk refuses it, though libavoid would route it.
     const many = { ...good, shapes: good.shapes.map((sh: any, i: number) => (i === good.conns[0].a ? { ...sh, pins: ROUTE.MAX_PINS + 1 } : sh)) };
     expect(routeWith(A, many).size).toBe(1);
@@ -282,7 +282,7 @@ describe("the worker's answer (#2194 review)", () => {
 });
 
 describe("the lines fall back to their lanes", () => {
-  const items = [msg("1", "general", "awp-ota-1"), msg("2", "general", "loner-2")];
+  const items = [msg("1", "general", "ota-svc-1"), msg("2", "general", "loner-2")];
   it("a line the answer has no route for keeps its lane; zoomed out, no routed line at all", () => {
     const L = screenshotLayout();
     const { map, lanes } = routed(L, items);
@@ -294,8 +294,8 @@ describe("the lines fall back to their lanes", () => {
   });
   it("a line that changed phase keeps the route its ends and kind had (no jump while the next answer is on its way), lent once", () => {
     const L = screenshotLayout();
-    const { map } = routed(L, [msg("1", "general", "awp-ota-1")]);
-    const now = [{ ...msg("1", "general", "awp-ota-1"), fading: true }, { ...msg("2", "general", "awp-ota-1"), state: "queued" }];
+    const { map } = routed(L, [msg("1", "general", "ota-svc-1")]);
+    const now = [{ ...msg("1", "general", "ota-svc-1"), fading: true }, { ...msg("2", "general", "ota-svc-1"), state: "queued" }];
     const edges = trafficEdges(now, L, { routed: map });
     expect(edges.map((e: any) => e.routed).sort()).toEqual([false, true]);
     expect(edges.find((e: any) => e.routed).pts).toEqual([...map.values()][0]);

@@ -54,9 +54,9 @@ const profileHome = (p: string) => credentialProfileHome(agend, "claude-code", p
 const onProfile = (p: string) => ({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: p } } });
 const BASE = [{ id: "claude", name: "Claude", fetch: fetchClaudeUsage }];
 /** Every claude-code instance on a named profile — the user's fleet. */
-const FLEET = { defaults: { backend: "kiro-cli" }, instances: { a: onProfile("hsinlin"), b: onProfile("hsinlin"), c: onProfile("jefflin") } } as never;
-/** The snapshot as get_usage / the web panel / /usage get it: running instances use hsinlin only. */
-async function snapshot(active: string[] = ["claude:hsinlin"]) {
+const FLEET = { defaults: { backend: "kiro-cli" }, instances: { a: onProfile("helenwu"), b: onProfile("helenwu"), c: onProfile("jamesli") } } as never;
+/** The snapshot as get_usage / the web panel / /usage get it: running instances use helenwu only. */
+async function snapshot(active: string[] = ["claude:helenwu"]) {
   setUsageProvidersForTests(BASE as never);
   return filterUsageProviders(await fetchAllUsage(FLEET), active, { hostLogins: true });
 }
@@ -65,16 +65,16 @@ const row = (s: { providers: Array<{ id: string }> }, id: string) => s.providers
 describe("#2236: every Claude login on the host has a row", () => {
   it("the default login beside named profiles: \"Claude (default)\" with its own numbers — no instance uses it, nothing runs on it", async () => {
     login(process.env.CLAUDE_HOME!, "dummy-default", "acct-default");
-    login(profileHome("hsinlin"), "dummy-hsinlin", "acct-h");
-    login(profileHome("jefflin"), "dummy-jefflin", "acct-j");
-    answers = { "dummy-default": 100, "dummy-hsinlin": 47, "dummy-jefflin": 11 };
-    expect(providersForConfig(FLEET, BASE as never).map(r => [r.id, r.name])).toEqual([["claude", "Claude (default)"], ["claude:hsinlin", "Claude (hsinlin)"], ["claude:jefflin", "Claude (jefflin)"]]);
+    login(profileHome("helenwu"), "dummy-helenwu", "acct-h");
+    login(profileHome("jamesli"), "dummy-jamesli", "acct-j");
+    answers = { "dummy-default": 100, "dummy-helenwu": 47, "dummy-jamesli": 11 };
+    expect(providersForConfig(FLEET, BASE as never).map(r => [r.id, r.name])).toEqual([["claude", "Claude (default)"], ["claude:helenwu", "Claude (helenwu)"], ["claude:jamesli", "Claude (jamesli)"]]);
     const s = await snapshot();
-    expect(s.providers.map(p => [p.id, p.status, (p as any).metrics[0]?.used])).toEqual([["claude", "ok", 100], ["claude:hsinlin", "ok", 47], ["claude:jefflin", "ok", 11]]);
+    expect(s.providers.map(p => [p.id, p.status, (p as any).metrics[0]?.used])).toEqual([["claude", "ok", 100], ["claude:helenwu", "ok", 47], ["claude:jamesli", "ok", 11]]);
   });
   it("at its limit: 100% with its reset time, in get_usage and in /usage", async () => {
     login(process.env.CLAUDE_HOME!, "dummy-default", "acct-default");
-    login(profileHome("hsinlin"), "dummy-hsinlin", "acct-h");
+    login(profileHome("helenwu"), "dummy-helenwu", "acct-h");
     answers = { "dummy-default": 100 };
     const s = await snapshot();
     expect(row(s, "claude").metrics.map((m: any) => [m.label, m.used, m.resetsAt])).toEqual([["Session", 100, "2026-10-20T08:00:00.000Z"], ["Weekly", 100, "2026-10-23T10:00:00.000Z"]]);
@@ -82,29 +82,29 @@ describe("#2236: every Claude login on the host has a row", () => {
   });
   it("a 429 from the usage endpoint: an error row that says so — never a missing row", async () => {
     login(process.env.CLAUDE_HOME!, "dummy-default", "acct-default");
-    login(profileHome("hsinlin"), "dummy-hsinlin", "acct-h");
+    login(profileHome("helenwu"), "dummy-helenwu", "acct-h");
     answers = { "dummy-default": { status: 429 } };
     const s = await snapshot();
-    expect([row(s, "claude")?.status, row(s, "claude")?.error, row(s, "claude:hsinlin")?.status]).toEqual(["error", "Rate limited by Anthropic — try again later.", "ok"]);
+    expect([row(s, "claude")?.status, row(s, "claude")?.error, row(s, "claude:helenwu")?.status]).toEqual(["error", "Rate limited by Anthropic — try again later.", "ok"]);
     expect(formatUsageSummary(s)).toMatch(/· Claude \(default\)[^\n]*Rate limited/);
   });
   it("a profile no instance uses — signed in: its row, kept through the running-instances filter; signed out: none (not set up)", async () => {
-    login(profileHome("hsinlin"), "dummy-hsinlin");
+    login(profileHome("helenwu"), "dummy-helenwu");
     login(profileHome("spare"), "dummy-spare");
     mkdirSync(profileHome("empty"), { recursive: true });
     answers = { "dummy-spare": 33 };
     const s = await snapshot();
-    // No default login on this host; jefflin is used by an instance and signed out: its row says so (#1699); "empty"
+    // No default login on this host; jamesli is used by an instance and signed out: its row says so (#1699); "empty"
     // is used by none and signed out: no row.
-    expect(s.providers.map(p => p.id)).toEqual(["claude:hsinlin", "claude:jefflin", "claude:spare"]);
-    expect(row(s, "claude:jefflin").hintI18n?.key).toMatch(/claude_profile_signed_out/);
+    expect(s.providers.map(p => p.id)).toEqual(["claude:helenwu", "claude:jamesli", "claude:spare"]);
+    expect(row(s, "claude:jamesli").hintI18n?.key).toMatch(/claude_profile_signed_out/);
     expect(row(s, "claude:spare").metrics[0].used).toBe(33);
   });
   it("Prism (#2237): no row is dropped as \"the same account\" — both signed in to one account: both rows", async () => {
     login(process.env.CLAUDE_HOME!, "dummy-default", "acct-same");
-    login(profileHome("hsinlin"), "dummy-hsinlin", "acct-same");
+    login(profileHome("helenwu"), "dummy-helenwu", "acct-same");
     const s = await snapshot();
-    expect(s.providers.map(p => p.id)).toEqual(["claude", "claude:hsinlin", "claude:jefflin"]);   // jefflin: used, signed out (#1699)
+    expect(s.providers.map(p => p.id)).toEqual(["claude", "claude:helenwu", "claude:jamesli"]);   // jamesli: used, signed out (#1699)
   });
   it("Prism (#2237): the default at 100% beside an unused profile whose stale account file names the same account but which is signed out — the default stays", async () => {
     login(process.env.CLAUDE_HOME!, "dummy-default", "acct-same");
@@ -138,9 +138,9 @@ describe("#2236: every Claude login on the host has a row", () => {
   });
   it("a bot's own scoped list (no hostLogins) stays exactly its running instances' providers", async () => {
     login(process.env.CLAUDE_HOME!, "dummy-default", "acct-default");
-    login(profileHome("hsinlin"), "dummy-hsinlin", "acct-h");
+    login(profileHome("helenwu"), "dummy-helenwu", "acct-h");
     setUsageProvidersForTests(BASE as never);
-    const scoped = filterUsageProviders(await fetchAllUsage(FLEET), ["claude:hsinlin"]);
-    expect(scoped.providers.map(p => p.id)).toEqual(["claude:hsinlin"]);
+    const scoped = filterUsageProviders(await fetchAllUsage(FLEET), ["claude:helenwu"]);
+    expect(scoped.providers.map(p => p.id)).toEqual(["claude:helenwu"]);
   });
 });

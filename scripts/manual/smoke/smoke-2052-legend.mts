@@ -21,7 +21,7 @@ const SMOKE = "smoke-2052-legend";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48490), classic: false });
 const fm = fx.fm;
 // Demo names only in what is shot: the fixture's real-fleet names go (its teams and many instances stay).
-const REAL = /^(agend-|rd1-|awp-|doupo-)|^(web-claude|sol|fable|qa-1|a)$|-t\d{10,}|鬥破|己把鳩|研一/;
+const REAL = /^(agend-|tm1-|awp-|games-)|^(web-claude|sol|fable|qa-1|a)$|-t\d{10,}|遊戲|己把鳩|研一/;
 for (const name of Object.keys(fm.fleetConfig.instances)) if (REAL.test(name)) delete fm.fleetConfig.instances[name];
 for (const t of Object.values(fm.fleetConfig.teams ?? {}) as Array<{ members: string[] }>) t.members = t.members.filter((m) => !REAL.test(m));
 const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";

@@ -250,9 +250,9 @@ describe("kept: ledger hours and the daily rollup", () => {
   beforeEach(() => { l = emptyLedger(); });
   it("addSpeed sums tokens, ms and responses under source and model; the histogram holds the duration in the rate's bucket", () => {
     const f: FileCursor = { kind: "claude", ino: 1, offset: 0 };
-    addSpeed(l, f, { t: T0, model: "claude-opus-4-5", prompt: 10, tokens: 600, ms: 6_000 }, 0, "hsinlin");   // 100 tok/s
-    addSpeed(l, f, { t: T0 + 60_000, model: "claude-opus-4-5", prompt: 10, tokens: 200, ms: 1_000 }, 0, "hsinlin"); // 200 tok/s
-    const a = l.hours[String(T0)]!.sp!["claude:hsinlin"]!["claude-opus-4-5|0"]!;
+    addSpeed(l, f, { t: T0, model: "claude-opus-4-5", prompt: 10, tokens: 600, ms: 6_000 }, 0, "helenwu");   // 100 tok/s
+    addSpeed(l, f, { t: T0 + 60_000, model: "claude-opus-4-5", prompt: 10, tokens: 200, ms: 1_000 }, 0, "helenwu"); // 200 tok/s
+    const a = l.hours[String(T0)]!.sp!["claude:helenwu"]!["claude-opus-4-5|0"]!;
     expect(a.slice(0, 3)).toEqual([800, 7_000, 2]);
     expect(a[3 + speedBucket(100)]).toBe(6_000);
     expect(a[3 + speedBucket(200)]).toBe(1_000);

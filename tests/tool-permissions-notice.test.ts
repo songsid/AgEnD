@@ -26,15 +26,15 @@ function use(instance: string, tools: Record<string, number>) {
 const REAL: NoticeInput = {
   defaultsToolSet: "full",
   instances: {
-    "doupo-leader": {}, "agend-leader": {}, "claude-fable": {},
-    "rd1-a89-dev": {}, "classic-串接": {}, "general": { general_topic: true },
+    "games-leader": {}, "agend-leader": {}, "claude-fable": {},
+    "tm1-a89-dev": {}, "classic-串接": {}, "general": { general_topic: true },
   },
   recent: [
-    use("doupo-leader", { restart_instance: 6, wake_instance: 7, create_instance: 1, delegate_task: 327, send_to_instance: 900 }),
+    use("games-leader", { restart_instance: 6, wake_instance: 7, create_instance: 1, delegate_task: 327, send_to_instance: 900 }),
     use("agend-leader", { restart_instance: 2, start_instance: 3, wake_instance: 3, delegate_task: 101 }),
     use("claude-fable", { start_instance: 1, report_result: 40 }),
     // Heavy delegators that lose nothing: delegate_task stays with the worker.
-    use("rd1-a89-dev", { delegate_task: 23, report_result: 30 }),
+    use("tm1-a89-dev", { delegate_task: 23, report_result: 30 }),
     use("classic-串接", { delegate_task: 18 }),
     use("general", { create_instance: 15 }),
   ],
@@ -44,7 +44,7 @@ describe("who the notice names", () => {
   it("names only the instances that would actually lose something", () => {
     const named = coordinatorCandidates(REAL).map(c => c.instance);
 
-    expect(named).toEqual(["doupo-leader", "agend-leader", "claude-fable"]);
+    expect(named).toEqual(["games-leader", "agend-leader", "claude-fable"]);
   });
 
   it("leaves out the heavy delegators, who are not affected at all", () => {
@@ -52,7 +52,7 @@ describe("who the notice names", () => {
     // no change is how an operator learns to skip the next notice.
     const named = coordinatorCandidates(REAL).map(c => c.instance);
 
-    expect(named).not.toContain("rd1-a89-dev");
+    expect(named).not.toContain("tm1-a89-dev");
     expect(named).not.toContain("classic-串接");
   });
 
@@ -66,7 +66,7 @@ describe("who the notice names", () => {
     }).map(c => c.instance);
 
     expect(named).not.toContain("deleted-last-month");
-    expect(named).toContain("doupo-leader");
+    expect(named).toContain("games-leader");
   });
 
   it("is not fooled by an instance named after something on Object.prototype", () => {
@@ -87,7 +87,7 @@ describe("who the notice names", () => {
   it("leaves out an instance that is already explicitly widened", () => {
     const named = coordinatorCandidates({
       ...REAL,
-      instances: { ...REAL.instances, "doupo-leader": { tool_set: "full" }, "agend-leader": { tool_set: "coordinator" } },
+      instances: { ...REAL.instances, "games-leader": { tool_set: "full" }, "agend-leader": { tool_set: "coordinator" } },
     }).map(c => c.instance);
 
     expect(named).toEqual(["claude-fable"]);
@@ -96,7 +96,7 @@ describe("who the notice names", () => {
   it("reports what each one used, and only the parts it would lose", () => {
     const [first] = coordinatorCandidates(REAL);
 
-    expect(first!.instance).toBe("doupo-leader");
+    expect(first!.instance).toBe("games-leader");
     const tools = Object.fromEntries(first!.refusedTools);
     expect(tools).toEqual({ wake_instance: 7, restart_instance: 6, create_instance: 1 });
     // The 327 delegate_task calls and the 900 messages are not losses.
@@ -105,7 +105,7 @@ describe("who the notice names", () => {
   });
 
   it("puts the most affected first, so the list reads as a priority", () => {
-    expect(coordinatorCandidates(REAL).map(c => c.instance)).toEqual(["doupo-leader", "agend-leader", "claude-fable"]);
+    expect(coordinatorCandidates(REAL).map(c => c.instance)).toEqual(["games-leader", "agend-leader", "claude-fable"]);
   });
 });
 
@@ -122,9 +122,9 @@ describe("what the notice says", () => {
     const notice = buildToolPermissionsNotice(REAL)!;
 
     expect(notice).toContain("tool_set: coordinator");
-    expect(notice).toContain("doupo-leader");
+    expect(notice).toContain("games-leader");
     expect(notice).toContain("wake_instance×7");
-    expect(notice).not.toContain("rd1-a89-dev");
+    expect(notice).not.toContain("tm1-a89-dev");
   });
 
   it("admits it can only see what has been used recently", () => {

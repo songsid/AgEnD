@@ -70,7 +70,7 @@ function rig(screen: () => string, opts: { quiet?: boolean | (() => boolean); ba
   });
   const cancelled: Array<Array<{ messageId: string }>> = [];
   d.on("human_messages_cancelled", (e: { messages: Array<{ messageId: string }> }) => cancelled.push(e.messages));
-  const human = (id: string, text: string) => ({ user: "hanhanv", user_id: "1", chat_id: "chat", thread_id: "topic", message_id: id, ts: new Date().toISOString(), text });
+  const human = (id: string, text: string) => ({ user: "example", user_id: "1", chat_id: "chat", thread_id: "topic", message_id: id, ts: new Date().toISOString(), text });
   return { d, writes, cancelled, human, control };
 }
 

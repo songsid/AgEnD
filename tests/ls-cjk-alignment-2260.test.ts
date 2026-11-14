@@ -11,8 +11,8 @@ import type { Candidate } from "../src/ls-attach-resolve.js";
 describe("displayWidth (used by ls padding)", () => {
   it("ASCII: 1 col each", () => expect(displayWidth("hello")).toBe(5));
   it("CJK BMP: 2 cols each",  () => {
-    expect(displayWidth("鬥破")).toBe(4);
-    expect(displayWidth("研一官網")).toBe(8);
+    expect(displayWidth("遊戲")).toBe(4);
+    expect(displayWidth("產品官網")).toBe(8);
   });
   it("emoji: 2 cols each", () => expect(displayWidth("🎉")).toBe(2));
   it("Latin Extended (č, U+010D): 1 col — EAW=N/Narrow", () => {
@@ -24,8 +24,8 @@ describe("displayWidth (used by ls padding)", () => {
     expect(displayWidth("𠮷")).toBe(2);
   });
   it("mixed ASCII + CJK", () => {
-    // "classic-鬥破串接-1843": "classic-"=8, "鬥破串接"=8, "-1843"=5 → 21
-    expect(displayWidth("classic-鬥破串接-1843")).toBe(21);
+    // "classic-遊戲串接-1843": "classic-"=8, "遊戲串接"=8, "-1843"=5 → 21
+    expect(displayWidth("classic-遊戲串接-1843")).toBe(21);
   });
 });
 
@@ -41,8 +41,8 @@ function c(idx: number, realName: string, status: Candidate["status"] = "running
 describe("ambiguityLine: display-width-aware name padding", () => {
   const candidates = [
     c(1, "agend-reviewer-t001", "running", ["agend"]),
-    c(2, "鬥破開發-opus-t002",   "paused"),
-    c(3, "classic-鬥破串接-1843","stopped", ["classic"]),
+    c(2, "遊戲開發-opus-t002",   "paused"),
+    c(3, "classic-遊戲串接-1843","stopped", ["classic"]),
   ];
   const maxW = Math.max(...candidates.map(x => displayWidth(x.realName)));
 
@@ -75,9 +75,9 @@ describe("ambiguityLine: display-width-aware name padding", () => {
 describe("pickerLine: display-width-aware name padding", () => {
   const ordered = [
     c(1, "agend-dev1-t001",         "running"),
-    c(2, "研一官網-t1544335726",     "paused"),
+    c(2, "產品官網-t1544335726",     "paused"),
     c(3, "📚 wiki-t003",            "stopped"),
-    c(4, "classic-鬥破串接-1843",   "running"),
+    c(4, "classic-遊戲串接-1843",   "running"),
   ];
   const maxW = Math.max(...ordered.map(x => displayWidth(x.realName)));
 
@@ -129,8 +129,8 @@ describe("ls formatter (production computeLsNameWidth + padToDisplayWidth)", () 
   });
 
   it("long CJK name (>16 display cols): nameW expands; short name pads correctly", () => {
-    // "研一官網-t1544335726169165914": displayWidth=8+21=29 → nameW=30
-    const longName = "研一官網-t1544335726169165914";
+    // "產品官網-t1544335726169165914": displayWidth=8+21=29 → nameW=30
+    const longName = "產品官網-t1544335726169165914";
     const names = ["short", longName];
     const nameW = computeLsNameWidth(names);
     expect(nameW).toBe(displayWidth(longName) + 1); // 30
@@ -193,7 +193,7 @@ describe("lsAction production path: list_instances confirms CJK names preserved"
   }
 
   it("CJK and ASCII names in fleet: computeLsNameWidth + padToDisplayWidth give equal-width cells", async () => {
-    const fleetNames = ["agend-dev1-t001", "研一官網-t1544335726169165914"];
+    const fleetNames = ["agend-dev1-t001", "產品官網-t1544335726169165914"];
     const { outboundHandlers } = await import("../src/outbound-handlers.js");
     const handler = outboundHandlers.get("list_instances")!;
     let result: any;
