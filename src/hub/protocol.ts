@@ -8,6 +8,8 @@ export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
 /** Track C's injectable adapter uses these frames; advertised only when live dispatch is composed (R2). */
 export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";
+/** Opted into by the mounted agent room-post adapter, never by an uncomposed member. */
+export const HUB_ROOM_POST_CAPABILITY = "room-post-v1";
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
@@ -63,6 +65,35 @@ export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roo
     .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1) });
 export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer) });
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
+const roomPostRefusalCode = z.enum(["invalid", "denied", "revoked", "not-found", "archived", "ambiguous-room", "rate-limited", "conflict", "unavailable", "stale", "backpressure"]);
+const roomPostChoice = z.strictObject({ id: uuid, name: plain(120) });
+export const roomListSchema = z.strictObject({ exposureId: uuid });
+export const roomListResultSchema = z.discriminatedUnion("ok", [
+  z.strictObject({ ok: z.literal(true), exposureId: uuid, rooms: z.array(roomPostChoice).max(200), truncated: z.boolean().optional() }),
+  z.strictObject({ ok: z.literal(false), exposureId: uuid, code: roomPostRefusalCode, retryAt: epoch.optional() }),
+]);
+export const roomPostSchema = z.strictObject({ exposureId: uuid, room: plain(128).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s)),
+  text: plain(HUB_LIMITS.question).refine(s => s.trim().length > 0), idempotencyKey: uuid, onBehalfOf: z.strictObject({ receiptId: z.string().regex(/^hmsg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).transform(s => s.toLowerCase()) }).optional() });
+export const roomPostResultSchema = z.discriminatedUnion("ok", [
+  z.strictObject({ ok: z.literal(true), roomId: uuid, messageId: uuid, at: epoch }),
+  z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),
+]);
+
+export const roomMembersSchema = z.strictObject({ exposureId: uuid, room: plain(128).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s)) });
+export const roomMembersResultSchema = z.discriminatedUnion("ok", [
+  z.strictObject({ ok: z.literal(true), roomId: uuid, members: z.array(z.strictObject({ id: plain(128), kind: z.enum(["person", "agent", "assistant"]), name: plain(256), presence: plain(32),
+    owner: z.strictObject({ name: plain(256) }).optional(), presenceReason: plain(32).optional(), presenceNote: plain(256).optional() })).max(200) }),
+  z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),
+]);
+export const peopleSearchSchema = z.strictObject({ exposureId: uuid, q: plain(64).refine(s => s.trim() === s && s.length >= 2 && !/[\u0000-\u001f\u007f]/.test(s)) });
+export const peopleSearchResultSchema = z.discriminatedUnion("ok", [
+  z.strictObject({ ok: z.literal(true), people: z.array(z.strictObject({ id: plain(128), name: plain(256), login: plain(256) })).max(20), truncated: z.boolean() }),
+  z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional() }),
+]);
+export const roomPostAnswerSchema = z.strictObject({ id: uuid, postId: uuid, roomId: uuid, exposureId: uuid,
+  message: z.strictObject({ id: uuid, author: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.answer), at: epoch }), receiptId: plain(256).optional() });
+export const roomPostAnswerAckSchema = z.strictObject({ id: uuid });
+
 export const agentStateSchema = z.strictObject({ exposureId: uuid, state: z.enum(["idle", "working", "paused"]),
   reason: z.enum(["quota", "auth", "approval", "update", "operator", "idle", "capacity", "error", "stopped", "crashed", "stuck", "unknown"]).optional(), note: plain(256).optional() });
 export const revocationSchema = z.strictObject({ revocationVersion: epoch, reasonCode: reason, scope: z.discriminatedUnion("kind", [
@@ -96,6 +127,7 @@ const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.arra
 /** The authenticated link is the target. No caller-supplied Fleet ID, owner or credential. */
 export const memberLeavePayloadSchema = z.strictObject({});
 export const memberFrameSchema = z.union([
+  frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
   frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema),
   frame("member.leave", memberLeavePayloadSchema),
   frame("hello", hello), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
@@ -109,6 +141,7 @@ export const memberFrameSchema = z.union([
   frame("relocate.ack", z.strictObject({ revision: epoch.min(1), digest: hash })),
 ]);
 export const serverFrameSchema = z.union([
+  frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
   frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema),
   frame("welcome", welcome), frame("question", questionSchema), frame("receipt", receiptSchema),
   frame("reconcile", z.strictObject({ receipts: z.array(receiptSchema).max(128), nextReceiptSequence: epoch, more: z.boolean() })),

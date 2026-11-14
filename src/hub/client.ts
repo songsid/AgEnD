@@ -1,7 +1,7 @@
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
+import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
 import { HubSocket } from "./socket.js";
 import { HubProtocolError } from "./validation.js";
 import { pinnedHubAgent, HubTlsIdentityError } from "./tls.js";
@@ -153,6 +153,7 @@ export class HubMemberClient implements HubMemberTransport {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
           if (value.type === "exposure.quota" && !features.has("quota-band-v1")) return Promise.reject(new HubAuthorizationError("unavailable", "incompatible"));
           if ((value.type === "room.answer" || value.type === "agent.state") && (!features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
+          if ((value.type === "room.list" || value.type === "room.post") && (!features.has(HUB_ROOM_POST_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
           return link.send(value);
         },
         exchange: (value, type) => this.exchange(value, type, view) };
@@ -190,6 +191,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (frame.type === "pairing.notice-v3" && (!view.features.has("pairing-notices-v3") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "relocate" && (!view.features.has(HUB_MEMBER_RELOCATION_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.ask" || frame.type === "room.answer-ack") && (!view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if ((frame.type === "room.list-result" || frame.type === "room.post-result" || frame.type === "room.members-result" || frame.type === "people.search-result" || frame.type === "room.post-answer") && (!view.features.has(HUB_ROOM_POST_CAPABILITY) || !view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "revoke") {
       if (frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       this.revocation = frame.payload.revocationVersion;
