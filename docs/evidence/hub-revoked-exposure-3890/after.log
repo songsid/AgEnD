@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-revoked-exposure-3890
+
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  11:29:47
+   Duration  4.79s (transform 3.27s, setup 130ms, import 4.10s, tests 394ms, environment 0ms)
+

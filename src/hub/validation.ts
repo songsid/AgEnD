@@ -17,7 +17,7 @@ export function scalarString(s: string): boolean {
   return true;
 }
 export class HubProtocolError extends Error {
-  constructor(readonly code: z.infer<typeof reason> = "invalid") { super(`Hub protocol: ${code}`); }
+  constructor(readonly code: z.infer<typeof reason> = "invalid", options?: ErrorOptions) { super(`Hub protocol: ${code}`, options); }
 }
 /** JSON.parse alone silently accepts duplicate keys, including escaped spellings of the same key. */
 export function parseStrictJson(input: string | Buffer, limit = 256 * 1024): unknown {

@@ -66,7 +66,7 @@ export class HubCore {
       } };
     } catch (error) {
       if (error instanceof HubGroupAuthorizationError && (error.reason === "denied" || error.reason === "resume-required")) throw new HubProtocolError("denied");
-      if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");
+      if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable", { cause: error });
       throw error;
     }
   }
@@ -166,8 +166,11 @@ export class HubCore {
       const row = this.atomic(db => readExposure(db, exposureId));
       if (this.deps.groups !== groups || !row || bytes(exposureOf(row)) !== serializedExposure) throw new HubProtocolError("stale");
     };
-    if (!groups) { assertExposure(); return { source: "legacy", assertCurrent: assertExposure }; }
     const fleet = this.deps.store.read().fleets.find(f => f.id === exposure.fleetId);
+    // Revocation advances generation without enrolling the retired Fleet again.
+    // Refuse its retained publication before looking up that nonexistent generation.
+    if (fleet?.status === "revoked") throw new HubProtocolError("revoked");
+    if (!groups) { assertExposure(); return { source: "legacy", assertCurrent: assertExposure }; }
     if (!fleet || personKeyString(fleet.owner) !== personKeyString(exposure.owner)) throw new HubProtocolError("revoked");
     const serializedFleet = JSON.stringify(fleet), permits: HubOperationPermit[] = [];
     if (asker) permits.push(await this.groupAsker(asker, ctx));

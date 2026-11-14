@@ -1,0 +1,5 @@
+Original behavior on c3dc173f:2 semantic regression cases fail.
+1. Catalog GET after real revoke/new Fleet identity returns503 rather than200.
+2. Legacy owner catalogue still includes the revoked Fleet publication.
+Independent logging case: genuine active group failure returns503 but emits no diagnostic event.
+Raw private logs: .artifacts/3890/{before,log-before}.log. Fixture-only failures excluded as detailed in verification.json.
