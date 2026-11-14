@@ -759,13 +759,14 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
     list.addEventListener("click", thread.onClick);
     // S-152 (M-3117): the Fleet chat's message menu — right-click, a phone's long press (where the hover strip is hidden),
     // swipe left to reply, R on a focused message. Reply where this page may reply (a room), Copy text everywhere; no Copy
-    // link (a Hub message has no address). React when the page gives it (M-3127: extra.react / canReact / reactLabel).
+    // link (a Hub message has no address). React (the picker) when the page gives extra.react (M-3127).
     const ex = extra || {};
     const offActions = installMessageActions(list, {
       t: threadT, messageOf: thread.messageOf, rove: thread.rove, copyText, notice: (text, ok = true) => toast(text, ok),
       canReply: () => (typeof ex.canReply === "function" ? ex.canReply() !== false : false) && typeof ex.startReply === "function",
       reply: (x) => ex.startReply?.(x),
-      ...(typeof ex.react === "function" ? { react: ex.react, canReact: ex.canReact, reactLabel: ex.reactLabel } : {}),
+      // React opens the thread's picker for that message (extra.react is the thread's own add/remove call, with an emoji).
+      ...(typeof ex.react === "function" ? { react: (x) => thread.pickReaction?.(msgKey(x)), canReact: (x) => !!x.roomMessage && ex.canReact?.(x) !== false, reactLabel: ex.reactLabel } : {}),
     });
     return () => {
       offActions();
