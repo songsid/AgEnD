@@ -1,0 +1,42 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-team-grant-migration.test.ts (2 tests | 1 failed | 1 skipped) 28ms
+   × preserves every retained person/group value and canonical grant, child foreign key and longer expiry 27ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-grant-migration.test.ts > preserves every retained person/group value and canonical grant, child foreign key and longer expiry
+AssertionError: expected [ { …(14) }, { …(14) } ] to deeply equal [ { …(14) }, { …(14) } ]
+
+- Expected
++ Received
+
+@@ -26,9 +26,9 @@
+      "permissions": "[\"ask\",\"read-own-room\"]",
+      "revision": 7,
+      "starts_at": 0,
+      "state": "active",
+      "subject": "corp/5f065d53-06d0-4bec-8898-6e242b0a144e",
+-     "subject_kind": "group",
++     "subject_kind": "person",
+      "subject_label": "CN=Engineering,DC=example,DC=test",
+    },
+  ]
+
+ ❯ tests/hub-team-grant-migration.test.ts:32:19
+     30|     applyHubMigrations(db, registry); applyHubMigrations(db, registry);
+     31|     const after = db.prepare("SELECT * FROM hub_grants ORDER BY id").a…
+     32|     expect(after).toEqual(before); expect(after.map(grantOf)).toEqual(…
+       |                   ^
+     33|     expect(after.every(row => row.expires_at === w.expiry)).toBe(true);
+     34|     expect(db.prepare("SELECT * FROM hub_rooms ORDER BY id").all()).to…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 skipped (2)
+   Start at  08:02:44
+   Duration  1.49s (transform 1.10s, setup 119ms, import 1.15s, tests 28ms, environment 0ms)
+

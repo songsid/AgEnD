@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-virtual-teams-track-c
+
+ ❯ tests/hub-team-grants-track-c.test.ts (9 tests | 1 failed | 8 skipped) 84ms
+   × Team grant feedback is bounded, owner/exposure-scoped, and conveys no permission 83ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-grants-track-c.test.ts > Team grant feedback is bounded, owner/exposure-scoped, and conveys no permission
+AssertionError: expected 200 to be 404 // Object.is equality
+
+- Expected
++ Received
+
+- 404
++ 200
+
+ ❯ tests/hub-team-grants-track-c.test.ts:99:42
+     97|     { exposureRevision: revision, kind: "team", q: "Pro" });
+     98|   expect((await search()).json).toEqual({ ok: true, teams: [{ id: w.te…
+     99|   expect((await search(w.other)).status).toBe(404); expect((await sear…
+       |                                          ^
+    100|   expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get()).to…
+    101| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  08:00:18
+   Duration  3.81s (transform 2.73s, setup 94ms, import 3.49s, tests 84ms, environment 0ms)
+

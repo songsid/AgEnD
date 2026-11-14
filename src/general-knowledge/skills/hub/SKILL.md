@@ -32,7 +32,6 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | New chat, asking someone's agent, Waiting / Answered, favorites (最愛) | [Asking an agent](#asking-an-agent) |
 | @agent, @all, room answers, Idle, Paused, Stopped | [Agents in a Hub room](#agents-in-a-hub-room) |
 | room creators, room administration, Hub assistant | [Rooms and the Hub assistant](#rooms-and-the-hub-assistant) |
-| @agent, @all, room answers, Idle, Paused, Stopped | [Agents in a Hub room](#agents-in-a-hub-room) |
 | Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
 | Room assistant, backend/account, cap, idle stop, answer counts | [Room assistant administration](#room-assistant-administration) |
 | Connected fleets, Revoke, Individual invitations, pairing code, Notices | [Administration](#administration) |
@@ -356,8 +355,23 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 - Offline, stopped or paused targets wait; unanswered room questions expire after 24 hours. A question whose input
   outcome is uncertain is held rather than automatically entered a second time.
 
-Inviting another owner's agent and virtual-team management arrive in separate slices; do not invent those controls
-on a Hub that does not provide them. The room assistant is also separate.
+### Inviting another owner's agent
+
+When the Hub offers room invitations, a room manager can invite another owner's shared agent. The owner sees
+**Invitations** (邀請) above the chat list and at the top of **My shared agents**. The invitation names the inviter,
+agent and room, and says how many people will see the answers. **Agree** (同意) adds the agent; **Decline** (不要)
+does not. The owner does not become a person in that room and cannot read its messages just by accepting.
+
+- An invitation lasts seven days from when it was sent. Repeating a pending invitation does not extend it. The
+  manager can clear an expired invitation or send a new one; the replacement takes the old entry’s place.
+- Pausing sharing keeps existing room membership and pending invitations, while their expiry clocks keep running.
+  Resume sharing before accepting a pending invitation; an expired invitation needs a new invitation.
+- On the shared agent's page, **In these rooms** (在這些房間裡) lists its rooms. **Leave this room** removes the agent.
+  Replaying the old acceptance does not join it again; a new invitation is needed.
+- A manager can add their own shared agent directly. This remains separate from private **Who may ask** grants.
+
+These controls need the matching invitation service and room UI. Do not invent them on an older Hub. Virtual-team
+management remains a separate slice. The Hub room assistant is described in the next section.
 
 ## Rooms and the Hub assistant
 
@@ -382,41 +396,6 @@ after an upgrade. Do not offer an assistant when the Hub has no enabled assistan
   room's queued inputs. An interrupted answer is not automatically repeated after a restart.
 - Agent owners can see which rooms their agent is in and remove it. Pausing sharing keeps its room membership;
   invitations to another owner's agent still require that owner's acceptance when the invitation service is available.
-## Agents in a Hub room
-
-On a Hub with rooms, mention a shared agent with **@agent**, or **@all** when the room allows it. A room manager can
-add their own shared agent. Its owner consents to room questions by adding it; this does not grant anyone a private
-one-to-one chat. The separate **Who may ask** list still controls private chats.
-
-- The question reaches the agent's existing conversation on its owner's Fleet. It names the room and asker and
-  includes recent room messages. The agent keeps its own folder and tools; any required approval goes to its owner.
-- Everyone in the room can see the question and answer. The answer returns to the same question, and a reconnect
-  retries the saved answer without entering the question again. Room agent answers are text only for now.
-- **Idle** (待命) means the agent can be woken by a question. **Working** means it is busy. **Paused** (暫停) names a
-  known reason such as quota, sign-in or approval. **Stopped** (已停止, grey) means the Fleet is reachable but its owner
-  must start the agent. **Offline** (離線) means the Fleet cannot be reached; an older Fleet can instead show an update
-  requirement.
-- Offline, stopped or paused targets wait; unanswered room questions expire after 24 hours. A question whose input
-  outcome is uncertain is held rather than automatically entered a second time.
-
-### Inviting another owner's agent
-
-When the Hub offers room invitations, a room manager can invite another owner's shared agent. The owner sees
-**Invitations** (邀請) above the chat list and at the top of **My shared agents**. The invitation names the inviter,
-agent and room, and says how many people will see the answers. **Agree** (同意) adds the agent; **Decline** (不要)
-does not. The owner does not become a person in that room and cannot read its messages just by accepting.
-
-- An invitation lasts seven days from when it was sent. Repeating a pending invitation does not extend it. The
-  manager can clear an expired invitation or send a new one; the replacement takes the old entry’s place.
-- Pausing sharing keeps existing room membership and pending invitations, while their expiry clocks keep running.
-  Resume sharing before accepting a pending invitation; an expired invitation needs a new invitation.
-- On the shared agent's page, **In these rooms** (在這些房間裡) lists its rooms. **Leave this room** removes the agent.
-  Replaying the old acceptance does not join it again; a new invitation is needed.
-- A manager can add their own shared agent directly. This remains separate from private **Who may ask** grants.
-
-These controls need the matching invitation service and room UI. Do not invent them on an older Hub. Virtual-team
-management remains a separate slice. The room assistant is also separate.
-
 ## Group permissions
 
 Optional, for the Hub administrator; needs Active Directory over LDAPS (port 636). Step 2 of **Let colleagues join**

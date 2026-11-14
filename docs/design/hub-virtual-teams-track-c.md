@@ -21,3 +21,13 @@ Admins create/delete Teams and change names, departments or leads. Current leads
 At most 200 live Teams and 200 selected people per Team. This does not widen a room's existing 100-person union. Room membership and agent invitations expand a snapshot. Team-based creators and later ask grants evaluate current membership. Deletion retains the roster/history while making the reader return missing; explicit room members and existing consent are not removed.
 
 Initial controls use actual SQLite/UOW and Hub session contexts with an inert directory: 9/9 pass, both native TypeScript programs exit0. These are provider controls, not a production HTTP factory/UI walk, a real AD/Fleet run, a fail-first campaign or complete S-144 acceptance. The routes, grant subject integration, UI/skills, parity review and exact CI remain to do. Rollback retains the additive schema and roster history.
+
+## Grant consumer checkpoint
+
+`HUB_TEAM_GRANTS_MIGRATION` is a separate `s3-team-grants` component, applied after the existing grant schema and before Team subjects are offered. It changes only the subject-kind column CHECK, preserving person/group rows, canonical identity, revisions, absolute expiry and child foreign keys. Existing longer grants remain readable; new person/group/Team grants retain the90-day cap. A rollback needs a compatible build that knows the retained schema component.
+
+Team grants are live: the evaluator captures exact current roster revision/membership and rechecks it, the reader/method, durable asker, grant/clock/expiry and the existing operational permit. Owner display/search and group-policy impact observations handle Team subjects without converting members to personal grants. Impact uses known Hub people only. See the bounded grant-checkpoint packet; the full UI/factory acceptance remains outstanding.
+
+The planned UI order is Let colleagues join → Teams → Rooms → Room assistant → Connected fleets. A lead gets My teams in the shared desktop/phone drawer, between My shared agents and Invitations, using one roster editor with the admin view. Admins manage metadata; leads only manage members. Department/new-Team feedback is admin-only; existing-roster people feedback is admin/current-lead. The agreed additional service port is suggestions(ctx,unknown), input {kind:'person'|'group',q,teamId?}, returning bare {kind,id,name}[]; R owns GET /teams/candidates → {candidates}. This feedback port is not implemented in this checkpoint.
+
+The suggestions port is now implemented at63d11aa62, with5affected controls and both native programs0. R mounts the agreed route; the Team UI and real factory walk remain. No repeated heavy verification is added.

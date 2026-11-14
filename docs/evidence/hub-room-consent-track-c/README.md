@@ -41,3 +41,11 @@ Current R receipts additionally use a lossless public-ID/asset encoding so the f
 ## Current alpha sync
 
 See r5-alpha for the source-preserving current alpha sync,131/12focused and both native checks. The earlier interrupted run has no completed result. Current source bindings are refreshed; prior PNGs remain bound to their original heads.
+
+## Alpha.4 consent release
+
+See r6-release-alpha: current alpha3384e372 and official R port resolution consumed by plain merges;179distinct cases/18files and both native checks pass. Reviewed C source/test and all43own PNGs are unchanged. Draft release hold is lifted; fresh exact-head CI and formal Fable verdict remain required.
+
+## Favourites plain sync
+
+See r7-favorites-sync: own source/tests unchanged since aaddc19f7; no local re-verification under decision5afe2996. Fresh exact CI and formal re-APPROVE remain required.

@@ -1,0 +1,38 @@
+{
+  "sourceHead": "9c18949552a0fdca45fa0422d5697b841eb27edb",
+  "results": [
+    {
+      "label": "grant-restored",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-team-grants-track-c.test.ts",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "startLoad1": 2.798828125
+    },
+    {
+      "label": "grant-source-types",
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.json"
+      ],
+      "exit": 0,
+      "startLoad1": 2.81494140625
+    },
+    {
+      "label": "grant-test-types",
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 3.951171875
+    }
+  ]
+}
