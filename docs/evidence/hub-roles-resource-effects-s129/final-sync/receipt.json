@@ -1,0 +1,116 @@
+{
+  "sourceAndTestCheckpoint": "da08f9412d2b83e9c37b510b8a1bbc0d4458bf3b",
+  "clearedHead": "529b06d3c37713b70a6e07db98ddd1ed26a14138",
+  "alpha": "d59ecaae44dbfb5f159b338eee89f226700ae321",
+  "scope": "Final plain alpha sync after3807 merged/postgreen; no new product delta or activation",
+  "checks": {
+    "focusedPassed": 291,
+    "files": 11,
+    "skipped": 0,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "compiler": "nativeTypeScript7.0.2",
+    "changelog": "changelog-assemble: 451 fragment(s) OK",
+    "guard": "changelog-guard: OK"
+  },
+  "bindings": [
+    {
+      "path": "src/hub/roles/effects.ts",
+      "sha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9"
+    },
+    {
+      "path": "src/hub/roles/writer.ts",
+      "sha256": "1bab3a2b6aae6f35dc65fe31dbf60fc5d66dc12bffea1e2fcfacdf09b174cbaa"
+    },
+    {
+      "path": "tests/hub-roles-effects-s129.test.ts",
+      "sha256": "f6c6e81dc2de4cb2946f2244926c94980235acb4d402617d0b5c4ebac6197a48"
+    },
+    {
+      "path": "docs/design/hub-roles-resource-effects.md",
+      "sha256": "ed0f6d9055cd595d0b9e0781240c8b81edcd95ceff765721c133f0cd4c0b712d"
+    },
+    {
+      "path": "changes/3743-roles-resource-effects.md",
+      "sha256": "0c2b8f7e5748a933f93dd2b7fa9fe027a21df2645a6e5853a373322916d77d8d"
+    },
+    {
+      "path": "changes/3743-roles-resource-effects.zh-TW.md",
+      "sha256": "73e4d3bac376192a5d32557a2b63f4d3a0a59132df44e0197863012c1f04539c"
+    }
+  ],
+  "privateLogBindings": [
+    {
+      "path": "focused.log",
+      "sha256": "ea081688288131a062668e1cfd91c31387dea3bcb04e72e28bd30d12a3c325d2"
+    },
+    {
+      "path": "focused.json",
+      "sha256": "9a45d77745b56cc05339aa7a40f432430f250a5b8b8a39da79c18c7ff26c8f13"
+    },
+    {
+      "path": "source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "changelog.log",
+      "sha256": "1cbf1d8ca8a4133229fa51b1ac56bf74f359f2cb7f444c2f46a161f7ee1b5654"
+    },
+    {
+      "path": "guard.log",
+      "sha256": "27f3bf9d0e19f1b802387921ff223ff0b5ec296cd50bc51857dc694f6cf79c15"
+    }
+  ],
+  "suites": [
+    {
+      "file": "hub-group-composition.test.ts",
+      "passed": 18
+    },
+    {
+      "file": "hub-roles-clock-s129.test.ts",
+      "passed": 29
+    },
+    {
+      "file": "hub-roles-company-issuer-s129.test.ts",
+      "passed": 8
+    },
+    {
+      "file": "hub-roles-cutover-m3010.test.ts",
+      "passed": 51
+    },
+    {
+      "file": "hub-roles-effects-s129.test.ts",
+      "passed": 37
+    },
+    {
+      "file": "hub-roles-expiry-m3010.test.ts",
+      "passed": 30
+    },
+    {
+      "file": "hub-roles-issuer-s129.test.ts",
+      "passed": 25
+    },
+    {
+      "file": "hub-roles-lifecycle-s129.test.ts",
+      "passed": 15
+    },
+    {
+      "file": "hub-roles-management-reader-s129.test.ts",
+      "passed": 14
+    },
+    {
+      "file": "hub-roles-writer-m3010.test.ts",
+      "passed": 40
+    },
+    {
+      "file": "hub-sharing-pause-m3015.test.ts",
+      "passed": 24
+    }
+  ],
+  "mutations": "Historical17 compiling reversals and real owner-Pause controls retain their named inputs. No fresh mutation campaign: both cleared product blobs and own test blob are byte-identical after the plain merge.",
+  "limits": "Private role resource effects only; no production caller, startup cutover, route/member/SSE/expiry worker activation, browser/container/live AD/Fleet/account/pilot. Full S1290/4. Parent-first final conflict resolution review/newheadCI/coordinator-only gate remain."
+}
