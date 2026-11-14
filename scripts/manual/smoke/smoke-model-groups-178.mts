@@ -62,7 +62,7 @@ try {
       const { ctx, page, csp } = await fx.page(c, { path: `/ui/fleet/agent/${encodeURIComponent(name)}?cat=runtime` });
       const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
       await page.waitForSelector("#ag-model", { timeout: 15000 });
-      await page.waitForFunction(`document.querySelectorAll("#ag-model option").length > 3`, null, { timeout: 15000 }); await page.waitForTimeout(700);
+      await page.waitForFunction(() => document.querySelectorAll("#ag-model option").length > 3, null, { timeout: 15000 }); await page.waitForTimeout(700);
       const list = () => page.evaluate(`(() => { const s = document.querySelector("#ag-model"); return { value: s.value, groups: [...s.querySelectorAll("optgroup")].map((g) => ({ label: g.label, options: [...g.querySelectorAll("option")].map((o) => o.value) })),
         options: [...s.options].map((o) => ({ value: o.value, text: o.textContent.trim() })) }; })()`) as Promise<any>;
       // Open the list: a native <select> popup is not in a screenshot, so the same select is drawn as a list box.
@@ -118,7 +118,7 @@ try {
       if (way.startsWith("old-modules")) await page.route(/\/ui\/js\/settings-(catalog|dialogs)\.js/, (route: any) => { const f = new URL(route.request().url()).pathname.split("/").pop()!; served.add(f);
         return route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: old(f)! }); });
       await page.goto(`${fx.base}/ui/fleet/agent/${encodeURIComponent(name)}?cat=runtime`); await page.waitForSelector("#ag-model", { timeout: 15000 });
-      await page.waitForFunction(`document.querySelectorAll("#ag-model option").length > 3`, null, { timeout: 15000 }); await page.waitForTimeout(700);
+      await page.waitForFunction(() => document.querySelectorAll("#ag-model option").length > 3, null, { timeout: 15000 }); await page.waitForTimeout(700);
       const card = page.locator("section.card", { has: page.locator("#ag-model") });
       await page.evaluate(`(() => { const s = document.querySelector("#ag-model"); s.size = Math.min(s.options.length + s.querySelectorAll("optgroup").length, 40); })()`);
       await card.scrollIntoViewIfNeeded(); await card.screenshot({ path: shotPath(SMOKE, `skew-${way}`, `${LABEL}-card`) });

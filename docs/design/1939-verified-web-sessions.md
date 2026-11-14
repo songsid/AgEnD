@@ -10,7 +10,7 @@ be authorized too.** Quick tunnels are unchanged.
 ## 0. Amendment (2026-10-18): authenticate the session once
 
 **The user's decision.** Both are Discord receipts from the user, read with `delivery_status`: delivered, owned
-`proof_kind`, origin `discord` / `368442276000694273`.
+`proof_kind`, origin `discord` / `100000000000000001`.
 - `hmsg-d6b0a106-7c45-4fa5-8f5b-793e93d124d8`, the request: "1939 可以改成授權後=我本人discrod / 用原本查訊息id的方式就好嗎 /
   只要auth ,不用改成收束權限" (once authorized, it is me on Discord; check it by message id as today; only auth, no
   per-action narrowing).

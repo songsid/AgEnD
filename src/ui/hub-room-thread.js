@@ -286,8 +286,11 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
         emptyView=${room.assistant ? html`<div class="hub-assistant-empty"><${Empty} icon="bot" title=${hroom("hubAssistant")} hint=${hroom("hubAssistantEmpty")} /></div>`
           : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />
-      ${working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
-      <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} />
+      ${/* M-3117: under the thread, the Fleet chat's dock — its column, its padding, the working line and the box in it. */ ""}
+      <div class="dock hub-dock" data-trust="composer"><div class="dock-col">
+        ${working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
+        <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} />
+      </div></div>
     </section>
     ${showRail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>${panel}</${RailFrame}>` : null}
     ${!wide && sheet && panel && group ? html`<${Dialog} title=${hroom("members")} label=${hroom("members")} onClose=${() => setSheet(false)}><div class="hub-rail-sheet">${panel}</div></${Dialog}>` : null}
