@@ -32,6 +32,7 @@ async function world() {
 
 it("a member uploads, posts with files, and every member sees and reads them on the post", async () => {
   const w = await world();
+  expect((await w.r.call(w.alex, "GET", `/hub/v1/rooms/${w.id}`)).json.room.features).toEqual(["attachments-v1"]);   // PR1b: the page offers Attach
   const up = await w.upload(w.alex, "notes.txt", "meeting notes");
   expect(up.status).toBe(200);
   expect(up.json.file).toMatchObject({ name: "notes.txt", size: 13, mime: "text/plain", url: `/hub/v1/rooms/${w.id}/files/${up.json.file.id}` });
