@@ -59,7 +59,14 @@ try {
         });
         const busy = exec === "working" || exec === "stuck";
         if (busy !== !!stop || (stop && (!stop.inBar || stop.inComposer))) fail.push(`${leg}/${caseName(c)}/${label}/${state}: Stop ${JSON.stringify(stop)} (busy ${busy})`);
-        if (stop && c.device === "phone" && (stop.w < 44 || stop.h < 44)) fail.push(`${leg}/${caseName(c)}/${label}/${state}: phone Stop ${stop.w}×${stop.h} < 44`);
+        // M-3115 (phone v2): on a phone with nothing typed, Stop is Send's (the status line's own is hidden); typed, it is
+        // the status line's. Either way a full tap target.
+        const send = await page.evaluate(() => { const b = document.getElementById("sendBtn"); if (!b) return null; const r = b.getBoundingClientRect();
+          return { stop: b.classList.contains("is-stop"), w: r.width, h: r.height }; });
+        const phoneEmptyBusy = busy && c.device === "phone" && label === "empty";
+        if (phoneEmptyBusy) {
+          if (!send?.stop || send.w < 44 || send.h < 44) fail.push(`${leg}/${caseName(c)}/${label}/${state}: phone Send-as-Stop ${JSON.stringify(send)}`);
+        } else if (stop && c.device === "phone" && (stop.w < 44 || stop.h < 44)) fail.push(`${leg}/${caseName(c)}/${label}/${state}: phone Stop ${stop.w}×${stop.h} < 44`);
         await page.locator(".dock").screenshot({ path: join(OUT, `${leg === "skew" ? "skew-" : ""}${caseName(c)}-${label}-${i}-${state}.png`) });
       }
       const key = `${leg}/${caseName(c)}/${label}`;

@@ -21,7 +21,7 @@ export const touchScreen = () => typeof matchMedia === "function" && matchMedia(
  * `send`: { hidden, disabled, label, onClick } — keep it shown (disabled when there is nothing to send) so the box keeps one width. `controls` / `expanded` / `activeDescendant`: the box's palette ARIA.
  */
 export function ComposerInput({ inputRef, value, placeholder, onValue, onKeyDown, onPaste, attach = null, stop, send,
-  controls, expanded = false, activeDescendant, ids = {} }) {
+  controls, expanded = false, activeDescendant, ids = {}, tools = null }) {
   const own = useRef(null), input = inputRef || own, fileIn = useRef(null);
   const composing = useRef(false);
   // A render while composing (another part of the page changed) gives the box what it holds, so it never writes it.
@@ -50,9 +50,12 @@ export function ComposerInput({ inputRef, value, placeholder, onValue, onKeyDown
         aria-activedescendant=${activeDescendant} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}
         oncompositionstart=${onCompositionStart} oncompositionend=${onCompositionEnd} onBlur=${onCompositionEnd}
         placeholder=" "></textarea><span class="composer-ph" aria-hidden="true">${placeholder}</span></span>
-      <button id=${ids.sendBtn || "sendBtn"} type="button" class="btn btn-primary btn-send" hidden=${send.hidden} disabled=${send.disabled}
+      ${/* M-3115 (phone v2): what the row holds beside the box (the Fleet chat's context ring and model picker); none elsewhere. */ ""}
+      ${tools || null}
+      ${/* M-3115: `send.stop` — the button stops the reply instead (a phone's empty box while the agent works). */ ""}
+      <button id=${ids.sendBtn || "sendBtn"} type="button" class=${`btn btn-primary btn-send${send.stop ? " is-stop" : ""}`} hidden=${send.hidden} disabled=${send.disabled}
         onMouseDown=${(e) => e.preventDefault()}
-        aria-label=${send.label} title=${send.label} onClick=${send.onClick}><${Icon} name="send" size=${16} /><span class="send-label">${send.label}</span></button>
+        aria-label=${send.label} title=${send.title || send.label} onClick=${send.onClick}><${Icon} name=${send.stop ? "stop" : "send"} size=${16} /><span class="send-label">${send.label}</span></button>
     </div>`;
 }
 
