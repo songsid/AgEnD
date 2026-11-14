@@ -307,6 +307,171 @@ export class HubGroupRooms {
     if (refusedEffects) this.agentEffects(refusedEffects);
     return result;
   }
+  private viaAuthor(row: PostRow): { name?: string; via?: { id: string; name: string } } {
+    return this.core.atomic(db => { const op = db.prepare("SELECT exposure_id,person_name,via_name FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NOT NULL").get(row.id) as { exposure_id: string; person_name: string; via_name: string } | undefined;
+      return op ? { name: op.person_name, via: { id: op.exposure_id, name: op.via_name } } : {}; });
+  }
+  private agentMetadata(row: PostRow): { proactive?: true; system?: RoomSystemEvent } {
+    return this.core.atomic(db => {
+      const stop = db.prepare("SELECT source_id,reason,name,retry_at FROM hub_room_agent_stops WHERE post_id=?").get(row.id) as { source_id: string; reason: "all" | "ambiguous" | "depth" | "rate" | "capacity"; name: string; retry_at: number | null } | undefined;
+      if (stop) return { system: { kind: "agent-mention-stopped", reason: stop.reason, name: stop.name, sourceId: stop.source_id, ...(stop.retry_at !== null ? { retryAt: stop.retry_at } : {}) } };
+      return db.prepare("SELECT 1 FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NULL").get(row.id) ? { proactive: true } : {};
+    });
+  }
+  private stop(db: DB, tx: HubTx, source: PostRow, reason: "all" | "ambiguous" | "depth" | "rate" | "capacity", name = source.author_name, retryAt?: number): void {
+    const sourceAgent = (db.prepare("SELECT exposure_id FROM hub_room_agent_operations WHERE post_id=?").get(source.id) as { exposure_id: string } | undefined)?.exposure_id ?? source.author_id;
+    const coalesce = reason === "rate" ? JSON.stringify(["rate", source.room_id, sourceAgent, Math.ceil(retryAt! / 60_000)]) : JSON.stringify([source.id, reason, name]);
+    if (db.prepare("SELECT 1 FROM hub_room_agent_stops WHERE coalesce_key=?").get(coalesce)) return;
+    const text = reason === "all" ? "Agents can't use @All agents. This message was not sent to other agents."
+      : reason === "ambiguous" ? `More than one member is named "${name}", so this mention was not delivered.`
+      : reason === "depth" ? "Agents have asked each other several times in a row, so this stops here. They can ask each other again after a person writes in the room."
+      : reason === "capacity" ? "The Hub is busy, so this mention was not delivered."
+      : `${name} is posting too often, so this mention was not delivered. It can try again after ${new Date(retryAt!).toISOString()}.`;
+    const row = this.insert(db, tx, source.room_id, { kind: "system", id: "agent-mention-stopped", subject: "system", name }, text);
+    if (source.sequence !== undefined) { const l = this.automation.lineage(db, source);
+      db.prepare("INSERT INTO hub_room_post_lineage VALUES(?,?,?,?,NULL)").run(row.id, l.root_id, l.depth, l.audience_sequence); }
+    db.prepare("INSERT INTO hub_room_agent_stops VALUES(?,?,?,?,?,?)").run(row.id, source.id, reason, name, retryAt ?? null, coalesce);
+    this.core.audit(tx, { requestId: source.id, actor: { kind: "person", person: personFromString(source.author_subject) }, action: "room.agent-mention-stopped", result: "completed", roomId: source.room_id, messageId: row.id, contentRef: row.content_ref });
+  }
+  /** Both answers and proactive posts use this transaction, once, before any external delivery. */
+  private agentMentions(db: DB, tx: HubTx, post: PostRow): void {
+    const operation = db.prepare("SELECT exposure_id,receipt_id FROM hub_room_agent_operations WHERE post_id=?").get(post.id) as { exposure_id: string; receipt_id: string | null } | undefined;
+    const sourceId = operation?.exposure_id ?? post.author_id, onBehalf = !!operation?.receipt_id;
+    const source = db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=? AND owner_at_join=?").get(post.room_id, sourceId, post.author_subject) as MemberRow | undefined;
+    if (!source) return;
+    const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=?").all(post.room_id) as MemberRow[]).flatMap(m => {
+      if (m.kind === "person") { const p = db.prepare("SELECT login_label FROM hub_people WHERE person=? UNION ALL SELECT login_label FROM hub_room_people WHERE person=? LIMIT 1").get(m.subject, m.subject) as { login_label: string } | undefined;
+        return [{ ...m, name: this.name(db, m.subject), login: p?.login_label }]; }
+      const e = m.kind === "agent" ? readExposure(db, m.subject) : undefined;
+      return e && e.owner === m.owner_at_join ? [{ ...m, name: e.display_name }] : [];
+    }) as MentionMember[];
+    const resolved = resolveRoomMentions(this.core.deps.content.get(post.content_ref)?.question ?? "", members, onBehalf ? "" : sourceId), accepted: string[] = [];
+    if (resolved.all && !onBehalf) this.stop(db, tx, post, "all");
+    const targets = resolved.all && onBehalf ? members.filter(m => m.kind === "agent").map(m => m.subject) : resolved.all ? [] : resolved.agents;
+    for (const name of resolved.ambiguous) this.stop(db, tx, post, "ambiguous", name);
+    for (const target of [...resolved.people, ...targets]) {
+      const agent = targets.includes(target);
+      const recipient = members.find(m => agent ? m.kind === "agent" && m.subject === target : m.kind === "person" && m.id === target);
+      if (recipient && (db.prepare("SELECT joined_sequence FROM hub_room_members WHERE id=?").get(recipient.id) as { joined_sequence: number }).joined_sequence > this.automation.lineage(db, post).audience_sequence) continue;
+      if (agent && (db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE state IN ('queued','sent')").get() as { n: number }).n + accepted.filter(id => targets.includes(id)).length >= 4096) { this.stop(db, tx, post, "capacity"); continue; }
+      if (agent && this.automation.depth(db, post) >= 3) { this.stop(db, tx, post, "depth"); continue; }
+      const retryAt = this.automation.admit(db, post.room_id, sourceId);
+      if (retryAt !== null) { this.stop(db, tx, post, "rate", post.author_name, retryAt); break; }
+      accepted.push(target);
+    }
+    if (resolved.all && onBehalf) accepted.push("all");
+    db.prepare("UPDATE hub_room_posts SET mentions=? WHERE id=?").run(JSON.stringify(accepted), post.id);
+    this.agents.enqueue(db, tx, { ...post, mentions: JSON.stringify(accepted.filter(id => id !== "all")) }, source.id);
+  }
+  private agentEffects(id: string): void {
+    this.agents.publishQueued(id);
+    const rows = this.core.atomic(db => db.prepare("SELECT p.* FROM hub_room_agent_stops s JOIN hub_room_posts p ON p.id=s.post_id WHERE s.source_id=? ORDER BY p.sequence").all(id) as PostRow[]);
+    for (const row of rows) this.emit({ type: "message.added", roomId: row.room_id, data: { roomId: row.room_id, message: this.projection(row) }, sequence: row.sequence });
+  }
+  private async agentSource(exposureId: string, link: HubLinkContext) {
+    const current = () => this.core.live() && link.current();
+    if (!current()) throw new HubProtocolError("stale");
+    if (!["welcome-caps-v1", "room-ask-v1", HUB_ROOM_POST_CAPABILITY].every(f => link.features.has(f))) throw new HubProtocolError("denied");
+    const owned = (db: DB) => {
+      const e = readExposure(db, exposureId);
+      if (!e || e.owner !== personKeyString(link.owner) || e.fleet_id !== link.fleetId || exposureOf(e).state !== "published") throw new HubProtocolError("denied");
+      return e;
+    };
+    this.core.atomic(owned);
+    const permit = await this.core.groupExposure(exposureId, null, { requestId: exposureId, current });
+    if (!await this.core.eligible(link.owner)) throw new HubProtocolError("denied");
+    const fence = { assertCurrent: () => { permit.assertCurrent(); if (!current()) throw new HubProtocolError("stale"); } };
+    const source = this.core.atomic(owned, fence); return { source, fence };
+  }
+  async agentRooms(input: unknown, link: HubLinkContext): Promise<HubRoomListResult> {
+    const body = validated(roomListSchema, input), { source, fence } = await this.agentSource(body.exposureId, link);
+    return this.core.atomic(db => {
+      this.agentRead(source.owner);
+      const rooms = this.agentRoomChoices(db, source.id, source.owner);
+      return { ok: true, exposureId: source.id, rooms: rooms.slice(0, 200), ...(rooms.length > 200 ? { truncated: true } : {}) };
+    }, fence);
+  }
+  private agentRead(owner: string): void {
+    const at = this.core.now(); for (const [key, b] of this.agentReadBuckets) if (at < b.at || at - b.at >= 60_000) this.agentReadBuckets.delete(key);
+    const b = this.agentReadBuckets.get(owner);
+    if (b ? b.count >= 30 : this.agentReadBuckets.size >= 1024) throw new HubProtocolError("backpressure");
+    this.agentReadBuckets.set(owner, { at: b?.at ?? at, count: (b?.count ?? 0) + 1 });
+  }
+  async agentMembers(input: unknown, link: HubLinkContext): Promise<HubRoomMembersResult> {
+    const body = validated(roomMembersSchema, input), { source, fence } = await this.agentSource(body.exposureId, link); this.agentRead(source.owner);
+    return this.core.atomic(db => {
+      const rows = db.prepare(`SELECT r.id,r.name FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id WHERE m.kind='agent' AND m.subject=? AND m.owner_at_join=? AND r.archived=0 AND r.assistant_for IS NULL AND (r.id=? OR r.name=?) ORDER BY r.id LIMIT 201`).all(source.id, source.owner, body.room, body.room) as { id: string; name: string }[];
+      const room = rows.find(r => r.id === body.room) ?? (rows.length === 1 ? rows[0] : undefined);
+      if (!room) return rows.length ? { ok: false, code: "ambiguous-room", rooms: rows.slice(0, 200) } : { ok: false, code: "not-found" };
+      const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id LIMIT 201").all(room.id) as MemberRow[]).map(m => {
+        if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", presence: this.assistant.presence(room.id) };
+        if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject) }; }
+        return { id: m.id, kind: m.kind, name: this.name(db, m.subject), presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };
+      });
+      if (members.length > 200) throw new HubProtocolError("backpressure");
+      return { ok: true, roomId: room.id, members };
+    }, fence);
+  }
+  async agentPeople(input: unknown, link: HubLinkContext): Promise<HubPeopleSearchResult> {
+    const body = validated(peopleSearchSchema, input), { source, fence } = await this.agentSource(body.exposureId, link); this.agentRead(source.owner);
+    const current = async () => { fence.assertCurrent(); if (!await this.core.eligible(link.owner)) throw new HubProtocolError("denied"); fence.assertCurrent(); return { kind: "directory" as const, person: link.owner, sessionId: `member:${source.owner}` }; };
+    const ctx: HubRequestContext = { requestId: randomUUID(), isCurrent: () => { try { fence.assertCurrent(); return true; } catch { return false; } },
+      current, requirePerson: async () => (await current()).person, requireAdmin: async () => { throw new HubProtocolError("denied"); } };
+    const raw = await this.agentSearch.search(ctx, source.id, { exposureRevision: source.revision, kind: "person", q: body.q }); fence.assertCurrent();
+    const found = validated(z.discriminatedUnion("ok", [z.object({ ok: z.literal(true), people: z.array(z.object({ person: z.object({ realm: z.string(), objectId: uuid }), login: z.string(), displayName: z.string() })).max(20), truncated: z.boolean() }), z.object({ ok: z.literal(false), reason: z.string() })]), raw);
+    if (!found.ok) return { ok: false, code: found.reason === "limited" ? "backpressure" : "unavailable" };
+    return { ok: true, people: found.people.map(p => ({ id: personKeyString(p.person), name: p.displayName, login: p.login })), truncated: found.truncated };
+  }
+  private agentRoomChoices(db: DB, exposure: string, owner: string) {
+    return db.prepare(`SELECT r.id,r.name FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
+      WHERE m.kind='agent' AND m.subject=? AND m.owner_at_join=? AND r.archived=0 AND r.assistant_for IS NULL ORDER BY r.name,r.id LIMIT 201`).all(exposure, owner) as { id: string; name: string }[];
+  }
+  async agentPost(input: unknown, link: HubLinkContext): Promise<HubRoomPostResult> {
+    const body = validated(roomPostSchema, input), { source, fence } = await this.agentSource(body.exposureId, link);
+    const digest = createHash("sha256").update(JSON.stringify(body)).digest("hex"); let added = false; let refusedEffects: string | undefined;
+    const result = this.core.atomic((db, tx): HubRoomPostResult => {
+      const old = db.prepare("SELECT * FROM hub_room_agent_operations WHERE exposure_id=? AND idempotency_key=?").get(source.id, body.idempotencyKey) as { digest: string; room_id: string; post_id: string; owner: string; fleet_id: string; at: number; member_id: string } | undefined;
+      if (old) {
+        if (old.digest !== digest) return { ok: false, code: "conflict" };
+        const member = db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=? AND owner_at_join=?").get(old.room_id, source.id, source.owner) as MemberRow | undefined;
+        const row = db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(old.post_id) as PostRow;
+        if (!member || member.id !== old.member_id || row.sequence < member.joined_sequence || old.owner !== source.owner || old.fleet_id !== source.fleet_id || this.room(db, old.room_id).archived) return { ok: false, code: "denied" };
+        return { ok: true, roomId: old.room_id, messageId: old.post_id, at: old.at };
+      }
+      const matches = (byId: boolean) => db.prepare(`SELECT r.id,r.name FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
+        WHERE m.kind='agent' AND m.subject=? AND m.owner_at_join=? AND r.archived=0 AND r.assistant_for IS NULL AND ${byId ? "r.id" : "r.name"}=? ORDER BY r.id LIMIT 201`)
+        .all(source.id, source.owner, body.room) as { id: string; name: string }[];
+      const exact = matches(true)[0], named = exact ? [] : matches(false), room = exact ?? (named.length === 1 ? named[0] : undefined);
+      if (!room) return named.length > 1 ? { ok: false, code: "ambiguous-room", rooms: named.slice(0, 200) } : { ok: false, code: "not-found" };
+      const membership = db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(room.id, source.id) as MemberRow;
+      if (body.onBehalfOf) { const all = resolveRoomMentions(body.text, [], "").all;
+        if (all && !this.room(db, room.id).all_mention && !db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=? AND role='manager'").get(room.id, source.owner)) return { ok: false, code: "denied" }; }
+      const retryAt = this.automation.admit(db, room.id, source.id);
+      if (retryAt !== null) {
+        const prior = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND author_kind='agent' AND author_id=? AND stage IS NULL ORDER BY sequence DESC LIMIT 1").get(room.id, source.id) as PostRow | undefined;
+        const notice = prior ?? { id: `rate:${source.id}:${room.id}:${retryAt}`, room_id: room.id, author_id: source.id, author_name: source.display_name, author_subject: source.owner } as PostRow;
+        this.stop(db, tx, notice, "rate", source.display_name, retryAt); refusedEffects = notice.id;
+        return { ok: false, code: "rate-limited", retryAt };
+      }
+      const humanName = body.onBehalfOf ? this.name(db, source.owner) : null;
+      const ownerMember = body.onBehalfOf ? db.prepare("SELECT id FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(room.id, source.owner) as { id: string } | undefined : undefined;
+      const post = this.insert(db, tx, room.id, { kind: body.onBehalfOf ? "person" : "agent", id: body.onBehalfOf ? ownerMember?.id ?? membership.id : source.id,
+        subject: source.owner, name: body.onBehalfOf ? `${humanName} via ${source.display_name}` : source.display_name }, body.text);
+      db.prepare("INSERT INTO hub_room_agent_operations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(source.id, body.idempotencyKey, digest, body.room, room.id, post.id, source.owner, source.fleet_id, post.created_at,
+        membership.id, body.onBehalfOf?.receiptId ?? null, humanName, body.onBehalfOf ? source.display_name : null);
+      if (body.onBehalfOf) this.automation.onBehalf(db, post, source.owner, body.onBehalfOf.receiptId, source.id); else this.automation.proactive(db, post);
+      this.core.audit(tx, { requestId: post.id, actor: { kind: "person", person: link.owner }, action: "room.agent-post", result: "completed", roomId: room.id, messageId: post.id, exposureId: source.id, fleetId: link.fleetId, contentRef: post.content_ref });
+      this.agentMentions(db, tx, post); added = true;
+      return { ok: true, roomId: room.id, messageId: post.id, at: post.created_at };
+    }, fence);
+    if (added && result.ok) {
+      const row = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(result.messageId) as PostRow);
+      this.emit({ type: "message.added", roomId: row.room_id, data: { roomId: row.room_id, message: this.projection(row) }, sequence: row.sequence });
+      this.emit({ type: "unread.changed", roomId: row.room_id, data: { roomId: row.room_id } }); this.agentEffects(row.id); this.agents.wake();
+    }
+    if (refusedEffects) this.agentEffects(refusedEffects);
+    return result;
+  }
   private insert(db: DB, tx: HubTx, roomId: string, author: { kind: PostRow["author_kind"]; id: string; subject: string; name: string }, text: string,
     mentions: string[] = [], key: string | null = null, digest = "", replyTo: string | null = null): PostRow {
     const row: PostRow = { id: randomUUID(), room_id: roomId, sequence: this.maximum(db, roomId) + 1, author_kind: author.kind, author_id: author.id,
