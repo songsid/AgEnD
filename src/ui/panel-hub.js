@@ -39,7 +39,7 @@ import * as roomFavorites from "./hub-room-favorites.js";
 const { useRoomStar } = roomFavorites;
 import { HubRoomPage } from "./hub-room-thread.js";
 import { TextSizeButton } from "/assets/header-tools.js";
-import { HubNotifyToggle, startHubRoomNotifier } from "./hub-room-notify.js";
+import { HubNotifyToggle, clearHubMeId, noteHubMeId, rememberedMeId, startHubRoomNotifier } from "./hub-room-notify.js";
 import { hroom } from "./hub-room-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { ht } from "./hub-teams-strings.js";
@@ -104,6 +104,9 @@ let session;                                     // undefined: not read yet; nul
 const sessionSubs = new Set();
 function setSession(next) {
   const was = session;
+  // The notifier's remembered person id belongs to the signed-in login: a sign-out, or in as someone else on the
+  // same tab, forgets it (the next login's id is learned again from a room detail or the lazy resolve).
+  if (!next || !was || was.login !== next.login) clearHubMeId();
   session = next;
   roomFavorites.configureHubFavorites?.(hubClient(), next);
   // #3226 B: the conversation list is this person's: cleared when no one is signed in, read again when someone is.
@@ -119,12 +122,6 @@ function readSession() {
     .finally(() => { reading = null; });
 }
 let watchingEnd = false;
-// This person's id for the rooms desktop notifier (counts() matches message authors and @mentions by id;
-// the Hub session carries only login and display name). Set from any room detail the page reads, or once from
-// the first listed room when notifications are opted in — message rows cannot be matched before that, while an
-// invitation (no author) still pings.
-let hubMeId = null;
-export function noteHubMeId(id) { if (typeof id === "string" && id) hubMeId = id; }
 function useSession() {
   const [s, set] = useState(session);
   useEffect(() => {
@@ -156,7 +153,7 @@ export function HubPanel({ route }) {
   useEffect(() => {
     if (!s || !s.login) return undefined;
     const stop = startHubRoomNotifier({
-      client: hubClient(), me: () => (hubMeId ? { id: hubMeId } : null),
+      client: hubClient(), me: () => { const id = rememberedMeId(); return id ? { id } : null; },
       setMe: (m) => noteHubMeId(m && m.id),
       resolveMe: async () => {
         const rooms = roomsStore.get().rooms || [];

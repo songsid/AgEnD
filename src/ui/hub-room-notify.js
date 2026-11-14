@@ -36,6 +36,20 @@ function pingBody(kind, event, room) {
   return hroom(kind === "mention" ? "notifyMention" : "notifyAnswer", String(who), String(room), excerpt(m.text));
 }
 
+/**
+ * This person's id for the page-level watcher (counts() matches message authors and @mentions by id; the Hub
+ * session carries only login and display name). Set from any room detail the page reads, or lazily from the first
+ * listed room while opted in — and cleared when the signed-in login changes, so a sign-out and sign-in as someone
+ * else on the same tab never matches the next person with the previous one's id.
+ */
+let hubMeId = null;
+/** Keeps the id from a room detail or the lazy resolve; ignores empty values. */
+export function noteHubMeId(id) { if (typeof id === "string" && id) hubMeId = id; }
+/** Forgets the id: the signed-in login changed (signed out, or in as someone else). */
+export function clearHubMeId() { hubMeId = null; }
+/** The remembered id, or null while unknown. */
+export function rememberedMeId() { return hubMeId; }
+
 let stopPrev = null;
 
 /**

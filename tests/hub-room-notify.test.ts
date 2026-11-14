@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHubRoomsFixture } from "./support/hub-rooms-fixture.js";
-import { notifyKind, startHubRoomNotifier } from "/ui/js/hub-room-notify.js";
+import { clearHubMeId, noteHubMeId, notifyKind, rememberedMeId, startHubRoomNotifier } from "/ui/js/hub-room-notify.js";
 
 const SRC = readFileSync("src/ui/hub-room-notify.js", "utf8");
 const CSS = readFileSync("src/ui/shared/hub-chat.css", "utf8");
@@ -67,6 +67,59 @@ describe("notifyKind", () => {
     expect(notifyKind({ type: "invitation.changed", invitation: { id: "inv-new", room: { id: "room-x", name: "產品規劃" } } }, fx.me)).toBe("invitation");
     expect(notifyKind({ type: "invitation.changed" }, fx.me)).toBeNull();
     expect(notifyKind({ type: "presence.changed" }, fx.me)).toBeNull();
+  });
+});
+
+describe("remembered person id (Fable P2: a sign-out and sign-in as someone else resets it)", () => {
+  it("keeps a noted id, ignores empty values, and forgets on clear", () => {
+    clearHubMeId();
+    expect(rememberedMeId()).toBeNull();
+    noteHubMeId("person-wang");
+    expect(rememberedMeId()).toBe("person-wang");
+    noteHubMeId("");
+    expect(rememberedMeId()).toBe("person-wang");
+    // panel-hub.js setSession clears whenever the login changes (sign-out, or in as someone else);
+    // the next login's id is learned again from a room detail or the lazy resolve.
+    clearHubMeId();
+    expect(rememberedMeId()).toBeNull();
+    noteHubMeId("person-chen");
+    expect(rememberedMeId()).toBe("person-chen");
+    clearHubMeId();
+  });
+});
+
+describe("sign-out and sign-in as someone else (Fable P2 scenario)", () => {
+  it("stops matching the previous id and matches the new one", () => {
+    const fx = createHubRoomsFixture();
+    const weekly = fx.rooms.find((r) => r.id === "room-weekly")!;
+    const chen = weekly.messages.find((m) => m.author.id === "person-chen")!;
+    const wang = weekly.messages.find((m) => m.author.id === fx.me.id)!;
+    const chenId = "person-chen";
+    const env = optedEnv();
+    const client = fakeClient();
+    const starter = startHubRoomNotifier as (...args: Array<Record<string, unknown>>) => () => void;
+    const stop = starter({
+      client,
+      me: () => { const id = rememberedMeId(); return id ? { id } : null; },
+      setMe: (m: unknown) => noteHubMeId((m as { id: string })?.id),
+      roomName: () => "研一主管週會", open: vi.fn(), env, doc: { hidden: true },
+    });
+    const emit = (data: Record<string, unknown>) => (client.handlers["message.added"] as (d: unknown) => void)(data);
+    // A (person-wang) signed in: an @A mention pings.
+    noteHubMeId(fx.me.id);
+    emit({ roomId: weekly.id, message: { ...chen, mentions: [fx.me.id] } });
+    expect(env.seen).toHaveLength(1);
+    // Sign-out and in as B (person-chen): the same @A row no longer pings.
+    clearHubMeId();
+    noteHubMeId(chenId);
+    emit({ roomId: weekly.id, message: { ...chen, mentions: [fx.me.id] } });
+    expect(env.seen).toHaveLength(1);
+    // B mentioned by someone else: pings again, with B no longer treated as A.
+    emit({ roomId: weekly.id, message: { ...wang, mentions: [chenId] } });
+    expect(env.seen).toHaveLength(2);
+    expect(env.seen[1]!.opts.body).toContain("王經理");
+    stop();
+    clearHubMeId();
   });
 });
 
