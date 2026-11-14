@@ -1,0 +1,18 @@
+{
+  "parent": "5704a6a6dd47b4803d522d64712d641262e3a760",
+  "integrationProductHead": "342c0a8aab7c28daed59b8f3ffb4048fc156bebc",
+  "bindings": {
+    "src/ui/hub-teams.js": "4b9265331bd5765f2970468b688693f92c3d1cdbab6c38683fdf1d457f8f291f",
+    "src/ui/hub-teams-strings.js": "31b56ec7732f67ec6d1791f0ec7f0fe3ba96f7b9c895becef5175e43a81c42fb",
+    "tests/hub-teams-ui-track-c.test.ts": "dd45e9606d098815201f38f19ece942277077764b83b11b779529d0ff084c391"
+  },
+  "wordingGuard": "Byte-identical to6c03c4f2; no added exception or Team dictionary exemption.",
+  "search": {
+    "en": "Search everyone by name",
+    "zh-TW": "輸入姓名搜尋所有人"
+  },
+  "pmRequiredCopy": "Grant impact states May ask/可以問; known false joined observation says Not yet/尚未加入, unknown says Not checked yet/尚未確認.",
+  "draftFeedback": "Dirty editable fields and roster ID sets show Unsaved changes/尚未儲存 beside Save; successful save clears it.",
+  "executionScope": "No new R local campaign.44 actual checks and9 preferred views at a930369fa carry; PM explicitly requested no new screenshot for copy fixes. C affected UI16 and wording10 are author-recorded, not R re-execution.",
+  "releaseHold": "Alpha.4 freeze; no coordinator gate request."
+}
