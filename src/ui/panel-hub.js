@@ -748,13 +748,23 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
     host.current.append(list);
     thread.attach(scroller.current);
     thread.render(store.messages());
-    const off = store.subscribe(() => thread.render(store.messages()));
+    const sc = scroller.current;
+    // The next `before=` page when the reader is at the top, or when the held messages do not fill the view. createThread
+    // already grows through what is held; a tall room at the bottom must not fetch the whole history on open.
+    let paging = true;
+    const maybeOlder = () => {
+      if (!paging || !sc || typeof store.older !== "function" || !store.more?.()) return;
+      const high = sc.scrollHeight, view = sc.clientHeight;
+      if (high > view && sc.scrollTop >= 96) return;
+      void store.older();
+    };
+    const off = store.subscribe(() => { thread.render(store.messages()); maybeOlder(); });
+    requestAnimationFrame(() => requestAnimationFrame(maybeOlder));
     // A card shows whether this browser allows previews and whether the panel has its page.
     const P = globalThis.AgendPreview;
     const offOpt = P && typeof P.onChange === "function" ? P.onChange(() => thread.refreshCards()) : () => {};
     const offPanel = panelStore.subscribe(() => thread.refreshCards());
-    const sc = scroller.current;
-    const onScroll = () => thread.onScroll();
+    const onScroll = () => { thread.onScroll(); maybeOlder(); };
     sc.addEventListener("scroll", onScroll, { passive: true });
     list.addEventListener("click", thread.onClick);
     // S-152 (M-3117): the Fleet chat's message menu — right-click, a phone's long press (where the hover strip is hidden),
@@ -770,6 +780,7 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
     });
     return () => {
       offActions();
+      paging = false;
       off(); offOpt(); offPanel(); sc.removeEventListener("scroll", onScroll); list.removeEventListener("click", thread.onClick);
       thread.dispose(true); list.remove(); th.current = null; if (threadRef && threadRef.current === thread) threadRef.current = null;
     };
