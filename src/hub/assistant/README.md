@@ -82,3 +82,9 @@ The default worker root is `hub-assistant/instances` under this Fleet home. Depl
 private scratch directory and removes only that directory after its worker closes. Administration reports room
 controller state, last use, seven daily counts and the selected account's coarse cached quota. It exposes no PID,
 credential path or message content. The separate UI slice adds the Hub admin controls and updates the Hub skill.
+
+Room dispatch payloads and completed answers use the real audit content store: each new content reference is bound
+to its queued/answer audit record in the same transaction before any reader can consume it. Unbound content remains
+unreadable. A failed turn emits `Hub room assistant could not answer` through the Hub host logger with request/room
+IDs, a bounded phase and, for protocol refusals, its protocol code. Room text and raw worker errors are not logged.
+Previously failed calls are not replayed after an upgrade; send a new message to try again.
