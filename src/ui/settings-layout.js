@@ -17,6 +17,7 @@ register("settingsLayout", {
     lead_access: "Manage sign-in, web authority, guests and sharing.",
     lead_advanced: "Inspect and edit fleet configuration, with effective values kept separate.",
     lead_hub: "Connect this fleet to a team Hub and choose which agents to share there.",
+    preview: "Preview", previewHub: "The Hub is a preview in this release. It stays off until you set one up or connect to one, and its screens and behaviour may still change.",
     lead_notifications: "Choose when account usage reminders are sent, and to whom.",
     editor: "Configuration editor", effective: "Effective settings (read only)",
     aiAccounts: "AI accounts and keys", aiAccountsHint: "Connected AI accounts and supported provider keys on the AgEnD host. Windows CLI status is shown under Runtime.",
@@ -33,6 +34,7 @@ register("settingsLayout", {
     lead_access: "管理登入、網頁授權、訪客與對外分享。",
     lead_advanced: "檢視與編輯 Fleet 設定，並區分目前生效的唯讀內容。",
     lead_hub: "將這個 Fleet 連接到團隊 Hub，並選擇要在那裡分享的 Agent。",
+    preview: "預覽版", previewHub: "Hub 在這個版本是預覽版。設定或連接之前不會啟用，畫面與行為之後可能還會變動。",
     lead_notifications: "設定帳號用量提醒的時機與傳送對象。",
     editor: "設定編輯器", effective: "生效設定（唯讀）",
     aiAccounts: "AI 帳號與金鑰", aiAccountsHint: "管理 AgEnD 主機上連接的 AI 帳號與支援的供應商金鑰；Windows CLI 狀態請到 Runtime 查看。",
@@ -94,7 +96,9 @@ register("settingsLayout", {
 
 export function SettingsPageHead({ section, children }) {
   const scope = section === "preferences" ? "account" : section === "look" ? "personal" : "fleet";
-  return html`<${PageHead} title=${t(`settings.sec_${section}`)} scope=${layoutText(scope)} lead=${layoutText(`lead_${section}`)}>${children}</${PageHead}>`;
+  const hub = section === "hub";   // M-3108: the Hub is a preview in 2.4.0-beta.1
+  return html`<${PageHead} title=${t(`settings.sec_${section}`)} scope=${layoutText(scope)} lead=${layoutText(`lead_${section}`)}
+    tag=${hub ? layoutText("preview") : null} note=${hub ? layoutText("previewHub") : null}>${children}</${PageHead}>`;
 }
 
 // Settings search, validation links and legacy anchors reveal their owning tab before focusing a control.

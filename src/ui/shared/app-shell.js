@@ -341,8 +341,8 @@ export function signInHref() {
 
 // ── AgEnD Hub P1 (docs/design/hub-ui-client.md): the page's mark, set by the listener that served it ──
 register("hubShell", {
-  en: { brand: "AgEnD Hub", ask: "Ask", exposures: "My shared agents", admin: "Administration" },
-  "zh-TW": { brand: "AgEnD Hub", ask: "提問", exposures: "我分享的 Agent", admin: "管理" },
+  en: { brand: "AgEnD Hub", ask: "Ask", exposures: "My shared agents", admin: "Administration", preview: "Preview" },
+  "zh-TW": { brand: "AgEnD Hub", ask: "提問", exposures: "我分享的 Agent", admin: "管理", preview: "預覽版" },
 });
 function hubMarks() {
   const tokens = String((typeof document !== "undefined" && document.body?.dataset?.hub) || "").split(/\s+/);
@@ -361,7 +361,7 @@ function HubSidebar({ route }) {
     aria-current=${tab === key ? "page" : undefined} onClick=${closeDrawer}><${Icon} name=${icon} /><span class="grow">${t(`hubShell.${key}`)}</span></a>`;
   return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
-      <a class="brand" href="/ui/hub" title=${name || undefined} onClick=${closeDrawer}>${t("hubShell.brand")}</a>
+      <a class="brand" href="/ui/hub" title=${name || undefined} onClick=${closeDrawer}>${t("hubShell.brand")}</a><span class="tag warn hub-preview-tag">${t("hubShell.preview")}</span>
       <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name=${narrow() ? "close" : "sidebar"} /></button>
     </div>
     <${HubSideSlot} fallback=${html`<nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>${row("ask", "/ui/hub", "chat")}${row("exposures", "/ui/hub/exposures", "globe")}${row("admin", "/ui/hub/admin", "key")}</nav>`} />

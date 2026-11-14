@@ -259,6 +259,7 @@ function HubSignIn() {
     <div class="hub-signin-brand"><strong>${t("hubShell.brand")}</strong>${name ? html`<span>${name}</span>` : null}</div>
     <h1 id="hubSignInTitle">${hw("signInTitle")}</h1>
     ${company.requestId ? html`<${CompanyJoinLead} context=${company.view?.ok ? company.view : null} />` : html`<p class="hub-signin-lead">${hw("signInLead")}</p>`}
+    <p class="note hub-signin-preview">${hw("signInPreview")}</p>
     ${company.requestId && company.view === undefined ? html`<${Skeleton} variant="form" lines=${2} label=${hj("loading")} />` : company.requestId && company.view && !company.view.ok ? html`<${ErrorState} message=${joinError(company.view.code)} onRetry=${company.retry} />` : null}
     ${!company.requestId || company.view?.ok && company.view.state === "pending" ? html`<form class="hub-signin-form" onSubmit=${submit}>
       <label for="hubLogin">${hw("login")}</label>

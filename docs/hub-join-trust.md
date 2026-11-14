@@ -1,6 +1,6 @@
 # Joining a Hub and trusting a pilot Hub
 
-> Pilot behaviour on the alpha line. Company sign-in is the way in; the
+> Preview behaviour. Company sign-in is the way in; the
 > pairing form and the pilot-trust switch below exist for Hubs that need
 > them. Turn pilot trust off once the Hub has a trusted certificate.
 
@@ -65,6 +65,6 @@ chain keep the ordinary certificate error — trusting never overrides those.
 The Fleet switch **Allow trusting a Hub with a self-signed certificate
 (for testing)** stays available in **Settings → Hub**, including after
 connection. Turn it off after the pilot or once the Hub uses a trusted
-certificate; alpha builds default it on, stable builds off. With it off,
+certificate; alpha and beta (prerelease) builds default it on, stable builds off. With it off,
 connection needs ordinary certificate trust, and the browser opened for
 sign-in keeps its own certificate policy either way.

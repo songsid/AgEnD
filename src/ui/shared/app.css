@@ -76,6 +76,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .side-head { display: flex; align-items: center; gap: var(--s-1); box-sizing: content-box; min-height: calc(var(--header-h) - 2 * var(--s-1));
   padding: max(var(--s-1), env(safe-area-inset-top)) var(--s-2) var(--s-1) var(--s-4); }
 .brand { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); letter-spacing: -0.01em; }
+/* M-3108: the Hub sidebar's "Preview" tag sits right after the one-line brand (outside it), before the collapse button. */
+.side-head:has(> .hub-preview-tag) > .brand { flex: 0 1 auto; white-space: nowrap; }
+.side-head > .hub-preview-tag { margin-inline-end: auto; flex: none; }
 .side-nav { display: flex; flex-direction: column; padding: var(--s-1) var(--s-2); gap: 1px; }
 .side-row {
   display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: 36px; padding: 0 var(--s-3);

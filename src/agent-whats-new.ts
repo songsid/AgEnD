@@ -116,7 +116,7 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   { id: "2.4-classic-room-profile", since: "2.4.0-alpha.2", tools: ["update_instance_config"],
     text: "`update_instance_config` can now switch a ClassicBot room's AI account: on a room it takes only `config.backend_options.<backend>.credential_profile` (a name, or null for the fleet default). Only that room's lines in classicBot.yaml change, the room restarts, and `launched_profile` in the answer is the account it restarted on. Any other key on a room is still refused." },
   { id: "2.4-hub-skill", since: "2.4.0-alpha.3",
-    text: "AgEnD Hub (experimental): load the `hub` skill before answering \"how do I … in the Hub\" — setting a Hub up, company sign-in, the administrator's Let colleagues join card and join codes, connecting a Fleet (`hub.example.com ABCD-EFGH` in the one Hub address box), held or queued connections, sharing agents and who may ask them. It also lists what is not built yet (custom roles, allowing a whole group to ask, sharing ClassicBot rooms)." },
+    text: "AgEnD Hub (preview, off by default): load the `hub` skill before answering \"how do I … in the Hub\" — setting a Hub up, company sign-in, the administrator's Let colleagues join card and join codes, connecting a Fleet (`hub.example.com ABCD-EFGH` in the one Hub address box), held or queued connections, sharing agents and who may ask them. It also lists what is not built yet (custom roles, allowing a whole group to ask, sharing ClassicBot rooms)." },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */

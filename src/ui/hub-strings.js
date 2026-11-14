@@ -17,6 +17,7 @@ register("hub", {
     // The Hub workspace (S3b): sign-in, Ask, My shared agents, Administration
     signedOutHub: "Not signed in", signOut: "Sign out", signInTitle: "Sign in to the Hub",
     signInLead: "Use your company account. Your password goes to the directory only and is never kept.",
+    signInPreview: "This Hub is a preview. Its screens and features may still change.",
     login: "Account", password: "Password", signIn: "Sign in",
     errSignIn: "That account and password didn't work.", errDirectory: "The directory can't be reached right now. Try again later.",
     errBusyHub: "Too many requests just now. Wait a moment and try again.", errConflictHub: "This changed meanwhile. It has been reloaded; check it and try again.",
@@ -91,6 +92,7 @@ register("hub", {
     adminTitle: "管理",
     signedOutHub: "尚未登入", signOut: "登出", signInTitle: "登入 Hub",
     signInLead: "請使用公司帳號登入。密碼只送給目錄服務驗證，不會被保存。",
+    signInPreview: "這個 Hub 是預覽版，畫面與功能可能還會變動。",
     login: "帳號", password: "密碼", signIn: "登入",
     errSignIn: "帳號或密碼不正確。", errDirectory: "目前無法連到目錄服務，請稍後再試。",
     errBusyHub: "請求太頻繁，請稍候再試。", errConflictHub: "這個項目剛剛有變更，已重新載入，請確認後再試一次。",

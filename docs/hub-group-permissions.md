@@ -2,7 +2,7 @@
 
 中文版：[hub-group-permissions.zh-TW.md](hub-group-permissions.zh-TW.md)
 
-> **Experimental. 2.3.5-alpha.8 and later only, and off by default.** Group permissions let a Hub administrator decide, by Active Directory security group, what signed-in colleagues may do on the AgEnD Hub. Until an administrator turns them on, the Hub behaves as before.
+> **Preview. Available from 2.4.0-beta.1, and off by default.** Group permissions let a Hub administrator decide, by Active Directory security group, what signed-in colleagues may do on the AgEnD Hub. Until an administrator turns them on, the Hub behaves as before.
 
 Everyone in your directory can still **sign in** to the Hub. Group permissions decide what each person can **do** after signing in:
 
@@ -22,7 +22,7 @@ Group permissions need the Hub's directory to be **Active Directory over LDAPS (
 
 Only the Hub's directory administrator can open it. Either:
 
-- **On the Hub:** open the menu on your account in the sidebar (**Menu**), choose **Administration**, then, on the **Group permissions** card (tagged *Experimental*), choose **Open group permissions**.
+- **On the Hub:** open the menu on your account in the sidebar (**Menu**), choose **Administration**, then, on the **Group permissions** card (tagged *Preview*), choose **Open group permissions**.
 - **From your fleet's dashboard** (the fleet that hosts the Hub): **Settings → Fleet → Hub**, then, on the **Group permissions** card, choose **Open on the Hub**. It opens the Hub's editor in a new tab.
 
 Someone who is not the Hub administrator sees *"Only the Hub administrator can see this"* on the Administration page instead. If the Hub is too old to have the editor, the link says *"Group permissions aren't available on this Hub yet. Update the Hub, then try again."*
