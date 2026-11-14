@@ -37,3 +37,17 @@ C may add exactly `{ kind: "team"; teamId: string }` to `HubGrant.subject` in R-
 There is no signed grant schema in `src/hub/protocol.ts` at this checkpoint. Grants are Hub catalog records; the issuer-signed asker envelope carries `grantId` and `grantRevision`, and the existing authorization path checks the current grant. No new subject field, signature format, capability or frame is needed for a team subject. C owns the existing grant-input schema in `catalog.ts`.
 
 New grants retain the 90-day maximum, and retained rows keep their recorded expiries. C's compatible migration must preserve existing person/group grants rather than editing the historical migration. This file-ownership exception reserves the type change only; team-grant availability follows the tested consumer and migration implementation.
+
+## Team roster suggestions
+
+C may extend `HubTeams` with `suggestions(ctx, value: unknown)`, taking `{ kind: "person" | "group", q: string, teamId?: string }`. It returns a bare array of the room picker's `{ kind, id, name }` candidate records; optional display metadata may be added by C. Person IDs are canonical `PersonId` values and group IDs are canonical UUIDs. R will mount `GET /hub/v1/teams/candidates?kind=person|group&q=...&teamId=...` and wrap the result as `{ candidates }`. This static route must precede `/teams/:id` matching.
+
+| Search | Service authority |
+|---|---|
+| Department groups | Hub administrator |
+| People for a new Team, without `teamId` | Hub administrator |
+| People for an existing Team, with `teamId` | Hub administrator or that Team's current lead |
+
+The route uses the normal signed-in read context; C owns input validation and the current Team/lead checks around the directory await. It uses `core.readDirectory` with `searchGrantPeople` or `searchPolicyGroups` and the existing picker bounds and admission: a 2–64-character prefix, at most 20 candidates and the per-session search limit. An ordinary lead needs no room-creator, room-manager or grant-owner permission for their Team's roster picker. Selecting a department still does not expand it into a roster.
+
+The existing CRUD methods and `roomTeamCandidates` remain unchanged. This reserves the additional mount only; R will consume the tested public provider before adding the route. It does not activate another route or interrupt the urgent #3878 fix.
