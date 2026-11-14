@@ -52,8 +52,10 @@ describe("presenceView", () => {
     expect(r("offline", "quota")).toEqual({ dot: "offline", word: "stOffline" });
     expect(r("working", "approval")).toEqual({ dot: "working", word: "stWorking" });
     expect(r("paused", "update")).toEqual({ dot: "paused", word: "stPaused" });
-    // stopped/crashed wait on a hubRoom stopped word: presence mapping stands meanwhile.
-    expect(r("paused", "stopped")).toEqual({ dot: "paused", word: "stPaused" });
+    // stopped/crashed read grey: the stopped word with an offline dot.
+    expect(r("paused", "stopped")).toEqual({ dot: "offline", word: "stStopped" });
+    expect(r("paused", "crashed")).toEqual({ dot: "offline", word: "stStopped" });
+    expect(r("working", "stopped")).toEqual({ dot: "working", word: "stWorking" });
     for (const lang of ["en", "zh-TW"]) {
       i18n.setLang(lang, { store: false });
       for (const v of [r("paused", "quota"), r("idle", "update"), r("working", "bogus-code")]) {
@@ -102,11 +104,13 @@ describe("presenceView", () => {
     expect(hroom(P.presenceView(byName(fx, "project-helper")).word)).toBe("Working");
     expect(hroom(P.presenceView(byName(fx, "schedule-bot")).noteKey)).toBe("Out of quota");
     expect(hroom(P.presenceView(byName(fx, "old-helper")).word)).toBe("Needs an AgEnD update");
+    expect(hroom("stStopped")).toBe("Stopped");
     i18n.setLang("zh-TW", { store: false });
     expect(hroom(P.presenceView(byName(fx, "project-helper")).word)).toBe("處理中");
     expect(hroom(P.presenceView(byName(fx, "schedule-bot")).noteKey)).toBe("額度用完");
     expect(hroom(P.presenceView(byName(fx, "old-helper")).word)).toBe("需要更新 AgEnD");
     expect(hroom(P.presenceView(byName(fx, "desk-notes")).word)).toBe("上線時回答");
+    expect(hroom("stStopped")).toBe("已停止");
   });
 });
 
@@ -115,6 +119,14 @@ describe("presenceDot", () => {
     expect(["online", "idle", "working", "paused", "offline", "later"].map((p) => P.presenceDot(p))).toEqual(["ok", "ok", "busy", "warn", "off", "off"]);
     expect(P.presenceDot("unknown")).toBe("off");
     expect(P.presenceDot(undefined)).toBe("off");
+  });
+  it("a known reason wins when gated, so stopped reads grey", () => {
+    expect(P.presenceDot("paused", "quota")).toBe("warn");
+    expect(P.presenceDot("paused", "stopped")).toBe("off");
+    expect(P.presenceDot("paused", "crashed")).toBe("off");
+    expect(P.presenceDot("offline", "update")).toBe("off");
+    expect(P.presenceDot("working", "stopped")).toBe("busy");
+    expect(P.presenceDot("paused", "bogus-code")).toBe("warn");
   });
 });
 
