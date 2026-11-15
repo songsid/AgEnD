@@ -379,6 +379,7 @@ import type { RemoteCardAction, RemoteCardOutcome } from "./remote-card-answer.j
 import { redactSecrets } from "./tool-progress.js";
 import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
+import { CODEX_INLINE_MODEL_MIN, codexModelCommand } from "./backend/codex-model-switch.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
@@ -1160,6 +1161,8 @@ const CLI_ENV_FRESH_MS = 60 * 60 * 1000;
  */
 /** #1690: how long `/model` waits for the daemon's word on our own runtime switch (its dialog wait plus settling). */
 export const RUNTIME_SWITCH_RESULT_MS = 12_000;
+/** M-3175: a codex switch may wait up to a minute for its pane to be idle, then up to 10 s for codex to record it. */
+export const CODEX_RUNTIME_SWITCH_RESULT_MS = 80_000;
 
 export const CLI_ENV_PROBE_DEADLINE_MS = 16_000;
 
@@ -24419,6 +24422,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * M-3175: codex's `/model [NAME] --reasoning=LEVEL` in the running session. The daemon types it only into an idle pane of a
+   * codex at 0.164.0 or later (else `not_sent`, with the reason) and reports what codex recorded. Its wait for idle is part of
+   * the time allowed here.
+   */
+  private runCodexRuntimeSwitch(instanceName: string, model: string | null, effort: string | null): Promise<OwnSwitchOutcome> {
+    const ipc = this.instanceIpcClients.get(instanceName), line = codexModelCommand(model, effort);
+    if (!ipc || !line) return Promise.resolve({ outcome: "not_sent" });
+    const id = `switch-${randomUUID()}`;
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_confirmed" }); }, CODEX_RUNTIME_SWITCH_RESULT_MS);
+      timer.unref?.();
+      this.runtimeSwitchWaiters.set(id, result => { clearTimeout(timer); resolve(result); });
+      const sent = ipc.send({ type: "raw_paste", content: line, runtime_switch: { id, kind: "model", requested: model ?? "", codex: { model, effort } } });
+      if (!sent) { clearTimeout(timer); this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_sent" }); return; }
+      this.logger.info({ instanceName, model, effort }, "Codex runtime switch sent");
+    });
+  }
+
+  /** M-3175: why a codex switch fell back to a restart, in the reply's words. */
+  private codexSwitchFallbackReason(result: OwnSwitchOutcome): string {
+    if (result.outcome === "not_sent" && result.reason === "busy") return t("codex_switch.busy");
+    if (result.outcome === "not_sent" && result.reason === "version") return t("codex_switch.version", result.version ?? t("codex_switch.version_unknown"), CODEX_INLINE_MODEL_MIN);
+    if (result.outcome === "mismatch") return t("codex_switch.mismatch", result.shown);
+    return t("codex_switch.unconfirmed");
+  }
+
+  /**
+   * M-3175: the effort a codex model switch carries — the one a restart would launch with (configured, and listed by that
+   * model's catalog, as the launch flag is gated); null when there is none, and codex then takes the model's default, as a
+   * launch without an effort does.
+   */
+  private codexSwitchEffort(instanceName: string, model: string): string | null {
+    const effort = this.resolveInstanceEffort(instanceName).effort;
+    if (!effort) return null;
+    return this.instanceEffortMetadata(instanceName, model).levels.includes(effort) ? effort : null;
+  }
+
+  /**
    * #1690: the names claude-code is known to accept, for checking `/model <name>` BEFORE it is typed — claude itself
    * accepts any string ("Set model to opsu"), and its "Switch model?" then names the typo. Static aliases (with [1m]),
    * the cached account catalog, the configured model; without a cached catalog, any `claude-…` id too (cannot check).
@@ -25688,6 +25729,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.pasteRawToClassicInstance(instanceName, `/effort ${applied}`);
       return `${warn}${t("effort.runtime_success", instanceName, applied)}`;
     }
+    // M-3175: codex 0.164+ takes the effort in the running session (`/model [MODEL] --reasoning=L`, its configured model named
+    // when known); restarted when the switch was not typed or not confirmed. The effort is already saved above.
+    if (backendName === "codex" && this.instanceIpcClients.get(instanceName)) {
+      const resolved = this.resolveInstanceModel(instanceName);
+      const model = resolved.source === "instance" || resolved.source === "fleet-default" ? resolved.model : null;
+      const result = await this.runCodexRuntimeSwitch(instanceName, model, applied);
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
+      if (result.outcome === "switched") return `${warn}${t("effort.codex_switched", instanceName, applied)}`;
+      const why = this.codexSwitchFallbackReason(result);
+      this.logger.info({ instanceName, effort: applied, result }, "Codex runtime effort switch fell back to a restart");
+      await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
+      return `${warn}${t("effort.codex_restarted", instanceName, applied, why)}`;
+    }
     await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("effort.restart_success", instanceName, applied)}`;
   }
@@ -25742,6 +25796,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? (result.confirmed ? t("model.switch_confirmed", instanceName, model) : t("model.runtime_success", instanceName, model))
         : t("model.switch_unconfirmed", instanceName, model, Math.round(RUNTIME_SWITCH_RESULT_MS / 1000));
       return `${warn}${head}${this.effortSuffix(instanceName)}`;
+    }
+
+    // M-3175: codex 0.164+ switches in the running session; saved first (a fallback restart launches from it), restarted when
+    // the switch was not typed or not confirmed.
+    if (backendName === "codex" && this.instanceIpcClients.get(instanceName)) {
+      if (!this.persistInstanceModel(instanceName, model)) return `${warn}${t("model.persist_failed", instanceName)}`;
+      const effort = this.codexSwitchEffort(instanceName, model);
+      const result = await this.runCodexRuntimeSwitch(instanceName, model, effort);
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
+      if (result.outcome === "switched") return `${warn}${t("model.codex_switched", instanceName, model)}${this.effortSuffix(instanceName)}`;
+      const why = this.codexSwitchFallbackReason(result);
+      this.logger.info({ instanceName, model, result }, "Codex runtime model switch fell back to a restart");
+      await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
+      return `${warn}${t("model.codex_restarted", instanceName, model, why)}${this.effortSuffix(instanceName)}`;
     }
 
     // Persist either way: a runtime switch must survive the next respawn too,
