@@ -58,7 +58,15 @@ it has completed onboarding or changed the account's server-side data preference
 After an interactive setup, the CLI's `/config` page shows **Enable Telemetry off**;
 this is the visible confirmation to inspect, rather than the completion file.
 
-### Antigravity announcement above an idle composer
+### Antigravity rating surveys and announcements
+
+Agy's rating survey is skipped with the literal `0`, never Enter. The legacy
+Good/Fine/Bad/Skip menu is supported. The compact “How’s the CLI experience?
+[1/2/3/0]” menu is provisionally recognized only at the interactive bottom
+(or immediately above an empty composer), excluding prose and fenced quotes.
+That new wording is user-reported: a bounded signed-in 1.5.9 capture did not
+produce the survey. A qualitative `/feedback` report form is a different UI
+and is not automatically submitted.
 
 An agy announcement such as “Introducing Gemini 4 Hydrogen” is not itself proof
 of work. The empty Auto-mode composer may show `> Auto mode: edits & safe

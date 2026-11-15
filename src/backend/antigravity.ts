@@ -115,6 +115,28 @@ const AGY_WORKING_ROW_ABOVE_COMPOSER = new RegExp(
   "mu",
 );
 
+// M-3143: reported by the user, not reproduced in the bounded signed-in 1.5.9
+// capture. Require the question AND compact choices as standalone UI rows. A
+// reply is indented two columns; quoted/fenced text and anything after the menu
+// except the CLI's empty composer must never receive the numeric hotkey.
+const AGY_REPORTED_SURVEY = /^ ?How[’']s the CLI experience\?[ \t]*(?:\n ?)?\[1\/2\/3\/0\][ \t]*$/m;
+function agyReportedSurveyActive(pane: string): boolean {
+  const screen = pane.replace(/\r/g, "");
+  const match = AGY_REPORTED_SURVEY.exec(screen);
+  if (!match) return false;
+  let fence: string | null = null;
+  for (const row of screen.slice(0, match.index).split("\n")) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(row)?.[1];
+    if (marker) {
+      if (fence === null) fence = marker;
+      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null;
+    }
+  }
+  if (fence !== null) return false;
+  const below = screen.slice(match.index + match[0].length).trim();
+  return below === "" || /^─{20,}[ \t]*\n>[ \t]*\n─{20,}[ \t]*(?:\n\? for shortcuts[^\n]*)?\s*$/.test(below);
+}
+
 /**
  * agy 1.5.9's empty Auto-mode composer (M-3116 screenshot): the mode hint is a
  * placeholder after `>`, not submitted input. Anchor the entire box and its
@@ -602,6 +624,13 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
 
   getStartupDialogs(): StartupDialog[] {
     return [
+      {
+        pattern: AGY_REPORTED_SURVEY,
+        isActive: agyReportedSurveyActive,
+        blocksDelivery: true,
+        keys: ["0"],
+        description: "Antigravity compact feedback survey — skip",
+      },
       ...agyOnboardingDialogs(),
       // #1328, captured live from agy 1.3.1 (tests/fixtures/agy-1.3.1-trust-dialog.pane.txt): the title is "Do you
       // trust the contents of this project?", then "> Yes, I trust this folder" / "  No, exit". Enter confirms the
@@ -641,6 +670,13 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
         pattern: /^\s*\[1\] Good\s+\[2\] Fine\s+\[3\] Bad\s+\[0\] Skip\s*$/m,
         keys: ["0"],
         description: "Antigravity feedback survey — skip",
+      },
+      {
+        pattern: AGY_REPORTED_SURVEY,
+        isActive: agyReportedSurveyActive,
+        blocksDelivery: true,
+        keys: ["0"],
+        description: "Antigravity compact feedback survey — skip",
       },
       ...agyOnboardingDialogs(),
       this.trustHoldDialog(),
