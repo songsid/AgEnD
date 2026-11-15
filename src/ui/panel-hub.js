@@ -28,7 +28,7 @@ import { toast } from "/assets/ui-toast.js";
 // #3226 B: the chat is the fleet chat's own drawing (PR A's shared modules), in the fleet chat's words.
 import { createThread, msgKey } from "/assets/chat-thread.js";
 import { installMessageActions } from "/assets/chat-msg-actions.js";
-import { OlderFleetBanner, FleetVersionCells, FleetVersionsSummary, RecommendedVersionCard, hasVersions, behind } from "./hub-fleet-versions.js";
+import { OlderFleetBanner, FleetVersionCells, FleetVersionsSummary, RecommendedVersionCard, FleetUpdateCell, UpdateAllowedButton, hasVersions, hasUpdates, behind } from "./hub-fleet-versions.js";
 import { PreviewPanel, closePanel, panelStore } from "/assets/preview-panel.js";
 import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
 import { RailFrame } from "/assets/side-rail.js";
@@ -1137,12 +1137,15 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
       <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
         ${/* M-3137 (versions spec §2.2): the summary line and its filter, when this Hub reports versions. */ ""}
         ${hasVersions(fleets) ? html`<${FleetVersionsSummary} fleets=${fleets} recommended=${view.recommendedVersion ?? null} canRecommend=${canRecommend} filtered=${needsOnly} onFilter=${setNeedsOnly} />` : null}
+        ${/* M-3145 (§4.2): "Update {n} Fleets that allow it", while at least one qualifies. */ ""}
+        ${hasUpdates(fleets) ? html`<${UpdateAllowedButton} fleets=${fleets} recommended=${view.recommendedVersion ?? null} revision=${view.recommendationRevision ?? 0} client=${hubClient()} onChanged=${reload} />` : null}
         ${fleets.length ? (() => {
           // Spec 1.2: the row's title is the Fleet's label (S1 overview), its subtitle the owner; active first, revoked folded.
           const row = (f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
             <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
             <span class="hub-row-text"><strong>${typeof f.label === "string" && f.label ? f.label : ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note">${f.owner.name}${f.owner.login ? html` · <code>${f.owner.login}</code>` : null}</small>` : null}</span>
             ${hasVersions(fleets) && f.status !== "revoked" ? html`<${FleetVersionCells} fleet=${f} recommended=${view.recommendedVersion ?? null} />` : null}
+            ${hasUpdates(fleets) && f.status === "active" ? html`<${FleetUpdateCell} fleet=${f} recommended=${view.recommendedVersion ?? null} revision=${view.recommendationRevision ?? 0} client=${hubClient()} onChanged=${reload} />` : null}
             ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.label || (f.owner ? f.owner.name : f.id))} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
               : html`<span class="tag">${ho("revokedTag")}</span>`}
           </div>`;

@@ -563,6 +563,10 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     recommendedVersion() { return call("GET", "/hub/v1/admin/recommended-version"); },
     previewRecommendedVersion(input) { return call("POST", "/hub/v1/admin/recommended-version/preview", input); },
     saveRecommendedVersion(input) { return call("PUT", "/hub/v1/admin/recommended-version", input); },
+    // M-3145 / M-3144 (versions spec §4.2, §4.5): update the Fleets that allow it — one or many ids, the target always
+    // the saved recommendation (ifRevision guards it) — and cancel a waiting request.
+    updateFleets(input) { return call("POST", "/hub/v1/admin/fleet-updates", input); },
+    cancelFleetUpdate(requestId) { return call("POST", `/hub/v1/admin/fleet-updates/${encodeURIComponent(requestId)}/cancel`, {}); },
     // M-2682: Administration → This Hub — what it is, and its rename (two steps: the server binds the second to the first).
     thisHub() { return call("GET", "/hub/v1/admin/hub"); },
     prepareHubName(name) { return call("POST", "/hub/v1/admin/hub/name/prepare", { name }); },
@@ -665,6 +669,13 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
     async cancel() { const r = await confirm.api("/api/hub/member/pairing/cancel", { method: "POST", body: "{}" }); return r.ok && r.body && r.body.pairing ? r.body.pairing : pairingNow(); },
     /** The local status, every pollMs while visible (one request at a time; none while hidden); stops with the last listener. */
     subscribe(fn) { listeners.add(fn); if (!timer) timer = timers.setTimeout(tick, pollMs); return () => { listeners.delete(fn); if (!listeners.size && timer) { timers.clearTimeout(timer); timer = null; } }; },
+    // M-3145 (versions spec §4.1; API M-3144, Ridge): the owner's switch for updates started by this Hub's administrator.
+    // An older host (404) answers ok: false, and the switch is not drawn.
+    async hubUpdateConsent() { const r = await confirm.api("/api/settings/hub/update-consent"); return r.ok && r.body && typeof r.body === "object" ? { ok: true, ...r.body } : { ok: false, status: r.status }; },
+    async setHubUpdateConsent(on) {
+      const r = await confirm.api("/api/settings/hub/update-consent", { method: "PUT", body: JSON.stringify({ on: on === true }) });
+      return r.ok && r.body && typeof r.body === "object" ? { ok: true, ...r.body } : { ok: false, status: r.status };
+    },
     async exposures() { const rows = await listed(); return rows || []; },
     async setExposed(agent, on, expectedRevision, choice = null) {
       const rows = await listed();

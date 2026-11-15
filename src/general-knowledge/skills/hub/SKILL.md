@@ -605,7 +605,21 @@ a Fleet itself (yet).
   "*n* Fleets will be asked to update." A Fleet that is behind is told; its row then reads "Owner notified · *when*",
   or "Not notified yet" (too old to be told, or not online since). Nothing is updated without the owner.
 - **The fix is the owner's Update**: on their AgEnD dashboard, the update banner's **Update now**, or Settings →
-  Advanced → **Version and update**; in chat, `/update`. Updating a Fleet from the Hub is not available yet.
+  Advanced → **Version and update**; in chat, `/update`.
+- **Updating a Fleet from the Hub** needs its owner's yes first: on the Fleet, Settings → Hub, under Shared agents,
+  **Let this Hub's administrator update this Fleet** (允許這個 Hub 的管理員更新這個 Fleet). Off by default; turning it on
+  asks once; it is greyed out on a Fleet started by hand ("a failed update could not be undone automatically"). Then
+  a behind Fleet's row has **Update** (otherwise "Owner updates it"), and above the list **Update *n* Fleets that allow
+  it**. Each asks first and always installs the recommended version — to move people elsewhere, change the
+  recommendation. The Fleet waits until its agents are idle (up to 24 hours), tells its owner before and after, and
+  goes back to the previous version if the update fails. The row then shows one line: Waiting for the Fleet to
+  connect · Waiting for its agents to be idle (with **Cancel**) · Updating… · Updated to v*x* · Update failed; back on
+  v*y* (**Try again**) · Did not start (busy 24 hours, or offline 7 days) · The owner cancelled this update.
+  A request waits up to 7 days for an offline Fleet to connect. **Cancel** reads **Cancelling…** until the Fleet
+  confirms it stopped; an update that has already started cannot be cancelled. Changing the recommendation later does
+  not change a waiting request's version; the row then offers **Update to v*x* instead**, which cancels the waiting
+  request first and sends the new one. The Fleet still makes its own checks (the owner's switch, a published
+  version) and can refuse; the row then says why. Older Fleets are always updated by their owners.
 
 ## Config keys
 

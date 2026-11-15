@@ -28,6 +28,13 @@
 .hub-rec-choice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
 .hub-rec-version input { width: 12ch; }
 .hub-fleet-version .hub-fleet-notified { flex: 1 1 100%; white-space: normal; }
+/* M-3145 (§4.2, §4.5): a row's update part (its status line and one action, Update, or "Owner updates it") under its
+   version facts; "Update {n} Fleets that allow it" under the summary. */
+.hub-fleet-list .s-row.hub-row > .hub-fleet-update { order: 2; flex: 1 1 100%; display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-1) var(--s-2); }
+.hub-fleet-update-all { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); margin-top: var(--s-1); }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-fleet-update .btn, .hub-fleet-update-all .btn { min-width: var(--tap); min-height: var(--tap); }
+}
 /* §2.3: the older-Fleet banner — its words, and Close beside them (never on a line of its own). */
 .hub-versions-banner { display: flex; align-items: flex-start; gap: var(--s-2); }
 .hub-versions-banner > span { flex: 1 1 auto; min-width: 0; }

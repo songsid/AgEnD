@@ -10,6 +10,7 @@ import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { chatPath } from "/assets/app-route.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { HubUpdateNotice, useHubUpdateActions } from "./notice-hub-update.js";
 
 register("notices", {
   en: {
@@ -77,6 +78,7 @@ export function NoticesPanel({ navKey }) {
   useEffect(() => { markShown(); }, [newest]);
   useEffect(() => { if (typeof document !== "undefined") lease.on(document, "visibilitychange", markShown); }, [lease]);
   const known = new Set((instances || []).map((i) => i && i.name));
+  const hubActions = useHubUpdateActions();
   const nowMs = Date.now();
   return html`<div data-effect-panel="notices" class="panel p-notices">
     <${PanelHeader} title=${tn("title")} />
@@ -90,7 +92,7 @@ export function NoticesPanel({ navKey }) {
             <div class="n-title"><strong>${tn(`kind_${n.kind}`)}${n.instance ? ` · ${n.instance}` : ""}</strong>
               ${n.id > seenAtOpen ? html`<span class="notice-new">${tn("unread")}</span>` : null}
               <span class="n-age" title=${new Date(n.at).toLocaleString()}>${noticeAge(n.at, nowMs)}</span></div>
-            <p class="n-detail notice-text">${n.text}</p>
+            ${n.hubUpdate ? html`<${HubUpdateNotice} notice=${n} actions=${hubActions} />` : html`<p class="n-detail notice-text">${n.text}</p>`}
             ${n.instance && known.has(n.instance) ? html`<div class="n-actions"><a class="btn btn-sm btn-ghost" href=${chatPath(n.instance)}>${tn("open")}</a></div>` : null}
           </div>
         </article>`)}

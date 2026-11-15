@@ -31,6 +31,7 @@ register("update", {
     failedToStart: "The update could not be started: {0}", startedToast: "Update started.",
     hubAvailable: "{0} recommends AgEnD v{1} (current v{2})", hubSub: "Some Hub features need it. Only admins see this.",
     hubLine: "the version {0} recommends", recChanged: "The Hub's recommended version changed. Look at the banner again.",
+    hubAsked: "the version {0} ({1}) asked for", requestGone: "This update request is no longer waiting.",
   },
   "zh-TW": {
     available: "AgEnD v{0} 已推出（目前 v{1}）", availableSub: "{0} · 只有管理員看得到", now: "立即更新", later: "稍後",
@@ -51,6 +52,7 @@ register("update", {
     failedToStart: "無法開始更新：{0}", startedToast: "已開始更新。",
     hubAvailable: "{0} 建議更新到 AgEnD v{1}（目前 v{2}）", hubSub: "部分 Hub 功能需要這個版本。只有管理員看得到。",
     hubLine: "{0} 建議的版本", recChanged: "Hub 建議的版本已變更，請再看一次橫幅。",
+    hubAsked: "{0}（{1}）要求的版本", requestGone: "這個更新要求已經不在等待中。",
   },
 });
 
@@ -138,6 +140,26 @@ export async function openUpdateDialog() { return startUpdate(null); }
 /** M-3140: the same confirmation and start, pinned to the Hub's recommended version (the server re-reads its own advice). */
 export async function openHubUpdateDialog() { return startUpdate("hub"); }
 
+/**
+ * M-3145 (versions spec §4.4; M-3144 #3963): Update now on an owner's notice about an update this Hub's administrator
+ * asked for. The notice is not the authority: the page rereads the Fleet's own copy of the request
+ * (GET /api/settings/hub/fleet-updates/:id), asks the same question naming that version, and starts it by the
+ * request's id — never a version (`hubRequestId`). Waiting or expired only (an expired one starts as a new local update).
+ */
+export async function openHubRequestedUpdate({ requestId, hubName = "", requestedBy = "" } = {}) {
+  let info = updateStore.get().info;
+  if (!info) info = await refreshUpdate();
+  if (!info || !info.admin) { toast(t("update.adminOnly"), false); return { ok: false }; }
+  if (updateActive(info)) { toast(t("update.running")); return { ok: false }; }
+  let req = null;
+  try { const r = await fetch(`/api/settings/hub/fleet-updates/${encodeURIComponent(String(requestId || ""))}`, { cache: "no-store" }); if (r.ok) req = await r.json(); } catch { req = null; }
+  if (!req || (req.state !== "waiting" && req.state !== "expired") || typeof req.version !== "string") { toast(t("update.requestGone"), false); return { ok: false }; }
+  const yes = await confirmDialog({ title: t("update.confirmTitle"), confirmLabel: t("update.confirmGo"),
+    message: t("update.confirmBody", req.version, t("update.hubAsked", requestedBy, hubName)) });
+  if (!yes) return { ok: false };
+  return postStart({ hubRequestId: req.id || requestId });
+}
+
 async function startUpdate(kind) {
   let info = updateStore.get().info;
   if (!info) info = await refreshUpdate();
@@ -153,11 +175,16 @@ async function startUpdate(kind) {
   const yes = await confirmDialog({ title: t("update.confirmTitle"), confirmLabel: t("update.confirmGo"),
     message: rec ? t("update.confirmBody", rec.version, t("update.hubLine", rec.hubName)) : t("update.confirmBody", offer.version, sameLine(offer.channel)) });
   if (!yes) return { ok: false };
+  return postStart(rec ? { recommended: { version: rec.version, revision: rec.revision } } : {});
+}
+
+/** The start itself, after the one question: what the update is pinned to (`extra`), the progress or why not. */
+async function postStart(extra) {
   updateStore.set({ starting: true });
   const key = `update-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   let res = null, body = null;
   try {
-    res = await fetch("/ui/update/start", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify({ confirm: "update-agend", ...(rec ? { recommended: { version: rec.version, revision: rec.revision } } : {}) }) });
+    res = await fetch("/ui/update/start", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify({ confirm: "update-agend", ...extra }) });
     try { body = await res.json(); } catch { body = null; }
   } catch { res = null; }
   updateStore.set({ starting: false });
@@ -202,6 +229,8 @@ function Dismiss({ onClick }) {
 }
 
 /** The updater's own words, on request (never on the line itself). */
+/** The last update's log (the line's See the full log; an owner's rolled-back notice). */
+export async function openUpdateLog() { return openLog(); }
 async function openLog() {
   let body = null;
   try { const r = await fetch("/ui/update/log", { cache: "no-store" }); if (r.ok) body = await r.json(); } catch { body = null; }
