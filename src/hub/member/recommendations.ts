@@ -23,7 +23,7 @@ export class HubMemberRecommendations {
   }
   private current(): boolean { return !this.closed && this.options.current(); }
   private row(): Row | undefined { return this.options.db.prepare("SELECT * FROM hub_member_version_recommendation WHERE singleton=1").get() as Row | undefined; }
-  view(): HubRecommendedUpdate | null { return this.current() && this.cached ? { ...this.cached } : null; }
+  view(): HubRecommendedUpdate | null { return this.current() && this.cached ? { ...this.cached, hubName: this.options.hubName } : null; }
   private publish(row?: Row, notify = true): void {
     let next: HubRecommendedUpdate | null = null;
     if (row?.verified && row.status === "offered") {

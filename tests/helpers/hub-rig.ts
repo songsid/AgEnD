@@ -19,6 +19,7 @@ export async function freeHubPort(): Promise<number> {
 export async function hubRig(options: { clientLog?: HubClientOptions["log"]; serverReady?: HubServerOptions["ready"]; clientRecommendations?: boolean; serverConnected?: HubServerOptions["connected"]; serverLog?: HubServerOptions["log"]; serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[];
   /** A suite may supply a held socket from hubListenerPorts; its TLS listener adopts that same handle. */
   memberPort?: number;
+  serverDisplayName?: HubServerOptions["displayName"];
   /** M-2901: the Hub's signed web-address statement (server) and the member's receiver of it (client). */
   serverWebOrigin?: HubServerOptions["webOrigin"]; clientWebOrigin?: HubClientOptions["webOrigin"];
   /** Phase 1 Fleet values; offered only to a reporting Hub. */
@@ -38,7 +39,7 @@ export async function hubRig(options: { clientLog?: HubClientOptions["log"]; ser
   const pairing = new HubPairingService({ store, directory, identity: { ...identity, memberOrigin, webOrigin: `https://127.0.0.1:${port + 1}` }, enabled: () => enabled, fenceFleet: (id, reason) => server?.fenceFleet(id, reason), refreshAuthorization: () => server?.refreshAuthorization() });
   let serverGate: (() => Promise<void>) | undefined;
   let receiver: HubServerOptions["receive"] | undefined;
-  server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing, capabilities: options.serverCapabilities, webOrigin: options.serverWebOrigin,
+  server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, displayName: options.serverDisplayName, listen: { host: "127.0.0.1", port }, pairing, capabilities: options.serverCapabilities, webOrigin: options.serverWebOrigin,
     ready: options.serverReady, connected: options.serverConnected, log: options.serverLog,
     current: () => enabled, hold: (fleet, code) => holds.push({ fleet, code }), receive: async (frame, link) => {
       received.push(frame); await serverGate?.(); if (!link.current()) return;
