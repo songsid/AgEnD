@@ -14,11 +14,12 @@ const fm = fx.fm as any, checks: Record<string, boolean> = {}, served = new Map<
 fm.runningAgendVersion = () => "2.4.0-beta.3";
 fm.launchInstalledUpdate = async () => { throw Error("No update may launch in the name capture"); };
 fm.updateCheckState = { offer: null, checkedAt: Date.now(), failed: false };
+fm.rawFleetConfig = { ...fm.rawFleetConfig, hub_member: { enabled: true } }; // Read-only fixture projection; no Hub runtime is mounted.
 let writes = 0;
 try {
   for (const phase of ["baseline", "candidate"]) for (const c of matrix()) {
     const value = data[phase], prefix = `${phase}-${caseName(c)}`;
-    fm.hubMemberPairingApi = { view: () => ({ ...value.pairing, link: "online" }), boundHub: () => ({ hubId: value.pairing.hub.hubId, binding: value.pairing.binding }) };
+    fm.hubMemberPairingApi = { view: () => ({ ...value.pairing, link: "online" }), boundHub: () => ({ hubId: value.pairing.hub.hubId, binding: value.pairing.binding }), notices: () => [] };
     fm.hubUpdates = { consent: () => ({ on: false, available: true }), setConsent: () => { writes++; throw Error("Consent must remain untouched"); }, view: () => ({ id: value.notice.requestId, version: value.notice.version, state: "waiting" }) };
     fm.hubRecommendationRead = () => value.advice;
     fm.webNotices = new WebNotices(join(fx.dir, prefix + "-notices.json"), fm.logger);
@@ -49,6 +50,9 @@ try {
       checks[prefix + ":banner"] = (await page.locator(".update-line").innerText()).includes(value.advice.hubName);
       await page.screenshot({ path: join(out, prefix + "-notice-banner.png") });
       checks[prefix + ":errors"] = errors.length === 0 && (await csp()).length === 0;
+    } catch (error) {
+      writeFileSync(join(out, prefix + "-failure.txt"), await page.locator("body").innerText());
+      await page.screenshot({ path: join(out, prefix + "-failure.png") }); throw error;
     } finally { await ctx.close(); }
   }
   checks["consent-writes"] = writes === 0;
