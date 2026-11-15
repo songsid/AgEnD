@@ -239,8 +239,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     if (r.ok) onLeft(); else setLeaveError(r.text);
   };
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
-  // The page-level rooms notifier learns this person's id from any room detail (§12).
-  useEffect(() => { const id = detail && detail.me && detail.me.id; if (id) onMe(id); }, [detail && detail.me && detail.me.id]);
+  // The page-level rooms notifier learns this person's id for this room from its detail (§12; member
+  // ids are per room, so the id is kept under this room's id).
+  useEffect(() => { const id = detail && detail.me && detail.me.id; if (id) onMe(roomId, id); }, [detail && detail.me && detail.me.id]);
   // The Hub assistant's one-to-one is named by its flag, in this viewer's words (its stored name is a fallback).
   const title = room.assistant ? hroom("hubAssistant") : String(room.name || "");
   const hasAssistant = (detail?.members || []).some((m) => m.kind === "assistant");

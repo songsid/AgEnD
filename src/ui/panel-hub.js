@@ -147,19 +147,17 @@ export function HubPanel({ route }) {
   const view = viewParam();
   // The owner stylesheet holds the page column (.hub-owner, 860 px) every page with a column uses — Notices too (Argon #12).
   useEffect(() => { linkHubCss(); linkHubOwnerCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
-  // Rooms desktop notifications (§12): one page-level watcher over every room this person may see. The person's id
-  // comes from a room detail once read; while still unknown the watcher reads the first listed room for it,
-  // once per event and only while opted in.
+  // Rooms desktop notifications (§12): one page-level watcher over every room this person may see. Member ids
+  // are per room, so the id is kept per room: from a room detail once read, or lazily by reading that room
+  // itself on its first live event while opted in.
   useEffect(() => {
     if (!s || !s.login) return undefined;
     const stop = startHubRoomNotifier({
-      client: hubClient(), me: () => { const id = rememberedMeId(); return id ? { id } : null; },
-      setMe: (m) => noteHubMeId(m && m.id),
-      resolveMe: async () => {
-        const rooms = roomsStore.get().rooms || [];
-        const first = rooms.find((r) => r && !r.legacy);
-        if (!first || typeof hubClient().room !== "function") return null;
-        const d = await hubClient().room(first.id).catch(() => null);
+      client: hubClient(), me: (rid) => { const id = rememberedMeId(rid); return id ? { id } : null; },
+      setMe: (rid, m) => noteHubMeId(rid, m && m.id),
+      resolveMe: async (rid) => {
+        if (typeof hubClient().room !== "function") return null;
+        const d = await hubClient().room(rid).catch(() => null);
         return d && d.ok && d.me && d.me.id ? { id: d.me.id } : null;
       },
       roomName: (id) => { const r = (roomsStore.get().rooms || []).find((x) => x.id === id); return (r && r.name) || ""; },

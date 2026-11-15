@@ -42,18 +42,19 @@ function pingBody(kind, event, room) {
 }
 
 /**
- * This person's id for the page-level watcher (counts() matches message authors and @mentions by id; the Hub
- * session carries only login and display name). Set from any room detail the page reads, or lazily from the first
- * listed room while opted in — and cleared when the signed-in login changes, so a sign-out and sign-in as someone
- * else on the same tab never matches the next person with the previous one's id.
+ * This person's member id per room for the page-level watcher (counts() matches message authors and @mentions
+ * by id, and every room mints its own member ids — one room's me.id never identifies this person in another).
+ * The Hub session carries only login and display name. Set per room from a room detail the page reads, or lazily
+ * on live events — and cleared wholesale when the signed-in login changes, so a sign-out and sign-in as someone
+ * else on the same tab never matches the next person with the previous one's ids.
  */
-let hubMeId = null;
-/** Keeps the id from a room detail or the lazy resolve; ignores empty values. */
-export function noteHubMeId(id) { if (typeof id === "string" && id) hubMeId = id; }
-/** Forgets the id: the signed-in login changed (signed out, or in as someone else). */
-export function clearHubMeId() { hubMeId = null; }
-/** The remembered id, or null while unknown. */
-export function rememberedMeId() { return hubMeId; }
+const meByRoom = new Map();
+/** Keeps the id for one room, from its detail or the lazy resolve; ignores empty values. */
+export function noteHubMeId(roomId, id) { if (typeof roomId === "string" && roomId && typeof id === "string" && id) meByRoom.set(roomId, id); }
+/** Forgets every room's id: the signed-in login changed (signed out, or in as someone else). */
+export function clearHubMeId() { meByRoom.clear(); }
+/** The remembered id for one room, or null while unknown. */
+export function rememberedMeId(roomId) { return meByRoom.get(roomId) || null; }
 
 let stopPrev = null;
 /** The live starter's generation: a lazy resolve from a replaced or stopped watcher never writes. */
@@ -61,10 +62,10 @@ let liveGen = 0;
 
 /**
  * Ping while a Hub tab is open but hidden (a visible page shows the rows; what it showed is seen).
- * `me`: { id } or an accessor returning it (null until the page learns it: message rows cannot be
- * matched before that, while an invitation — which carries no author — still pings).
- * `setMe({ id })`: keeps what `resolveMe()` learns; `resolveMe()`: one async attempt at the id, retried
- * on the next event while still unknown (only while opted in, so an opted-out page never reads for it).
+ * `me(roomId)`: { id } for that room, or an accessor returning it (null until the page learns it:
+ * message rows cannot be matched before that, while an invitation — which carries no author — still pings).
+ * `setMe(roomId, { id })`: keeps what `resolveMe(roomId)` learns; `resolveMe`: one async attempt per room id,
+ * retried on the next event while still unknown (only while opted in, so an opted-out page never reads for it).
  * `roomName(roomId)`: the ping's title; `roomKind(roomId)`: the list's kind for it (`"direct"` rooms ping
  * on any new message); `open(roomId)`: where a click goes. Returns the stop function;
  * a second start replaces the first.
@@ -73,32 +74,37 @@ export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, r
   if (stopPrev) stopPrev();
   const gen = ++liveGen;
   const seen = new Set();
-  let resolving = null;
-  const meOf = () => (typeof me === "function" ? me() : me);
-  const ensureMe = () => {
-    const m = meOf();
+  const resolving = new Map();
+  const meOf = (roomId) => (typeof me === "function" ? me(roomId) : me);
+  const ensureMe = (roomId) => {
+    if (!roomId) return;
+    const m = meOf(roomId);
     if (m && m.id) return;
     if (typeof resolveMe !== "function" || typeof setMe !== "function" || !notifyOn(env)) return;
-    resolving ??= Promise.resolve()
-      .then(resolveMe)
-      // A resolve that lands after a restart (sign-in change) or stop belongs to the old watcher: drop it,
-      // or B would inherit A's id right after the clear.
-      .then((got) => { if (gen === liveGen && got && got.id) setMe(got); }, () => {})
-      .finally(() => { resolving = null; });
+    if (!resolving.has(roomId)) {
+      resolving.set(roomId, Promise.resolve()
+        .then(() => resolveMe(roomId))
+        // A resolve that lands after a restart (sign-in change) or stop belongs to the old watcher: drop it,
+        // or B would inherit A's id right after the clear.
+        .then((got) => { if (gen === liveGen && got && got.id) setMe(roomId, got); }, () => {})
+        .finally(() => { resolving.delete(roomId); }));
+    }
   };
   const onEvent = (type) => (data) => {
     const event = { type, ...(data && typeof data === "object" ? data : {}) };
     const focus = !(doc && doc.hidden);
-    const self = meOf();
+    // Member ids are per room: match each event against that room's own remembered id, so an @mention or
+    // answer in any other room still pings, while my own rows (including from another device) never do.
+    const self = meOf(event.roomId);
     let kind = null;
     if (self) {
       if (!shouldNotify(event, self, focus, env)) return;
       const direct = typeof roomKind === "function" && roomKind(event.roomId) === "direct";
       kind = notifyKind(event, self, { direct });
     } else {
-      // The page has not learned this person's id yet: message rows cannot be matched, while a new
-      // invitation (no author) still pings under the same opt-in + hidden-tab rule.
-      ensureMe();
+      // The page has not learned this person's id for this room yet: its message rows cannot be matched,
+      // while a new invitation (no author) still pings under the same opt-in + hidden-tab rule.
+      ensureMe(event.roomId);
       if (focus || !notifyOn(env)) return;
       const inv = event.invitation;
       if (event.type !== "invitation.changed" || !inv || typeof inv !== "object" || !(inv.id || inv.room)) return;

@@ -77,21 +77,24 @@ describe("notifyKind", () => {
   });
 });
 
-describe("remembered person id (Fable P2: a sign-out and sign-in as someone else resets it)", () => {
-  it("keeps a noted id, ignores empty values, and forgets on clear", () => {
+describe("remembered person id, per room (Fable P2: a sign-out and sign-in as someone else resets it)", () => {
+  it("keeps a noted id per room, ignores empty values, and forgets all on clear", () => {
     clearHubMeId();
-    expect(rememberedMeId()).toBeNull();
-    noteHubMeId("person-wang");
-    expect(rememberedMeId()).toBe("person-wang");
-    noteHubMeId("");
-    expect(rememberedMeId()).toBe("person-wang");
+    expect(rememberedMeId("room-a")).toBeNull();
+    noteHubMeId("room-a", "person-wang");
+    expect(rememberedMeId("room-a")).toBe("person-wang");
+    expect(rememberedMeId("room-b")).toBeNull();
+    noteHubMeId("room-a", "");
+    noteHubMeId("", "person-wang");
+    expect(rememberedMeId("room-a")).toBe("person-wang");
+    noteHubMeId("room-b", "person-chen");
+    expect(rememberedMeId("room-b")).toBe("person-chen");
+    expect(rememberedMeId("room-a")).toBe("person-wang");
     // panel-hub.js setSession clears whenever the login changes (sign-out, or in as someone else);
-    // the next login's id is learned again from a room detail or the lazy resolve.
+    // each room's id is learned again from a room detail or the lazy resolve.
     clearHubMeId();
-    expect(rememberedMeId()).toBeNull();
-    noteHubMeId("person-chen");
-    expect(rememberedMeId()).toBe("person-chen");
-    clearHubMeId();
+    expect(rememberedMeId("room-a")).toBeNull();
+    expect(rememberedMeId("room-b")).toBeNull();
   });
 });
 
@@ -107,18 +110,18 @@ describe("sign-out and sign-in as someone else (Fable P2 scenario)", () => {
     const starter = startHubRoomNotifier as (...args: Array<Record<string, unknown>>) => () => void;
     const stop = starter({
       client,
-      me: () => { const id = rememberedMeId(); return id ? { id } : null; },
-      setMe: (m: unknown) => noteHubMeId((m as { id: string })?.id),
+      me: (rid: unknown) => { const id = rememberedMeId(rid as string); return id ? { id } : null; },
+      setMe: (rid: unknown, m: unknown) => noteHubMeId(rid as string, (m as { id: string })?.id),
       roomName: () => "研一主管週會", open: vi.fn(), env, doc: { hidden: true },
     });
     const emit = (data: Record<string, unknown>) => (client.handlers["message.added"] as (d: unknown) => void)(data);
     // A (person-wang) signed in: an @A mention pings.
-    noteHubMeId(fx.me.id);
+    noteHubMeId(weekly.id, fx.me.id);
     emit({ roomId: weekly.id, message: { ...chen, mentions: [fx.me.id] } });
     expect(env.seen).toHaveLength(1);
     // Sign-out and in as B (person-chen): the same @A row no longer pings.
     clearHubMeId();
-    noteHubMeId(chenId);
+    noteHubMeId(weekly.id, chenId);
     emit({ roomId: weekly.id, message: { ...chen, mentions: [fx.me.id] } });
     expect(env.seen).toHaveLength(1);
     // B mentioned by someone else: pings again, with B no longer treated as A.
@@ -186,6 +189,44 @@ describe("startHubRoomNotifier", () => {
     grouped.stop();
   });
 
+  it("matches each room against its own member id (Fable P2-3: ids are per room)", () => {
+    // Two rooms, two different member ids for me — the fixture uses one id everywhere, so craft them here.
+    const ids: Record<string, { id: string }> = { "room-a": { id: "member-a" }, "room-b": { id: "member-b" } };
+    const env = optedEnv();
+    const client = fakeClient();
+    const open = vi.fn();
+    const starter = startHubRoomNotifier as (...args: Array<Record<string, unknown>>) => () => void;
+    const stop = starter({
+      client, me: (rid: unknown) => ids[rid as string] ?? null, roomName: (id: unknown) => String(id),
+      roomKind: () => "group", open, env, doc: { hidden: true },
+    });
+    const emit = (type: string, data: Record<string, unknown>) => (client.handlers[type] as (d: unknown) => void)(data);
+    const chen = { id: "m1", roomId: "room-a", at: 1, author: { kind: "person", id: "person-chen", name: "陳主任" }, text: "hi @你", mentions: [] as string[] };
+    // An @mention of room-a's me in room A pings; the identical row in room B (different me) stays silent.
+    emit("message.added", { roomId: "room-a", message: { ...chen, mentions: ["member-a"] } });
+    expect(env.seen).toHaveLength(1);
+    emit("message.added", { roomId: "room-b", message: { ...chen, mentions: ["member-a"] } });
+    expect(env.seen).toHaveLength(1);
+    // An answer to my room-B question (askedBy is room B's member id) pings in room B only.
+    const answer = { ...chen, stage: "answered", answerTo: "q-9", askedBy: "member-b" };
+    emit("message.updated", { roomId: "room-b", message: answer });
+    expect(env.seen).toHaveLength(2);
+    emit("message.updated", { roomId: "room-a", message: answer });
+    expect(env.seen).toHaveLength(2);
+    // My own message from another device in a direct room does not ping: its author id is room A's me.
+    const mine = { ...chen, author: { kind: "agent", id: "member-a", name: "我" } };
+    stop();
+    const directEnv = optedEnv();
+    const directClient = fakeClient();
+    const stopDirect = starter({
+      client: directClient, me: (rid: unknown) => ids[rid as string] ?? null, roomName: (id: unknown) => String(id),
+      roomKind: () => "direct", open: vi.fn(), env: directEnv, doc: { hidden: true },
+    });
+    (directClient.handlers["message.added"] as (d: unknown) => void)({ roomId: "room-a", message: mine });
+    expect(directEnv.seen).toHaveLength(0);
+    stopDirect();
+  });
+
   it("stays silent when focused, opted out, or for my own rows; a click focuses and opens the room", () => {
     const fx = createHubRoomsFixture();
     const weekly = fx.rooms.find((r) => r.id === "room-weekly")!;
@@ -235,8 +276,8 @@ describe("startHubRoomNotifier", () => {
     const client = fakeClient();
     const starter = startHubRoomNotifier as (...args: Array<Record<string, unknown>>) => () => void;
     const stop = starter({
-      client, me: () => me, setMe: (m: unknown) => { me = (m as { id: string }) ?? null; },
-      resolveMe: async () => { resolves += 1; return resolves === 1 ? null : { id: fx.me.id }; },
+      client, me: () => me, setMe: (rid: unknown, m: unknown) => { me = (m as { id: string }) ?? null; },
+      resolveMe: async (rid: unknown) => { resolves += 1; return resolves === 1 ? null : { id: fx.me.id }; },
       roomName: () => "研一主管週會", open: vi.fn(), env, doc: { hidden: true },
     });
     const mention = { roomId: weekly.id, message: { ...chen, mentions: [fx.me.id] } };
@@ -260,14 +301,14 @@ describe("startHubRoomNotifier", () => {
     const starter = startHubRoomNotifier as (...args: Array<Record<string, unknown>>) => () => void;
     const seen: unknown[] = [];
     const one = fakeClient(), two = fakeClient();
-    starter({ client: one, me: () => null, setMe: (m: unknown) => seen.push(m),
+    starter({ client: one, me: () => null, setMe: (rid: unknown, m: unknown) => seen.push(m),
       resolveMe: () => gate, roomName: () => "", open: vi.fn(), env, doc: { hidden: true } });
     const weekly = fx.rooms.find((r) => r.id === "room-weekly")!;
     const chen = weekly.messages.find((m) => m.author.id === "person-chen")!;
     // An event while me is unknown starts the lazy resolve on the first watcher.
     (one.handlers["message.added"] as (d: unknown) => void)({ roomId: weekly.id, message: chen });
     // A restart (sign-in change) replaces the watcher before the resolve lands.
-    const stop = starter({ client: two, me: () => null, setMe: (m: unknown) => seen.push(m),
+    const stop = starter({ client: two, me: () => null, setMe: (rid: unknown, m: unknown) => seen.push(m),
       resolveMe: async () => null, roomName: () => "", open: vi.fn(), env, doc: { hidden: true } });
     release({ id: fx.me.id });
     await gate;

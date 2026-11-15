@@ -63,8 +63,8 @@ describe("remembered id follows the Hub session (Fable P2 wiring)", () => {
   it("notes A's id from the room detail, forgets it on a sign-in as B, then notes B's", async () => {
     api("wang", "王經理", "person-wang");
     const pg1 = await openRoom();
-    await until(() => rememberedMeId() === "person-wang");
-    expect(rememberedMeId()).toBe("person-wang");
+    await until(() => rememberedMeId(R1) === "person-wang");
+    expect(rememberedMeId(R1)).toBe("person-wang");
     // One active page at a time (the harness's assumption); module state survives the unmount.
     await pg1.unmount(); pg1.restore();
     mounted.splice(mounted.indexOf(pg1), 1);
@@ -76,17 +76,17 @@ describe("remembered id follows the Hub session (Fable P2 wiring)", () => {
     hubPanel.resetHubSession();
     api("chen", "陳主任", "person-chen", detailGate);
     await openRoom();
-    await until(() => rememberedMeId() === null);
-    expect(rememberedMeId()).toBeNull();
+    await until(() => rememberedMeId(R1) === null);
+    expect(rememberedMeId(R1)).toBeNull();
     // With the id forgotten, an @A row matches nobody: no ping for A (me is null) nor for B (not mentioned).
     const atA = { type: "message.added", roomId: "room-weekly",
       message: { id: "m-9", roomId: "room-weekly", at: 1, author: { kind: "person", id: "person-chen", name: "陳主任" }, text: "hi @王經理", mentions: ["person-wang"] } };
     expect(notifyKind(atA, null)).toBeNull();
-    noteHubMeId("person-chen");
+    noteHubMeId(R1, "person-chen");
     expect(notifyKind(atA, { id: "person-chen" })).toBeNull();
     clearHubMeId();
     releaseDetail([200, { ok: true, room: { id: R1, kind: "group", name: "研一主管週會" }, me: { id: "person-chen", role: "member" }, members: [], settings: { allMention: true, historyForNew: "all" } }]);
-    await until(() => rememberedMeId() === "person-chen");
-    expect(rememberedMeId()).toBe("person-chen");
+    await until(() => rememberedMeId(R1) === "person-chen");
+    expect(rememberedMeId(R1)).toBe("person-chen");
   });
 });
