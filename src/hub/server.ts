@@ -1,4 +1,5 @@
 /** Dedicated TLS machine listener. No Hub browser routes or ordinary fleet authority lives here. */
+import { HUB_FLEET_UPDATE_CAPABILITY } from "./protocol.js";
 import { createServer, type Server } from "node:https";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
@@ -140,7 +141,7 @@ export class HubServer {
     if (!connection.hello) {
       if (frame.type !== "hello" || frame.linkEpoch !== 0 || !frame.payload.supportedVersions.includes(1) || HUB_CAPABILITIES.some(c => !frame.payload.capabilities.includes(c))) throw new HubProtocolError("incompatible");
       connection.hello = true; clearTimeout(connection.timer);
-      const offered = this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES, features = context.features as Set<string>;
+      const offered = (this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES).filter(c => c !== HUB_FLEET_UPDATE_CAPABILITY || frame.payload.capabilities.includes(HUB_FLEET_UPDATE_CAPABILITY)), features = context.features as Set<string>;
       for (const c of offered) if (frame.payload.capabilities.includes(c)) features.add(c);
       // This is a Hub-only receiver offer; it does not take a slot in a member hello.
       if (features.has("welcome-caps-v1") && offered.includes(HUB_FLEET_INFO_CAPABILITY)) features.add(HUB_FLEET_INFO_CAPABILITY);

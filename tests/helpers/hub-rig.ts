@@ -16,7 +16,7 @@ export async function freeHubPort(): Promise<number> {
   const server = netServer(); await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as { port: number }).port; await new Promise<void>(resolve => server.close(() => resolve())); return port;
 }
-export async function hubRig(options: { serverReady?: HubServerOptions["ready"]; clientRecommendations?: boolean; serverConnected?: HubServerOptions["connected"]; serverLog?: HubServerOptions["log"]; serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[];
+export async function hubRig(options: { clientLog?: HubClientOptions["log"]; serverReady?: HubServerOptions["ready"]; clientRecommendations?: boolean; serverConnected?: HubServerOptions["connected"]; serverLog?: HubServerOptions["log"]; serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[];
   /** M-2901: the Hub's signed web-address statement (server) and the member's receiver of it (client). */
   serverWebOrigin?: HubServerOptions["webOrigin"]; clientWebOrigin?: HubClientOptions["webOrigin"];
   /** Phase 1 Fleet values; offered only to a reporting Hub. */
@@ -57,7 +57,7 @@ export async function hubRig(options: { serverReady?: HubServerOptions["ready"];
   /** `capabilities`: the optional features this member offers ([] stands in for an older member). */
   const client = (onFrame: (frame: any, link: HubMemberLink) => Promise<void> = async () => {}, reconcileGate?: () => Promise<void>, capabilities?: readonly string[], home = memberHome) => {
     const state: { link: HubMemberLink | null; holds: string[]; syncs: number } = { link: null, holds: [], syncs: 0 };
-    const value = new HubMemberClient({ home, hubId: identity.hubId, memberOrigin, current: () => enabled, fleetInfo: options.clientInfo, receiveRecommendations: options.clientRecommendations, capabilities: capabilities ?? options.clientCapabilities, webOrigin: options.clientWebOrigin, ...(options.clientDial ? { dial: options.clientDial } : {}),
+    const value = new HubMemberClient({ home, hubId: identity.hubId, memberOrigin, current: () => enabled, log: options.clientLog, fleetInfo: options.clientInfo, receiveRecommendations: options.clientRecommendations, capabilities: capabilities ?? options.clientCapabilities, webOrigin: options.clientWebOrigin, ...(options.clientDial ? { dial: options.clientDial } : {}),
       reconcile: async link => { state.link = link; state.syncs++; await link.exchange({ v: 1, type: "reconcile", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { afterReceiptSequence: 0, messages: [] } }, "reconcile"); await reconcileGate?.(); }, receive: onFrame,
       hold: code => state.holds.push(code), random: () => 0 }); clients.push(value); return { value, state };
   };

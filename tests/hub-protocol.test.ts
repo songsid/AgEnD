@@ -33,11 +33,12 @@ describe("Hub P1 closed protocol", () => {
     }
     expect(() => parseMemberFrame(JSON.stringify(helloWithCapabilities(33)))).toThrow();
   });
-  it("keeps members at 16 hello capabilities while older Hubs need that bound", () => {
+  it("permits32 member hello capabilities for the explicit phase3 offer", () => {
     const frame = helloWithCapabilities(16);
     expect(JSON.parse(encodeMemberFrame(frame))).toEqual(frame);
-    expect(() => encodeMemberFrame(helloWithCapabilities(17))).toThrow();
-    expect(() => encodeMemberFrame(helloWithCapabilities(32))).toThrow();
+    expect(() => encodeMemberFrame(helloWithCapabilities(17))).not.toThrow();
+    expect(() => encodeMemberFrame(helloWithCapabilities(32))).not.toThrow();
+    expect(() => encodeMemberFrame(helloWithCapabilities(33))).toThrow();
   });
   it("accepts bounded scalar JSON and a member hello, with no server-direction fallback", () => {
     const frame = hello(); expect(parseMemberFrame(JSON.stringify(frame))).toEqual(frame);

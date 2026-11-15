@@ -72,10 +72,14 @@ Leader accepted an explicit `fleet-update-v1` hello offer. Members may send up t
 welcome, make one legacy retry on the same authenticated pairing, dropping only the new offer, and log once. Do not
 loop. Phase3 stays off on that legacy connection. Hub welcome exceeds16 only to a peer that explicitly offered
 fleet-update-v1 (those peers parse32); old peers keep the16 send ceiling. Add an owned beta.3-shaped16-cap codec test
-and include the case in the later rehearsal. This protocol change belongs to the later transport slice, not PR1.
+and include the case in the later rehearsal. The transport slice implements this negotiation but leaves production update offers disabled until the request receiver is composed.
 
 ## Rollback
 
 PR1 is an unmounted foundation. Revert its code to remove it; retain any additive queue data used by later composition.
 Later rollback disables remote-update permission/offer and preserves request/marker evidence. Never weaken ordinary
 admin confirmations or trigger a real update as part of validation.
+
+## Startup outcome reconciliation
+
+The composing Fleet host must inspect any retained `updating` request at startup. It compares the exact request marker and running version, settles done or failed (or the verified rollback result), and never launches the claimed request again. A missing or interrupted marker must produce a terminal result rather than keep the single-active queue busy forever.
