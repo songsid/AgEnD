@@ -1,0 +1,28 @@
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=163733
+POST /responses model=nosuch-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=88766
+POST /responses model=nosuch-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22333
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=18744
+POST /responses model=nosuch-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=89278
+POST /responses model=nosuch-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22892
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19303
+POST /responses model=nosuch-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=89378
+POST /responses model=nosuch-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22992
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19403
+POST /responses model=nosuch-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=89478
+POST /responses model=nosuch-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=23092
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19503
+POST /responses model=mock-model reasoning=null tools=[] bytes=2172
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=163880
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=88955
+POST /responses model=mock-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22526
+POST /responses model=mock-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=18937
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=89467
+POST /responses model=mock-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=23085
+POST /responses model=mock-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19496
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=89567
+POST /responses model=mock-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=23185
+POST /responses model=mock-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19596
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=89667
+POST /responses model=mock-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=23285
+POST /responses model=mock-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19696
+POST /responses model=mock-model reasoning=null tools=[] bytes=2326
