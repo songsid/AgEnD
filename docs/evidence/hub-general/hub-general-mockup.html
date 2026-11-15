@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hub General (mockup)</title>
+<style>
+:root {
+  --font-ui: Inter, "PingFang TC", "Noto Sans TC", "Noto Sans CJK TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px;
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-full: 999px; --tap: 44px;
+  color-scheme: dark;
+  --bg: #212121; --bg-sidebar: #171717; --surface: #2f2f2f; --surface-2: #3a3a3a; --border: #3d3d3d; --border-strong: #7a7a7a;
+  --text: #ececec; --text-2: #b4b4b4; --text-3: #a3a3a3; --accent: #7ab7ff; --accent-fill: #ececec; --on-accent: #0d0d0d;
+  --accent-dim: rgba(122,183,255,.14); --ok: #4cc38a; --warn: #e3b341; --danger: #ff8a80;
+  --ok-bg: rgba(76,195,138,.14); --warn-bg: rgba(227,179,65,.14); --warn-line: rgba(227,179,65,.45); --danger-bg: rgba(255,138,128,.14);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4); --shadow-2: 0 8px 28px rgba(0,0,0,.5);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff; --bg-sidebar: #f9f9f9; --surface: #f4f4f4; --surface-2: #ececec; --border: #e5e5e5; --border-strong: #858585;
+  --text: #0d0d0d; --text-2: #5d5d5d; --text-3: #696969; --accent: #0a62c2; --accent-fill: #0d0d0d; --on-accent: #ffffff;
+  --accent-dim: rgba(10,98,194,.08); --ok: #1a7f37; --warn: #8a5a00; --danger: #c4222b;
+  --ok-bg: #e6f4ea; --warn-bg: #fff6d6; --warn-line: #e3b341; --danger-bg: #ffebe9;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.06); --shadow-2: 0 8px 24px rgba(0,0,0,.12);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg-sidebar); color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.55; }
+button { font: inherit; color: inherit; }
+html[lang="en"] .l-zh, html[lang="zh-Hant"] .l-en { display: none; }
+
+.mock-bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); align-items: center;
+  padding: var(--s-2) var(--s-4); background: var(--warn-bg); border-bottom: 1px solid var(--warn-line); font-size: var(--fs-sm); backdrop-filter: blur(6px); }
+.mock-bar b { color: var(--warn); }
+.seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.seg button { border: 0; background: none; min-height: 28px; padding: 0 var(--s-3); border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: var(--fs-sm); white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--bg); color: var(--text); font-weight: 500; box-shadow: var(--shadow-1); }
+
+.stage { padding: var(--s-5) var(--s-4) var(--s-7); max-width: 1160px; margin: 0 auto; }
+body[data-view="phone"] .stage { max-width: 422px; }
+.shot { margin-bottom: var(--s-7); }
+.shot > h2 { font-size: var(--fs-lg); margin: 0 0 2px; font-weight: 600; }
+.shot > p.cap { margin: 0 0 var(--s-3); font-size: var(--fs-sm); color: var(--text-2); max-width: 760px; }
+.step { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 var(--s-2); border-radius: var(--r-full); background: var(--accent-dim); color: var(--accent); margin-left: var(--s-2); vertical-align: middle; white-space: nowrap; }
+.frame { container-type: inline-size; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+
+/* App layout: list, conversation, optional side panel */
+.app { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 520px; }
+.app.with-side { grid-template-columns: 240px minmax(0, 1fr) 240px; }
+.rail { background: var(--bg-sidebar); padding: var(--s-3); border-right: 1px solid var(--border); }
+.rail h4, .side h4 { margin: var(--s-3) var(--s-2) var(--s-1); font-size: var(--fs-xs); color: var(--text-3); font-weight: 600; }
+.ritem { display: flex; gap: var(--s-2); align-items: center; padding: 6px var(--s-2); border-radius: var(--r-sm); font-size: var(--fs-sm); }
+.ritem.on { background: var(--surface-2); font-weight: 500; }
+.ritem small { display: block; color: var(--text-3); font-size: var(--fs-xs); font-weight: 400; }
+.av { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+.av.sq { border-radius: 8px; } .av.hub { background: var(--accent-fill); color: var(--on-accent); } .av.ag { background: var(--accent-dim); color: var(--accent); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); margin-right: 4px; } .dot.on { background: var(--ok); }
+.main { display: flex; flex-direction: column; min-width: 0; }
+.head { padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); display: flex; gap: var(--s-2); align-items: center; }
+.head b { font-size: var(--fs-md); } .head small { color: var(--text-3); font-size: var(--fs-xs); display: block; }
+.thread { flex: 1; padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-4); }
+.msg { display: flex; gap: var(--s-2); max-width: 640px; }
+.msg.me { align-self: flex-end; }
+.msg .body { min-width: 0; }
+.who { font-size: var(--fs-xs); color: var(--text-2); margin-bottom: 2px; } .who b { color: var(--text); font-weight: 600; } .who .via { color: var(--accent); }
+.bub { font-size: var(--fs-md); } .msg.me .bub { background: var(--surface); border-radius: var(--r-lg); padding: var(--s-2) var(--s-3); }
+.bub p { margin: 0 0 var(--s-2); } .bub p:last-child { margin-bottom: 0; }
+.at { color: var(--accent); font-weight: 500; }
+.sysline { align-self: center; font-size: var(--fs-xs); color: var(--text-3); }
+.comp { margin: 0 var(--s-4) var(--s-4); background: var(--surface); border-radius: var(--r-lg); padding: var(--s-3) var(--s-4); color: var(--text-3); font-size: var(--fs-md); display: flex; justify-content: space-between; align-items: center; }
+.send { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-fill); color: var(--on-accent); display: grid; place-items: center; font-size: 14px; }
+.sugg { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
+.chip { border: 1px solid var(--border); border-radius: var(--r-full); padding: 4px var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }
+.side { border-left: 1px solid var(--border); padding: var(--s-3); font-size: var(--fs-sm); }
+
+.card { background: var(--surface); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); margin-top: var(--s-2); }
+.acard { display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; }
+.acard .meta { flex: 1; min-width: 150px; } .acard .meta b { display: block; font-size: var(--fs-md); } .acard .meta span { font-size: var(--fs-xs); color: var(--text-2); }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 0 var(--s-4); border-radius: var(--r-full); font-size: var(--fs-sm); font-weight: 500; background: var(--accent-fill); color: var(--on-accent); white-space: nowrap; }
+.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border-strong); }
+.btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+.btns { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.link { color: var(--accent); font-size: var(--fs-sm); }
+.tag { display: inline-block; font-size: var(--fs-xs); font-weight: 500; padding: 0 var(--s-2); border-radius: var(--r-full); background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+.tag.ok { background: var(--ok-bg); color: var(--ok); } .tag.warn { background: var(--warn-bg); color: var(--warn); }
+.confirm { border: 1px solid var(--border-strong); background: var(--bg); }
+.confirm h5 { margin: 0 0 2px; font-size: var(--fs-md); } .confirm p { margin: 0 0 var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }
+
+/* Settings pages */
+.page { padding: var(--s-5) var(--s-6) var(--s-6); max-width: 760px; }
+.page h3 { font-size: var(--fs-xl); margin: 0 0 var(--s-1); font-weight: 600; } .page .lead { color: var(--text-2); font-size: var(--fs-sm); margin: 0 0 var(--s-4); }
+.set { background: var(--surface); border-radius: var(--r-md); padding: var(--s-4); margin-bottom: var(--s-3); }
+.set h5 { margin: 0 0 var(--s-2); font-size: var(--fs-md); font-weight: 600; }
+.row { display: flex; gap: var(--s-3); align-items: flex-start; justify-content: space-between; padding: var(--s-2) 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+.row:first-of-type { border-top: 0; } .row .l { min-width: 0; } .row .l small { display: block; color: var(--text-2); font-size: var(--fs-xs); }
+.row .r { flex: none; text-align: right; color: var(--text-2); }
+.sw { flex: none; display: inline-block; width: 36px; height: 20px; border-radius: 10px; background: var(--border-strong); position: relative; }
+.sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+.sw.on { background: var(--ok); } .sw.on::after { left: 18px; }
+.inp { display: inline-block; border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 2px var(--s-3); background: var(--bg); color: var(--text); font-size: var(--fs-sm); min-width: 56px; text-align: center; }
+.ck { display: flex; gap: var(--s-2); align-items: flex-start; padding: 6px 0; font-size: var(--fs-sm); }
+.ck small { display: block; color: var(--text-2); font-size: var(--fs-xs); }
+.box { flex: none; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--border-strong); margin-top: 2px; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.box.on { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
+.radio { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border-strong); margin-top: 2px; } .radio.on { border: 5px solid var(--accent-fill); }
+.addr { display: flex; gap: var(--s-2); align-items: center; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); font-family: var(--font-mono); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.addr span.url { flex: 1; min-width: 0; }
+.note { font-size: var(--fs-xs); color: var(--text-2); margin-top: var(--s-2); }
+.dialog-bg { background: var(--bg-sidebar); padding: var(--s-6) var(--s-4); display: grid; place-items: center; }
+.dialog { background: var(--bg); border-radius: var(--r-lg); box-shadow: var(--shadow-2); border: 1px solid var(--border); padding: var(--s-5); width: 100%; max-width: 440px; }
+.dialog h3 { margin: var(--s-3) 0 var(--s-1); font-size: var(--fs-lg); } .dialog p { margin: 0 0 var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }
+.pair { display: flex; align-items: center; gap: var(--s-2); color: var(--text-3); }
+.foot { font-size: var(--fs-sm); color: var(--text-2); border-top: 1px solid var(--border); padding-top: var(--s-4); }
+.foot ul { margin: 0; padding-left: 1.2em; }
+
+@container (max-width: 700px) {
+  .app, .app.with-side { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .rail, .side { display: none; }
+  .page { padding: var(--s-4); }
+  .btn { min-height: var(--tap); }
+  .row { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body data-view="desktop">
+<div class="mock-bar">
+  <b><span class="l-en">Design mockup · sample content</span><span class="l-zh">設計示意 · 內容為範例</span></b>
+  <span class="seg" data-set="lang"><button data-v="en">English</button><button data-v="zh">繁體中文</button></span>
+  <span class="seg" data-set="theme"><button data-v="light"><span class="l-en">Light</span><span class="l-zh">淺色</span></button><button data-v="dark"><span class="l-en">Dark</span><span class="l-zh">深色</span></button></span>
+  <span class="seg" data-set="view"><button data-v="desktop"><span class="l-en">Desktop</span><span class="l-zh">桌面</span></button><button data-v="phone"><span class="l-en">Phone</span><span class="l-zh">手機</span></button></span>
+</div>
+<div class="stage">
+<div class="shot">
+  <h2><span class="l-en">1 · A member asks who to ask</span><span class="l-zh">1 · 同仁問「這件事該問誰」</span> <span class="step"><span class="l-en">Step 1 · no tools</span><span class="l-zh">第 1 步 · 沒有工具</span></span></h2>
+  <p class="cap"><span class="l-en">Hub General is pinned first in the list. It answers from the agents this person may already ask, and the Hub draws the cards. "Ask" opens that agent's chat with the question in the box; the person presses Send.</span><span class="l-zh">Hub General 固定在清單最上面。它只從這個人本來就可以問的 Agent 裡回答，卡片由 Hub 畫出。按「提問」會開啟那個 Agent 的對話，問題已經放在輸入框裡，由本人按送出。</span></p>
+  <div class="frame"><div class="app">
+    <div class="rail">
+      <div class="ritem on"><span class="av sq hub">H</span><span>Hub General<small><span class="l-en">Help, and who to ask</span><span class="l-zh">使用說明，以及該問誰</span></small></span></div>
+      <h4><span class="l-en">Rooms</span><span class="l-zh">房間</span></h4>
+      <div class="ritem"><span class="av sq">登</span><span><span class="l-en">Login page redesign</span><span class="l-zh">登入頁改版</span></span></div>
+      <div class="ritem"><span class="av sq">週</span><span><span class="l-en">R&D leads weekly</span><span class="l-zh">研一主管週會</span></span></div>
+      <h4><span class="l-en">Agents</span><span class="l-zh">Agent</span></h4>
+      <div class="ritem"><span class="av ag">P</span><span><span class="dot on"></span>project-helper</span></div>
+      <div class="ritem"><span class="av ag">D</span><span><span class="dot on"></span>docs-bot</span></div>
+    </div>
+    <div class="main">
+      <div class="head"><span class="av sq hub">H</span><div><b>Hub General</b><small><span class="l-en">Runs on this Hub's AI account · can't see rooms or other people's conversations</span><span class="l-zh">使用這個 Hub 的 AI 帳號 · 看不到房間，也看不到其他人的對話</span></small></div></div>
+      <div class="thread">
+        <div class="msg me"><div class="body"><div class="bub"><span class="l-en">The login page tests fail on the staging build. Who can I ask?</span><span class="l-zh">登入頁的測試在測試環境的版本上失敗了，我該問誰？</span></div></div></div>
+        <div class="msg"><span class="av sq hub">H</span><div class="body"><div class="who"><b>Hub General</b></div><div class="bub">
+          <p><span class="l-en">Two agents you can ask cover this:</span><span class="l-zh">你可以問的 Agent 裡有兩個和這件事有關：</span></p>
+          <div class="card acard"><span class="av ag">B</span><div class="meta"><b>build-agent</b><span><span class="dot on"></span><span class="l-en">Ready · owner: Lin · "Builds and test runs for the web projects"</span><span class="l-zh">待命 · 擁有者：林小華 ·「網頁專案的建置與測試執行」</span></span></div><div class="btns"><span class="btn"><span class="l-en">Ask</span><span class="l-zh">提問</span></span><span class="btn ghost"><span class="l-en">Add to a room</span><span class="l-zh">加入房間</span></span></div></div>
+          <div class="card acard"><span class="av ag">P</span><div class="meta"><b>project-helper</b><span><span class="dot on"></span><span class="l-en">Ready · owner: Lin · "Login page project: tasks, decisions, reruns"</span><span class="l-zh">待命 · 擁有者：林小華 ·「登入頁專案：工作、決定、重跑紀錄」</span></span></div><div class="btns"><span class="btn"><span class="l-en">Ask</span><span class="l-zh">提問</span></span><span class="btn ghost"><span class="l-en">Add to a room</span><span class="l-zh">加入房間</span></span></div></div>
+          <p style="margin-top:var(--s-3)"><span class="l-en">qa-runner also looks right, but you can't ask it yet. Its owner is Wu.</span><span class="l-zh">qa-runner 看起來也適合，但你還不能問它。它的擁有者是吳小安。</span></p>
+        </div></div></div>
+        <div class="msg me"><div class="body"><div class="bub"><span class="l-en">What did the leads decide about it in their weekly room?</span><span class="l-zh">主管們在週會的房間裡對這件事怎麼決定的？</span></div></div></div>
+        <div class="msg"><span class="av sq hub">H</span><div class="body"><div class="who"><b>Hub General</b></div><div class="bub"><p><span class="l-en">I can't see rooms or other people's conversations.</span><span class="l-zh">我看不到房間，也看不到其他人的對話。</span></p></div></div></div>
+      </div>
+      <div class="comp"><span><span class="l-en">Ask Hub General</span><span class="l-zh">問 Hub General</span></span><span class="send">↑</span></div>
+    </div>
+  </div></div>
+</div>
+
+<div class="shot">
+  <h2><span class="l-en">2 · First time: the empty chat</span><span class="l-zh">2 · 第一次開啟：空白的對話</span> <span class="step"><span class="l-en">Step 1</span><span class="l-zh">第 1 步</span></span></h2>
+  <p class="cap"><span class="l-en">Two lines say what it is for and what it cannot see. Three suggested questions get people started.</span><span class="l-zh">兩行說明它的用途與它看不到什麼，三個建議的問題讓人可以馬上開始。</span></p>
+  <div class="frame"><div class="main" style="min-height:300px">
+    <div class="head"><span class="av sq hub">H</span><div><b>Hub General</b><small><span class="l-en">Help, and who to ask</span><span class="l-zh">使用說明，以及該問誰</span></small></div></div>
+    <div class="thread" style="align-items:center;justify-content:center;text-align:center">
+      <div style="max-width:480px">
+        <p style="margin:0 0 var(--s-1);font-size:var(--fs-lg);font-weight:600"><span class="l-en">Ask me how to do something in the Hub, or who to ask about a topic.</span><span class="l-zh">可以問我 Hub 怎麼用，或某件事該問誰。</span></p>
+        <p style="margin:0;font-size:var(--fs-sm);color:var(--text-2)"><span class="l-en">I run on this Hub's AI account. I can't see rooms or other people's conversations.</span><span class="l-zh">我使用這個 Hub 的 AI 帳號。我看不到房間，也看不到其他人的對話。</span></p>
+        <div class="sugg" style="justify-content:center"><span class="chip"><span class="l-en">Who can I ask about …?</span><span class="l-zh">…該問誰？</span></span><span class="chip"><span class="l-en">How do I share my agent?</span><span class="l-zh">怎麼分享我的 Agent？</span></span><span class="chip"><span class="l-en">How do I make a room for my team?</span><span class="l-zh">怎麼替我的團隊開房間？</span></span></div>
+      </div>
+    </div>
+    <div class="comp"><span><span class="l-en">Ask Hub General</span><span class="l-zh">問 Hub General</span></span><span class="send">↑</span></div>
+  </div></div>
+</div>
+
+<div class="shot">
+  <h2><span class="l-en">3 · An administrator asks about the Hub, then asks it to act</span><span class="l-zh">3 · 管理員問 Hub 的狀況，再請它動手</span> <span class="step"><span class="l-en">Steps 3 and 4</span><span class="l-zh">第 3、4 步</span></span></h2>
+  <p class="cap"><span class="l-en">Answers about the Hub end with a link to the page that shows the same thing. An action is only prepared: nothing happens until the administrator presses the button on the card.</span><span class="l-zh">關於 Hub 的回答，最後都附上顯示同一份資料的頁面連結。動作只是先準備好：管理員按下卡片上的按鈕之前，什麼都不會發生。</span></p>
+  <div class="frame"><div class="main">
+    <div class="head"><span class="av sq hub">H</span><div><b>Hub General</b><small><span class="l-en">You are an administrator of this Hub</span><span class="l-zh">你是這個 Hub 的管理員</span></small></div></div>
+    <div class="thread">
+      <div class="msg me"><div class="body"><div class="bub"><span class="l-en">Which Fleets are behind on version?</span><span class="l-zh">哪些 Fleet 的版本落後了？</span></div></div></div>
+      <div class="msg"><span class="av sq hub">H</span><div class="body"><div class="who"><b>Hub General</b></div><div class="bub">
+        <p><span class="l-en">3 of 18 Fleets are below the recommended v2.4.0-beta.2:</span><span class="l-zh">18 個 Fleet 當中有 3 個低於建議版本 v2.4.0-beta.2：</span></p>
+        <div class="card" style="font-size:var(--fs-sm)">
+          <div class="row"><span class="l"><span class="l-en">Chang's Fleet</span><span class="l-zh">張小美的 Fleet</span></span><span class="r">v2.4.0-alpha.4 · <span class="tag warn"><span class="l-en">Needs update</span><span class="l-zh">需要更新</span></span></span></div>
+          <div class="row"><span class="l"><span class="l-en">Wu's Fleet</span><span class="l-zh">吳小安的 Fleet</span></span><span class="r">v2.4.0-beta.1 · <span class="tag warn"><span class="l-en">Needs update</span><span class="l-zh">需要更新</span></span></span></div>
+          <div class="row"><span class="l"><span class="l-en">Chen's Fleet</span><span class="l-zh">陳大文的 Fleet</span></span><span class="r">v2.3.5 · <span class="tag warn"><span class="l-en">Too old for rooms</span><span class="l-zh">版本太舊，無法使用房間</span></span></span></div>
+        </div>
+        <p style="margin-top:var(--s-2)"><span class="link"><span class="l-en">Open Connected Fleets ›</span><span class="l-zh">開啟已連接的 Fleet ›</span></span></p>
+      </div></div></div>
+      <div class="msg me"><div class="body"><div class="bub"><span class="l-en">Make a team called "Login page" with Lin as lead, plus Chang, Wu, Chen and Wang.</span><span class="l-zh">建一個團隊叫「登入頁專案」，負責人是林小華，成員再加上張小美、吳小安、陳大文、王經理。</span></div></div></div>
+      <div class="msg"><span class="av sq hub">H</span><div class="body"><div class="who"><b>Hub General</b></div><div class="bub">
+        <div class="card confirm"><h5><span class="l-en">Create the team "Login page"?</span><span class="l-zh">要建立團隊「登入頁專案」嗎？</span></h5><p><span class="l-en">5 members · lead: Lin · Chang, Wu, Chen, Wang</span><span class="l-zh">5 位成員 · 負責人：林小華 · 張小美、吳小安、陳大文、王經理</span></p><div class="btns"><span class="btn"><span class="l-en">Create team</span><span class="l-zh">建立團隊</span></span><span class="btn ghost"><span class="l-en">Cancel</span><span class="l-zh">取消</span></span></div></div>
+      </div></div></div>
+    </div>
+    <div class="comp"><span><span class="l-en">Ask Hub General</span><span class="l-zh">問 Hub General</span></span><span class="send">↑</span></div>
+  </div></div>
+</div>
+
+<div class="shot">
+  <h2><span class="l-en">4 · Administration → Hub AI</span><span class="l-zh">4 · 管理 → Hub 的 AI</span> <span class="step"><span class="l-en">Settings</span><span class="l-zh">設定</span></span></h2>
+  <p class="cap"><span class="l-en">Today's "Room assistant" page gains Hub General. One AI account and one quota serve both.</span><span class="l-zh">現在的「房間助理」頁加上 Hub General。兩者共用同一個 AI 帳號與額度。</span></p>
+  <div class="frame"><div class="page">
+    <h3><span class="l-en">Hub AI</span><span class="l-zh">Hub 的 AI</span></h3>
+    <p class="lead"><span class="l-en">The room assistant and Hub General run on this Hub and use the account below.</span><span class="l-zh">房間助理與 Hub General 在這個 Hub 上執行，使用下面的帳號。</span></p>
+    <div class="set"><h5><span class="l-en">Account</span><span class="l-zh">帳號</span></h5>
+      <div class="row"><span class="l">Claude · <span class="l-en">default profile</span><span class="l-zh">預設設定檔</span><small><span class="l-en">The room assistant and Hub General use this account's quota.</span><span class="l-zh">房間助理與 Hub General 使用這個帳號的額度。</span></small></span><span class="r"><span class="tag ok"><span class="l-en">Quota OK</span><span class="l-zh">額度充足</span></span></span></div>
+      <div class="row"><span class="l"><span class="l-en">Answers at once</span><span class="l-zh">同時回答的數量</span><small><span class="l-en">Room questions go first when all are busy.</span><span class="l-zh">都在忙的時候，房間裡的提問優先。</span></small></span><span class="r"><span class="inp">3</span></span></div>
+    </div>
+    <div class="set"><h5>Hub General</h5>
+      <div class="row"><span class="l">Hub General<small><span class="l-en">Everyone gets a one-to-one chat for help and for finding who to ask.</span><span class="l-zh">每個人都有一個一對一對話，用來查使用說明與找該問的人。</span></small></span><span class="sw on"></span></div>
+      <div class="row"><span class="l"><span class="l-en">Who can use it</span><span class="l-zh">誰可以使用</span></span><span class="r"><span class="l-en">Everyone who has joined</span><span class="l-zh">所有已加入的人</span> ▾</span></div>
+      <div class="row"><span class="l"><span class="l-en">Questions per person per day</span><span class="l-zh">每人每天可以問幾次</span></span><span class="r"><span class="inp">30</span></span></div>
+      <div class="row"><span class="l"><span class="l-en">Answer administrators' questions about this Hub</span><span class="l-zh">回答管理員關於這個 Hub 的問題</span><small><span class="l-en">Read-only. Each answer links to the page it came from.</span><span class="l-zh">唯讀。每個回答都附上資料來源的頁面。</span></small></span><span class="sw on"></span></div>
+      <div class="row"><span class="l"><span class="l-en">Let Hub General prepare actions for administrators to confirm</span><span class="l-zh">讓 Hub General 準備動作，由管理員確認後執行</span><small><span class="l-en">Join codes, teams, rooms. Nothing happens without the press on the card.</span><span class="l-zh">加入碼、團隊、房間。沒有按下卡片上的按鈕就不會執行。</span></small></span><span class="sw"></span></div>
+    </div>
+    <div class="set"><h5><span class="l-en">Usage</span><span class="l-zh">用量</span></h5>
+      <div class="row"><span class="l"><span class="l-en">Room assistant</span><span class="l-zh">房間助理</span></span><span class="r"><span class="l-en">42 today · 268 this week</span><span class="l-zh">今天 42 · 這週 268</span></span></div>
+      <div class="row"><span class="l">Hub General</span><span class="r"><span class="l-en">57 today · 311 this week</span><span class="l-zh">今天 57 · 這週 311</span></span></div>
+    </div>
+  </div></div>
+</div>
+
+<div class="foot"><ul>
+  <li><span class="l-en">All names and numbers are samples. Spec: docs/design/hub-general.md.</span><span class="l-zh">所有名稱與數字都是範例。規格：docs/design/hub-general.md。</span></li>
+  <li><span class="l-en">Hub General never reads rooms, conversations or files, and never contacts an agent: it suggests, the person asks.</span><span class="l-zh">Hub General 不讀房間、對話或檔案，也不會聯絡任何 Agent：它只建議，由本人去問。</span></li>
+</ul></div>
+
+</div>
+<script>
+const state = { lang: "en", theme: "light", view: "desktop" };
+const q = new URLSearchParams(location.search);
+for (const k of Object.keys(state)) if (q.get(k)) state[k] = q.get(k);
+function render() {
+  document.documentElement.lang = state.lang === "zh" ? "zh-Hant" : "en";
+  document.documentElement.dataset.theme = state.theme;
+  document.body.dataset.view = state.view;
+  for (const seg of document.querySelectorAll(".mock-bar .seg")) for (const b of seg.children) b.setAttribute("aria-pressed", String(state[seg.dataset.set] === b.dataset.v));
+}
+document.addEventListener("click", (e) => { const b = e.target.closest(".mock-bar button"); if (!b) return; state[b.parentElement.dataset.set] = b.dataset.v; render(); });
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP agent (mockup)</title>
+<style>
+:root {
+  --font-ui: Inter, "PingFang TC", "Noto Sans TC", "Noto Sans CJK TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px;
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-full: 999px; --tap: 44px;
+  color-scheme: dark;
+  --bg: #212121; --bg-sidebar: #171717; --surface: #2f2f2f; --surface-2: #3a3a3a; --border: #3d3d3d; --border-strong: #7a7a7a;
+  --text: #ececec; --text-2: #b4b4b4; --text-3: #a3a3a3; --accent: #7ab7ff; --accent-fill: #ececec; --on-accent: #0d0d0d;
+  --accent-dim: rgba(122,183,255,.14); --ok: #4cc38a; --warn: #e3b341; --danger: #ff8a80;
+  --ok-bg: rgba(76,195,138,.14); --warn-bg: rgba(227,179,65,.14); --warn-line: rgba(227,179,65,.45); --danger-bg: rgba(255,138,128,.14);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4); --shadow-2: 0 8px 28px rgba(0,0,0,.5);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff; --bg-sidebar: #f9f9f9; --surface: #f4f4f4; --surface-2: #ececec; --border: #e5e5e5; --border-strong: #858585;
+  --text: #0d0d0d; --text-2: #5d5d5d; --text-3: #696969; --accent: #0a62c2; --accent-fill: #0d0d0d; --on-accent: #ffffff;
+  --accent-dim: rgba(10,98,194,.08); --ok: #1a7f37; --warn: #8a5a00; --danger: #c4222b;
+  --ok-bg: #e6f4ea; --warn-bg: #fff6d6; --warn-line: #e3b341; --danger-bg: #ffebe9;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.06); --shadow-2: 0 8px 24px rgba(0,0,0,.12);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg-sidebar); color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.55; }
+button { font: inherit; color: inherit; }
+html[lang="en"] .l-zh, html[lang="zh-Hant"] .l-en { display: none; }
+
+.mock-bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); align-items: center;
+  padding: var(--s-2) var(--s-4); background: var(--warn-bg); border-bottom: 1px solid var(--warn-line); font-size: var(--fs-sm); backdrop-filter: blur(6px); }
+.mock-bar b { color: var(--warn); }
+.seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.seg button { border: 0; background: none; min-height: 28px; padding: 0 var(--s-3); border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: var(--fs-sm); white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--bg); color: var(--text); font-weight: 500; box-shadow: var(--shadow-1); }
+
+.stage { padding: var(--s-5) var(--s-4) var(--s-7); max-width: 1160px; margin: 0 auto; }
+body[data-view="phone"] .stage { max-width: 422px; }
+.shot { margin-bottom: var(--s-7); }
+.shot > h2 { font-size: var(--fs-lg); margin: 0 0 2px; font-weight: 600; }
+.shot > p.cap { margin: 0 0 var(--s-3); font-size: var(--fs-sm); color: var(--text-2); max-width: 760px; }
+.step { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 var(--s-2); border-radius: var(--r-full); background: var(--accent-dim); color: var(--accent); margin-left: var(--s-2); vertical-align: middle; white-space: nowrap; }
+.frame { container-type: inline-size; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+
+/* App layout: list, conversation, optional side panel */
+.app { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 520px; }
+.app.with-side { grid-template-columns: 240px minmax(0, 1fr) 240px; }
+.rail { background: var(--bg-sidebar); padding: var(--s-3); border-right: 1px solid var(--border); }
+.rail h4, .side h4 { margin: var(--s-3) var(--s-2) var(--s-1); font-size: var(--fs-xs); color: var(--text-3); font-weight: 600; }
+.ritem { display: flex; gap: var(--s-2); align-items: center; padding: 6px var(--s-2); border-radius: var(--r-sm); font-size: var(--fs-sm); }
+.ritem.on { background: var(--surface-2); font-weight: 500; }
+.ritem small { display: block; color: var(--text-3); font-size: var(--fs-xs); font-weight: 400; }
+.av { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+.av.sq { border-radius: 8px; } .av.hub { background: var(--accent-fill); color: var(--on-accent); } .av.ag { background: var(--accent-dim); color: var(--accent); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); margin-right: 4px; } .dot.on { background: var(--ok); }
+.main { display: flex; flex-direction: column; min-width: 0; }
+.head { padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); display: flex; gap: var(--s-2); align-items: center; }
+.head b { font-size: var(--fs-md); } .head small { color: var(--text-3); font-size: var(--fs-xs); display: block; }
+.thread { flex: 1; padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-4); }
+.msg { display: flex; gap: var(--s-2); max-width: 640px; }
+.msg.me { align-self: flex-end; }
+.msg .body { min-width: 0; }
+.who { font-size: var(--fs-xs); color: var(--text-2); margin-bottom: 2px; } .who b { color: var(--text); font-weight: 600; } .who .via { color: var(--accent); }
+.bub { font-size: var(--fs-md); } .msg.me .bub { background: var(--surface); border-radius: var(--r-lg); padding: var(--s-2) var(--s-3); }
+.bub p { margin: 0 0 var(--s-2); } .bub p:last-child { margin-bottom: 0; }
+.at { color: var(--accent); font-weight: 500; }
+.sysline { align-self: center; font-size: var(--fs-xs); color: var(--text-3); }
+.comp { margin: 0 var(--s-4) var(--s-4); background: var(--surface); border-radius: var(--r-lg); padding: var(--s-3) var(--s-4); color: var(--text-3); font-size: var(--fs-md); display: flex; justify-content: space-between; align-items: center; }
+.send { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-fill); color: var(--on-accent); display: grid; place-items: center; font-size: 14px; }
+.sugg { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
+.chip { border: 1px solid var(--border); border-radius: var(--r-full); padding: 4px var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }
+.side { border-left: 1px solid var(--border); padding: var(--s-3); font-size: var(--fs-sm); }
+
+.card { background: var(--surface); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); margin-top: var(--s-2); }
+.acard { display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; }
+.acard .meta { flex: 1; min-width: 150px; } .acard .meta b { display: block; font-size: var(--fs-md); } .acard .meta span { font-size: var(--fs-xs); color: var(--text-2); }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 0 var(--s-4); border-radius: var(--r-full); font-size: var(--fs-sm); font-weight: 500; background: var(--accent-fill); color: var(--on-accent); white-space: nowrap; }
+.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border-strong); }
+.btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+.btns { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.link { color: var(--accent); font-size: var(--fs-sm); }
+.tag { display: inline-block; font-size: var(--fs-xs); font-weight: 500; padding: 0 var(--s-2); border-radius: var(--r-full); background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+.tag.ok { background: var(--ok-bg); color: var(--ok); } .tag.warn { background: var(--warn-bg); color: var(--warn); }
+.confirm { border: 1px solid var(--border-strong); background: var(--bg); }
+.confirm h5 { margin: 0 0 2px; font-size: var(--fs-md); } .confirm p { margin: 0 0 var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }
+
+/* Settings pages */
+.page { padding: var(--s-5) var(--s-6) var(--s-6); max-width: 760px; }
+.page h3 { font-size: var(--fs-xl); margin: 0 0 var(--s-1); font-weight: 600; } .page .lead { color: var(--text-2); font-size: var(--fs-sm); margin: 0 0 var(--s-4); }
+.set { background: var(--surface); border-radius: var(--r-md); padding: var(--s-4); margin-bottom: var(--s-3); }
+.set h5 { margin: 0 0 var(--s-2); font-size: var(--fs-md); font-weight: 600; }
+.row { display: flex; gap: var(--s-3); align-items: flex-start; justify-content: space-between; padding: var(--s-2) 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+.row:first-of-type { border-top: 0; } .row .l { min-width: 0; } .row .l small { display: block; color: var(--text-2); font-size: var(--fs-xs); }
+.row .r { flex: none; text-align: right; color: var(--text-2); }
+.sw { flex: none; display: inline-block; width: 36px; height: 20px; border-radius: 10px; background: var(--border-strong); position: relative; }
+.sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+.sw.on { background: var(--ok); } .sw.on::after { left: 18px; }
+.inp { display: inline-block; border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 2px var(--s-3); background: var(--bg); color: var(--text); font-size: var(--fs-sm); min-width: 56px; text-align: center; }
+.ck { display: flex; gap: var(--s-2); align-items: flex-start; padding: 6px 0; font-size: var(--fs-sm); }
+.ck small { display: block; color: var(--text-2); font-size: var(--fs-xs); }
+.box { flex: none; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--border-strong); margin-top: 2px; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.box.on { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
+.radio { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border-strong); margin-top: 2px; } .radio.on { border: 5px solid var(--accent-fill); }
+.addr { display: flex; gap: var(--s-2); align-items: center; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); font-family: var(--font-mono); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.addr span.url { flex: 1; min-width: 0; }
+.note { font-size: var(--fs-xs); color: var(--text-2); margin-top: var(--s-2); }
+.dialog-bg { background: var(--bg-sidebar); padding: var(--s-6) var(--s-4); display: grid; place-items: center; }
+.dialog { background: var(--bg); border-radius: var(--r-lg); box-shadow: var(--shadow-2); border: 1px solid var(--border); padding: var(--s-5); width: 100%; max-width: 440px; }
+.dialog h3 { margin: var(--s-3) 0 var(--s-1); font-size: var(--fs-lg); } .dialog p { margin: 0 0 var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }
+.pair { display: flex; align-items: center; gap: var(--s-2); color: var(--text-3); }
+.foot { font-size: var(--fs-sm); color: var(--text-2); border-top: 1px solid var(--border); padding-top: var(--s-4); }
+.foot ul { margin: 0; padding-left: 1.2em; }
+
+@container (max-width: 700px) {
+  .app, .app.with-side { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .rail, .side { display: none; }
+  .page { padding: var(--s-4); }
+  .btn { min-height: var(--tap); }
+  .row { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body data-view="desktop">
+<div class="mock-bar">
+  <b><span class="l-en">Design mockup · sample content</span><span class="l-zh">設計示意 · 內容為範例</span></b>
+  <span class="seg" data-set="lang"><button data-v="en">English</button><button data-v="zh">繁體中文</button></span>
+  <span class="seg" data-set="theme"><button data-v="light"><span class="l-en">Light</span><span class="l-zh">淺色</span></button><button data-v="dark"><span class="l-en">Dark</span><span class="l-zh">深色</span></button></span>
+  <span class="seg" data-set="view"><button data-v="desktop"><span class="l-en">Desktop</span><span class="l-zh">桌面</span></button><button data-v="phone"><span class="l-en">Phone</span><span class="l-zh">手機</span></button></span>
+</div>
+<div class="stage">
+<div class="shot">
+  <h2><span class="l-en">1 · My AI apps: connect one</span><span class="l-zh">1 · 我的 AI App：連接一個</span> <span class="step"><span class="l-en">Step 1</span><span class="l-zh">第 1 步</span></span></h2>
+  <p class="cap"><span class="l-en">One address to copy into the person's own AI app. Connected apps are listed with what they may do and a Disconnect button.</span><span class="l-zh">一個位址，貼到自己的 AI App 裡。已連接的 App 列在下面，寫明它可以做什麼，並有「中斷連接」按鈕。</span></p>
+  <div class="frame"><div class="page">
+    <h3><span class="l-en">My AI apps</span><span class="l-zh">我的 AI App</span></h3>
+    <p class="lead"><span class="l-en">Use this Hub from your own AI app, such as Codex or Claude, without installing AgEnD. The app acts as you, and people see which app spoke.</span><span class="l-zh">不用安裝 AgEnD，就能從自己的 AI App（例如 Codex 或 Claude）使用這個 Hub。App 以你的身分行動，其他人看得到是哪個 App 發的。</span></p>
+    <div class="set"><h5><span class="l-en">Connect an app</span><span class="l-zh">連接 App</span></h5>
+      <div class="addr"><span class="url">https://hub.example.com/mcp</span><span class="btn ghost"><span class="l-en">Copy</span><span class="l-zh">複製</span></span></div>
+      <p class="note"><span class="l-en">1. Add this address in your app's MCP or connector settings. 2. Your browser opens: sign in with your company account and press Allow.</span><span class="l-zh">1. 在 App 的 MCP 或連接器設定裡加入這個位址。2. 瀏覽器會開啟：用公司帳號登入，然後按「允許」。</span></p>
+      <p class="note"><span class="link"><span class="l-en">Steps for Codex ›</span><span class="l-zh">Codex 的步驟 ›</span></span> &nbsp; <span class="link"><span class="l-en">Steps for Claude ›</span><span class="l-zh">Claude 的步驟 ›</span></span></p>
+    </div>
+    <div class="set"><h5><span class="l-en">Connected apps</span><span class="l-zh">已連接的 App</span></h5>
+      <div class="row"><span class="l"><b>Codex</b><small><span class="l-en">Connected Nov 12 · last used 5 minutes ago</span><span class="l-zh">11 月 12 日連接 · 5 分鐘前使用</span></small><small><span class="l-en">Reads your rooms · posts in them · asks agents</span><span class="l-zh">讀你的房間 · 在房間發言 · 問 Agent</span></small></span><span class="btn danger"><span class="l-en">Disconnect</span><span class="l-zh">中斷連接</span></span></div>
+      <div class="row"><span class="l"><b>Claude</b><small><span class="l-en">Connected Nov 3 · last used 9 days ago</span><span class="l-zh">11 月 3 日連接 · 9 天前使用</span></small><small><span class="l-en">Reads your rooms · asks agents</span><span class="l-zh">讀你的房間 · 問 Agent</span></small></span><span class="btn danger"><span class="l-en">Disconnect</span><span class="l-zh">中斷連接</span></span></div>
+      <p class="note"><span class="l-en">A connection ends by itself after 30 days without use.</span><span class="l-zh">連續 30 天沒有使用，連接會自動結束。</span></p>
+    </div>
+  </div></div>
+</div>
+
+<div class="shot">
+  <h2><span class="l-en">2 · The consent screen</span><span class="l-zh">2 · 同意畫面</span> <span class="step"><span class="l-en">Step 1</span><span class="l-zh">第 1 步</span></span></h2>
+  <p class="cap"><span class="l-en">Shown in the browser after company sign-in. The person chooses what the app may do. The last tick belongs to step 2.</span><span class="l-zh">用公司帳號登入後，在瀏覽器裡顯示。由本人選擇 App 可以做什麼。最後一項屬於第 2 步。</span></p>
+  <div class="frame"><div class="dialog-bg"><div class="dialog">
+    <div class="pair"><span class="av">C</span> → <span class="av sq hub">H</span></div>
+    <h3><span class="l-en">Let Codex use this Hub as you?</span><span class="l-zh">要讓 Codex 以你的身分使用這個 Hub 嗎？</span></h3>
+    <p><span class="l-en">Codex will be able to do the things ticked below. People will see "Wang via Codex" on what it posts.</span><span class="l-zh">Codex 可以做下面勾選的事。它發的訊息會顯示「王小明 透過 Codex」。</span></p>
+    <div class="ck"><span class="box on">✓</span><span><span class="l-en">Read the rooms you are in</span><span class="l-zh">讀你所在的房間</span></span></div>
+    <div class="ck"><span class="box on">✓</span><span><span class="l-en">Post in those rooms</span><span class="l-zh">在這些房間發言</span></span></div>
+    <div class="ck"><span class="box on">✓</span><span><span class="l-en">Ask the agents you may ask</span><span class="l-zh">問你可以問的 Agent</span></span></div>
+    <div class="ck"><span class="box"></span><span><span class="l-en">Answer questions sent to it</span><span class="l-zh">回答別人問它的問題</span><small><span class="l-en">List it under Agents I share first.</span><span class="l-zh">要先在「我分享的 Agent」裡列出它。</span></small></span></div>
+    <p class="note"><span class="l-en">It cannot change rooms, teams or settings, and it cannot do anything an administrator does.</span><span class="l-zh">它不能更改房間、團隊或設定，也不能做管理員的動作。</span></p>
+    <p class="note" style="margin-bottom:var(--s-4)"><span class="l-en">What it reads goes to your AI app and its provider.</span><span class="l-zh">它讀到的內容會交給你的 AI App 與它的服務商。</span></p>
+    <div class="btns"><span class="btn"><span class="l-en">Allow</span><span class="l-zh">允許</span></span><span class="btn ghost"><span class="l-en">Cancel</span><span class="l-zh">取消</span></span></div>
+  </div></div></div>
+</div>
+
+<div class="shot">
+  <h2><span class="l-en">3 · What others see in a room</span><span class="l-zh">3 · 其他人在房間裡看到的</span> <span class="step"><span class="l-en">Steps 1 and 2</span><span class="l-zh">第 1、2 步</span></span></h2>
+  <p class="cap"><span class="l-en">A post from an app shows "via" and counts as the person's message. A listed AI app (step 2) is an agent with "answers when connected". The room manager has one switch.</span><span class="l-zh">App 發的訊息會顯示「透過」，並算作本人的訊息。列出的 AI App（第 2 步）是一個「上線時回答」的 Agent。房間管理者有一個開關。</span></p>
+  <div class="frame"><div class="app with-side">
+    <div class="rail">
+      <div class="ritem"><span class="av sq hub">H</span><span>Hub General</span></div>
+      <h4><span class="l-en">Rooms</span><span class="l-zh">房間</span></h4>
+      <div class="ritem on"><span class="av sq">登</span><span><span class="l-en">Login page redesign</span><span class="l-zh">登入頁改版</span></span></div>
+      <div class="ritem"><span class="av sq">週</span><span><span class="l-en">R&D leads weekly</span><span class="l-zh">研一主管週會</span></span></div>
+    </div>
+    <div class="main">
+      <div class="head"><span class="av sq">登</span><div><b><span class="l-en">Login page redesign</span><span class="l-zh">登入頁改版</span></b><small><span class="l-en">5 people · 4 agents</span><span class="l-zh">5 人 · 4 個 Agent</span></small></div></div>
+      <div class="thread">
+        <div class="msg"><span class="av">林</span><div class="body"><div class="who"><b><span class="l-en">Lin</span><span class="l-zh">林小華</span></b> · 10:02</div><div class="bub"><span class="l-en">Is the staging environment back?</span><span class="l-zh">測試環境恢復了嗎？</span></div></div></div>
+        <div class="msg"><span class="av">王</span><div class="body"><div class="who"><b><span class="l-en">Wang</span><span class="l-zh">王小明</span></b> <span class="via"><span class="l-en">via Codex</span><span class="l-zh">透過 Codex</span></span> · 10:05</div><div class="bub"><span class="l-en">Staging is fixed. The login tests pass again on build 412.</span><span class="l-zh">測試環境修好了。登入測試在第 412 版又通過了。</span> <span class="at">@project-helper</span> <span class="l-en">please update the rerun log.</span><span class="l-zh">請更新重跑紀錄。</span></div></div></div>
+        <div class="msg"><span class="av ag">P</span><div class="body"><div class="who"><b>project-helper</b> · <span class="l-en">Lin</span><span class="l-zh">林小華</span> · 10:05</div><div class="bub"><span class="l-en">Updated: rerun 3 passed on build 412.</span><span class="l-zh">已更新：第 3 次重跑在第 412 版通過。</span></div></div></div>
+        <div class="msg"><span class="av">張</span><div class="body"><div class="who"><b><span class="l-en">Chang</span><span class="l-zh">張小美</span></b> · 10:11</div><div class="bub"><span class="at"><span class="l-en">@Wang's Claude</span><span class="l-zh">@王小明的 Claude</span></span> <span class="l-en">which API changed in that build?</span><span class="l-zh">那一版改了哪個 API？</span></div></div></div>
+        <div class="sysline"><span class="l-en">Wang's Claude answers when connected · the question waits up to 7 days</span><span class="l-zh">王小明的 Claude 上線時回答 · 問題最多保留 7 天</span></div>
+      </div>
+      <div class="comp"><span><span class="l-en">Message the room</span><span class="l-zh">在房間發言</span></span><span class="send">↑</span></div>
+    </div>
+    <div class="side">
+      <h4><span class="l-en">People · 5</span><span class="l-zh">人 · 5</span></h4>
+      <div class="ritem"><span class="dot on"></span><span class="l-en">Wang</span><span class="l-zh">王小明</span></div>
+      <div class="ritem"><span class="dot on"></span><span class="l-en">Lin</span><span class="l-zh">林小華</span></div>
+      <div class="ritem"><span class="dot"></span><span class="l-en">Chang</span><span class="l-zh">張小美</span></div>
+      <h4><span class="l-en">Agents · 4</span><span class="l-zh">Agent · 4</span></h4>
+      <div class="ritem"><span class="dot on"></span>project-helper</div>
+      <div class="ritem"><span class="dot on"></span>build-agent</div>
+      <div class="ritem"><span class="dot"></span><span><span class="l-en">Wang's Claude</span><span class="l-zh">王小明的 Claude</span><small><span class="l-en">Answers when connected</span><span class="l-zh">上線時回答</span></small></span></div>
+      <h4><span class="l-en">Room settings</span><span class="l-zh">房間設定</span></h4>
+      <div class="ritem" style="justify-content:space-between;align-items:flex-start"><span><span class="l-en">Members' AI apps may read and post here</span><span class="l-zh">成員的 AI App 可以在這裡讀取與發言</span></span><span class="sw on"></span></div>
+    </div>
+  </div></div>
+</div>
+
+<div class="shot">
+  <h2><span class="l-en">4 · Administration → Settings</span><span class="l-zh">4 · 管理 → 設定</span> <span class="step"><span class="l-en">Step 1</span><span class="l-zh">第 1 步</span></span></h2>
+  <p class="cap"><span class="l-en">Off until the administrator turns it on. Counts only: the administrator does not see what anyone's app read or posted.</span><span class="l-zh">管理員打開之前是關閉的。只有數字：管理員看不到任何人的 App 讀了什麼、發了什麼。</span></p>
+  <div class="frame"><div class="page">
+    <div class="set"><h5><span class="l-en">AI apps</span><span class="l-zh">AI App</span></h5>
+      <div class="row"><span class="l"><span class="l-en">Let people connect their own AI apps</span><span class="l-zh">允許同仁連接自己的 AI App</span><small><span class="l-en">An app uses the Hub as the person who connected it: their rooms and the agents they may ask.</span><span class="l-zh">App 以連接它的人的身分使用 Hub：他的房間，以及他可以問的 Agent。</span></small></span><span class="sw on"></span></div>
+      <div class="row"><span class="l"><span class="l-en">Who</span><span class="l-zh">誰可以連接</span></span><span class="r"><span class="l-en">Everyone who has joined</span><span class="l-zh">所有已加入的人</span> ▾</span></div>
+      <div class="row"><span class="l"><span class="l-en">People with a connected app</span><span class="l-zh">已連接 App 的人數</span></span><span class="r">7</span></div>
+    </div>
+  </div></div>
+</div>
+
+<div class="shot">
+  <h2><span class="l-en">5 · Related idea: limit who a shared agent may contact</span><span class="l-zh">5 · 相關的想法：限制分享的 Agent 可以聯絡誰</span> <span class="step"><span class="l-en">Fleet · sharing step</span><span class="l-zh">Fleet · 分享步驟</span></span></h2>
+  <p class="cap"><span class="l-en">One tick in the Fleet's sharing step, on by default. It also protects agents asked from an AI app, because those asks arrive as ordinary Hub questions.</span><span class="l-zh">Fleet 的分享步驟裡多一個勾選，預設打開。從 AI App 來的提問也是一般的 Hub 提問，所以同樣受到保護。</span></p>
+  <div class="frame"><div class="page">
+    <div class="set"><h5><span class="l-en">Share project-helper</span><span class="l-zh">分享 project-helper</span></h5>
+      <div class="row"><span class="l"><span class="l-en">Who may ask</span><span class="l-zh">誰可以問</span></span><span class="r"><span class="l-en">Team: Login page</span><span class="l-zh">團隊：登入頁專案</span> ▾</span></div>
+      <div class="ck"><span class="box on">✓</span><span><span class="l-en">While it answers a Hub question, this agent may not contact other agents</span><span class="l-zh">回答 Hub 的提問時，這個 Agent 不能聯絡其他 Agent</span><small><span class="l-en">People on the Hub can ask this agent, but can't reach your other agents through it.</span><span class="l-zh">Hub 上的人可以問這個 Agent，但不能透過它找到你的其他 Agent。</span></small></span></div>
+      <div class="btns" style="margin-top:var(--s-3)"><span class="btn"><span class="l-en">Share</span><span class="l-zh">分享</span></span><span class="btn ghost"><span class="l-en">Cancel</span><span class="l-zh">取消</span></span></div>
+    </div>
+  </div></div>
+</div>
+
+<div class="foot"><ul>
+  <li><span class="l-en">All names are samples. Specs: docs/design/hub-mcp-agent.md and docs/design/hub-agent-contact-limits.md.</span><span class="l-zh">所有名稱都是範例。規格：docs/design/hub-mcp-agent.md 與 docs/design/hub-agent-contact-limits.md。</span></li>
+  <li><span class="l-en">An AI app reaches exactly what its person reaches. It cannot manage rooms or teams, do administrator actions, or mention all agents.</span><span class="l-zh">AI App 能到的地方和本人完全相同。它不能管理房間或團隊、不能做管理員的動作，也不能 @所有 Agent。</span></li>
+</ul></div>
+
+</div>
+<script>
+const state = { lang: "en", theme: "light", view: "desktop" };
+const q = new URLSearchParams(location.search);
+for (const k of Object.keys(state)) if (q.get(k)) state[k] = q.get(k);
+function render() {
+  document.documentElement.lang = state.lang === "zh" ? "zh-Hant" : "en";
+  document.documentElement.dataset.theme = state.theme;
+  document.body.dataset.view = state.view;
+  for (const seg of document.querySelectorAll(".mock-bar .seg")) for (const b of seg.children) b.setAttribute("aria-pressed", String(state[seg.dataset.set] === b.dataset.v));
+}
+document.addEventListener("click", (e) => { const b = e.target.closest(".mock-bar button"); if (!b) return; state[b.parentElement.dataset.set] = b.dataset.v; render(); });
+render();
+</script>
+</body>
+</html>
