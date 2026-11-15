@@ -31,3 +31,5 @@ Risk and rollback: putting a Team on the list intentionally lets its current lea
 Public text logs omit terminal trailing blank lines; original raw captures remain in the owned private artifact directory.
 
 R3 final reviewer pin: the Team twin of the ask-only person test denies publication and Fleet pairing despite a nonzero Fleet limit. `team-cap-after.log`:14/14. Removing only the Team capability predicate causes an assertion failure (one selected,13unselected excluded); exact model bytes restored. Current test TypeScript program exits0. This delta is tests/evidence only; no new production, browser, matrix or source-native run.
+
+R4 CI wording repair: run43732693878 on ee390b95 failed only two hub-skill assertions (plus aggregate build). The label inventory now expects the existing UI/skill label “Connect a Fleet”; the join-code assertion now names an allowed AD group, Team or person while retaining the owner-grant requirement. Both expectations remain exact, and all10skill tests pass. This changes two test strings and evidence only; runtime and skill source are unchanged. No additional matrix, native or broad run.

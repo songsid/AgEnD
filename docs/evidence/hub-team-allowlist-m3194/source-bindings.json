@@ -135,6 +135,10 @@
       "sha256": "388743207ab9f86041a83b8b3ebabc8eb9abba75869191884ef5c7f23e19adcb"
     },
     {
+      "path": "tests/hub-skill.test.ts",
+      "sha256": "c8d8a1d3beddae23ab3bdff5a2ea2c02d7508c2272470ddd9e952896a15f2051"
+    },
+    {
       "path": "tests/hub-team-allowlist-m3194.test.ts",
       "sha256": "b2aa149893487cc4e272d382f4acd02f73f3808434a91a53a8e3681358ba8219"
     },
@@ -156,5 +160,7 @@
   "r2Parent": "e1173950699a78db992b2a4126257380f7a2b378",
   "r2Delta": "Only three reviewer-requested assertion pins in two test files; runtime unchanged from R1.",
   "r3Parent": "f6763813d54e78a937d1b1744ca61c4217612668",
-  "r3Delta": "Only the ask-only Team assertion twin; all runtime source unchanged."
+  "r3Delta": "Only the ask-only Team assertion twin; all runtime source unchanged.",
+  "r4Parent": "ee390b9507cef6ed76bd8f40fdf1fd0f24f1c37a",
+  "r4Delta": "Only two stale expected strings in tests/hub-skill.test.ts; application and skill source unchanged."
 }

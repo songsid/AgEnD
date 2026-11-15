@@ -1,0 +1,19 @@
+{
+  "run": 43732693878,
+  "head": "ee390b9507cef6ed76bd8f40fdf1fd0f24f1c37a",
+  "event": "pull_request",
+  "failedJob": "test-shard (2)",
+  "aggregateFailure": "build",
+  "failures": 2,
+  "excerpt": [
+    "test-shard (2)\tRun test shard 2/4\t2026-11-15T16:08:14.7250553Z  FAIL  tests/hub-skill.test.ts > the hub skill > every label it quotes is a string the UI has",
+    "test-shard (2)\tRun test shard 2/4\t2026-11-15T16:08:14.7255639Z AssertionError: listed here but not in the skill: expected [ 'Connect a fleet' ] to deeply equal []",
+    "test-shard (2)\tRun test shard 2/4\t2026-11-15T16:08:14.7326213Z  FAIL  tests/hub-skill.test.ts > the hub skill > after a join code: asking follows the group-policy state, sharing is never given by the code (review of #3773)",
+    "test-shard (2)\tRun test shard 2/4\t2026-11-15T16:08:14.7328947Z AssertionError: expected '**After joining by code.** The code a…' to contain '**Asking, group permissions on:** the…'",
+    "test-shard (2)\tRun test shard 2/4\t2026-11-15T16:08:14.7365505Z  Test Files  1 failed | 560 passed | 2 skipped (563)",
+    "test-shard (2)\tRun test shard 2/4\t2026-11-15T16:08:14.7448848Z       Tests  2 failed | 10143 passed | 8 skipped (10153)",
+    "test-shard (2)\tRun test shard 2/4\t2026-11-15T16:08:14.7601181Z ##[error]AssertionError: listed here but not in the skill: expected [ 'Connect a fleet' ] to deeply equal []",
+    "test-shard (2)\tRun test shard 2/4\t2026-11-15T16:08:14.7624949Z ##[error]AssertionError: expected '**After joining by code.** The code a…' to contain '**Asking, group permissions on:** the…'"
+  ],
+  "result": "Two exact-string expectations updated to the existing UI label and T1 skill behavior; no assertion removed."
+}

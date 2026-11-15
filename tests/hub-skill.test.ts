@@ -105,7 +105,7 @@ describe("the hub skill", () => {
       "This fleet has no agents to share yet.", "Pause sharing", "Resume sharing", "Sharing paused", "Stop sharing…", "Sharing stopped on the Hub", "Allow someone to ask…", "My shared agents", "Who may ask",
       "Allow…", "Their sign-in name", "Hasn't signed in to Hub yet", "Revoke…", "Recent questions", "Subscription quota", "Show quota to people asking",
       "Chats", "New chat", "Waiting for the owner's fleet", "At the owner's fleet", "Answered", "Not answered", "Outcome unknown",
-      "Open on the Hub", "Connect a fleet", "People excluded", "What this change does", "Turn on and save", "Turn off", "Resume", "Paused",
+      "Open on the Hub", "Connect a Fleet", "People excluded", "What this change does", "Turn on and save", "Turn off", "Resume", "Paused",
       "Chat with an agent", "Connect your fleet", "Connected fleets", "Company sign-in name", "Create invitation", "Copy invitation",
       "Advanced: connect with a pairing code", "Notices", "Acknowledge", "This Hub", "Hub name", "Set up a Hub", "Set up on this computer",
       "Test connection and review", "Create Hub", "Open Hub sign-in", "Checking whether the Hub is ready…", "Only the Hub administrator can see this",
@@ -143,7 +143,7 @@ describe("the hub skill", () => {
     const section = FLAT.slice(FLAT.indexOf("**After joining by code.**"), FLAT.indexOf("## Connecting a Fleet"));
     expect(section).toContain("**Asking, group permissions never turned on:** they can ask an agent as soon as its owner allows them");
     expect(section).toContain("Do not tell them to have group permissions turned on for this");
-    expect(section).toContain("**Asking, group permissions on:** they need **Chat with agents** from one of their groups *and* the owner's allowance");
+    expect(section).toContain("**Asking, group permissions on:** they need **Chat with agents** from an allowed AD group, team, or personal row *and* the owner's allowance");
     expect(section).toContain("**Sharing** is never given by a code.");
     expect(section).toContain("the owner still allows each asker");
     // The blanket sentence the review refused must not come back.

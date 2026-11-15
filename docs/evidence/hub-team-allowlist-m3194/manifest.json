@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "docs/evidence/hub-team-allowlist-m3194/README.md",
-      "sha256": "8089f61a57197d3d970e2a80eb6c7b23966b968f31462689963936ee21425a75"
+      "sha256": "2a12a440b898c0dc1393ce9011d9c0e06c5ef60c47ec2f91fc8fa47c49cc6699"
     },
     {
       "path": "docs/evidence/hub-team-allowlist-m3194/browser/browser-initial-receipt.json",
@@ -113,6 +113,14 @@
       "sha256": "50ef103256bfafc5d497ac7679d62bfd4d5a3d114701528aa05d1fa2196702d5"
     },
     {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/skill-contract-after.log",
+      "sha256": "a7dbb7fc7018a1f1ba2273aea547915bfd3d9e303b59638b6a71c69f4f1d11f1"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/skill-contract-ci.json",
+      "sha256": "5c6a7aa2a2a018916b80acc00a9774900a528b5df33a21caa70013f5ee3e7f01"
+    },
+    {
       "path": "docs/evidence/hub-team-allowlist-m3194/checks/source-types-combined.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
@@ -178,7 +186,7 @@
     },
     {
       "path": "docs/evidence/hub-team-allowlist-m3194/source-bindings.json",
-      "sha256": "2a6bdb77510712d5bf1d9077e8127b606e595cc4511f4b11921565ef8f32b742"
+      "sha256": "36a3874c7a56e21b53a9fb0d40049a7ed21ff24b491a9a4fb3193f22f86bad8b"
     }
   ]
 }
