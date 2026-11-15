@@ -4,6 +4,7 @@
 //   1-fleet   no bottom tab bar; Fleet's tabs in the header's row beside ☰ (no title, search, docs or text size there);
 //             the page's tools one row under it; the org page opens on its list; no count anywhere; the row scrolls
 //             sideways when it does not fit, and the open last tab (用量) is in view
+//   3-memory  a host-memory warning (the header's subtitle) stays, on its own line under ☰ and the tabs
 //   2-drawer  ☰ opens the drawer: 300 px; the agent filter at the top with [+] beside it; Fleet 概覽 and 等你處理 (no count),
 //             no 搜尋 / 通知 rows, no filter block at the bottom; agent rows ≥ 48 px with their dot and name only
 // The desk: the sidebar as before (its search row, its filters) and Fleet's title; no phone tabs. No horizontal overflow, no page error.
@@ -53,6 +54,20 @@ try {
     });
     need(!!u?.inView && /usage/.test(u.href || ""), `the open last tab is in view (${JSON.stringify(u)})`);
     await page.goto(`${(fx as any).base}/ui/fleet/org`); need(await mounted(page, 30000), "org: the app mounted"); await needs(page); await page.waitForTimeout(800);
+    // A host-memory warning (the header's subtitle) stays: its own line under ☰ and the tabs (#4008 review).
+    await page.evaluate(async () => { const m = await import("/assets/app-store.js"); m.appStore.set((s: any) => ({ ...s, hostMemory: "critical", hostMemoryTop: [{ name: "node", pid: 4242, rssBytes: 2147483648, owner: "instance", instance: "planner" }] })); });
+    await page.waitForTimeout(500);
+    const hm = await page.evaluate(() => {
+      const w = document.querySelector(".p-fleet > .panel-head .host-mem") as HTMLElement, tabs = document.querySelector(".p-fleet > .panel-head .fleet-phone-tabs") as HTMLElement;
+      if (!w || !tabs) return null;
+      const r = w.getBoundingClientRect(), t = tabs.getBoundingClientRect();
+      return { shown: r.width > 0 && r.height > 0, under: r.top >= t.bottom - 1, inside: r.left >= 0 && r.right <= innerWidth + 0.5, tabsTop: Math.round(t.top),
+        wide: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+    });
+    need(!!hm?.shown && hm.under && hm.inside && !hm.wide, `a host-memory warning shows on its own line under the tabs (${JSON.stringify(hm)})`);
+    await page.screenshot({ path: shotPath(SMOKE, caseName(c), "3-memory") });
+    await page.evaluate(async () => { const m = await import("/assets/app-store.js"); m.appStore.set((s: any) => ({ ...s, hostMemory: null, hostMemoryTop: [] })); });
+    await page.waitForTimeout(300);
     await page.locator("#sbOpen").tap(); await page.waitForTimeout(700);
     const d = await page.evaluate(() => {
       const sb = document.querySelector("#sidebar") as HTMLElement, r = sb.getBoundingClientRect();

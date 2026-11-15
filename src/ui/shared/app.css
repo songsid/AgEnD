@@ -4603,7 +4603,12 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side .v-inst { min-height: 48px; }
   .sidebar.fleet-side .v-inst .av { width: 10px; height: 10px; background: none; border: 0; box-shadow: none; margin: 0 var(--s-1); }
   .sidebar.fleet-side .v-inst .av-dot { position: static; width: 8px; height: 8px; border: 0; }
-  .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-title, .p-fleet > .panel-head .panel-actions { display: none !important; }
+  .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-title h1, .p-fleet > .panel-head .panel-actions { display: none !important; }
+  /* The title gives way, but a host-memory warning (its subtitle) stays: a line of its own under ☰ and the tabs (#4008 review). */
+  .p-fleet > .panel-head .panel-title:not(:has(.host-mem)) { display: none; }
+  .p-fleet > .panel-head:has(.host-mem) { flex-wrap: wrap; }
+  .p-fleet > .panel-head .panel-title:has(.host-mem) { order: 10; flex: 1 0 100%; min-height: 0; padding-bottom: var(--s-1); }
+  .p-fleet > .panel-head .panel-title .panel-sub:has(.host-mem) { flex: 1 1 auto; width: auto; }
   .p-fleet > .panel-head .fleet-phone-tabs { flex: 1; min-width: 0; order: initial; padding: 0; margin: 0; overflow-x: auto; flex-wrap: nowrap; }
   .p-fleet .oc-bar > span:first-child, .p-fleet .oc-bar .org-counts { display: none; }
   .p-fleet .oc-bar .oc-tools { flex-wrap: nowrap; overflow-x: auto; width: 100%; }
