@@ -30,6 +30,19 @@ it('keeps Codex role instructions launch-local and leaves the workspace AGENTS f
  const role=args.find(arg=>arg.startsWith('developer_instructions='))!;expect(role).toBeTypeOf('string');expect(parse(role).developer_instructions).toBe(f.launch.instructions);expect(args).not.toContain('--model-instructions-file');
  config.cleanup();expect(readFileSync(file,'utf8')).toBe(original);expect(existsSync(join(f.cwd,'.agend-pane-instructions.lock'))).toBe(false);
 });
+it.each([false,true])('pins the ordinary Codex terminal and queued-input contract on native launch (resume=%s)',resume=>{
+ const f=rig(),config=f.prepare(),sessionId=resume?randomUUID():undefined;
+ const args=persistentNativeArguments({...f.launch,...(sessionId?{sessionId}:{})},config);
+ expect(args.filter(arg=>arg==='--no-alt-screen')).toHaveLength(1);
+ const settings=args.flatMap((arg,index)=>arg==='-c'?[parse(args[index+1])]:[]);
+ expect(settings.filter(value=>'features' in value)).toEqual([{features:{instant_interrupt:false}}]);
+ expect(settings.filter(value=>'check_for_update_on_startup' in value)).toEqual([{check_for_update_on_startup:false}]);
+ expect(args[0]).toBe('--no-daemon');
+ expect(args.slice(args.indexOf('--sandbox'),args.indexOf('--sandbox')+2)).toEqual(['--sandbox','read-only']);
+ expect(args.slice(args.indexOf('--ask-for-approval'),args.indexOf('--ask-for-approval')+2)).toEqual(['--ask-for-approval','on-request']);
+ if(sessionId)expect(args.slice(-2)).toEqual(['resume',sessionId]);
+ config.cleanup();
+});
 it('two same-cwd Codex launches have separate role slots and exact helper identities',()=>{
  const f=rig(),first=f.prepare(),secondLaunch={...f.launch,agentId:randomUUID(),instructions:'Second agent role only'},secondOwner=structuredClone(f.owner);secondOwner.launchId=randomUUID();Object.assign(secondOwner.mcp!.owner,{launchId:secondOwner.launchId,agentId:secondLaunch.agentId});
  const second=prepareNativePaneConfig(secondLaunch,secondOwner,'C:\\Node\\node.exe','C:\\program\\helper.js');

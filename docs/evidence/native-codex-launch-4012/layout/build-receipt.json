@@ -1,0 +1,16 @@
+{
+  "sourceHead": "42462a18aded32e14db8b36e9cb51b6bd68e45ba",
+  "sourceTrackedClean": true,
+  "codeBundleSha256": "f19483b79e70a671ac29cc2112e817fc7dff6f861b26f1450ba04b41c6d3fdd1",
+  "codeBundleFiles": 163,
+  "runtimeZipSha256": "bb238930cbe259ed758a6ab99ac10bf4161074d4acb88553d6e329bf5d25b073",
+  "control": "layout",
+  "setup": "single exec_command call with yield_time_ms=30000",
+  "artifactTransformation": {
+    "sourceHead": "42462a18aded32e14db8b36e9cb51b6bd68e45ba",
+    "kind": "explicit compiled omission control",
+    "removed": "features.instant_interrupt=false",
+    "beforeSha256": "e7352a7fc00d79cc555addc1d2165723401f8118777795db5064fc31a73f3af5",
+    "afterSha256": "50a2e62d8bb4eae1fc21dbcee5239c26020005ef156849dcfe691bce80422b4f"
+  }
+}

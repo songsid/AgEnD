@@ -96,7 +96,9 @@ export function persistentNativeArguments(launch: RuntimePaneLaunch, config?: Na
   // Each owned Job must contain only its own CLI tree. A shared Codex app-server would outlive or couple panes.
   // This is the fleet agent's own developer-role slot. Built-in model and project instructions remain provider-owned.
   // A shared AGENTS.md identity block would give concurrent same-cwd agents each other's roles.
-  if (launch.cli === "codex") return ["--no-daemon", ...nativeUpdateGuard("codex"), ...prefix,
+  // Match the ordinary Codex backend's terminal layout and queued-input pins. Ambient fullscreen or instant-interrupt
+  // preferences must not change the composer/queue contract that native delivery and its transcript watches expect.
+  if (launch.cli === "codex") return ["--no-daemon", ...nativeUpdateGuard("codex"), "--no-alt-screen", "-c", "features.instant_interrupt=false", ...prefix,
     ...(launch.instructions ? ["-c", nativeDeveloperInstructions(launch.instructions)] : []),
     "-c", 'tui.status_line=["context-remaining"]', "--sandbox", launch.sandbox, "--ask-for-approval", "on-request", "-C", launch.cwd,
     ...model, ...(launch.sessionId ? ["resume", launch.sessionId] : [])];

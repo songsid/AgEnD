@@ -1,0 +1,9 @@
+{
+  "kind": "actual-native-process-argv",
+  "pid": 35416,
+  "commandLineSha256": "f7eabeb8f14b42e521d38d92169eb71ba90232337e66219e9143893ff5d5bdd4",
+  "noAltScreen": true,
+  "instantInterruptFalse": false,
+  "noDaemon": true,
+  "updateDisabled": true
+}

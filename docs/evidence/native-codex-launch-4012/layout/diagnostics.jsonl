@@ -1,0 +1,5 @@
+{"at":1794754663533,"runBoot":"1c875417-482c-43c7-b5d3-e2f9a8d38faa","level":"debug","msg":"Queued channel message for delivery"}
+{"at":1794754663539,"runBoot":"1c875417-482c-43c7-b5d3-e2f9a8d38faa","level":"debug","msg":"CLI busy — handing message to backend-native input queue"}
+{"at":1794754664139,"runBoot":"1c875417-482c-43c7-b5d3-e2f9a8d38faa","level":"debug","msg":"Delivery settle telemetry"}
+{"at":1794754671197,"runBoot":"1c875417-482c-43c7-b5d3-e2f9a8d38faa","level":"info","msg":"Queued hand-off taken by the CLI","proof":"transcript:turn","handoff":"3cf471ea-6b6a-4549-8590-e714ba4cf54d","redeliveries":0}
+{"at":1794754671993,"runBoot":"1c875417-482c-43c7-b5d3-e2f9a8d38faa","level":"debug","msg":"Native MCP result awaits transport-written confirmation"}

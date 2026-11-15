@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/runtime-pane-config-2950.test.ts (16 tests | 2 failed | 14 skipped) 15ms
+   × pins the ordinary Codex terminal and queued-input contract on native launch (resume=false) 11ms
+   × pins the ordinary Codex terminal and queued-input contract on native launch (resume=true) 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/runtime-pane-config-2950.test.ts > pins the ordinary Codex terminal and queued-input contract on native launch (resume=false)
+ FAIL  tests/runtime-pane-config-2950.test.ts > pins the ordinary Codex terminal and queued-input contract on native launch (resume=true)
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/runtime-pane-config-2950.test.ts:36:52
+     34|  const f=rig(),config=f.prepare(),sessionId=resume?randomUUID():undefi…
+     35|  const args=persistentNativeArguments({...f.launch,...(sessionId?{sess…
+     36|  expect(args.filter(arg=>arg==='--no-alt-screen')).toHaveLength(1);
+       |                                                    ^
+     37|  const settings=args.flatMap((arg,index)=>arg==='-c'?[parse(args[index…
+     38|  expect(settings.filter(value=>'features' in value)).toEqual([{feature…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 14 skipped (16)
+   Start at  22:33:28
+   Duration  584ms (transform 289ms, setup 111ms, import 285ms, tests 15ms, environment 0ms)
+
