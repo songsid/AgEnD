@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-team-allowlist-m3194
+
+ ❯ tests/hub-compose.test.ts (135 tests | 1 failed | 134 skipped) 2924ms
+     × registers Team migrations and mounts Team routes through the sealed Hub factory 2857ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-compose.test.ts > room consent factory composition > registers Team migrations and mounts Team routes through the sealed Hub factory
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-compose.test.ts:2336:51
+    2334|       });
+    2335|       const detail = await directoryBrowser(r.hub, root.cookie, undefi…
+    2336|       expect(detail.json.team.impact.allowedList).toBe(true);
+       |                                                   ^
+    2337|     } finally { await r.runtime.close(); }
+    2338|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 134 skipped (135)
+   Start at  23:28:15
+   Duration  6.01s (transform 4.15s, setup 112ms, import 2.82s, tests 2.92s, environment 0ms)
+

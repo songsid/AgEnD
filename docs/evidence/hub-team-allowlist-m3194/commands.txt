@@ -1,0 +1,5 @@
+npx vitest run tests/hub-team-allowlist-m3194.test.ts tests/hub-group-policy-model.test.ts tests/hub-group-policy-store.test.ts tests/hub-group-admin-control.test.ts tests/hub-group-admin-impact.test.ts tests/hub-allowed-people-m3194.test.ts tests/hub-group-search-boundary-s2.test.ts tests/hub-group-search-close-s2.test.ts tests/hub-team-allowlist-ui-m3194.test.ts tests/hub-u2-join-steps-2932.test.ts tests/hub-u2-group-search-2932.test.ts tests/hub-groups-ui-s89.test.ts tests/hub-grant-picker-m3016.test.ts tests/hub-teams-client-track-c.test.ts tests/hub-shared-modules-a.test.ts tests/named-link-test-2906.test.ts tests/ui-css-literals-ratchet.test.ts --maxWorkers=2
+npx vitest run tests/hub-group-search-s2.test.ts -t T1 --maxWorkers=2
+npx vitest run tests/hub-compose.test.ts -t 'registers Team migrations' --maxWorkers=2
+npx tsc --noEmit
+npx tsc --noEmit -p tsconfig.test.json

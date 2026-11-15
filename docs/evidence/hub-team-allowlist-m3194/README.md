@@ -1,0 +1,21 @@
+M-3194 implements only T1 from the copied `docs/design/hub-teams-as-subjects.md` at 4e2e85c96. The PM branch was read and copied, never merged. T2 is the separate parent PR #4015; its model, SQL, management UI and closed candidate DTO are retained unchanged.
+
+The allowed-list schema and both editors previously only understood AD-group rows. Optional team and person rows now preserve legacy JSON and combine through the existing policy evaluator: applicable allowances form a union, the highest Fleet limit wins, and explicit person exclusions win. Every action still checks directory eligibility and the existing owner grant. Team membership uses the shared synchronous local reader, never another directory lookup. A changed local roster invalidates a prepared decision or impact confirmation. The impact inventory includes selected local Team members who have never signed in, without creating a sign-in witness.
+
+The full Group permissions editor, Let colleagues join step 2, and owner grant dialog use one subject picker. Both policy editors preserve every subject kind and personal exclusion on save. Team labels use T2's memberCount and leadNames summaries, without requiring roster visibility. Person suggestions reuse the authenticated administrator boundary, current policy/directory fences, existing directory person projection and the shared group/person search budget. The production Team factory receives the display-only canonical allowed-list usage reader.
+
+Validation is staged; counts below are not added to earlier overlapping runs:
+
+- `checks/before.log`: original policy implementation with the first T1 tests: six semantic failures, two positives. The later test file has ten cases.
+- `checks/impact-before.log`: four preview/inventory failures against the intermediate foundation; 51 unselected cases excluded.
+- `checks/people-before.log`: five missing person-search contract failures. The final search implementation has its own authenticated-boundary controls.
+- `checks/ui-before.log`: three serializer/editor failures and one positive against the previous editors.
+- `checks/final-focused.log`: 319/319 across 17 policy, impact, person-boundary, both editor, picker, client, serving-inventory, vocabulary and CSS suites. Run with `npx vitest run <listed suites> --maxWorkers=2`; the full suite names are in `commands.txt`.
+- `checks/http-after.log`: one selected actual HTTPS/CSRF/directory-driver person-search test passed; eight unselected cases excluded. Its initial empty result came from the inert LDAP wire fixture lacking the person substring-search branch; only that fixture was extended.
+- `checks/factory-hook-after.log`: one selected sealed production Hub/HTTPS/SQLite Team factory test passed; 134 unselected cases excluded. It proves the actual detail DTO reads allowed-list usage. The first harness expectation used 200 instead of the route's documented 201; that fixture expectation was corrected before this pass.
+- `checks/factory-hook-reversal.log`: removing only the factory callback makes that same semantic assertion fail (`false` versus `true`). The exact source bytes were restored; this is one scoped reversal, not a broad mutation campaign.
+- Both native TypeScript programs exited 0 without diagnostics at the combined UI/person-search stage. The later factory assertion/manual browser harness is not included in that earlier compiler claim; exact-head CI remains required.
+
+Browser PNGs and both full Hub gates are pending the serial browser slot. This is a draft source/evidence checkpoint, not final UX acceptance. No live Fleet, AD, vendor CLI, account or deployment was used. T3/T4 immediate disconnection and team join-code scope, stricter sign-in and role activation remain outside T1.
+
+Risk and rollback: putting a Team on the list intentionally lets its current leads control which eligible people receive those abilities; the row shows size and leads. Old binaries' strict policy parser will not accept the new optional fields. Remove all team/person allowances with a compatible build (and clear the optional fields) or restore a pre-upgrade policy/database backup before rollback; prefer a compatible fix. T2's additive schema additionally needs its own documented rollback. No automatic destructive downgrade is supplied.

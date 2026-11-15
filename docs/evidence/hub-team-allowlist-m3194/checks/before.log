@@ -1,0 +1,109 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-team-allowlist-m3194
+
+ ❯ tests/hub-team-allowlist-m3194.test.ts (8 tests | 6 failed) 42ms
+     × unions AD groups, teams and a person, taking the highest Fleet limit 5ms
+     × keeps a person exclusion ahead of every matching allowance 1ms
+     × does not let local membership replace current AD eligibility 1ms
+     × checks a team-only policy with one eligibility read and no AD group lookup 23ms
+     × observes removed or deleted teams on the next action 2ms
+     × fences an already prepared decision when its team roster changes 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-allowlist-m3194.test.ts > T1 allowed-list subjects > unions AD groups, teams and a person, taking the highest Fleet limit
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ parseGroupPolicy src/hub/group-policy/model.ts:28:75
+ ❯ tests/hub-team-allowlist-m3194.test.ts:40:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/hub-team-allowlist-m3194.test.ts > T1 allowed-list subjects > keeps a person exclusion ahead of every matching allowance
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ parseGroupPolicy src/hub/group-policy/model.ts:28:75
+ ❯ tests/hub-team-allowlist-m3194.test.ts:47:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/hub-team-allowlist-m3194.test.ts > T1 allowed-list subjects > does not let local membership replace current AD eligibility
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ parseGroupPolicy src/hub/group-policy/model.ts:28:75
+ ❯ tests/hub-team-allowlist-m3194.test.ts:53:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/hub-team-allowlist-m3194.test.ts > T1 allowed-list subjects > checks a team-only policy with one eligibility read and no AD group lookup
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ parseGroupPolicy src/hub/group-policy/model.ts:28:75
+ ❯ Object.replace src/hub/group-policy/store.ts:190:18
+ ❯ Object.enable tests/hub-team-allowlist-m3194.test.ts:30:30
+ ❯ tests/hub-team-allowlist-m3194.test.ts:62:28
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/hub-team-allowlist-m3194.test.ts > T1 allowed-list subjects > observes removed or deleted teams on the next action
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ parseGroupPolicy src/hub/group-policy/model.ts:28:75
+ ❯ Object.replace src/hub/group-policy/store.ts:190:18
+ ❯ Object.enable tests/hub-team-allowlist-m3194.test.ts:30:30
+ ❯ tests/hub-team-allowlist-m3194.test.ts:67:28
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  tests/hub-team-allowlist-m3194.test.ts > T1 allowed-list subjects > fences an already prepared decision when its team roster changes
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ parseGroupPolicy src/hub/group-policy/model.ts:28:75
+ ❯ Object.replace src/hub/group-policy/store.ts:190:18
+ ❯ Object.enable tests/hub-team-allowlist-m3194.test.ts:30:30
+ ❯ tests/hub-team-allowlist-m3194.test.ts:75:28
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 2 passed (8)
+   Start at  22:52:51
+   Duration  774ms (transform 322ms, setup 123ms, import 401ms, tests 42ms, environment 0ms)
+
