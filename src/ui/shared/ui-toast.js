@@ -27,5 +27,5 @@ export function Toasts() {
       if (list.length) el.showPopover();
     } catch { /* a popover that cannot be shown stays where it is */ }
   }, [list]);
-  return html`<div ref=${box} popover="manual" data-trust="toast" class="toasts" role="status" aria-live="polite">${list.map(x => html`<div key=${x.id} class=${`toast ${x.ok ? "ok" : "err"}`}>${x.text}</div>`)}</div>`;
+  return html`<div ref=${box} popover="manual" data-trust="toast" class="toasts" role="status" aria-live="polite">${list.map(x => html`<div key=${x.id} class=${`toast ${x.ok ? "ok" : "err"}`} onClick=${() => toasts.set((l) => l.filter((y) => y.id !== x.id))}>${x.text}</div>`)}</div>`;
 }
