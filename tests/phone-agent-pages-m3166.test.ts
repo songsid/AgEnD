@@ -20,8 +20,10 @@ const DETAIL = (name: string) => ({
   tags: [], binding: { channel_id: "discord-2", topic_id: "1234", general_topic: false }, model: "opus", model_source: "live", effort: null,
   context_pct: 42, statusline: {}, recent_activity: [],
 });
+const PROFILES = INSTANCES.map((i) => ({ instance_name: i.name, display_name: i.name, status: i.status, backend: i.backend }));
 async function fakeFetch(url: string) {
-  const body: unknown = url.startsWith("/ui/instance/") ? DETAIL(decodeURIComponent(url.slice("/ui/instance/".length))) : {};
+  const body: unknown = url.startsWith("/ui/instance/") ? DETAIL(decodeURIComponent(url.slice("/ui/instance/".length)))
+    : url.startsWith("/api/profiles") ? PROFILES : {};
   return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
 }
 let chat: any, details: any, log: any;
@@ -39,15 +41,23 @@ beforeAll(async () => {
   chat.boot({ stream: { on() {} }, boot: null, deps: { fetch: () => new Promise(() => {}) } });
   base.restore();
 });
-afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } });
+afterEach(async () => {
+  for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
+  (await import("/assets/app-store.js")).appStore.set({ viewOnly: false });
+  if (typeof document !== "undefined" && document.body) { delete document.body.dataset.tier; delete document.body.dataset.guestLevel; }
+});
 
 const PANELS = () => new Map<string, any>([
   ["chat", { load: async () => chat.ChatPanel }], ["details", { load: async () => details.DetailsPanel }], ["log", { load: async () => log.LogPanel }],
-  ...["view", "fleet", "settings", "needs"].map((k) => [k, { Component: () => h("div", { class: `stub-${k}` }, k) }] as [string, any]),
+  ["view", { load: async () => (await import("/assets/panel-view.js")).ViewPanel }],
+  ...["fleet", "settings", "needs"].map((k) => [k, { Component: () => h("div", { class: `stub-${k}` }, k) }] as [string, any]),
 ]);
-async function app(path: string, { narrow = true } = {}) {
+async function app(path: string, { narrow = true, guest = null as null | "trusted", viewOnly = false } = {}) {
   const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1" }, matchNarrow: narrow });
   mounted.push(pg);
+  // A guest's page: the server marks <body> (#2855); an anonymous reader's: the store's viewOnly (#1408 §3).
+  if (guest) { document.body.dataset.tier = "guest"; document.body.dataset.guestLevel = guest; }
+  if (viewOnly) (await import("/assets/app-store.js")).appStore.set({ viewOnly: true });
   (globalThis as any).fetch = fakeFetch;
   const { startRouter } = await import("/assets/app-nav.js");
   const { applyStatus } = await import("/assets/app-store.js");
@@ -57,6 +67,11 @@ async function app(path: string, { narrow = true } = {}) {
   await pg.mount(h(Shell, { panels: PANELS(), onNewInstance() {} }));
   await settle(8);
   return pg;
+}
+/** View's roster is read after it mounts (/api/profiles, or a guest's status frame): wait until it shows the agent's status. */
+async function viewLoaded(pg: AppPage) {
+  for (let i = 0; i < 60 && !pg.root.querySelector(".p-view > .panel-head .panel-sub .status"); i++) await settle(2);
+  expect(pg.root.querySelector(".p-view > .panel-head .panel-sub .status"), "View loaded its agent (not an empty header)").toBeTruthy();
 }
 async function openSheet(pg: AppPage, panel: string) {
   const btn = pg.root.querySelector(`.${panel} > .panel-head .panel-actions .chat-sheet-more`) as any;
@@ -94,6 +109,33 @@ describe("M-3166 PR 5: View, Log and Details share the chat's phone header and i
     expect(rows.some((r) => r === "# This agent")).toBe(false);   // the Log has no controls of its own
     fire([...sheet.querySelectorAll(".chat-sheet-row")].find((b: any) => /^Agent details/.test(b.textContent.trim())), "click"); await settle(6);
     expect(pg.window.location.pathname).toBe("/ui/fleet/agent/web-dev");
+  });
+
+  it("View on a phone (an admin): the sheet starts with Chat, has Log and Search, and no View tile", async () => {
+    const pg = await app("/view/web-dev");
+    await viewLoaded(pg);
+    const { tiles, rows } = await openSheet(pg, "p-view");
+    expect(tiles[0]).toBe("Chat");
+    expect(tiles).toEqual(expect.arrayContaining(["Log", "Search"]));
+    expect(tiles, "no tile for the page you are on").not.toContain("View");
+    expect(rows.some((r) => /^Agent details/.test(r))).toBe(true);
+  });
+
+  // #4018 review: the sheet is an admin's. A Trusted guest's View or an anonymous reader's keeps its own header, no ⋯ sheet.
+  it("View on a phone, a Trusted guest: no sheet; its own tab row stays", async () => {
+    const pg = await app("/view/web-dev", { guest: "trusted" });
+    await viewLoaded(pg);
+    const head = pg.root.querySelector(".p-view > .panel-head") as any;
+    expect(head, "View's header").toBeTruthy();
+    expect(head.querySelector(".chat-sheet-more")).toBeNull();
+    expect(head.querySelector(".inst-switch"), "a Trusted guest's Chat | View row").toBeTruthy();
+  });
+  it("View on a phone, an anonymous reader (viewOnly): no sheet", async () => {
+    const pg = await app("/view/web-dev", { viewOnly: true });
+    await viewLoaded(pg);
+    const head = pg.root.querySelector(".p-view > .panel-head") as any;
+    expect(head, "View's header").toBeTruthy();
+    expect(head.querySelector(".chat-sheet-more")).toBeNull();
   });
 
   it("the chat's sheet is the same module: no Chat tile there, View and Log first", async () => {
