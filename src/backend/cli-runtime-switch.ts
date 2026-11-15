@@ -10,6 +10,8 @@ import { compareVersions, versionOf } from "../cli-audited.js";
 import { probeBackendVersion } from "../backend-availability.js";
 import { readMuseCachedCatalog } from "./muse.js";
 import { GROK_INLINE_MODEL_MIN, grokSwitchCommand, grokSwitchVerdict } from "./grok-model-switch.js";
+import { readAgyCliEnv } from "./effort-metadata.js";
+import { AGY_INLINE_MODEL_MIN, agySwitchCommand, agySwitchTarget, agySwitchVerdict } from "./agy-model-switch.js";
 
 /** What one switch asks for: null leaves that one as the session has it. */
 export interface CliSwitchWant { model: string | null; effort: string | null }
@@ -25,6 +27,8 @@ export interface CliRuntimeSwitchEntry {
   matchExe(exe: string): boolean;
   /** Its version from the executable's own name when the name carries it (the running file, whatever was installed since); else null. */
   versionFromExe?(exe: string): string | null;
+  /** Resolve a model request with the effort a restart would launch; omitted keeps the CLI default behavior. */
+  modelWant?(model: string, effort: string | null): CliSwitchWant;
   /** A request as one-command steps, in order. */
   steps(want: CliSwitchWant): CliSwitchWant[];
   /** The one command for a step; null when it cannot be one line the CLI parses (nothing is typed, the fleet restarts). */
@@ -92,13 +96,26 @@ export const MUSE_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
 export const GROK_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
   minVersion: { model: GROK_INLINE_MODEL_MIN, effort: GROK_INLINE_MODEL_MIN },
   matchExe: exe => /\/grok(?:-\d+\.\d+\.\d+[^/]*)?$/.test(exe),
+  modelWant: (model, effort) => ({ model, effort }),
   steps: want => [want],
   command: grokSwitchCommand,
   verify: (want, before, now) => grokSwitchVerdict(want, before.pane, now.pane),
 };
 
-/** The CLIs whose fleet `/model` / `/effort` try the in-session switch first. (agy, grok: their entries join here.) */
-export const CLI_RUNTIME_SWITCH: Readonly<Record<string, CliRuntimeSwitchEntry>> = Object.freeze({ muse: MUSE_RUNTIME_SWITCH, grok: GROK_RUNTIME_SWITCH });
+/** agy: exact catalog labels in its fresh command response, captured on 1.4.7 and 1.5.9. */
+export const AGY_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
+  minVersion: { model: AGY_INLINE_MODEL_MIN, effort: AGY_INLINE_MODEL_MIN },
+  matchExe: exe => /\/agy$/.test(exe),
+  modelWant: (model, effort) => ({ model, effort }),
+  steps: want => [want],
+  command: want => agySwitchCommand(want, readAgyCliEnv()?.models ?? []),
+  knownModel: model => { const env = readAgyCliEnv(); return env ? agySwitchTarget({ model, effort: null }, env.models) !== null : null; },
+  verify: (want, before, now) => agySwitchVerdict(want, before.pane, now.pane, readAgyCliEnv()?.models ?? []),
+};
+
+
+/** The CLIs whose model/effort changes use a verified in-session switch. */
+export const CLI_RUNTIME_SWITCH: Readonly<Record<string, CliRuntimeSwitchEntry>> = Object.freeze({ muse: MUSE_RUNTIME_SWITCH, antigravity: AGY_RUNTIME_SWITCH, grok: GROK_RUNTIME_SWITCH });
 
 export function cliSwitchAllowed(entry: CliRuntimeSwitchEntry, step: CliSwitchWant, version: string | null): boolean {
   const v = versionOf(version);
@@ -112,7 +129,7 @@ export interface RunningVersionDeps {
 }
 
 /**
- * The version of the CLI a pane is RUNNING: the processes under the pane's shell whose executable `matchExe` accepts, which must be one
+ * The version of the CLI a pane is RUNNING: the pane's process and those under it whose executable `matchExe` accepts, which must be one
  * file that is still the one on disk (an update that replaced it leaves `(deleted)` or another inode: the running one is then unknown);
  * its version from its own name when it carries one, else probeBackendVersion. Null whenever that cannot be proven.
  */
@@ -136,7 +153,7 @@ export async function cliRunningVersion(panePid: number, spec: { backend: string
     if (seen.has(pid)) continue;
     seen.add(pid);
     queue.push(...(children.get(pid) ?? []));
-    if (pid === panePid) continue;
+    // The pane's own process too: tmux (or its `sh -c`) may exec the CLI itself, which is then the pane pid (a shell never matches).
     let exe: string;
     try { exe = await readlink(`${proc}/${pid}/exe`); } catch { continue; }
     const deleted = exe.endsWith(" (deleted)");
