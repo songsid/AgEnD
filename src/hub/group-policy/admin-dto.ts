@@ -53,6 +53,8 @@ export interface GroupImpactPerson { readonly personId: string; readonly name: s
 export interface GroupImpactResource { readonly kind: "fleet" | "exposure" | "asker"; readonly id: string; readonly revision: number; readonly label: string | null; readonly owner: { readonly name: string | null } | null }
 /** Typed by the S-88 control; the editor shows each list. */
 export interface GroupImpact {
+  /** Distinct people in the locally selected old/new team rosters, including people who have never signed in. */
+  readonly teamMembers?: number;
   /** Every affected ask-grant holder and operational-action loser, the configured admin included. */
   readonly losingActions: readonly GroupImpactPerson[];
   /** Owners who can no longer publish new or revised agents. */

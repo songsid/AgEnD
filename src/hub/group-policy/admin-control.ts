@@ -16,6 +16,7 @@ import { buildHubGroupImpact } from "./admin-impact.js";
 import { createHubGroupResources } from "./resources.js";
 import { HubGroupPolicyError, type HubGroupPolicyBinding, type HubGroupPolicyStore } from "./store.js";
 import { parseGroupPolicy } from "./model.js";
+import { readAllowedListTeams } from "./team-subjects.js";
 import type { HubGroupAdminInventory } from "./admin-inventory.js";
 import type { HubGroupAuthorization } from "./authorization.js";
 import { applyRequest, previewRequest, resolveRequest, type GroupAdminContext, type GroupApplyResponse,
@@ -81,15 +82,19 @@ export function createHubGroupAdminControl(options: {
     if (next.revision !== before.revision) throw new Refusal("conflict");
     if (next.realm !== before.realm || next.generation !== before.generation
       || (before.state !== "never-enabled" && next.state === "never-enabled") || (before.state === "never-enabled" && next.state === "suspended")) throw new Refusal("invalid");
-    const snapshot = inventoryOf.snapshot(), deadline = now() + 20_000;
+    const snapshot = inventoryOf.snapshot([before, next]), deadline = now() + 20_000;
     const assertPolicy = () => {
       boundary.assertCurrent(ctx);
       if (binding().kind !== "ready" || policyOf() !== selected || JSON.stringify(selected.read()) !== serialized || version() !== epoch) throw new Refusal("conflict");
     };
     const assertSnapshot = () => {
-      assertPolicy(); if (inventoryOf.snapshot().fingerprint !== snapshot.fingerprint) throw new Refusal("conflict");
+      assertPolicy(); if (inventoryOf.snapshot([before, next]).fingerprint !== snapshot.fingerprint) throw new Refusal("conflict");
     };
     const canonical = parseGroupPolicy(next);
+    for (const selected of readAllowedListTeams(db, canonical).snapshots) {
+      if (!selected.team) throw new Refusal("invalid");
+      canonical.teams!.find(rule => rule.teamId === selected.id)!.name = selected.team.name;
+    }
     for (const rule of canonical.groups) {
       assertPolicy(); if (now() >= deadline) throw new Refusal("unknown");
       let found;
@@ -103,6 +108,9 @@ export function createHubGroupAdminControl(options: {
       rule.dn = validated(resolveRequest, { dn: found.group.dn }).dn;
     }
     const observed = await readHubGroupImpactFacts({ directory, people: snapshot.people, now, deadline, assertCurrent: assertPolicy,
+      preferEligibility: before.groups.length === 0 && next.groups.length === 0
+        && !!(before.teams?.length || next.teams?.length || before.people?.length || next.people?.length)
+        && snapshot.people.every(p => !p.askGroups?.length),
       ...(options.directoryReads ? { withDirectoryRead: <T>(work: () => Promise<T>) => options.directoryReads!.withDirectoryRead(actor.person, work) } : {}) });
     const fresh = await boundary.authenticate(ctx);
     if (fresh.sessionId !== actor.sessionId) throw new Refusal("conflict");
@@ -172,7 +180,7 @@ export function createHubGroupAdminControl(options: {
         const assertCommitted = () => {
           boundary.assertCurrent(ctx); assertUnexpired();
           if (binding().kind !== "ready" || policyOf() !== p.selected || JSON.stringify(p.selected.read()) !== JSON.stringify(result)
-            || inventoryOf.snapshot().ordinaryFingerprint !== p.snapshot.ordinaryFingerprint) throw new Refusal("conflict");
+            || inventoryOf.snapshot([p.before, p.next]).ordinaryFingerprint !== p.snapshot.ordinaryFingerprint) throw new Refusal("conflict");
           const captured = new Set(p.plan.capture.map(r => JSON.stringify(r))), suspended = new Set(p.plan.suspend.map(r => JSON.stringify(r)));
           for (const row of p.snapshot.resources) {
             const key = JSON.stringify(row.resource), before = row.lifecycle ?? (captured.has(key) ? { source: "manual" as const, state: "active" as const, revision: 1 } : null);

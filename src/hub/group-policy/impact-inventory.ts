@@ -12,13 +12,15 @@ import { HubGroupPolicyError } from "./store.js";
 import type { HubGroupAdminInventory } from "./admin-inventory.js";
 import type { HubGroupImpactPerson, HubGroupImpactResource } from "./admin-impact.js";
 import { hubTeamReader } from "../teams/store.js";
+import type { HubGroupPolicy } from "./model.js";
+import { readAllowedListTeams } from "./team-subjects.js";
 
 export function createHubGroupImpactInventory(options: {
   db: Database.Database; transport: Pick<HubTransportStore, "read">; administrator: PersonKey;
   inventory: HubGroupAdminInventory; current(): boolean; now(): number;
 }) {
   const { db, transport, inventory, current, now } = options, administrator = validated(person, options.administrator);
-  return { snapshot() {
+  return { snapshot(policies: readonly HubGroupPolicy[] = []) {
     if (current() !== true) throw new HubGroupPolicyError("unavailable");
     const people = new Map<string, HubGroupImpactPerson>(), resources = new Map<string, HubGroupImpactResource>(), ordinary: unknown[] = [];
     const labels = new Map((db.prepare("SELECT person,display_name,login_label FROM hub_people").all() as { person: string; display_name: string; login_label: string }[])
@@ -49,6 +51,13 @@ export function createHubGroupImpactInventory(options: {
       if (resource.kind === "asker") addResource(resource);
     }
     const grants: unknown[] = [], teamObservations: unknown[] = [], groupSubjects = new Map<string, PersonKey>(), at = now();
+    const allowedTeams = new Map<string, ReturnType<typeof hubTeamReader.read>>(), teamMembers = new Set<string>();
+    for (const policy of policies) for (const row of readAllowedListTeams(db, policy).snapshots) allowedTeams.set(row.id, row.team);
+    for (const [id, team] of [...allowedTeams].sort(([a], [b]) => a.localeCompare(b))) {
+      teamObservations.push(["allowed-list", id, team]);
+      if (team) for (const member of team.members) { teamMembers.add(member); addPerson(personFromString(member)); }
+    }
+    for (const policy of policies) for (const row of policy.people ?? []) addPerson(row.person);
     for (const row of db.prepare("SELECT * FROM hub_grants WHERE state='active' AND starts_at<=? AND expires_at>? ORDER BY id").all(at, at) as Parameters<typeof grantOf>[0][]) {
       const grant = grantOf(row), exposure = readExposure(db, grant.exposureId); if (!exposure) continue;
       const currentExposure = exposureOf(exposure);
@@ -84,7 +93,11 @@ export function createHubGroupImpactInventory(options: {
     ordinary.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
     const ordinaryFingerprint = digest({ people: persons, resources: ordinary, grants, teamObservations });
-    return { people: persons, resources: entries, ordinaryFingerprint,
+    const teamMemberships = new Map(persons.map(p => {
+      const id = personKeyString(p.key); return [id, [...allowedTeams].filter(([, team]) => team?.members.includes(id)).map(([teamId]) => teamId)];
+    }));
+    return { people: persons, resources: entries, ordinaryFingerprint, teamMemberships,
+      ...(allowedTeams.size ? { teamMembers: teamMembers.size } : {}),
       fingerprint: digest({ ordinaryFingerprint, lifecycle: entries.map(e => [e.resource, e.lifecycle]) }) };
   } };
 }
