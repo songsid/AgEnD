@@ -11,3 +11,5 @@ Tests: the new integration suite without the table entry fails 6/7 (fail-first.l
 Risk: future agy response/catalog changes can conservatively restart. Screen proof is restricted to a new owned command exchange, never an old footer. Rollback: remove antigravity from CLI_RUNTIME_SWITCH to retain model restart; removing this PR restores the former behavior completely.
 
 Audit checklist: scripts/manual/agy-version-audit/README.md. Full authenticated vendor behavior and arbitrary model availability are outside this mock capture.
+
+R1: the actual Grok daemon composition exposed that the shared parser treated a model+effort spec as malformed and downgraded it to raw input. The parser now accepts an entry-representable single command with either/both values, verifies the exact wire command, and refuses malformed CLI specs before queueing any write. Shared malformed-spec assertions now require no input and a not-sent verdict. The agy end-to-end IPC/queue test asserts gate + verifier calls for configured effort; a mismatched wire is refused. Affected shared/agy suites pass 38/38; strengthened actual-route test passes 9/9. Both typechecks pass.

@@ -167,18 +167,19 @@ describe("M-3180: the daemon types a step only past its gate, and reports muse's
     expect(ok.d.verifyCliSwitch).toHaveBeenCalledWith({ backend: "muse", model: "mock-alt", effort: null }, { pane: IDLE });
     expect(ok.broadcast).toEqual([{ type: "runtime_switch_result", id: "sw-m1", outcome: "switched", confirmed: true, shown: "mock-alt high" }]);
   });
-  it("a malformed cli spec (unknown backend, both or neither part, a wrong type, with a codex spec too) is no switch at all", async () => {
+  it("a malformed or unrepresentable cli spec is refused without downgrading to raw paste", async () => {
     const bad = [{ backend: "nope", model: "m", effort: null }, { backend: "muse", model: "m", effort: "low" }, { backend: "muse", model: null, effort: null },
       { backend: "muse", model: 5, effort: null }, { backend: "muse", model: "m" }, "muse"];
     for (const cli of bad) {
       const r = routed({ pane: IDLE });
       r.d.handleRawPasteIpcMessage(msg(cli)); await r.d.pasteLock;
-      expect([r.broadcast, r.d.cliSwitchGate.mock.calls.length], JSON.stringify(cli)).toEqual([[], 0]);
+      expect([r.broadcast, r.typed, r.d.cliSwitchGate.mock.calls.length], JSON.stringify(cli)).toEqual([[{ type: "runtime_switch_result", id: "sw-m1", outcome: "not_sent", reason: "command" }], [], 0]);
     }
     const both = routed({ pane: IDLE });
     both.d.handleRawPasteIpcMessage({ ...msg({ backend: "muse", model: "m", effort: null }), runtime_switch: { id: "x", kind: "model", requested: "m", cli: { backend: "muse", model: "m", effort: null }, codex: { model: "m", effort: null } } });
     await both.d.pasteLock;
-    expect(both.broadcast).toEqual([]);
+    expect(both.broadcast).toEqual([{ type: "runtime_switch_result", id: "x", outcome: "not_sent", reason: "command" }]);
+    expect(both.typed).toEqual([]);
   });
 });
 
