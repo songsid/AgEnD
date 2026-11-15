@@ -13,6 +13,7 @@
  * - `receive(frame, link)` is S1's HubServer callback for an authenticated member link.
  * - `close()` forgets the links. S5 closes the DB.
  */
+import { HubAdminDashboard } from "../admin-dashboard.js";
 import { HubVersionRecommendations, HubRecommendationRefusal } from "../recommendations.js";
 import { HubFleetUpdates, HubFleetUpdateRefusal } from "../fleet-updates.js";
 import { HubFleetVersions } from "../fleet-versions.js";
@@ -169,6 +170,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const fleetVersions = new HubFleetVersions(core);
   const recommendations = new HubVersionRecommendations(core, fleetVersions);
   const fleetUpdates = new HubFleetUpdates(core, fleetVersions, recommendations);
+  const dashboard = new HubAdminDashboard(core, fleetVersions, recommendations);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   const live = () => !closed && core.live();
   const grantSubjectsOffered = () => !!deps.grantDirectory && deps.directory.groupPolicy === "ad-direct-guid"
@@ -751,6 +753,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() },
       audit: (event) => core.atomic((_db, tx) => core.audit(tx, { requestId: event.requestId, actor: { kind: "person", person: event.actor.person }, action: event.action,
         result: event.result, ...(event.reasonCode ? { reasonCode: event.reasonCode } : {}) })) })) return;
+    if (path === "/hub/v1/admin/dashboard") {
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); const permit = await guard(() => core.management(ctx, "hub.admin"));
+      return send(res, 200, dashboard.view(query, permit));
+    }
     if (path.startsWith("/hub/v1/admin/")) return admin(req, res, path, ctx, method, signedIn, csrf, body, guard);
     throw new HttpError(404, "not-found");
   }

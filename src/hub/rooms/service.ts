@@ -1,3 +1,4 @@
+import { countChainStop } from "../admin-dashboard.js";
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -233,6 +234,7 @@ export class HubGroupRooms {
     if (source.sequence !== undefined) { const l = this.automation.lineage(db, source);
       db.prepare("INSERT INTO hub_room_post_lineage VALUES(?,?,?,?,NULL)").run(row.id, l.root_id, l.depth, l.audience_sequence); }
     db.prepare("INSERT INTO hub_room_agent_stops VALUES(?,?,?,?,?,?)").run(row.id, source.id, reason, name, retryAt ?? null, coalesce);
+    countChainStop(db, reason, this.core.now());
     this.core.audit(tx, { requestId: source.id, actor: { kind: "person", person: personFromString(source.author_subject) }, action: "room.agent-mention-stopped", result: "completed", roomId: source.room_id, messageId: row.id, contentRef: row.content_ref });
   }
   /** Both answers and proactive posts use this transaction, once, before any external delivery. */

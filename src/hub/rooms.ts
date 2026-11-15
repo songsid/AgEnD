@@ -506,7 +506,7 @@ export class HubRoomsService {
             exposureId: msg.exposure_id, ownerAtEvent: personFromString(msg.owner), grantId: msg.grant_id, grantRevision: msg.grant_revision });
         }
         this.buttons.record(db, tx, msg, a, now);
-        db.prepare("UPDATE hub_messages SET answer_id=?, answer_digest=?, answer_ref=?, stage='answered', stage_at=? WHERE id=?").run(a.answerId, a.contentDigest, ref, now, msg.id);
+        db.prepare("UPDATE hub_messages SET answer_id=?, answer_digest=?, answer_ref=?, stage='answered', stage_at=?, answered_at=COALESCE(answered_at,?) WHERE id=?").run(a.answerId, a.contentDigest, ref, now, now, msg.id);
         this.core.audit(tx, { requestId: a.releaseLease.decisionId, actor: { kind: "member", fleetId: link.fleetId }, action: "answer.accepted", result: "completed",
           messageId: msg.id, roomId: msg.room_id, fleetId: link.fleetId, exposureId: msg.exposure_id, ownerAtEvent: personFromString(msg.owner),
           grantId: msg.grant_id, grantRevision: msg.grant_revision, contentRef: ref });
