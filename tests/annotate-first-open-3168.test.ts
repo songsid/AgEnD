@@ -18,9 +18,9 @@ function fakeDoc() {
   const els: any[] = [];
   const mkLink = () => {
     const attrs: Record<string, string> = {}, on: Record<string, Set<() => void>> = { load: new Set(), error: new Set() };
-    return { attrs, sheet: null as unknown, setAttribute(k: string, v: string) { attrs[k] = v; },
+    return { attrs, sheet: null as unknown, setAttribute(k: string, v: string) { attrs[k] = v; }, getAttribute(k: string) { return attrs[k] ?? null; },
       addEventListener(k: string, f: () => void) { on[k]!.add(f); }, removeEventListener(k: string, f: () => void) { on[k]!.delete(f); },
-      fire(k: string) { if (k === "load") this.sheet = {}; for (const f of [...on[k]!]) f(); }, listeners: () => on.load.size + on.error.size };
+      fire(k: string) { if (k === "load") this.sheet = {}; for (const f of [...on[k]!]) (f as (e: unknown) => void)({ type: k }); }, listeners: () => on.load.size + on.error.size };
   };
   return { els, head: { appendChild(el: any) { els.push(el); } }, createElement: () => mkLink(),
     querySelector: (sel: string) => sel === 'link[data-annotate-css="1"]' ? els.find((e) => e.attrs["data-annotate-css"] === "1") ?? null : null };
@@ -51,6 +51,9 @@ describe("annotateCssReady (M-3168)", () => {
     const failed = fakeDoc(), p = mod.annotateCssReady(failed, 60_000);
     failed.els[0].fire("error");
     expect(await settled(p)).toBe(true);
+    // Fable #3977: once failed, a later open does not wait again (the old link fires no new event).
+    expect(await settled(mod.annotateCssReady(failed, 60_000))).toBe(true);
+    expect(failed.els).toHaveLength(1);
     vi.useFakeTimers();
     try {
       const slow = fakeDoc(), q = mod.annotateCssReady(slow, 4000);

@@ -131,10 +131,13 @@ export function annotateCssReady(doc = typeof document !== "undefined" ? documen
   if (!doc || !doc.head) return Promise.resolve();
   linkAnnotateCss(doc);
   const link = doc.querySelector('link[data-annotate-css="1"]');
-  if (!link || link.sheet) return Promise.resolve();          // already loaded (a second open, or another chat's)
+  // Already loaded (a second open, or another chat's), or already failed once (Fable #3977: a failed link never fires
+  // again, so later opens would each wait the full `wait`).
+  if (!link || link.sheet || link.getAttribute("data-annotate-css-failed") === "1") return Promise.resolve();
   return new Promise((done) => {
     let timer = null;
-    const settle = () => { if (timer === null) return; clearTimeout(timer); timer = null;
+    const settle = (e) => { if (timer === null) return; clearTimeout(timer); timer = null;
+      if (e?.type === "error") link.setAttribute("data-annotate-css-failed", "1");
       link.removeEventListener("load", settle); link.removeEventListener("error", settle); done(); };
     timer = setTimeout(settle, wait);
     link.addEventListener("load", settle); link.addEventListener("error", settle);

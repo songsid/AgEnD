@@ -5,28 +5,28 @@
   "desk-light-en:firstOpenFinalLayout": "PASS",
   "desk-light-en:first:samples": [
     {
-      "t": 760,
+      "t": 779,
       "x": null,
       "w": null,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 778,
+      "t": 797,
       "x": 104,
       "w": 1158,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 793,
+      "t": 812,
       "x": 104,
       "w": 1158,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 2509,
+      "t": 2512,
       "x": 104,
       "w": 1158,
       "bar": "rgba(0, 0, 0, 0.75)",
@@ -36,28 +36,28 @@
   "desk-light-en:secondOpenFinalLayout": "PASS",
   "desk-light-en:second:samples": [
     {
-      "t": 65,
+      "t": 75,
       "x": null,
       "w": null,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 82,
+      "t": 92,
       "x": 104,
       "w": 1158,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 98,
+      "t": 108,
       "x": 104,
       "w": 1158,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 2514,
+      "t": 2508,
       "x": 104,
       "w": 1158,
       "bar": "rgba(0, 0, 0, 0.75)",
@@ -69,28 +69,28 @@
   "phone-dark-zh-TW:firstOpenFinalLayout": "PASS",
   "phone-dark-zh-TW:first:samples": [
     {
-      "t": 759,
+      "t": 764,
       "x": null,
       "w": null,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 777,
+      "t": 780,
       "x": 12,
       "w": 366,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 793,
+      "t": 796,
       "x": 12,
       "w": 366,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 2509,
+      "t": 2515,
       "x": 12,
       "w": 366,
       "bar": "rgba(0, 0, 0, 0.75)",
@@ -100,28 +100,28 @@
   "phone-dark-zh-TW:secondOpenFinalLayout": "PASS",
   "phone-dark-zh-TW:second:samples": [
     {
-      "t": 58,
+      "t": 68,
       "x": null,
       "w": null,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 78,
+      "t": 85,
       "x": 12,
       "w": 366,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 91,
+      "t": 100,
       "x": 12,
       "w": 366,
       "bar": "rgba(0, 0, 0, 0.75)",
       "css": true
     },
     {
-      "t": 2507,
+      "t": 2500,
       "x": 12,
       "w": 366,
       "bar": "rgba(0, 0, 0, 0.75)",
