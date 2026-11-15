@@ -114,3 +114,22 @@ it("rolls back the entire press when its audit cannot commit", async () => {
   expect(r!.db.prepare("SELECT COUNT(*) n FROM hub_fleet_update_requests").get()).toEqual({ n: 0 });
   expect(r!.db.prepare("SELECT COUNT(*) n FROM hub_fleet_update_batches").get()).toEqual({ n: 0 });
 });
+
+it("clears a cancellation request when the Fleet already claimed, and ACKs a late status without reopening expiry", async () => {
+  const w = await world(); r!.http.memberReady!(w.link);
+  const req = (await r!.call(w.admin, "POST", path, w.body())).json.requests[0];
+  await vi.waitFor(() => expect(r!.sent.some(s => s.frame.type === "fleet.update")).toBe(true));
+  await r!.call(w.admin, "POST", `${path}/${req.id}/cancel`, {});
+  await r!.http.receive(r!.frame("fleet.update-status", { id: req.id, version: req.version, sequence: 1, state: "updating" }, w.link) as never, w.link);
+  expect((await w.row()).updateRequest).toMatchObject({ state: "updating", cancelRequested: false });
+  // A separate sent-but-unaccepted request reaches its Hub queue deadline before a delayed status arrives.
+  await r!.http.receive(r!.frame("fleet.update-status", { id: req.id, version: req.version, sequence: 2, state: "done" }, w.link) as never, w.link);
+  const delayed = (await r!.call(w.admin, "POST", path, w.body())).json.requests[0];
+  await vi.waitFor(() => expect(r!.sent.some(s => s.frame.type === "fleet.update" && s.frame.payload.id === delayed.id)).toBe(true));
+  w.advance(7 * 86_400_000); const admin = await r!.signIn("admin");
+  expect((await r!.call(admin, "GET", "/hub/v1/admin/overview")).json.fleets[0].updateRequest.state).toBe("expired");
+  const before = r!.sent.filter(s => s.frame.type === "fleet.update-status-ack").length;
+  await r!.http.receive(r!.frame("fleet.update-status", { id: delayed.id, version: delayed.version, sequence: 1, state: "expired", reasonCode: "busy-24h" }, w.link) as never, w.link);
+  expect(r!.sent.filter(s => s.frame.type === "fleet.update-status-ack")).toHaveLength(before + 1);
+  expect((await r!.call(admin, "GET", "/hub/v1/admin/overview")).json.fleets[0].updateRequest).toMatchObject({ state: "expired", reasonCode: "offline-7d" });
+});

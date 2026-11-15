@@ -107,3 +107,5 @@ is refused. Concurrent presses for the same target return the same open request.
 Only live links are retried (30 seconds); offline Fleets are not polled. The seven-day queue deadline is checked on
 ready/read/request reconciliation. A Fleet acceptance reports its separate 24-hour idle deadline. The future receiving
 composition must persist cancellation tombstones, statuses and ACK state, and must not block the link on npm work.
+
+A status ACK confirms receipt, not permission to reopen a closed request. Late statuses for a matching closed request are acknowledged and discarded so the Fleet can retire its durable retry. A matching updating status clears pending cancellation: the Fleet already claimed the update and cannot cancel it.
