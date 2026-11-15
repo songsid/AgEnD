@@ -94,6 +94,13 @@ describe("M-3180: the RUNNING CLI's version (cliRunningVersion)", () => {
     expect(await cliRunningVersion(100, { backend: "antigravity", matchExe: (e: string) => e.endsWith("/agy") }, { procRoot: proc([{ pid: 101, ppid: 100, exe: plain }]), probe: p2 })).toBe("1.5.9");
     expect(p2).toHaveBeenCalledWith("antigravity", plain);
   });
+  it("the pane's own process when tmux exec'd the CLI itself (the pane pid IS the CLI)", async () => {
+    const muse = binary("d/muse-bin-1.4.6");
+    const root = proc([]);
+    rmSync(join(root, "100", "status")); writeFileSync(join(root, "100", "status"), "Name:\tmuse-bin\nPPid:\t1\n");
+    symlinkSync(muse, join(root, "100", "exe"));
+    expect(await cliRunningVersion(100, spec, { procRoot: root })).toBe("1.4.6");
+  });
   it("unknown (null) when it cannot be proven: none, replaced on disk, two different files, no version", async () => {
     const a = binary("a/muse-bin-1.4.20"), b = binary("b/muse-bin-1.4.6");
     expect(await cliRunningVersion(100, spec, { procRoot: proc([{ pid: 101, ppid: 100, exe: binary("n/node") }]) })).toBeNull();

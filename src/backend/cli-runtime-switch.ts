@@ -102,7 +102,7 @@ export interface RunningVersionDeps {
 }
 
 /**
- * The version of the CLI a pane is RUNNING: the processes under the pane's shell whose executable `matchExe` accepts, which must be one
+ * The version of the CLI a pane is RUNNING: the pane's process and those under it whose executable `matchExe` accepts, which must be one
  * file that is still the one on disk (an update that replaced it leaves `(deleted)` or another inode: the running one is then unknown);
  * its version from its own name when it carries one, else probeBackendVersion. Null whenever that cannot be proven.
  */
@@ -126,7 +126,7 @@ export async function cliRunningVersion(panePid: number, spec: { backend: string
     if (seen.has(pid)) continue;
     seen.add(pid);
     queue.push(...(children.get(pid) ?? []));
-    if (pid === panePid) continue;
+    // The pane's own process too: tmux (or its `sh -c`) may exec the CLI itself, which is then the pane pid (a shell never matches).
     let exe: string;
     try { exe = await readlink(`${proc}/${pid}/exe`); } catch { continue; }
     const deleted = exe.endsWith(" (deleted)");
