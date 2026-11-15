@@ -382,6 +382,7 @@ import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
 import { CODEX_INLINE_MODEL_MIN, codexModelCommand } from "./backend/codex-model-switch.js";
 import { CLI_RUNTIME_SWITCH, type CliSwitchWant } from "./backend/cli-runtime-switch.js";
+import { readKiroLedger } from "./backend/kiro-engine-ledger.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
@@ -24497,6 +24498,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return last;
   }
 
+  /**
+   * M-3180: whether this instance's `/model` / `/effort` try its CLI's in-session switch. kiro: only an instance last launched on the
+   * TUI (the v2 engine; the engine ledger) — classic and V3 keep the restart.
+   */
+  private cliSwitchRouted(instanceName: string, backend: string): boolean {
+    if (!Object.hasOwn(CLI_RUNTIME_SWITCH, backend)) return false;
+    if (backend === "kiro-cli") return readKiroLedger()[instanceName]?.lastLaunch.ui === "tui";
+    return true;
+  }
+
   /** M-3180: why a CLI_RUNTIME_SWITCH switch fell back to a restart, in the reply's words. */
   private cliSwitchFallbackReason(backend: string, { result, step }: { result: CliSwitchResult; step: CliSwitchWant }): string {
     const cli = BACKEND_LABELS[backend] ?? backend, entry = CLI_RUNTIME_SWITCH[backend]!;
@@ -25796,7 +25807,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // M-3180: a CLI with a verified in-session switch (CLI_RUNTIME_SWITCH) — typed when it can be, confirmed, else restarted.
     // The effort is already saved above, so a restart launches with it.
-    if (Object.hasOwn(CLI_RUNTIME_SWITCH, backendName) && this.instanceIpcClients.get(instanceName)) {
+    if (this.cliSwitchRouted(instanceName, backendName) && this.instanceIpcClients.get(instanceName)) {
       const done = await this.runCliRuntimeSwitch(instanceName, backendName, { model: null, effort: applied });
       if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
       if (done.result.outcome === "switched") return `${warn}${t("effort.codex_switched", instanceName, applied)}`;
@@ -25895,7 +25906,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // M-3180: the same for a CLI with a verified in-session switch (CLI_RUNTIME_SWITCH): saved first, switched in place when
     // it can be and confirmed, else restarted (as these CLIs always were).
-    if (Object.hasOwn(CLI_RUNTIME_SWITCH, backendName) && this.instanceIpcClients.get(instanceName)) {
+    if (this.cliSwitchRouted(instanceName, backendName) && this.instanceIpcClients.get(instanceName)) {
       if (!this.persistInstanceModel(instanceName, model)) return `${warn}${t("model.persist_failed", instanceName)}`;
       const entry = CLI_RUNTIME_SWITCH[backendName]!;
       const effort = this.codexSwitchEffort(instanceName, model); // configured level, only when the target model supports it
