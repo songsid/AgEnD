@@ -311,7 +311,8 @@ export function updateStatus(f, now = Date.now()) {
   if (!r) return null;
   const owner = f.owner?.name || "";
   switch (r.state) {
-    case "queued": return { text: f.connected === true ? hv("stSending") : hv("stConnect") };
+    // Not yet accepted by the Fleet (held up to 7 days while it is offline): it can be withdrawn, as a waiting one can.
+    case "queued": return { text: f.connected === true ? hv("stSending") : hv("stConnect"), action: "cancel" };
     case "waiting": return { text: hv("stWaiting", r.waitingSince ? ago(r.waitingSince, now) : ""), action: "cancel" };
     case "updating": return { text: hv("stUpdating") };
     case "done": return { text: hv("stDone", r.version || "", ago(r.updatedAt || now, now)) };

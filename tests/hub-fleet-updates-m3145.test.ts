@@ -42,7 +42,7 @@ describe("the words and the rules (pure)", () => {
       s(req({ state: "expired", reasonCode: "busy-24h" })), s(req({ state: "expired", reasonCode: "offline-7d" })), s(req({ state: "cancelled" })),
       s(req({ state: "failed", reasonCode: "rollback-failed" })), s(req({ state: "refused", reasonCode: "owner-disabled" })), s(req({ state: "refused", reasonCode: "already-current", currentVersion: "2.4.0" })),
     ]).toEqual([
-      ["Sending…", null], ["Waiting for the Fleet to connect", null], ["Waiting for its agents to be idle · since 3 hours ago", "cancel"],
+      ["Sending…", "cancel"], ["Waiting for the Fleet to connect", "cancel"], ["Waiting for its agents to be idle · since 3 hours ago", "cancel"],
       ["Updating…", null], ["Updated to v2.4.0 · 1 hour ago", null], ["Update failed; back on v2.4.0-beta.1", "retry"],
       ["Did not start: agents were busy for 24 hours", "retry"], ["Did not start: the Fleet has not connected for 7 days.", "retry"], ["The owner cancelled this update", null],
       ["Update failed and the Fleet has not come back. Contact 陳主任.", null], ["The owner no longer allows updates from the Hub.", "retry"], ["Already on v2.4.0.", null],
