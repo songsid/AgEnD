@@ -6,7 +6,7 @@
  * the post (the listing's own visibility rule, including the M-3118 lineage audience).
  */
 import { randomUUID } from "node:crypto";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { personKeyString } from "../src/hub/identity.js";
 
@@ -91,4 +91,37 @@ it("a file belongs to its room, an archived room takes no uploads, and the same 
   expect((await w.r.call(w.alex, "POST", `/hub/v1/rooms/${w.id}/messages`, { idempotencyKey: key, text: "t", files: [second.json.file.id] })).status).toBe(409);
   expect((await w.r.call(w.admin, "PATCH", `/hub/v1/rooms/${w.id}`, { archived: true })).status).toBe(200);
   expect((await w.upload(w.alex, "z.txt", "late")).status).toBe(409);
+});
+
+// Fable #3921: each clause of download()'s visibility rule (the listing's, M-3118) turns a test red on its own.
+describe("a file follows its post's visibility, clause by clause (Fable #3921)", () => {
+  /** Bea joins after an early post; a later post with a file is hers to read until one clause says otherwise. */
+  async function joined() {
+    const w = await world();
+    const early = await w.post(w.alex, { text: "question before bea" });
+    expect((await w.r.call(w.admin, "POST", `/hub/v1/rooms/${w.id}/members`, { kind: "person", id: personKeyString(w.beaKey) })).status).toBe(200);
+    const up = await w.upload(w.alex, "later.txt", "after bea joined");
+    const later = await w.post(w.alex, { text: "later", files: [up.json.file.id] });
+    const floor = (w.r.db.prepare("SELECT joined_sequence AS f FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(w.id, personKeyString(w.beaKey)) as { f: number }).f;
+    const read = async () => (await w.r.call(w.bea, "GET", up.json.file.url)).status;
+    expect(await read()).toBe(200);                                                         // the control: visible as posted
+    return { w, early: early.json.id as string, later: later.json.id as string, floor, read };
+  }
+  it("an answer still to come (stage queued/working) hides its files; answered shows them", async () => {
+    const { w, later, read } = await joined();
+    for (const stage of ["queued", "working"]) { w.r.db.prepare("UPDATE hub_room_posts SET stage=? WHERE id=?").run(stage, later); expect(await read(), stage).toBe(404); }
+    w.r.db.prepare("UPDATE hub_room_posts SET stage='answered' WHERE id=?").run(later); expect(await read()).toBe(200);
+  });
+  it("an answer posted after I joined, to a question from before I joined, does not show me its files", async () => {
+    const { w, early, later, read } = await joined();
+    w.r.db.prepare("UPDATE hub_room_posts SET answer_to=? WHERE id=?").run(early, later);
+    expect(await read()).toBe(404);
+  });
+  it("a reply in a thread whose audience starts before my floor does not show me its files", async () => {
+    const { w, later, floor, read } = await joined();
+    const set = (aud: number) => w.r.db.prepare(`INSERT INTO hub_room_post_lineage(post_id,root_id,depth,audience_sequence,return_post_id) VALUES(?,?,0,?,NULL)
+      ON CONFLICT(post_id) DO UPDATE SET audience_sequence=excluded.audience_sequence`).run(later, later, aud);
+    set(floor - 1); expect(await read()).toBe(404);
+    set(floor); expect(await read()).toBe(200);
+  });
 });
