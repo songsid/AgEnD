@@ -1,6 +1,6 @@
 from pathlib import Path
 import subprocess,hashlib,json,os
-root=Path.cwd();out=root/'.artifacts/room-context-m3122/mutations';out.mkdir(exist_ok=True)
+root=Path.cwd();out=root/'.artifacts/room-context-m3122/mutations';out.mkdir(parents=True,exist_ok=True)
 cases=[
 ('M1-repeat-context','src/hub/rooms/context.ts','.all(post.room_id, post.sequence, floor, after, floor)','.all(post.room_id, post.sequence, floor, 0, floor)','tests/hub-room-context-m3122.test.ts','sends only posts after'),
 ('M2-stale-generation','src/hub/rooms/context-cursor.ts',' || this.generation(exposure,binding) !== generation','','tests/hub-room-context-m3122.test.ts','keeps cursors across reconnect'),
