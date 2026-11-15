@@ -615,6 +615,10 @@ a Fleet itself (yet).
   goes back to the previous version if the update fails. The row then shows one line: Waiting for the Fleet to
   connect · Waiting for its agents to be idle (with **Cancel**) · Updating… · Updated to v*x* · Update failed; back on
   v*y* (**Try again**) · Did not start (busy 24 hours, or offline 7 days) · The owner cancelled this update.
+  A request waits up to 7 days for an offline Fleet to connect. **Cancel** reads **Cancelling…** until the Fleet
+  confirms it stopped; an update that has already started cannot be cancelled. Changing the recommendation later does
+  not change a waiting request's version. The Fleet still makes its own checks (the owner's switch, a published
+  version) and can refuse; the row then says why. Older Fleets are always updated by their owners.
 
 ## Config keys
 
