@@ -658,6 +658,8 @@ type SubmitProof = "submitted" | "stranded" | "unproven" | "unverifiable";
  * a redraw swallowed.
  */
 interface PaneEvidence {
+  /** A positively owned Codex composer still contains an earlier AgEnD envelope; idle does not authorize appending. */
+  unsubmittedAgendInput?: true;
   /** Metadata from this pre-input picture; committed only after a successful, still-owned input submission. */
   quotaHistory?: { spawn: number; fence: number; attempt: number; tmux: Pane | null; window: string | undefined;
     counts: Array<{ key: string; count: number }>; marker: string; occurrences: number };
@@ -10430,7 +10432,11 @@ export class Daemon extends EventEmitter {
     if (this.inputTransientInPane(pane)) return "busy";
     if (this.backend?.getBusyPattern?.()?.test(pane)) return "busy";
     if (!this.deliveryInputReadyPane(pane)) return "busy";
-    if (strandedAgendMessageInInput(pane, prompt)) return "stranded";
+    if (strandedAgendMessageInInput(pane, prompt)) {
+      // A cancelled human turn can restore its text here. Idle observation must not let a later delivery submit it.
+      if (this.backend?.binaryName === "codex" && /\[user:/.test(inputAreaText(pane, prompt) ?? "")) return "busy";
+      return "stranded";
+    }
     // Kiro uses the bottom row; Codex's positive prompt/footer check above
     // rules out a historical transcript echo or a transition/modal screen.
     return !requireBottomReady || bottomRowIsReady(pane, prompt) ? "clear" : "busy";
@@ -10906,6 +10912,7 @@ export class Daemon extends EventEmitter {
       if (screen === undefined) return hold("capture_failed");
       try { if (backend?.getRuntimeDialogs?.().some(dialog => Daemon.dialogMatches(dialog, screen!))) return hold("dialog"); }
       catch { return hold("check_failed"); }
+      if (this.codexInputOccupied(screen)) return hold("input_occupied");
       if (!current()) return false;
       if (performance.now() >= deadline) return hold("output_changed");
       let sent: boolean;
@@ -11000,6 +11007,7 @@ export class Daemon extends EventEmitter {
       // Every attempt, retries included: a stop or respawn during a recovery wait ends it unwritten.
       // After a durable begin, the caller's abort path owns the row; only an attempt with no begin may be redone.
       if (stillCurrent && !stillCurrent()) { verdict.fenced = !verdict.durableBeginCommitted; return false; }
+      if (pasteBaseline?.unsubmittedAgendInput) return this.failDelivery(verdict, status, "input-residue", "occupied-codex-composer");
       // M-2267: the pane went into a tmux mode after the readiness wait. Nothing begun or written: the caller waits for
       // readiness (which holds while it lasts) and tries again — as for a dialog that appeared before the write.
       if (!verdict.durableBeginCommitted && await this.paneInTmuxMode("paste")) return "pane-in-mode";
@@ -12032,6 +12040,12 @@ export class Daemon extends EventEmitter {
    * paste and once after, so confirmSubmitted can require a NEW marker or a NEW
    * echo rather than accepting whatever was already there.
    */
+  private codexInputOccupied(pane: string): boolean {
+    const backend = this.backend, prompt = backend?.getBottomReadyPattern?.();
+    return backend?.binaryName === "codex" && backend.ownsComposerRows?.(pane) === true && !!prompt
+      && strandedAgendMessageInInput(pane, prompt);
+  }
+
   private async capturePaneEvidence(signature: SubmissionSignature): Promise<PaneEvidence | null> {
     if (!this.tmux) return null;
     const owner = this.tmux, window = owner.getWindowId?.(), spawn = this.spawnGeneration, fence = this.launchFenceEpoch, launch = this.launchAttempt;
@@ -12041,16 +12055,14 @@ export class Daemon extends EventEmitter {
       try {
         const pane = await this.tmux!.capturePane();
         const evidence = this.paneEvidence(pane, signature);
+        if (this.codexInputOccupied(pane)) evidence.unsubmittedAgendInput = true;
         if (owner === this.tmux && window === owner.getWindowId?.() && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && launch === this.launchAttempt) {
           const counts = this.paneQuotaPatterns().map(ep => ({ key: Daemon.errorPatternKey(ep), count: Daemon.countOccurrences(ep.pattern, pane) }));
           if (counts.length) evidence.quotaHistory = { spawn, fence, attempt: launch, tmux: owner, window, counts, marker: signature.value, occurrences: evidence.payload };
         }
         const input = this.inputRegion(pane);
         if (input && agendMessageInInput(input.text)) {
-          // Whatever we paste now lands after it, and one Enter submits both as
-          // a single message. Nothing here can undo that; saying so beats
-          // letting two messages silently merge.
-          this.logger.warn("An unsubmitted message is already in the input row — this delivery will be appended to it");
+          this.logger.warn("An unsubmitted message is already in the input row");
         }
         return evidence;
       } catch {
