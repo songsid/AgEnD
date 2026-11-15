@@ -42,3 +42,16 @@ ceiling; long outages use the existing reconnect timer (up to 30 seconds plus it
 Risk: a composed member can now be mounted while its remote link is unavailable. Existing readiness/current-link
 checks continue to refuse remote operations until reconciliation. Rollback: revert the product commit's own patch;
 there is no persisted-format change. That restores the startup outage bug and does not require deleting member state.
+
+R1 reviewer delta (`r1/manifest.json`, source `03407389b`): production source is byte-identical to `3de33f964`.
+Four new actual pinned-WSS client cases exercise invalid frames, revoked/replaced close codes and explicit stop
+before welcome, all with offline startup enabled. The startup file now passes 11/11; the earlier 42/5 result above
+is historical and overlaps seven tests. No wider suite or source type-check was repeated; the changed test program
+passes its fresh native type-check (exit 0 recorded in `r1/test-types-result.json`). The original manifest remains
+bound to its historical source commit; R1 supplies the updated test binding.
+
+The reviewer's exact surviving reversal, replacing the close-code classification with `true`, is now assertion-red
+on the invalid-before-welcome case (one selected, ten unselected). Revoked/replaced links already set `stopped`,
+so the invalid-frame case independently pins classification rather than relying on that separate guard. The real
+frame parser closes it as invalid, and `start()` rejects rather than completing startup offline. `r1/mutation.json`
+records the exact source restoration; no product change was required.
