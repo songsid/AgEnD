@@ -60,6 +60,11 @@ describe("the owner's switch", () => {
     expect([box().disabled, box().checked, note()]).toEqual([true, false, "無法使用：這個 AgEnD 是手動啟動的，更新失敗時無法自動復原。"]);
   });
 
+  it("M-3173: a Hub older than phase 3 — shown, disabled, saying the Hub needs updating first (en and zh-TW)", async () => {
+    const en = await mount(client({ ok: true, on: false, available: false, reason: "hub-older" }));
+    expect([en.box().disabled, en.note()]).toEqual([true, "Not available yet: Team Hub runs an older AgEnD that can't update Fleets. This works once the Hub is updated."]);
+  });
+
   it("an older Fleet's client (no such calls): nothing drawn", async () => {
     const { p } = await mount({});
     expect(p.root.querySelector(".hub-update-consent")).toBeNull();
