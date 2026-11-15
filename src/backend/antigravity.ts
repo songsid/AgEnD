@@ -115,17 +115,21 @@ const AGY_WORKING_ROW_ABOVE_COMPOSER = new RegExp(
   "mu",
 );
 
-// M-3143: reported by the user, not reproduced in the bounded signed-in 1.5.9
-// capture. Require the question AND compact choices as standalone UI rows. A
-// reply is indented two columns; quoted/fenced text and anything after the menu
-// except the CLI's empty composer must never receive the numeric hotkey.
-const AGY_REPORTED_SURVEY = /^ ?How[’']s the CLI experience\?[ \t]*(?:\n ?)?\[1\/2\/3\/0\][ \t]*$/m;
-function agyReportedSurveyActive(pane: string): boolean {
-  const screen = pane.replace(/\r/g, "");
-  const match = AGY_REPORTED_SURVEY.exec(screen);
-  if (!match) return false;
+// M-3143: exact title and option arguments recovered offline from agy 1.5.9.
+// A narrow pane can split any label across physical rows; capture-pane can also
+// trim whitespace at a wrap. Preserve the original row structure for quote and
+// current-screen checks, then compare the menu with its whitespace removed.
+const AGY_FEEDBACK_SURVEY_TITLE = "How's the CLI experience so far? Help us improve:";
+function agyFeedbackSurveyActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let start = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    // agy indents ordinary reply text two columns. Never flatten that into UI.
+    if (/^ ?How's /.test(rows[i]!)) { start = i; break; }
+  }
+  if (start < 0) return false;
   let fence: string | null = null;
-  for (const row of screen.slice(0, match.index).split("\n")) {
+  for (const row of rows.slice(0, start)) {
     const marker = /^ {0,3}(`{3,}|~{3,})/.exec(row)?.[1];
     if (marker) {
       if (fence === null) fence = marker;
@@ -133,8 +137,16 @@ function agyReportedSurveyActive(pane: string): boolean {
     }
   }
   if (fence !== null) return false;
-  const below = screen.slice(match.index + match[0].length).trim();
-  return below === "" || /^─{20,}[ \t]*\n>[ \t]*\n─{20,}[ \t]*(?:\n\? for shortcuts[^\n]*)?\s*$/.test(below);
+  const below = rows.slice(start);
+  const separator = below.findIndex(row => /^─{20,}[ \t]*$/.test(row));
+  const menu = (separator < 0 ? below : below.slice(0, separator)).filter(row => row.trim() !== "");
+  if (menu.length > 8) return false;
+  if (separator >= 0 && !/^─{20,}[ \t]*\n>[ \t]*\n─{20,}[ \t]*(?:\n\? for shortcuts[^\n]*)?\s*$/.test(below.slice(separator).join("\n").trimEnd())) return false;
+  const flat = menu.join("").replace(/[ \t]/g, "");
+  const title = AGY_FEEDBACK_SURVEY_TITLE.replace(/[ \t]/g, "");
+  // All four numeric tokens and the first three labels must be visible. Only
+  // the final Skip label may be clipped; a partial/missing [0] is never enough.
+  return flat.startsWith(title) && /^\[1\]Good\[2\]Fine\[3\]Bad\[0\](?:S|Sk|Ski|Skip)?$/.test(flat.slice(title.length));
 }
 
 /**
@@ -624,13 +636,6 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
 
   getStartupDialogs(): StartupDialog[] {
     return [
-      {
-        pattern: AGY_REPORTED_SURVEY,
-        isActive: agyReportedSurveyActive,
-        blocksDelivery: true,
-        keys: ["0"],
-        description: "Antigravity compact feedback survey — skip",
-      },
       ...agyOnboardingDialogs(),
       // #1328, captured live from agy 1.3.1 (tests/fixtures/agy-1.3.1-trust-dialog.pane.txt): the title is "Do you
       // trust the contents of this project?", then "> Yes, I trust this folder" / "  No, exit". Enter confirms the
@@ -668,15 +673,10 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
         // Google may sample this after any completed turn. A single numeric
         // hotkey dismisses it; Enter would submit an empty follow-up prompt.
         pattern: /^\s*\[1\] Good\s+\[2\] Fine\s+\[3\] Bad\s+\[0\] Skip\s*$/m,
-        keys: ["0"],
-        description: "Antigravity feedback survey — skip",
-      },
-      {
-        pattern: AGY_REPORTED_SURVEY,
-        isActive: agyReportedSurveyActive,
+        isActive: agyFeedbackSurveyActive,
         blocksDelivery: true,
         keys: ["0"],
-        description: "Antigravity compact feedback survey — skip",
+        description: "Antigravity feedback survey — skip",
       },
       ...agyOnboardingDialogs(),
       this.trustHoldDialog(),
