@@ -7,7 +7,7 @@ import { HubCore } from "../src/hub/http/core.js";
 import { HubSessions } from "../src/hub/sessions.js";
 import { personKeyString } from "../src/hub/identity.js";
 import type { HubRequestContext } from "../src/hub/types.js";
-import { createHubTeams, HUB_TEAMS_MIGRATION, type HubTeams } from "../src/hub/teams/index.js";
+import { createHubTeams, HUB_TEAM_MANAGEMENT_MIGRATION, HUB_TEAMS_MIGRATION, type HubTeams } from "../src/hub/teams/index.js";
 
 let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; });
@@ -19,12 +19,13 @@ async function world() {
   const groups = vi.fn(async () => ({ ok: true as const, groups: [{ objectId: department, cn: "Engineering", dn: "CN=Engineering,DC=example,DC=test" }], truncated: false }));
   Object.assign(r.directory, { groupPolicy: "ad-direct-guid", searchGrantPeople: people, searchPolicyGroups: groups });
   r.directory.checkPolicyGroup = async key => ({ ok: true, group: { key, dn: "CN=Engineering,DC=example,DC=test" } });
-  r.httpDeps.uow.atomic(tx => HUB_TEAMS_MIGRATION.up(r!.sql(tx)));
+  r.httpDeps.uow.atomic(tx => { HUB_TEAMS_MIGRATION.up(r!.sql(tx)); HUB_TEAM_MANAGEMENT_MIGRATION.up(r!.sql(tx)); });
   const core = new HubCore(r.httpDeps, r.sql), sessions = new HubSessions(core), teams = createHubTeams(core);
   const context = async (login: string) => { const browser = await r!.signIn(login);
     return sessions.context({ headers: { cookie: browser.cookie } } as IncomingMessage); };
   const admin = await context("admin"), leadCtx = await context("lead"), otherCtx = await context("other");
-  const team = await teams.create(admin, { name: "Project", department, lead: personKeyString(lead) });
+  const made = await teams.create(admin,{name:"Project",department,members:[personKeyString(lead)]});
+  const team = await teams.update(admin,made.id,{leads:[personKeyString(lead)],members:[personKeyString(lead)]});
   return { teams, team, admin, leadCtx, otherCtx, people, groups, department, lead, member, other };
 }
 function suggestions(teams: HubTeams, ctx: HubRequestContext, input: unknown): Promise<readonly { kind: string; id: string; name: string }[]> {
@@ -32,15 +33,15 @@ function suggestions(teams: HubTeams, ctx: HubRequestContext, input: unknown): P
   return Reflect.apply(method, teams, [ctx, input]);
 }
 
-it("offers feedback to an admin or the current Team lead, without granting department search to leads or writing people", async () => {
+it("offers feedback to an admin or the current Team lead, including optional department search for leads or writing people", async () => {
   const w = await world();
   expect(await suggestions(w.teams, w.admin, { kind: "group", q: "En" })).toEqual([{ kind: "group", id: w.department, name: "Engineering" }]);
   expect(await suggestions(w.teams, w.admin, { kind: "person", q: "Ri" })).toEqual([{ kind: "person", id: personKeyString(w.member), name: "Riley", login: "member" }]);
   expect(await suggestions(w.teams, w.leadCtx, { kind: "person", q: "Ri", teamId: w.team.id })).toHaveLength(1);
   await expect(suggestions(w.teams, w.leadCtx, { kind: "person", q: "Ri" })).rejects.toMatchObject({ code: "denied" });
-  await expect(suggestions(w.teams, w.leadCtx, { kind: "group", q: "En", teamId: w.team.id })).rejects.toMatchObject({ code: "denied" });
+  expect(await suggestions(w.teams, w.leadCtx, { kind: "group", q: "En", teamId: w.team.id })).toHaveLength(1);
   await expect(suggestions(w.teams, w.otherCtx, { kind: "person", q: "Ri", teamId: w.team.id })).rejects.toMatchObject({ code: "denied" });
-  expect(w.people).toHaveBeenCalledTimes(2); expect(w.groups).toHaveBeenCalledTimes(1);
+  expect(w.people).toHaveBeenCalledTimes(2); expect(w.groups).toHaveBeenCalledTimes(2);
   expect(r!.db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(personKeyString(w.member))).toBeUndefined();
   expect(w.teams.read(r!.db, w.team.id)?.members).toEqual([personKeyString(w.lead)]);
 });

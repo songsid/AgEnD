@@ -470,6 +470,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     acceptInvitation(invitationId) { return call("POST", `/hub/v1/invitations/${id(invitationId)}/accept`, {}); },
     declineInvitation(invitationId) { return call("POST", `/hub/v1/invitations/${id(invitationId)}/decline`, {}); },
     // Seam 5: teams, who may open rooms, and the administrator's list of rooms (names and members, no content).
+    teamSettings() { return call("GET", "/hub/v1/teams/settings"); },
+    saveTeamSettings(input) { return call("PUT", "/hub/v1/teams/settings", input); },
     teams() { return call("GET", "/hub/v1/teams"); },
     team(teamId) { return call("GET", `/hub/v1/teams/${id(teamId)}`); },
     createTeam(input) { return call("POST", "/hub/v1/teams", input); },

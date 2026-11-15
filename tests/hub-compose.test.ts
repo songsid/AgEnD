@@ -2309,6 +2309,7 @@ describe.skipIf(process.platform === "win32")("room consent factory composition"
       const plan = hubServerDatabasePlan(r.hub.config.hub, r.entry.migrations);
       const names = plan.migrations.map(m => m.component);
       expect(names.filter(name => name === "s5-teams")).toHaveLength(1);
+      expect(names.filter(name => name === "s5-team-management")).toHaveLength(1);
       expect(names.filter(name => name === "s3-team-grants")).toHaveLength(1);
       expect(names.indexOf("s3-team-grants")).toBeGreaterThan(names.indexOf("s3-grant-subjects"));
       expect(Reflect.get(r.deps, "teams")).toBeTypeOf("function");
