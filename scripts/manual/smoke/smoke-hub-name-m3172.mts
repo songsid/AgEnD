@@ -42,7 +42,8 @@ try {
       await page.waitForSelector("dialog[open]", { timeout: 5_000 });
       checks[prefix + ":confirm"] = (await page.locator("dialog[open]").innerText()).includes(expected);
       await page.screenshot({ path: join(out, prefix + "-confirm.png") });
-      await page.locator("[data-confirm=no]").click();
+      await page.keyboard.press("Escape");
+      await page.waitForSelector("dialog[open]", { state: "detached" });
       await page.goto(fx.base + "/ui/notices");
       await page.waitForSelector(".p-notices .n-item.notice", { timeout: 15_000 });
       await page.waitForSelector(".update-line", { timeout: 10_000 });
