@@ -120,7 +120,7 @@ describe("#2910 D2 the fleet: what would have gone to General is a Notice", () =
     await f.any.notifyNormalExit?.("agent-1");
     expect(f.notices().filter(n => /General/.test(String(n.text)))).toEqual([]);
   });
-  it("an available update: once per version, worded for the web-only reader, not /update", async () => {
+  it("an available update: once per version, worded for the web-only reader, not /update (M-3140: it names the web Update, no longer \"not available yet\")", async () => {
     setLocale("en");
     const f = fleet();
     registry.tags = { "@songsid/agend": "2.3.4" };
@@ -128,8 +128,8 @@ describe("#2910 D2 the fleet: what would have gone to General is a Notice", () =
     registry.tags = { "@songsid/agend": "2.3.5" };
     await f.any.checkForUpdates();
     expect(f.notices().map(n => [n.kind, n.text])).toEqual([
-      ["update", "AgEnD v2.3.5 is available. Updating from the web isn't available yet."],
-      ["update", "AgEnD v2.3.4 is available. Updating from the web isn't available yet."]]);
+      ["update", "AgEnD v2.3.5 is available (current: v2.3.3). Update it from the web: Update now on the banner, or Settings → Advanced → Version and update."],
+      ["update", "AgEnD v2.3.4 is available (current: v2.3.3). Update it from the web: Update now on the banner, or Settings → Advanced → Version and update."]]);
   });
   it("a fleet with a chat connection: unchanged — nothing kept or pushed, no feed (General says them)", async () => {
     const f = fleet(CHAT);
@@ -331,6 +331,6 @@ describe("#2925 review P3-2: a web-only fleet with a General instance still gets
     vi.spyOn(f.any, "findGeneralInstance").mockReturnValue("general");
     registry.tags = { "@songsid/agend": "2.3.4" };
     await f.any.checkForUpdates(); await f.any.checkForUpdates();
-    expect(f.notices().map(n => [n.kind, n.text])).toEqual([["update", "AgEnD v2.3.4 is available. Updating from the web isn't available yet."]]);
+    expect(f.notices().map(n => [n.kind, n.text])).toEqual([["update", "AgEnD v2.3.4 is available (current: v2.3.3). Update it from the web: Update now on the banner, or Settings → Advanced → Version and update."]]);
   });
 });

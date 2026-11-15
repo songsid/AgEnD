@@ -198,8 +198,10 @@ export type UpdateLaunch = { ok: true; command: string; args: string[]; scope?: 
   | { ok: false; reason: string };
 
 /** Same UID, no privileged or remote manager, no credentials in argv. No unsafe detached fallback. */
-export async function resolveUpdateLaunch(agend: string, deps: UpdateLaunchDeps = defaultUpdateLaunchDeps, npmDir?: string): Promise<UpdateLaunch> {
-  const plain = updateCommand(agend, npmDir);
+export async function resolveUpdateLaunch(agend: string, deps: UpdateLaunchDeps = defaultUpdateLaunchDeps, npmDir?: string, pin?: string): Promise<UpdateLaunch> {
+  // M-3140: `pin` pins the update to that exact release (a Hub's recommendation); refused unless it is one.
+  let plain: ReturnType<typeof updateCommand>;
+  try { plain = updateCommand(agend, npmDir, pin); } catch { return { ok: false, reason: "the version to install is not an exact version" }; }
   if (deps.platform !== "linux") return { ok: true, ...plain };
   let before: string;
   try { before = await deps.cgroup(); }

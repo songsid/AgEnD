@@ -29,6 +29,8 @@ register("update", {
     dismiss: "Dismiss", adminOnly: "Only a fleet admin can update AgEnD.", running: "An update is already running.",
     upToDate: "AgEnD v{0} is up to date.", stableOnly: "v{0} (stable) is available. Updating from the web stays on this install's line.",
     failedToStart: "The update could not be started: {0}", startedToast: "Update started.",
+    hubAvailable: "{0} recommends AgEnD v{1} (current v{2})", hubSub: "Some Hub features need it. Only admins see this.",
+    hubLine: "the version {0} recommends", recChanged: "The Hub's recommended version changed. Look at the banner again.",
   },
   "zh-TW": {
     available: "AgEnD v{0} 已推出（目前 v{1}）", availableSub: "{0} · 只有管理員看得到", now: "立即更新", later: "稍後",
@@ -47,6 +49,8 @@ register("update", {
     dismiss: "關閉", adminOnly: "只有 fleet 管理員可以更新 AgEnD。", running: "已經有一個更新在進行中。",
     upToDate: "AgEnD v{0} 已是最新版。", stableOnly: "v{0}（穩定版）已推出。網頁更新會留在這個安裝的版本線。",
     failedToStart: "無法開始更新：{0}", startedToast: "已開始更新。",
+    hubAvailable: "{0} 建議更新到 AgEnD v{1}（目前 v{2}）", hubSub: "部分 Hub 功能需要這個版本。只有管理員看得到。",
+    hubLine: "{0} 建議的版本", recChanged: "Hub 建議的版本已變更，請再看一次橫幅。",
   },
 });
 
@@ -56,13 +60,47 @@ const STEP = { preparing: 1, downloading: 2, installed: 3, stopping: 3, starting
 function remembered(key) { try { return localStorage.getItem(key); } catch { return null; } }
 function remember(key, value) { try { localStorage.setItem(key, value); } catch { /* this page only */ } }
 const LATER_KEY = "agend_update_later", DISMISSED_KEY = "agend_update_dismissed";
+// M-3140: Later on the Hub's line hides it for a day ("<hubId>:<revision>@<ms>"); new advice shows at once.
+const LATER_HUB_KEY = "agend_update_later_hub", LATER_HUB_MS = 24 * 60 * 60 * 1000;
 
 /**
  * `info`: GET /ui/update's answer (null: none — an older server, a guest, signed out). `loadedVersion`: the version this
  * tab was loaded on (the first answer's): a later answer naming another one means this tab runs the old page.
  */
 export const updateStore = createStore({ info: null, loadedVersion: null, skew: 0, starting: false, later: remembered(LATER_KEY),
-  dismissed: remembered(DISMISSED_KEY), reloadDismissed: null, log: null });
+  dismissed: remembered(DISMISSED_KEY), reloadDismissed: null, log: null, laterHub: remembered(LATER_HUB_KEY) });
+
+/** Semver "a > b" (major.minor.patch, then a release over its prereleases, then prerelease identifiers) — the server's rule. */
+export function newerVersion(a, b) {
+  const parse = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(String(v || "")); return m ? { core: [+m[1], +m[2], +m[3]], pre: m[4] ? m[4].split(".") : null } : null; };
+  const x = parse(a), y = parse(b);
+  if (!x || !y) return false;
+  for (let i = 0; i < 3; i++) if (x.core[i] !== y.core[i]) return x.core[i] > y.core[i];
+  if (!x.pre || !y.pre) return !x.pre && !!y.pre;
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const p = x.pre[i], q = y.pre[i];
+    if (p === undefined) return false; if (q === undefined) return true;
+    const pn = /^\d+$/.test(p), qn = /^\d+$/.test(q);
+    if (pn && qn) { if (+p !== +q) return +p > +q; } else if (pn !== qn) return !pn; else if (p !== q) return p > q;
+  }
+  return false;
+}
+
+/**
+ * M-3140: the Hub's advice this admin should be shown, or null. One banner (spec §3.3): when the install's own update
+ * already reaches the advised version, today's line says it; the Hub's line only when its version is the higher need.
+ */
+export function hubNeed(info) {
+  const rec = info && info.admin ? info.hubRecommendation : null;
+  if (!rec || typeof rec.version !== "string" || !newerVersion(rec.version, info.current)) return null;
+  const offer = info.offer;
+  if (offer && offer.installable && !newerVersion(rec.version, offer.version)) return null;
+  return rec;
+}
+function hubLaterActive(laterHub, rec, now = Date.now()) {
+  const m = /^(.*)@(\d+)$/.exec(laterHub || "");
+  return !!m && m[1] === `${rec.hubId}:${rec.revision}` && now - Number(m[2]) < LATER_HUB_MS && now >= Number(m[2]);
+}
 
 export function updateActive(info) { return !!(info && info.progress && ACTIVE.has(info.progress.stage)); }
 
@@ -96,22 +134,30 @@ function channelWord(channel) { return t(`update.channel_${channel === "alpha" |
 function sameLine(channel) { return t(`update.same_${channel === "alpha" || channel === "latest" ? channel : "beta"}`); }
 
 /** The one confirmation (the leader's D1: the admin's own, no General card), then the start. From the line, Settings or /update. */
-export async function openUpdateDialog() {
+export async function openUpdateDialog() { return startUpdate(null); }
+/** M-3140: the same confirmation and start, pinned to the Hub's recommended version (the server re-reads its own advice). */
+export async function openHubUpdateDialog() { return startUpdate("hub"); }
+
+async function startUpdate(kind) {
   let info = updateStore.get().info;
   if (!info) info = await refreshUpdate();
   if (!info || !info.admin) { toast(t("update.adminOnly"), false); return { ok: false }; }
   if (updateActive(info)) { toast(t("update.running")); return { ok: false }; }
+  const rec = kind === "hub" ? hubNeed(info) : null;
+  if (kind === "hub" && !rec) { toast(t("update.recChanged"), false); return { ok: false }; }
   const offer = info.offer;
-  if (!offer) { toast(t("update.upToDate", info.current)); return { ok: false }; }
-  if (!offer.installable) { toast(t("update.stableOnly", offer.version), false); return { ok: false }; }
+  if (!rec) {
+    if (!offer) { toast(t("update.upToDate", info.current)); return { ok: false }; }
+    if (!offer.installable) { toast(t("update.stableOnly", offer.version), false); return { ok: false }; }
+  }
   const yes = await confirmDialog({ title: t("update.confirmTitle"), confirmLabel: t("update.confirmGo"),
-    message: t("update.confirmBody", offer.version, sameLine(offer.channel)) });
+    message: rec ? t("update.confirmBody", rec.version, t("update.hubLine", rec.hubName)) : t("update.confirmBody", offer.version, sameLine(offer.channel)) });
   if (!yes) return { ok: false };
   updateStore.set({ starting: true });
   const key = `update-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   let res = null, body = null;
   try {
-    res = await fetch("/ui/update/start", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify({ confirm: "update-agend" }) });
+    res = await fetch("/ui/update/start", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify({ confirm: "update-agend", ...(rec ? { recommended: { version: rec.version, revision: rec.revision } } : {}) }) });
     try { body = await res.json(); } catch { body = null; }
   } catch { res = null; }
   updateStore.set({ starting: false });
@@ -120,7 +166,8 @@ export async function openUpdateDialog() {
     await refreshUpdate();
     return { ok: true };
   }
-  toast(t("update.failedToStart", (body && body.error) || (res ? String(res.status) : "network")), false);
+  if (body && body.error === "recommendation_changed") toast(t("update.recChanged"), false);
+  else toast(t("update.failedToStart", (body && body.error) || (res ? String(res.status) : "network")), false);
   await refreshUpdate();
   return { ok: false };
 }
@@ -205,7 +252,13 @@ export function UpdateLine() {
   } else if (p && p.stage === "complete" && p.web && s.dismissed !== String(p.started_at)) {
     line = html`<${Line} tone="ok" icon="check" title=${t("update.current", info.current)}>
       <${Dismiss} onClick=${() => { remember(DISMISSED_KEY, String(p.started_at)); updateStore.set({ dismissed: String(p.started_at) }); }} /></${Line}>`;
-  } else if (info.offer && info.offer.installable && s.later !== info.offer.version) {
+  } else if (hubNeed(info) && !hubLaterActive(s.laterHub, hubNeed(info))) {
+    // M-3140 (spec §3.3): who is asking, then today's buttons — Update now pinned to the advised version.
+    const rec = hubNeed(info);
+    line = html`<${Line} title=${t("update.hubAvailable", rec.hubName, rec.version, info.current)} sub=${[t("update.hubSub")]}>
+      <button type="button" class="btn btn-sm btn-primary" disabled=${s.starting} onClick=${() => { void openHubUpdateDialog(); }}>${t("update.now")}</button>
+      <button type="button" class="btn btn-sm" onClick=${() => { const v = `${rec.hubId}:${rec.revision}@${Date.now()}`; remember(LATER_HUB_KEY, v); updateStore.set({ laterHub: v }); }}>${t("update.later")}</button></${Line}>`;
+  } else if (info.offer && info.offer.installable && s.later !== info.offer.version && !hubNeed(info)) {
     const o = info.offer;
     line = html`<${Line} title=${t("update.available", o.version, info.current)} sub=${[t("update.availableSub", channelWord(o.channel))]}>
       <button type="button" class="btn btn-sm btn-primary" disabled=${s.starting} onClick=${openUpdateDialog}>${t("update.now")}</button>

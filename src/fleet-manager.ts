@@ -342,8 +342,9 @@ import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoo
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
+import { HUB_UPDATE_NOTICE_FILE, HUB_UPDATE_REMIND_MS, hubNoticeDue, hubNoticeKey, readHubNoticeState, writeHubNoticeState } from "./hub-update-notice.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
-import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
+import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdatePin, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
 import { WebHostInstalls, hostUpdatePlan, type HostInstallMode, type HostInstallReporter, type HostInstallStart } from "./web-host-install.js";
@@ -1060,6 +1061,8 @@ const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 /** #2598 B2: a kiro classic → TUI move's Confirm in General. "kiro-migrate:" (13) + 32 hex + ":confirm" (8) = 53 bytes. */
 const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
+/** M-3140: Update now on a Hub-recommended-version notice in General ("hub-update:" + 32 hex + ":update" = 50 bytes). */
+const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
 const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
 /** #2692: a fleet admin's Approve / Reject on an agent's pending skin-pack change, in General. */
 const OFFICE_PACK_CALLBACK_PREFIX = "office-pack:";
@@ -1893,8 +1896,86 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubRecommendationRead: (() => import("./hub/recommendation-model.js").HubRecommendedUpdate | null) | null = null;
   private hubRecommendationListeners = new Set<() => void>();
   hubRecommendedUpdate(): import("./hub/recommendation-model.js").HubRecommendedUpdate | null { return this.hubRecommendationRead?.() ?? null; }
+  /**
+   * M-3140: the Hub's advice the asker was shown, if it is still this Fleet's current verified advice and still newer
+   * than what runs (same Hub, version and revision) — else null. What a pinned Update installs comes only from here.
+   */
+  private hubRecommendationFor(pin: WebUpdatePin): import("./hub/recommendation-model.js").HubRecommendedUpdate | null {
+    const advice = this.hubRecommendedUpdate();
+    if (!advice || advice.version !== pin.version || advice.revision !== pin.revision) return null;
+    let current: string;
+    try { current = this.runningAgendVersion(); } catch { return null; }
+    return this.semverGt(advice.version, current) ? advice : null;
+  }
   onHubRecommendation(listener: () => void): () => void { this.hubRecommendationListeners.add(listener); return () => { this.hubRecommendationListeners.delete(listener); }; }
-  private hubRecommendationChanged(): void { for (const listener of this.hubRecommendationListeners) { try { listener(); } catch { /* local presentation observer */ } } }
+  private hubRecommendationChanged(): void {
+    for (const listener of this.hubRecommendationListeners) { try { listener(); } catch { /* local presentation observer */ } }
+    void this.maybeNotifyHubRecommendation();   // M-3140: the first notice need not wait for the daily check
+  }
+
+  /**
+   * M-3140 (spec §3.3, chat): the Hub's recommended version in General, with Update now — when it first applies to this
+   * Fleet, then every 7 days while still behind (hub-update-notice.ts). A web-only fleet has no chat: its banner says it.
+   * Asked on every change of the advice and on the daily update check.
+   */
+  private async maybeNotifyHubRecommendation(): Promise<void> {
+    if (this.hubUpdateNoticeBusy || this.shuttingDown) return;
+    this.hubUpdateNoticeBusy = true;
+    try {
+      const advice = this.hubRecommendedUpdate();
+      let current: string | null = null;
+      try { current = this.runningAgendVersion(); } catch { return; }
+      const path = join(this.dataDir, HUB_UPDATE_NOTICE_FILE), now = Date.now();
+      if (!hubNoticeDue(readHubNoticeState(path), advice, current, now, (a, b) => this.semverGt(a, b)) || !advice) return;
+      if (this.webOnlyPromptPlace()) return;
+      const general = this.findGeneralInstance();
+      const adapterId = general ? this.getInstanceAdapterId(general) : undefined;
+      const adapter = general ? this.getAdapterForInstance(general) : undefined;
+      const chatId = general ? this.getGroupIdForInstance(general) : undefined;
+      const topic = general ? String(this.fleetConfig?.instances[general]?.topic_id ?? "") : "";
+      if (!general || !adapterId || !adapter || !chatId) return;
+      const nonce = await this.postNonceButtonPromptOrThrow({
+        prefix: HUB_UPDATE_CALLBACK_PREFIX, alertType: "tip", instanceName: general, adapter, adapterId, chatId,
+        ...(topic ? { threadId: topic } : {}),
+        message: t("hub_update.notice", advice.hubName, `v${advice.version}`, `v${current}`),
+        choices: [{ action: "update", label: t("hub_update.button") }],
+        expiredText: t("hub_update.expired"),
+        timeoutMs: HUB_UPDATE_REMIND_MS,
+      });
+      this.pendingHubUpdates.set(nonce, { version: advice.version, revision: advice.revision });
+      const expiry = setTimeout(() => this.pendingHubUpdates.delete(nonce), HUB_UPDATE_REMIND_MS + 60_000);
+      expiry.unref?.();
+      writeHubNoticeState(path, { key: hubNoticeKey(advice), at: now });
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message }, "Hub recommended-version notice not posted");
+    } finally { this.hubUpdateNoticeBusy = false; }
+  }
+
+  /**
+   * M-3140: Update now on that notice — what chat /update does (a fleet admin's, the installed agend launched
+   * independently, its progress on the message), pinned to the advice the notice named, re-read now and at the launch.
+   */
+  private async handleHubUpdateCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    // Fable #3955: a fleet admin's press only. Anyone else in General is told privately, and the nonce and the button stay
+    // for an admin (consumeNonceCallback's authorize: refused before anything is consumed or retired).
+    const claimed = this.consumeNonceCallback(HUB_UPDATE_CALLBACK_PREFIX, /^hub-update:([0-9a-f]{32}):(update)$/, data, adapterId, adapter,
+      undefined, userId => this.fleetAdminGate(userId, adapterId) === "ok");
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry } = claimed;
+    const nonce = data.callbackData.slice(HUB_UPDATE_CALLBACK_PREFIX.length, HUB_UPDATE_CALLBACK_PREFIX.length + 32);
+    const pin = this.pendingHubUpdates.get(nonce);
+    this.pendingHubUpdates.delete(nonce);
+    const messageId = entry.messageId ?? data.messageId;
+    const advice = pin ? this.hubRecommendationFor(pin) : null;
+    if (!pin || !advice) { await this.retireNonceButtons(entry, messageId, t("hub_update.changed")); return true; }
+    const by = data.userId ?? "";
+    await this.retireNonceButtons(entry, messageId, t("update.progress.preparing", 0));
+    if (messageId && entry.adapter) this.beginUpdateProgress(entry.adapter, entry.chatId, entry.threadId, messageId);
+    await this.launchInstalledUpdate(`hub-recommended /update by ${adapterId}:${by}`,
+      () => this.fleetAdminGate(by, adapterId) === "ok" && !this.shuttingDown && this.hubRecommendationFor(pin) !== null, advice.version);
+    return true;
+  }
   private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
   /** Explicit owner Settings read only. A paused binding is not permission to mount or connect a member. */
@@ -2900,6 +2981,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
   /** #2598 B2: the kiro moves waiting on a fleet admin's Confirm in General, by prompt nonce. */
   private pendingKiroMigrations = new Map<string, KiroMigrationPlan>();
+  /** M-3140: a posted Hub-update notice's advice (by its nonce) — which advice the button was offered for. */
+  private pendingHubUpdates = new Map<string, WebUpdatePin>();
+  private hubUpdateNoticeBusy = false;
   private pendingKiroReconciliations = new Map<string, KiroReconciliation>();
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
@@ -6211,7 +6295,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * independently with its log — or a failure in the progress marker. `stillAllowed` is asked again once the awaits
    * are done (the asker may have lost the right, or the fleet begun stopping, meanwhile).
    */
-  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean): Promise<import("node:child_process").ChildProcess | null> {
+  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean, pin?: string): Promise<import("node:child_process").ChildProcess | null> {
     const { spawn } = await import("./child-process.js");
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
@@ -6219,7 +6303,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return null;
     }
     recordInternalRequest(this.dataDir, "update", origin);
-    const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir);
+    // M-3140: `pin` — this exact version (a Hub's recommendation, re-resolved by the caller), not the install's channel.
+    const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir, pin);
     if (!launch.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
       return null;
@@ -18078,6 +18163,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
+    if (await this.handleHubUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroReconcileCallback(data, adapterId, adapter)) return true;
     if (await this.handleOfficePackCallback(data, adapterId, adapter)) return true;
     if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;
@@ -28755,6 +28841,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
       }
     } catch { this.recordUpdateCheck(currentVersion, null); /* silent — network issues */ }
+    await this.maybeNotifyHubRecommendation();   // M-3140: the 7-day reminder rides the daily check
   }
 
   // ── M-2738: updating from the web (src/web-update.ts) ───────────────
@@ -28770,7 +28857,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       checkUpdateNow: () => this.checkUpdateNow(),
       updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
-      startWebUpdate: (key, person, stillAllowed) => this.startWebUpdateOnce(key, person, stillAllowed),
+      startWebUpdate: (key, person, stillAllowed, pin) => this.startWebUpdateOnce(key, person, stillAllowed, pin),
       updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
     };
   }
@@ -28796,12 +28883,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * last check offers as installable; the update itself is chat `/update`'s (launchInstalledUpdate). Its progress marker
    * targets no chat message (WEB_UPDATE_ADAPTER); the page reads the stages the updater writes into it.
    */
-  private async startWebUpdate(person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  private async startWebUpdate(person: string, stillAllowed: () => boolean, pin?: WebUpdatePin): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
     if (this.shuttingDown) return { ok: false, status: 409, error: "stopping" };
     // Synchronous from here to the claim: a second start cannot slip in between on the event loop.
     if (this.webUpdateOwned || isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
-    const offer = this.updateCheckState?.offer;
-    if (!offer?.installable) return { ok: false, status: 409, error: "nothing_to_install" };
+    // M-3140: Update pinned to the Hub's recommendation. The page only names which advice it was shown; the version is
+    // this Fleet's own verified view, re-read now (and again at the launch) — a page's word never chooses what installs.
+    let pinned: string | undefined;
+    if (pin) {
+      const advice = this.hubRecommendationFor(pin);
+      if (!advice) return { ok: false, status: 409, error: "recommendation_changed" };
+      pinned = advice.version;
+    }
+    const offer = pinned ? { version: pinned } : this.updateCheckState?.offer;
+    if (!pinned && !this.updateCheckState?.offer?.installable) return { ok: false, status: 409, error: "nothing_to_install" };
+    if (!offer) return { ok: false, status: 409, error: "nothing_to_install" };
     const startedAt = Date.now();
     const claim = { startedAt };
     this.webUpdateOwned = claim;
@@ -28815,7 +28911,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const origin = `web update by ${person}`;
     // Prism #3505 P2-3: the asking session must still be current and an admin's when the updater is launched.
-    void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed()).then(child => {
+    void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed() && (!pin || this.hubRecommendationFor(pin) !== null), pinned).then(child => {
       if (!child) { release(); return; }
       child.once("exit", release);
       child.once("error", release);
@@ -28828,11 +28924,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** M-2738: a web start's answer for its key, the same on a retry (at most 32 kept). */
-  private startWebUpdateOnce(key: string, person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  private startWebUpdateOnce(key: string, person: string, stillAllowed: () => boolean, pin?: WebUpdatePin): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
     // Prism #3505 P3: reserved before anything is awaited — a concurrent request with the same key shares this answer.
     const known = this.webUpdateStarts.get(key);
     if (known) return known;
-    const answer = this.startWebUpdate(person, stillAllowed);
+    const answer = this.startWebUpdate(person, stillAllowed, pin);
     this.webUpdateStarts.set(key, answer);
     while (this.webUpdateStarts.size > 32) this.webUpdateStarts.delete(this.webUpdateStarts.keys().next().value!);
     return answer;

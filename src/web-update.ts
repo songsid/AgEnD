@@ -111,6 +111,9 @@ export function readLogTail(path: string, max = 32 * 1024): string | null {
   } catch { return null; } finally { closeSync(fd); }
 }
 
+/** M-3140: the Hub recommendation a pinned Update was offered from — which advice, never what to install. */
+export interface WebUpdatePin { version: string; revision: number }
+
 /** What the fleet gives the web routes. */
 export interface WebUpdateHost {
   /** The running version, the last check's offer, and when it was checked (null: not yet). */
@@ -122,6 +125,6 @@ export interface WebUpdateHost {
    * Start the update for `person` (a fleet admin's web session); the same answer again for the same `key`. `stillAllowed`
    * asks whether that session is still current and an admin's: checked again right before the updater is launched.
    */
-  startWebUpdate(key: string, person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  startWebUpdate(key: string, person: string, stillAllowed: () => boolean, pin?: WebUpdatePin): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   updateLog(): { text: string | null; error: string | null };
 }
