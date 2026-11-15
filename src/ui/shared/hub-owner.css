@@ -167,3 +167,14 @@
   .hub-ov-range-item { min-height: var(--tap); }
   .hub-ov-link { min-height: var(--tap); display: inline-flex; align-items: center; }
 }
+
+/* M-3194: shared subject picker and both allowed-list editors keep full touch targets. */
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-groups .btn, .hub-join-step2 .btn, .hub-subject-picker .btn { min-height: var(--tap); min-width: var(--tap); }
+  .hub-groups .field input, .hub-groups .field select, .hub-join-step2 .field input,
+  .hub-join-step2 .field select, .hub-subject-picker input, .hub-subject-picker select { min-height: var(--tap); }
+  .hub-group-cap, .hub-join-step2 .check { min-height: var(--tap); }
+}
+
+/* The granting administrator must see a Team's size and leads at every width. */
+.hub-row-text strong.hub-policy-subject-label { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }

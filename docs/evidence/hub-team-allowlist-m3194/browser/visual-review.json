@@ -1,0 +1,7 @@
+{
+  "method": "Image-only child inspection of 8 originals, then only 6 affected replacement originals",
+  "initialFinding": "Team metadata ellipsized in both desktop Manage views and all four phone views. Phone English Manage also hid member count.",
+  "repair": "Scoped Team label wrapping; phone44px targets separately measured by actual browser harness.",
+  "result": "All six replacement originals show full name/count/lead/roster hint. Two desktop full-editor originals carried unchanged visual scope. No new bounded clipping/overlap/language issue.",
+  "limits": "Not an independent touch-target measurement. Preview outside the pictured viewport and full-product UX unassessed."
+}

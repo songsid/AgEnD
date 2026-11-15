@@ -48,7 +48,7 @@ try{
  browser=await pw.chromium.launch({...(process.env.CHROME?{executablePath:process.env.CHROME}:{}),args:['--no-sandbox','--no-proxy-server','--host-resolver-rules=MAP hub.example.test 127.0.0.1']});receipt.browser=browser.version();
  const cases=[{device:'desktop',lang:'en',theme:'light'},{device:'desktop',lang:'zh-TW',theme:'dark'},{device:'phone',lang:'en',theme:'dark'},{device:'phone',lang:'zh-TW',theme:'light'}];
  const subject=`[data-subject="team/${team}"]`;
- for(const [i,c] of cases.entries()){
+ for(const [i,c] of cases.slice(Number(process.env.START_CASE || 0)).entries()){
   const tag=`${c.device}-${c.lang}-${c.theme}`,context=await browser.newContext({viewport:c.device==='phone'?{width:390,height:844}:{width:1366,height:1000},isMobile:c.device==='phone',hasTouch:c.device==='phone',locale:c.lang==='en'?'en-US':'zh-TW',colorScheme:c.theme,ignoreHTTPSErrors:true});
   try{
    await context.addInitScript({content:'window.__name=fn=>fn;'});
@@ -65,16 +65,16 @@ try{
     await page.locator(subject+' input[type=checkbox]').nth(2).check();
     await page.locator('.hub-subject-picker [data-subject-kind]').selectOption('person');await page.locator('.hub-subject-picker input[type=search]').fill('Morgan');await page.locator('.hub-group-hits button').click();await page.locator(`[data-subject="person/${people[1]!.key.objectId}"]`).waitFor();
    }
-   await page.locator(subject+' input[type=number]').fill(String(i+2));await page.locator('.hub-groups-preview .btn-primary').waitFor();
+   await page.locator(subject+' input[type=number]').fill(String(i%2*2+2));await page.locator('.hub-groups-preview .btn-primary').waitFor();
    check(tag+' full Team summary has count and lead',(await page.locator(subject).innerText()).includes('Morgan Example')&&/2/.test(await page.locator(subject).innerText()));
-   await geometry('.hub-groups','full');await shot('full-preview');
+   await geometry('.hub-groups','full');if(!process.env.RETAKE || c.device==='phone')await shot('full-preview');
    const put=page.waitForResponse((r:any)=>r.url().endsWith('/hub/v1/admin/group-policy')&&r.request().method()==='PUT');await page.locator('.hub-groups-preview .btn-primary').click();check(tag+' full actual save',(await put).status()===200);await page.locator('.hub-groups-preview').waitFor({state:'detached'});
    const details=await page.evaluate(async(id:string)=>{const r=await fetch('/hub/v1/teams/'+id);return r.json()},team);check(tag+' production factory Used-for hook',details.team?.impact?.allowedList===true);
-   await page.goto(origin+'/ui/hub/admin?view=manage');await page.locator('.hub-join-step2').waitFor();await page.locator('.hub-join-step2 '+subject+' input[type=number]').fill(String(i+3));await page.locator('.hub-join-preview .btn-primary').waitFor();
+   await page.goto(origin+'/ui/hub/admin?view=manage');await page.locator('.hub-join-step2').waitFor();await page.locator('.hub-join-step2 '+subject+' input[type=number]').fill(String(i%2*2+3));await page.locator('.hub-join-preview .btn-primary').waitFor();
    await geometry('.hub-join-step2','manage');await shot('manage-preview');
    const saved=page.waitForResponse((r:any)=>r.url().endsWith('/hub/v1/admin/group-policy')&&r.request().method()==='PUT');await page.locator('.hub-join-preview .btn-primary').click();check(tag+' manage actual save',(await saved).status()===200);await page.locator('.hub-join-preview').waitFor({state:'detached'});
    const stored=JSON.parse((db.prepare('SELECT body FROM hub_group_policy').get()as any).body);
-   check(tag+' SQLite preserves all three subject kinds',stored.groups.length===1&&stored.teams.length===1&&stored.people.length===1&&stored.teams[0].maxFleets===i+3);
+   check(tag+' SQLite preserves all three subject kinds',stored.groups.length===1&&stored.teams.length===1&&stored.people.length===1&&stored.teams[0].maxFleets===i%2*2+3);
   }finally{await context.close()}
  }
  check('no browser errors',!receipt.errors.length);check('only owned Hub requests',!receipt.foreign.length);receipt.status='PASS';

@@ -31,5 +31,5 @@ export function PolicySubjectLabel({ row, teams = [] }) {
  const current = teams.find(team => team.id === row.teamId) || row;
  const count = current.memberCount ?? current.members?.length ?? current.people;
  const leads = current.leadNames || [current.leadName].filter(Boolean);
- return html`<strong>${count === undefined || !leads.length ? `${current.name || row.name} · ${subjectText("team")}` : subjectText("teamRow", current.name || row.name, count, leads.join(", "))}</strong><small class="note">${subjectText("teamHint")}</small>`;
+ return html`<strong class="hub-policy-subject-label">${count === undefined || !leads.length ? `${current.name || row.name} · ${subjectText("team")}` : subjectText("teamRow", current.name || row.name, count, leads.join(", "))}</strong><small class="note">${subjectText("teamHint")}</small>`;
 }
