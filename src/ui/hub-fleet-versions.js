@@ -9,6 +9,7 @@
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { register, t, lang } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
 
 register("hubVersions", {
   en: {
@@ -26,6 +27,21 @@ register("hubVersions", {
     errNpm: "Couldn't reach npm to check {0}. Try again.", errHubVersion: "This Hub's own version can't be read. Choose a specific version.",
     errConflict: "Someone else changed this just now; their choice is shown. Check it and save again.", errFailed: "It wasn't saved. Try again.",
     notified: "Owner notified · {0}", notNotified: "Not notified yet",
+    updateBtn: "Update", ownerUpdates: "Owner updates it", updateMany: "Update {0} Fleets that allow it",
+    askOne: "Update {0} to AgEnD v{1}? It starts when that Fleet's agents are idle. Its owner is told now and when it finishes.",
+    askMany: "Update {0} Fleets to AgEnD v{1}?", askOk: "Update", cancel: "Cancel", tryAgain: "Try again",
+    stSending: "Sending…", stConnect: "Waiting for the Fleet to connect", stWaiting: "Waiting for its agents to be idle · since {0}",
+    stUpdating: "Updating…", stDone: "Updated to v{0} · {1}", stRolledBack: "Update failed; back on v{0}",
+    stBusy: "Did not start: agents were busy for 24 hours", stOffline: "Did not start: the Fleet has not connected for 7 days.",
+    stCancelled: "The owner cancelled this update", stGone: "Update failed and the Fleet has not come back. Contact {0}.",
+    startedMany: "Started for {0} Fleets.", startedSome: "Started for {0} Fleets; {1} could not start.",
+    rfOwnerOff: "The owner no longer allows updates from the Hub.", rfNotService: "This Fleet was started by hand, so it cannot be updated from here.",
+    rfNotFound: "That Fleet could not find v{0} on npm.", rfNpm: "That Fleet could not reach the update source. Nothing was changed.",
+    rfPermission: "That Fleet has no permission to install updates. Its owner must update it by hand.", rfCurrent: "Already on v{0}.",
+    rfOpen: "An update is already open for this Fleet.", rfUnsupported: "This Fleet's AgEnD is too old to be updated from the Hub.",
+    rfGone: "This Fleet is no longer connected to this Hub.", rfRunning: "That Fleet was already updating.",
+    rfNoRec: "Set a recommended version first.", rfRevision: "The recommended version changed just now. Check it and try again.",
+    rfFailed: "The update did not finish.",
     filter: "Needs update",
     colVersion: "AgEnD version", colLast: "Last connected",
     unknown: "Unknown", now: "Now", never: "Never",
@@ -54,6 +70,21 @@ register("hubVersions", {
     errNpm: "無法連上 npm 檢查 {0}，請再試一次。", errHubVersion: "讀不到這個 Hub 的版本，請改為指定版本。",
     errConflict: "剛剛有人改了這個設定，已顯示最新的選擇。請確認後再儲存。", errFailed: "沒有儲存，請再試一次。",
     notified: "已通知擁有者 · {0}", notNotified: "尚未通知",
+    updateBtn: "更新", ownerUpdates: "由擁有者自行更新", updateMany: "更新 {0} 個已允許的 Fleet",
+    askOne: "要把 {0} 更新到 AgEnD v{1} 嗎？會等那個 Fleet 的 Agent 都閒置才開始。現在和完成時都會通知擁有者。",
+    askMany: "要把 {0} 個 Fleet 更新到 AgEnD v{1} 嗎？", askOk: "更新", cancel: "取消", tryAgain: "再試一次",
+    stSending: "傳送中…", stConnect: "等待 Fleet 連接", stWaiting: "等待 Agent 閒置 · {0} 起",
+    stUpdating: "更新中…", stDone: "已更新到 v{0} · {1}", stRolledBack: "更新失敗，已回到 v{0}",
+    stBusy: "沒有開始：Agent 連續 24 小時都在忙", stOffline: "沒有開始：這個 Fleet 已經 7 天沒有連接。",
+    stCancelled: "擁有者取消了這次更新", stGone: "更新失敗，而且 Fleet 沒有重新連接。請聯絡 {0}。",
+    startedMany: "已為 {0} 個 Fleet 開始。", startedSome: "已為 {0} 個 Fleet 開始；{1} 個無法開始。",
+    rfOwnerOff: "擁有者已不允許由 Hub 更新。", rfNotService: "這個 Fleet 是手動啟動的，無法從這裡更新。",
+    rfNotFound: "那個 Fleet 在 npm 上找不到 v{0}。", rfNpm: "那個 Fleet 連不上更新來源，沒有任何變更。",
+    rfPermission: "那個 Fleet 沒有安裝更新的權限，需要擁有者手動更新。", rfCurrent: "已經是 v{0}。",
+    rfOpen: "這個 Fleet 已經有一個進行中的更新。", rfUnsupported: "這個 Fleet 的 AgEnD 太舊，無法從 Hub 更新。",
+    rfGone: "這個 Fleet 已不再連接到這個 Hub。", rfRunning: "那個 Fleet 已經在更新。",
+    rfNoRec: "請先設定建議版本。", rfRevision: "建議版本剛剛改了，請確認後再試一次。",
+    rfFailed: "更新沒有完成。",
     filter: "需要更新",
     colVersion: "AgEnD 版本", colLast: "上次連接",
     unknown: "不明", now: "目前已連接", never: "從未連接",
@@ -257,4 +288,85 @@ export function RecommendedVersionCard({ client, onSaved = () => {}, onAvailable
     ${msg ? html`<p class=${msg.ok ? "note" : "err"} role=${msg.ok ? "status" : "alert"}>${msg.text}</p>` : null}
     ${changed ? html`<div class="save-row"><button type="button" class="btn btn-primary" disabled=${saving || !!preview?.pending || !!preview?.error || (mode === "specific" && !target)} onClick=${save}>${saving ? hv("recSaving") : hv("recSave")}</button></div>` : null}
   </section>`;
+}
+
+// ── M-3145 (versions spec §4.2, §4.5; API M-3144): updating Fleets whose owner allows it ─────────────────────────────
+
+const RF = { "owner-disabled": "rfOwnerOff", "not-service": "rfNotService", "version-not-found": "rfNotFound", "npm-unavailable": "rfNpm",
+  "no-permission": "rfPermission", "already-current": "rfCurrent", "request-open": "rfOpen", unsupported: "rfUnsupported", revoked: "rfGone",
+  "not-found": "rfGone", "update-running": "rfRunning", "no-recommendation": "rfNoRec", "revision-conflict": "rfRevision" };
+/** A refusal or a Fleet's reason in words ({0}: the version it names); anything else, generically. */
+export function updateReasonText(code, version = "") { return hv(RF[code] || "rfFailed", version); }
+
+/** True when the overview carries phase 3's fields (an older Hub: no buttons, no lines). */
+export const hasUpdates = (fleets) => Array.isArray(fleets) && fleets.some((f) => f && "updatesAllowed" in f);
+const OPEN = new Set(["queued", "waiting", "updating"]);
+/** A Fleet the administrator may update now: active, behind, its owner allows it, nothing open for it. */
+export const updatable = (f, recommended) => !!recommended && f?.status === "active" && behind(f) && f.updatesAllowed === true
+  && !(f.updateRequest && OPEN.has(f.updateRequest.state));
+
+/** §4.5: the request's one status line (and its one action: Cancel while waiting, Try again after a failure). */
+export function updateStatus(f, now = Date.now()) {
+  const r = f?.updateRequest;
+  if (!r) return null;
+  const owner = f.owner?.name || "";
+  switch (r.state) {
+    case "queued": return { text: f.connected === true ? hv("stSending") : hv("stConnect") };
+    case "waiting": return { text: hv("stWaiting", r.waitingSince ? ago(r.waitingSince, now) : ""), action: "cancel" };
+    case "updating": return { text: hv("stUpdating") };
+    case "done": return { text: hv("stDone", r.version || "", ago(r.updatedAt || now, now)) };
+    case "rolled-back": return { text: hv("stRolledBack", r.currentVersion || ""), action: "retry" };
+    case "expired": return { text: hv(r.reasonCode === "offline-7d" ? "stOffline" : "stBusy"), action: "retry" };
+    case "cancelled": return { text: hv("stCancelled") };
+    case "failed": return r.reasonCode === "rollback-failed" ? { text: hv("stGone", owner) } : { text: updateReasonText(r.reasonCode, r.version), action: "retry" };
+    case "refused": return { text: updateReasonText(r.reasonCode, r.reasonCode === "already-current" ? r.currentVersion : r.version), action: r.reasonCode === "already-current" ? null : "retry" };
+    default: return null;
+  }
+}
+
+const newKey = () => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+/**
+ * Ask, then start: one or many Fleets, the target always the saved recommendation (its revision guards a change made
+ * meanwhile). Resolves { ok, text } for the page to say, or null when the administrator said no.
+ */
+export async function startUpdates(client, fleets, recommended, revision) {
+  if (!fleets.length) return null;
+  const one = fleets.length === 1 ? fleets[0] : null;
+  const yes = await confirmDialog({ title: hv("askOk"), message: one ? hv("askOne", one.label || one.owner?.name || "", recommended) : hv("askMany", String(fleets.length), recommended), confirmLabel: hv("askOk") });
+  if (!yes) return null;
+  const r = await client.updateFleets({ fleetIds: fleets.map((f) => f.id), ifRevision: revision, idempotencyKey: newKey() });
+  if (!r || r.ok === false) return { ok: false, text: updateReasonText(r?.code, recommended) };
+  const started = Array.isArray(r.requests) ? r.requests.length : 0, refused = Array.isArray(r.refused) ? r.refused : [];
+  if (one) return refused.length ? { ok: false, text: updateReasonText(refused[0].code, recommended) } : { ok: true, text: "" };
+  return { ok: refused.length === 0, text: refused.length ? hv("startedSome", String(started), String(refused.length)) : hv("startedMany", String(started)) };
+}
+
+/** A Connected fleets row's update part: its status line, else Update (the owner allows it) or "Owner updates it". */
+export function FleetUpdateCell({ fleet, recommended = null, revision = 0, client, onChanged = () => {}, now }) {
+  const [busy, setBusy] = useState(false), [msg, setMsg] = useState(null);
+  if (!recommended || !behind(fleet) && !fleet?.updateRequest) return null;
+  const status = updateStatus(fleet, now);
+  const run = async (fn) => { if (busy) return; setBusy(true); setMsg(null); const r = await fn(); setBusy(false); if (r) { if (r.text) setMsg(r); onChanged(); } };
+  const start = () => run(() => startUpdates(client, [fleet], recommended, revision));
+  const cancel = () => run(async () => { const r = await client.cancelFleetUpdate(fleet.updateRequest.id); return r && r.ok !== false ? { ok: true, text: "" } : { ok: false, text: updateReasonText(r?.code) }; });
+  return html`<span class="hub-fleet-update">
+    ${status ? html`<small class="note hub-fleet-update-status">${status.text}</small>
+      ${status.action === "cancel" ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${cancel}>${hv("cancel")}</button>` : null}
+      ${status.action === "retry" && updatable(fleet, recommended) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${start}>${hv("tryAgain")}</button>` : null}`
+    : fleet.updatesAllowed === true ? html`<button type="button" class="btn btn-sm hub-fleet-update-btn" disabled=${busy} onClick=${start}>${hv("updateBtn")}</button>`
+    : html`<small class="note hub-fleet-owner-updates">${hv("ownerUpdates")}</small>`}
+    ${msg ? html`<small class=${msg.ok ? "note" : "err"} role=${msg.ok ? "status" : "alert"}>${msg.text}</small>` : null}
+  </span>`;
+}
+
+/** Above the list (§4.2): "Update {n} Fleets that allow it", while at least one qualifies. */
+export function UpdateAllowedButton({ fleets, recommended = null, revision = 0, client, onChanged = () => {} }) {
+  const [busy, setBusy] = useState(false), [msg, setMsg] = useState(null);
+  const ready = (fleets || []).filter((f) => updatable(f, recommended));
+  if (!ready.length && !msg) return null;
+  const go = async () => { if (busy) return; setBusy(true); setMsg(null); const r = await startUpdates(client, ready, recommended, revision); setBusy(false); if (r) { setMsg(r.text ? r : null); onChanged(); } };
+  return html`<div class="hub-fleet-update-all">
+    ${ready.length ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${go}>${hv("updateMany", String(ready.length))}</button>` : null}
+    ${msg ? html`<p class=${msg.ok ? "note" : "err"} role=${msg.ok ? "status" : "alert"}>${msg.text}</p>` : null}
+  </div>`;
 }
