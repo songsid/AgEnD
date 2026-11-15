@@ -1,0 +1,22 @@
+[
+  {
+    "name": "release-before-bind",
+    "exit": 1,
+    "candidateSha256": "3afdcfa17c3327e4b4091a8a2c7ea884c3dfab7082d7fe8e1a4e52cdb2224498",
+    "mutatedSha256": "e65ff51b9786e7e72afcbfe7c37f661af7ffb31fb23dd02d637fca5e08398c21",
+    "patchSha256": "ff10faae8c27d8143294b2e2b11734923e7385b7771b3f0ede6bae4ada1a2484",
+    "caught": "stolen instead of EADDRINUSE",
+    "selected": 1,
+    "unselected": 10
+  },
+  {
+    "name": "close-for-outage",
+    "exit": 1,
+    "candidateSha256": "3afdcfa17c3327e4b4091a8a2c7ea884c3dfab7082d7fe8e1a4e52cdb2224498",
+    "mutatedSha256": "4e092cab5109c199f8ec11a12a128a0d824277e285a137154ddafdb1669a226a",
+    "patchSha256": "80f2761d8d496df6fcc7a953b1c3013ce40da7dbed6f8c0913c2e7f0ba7e46b0",
+    "caught": "stolen instead of EADDRINUSE",
+    "selected": 1,
+    "unselected": 10
+  }
+]
