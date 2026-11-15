@@ -51,6 +51,13 @@ export class HubDirectoryProofError extends Error {
 }
 function refuse(code: HubDirectoryProofCode): never { throw new HubDirectoryProofError(code); }
 const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
+/** Structurally identical plain data (the same keys, strictly equal leaves); anything it is unsure of is "not identical", and the caller asks `same`. */
+const identical = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length && ka.every(k => Object.hasOwn(b, k) && identical((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+};
 const TTL = 5 * 60_000, MAX_DRAFTS = 32, ATTEMPT_WINDOW = TTL;
 const fp = (s: string) => s.replace(/:/g, "").toUpperCase();
 const fingerprint = (s: string): string => { const value = fp(s); return /^[0-9A-F]{64}$/.test(value) ? value : refuse("unavailable"); };
@@ -132,13 +139,22 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
     if (resolved.realm !== administrator.realm || s.directory.realm !== administrator.realm) refuse("unavailable");
     return { ...s, config, administrator, groups, resolved };
   };
+  // M-3146: `current()` runs after every directory answer, and canonicalizing all retained references each time made a Save O(n²): 512 references cost 4 s of the
+  // Hub's CPU (over 10 s on CI). The first comparison of a draft's references is the full canonical one, which also proves them canonical; after that a fresh
+  // read that is identical to them is the same by definition, and anything else is still decided by `same`.
+  const canonicalGroups = new WeakSet<readonly DirectoryPolicyGroup[]>();
+  const sameGroups = (fresh: readonly DirectoryPolicyGroup[], kept: readonly DirectoryPolicyGroup[]): boolean => {
+    if (canonicalGroups.has(kept) && identical(fresh, kept)) return true;
+    if (!same(fresh, kept)) return false;
+    canonicalGroups.add(kept); return true;
+  };
   const current = (d: Pick<Draft, "source" | "actor" | "createdAt" | "expiresAt">, ctx: ReturnType<typeof context>) => {
     const t = time();
     if (stopped || ctx.signal?.aborted || actorKey(ctx.actor) !== actorKey(d.actor) || !boolean(ctx.current) || !boolean(d.source.current)) refuse("denied");
     const s = capture();
     if (!boolean(s.current) || s.directory !== d.source.directory || s.image !== d.source.image || s.epoch !== d.source.epoch
       || !same(s.config, d.source.config) || s.bindPassword !== d.source.bindPassword || !same(s.administrator, d.source.administrator)
-      || !same(s.groups, d.source.groups)) refuse("stale");
+      || !sameGroups(s.groups, d.source.groups)) refuse("stale");
     // The authority/material callbacks may move the clock too. Last sample follows ALL of them.
     const final = time();
     if (t < d.createdAt || t >= d.expiresAt || final < d.createdAt || final >= d.expiresAt) refuse("expired");
