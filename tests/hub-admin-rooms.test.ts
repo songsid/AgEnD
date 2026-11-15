@@ -7,6 +7,8 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 import { createHubRoomsFixture } from "./support/hub-rooms-fixture.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 let clientModule: any, mod: any, i18n: any, confirm: any;
 const mounted: AppPage[] = [];
@@ -81,6 +83,22 @@ describe("Hub Administration → Rooms (section 11)", () => {
     } finally { (globalThis as any).confirm = prior; }
   });
 
+  it("M-3189: a row's ⋯ opens in the top layer (never inside the table's sideways scroll box), and its column stays in view", async () => {
+    const { pg } = await fixture();
+    const priorStyle = (globalThis as any).getComputedStyle;
+    // The shared menu anchors itself in the top layer where app.css says it can (--agent-menu-version: 1).
+    (globalThis as any).getComputedStyle = () => ({ getPropertyValue: (name: string) => (name === "--agent-menu-version" ? "1" : "") });
+    try {
+      const wrap = pg.root.querySelector('[data-room="room-rd"] .menu');
+      expect(wrap.className).toContain("hub-admin-row-menu");
+      fire(wrap.querySelector("button"), "click"); await settle(10);
+      const list = wrap.querySelector(".menu-list");
+      expect([list.className.includes("menu-anchored"), list.getAttribute("popover")]).toEqual([true, "manual"]);
+    } finally { (globalThis as any).getComputedStyle = priorStyle; }
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/hub-rooms-u2.css"), "utf8");
+    expect(css).toMatch(/\.hub-admin-row-menu > \.menu-list\.menu-anchored \{ position: fixed; inset: auto;/);
+    expect(css).toMatch(/\.hub-admin-rooms-table :is\(th, td\):last-child \{ position: sticky; right: 0; background: var\(--bg\); \}/);
+  });
   it("a refused save puts the tags back and says so", async () => {
     let refuse = true;
     const { pg } = await fixture("en", (path, init) => refuse && path === "/hub/v1/admin/rooms/creators" && init.method === "PUT" ? { status: 500, body: {} } : null);
