@@ -67,6 +67,7 @@ import { RuntimeCpuProfiler, ProfileBusyError, profileDuration, type ProfileTick
 import { ProfileControlServer } from "./profile-control.js";
 import type { CpuProfile } from "./cpu-profile.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, lstatSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
+import { HubContactWindows } from "./hub-contact-windows.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { freemem, totalmem, homedir, hostname } from "node:os";
@@ -2742,6 +2743,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  private hubContactWindows: HubContactWindows | null = null;
+  private contactWindows(): HubContactWindows {
+    return this.hubContactWindows ??= new HubContactWindows(join(this.dataDir, "hub-contact-windows.json"));
+  }
+  hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent); }
   /**
    * A Hub question to its representative agent: ordinary cross-instance delivery (idle gate, wake, retries), from the
    * reserved Hub sender with the Hub-issued correlation id. beforeInput runs immediately before the IPC hand-off.
@@ -2766,7 +2772,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       task_summary: "A question from the Hub",
     };
     const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: input.text, meta: ipcMeta },
-      { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: input.beforeInput });
+      { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
+        if (!(await input.beforeInput())) return false;
+        // Before any possible IPC exposure. An uncertain write retains the window, never replays the question.
+        if (input.contactLimit !== false) this.contactWindows().begin(input.agent, input.correlationId);
+        return input.stillCurrent();
+      } });
     return result !== false;
   }
   private async deliverHubRoomPostAnswer(input: import("./hub/member/room-post-answers.js").RoomPostNotification): Promise<boolean> {
@@ -2861,7 +2872,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberLinkBinding: string | null = null;
   /** OutboundContext: the Hub representative's answer hook (null: no member service running, or not a Hub answer). */
   hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
-    return this.hubReports?.(input) ?? null;
+    const result = this.hubReports?.(input) ?? null;
+    if (!result) return null;
+    return result.then(outcome => {
+      if (outcome.ok) {
+        try { this.contactWindows().answered(input.caller, input.correlationId); }
+        catch (err) { this.logger.warn({ err }, "Hub contact window could not be closed; it will expire"); }
+      }
+      return outcome;
+    });
   }
   /** M-3127 OutboundContext: an agent's `react` on a Hub room question (its correlation id as message_id); null: not one. */
   hubReact(input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {

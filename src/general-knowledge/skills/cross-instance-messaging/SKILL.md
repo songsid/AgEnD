@@ -81,3 +81,5 @@ CLI mode: `agend-agent send <instance> <text> --forward <verification_id>` (repe
 Forward access is read-only and row-scoped. It does not grant commands, visibility of siblings, or access by knowing an ID. Same-uid shell-capable agents are not isolated from one another; use distinct OS users/containers for mutually untrusted agents.
 
 An error or unknown acknowledgement retains `operation_id` for exact recovery even in compact mode. Query that ID with `delivery_status`; an unclear response after admission must never trigger a blind resend.
+
+When a shared agent answers a Hub question with its contact limit on, contacting other Fleet agents (including broadcast) is refused. Answer `agend-hub` first, then retry your own work. The limit ends on accepted answer or after 30 minutes; `hub_room_post` has its separate limits.

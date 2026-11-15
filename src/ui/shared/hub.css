@@ -76,3 +76,8 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
 .hub-code { font-family: var(--font-mono); font-size: var(--fs-lg); letter-spacing: .12em; user-select: all; }
 .hub-session { display: flex; align-items: center; gap: var(--s-2); }
 .hub-session .side-row { flex: 1; min-width: 0; }
+
+/* M-3160: reuse the Settings checkbox language, including its whole-label tap target. */
+.hub-contact-limit { display: flex; align-items: flex-start; gap: var(--s-2); min-height: var(--tap); padding-top: var(--s-2); }
+.hub-contact-limit input { flex: 0 0 auto; margin-top: 3px; }
+.hub-contact-limit span, .hub-contact-notice { min-width: 0; overflow-wrap: anywhere; }

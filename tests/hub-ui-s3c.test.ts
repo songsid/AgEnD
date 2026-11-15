@@ -73,6 +73,38 @@ describe("the card's agent share and pending rows", () => {
   const fakeClient = (rows: any[], setExposed: any = vi.fn(async () => ({ ok: true, view: rows[0] }))) => ({
     stub: false, pairing: async () => ({ state: "paired", hub: { hubId: "h", name: "Team", memberOrigin: "https://hub.test", webOrigin: "https://hub.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "online" }),
     subscribe: () => () => {}, exposures: async () => rows, setExposed });
+  it("defaults the contact tick on and sends an explicit opt-out with sharing", async () => {
+    const send = vi.fn(async () => ({ ok: true }));
+    const pg = await cardWith(fakeClient([ROW], send));
+    const tick = pg.root.querySelector(".hub-contact-limit input") as any;
+    expect(tick.checked).toBe(true); tick.checked = false; fire(tick, "change"); await settle(5);
+    const share = pg.root.querySelector(".hub-exposure-main input") as any; share.checked = true; fire(share, "change");
+    await until(() => send.mock.calls.length > 0);
+    expect(send).toHaveBeenCalledWith("atlas", true, 0, { dataViewId: "agent", tools: [], contactLimit: false });
+  });
+  it("drops the unpublished draft once sharing is saved, so a later confirmed change can turn the limit back on", async () => {
+    let row = { ...ROW, contactLimit: true };
+    const send = vi.fn(async (_agent: string, _on: boolean, revision: number, choice: { contactLimit: boolean }) => {
+      row = { ...row, state: "published", revision: revision + 1, contactLimit: choice.contactLimit };
+      return { ok: true, view: row };
+    });
+    const pg = await cardWith({ ...fakeClient([row], send), exposures: async () => [row] });
+    let tick = pg.root.querySelector(".hub-contact-limit input") as any; tick.checked = false; fire(tick, "change"); await settle(5);
+    const share = pg.root.querySelector(".hub-exposure-main input") as any; share.checked = true; fire(share, "change");
+    await until(() => send.mock.calls.length === 1); await settle(10);
+    tick = pg.root.querySelector(".hub-contact-limit input") as any; expect(tick.checked).toBe(false);
+    tick.checked = true; fire(tick, "change"); await until(() => send.mock.calls.length === 2); await settle(10);
+    expect((pg.root.querySelector(".hub-contact-limit input") as any).checked).toBe(true);
+    expect(send.mock.calls[1]![3]).toMatchObject({ contactLimit: true });
+  });
+  it("shows the legacy-owner notice until its durable acknowledgement succeeds", async () => {
+    const row = { ...ROW, contactLimitNotice: true }, c = fakeClient([row]);
+    const ack = vi.fn(async () => { row.contactLimitNotice = false; return true; });
+    const pg = await cardWith({ ...c, acknowledgeContactLimitNotice: ack });
+    expect(pg.root.querySelector(".hub-contact-notice")!.textContent).toContain("Settings → Hub");
+    fire(pg.root.querySelector(".hub-contact-notice button"), "click"); await until(() => !pg.root.querySelector(".hub-contact-notice"));
+    expect(ack).toHaveBeenCalledTimes(1); expect(pg.root.querySelector(".hub-contact-notice")).toBeNull();
+  });
   it("switching on shares the agent itself (no picker, no Hub tools); a 202 says it waits for confirmation; the lead says what sharing means", async () => {
     const setExposed = vi.fn(async () => ({ ok: true, pending: { expiresAt: 9 }, view: { ...ROW, pending: { expiresAt: 9 } }, settled: new Promise(() => {}) }));
     const pg = await cardWith(fakeClient([ROW], setExposed));
@@ -80,7 +112,7 @@ describe("the card's agent share and pending rows", () => {
     const box = pg.root.querySelector(".hub-exposure input") as any;
     box.checked = true; fire(box, "change");
     await until(() => setExposed.mock.calls.length > 0 && pg.root.querySelector(".hub-exposures .note[role=status]"));
-    expect(setExposed).toHaveBeenCalledWith("atlas", true, 0, { dataViewId: "agent", tools: [] });
+    expect(setExposed).toHaveBeenCalledWith("atlas", true, 0, { dataViewId: "agent", tools: [], contactLimit: true });
     expect(pg.root.querySelector(".hub-exposure-pick")).toBeNull();
     expect(pg.root.querySelector(".hub-exposures [role=status]")!.textContent).toContain("Sent for confirmation");
   });
@@ -113,8 +145,8 @@ describe("the card's agent share and pending rows", () => {
     } };
     const pg = await cardWith(c);
     for (const index of [0, 1]) {
-      const box = pg.root.querySelectorAll(".hub-exposure input")[index] as any; box.checked = true; fire(box, "change");
-      await until(() => !pg.root.querySelectorAll(".hub-exposure input")[1]!.disabled || index === 1);
+      const box = pg.root.querySelectorAll(".hub-exposure-main input")[index] as any; box.checked = true; fire(box, "change");
+      await until(() => !pg.root.querySelectorAll(".hub-exposure-main input")[1]!.disabled || index === 1);
       await settle(8);
     }
     first({ state: "rejected" }); await settle(10);
@@ -144,7 +176,7 @@ describe("the card's agent share and pending rows", () => {
       expect(again.textContent).toBe(lang === "en" ? "Share again" : "重新分享");
       again.click();
       await until(() => setExposed.mock.calls.length > 0);
-      expect(setExposed).toHaveBeenCalledWith("atlas", true, 3, { dataViewId: "agent", tools: [] });
+      expect(setExposed).toHaveBeenCalledWith("atlas", true, 3, { dataViewId: "agent", tools: [], contactLimit: true });
     } finally { i18n.setLang("en", { store: false }); }
   });
   it("#3146 r1: no delivery path yet — the switch is disabled and the row says why", async () => {

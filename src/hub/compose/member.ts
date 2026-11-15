@@ -512,7 +512,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!local || !service.readiness(id, local.exposure.revision).ok) return null;
           const consent = db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(local.consentId) as { agent: string; token: string } | undefined;
           if (!consent || consent.agent !== local.agent || options.representative.agentToken(local.agent) !== consent.token) return null;
-          return { agent: local.agent, consentId: local.consentId, revision: local.exposure.revision, token: consent.token };
+          return { agent: local.agent, consentId: local.consentId, revision: local.exposure.revision, token: consent.token, contactLimit: local.contactLimit !== false };
         },
         deliver: input => options.representative.deliver(input), ...(memberFiles ? { files: memberFiles } : {}) });
       const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,

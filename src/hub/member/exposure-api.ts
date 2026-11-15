@@ -20,6 +20,7 @@ export interface HubExposureView {
   agent: string; display: string; exposureId: string | null; revision: number;
   state: "published" | "withdrawn" | "frozen"; policy: { dataView: string; tools: string[] } | null;
   enforceable: boolean; reason?: string;
+  contactLimit?: boolean; contactLimitNotice?: boolean;
   /** What the owner can share for this agent: the agent itself (one "agent" entry) and no Hub tools. */
   choices: { dataViews: Array<{ id: string; label: string }>; tools: Array<{ name: string; label: string }> };
   /** A publish waiting for the owner's Settings confirmation (the confirmation layer's), or null. */
@@ -27,9 +28,10 @@ export interface HubExposureView {
 }
 /** One of this fleet's configured agents, as normal delivery addresses it (`name`) and the owner sees it (`display`). */
 export interface HubMemberAgent { name: string; display: string }
-export interface HubPublishInput { agent: string; dataViewId: string; tools: string[]; expectedRevision: number }
+export interface HubPublishInput { agent: string; dataViewId: string; tools: string[]; expectedRevision: number; contactLimit?: boolean }
 export interface HubMemberExposureApi {
   list(): HubExposureView[];
+  acknowledgeContactLimitNotice?(): void;
   /** The confirmation's summary for a publish (checked: a refusal throws HubExposureRefusal). */
   preview(input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
   /** Publish or revise (run only after the owner confirmed). */
@@ -41,10 +43,11 @@ export interface HubMemberExposureApi {
 /** A publish request, strictly: unknown keys, odd types or a non-whole revision are refused (unknown_agent covers a bad name). */
 export function publishInput(raw: unknown): HubPublishInput {
   const r = raw as Record<string, unknown>;
-  if (!r || typeof r !== "object" || Array.isArray(r) || Object.keys(r).some((k) => !["agent", "dataViewId", "tools", "expectedRevision"].includes(k))) throw new HubExposureRefusal("conflict");
+  if (!r || typeof r !== "object" || Array.isArray(r) || Object.keys(r).some((k) => !["agent", "dataViewId", "tools", "expectedRevision", "contactLimit"].includes(k))) throw new HubExposureRefusal("conflict");
   if (typeof r.agent !== "string" || !r.agent || typeof r.dataViewId !== "string" || !Array.isArray(r.tools) || !r.tools.every((t) => typeof t === "string")
     || !Number.isSafeInteger(r.expectedRevision) || (r.expectedRevision as number) < 0) throw new HubExposureRefusal("conflict");
-  return { agent: r.agent, dataViewId: r.dataViewId, tools: r.tools as string[], expectedRevision: r.expectedRevision as number };
+  if (r.contactLimit !== undefined && typeof r.contactLimit !== "boolean") throw new HubExposureRefusal("conflict");
+  return { ...(r.contactLimit !== undefined ? { contactLimit: r.contactLimit as boolean } : {}), agent: r.agent, dataViewId: r.dataViewId, tools: r.tools as string[], expectedRevision: r.expectedRevision as number };
 }
 
 export function createHubMemberExposureApi(deps: {
@@ -78,6 +81,7 @@ export function createHubMemberExposureApi(deps: {
     const reason = legacy ? "republish_required" : !deps.readinessCandidate ? "delivery_unavailable"
       : e?.state === "published" && deps.refused?.() ? "hub_refused" : null;
     return { agent: a.name, display: a.display, exposureId: e?.id ?? null, revision: e?.revision ?? 0, state: e?.state ?? "withdrawn",
+      contactLimit: c?.contactLimit !== false, contactLimitNotice: deps.store.contactLimitNotice?.() ?? false,
       policy: e && e.state !== "withdrawn" ? { dataView: e.dataViewId, tools: [...e.allowedTools] } : null,
       enforceable: !reason || reason === "hub_refused", ...(reason ? { reason } : {}),
       choices: { dataViews: [{ id: HUB_AGENT_MODE, label: a.display }], tools: [] }, pending: deps.pending?.(a.name) ?? null };
@@ -92,16 +96,19 @@ export function createHubMemberExposureApi(deps: {
   };
   return {
     list: () => deps.agents().map(viewOf),
+    acknowledgeContactLimitNotice: () => deps.store.acknowledgeContactLimitNotice(),
     preview(raw) {
       const { input, a } = checked(raw);
       return settingsSummary([summaryLine(`Share "${a.display}" with the Hub`, summaryMessage("hub.exposure.summary.share", a.display)),
         summaryLine("Hub questions go to this agent's own conversation, with its folder and Settings tools", summaryMessage("hub.exposure.summary.context")),
+        summaryLine(input.contactLimit !== false ? "While answering a Hub question, this agent may not contact other agents" : "While answering a Hub question, this agent may contact other agents",
+          summaryMessage(input.contactLimit !== false ? "hub.exposure.summary.contactLimited" : "hub.exposure.summary.contactAllowed")),
         summaryLine(`Revision: ${input.expectedRevision + 1}`, summaryMessage("hub.exposure.summary.revision", input.expectedRevision + 1))]);
     },
     publish(raw) {
       const { input, a } = checked(raw);
       publishExposure(deps.store, { agent: a.name, providerId: HUB_AGENT_MODE, displayName: a.display, dataViewId: HUB_AGENT_MODE, allowedTools: [],
-        expectedRevision: input.expectedRevision }, readiness);
+        expectedRevision: input.expectedRevision, contactLimit: input.contactLimit }, readiness);
       void deps.afterCommit().catch(() => {});
       return viewOf(a);
     },
