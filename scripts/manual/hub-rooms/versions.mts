@@ -9,8 +9,8 @@
  *   members.<case>.png  — a room's members panel: "Needs an AgEnD update · ask {owner}";
  *   rec.<case>.png      — M-3141: the Recommended AgEnD version card, nothing saved yet (Same as this Hub chosen);
  *   rec-preview.<case>.png — the same after Save: its effect, "{n} Fleets will be asked to update.", before it applies;
- *   updates.<case>.png  — M-3145: rows with Update / "Owner updates it" / a waiting request (Cancel) / a rollback (Try
- *                         again), and "Update {n} Fleets that allow it" above them.
+ *   updates.<case>.png  — M-3145: rows with Update / "Owner updates it" / a waiting request for an older version (Cancel,
+ *                         Update to v{new} instead) / a rollback (Try again), and "Update {n} Fleets that allow it" above.
  * Cases: desktop/phone × light/dark × en/zh-TW (MATRIX=quick: desktop-en-light, phone-zh-TW-dark).
  *   PW_DIR=<playwright-core root> REPO=$PWD OUT=<dir> [MATRIX=full|quick] npx tsx scripts/manual/hub-rooms/versions.mts
  */
@@ -42,7 +42,7 @@ const FLEETS = [
   { id: "f1", updatesAllowed: true, updateRequest: null, status: "active", label: "build-box", owner: owner("林小華", "lin"), version: "2.4.0-beta.3", runsAsService: true, versionReportedAt: NOW, connected: true, lastConnectedAt: NOW, versionState: "current" },
   { id: "f2", updatesAllowed: true, updateRequest: null, status: "active", label: "design-pc", owner: owner("陳主任", "chen"), version: "2.4.0-beta.1", runsAsService: true, versionReportedAt: NOW - 5 * HOUR, connected: false, lastConnectedAt: NOW - 5 * HOUR, versionState: "needs-update", recommendationNotifiedAt: NOW - 4 * HOUR },
   { id: "f3", updatesAllowed: false, updateRequest: null, status: "active", label: "old-laptop", owner: owner("吳小安", "wu"), version: "2.3.4", runsAsService: false, versionReportedAt: NOW - 3 * DAY, connected: false, lastConnectedAt: NOW - 3 * DAY, versionState: "too-old-rooms" },
-  { id: "f4", updatesAllowed: true, updateRequest: { id: "rq4", fleetId: "f4", version: "2.4.0-beta.3", requestedBy: { name: "王經理" }, requestedAt: NOW - 2 * HOUR, expiresAt: NOW + 22 * HOUR, updatedAt: NOW - HOUR, startedAt: null, waitingSince: NOW - 2 * HOUR, state: "waiting" }, status: "active", label: "lab-server", owner: owner("王經理", "wang"), version: null, runsAsService: null, versionReportedAt: null, connected: false, lastConnectedAt: null, versionState: "unknown" },
+  { id: "f4", updatesAllowed: true, updateRequest: { id: "rq4", fleetId: "f4", version: "2.4.0-beta.2", requestedBy: { name: "王經理" }, requestedAt: NOW - 2 * HOUR, expiresAt: NOW + 22 * HOUR, updatedAt: NOW - HOUR, startedAt: null, waitingSince: NOW - 2 * HOUR, state: "waiting" }, status: "active", label: "lab-server", owner: owner("王經理", "wang"), version: null, runsAsService: null, versionReportedAt: null, connected: false, lastConnectedAt: null, versionState: "unknown" },
   { id: "f5", status: "revoked", label: "retired-box", owner: owner("陳主任", "chen"), version: "2.2.0", runsAsService: null, versionReportedAt: null, connected: false, lastConnectedAt: NOW - 40 * DAY, versionState: "needs-update" },
 ];
 // Phase 2 sets it; shown here so every state reads as the administrator will see it then (phase 1 sends null).
@@ -104,8 +104,8 @@ try {
     const many = await o.pg.locator(".hub-fleet-update-all .btn").textContent().catch(() => null);
     const lines = await o.pg.locator(".hub-fleet-list .hub-rows > [data-fleet]").evaluateAll((rs: Element[]) => rs.filter((x) => !x.closest("details"))
       .map((x) => [x.getAttribute("data-fleet"), (x.querySelector(".hub-fleet-update")?.textContent || "").replace(/\s+/g, " ").trim()]));
-    check(`${tag} updates: Update {2} above; Update / Owner updates it / waiting + Cancel / rolled back + Try again`, /2/.test(many ?? "") && lines.length === 4
-      && /(Update|更新)$/.test(lines[0][1]) && /(Owner updates it|由擁有者自行更新)/.test(lines[1][1]) && /(Cancel|取消)/.test(lines[2][1]) && /(Try again|再試一次)/.test(lines[3][1]), { many, lines });
+    check(`${tag} updates: Update {2} above; Update / Owner updates it / waiting (older version) + Cancel + Update to v{new} instead / rolled back + Try again`, /2/.test(many ?? "") && lines.length === 4
+      && /(Update|更新)$/.test(lines[0][1]) && /(Owner updates it|由擁有者自行更新)/.test(lines[1][1]) && /(Cancel|取消)/.test(lines[2][1]) && /(Update to v2\.4\.0-beta\.3 instead|改為更新到 v2\.4\.0-beta\.3)/.test(lines[2][1]) && /(Try again|再試一次)/.test(lines[3][1]), { many, lines });
     await o.pg.setViewportSize({ width: VIEW[c[0]].width, height: 2400 }); await o.pg.waitForTimeout(200);   // the whole card, not the window's part
     await card.screenshot({ path: join(out, `updates.${tag}.png`) }); keep(`updates.${tag}.png`);
     await o.pg.setViewportSize(VIEW[c[0]]);
