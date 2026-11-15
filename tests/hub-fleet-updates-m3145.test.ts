@@ -112,6 +112,33 @@ describe("a row's update part", () => {
   });
 });
 
+describe("replacing a request for an older recommendation (§5)", () => {
+  it("replaceable: queued or waiting, for another version, no cancel pending — never while updating", () => {
+    const r = (o: Record<string, unknown>, f: Record<string, unknown> = {}) => v.replaceable(row({ updateRequest: req({ version: "2.3.9", ...o }), ...f }), "2.4.0");
+    expect([r({ state: "waiting" }), r({ state: "queued" }), r({ state: "updating" }), r({ state: "waiting", version: "2.4.0" }), r({ state: "waiting", cancelRequested: true }),
+      r({ state: "waiting" }, { updatesAllowed: false }), r({ state: "rolled-back" }), v.replaceable(row({ updateRequest: req({ state: "waiting", version: "2.3.9" }) }), null)])
+      .toEqual([true, true, false, false, false, false, false, false]);
+  });
+
+  it("the row offers Update to v{new} instead; it asks (naming both versions), then requests the recommendation with its revision", async () => {
+    const c = client(), changed = vi.fn();
+    const p = await mount(h(v.FleetUpdateCell, { fleet: row({ updateRequest: req({ state: "waiting", version: "2.3.9", waitingSince: NOW - HOUR }) }), recommended: "2.4.0", revision: 9, client: c, onChanged: changed }));
+    expect([...p.root.querySelectorAll(".hub-fleet-update button")].map((b: any) => b.textContent)).toEqual(["Cancel", "Update to v2.4.0 instead"]);
+    fire(button(p, "Update to v2.4.0 instead"), "click"); await until(() => asked());
+    expect(asked().message).toBe("Update design-pc to AgEnD v2.4.0 instead of v2.3.9? The waiting request is cancelled first. It starts when that Fleet's agents are idle. Its owner is told now and when it finishes.");
+    confirm.answerConfirm(asked().id, true); await until(() => c.updateFleets.mock.calls.length === 1);
+    expect([c.updateFleets.mock.calls[0][0].fleetIds, c.updateFleets.mock.calls[0][0].ifRevision]).toEqual([["f1"], 9]);
+  });
+
+  it("a second press while the old one's cancel is pending: refused request-open, said in words; zh-TW label", async () => {
+    const c = client({ updateFleets: vi.fn(async () => ({ ok: true, requests: [], refused: [{ fleetId: "f1", code: "request-open" }] })) });
+    const p = await mount(h(v.FleetUpdateCell, { fleet: row({ updateRequest: req({ state: "queued", version: "2.3.9" }) }), recommended: "2.4.0", revision: 9, client: c }), "zh-TW");
+    fire(button(p, "改為更新到 v2.4.0"), "click"); await until(() => asked()); confirm.answerConfirm(asked().id, true);
+    await until(() => p.root.querySelector(".hub-fleet-update .err"));
+    expect(p.root.querySelector(".hub-fleet-update .err").textContent).toBe(v.updateReasonText("request-open", "2.4.0"));
+  });
+});
+
 describe("Update {n} Fleets that allow it", () => {
   it("counts only those that qualify; asks once for all; says how many started and how many could not", async () => {
     const fleets = [row(), row({ id: "f2", label: "b" }), row({ id: "f3", updatesAllowed: false }), row({ id: "f4", updateRequest: req({ state: "waiting" }) }), row({ id: "f5", versionState: "current" })];

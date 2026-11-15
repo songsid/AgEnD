@@ -29,7 +29,9 @@ register("hubVersions", {
     notified: "Owner notified · {0}", notNotified: "Not notified yet",
     updateBtn: "Update", ownerUpdates: "Owner updates it", updateMany: "Update {0} Fleets that allow it",
     askOne: "Update {0} to AgEnD v{1}? It starts when that Fleet's agents are idle. Its owner is told now and when it finishes.",
-    askMany: "Update {0} Fleets to AgEnD v{1}?", askOk: "Update", cancel: "Cancel", tryAgain: "Try again",
+    askMany: "Update {0} Fleets to AgEnD v{1}?", askOk: "Update",
+    replaceBtn: "Update to v{0} instead",
+    askReplace: "Update {0} to AgEnD v{1} instead of v{2}? The waiting request is cancelled first. It starts when that Fleet's agents are idle. Its owner is told now and when it finishes.", cancel: "Cancel", tryAgain: "Try again",
     stSending: "Sending…", stConnect: "Waiting for the Fleet to connect", stWaiting: "Waiting for its agents to be idle · since {0}",
     stUpdating: "Updating…", stDone: "Updated to v{0} · {1}", stRolledBack: "Update failed; back on v{0}",
     stBusy: "Did not start: agents were busy for 24 hours", stOffline: "Did not start: the Fleet has not connected for 7 days.",
@@ -72,7 +74,9 @@ register("hubVersions", {
     notified: "已通知擁有者 · {0}", notNotified: "尚未通知",
     updateBtn: "更新", ownerUpdates: "由擁有者自行更新", updateMany: "更新 {0} 個已允許的 Fleet",
     askOne: "要把 {0} 更新到 AgEnD v{1} 嗎？會等那個 Fleet 的 Agent 都閒置才開始。現在和完成時都會通知擁有者。",
-    askMany: "要把 {0} 個 Fleet 更新到 AgEnD v{1} 嗎？", askOk: "更新", cancel: "取消", tryAgain: "再試一次",
+    askMany: "要把 {0} 個 Fleet 更新到 AgEnD v{1} 嗎？", askOk: "更新",
+    replaceBtn: "改為更新到 v{0}",
+    askReplace: "要改把 {0} 更新到 AgEnD v{1}（取代 v{2}）嗎？會先取消等待中的要求，再等那個 Fleet 的 Agent 都閒置才開始。現在和完成時都會通知擁有者。", cancel: "取消", tryAgain: "再試一次",
     stSending: "傳送中…", stConnect: "等待 Fleet 連接", stWaiting: "等待 Agent 閒置 · {0} 起",
     stUpdating: "更新中…", stDone: "已更新到 v{0} · {1}", stRolledBack: "更新失敗，已回到 v{0}",
     stBusy: "沒有開始：Agent 連續 24 小時都在忙", stOffline: "沒有開始：這個 Fleet 已經 7 天沒有連接。",
@@ -305,6 +309,14 @@ const OPEN = new Set(["queued", "waiting", "updating"]);
 export const updatable = (f, recommended) => !!recommended && f?.status === "active" && behind(f) && f.updatesAllowed === true
   && !(f.updateRequest && OPEN.has(f.updateRequest.state));
 
+/**
+ * §5's replacement: a request not yet started (queued or waiting, no cancel pending) for another version than the saved
+ * recommendation can be replaced by one for the recommendation — the Hub cancels the old one first. Never while updating.
+ */
+export const replaceable = (f, recommended) => !!recommended && f?.status === "active" && behind(f) && f.updatesAllowed === true
+  && !!f.updateRequest && (f.updateRequest.state === "queued" || f.updateRequest.state === "waiting")
+  && f.updateRequest.cancelRequested !== true && f.updateRequest.version !== recommended;
+
 /** §4.5: the request's one status line (and its one action: Cancel while waiting, Try again after a failure). */
 export function updateStatus(f, now = Date.now()) {
   const r = f?.updateRequest;
@@ -330,10 +342,11 @@ const newKey = () => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math
  * Ask, then start: one or many Fleets, the target always the saved recommendation (its revision guards a change made
  * meanwhile). Resolves { ok, text } for the page to say, or null when the administrator said no.
  */
-export async function startUpdates(client, fleets, recommended, revision) {
+export async function startUpdates(client, fleets, recommended, revision, replacing = null) {
   if (!fleets.length) return null;
-  const one = fleets.length === 1 ? fleets[0] : null;
-  const yes = await confirmDialog({ title: hv("askOk"), message: one ? hv("askOne", one.label || one.owner?.name || "", recommended) : hv("askMany", String(fleets.length), recommended), confirmLabel: hv("askOk") });
+  const one = fleets.length === 1 ? fleets[0] : null, name = one ? one.label || one.owner?.name || "" : "";
+  const message = one && replacing ? hv("askReplace", name, recommended, replacing) : one ? hv("askOne", name, recommended) : hv("askMany", String(fleets.length), recommended);
+  const yes = await confirmDialog({ title: hv("askOk"), message, confirmLabel: hv("askOk") });
   if (!yes) return null;
   const r = await client.updateFleets({ fleetIds: fleets.map((f) => f.id), ifRevision: revision, idempotencyKey: newKey() });
   if (!r || r.ok === false) return { ok: false, text: updateReasonText(r?.code, recommended) };
@@ -349,11 +362,13 @@ export function FleetUpdateCell({ fleet, recommended = null, revision = 0, clien
   const status = updateStatus(fleet, now);
   const run = async (fn) => { if (busy) return; setBusy(true); setMsg(null); const r = await fn(); setBusy(false); if (r) { if (r.text) setMsg(r); onChanged(); } };
   const start = () => run(() => startUpdates(client, [fleet], recommended, revision));
+  const replace = () => run(() => startUpdates(client, [fleet], recommended, revision, fleet.updateRequest.version));
   const cancel = () => run(async () => { const r = await client.cancelFleetUpdate(fleet.updateRequest.id); return r && r.ok !== false ? { ok: true, text: "" } : { ok: false, text: updateReasonText(r?.code) }; });
   return html`<span class="hub-fleet-update">
     ${status ? html`<small class="note hub-fleet-update-status">${status.text}</small>
       ${/* A cancel the Fleet has not confirmed yet (it may already have claimed the request): Cancelling…, once. */ ""}
       ${status.action === "cancel" ? html`<button type="button" class="btn btn-sm" disabled=${busy || fleet.updateRequest?.cancelRequested === true} onClick=${cancel}>${fleet.updateRequest?.cancelRequested === true ? hv("cancelling") : hv("cancel")}</button>` : null}
+      ${replaceable(fleet, recommended) ? html`<button type="button" class="btn btn-sm hub-fleet-update-replace" disabled=${busy} onClick=${replace}>${hv("replaceBtn", recommended)}</button>` : null}
       ${status.action === "retry" && updatable(fleet, recommended) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${start}>${hv("tryAgain")}</button>` : null}`
     : fleet.updatesAllowed === true ? html`<button type="button" class="btn btn-sm hub-fleet-update-btn" disabled=${busy} onClick=${start}>${hv("updateBtn")}</button>`
     : html`<small class="note hub-fleet-owner-updates">${hv("ownerUpdates")}</small>`}

@@ -617,7 +617,8 @@ a Fleet itself (yet).
   v*y* (**Try again**) · Did not start (busy 24 hours, or offline 7 days) · The owner cancelled this update.
   A request waits up to 7 days for an offline Fleet to connect. **Cancel** reads **Cancelling…** until the Fleet
   confirms it stopped; an update that has already started cannot be cancelled. Changing the recommendation later does
-  not change a waiting request's version. The Fleet still makes its own checks (the owner's switch, a published
+  not change a waiting request's version; the row then offers **Update to v*x* instead**, which cancels the waiting
+  request first and sends the new one. The Fleet still makes its own checks (the owner's switch, a published
   version) and can refuse; the row then says why. Older Fleets are always updated by their owners.
 
 ## Config keys
