@@ -136,7 +136,7 @@
     },
     {
       "path": "tests/hub-team-allowlist-m3194.test.ts",
-      "sha256": "db948ffe78260936c0591ac88598745b6d45e347af28a402590e14131ecab6ec"
+      "sha256": "b2aa149893487cc4e272d382f4acd02f73f3808434a91a53a8e3681358ba8219"
     },
     {
       "path": "tests/hub-team-allowlist-ui-m3194.test.ts",
@@ -154,5 +154,7 @@
   "r1Delta": "Common writer deletes empty optional arrays; two regression pins. No JS/CSS/visual change from capture source. Four zero-count tap exceptions removed after capture.",
   "scope": "Logs retain individual historical stages; current JS/CSS capture bindings verified against actual response hashes. R1 native and84/3 tests bind writer delta.",
   "r2Parent": "e1173950699a78db992b2a4126257380f7a2b378",
-  "r2Delta": "Only three reviewer-requested assertion pins in two test files; runtime unchanged from R1."
+  "r2Delta": "Only three reviewer-requested assertion pins in two test files; runtime unchanged from R1.",
+  "r3Parent": "f6763813d54e78a937d1b1744ca61c4217612668",
+  "r3Delta": "Only the ask-only Team assertion twin; all runtime source unchanged."
 }

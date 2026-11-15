@@ -85,6 +85,13 @@ describe("T1 allowed-list subjects", () => {
     f.checkEligibility.mockResolvedValue({ eligible: false, reason: "disabled" });
     expect(await f.store.check(user, "ask_agents", f.ctx)).toMatchObject({ outcome: "deny", reason: "ineligible" });
   });
+  it("does not expand an ask-only team row into sharing or Fleet connection", async () => {
+    const f = fixture();
+    f.store.replace({ ...f.store.read(), state: "enabled", teams: [{ ...team(), allow: ["ask_agents"], maxFleets: 8 }] }, user, f.ctx);
+    expect(await f.store.check(user, "ask_agents", f.ctx)).toMatchObject({ outcome: "allow" });
+    expect(await f.store.check(user, "publish_agents", f.ctx)).toMatchObject({ outcome: "deny" });
+    expect(await f.store.check(user, "pair_fleet", f.ctx)).toMatchObject({ outcome: "deny", maxFleets: 0 });
+  });
   it("does not expand an ask-only person row into sharing or Fleet connection", async () => {
     const f = fixture();
     f.store.replace({ ...f.store.read(), state: "enabled", people: [{ person: user, name: "Alex", allow: ["ask_agents"], maxFleets: 8 }] }, user, f.ctx);
