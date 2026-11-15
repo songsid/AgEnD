@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-member-m3144
+
+ ❯ tests/hub-update-factory-m3144.test.ts (1 test | 1 failed) 1349ms
+   × offers remote updates only with its host hooks, reports consent and returns durable request status through the pinned link 1347ms
+(node:40631) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-update-factory-m3144.test.ts > offers remote updates only with its host hooks, reports consent and returns durable request status through the pinned link
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-update-factory-m3144.test.ts:30:119
+     28|   await vi.waitFor(() => expect(link?.features.has(HUB_FLEET_UPDATE_CA…
+     29|   expect(updates!.consent().on).toBe(false); updates!.setConsent(true);
+     30|   await vi.waitFor(() => expect(rig.received.some(f => f.type === "fle…
+       |                                                                                                                       ^
+     31|   const request = { id: randomUUID(), version: "2.4.0", requestedAt: D…
+     32|   await rig.server.send(link!.fleetId, { v: 1, type: "fleet.update", r…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 8 passed (9)
+   Start at  11:33:52
+   Duration  10.39s (transform 5.95s, setup 112ms, import 7.92s, tests 2.11s, environment 0ms)
+

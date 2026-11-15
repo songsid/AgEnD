@@ -341,7 +341,7 @@ import { GUEST_COMMAND_RUNS, GUEST_PREF_WRITES, GUEST_SEARCHES, bindGuestRequest
 import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoomReadMode } from "./web-guest-rooms.js";
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
-import { resolveInstalledAgend } from "./update-dispatch.js";
+import { resolveInstalledAgend, npmForRunningInstall } from "./update-dispatch.js";
 import { HUB_UPDATE_NOTICE_FILE, HUB_UPDATE_REMIND_MS, hubNoticeDue, hubNoticeKey, readHubNoticeState, writeHubNoticeState } from "./hub-update-notice.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
 import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdatePin, type WebUpdateProgress } from "./web-update.js";
@@ -1063,6 +1063,7 @@ const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
 /** M-3140: Update now on a Hub-recommended-version notice in General ("hub-update:" + 32 hex + ":update" = 50 bytes). */
 const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
+const HUB_FLEET_UPDATE_CALLBACK_PREFIX = "hub-fleet-update:";
 const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
 /** #2692: a fleet admin's Approve / Reject on an agent's pending skin-pack change, in General. */
 const OFFICE_PACK_CALLBACK_PREFIX = "office-pack:";
@@ -1976,6 +1977,109 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       () => this.fleetAdminGate(by, adapterId) === "ok" && !this.shuttingDown && this.hubRecommendationFor(pin) !== null, advice.version);
     return true;
   }
+  private hubUpdates: import("./hub/member/updates.js").HubMemberUpdates | null = null;
+  private hubUpdateOwned: { id: string; claim: { startedAt: number } } | null = null;
+  private hubUpdateBootProgress: ReturnType<typeof readUpdateProgress> = null;
+  private pendingHubFleetUpdates = new Map<string, string>();
+  hubFleetUpdates(): import("./hub/member/updates.js").HubMemberUpdates | null { return this.hubUpdates; }
+  private hubUpdateIdle(): boolean {
+    if (!this.startupComplete || this.shuttingDown || this.reconcileInFlight || this.topicCleanupInFlight
+      || this.deliveryPumpRunning || (this.webUpdateOwned && this.webUpdateOwned !== this.hubUpdateOwned?.claim)) return false;
+    for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
+      if (this.restartsInFlight.has(name) || this.stopsInFlight.has(name) || this.handOffsInFlight.has(name)
+        || this.ipcConnectInFlight.has(name) || this.ipcReconnectInFlight.has(name) || this.hasPendingIdleGatedDelivery(name)
+        || this.webChannelEchoTails.has(name)) return false;
+      const worker = this.queueWorkers.get(name); if (worker?.busy || worker?.inFlight) return false;
+      const process = this.getInstanceStatus(name);
+      if (process === "stopped" || process === "crashed") continue;
+      if (process === "paused" && ["stopped", "crashed"].includes(this.daemons.get(name)?.getProcessStatus?.() ?? "unknown")) continue;
+      if (process !== "running" || this.getInstanceExecutionState(name) !== "idle") return false;
+      if (this.getInstanceInteraction(name)?.phase === "waiting") return false;
+    }
+    return true;
+  }
+  private async hubUpdateCanInstall(): Promise<boolean> {
+    const found = await npmForRunningInstall(); if ("reason" in found) return false;
+    const { access } = await import("node:fs/promises"), { constants } = await import("node:fs");
+    try { await access(found.root, constants.W_OK); await access(found.prefix, constants.W_OK); return true; } catch { return false; }
+  }
+  private async launchHubUpdate(row: import("./update-idle.js").IdleUpdate, control: import("./update-idle.js").IdleUpdateLaunch): Promise<boolean> {
+    if (this.shuttingDown || this.webUpdateOwned || isUpdateInProgress(this.dataDir) || !control.current()) return false;
+    const claim = { startedAt: Date.now() }, owned = { id: row.id, claim };
+    this.hubUpdateOwned = owned; this.webUpdateOwned = claim;
+    const release = () => { if (this.hubUpdateOwned === owned) this.hubUpdateOwned = null; if (this.webUpdateOwned === claim) this.webUpdateOwned = null; };
+    if (!persistUpdateProgress(this.dataDir, { ...webUpdateTarget(claim.startedAt), messageId: `hub-fleet-update:${row.id}` }, claim.startedAt)
+      || !setUpdateProgressStage(this.dataDir, "preparing", { version: row.version })) { release(); return false; }
+    try {
+      const child = await this.launchInstalledUpdate(`Hub-requested update ${row.id}`,
+        () => !this.shuttingDown && this.hubUpdateOwned === owned && control.current() && control.claim(), row.version);
+      if (!child) { release(); return false; }
+      let endedOnce = false;
+      const ended = () => {
+        if (endedOnce) return; endedOnce = true;
+        const settle = () => {
+          if (this.shuttingDown || this.hubUpdateOwned !== owned) return;
+          // systemd-run may exit before its independent updater. Keep the claim while its bounded marker is active.
+          const marker = readUpdateProgress(this.dataDir)?.progress;
+          if (marker?.target.messageId === `hub-fleet-update:${row.id}` && isUpdateInProgress(this.dataDir)) {
+            const timer = setTimeout(settle, 5000); timer.unref(); return;
+          }
+          release();
+          const outcome = this.hubUpdateOutcome(row);
+          if (outcome) this.hubUpdates?.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
+        };
+        settle();
+      };
+      child.once("exit", ended); child.once("error", ended); return true;
+    } catch { release(); return false; }
+  }
+  private hubUpdateOutcome(row: import("./update-idle.js").IdleUpdate): { state: "done" | "rolled-back" | "failed"; currentVersion: string } | null {
+    if (this.hubUpdateOwned?.id === row.id) return null;
+    const currentVersion = this.runningAgendVersion();
+    if (currentVersion.replace(/^v/, "") === row.version.replace(/^v/, "")) return { state: "done", currentVersion };
+    const matches = (m: ReturnType<typeof readUpdateProgress>) => m?.progress.target.messageId === `hub-fleet-update:${row.id}` && m.progress.version === row.version;
+    const saved = readUpdateProgress(this.dataDir);
+    // Startup may clear the ordinary progress marker before the optional Hub mount finishes.
+    const marker = (matches(saved) ? saved : matches(this.hubUpdateBootProgress) ? this.hubUpdateBootProgress : null)?.progress;
+    const reachedRestart = marker && (["installed", "stopping", "starting", "complete"].includes(marker.stage)
+      || marker.stage === "failed" && (marker.failedStage === "starting" || marker.failedStage === "stopping"));
+    return { state: reachedRestart ? "rolled-back" : "failed", currentVersion };
+  }
+  private recordHubUpdateNotice(n: import("./hub/member/updates.js").MemberUpdateNotice): boolean {
+    const store = this.webNoticeStore(); if (!store) return false;
+    const text = t(`hub_fleet_update.${n.state}`, n.hubName, n.requestedBy, n.version, n.currentVersion ?? "");
+    const prior = store.view().items.some(i => i.hubUpdate?.requestId === n.requestId && i.hubUpdate.state === n.state);
+    const notice = store.addDurable({ kind: "update", text, hubUpdate: n }); if (!notice) return false;
+    this.emitSseEvent("notice", { notice, unread: store.unread() });
+    if (!prior && !this.webOnlyPromptPlace()) void this.postHubUpdateChat(n, text).catch(() => this.logger.warn("Hub update owner chat notice could not be posted"));
+    return true;
+  }
+  private async postHubUpdateChat(n: import("./hub/member/updates.js").MemberUpdateNotice, text: string): Promise<void> {
+    const general = this.findGeneralInstance(); if (!general) return;
+    if (n.state !== "waiting" && n.state !== "expired") { this.notifyInstanceTopic(general, text); return; }
+    const adapter = this.getAdapterForInstance(general), adapterId = this.getInstanceAdapterId(general), chatId = this.getGroupIdForInstance(general);
+    if (!adapter || !adapterId || !chatId) return;
+    const threadId = String(this.fleetConfig?.instances[general]?.topic_id ?? "");
+    const nonce = await this.postNonceButtonPromptOrThrow({ prefix: HUB_FLEET_UPDATE_CALLBACK_PREFIX, alertType: "tip", instanceName: general,
+      adapter, adapterId, chatId, ...(threadId ? { threadId } : {}), message: text,
+      choices: [{ action: "update", label: t("hub_update.button") }, ...(n.state === "waiting" ? [{ action: "cancel", label: t("hub_fleet_update.cancel") }] : [])],
+      expiredText: t("hub_update.expired"), timeoutMs: 24 * 60 * 60_000 });
+    this.pendingHubFleetUpdates.set(nonce, n.requestId);
+    const timer = setTimeout(() => this.pendingHubFleetUpdates.delete(nonce), 24 * 60 * 60_000 + 60_000); timer.unref();
+  }
+  private async handleHubFleetUpdateCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(HUB_FLEET_UPDATE_CALLBACK_PREFIX, /^hub-fleet-update:([0-9a-f]{32}):(update|cancel)$/, data, adapterId, adapter,
+      undefined, userId => this.fleetAdminGate(userId, adapterId) === "ok");
+    if (claimed === null) return false; if (claimed === "consumed") return true;
+    const nonce = data.callbackData.slice(HUB_FLEET_UPDATE_CALLBACK_PREFIX.length, HUB_FLEET_UPDATE_CALLBACK_PREFIX.length + 32);
+    const id = this.pendingHubFleetUpdates.get(nonce); this.pendingHubFleetUpdates.delete(nonce);
+    const owner = this.hubUpdates, value = id ? owner?.view(id) : null;
+    await this.retireNonceButtons(claimed.entry, claimed.entry.messageId ?? data.messageId, t("hub_update.expired"));
+    if (!id || !owner || !value) return true;
+    if (claimed.action === "cancel") owner.cancel({ id, version: value.version });
+    else await this.startHubRequestedUpdateOnce(`chat:${nonce}`, `${adapterId}:${data.userId}`, () => this.fleetAdminGate(data.userId ?? "", adapterId) === "ok" && !this.shuttingDown, id);
+    return true;
+  }
   private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
   /** Explicit owner Settings read only. A paused binding is not permission to mount or connect a member. */
@@ -2403,6 +2507,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
+          updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir),
+            canInstall: () => this.hubUpdateCanInstall(), launch: (row, control) => this.launchHubUpdate(row, control),
+            active: id => this.hubUpdateOwned?.id === id, outcome: row => this.hubUpdateOutcome(row), notify: n => this.recordHubUpdateNotice(n) },
+          attachUpdates: updates => { this.hubUpdates = updates; },
           attachRecommendations: read => { this.hubRecommendationRead = read; },
           recommendationChanged: () => this.hubRecommendationChanged(),
           attachPairingNotices: read => { this.hubPairingNotices = read; },
@@ -10955,6 +11063,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1737 review: the marker this boot adopts — the startup clear may only ever clear this one.
     const bootUpdateMarker = updateMarkerIdentity(this.dataDir);
     const savedUpdateProgress = readUpdateProgress(this.dataDir);
+    this.hubUpdateBootProgress = savedUpdateProgress;
     const pendingUpdateProgress = savedUpdateProgress
       && savedUpdateProgress.progress.stage !== "failed"
       && savedUpdateProgress.progress.stage !== "complete"
@@ -18163,6 +18272,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
+    if (await this.handleHubFleetUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroReconcileCallback(data, adapterId, adapter)) return true;
     if (await this.handleOfficePackCallback(data, adapterId, adapter)) return true;
@@ -28858,6 +28968,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       checkUpdateNow: () => this.checkUpdateNow(),
       updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
       startWebUpdate: (key, person, stillAllowed, pin) => this.startWebUpdateOnce(key, person, stillAllowed, pin),
+      startHubRequestedUpdate: (key, person, stillAllowed, id) => this.startHubRequestedUpdateOnce(key, person, stillAllowed, id),
       updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
     };
   }
@@ -28883,13 +28994,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * last check offers as installable; the update itself is chat `/update`'s (launchInstalledUpdate). Its progress marker
    * targets no chat message (WEB_UPDATE_ADAPTER); the page reads the stages the updater writes into it.
    */
-  private async startWebUpdate(person: string, stillAllowed: () => boolean, pin?: WebUpdatePin): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  private async startWebUpdate(person: string, stillAllowed: () => boolean, pin?: WebUpdatePin, hubRequestId?: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
     if (this.shuttingDown) return { ok: false, status: 409, error: "stopping" };
     // Synchronous from here to the claim: a second start cannot slip in between on the event loop.
     if (this.webUpdateOwned || isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
     // M-3140: Update pinned to the Hub's recommendation. The page only names which advice it was shown; the version is
     // this Fleet's own verified view, re-read now (and again at the launch) — a page's word never chooses what installs.
     let pinned: string | undefined;
+    const requestOwner = this.hubUpdates;
+    if (hubRequestId) {
+      const version = requestOwner?.manualCandidate(hubRequestId);
+      if (!version || !this.semverGt(version, this.runningAgendVersion())) return { ok: false, status: 409, error: "request_changed" };
+      pinned = version;
+    }
     if (pin) {
       const advice = this.hubRecommendationFor(pin);
       if (!advice) return { ok: false, status: 409, error: "recommendation_changed" };
@@ -28911,7 +29028,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const origin = `web update by ${person}`;
     // Prism #3505 P2-3: the asking session must still be current and an admin's when the updater is launched.
-    void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed() && (!pin || this.hubRecommendationFor(pin) !== null), pinned).then(child => {
+    void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed() && (!pin || this.hubRecommendationFor(pin) !== null)
+      && (!hubRequestId || this.hubUpdates === requestOwner && requestOwner?.manualCandidate(hubRequestId) === pinned), pinned).then(child => {
       if (!child) { release(); return; }
       child.once("exit", release);
       child.once("error", release);
@@ -28930,6 +29048,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (known) return known;
     const answer = this.startWebUpdate(person, stillAllowed, pin);
     this.webUpdateStarts.set(key, answer);
+    while (this.webUpdateStarts.size > 32) this.webUpdateStarts.delete(this.webUpdateStarts.keys().next().value!);
+    return answer;
+  }
+
+  private startHubRequestedUpdateOnce(key: string, person: string, stillAllowed: () => boolean, id: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    const cacheKey = JSON.stringify(["hub-request", person, id, key]);
+    const known = this.webUpdateStarts.get(cacheKey); if (known) return known;
+    const answer = (async (): Promise<{ ok: true } | { ok: false; status: number; error: string }> => {
+      const owner = this.hubUpdates, request = owner?.view(id);
+      if (!owner || !request || !owner.manualCandidate(id)) return { ok: false, status: 404, error: "request_not_found" };
+      const current = () => !this.shuttingDown && this.hubUpdates === owner && stillAllowed();
+      if (!current()) return { ok: false, status: 403, error: "not_authorized" };
+      if (request.state === "waiting") {
+        if (this.webUpdateOwned || isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
+        return await owner.updateNow(id, current) ? { ok: true } : { ok: false, status: 409, error: "update_not_started" };
+      }
+      // An expired request's button is a new, explicitly confirmed local update. Its old Hub result stays expired.
+      if (request.state === "expired") return this.startWebUpdate(person, current, undefined, id);
+      return { ok: false, status: 409, error: request.state === "updating" ? "update_running" : "request_changed" };
+    })();
+    this.webUpdateStarts.set(cacheKey, answer);
     while (this.webUpdateStarts.size > 32) this.webUpdateStarts.delete(this.webUpdateStarts.keys().next().value!);
     return answer;
   }

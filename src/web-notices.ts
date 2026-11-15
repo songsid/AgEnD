@@ -20,6 +20,7 @@ export type NoticeKind = "fleet" | "instance" | "update" | "schedule" | "summary
 const KINDS: readonly string[] = ["fleet", "instance", "update", "schedule", "summary"];
 
 export interface WebNotice {
+  readonly hubUpdate?: import("./hub/member/updates.js").MemberUpdateNotice;
   /** Increasing, never reused (the next one survives a restart). */
   readonly id: number;
   /** Wall clock, ms. */
@@ -38,11 +39,20 @@ export interface WebNoticesView {
   unread: number;
 }
 
+function validHubUpdate(v: unknown): boolean {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const n = v as Record<string, unknown>;
+  return typeof n.requestId === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(n.requestId)
+    && ["hubName", "requestedBy", "version"].every(k => typeof n[k] === "string" && (n[k] as string).length <= 256)
+    && ["waiting", "done", "rolled-back", "expired", "cancelled", "failed"].includes(String(n.state))
+    && (n.currentVersion === undefined || typeof n.currentVersion === "string");
+}
 function valid(v: unknown): v is WebNotice {
   if (!v || typeof v !== "object") return false;
   const n = v as Record<string, unknown>;
   return Number.isSafeInteger(n.id) && (n.id as number) > 0 && Number.isSafeInteger(n.at) && (n.at as number) > 0
     && typeof n.kind === "string" && KINDS.includes(n.kind) && typeof n.text === "string"
+    && (n.hubUpdate === undefined || validHubUpdate(n.hubUpdate))
     && (n.instance === undefined || (typeof n.instance === "string" && n.instance.length > 0));
 }
 
@@ -75,9 +85,9 @@ export class WebNotices {
   }
 
   /** Keep one notice; the oldest beyond NOTICES_MAX goes. Returns it (kept in memory even when the file cannot be written). */
-  add(input: { kind: NoticeKind; text: string; instance?: string }): WebNotice {
+  add(input: { kind: NoticeKind; text: string; instance?: string; hubUpdate?: WebNotice["hubUpdate"] }): WebNotice {
     const notice: WebNotice = Object.freeze({ id: this.next++, at: this.now(), kind: input.kind, text: input.text.slice(0, NOTICE_TEXT_MAX),
-      ...(input.instance ? { instance: input.instance } : {}) });
+      ...(input.instance ? { instance: input.instance } : {}), ...(input.hubUpdate && validHubUpdate(input.hubUpdate) ? { hubUpdate: Object.freeze({ ...input.hubUpdate }) } : {}) });
     this.items.push(notice);
     if (this.items.length > NOTICES_MAX) this.items.splice(0, this.items.length - NOTICES_MAX);
     this.flush();
@@ -88,10 +98,14 @@ export class WebNotices {
    * #3373 review P2: a notice that must be on disk before anything acts on it (a web-only fleet's restart trace). Kept and
    * returned only when it was written; otherwise it is not kept at all (null) — never a trace that a restart forgets.
    */
-  addDurable(input: { kind: NoticeKind; text: string; instance?: string }): WebNotice | null {
+  addDurable(input: { kind: NoticeKind; text: string; instance?: string; hubUpdate?: WebNotice["hubUpdate"] }): WebNotice | null {
+    if (input.hubUpdate) {
+      const prior = this.items.find(n => n.hubUpdate?.requestId === input.hubUpdate!.requestId && n.hubUpdate.state === input.hubUpdate!.state);
+      if (prior) return prior;
+    }
     const before = { items: [...this.items], next: this.next };
     const notice: WebNotice = Object.freeze({ id: this.next++, at: this.now(), kind: input.kind, text: input.text.slice(0, NOTICE_TEXT_MAX),
-      ...(input.instance ? { instance: input.instance } : {}) });
+      ...(input.instance ? { instance: input.instance } : {}), ...(input.hubUpdate && validHubUpdate(input.hubUpdate) ? { hubUpdate: Object.freeze({ ...input.hubUpdate }) } : {}) });
     this.items.push(notice);
     if (this.items.length > NOTICES_MAX) this.items.splice(0, this.items.length - NOTICES_MAX);
     if (this.flush()) return notice;

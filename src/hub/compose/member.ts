@@ -39,10 +39,13 @@ import type { HubAuditRecord, HubServerFrame } from "../types.js";
 import { EMPTY_VIEW_SOURCE, type HubViewSource } from "./views.js";
 import { HUB_REPRESENTATIVE_MIGRATION, HubRepresentativeExecution, type HubReportOutcome, type HubRepresentativeDelivery } from "../representative.js";
 import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
+import { HubMemberUpdates, HUB_MEMBER_UPDATES_MIGRATION, type MemberUpdatesOptions } from "../member/updates.js";
+import { IDLE_UPDATE_MIGRATION } from "../../update-idle.js";
+import { createPublishedVersionLookup } from "../published-version.js";
 import { HubMemberRecommendations, HUB_MEMBER_RECOMMENDATION_MIGRATION } from "../member/recommendations.js";
 import { HubMemberFiles } from "../member/attachments.js";
 import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../member/pairing-notices.js";
-import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY } from "../protocol.js";
+import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_FLEET_UPDATE_CAPABILITY } from "../protocol.js";
 import { createRoomStatePublisher, HubRoomAskAdapter, HUB_ROOM_ASK_MIGRATION, verifyRoomAskJournal,
   type AgentStateInput, type RoomAskLink, type RoomStateLink } from "../member/room-ask.js";
 import { HubRoomPostAdapter, verifyRoomPostJournal } from "../member/room-post.js";
@@ -76,6 +79,8 @@ export interface HubMemberComponents {
 }
 
 export interface HubMemberFactoryOptions {
+  updates?: Pick<MemberUpdatesOptions, "canInstall" | "launch" | "active" | "outcome" | "idle" | "notify" | "busy">;
+  attachUpdates?(updates: HubMemberUpdates | null): void;
   fleetInfo?: import("../types.js").HubFleetInfo;
   versionRegistry?: import("../published-version.js").PublishedVersionLookup;
   attachRecommendations?(read: (() => import("../recommendation-model.js").HubRecommendedUpdate | null) | null): void;
@@ -316,7 +321,7 @@ function openMemberState(options: {
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_MEMBER_JOURNAL_MIGRATION,
         { component: "s4-execution", version: 1, up: execution.migrateHubExecution }, exposureStore.HUB_EXPOSURE_MIGRATION,
-        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION, HUB_MEMBER_RECOMMENDATION_MIGRATION]);
+        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION, HUB_MEMBER_RECOMMENDATION_MIGRATION, IDLE_UPDATE_MIGRATION, HUB_MEMBER_UPDATES_MIGRATION]);
       bindHubInstance(db, hubId, state, now());
       // P1 never initialized S4, so its absent meta row is valid only with the untouched zero floor.
       const executionMeta = db.prepare("SELECT revision FROM hub_execution_meta WHERE singleton=1").get() as { revision: number } | undefined;
@@ -603,6 +608,22 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         hold: (messageId, reason) => options.log("warn", "Hub question held", { messageId, reason }),
         now,
       });
+      const reportedInfo = options.fleetInfo ? { ...options.fleetInfo } : undefined;
+      const reportUpdateConsent = () => {
+        if (!updates || !reportedInfo) return;
+        reportedInfo.updatesAllowed = updates.consent().on;
+        const l = online;
+        // fleet-info-v1 is a Hub-only offer, absent from the member's intersection. send() checks its welcome proof.
+        if (l?.current() && l.features.has(HUB_FLEET_UPDATE_CAPABILITY))
+          void l.send({ v: 1, type: "fleet.info", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload: { ...reportedInfo,
+            ...(l.features.has("fleet-recommend-v1") ? { recommendations: true as const } : {}) } }).catch(() => {});
+      };
+      const updates = options.updates && reportedInfo ? new HubMemberUpdates({ ...options.updates, db, binding: profileDigest ?? roomBinding,
+        hubName: new URL(profile.hub.webOrigin).hostname, version: reportedInfo.version, current: () => live() && !terminalHold && profileCurrent(),
+        service: () => reportedInfo.runsAsService, now, lookup: options.versionRegistry ?? createPublishedVersionLookup(), changed: reportUpdateConsent }) : null;
+      if (updates && reportedInfo) reportedInfo.updatesAllowed = updates.consent().on;
+      let updateTimer: ReturnType<typeof setInterval> | null = null;
+      teardown.add("Fleet updates", () => { if (updateTimer) clearInterval(updateTimer); updates?.close(); options.attachUpdates?.(null); });
       const recommendations = options.fleetInfo ? new HubMemberRecommendations({ db, hubId,
         hubName: new URL(profile.hub.webOrigin).hostname, version: options.fleetInfo.version, current: live, now,
         lookup: options.versionRegistry, changed: options.recommendationChanged, log: options.log }) : null;
@@ -639,11 +660,12 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         } });
       client = new HubMemberClient({
         log: options.log,
-        fleetInfo: options.fleetInfo,
+        fleetInfo: reportedInfo,
         receiveRecommendations: !!recommendations,
         home: options.home,
         hubId,
-        ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] } : {}),
+        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY] : []),
+          ...(options.representative.readState ? [HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])],
         memberOrigin: profile.hub.memberOrigin,
         // #3429 B: a pending relocation's `to` first, then the anchor; a relocation state that does not verify: none.
         ...(profileDigest ? { dial: () => relocations.dialOrder(profile, profileDigest) } : {}),
@@ -667,12 +689,21 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             online = l;
             quota.start(l);
             terminalHold = false; reportLink("online");
+            updates?.connected(l);
             startRooms(l);
             // Questions admitted while offline (or before a restart, with no input yet) go out on this link.
             service.pump();
           }
         },
         receive: (frame, l) => {
+          if (updates && (frame.type === "fleet.update" || frame.type === "fleet.update-cancel" || frame.type === "fleet.update-status-ack")) {
+            try {
+              if (frame.type === "fleet.update") updates.receive(frame.payload, l);
+              else if (frame.type === "fleet.update-cancel") updates.cancel(frame.payload, l);
+              else updates.acknowledge(frame.payload, l);
+            } catch { options.log("warn", "Hub update control was refused", { phase: "receive" }); }
+            return Promise.resolve();
+          }
           if (frame.type === "fleet.recommendation" && recommendations) {
             try { recommendations.receive(frame.payload, l); }
             catch { options.log("warn", "Hub version advice was refused", { phase: "receive" }); }
@@ -711,6 +742,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         hold: (code) => {
           stopRooms();
+          updates?.connected(null);
           quota.stop();
           const state = code === "revoked" ? "revoked" : code === "rejected" || code === "invalid" ? "rejected" : "offline";
           terminalHold = state === "revoked" || state === "rejected";
@@ -750,10 +782,16 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             options.attachAgentRooms?.(null);
             options.attachAttention(null);
           });
+          options.attachUpdates?.(updates);
+          if (updates) {
+            await updates.start();
+            updateTimer = setInterval(() => { void updates.tick(); }, 5_000); updateTimer.unref();
+          }
           await client!.start();
         },
         fence() {
           fenced = true;
+          updates?.close(); options.attachUpdates?.(null);
           stopRooms();
           quota.stop();
           links.fence();

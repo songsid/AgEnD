@@ -1,0 +1,41 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-member-m3144
+
+(node:39912) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:39913) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-recommended-update-m3140.test.ts (8 tests | 1 failed) 899ms
+     × posts once in General with Update now, again after 7 days while behind (the daily check), never on a web-only fleet 143ms
+(node:40206) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:40257) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-recommended-update-m3140.test.ts > M-3140: General's notice and its 7-day reminder > posts once in General with Update now, again after 7 days while behind (the daily check), never on a web-only fleet
+AssertionError: expected [ { prefix: 'hub-update:', …(10) } ] to have a length of 2 but got 1
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ tests/hub-recommended-update-m3140.test.ts:160:122
+    158|       f.fm.lookUpUpdateTarget = vi.fn(async () => ({ target: "2.3.5-be…
+    159|       vi.spyOn(Date, "now").mockReturnValue(t0 + HUB_UPDATE_REMIND_MS …
+    160|       vi.spyOn(Date, "now").mockReturnValue(t0 + HUB_UPDATE_REMIND_MS …
+       |                                                                                                                          ^
+    161|       // Updated past it: nothing more.
+    162|       f.fm.runningAgendVersion.mockReturnValue("2.4.0-beta.4");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 4 passed (5)
+      Tests  1 failed | 75 passed (76)
+   Start at  11:33:05
+   Duration  23.57s (transform 22.69s, setup 389ms, import 35.10s, tests 8.28s, environment 1ms)
+
