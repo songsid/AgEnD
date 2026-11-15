@@ -76,7 +76,7 @@ const RECORD = `(() => { const w = window; w.__texts = []; const orig = CanvasRe
   CanvasRenderingContext2D.prototype.fillText = function (s, x, y) { if (this.canvas && this.canvas.classList && this.canvas.classList.contains("oo-canvas")) { const m = this.getTransform(); w.__texts.push({ s: String(s), y: m.d * y + m.f, at: performance.now() }); } return orig.apply(this, arguments); }; })();`;
 const drawn = (page: any, since = 0) => page.evaluate((t: number) => ((window as any).__texts as any[]).filter((x) => x.at >= t), since);
 const msg = (role: "user" | "agent", text: string, extra: Record<string, unknown> = {}) =>
-  fm.emitSseEvent("message", { instance: AGENT, role, sender: role === "user" ? "Han" : AGENT, text, ts: new Date().toISOString(), ...(role === "user" ? { from: "discord:42", channel: true } : {}), ...extra });
+  fm.emitSseEvent("message", { instance: AGENT, role, sender: role === "user" ? "Alex" : AGENT, text, ts: new Date().toISOString(), ...(role === "user" ? { from: "discord:42", channel: true } : {}), ...extra });
 
 async function openOffice(c: MatrixCase, style: string, opts: { reduced?: boolean; dialogue?: boolean; routes?: Array<[string, string, string]> } = {}) {
   const storage: Record<string, string> = { agend_org_mode: "office", ...(opts.dialogue === false ? {} : {}) };
@@ -146,11 +146,11 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,desk-dark-zh-TW,phon
       "the toggle, in the case's language": label?.trim() === labelOf(c, { en: "Dialogue", zh: "對話框" }),
       "off by default": off,
       "off: none of a message's words drawn": !offDrawn,
-      "heard: the person's name drawn": low(heard).some((x: any) => x.s === "Han"),
+      "heard: the person's name drawn": low(heard).some((x: any) => x.s === "Alex"),
       "heard: their words drawn, low on the stage": said(heard, WORDS[c.lang]),
       "working: the status line": working,
       "answered: the reply drawn": said(answered, REPLY[c.lang]),
-      "read out (live region)": !!live1?.includes("Han") && !!live2?.includes(REPLY[c.lang].slice(0, 6)),
+      "read out (live region)": !!live1?.includes("Alex") && !!live2?.includes(REPLY[c.lang].slice(0, 6)),
       "two at once: +1 on the box": queued,
       "a click on the box opens the card": card === 1,
       "no horizontal overflow": await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

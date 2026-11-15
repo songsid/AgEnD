@@ -20,8 +20,8 @@ import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { createMentionIndex } from "../src/ui/chat-mentions.js";
 
 const R = () => (globalThis as any).AgendChatRender;
-const USER = "368442276000694273", ROLE = "111111111111111111", CHANNEL = "222222222222222222", NOBODY = "999999999999999999";
-const NAMES: Record<string, string> = { [`u:${USER}`]: "Han", [`r:${ROLE}`]: "Ops", [`c:${CHANNEL}`]: "general" };
+const USER = "400000000000000042", ROLE = "111111111111111111", CHANNEL = "222222222222222222", NOBODY = "999999999999999999";
+const NAMES: Record<string, string> = { [`u:${USER}`]: "Alex", [`r:${ROLE}`]: "Ops", [`c:${CHANNEL}`]: "general" };
 const lookup = (kind: string, id: string) => NAMES[`${kind}:${id}`] ?? null;
 const render = (text: string, names: ((k: string, id: string) => string | null) | null = lookup) => R().renderMarkdown(text, names ? { mentions: names } : {});
 /** The pills of a rendered message: [kind:id, label]. */
@@ -30,14 +30,14 @@ const pills = (html: string) => [...html.matchAll(/<span class="mention(?: tg)?"
 describe("the renderer draws mentions as pills", () => {
   it("a known <@id>: a pill with the name (the id in its title), never the raw token", () => {
     const html = render(`hi <@${USER}>`);
-    expect([pills(html), html.includes(`title="${USER}"`), html.includes("&lt;@")]).toEqual([[[`u:${USER}`, "@Han"]], true, false]);
+    expect([pills(html), html.includes(`title="${USER}"`), html.includes("&lt;@")]).toEqual([[[`u:${USER}`, "@Alex"]], true, false]);
   });
   it("an unknown id: @user (and @role, #channel) — never the raw token", () => {
     const html = render(`<@${NOBODY}> <@&${NOBODY}> <#${NOBODY}>`, () => null);
     expect([pills(html), html.includes("&lt;")]).toEqual([[[`u:${NOBODY}`, "@user"], [`r:${NOBODY}`, "@role"], [`c:${NOBODY}`, "#channel"]], false]);
   });
   it("<@!id>, a role <@&id> and a channel <#id>", () => {
-    expect(pills(render(`<@!${USER}> <@&${ROLE}> <#${CHANNEL}>`))).toEqual([[`u:${USER}`, "@Han"], [`r:${ROLE}`, "@Ops"], [`c:${CHANNEL}`, "#general"]]);
+    expect(pills(render(`<@!${USER}> <@&${ROLE}> <#${CHANNEL}>`))).toEqual([[`u:${USER}`, "@Alex"], [`r:${ROLE}`, "@Ops"], [`c:${CHANNEL}`, "#general"]]);
   });
   it("a Telegram @username is styled the same (no lookup, no link); an e-mail, a URL path and a short handle are not", () => {
     const html = render("ping @telegram_user, mail han@example.com, see https://x.com/@someone and @abc");
@@ -56,7 +56,7 @@ describe("the renderer draws mentions as pills", () => {
   });
   it("nothing inside code is converted — a code span or a fence keeps the token as text", () => {
     const html = render("`<@" + USER + ">` and `@telegram_user`\n\n```\n<@" + USER + "> @telegram_user\n```");
-    expect([pills(html), (html.match(/&lt;@368442276000694273&gt;/g) || []).length]).toEqual([[], 2]);
+    expect([pills(html), (html.match(/&lt;@400000000000000042&gt;/g) || []).length]).toEqual([[], 2]);
   });
   it("an HTML-ish name is escaped (text, never markup)", () => {
     const html = render(`<@${USER}>`, () => `<img src=x onerror=alert(1)>&amp;`);
@@ -69,7 +69,7 @@ describe("the renderer draws mentions as pills", () => {
   it("the screenshot case: <@id> opening an agent reply is one pill, the rest of the text as it was", () => {
     const html = render(`<@${USER}> 查完了，明天可以照計畫發。\n\n• v1.5.0 和 **origin/main**`);
     expect([pills(html), html.startsWith(`<p><span class="mention" data-mention="u:${USER}"`), html.includes("查完了"), html.includes("<strong>origin/main</strong>")])
-      .toEqual([[[`u:${USER}`, "@Han"]], true, true, true]);
+      .toEqual([[[`u:${USER}`, "@Alex"]], true, true, true]);
   });
   it("with no names known at all (the page has none yet), still pills", () => {
     expect(pills(render(`<@${USER}>`, null))).toEqual([[`u:${USER}`, "@user"]]);
@@ -85,7 +85,7 @@ describe("the host: /ui/mentions", () => {
   });
   it("remembers the people seen, bounded (the oldest go), ids that are Discord ids only", () => {
     const s = new SeenUsers(2);
-    s.record("123", "short"); s.record(USER, "Han"); s.record(ROLE, "A"); s.record(CHANNEL, "B");
+    s.record("123", "short"); s.record(USER, "Alex"); s.record(ROLE, "A"); s.record(CHANNEL, "B");
     expect([s.get("123"), s.get(USER), s.get(ROLE), s.get(CHANNEL), s.size]).toEqual([undefined, undefined, "A", "B", 2]);
   });
   it("names come from the sources in order, only for the ids asked", () => {
@@ -104,10 +104,10 @@ describe("the host: /ui/mentions", () => {
     return { status, json: () => JSON.parse(body) };
   }
   it("answers the names of the ids asked (the query passed on as parsed); a bad query is a 400 that asks nothing", () => {
-    const webMentionNames = vi.fn(() => ({ u: { [USER]: "Han" }, r: {}, c: {} }));
+    const webMentionNames = vi.fn(() => ({ u: { [USER]: "Alex" }, r: {}, c: {} }));
     const ok = get(`/ui/mentions?u=${USER}`, { webMentionNames });
     const bad = get("/ui/mentions?u=not-an-id", { webMentionNames });
-    expect([ok.status, ok.json(), webMentionNames.mock.calls, bad.status]).toEqual([200, { u: { [USER]: "Han" }, r: {}, c: {} }, [[{ u: [USER], r: [], c: [] }]], 400]);
+    expect([ok.status, ok.json(), webMentionNames.mock.calls, bad.status]).toEqual([200, { u: { [USER]: "Alex" }, r: {}, c: {} }, [[{ u: [USER], r: [], c: [] }]], 400]);
   });
   it("is offered on the public link (names only for ids it shows) and is the page's read, not the person's", () => {
     expect([isPublicWebRoute("GET", "/ui/mentions"), isPublicWebRoute("POST", "/ui/mentions"), isPassiveWebRead("GET", "/ui/mentions")]).toEqual([true, false, true]);
@@ -131,16 +131,16 @@ describe("FleetManager's sources", () => {
   }
   it("a fleet bot is its instance's label; a person seen inbound by their name; the rest from the Discord caches", async () => {
     const fm = await fleet();
-    fm.seenUsers.record(USER, "Han");
+    fm.seenUsers.record(USER, "Alex");
     expect(fm.webMentionNames({ u: ["555555555555555555", USER, NOBODY], r: [ROLE], c: [CHANNEL] }))
-      .toEqual({ u: { "555555555555555555": "Sentinel", [USER]: "Han", [NOBODY]: "Cached member" }, r: { [ROLE]: "Ops" }, c: { [CHANNEL]: "general" } });
+      .toEqual({ u: { "555555555555555555": "Sentinel", [USER]: "Alex", [NOBODY]: "Cached member" }, r: { [ROLE]: "Ops" }, c: { [CHANNEL]: "general" } });
   });
   it("an inbound message from a person is remembered by id; a bot's is not", async () => {
     const fm = await fleet();
     Object.assign(fm, { worlds: new Map(), logger: { debug() {}, info() {}, warn() {}, error() {} } });
-    await (fm as any).handleInboundMessage({ source: "discord", userId: USER, username: "Han", text: "hi", chatId: "c", messageId: "m", timestamp: new Date() } as never).catch(() => {});
+    await (fm as any).handleInboundMessage({ source: "discord", userId: USER, username: "Alex", text: "hi", chatId: "c", messageId: "m", timestamp: new Date() } as never).catch(() => {});
     await (fm as any).handleInboundMessage({ source: "discord", userId: ROLE, username: "SomeBot", text: "hi", chatId: "c", messageId: "m2", timestamp: new Date(), isBotMessage: true } as never).catch(() => {});
-    expect([fm.seenUsers.get(USER), fm.seenUsers.get(ROLE)]).toEqual(["Han", undefined]);
+    expect([fm.seenUsers.get(USER), fm.seenUsers.get(ROLE)]).toEqual(["Alex", undefined]);
   });
 });
 
@@ -149,12 +149,12 @@ describe("the Discord adapter names from its own caches (no request)", () => {
     const adapter = Object.create(DiscordAdapter.prototype) as DiscordAdapter;
     const map = (entries: Array<[string, unknown]>) => ({ cache: new Map(entries) });
     (adapter as any).client = {
-      guilds: map([["g1", { members: map([[USER, { displayName: "Han (server)" }]]), roles: map([[ROLE, { name: "Ops" }]]) }]]),
-      users: map([[USER, { username: "han", globalName: "Han" }], [NOBODY, { username: "other", globalName: null }]]),
+      guilds: map([["g1", { members: map([[USER, { displayName: "Alex (server)" }]]), roles: map([[ROLE, { name: "Ops" }]]) }]]),
+      users: map([[USER, { username: "han", globalName: "Alex" }], [NOBODY, { username: "other", globalName: null }]]),
       channels: map([[CHANNEL, { name: "general" }]]),
     };
     expect(adapter.mentionNames({ u: [USER, NOBODY, "777777777777777777"], r: [ROLE, NOBODY], c: [CHANNEL, NOBODY] }))
-      .toEqual({ u: { [USER]: "Han (server)", [NOBODY]: "other" }, r: { [ROLE]: "Ops" }, c: { [CHANNEL]: "general" } });
+      .toEqual({ u: { [USER]: "Alex (server)", [NOBODY]: "other" }, r: { [ROLE]: "Ops" }, c: { [CHANNEL]: "general" } });
   });
 });
 
@@ -163,7 +163,7 @@ describe("the page asks once per id, only for what its messages carry", () => {
     const calls: string[] = [];
     const idx = createMentionIndex(async (url: string) => {
       calls.push(url);
-      return { ok: true, json: async () => ({ u: { [USER]: "Han" }, r: {}, c: { [CHANNEL]: "general" } }) };
+      return { ok: true, json: async () => ({ u: { [USER]: "Alex" }, r: {}, c: { [CHANNEL]: "general" } }) };
     });
     const told = vi.fn();
     idx.subscribe(told);
@@ -178,6 +178,6 @@ describe("the page asks once per id, only for what its messages carry", () => {
     const decoded = calls.map((u) => decodeURIComponent(u));
     expect([decoded[0], idx.name("u", USER), idx.name("c", CHANNEL), idx.name("r", ROLE), told.mock.calls.length, calls.length,
       decoded.slice(1).map((u) => (u.match(/\d{18}/g) || []).length)])
-      .toEqual([`/ui/mentions?u=${USER}&r=${ROLE}&c=${CHANNEL}`, "Han", "general", null, 1, 3, [100, 50]]);
+      .toEqual([`/ui/mentions?u=${USER}&r=${ROLE}&c=${CHANNEL}`, "Alex", "general", null, 1, 3, [100, 50]]);
   });
 });

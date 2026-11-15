@@ -95,7 +95,7 @@ export const TEXT = {
   description: "Long description used for the org chart and the details page: keeps the dbt models fresh, flags late sources, and posts a weekly summary to the team topic — 每週一早上九點彙整。",
   planName: "Team Premium (6.25x)",
   planNameLong: "Team Premium (6.25x) — 研發部門共用訂閱，含額外用量與優先支援",
-  profileName: "Han 漢 — 平台工程 Platform Engineering",
+  profileName: "Alex 林 — 平台工程 Platform Engineering",
   widgetLabels: ["今日完成的工作項目數量（含審查）", "Open pull requests waiting for review", "夜間基準：p95 延遲", "Build", "部署前檢查清單完成度"],
   widgetValues: ["12 / 15（80%）", "7 — oldest is 3 days", "182 ms（比上週快 12%）", "#4821 passed", "9 of 11 items checked"],
   chatCjk: "好的，我已經完成部署前檢查清單的前九項，剩下兩項需要你確認：\n1. 資料庫遷移腳本是否要在離峰時段執行？\n2. CDN 快取要不要在發佈後立刻清除？\n\n| 項目 | 狀態 | 負責人 |\n|---|---|---|\n| 單元測試 | ✅ 通過 | 產品官網-t1500000000000165914 |\n| 端對端測試 | ⏳ 進行中 | QA |\n\n請在今天下午五點前回覆，謝謝！",

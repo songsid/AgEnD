@@ -223,9 +223,9 @@ Write-Output ("LEFT=" + @(Get-ChildItem $env:TMPDIR -Filter 'agend-step-*').Coun
     expect(existsSync(dir)).toBe(true);
   });
   it("a long step's argument with spaces reaches it whole", async () => {
-    const { out } = (await withHelpers(`$code = Invoke-Watched -Label 'x' -Usually 'y' -File 'sh' -Arguments @('-c', 'printf "[%s]\\n" "$0"', 'C:\\Users\\Han Sung\\a b.msi')
+    const { out } = (await withHelpers(`$code = Invoke-Watched -Label 'x' -Usually 'y' -File 'sh' -Arguments @('-c', 'printf "[%s]\\n" "$0"', 'C:\\Users\\Alex Lin\\a b.msi')
 Write-Output "CODE=$code"`));
-    expect(out).toContain("    [C:\\Users\\Han Sung\\a b.msi]\n");
+    expect(out).toContain("    [C:\\Users\\Alex Lin\\a b.msi]\n");
     expect(out).toContain("CODE=0\n");
   });
   it("Ctrl+C during a step asks first: Enter carries on, y stops the step", async () => {

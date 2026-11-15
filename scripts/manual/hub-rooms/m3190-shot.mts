@@ -57,7 +57,7 @@ const sha = (data: Buffer | string) => createHash("sha256").update(data).digest(
 //   PW_DIR=<checkout> OUT=<dir> npx tsx scripts/manual/hub-rooms/admin-rooms-shot.mts
 
 const W = (fleets: any[]) => ({ ok: true, v: 1, mode: "enabled", chat: { state: "allow", reason: "group" }, publish: { state: "allow", reason: "group" }, connect: { state: "allow", reason: "group", maxFleets: 8, fleets } });
-const PILOT_FLEETS = [{ id: "f-han", label: "Han", status: "active", generation: 1 }, { id: "f-mine", label: "我的 Fleet", status: "active", generation: 1 }];
+const PILOT_FLEETS = [{ id: "f-alex", label: "Alex", status: "active", generation: 1 }, { id: "f-mine", label: "我的 Fleet", status: "active", generation: 1 }];
 const PERSONAS: Record<string, { who: any; fleets: any[]; views: string[] }> = {
   first: { who: boS, fleets: [], views: ["chats"] },
   member: { who: actor, fleets: PILOT_FLEETS, views: ["chats", "new", "mine", "mine-menu"] },

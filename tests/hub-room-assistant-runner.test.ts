@@ -9,7 +9,7 @@ function deferred<T>() {
 }
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const config: RoomAssistantConfig = { enabled: true, backend: "claude-code", account: "hub-owner", ...ROOM_ASSISTANT_DEFAULTS };
-const input = (roomId: string, messageId = roomId): RoomAssistantAsk => ({ roomId, roomName: `Room ${roomId}`, messageId, asker: { name: "Han" }, text: "Summarise", context: [] });
+const input = (roomId: string, messageId = roomId): RoomAssistantAsk => ({ roomId, roomName: `Room ${roomId}`, messageId, asker: { name: "Alex" }, text: "Summarise", context: [] });
 class FakeSession implements RoomAssistantSession {
   turns: Array<{ input: RoomAssistantAsk; signal: AbortSignal; reply: ReturnType<typeof deferred<{ text: string }>> }> = [];
   ask = vi.fn((input: RoomAssistantAsk, signal: AbortSignal) => {
@@ -61,17 +61,17 @@ describe("Hub room assistant host-Fleet ownership", () => {
 
   it("preserves one older replied-to anchor alongside the recent thirty, without duplicating a recent anchor", async () => {
     const w = world(), ask = input("a");
-    ask.context = Array.from({ length: 35 }, (_, at) => ({ author: "Han", text: `Row ${at}`, at, ...(at === 1 ? { repliedTo: true as const } : {}) }));
+    ask.context = Array.from({ length: 35 }, (_, at) => ({ author: "Alex", text: `Row ${at}`, at, ...(at === 1 ? { repliedTo: true as const } : {}) }));
     const first = w.ask(ask); await flush();
     expect(w.sessions[0].turns[0].input.context.map(row => row.at)).toEqual([1, ...Array.from({ length: 30 }, (_, i) => i + 5)]);
-    expect(w.sessions[0].turns[0].input.context[0]).toEqual({ author: "Han", text: "Row 1", at: 1, repliedTo: true });
+    expect(w.sessions[0].turns[0].input.context[0]).toEqual({ author: "Alex", text: "Row 1", at: 1, repliedTo: true });
     w.sessions[0].answer(); await first;
     ask.context[1].repliedTo = undefined; ask.context[34].repliedTo = true;
     const second = w.ask(ask); await flush();
     expect(w.sessions[0].turns[1].input.context).toHaveLength(30);
     expect(w.sessions[0].turns[1].input.context.at(-1)?.repliedTo).toBe(true);
     w.sessions[0].answer(); await second;
-    await expect(w.ask({ ...ask, context: [{ author: "Han", text: "a", at: 1, repliedTo: true }, { author: "Han", text: "b", at: 2, repliedTo: true }] })).rejects.toThrow("Invalid");
+    await expect(w.ask({ ...ask, context: [{ author: "Alex", text: "a", at: 1, repliedTo: true }, { author: "Alex", text: "b", at: 2, repliedTo: true }] })).rejects.toThrow("Invalid");
   });
 
   it("reserves cap during startup and stop drain, then starts waiting rooms in arrival order", async () => {
@@ -234,9 +234,9 @@ describe("Hub room assistant host-Fleet ownership", () => {
   it("returns rejected promises for malformed asker and context rows, without synchronous exceptions", async () => {
     const w = world();
     for (const value of [null, undefined, { ...input("a"), asker: undefined }, { ...input("a"), asker: { name: 3 } },
-      { ...input("a"), context: [null] }, { ...input("a"), context: [{ author: "Han", text: 7, at: 0 }] },
-      { ...input("a"), context: [{ author: "Han", text: "Hello", at: NaN }] },
-      ...[false, "yes"].map(repliedTo => ({ ...input("a"), context: [{ author: "Han", text: "Hello", at: 0, repliedTo }] }))]) {
+      { ...input("a"), context: [null] }, { ...input("a"), context: [{ author: "Alex", text: 7, at: 0 }] },
+      { ...input("a"), context: [{ author: "Alex", text: "Hello", at: NaN }] },
+      ...[false, "yes"].map(repliedTo => ({ ...input("a"), context: [{ author: "Alex", text: "Hello", at: 0, repliedTo }] }))]) {
       let result!: Promise<{ text: string }>;
       expect(() => { result = w.runner.ask(value as unknown as RoomAssistantAsk); }).not.toThrow();
       await expect(result).rejects.toThrow("Invalid room assistant ask");

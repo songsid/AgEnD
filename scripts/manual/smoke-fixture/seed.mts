@@ -102,7 +102,7 @@ export async function seedChat(fx: Fixture, names: string[], count = 40): Promis
       const text = role === "status" ? `general → ${name}: ${TEXT.description}`
         : role === "user" ? (i % 4 === 0 ? "請幫我整理今天的部署前檢查清單，並標出還沒完成的項目。" : "Can you summarise last night's benchmark run and attach the flame graph?")
           : i % 3 === 0 ? TEXT.chatCjk : TEXT.chatLatin + "\n\n```ts\nexport function normalizeCjk(s: string): string {\n  return s.normalize(\"NFKC\").replace(/\\s+/g, \" \");\n}\n```";
-      fx.fm.emitSseEvent("message", { instance: name, sender: role === "user" ? "Han 漢" : name, role, text, ts,
+      fx.fm.emitSseEvent("message", { instance: name, sender: role === "user" ? "Alex 林" : name, role, text, ts,
         ...(role === "agent" && i % 7 === 1 && served ? { attachments: [publicAttachment(served)] } : {}) });
       n++;
     }

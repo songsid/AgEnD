@@ -18,13 +18,13 @@ const COLS = ["Instance", "Backend", "Model", "Effort", "Context", "Status", "La
 const ROWS = [["web-claude", "claude-code", "opus-5-5", "high", "42%", "running", "2 min ago", "91.4%", "1,204,331", "88,120", "$12.40", "reviewing #2552"],
   ["dev-codex", "codex", "gpt-5.5", "medium", "18%", "idle", "11 min ago", "77.0%", "640,002", "41,980", "$4.12", "waiting on CI"],
   ["kiro-coord", "kiro-cli", "claude-sonnet-5-5", "—", "63%", "running", "just now", "84.9%", "2,018,770", "120,445", "$9.87", "merging the 2.3.2 line"],
-  ["qa-bot", "muse", "muse-1.4", "low", "5%", "paused", "1 h ago", "—", "12,400", "3,100", "$0.08", "paused by Han 漢"]];
+  ["qa-bot", "muse", "muse-1.4", "low", "5%", "paused", "1 h ago", "—", "12,400", "3,100", "$0.08", "paused by Alex 林"]];
 const TABLE = `Here is the fleet's usage this morning:\n\n| ${COLS.join(" | ")} |\n|${COLS.map(() => " --- ").join("|")}|\n${ROWS.map((r) => `| ${r.join(" | ")} |`).join("\n")}\n\n` +
   "And the command that produced it:\n\n```sh\nagend usage --since 2026-10-24T00:00:00+08:00 --group-by instance --columns backend,model,effort,context,status,cache_hit,tokens_in,tokens_out,cost --format markdown\n```";
 const t0 = Date.now() - 10 * 60_000;
-fx.fm.emitSseEvent("message", { instance: CHAT, sender: "Han 漢", role: "user", text: "Can you show me the usage per instance as a table?", ts: new Date(t0).toISOString() });
+fx.fm.emitSseEvent("message", { instance: CHAT, sender: "Alex 林", role: "user", text: "Can you show me the usage per instance as a table?", ts: new Date(t0).toISOString() });
 fx.fm.emitSseEvent("message", { instance: CHAT, sender: CHAT, role: "agent", text: TABLE, ts: new Date(t0 + 60_000).toISOString() });
-fx.fm.emitSseEvent("message", { instance: CHAT, sender: "Han 漢", role: "user", text: "Thanks — and a short one stays short.", ts: new Date(t0 + 120_000).toISOString() });
+fx.fm.emitSseEvent("message", { instance: CHAT, sender: "Alex 林", role: "user", text: "Thanks — and a short one stays short.", ts: new Date(t0 + 120_000).toISOString() });
 const r: any = { engine: ENGINE, cases: {} };
 const ok = (c: any, k: string, v: boolean, detail?: unknown) => { c[k] = detail === undefined ? v : { pass: v, detail }; if (!v) c.failed = [...(c.failed ?? []), k]; };
 const MEASURE = `(() => { const q = (s) => document.querySelector(s), w = (e) => e ? Math.round(e.getBoundingClientRect().width) : null;

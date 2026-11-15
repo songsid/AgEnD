@@ -46,7 +46,7 @@ const old = (path: string) => { try { return execFileSync("git", ["-C", REPO, "s
 const fx = await bootFixture({ port: Number(process.env.GATE_PORT ?? 48260), instances: 12 });
 const name = fx.instances[4]!.name;
 const now = Date.now();
-const emit = (role: string, text: string, ago: number) => fx.fm.emitSseEvent("message", { instance: name, sender: role === "user" ? "Han 漢" : name, role, text, ts: new Date(now - ago).toISOString() });
+const emit = (role: string, text: string, ago: number) => fx.fm.emitSseEvent("message", { instance: name, sender: role === "user" ? "Alex 林" : name, role, text, ts: new Date(now - ago).toISOString() });
 const ASK = { en: "Three things for you to decide:\n1. Should we run a full rehearsal before the deploy? The b3 rig takes about 20 minutes.\n2. Should Notices get an unread count? The Hub keeps no read state yet.\n3. Should the Hub's name show under the brand on the sign-in page?",
   "zh-TW": "三個問題要你決定：\n1. 部署前要不要先跑一次完整的 rehearsal？上次 b3 的 rig 大概要 20 分鐘。\n2. Notices 要不要加未讀數字？目前 Hub 沒有記錄誰讀過。\n3. Hub 的名稱要不要顯示在登入頁的品牌下面？" };
 const PASSAGES = { en: ["Should we run a full rehearsal before the deploy?", "Should the Hub's name show under the brand on the sign-in page?", "Should Notices get an unread count?"],

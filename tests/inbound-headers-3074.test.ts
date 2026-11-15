@@ -49,8 +49,8 @@ describe("compact inbound headers (#3074)", () => {
   });
   it("escapes platform delimiters inside names, reactions, source and actor IDs", () => {
     const wire = formatHumanInboundMessage("hello", { ...meta, source: "web", web_guest: "1",
-      user: "Han@dc#368442276000694273", user_id: "guest#1@dc", pending_reactions: "@web:v#owner" }, "mcp");
-    expect(wire).toContain("[user:Han\\@dc\\#368442276000694273@web:g#guest\\#1\\@dc]");
+      user: "Alex@dc#400000000000000042", user_id: "guest#1@dc", pending_reactions: "@web:v#owner" }, "mcp");
+    expect(wire).toContain("[user:Alex\\@dc\\#400000000000000042@web:g#guest\\#1\\@dc]");
     expect(wire).toContain("[Recent reactions: \\@web:v\\#owner]");
     const custom = formatHumanInboundMessage("hello", { ...meta, source: "other@dc#1" }, "mcp");
     expect(custom).toContain("[user:person@other\\@dc\\#1#123]");

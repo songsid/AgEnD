@@ -9,7 +9,7 @@ import type { RoomAssistantAsk, RoomAssistantConfig } from "../src/hub/assistant
 import type { AssistantQuotaBand } from "../src/hub/assistant/admin-types.js";
 
 const config = (patch: Partial<RoomAssistantConfig> = {}): RoomAssistantConfig => ({ enabled: true, backend: "claude-code", account: null, cap: 3, idleMinutes: 15, ...patch });
-const ask = (roomId = "room-a"): RoomAssistantAsk => ({ roomId, roomName: "Planning", messageId: "m-1", asker: { name: "Han" }, text: "Private room request", context: [] });
+const ask = (roomId = "room-a"): RoomAssistantAsk => ({ roomId, roomName: "Planning", messageId: "m-1", asker: { name: "Alex" }, text: "Private room request", context: [] });
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(yes => { resolve = yes; });
