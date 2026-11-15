@@ -604,7 +604,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.runtime === "windows" ? html`<span class="tag">Windows</span>` : null}
     ${nativeCliTag(inst)}${inst.machine_id ? html`<span class="tag runtime-machine-tag" title=${t("chat.machineName",machineName(inst.machine_id,inst.machine_name))}>${machineName(inst.machine_id,inst.machine_name)}</span>${inst.machine_status !== "online" ? html`<span class="tag runtime-machine-offline">${t(inst.machine_status === "revoked" ? "chat.machineRevoked" : "chat.machineOffline")}</span>` : null}` : null}
     ${!guest && supportsInstanceFeature(inst,"commands") ? html`<button type="button" class="hd-chip chat-model-entry" title=${mw("backend")} aria-label=${mw("backend")} onClick=${() => inst.runtime === "windows" ? navigate(sectionPath("agents")) : pick("backend")}>${backendLabel(inst.backend)} ▾</button>
-      <button type="button" class="hd-chip chat-model-entry" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelLabel(inst.model || modelText(inst))} ▾</button>` : null}
+      <button type="button" class="hd-chip chat-model-entry" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${(e) => { noteModelMenuAnchor(e.currentTarget); pick("model"); }}>${modelLabel(inst.model || modelText(inst))} ▾</button>` : null}
     ${effortChip(inst) && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", effortChip(inst))} aria-label=${t("chat.chipEffort", effortChip(inst))} onClick=${() => pick("effort")}>${effortChip(inst)}</button>` : null}`;
 
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
@@ -947,6 +947,81 @@ function openBackendSignIn(backend) {
 }
 
 /** #1269: what the last chat command answered — its text, why it was refused, or a list to choose from. */
+// M-3166 PR 3: the model menu's words (kept beside their caller: a retained chat dictionary has no such words).
+register("modelMenu", {
+  en: { title: "Model", effort: "Reasoning effort", loading: "Loading models…", opus: "Most capable, for complex and long work",
+    sonnet: "Fast and capable, for everyday work", haiku: "Fastest, for simple and high-volume work", close: "Close" },
+  "zh-TW": { title: "模型", effort: "推理強度", loading: "正在讀取模型…", opus: "最強，適合複雜、長時間的工作",
+    sonnet: "速度與品質兼顧，適合日常工作", haiku: "最快，適合簡單、大量的工作", close: "關閉" },
+});
+const mm = (key, ...args) => t(`modelMenu.${key}`, ...args);
+/** Where the model control that opened the menu is (a desk anchors the menu under it); null: under the box's left end. */
+let modelMenuAnchor = null;
+export function noteModelMenuAnchor(el) { try { modelMenuAnchor = el ? el.getBoundingClientRect() : null; } catch { modelMenuAnchor = null; } }
+/** A model's one line: its family's (Opus / Sonnet / Haiku), else its own id when the name doesn't say it. */
+function modelDescription(o, name) {
+  const s = `${o.id} ${o.label}`;
+  const family = /\bopus\b|claude-opus/i.test(s) ? "opus" : /\bsonnet\b|claude-sonnet/i.test(s) ? "sonnet" : /\bhaiku\b|claude-haiku/i.test(s) ? "haiku" : "";
+  if (o.disabled) return String(o.disabled);
+  if (family) return mm(family);
+  return o.id && o.id !== name ? o.id : "";
+}
+/**
+ * M-3166 PR 3 (the user's OK of round 2): /model as a menu. One row per model — its name and one line, ✓ on the current
+ * one; "More models" in place; the current model's reasoning effort as one segmented row; Refresh in the head. Picking a
+ * model or an effort runs the same commands the card ran (its result then shows as the card does). A failed Refresh says
+ * so in the menu and keeps the list (M-2731); a refused switch (no list with it) is the card's.
+ */
+function ModelMenu({ name, c, lease }) {
+  const narrow = useMedia("(max-width: 899px)");
+  const close = () => store.dismissCommand(name);
+  const alive = () => lease.current();
+  const run = (args, action) => store.runCommand(name, "model", args, { alive, ...(action ? { action } : {}) });
+  const options = c.choices?.options || [], current = c.choices?.current ?? null, actions = c.choices?.actions || [];
+  const refresh = actions.find((a) => a === "refresh" || a === "refreshAll");
+  const cur = options.find((o) => o.id === current && o.effort);
+  useEffect(() => {
+    if (narrow) return undefined;
+    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+    document.addEventListener("keydown", esc, true);
+    return () => document.removeEventListener("keydown", esc, true);
+  }, [narrow]);
+  const rows = options.filter((o) => !o.signIn).map((o) => {
+    const label = String(o.label || o.id).replace(/^✓\s*/, ""), short = shortModelName(modelLabel(label)), on = o.id === current;
+    const desc = modelDescription(o, short);
+    return html`<button key=${o.id} type="button" role="menuitemradio" aria-checked=${on ? "true" : "false"} class=${`model-menu-row${on ? " on" : ""}`}
+      disabled=${c.busy || !!o.disabled} title=${label} onClick=${() => (on ? close() : run(o.id))}>
+      <span class="model-menu-text"><b>${short}</b>${desc ? html`<small>${desc}</small>` : null}</span>${on ? html`<${Icon} name="check" size=${18} />` : null}</button>`;
+  });
+  const body = html`<div class="model-menu" role="menu" aria-label=${mm("title")}>
+    ${narrow ? null : html`<div class="model-menu-head"><span>${mm("title")}</span>${refresh ? html`<button type="button" class="icon-btn" data-model-action=${refresh} title=${mw("refresh")}
+      aria-label=${mw("refresh")} disabled=${c.busy} onClick=${() => run(c.choices.args || "", refresh)}><${Icon} name="restart" size=${16} /></button>` : null}</div>`}
+    ${c.error ? html`<p class="err model-menu-error" role="alert">${c.error}</p>` : null}
+    ${c.busy && !options.length ? html`<p class="note model-menu-loading" role="status">${mm("loading")}</p>` : rows}
+    ${actions.includes("more") ? html`<button type="button" class="model-menu-more" data-model-action="more" disabled=${c.busy} onClick=${() => run("", "more")}>${mw("more")}</button>` : null}
+    ${cur ? html`<div class="model-menu-label">${mm("effort")}</div>
+      <div class="model-menu-seg" role="group" aria-label=${mm("effort")}>${cur.effort.levels.map((level) => html`<button key=${level} type="button"
+        class=${level === cur.effort.current ? "on" : ""} aria-pressed=${level === cur.effort.current ? "true" : "false"} disabled=${c.busy}
+        onClick=${() => store.runCommand(name, "effort", level, { alive })}>${effortWord(level)}</button>`)}</div>` : null}
+    ${options.some((o) => o.signIn) && !publicLinkPage() ? html`<div class="model-menu-signin">${options.filter((o) => o.signIn).map((o) => html`<button
+      key=${`signin:${o.signIn}`} type="button" class="btn btn-sm btn-primary" onClick=${() => openBackendSignIn(o.signIn)}>${t("chat.cmdSignInTo", o.signIn)}</button>`)}</div>` : null}
+  </div>`;
+  if (narrow) return html`<${Dialog} title=${mm("title")} onClose=${close} cls="model-menu-sheet"
+    tools=${refresh ? html`<button type="button" class="icon-btn" data-model-action=${refresh} title=${mw("refresh")} aria-label=${mw("refresh")} disabled=${c.busy}
+      onClick=${() => run(c.choices.args || "", refresh)}><${Icon} name="restart" size=${16} /></button>` : null}>${body}</${Dialog}>`;
+  // A desk: under the control that opened it (else above the box's left end); a click outside closes it.
+  const place = (el) => {
+    if (!el) return;
+    const at = modelMenuAnchor, w = el.offsetWidth || 320, h = el.offsetHeight || 0;
+    let left, top;
+    // Under the control, or above it when it sits in the lower half (the composer's chip): never over it.
+    if (at) { left = Math.min(Math.max(8, at.right - w), innerWidth - w - 8); top = at.top > innerHeight / 2 ? Math.max(8, at.top - h - 6) : Math.min(at.bottom + 6, innerHeight - h - 8); }
+    else { const box = el.closest(".p-chat")?.querySelector(".composer-box")?.getBoundingClientRect(); left = box ? box.left : 16; top = box ? Math.max(8, box.top - h - 8) : 72; }
+    el.style.setProperty("left", `${Math.round(left)}px`); el.style.setProperty("top", `${Math.round(top)}px`);
+  };
+  return html`<div class="model-menu-scrim" onClick=${close}></div><div class="model-menu-pop" ref=${place}>${body}</div>`;
+}
+
 function CommandCard({ name, lease }) {
   const c = store.state.commands[name];
   if (!c) return null;
@@ -955,6 +1030,9 @@ function CommandCard({ name, lease }) {
   const refresh = actions.find(a => a === "refresh" || a === "refreshAll");
   // The phone's second level: a /model option with an `effort` (its levels and the one set) opens its own list, with a way back.
   const [sub, setSub] = useState(null);
+  // M-3166 PR 3 (the user's OK of round 2): /model's pick list is a menu — anchored under the model control on a desk, a
+  // bottom sheet on a phone — not a card above the box. A failure, its result text and /backend stay the card.
+  if (c.command === "model" && (c.choices ? c.choices.step !== "backend" : c.busy && !c.error)) return html`<${ModelMenu} name=${name} c=${c} lease=${lease} />`;
   const open = sub && sub.for === c.choices ? c.choices.options.find((o) => o.id === sub.id && o.effort) : null;
   const pickEffort = async (model, level) => {
     setSub(null);
@@ -1194,7 +1272,7 @@ function ComposerTools({ name, inst, lease, short = false }) {
     ${pct != null && pct >= 50 ? html`<button type="button" class=${`ctx-ring${pct >= 70 ? " warn" : ""}`} ref=${(el) => el?.style?.setProperty("--pct", String(pct))}
       title=${t("chat.chipContext", pct)} aria-label=${t("chat.chipContext", pct)} onClick=${() => run("ctx")}><span class="ctx-dial" aria-hidden="true"><span class="ctx-pct">${pct}</span></span></button>` : null}
     ${supportsInstanceFeature(inst, "commands") ? html`<button type="button" class="composer-pick" title=${t("chat.chipModel", pickLabel)} aria-label=${t("chat.chipModel", pickLabel)}
-      onClick=${() => (inst?.runtime === "windows" ? navigate(sectionPath("agents")) : run("model"))}><b>${model}</b><span class="chev" aria-hidden="true">⌄</span></button>` : null}
+      onClick=${(e) => { if (inst?.runtime === "windows") navigate(sectionPath("agents")); else { noteModelMenuAnchor(e.currentTarget); run("model"); } }}><b>${model}</b><span class="chev" aria-hidden="true">⌄</span></button>` : null}
   </span>`;
 }
 

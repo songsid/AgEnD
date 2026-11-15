@@ -32,3 +32,30 @@
   .p-chat .jump-latest { left: auto; right: var(--s-3); transform: none; width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 0; justify-content: center; }
   .p-chat .jump-latest .jump-text { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
+/* M-3166 PR 3 (the user's OK of round 2): /model as a menu — under the model control on a desk, a bottom sheet on a phone.
+   One row per model (its name, one line, ✓ on the current one), "More models" in place, the effort as one segmented row. */
+.model-menu { display: flex; flex-direction: column; gap: 2px; }
+.model-menu-head { display: flex; align-items: center; justify-content: space-between; padding: var(--s-1) var(--s-2) var(--s-1) var(--s-3); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+.model-menu-row { display: flex; align-items: center; gap: var(--s-3); min-height: 48px; padding: var(--s-2) var(--s-3); border: 0; border-radius: var(--r-sm); background: none; color: var(--text); font: inherit; text-align: start; cursor: pointer; }
+.model-menu-row:hover:not(:disabled), .model-menu-row:focus-visible { background: var(--surface-2); outline: none; }
+.model-menu-row:disabled { opacity: 0.5; cursor: default; }
+.model-menu-row > .icon { margin-inline-start: auto; flex: none; color: var(--accent); }
+.model-menu-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.model-menu-text b { font-weight: var(--fw-semibold); }
+.model-menu-text small { color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.model-menu-more { display: flex; align-items: center; min-height: 40px; padding: var(--s-2) var(--s-3); border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-sm); text-align: start; cursor: pointer; }
+.model-menu-label { padding: var(--s-2) var(--s-3) var(--s-1); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); border-top: 1px solid var(--border); margin-top: var(--s-1); }
+.model-menu-seg { display: flex; gap: 2px; padding: 2px; margin: 0 var(--s-3) var(--s-2); border-radius: var(--r-md); background: var(--surface-2); }
+.model-menu-seg button { flex: 1; min-height: 32px; border: 0; border-radius: calc(var(--r-md) - 2px); background: none; color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.model-menu-seg button.on { background: var(--surface); color: var(--text); font-weight: var(--fw-semibold); box-shadow: var(--shadow-1); }
+.model-menu-loading { padding: var(--s-3); margin: 0; }
+.model-menu-signin { display: flex; flex-wrap: wrap; gap: var(--s-2); padding: var(--s-2) var(--s-3); }
+.model-menu-scrim { position: fixed; inset: 0; z-index: 90; }
+.model-menu-pop { position: fixed; z-index: 91; width: 320px; max-height: calc(100vh - 16px); overflow-y: auto; padding: var(--s-1); border-radius: var(--r-lg); background: var(--bg); box-shadow: var(--shadow-2), 0 0 0 1px var(--border); }
+@media (max-width: 899px) {
+  .model-menu-row { min-height: 56px; }
+  .model-menu-more { min-height: var(--tap); }
+  .model-menu-seg { margin: 0 0 var(--s-2); }
+  .model-menu-seg button { min-height: var(--tap); }
+}
+.model-menu-error { margin: 0; padding: var(--s-2) var(--s-3); }
