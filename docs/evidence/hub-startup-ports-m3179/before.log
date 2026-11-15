@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-startup-ports-m3179
+
+(node:95507) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-member-startup-3171.test.ts (11 tests | 1 failed | 10 skipped) 239ms
+   × keeps a paired member mounted through a boot-time outage, then reconciles without a Fleet restart 237ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-startup-3171.test.ts > keeps a paired member mounted through a boot-time outage, then reconciles without a Fleet restart
+AssertionError: expected 'stolen' to be 'EADDRINUSE' // Object.is equality
+
+Expected: "EADDRINUSE"
+Received: "stolen"
+
+ ❯ tests/hub-member-startup-3171.test.ts:70:23
+     68|         competitor.listen(Number(new URL(f.rig.memberOrigin).port), "1…
+     69|       });
+     70|       expect(outcome).toBe("EADDRINUSE");
+       |                       ^
+     71|     } finally { if (competitor.listening) await new Promise<void>(reso…
+     72|     await f.runtime.apply({ hub_member: { enabled: true } });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  15:11:13
+   Duration  9.19s (transform 6.80s, setup 88ms, import 8.71s, tests 239ms, environment 0ms)
+
