@@ -139,8 +139,8 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
     const heldRead=call("hub_people_search",{q:"Al"});await vi.waitFor(()=>expect(finish).toBeTypeOf("function"));callerCurrent=false;
     finish({ok:true,people:[{person:alexKey,login:"alex",displayName:"Held private name"}],truncated:false});
     const stale=await heldRead;expect(stale.body.ok).toBe(false);expect(JSON.stringify(stale)).not.toContain("Held private name");callerCurrent=true;
-    service.fence();expect((await mcp.listTools()).tools.map(t=>t.name)).not.toContain("hub_room_post");
-    expect((await call("hub_room_members",{room:roomId})).body).toEqual({ok:false,code:"unavailable"});
+    service.fence();expect((await mcp.listTools()).tools.map(t=>t.name)).toContain("hub_room_post");
+    expect((await call("hub_room_members",{room:roomId})).body).toEqual({ok:false,code:"unavailable",message:"This Fleet isn't connected to a Hub."});
   } finally {
     await mcp.close();await ipc.close();if(service){service.fence();await service.close();}await web.close();await net.close();receipts.close();rmSync(temp,{recursive:true,force:true});
   }
