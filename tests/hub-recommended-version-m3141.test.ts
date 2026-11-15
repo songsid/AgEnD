@@ -82,7 +82,7 @@ describe("the card", () => {
     await until(() => p.root.querySelector(".hub-rec-card .err")?.textContent === "Version 9.9.9 was not found on npm.");
     expect([c.previewRecommendedVersion.mock.calls.at(-1)?.[0], saveBtn(p).disabled]).toEqual([{ mode: "specific", version: "9.9.9" }, true]);
     box.value = "2.4.1"; fire(box, "input");
-    await until(() => p.root.querySelector(".hub-rec-preview")?.textContent === "1 Fleets will be asked to update.");
+    await until(() => p.root.querySelector(".hub-rec-preview")?.textContent === "1 Fleet will be asked to update.");
     expect(saveBtn(p).disabled).toBe(false);
   });
 
