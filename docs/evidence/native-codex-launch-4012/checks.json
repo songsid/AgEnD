@@ -1,0 +1,21 @@
+{
+  "sourceHead": "42462a18aded32e14db8b36e9cb51b6bd68e45ba",
+  "before": {
+    "command": "vitest run tests/runtime-pane-config-2950.test.ts -t 'pins the ordinary Codex' --maxWorkers=2",
+    "exitCode": 1,
+    "failed": 2
+  },
+  "after": {
+    "command": "vitest run tests/runtime-pane-config-2950.test.ts tests/runtime-pane-host-2950.test.ts tests/queued-handoff-native-2403.test.ts --maxWorkers=2",
+    "exitCode": 0,
+    "passed": 65
+  },
+  "typecheckSource": {
+    "command": "tsc --outDir .artifacts/4012-package/dist",
+    "exitCode": 0
+  },
+  "typecheckTests": {
+    "command": "tsc --noEmit -p tsconfig.test.json",
+    "exitCode": 0
+  }
+}

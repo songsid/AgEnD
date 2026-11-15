@@ -1,0 +1,46 @@
+[
+  {
+    "control": "none",
+    "noAltScreen": false,
+    "instantInterruptFalse": false,
+    "nativeQueueVisible": false,
+    "confirmed": 0,
+    "reply": true,
+    "contractPassed": false,
+    "earlyConfirm": false,
+    "remainingHandoffs": 0
+  },
+  {
+    "control": "layout",
+    "noAltScreen": true,
+    "instantInterruptFalse": false,
+    "nativeQueueVisible": false,
+    "confirmed": 1,
+    "reply": true,
+    "contractPassed": false,
+    "earlyConfirm": false,
+    "remainingHandoffs": 0
+  },
+  {
+    "control": "queue",
+    "noAltScreen": false,
+    "instantInterruptFalse": true,
+    "nativeQueueVisible": true,
+    "confirmed": 1,
+    "reply": true,
+    "contractPassed": true,
+    "earlyConfirm": false,
+    "remainingHandoffs": 0
+  },
+  {
+    "control": "fixed",
+    "noAltScreen": true,
+    "instantInterruptFalse": true,
+    "nativeQueueVisible": true,
+    "confirmed": 1,
+    "reply": true,
+    "contractPassed": true,
+    "earlyConfirm": false,
+    "remainingHandoffs": 0
+  }
+]

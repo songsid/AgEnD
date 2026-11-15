@@ -1,0 +1,6 @@
+{"at":1794754716171,"runBoot":"43161b86-72e4-4e51-a467-853b33d65dbc","action":"input","operationId":"ccd2272b-903b-4fbf-9d3c-0e3ca27145ad","sequence":1,"expectedSeq":92,"observedSeq":92,"inputRefused":false}
+{"at":1794754716697,"runBoot":"43161b86-72e4-4e51-a467-853b33d65dbc","action":"key","operationId":"d25b85b6-506d-428d-b8d0-9b95d3ed604e","sequence":2,"expectedSeq":103,"observedSeq":103,"inputRefused":false}
+{"at":1794754718915,"runBoot":"43161b86-72e4-4e51-a467-853b33d65dbc","action":"input","operationId":"942d394d-e848-4723-8c26-b4685c9921cf","sequence":3,"expectedSeq":140,"observedSeq":140,"inputRefused":false}
+{"at":1794754719936,"runBoot":"43161b86-72e4-4e51-a467-853b33d65dbc","action":"key","operationId":"7348b49b-96b0-4bf4-98d8-f16804171947","sequence":4,"expectedSeq":147,"observedSeq":147,"inputRefused":false}
+{"at":1794754732243,"runBoot":"43161b86-72e4-4e51-a467-853b33d65dbc","action":"input","operationId":"1738e8c8-ad7c-4536-8f28-7299c9f2a21a","sequence":5,"expectedSeq":954,"observedSeq":954,"inputRefused":false}
+{"at":1794754732775,"runBoot":"43161b86-72e4-4e51-a467-853b33d65dbc","action":"key","operationId":"2cd00787-873a-4c41-a415-3aa77b3b25d1","sequence":6,"expectedSeq":988,"observedSeq":988,"inputRefused":false}

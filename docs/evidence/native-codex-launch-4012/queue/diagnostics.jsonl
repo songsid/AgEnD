@@ -1,0 +1,6 @@
+{"at":1794754697059,"runBoot":"95329b92-110a-4fc8-b5b8-5d9fad12844d","level":"debug","msg":"Queued channel message for delivery"}
+{"at":1794754697064,"runBoot":"95329b92-110a-4fc8-b5b8-5d9fad12844d","level":"debug","msg":"CLI busy — handing message to backend-native input queue"}
+{"at":1794754697181,"runBoot":"95329b92-110a-4fc8-b5b8-5d9fad12844d","level":"warn","msg":"Native pane input refused before write","reason":"expected_seq_changed","retryCount":0,"expectedSeq":909,"observedSeq":913,"operationId":"594c1507-4987-45f4-a4ef-806d8fdaf289","commandSequence":5}
+{"at":1794754697827,"runBoot":"95329b92-110a-4fc8-b5b8-5d9fad12844d","level":"debug","msg":"Delivery settle telemetry"}
+{"at":1794754704840,"runBoot":"95329b92-110a-4fc8-b5b8-5d9fad12844d","level":"info","msg":"Queued hand-off taken by the CLI","proof":"transcript:turn","handoff":"79c6228a-c0a1-45a7-85a1-63a33fb83719","redeliveries":0}
+{"at":1794754706585,"runBoot":"95329b92-110a-4fc8-b5b8-5d9fad12844d","level":"debug","msg":"Native MCP result awaits transport-written confirmation"}

@@ -1,0 +1,112 @@
+[
+  {
+    "case": "m4012-beta4",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfa5-2200-7b12-9bb3-f6e647279552",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "m4012-beta4-long",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfc0-070b-7523-8bae-aaca2e30db77",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "m4012-fixed",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfae-a7f2-72d0-b9fb-ce078bb16da8",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "m4012-fixed-long",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfc0-5c42-7f01-872e-79e067947712",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "m4012-layout",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfa9-683b-7c71-aa51-fcd521d7fd26",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "m4012-matched-fixed",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfb7-9e37-7491-900c-8e1e8dc7ad26",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "m4012-matched-layout",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfb6-92d4-72e1-b119-ec77c9f5dc25",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "m4012-matched-none",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfb5-970a-7322-95d3-62be9cb24bac",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "m4012-matched-queue",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfb7-176f-7002-9714-ed207e25ed46",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "m4012-queue",
+    "paneClosed": true,
+    "hostExited": true,
+    "archive": {
+      "id": "01a1dfab-4ef1-7082-95d5-3b0dd7fa66c5",
+      "archived": true
+    },
+    "remainingOwnedProcesses": 0,
+    "scratchRemoved": true
+  }
+]
