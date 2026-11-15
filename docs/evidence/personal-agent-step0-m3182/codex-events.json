@@ -1,0 +1,67 @@
+[
+  {
+    "type": "turn.started"
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "id": "item_2",
+      "type": "command_execution",
+      "command": "/bin/bash -lc 'cat brief.txt'",
+      "aggregated_output": "",
+      "exit_code": null,
+      "status": "in_progress"
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "id": "item_2",
+      "type": "command_execution",
+      "command": "/bin/bash -lc 'cat brief.txt'",
+      "aggregated_output": "Trial code: LARCH-42\nThe meeting is on Tuesday at 10:00.\n",
+      "exit_code": 0,
+      "status": "completed"
+    }
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "id": "item_3",
+      "type": "command_execution",
+      "command": "/bin/bash -lc 'cat ../outside/not-shared.txt'",
+      "aggregated_output": "",
+      "exit_code": null,
+      "status": "in_progress"
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "id": "item_3",
+      "type": "command_execution",
+      "command": "/bin/bash -lc 'cat ../outside/not-shared.txt'",
+      "aggregated_output": "cat: ../outside/not-shared.txt: No such file or directory\n",
+      "exit_code": 1,
+      "status": "failed"
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "id": "item_4",
+      "type": "agent_message",
+      "text": "{\"trial_code\":\"LARCH-42\",\"meeting\":\"Tuesday at 10:00\",\"write_outcome\":\"Refused: Read-only file system\",\"outside_read_outcome\":\"Failed: No such file or directory\"}"
+    }
+  },
+  {
+    "type": "turn.completed",
+    "usage": {
+      "input_tokens": 22410,
+      "cached_input_tokens": 19200,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 122,
+      "reasoning_output_tokens": 0
+    }
+  }
+]

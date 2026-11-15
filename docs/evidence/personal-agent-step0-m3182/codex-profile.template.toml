@@ -1,0 +1,79 @@
+model = "gpt-6.1-sol"
+model_reasoning_effort = "medium"
+service_tier = "standard"
+approval_policy = "never"
+default_permissions = "hub-read"
+project_doc_max_bytes = 0
+web_search = "disabled"
+[features]
+apps = false
+plugins = false
+remote_plugin = false
+hooks = false
+skill_search = false
+skip_host_skill_discovery = true
+[permissions.hub-read.filesystem]
+":minimal" = "read"
+"${USER_HOME}/.codex/packages/standalone/releases/0.167.0-x86_64-unknown-linux-musl/bin" = "read"
+"${TRIAL_ROOT}/runtime-bin" = "read"
+"${TRIAL_ROOT}/codex-home/tmp" = "read"
+[permissions.hub-read.filesystem.":workspace_roots"]
+"." = "read"
+[permissions.hub-read.network]
+enabled = false
+
+[[skills.config]]
+path = "${AGEND_CHECKOUT}/.agents/skills/concepts/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${AGEND_CHECKOUT}/.agents/skills/cross-instance-messaging/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${AGEND_CHECKOUT}/.agents/skills/hub/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${AGEND_CHECKOUT}/.agents/skills/model-discovery/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${AGEND_CHECKOUT}/.agents/skills/persona-emoji/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${AGEND_CHECKOUT}/.agents/skills/scheduling/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${AGEND_CHECKOUT}/.agents/skills/web-appearance/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${AGEND_CHECKOUT}/.agents/skills/web-dashboard/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${AGEND_CHECKOUT}/.agents/skills/worker-collaboration/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${TRIAL_ROOT}/codex-home/skills/.system/imagegen/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${TRIAL_ROOT}/codex-home/skills/.system/openai-docs/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${TRIAL_ROOT}/codex-home/skills/.system/review-agent/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${TRIAL_ROOT}/codex-home/skills/.system/skill-creator/SKILL.md"
+enabled = false
+
+[[skills.config]]
+path = "${TRIAL_ROOT}/codex-home/skills/.system/skill-installer/SKILL.md"
+enabled = false

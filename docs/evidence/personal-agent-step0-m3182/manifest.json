@@ -1,0 +1,56 @@
+{
+  "source_commit": "27b57d5cd0defe28aeb7d575367c0f4d73843997",
+  "raw_private_inputs": [
+    {
+      "path": "captures/codex.stdout.jsonl",
+      "sha256": "5c41fc20f7839cdb2a9d1d3343a6595bb4b5928556d254e53308dd4526f69564"
+    },
+    {
+      "path": "captures/claude.stdout.jsonl",
+      "sha256": "fc9f66c7a398fe06558503d63ce6477b2a42046c7f63631e7cc2541ef2a9004f"
+    },
+    {
+      "path": "captures/codex.result.json",
+      "sha256": "99fc3c1900737251f7c8bcd531b9b65be24e91dc13bbb3c40d2fdb89b827b602"
+    },
+    {
+      "path": "captures/claude.result.json",
+      "sha256": "1fe7e4aff17ed783dcf160bbb7786663e18b6fe188947f800eab13fc8bf27827"
+    },
+    {
+      "path": "captures/deadline-control.result.json",
+      "sha256": "d56ea9b45fdc30a758c5ac0ffb8836bfd28eb18a52702cd5bd3eba405bb20826"
+    },
+    {
+      "path": "prompt-input-final.private.json",
+      "sha256": "ce7d08e9bd4971b209d68f30d8e542ea5e159d328c43137c8cd659e1eda2e7ab"
+    },
+    {
+      "path": "sandbox-boundary-control.log",
+      "sha256": "92324f87bfbe888e4e8116a96e133f1011286ea3afb57d38e28f2cebf2579c38"
+    },
+    {
+      "path": "run_trial.py",
+      "sha256": "0a77b22cfc0cf97e9696858ca16c871d8996bbc0712044a2f5d89111725815fd"
+    }
+  ],
+  "auth_copies_removed": true,
+  "published_files": [
+    {
+      "path": "codex-events.json",
+      "sha256": "5e33e70dba41c046d1c3568613ba04fc901eff846e082acaf318884184f52626"
+    },
+    {
+      "path": "codex-profile.template.toml",
+      "sha256": "5487e69e58057d487d315b46b7055026699b5881adbfe5f56c54d2efe8b843c0"
+    },
+    {
+      "path": "sandbox-boundary-control.log",
+      "sha256": "92324f87bfbe888e4e8116a96e133f1011286ea3afb57d38e28f2cebf2579c38"
+    },
+    {
+      "path": "summary.json",
+      "sha256": "5a558e9307875ebaaf11e43f0eac88071ed14c9f89f02a9e986bc26f436b1f9e"
+    }
+  ]
+}

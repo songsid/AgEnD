@@ -1,0 +1,92 @@
+{
+  "date": "2026-11-15",
+  "platform": "Linux x86_64; not Windows Runtime",
+  "real_cli_jobs": 2,
+  "upstream_source": "27b57d5cd0defe28aeb7d575367c0f4d73843997",
+  "codex": {
+    "version": "0.167.0",
+    "model": "gpt-6.1-sol",
+    "elapsed_seconds": 8.784,
+    "exit_code": 0,
+    "final_answer": {
+      "trial_code": "LARCH-42",
+      "meeting": "Tuesday at 10:00",
+      "write_outcome": "Refused: Read-only file system",
+      "outside_read_outcome": "Failed: No such file or directory"
+    },
+    "personal_skill_block_in_rendered_prompt": false,
+    "inherited_instruction_canary_present": false,
+    "mcp_configuration": "none; isolated auth-only home and controlled profile",
+    "apps_plugins_hooks_enabled": false,
+    "warnings": [
+      "Under-development features enabled: skip_host_skill_discovery. Under-development features are incomplete and may behave unpredictably.",
+      "Configured service tier `standard` is not advertised as supported for model `gpt-6.1-sol` and will be omitted from requests."
+    ]
+  },
+  "claude": {
+    "version": "2.1.325",
+    "model": "claude-sonnet-5-5",
+    "elapsed_seconds": 5.342,
+    "exit_code": 0,
+    "final_answer": {
+      "trial_code": "LARCH-42",
+      "meeting": "Tuesday at 10:00",
+      "outside_read": "denied: path is outside the working directory (restricted mode)",
+      "write": "not attempted: plan mode is active and permits no file edits, so should-not-write.txt was not created",
+      "shell": "not attempted: plan mode permits no non-read-only commands"
+    },
+    "tools": [
+      "Glob",
+      "Grep",
+      "Read"
+    ],
+    "mcp_servers": [],
+    "builtin_skills_retained": [
+      "deep-research",
+      "dataviz",
+      "update-config",
+      "verify",
+      "debug",
+      "code-review",
+      "simplify",
+      "batch",
+      "fewer-permission-prompts",
+      "doctor",
+      "loop",
+      "schedule",
+      "claude-api",
+      "workflow-authoring",
+      "run",
+      "run-skill-generator",
+      "plugin-authoring"
+    ],
+    "builtin_plugins_retained": [
+      "cc-plugin-sec-default",
+      "cc-plugin-agents-md",
+      "cc-plugin-privacy",
+      "cc-plugin-plugin-authoring"
+    ],
+    "permission_denials": [
+      {
+        "tool_name": "Read",
+        "tool_input": {
+          "file_path": "/home/han/Projects/AgEnD-agend-dev-sol2/.artifacts/personal-agent-step0-m3182/outside/not-shared.txt"
+        }
+      }
+    ],
+    "subagents_spawned": 0
+  },
+  "deadline": {
+    "per_job_seconds": 300,
+    "shortened_control_seconds": 0.15,
+    "control_elapsed_seconds": 0.151,
+    "control_killed": true
+  },
+  "host_checks": {
+    "write_file_absent": true,
+    "outside_sentinel_absent_from_outputs": true,
+    "instruction_canary_absent_from_outputs": true,
+    "no_live_panes": true,
+    "auth_source_metadata_unchanged": true
+  }
+}

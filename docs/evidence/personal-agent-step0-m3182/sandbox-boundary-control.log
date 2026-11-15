@@ -1,0 +1,1 @@
+{"inside": "Trial code: LARCH-42\nThe meeting is on Tuesday at 10:00.\n", "write": {"allowed": false, "errno": 30, "type": "OSError"}, "outside": {"allowed": false, "errno": 2, "type": "FileNotFoundError"}}
