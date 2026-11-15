@@ -7,7 +7,8 @@
 //   PUT /ui/office-level-titles, an admin's — Settings → Web dashboard);
 // - this browser's own choices (localStorage; blocked storage: this page only, as the canvas's Canvas/List): which
 //   office is shown, the auto office's member filter; #2540: the view (zoom and centre) and the
-//   fit mode (Fit or Fill) per office; #2554: whether All offices shows the lobby tile.
+//   fit mode (Fit or Fill) per office; #2554: whether All offices shows the lobby tile; #4010: the carousel's
+//   offices and interval (playing is not kept).
 // - the skin packs an admin uploaded (#2513: GET /ui/office-skins, POST to upload one, DELETE to remove one;
 //   src/web-office-skins.ts). The office editor and the layout editor call saveOffices() with the whole list and the rev
 //   they read (a change in between answers 409).
@@ -15,6 +16,7 @@
 // - #2692: the agents' pack changes (GET / POST /ui/office-pack-changes, an admin's): which agents may change packs, the
 //   fleet's approval mode, the changes waiting for a yes, and the newest log entries.
 import { AUTO_ID, filterOk, officesOk } from "./fleet-office-model.js";
+import { carouselSavedOk } from "./fleet-office-carousel.js";
 import { fitModeOk, savedOk } from "./fleet-office-view.js";
 import { levelsOk } from "./fleet-office-levels.js";
 import { checkLevels } from "./fleet-office-pack.js";
@@ -26,6 +28,8 @@ const LOBBY_KEY = "agend_org_office_lobby";
 const KEY_OPEN_KEY = "agend_org_office_key";
 /** #2861: whether the dialogue box shows here (default: off — nothing changes until a person ticks it). */
 const DIALOGUE_KEY = "agend_org_office_dialogue";
+/** #4010: { ids, interval } — the offices in the carousel and the seconds each is shown (playing is not kept). */
+const CAROUSEL_KEY = "agend_org_office_carousel";
 /** #2540: { "<office>@<style>": [k, cx, cy] (and a 1 after them: a fit) } — the last VIEWS_MAX views, the most recent last. */
 const VIEW_KEY = "agend_org_office_view", VIEWS_MAX = 32;
 /** #2540: { "<office>@<style>": "cover" } — the offices whose fit fills the panel (the rest: "contain"), the last VIEWS_MAX. */
@@ -185,10 +189,18 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
     },
     /**
      * The office shown here: an id (one the host no longer has falls back to the auto office where it is used), or
-     * #2554's All offices (fleet-office-overview.js ALL_ID; with fewer than two offices stored: the auto office).
+     * #2554's All offices (fleet-office-overview.js ALL_ID; with fewer than two offices stored: the auto office), or
+     * #4010's carousel (fleet-office-carousel.js CAROUSEL_ID; with fewer than two ticked: the whole fleet).
      */
     choice: () => { const v = read(CHOICE_KEY); return typeof v === "string" && v && v.length <= 40 ? v : AUTO_ID; },
     saveChoice: (id) => write(CHOICE_KEY, String(id)),
+    /** #4010: this browser's carousel pick ({ ids, interval }), or null (nothing saved here yet). */
+    carousel: () => {
+      const raw = read(CAROUSEL_KEY);
+      if (!raw) return null;
+      try { return carouselSavedOk(JSON.parse(raw)); } catch { return null; }
+    },
+    saveCarousel: (v) => write(CAROUSEL_KEY, JSON.stringify(carouselSavedOk(v))),
     filter: () => { const s = read(FILTER_KEY); try { return filterOk(s ? JSON.parse(s) : null); } catch { return filterOk(null); } },
     saveFilter: (f) => write(FILTER_KEY, JSON.stringify(filterOk(f))),
     /** The whole fleet's style here: a skin id ("pixel": desks, "studio" and "cozy": zones); none chosen yet: cozy (#2631); an unknown one is the default where used. */
