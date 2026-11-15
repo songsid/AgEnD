@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172
+
+ ❯ tests/hub-display-name-m3172.test.ts (5 tests | 1 failed | 4 skipped) 224ms
+   × learns a code-only pairing's Unicode name over its pinned member origin without changing the profile 222ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-display-name-m3172.test.ts > learns a code-only pairing's Unicode name over its pinned member origin without changing the profile
+AssertionError: expected '研一 Rig Hub' to be null
+
+- Expected:
+null
+
++ Received:
+"研一 Rig Hub"
+
+ ❯ tests/hub-display-name-m3172.test.ts:43:89
+     41|   expect(createHubMemberPairingApi({ home: w.rig.memberHome }).view())…
+     42|   expect(new HubMemberProfileStore(w.rig.memberHome, w.profile.hub.hub…
+     43|   expect(readHubDisplayName(w.rig.memberHome, { ...w.profile, fleetId:…
+       |                                                                                         ^
+     44|   expect(readHubDisplayName(w.rig.memberHome, { ...w.profile, issuerKe…
+     45| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  16:14:23
+   Duration  3.50s (transform 2.23s, setup 141ms, import 2.82s, tests 224ms, environment 0ms)
+

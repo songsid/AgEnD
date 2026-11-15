@@ -100,6 +100,7 @@ import type { NativePaneLifecycle } from "./native-pane-lifecycle.js";
 import type { RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { checkpointCodexPane } from "./codex-pane-ownership.js";
 import { codexAppliedFromRollout, codexRunningVersion, codexSupportsInlineModel, codexSwitchAnswerCount, codexSwitchFromPane, readFrom } from "./backend/codex-model-switch.js";
+import { CLI_RUNTIME_SWITCH, cliRunningVersion, cliSwitchAllowed, type CliSwitchBefore, type CliSwitchWant } from "./backend/cli-runtime-switch.js";
 import {
   buildResumeContinuation,
   clearInFlightTurnMarker,
@@ -763,6 +764,8 @@ export type OwnSwitchOutcome =
   | { outcome: "not_sent"; reason?: "busy" | "version"; version?: string | null };
 /** M-3175: AgEnD's own codex `/model … --reasoning=…`: what it asks for (null: leave that one as the session has it). */
 export interface CodexOwnSwitch { model: string | null; effort: string | null }
+/** M-3180: AgEnD's own one-command switch of another CLI (CLI_RUNTIME_SWITCH[backend]): one step, model or effort. */
+export interface CliOwnSwitch extends CliSwitchWant { backend: string }
 /** M-3175: how long a codex switch waits for the pane to be idle before it is not typed (the fleet then restarts instead). */
 const CODEX_SWITCH_IDLE_MS = 60_000;
 /** M-3175: how long codex gets to record the switch (rollout) or answer it (pane) after it is typed. */
@@ -5199,7 +5202,7 @@ export class Daemon extends EventEmitter {
     deliveryEpoch = this.deliveryEpoch,
     confirmClear = false,
     durableAttempt?: DurableDeliveryAttempt,
-    ownSwitch?: { id: string; kind: "model"; requested: string; codex?: CodexOwnSwitch },
+    ownSwitch?: { id: string; kind: "model"; requested: string; codex?: CodexOwnSwitch; cli?: CliOwnSwitch },
     notifyWritten?: string,
     contextReset?: "clear" | "compact",
   ): void {
@@ -5251,6 +5254,7 @@ export class Daemon extends EventEmitter {
       }
       const verdict: DeliveryVerdict = { reached: false };
       let codexBefore: CodexSwitchBefore | null = null;
+      let cliBefore: CliSwitchBefore | null = null;
       try {
         await this.wake();
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
@@ -5269,6 +5273,16 @@ export class Daemon extends EventEmitter {
             return;
           }
           codexBefore = gate;
+        }
+        if (ownSwitch?.cli) {
+          const gate = await this.cliSwitchGate(ownSwitch.cli);
+          if ("blocked" in gate) {
+            this.logger.info({ requested: ownSwitch.cli, reason: gate.blocked, version: gate.version }, "CLI runtime switch not typed");
+            reportSwitch({ outcome: "not_sent", reason: gate.blocked, version: gate.version ?? null });
+            tellWritten(false);
+            return;
+          }
+          cliBefore = gate;
         }
         // Board 907c7899: the pane just before this attempt's paste — after its readiness wait, last capture and fence,
         // under the paste lock (no other input lands in between). Each attempt looks again.
@@ -5320,7 +5334,7 @@ export class Daemon extends EventEmitter {
       if (ownSwitch) {
         if (this.ownSwitch !== ownSwitch) reportSwitch({ outcome: "not_sent" });   // its write never began
         else {
-          try { reportSwitch(ownSwitch.codex ? await this.verifyCodexSwitch(ownSwitch.codex, codexBefore) : await this.answerOwnSwitchDialog(ownSwitch)); }
+          try { reportSwitch(ownSwitch.codex ? await this.verifyCodexSwitch(ownSwitch.codex, codexBefore) : ownSwitch.cli ? await this.verifyCliSwitch(ownSwitch.cli, cliBefore) : await this.answerOwnSwitchDialog(ownSwitch)); }
           catch (err) { this.logger.warn({ err: (err as Error).message }, "Answering our own model switch failed"); reportSwitch({ outcome: "not_confirmed" }); }
           finally { this.ownSwitch = null; }
         }
@@ -5347,10 +5361,16 @@ export class Daemon extends EventEmitter {
     const sw = msg.runtime_switch as { id?: unknown; kind?: unknown; requested?: unknown; codex?: { model?: unknown; effort?: unknown } } | undefined;
     const codexPart = (v: unknown): string | null | undefined => v === null ? null : typeof v === "string" && v ? v : undefined;
     const codex = sw?.codex && typeof sw.codex === "object" ? { model: codexPart(sw.codex.model), effort: codexPart(sw.codex.effort) } : undefined;
-    const ownSwitch = sw && typeof sw.id === "string" && sw.kind === "model" && typeof sw.requested === "string"
+    // M-3180: one generic spec for the CLIs of CLI_RUNTIME_SWITCH — a known backend and exactly one of model / effort (a step).
+    const rawCli = (sw as { cli?: { backend?: unknown; model?: unknown; effort?: unknown } } | undefined)?.cli;
+    const cli = rawCli && typeof rawCli === "object" && typeof rawCli.backend === "string" && Object.hasOwn(CLI_RUNTIME_SWITCH, rawCli.backend)
+      ? { backend: rawCli.backend, model: codexPart(rawCli.model), effort: codexPart(rawCli.effort) } : rawCli === undefined ? undefined : null;
+    const cliOk = !cli || (cli.model !== undefined && cli.effort !== undefined && (cli.model === null) !== (cli.effort === null));
+    const ownSwitch = sw && typeof sw.id === "string" && sw.kind === "model" && typeof sw.requested === "string" && cli !== null && cliOk && !(codex && cli)
       && (!codex || (codex.model !== undefined && codex.effort !== undefined && (codex.model !== null || codex.effort !== null)))
       ? { id: sw.id, kind: "model" as const, requested: sw.requested,
-        ...(codex ? { codex: { model: codex.model as string | null, effort: codex.effort as string | null } } : {}) } : undefined;
+        ...(codex ? { codex: { model: codex.model as string | null, effort: codex.effort as string | null } } : {}),
+        ...(cli ? { cli: { backend: cli.backend, model: cli.model as string | null, effort: cli.effort as string | null } } : {}) } : undefined;
     const notifyWritten = typeof msg.notify_written === "string" && /^[0-9a-f]{16}$/.test(msg.notify_written) ? msg.notify_written : undefined;
     this.queueRawPaste(
       msg.content as string,
@@ -5382,6 +5402,36 @@ export class Daemon extends EventEmitter {
       if (file) rollout = { path: file.path, offset: file.offset };
     }
     return { rollout, answers: codexSwitchAnswerCount(pane), version };
+  }
+
+  /**
+   * M-3180: before typing a CLI_RUNTIME_SWITCH step: the pane authoritatively idle (bounded), the RUNNING binary at the entry's minimum
+   * for this step, and what the verdict compares against — the scrollback before the command and the entry's record checkpoint.
+   */
+  private async cliSwitchGate(step: CliOwnSwitch): Promise<CliSwitchBefore | { blocked: "busy" | "version"; version?: string | null }> {
+    const tmux = this.tmux, entry = CLI_RUNTIME_SWITCH[step.backend];
+    if (!entry || !tmux || !await this.waitForAuthoritativePaneIdle(CODEX_SWITCH_IDLE_MS, 500) || this.tmux !== tmux) return { blocked: "busy" };
+    const pid = await tmux.getPanePid?.() ?? null;
+    const version = pid ? await cliRunningVersion(pid, { backend: step.backend, matchExe: entry.matchExe, versionFromExe: entry.versionFromExe }) : null;
+    if (!cliSwitchAllowed(entry, step, version)) return { blocked: "version", version };
+    const pane = await tmux.capturePaneWithHistory(CODEX_SWITCH_HISTORY_LINES).catch(() => "");
+    const record = entry.checkpoint ? await entry.checkpoint(pane, this.config.working_directory || process.cwd()).catch(() => undefined) : undefined;
+    return { pane, ...(record !== undefined ? { record } : {}) };
+  }
+
+  /** M-3180: the entry's verdict on the scrollback after the step, against the one before it; nothing in time is not confirmed. */
+  private async verifyCliSwitch(step: CliOwnSwitch, before: CliSwitchBefore | null): Promise<OwnSwitchOutcome> {
+    const tmux = this.tmux, entry = CLI_RUNTIME_SWITCH[step.backend];
+    if (!tmux || !before || !entry) return { outcome: "not_confirmed" };
+    const deadline = performance.now() + CODEX_SWITCH_VERIFY_MS;
+    while (performance.now() < deadline && this.tmux === tmux) {
+      const pane = await tmux.capturePaneWithHistory(CODEX_SWITCH_HISTORY_LINES).catch(() => "");
+      const verdict = await entry.verify({ model: step.model, effort: step.effort }, before, { pane });
+      if (verdict?.outcome === "switched") return { outcome: "switched", confirmed: true, shown: verdict.shown };
+      if (verdict?.outcome === "mismatch") return { outcome: "mismatch", shown: verdict.shown, answered: true };
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return { outcome: "not_confirmed" };
   }
 
   /**

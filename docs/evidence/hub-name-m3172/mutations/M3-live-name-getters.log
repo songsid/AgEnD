@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172
+
+ ❯ tests/hub-display-name-m3172.test.ts (5 tests | 1 failed | 4 skipped) 1665ms
+   × does not gate member startup or update eligibility on a held display read, then names update notices and advice 1663ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-display-name-m3172.test.ts > does not gate member startup or update eligibility on a held display read, then names update notices and advice
+AssertionError: expected '127.0.0.1' to be 'Rig Hub' // Object.is equality
+
+Expected: "Rig Hub"
+Received: "127.0.0.1"
+
+ ❯ tests/hub-display-name-m3172.test.ts:112:56
+    110|   await w.rig.server.send(w.profile.fleetId, { v: 1, type: "fleet.reco…
+    111|     payload: { revision: 1, version: "2.4.0-beta.4", setAt: at } });
+    112|   await vi.waitFor(() => { expect(notices[0]?.hubName).toBe("Rig Hub")…
+       |                                                        ^
+    113|   if (process.env.AGEND_M3172_EVIDENCE_DIR) {
+    114|     writeFileSync(join(w.rig.memberHome, "hub-member/state.json"), JSO…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  16:14:16
+   Duration  4.90s (transform 2.52s, setup 114ms, import 2.95s, tests 1.66s, environment 0ms)
+

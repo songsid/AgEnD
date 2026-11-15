@@ -1,0 +1,13 @@
+diff --git a/src/hub/display-name.ts b/src/hub/display-name.ts
+index ecb78817a..d3a3e08c3 100644
+--- a/src/hub/display-name.ts
++++ b/src/hub/display-name.ts
+@@ -19,7 +19,7 @@ const binding = (profile: Identity) => sha256(JSON.stringify([profile.hub.hubId,
+ export function readHubDisplayName(home: string, profile: Identity): string | null {
+   try {
+     const saved = validated(savedSchema, parseStrictJson(readPrivateFile(home, path(profile), 4096)));
+-    if (saved.hubId === profile.hub.hubId && saved.issuerKeyId === profile.issuerKeyId && saved.binding === binding(profile)) return saved.name || null;
++    if (saved.hubId === profile.hub.hubId && saved.issuerKeyId === profile.issuerKeyId) return saved.name || null;
+   } catch { /* Missing, unreadable or invalid optional display data never holds the member. */ }
+   return readDisplay(home, profile.hub.hubId)?.hubName || null;
+ }

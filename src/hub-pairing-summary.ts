@@ -7,7 +7,7 @@ export type HubPairingHold = "unknown_outcome" | "expired" | "unsaved" | "refuse
 export type HubPairingView =
   | { state: "unpaired" }
   | { state: "pending"; memberOrigin: string; fingerprint: { kind: "pairing"; digest: string }; expiresAt: number; ownerConfirmed: null; adminApproved: null; localConfirmed: boolean }
-  | { state: "paired"; hub: { hubId: string; name: null; memberOrigin: string; webOrigin: string; fingerprint: { kind: "hub-key"; digest: string } }; link: "online" | "offline"; binding?: string }
+  | { state: "paired"; hub: { hubId: string; name: string | null; memberOrigin: string; webOrigin: string; fingerprint: { kind: "hub-key"; digest: string } }; link: "online" | "offline"; binding?: string }
   | { state: "held"; hold: HubPairingHold; memberOrigin?: string; hubId?: string; binding?: string };
 export type HubConnectError = "address" | "code" | "busy" | "unreachable" | "refused";
 export function httpsOrigin(address: string): string | null {
