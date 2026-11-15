@@ -25,6 +25,7 @@ import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { workingLine } from "./hub-room-working.js";
 import { countsLine } from "./hub-room-list.js";
+import { hubFileAttachment } from "./hub-attachments.js";
 
 linkRoomsU2Css();   // M-3127: the reaction chips and picker are drawn from hub-rooms-u2.css (a room opened before any U2 panel)
 /** M-3127 C: the message a search hit opens (`?room=…&m=<id>`), or null. */
@@ -156,6 +157,8 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     out.push({ boot: BOOT, id, role: kind === "person" && !author.via ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
       ...(kind === "person" && !mine && !author.via ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
       roomMessage: m.id, ...(mine && state?.delivery ? { delivery: state.delivery } : {}),
+      // M-3125: a post's files, as the 1:1 chat maps them (images inline through the Hub's own route; HTML gets its preview card).
+      ...(() => { const files = Array.isArray(m.files) ? m.files.map(hubFileAttachment).filter(Boolean) : []; return files.length ? { attachments: files } : {}; })(),
       ...(!direct && Array.isArray(m.reactions) && m.reactions.length ? { reactionBar: reactionBar(m.reactions, { meId, names }) } : {}),
       ...(!direct && kind !== "person" && m.buttons ? { buttons: roomButtons(m.buttons, meId) } : {}),
       ...(quotedId ? { replyTo: { boot: BOOT, id: num(quotedId), sender: quoted ? authorLine(quoted.author, quoted.author?.id === meId, direct) : "", text: quoted ? String(quoted.text || "").slice(0, 120) : "" } } : {}),

@@ -142,6 +142,11 @@ export class HubAttachmentStore {
     const bind = db.prepare("UPDATE hub_attachments SET state='bound', message_id=?, fleet_id=?, position=?, expires_at=NULL WHERE id=? AND state='pending'");
     refs.forEach((r, i) => { if (bind.run(messageId, fleetId, i, r.id).changes !== 1) throw new HubProtocolError("conflict"); });
   }
+  /** M-3125: a person's files on a group-room post (no fleet: people chat in group rooms; agents get them through a room ask). */
+  bindPost(db: Database.Database, refs: readonly HubAttachmentRef[], postId: string): void {
+    const bind = db.prepare("UPDATE hub_attachments SET state='bound', message_id=?, position=?, expires_at=NULL WHERE id=? AND state='pending'");
+    refs.forEach((r, i) => { if (bind.run(postId, i, r.id).changes !== 1) throw new HubProtocolError("conflict"); });
+  }
   /** A message's files in one direction, in order. */
   forMessage(db: Database.Database, messageId: string, direction: "question" | "answer"): HubAttachmentRef[] {
     return (db.prepare("SELECT * FROM hub_attachments WHERE message_id=? AND direction=? AND state='bound' ORDER BY position").all(messageId, direction) as Row[]).map(refOf);
