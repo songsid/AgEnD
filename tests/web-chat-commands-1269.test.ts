@@ -244,6 +244,23 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.card().className).toContain("bad");
   });
 
+  // #4003 review: the menu is /model's list. A model being switched to — a pick from the menu, or a typed "/model <id>" — is
+  // the card while it runs, never an empty "Loading models…" menu placed by the last control clicked.
+  it("a pick in flight, or a typed /model <id>: the card while it runs, not the menu", async () => {
+    const c = await chatPage();
+    let release: (v: unknown) => void = () => {};
+    c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.args ? new Promise((r) => { release = r; })
+      : { choices: { current: "a", options: [{ id: "a", label: "✓ Alpha" }, { id: "b", label: "Beta" }] } });
+    await c.type("/model"); await c.key("Enter");
+    fire(c.menu().querySelectorAll(".model-menu-row")[1], "click"); await settle();
+    expect([!!c.p.root.querySelector(".model-menu"), !!c.card()], "picked: switching shows as the card").toEqual([false, true]);
+    release({ text: "Model set to b" }); await settle();
+    expect(c.card().querySelector(".cmd-text").textContent).toBe("Model set to b");
+    await c.type("/model a"); await c.key("Enter");
+    expect([!!c.p.root.querySelector(".model-menu"), !!c.card()], "typed with an id: the card").toEqual([false, true]);
+    release({ text: "Model set to a" }); await settle();
+  });
+
   // M-3166 PR 3 (the user's OK of round 2): the model in use's effort is one segmented row in the menu (it replaced the
   // phone's per-model "›" list): /effort <level> alone. Another model's effort is chosen after switching to it.
   describe("the menu's effort (AGEND-176, M-3166)", () => {

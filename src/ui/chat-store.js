@@ -597,7 +597,8 @@ export function createChatStore(deps) {
     const alive = opts.alive || (() => true);
     if (!alive()) return;
     const previous = s.commands[target];
-    const pending = { command, busy: true, ...(opts.action && previous?.command === command ? { choices: previous.choices } : {}) };
+    // What it was run with (#4003 review): a list asked for ("/model") is a menu while it loads; a pick ("/model <id>") is not.
+    const pending = { command, busy: true, ...(args ? { args } : {}), ...(opts.action && previous?.command === command ? { choices: previous.choices } : {}) };
     s.commands[target] = pending;
     changed(target);
     const post = async (extra) => {

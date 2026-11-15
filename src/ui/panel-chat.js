@@ -977,6 +977,8 @@ function ModelMenu({ name, c, lease }) {
   const close = () => store.dismissCommand(name);
   const alive = () => lease.current();
   const run = (args, action) => store.runCommand(name, "model", args, { alive, ...(action ? { action } : {}) });
+  // The control that opened it is this opening's only: gone with the menu, a later typed /model is placed by the box.
+  useEffect(() => () => { modelMenuAnchor = null; }, []);
   const options = c.choices?.options || [], current = c.choices?.current ?? null, actions = c.choices?.actions || [];
   const refresh = actions.find((a) => a === "refresh" || a === "refreshAll");
   const cur = options.find((o) => o.id === current && o.effort);
@@ -1033,7 +1035,9 @@ function CommandCard({ name, lease }) {
   const [sub, setSub] = useState(null);
   // M-3166 PR 3 (the user's OK of round 2): /model's pick list is a menu — anchored under the model control on a desk, a
   // bottom sheet on a phone — not a card above the box. A failure, its result text and /backend stay the card.
-  if (c.command === "model" && (c.choices ? c.choices.step !== "backend" : c.busy && !c.error)) return html`<${ModelMenu} name=${name} c=${c} lease=${lease} />`;
+  // The menu is /model's list: shown with its choices, or while that list loads. A model being switched to (a pick from the
+  // menu, a typed "/model <id>") is the card's, as before (#4003 review).
+  if (c.command === "model" && (c.choices ? c.choices.step !== "backend" : c.busy && !c.error && !c.args)) return html`<${ModelMenu} name=${name} c=${c} lease=${lease} />`;
   const open = sub && sub.for === c.choices ? c.choices.options.find((o) => o.id === sub.id && o.effort) : null;
   const pickEffort = async (model, level) => {
     setSub(null);
