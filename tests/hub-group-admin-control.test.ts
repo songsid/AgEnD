@@ -16,6 +16,7 @@ import type { HubActor, HubDirectory, PersonKey } from "../src/hub/types.js";
 import type { PolicyGroupFacts, PolicyGroupLookup } from "../src/hub/directory/groups.js";
 import type { HubGroupPolicy } from "../src/hub/group-policy/model.js";
 import type { GroupAdminContext, GroupImpact } from "../src/hub/group-policy/admin-dto.js";
+import { HUB_TEAMS_MIGRATION, HUB_TEAM_MANAGEMENT_MIGRATION } from "../src/hub/teams/store.js";
 const databases: Database.Database[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); vi.restoreAllMocks(); });
 function gate<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
@@ -76,6 +77,64 @@ function fixture() {
     time: (ms: number) => { t += ms; }, signOut: () => { session = false; }, stop: () => { live = false; }, generation: () => { generation = "gen-2"; } };
 }
 describe("sealed group policy confirmation control", () => {
+  function teamProposal(w: ReturnType<typeof fixture>) {
+    HUB_TEAMS_MIGRATION.up(w.db); HUB_TEAM_MANAGEMENT_MIGRATION.up(w.db);
+    const id = randomUUID(), unseen = key();
+    w.db.prepare("INSERT INTO hub_teams VALUES(?,1,'Product team','example',?,'Department',?,100,100,0)").run(id, w.group.objectId, personKeyString(w.owner));
+    for (const member of [w.owner, unseen]) w.db.prepare("INSERT INTO hub_team_members VALUES(?,?,'Team member','member','')").run(id, personKeyString(member));
+    w.directory.checkEligibility = vi.fn(async (person: PersonKey) => ({ eligible: true as const, person: { key: person, displayName: "Team member", login: "member", dn: "CN=Team member,DC=example", groups: [] } }));
+    return { id, unseen, next: { ...w.proposal(), groups: [], teams: [{ teamId: id, name: "Product team", allow: ["ask_agents", "publish_agents", "pair_fleet"] as HubGroupPolicy["groups"][number]["allow"], maxFleets: 3 }] } };
+  }
+  it("T1 previews all local team members, including someone who has never signed in", async () => {
+    const w = fixture(), t = teamProposal(w), preview = await w.control.preview({ policy: t.next }, w.ctx);
+    expect(preview).toMatchObject({ ok: true, impact: { teamMembers: 2 } });
+    expect(w.directory.checkEligibility).toHaveBeenCalledWith(t.unseen); expect(w.read).not.toHaveBeenCalled();
+    expect(w.db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(personKeyString(t.unseen))).toBeUndefined();
+  });
+  it("T1 binds the exact roster even when all members were already in the same known-person inventory", async () => {
+    const w = fixture(), t = teamProposal(w);
+    w.db.prepare("DELETE FROM hub_team_members WHERE team_id=?").run(t.id);
+    for (const p of [w.owner, w.asker]) w.db.prepare("INSERT INTO hub_team_members VALUES(?,?,'Member','member','')").run(t.id, personKeyString(p));
+    const next = { ...w.proposal(), teams: t.next.teams }, preview = await w.control.preview({ policy: next }, w.ctx);
+    expect(preview.ok).toBe(true); if (!preview.ok) throw Error("preview refused");
+    const before = w.impactInventory.snapshot([w.policy.read(), next]);
+    w.db.prepare("DELETE FROM hub_team_members WHERE team_id=? AND person=?").run(t.id, personKeyString(w.asker));
+    w.db.prepare("INSERT INTO hub_team_members VALUES(?,?,'Admin','avery','')").run(t.id, personKeyString(w.administrator));
+    w.db.prepare("UPDATE hub_teams SET revision=revision+1 WHERE id=?").run(t.id);
+    const after = w.impactInventory.snapshot([w.policy.read(), next]);
+    expect(after.people).toEqual(before.people); expect(after.resources).toEqual(before.resources); expect(after.teamMembers).toBe(before.teamMembers);
+    expect(after.fingerprint).not.toBe(before.fingerprint);
+    expect(await w.control.apply({ policy: next, previewDigest: preview.previewDigest }, w.ctx)).toMatchObject({ ok: false, code: "conflict" });
+    expect(w.policy.read().state).toBe("never-enabled");
+  });
+  it("T1 preview/apply removes empty optional fields from the committed policy", async () => {
+    const w = fixture(), t = teamProposal(w);
+    expect((await w.apply(t.next)).result).toMatchObject({ ok: true });
+    const emptied = { ...w.policy.read(), teams: [], people: [] };
+    expect((await w.apply(emptied)).result).toMatchObject({ ok: true });
+    const stored = JSON.parse((w.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body);
+    expect(stored).not.toHaveProperty("teams"); expect(stored).not.toHaveProperty("people");
+  });
+  it("T1 refuses an apply if the selected team changes after preview", async () => {
+    const w = fixture(), t = teamProposal(w), preview = await w.control.preview({ policy: t.next }, w.ctx);
+    expect(preview.ok).toBe(true); if (!preview.ok) throw Error("preview refused");
+    w.db.prepare("DELETE FROM hub_team_members WHERE team_id=? AND person=?").run(t.id, personKeyString(t.unseen));
+    expect(await w.control.apply({ policy: t.next, previewDigest: preview.previewDigest }, w.ctx)).toMatchObject({ ok: false });
+    expect(w.policy.read().state).toBe("never-enabled");
+  });
+  it("T1 refuses a missing selected team instead of saving an inert-looking row", async () => {
+    const w = fixture(), t = teamProposal(w); w.db.prepare("UPDATE hub_teams SET deleted=1 WHERE id=?").run(t.id);
+    expect(await w.control.preview({ policy: t.next }, w.ctx)).toMatchObject({ ok: false });
+  });
+  it("T1 uses eligibility instead of changing the empty AD-group observation contract", async () => {
+    const w = fixture(), t = teamProposal(w);
+    w.read.mockImplementation(async p => ({ kind: "complete", person: p, groups: [], observedAt: 100 }));
+    const preview = await w.control.preview({ policy: t.next }, w.ctx);
+    expect(preview.ok).toBe(true); if (!preview.ok) throw Error("preview refused");
+    expect(preview.impact.held.some(p => p.personId === personKeyString(w.owner))).toBe(false);
+    expect(preview.impact.losingPublication).toEqual([]);
+    expect(w.read).not.toHaveBeenCalled();
+  });
   it("previews without writes, then atomically captures exact manual revisions, policy, evidence and one transport epoch", async () => {
     const w = fixture(), next = w.proposal(), preview = await w.control.preview({ policy: next }, w.ctx);
     expect(preview).toMatchObject({ ok: true, policyRevision: 1, authorizationVersion: 0, expiresAt: 120_100 });

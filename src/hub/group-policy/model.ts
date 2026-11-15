@@ -9,12 +9,18 @@ export type GroupCapability = typeof GROUP_CAPABILITIES[number];
 const capabilities = z.array(z.enum(GROUP_CAPABILITIES)).max(3).refine(a => new Set(a).size === a.length);
 const label = z.string().min(1).max(1024).regex(/^[^\u0000-\u001f\u007f]+$/);
 const rule = z.strictObject({ group: person, dn: label, allow: capabilities, maxFleets: z.number().int().min(0).max(8) });
+const teamRule = z.strictObject({ teamId: uuid, name: label, allow: capabilities, maxFleets: z.number().int().min(0).max(8) });
+const personRule = z.strictObject({ person, name: label, allow: capabilities, maxFleets: z.number().int().min(0).max(8) });
 const deny = z.strictObject({ person, deny: capabilities });
 const schema = z.strictObject({ realm: person.shape.realm, generation: identifier, revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   state: z.enum(["never-enabled", "enabled", "suspended"]), groups: z.array(rule).max(32), denies: z.array(deny).max(256),
+  teams: z.array(teamRule).max(32).optional(), people: z.array(personRule).max(256).optional(),
 }).refine(p => p.groups.every(r => r.group.realm === p.realm) && p.denies.every(d => d.person.realm === p.realm)
   && new Set(p.groups.map(r => r.group.objectId)).size === p.groups.length
-  && new Set(p.denies.map(d => d.person.objectId)).size === p.denies.length);
+  && new Set(p.denies.map(d => d.person.objectId)).size === p.denies.length
+  && new Set((p.teams ?? []).map(r => r.teamId)).size === (p.teams?.length ?? 0)
+  && (p.people ?? []).every(r => r.person.realm === p.realm)
+  && new Set((p.people ?? []).map(r => r.person.objectId)).size === (p.people?.length ?? 0));
 export type HubGroupPolicy = z.infer<typeof schema>;
 export interface HubGroupDecision {
   readonly outcome: "allow" | "deny" | "unknown" | "legacy";
@@ -32,7 +38,8 @@ export function initialGroupPolicy(realm: string, generation: string): HubGroupP
 export function parseGroupCapability(input: unknown): GroupCapability { return validated(z.enum(GROUP_CAPABILITIES), input); }
 
 /** Pure evaluation. No result creates a session, pairs a fleet, publishes an agent or replaces an owner grant. */
-export function evaluateGroupPolicy(input: unknown, subject: PersonKey, capability: GroupCapability, facts: PolicyGroupFacts): HubGroupDecision {
+export type GroupPersonFacts = PolicyGroupFacts | { readonly kind: "eligible"; readonly person: PersonKey; readonly observedAt: number };
+export function evaluateGroupPolicy(input: unknown, subject: PersonKey, capability: GroupCapability, facts: GroupPersonFacts, teams: readonly string[] = []): HubGroupDecision {
   const p = parseGroupPolicy(input), who = validated(person, subject), cap = parseGroupCapability(capability);
   const decision = (outcome: HubGroupDecision["outcome"], reason: HubGroupDecision["reason"], authoritative = true, groups: string[] = [], maxFleets = 0, observedAt?: number): HubGroupDecision =>
     Object.freeze({ outcome, reason, authoritative, groups: Object.freeze(groups), maxFleets, ...(observedAt !== undefined ? { observedAt } : {}) });
@@ -43,11 +50,17 @@ export function evaluateGroupPolicy(input: unknown, subject: PersonKey, capabili
   if (facts.kind === "unknown") return decision("unknown", "unknown", false);
   if (facts.person.realm !== who.realm || facts.person.objectId !== who.objectId || !Number.isSafeInteger(facts.observedAt) || facts.observedAt < 0) return decision("unknown", "unknown", false);
   if (facts.kind === "ineligible") return decision("deny", "ineligible", true, [], 0, facts.observedAt);
-  if (facts.groups.length > 256 || facts.groups.some(g => !uuid.safeParse(g).success)) return decision("unknown", "unknown", false);
+  if (facts.kind === "complete" && (facts.groups.length > 256 || facts.groups.some(g => !uuid.safeParse(g).success))) return decision("unknown", "unknown", false);
+  if (teams.length > 32 || teams.some(id => !uuid.safeParse(id).success)) return decision("unknown", "unknown", false);
   if (p.denies.some(d => d.person.objectId === who.objectId && d.deny.includes(cap))) return decision("deny", "person-denied", true, [], 0, facts.observedAt);
-  const membership = new Set(facts.groups);
+  const membership = new Set(facts.kind === "complete" ? facts.groups : []);
   const matches = p.groups.filter(r => membership.has(r.group.objectId) && r.allow.includes(cap));
-  const maxFleets = Math.max(0, ...matches.map(r => r.maxFleets));
-  const allowed = matches.length > 0 && (cap !== "pair_fleet" || maxFleets > 0);
+  const teamSet = new Set(teams), local = [
+    ...(p.teams ?? []).filter(r => teamSet.has(r.teamId) && r.allow.includes(cap)),
+    ...(p.people ?? []).filter(r => r.person.objectId === who.objectId && r.allow.includes(cap)),
+  ];
+  const maxFleets = Math.max(0, ...[...matches, ...local].map(r => r.maxFleets));
+  const allowed = matches.length + local.length > 0 && (cap !== "pair_fleet" || maxFleets > 0);
+  if (!allowed && facts.kind === "eligible" && p.groups.some(r => r.allow.includes(cap))) return decision("unknown", "unknown", false);
   return decision(allowed ? "allow" : "deny", allowed ? "group" : "no-group", true, matches.map(r => r.group.objectId).sort(), maxFleets, facts.observedAt);
 }

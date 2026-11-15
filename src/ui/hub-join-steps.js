@@ -11,7 +11,9 @@
  *   card reads its steps again. Revoking stays the component's own (it lists retained codes even with creation off).
  */
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { GroupSearch } from "./hub-group-search.js";
+import { policyRows, draftPolicySubjects, pickedPolicyRow, subjectKind, subjectId, subjectKey, useAllowedTeams, PolicySubjectLabel } from "./hub-policy-subjects.js";
+import { SubjectPicker, subjectText } from "./hub-subject-picker.js";
+
 import { register, t } from "/assets/app-i18n.js";
 import { hubClient } from "./hub-client.js";
 import { navigate } from "/assets/app-nav.js";
@@ -23,10 +25,10 @@ register("hubJoinSteps", {
     step3Off: "Finish steps 1 and 2 first.", reading: "Checking the saved Hub settings…", readFailed: "Could not refresh the Hub settings. Try again.", retry: "Try again",
     title: "Let colleagues join", lead: "Three steps. Each one is checked against what the Hub has saved.", done: "Done",
     step1: "Let colleagues connect Fleets with their company account", step1Switch: "Allow company-account Fleet connections",
-    step2: "Who can join", step2Hint: "Add the AD groups whose members may connect a Fleet, then save.",
+    step2: "Who can join", step2Hint: "Add an AD group, team or person who may connect a Fleet, then save.",
     step2Code: "A live join code counts too.", byDn: "Add by distinguished name", dnLabel: "Distinguished name", dnAdd: "Add",
     perPerson: "Each person up to", fleetsUnit: "Fleets", capAsk: "Chat with agents", capPublish: "Share agents", remove: "Remove",
-    noGroups: "No group yet.", previewing: "Checking what this changes…", noImpact: "Nobody loses anything.",
+    noGroups: "No group, team or person yet.", previewing: "Checking what this changes…", noImpact: "Nobody loses anything.",
     losing: "These people lose an action", suspended: "These are paused when you save", adminLosesChat: "You would no longer be able to chat with agents.",
     save: "Save", saving: "Saving…", saved: "Saved.", conflict: "Someone else changed this. The page now shows the saved version.",
     stale: "The check is out of date. It has been run again; look at it and save again.", failed: "Could not save. Try again.",
@@ -41,10 +43,10 @@ register("hubJoinSteps", {
     step3Off: "請先完成步驟 1 和 2。", reading: "正在確認 Hub 已儲存的設定…", readFailed: "目前無法更新 Hub 設定，請再試一次。", retry: "再試一次",
     title: "讓同仁加入", lead: "三個步驟，每一步都依 Hub 已儲存的設定判斷是否完成。", done: "已完成",
     step1: "允許同仁用公司帳號連接 Fleet", step1Switch: "允許以公司帳號連接 Fleet",
-    step2: "誰可以加入", step2Hint: "加入可以連接 Fleet 的 AD 群組，然後儲存。",
+    step2: "誰可以加入", step2Hint: "加入可以連接 Fleet 的 AD 群組、團隊或人員，然後儲存。",
     step2Code: "有效的加入碼也算完成。", byDn: "用辨別名稱新增", dnLabel: "辨別名稱", dnAdd: "新增",
     perPerson: "每人最多", fleetsUnit: "台", capAsk: "和 Agent 對話", capPublish: "分享 Agent", remove: "移除",
-    noGroups: "還沒有群組。", previewing: "正在檢查這次變更的影響…", noImpact: "沒有人會失去任何權限。",
+    noGroups: "還沒有群組、團隊或人員。", previewing: "正在檢查這次變更的影響…", noImpact: "沒有人會失去任何權限。",
     losing: "這些人會失去權限", suspended: "儲存後會暫停這些項目", adminLosesChat: "你將無法再和 Agent 對話。",
     save: "儲存", saving: "儲存中…", saved: "已儲存。", conflict: "有人剛改過這裡。頁面已顯示目前儲存的版本。",
     stale: "檢查結果已過期，已重新檢查。請看過後再儲存一次。", failed: "無法儲存，請再試一次。",
@@ -95,16 +97,16 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const groupLetsJoin = (g) => !!g && Array.isArray(g.allow) && g.allow.includes("pair_fleet") && g.maxFleets >= 1;
 /** Step 2 is done from saved state: the policy is on and a group lets members join — or a join code is live (B2). */
 export function step2Done(policy, codes) {
-  return !!policy && policy.state === "enabled" && policy.groups.some(groupLetsJoin) || Array.isArray(codes) && codes.some((c) => c && c.state === "live");
+  return !!policy && policy.state === "enabled" && policyRows(policy).some(groupLetsJoin) || Array.isArray(codes) && codes.some((c) => c && c.state === "live");
 }
 /** The proposed policy: saved fields, these groups, switched on once it has a group (one 儲存, spec 1.2). */
 export function proposedPolicy(saved, groups) {
-  return { ...saved, state: groups.length ? "enabled" : saved.state,
-    groups: groups.map((g) => ({ group: { realm: g.group.realm, objectId: g.group.objectId }, dn: g.dn, allow: CAP_ORDER.filter((c) => g.allow.includes(c)), maxFleets: g.maxFleets })) };
+  return draftPolicySubjects(saved, groups.length ? "enabled" : saved.state, groups);
 }
 
 /** Step 2: who can join — search, chips, each person's Fleet limit and the two other permissions; the server's check; one 儲存. */
 export function JoinStep2({ client = hubClient(), onSaved } = {}) {
+  const teamSummaries = useAllowedTeams(client);
   const [view, setView] = useState(null), [groups, setGroups] = useState([]), [preview, setPreview] = useState(null);
   const [msg, setMsg] = useState(null), [saving, setSaving] = useState(false), [dn, setDn] = useState(""), [dnOpen, setDnOpen] = useState(false), [again, setAgain] = useState(0);
   const live = useRef(true), seq = useRef(0);
@@ -114,11 +116,11 @@ export function JoinStep2({ client = hubClient(), onSaved } = {}) {
     let r; try { r = await client.groupPolicy(); } catch { r = { ok: false }; }
     if (!live.current) return;
     if (!r.ok) { setView(old => ({ ...old, failed: true })); return; }
-    setView(r); setGroups(r.policy ? r.policy.groups.map((g) => ({ ...g, allow: [...g.allow] })) : []); setPreview(null);
+    setView(r); setGroups(r.policy ? policyRows(r.policy) : []); setPreview(null);
   };
   useEffect(() => { void load(); }, []);
   const policy = view && view.policy, editable = !!policy && view.supported === true && view.binding === "ready";
-  const draft = policy ? proposedPolicy(policy, groups) : null, changed = !!draft && !same(draft, proposedPolicy(policy, policy.groups)) || !!policy && !!groups.length && policy.state !== "enabled";
+  const draft = policy ? proposedPolicy(policy, groups) : null, changed = !!draft && !same(draft, proposedPolicy(policy, policyRows(policy))) || !!policy && !!groups.length && policy.state !== "enabled";
   useEffect(() => {
     if (!editable || !changed) { setPreview(null); return undefined; }
     const mine = ++seq.current; setPreview({ loading: true });
@@ -133,10 +135,16 @@ export function JoinStep2({ client = hubClient(), onSaved } = {}) {
     const r = await client.resolveGroup(text);
     if (!live.current) return false;
     if (!r.ok || r.reason) { setMsg({ err: true, text: sw(r.ok ? RESOLVE[r.reason] || "unknownGroup" : r.code === "unsupported" ? "unsupported" : "unknownGroup") }); return false; }
-    if (groups.some((g) => g.group.objectId === r.objectId)) { setMsg({ err: true, text: sw("duplicate") }); return false; }
+    if (groups.some((g) => subjectKind(g) === "group" && subjectId(g) === r.objectId)) { setMsg({ err: true, text: sw("duplicate") }); return false; }
     // In this card a group is added to let its members join: chat and connect, one Fleet each (the admin can change both).
     setGroups((gs) => [...gs, { group: { realm: r.realm, objectId: r.objectId }, dn: r.dn, allow: ["ask_agents", "pair_fleet"], maxFleets: 1 }]);
     return true;
+  };
+  const addPicked = async (kind, value) => {
+    if (kind === "group") return addResolved(value.dn);
+    const row = pickedPolicyRow(kind, value, ["ask_agents", "pair_fleet"]);
+    if (groups.some(old => subjectKey(old) === subjectKey(row))) { setMsg({ err: true, text: sw("duplicate") }); return; }
+    setMsg(null); setGroups(old => [...old, row]);
   };
   const setCap = (i, cap, on) => setGroups(groups.map((g, j) => j !== i ? g : { ...g, allow: on ? [...new Set([...g.allow, cap])] : g.allow.filter((x) => x !== cap) }));
   const setFleets = (i, n) => setGroups(groups.map((g, j) => { if (j !== i) return g; const m = Math.max(0, Math.min(8, Math.floor(Number(n)) || 0));
@@ -157,9 +165,9 @@ export function JoinStep2({ client = hubClient(), onSaved } = {}) {
   return html`<div class="hub-join-step2">
     ${view.supported !== true ? html`<p class="note" role="status">${sw("unsupported")}</p>` : null}
     ${view.binding === "repair-required" ? html`<p class="err" role="alert">${sw("repair")}</p>` : null}
-    ${editable ? html`<${GroupSearch} client=${client} exclude=${groups.map((g) => g.group.objectId)} onPick=${(hit) => addResolved(hit.dn)} onUnsupported=${() => setDnOpen(true)} />` : null}
-    ${groups.length ? html`<ul class="hub-join-groups" role="list">${groups.map((g, i) => html`<li key=${g.group.objectId} class="s-row hub-row" data-group=${g.group.objectId}>
-      <span class="hub-row-text"><strong>${(/^CN=([^,]+)/i.exec(g.dn) || [0, g.dn])[1]}</strong><small class="note"><code>${g.dn}</code></small></span>
+    ${editable ? html`<${SubjectPicker} client=${client} groupId="hubGroupSearch" disabled=${saving} exclude=${groups.filter(g => subjectKind(g) === "group").map(subjectId)} onPick=${addPicked} onUnsupported=${() => setDnOpen(true)} />` : null}
+    ${groups.length ? html`<ul class="hub-join-groups" role="list">${groups.map((g, i) => html`<li key=${subjectKey(g)} class="s-row hub-row" data-group=${subjectKind(g) === "group" ? subjectId(g) : undefined} data-subject=${subjectKey(g)}>
+      <span class="hub-row-text"><${PolicySubjectLabel} row=${g} teams=${teamSummaries} /></span>
       <label class="field hub-join-fleets"><span>${sw("perPerson")}</span><input type="number" min="0" max="8" value=${String(g.maxFleets)} disabled=${!editable} onInput=${(e) => setFleets(i, e.target.value)} /><span>${sw("fleetsUnit")}</span></label>
       <label class="check"><input type="checkbox" checked=${g.allow.includes("ask_agents")} disabled=${!editable} onChange=${(e) => setCap(i, "ask_agents", e.target.checked)} /> ${sw("capAsk")}</label>
       <label class="check"><input type="checkbox" checked=${g.allow.includes("publish_agents")} disabled=${!editable} onChange=${(e) => setCap(i, "publish_agents", e.target.checked)} /> ${sw("capPublish")}</label>
@@ -172,7 +180,7 @@ export function JoinStep2({ client = hubClient(), onSaved } = {}) {
     ${msg ? html`<p class=${msg.err ? "err" : "note"} role=${msg.err ? "alert" : "status"}>${msg.text}</p>` : null}
     ${changed && editable ? html`<div class="hub-join-preview" aria-live="polite">${!preview || preview.loading ? html`<p class="note" aria-busy="true">${sw("previewing")}</p>`
       : !preview.ok ? html`<p class="note" role="status">${sw(preview.code === "conflict" ? "conflict" : "failed")}</p>`
-      : html`${pv.adminLosesChat ? html`<p class="err" role="alert">${sw("adminLosesChat")}</p>` : null}
+      : html`${pv.teamMembers !== undefined ? html`<p class="note">${subjectText("teamChecked", pv.teamMembers)}</p>` : null}${pv.adminLosesChat ? html`<p class="err" role="alert">${sw("adminLosesChat")}</p>` : null}
         ${(pv.losingActions || []).length ? html`<p class="note"><b>${sw("losing")}</b>: ${pv.losingActions.map((r) => r.name || r.login || r.personId).join(", ")}</p>` : null}
         ${(pv.suspendedOnSave || []).length ? html`<p class="note"><b>${sw("suspended")}</b>: ${pv.suspendedOnSave.map((r) => r.label || r.id).join(", ")}</p>` : null}
         ${!(pv.losingActions || []).length && !(pv.suspendedOnSave || []).length && !pv.adminLosesChat ? html`<p class="note">${sw("noImpact")}</p>` : null}

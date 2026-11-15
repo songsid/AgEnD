@@ -30,6 +30,7 @@ export const searchRequest = z.strictObject({ q: z.string().refine(s => !/[\u000
   .transform(s => s.trim()).pipe(z.string().min(2).max(64)) });
 export type GroupSearchRequest = z.infer<typeof searchRequest>;
 export type GroupSearchResponse = import("../directory/groups.js").PolicyGroupSearch | { readonly ok: false; readonly reason: "limited" };
+export type AllowedPeopleSearchResponse = import("../directory/types.js").GrantPersonSearch | { readonly ok: false; readonly reason: "unsupported" | "limited" };
 export type GroupResolveResponse =
   | { readonly ok: true; readonly realm: string; readonly objectId: string; readonly dn: string }
   | { readonly ok: false; readonly reason: "unsupported" | "invalid" | "not-found" | "not-security-group" }
@@ -53,6 +54,8 @@ export interface GroupImpactPerson { readonly personId: string; readonly name: s
 export interface GroupImpactResource { readonly kind: "fleet" | "exposure" | "asker"; readonly id: string; readonly revision: number; readonly label: string | null; readonly owner: { readonly name: string | null } | null }
 /** Typed by the S-88 control; the editor shows each list. */
 export interface GroupImpact {
+  /** Distinct people in the locally selected old/new team rosters, including people who have never signed in. */
+  readonly teamMembers?: number;
   /** Every affected ask-grant holder and operational-action loser, the configured admin included. */
   readonly losingActions: readonly GroupImpactPerson[];
   /** Owners who can no longer publish new or revised agents. */
@@ -133,6 +136,7 @@ export interface HubGroupAdminControl {
   resolve(input: GroupResolveRequest, ctx: GroupAdminContext): Promise<GroupResolveResponse>;
   /** Absent in an older/injected control: keep the DN fallback. */
   search?(input: GroupSearchRequest, ctx: GroupAdminContext): Promise<GroupSearchResponse>;
+  searchPeople?(input: GroupSearchRequest, ctx: GroupAdminContext): Promise<AllowedPeopleSearchResponse>;
   preview(input: GroupPreviewRequest, ctx: GroupAdminContext): Promise<GroupPreviewResponse>;
   apply(input: GroupApplyRequest, ctx: GroupAdminContext): Promise<GroupApplyResponse>;
   resume(input: GroupResumeRequest, ctx: GroupAdminContext): Promise<GroupResumeResponse>;

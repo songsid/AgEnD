@@ -1,0 +1,15 @@
+{
+  "merge": "c59800a70ae7ed49f15a034fea4c603ea6401f94",
+  "parents": [
+    "c42397df049cfab25ddde2a15aa8bd2e3e7e9548",
+    "35283b85c28a176cfd01f0476be1b96780a83452"
+  ],
+  "alpha": "35283b85c28a176cfd01f0476be1b96780a83452",
+  "previous": "c42397df049cfab25ddde2a15aa8bd2e3e7e9548",
+  "ownPathsUnchanged": 72,
+  "resolved": [
+    "tests/hub-teams-client-track-c.test.ts"
+  ],
+  "resolution": "Exact previous blob, retaining both the T1 person-search and incoming T2 settings tests. No product conflict.",
+  "verification": "Index blob+mode equality for all72 own paths against previous head. No local rerun/new source review for this plain sync per5afe2996. Incoming foreign evidence trailing blank lines retained."
+}

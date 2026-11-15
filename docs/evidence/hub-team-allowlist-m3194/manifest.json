@@ -1,0 +1,192 @@
+{
+  "files": [
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/README.md",
+      "sha256": "2a12a440b898c0dc1393ce9011d9c0e06c5ef60c47ec2f91fc8fa47c49cc6699"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/browser-initial-receipt.json",
+      "sha256": "f6adebf672a5e857e52fdfaec3ccb3bfe3c7b33266679fc618de4a5c863648a6"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/browser-phone-receipt.json",
+      "sha256": "533c1e03aec9ad4dbbbea90b54bb173a66c7d4f92dc9109be2d24cef4d9f16b2"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/browser-remaining-receipt.json",
+      "sha256": "6f25dd6f09f8ce562d62a52cc8e6a3a7b57ed07642fcceeb1550afc3ea26f62b"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/browser-retake-receipt.json",
+      "sha256": "62bd2ef0e0331fe574fafd84a8185c817fa3818e155ca8d5f8c7a32ddeda1feb"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/desktop-en-light-full-preview.png",
+      "sha256": "18862980f86d328420832e33b0bde6a4e881061795ec1b5286b85f4c23348591"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/desktop-en-light-manage-preview.png",
+      "sha256": "b39961b2017eb20b7192d3bc2483373728ce0b5a950859c23bf9752a815387fd"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/desktop-zh-TW-dark-full-preview.png",
+      "sha256": "b34174920f58cf9f5c928d0ff486acddaebd767dfd203179992412465c18cb9b"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/desktop-zh-TW-dark-manage-preview.png",
+      "sha256": "9ee89fad01341623e41b843cbe595c3a333a1827852a4fb75a5cfc1a57cab8bf"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/phone-en-dark-full-preview.png",
+      "sha256": "7bb435f67d580d7ae7691bbdf278f6047c530d6a03f02257aac283b231ec3269"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/phone-en-dark-manage-preview.png",
+      "sha256": "86bb217943965992246501127ff5d00e05d66ba19eec61227d8bd28e61ee80a7"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/phone-zh-TW-light-full-preview.png",
+      "sha256": "58c7e7cf9109d8896c1907e7b26ac9a5714b5806ae45883cb42c23a76174f604"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/phone-zh-TW-light-manage-preview.png",
+      "sha256": "e5ff9a805c4a5cc96ef733f6be4adb7b2a4143be1828475c495e7302b14469f2"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/browser/visual-review.json",
+      "sha256": "37205f5add29a3418a00af3d3554ba95c17d155d1cb365c15f01703ee7ecbffa"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/alpha-sync.json",
+      "sha256": "4eeab47ff682080ac73280de4859507a8a1b0c7b11f72dfadd416da35aaebca5"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/before.log",
+      "sha256": "0ac7f421d7fe6cb6f0a2bbb46940fa78329fc1b5ae931d5e4f7f7f376ca1159c"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/empty-fields-after.log",
+      "sha256": "16674df932cb17b518b0192927dcb99dadd6200095d1f25dfc9a7012be3c5b53"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/empty-fields-before.log",
+      "sha256": "6e0ef2649eb20cd195c72102ecbb553c3aa7f27cf94dcf6bd0c34142bf80be70"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/factory-hook-after.log",
+      "sha256": "40d5cb2cfa26aca7a9ea177ec873ca18d994bb9b4b8b2dd3649d7a5a370a3957"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/factory-hook-reversal.log",
+      "sha256": "7428706c221239ec0e0d8448ffea6026f6789a7206091f283b0e93ea8776679f"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/final-focused.log",
+      "sha256": "e900ac9c9994f3ce4f7f58f1a7c71ddd5f82cdb1ccfb8099293c5dac54466e46"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/http-after.log",
+      "sha256": "23675dccc2c574ebbdb1b155f28dc06441aed37994b17c6d3426e9a3a79c49c3"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/impact-before.log",
+      "sha256": "ca64e2a27e1ed7a557f949df69a32b58592f93e334bc29c4ffd5da3649663c6a"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/people-before.log",
+      "sha256": "ed558c66a200ee9bc5246cd2ac20fcaa24219b86596b1312250541bca70c4c82"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/pin-reversal-person-capability.log",
+      "sha256": "d3a68e14e9ebbdb0c6ba9683795b6633707ed569452575abc932eb21ac368791"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/pin-reversal-roster-fingerprint.log",
+      "sha256": "696a08bed889ee8945a1932d18f85becf402cc1a497c32576b7eb9d392b25538"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/reviewer-pin-reversals.json",
+      "sha256": "b151ee1b5bd5e8872a0696b15cbc3b1088067499703751c0af8071a6c386cef7"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/reviewer-pins-after.log",
+      "sha256": "50ef103256bfafc5d497ac7679d62bfd4d5a3d114701528aa05d1fa2196702d5"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/skill-contract-after.log",
+      "sha256": "a7dbb7fc7018a1f1ba2273aea547915bfd3d9e303b59638b6a71c69f4f1d11f1"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/skill-contract-ci.json",
+      "sha256": "5c6a7aa2a2a018916b80acc00a9774900a528b5df33a21caa70013f5ee3e7f01"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/source-types-combined.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/source-types-r1.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/team-cap-after.log",
+      "sha256": "dbd1bb37c2af0490da66121be6d2ede13c57f82f5c0921470ec152c5044e67ab"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/team-cap-reversal.json",
+      "sha256": "17af0d7c4dd3d6409ba3ce077fdad855d91f798d3a18843fb84a691124d0c092"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/team-cap-reversal.log",
+      "sha256": "18f309e827d15c62cc8378b148e3b36ae54ce2f538816ac8c414e02314b8e6bd"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/test-types-combined.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/test-types-pins.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/test-types-r1.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/test-types-team-cap.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/ui-before.log",
+      "sha256": "ef765dac8499a0b3878a085ecc03324ffd194b06d1b8fac5bad19e902b8ec94d"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/commands.txt",
+      "sha256": "d5df1115c6bdacf17fe676bd2661add4c0fd585f925c52b4eea820218d807934"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/gates/shell-full.json",
+      "sha256": "c3cbf6f8948dca07b3aff39c63ddff30a4a954c8bb48f8ba5ab1844c95e1bf9b"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/gates/shell-full.log",
+      "sha256": "875b85827e6ec9ad21f1abaf80a1e1b9f949cd73fe24633e471039438bfbcab0"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/gates/tap-ratchet-reconciliation.json",
+      "sha256": "b36d26408b25756335d84c548893626071c8dea5d69244212abacaf989dbec32"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/gates/ui-full.json",
+      "sha256": "bebb69200d5e057cf48a47666a9e7ad4eec85d7f00b029aa1701878fc6d76794"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/gates/ui-full.log",
+      "sha256": "40148c470e956e082c62ffa81c5bcb4d541cef46a687fa72c60ec8fb682616ef"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/source-bindings.json",
+      "sha256": "36a3874c7a56e21b53a9fb0d40049a7ed21ff24b491a9a4fb3193f22f86bad8b"
+    }
+  ]
+}

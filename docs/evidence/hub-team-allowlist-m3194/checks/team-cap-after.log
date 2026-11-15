@@ -1,0 +1,8 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-team-allowlist-m3194
+
+
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  23:53:44
+   Duration  682ms (transform 326ms, setup 90ms, import 396ms, tests 65ms, environment 0ms)

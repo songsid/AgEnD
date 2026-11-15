@@ -1,0 +1,77 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-team-allowlist-m3194
+
+ ❯ tests/hub-allowed-people-m3194.test.ts (5 tests | 5 failed) 17ms
+     × projects only bounded directory people and authenticates the exact admin again 9ms
+     × refuses a nonadmin before any directory read 1ms
+     × withholds a foreign-realm suggestion 1ms
+     × refuses after the admin session or selected policy changes during lookup 1ms
+     × shares the existing group-search rate limit rather than adding another allowance 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-allowed-people-m3194.test.ts > T1 allowed-list person picker > projects only bounded directory people and authenticates the exact admin again
+TypeError: w.service.searchPeople is not a function
+ ❯ tests/hub-allowed-people-m3194.test.ts:22:47
+     20| describe("T1 allowed-list person picker", () => {
+     21|   it("projects only bounded directory people and authenticates the exa…
+     22|     const w = world(); expect(await w.service.searchPeople({ q: " alex…
+       |                                               ^
+     23|     expect(w.lookup).toHaveBeenCalledWith("alex"); expect(w.auth).toHa…
+     24|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/hub-allowed-people-m3194.test.ts > T1 allowed-list person picker > refuses a nonadmin before any directory read
+TypeError: w.service.searchPeople is not a function
+ ❯ tests/hub-allowed-people-m3194.test.ts:26:57
+     24|   });
+     25|   it("refuses a nonadmin before any directory read", async () => {
+     26|     const w = world(); w.deny(); await expect(w.service.searchPeople({…
+       |                                                         ^
+     27|   });
+     28|   it("withholds a foreign-realm suggestion", async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/hub-allowed-people-m3194.test.ts > T1 allowed-list person picker > withholds a foreign-realm suggestion
+TypeError: w.service.searchPeople is not a function
+ ❯ tests/hub-allowed-people-m3194.test.ts:30:28
+     28|   it("withholds a foreign-realm suggestion", async () => {
+     29|     const w = world(); w.lookup.mockResolvedValue({ ok: true, people: …
+     30|     expect(await w.service.searchPeople({ q: "alex" }, w.ctx)).toEqual…
+       |                            ^
+     31|   });
+     32|   it("refuses after the admin session or selected policy changes durin…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/hub-allowed-people-m3194.test.ts > T1 allowed-list person picker > refuses after the admin session or selected policy changes during lookup
+TypeError: w.service.searchPeople is not a function
+ ❯ tests/hub-allowed-people-m3194.test.ts:35:30
+     33|     for (const mode of ["session", "policy"] as const) {
+     34|       const w = world(); w.lookup.mockImplementation(async () => { if …
+     35|       await expect(w.service.searchPeople({ q: "alex" }, w.ctx)).rejec…
+       |                              ^
+     36|     }
+     37|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  tests/hub-allowed-people-m3194.test.ts > T1 allowed-list person picker > shares the existing group-search rate limit rather than adding another allowance
+TypeError: (intermediate value)(intermediate value)(intermediate value) is not a function
+ ❯ tests/hub-allowed-people-m3194.test.ts:39:117
+     37|   });
+     38|   it("shares the existing group-search rate limit rather than adding a…
+     39|     const w = world(); for (let n = 0; n < 30; n++) expect((await (n %…
+       |                                                                                                                     ^
+     40|     expect(await w.service.searchPeople({ q: "alex" }, w.ctx)).toEqual…
+     41|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed (5)
+   Start at  23:05:36
+   Duration  693ms (transform 346ms, setup 96ms, import 418ms, tests 17ms, environment 0ms)

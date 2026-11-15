@@ -13,6 +13,7 @@ import { createHubCanonicalPolicyReader, parseCanonicalPolicy, type HubCanonical
 import { evaluateRolePolicy, snapshotRolePersonFacts, type RoleDecision, type RolePersonFacts } from "../roles/evaluate.js";
 import { HubGroupPolicyError, HubGroupReadOverload } from "./errors.js";
 import { createHubDirectoryAdmission, type HubDirectoryReads } from "../directory/admission.js";
+import { readAllowedListTeams } from "./team-subjects.js";
 export { HubGroupPolicyError, HubGroupReadOverload } from "./errors.js";
 
 export function groupPolicyMigration(hubId: string, realm: string, generation: string): HubMigration {
@@ -57,9 +58,11 @@ export interface GroupCheckContext {
 }
 export type HubOperationalPolicy = HubCanonicalPolicy["policy"];
 export type HubSelfUseDecision = HubGroupDecision | RoleDecision;
+const teamDecisionFences = new WeakMap<object, () => void>();
 /** Full canonical metadata, with the mandatory role clock fence; old injected stores remain legacy-only. */
 export const readHubOperationalPolicy = (store: HubGroupPolicyStore): HubOperationalPolicy => store.authorizationPolicy?.().policy ?? store.read();
 export function assertHubSelfUseDecisionCurrent(decision: HubSelfUseDecision | undefined, at: number): void {
+  if (decision) teamDecisionFences.get(decision)?.();
   if (decision && "nextExpiry" in decision && decision.nextExpiry !== null && at >= decision.nextExpiry) throw new HubGroupPolicyError("conflict");
 }
 export interface HubGroupPolicyStore {
@@ -125,13 +128,18 @@ export function createHubGroupPolicyStore(options: {
     return selected;
   };
   const operational = () => authorizationPolicy().policy;
-  const evaluate = (p: HubOperationalPolicy, who: PersonKey, cap: GroupCapability, facts: RolePersonFacts): HubSelfUseDecision =>
-    "rolesActive" in p ? evaluateRolePolicy(p, who, cap, null, { subject: facts }, now(), root!)
-      : evaluateGroupPolicy(p, who, cap, facts.kind === "eligible" ? { kind: "unknown" } : facts);
+  const evaluate = (p: HubOperationalPolicy, who: PersonKey, cap: GroupCapability, facts: RolePersonFacts): HubSelfUseDecision => {
+    if ("rolesActive" in p) return evaluateRolePolicy(p, who, cap, null, { subject: facts }, now(), root!);
+    const teams = readAllowedListTeams(db, p), result = evaluateGroupPolicy(p, who, cap, facts, teams.memberships(who));
+    if (p.teams?.length) teamDecisionFences.set(result, () => {
+      assert(); if (readAllowedListTeams(db, p).image !== teams.image) throw new HubGroupPolicyError("conflict");
+    });
+    return result;
+  };
   const observe = async (p: HubOperationalPolicy, who: PersonKey, caps: readonly GroupCapability[]): Promise<RolePersonFacts> => {
     if (p.state !== "enabled") return { kind: "unknown" };
     const started = now(); let facts: RolePersonFacts = { kind: "unknown" };
-    const needsGroups = !("rolesActive" in p) || p.assignments.some(a => a.subject.kind === "group"
+    const needsGroups = !("rolesActive" in p) ? p.groups.some(r => r.allow.some(cap => caps.includes(cap))) || !eligibilityMethod : p.assignments.some(a => a.subject.kind === "group"
       && a.startsAt <= started && (a.expiresAt === null || a.expiresAt > started)
       && p.roles.find(r => r.id === a.roleId)!.permissions.some(c => caps.includes(c as GroupCapability)));
     try {
@@ -188,6 +196,9 @@ export function createHubGroupPolicyStore(options: {
     });
   }, replace(input, actor, incoming) {
     const next = parseGroupPolicy(input), who = validated(person, actor), ctx = context(incoming);
+    // Removing the last new subject restores the legacy strict policy format, including stored JSON.
+    if (next.teams?.length === 0) delete next.teams;
+    if (next.people?.length === 0) delete next.people;
     if (who.realm !== binding.realm || next.realm !== binding.realm || next.generation !== binding.generation) throw new HubGroupPolicyError("invalid");
     if ((next.state === "enabled" || next.groups.length > 0) && directory.groupPolicy !== "ad-direct-guid") throw new HubGroupPolicyError("unsupported");
     return db.transaction(() => {

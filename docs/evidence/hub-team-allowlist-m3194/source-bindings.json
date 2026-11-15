@@ -1,0 +1,166 @@
+{
+  "captureSource": "2785632c24b0a6124391f134260b7ba0aeda2613",
+  "r1Parent": "44705b63d",
+  "parent": {
+    "pr": 4015,
+    "head": "604b6598ac2ada283a8252a34f651d1ea3c9de64"
+  },
+  "ownInputs": [
+    {
+      "path": "changes/3194-hub-allowed-teams.md",
+      "sha256": "f1d2f01ebf3e6e63c191c8e93738e9b66d18d1ad85cd96bed049a1804e9cb3a1"
+    },
+    {
+      "path": "changes/3194-hub-allowed-teams.zh-TW.md",
+      "sha256": "884de8017d646fa359e50a32c29a021e2f2de4cc1dd7a38d68494799ee040aef"
+    },
+    {
+      "path": "docs/design/hub-teams-as-subjects.md",
+      "sha256": "58e842ff0a64588b13b6efaa9f1b07b08d1dd676cfdab6ce1603177025cc8d50"
+    },
+    {
+      "path": "scripts/manual/hub-team-allowlist-3194/accept.mts",
+      "sha256": "3b6a750340476e06fefaca48f349613ed398d2257e8354c239f5c0472fdce3a0"
+    },
+    {
+      "path": "scripts/manual/smoke/ui-gate-hub-tap-allowlist.json",
+      "sha256": "edbb827275e53babcba526c7605a3216bec9a5fd22c649311dc24a3b0a171bd7"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "ce019b4395be39c7f7537f5feb212e50cacc15b1e2b4bd619c2b182f43a76dfb"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "2991afc4572a1ad918ad9a1a6a5c40ab9a5badd87adda4eedf7d0dbbb8dafe3e"
+    },
+    {
+      "path": "src/hub/group-policy/admin-api.ts",
+      "sha256": "005172ab7867730d22d1a729ee568ac9ed6f1e95062c6a2891a17459663e2e30"
+    },
+    {
+      "path": "src/hub/group-policy/admin-control.ts",
+      "sha256": "33131d5fe74ada4cfccd4273c93c60cab4d24604d3302db8bdffcb4d2b254e47"
+    },
+    {
+      "path": "src/hub/group-policy/admin-dto.ts",
+      "sha256": "b07b05123ba0fd66ab8c04225038c2afccd274fd64e53a4da49956f36578cffd"
+    },
+    {
+      "path": "src/hub/group-policy/admin-facts.ts",
+      "sha256": "f7a37815e033ec9da2d2c71109ea2faa0c24fc315099069b79438728b0803162"
+    },
+    {
+      "path": "src/hub/group-policy/admin-impact.ts",
+      "sha256": "2b727f531f82b9682edb6f6cc2a97f6395f85d152f3cfcf8dbd8966f3ca5c345"
+    },
+    {
+      "path": "src/hub/group-policy/admin-search.ts",
+      "sha256": "90dd788346f2566bdc5aa5ebef745c5f5d7330cd5685b87da0bd7e11cb96641b"
+    },
+    {
+      "path": "src/hub/group-policy/impact-inventory.ts",
+      "sha256": "3ba196d90008db157845a9af4d8342792a67ed36710c0a98df1dc92dfc4e5c91"
+    },
+    {
+      "path": "src/hub/group-policy/model.ts",
+      "sha256": "92da2f32849ac0528ade7edbf2c33bcfcbc9aba805ad4e4735310349d833f52e"
+    },
+    {
+      "path": "src/hub/group-policy/store.ts",
+      "sha256": "cd4c84a437fa87eb66a7066c97abe7ab9738f0e3e4147e8005c972b17f6a7167"
+    },
+    {
+      "path": "src/hub/group-policy/team-subjects.ts",
+      "sha256": "a77e24f6c09cf0327c5c519ff5f4050d4efd6ccc7e2b4d41ddbcede2bad0fcca"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "b5f707836e148fbf04810e5584f15c03e2dfc2f133c8e0320148658c27ee2a77"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "7d5101acee765068c5b9647c0cc156dc5212b092954612410842ae625a04981c"
+    },
+    {
+      "path": "src/ui/hub-grant-picker.js",
+      "sha256": "d4e669707165d4950c142b64238fa67f2d399c5770329d4da64c4420d2599e66"
+    },
+    {
+      "path": "src/ui/hub-group-policy.js",
+      "sha256": "af63d5574687de21347eed31dae61801e0be5a4bdf53b0ce16a5b4df64d0149b"
+    },
+    {
+      "path": "src/ui/hub-group-strings.js",
+      "sha256": "902ea513d7c87320197e100162dda3ea4a69d88d282d106013c8617220463e1f"
+    },
+    {
+      "path": "src/ui/hub-join-steps.js",
+      "sha256": "997964ffc7221adac09ede35a0f5867a14dd1b88152aeb00b8fcc1b8aa9486f1"
+    },
+    {
+      "path": "src/ui/hub-policy-subjects.js",
+      "sha256": "79fbc881a9ad1ad85fc308fd7d043a07338dd016d6925db7b1a0766ef856f097"
+    },
+    {
+      "path": "src/ui/hub-subject-picker.js",
+      "sha256": "af350a23e6208a1a17c337c9ed17b66650f6b40871fe077194f75f94947a7ed7"
+    },
+    {
+      "path": "src/ui/shared/hub-owner.css",
+      "sha256": "c0927b4cd12e3d1a0f7d25e1fc7db4b6b440646f1d02b600cc7a6dbcadd0d0d5"
+    },
+    {
+      "path": "tests/hub-allowed-people-m3194.test.ts",
+      "sha256": "7038cea6aa7eac2231b833e66ae39401efe9982b0b0bd3867e259fb999f63872"
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "sha256": "04036b595dab78b70ef62646a880e5585368e9394f1362b31dfca134a4bb2154"
+    },
+    {
+      "path": "tests/hub-group-admin-control.test.ts",
+      "sha256": "cdf4e65f5f36917f513707a908ea4b6e90c5ba0d81a727b8eb142907c94b8b35"
+    },
+    {
+      "path": "tests/hub-group-search-s2.test.ts",
+      "sha256": "3d91eb1fafc286576f4647244cb0f7f0afc69fcc833e03f6906d0be0b2a1cae8"
+    },
+    {
+      "path": "tests/hub-groups-ui-s89.test.ts",
+      "sha256": "b467d964f3db58339b1ced2274b88fb9f496e68a7b179a87526ee40478668f3b"
+    },
+    {
+      "path": "tests/hub-shared-modules-a.test.ts",
+      "sha256": "388743207ab9f86041a83b8b3ebabc8eb9abba75869191884ef5c7f23e19adcb"
+    },
+    {
+      "path": "tests/hub-skill.test.ts",
+      "sha256": "c8d8a1d3beddae23ab3bdff5a2ea2c02d7508c2272470ddd9e952896a15f2051"
+    },
+    {
+      "path": "tests/hub-team-allowlist-m3194.test.ts",
+      "sha256": "b2aa149893487cc4e272d382f4acd02f73f3808434a91a53a8e3681358ba8219"
+    },
+    {
+      "path": "tests/hub-team-allowlist-ui-m3194.test.ts",
+      "sha256": "2ef55b76ccaffe443fa2cf3cf532f1e1816a4299668f057dc8578b761d3be3c9"
+    },
+    {
+      "path": "tests/hub-teams-client-track-c.test.ts",
+      "sha256": "beaf1da6da29920a533e88287145fb844b0fb13bd27620a9437cba3036fd0b99"
+    },
+    {
+      "path": "tests/support/hub-group-directory-wire.ts",
+      "sha256": "7d823616c296aacc3176cb5c6c02c9abcb87e733eb32c9c3104552f7e8472d03"
+    }
+  ],
+  "r1Delta": "Common writer deletes empty optional arrays; two regression pins. No JS/CSS/visual change from capture source. Four zero-count tap exceptions removed after capture.",
+  "scope": "Logs retain individual historical stages; current JS/CSS capture bindings verified against actual response hashes. R1 native and84/3 tests bind writer delta.",
+  "r2Parent": "e1173950699a78db992b2a4126257380f7a2b378",
+  "r2Delta": "Only three reviewer-requested assertion pins in two test files; runtime unchanged from R1.",
+  "r3Parent": "f6763813d54e78a937d1b1744ca61c4217612668",
+  "r3Delta": "Only the ask-only Team assertion twin; all runtime source unchanged.",
+  "r4Parent": "ee390b9507cef6ed76bd8f40fdf1fd0f24f1c37a",
+  "r4Delta": "Only two stale expected strings in tests/hub-skill.test.ts; application and skill source unchanged."
+}

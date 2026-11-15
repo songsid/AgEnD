@@ -2,7 +2,7 @@
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
-import { GroupSearch } from "./hub-group-search.js";
+import { SubjectPicker } from "./hub-subject-picker.js";
 import { hubClient } from "./hub-client.js";
 register("hubGrantPicker", {
   en: {
@@ -32,36 +32,6 @@ export function linkHubGrantPickerCss(doc = typeof document !== "undefined" ? do
     doc.head.appendChild(link);
   } catch { /* The form's existing controls still work if the stylesheet cannot be linked. */ }
 }
-function PeopleSearch({ search, disabled, onPick }) {
-  const [query, setQuery] = useState(""), [answer, setAnswer] = useState(null), [busy, setBusy] = useState(false), [retry, setRetry] = useState(0);
-  const sequence = useRef(0);
-  useEffect(() => {
-    const mine = ++sequence.current, q = query.trim(); setAnswer(null);
-    if (q.length < 2 || q.length > 64) { setBusy(false); return; }
-    setBusy(true); const timer = setTimeout(async () => {
-      let out; try { out = await search("person", q); } catch { out = { ok: false }; }
-      if (mine !== sequence.current) return;
-      setBusy(false); setAnswer(out);
-    }, 300);
-    return () => { clearTimeout(timer); sequence.current++; };
-  }, [query, search, retry]);
-  const hits = answer?.ok && Array.isArray(answer.people) ? answer.people.slice(0, 20) : [];
-  return html`<div class="hub-group-search">
-    <label class="field" for="hubGrantPerson"><span>${g("findPerson")}</span><input id="hubGrantPerson" type="search" autocomplete="off" spellcheck=${false}
-      disabled=${disabled} value=${query} placeholder=${g("query")} aria-describedby="hubGrantPersonNote" onInput=${e => setQuery(e.target.value)} /></label>
-    <p id="hubGrantPersonNote" class="note" role="status">${busy ? g("searching") : !answer ? g("hint") : answer.ok ? hits.length ? answer.truncated ? g("more") : "" : g("none") : answer.status === 429 ? g("limited") : g("failed")}</p>
-    ${answer && !answer.ok && !busy ? html`<button type="button" class="btn btn-sm" disabled=${disabled} onClick=${() => setRetry(n => n + 1)}>${g("retry")}</button>` : null}
-    ${hits.length ? html`<ul class="hub-group-hits" role="list">${hits.map(p => html`<li key=${`${p.person?.realm}/${p.person?.objectId}`} class="s-row"><span class="hub-row-text"><strong>${p.displayName || p.login}</strong><small class="note"><code>${p.login}</code></small></span>
-      <button type="button" class="btn btn-sm" disabled=${disabled} aria-label=${g("pick", p.displayName || p.login)} onClick=${() => onPick(p)}>${g("choose")}</button></li>`)}</ul>` : null}
-  </div>`;
-}
-function TeamPick({ client, disabled, onPick }) {
-  const [answer, setAnswer] = useState(null), [retry, setRetry] = useState(0);
-  useEffect(() => { let live = true; Promise.resolve().then(() => client.teams()).then(out => { if (live) setAnswer(out); }, () => { if (live) setAnswer({ ok: false }); }); return () => { live = false; }; }, [client, retry]);
-  if (!answer) return html`<p class="note" role="status">${g("searching")}</p>`;
-  if (!answer.ok) return html`<p class="err" role="status">${g("failed")}</p><button type="button" class="btn btn-sm" disabled=${disabled} onClick=${() => setRetry(n => n + 1)}>${g("retry")}</button>`;
-  return html`<label class="field"><span>${g("teamPick")}</span><select data-grant-team value="" disabled=${disabled} onChange=${e => { const row = answer.teams?.find(row => row.id === e.target.value); if (row) onPick(row); }}><option value="">${g("teamPick")}</option>${(answer.teams || []).map(row => html`<option value=${row.id}>${row.name}</option>`)}</select></label>`;
-}
 export function HubGrantPicker({ x, client, act, onClose }) {
   const [kind, setKind] = useState("person"), [selected, setSelected] = useState(null), [days, setDays] = useState(7), [busy, setBusy] = useState(false), [error, setError] = useState(null), [unsupported, setUnsupported] = useState(false);
   const life = useRef(0), writing = useRef(false), controllers = useRef(new Set());
@@ -71,7 +41,6 @@ export function HubGrantPicker({ x, client, act, onClose }) {
     try { return await client.searchGrantSubjects(x.id, x.revision, kind, q, controller.signal); }
     finally { clearTimeout(timer); controllers.current.delete(controller); }
   }, [client, x.id, x.revision]);
-  const groupClient = useMemo(() => ({ searchGroups: q => search("group", q) }), [search]);
   useEffect(() => {
     linkHubGrantPickerCss();
     const mine = life.current;
@@ -94,11 +63,8 @@ export function HubGrantPicker({ x, client, act, onClose }) {
   return html`<${Dialog} title=${g("title", x.displayName)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${g("cancel")}</button><button type="button" class="btn btn-primary" disabled=${busy || !selected} onClick=${submit}>${g("save")}</button>`}>
     <form class="form hub-grant" data-grant-picker onSubmit=${submit}>
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
-      <label class="field"><span>${g("kind")}</span><select data-grant-kind value=${kind} disabled=${busy} onChange=${e => { change(); setKind(e.target.value); }}><option value="person">${g("person")}</option><option value="group">${g("group")}</option>${client.teamsLive?.() === true ? html`<option value="team">${g("team")}</option>` : null}</select></label>
-      ${selected ? html`<div class="s-row"><span class="hub-row-text"><strong>${selected.name || selected.displayName || selected.cn || selected.login}</strong><small class="note"><code>${selected.login || selected.dn || ""}</code></small></span><button type="button" class="btn btn-sm" disabled=${busy} onClick=${change}>${g("change")}</button></div>`
-        : kind === "person" ? html`<${PeopleSearch} search=${search} disabled=${busy} onPick=${setSelected} />`
-        : kind === "team" ? html`<${TeamPick} client=${client} disabled=${busy} onPick=${setSelected} />`
-        : html`<${GroupSearch} client=${groupClient} id="hubGrantGroup" disabled=${busy} unknownHint=${g("failed")} onUnsupported=${() => setUnsupported(true)} onPick=${p => setSelected({ ...p, realm: x.owner?.realm || "" })} />`}
+      <${SubjectPicker} client=${client} search=${search} kind=${kind} onKind=${next => { change(); setKind(next); }} selected=${selected} onClear=${change}
+        disabled=${busy} id="hubGrant" label=${g("kind")} onUnsupported=${() => setUnsupported(true)} onPick=${(type, row) => setSelected(type === "group" ? { ...row, realm: x.owner?.realm || "" } : row)} />
       ${unsupported ? html`<p class="err" role="status">${g("unsupported")}</p>` : null}
       ${kind === "group" ? html`<p class="note">${g("groupHint")}</p>` : null}
       ${kind === "team" ? html`<p class="note">${g("teamHint")}</p>` : null}

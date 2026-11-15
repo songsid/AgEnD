@@ -86,6 +86,22 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
           if (ca && base?.toLowerCase() === ca.dn.toLowerCase()) {
             if (ca.requireBind && !bound) result(id, 0x65, 50);
             else { entry(id, ca.dn, { "cACertificate;binary": [new X509Certificate(ca.pem).raw] }); result(id, 0x65); }
+          } else if (scope === 2 && sizeLimit === 20 && attributes.includes("displayName")) {
+            const matchesPerson = (f: any, selected: GroupWireUser): boolean => {
+              if (f.tag === 0xa0) return f.children.every((part: any) => matchesPerson(part, selected));
+              if (f.tag === 0xa1) return f.children.some((part: any) => matchesPerson(part, selected));
+              if (f.tag === 0xa2) return !matchesPerson(f.children[0], selected);
+              if (f.substring) {
+                const value = (f.substring === "cn" ? /^CN=([^,]+)/i.exec(selected.dn)?.[1] : ["displayName", "sAMAccountName"].includes(f.substring) ? selected.login : "")?.toLowerCase() || "";
+                return !!value && (!f.initial || value.startsWith(f.initial.toLowerCase())) && (!f.final || value.endsWith(f.final.toLowerCase())) && (!f.any || value.includes(f.any.toLowerCase()));
+              }
+              if (f.attribute === "objectClass") return ["person", "user"].includes(f.value.toString().toLowerCase());
+              if (f.attribute === "objectCategory") return f.value.toString().toLowerCase() === "person";
+              return false;
+            };
+            const matches = (users || []).filter(selected => matchesPerson(parsed, selected));
+            for (const selected of matches.slice(0, sizeLimit)) entry(id, selected.dn, personAttributes(selected));
+            continuation(); result(id, 0x65, matches.length > sizeLimit ? 4 : 0);
           } else if (attributes.includes("distinguishedName") && attributes.includes("cn")) {
             if (state.holdGroupSearch) { buffer = buffer.subarray(frameLength); continue; }
             const matches = (f: any, cn: string, groupId: string): boolean => {

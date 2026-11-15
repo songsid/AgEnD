@@ -1,0 +1,8 @@
+{
+  "guard": "Team row allow.includes(cap)",
+  "selected": 1,
+  "unselected": 13,
+  "semanticAssertion": true,
+  "exitCode": 1,
+  "restoredSourceSha256": "92da2f32849ac0528ade7edbf2c33bcfcbc9aba805ad4e4735310349d833f52e"
+}

@@ -1,0 +1,151 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-team-allowlist-m3194
+
+ ❯ tests/hub-group-admin-control.test.ts (55 tests | 4 failed | 51 skipped) 126ms
+     × T1 previews all local team members, including someone who has never signed in 59ms
+     × T1 refuses an apply if the selected team changes after preview 30ms
+     × T1 refuses a missing selected team instead of saving an inert-looking row 20ms
+     × T1 treats a complete empty AD group set as known when local team membership allows 15ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-group-admin-control.test.ts > sealed group policy confirmation control > T1 previews all local team members, including someone who has never signed in
+AssertionError: expected { ok: true, …(5) } to match object { Object (ok, impact) }
+(10 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "impact": {
+-     "teamMembers": 2,
++     "adminLosesChat": true,
++     "grandfathered": [
++       {
++         "id": "8c953d21-de44-4530-914e-fc349edb88d4",
++         "kind": "exposure",
++         "label": "Helper",
++         "owner": {
++           "name": "Morgan Owner",
++         },
++         "revision": 1,
++       },
++       {
++         "id": "a5a485c7-be72-4279-9279-04ee11514443",
++         "kind": "fleet",
++         "label": null,
++         "owner": {
++           "name": "Morgan Owner",
++         },
++         "revision": 1,
++       },
++     ],
++     "held": [],
++     "losingActions": [
++       {
++         "capabilities": [
++           "publish_agents",
++         ],
++         "login": "morgan",
++         "name": "Morgan Owner",
++         "personId": "example/2fb11512-b923-42f9-9f5c-e0edcd891210",
++       },
++       {
++         "capabilities": [
++           "ask_agents",
++         ],
++         "login": "avery",
++         "name": "Avery Admin",
++         "personId": "example/60c34dfc-77f2-40b5-9d7e-169cecfefa47",
++       },
++     ],
++     "losingPublication": [
++       {
++         "login": "morgan",
++         "name": "Morgan Owner",
++         "personId": "example/2fb11512-b923-42f9-9f5c-e0edcd891210",
++       },
++     ],
++     "suspendedOnSave": [],
+    },
+    "ok": true,
+  }
+
+ ❯ tests/hub-group-admin-control.test.ts:89:21
+     87|   it("T1 previews all local team members, including someone who has ne…
+     88|     const w = fixture(), t = teamProposal(w), preview = await w.contro…
+     89|     expect(preview).toMatchObject({ ok: true, impact: { teamMembers: 2…
+       |                     ^
+     90|     expect(w.read.mock.calls.some(([p]) => personKeyString(p) === pers…
+     91|     expect(w.db.prepare("SELECT 1 FROM hub_people WHERE person=?").get…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/hub-group-admin-control.test.ts > sealed group policy confirmation control > T1 refuses an apply if the selected team changes after preview
+AssertionError: expected { ok: true, policyRevision: 2, …(1) } to match object { ok: false }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "ok": false,
++   "ok": true,
+  }
+
+ ❯ tests/hub-group-admin-control.test.ts:97:100
+     95|     expect(preview.ok).toBe(true); if (!preview.ok) throw Error("previ…
+     96|     w.db.prepare("DELETE FROM hub_team_members WHERE team_id=? AND per…
+     97|     expect(await w.control.apply({ policy: t.next, previewDigest: prev…
+       |                                                                                                    ^
+     98|     expect(w.policy.read().state).toBe("never-enabled");
+     99|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/hub-group-admin-control.test.ts > sealed group policy confirmation control > T1 refuses a missing selected team instead of saving an inert-looking row
+AssertionError: expected { ok: true, …(5) } to match object { ok: false }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "ok": false,
++   "ok": true,
+  }
+
+ ❯ tests/hub-group-admin-control.test.ts:102:64
+    100|   it("T1 refuses a missing selected team instead of saving an inert-lo…
+    101|     const w = fixture(), t = teamProposal(w); w.db.prepare("UPDATE hub…
+    102|     expect(await w.control.preview({ policy: t.next }, w.ctx)).toMatch…
+       |                                                                ^
+    103|   });
+    104|   it("T1 treats a complete empty AD group set as known when local team…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/hub-group-admin-control.test.ts > sealed group policy confirmation control > T1 treats a complete empty AD group set as known when local team membership allows
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-group-admin-control.test.ts:109:84
+    107|     const preview = await w.control.preview({ policy: t.next }, w.ctx);
+    108|     expect(preview.ok).toBe(true); if (!preview.ok) throw Error("previ…
+    109|     expect(preview.impact.held.some(p => p.personId === personKeyStrin…
+       |                                                                                    ^
+    110|     expect(preview.impact.losingPublication).toEqual([]);
+    111|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 51 skipped (55)
+   Start at  22:55:56
+   Duration  948ms (transform 506ms, setup 73ms, import 622ms, tests 126ms, environment 0ms)

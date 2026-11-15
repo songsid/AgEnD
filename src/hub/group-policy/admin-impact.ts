@@ -2,8 +2,7 @@
 import type { PersonKey } from "../types.js";
 import { personKeyString } from "../identity.js";
 import { person, validated } from "../validation.js";
-import type { PolicyGroupFacts } from "../directory/groups.js";
-import { evaluateGroupPolicy, GROUP_CAPABILITIES, parseGroupPolicy, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
+import { evaluateGroupPolicy, GROUP_CAPABILITIES, parseGroupPolicy, type GroupPersonFacts, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
 import { parseHubGroupResource, type HubGroupResource, type HubGroupResourceView } from "./resources.js";
 import { HubGroupPolicyError } from "./store.js";
 import type { GroupImpact, GroupImpactPerson, GroupImpactResource } from "./admin-dto.js";
@@ -22,16 +21,20 @@ const capability = (r: HubGroupResource): GroupCapability => r.kind === "fleet" 
 const denied = (p: HubGroupPolicy, key: PersonKey, cap: GroupCapability) => p.state !== "never-enabled"
   && p.denies.some(d => personKeyString(d.person) === personKeyString(key) && d.deny.includes(cap));
 /** Explicit narrowing is confirmed independently of an uncertain directory observation. */
-function decision(p: HubGroupPolicy, key: PersonKey, cap: GroupCapability, facts: PolicyGroupFacts): HubGroupDecision {
+function decision(p: HubGroupPolicy, key: PersonKey, cap: GroupCapability, facts: GroupPersonFacts, teams: readonly string[] = []): HubGroupDecision {
   if (denied(p, key, cap)) return { outcome: "deny", reason: "person-denied", authoritative: true, groups: [], maxFleets: 0 };
-  return evaluateGroupPolicy(p, key, cap, facts);
+  return evaluateGroupPolicy(p, key, cap, facts, teams);
 }
 export function buildHubGroupImpact(input: {
   before: HubGroupPolicy; next: HubGroupPolicy; administrator: PersonKey;
   people: readonly HubGroupImpactPerson[]; resources: readonly HubGroupImpactResource[];
-  facts: ReadonlyMap<string, PolicyGroupFacts>;
+  facts: ReadonlyMap<string, GroupPersonFacts>;
+  teamMemberships?: ReadonlyMap<string, readonly string[]>;
+  teamMembers?: number;
 }) {
   const before = parseGroupPolicy(input.before), next = parseGroupPolicy(input.next), administrator = validated(person, input.administrator);
+  const decide = (p: HubGroupPolicy, key: PersonKey, cap: GroupCapability, facts: GroupPersonFacts) =>
+    decision(p, key, cap, facts, input.teamMemberships?.get(personKeyString(key)));
   if (next.realm !== before.realm || next.generation !== before.generation || next.revision !== before.revision || administrator.realm !== before.realm) throw new HubGroupPolicyError("invalid");
   if ((before.state !== "never-enabled" && next.state === "never-enabled") || (before.state === "never-enabled" && next.state === "suspended")) throw new HubGroupPolicyError("invalid");
   const people = new Map<string, HubGroupImpactPerson>(), owners = new Set<string>();
@@ -59,7 +62,7 @@ export function buildHubGroupImpact(input: {
       : facts.kind === "complete" && personKeyString(facts.person) === id ? p.askGroups.some(g => facts.groups.includes(g.objectId))
       : facts.kind === "ineligible" && personKeyString(facts.person) === id ? false : undefined;
     for (const cap of GROUP_CAPABILITIES) {
-      const current = decision(before, p.key, cap, facts), after = decision(next, p.key, cap, facts);
+      const current = decide(before, p.key, cap, facts), after = decide(next, p.key, cap, facts);
       if (after.outcome === "unknown") uncertain.push(cap);
       else if (after.outcome === "deny") {
         const grantOrAdmin = p.hasAskGrant || groupGrant === true || id === personKeyString(administrator);
@@ -71,7 +74,7 @@ export function buildHubGroupImpact(input: {
     const display = { personId: id, name: p.name, login: p.login };
     if (losing.length) losingActions.push({ ...display, capabilities: losing });
     if (uncertain.length) held.push({ ...display, capabilities: uncertain, reason: "membership-unknown" });
-    if (owners.has(id) && decision(next, p.key, "publish_agents", facts).outcome === "deny") losingPublication.push(display);
+    if (owners.has(id) && decide(next, p.key, "publish_agents", facts).outcome === "deny") losingPublication.push(display);
   }
   const capture: HubGroupResource[] = [], suspend: HubGroupResource[] = [], grandfathered: GroupImpactResource[] = [], suspendedOnSave: GroupImpactResource[] = [];
   for (const row of resources) {
@@ -79,16 +82,17 @@ export function buildHubGroupImpact(input: {
     if (firstEnable && row.lifecycle?.source === "group") throw new HubGroupPolicyError("conflict");
     const manual = row.lifecycle?.source === "manual" || row.lifecycle?.source === "code" || firstEnable, active = row.lifecycle?.state !== "suspended";
     if (firstEnable && !row.lifecycle) capture.push(r);
-    const after = decision(next, r.owner, capability(r), input.facts.get(personKeyString(r.owner)) ?? { kind: "unknown" });
+    const after = decide(next, r.owner, capability(r), input.facts.get(personKeyString(r.owner)) ?? { kind: "unknown" });
     const narrowing = row.lifecycle?.source === "code"
       ? next.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes(capability(r)))
       : manual ? denied(next, r.owner, capability(r)) : row.lifecycle?.source === "group" && after.outcome === "deny" && after.authoritative;
     if (active && narrowing) { suspend.push(r); suspendedOnSave.push(row.display); }
     else if (active && manual) grandfathered.push(row.display);
   }
-  const adminAfter = decision(next, administrator, "ask_agents", input.facts.get(personKeyString(administrator)) ?? { kind: "unknown" });
+  const adminAfter = decide(next, administrator, "ask_agents", input.facts.get(personKeyString(administrator)) ?? { kind: "unknown" });
   const impact: GroupImpact & { readonly held: readonly HubGroupHeldImpact[] } = {
     losingActions, losingPublication, grandfathered, suspendedOnSave, adminLosesChat: adminAfter.outcome === "deny", held,
+    ...(input.teamMembers !== undefined ? { teamMembers: input.teamMembers } : {}),
   };
   return { impact, capture, suspend };
 }

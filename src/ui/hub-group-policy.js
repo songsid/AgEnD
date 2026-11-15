@@ -13,6 +13,9 @@ import { Icon } from "/assets/ui-icons.js";
 import { setTitle } from "/assets/app-shell.js";
 import { hubClient } from "./hub-client.js";
 import { hg } from "./hub-group-strings.js";
+import { policyRows, draftPolicySubjects, pickedPolicyRow, subjectKind, subjectId, subjectKey, useAllowedTeams, PolicySubjectLabel } from "./hub-policy-subjects.js";
+import { SubjectPicker, subjectText } from "./hub-subject-picker.js";
+
 import { hr } from "./hub-read-strings.js";
 
 export const CAPS = [["ask_agents", "capAsk"], ["publish_agents", "capPublish"], ["pair_fleet", "capPair"]];
@@ -24,7 +27,7 @@ const RESOLVE_REASON = { "not-found": "notFound", "not-security-group": "notSecu
 
 /** The draft as the server receives it: the saved policy with this page's state and groups, its revision as the compare-and-set. */
 export function draftPolicy(saved, state, groups) {
-  return { ...saved, state, groups: groups.map((g) => ({ group: { realm: g.group.realm, objectId: g.group.objectId }, dn: g.dn, allow: CAPS.map(([c]) => c).filter((c) => g.allow.includes(c)), maxFleets: g.maxFleets })) };
+  return draftPolicySubjects(saved, state, groups);
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -38,6 +41,7 @@ export function GroupPermissionsCard() {
 
 export function HubGroupPolicyPage() {
   const c = hubClient();
+  const teamSummaries = useAllowedTeams(c);
   useEffect(() => { setTitle(hg("title")); }, []);           // the tab names this page (Argon #17)
   const [view, setView] = useState(null), [error, setError] = useState(""), [msg, setMsg] = useState(null);
   const [state, setState] = useState("never-enabled"), [groups, setGroups] = useState([]);
@@ -60,14 +64,14 @@ export function HubGroupPolicyPage() {
     }
     if (!r.ok) { setError(r.code === "denied" ? hg("contactAdmin") : hg("failed")); return; }
     setView(r);
-    if (r.policy) { setState(r.policy.state); setGroups(r.policy.groups.map((g) => ({ ...g, allow: [...g.allow] }))); }
+    if (r.policy) { setState(r.policy.state); setGroups(policyRows(r.policy)); }
     setPreview(null);
   };
   useEffect(() => { void load(); }, []);
   const policy = view && view.policy;
   const editable = !!policy && view.supported === true && view.binding === "ready";
   const draft = policy ? draftPolicy(policy, state, groups) : null;
-  const changed = !!draft && !same(draft, draftPolicy(policy, policy.state, policy.groups));
+  const changed = !!draft && !same(draft, draftPolicy(policy, policy.state, policyRows(policy)));
   // The server's preview of the draft, refreshed as it changes. A stale answer (an older draft) is dropped.
   useEffect(() => {
     if (!editable || !changed) { setPreview(null); return undefined; }
@@ -80,9 +84,9 @@ export function HubGroupPolicyPage() {
     }, PREVIEW_DELAY_MS);
     return () => clearTimeout(timer);
   }, [editable, JSON.stringify(draft), again]);
-  const add = async (e) => {
-    e.preventDefault();
-    const text = dn.trim();
+  const add = async (e, selectedDn = dn) => {
+    e?.preventDefault?.();
+    const text = selectedDn.trim();
     if (!text || adding) return;
     setAdding(true); setAddError("");
     const r = await c.resolveGroup(text);
@@ -91,9 +95,15 @@ export function HubGroupPolicyPage() {
     if (!r.ok) { setAddError(hg(r.code === "unsupported" ? "unsupported" : "unknownGroup")); return; }
     if (r.ok && r.reason) { setAddError(hg((r.reason === "unknown" && Object.hasOwn(FAILURE, r.failure ?? "") && FAILURE[r.failure]) || RESOLVE_REASON[r.reason] || "unknownGroup")); return; }
     const key = { realm: r.realm, objectId: r.objectId };
-    if (groups.some((g) => g.group.objectId === key.objectId)) { setAddError(hg("duplicate")); return; }
+    if (groups.some((g) => subjectKind(g) === "group" && subjectId(g) === key.objectId)) { setAddError(hg("duplicate")); return; }
     // A newly allowed group starts with chat only and one fleet (#3298 decision 2); more is the admin's explicit choice.
     setGroups([...groups, { group: key, dn: r.dn, allow: ["ask_agents"], maxFleets: 1 }]); setDn("");
+  };
+  const addPicked = async (kind, value) => {
+    if (kind === "group") return add(null, value.dn);
+    const row = pickedPolicyRow(kind, value, ["ask_agents"]);
+    if (groups.some(old => subjectKey(old) === subjectKey(row))) { setAddError(hg("duplicate")); return; }
+    setAddError(""); setGroups(old => [...old, row]);
   };
   const setCap = (i, cap, on) => setGroups(groups.map((g, j) => j !== i ? g : { ...g, allow: on ? [...g.allow, cap] : g.allow.filter((x) => x !== cap),
     // Connecting a fleet needs at least one slot.
@@ -136,7 +146,7 @@ export function HubGroupPolicyPage() {
   const pending = !!policy && state !== saved;
   const paused = Array.isArray(view.paused) ? view.paused : [];
   const pv = preview && preview.ok ? preview.impact || {} : null;
-  const list = (rows, label) => rows && rows.length ? html`<div class="hub-groups-impact"><b>${label}</b><ul>${rows.map((r, i) => html`<li key=${i}>${r.name || r.label || r.dn || r.id}${r.login ? html` <small class="note"><code>${r.login}</code></small>` : null}</li>`)}</ul></div>` : null;
+  const list = (rows, label) => rows && rows.length ? html`<div class="hub-groups-impact"><b>${label}</b><ul>${rows.map((r, i) => html`<li key=${i}>${r.name || r.label || r.dn || r.personId || r.id}${r.login ? html` <small class="note"><code>${r.login}</code></small>` : null}</li>`)}</ul></div>` : null;
   return html`<div class="col hub-owner hub-groups">${head}
     <div class="s-section-layout">
       ${view.supported !== true ? html`<p class="note" role="status" data-reason="unsupported">${hg("unsupported")}</p>` : null}
@@ -151,12 +161,13 @@ export function HubGroupPolicyPage() {
           : html`<button type="button" class="btn btn-sm" onClick=${() => setState("enabled")}>${hg("turnOn")}</button>`}</div>` : null}
       </section>
       <section class="card hub-groups-list"><h3>${hg("groupsTitle")}</h3>
-        ${groups.length ? html`<div class="hub-rows">${groups.map((g, i) => html`<div key=${g.group.objectId} class="s-row hub-row hub-group-row" data-group=${g.group.objectId}>
-          <span class="hub-row-text"><code class="hub-group-dn">${g.dn}</code></span>
+        ${groups.length ? html`<div class="hub-rows">${groups.map((g, i) => html`<div key=${subjectKey(g)} class="s-row hub-row hub-group-row" data-group=${subjectKind(g) === "group" ? subjectId(g) : undefined} data-subject=${subjectKey(g)}>
+          <span class="hub-row-text"><${PolicySubjectLabel} row=${g} teams=${teamSummaries} /></span>
           ${CAPS.map(([cap, word]) => html`<label key=${cap} class="hub-group-cap"><input type="checkbox" checked=${g.allow.includes(cap)} disabled=${!editable} onChange=${(e) => setCap(i, cap, e.target.checked)} /> ${hg(word)}</label>`)}
           <label class="field hub-group-fleets" title=${hg("fleetsHint")}><span>${hg("fleets")}</span><input type="number" min="0" max="8" value=${String(g.maxFleets)} disabled=${!editable || !g.allow.includes("pair_fleet")} onInput=${(e) => setFleets(i, e.target.value)} /></label>
           ${editable ? html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => setGroups(groups.filter((_, j) => j !== i))}>${hg("remove")}</button>` : null}
         </div>`)}</div>` : html`<p class="note">${hg("noGroups")}</p>`}
+        ${editable ? html`<${SubjectPicker} client=${c} disabled=${adding || saving} exclude=${groups.filter(g => subjectKind(g) === "group").map(subjectId)} onPick=${addPicked} />` : null}
         ${editable ? html`<form class="hub-step-form" onSubmit=${add}><label class="field"><span class="sr-only">${hg("addLabel")}</span>
           <input placeholder=${hg("addPlaceholder")} aria-label=${hg("addLabel")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${dn} onInput=${(e) => { setDn(e.target.value); setAddError(""); }} /></label>
           <button type="submit" class="btn btn-sm" disabled=${!dn.trim() || adding}>${adding ? hg("resolving") : hg("add")}</button></form>` : null}
@@ -169,6 +180,7 @@ export function HubGroupPolicyPage() {
         ${!preview || preview.loading ? html`<p class="note" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${hg("previewing")}</p>`
           : !preview.ok ? html`<p class="note" role="status">${preview.code === "unavailable" || preview.code === "not-found" ? hg("enableLater") : preview.code === "conflict" ? hg("conflict") : hg("failed")}</p>`
           : html`${gatesEveryone ? html`<p class="err" role="alert" data-reason="no-groups">${hg("noGroupsOn")}</p>` : null}${pv.adminLosesChat ? html`<p class="err" role="alert">${hg("adminLosesChat")}</p>` : null}
+            ${pv.teamMembers !== undefined ? html`<p class="note">${subjectText("teamChecked", pv.teamMembers)}</p>` : null}
             ${list(pv.losingActions, hg("losingActions"))}${pv.held && pv.held.length ? html`<div class="hub-groups-impact hub-groups-held" data-held=${pv.held.length}><b>${hg("held", pv.held.length)}</b><p class="note">${hg("heldHint")}</p>
               <ul>${pv.held.map((r, i) => html`<li key=${i}>${r.name || r.personId}${r.login ? html` <small class="note"><code>${r.login}</code></small>` : null}</li>`)}</ul></div>` : null}${list(pv.losingPublication, hg("losingPublication"))}${list(pv.grandfathered, hg("grandfathered"))}${list(pv.suspendedOnSave || pv.suspended, hg("suspended"))}
             ${!(pv.losingActions || []).length && !(pv.losingPublication || []).length && !(pv.suspendedOnSave || pv.suspended || []).length && !pv.adminLosesChat ? html`<p class="note">${hg("noImpact")}</p>` : null}

@@ -1,0 +1,56 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-team-allowlist-m3194
+
+ ❯ tests/hub-team-allowlist-ui-m3194.test.ts (4 tests | 3 failed) 895ms
+   × round-trips teams and people through both editor serializers without display metadata 14ms
+   × full editor shows and preserves every selected subject and the server's team count 99ms
+   × manage editor shows and preserves every selected subject and the server's team count 65ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-allowlist-ui-m3194.test.ts > round-trips teams and people through both editor serializers without display metadata
+TypeError: Cannot read properties of undefined (reading 'realm')
+ ❯ src/ui/hub-group-policy.js:27:82
+
+ ❯ Module.draftPolicy src/ui/hub-group-policy.js:27:44
+ ❯ tests/hub-team-allowlist-ui-m3194.test.ts:24:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-team-allowlist-ui-m3194.test.ts > full editor shows and preserves every selected subject and the server's team count
+AssertionError: expected 'AdministrationGroup permissionsPrevie…' to contain 'Product team'
+
+Expected: "Product team"
+Received: "AdministrationGroup permissionsPreviewMembers of these directory groups get these actions. Sign-in stays open to everyone in the directory; chatting with an agent still needs its owner's grant.OnOnly the actions below are allowed.Turn offGroupsNo groups yet. Add a directory group by its distinguished name.Group (distinguished name)Add groupPeople excludedExclusions win over any group.11111111-1111-4111-8111-111111111111Share agents"
+
+ ❯ tests/hub-team-allowlist-ui-m3194.test.ts:30:38
+     28|  const c = fake(); clients.setHubClient(c); const p = page({ storage: …
+     29|  await p.mount(h(which === "full" ? editors.HubGroupPolicyPage : steps…
+     30|  expect(p.document.body.textContent).toContain("Product team"); expect…
+       |                                      ^
+     31|  const number = p.document.querySelector('input[type="number"]') as an…
+     32|  await until(() => c.previewGroupPolicy.mock.calls.length > 0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-team-allowlist-ui-m3194.test.ts > manage editor shows and preserves every selected subject and the server's team count
+AssertionError: expected 'Find a groupNo group yet.Add by disti…' to contain 'Product team'
+
+Expected: "Product team"
+Received: "Find a groupNo group yet.Add by distinguished nameDistinguished nameAdd"
+
+ ❯ tests/hub-team-allowlist-ui-m3194.test.ts:30:38
+     28|  const c = fake(); clients.setHubClient(c); const p = page({ storage: …
+     29|  await p.mount(h(which === "full" ? editors.HubGroupPolicyPage : steps…
+     30|  expect(p.document.body.textContent).toContain("Product team"); expect…
+       |                                      ^
+     31|  const number = p.document.querySelector('input[type="number"]') as an…
+     32|  await until(() => c.previewGroupPolicy.mock.calls.length > 0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 1 passed (4)
+   Start at  23:10:09
+   Duration  1.41s (transform 786ms, setup 136ms, import 192ms, tests 895ms, environment 0ms)

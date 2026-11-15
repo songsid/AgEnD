@@ -1,6 +1,6 @@
 /** Fresh bounded membership observations for a local-admin impact preview, never an action allowance. */
 import type { HubDirectory } from "../directory/types.js";
-import type { PolicyGroupFacts } from "../directory/groups.js";
+import type { GroupPersonFacts } from "./model.js";
 import type { PersonKey } from "../types.js";
 import { personKeyString } from "../identity.js";
 import { person, uuid, validated } from "../validation.js";
@@ -10,13 +10,26 @@ export async function readHubGroupImpactFacts(options: {
   /** Do not start another LDAP request after this bounded preparation budget. Unobserved people stay explicitly HELD. */
   deadline: number; assertCurrent(): void;
   withDirectoryRead?<T>(work: () => Promise<T>): Promise<T>;
+  /** Local-only policies need current eligibility, not an AD membership expansion. */
+  preferEligibility?: boolean;
 }) {
-  const keys = options.people.map(p => validated(person, p.key)), facts = new Map<string, PolicyGroupFacts>();
+  const keys = options.people.map(p => validated(person, p.key)), facts = new Map<string, GroupPersonFacts>();
   const { directory, now, deadline, assertCurrent } = options;
   for (const who of keys) {
-    assertCurrent(); let result: PolicyGroupFacts = { kind: "unknown" };
+    assertCurrent(); let result: GroupPersonFacts = { kind: "unknown" };
     const started = now();
-    if (started < deadline && directory.groupPolicy === "ad-direct-guid" && directory.realm === who.realm && directory.readPolicyGroups) {
+    if (started < deadline && directory.realm === who.realm && options.preferEligibility && directory.checkEligibility) {
+      try {
+        const read = () => directory.checkEligibility(Object.freeze({ ...who }));
+        const observed = await (options.withDirectoryRead ? options.withDirectoryRead(read) : read());
+        if (now() < started) throw new Error("eligibility clock moved backwards");
+        if (observed.eligible && personKeyString(validated(person, observed.person.key)) === personKeyString(who)) {
+          result = { kind: "eligible", person: { ...who }, observedAt: now() };
+        } else if (!observed.eligible && (observed.reason === "gone" || observed.reason === "disabled")) {
+          result = { kind: "ineligible", person: { ...who }, reason: observed.reason, observedAt: now() };
+        }
+      } catch { /* A failed eligibility read holds this person. */ }
+    } else if (started < deadline && directory.groupPolicy === "ad-direct-guid" && directory.realm === who.realm && directory.readPolicyGroups) {
       try {
         const read = () => directory.readPolicyGroups!(Object.freeze({ ...who }));
         const observed = await (options.withDirectoryRead ? options.withDirectoryRead(read) : read()), finished = now();
@@ -34,6 +47,6 @@ export async function readHubGroupImpactFacts(options: {
   }
   // Fresh observation timestamps differ between preview and apply; semantic identity/membership must still match.
   const semantic = JSON.stringify([...facts].map(([id, fact]) => [id, fact.kind === "complete" ? { kind: fact.kind, groups: fact.groups }
-    : fact.kind === "ineligible" ? { kind: fact.kind, reason: fact.reason } : { kind: "unknown" }]));
+    : fact.kind === "ineligible" ? { kind: fact.kind, reason: fact.reason } : { kind: fact.kind }]));
   return { facts, semantic };
 }
