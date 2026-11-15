@@ -4586,7 +4586,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
    設定 at the foot. Fleet is two rows: ☰ and its tabs, then the page's tools; the org page opens on its list. */
 @media (max-width: 899px) {
   .tabs { display: none !important; }
-  .main { padding-bottom: env(safe-area-inset-bottom) !important; }
+  /* The tab bar's room goes; a list page keeps the home-indicator inset. Not inside an agent's pages (the dock keeps it, #3972)
+     nor with the keyboard up (the box sits on the keyboard, #2478): there the padding stays 0. */
+  .shell:not(.in-agent):not(.kb-open) .main { padding-bottom: env(safe-area-inset-bottom); }
   .sidebar.fleet-side .nav-count, .sidebar.fleet-side .v-group-head .count { display: none !important; }
   .sidebar.fleet-side { width: 300px; }
   .sidebar.fleet-side .side-nav, .sidebar.fleet-side .view-roster { display: contents; }

@@ -86,6 +86,18 @@ try {
     need(JSON.stringify(d.links) === JSON.stringify(zh ? ["Fleet 概覽", "等你處理"] : ["Fleet", "Needs you"]) && d.counts === 0 && !d.facets, `two links, no count, no filter block (${JSON.stringify(d.links)}, ${d.counts}, ${d.facets})`);
     need(d.rowMin >= 47.5 && d.extra === 0, `agent rows ≥ 48 px, dot and name only (${d.rowMin}, ${d.extra})`);
     await page.screenshot({ path: shotPath(SMOKE, caseName(c), "2-drawer") });
+    // The tab bar's room goes; only a list page keeps the home-indicator inset: never inside an agent's pages (the dock keeps
+    // it, #3972) nor with the keyboard up (the box sits on the keyboard, #2478) — no band, no double inset.
+    const mainPad = () => page.evaluate(() => getComputedStyle(document.querySelector(".main") as HTMLElement).paddingBottom);
+    await page.evaluate(() => { document.querySelector(".shell")!.classList.remove("sb-open"); });
+    const listPad = await mainPad();
+    await page.evaluate(() => document.querySelector(".shell")!.classList.add("kb-open"));
+    const listKbPad = await mainPad();
+    await page.evaluate(() => document.querySelector(".shell")!.classList.remove("kb-open"));
+    await page.goto(`${(fx as any).base}/ui/chat/${encodeURIComponent(names[1])}`); need(await mounted(page, 30000), "chat: the app mounted");
+    await page.waitForSelector("#msgIn", { timeout: 20000 }); await page.waitForTimeout(600);
+    const chatPad = await mainPad();
+    need(listPad === "34px" && listKbPad === "0px" && chatPad === "0px", `the page's bottom padding: a list page the inset, 0 with the keyboard up or in a chat (${listPad}, ${listKbPad}, ${chatPad})`);
     need(errs.length === 0, `page errors: ${errs.join(" | ")}`);
     results.push({ name: caseName(c), ok: failed.length === 0, failed });
     await p.ctx.close();
