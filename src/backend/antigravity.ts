@@ -140,10 +140,15 @@ function agyFeedbackSurveyActive(pane: string): boolean {
   }
   if (fence !== null) return false;
   const below = rows.slice(start);
-  const separator = below.findIndex(row => /^─{20,}[ \t]*$/.test(row));
-  const menu = (separator < 0 ? below : below.slice(0, separator)).filter(row => row.trim() !== "");
+  const tailStart = below.findIndex(row => /^(?:─{20,}[ \t]*|Context \d+% used[ \t]*|\? for shortcuts[^\n]*)$/.test(row));
+  const menu = (tailStart < 0 ? below : below.slice(0, tailStart)).filter(row => row.trim() !== "");
   if (menu.length > 8) return false;
-  if (separator >= 0 && !/^─{20,}[ \t]*\n>[ \t]*\n─{20,}[ \t]*(?:\n\? for shortcuts[^\n]*)?\s*$/.test(below.slice(separator).join("\n").trimEnd())) return false;
+  if (tailStart >= 0) {
+    const tail = below.slice(tailStart).join("\n").trimEnd();
+    const footer = /^(?:Context \d+% used|\? for shortcuts[^\n]*)\s*$/;
+    const composer = /^─{20,}[ \t]*\n>[ \t]*\n─{20,}[ \t]*(?:\n(?:Context \d+% used|\? for shortcuts[^\n]*))?\s*$/;
+    if (!footer.test(tail) && !composer.test(tail)) return false;
+  }
   const flat = menu.join("").replace(/[ \t]/g, "");
   const title = AGY_FEEDBACK_SURVEY_TITLE.replace(/[ \t]/g, "");
   // All four numeric tokens and the first three labels must be visible. Only
