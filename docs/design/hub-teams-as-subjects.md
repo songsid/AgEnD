@@ -173,7 +173,9 @@ Teams:
 | Add a lead | Make {name} a lead | 將 {name} 設為負責人 |
 | Last lead | Name another lead before you leave. | 離開之前，請先指定另一位負責人。 |
 | Department | Department (optional) | 部門（選填） |
-| Used for | This team is used for: asking {a} agents, {r} rooms, the allowed list. | 這個團隊用在：提問 {a} 個 Agent、{r} 個房間、允許清單。 |
+| Used for (each part only when it applies) | This team is used for: asking {a} agents · starting rooms · the allowed list | 這個團隊用在：提問 {a} 個 Agent · 開房間 · 允許清單 |
+| Used for, nothing yet | This team isn't used anywhere yet. | 這個團隊還沒有用在任何地方。 |
+| Rooms note | People added to a room with this team stay in that room when the team changes. | 跟著這個團隊加入房間的人，團隊名單變動後仍會留在房間裡。 |
 | Disabled member | Account disabled | 帳號已停用 |
 
 Removing a member:
@@ -204,8 +206,8 @@ For the person affected:
 | Card | What | Size | Needs |
 |---|---|---|---|
 | T1 | Teams on the allowed list: a row can be a team; union with groups; exclusions still win; the picker; the impact preview counts team members | M | Nothing |
-| T2 | Managing teams: several leads, a lead can name leads, department optional, "Who can create teams", the "used for" line | M | Nothing |
-| T3 | Leaving a team acts at once: immediate re-check, paused shares, disconnect with 30-day reconnect, the remove and delete dialogs, rooms joined with the team | M | T1 |
+| T2 | Managing teams: several leads, a lead can name leads, department optional, "Who can create teams", the "used for" line (no room count: a room does not record which team its people came from until T3) | M | Nothing |
+| T3 | Leaving a team acts at once: immediate re-check, paused shares, disconnect with 30-day reconnect, the remove and delete dialogs; rooms record which team a person was added with, which the dialogs and a room count on the "used for" line then use | M | T1 |
 | T4 | AD groups act on removal: the hourly and sign-in check; join codes scoped to a group or team are re-checked; team as a join code scope | M | T1 |
 | T5 | "Who can use this Hub": the stricter choice, with the lock-out warning | S–M | T1, T3 |
 | T6 | Offboarding on team lists: disabled shown, removal after the grace period, lead handover | S | M-3188 item 4 |
