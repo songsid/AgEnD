@@ -3,7 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { personKeyString } from "../src/hub/identity.js";
-import { createHubTeams, HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION } from "../src/hub/teams/index.js";
+import { createHubTeams, HUB_TEAM_MANAGEMENT_MIGRATION, HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION } from "../src/hub/teams/index.js";
 
 let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; });
@@ -15,13 +15,17 @@ async function world() {
   r.directory.checkPolicyGroup = async key => ({ ok: true, group: { key, dn: "CN=Engineering,DC=example,DC=test" } });
   r.directory.searchGrantPeople = async () => ({ ok: true, people: [{ person: member, displayName: "Member", login: "member" }], truncated: false });
   r.directory.searchPolicyGroups = async () => ({ ok: true, groups: [{ objectId: department, cn: "Engineering", dn: "CN=Engineering,DC=example,DC=test" }], truncated: false });
-  r.httpDeps.uow.atomic(tx => { HUB_TEAMS_MIGRATION.up(r!.sql(tx)); HUB_TEAM_GRANTS_MIGRATION.up(r!.sql(tx)); });
+  r.httpDeps.uow.atomic(tx => { HUB_TEAMS_MIGRATION.up(r!.sql(tx)); HUB_TEAM_MANAGEMENT_MIGRATION.up(r!.sql(tx)); HUB_TEAM_GRANTS_MIGRATION.up(r!.sql(tx)); });
   let instances = 0;
   r.httpDeps.teams = core => { instances++; return createHubTeams(core); };
   await r.restartHttp();
   const admin = await r.signIn("admin"), l = await r.signIn("lead"), m = await r.signIn("member"), o = await r.signIn("outsider");
   const leadId = personKeyString(lead), memberId = personKeyString(member), outsiderId = personKeyString(outsider);
-  const create = () => r!.call(admin, "POST", "/hub/v1/teams", { name: "Project", department, lead: leadId, members: [memberId] });
+  const create = async () => {
+    const made = await r!.call(admin,"POST","/hub/v1/teams",{name:"Project",department,members:[leadId,memberId]});
+    const handed = await r!.call(admin,"PATCH",`/hub/v1/teams/${made.json.team.id}`,{leads:[leadId],members:[leadId,memberId]});
+    return {...made,json:handed.json};
+  };
   return { admin, l, m, o, leadId, memberId, outsiderId, department, create, instances: () => instances };
 }
 
@@ -32,12 +36,12 @@ it("mounts one Team instance for CRUD, static suggestions and room candidates", 
   const team = made.json.team;
   expect(team).toMatchObject({ name: "Project", department: w.department, lead: w.leadId, members: [w.leadId, w.memberId].sort() });
   expect((await r!.call(w.m, "GET", "/hub/v1/teams")).json.teams).toContainEqual(expect.objectContaining({ id: team.id }));
-  for (const viewer of [w.admin, w.l]) {
+  for (const viewer of [w.admin, w.l, w.m]) {
     const detail = await r!.call(viewer, "GET", `/hub/v1/teams/${team.id}`);
     expect(detail.status).toBe(200);
     expect(detail.json.team).toMatchObject({ id: team.id });
   }
-  for (const viewer of [w.m, w.o]) {
+  for (const viewer of [w.o]) {
     const detail = await r!.call(viewer, "GET", `/hub/v1/teams/${team.id}`);
     expect(detail.status).toBe(403);
     expect(detail.json.team).toBeUndefined();
@@ -54,12 +58,12 @@ it("keeps Team routes and the feature absent without the provider", async () => 
   expect((await r.call(admin, "GET", "/hub/v1/session")).json.features).not.toContain("teams-v1");
 });
 
-it("allows the current lead to edit the roster while reserving name, lead and deletion for the admin", async () => {
+it("allows current leads to manage roster and name, with CSRF and outsider refusals", async () => {
   const w = await world(), made = await w.create(), path = `/hub/v1/teams/${made.json.team.id}`;
   expect((await r!.call(w.l, "PATCH", path, { members: [w.leadId, w.outsiderId] })).json.team.members).toEqual([w.leadId, w.outsiderId].sort());
-  expect((await r!.call(w.l, "PATCH", path, { name: "Not allowed" })).status).toBe(403);
+  expect((await r!.call(w.l, "PATCH", path, { name: "Lead rename" })).status).toBe(200);
   expect((await r!.call(w.o, "PATCH", path, { members: [w.leadId, w.memberId] })).status).toBe(403);
-  expect((await r!.call(w.l, "DELETE", path)).status).toBe(403);
+  expect((await r!.call(w.o, "DELETE", path)).status).toBe(403);
   expect((await r!.call(w.admin, "PATCH", path, { name: "Renamed" }, { "X-AgEnD-Hub-CSRF": "" })).status).toBe(403);
   expect((await r!.call(w.admin, "PATCH", path, { name: "Renamed" })).json.team.name).toBe("Renamed");
   expect((await r!.call(w.admin, "DELETE", path)).json).toEqual({ ok: true });
@@ -70,7 +74,7 @@ it("serves person suggestions to the current lead only with the exact Team selec
   const w = await world(), made = await w.create(), suffix = `&teamId=${made.json.team.id}`;
   expect((await r!.call(w.l, "GET", `/hub/v1/teams/candidates?kind=person&q=Me${suffix}`)).json).toEqual({ candidates: [{ kind: "person", id: w.memberId, name: "Member", login: "member" }] });
   expect((await r!.call(w.l, "GET", "/hub/v1/teams/candidates?kind=person&q=Me")).status).toBe(403);
-  expect((await r!.call(w.l, "GET", `/hub/v1/teams/candidates?kind=group&q=En${suffix}`)).status).toBe(403);
+  expect((await r!.call(w.l, "GET", `/hub/v1/teams/candidates?kind=group&q=En${suffix}`)).status).toBe(200);
   expect((await r!.call(w.o, "GET", `/hub/v1/teams/candidates?kind=person&q=Me${suffix}`)).status).toBe(403);
 });
 
@@ -99,4 +103,14 @@ it("projects canAsk for a Team grant and removes it after a live roster edit wit
   await r!.call(w.l, "PATCH", `/hub/v1/teams/${teamId}`, { members: [w.leadId] });
   expect(await canAsk(w.m)).toBe(false);
   expect(r!.db.prepare("SELECT * FROM hub_grants WHERE id=?").get(grant.json.grant.id)).toEqual(retained);
+});
+it("serves creation policy to signed-in viewers and requires admin plus CSRF for changes", async () => {
+  const w=await world();
+  expect((await r!.call(w.l,"GET","/hub/v1/teams/settings")).json.settings).toMatchObject({canCreate:false,canConfigure:false,revision:1});
+  const input={revision:1,creators:[{kind:"person",id:w.leadId}]};
+  expect((await r!.call(w.l,"PUT","/hub/v1/teams/settings",input)).status).toBe(403);
+  expect((await r!.call(w.admin,"PUT","/hub/v1/teams/settings",input,{"X-AgEnD-Hub-CSRF":""})).status).toBe(403);
+  expect((await r!.call(w.admin,"PUT","/hub/v1/teams/settings",input)).json.settings).toMatchObject({revision:2});
+  const created=await r!.call(w.l,"POST","/hub/v1/teams",{name:"Manager created"});
+  expect(created.status).toBe(201); expect(created.json.team).toMatchObject({leads:[w.leadId],department:null});
 });

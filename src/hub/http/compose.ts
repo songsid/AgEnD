@@ -431,6 +431,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       await guard(() => quota.setVisible(ctx, exposureId, int(b.revision), b.visible as boolean));
       return send(res, 200, { quotaVisible: b.visible, ...quota.projection(exposureId) });
     }
+    if (path === "/hub/v1/teams/settings") {
+      if (!teams) throw new HttpError(404,"not-found");
+      if (method === "GET") { signedIn(); return send(res,200,{settings:await guard(() => teams.settings(ctx))}); }
+      if (method === "PUT") { csrf(); const b = await body(); return send(res,200,{settings:await guard(() => teams.saveSettings(ctx,b))}); }
+      throw new HttpError(405,"method");
+    }
     if (path === "/hub/v1/teams/candidates") {
       if (!teams) throw new HttpError(404, "not-found");
       if (method !== "GET") throw new HttpError(405, "method");
