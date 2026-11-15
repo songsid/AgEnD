@@ -1144,6 +1144,14 @@ export function handleSettingsRequest(
   // S3c (S-55): the member's exposures — local owner only, never over the public link. GET the list; POST publish or
   // revise (only as a confirmed Settings replay: the confirmation layer intercepts the first request); POST
   // .../<id>/withdraw at once (narrowing needs no confirmation), ok once the restrictive state is saved.
+  if (path === "/api/hub/member/contact-limit-notice" && method === "POST") {
+    if (gatewayRequestContext(req) || !guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+    const api = ctx.hubMemberExposures?.();
+    if (!api?.acknowledgeContactLimitNotice) { json(res, 404, { error: "unavailable" }); return true; }
+    try { api.acknowledgeContactLimitNotice(); json(res, 200, { ok: true }); }
+    catch { json(res, 409, { error: "unsaved" }); }
+    return true;
+  }
   const hubExposures = path === "/api/hub/member/exposures" ? "list" : /^\/api\/hub\/member\/exposures\/[0-9a-f-]{36}\/withdraw$/.test(path) ? "withdraw" : null;
   if (hubExposures) {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }

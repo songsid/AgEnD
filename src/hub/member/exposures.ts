@@ -52,6 +52,7 @@ export interface HubExposureInput {
   agent: string; providerId: string; displayName: string; dataViewId: string; allowedTools: readonly string[];
   /** The committed revision the owner saw (0: none yet). */
   expectedRevision: number;
+  contactLimit?: boolean;
 }
 export type HubExposureError = "not_paired" | "unknown_agent" | "unknown_view" | "not_enforceable" | "conflict" | "limit";
 export class HubExposureRefusal extends Error { constructor(readonly code: HubExposureError) { super(code); } }
@@ -93,7 +94,7 @@ export class HubExposureStore {
       return row.revision;
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
   }
-  private change<T>(action: string, exposureId: string, work: (revision: number) => T): T {
+  private change<T>(action: string, exposureId: string | undefined, work: (revision: number) => T): T {
     let writing = false;
     try {
       return this.database.transaction(() => {
@@ -114,6 +115,25 @@ export class HubExposureStore {
   }
   private rowOf(agent: string): Row | undefined { return this.database.prepare("SELECT * FROM hub_exposures WHERE agent=?").get(agent) as Row | undefined; }
   private rowById(id: string): Row | undefined { return this.database.prepare("SELECT * FROM hub_exposures WHERE id=?").get(id) as Row | undefined; }
+
+  /** Existing representative shares default on without changing their consent or wire descriptor. */
+  contactLimitNotice(): boolean {
+    this.check();
+    return this.list().some(r => r.committed?.providerId === HUB_AGENT_MODE && r.committed.exposure.state !== "withdrawn"
+      && r.committed.contactLimit === undefined);
+  }
+  acknowledgeContactLimitNotice(): void {
+    if (!this.contactLimitNotice()) return;
+    // Materialize the already-effective default. This survives audit retention without a schema migration.
+    this.change("exposure.contact-limit-notice-seen", undefined, () => {
+      for (const row of this.list()) {
+        const local = row.committed;
+        if (local?.providerId === HUB_AGENT_MODE && local.exposure.state !== "withdrawn" && local.contactLimit === undefined) {
+          this.database.prepare("UPDATE hub_exposures SET committed=? WHERE agent=?").run(JSON.stringify({ ...local, contactLimit: true }), row.agent);
+        }
+      }
+    });
+  }
 
   // ── Readers (unchanged signatures for S1 and S4) ──
   /** S1 admission: the COMMITTED exposure only (a staged candidate is never visible; a withdrawn one says so). */
@@ -156,6 +176,7 @@ export class HubExposureStore {
       if (!(committed && committed.exposure.state === "published") && this.published() >= HUB_EXPOSURE_MAX) throw new HubExposureRefusal("limit");
       const candidate: HubLocalExposure = {
         agent: input.agent, providerId: input.providerId, consentId: randomUUID(), generation: (committed?.generation ?? 0) + 1,
+        contactLimit: input.contactLimit !== false,
         exposure: { id, fleetId: binding.fleetId, owner: binding.owner, displayName: input.displayName, revision: input.expectedRevision + 1,
           state: "withdrawn", dataViewId: input.dataViewId, allowedTools: [...input.allowedTools].sort(), policyDigest },
       };

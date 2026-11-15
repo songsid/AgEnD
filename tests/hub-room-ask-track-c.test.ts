@@ -79,10 +79,10 @@ describe("Track C room question presentation", () => {
 const databases: Database.Database[] = [];
 afterEach(() => databases.splice(0).forEach(db => { if (db.open) db.close(); }));
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-function member() {
+function member(contactLimit?: boolean) {
   const db = new Database(":memory:"); databases.push(db); migrateRoomAsks(db);
   const ask = example(), inputs: HubRepresentativeDelivery[] = [], sent: RoomAnswer[] = [];
-  let live = true, exposure = { agent: "existing-agent", consentId: randomUUID(), revision: 1, token: "life-1" };
+  let live = true, exposure = { agent: "existing-agent", consentId: randomUUID(), revision: 1, token: "life-1", ...(contactLimit !== undefined ? { contactLimit } : {}) };
   const link: RoomAskLink = { current: () => live, features: new Set(["welcome-caps-v1", "room-ask-v1"]),
     sendAnswer: vi.fn(async a => { sent.push(structuredClone(a)); }) };
   const options: RoomAskOptions = { db, bindingKey: "test-immutable-binding", encryptionKey: randomBytes(32), current: () => live,
@@ -94,6 +94,11 @@ function member() {
     retire: () => { live = false; }, replace: () => { exposure = { ...exposure, token: "replacement" }; } };
 }
 describe("Track C durable room adapter (injectable Track R seam)", () => {
+  it.each([true, false, undefined])("carries local contact policy %s into the same Fleet handoff", async contactLimit => {
+    const f = member(contactLimit); f.adapter.accept(f.ask, f.link); await f.adapter.settled();
+    expect(f.inputs).toHaveLength(1); expect(f.inputs[0]!.contactLimit).toBe(contactLimit !== false); f.adapter.close();
+  });
+
   it("delivers into the owner's existing agent and preserves the per-agent message identity on replay", async () => {
     const f = member(); expect(f.adapter.accept(f.ask, f.link)).toBe("accepted");
     await f.adapter.settled(); expect(f.inputs).toHaveLength(1);

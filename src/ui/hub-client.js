@@ -56,7 +56,7 @@ export function hubName(doc = typeof document !== "undefined" ? document : null)
  * marks a mapping from the older restricted mode that answers nothing until the owner shares the agent again.
  * @typedef {{ agent: string, display: string, exposureId: string | null, revision: number,
  *   state: "published" | "withdrawn" | "frozen", policy: { dataView: string, tools: string[] } | null,
- *   enforceable: boolean, reason?: string }} HubExposureView
+ *   enforceable: boolean, reason?: string, contactLimit?: boolean, contactLimitNotice?: boolean }} HubExposureView
  */
 /**
  * Results (docs/design/hub-ui-client.md "Results"). A withdrawal or disconnect fences locally at once (even offline) but
@@ -151,7 +151,7 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
     const c = consent.get(a.name) || { state: "withdrawn", revision: 0 };
     const ok = enforceable.has(a.name);
     return { agent: a.name, display: a.display_name || a.name, exposureId: c.revision ? `stub-${a.name}` : null, revision: c.revision,
-      state: c.state, policy: ok && c.state === "published" ? { dataView: c.dataView || "agent", tools: c.tools ? [...c.tools] : [] } : null, enforceable: ok, ...(ok ? {} : { reason: "restricted_execution_pending" }),
+      state: c.state, contactLimit: c.contactLimit !== false, policy: ok && c.state === "published" ? { dataView: c.dataView || "agent", tools: c.tools ? [...c.tools] : [] } : null, enforceable: ok, ...(ok ? {} : { reason: "restricted_execution_pending" }),
       // P1 representative agent: the one choice is the agent itself, with no Hub tools; no pending confirmation.
       choices: ok ? { dataViews: [{ id: "agent", label: a.display_name || a.name }], tools: [] } : { dataViews: [], tools: [] },
       pending: null };
@@ -198,7 +198,7 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
       }
       if (pairing.state !== "paired") return { ok: false, error: "not_paired" };
       if (!enforceable.has(agent)) return { ok: false, error: "not_enforceable" };
-      consent.set(agent, { state: "published", revision: c.revision + 1, dataView: choice && choice.dataViewId, tools: choice && choice.tools });
+      consent.set(agent, { state: "published", revision: c.revision + 1, dataView: choice && choice.dataViewId, tools: choice && choice.tools, contactLimit: choice?.contactLimit !== false });
       return { ok: true, view: view(a) };
     },
     /** Hear pairing changes (slice 1: the member's local status projections). @returns {() => void} */
@@ -677,6 +677,10 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
       return r.ok && r.body && typeof r.body === "object" ? { ok: true, ...r.body } : { ok: false, status: r.status };
     },
     async exposures() { const rows = await listed(); return rows || []; },
+    async acknowledgeContactLimitNotice() {
+      const r = await confirm.api("/api/hub/member/contact-limit-notice", { method: "POST", body: "{}" });
+      return r.ok && r.body?.ok === true;
+    },
     async setExposed(agent, on, expectedRevision, choice = null) {
       const rows = await listed();
       if (rows === null) return { ok: false, error: "unavailable" };
@@ -689,7 +693,7 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
       }
       if (!choice || typeof choice.dataViewId !== "string" || !Array.isArray(choice.tools)) return { ok: false, error: "not_enforceable" };
       const r = await confirm.api("/api/hub/member/exposures", { method: "POST", headers: { "Idempotency-Key": confirm.newKey("hub") },
-        body: JSON.stringify({ agent, dataViewId: choice.dataViewId, tools: choice.tools, expectedRevision }) });
+        body: JSON.stringify({ agent, dataViewId: choice.dataViewId, tools: choice.tools, expectedRevision, ...(choice.contactLimit !== undefined ? { contactLimit: choice.contactLimit } : {}) }) });
       if (confirm.isPendingResponse(r)) {
         const p = r.body.pending_change;
         return { ok: true, pending: { id: p.id, expiresAt: p.expires_at }, view: { ...row, pending: { expiresAt: p.expires_at } }, settled: confirm.track(p, "hub") };

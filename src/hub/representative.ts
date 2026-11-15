@@ -60,6 +60,7 @@ export interface HubRepresentativeLink {
 }
 export interface HubRepresentativeDelivery {
   agent: string; correlationId: string; text: string;
+  contactLimit?: boolean;
   /** Run by the fleet immediately before the IPC hand-off; false sends nothing. */
   beforeInput(): Promise<boolean>;
   /** The fleet's own fence through wake/idle/hand-off. */
@@ -273,6 +274,7 @@ export class HubRepresentativeExecution {
     try {
       handed = await this.options.deliver({
         agent: row.agent, correlationId: cid, text,
+        contactLimit: this.options.localExposure(row.exposure_id)?.contactLimit !== false,
         // The live fence through wake/idle/reconnect: the row's state as stored now, and its consent/lifecycle/binding.
         stillCurrent: () => { const st = this.refresh(row); return (st === "dispatching" || st === "input") && this.currentFor(row); },
         beforeInput: () => this.beforeInput(row),

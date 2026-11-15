@@ -79,6 +79,7 @@ import { HUB_REPORT_TARGET, parseHubReportExtras, type HubReportExtras, type Hub
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
   readonly dataDir: string;
+  hubContactRestricted?(agent: string): boolean;
   readonly fleetConfig: FleetConfig | null;
   readonly adapter: ChannelAdapter | null;
   readonly adapters?: Map<string, ChannelAdapter>;
@@ -460,6 +461,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       return;
     }
   }
+  // Only a claimed Hub answer above is exempt, never an ordinary instance merely named agend-hub.
+  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, t("hub.contactRefused")); return; }
   // Files or buttons only ever travel with a live Hub answer: never dropped silently onto an ordinary message.
   if (meta.hubExtras && Object.keys(meta.hubExtras).length) {
     respond(null, `report_result files/buttons/poll need a live Hub question: target_instance "${HUB_REPORT_TARGET}" with the correlation_id it gave you.`);
@@ -2012,6 +2015,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(BroadcastArgs, rawArgs, "broadcast");
   if (!v.ok) { respond(null, v.error); return; }
   const { message, targets, team: teamName, tags: filterTags, task_summary, request_kind, requires_reply } = v.data;
+  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, t("hub.contactRefused")); return; }
   if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
 
   const senderLabel = meta.senderSessionName ?? meta.instanceName;

@@ -281,6 +281,13 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
 - **Who may share:** when group permissions are on, only people whose group has **Share agents**. Otherwise the row
   reads "Not shared: your Hub administrator hasn't allowed you to share agents. It will be shared once they do."
   (未分享：Hub 管理員還沒有允許你分享 Agent。) with **Don't share it** to take the request back.
+- **While it answers a Hub question, this agent may not contact other agents** defaults on, including existing shares.
+  In Fleet **Settings → Hub → Shared agents**, untick it to allow agent-to-agent help; saving a shared agent's choice
+  follows the same confirmation as sharing. Existing owners get a Settings notice they acknowledge once. Each question
+  opens a durable 30-minute window at delivery, ending earlier when its answer is accepted. While any window is open,
+  send_to_instance, delegate_task, request_information and broadcast are refused; the agent can retry after answering.
+  Answers to agend-hub and hub_room_post still work. The agent's own tools/folder, previously learned information and
+  actions after the window ends are not isolated. Hub General and MCP agents are not changed by this setting.
 - Only fleet agents can be shared for now: "ClassicBot rooms can't be shared yet." A Fleet with nothing to share reads
   "This fleet has no agents to share yet."
 - "Shared under the older restricted mode. Hub questions are refused until you share this agent again." → **Share
