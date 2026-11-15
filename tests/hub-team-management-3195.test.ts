@@ -93,3 +93,24 @@ it("uses a local canonical allowed-list reader for the Used-for detail", async (
   expect((await teams.get(w.admin,t.id)).impact?.allowedList).toBe(true); expect(reads).toEqual([t.id]);
   expect((await w.teams.get(w.admin,t.id)).impact?.allowedList).toBe(false);
 });
+it("a non-admin creator cannot nominate extra leads during creation", async () => {
+  const w=await world();
+  await w.teams.saveSettings(w.admin,{revision:1,creators:[{kind:"person",id:w.ids[0]}]});
+  await expect(w.teams.create(w.manager,{name:"Extra leads",leads:[w.ids[0],w.ids[1]]})).rejects.toMatchObject({code:"denied"});
+  await expect(w.teams.create(w.manager,{name:"Other primary",lead:w.ids[1]})).rejects.toMatchObject({code:"denied"});
+  expect(r!.db.prepare("SELECT COUNT(*) AS n FROM hub_teams").get()).toEqual({n:0});
+  expect((await w.teams.create(w.manager,{name:"Self lead",leads:[w.ids[0]]})).leads).toEqual([w.ids[0]]);
+});
+it("a group permit requires complete membership facts for the exact creator", async () => {
+  const w=await world(),group="12345678-1234-4123-8123-123456789abc";
+  Object.assign(r!.directory,{groupPolicy:"ad-direct-guid"});
+  r!.directory.checkPolicyGroup=async key => ({ok:true,group:{key,dn:"CN=Managers,DC=test"}});
+  await w.teams.saveSettings(w.admin,{revision:1,creators:[{kind:"group",id:group}]});
+  r!.directory.readPolicyGroups=async () => ({kind:"unknown"});
+  expect((await w.teams.settings(w.manager)).canCreate).toBe(false);
+  await expect(w.teams.create(w.manager,{name:"Unknown facts"})).rejects.toMatchObject({code:"denied"});
+  r!.directory.readPolicyGroups=async () => ({kind:"complete",person:await w.second.requirePerson(),groups:[group],observedAt:Date.now()});
+  expect((await w.teams.settings(w.manager)).canCreate).toBe(false);
+  await expect(w.teams.create(w.manager,{name:"Other person facts"})).rejects.toMatchObject({code:"denied"});
+  expect(r!.db.prepare("SELECT COUNT(*) AS n FROM hub_teams").get()).toEqual({n:0});
+});
