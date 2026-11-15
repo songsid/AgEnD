@@ -17,6 +17,8 @@ export async function freeHubPort(): Promise<number> {
   const port = (server.address() as { port: number }).port; await new Promise<void>(resolve => server.close(() => resolve())); return port;
 }
 export async function hubRig(options: { clientLog?: HubClientOptions["log"]; serverReady?: HubServerOptions["ready"]; clientRecommendations?: boolean; serverConnected?: HubServerOptions["connected"]; serverLog?: HubServerOptions["log"]; serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[];
+  /** A suite may supply a held socket from hubListenerPorts; its TLS listener adopts that same handle. */
+  memberPort?: number;
   /** M-2901: the Hub's signed web-address statement (server) and the member's receiver of it (client). */
   serverWebOrigin?: HubServerOptions["webOrigin"]; clientWebOrigin?: HubClientOptions["webOrigin"];
   /** Phase 1 Fleet values; offered only to a reporting Hub. */
@@ -24,7 +26,7 @@ export async function hubRig(options: { clientLog?: HubClientOptions["log"]; ser
   /** #3429 B: the member's dial order (a pending relocation's `to`, then the anchor). */
   clientDial?: HubClientOptions["dial"] } = {}) {
   mkdirSync(".artifacts", { recursive: true }); const root = mkdtempSync(join(process.cwd(), ".artifacts/hub-net-test-")); chmodSync(root, 0o700);
-  const memberHome = join(root, "member"); mkdirSync(memberHome, { mode: 0o700 }); const port = await freeHubPort();
+  const memberHome = join(root, "member"); mkdirSync(memberHome, { mode: 0o700 }); const port = options.memberPort ?? await freeHubPort();
   const memberOrigin = `https://127.0.0.1:${port}`, identity = await provisionHubIdentity({ home: root, memberOrigin });
   const owner = { realm: "directory", objectId: randomUUID() }; let eligible = true, enabled = true, floor = 0;
   const directory: HubDirectory = { realm: "directory", signIn: async () => ({ ok: false, reason: "invalid-credentials" }), checkEligibility: async () => eligible ? { eligible: true, person: { key: owner, login: "owner", dn: "private", groups: [] } } : { eligible: false, reason: "disabled" }, close: async () => {} };

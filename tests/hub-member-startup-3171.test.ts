@@ -1,24 +1,51 @@
 /** Real paired TLS/WSS + production runtime/member factory and private SQLite. No agent input or directory network. */
-import { expect, it, vi } from "vitest";
-import { createServer, type Server } from "node:https";
-import { request, type Server as HttpServer } from "node:http";
+import { afterEach, expect, it, vi } from "vitest";
+import type { Server } from "node:https";
+import { request, type IncomingMessage, type Server as HttpServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
+import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import { FleetManager } from "../src/fleet-manager.js";
 import { tokenEpoch } from "../src/web-session.js";
 import { HubRuntime, type HubMemberHost } from "../src/hub/runtime.js";
-import { HubServer } from "../src/hub/server.js";
 import { HubMemberClient } from "../src/hub/client.js";
-import { readHubMemberTls } from "../src/hub/tls.js";
 import type { HubMemberFrame } from "../src/hub/types.js";
 import { hubRig } from "./helpers/hub-rig.js";
+import { hubListenerPorts } from "./helpers/hub-listener-ports.js";
 
-async function outage() {
-  const rig = await hubRig();
+const leases: ReturnType<typeof hubListenerPorts>[] = [];
+afterEach(async () => {
+  try { for (const ports of leases.splice(0)) await ports.close(); }
+  finally { vi.restoreAllMocks(); }
+});
+type Upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
+
+async function expectPortOwned(port: number) {
+  const competitor = createNetServer();
+  try {
+    const outcome = await new Promise<string>(resolve => {
+      competitor.once("error", error => resolve((error as NodeJS.ErrnoException).code ?? "unknown"));
+      competitor.listen(port, "127.0.0.1", () => resolve("stolen"));
+    });
+    expect(outcome).toBe("EADDRINUSE");
+  } finally { if (competitor.listening) await new Promise<void>(resolve => competitor.close(() => resolve())); }
+}
+
+async function outage(beforeBind?: (port: number) => Promise<void>) {
+  const ports = hubListenerPorts(), port = await ports.next();
+  leases.push(ports);
+  await beforeBind?.(port);
+  const rig = await hubRig({ memberPort: port });
   const profile = await rig.pair();
-  await rig.server.close();
-  const received: HubMemberFrame[] = [];
-  let restored: HubServer | undefined;
-  let refusal: Server | undefined;
+  // Fixture-only access: retain the real TLS listener while changing its availability/response before upgrade.
+  const listener = (rig.server as unknown as { server: Server }).server;
+  const handlers = listener.listeners("upgrade") as Upgrade[];
+  const upgrade = (handler?: Upgrade) => {
+    listener.removeAllListeners("upgrade");
+    for (const value of handler ? [handler] : handlers) listener.on("upgrade", value);
+  };
+  upgrade((_request, socket) => socket.destroy());
+  const received: HubMemberFrame[] = rig.received;
   let exposures: Parameters<HubMemberHost["attachExposures"]>[0] = null;
   let reports: unknown = null;
   let updates: Parameters<NonNullable<HubMemberHost["attachUpdates"]>>[0] = null;
@@ -32,33 +59,28 @@ async function outage() {
     updates: { canInstall: async () => false, launch: async () => false, idle: () => false, busy: () => true, notify: () => true },
     attachUpdates: value => { updates = value; },
   } });
-  return { rig, profile, runtime, states, received, exposures: () => exposures, reports: () => reports, updates: () => updates,
+  return { rig, profile, runtime, states, received, upgrade, exposures: () => exposures, reports: () => reports, updates: () => updates,
     async refuse(status: number) {
-      const tls = readHubMemberTls({ home: rig.root });
-      refusal = createServer({ key: tls.keyPem, cert: tls.certificatePem });
-      refusal.on("upgrade", (_request, socket) => { socket.end(`HTTP/1.1 ${status} Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`); });
-      await new Promise<void>(resolve => refusal!.listen(Number(new URL(rig.memberOrigin).port), "127.0.0.1", resolve));
+      upgrade((_request, socket) => { socket.end(`HTTP/1.1 ${status} Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`); });
     },
     async restore(failFirstReconcile = false) {
-      if (refusal) { await new Promise<void>(resolve => refusal!.close(() => resolve())); refusal = undefined; }
-      restored = new HubServer({ home: rig.root, hubId: rig.identity.hubId, memberOrigin: rig.memberOrigin,
-        listen: { host: "127.0.0.1", port: Number(new URL(rig.memberOrigin).port) }, pairing: rig.pairing,
-        current: () => true, hold: () => {}, receive: async (frame, link) => {
-          received.push(frame);
-          if (frame.type === "reconcile" && failFirstReconcile) { failFirstReconcile = false; restored!.refreshAuthorization(); return; }
-          if (frame.type === "reconcile") return { v: 1, type: "reconcile", requestId: frame.requestId, linkEpoch: link.linkEpoch,
-            payload: { receipts: [], nextReceiptSequence: 0, more: false } };
-        } });
-      await restored.start();
+      rig.setReceive(async (frame, link) => {
+        if (frame.type === "reconcile" && failFirstReconcile) { failFirstReconcile = false; rig.server.refreshAuthorization(); return; }
+        if (frame.type === "reconcile") return { v: 1, type: "reconcile", requestId: frame.requestId, linkEpoch: link.linkEpoch,
+          payload: { receipts: [], nextReceiptSequence: 0, more: false } };
+      });
+      upgrade();
     },
-    async close() { await runtime.close(); await restored?.close(); if (refusal) await new Promise<void>(resolve => refusal!.close(() => resolve())); await rig.close(); },
+    async close() { await runtime.close(); await rig.close(); await ports.close(); },
   };
 }
 
 it("keeps a paired member mounted through a boot-time outage, then reconciles without a Fleet restart", async () => {
-  const f = await outage();
+  const f = await outage(expectPortOwned);
   let fm: any, http: HttpServer | undefined;
   try {
+    // Deterministically try to steal the outage address before the Hub is restored.
+    await expectPortOwned(Number(new URL(f.rig.memberOrigin).port));
     await f.runtime.apply({ hub_member: { enabled: true } });
     expect(f.states.at(-1)).toBe("offline");
     expect(f.runtime.currentHolds()).toEqual([]);
@@ -156,15 +178,13 @@ it.each(["switch off", "shutdown"])("cancels an offline startup retry on %s", as
 
 it.each(["invalid", "revoked", "replaced", "stop"] as const)("rejects offline startup when the first link is %s before welcome", async reason => {
   const f = await outage();
-  const tls = readHubMemberTls({ home: f.rig.root });
-  const server = createServer({ key: tls.keyPem, cert: tls.certificatePem });
   const wss = new WebSocketServer({ noServer: true });
   let reconciles = 0;
   const holds: string[] = [];
   const client = new HubMemberClient({ home: f.rig.memberHome, hubId: f.rig.identity.hubId, memberOrigin: f.rig.memberOrigin,
     allowOfflineStart: true, capabilities: ["welcome-caps-v1"], current: () => true, hold: code => holds.push(code),
     receive: async () => {}, reconcile: async () => { reconciles++; } });
-  server.on("upgrade", (request, socket, head) => wss.handleUpgrade(request, socket, head, ws => {
+  f.upgrade((request, socket, head) => wss.handleUpgrade(request, socket, head, ws => {
     ws.once("message", () => {
       if (reason === "stop") client.fence();
       else if (reason === "invalid") ws.send("{}"); // Rejected by the real frame parser; close classification matters independently of stopped.
@@ -172,7 +192,6 @@ it.each(["invalid", "revoked", "replaced", "stop"] as const)("rejects offline st
     });
   }));
   try {
-    await new Promise<void>(resolve => server.listen(Number(new URL(f.rig.memberOrigin).port), "127.0.0.1", resolve));
     await expect(client.start()).rejects.toMatchObject({ code: "unavailable", reasonCode: reason === "stop" ? "unavailable" : reason });
     expect(reconciles).toBe(0);
     if (reason !== "stop") expect(holds).toEqual([reason]);
@@ -180,7 +199,6 @@ it.each(["invalid", "revoked", "replaced", "stop"] as const)("rejects offline st
     await client.close();
     for (const ws of wss.clients) ws.terminate();
     await new Promise<void>(resolve => wss.close(() => resolve()));
-    await new Promise<void>(resolve => server.close(() => resolve()));
     await f.close();
   }
 });
