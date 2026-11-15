@@ -35,13 +35,20 @@ function get(path: string) {
 }
 
 let tmux: (...args: string[]) => string, haveTmux = true;
+/** M-3152: the session that keeps the file's tmux server up between tests. */
+const KEEPER = "m3152-keeper";
+let serverPid = "";
 beforeAll(() => {
   const socket = getTmuxSocketName();
   expect(socket, "isolated AGEND_HOME should yield a private tmux socket").toBeTruthy();
   try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { haveTmux = false; }
   tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket!, ...args], { encoding: "utf-8" });
+  // M-3152: one tmux server for the whole file, kept alive by a session no test touches. Killing the server after each test
+  // raced the next test's new-session: tmux's kill-server returns before the old server is gone, and a client that reaches
+  // it then fails with "server exited unexpectedly" (CI 43493519567).
+  if (haveTmux) { tmux("new-session", "-d", "-s", KEEPER, "sleep 86400"); serverPid = tmux("display-message", "-p", "-t", KEEPER, "#{pid}").trim(); }
 });
-afterEach(() => { vi.restoreAllMocks(); try { tmux("kill-server"); } catch { /* none */ } });
+afterEach(() => { vi.restoreAllMocks(); try { tmux("kill-session", "-t", getTmuxSession()); } catch { /* none */ } });
 afterAll(() => { try { tmux("kill-server"); } catch { /* none */ } });
 
 /** A pane running `command`, the agent "alpha"'s window. */
@@ -142,5 +149,12 @@ describe("bounded", () => {
     expect(parsePaneScrollback("0", "120")).toEqual({ alternate: false, lines: 120 });
     expect(parsePaneScrollback("1", "0")).toEqual({ alternate: true, lines: 0 });
     for (const [a, l] of [["", "1"], ["2", "1"], ["0", ""], ["0", "-1"], [undefined, undefined]] as const) expect(parsePaneScrollback(a, l)).toBeNull();
+  });
+});
+
+describe("M-3152: one tmux server for the file", () => {
+  it("the server that started the file is the one still running: no test killed it (the next new-session would race its exit)", () => {
+    if (!haveTmux) return;
+    expect(tmux("display-message", "-p", "-t", KEEPER, "#{pid}").trim()).toBe(serverPid);
   });
 });
