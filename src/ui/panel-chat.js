@@ -674,6 +674,31 @@ export function threadsToLetGo(kept, current, { keep, maxNodes, favorites, prote
   return out;
 }
 const narrowScreen = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+/**
+ * M-3167: the composer's own model picker and context ring, below this width. The header's chips give way to them
+ * there (chat-work-bar.css, the same width), so the model is always in one place and never under the agent's tabs.
+ */
+const COMPOSER_TOOLS_Q = "(max-width: 1439px)";
+/** M-3167: whether a media query matches, kept current as the window is resized (read once, it went stale: #3166). */
+function useMedia(query) {
+  const read = () => typeof matchMedia === "function" && matchMedia(query).matches;
+  const [on, setOn] = useState(read);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return undefined;
+    const mq = matchMedia(query), changed = () => setOn(mq.matches);
+    changed();
+    mq.addEventListener?.("change", changed);
+    return () => mq.removeEventListener?.("change", changed);
+  }, [query]);
+  return on;
+}
+/** M-3167: the model's short name for the composer's chip on a desk ("Opus 5.5 (claude-opus-5-5)" → "Opus 5.5"). */
+export function shortModelName(label) {
+  const s = String(label || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const family = /^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d+))?/i.exec(s);
+  if (family) return `${family[1][0].toUpperCase()}${family[1].slice(1).toLowerCase()} ${family[2]}${family[3] ? `.${family[3]}` : ""}`;
+  return s;
+}
 /** Let go what the budget does not hold (after `current` was shown, or drew more). */
 function trimKept(current) {
   const kept = [...keptThreads].map(([n, e]) => [n, e.thread.nodes.size]);
@@ -1057,7 +1082,10 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
   const content = !!value.trim() || files.length > 0;
   // M-3115 (phone v2): one row — the box, the context ring and the model picker beside it — and, while the agent works
   // with nothing typed, Send is Stop (typed: Send again, and Stop is the status line's).
-  const phone = narrowScreen() && !guestPage();
+  // M-3167: both read live, so a window resized across them redraws (read once, a phone's ring and picker stayed on a
+  // desk, unstyled). Between the phone's width and a wide desk the composer has the ring and a short model chip too.
+  const narrow = useMedia("(max-width: 899px)"), toolsHere = useMedia(COMPOSER_TOOLS_Q);
+  const phone = narrow && !guestPage();
   const stopNow = phone && busy && !content;
   // A file waiting: what goes is a message with its file, never a command (no palette, no command line). #2855: a guest's
   // palette offers only what it may run on this agent — the table's "anyone" commands (its status frame's `commands`).
@@ -1143,7 +1171,7 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
       onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${pick ? optId(pick) : undefined}
       attach=${attachmentsSupported ? { title: t("chat.attachTitle"), onFiles: (list) => store.addFiles(name, list) } : null}
       stop=${HIDDEN_STOP}
-      tools=${phone ? html`<${ComposerTools} name=${name} inst=${inst} lease=${lease} />` : null}
+      tools=${toolsHere && !guestPage() ? html`<${ComposerTools} name=${name} inst=${inst} lease=${lease} short=${!narrow} />` : null}
       send=${stopNow ? { hidden: false, stop: true, disabled: !!s.cancelling[name], label: t("chat.stopReply"), title: t("chat.stopReplyTitle"), onClick: () => store.cancelReply(name) }
         : { hidden: false, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
     </div>`;
@@ -1155,12 +1183,13 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
  * name says the effort too; the row leaves the box its room). The backend stays in
  * Details. The ring's fill is painted through the CSSOM (no inline style attribute under the page's CSP).
  */
-function ComposerTools({ name, inst, lease }) {
+function ComposerTools({ name, inst, lease, short = false }) {
   const run = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
   const pct = inst?.context_pct == null ? null : Math.round(inst.context_pct);
   const effort = supportsInstanceFeature(inst, "effort") && effortChip(inst) ? effortWord(effortChip(inst)) : null;
-  const model = modelLabel(inst?.model || modelText(inst || {}));
-  const pickLabel = effort ? `${model} · ${effort}` : model;
+  const full = modelLabel(inst?.model || modelText(inst || {}));
+  const model = short ? shortModelName(full) : full;
+  const pickLabel = effort ? `${full} · ${effort}` : full;   // the whole name is its title and accessible name
   return html`<span class="composer-tools">
     ${pct != null && pct >= 50 ? html`<button type="button" class=${`ctx-ring${pct >= 70 ? " warn" : ""}`} ref=${(el) => el?.style?.setProperty("--pct", String(pct))}
       title=${t("chat.chipContext", pct)} aria-label=${t("chat.chipContext", pct)} onClick=${() => run("ctx")}><span class="ctx-dial" aria-hidden="true"><span class="ctx-pct">${pct}</span></span></button>` : null}

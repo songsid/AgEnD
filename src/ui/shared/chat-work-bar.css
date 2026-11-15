@@ -10,6 +10,23 @@
 .work-bar .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-bar .elapsed, .work-bar .pulse { flex: none; }
 @media (max-width: 899px), (pointer: coarse) { .work-bar { block-size: var(--tap, 44px); min-block-size: var(--tap, 44px); max-block-size: var(--tap, 44px); } }
+/* M-3167: the context ring and the model picker beside the box are drawn wherever the composer has them — a phone (M-3115)
+   and a desk up to 1439 px (panel-chat.js COMPOSER_TOOLS_Q) — so they are always styled. Outside a media query: a window
+   resized across 899 px left them unstyled (a grey "56" box, the model on a grey block). */
+/* M-3115 PR 2: one composer row — the box, then the context's ring (from 50%) and the model · effort picker, then Send
+   (Stop while the agent works with nothing typed). Each is a full tap target; the ring is drawn smaller inside. */
+.composer-tools { display: inline-flex; align-items: center; flex: none; min-width: 0; }
+.ctx-ring { --pct: 0; flex: none; display: grid; place-items: center; min-width: var(--tap); min-height: var(--tap); padding: 0; border: 0; background: none; color: var(--text-3); }
+.ctx-dial { position: relative; display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-full); background: conic-gradient(currentColor calc(var(--pct) * 1%), var(--border) 0); }
+.ctx-dial::before { content: ""; position: absolute; inset: 3px; border-radius: var(--r-full); background: var(--surface); }
+.ctx-pct { position: relative; font-size: var(--fs-xs); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; transform: scale(0.8); }
+.ctx-ring.warn { color: var(--warn); }
+.ctx-ring.warn .ctx-pct { font-weight: var(--fw-semibold); }
+.composer-pick { display: inline-flex; align-items: center; gap: var(--s-1); min-height: var(--tap); max-width: min(24vw, 12rem); padding: 0 var(--s-2); border: 0; border-radius: var(--r-full); background: none; color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
+.composer-pick b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: var(--fw-semibold); }
+.composer-pick .pick-effort { flex: none; }
+.composer-pick .chev { flex: none; color: var(--text-3); }
+
 /* M-3115 (phone v2): in a phone's chat the working bar is one thin status line ("● 調度中… 0:01"), and Stop is Send's
    while the box is empty (panel-chat.js). With something typed Send sends again, and Stop is this line's small 「停止」 —
    a 44 px tap target drawn as text. */
@@ -18,19 +35,6 @@
   .p-chat .dock:has(.composer-field textarea:placeholder-shown) .work-bar .btn-stop { display: none; }
   .p-chat .work-bar .btn-stop { min-height: var(--tap); min-width: var(--tap); height: var(--tap); margin-block: calc((22px - var(--tap)) / 2); padding: 0 var(--s-2); border: 0; background: none; color: var(--accent); font-weight: var(--fw-semibold); }
   .p-chat .work-bar .btn-stop .icon { display: none; }
-  /* M-3115 PR 2: one composer row — the box, then the context's ring (from 50%) and the model · effort picker, then Send
-     (Stop while the agent works with nothing typed). Each is a full tap target; the ring is drawn smaller inside. */
-  .composer-tools { display: inline-flex; align-items: center; flex: none; min-width: 0; }
-  .ctx-ring { --pct: 0; flex: none; display: grid; place-items: center; min-width: var(--tap); min-height: var(--tap); padding: 0; border: 0; background: none; color: var(--text-3); }
-  .ctx-dial { position: relative; display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-full); background: conic-gradient(currentColor calc(var(--pct) * 1%), var(--border) 0); }
-  .ctx-dial::before { content: ""; position: absolute; inset: 3px; border-radius: var(--r-full); background: var(--surface); }
-  .ctx-pct { position: relative; font-size: var(--fs-xs); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; transform: scale(0.8); }
-  .ctx-ring.warn { color: var(--warn); }
-  .ctx-ring.warn .ctx-pct { font-weight: var(--fw-semibold); }
-  .composer-pick { display: inline-flex; align-items: center; gap: var(--s-1); min-height: var(--tap); max-width: 24vw; padding: 0 var(--s-2); border: 0; border-radius: var(--r-full); background: none; color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
-  .composer-pick b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: var(--fw-semibold); }
-  .composer-pick .pick-effort { flex: none; }
-  .composer-pick .chev { flex: none; color: var(--text-3); }
   /* M-3115 PR 3: past 70% the context hint is one thin line in the status line's place — the idle strip gives way to it,
      and while the agent works the working line has the place (the ring by the box still says the %). 22 px either way;
      its words are links, each a full tap target drawn as text. */
@@ -45,4 +49,12 @@
      width). Here, not in app.css: a tab on an older app.css links this file fresh. */
   .p-chat .composer .btn-send { width: var(--tap); min-width: var(--tap); min-height: var(--tap); }
   .p-chat .work-bar .btn-stop .stop-label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: nowrap; }
+}
+/* M-3167: between a phone and a wide desk the composer has the model (above), so the header's chips (backend, model,
+   effort) give way: they drew under the agent's tabs at about 920 px. Wider, they stay. On every desk the header's status
+   line may shrink and is cut instead of running under the tabs, and the name keeps a few characters. */
+@media (min-width: 900px) and (max-width: 1439px) { .p-chat .panel-head .panel-sub .hd-chip { display: none; } }
+@media (min-width: 900px) {
+  .p-chat .panel-head .panel-sub { min-width: 0; overflow: hidden; }
+  .p-chat .panel-head .panel-title h1 { flex: 0 1000 auto; min-width: min(8ch, 40%); }   /* the name gives way before the status */
 }
