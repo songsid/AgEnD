@@ -206,7 +206,7 @@ export class HubGroupRooms {
   /** M-3125: a post's files, in order (none when the Hub has no attachment store). */
   private filesOf(row: PostRow): { files?: GroupRoomFileView[] } {
     const store = this.filesStore(); if (!store) return {};
-    const refs = this.core.atomic(db => store.forMessage(db, row.id, "question"));
+    const refs = this.core.atomic(db => [...store.forMessage(db, row.id, "question"), ...store.forMessage(db, row.id, "answer")]);
     return refs.length ? { files: refs.map(r => groupFileView(row.room_id, r)) } : {};
   }
   private viaAuthor(row: PostRow): { name?: string; via?: { id: string; name: string } } {

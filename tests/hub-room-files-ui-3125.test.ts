@@ -34,3 +34,11 @@ it("a files-only post is a message with attachments and no text; a post without 
   const [plain] = thread.toThreadMessages([msg([], "hello")], { meId: "p1", ids: new Map() });
   expect(plain).not.toHaveProperty("attachments");
 });
+
+it("PR2: an agent's answer with files and no text is drawn (it is not an empty answer still to come)", () => {
+  const ask = { id: "q1", roomId: ROOM, at: 1, author: { kind: "person", id: "p1", name: "Me" }, text: "@Notes table?", mentions: ["n"] };
+  const answer = { id: "a1", roomId: ROOM, at: 2, author: { kind: "agent", id: "n", name: "Notes", owner: { name: "Olivia" } }, text: "", mentions: [], answerTo: "q1", stage: "answered",
+    files: [file("aaaaaaaa-0000-4000-8000-000000000005", "table.csv", "text/csv")] };
+  const view = thread.toThreadMessages([ask, answer], { meId: "p1", ids: new Map() });
+  expect(view.find((m: any) => m.roomMessage === "a1")?.attachments).toHaveLength(1);
+});

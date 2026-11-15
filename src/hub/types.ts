@@ -60,10 +60,10 @@ export interface HubAnswer {
 /** Group room delivery has its own durable per-agent ID; it is not a direct grant-backed question. */
 export interface HubRoomContextRow { author: string; text: string; at: Millis; repliedTo?: true }
 export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: string; exposureId: ExposureId;
-  asker: { name: string }; text: string; context: readonly HubRoomContextRow[] }
+  asker: { name: string }; text: string; context: readonly HubRoomContextRow[]; attachments?: HubAttachmentRef[] }
 export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string;
   /** M-3127: room-answer-buttons-v1 links only; bound into the answer digest like its text. */
-  buttons?: HubAnswerButtons }
+  buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[] }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string }
 /** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked ("" takes it back). */
 export interface HubRoomReact { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; emoji: string }

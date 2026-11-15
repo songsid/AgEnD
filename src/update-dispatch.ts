@@ -19,6 +19,7 @@ import { constants } from "node:fs";
 import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { isExactVersion } from "./update-check.js";
 
 export interface DispatchDeps {
   /** `env.PATH` (#3440) replaces PATH for that one program: an npm is asked in the PATH the update will run with. */
@@ -255,7 +256,20 @@ export async function resolveInstalledAgend(deps: DispatchDeps = defaultDispatch
 export const DELAYED_UPDATE_SCRIPT = 'sleep 2 && PATH="${1%/*}:$PATH" && export PATH && exec "$1" update';
 /** #3443 review: with the proving npm's directory (`$2`, data) ahead of the agend's own — it may hold no npm (a custom prefix). */
 export const DELAYED_UPDATE_SCRIPT_NPM = 'sleep 2 && PATH="$2:${1%/*}:$PATH" && export PATH && exec "$1" update';
-export function updateCommand(agend: string, npmDir?: string): { command: string; args: string[] } {
+/**
+ * M-3140: the same update pinned to one exact version (`agend update --version <v>`): a Hub's recommended version, which
+ * the plain update (the install's own channel) may never reach. The version is a positional argument too — data, never
+ * spliced into the script — and must be an exact semver, or nothing is built.
+ */
+export const DELAYED_UPDATE_SCRIPT_PIN = 'sleep 2 && PATH="${1%/*}:$PATH" && export PATH && exec "$1" update --version "$2"';
+export const DELAYED_UPDATE_SCRIPT_NPM_PIN = 'sleep 2 && PATH="$2:${1%/*}:$PATH" && export PATH && exec "$1" update --version "$3"';
+export function updateCommand(agend: string, npmDir?: string, version?: string): { command: string; args: string[] } {
+  if (version !== undefined) {
+    if (!isExactVersion(version)) throw new Error("not an exact version");
+    return npmDir && isAbsolute(npmDir)
+      ? { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT_NPM_PIN, "sh", agend, npmDir, version] }
+      : { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT_PIN, "sh", agend, version] };
+  }
   return npmDir && isAbsolute(npmDir)
     ? { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT_NPM, "sh", agend, npmDir] }
     : { command: "sh", args: ["-c", DELAYED_UPDATE_SCRIPT, "sh", agend] };

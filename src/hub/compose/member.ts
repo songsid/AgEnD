@@ -461,6 +461,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const binding = links.binding;
       let client: HubMemberClient | null = null;
       let online: HubMemberLink | null = null;
+      // M-3125: one file handler for the 1:1 representative and the room asks (the inbox and the reply rule are the same).
+      const memberFiles = options.representative.files ? new HubMemberFiles(options.representative.files) : undefined;
       const service = new HubRepresentativeExecution({
         db,
         journal,
@@ -470,7 +472,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         authorize: (request) => (client ? client.authorize(request) : Promise.reject(new HubStateError("service-unavailable", "not connected"))),
         link: () => (online && online.current() && links.link() === online ? online : null),
         deliver: (input) => options.representative.deliver(input),
-        ...(options.representative.files ? { files: new HubMemberFiles(options.representative.files) } : {}),
+        ...(memberFiles ? { files: memberFiles } : {}),
         audit: (event, database) =>
           audit.appendInTransaction(
             {
@@ -507,7 +509,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!consent || consent.agent !== local.agent || options.representative.agentToken(local.agent) !== consent.token) return null;
           return { agent: local.agent, consentId: local.consentId, revision: local.exposure.revision, token: consent.token };
         },
-        deliver: input => options.representative.deliver(input) });
+        deliver: input => options.representative.deliver(input), ...(memberFiles ? { files: memberFiles } : {}) });
       const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,
         receipt: options.roomReceipt,
         notify: options.roomNotify,
@@ -534,6 +536,11 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           view = { features: l.features,
             current: () => roomCurrent() && online === l && links.link() === l && l.current() && l.revocationVersion === version,
             sendAnswer: payload => l.send({ v: 1, type: "room.answer", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
+            // M-3125 (room files, roomFilesNegotiated): the 1:1 chat's own file frames, on this link.
+            fetchFile: async (id: string, offset: number) => { const reply = await l.exchange({ v: 1, type: "attachment.get", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload: { id, offset } }, "attachment.chunk");
+              if (reply.type !== "attachment.chunk") throw new HubProtocolError("invalid"); return reply.payload; },
+            putFile: async (chunk: import("../types.js").HubAttachmentChunk) => { const ack = await l.exchange({ v: 1, type: "attachment.put", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload: chunk }, "attachment.ack");
+              if (ack.type !== "attachment.ack" || ack.payload.id !== chunk.id || ack.payload.offset !== chunk.offset) throw new HubProtocolError("uncertain"); },
             sendState: payload => l.send({ v: 1, type: "agent.state", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
             sendReact: payload => l.send({ v: 1, type: "room.react", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }) };
           roomLinks.set(l, view);

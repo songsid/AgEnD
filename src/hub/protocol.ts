@@ -20,6 +20,14 @@ export const HUB_ROOM_BUTTONS_CAPABILITY = "room-answer-buttons-v1";
  * older Hubs refuse and members still must not send (see HUB_OPTIONAL_CAPABILITIES).
  */
 export const HUB_ROOM_REACT_CAPABILITY = HUB_ROOM_BUTTONS_CAPABILITY;
+/**
+ * M-3125: files on a room ask and its answer (`attachments`). Like reactions, they ride on room-answer-buttons-v1 — unreleased,
+ * shipping in the same release as these files — plus attachments-v1 (the file frames). A name of their own would be a 17th in
+ * the member hello (Fable #3925). Never room-ask-v1 + attachments-v1: released alpha Fleets list both, and their strict
+ * room.ask schema refuses `attachments`. So #3925 must land in the same release as room-answer-buttons-v1 (#3935).
+ */
+export const roomFilesNegotiated = (features: ReadonlySet<string> | undefined): boolean =>
+  !!features && features.has(HUB_ROOM_BUTTONS_CAPABILITY) && features.has("attachments-v1");
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending.
@@ -76,9 +84,9 @@ export const answerSchema = z.strictObject({ messageId: uuid, answerId: uuid, te
 export const roomContextSchema = z.strictObject({ author: plain(256), text: plain(HUB_LIMITS.question), at: epoch, repliedTo: z.literal(true).optional() });
 export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roomName: plain(120), exposureId: uuid,
   asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), context: z.array(roomContextSchema).max(31)
-    .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1) });
+    .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1), attachments: attachmentList.optional() });
 export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
-  buttons: answerButtonsSchema.optional() });
+  buttons: answerButtonsSchema.optional(), attachments: attachmentList.optional() });
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
 /** M-3127 (room-answer-buttons-v1): `messageId` is the delivery (the question as the agent got it); "" takes the agent's reaction back. */
 export const roomReactSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, emoji: z.string().max(16) });
