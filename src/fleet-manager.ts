@@ -1956,7 +1956,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * independently, its progress on the message), pinned to the advice the notice named, re-read now and at the launch.
    */
   private async handleHubUpdateCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
-    const claimed = this.consumeNonceCallback(HUB_UPDATE_CALLBACK_PREFIX, /^hub-update:([0-9a-f]{32}):(update)$/, data, adapterId, adapter);
+    // Fable #3955: a fleet admin's press only. Anyone else in General is told privately, and the nonce and the button stay
+    // for an admin (consumeNonceCallback's authorize: refused before anything is consumed or retired).
+    const claimed = this.consumeNonceCallback(HUB_UPDATE_CALLBACK_PREFIX, /^hub-update:([0-9a-f]{32}):(update)$/, data, adapterId, adapter,
+      undefined, userId => this.fleetAdminGate(userId, adapterId) === "ok");
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry } = claimed;
@@ -1966,8 +1969,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const messageId = entry.messageId ?? data.messageId;
     const advice = pin ? this.hubRecommendationFor(pin) : null;
     if (!pin || !advice) { await this.retireNonceButtons(entry, messageId, t("hub_update.changed")); return true; }
-    const by = data.userId;
-    if (!by || this.fleetAdminGate(by, adapterId) !== "ok") { await this.retireNonceButtons(entry, messageId, t("not_authorized")); return true; }
+    const by = data.userId ?? "";
     await this.retireNonceButtons(entry, messageId, t("update.progress.preparing", 0));
     if (messageId && entry.adapter) this.beginUpdateProgress(entry.adapter, entry.chatId, entry.threadId, messageId);
     await this.launchInstalledUpdate(`hub-recommended /update by ${adapterId}:${by}`,

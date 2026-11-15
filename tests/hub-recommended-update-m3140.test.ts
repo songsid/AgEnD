@@ -165,29 +165,47 @@ describe("M-3140: General's notice and its 7-day reminder", () => {
     const w = await fleet();
     try { const posted = await general(w, true); w.fm.hubRecommendationChanged(); await settle(); expect(posted).toEqual([]); } finally { await w.stop(); }
   });
-  it("Update now: a fleet admin's press launches the pinned update; changed advice or a non-admin launches nothing", async () => {
+  it("Update now: a non-admin's press is told privately and leaves the button; an admin's press then launches pinned (Fable #3955)", async () => {
+    setLocale("en");
+    const f = await fleet();
+    try {
+      const alerts: any[] = [];
+      const adapter = { notifyAlert: vi.fn(async (_chat: string, alert: any) => { alerts.push(alert); return { chatId: "-100", threadId: "7", messageId: "m1" }; }), editMessage: vi.fn(async () => {}) };
+      vi.spyOn(f.fm, "webOnlyPromptPlace").mockReturnValue(false);
+      vi.spyOn(f.fm, "findGeneralInstance").mockReturnValue("general");
+      vi.spyOn(f.fm, "getInstanceAdapterId").mockReturnValue("tg");
+      vi.spyOn(f.fm, "getAdapterForInstance").mockReturnValue(adapter);
+      vi.spyOn(f.fm, "getGroupIdForInstance").mockReturnValue("-100");
+      vi.spyOn(f.fm, "fleetAdminGate").mockImplementation((...a: unknown[]) => (a[0] === "1" ? "ok" : "denied"));
+      const retired: string[] = [];
+      vi.spyOn(f.fm, "retireNonceButtons").mockImplementation(async (...a: unknown[]) => { retired.push(String(a[2])); });
+      vi.spyOn(f.fm, "beginUpdateProgress").mockImplementation(() => {});
+      f.fm.hubRecommendationChanged(); await vi.waitFor(() => expect(alerts).toHaveLength(1));
+      const id = alerts[0].choices[0].id as string;
+      expect(id).toMatch(/^hub-update:[0-9a-f]{32}:update$/);
+      const press = (userId: string) => { const ack = vi.fn(); return { ack, run: f.fm.handleHubUpdateCallback({ callbackData: id, userId, chatId: "-100", threadId: "7", messageId: "m1", ack }, "tg", adapter) }; };
+      const stranger = press("9");
+      expect(await stranger.run).toBe(true);
+      expect(stranger.ack).toHaveBeenCalledWith(expect.stringMatching(/admin/i));
+      expect(retired).toEqual([]); await settle(); expect(spawned).toEqual([]);
+      expect(f.fm.pendingNonceButtons.has(id.slice("hub-update:".length, "hub-update:".length + 32))).toBe(true);   // the button is still live
+      const admin = press("1");
+      expect(await admin.run).toBe(true);
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
+      expect(spawned[0]!.args).toEqual(["-c", DELAYED_UPDATE_SCRIPT_PIN, "sh", AGEND, "2.4.0-beta.4"]);
+      expect(f.fm.pendingHubUpdates.size).toBe(0);
+    } finally { await f.stop(); }
+  });
+  it("Update now on advice that changed since the notice launches nothing and says so", async () => {
     setLocale("en");
     const f = await fleet();
     try {
       const retired: string[] = [];
       vi.spyOn(f.fm, "retireNonceButtons").mockImplementation(async (...a: unknown[]) => { retired.push(String(a[2])); });
-      vi.spyOn(f.fm, "beginUpdateProgress").mockImplementation(() => {});
-      const press = async (nonce: string, user = "1") => {
-        vi.spyOn(f.fm, "consumeNonceCallback").mockReturnValueOnce({ entry: { messageId: "m1", adapter: {}, chatId: "-100", threadId: "7" }, action: "update" });
-        return f.fm.handleHubUpdateCallback({ callbackData: `hub-update:${nonce}:update`, userId: user, messageId: "m1" }, "tg", {});
-      };
-      const gate = vi.spyOn(f.fm, "fleetAdminGate").mockReturnValue("ok");
+      vi.spyOn(f.fm, "consumeNonceCallback").mockReturnValueOnce({ entry: { messageId: "m1", adapter: {}, chatId: "-100", threadId: "7" }, action: "update" });
       f.fm.pendingHubUpdates.set("b".repeat(32), { version: ADVICE.version, revision: 2 });
-      expect(await press("b".repeat(32))).toBe(true); expect(retired.at(-1)).toMatch(/recommendation changed/);
-      gate.mockReturnValue("denied");
-      f.fm.pendingHubUpdates.set("c".repeat(32), { version: ADVICE.version, revision: 3 });
-      expect(await press("c".repeat(32), "9")).toBe(true); await settle(); expect(spawned).toEqual([]);
-      gate.mockReturnValue("ok");
-      f.fm.pendingHubUpdates.set("d".repeat(32), { version: ADVICE.version, revision: 3 });
-      expect(await press("d".repeat(32))).toBe(true);
-      await vi.waitFor(() => expect(spawned).toHaveLength(1));
-      expect(spawned[0]!.args).toEqual(["-c", DELAYED_UPDATE_SCRIPT_PIN, "sh", AGEND, "2.4.0-beta.4"]);
-      expect(f.fm.pendingHubUpdates.size).toBe(0);
+      expect(await f.fm.handleHubUpdateCallback({ callbackData: `hub-update:${"b".repeat(32)}:update`, userId: "1", messageId: "m1" }, "tg", {})).toBe(true);
+      expect(retired.at(-1)).toMatch(/recommendation changed/); await settle(); expect(spawned).toEqual([]);
     } finally { await f.stop(); }
   });
 });
