@@ -3,7 +3,7 @@
  * the offline rig's (scripts/manual/muse-version-audit/switch.sh; muse 1.4.20 and 1.4.4 on a mock provider, no network).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -100,6 +100,21 @@ describe("M-3180: the RUNNING CLI's version (cliRunningVersion)", () => {
     rmSync(join(root, "100", "status")); writeFileSync(join(root, "100", "status"), "Name:\tmuse-bin\nPPid:\t1\n");
     symlinkSync(muse, join(root, "100", "exe"));
     expect(await cliRunningVersion(100, spec, { procRoot: root })).toBe("1.4.6");
+  });
+  it("a binary replaced during the async version probe is unknown, even if the new file meets the floor", async () => {
+    const exe = binary("race/agy");
+    const procRoot = proc([{ pid: 101, ppid: 100, exe }]);
+    const result = await cliRunningVersion(100, { backend: "antigravity", matchExe: e => e.endsWith("/agy") }, {
+      procRoot,
+      probe: async () => {
+        const old = `${exe}.running`;
+        renameSync(exe, old);
+        unlinkSync(join(procRoot, "101/exe")); symlinkSync(old, join(procRoot, "101/exe"));
+        writeFileSync(exe, "new version on disk");
+        return "1.5.9";
+      },
+    });
+    expect(result).toBeNull();
   });
   it("unknown (null) when it cannot be proven: none, replaced on disk, two different files, no version", async () => {
     const a = binary("a/muse-bin-1.4.20"), b = binary("b/muse-bin-1.4.6");

@@ -147,6 +147,7 @@ export async function cliRunningVersion(panePid: number, spec: { backend: string
     if (ppid !== null) children.set(ppid, [...(children.get(ppid) ?? []), Number(e)]);
   }
   const exes = new Set<string>();
+  const matched: Array<{ pid: number; exe: string; ino: number; dev: number }> = [];
   const queue = [panePid], seen = new Set<number>();
   while (queue.length && seen.size < 512) {
     const pid = queue.shift()!;
@@ -162,10 +163,20 @@ export async function cliRunningVersion(panePid: number, spec: { backend: string
     try {
       const [running, onDisk] = await Promise.all([stat(`${proc}/${pid}/exe`), stat(exe)]);
       if (running.ino !== onDisk.ino || running.dev !== onDisk.dev) return null;
+      matched.push({ pid, exe, ino: running.ino, dev: running.dev });
     } catch { return null; }
     exes.add(exe);
   }
   if (exes.size !== 1) return null;
   const exe = [...exes][0]!;
-  return spec.versionFromExe?.(exe) ?? versionOf(await probe(spec.backend, exe).catch(() => null));
+  const version = spec.versionFromExe?.(exe) ?? versionOf(await probe(spec.backend, exe).catch(() => null));
+  if (version === null) return null;
+  // The async probe may read an updated file at the same path. Never attribute that newer version to the old running inode.
+  for (const item of matched) {
+    try {
+      const [running, onDisk] = await Promise.all([stat(`${proc}/${item.pid}/exe`), stat(item.exe)]);
+      if (running.ino !== item.ino || running.dev !== item.dev || onDisk.ino !== item.ino || onDisk.dev !== item.dev) return null;
+    } catch { return null; }
+  }
+  return version;
 }
