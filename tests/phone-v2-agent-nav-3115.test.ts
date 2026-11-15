@@ -59,6 +59,14 @@ async function app(path: string, { narrow = true } = {}) {
   return { pg, appStore };
 }
 const shell = (pg: AppPage) => pg.root.querySelector(".shell") as any;
+async function openSheet(pg: AppPage) {
+  const btn = pg.root.querySelector(".p-chat .panel-actions .chat-sheet-more") as any;
+  expect(btn, "the chat's ⋯ (a phone's sheet)").toBeTruthy();
+  fire(btn, "click"); await settle(6);
+  const sheet = pg.root.querySelector(".chat-sheet") as any;
+  expect(sheet, "the sheet").toBeTruthy();
+  return sheet;
+}
 async function moreMenu(pg: AppPage) {
   const btn = [...pg.root.querySelectorAll(".p-chat .panel-actions .menu > button")].find((b: any) => b.getAttribute("aria-label") === "More actions") as any;
   expect(btn, "the chat's ⋯").toBeTruthy();
@@ -68,12 +76,12 @@ async function moreMenu(pg: AppPage) {
 }
 
 describe("M-3115 PR 1: inside an agent's pages a phone has no bottom tabs", () => {
-  it("a chat: in-agent on the shell; ‹ with what Needs you counts (2), named for it; the list pages keep ☰ and the tabs", async () => {
+  it("a chat: in-agent on the shell; ‹ with no count (M-3166: no counts on the Fleet side), named for where it goes; the list pages keep ☰ and the tabs", async () => {
     const { pg } = await app("/ui/chat/web-dev");
     expect(shell(pg).classList.contains("in-agent")).toBe(true);
     const back = pg.root.querySelector(".p-chat #sbOpen") as any;
     expect([back.classList.contains("sb-back"), !!back.querySelector(".ic-back"), !!back.querySelector(".ic-menu"), back.querySelector(".sb-badge")?.textContent, back.getAttribute("aria-label")])
-      .toEqual([true, true, true, "2", "Back to your agents · 2 waiting"]);
+      .toEqual([true, true, true, undefined, "Back to your agents"]);
     fire(back, "click"); await settle(4);
     expect(shell(pg).classList.contains("sb-open"), "‹ opens the agents (the drawer)").toBe(true);
     for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
@@ -88,21 +96,24 @@ describe("M-3115 PR 1: inside an agent's pages a phone has no bottom tabs", () =
     expect([back.querySelector(".sb-badge"), back.getAttribute("aria-label")]).toEqual([null, "Back to your agents"]);
   });
 
-  it("⋯ on a phone: 前往 (Needs you · 2, Fleet, Settings), this chat's items, then ✓ Verified; Fleet goes to Fleet", async () => {
+  // M-3166 (Argon 3, the user's OK of round 2): a phone's ⋯ is a sheet — tiles, rows, This agent's controls, ✓ Verified.
+  it("⋯ on a phone: a sheet — View, Log, Search tiles; Text size, Appearance, Agent details; This agent: …, Delete; ✓ Verified; View goes to View", async () => {
     const { pg } = await app("/ui/chat/web-dev");
-    const rows = await moreMenu(pg);
-    expect(rows.slice(0, 5)).toEqual(["# Go to", "Needs you · 2", "Fleet", "Settings", "# This chat"]);
-    expect(rows.at(-1)).toBe("✓ Verified");
-    expect(rows.some((r) => /^Delete /.test(r))).toBe(true);                // this chat's own items follow
-    const fleet = [...pg.root.querySelectorAll('.p-chat [role="menu"] button')].find((b: any) => b.textContent.trim() === "Fleet") as any;
-    fire(fleet, "click"); await settle(6);
-    expect(pg.window.location.pathname).toMatch(/^\/ui\/fleet/);
+    const sheet = await openSheet(pg);
+    const tiles = [...sheet.querySelectorAll(".chat-sheet-tile")].map((b: any) => b.textContent.trim());
+    const rows = [...sheet.querySelectorAll(".chat-sheet-row, .menu-heading, .chat-sheet-foot")].map((n: any) => n.classList.contains("menu-heading") ? `# ${n.textContent.trim()}` : n.textContent.trim());
+    expect(tiles.slice(0, 3)).toEqual(["View", "Log", "Search"]);
+    expect(rows.filter((r) => /^(Text size|Appearance|Agent details|# This agent)/.test(r)).map((r) => r.replace(/(Medium|⌄)$/, ""))).toEqual(["Text size", "Appearance", "Agent details", "# This agent"]);
+    expect(rows.some((r) => /^Delete /.test(r)) && /^✓ Verified/.test(rows.at(-1)!)).toBe(true);
+    expect(rows.some((r) => r === "# Go to" || /^Needs you/.test(r))).toBe(false);   // Go to is the drawer's now
+    fire([...sheet.querySelectorAll(".chat-sheet-tile")].find((b: any) => b.textContent.trim() === "View"), "click"); await settle(6);
+    expect(pg.window.location.pathname).toMatch(/^\/view\/web-dev/);
   });
 
-  it("not verified: no ✓ Verified in ⋯ (the line under the composer still says Not verified · Authorize)", async () => {
+  it("not verified: no ✓ Verified in the sheet (the line under the composer still says Not verified · Authorize)", async () => {
     auth = { state: "none", reason: "not_authorized" };
     const { pg } = await app("/ui/chat/web-dev");
-    expect((await moreMenu(pg)).some((r) => r.includes("Verified"))).toBe(false);
+    expect((await openSheet(pg)).querySelector(".chat-sheet-foot")).toBeNull();
     expect(pg.root.querySelector(".composer-row .webauth-row")?.getAttribute("data-state")).toBe("none");
   });
 

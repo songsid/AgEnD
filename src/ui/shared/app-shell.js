@@ -555,7 +555,8 @@ export function needsCount(app) { return (app.needs || []).length + (app.proposa
 export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions }) {
   const shell = useStore(shellStore);
   const { route } = useStore(navStore), app = useStore(appStore);
-  const agent = !!openInstanceOf(route) && !guestPage(), waiting = agent ? needsCount(app) : 0;
+  // M-3166 (the user, round 2): no counts or badges on the Fleet side — ← goes back to the agents without a number.
+  const agent = !!openInstanceOf(route) && !guestPage(), waiting = 0;
   const admin = useCanCreate();
   const canCreate = admin && !!newInstanceOpener;
   const pane = paneContext.usePane?.();
