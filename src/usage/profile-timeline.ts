@@ -43,6 +43,11 @@ export function recordProfileLaunch(path: string, profile: string, t = Date.now(
   return next;
 }
 
+/** M-3153: every timeline write started so far, finished (each one never rejects). A caller that removes instance folders awaits it first. */
+export function flushProfileTimelineWrites(): Promise<void> {
+  return Promise.all([...writes.values()]).then(() => {});
+}
+
 /** The profile in effect at `t`: the latest entry at or before it, else "unrecorded". */
 export function profileAt(spans: readonly ProfileSpan[], t: number): string {
   let found = PROFILE_UNRECORDED;
