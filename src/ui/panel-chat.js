@@ -10,6 +10,7 @@ import { GeneralLocation } from "./general-location.js";
 // that apply to its state are offered (#1408 rough edges 4 and 7).
 import { html, Fragment, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, register, t } from "/assets/app-i18n.js";
+import { AgentSheetButton } from "/assets/agent-sheet.js";
 import { appStore, createStore, guestPage, guestTrusted, useStore } from "/assets/app-store.js";
 import { ComposerAuth, useWebAuthorization } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
@@ -98,68 +99,12 @@ function CardMenu({ card, ownerKey }) {
 
 // M-3115 (phone v2): kept beside its caller — a retained chat dictionary has no such words.
 register("chatPhone", {
-  en: { goTo: "Go to", thisChat: "This chat", verifiedUntil: "Verified · speaks as you until {0}", needsToast: "{0} needs you", ctxHide: "Hide this for now",
-    // M-3166 (Argon 3): a phone's ⋯ sheet.
-    sheet: "{0}: more", search: "Search", files: "Files & changes", card: "Card", usage: "Usage", model: "Model & effort", backend: "CLI backend", textSize: "Text size",
-    textSizes: "Small,Medium,Large", look: "Appearance", agent: "This agent", details: "Agent details" },
-  "zh-TW": { goTo: "前往", thisChat: "這個對話", verifiedUntil: "已驗證 · 以你的身分發言到 {0}", needsToast: "{0} 正在等你回應", ctxHide: "這次先不提醒",
-    sheet: "{0}：更多", search: "搜尋", files: "檔案與變更", card: "卡片", usage: "用量", model: "模型與推理", backend: "CLI backend", textSize: "文字大小",
-    textSizes: "小,中,大", look: "外觀", agent: "這個 Agent", details: "Agent 詳細資料" },
+  en: { goTo: "Go to", thisChat: "This chat", verifiedUntil: "Verified · speaks as you until {0}", needsToast: "{0} needs you", ctxHide: "Hide this for now" },
+  "zh-TW": { goTo: "前往", thisChat: "這個對話", verifiedUntil: "已驗證 · 以你的身分發言到 {0}", needsToast: "{0} 正在等你回應", ctxHide: "這次先不提醒" },
 });
 const untilClock = (ms) => { try { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 /** A Needs-you item's identity: its nonce, else its id, else what it says. */
 const needKey = (item) => String(item?.nonce || item?.id || JSON.stringify(item || null));
-/**
- * M-3166 (Argon 3, the user's OK of round 2): a phone's ⋯ — a bottom sheet. Six tiles (View, Log, Search, Files & changes,
- * Card, Usage), then rows (Model & effort, Text size, Appearance — which opens this chat's colour, theme, effect and
- * activity items in place —, Agent details), then This agent's controls (start/restart, stop, delete), and ✓ Verified at
- * the foot. Every one is the chat's own item or the header's own control (the header shows none of them on a phone).
- */
-function AgentSheetButton({ items, name, inst, card, navKey, auth, lease }) {
-  const [open, setOpen] = useState(false), [usage, setUsage] = useState(false);
-  return html`<button type="button" class="icon-btn chat-sheet-more" aria-haspopup="dialog" aria-label=${t("app.more")} title=${t("app.more")} onClick=${() => setOpen(true)}><${Icon} name="more" /></button>
-    ${open ? html`<${AgentSheet} items=${items} name=${name} inst=${inst} card=${card} auth=${auth} lease=${lease} onUsage=${() => { setOpen(false); setUsage(true); }} onClose=${() => setOpen(false)} />` : null}
-    ${usage ? html`<${UsageDialog} owner=${navKey} onClose=${() => setUsage(false)} />` : null}`;
-}
-function AgentSheet({ items, name, inst, card, auth, lease, onUsage, onClose }) {
-  const [look, setLook] = useState(false);
-  const prefs = useStore(chatCardPrefs), size = useStore(textSizeStore).size;
-  const by = (key) => items.find((i) => i && i.key === key);
-  const pick = (fn) => () => { onClose(); fn(); };
-  const tile = (icon, label, fn) => html`<button type="button" class="chat-sheet-tile" onClick=${pick(fn)}><${Icon} name=${icon} size=${20} /><span>${label}</span></button>`;
-  const row = (item, extra) => item ? html`<button type="button" class=${`menu-item chat-sheet-row${item.danger ? " danger" : ""}`} disabled=${!!item.disabled}
-    aria-checked=${item.checkbox ? (item.checked ? "true" : "false") : undefined} role=${item.checkbox ? "menuitemcheckbox" : undefined}
-    onClick=${() => { if (item.checkbox) item.onSelect(); else { onClose(); item.onSelect(); } }}>${item.icon ? html`<${Icon} name=${item.icon} size=${18} />` : html`<span class="chat-sheet-gap"></span>`}
-    <span>${item.label}</span>${extra || item.checkbox ? html`<small>${extra || (item.checked ? "✓" : "")}</small>` : null}</button>` : null;
-  const words = t("chatPhone.textSizes").split(","), at = Math.max(0, TEXT_SIZES.indexOf(size));
-  const commands = supportsInstanceFeature(inst, "commands");
-  // The header's chips, here: the same commands, bound to this page's lease (a reply after the page moved on is dropped).
-  const run = (command) => store.runCommand(name, command, "", lease ? { alive: () => lease.current() } : {});
-  const model = `${shortModelName(modelLabel(inst.model || modelText(inst)))}${supportsInstanceFeature(inst, "effort") && effortChip(inst) ? ` · ${effortChip(inst)}` : ""}`;
-  // Appearance: this chat's colour, theme, effect and activity items, in place (their headings as the menu's).
-  const looks = items.filter((i) => i && !["details", "splitChat", "settings", "start", "restart", "stop", "workspace", "fullWidth", "delete"].includes(i.key));
-  const verified = auth?.st?.state === "verified";
-  return html`<${Dialog} title=${t("chatPhone.sheet", name)} onClose=${onClose} cls="chat-sheet">
-    <div class="chat-sheet-tiles">
-      ${supportsInstanceFeature(inst, "view") ? tile("view", t("app.view"), () => navigate(viewPath(name))) : null}
-      ${supportsInstanceFeature(inst, "log") ? tile("file", t("app.log"), () => navigate(logPath(name))) : null}
-      ${tile("search", t("chatPhone.search"), () => openSearch({ instance: name }))}
-      ${by("workspace") ? tile("diff", t("chatPhone.files"), () => by("workspace").onSelect()) : null}
-      ${card ? tile("idcard", t("chatPhone.card"), () => setChatCardOpen(!prefs.open)) : null}
-      ${supportsInstanceFeature(inst, "usage") && usageOffered() ? html`<button type="button" class="chat-sheet-tile" onClick=${onUsage}><${Icon} name="chart" size=${20} /><span>${t("chatPhone.usage")}</span></button>` : null}
-    </div>
-    ${commands ? row({ key: "model", icon: "sliders", label: t("chatPhone.model"), onSelect: () => run("model") }, model) : null}
-    ${commands ? row({ key: "backend", icon: "bot", label: t("chatPhone.backend"), onSelect: () => (inst.runtime === "windows" ? navigate(sectionPath("agents")) : run("backend")) }, backendLabel(inst.backend)) : null}
-    <button type="button" class="menu-item chat-sheet-row" onClick=${() => setTextSize(TEXT_SIZES[(at + 1) % TEXT_SIZES.length])}><${Icon} name="type" size=${18} /><span>${t("chatPhone.textSize")}</span><small>${words[at] || ""}</small></button>
-    ${looks.length ? html`<button type="button" class="menu-item chat-sheet-row" aria-expanded=${look ? "true" : "false"} onClick=${() => setLook((v) => !v)}><${Icon} name="palette" size=${18} /><span>${t("chatPhone.look")}</span><small>${look ? "⌃" : "⌄"}</small></button>
-      ${look ? html`<div class="chat-sheet-sub">${looks.map((i) => i.heading ? html`<div key=${i.key} class="menu-heading">${i.label}</div>` : html`<span key=${i.key}>${row(i)}</span>`)}</div>` : null}` : null}
-    ${row(by("details") ? { ...by("details"), label: t("chatPhone.details") } : null)}${row(by("settings"))}
-    <div class="menu-heading chat-sheet-head">${t("chatPhone.agent")}</div>
-    ${row(by("start"))}${row(by("restart"))}${row(by("stop"))}${row(by("delete"))}
-    ${verified ? html`<div class="chat-sheet-foot">✓ ${t("chatPhone.verifiedUntil", untilClock(auth.st.until))}</div>` : null}
-  </${Dialog}>`;
-}
-
 /**
  * The chat's ⋯ (M-3115): on a phone, where an agent's pages have no bottom tabs, it starts with 「前往」 — Needs you (its
  * count), Fleet, Settings — then this chat's items, and ends with 「✓ 已驗證」 (the line under the composer no longer
@@ -183,7 +128,19 @@ function ChatMoreMenu({ items, name, inst = null, card = null, navKey, lease = n
   }, [name]);
   if (!narrowScreen()) return html`<${Menu} items=${items} label=${t("app.more")} />`;
   // M-3166 (Argon 3, the user's OK of round 2): a phone's ⋯ is a sheet (below); its Go to went to the drawer.
-  if (inst) return html`<${AgentSheetButton} items=${items} name=${name} inst=${inst} card=${card} navKey=${navKey} auth=${auth} lease=${lease} />`;
+  if (inst) {
+    // The header's chips, here: the same commands, bound to this page's lease (a reply after the page moved on is dropped).
+    const run = (command) => store.runCommand(name, command, "", lease ? { alive: () => lease.current() } : {});
+    const commands = supportsInstanceFeature(inst, "commands");
+    const chat = { card: !!card, onCard: () => setChatCardOpen(!chatCardPrefs.get().open),
+      ...(commands ? {
+        onModel: () => run("model"),
+        modelText: `${shortModelName(modelLabel(inst.model || modelText(inst)))}${supportsInstanceFeature(inst, "effort") && effortChip(inst) ? ` · ${effortChip(inst)}` : ""}`,
+        onBackend: () => (inst.runtime === "windows" ? navigate(sectionPath("agents")) : run("backend")), backendText: backendLabel(inst.backend),
+      } : {}) };
+    return html`<${AgentSheetButton} items=${items} name=${name} inst=${inst} current="chat" navKey=${navKey} chat=${chat}
+      verifiedUntil=${auth.st?.state === "verified" ? auth.st.until : null} />`;
+  }
   const waiting = needsCount(app);
   const route = navStore.get().route;
   const verified = auth.st?.state === "verified";

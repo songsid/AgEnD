@@ -20,6 +20,7 @@ import { useLease } from "/assets/app-ctx.js";
 import * as paneContext from "/assets/app-ctx.js";
 import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/assets/app-shell.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
+import { AgentSheetButton, usePhone } from "/assets/agent-sheet.js";
 import { HeaderSlot, HeaderTools } from "/assets/header-tools.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
@@ -119,6 +120,7 @@ export function LogPanel({ route, navKey }) {
 }
 
 function LogView({ name, inst, navKey, exec, awaiting }) {
+  const phone = usePhone();   // M-3166 PR 5: a phone's header is "← name ● ⋯" (the ⋯ sheet holds the rest)
   const lease = useLease(`log:${name}`);
   const [state, setState] = useState({ phase: "loading" });   // loading | off | on | failed
   const [steps, setSteps] = useState([]);
@@ -284,7 +286,7 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
       ${["all", "tools", "errors"].map((k) => html`<button key=${k} type="button" class=${`chip-btn${filter === k ? " on" : ""}`} aria-pressed=${filter === k ? "true" : "false"} onClick=${() => setFilter(k)}>${tl(k)}</button>`)}
       <span class="grow"></span><span class="log-live" title=${tl("live")}><span class="dot running" aria-hidden="true"></span>${tl("live")}</span></div>` : null;
   return html`<div data-effect-panel="log" class="panel p-log">
-    <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} nav=${html`<${InstanceSwitch} name=${name} current="log" />`}><${HeaderTools} navKey=${navKey} /><${HeaderSlot} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} nav=${html`<${InstanceSwitch} name=${name} current="log" />`}><${HeaderTools} navKey=${navKey} /><${HeaderSlot} />${phone ? html`<${AgentSheetButton} name=${name} inst=${inst} current="log" navKey=${navKey} />` : null}</${PanelHeader}>
     ${tools}
     <div data-trust="panel-content" class="panel-body log-body" ref=${scroller} onScroll=${onScroll}><div class="col log-col">${content}</div></div>
   </div>`;

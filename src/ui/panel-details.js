@@ -18,6 +18,7 @@ import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/as
 import { navigate } from "/assets/app-nav.js";
 import { chatPath, detailsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
+import { AgentSheetButton, usePhone } from "/assets/agent-sheet.js";
 import { modelText } from "/assets/instance-nav.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { Menu } from "/assets/ui-menu.js";
@@ -55,6 +56,7 @@ export function DetailsPanel({ route, navKey }) {
 }
 
 function DetailsView({ name, inst, navKey, exec, awaiting }) {
+  const phone = usePhone();   // M-3166 PR 5: a phone's header is "← name ● ⋯" (the ⋯ sheet holds the rest)
   const pane = paneContext.usePane?.();
   useStore(themesStore);   // #1629: Lock / Unlock follows the themes as read
   const lease = useLease(`details:${name}`);
@@ -191,7 +193,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
         <p class="note">${pt("actionsNote")}</p></section>` : null}`;
   const Pending = sess.mod && sess.mod.PendingBar, OpCard = sess.mod && sess.mod.OperationCard;
   return html`<div data-effect-panel="details" class="panel p-details p-settings p-agent-page" data-view=${cat ? "section" : "index"}>
-    <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} pageActions=${items} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} pageActions=${items} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} />${phone ? html`<${AgentSheetButton} name=${name} inst=${inst} current="details" items=${items} navKey=${navKey} />` : null}</${PanelHeader}>
     <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty}>${!cat ? html`<div class="only-narrow"><div class="s-row agent-settings-index-return"><h2>${pt("title")}</h2>${backLink()}</div></div>` : null}</${AgentCategoryNav}>
     <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>
       <div class="s-row agent-settings-heading"><a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span></a><${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />${backLink()}</div>

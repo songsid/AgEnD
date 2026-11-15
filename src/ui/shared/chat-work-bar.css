@@ -71,6 +71,16 @@
   .p-chat > .panel-head .panel-sub > :not(.status) { display: none; }
   .p-chat > .panel-head .panel-sub .status { font-size: 0; gap: 0; }
   .p-chat > .panel-head .panel-sub .dot { width: 6px; height: 6px; }
+  /* M-3166 PR 5: View, Log and Details get the same "← name ● ⋯" header, no tab row — when it has the ⋯ sheet (a guest's or
+     an anonymous reader's View has none, and keeps its own header). */
+  :is(.p-view, .p-log, .p-details) > .panel-head:has(.chat-sheet-more) { min-height: 44px; padding-bottom: 0; flex-wrap: nowrap; }
+  :is(.p-view, .p-log, .p-details) > .panel-head:has(.chat-sheet-more) .panel-title { min-height: 44px; gap: var(--s-2); }
+  :is(.p-view, .p-log, .p-details) > .panel-head:has(.chat-sheet-more) :is(.sb-search, .inst-switch),
+  :is(.p-view, .p-log, .p-details) > .panel-head:has(.chat-sheet-more) .panel-actions > :not(.chat-sheet-more):not(.dlg) { display: none !important; }
+  :is(.p-view, .p-log, .p-details) > .panel-head:has(.chat-sheet-more) .panel-title h1 { flex: 0 1 auto; }
+  :is(.p-view, .p-log, .p-details) > .panel-head:has(.chat-sheet-more) .panel-sub > :not(.status) { display: none; }
+  :is(.p-view, .p-log, .p-details) > .panel-head:has(.chat-sheet-more) .panel-sub .status { font-size: 0; gap: 0; }
+  :is(.p-view, .p-log, .p-details) > .panel-head:has(.chat-sheet-more) .panel-sub .dot { width: 6px; height: 6px; }
   /* The ⋯ sheet (the dialog's own bottom sheet on a phone). */
   /* The sheet's name stays its accessible name (the dialog's title), drawn as a handle instead, as approved. */
   .chat-sheet .dlg-head { position: relative; justify-content: center; min-height: var(--s-6); padding-bottom: var(--s-1); }
