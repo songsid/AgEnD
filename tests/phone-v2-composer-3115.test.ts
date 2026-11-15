@@ -85,7 +85,7 @@ describe("M-3115 PR 2: one composer row on a phone", () => {
   it("the CSS: the phone's thin status line, its Stop only with something typed (a tap target drawn as text); the row's tap targets", () => {
     const bar = readFileSync(join(process.cwd(), "src/ui/shared/chat-work-bar.css"), "utf8");
     for (const rule of [".p-chat .work-bar { block-size: 22px; min-block-size: 22px; max-block-size: 22px; overflow: visible; }",
-      ".p-chat .dock:has(.composer-field textarea:placeholder-shown) .work-bar .btn-stop { display: none; }",
+      ".p-chat .dock:has(.composer-field textarea:placeholder-shown):not(:has(.pending-files)) .work-bar .btn-stop { display: none; }",   // M-3198: a file keeps Stop
       ]) expect(bar).toContain(rule);
     // In the fresh-linked file (a tab on an older app.css gets them too), with Send-as-Stop's size.
     expect(bar).toMatch(/\.ctx-ring \{[^}]*min-width: var\(--tap\); min-height: var\(--tap\)/);

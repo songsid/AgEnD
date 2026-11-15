@@ -32,7 +32,8 @@
    a 44 px tap target drawn as text. */
 @media (max-width: 899px) {
   .p-chat .work-bar { block-size: 22px; min-block-size: 22px; max-block-size: 22px; overflow: visible; }
-  .p-chat .dock:has(.composer-field textarea:placeholder-shown) .work-bar .btn-stop { display: none; }
+  /* …only when nothing is waiting to go: with a file attached Send is Send (the file can go), so Stop stays here (M-3198). */
+  .p-chat .dock:has(.composer-field textarea:placeholder-shown):not(:has(.pending-files)) .work-bar .btn-stop { display: none; }
   .p-chat .work-bar .btn-stop { min-height: var(--tap); min-width: var(--tap); height: var(--tap); margin-block: calc((22px - var(--tap)) / 2); padding: 0 var(--s-2); border: 0; background: none; color: var(--accent); font-weight: var(--fw-semibold); }
   .p-chat .work-bar .btn-stop .icon { display: none; }
   /* M-3115 PR 3: past 70% the context hint is one thin line in the status line's place — the idle strip gives way to it,
@@ -74,7 +75,7 @@
   .chat-meta-right .webauth-row, .chat-meta-right .webauth-row .note { color: var(--warn); font-weight: var(--fw-semibold); }
   .chat-meta-right .webauth-row :is(button, a) { min-height: 32px; color: var(--warn); font-weight: var(--fw-semibold); }
   .chat-meta-stop { min-height: 32px; padding: 0 var(--s-2); border: 0; background: none; color: var(--accent); font: inherit; font-weight: var(--fw-semibold); }
-  .p-chat .dock:has(.composer-field textarea:placeholder-shown) .chat-meta-stop { display: none; }
+  .p-chat .dock:has(.composer-field textarea:placeholder-shown):not(:has(.pending-files)) .chat-meta-stop { display: none; }   /* M-3198: files-only, Stop stays */
   .p-chat .dock:has(.chat-meta.busy) .qa-line { display: none; }
   .p-chat .dock:has(.chat-meta) .composer-row { display: none; }
   .p-chat .composer textarea { max-height: calc(5 * var(--lh-md)); overflow-y: auto; }

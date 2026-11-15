@@ -7,6 +7,7 @@
 //   2-working      "Working …· n%" / 「處理中 …· n%」 with its dot; Send is Stop while nothing is typed
 //   3-not-verified Not verified · Authorize at the meta line's right end, once
 //   4-file-multi   a file in one strip at the top of the box; the text across the whole box
+//   6-files-working  the file alone, the agent working: Send stays Send, the meta line's Stop is there (M-3198)
 //   5-long         at most five lines, then the box scrolls
 // The desk: the working bar and the line under the box as before, no meta line. Everywhere: no horizontal overflow, no page error.
 // Run it on the base too (REPO=<base checkout> SMOKE_NAME=…-before): every phone case FAILs there (no meta line).
@@ -79,6 +80,17 @@ try {
       return f ? [Math.round(f.getBoundingClientRect().top - box.getBoundingClientRect().top), getComputedStyle(f).flexWrap] : null; });
     need(strip && strip[0]! < 12 && strip[1] === "nowrap", `a file: one strip at the top of the box (${JSON.stringify(strip)})`);
     await page.screenshot({ path: shotPath(SMOKE, caseName(c), "4-file-multi") });
+    // M-3198: the file alone (no text) while the agent works: Send is Send (the file can go), so Stop is the meta line's —
+    // there is always a Stop to tap.
+    await box.fill(""); await blur(page); await setState(page, true); await page.waitForTimeout(1200);
+    const files = await page.evaluate(() => {
+      const shown = (e: Element | null) => !!e && (e as HTMLElement).getBoundingClientRect().width > 0 && getComputedStyle(e as HTMLElement).display !== "none";
+      return { file: shown(document.querySelector(".composer-box .pending-files")), metaStop: shown(document.querySelector(".chat-meta-stop")),
+        sendIsStop: !!(document.querySelector("#sendBtn") as HTMLElement)?.className.includes("is-stop") };
+    });
+    need(files.file && files.metaStop && !files.sendIsStop, `a file only, working: Send stays Send and the meta line's Stop is there (${JSON.stringify(files)})`);
+    await page.screenshot({ path: shotPath(SMOKE, caseName(c), "6-files-working") });
+    await setState(page, false); await page.waitForTimeout(400);
     await box.fill(LONG); await blur(page); await page.waitForTimeout(400);
     const lines = await page.evaluate(() => { const t = document.querySelector("#msgIn") as HTMLTextAreaElement, lh = parseFloat(getComputedStyle(t).lineHeight);
       return [Math.round(t.clientHeight / lh * 10) / 10, t.scrollHeight > t.clientHeight]; });

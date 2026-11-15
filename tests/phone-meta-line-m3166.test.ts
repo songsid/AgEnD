@@ -68,7 +68,7 @@ describe("M-3166: the meta line (phone)", () => {
     const stuck = await app({ execution_state: "stuck" });
     expect([$(stuck.pg, ".chat-meta").className, $(stuck.pg, ".chat-meta-left").textContent.trim()]).toEqual(["chat-meta busy stuck", expect.stringMatching(/^Looks stuck/)]);
     const css = readFileSync(join(process.cwd(), "src/ui/shared/chat-work-bar.css"), "utf8");
-    expect(css).toContain(".p-chat .dock:has(.composer-field textarea:placeholder-shown) .chat-meta-stop { display: none; }");
+    expect(css).toContain(".p-chat .dock:has(.composer-field textarea:placeholder-shown):not(:has(.pending-files)) .chat-meta-stop { display: none; }");   // M-3198
   });
 
   it("the CSS: 26 px, the small type, hit targets ≥ 32 px; the line under the box goes; five lines at most; files in one strip", () => {
@@ -79,6 +79,15 @@ describe("M-3166: the meta line (phone)", () => {
       "min-height: 32px; margin: -3px 0;", ".p-chat .dock:has(.chat-meta) .composer-row { display: none; }",
       ".p-chat .composer textarea { max-height: calc(5 * var(--lh-md)); overflow-y: auto; }", ".p-chat .composer-box .pending-files { flex-wrap: nowrap; overflow-x: auto; }",
       '.chat-meta-right .webauth-row[data-state="verified"] > :not(.webauth-notice) { display: none; }']) expect(phone).toContain(rule);
+  });
+
+  // M-3198 (#4001 review P3): an empty text box hides the phone's other Stop only when nothing is waiting to go. With a file
+  // attached, Send is Send (the file can go), so Stop must stay — the meta line's, and a guest's working-bar Stop alike.
+  it("the CSS: an empty box hides the other Stop only with no file waiting (a files-only draft keeps a Stop)", () => {
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/chat-work-bar.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const hides = css.split("\n").filter((l) => /textarea:placeholder-shown\)/.test(l) && /(chat-meta-stop|\.btn-stop) \{ display: none; \}/.test(l));
+    expect(hides.length, "the two rules that hide a Stop").toBe(2);
+    for (const l of hides) expect(l, l.trim()).toContain(":not(:has(.pending-files))");
   });
 
   it("not verified: the composer's own Not verified · Authorize at the right end (and nowhere else)", async () => {
