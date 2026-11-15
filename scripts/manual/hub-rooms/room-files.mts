@@ -2,7 +2,8 @@
  * M-3125 PR1b browser acceptance: files in a group room, on the real Hub HTTP/SQLite and attachment store (tests/helpers/hub-s3b-rig.ts),
  * served by the actual Hub shell over HTTPS on loopback. No fleet, CLI or account.
  * A manager has posted an image; Alex opens the room, uses the composer's Attach (left of the box), sees the chips inside the box,
- * sends with text, and the post shows its files on the thread (image inline, the other file as a card).
+ * sends with text, and the post shows its files on the thread (image inline, the other file as a card). PR3: the manager's
+ * picture opens in the viewer, 「標註」 marks it up and quotes it here (a chip and the reply), and it is sent.
  * Writes PNGs and receipt.json (sourceHead, checks, every PNG's sha256, the /hub/v1 requests) to OUT.
  *   PW_DIR=<playwright-core root> OUT=<dir> npx tsx scripts/manual/hub-rooms/room-files.mts
  */
@@ -66,6 +67,25 @@ try {
     check(tag + " the post shows its text file as a card", body.includes("minutes.txt"));
     check(tag + " the post's image shows inline", await p.locator(".hub-room-page .thread img").count() >= 2);
     await shot("posted");
+    // PR3: the manager's picture opens in the Fleet chat's viewer; 「標註」 draws on it and quotes it here (a chip + the reply).
+    await p.locator(".hub-room-page .thread a.att-img").first().click();
+    await p.locator("dialog.lb .lb-annotate").waitFor();
+    check(tag + " a room picture opens in the viewer with Annotate", await p.locator("dialog.lb .lb-annotate").isVisible());
+    await p.locator("dialog.lb .lb-annotate").click(); await p.locator("dialog.lb .an-canvas").waitFor();
+    const box = await p.locator("dialog.lb .an-canvas").boundingBox();
+    if (box) { await p.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3); await p.mouse.down();
+      await p.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5, { steps: 8 }); await p.mouse.up(); }
+    check(tag + " one quote target: this room", (await p.locator("dialog.lb .an-quote").allTextContents()).join("|").includes(lang === "en" ? "Quote in this room" : "引用到這個房間")
+      && await p.locator("dialog.lb .an-quote").count() === 1);
+    await shot("annotate");
+    await p.locator('dialog.lb .an-quote[data-target="self"]').click();
+    await p.locator("dialog.lb").waitFor({ state: "detached" });
+    await p.locator(".hub-room-page .composer-box .file-chip[data-state=ready]").waitFor();
+    check(tag + " the marked-up copy is a chip and the reply quotes its message", await p.locator(".hub-room-page .reply-bar").isVisible()
+      && (await p.locator(".hub-room-page .reply-bar").innerText()).includes("Last week"));
+    await shot("annotate-quoted");
+    await p.locator(".hub-room-page #sendBtn").click(); await p.locator(".hub-room-page .hub-pending-files").waitFor({ state: "detached" });
+    check(tag + " sent: the post quotes the picture's message and carries the marked-up copy", receipt.requests.some((x: any) => x.tag === tag && x.method === "POST" && x.path.endsWith("/messages") && x.status === 200));
     check(tag + " no horizontal overflow", await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     check(tag + " no page error", errors.length === 0, errors);
     await context.close();

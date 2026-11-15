@@ -6,7 +6,11 @@ The user's first priority for Hub rooms (2026-11-15): Fleet-chat file parity in 
 
 1. **People's files** (PR1a). Upload, post, list and read, plus the thread showing them. **PR1b** adds the composer's Attach button through web-claude's M-3117 `attach`/`pending` props: a group room's detail says `features: ["attachments-v1"]` when the Hub stores files; the page then offers Attach, uploads at once, shows chips inside the box, holds Send while a file uploads, and sends the ready ids as `files`. An older Hub (no feature) shows no Attach.
 2. **Agents' files** (PR2). Room files on the link (negotiated as below): optional `attachments` on `room.ask` and `room.answer`, and on on-behalf posts once Ridge's `room.post` composes it. The member's `room-ask.ts` takes report_result `files`, and an ask's files reach the agent's inbox.
-3. **Annotate → quote** on a room image (PR3). It reuses the Fleet chat's lightbox and annotate, with the Hub file URL accepted as an exact anchored pattern.
+3. **Annotate → quote** on a room image (PR3). A room picture opens in the Fleet chat's own viewer, and 「標註」 quotes the marked-up copy in the room.
+   - The viewer and editor (`image-lightbox.js`, `image-zoom.js`, `image-annotate.js`) move to `src/ui/shared/` and are served under `/assets/` by both listeners. Their old `/ui/js/` paths re-export them, as S-152 did for the message menu.
+   - The viewer takes a Hub room picture only at its exact inline route, `^/hub/v1/rooms/<uuid>/files/<uuid>/inline$` (lower-case UUIDs, nothing after).
+   - The room's one quote target, 「引用到這個房間」 / "Quote in this room", is offered only where the room takes files. It uploads the copy into the composer's files and sets the reply to the picture's message.
+   - The Fleet chat's own targets are unchanged.
 
 The HTML preview needs no slice of its own: the shared thread draws an `.html` attachment's preview card once a message carries it.
 

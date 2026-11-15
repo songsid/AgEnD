@@ -16,7 +16,7 @@ import { Empty } from "/assets/ui-states.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { t } from "/assets/app-i18n.js";
+import { register, t } from "/assets/app-i18n.js";
 import "./hub-strings.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
@@ -26,6 +26,9 @@ import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { workingLine } from "./hub-room-working.js";
 import { countsLine } from "./hub-room-list.js";
 import { PendingFiles, hf, hubFileAttachment, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
+import { LightboxHost, openLightbox } from "/assets/image-lightbox.js";
+// M-3125 PR3: the one quote target an annotated room picture has (here, so a page with an older dictionary has the words).
+register("hubRoomAnnotate", { en: { quote: "Quote in this room" }, "zh-TW": { quote: "引用到這個房間" } });
 
 linkRoomsU2Css();   // M-3127: the reaction chips and picker are drawn from hub-rooms-u2.css (a room opened before any U2 panel)
 /** M-3127 C: the message a search hit opens (`?room=…&m=<id>`), or null. */
@@ -379,6 +382,20 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const pending = files.length || fileMsg ? html`<${PendingFiles} files=${files} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
     formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />${fileMsg ? html`<p class="note" role="alert">${fileMsg}</p>` : null}` : null;
   // The composer sends through the store; this one adds the ready files, waits for uploads, and clears only what was sent.
+  const annotateRef = useRef(null);
+  annotateRef.current = (img) => {
+    if (!takesFiles || typeof File !== "function") return null;
+    const key = img?.closest?.(".msg[data-key]")?.getAttribute("data-key") || "";
+    const message = store.messages().find((x) => `${x.boot}-${x.id}` === key) || null;
+    return { notice: (text) => setFileMsg(text), targets: [{ key: "self", label: t("hubRoomAnnotate.quote"), quote: (file, live = () => true) => {
+      if (!live() || !alive.current || store.closed()) return false;
+      void uploadChosen(client, room.id || roomId, [file], { current: () => filesRef.current, set: setFiles, alive: () => alive.current })
+        .then((refused) => { if (alive.current && refused.length) setFileMsg(refused.join(" ")); });
+      if (message) setReply(message);
+      setTimeout(() => input.current?.focus(), 0);
+      return true;
+    } }] };
+  };
   const sendStore = useMemo(() => ({ ...store, send: async (text, opts = {}) => {
     if (filesRef.current.some((f) => f.state === "uploading")) { setFileMsg(hf("waitUpload")); return { ok: false, code: "uploading" }; }
     const chosen = filesRef.current.filter((f) => f.state === "ready");
@@ -423,6 +440,10 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     canReact: () => store.detail()?.room?.kind === "group" && !store.closed(),
     reactText: (k) => (k === "add" ? hroom("reactAdd") : k === "pick" ? hroom("reactPick") : ""),
     reactLabel: hroom("reactAdd"),   // the message menu's React (web-claude's HubThread, M-3117 PR 2: phones)
+    // M-3125 PR3: a room picture opens full size in the page; 「標註」 then quotes the marked-up copy here — it joins this
+    // composer's files (uploaded like any chosen file) and the reply quotes the message it came from. Read at click time
+    // (the thread keeps its options from its first render).
+    openImage: (links, img) => openLightbox(links, img, annotateRef.current(img)),
   };
   const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : String(room.agent?.owner?.name || "");
@@ -435,6 +456,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
         onSettings=${() => { setSheet(false); openSettings(); }} />` : null;
   return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId}>
+    <${LightboxHost} />
     <section class="hub-chat-main">
       <header class="hub-chat-head" data-trust="panel-content">
         ${/* Lumen (spec §2): on a phone the header starts with the Fleet chat's back to the list. */ ""}

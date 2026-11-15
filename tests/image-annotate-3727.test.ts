@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..");
 // The module imports the dashboard's own /assets/* (served by the web server); stub them so its pure exports load here.
-const src = readFileSync(join(ROOT, "src/ui/image-annotate.js"), "utf8")
+const src = readFileSync(join(ROOT, "src/ui/shared/image-annotate.js"), "utf8")
   .replace(/^import .*$/gm, "")
   .replace(/^register\(/m, "(() => 0)(");
 const mod = await import(`data:text/javascript;base64,${Buffer.from(`const html = () => null, t = (k) => k, Icon = null, useEffect = () => {}, useRef = () => ({}), useState = (v) => [v, () => {}];\n${src}`).toString("base64")}`);
@@ -101,7 +101,7 @@ describe("drawing each tool", () => {
 });
 
 describe("the viewer offers 標註 only from a chat that can quote, and loads the editor on the press", () => {
-  const lightbox = readFileSync(join(ROOT, "src/ui/image-lightbox.js"), "utf8");
+  const lightbox = readFileSync(join(ROOT, "src/ui/shared/image-lightbox.js"), "utf8");
   const chat = readFileSync(join(ROOT, "src/ui/panel-chat.js"), "utf8");
   it("the button is drawn only with quote targets; the store keeps none without them", () => {
     expect(lightbox).toMatch(/annotate: annotate && annotate\.targets\?\.length \? annotate : null/);
@@ -127,7 +127,7 @@ describe("the viewer offers 標註 only from a chat that can quote, and loads th
     for (const [k, v] of mod.MEDIA_TOKENS) expect(tokens.replace(/\s+/g, " ")).toContain(`${k}: ${v}`);   // the editor's fallback = the token
   });
   it("no style attribute in the new module (#1300)", () => {
-    const editor = readFileSync(join(ROOT, "src/ui/image-annotate.js"), "utf8");
+    const editor = readFileSync(join(ROOT, "src/ui/shared/image-annotate.js"), "utf8");
     expect(editor).not.toMatch(/\sstyle=/);
   });
 });
