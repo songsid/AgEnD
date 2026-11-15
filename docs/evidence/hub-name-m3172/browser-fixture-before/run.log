@@ -1,0 +1,16 @@
+(node:55504) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.waitForSelector: Timeout 15000ms exceeded.
+Call log:
+[2m  - waiting for locator('.hub-update-consent') to be visible[22m
+
+    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172/scripts/manual/smoke/smoke-hub-name-m3172.mts:35:18) {
+  log: [ "  - waiting for locator('.hub-update-consent') to be visible" ],
+  name: 'TimeoutError'
+}
+
+Node.js v22.22.2

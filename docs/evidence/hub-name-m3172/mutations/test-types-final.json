@@ -1,0 +1,12 @@
+{
+  "command": [
+    "nice",
+    "-n",
+    "10",
+    "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172/../../node_modules/@typescript/native/bin/tsc",
+    "--noEmit",
+    "-p",
+    "tsconfig.test.json"
+  ],
+  "exit": 0
+}

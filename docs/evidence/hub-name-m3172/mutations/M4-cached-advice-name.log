@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172
+
+ ❯ tests/hub-member-recommendations-m3138.test.ts (11 tests | 1 failed | 10 skipped) 27ms
+   × refreshes a cached recommendation's display name without another policy lookup or ACK 25ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-recommendations-m3138.test.ts > refreshes a cached recommendation's display name without another policy lookup or ACK
+AssertionError: expected { …(6) } to match object { hubName: 'Rig Hub', …(2) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "hubName": "Rig Hub",
++   "hubName": "hub.test",
+    "revision": 1,
+    "version": "2.4.0-beta.4",
+  }
+
+ ❯ tests/hub-member-recommendations-m3138.test.ts:35:29
+     33|   expect(w.receiver.view()?.hubName).toBe("hub.test");
+     34|   w.options.hubName = "Rig Hub";
+     35|   expect(w.receiver.view()).toMatchObject({ hubName: "Rig Hub", versio…
+       |                             ^
+     36|   expect(w.lookup).toHaveBeenCalledTimes(1); expect(w.send).toHaveBeen…
+     37| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  16:14:22
+   Duration  630ms (transform 281ms, setup 262ms, import 143ms, tests 27ms, environment 0ms)
+

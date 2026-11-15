@@ -1,0 +1,20 @@
+diff --git a/src/hub/compose/member.ts b/src/hub/compose/member.ts
+index d613cf5cd..d8fed8191 100644
+--- a/src/hub/compose/member.ts
++++ b/src/hub/compose/member.ts
+@@ -637,13 +637,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
+             ...(l.features.has("fleet-recommend-v1") ? { recommendations: true as const } : {}) } }).catch(() => {});
+       };
+       const updates = options.updates && reportedInfo ? new HubMemberUpdates({ ...options.updates, db, binding: profileDigest ?? roomBinding,
+-        get hubName() { return hubName(); }, version: reportedInfo.version, current: () => live() && !terminalHold && profileCurrent(),
++        hubName: hubName(), version: reportedInfo.version, current: () => live() && !terminalHold && profileCurrent(),
+         service: () => reportedInfo.runsAsService, now, lookup: options.versionRegistry ?? createPublishedVersionLookup(), changed: reportUpdateConsent }) : null;
+       if (updates && reportedInfo) reportedInfo.updatesAllowed = updates.consent().on;
+       let updateTimer: ReturnType<typeof setInterval> | null = null;
+       teardown.add("Fleet updates", () => { if (updateTimer) clearInterval(updateTimer); updates?.close(); options.attachUpdates?.(null); });
+       const recommendations = options.fleetInfo ? new HubMemberRecommendations({ db, hubId,
+-        get hubName() { return hubName(); }, version: options.fleetInfo.version, current: live, now,
++        hubName: hubName(), version: options.fleetInfo.version, current: live, now,
+         lookup: options.versionRegistry, changed: options.recommendationChanged, log: options.log }) : null;
+       options.attachRecommendations?.(recommendations ? () => recommendations.view() : null);
+       if (recommendations?.view()) options.recommendationChanged?.();
