@@ -64,3 +64,5 @@ No packaged/systemd Fleet, live AD, container, vendor CLI, pane input or actual 
 composition and browser rendering are separate stages, not a claimed end-to-end browser-to-live-Hub rehearsal.
 Risk is cosmetic fallback/staleness until the next connected refresh. Rollback reverts these product/test/skill
 paths; the optional display cache can remain ignored. No migration or destructive cleanup is required.
+
+Plain alpha sync: merge5a3da0267 has evidence63304c2ca + alpha207917591 parents. Only the incoming profile-timeline and two existing test files change. All31 source bindings and172 served-asset bindings remain exact; alpha-sync.json records parity. No local rerun is carried out for this unchanged-source sync (5afe2996); exact-head CI is required.
