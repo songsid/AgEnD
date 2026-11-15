@@ -59,20 +59,20 @@ register("hubVersions", {
     close: "Close",
   },
   "zh-TW": {
-    allCurrent: "{0} 個 Fleet 都是建議版本或更新的版本。",
-    someBehind: "{1} 個 Fleet 當中有 {0} 個需要更新。",
-    noRecommended: "{0} 個使用中的 Fleet。",
-    noRecommendedSet: "{0} 個使用中的 Fleet。設定建議版本後，就能看出哪些落後。",
+    allCurrent: "{0} 個 Fleet 都是建議版本或更新的版本。", allCurrentOne: "{0} 個 Fleet 都是建議版本或更新的版本。",
+    someBehind: "{1} 個 Fleet 當中有 {0} 個需要更新。", someBehindOne: "{1} 個 Fleet 當中有 {0} 個需要更新。",
+    noRecommended: "{0} 個使用中的 Fleet。", noRecommendedOne: "{0} 個使用中的 Fleet。",
+    noRecommendedSet: "{0} 個使用中的 Fleet。設定建議版本後，就能看出哪些落後。", noRecommendedSetOne: "{0} 個使用中的 Fleet。設定建議版本後，就能看出哪些落後。",
     recTitle: "建議的 AgEnD 版本", recHub: "與這個 Hub 相同（{0}）", recHubPlain: "與這個 Hub 相同",
     recSpecific: "指定版本", recVersion: "版本", recVersionPh: "例如 2.4.0", recNone: "不建議版本",
     recLead: "低於這個版本的 Fleet 會通知擁有者並提供更新按鈕。沒有擁有者的動作，不會更新任何東西。",
-    recPreview: "會有 {0} 個 Fleet 收到更新通知。", recPreviewNone: "不會通知任何 Fleet。",
+    recPreview: "會有 {0} 個 Fleet 收到更新通知。", recPreviewOne: "會有 {0} 個 Fleet 收到更新通知。", recPreviewNone: "不會通知任何 Fleet。",
     recChecking: "正在檢查 npm…", recSave: "儲存", recSaving: "儲存中…", recSaved: "已儲存。",
     errInvalid: "請輸入版本號，例如 2.4.0。", errNotFound: "在 npm 上找不到 {0} 這個版本。",
     errNpm: "無法連上 npm 檢查 {0}，請再試一次。", errHubVersion: "讀不到這個 Hub 的版本，請改為指定版本。",
     errConflict: "剛剛有人改了這個設定，已顯示最新的選擇。請確認後再儲存。", errFailed: "沒有儲存，請再試一次。",
     notified: "已通知擁有者 · {0}", notNotified: "尚未通知",
-    updateBtn: "更新", ownerUpdates: "由擁有者自行更新", updateMany: "更新 {0} 個已允許的 Fleet",
+    updateBtn: "更新", ownerUpdates: "由擁有者自行更新", updateMany: "更新 {0} 個已允許的 Fleet", updateManyOne: "更新 {0} 個已允許的 Fleet",
     askOne: "要把 {0} 更新到 AgEnD v{1} 嗎？會等那個 Fleet 的 Agent 都閒置才開始。現在和完成時都會通知擁有者。",
     askMany: "要把 {0} 個 Fleet 更新到 AgEnD v{1} 嗎？", askOk: "更新",
     replaceBtn: "改為更新到 v{0}",
@@ -81,7 +81,7 @@ register("hubVersions", {
     stUpdating: "更新中…", stDone: "已更新到 v{0} · {1}", stRolledBack: "更新失敗，已回到 v{0}",
     stBusy: "沒有開始：Agent 連續 24 小時都在忙", stOffline: "沒有開始：這個 Fleet 已經 7 天沒有連接。",
     stCancelled: "擁有者取消了這次更新", cancelling: "取消中…", stGone: "更新失敗，而且 Fleet 沒有重新連接。請聯絡 {0}。",
-    startedMany: "已為 {0} 個 Fleet 開始。", startedSome: "已為 {0} 個 Fleet 開始；{1} 個無法開始。",
+    startedMany: "已為 {0} 個 Fleet 開始。", startedManyOne: "已為 {0} 個 Fleet 開始。", startedSome: "已為 {0} 個 Fleet 開始；{1} 個無法開始。", startedSomeOne: "已為 {0} 個 Fleet 開始；{1} 個無法開始。",
     rfOwnerOff: "擁有者已不允許由 Hub 更新。", rfNotService: "這個 Fleet 是手動啟動的，無法從這裡更新。",
     rfNotFound: "那個 Fleet 在 npm 上找不到 v{0}。", rfNpm: "那個 Fleet 連不上更新來源，沒有任何變更。",
     rfPermission: "那個 Fleet 沒有安裝更新的權限，需要擁有者手動更新。", rfCurrent: "已經是 v{0}。",
@@ -105,8 +105,8 @@ register("hubVersions", {
   },
 });
 export const hv = (key, ...args) => t(`hubVersions.${key}`, ...args);
-/** M-3170: a count of Fleets — English has a one-Fleet sentence (`<key>One`); zh-TW's sentence is the same for every count. */
-const hvn = (key, n, ...args) => hv(n === 1 && lang() !== "zh-TW" ? `${key}One` : key, String(n), ...args);
+/** M-3170: a count of Fleets — a one-Fleet sentence (`<key>One`) for 1; zh-TW's is the same sentence as for any count. */
+const hvn = (key, n, ...args) => hv(n === 1 ? `${key}One` : key, String(n), ...args);
 
 // The server's states (M-3136), in its priority order.
 const STATES = ["too-old-rooms", "needs-update", "unknown", "current"];
