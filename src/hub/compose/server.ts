@@ -511,7 +511,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         listen: settings.memberListen,
         pairing,
         companyJoin,
-        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])],
+        capabilities: hubLinkCapabilities(http),
         current: live,
         receive: (frame, link) => http.receive(frame, link),
         connected: link => http.memberConnected?.(link),
@@ -669,3 +669,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
 export type HubServerFactory = ReturnType<typeof createHubServerFactory>;
 
 export type { HubPerson };
+
+/** The member-link features this Hub offers (exported so M-3125's negotiation test uses the real list, Fable #3925). */
+export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; features?: readonly string[] }): string[] {
+  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
+}
