@@ -800,7 +800,7 @@ export class GrokBackend implements CliBackend {
   getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES["grok"].strategy; }
   getEffortLevels(): string[] { return [...EFFORT_CAPABILITIES["grok"].levels]; }
 
-  // grok's in-session model switch is a picker → restart to apply reliably.
+  // Fleet first attempts the version-gated, verified inline path (M-3180); restart is the conservative fallback.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 
   async listModels(): Promise<import("./types.js").ModelOption[]> {

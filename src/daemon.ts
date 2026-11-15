@@ -5427,7 +5427,7 @@ export class Daemon extends EventEmitter {
     const version = pid ? await cliRunningVersion(pid, { backend: step.backend, matchExe: entry.matchExe, versionFromExe: entry.versionFromExe }) : null;
     if (!cliSwitchAllowed(entry, step, version)) return { blocked: "version", version };
     const pane = await tmux.capturePaneWithHistory(CODEX_SWITCH_HISTORY_LINES).catch(() => "");
-    const record = entry.checkpoint ? await entry.checkpoint(pane, this.config.working_directory || process.cwd()).catch(() => undefined) : undefined;
+    const record = entry.checkpoint ? await entry.checkpoint(pane, this.config.working_directory || process.cwd(), pid).catch(() => undefined) : undefined;
     return { pane, ...(record !== undefined ? { record } : {}) };
   }
 

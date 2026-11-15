@@ -188,9 +188,12 @@ describe("the switch keeps the instance", () => {
     expect(state()).toEqual([null, "false", null]);
     await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     const phone = await app("/ui/chat/web-dev", { matchNarrow: true });
-    phone.root.querySelector(".p-chat .panel-head .menu:not(.chat-card-menu) > button").click(); await settle();
-    expect([phone.root.querySelectorAll(".p-chat .menu-list .menu-item").length > 0, phone.root.querySelectorAll(".p-chat .menu-list .menu-item").map((b: any) => b.textContent.trim()).includes("Full width")])
-      .toEqual([true, false]);
+    // M-3166: a phone's ⋯ is a sheet (Appearance opens the chat's look items in place) — and Full width is no item of it.
+    phone.root.querySelector(".p-chat .panel-head .chat-sheet-more").click(); await settle();
+    const look = phone.root.querySelectorAll(".chat-sheet .chat-sheet-row").find((b: any) => b.textContent.trim().startsWith("Appearance"));
+    look?.click(); await settle();
+    const texts = phone.root.querySelectorAll(".chat-sheet button").map((b: any) => b.textContent.trim());
+    expect([texts.length > 0, texts.includes("Full width")]).toEqual([true, false]);
   });
   it("Full width's CSS: only on a desk, the thread and the composer lose the column cap; a person's bubble keeps its own", async () => {
     const css = (await import("node:fs")).readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");

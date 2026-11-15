@@ -1,0 +1,19 @@
+{
+  "statusDelayMs": 35000,
+  "listElapsedMs": [
+    8.822742000000062,
+    3.28416100000004,
+    2.9014290000000074
+  ],
+  "catalogTools": 63,
+  "catalogJsonBytes": [
+    70100,
+    70100,
+    70100
+  ],
+  "testOwnedStatusCalls": 1,
+  "totalStatusCalls": 1,
+  "replyCalls": 1,
+  "initialNotifications": 1,
+  "finalNotifications": 1
+}

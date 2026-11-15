@@ -4613,3 +4613,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-fleet .oc-bar > span:first-child, .p-fleet .oc-bar .org-counts { display: none; }
   .p-fleet .oc-bar .oc-tools { flex-wrap: nowrap; overflow-x: auto; width: 100%; }
 }
+/* M-3166 (Argon 2, the user's OK of round 2): on a phone a toast (an agent waiting for you, a result) is one line — a pill that a
+   tap puts away — and none shows while the keyboard is up. */
+@media (max-width: 899px) {
+  .toasts .toast { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: var(--r-full); padding: var(--s-1) var(--s-3); font-size: var(--fs-sm); cursor: pointer; }
+  .kb-open .toasts { display: none; }
+}

@@ -1,0 +1,99 @@
+{
+  "sourceRef": "4661b2f65b266e047bf6e11200b88ebf4206d16d",
+  "baseRef": "16339cb48",
+  "sourceInputs": [
+    {
+      "path": "changes/3183-mcp-tools-startup.md",
+      "sha256": "930bd85eef5b3801cb559270d50d3d551291c0a2baff0b3e3ea991fe63036fb5"
+    },
+    {
+      "path": "changes/3183-mcp-tools-startup.zh-TW.md",
+      "sha256": "4cfd2a423549002eddbbb5b1434b27801b7a73c73544ce2da05a946a65fb54b2"
+    },
+    {
+      "path": "src/channel/ipc-bridge.ts",
+      "sha256": "03c8d0f4ccd89c6f3a6639d59ce487a8306ba9b9b6f5767e723cc98e0dc1f008"
+    },
+    {
+      "path": "src/channel/ipc-timeouts.ts",
+      "sha256": "f566d0f7ed5c62828cf39372c47ede41038480b8a4bbcc575b037f94759ddcba"
+    },
+    {
+      "path": "src/channel/mcp-server.ts",
+      "sha256": "9462f5e530da73ff33ba32fe0c2fee8552d71b971be661716ff45778f5570b96"
+    },
+    {
+      "path": "src/channel/mcp-tools.ts",
+      "sha256": "2b2f15c1d24ee0d526de605b79757c0e82b4a893d35f2bdf8ff2a17411fce897"
+    },
+    {
+      "path": "src/dashboard-live.ts",
+      "sha256": "7bf80b4a0613b238745ee9a516c5bf2038ea6867e1b62f62e36dc76b4ae35c01"
+    },
+    {
+      "path": "src/dashboard-permissions.ts",
+      "sha256": "c4ce0448c769b372e1931c0c3ea830eab58735460ca455de9d69cb2f7d3bb07e"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "71c1f4e9033271fba28cfbd1e5b50e6ccee09113070626d10d60d8c6cf630e32"
+    },
+    {
+      "path": "src/outbound-handlers.ts",
+      "sha256": "45b8d8cba01867f42ce47cac87c9e16304c2c2e43ddea3c1d97d83b913c2e776"
+    },
+    {
+      "path": "src/tool-permissions.ts",
+      "sha256": "3a93eff67ad466b36263048080434c47b96f13377b85f286edd90bde3ead0bc4"
+    },
+    {
+      "path": "tests/hub-room-post-mcp.test.ts",
+      "sha256": "097110728bce6ee0060a93fb4ce5730d1656cc1958c8f918420c7b06384b0813"
+    },
+    {
+      "path": "tests/hub-room-post-rc-integration-3118.test.ts",
+      "sha256": "680335c41b80c0334c9981af74d420280ad356acd24c291812712397db517ea6"
+    },
+    {
+      "path": "tests/mcp-tool-list-startup-m3183.test.ts",
+      "sha256": "0733a0c7ffa3684924d553772b7c717d6ca6d924906e585564f4ff53a9913841"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "baseline-binding.json",
+      "bytes": 313,
+      "sha256": "083ba94452637472a6344795e8727ae025a80a6b4d483a2c2d8cc55e2a0e633b"
+    },
+    {
+      "path": "before-static-final.log",
+      "bytes": 2453,
+      "sha256": "dc7e11292a872dced60c14a405e452a0f631ab5b7785b99b20a382c4e3a10fde"
+    },
+    {
+      "path": "final-results.json",
+      "bytes": 723,
+      "sha256": "942690089525cb7c4ab10870a22accec38c315821df09d8d049141f65f58f9c6"
+    },
+    {
+      "path": "final.log",
+      "bytes": 467,
+      "sha256": "f818626315a49d4908c70cfdeb789ee861e625e6e1b9ae371e85c5fa448d8763"
+    },
+    {
+      "path": "source-types-final.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "test-types-final.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "timings.json",
+      "bytes": 334,
+      "sha256": "712e9c054c31ba557d2433ffb457f1409b8c4c381765c04d10373106f25ff6b5"
+    }
+  ]
+}
