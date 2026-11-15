@@ -170,6 +170,8 @@ export class HubMemberClient implements HubMemberTransport {
         send: value => {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
           if (value.type === "fleet.recommendation-ack" && !canReceiveRecommendation) return Promise.reject(new HubProtocolError("incompatible"));
+          if (value.type === "fleet.update-status" && !features.has(HUB_FLEET_UPDATE_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
+          if (value.type === "fleet.info" && value.payload.updatesAllowed !== undefined && !features.has(HUB_FLEET_UPDATE_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "fleet.info" && !canReportInfo) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "exposure.quota" && !features.has("quota-band-v1")) return Promise.reject(new HubAuthorizationError("unavailable", "incompatible"));
           if ((value.type === "room.answer" || value.type === "agent.state") && (!features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
@@ -184,7 +186,7 @@ export class HubMemberClient implements HubMemberTransport {
       const statement = features.has(HUB_WEB_ORIGIN_CAPABILITY) ? frame.payload.webOrigin : undefined, learn = this.options.webOrigin;
       const learned = statement && learn ? Promise.resolve().then(() => view.current() ? learn(statement, view) : undefined).catch(() => undefined) : Promise.resolve();
       void learned.then(async () => {
-        if (canReportInfo && this.options.fleetInfo && view.current()) await view.send({ v: 1, type: "fleet.info", requestId: randomUUID(), linkEpoch: epoch, payload: { ...this.options.fleetInfo, ...(canReceiveRecommendation ? { recommendations: true as const } : {}) } });
+        if (canReportInfo && this.options.fleetInfo && view.current()) await view.send({ v: 1, type: "fleet.info", requestId: randomUUID(), linkEpoch: epoch, payload: { version: this.options.fleetInfo.version, runsAsService: this.options.fleetInfo.runsAsService, ...(features.has(HUB_FLEET_UPDATE_CAPABILITY) && this.options.fleetInfo.updatesAllowed !== undefined ? { updatesAllowed: this.options.fleetInfo.updatesAllowed } : {}), ...(canReceiveRecommendation ? { recommendations: true as const } : {}) } });
         await this.options.reconcile(view);
       }).then(async () => {
         if (!view.current()) return;
@@ -214,6 +216,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (frame.type === "pairing.notice" && (!view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v2" && (!view.features.has("pairing-notices-v2") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v3" && (!view.features.has("pairing-notices-v3") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if ((frame.type === "fleet.update" || frame.type === "fleet.update-cancel" || frame.type === "fleet.update-status-ack") && !view.features.has(HUB_FLEET_UPDATE_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "fleet.recommendation" && !view.features.has(HUB_RECOMMENDATION_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "relocate" && (!view.features.has(HUB_MEMBER_RELOCATION_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.ask" || frame.type === "room.answer-ack") && (!view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");

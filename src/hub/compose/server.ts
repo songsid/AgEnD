@@ -37,7 +37,7 @@ import { createHubGroupWelcome } from "../group-policy/welcome.js";
 import { signAsker, canonicalArguments, sha256, personKeyString } from "../identity.js";
 import { signHubWebOrigin } from "../web-origin.js";
 import { signHubRelocation } from "../member-origin.js";
-import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY } from "../protocol.js";
+import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_FLEET_UPDATE_CAPABILITY } from "../protocol.js";
 import { BIND_SECRET_REL, bindSecretPath } from "../init/layout.js";
 import type { HubMountedService } from "../mount.js";
 import { HubPairingService } from "../pairing.js";
@@ -672,5 +672,5 @@ export type { HubPerson };
 
 /** The member-link features this Hub offers (exported so M-3125's negotiation test uses the real list, Fable #3925). */
 export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; features?: readonly string[] }): string[] {
-  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
+  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
 }

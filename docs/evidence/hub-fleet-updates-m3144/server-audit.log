@@ -1,0 +1,8 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-service-m3144
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 7 skipped (8)
+   Start at  10:53:31
+   Duration  4.40s (transform 3.18s, setup 149ms, import 4.00s, tests 87ms, environment 0ms)
