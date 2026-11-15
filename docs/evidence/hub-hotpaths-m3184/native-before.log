@@ -1,0 +1,72 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-hotpaths-3184-alpha
+
+ ❯ tests/native-mcp.test.ts (34 tests | 5 failed | 29 skipped) 280ms
+     × keeps offline/online menus static while preserving the native read-only ceiling 67ms
+     × hub_room_list remains visible offline but refuses at dispatch without a remote call 53ms
+     × hub_room_post remains visible offline but refuses at dispatch without a remote call 53ms
+     × hub_room_members remains visible offline but refuses at dispatch without a remote call 52ms
+     × hub_people_search remains visible offline but refuses at dispatch without a remote call 53ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/native-mcp.test.ts > Hub room native MCP scope > keeps offline/online menus static while preserving the native read-only ceiling
+AssertionError: expected [ 'task', 'send_to_instance', …(6) ] to deeply equal ArrayContaining{…}
+
+- Expected
++ Received
+
+- ArrayContaining [
+-   "hub_room_list",
+-   "hub_room_post",
+-   "hub_room_members",
+-   "hub_people_search",
++ [
++   "task",
++   "send_to_instance",
++   "request_information",
++   "delegate_task",
++   "report_result",
++   "delivery_status",
++   "describe_instance",
++   "list_instances",
+  ]
+
+ ❯ tests/native-mcp.test.ts:92:19
+     90|     const f=fixture();let online=false;f.ctx.hubRoomToolsAvailable=()=…
+     91|     const names=(await invoke(f,listing).done()).value.tools.map((t:an…
+     92|     expect(names).toEqual(expect.arrayContaining(["hub_room_list","hub…
+       |                   ^
+     93|     expect(f.lease.connection.tools).toEqual(expect.arrayContaining(na…
+     94|     online=true;expect((await invoke(f,listing).done()).value.tools.ma…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/native-mcp.test.ts > Hub room native MCP scope > hub_room_list remains visible offline but refuses at dispatch without a remote call
+ FAIL  tests/native-mcp.test.ts > Hub room native MCP scope > hub_room_post remains visible offline but refuses at dispatch without a remote call
+ FAIL  tests/native-mcp.test.ts > Hub room native MCP scope > hub_room_members remains visible offline but refuses at dispatch without a remote call
+ FAIL  tests/native-mcp.test.ts > Hub room native MCP scope > hub_people_search remains visible offline but refuses at dispatch without a remote call
+AssertionError: expected 403 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 403
+
+ ❯ tests/native-mcp.test.ts:108:20
+    106|     f.ctx.hubRoomList=remote;f.ctx.hubRoomPost=remote;f.ctx.hubRoomMem…
+    107|     const {status,value}=await invoke(f,call("offline-"+tool,tool as s…
+    108|     expect(status).toBe(200);expect(JSON.parse(value.content[0].text))…
+       |                    ^
+    109|     expect(remote).not.toHaveBeenCalled();
+    110|     online=true;const active=await invoke(f,call("online-"+tool,tool a…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 29 skipped (34)
+   Start at  19:31:06
+   Duration  2.02s (transform 1.18s, setup 87ms, import 1.52s, tests 280ms, environment 0ms)
+

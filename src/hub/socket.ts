@@ -9,6 +9,7 @@ export class HubSocket<Incoming, Outgoing> {
   private queuedBytes = 0;
   private alive = true;
   private ended = false;
+  private pendingSends = new Set<(error?: HubProtocolError) => void>();
   private heartbeat: NodeJS.Timeout;
   constructor(readonly ws: WebSocket, private readonly options: {
     current(): boolean; parse(input: Buffer): Incoming; encode(value: Outgoing): string;
@@ -38,17 +39,35 @@ export class HubSocket<Incoming, Outgoing> {
   async send(value: Outgoing): Promise<void> {
     if (!this.current()) throw new HubProtocolError("unavailable");
     const data = this.options.encode(value);
-    if (Buffer.byteLength(data) > HUB_LIMITS.frame || this.ws.bufferedAmount + Buffer.byteLength(data) > HUB_LIMITS.sendQueue) throw new HubProtocolError("backpressure");
-    await new Promise<void>((resolve, reject) => this.ws.send(data, error => error ? reject(new HubProtocolError("uncertain")) : resolve()));
+    if (this.pendingSends.size >= HUB_LIMITS.pending || Buffer.byteLength(data) > HUB_LIMITS.frame || this.ws.bufferedAmount + Buffer.byteLength(data) > HUB_LIMITS.sendQueue) throw new HubProtocolError("backpressure");
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const finish = (error?: HubProtocolError) => {
+        if (settled) return;
+        settled = true; clearTimeout(timer); this.pendingSends.delete(finish);
+        if (error) reject(error); else resolve();
+      };
+      const timer = setTimeout(() => {
+        finish(new HubProtocolError("uncertain")); this.end("unavailable");
+      }, HUB_LIMITS.rpcTimeout);
+      timer.unref(); this.pendingSends.add(finish);
+      try { this.ws.send(data, error => {
+        if (settled) return;
+        finish(error ? new HubProtocolError("uncertain") : undefined);
+        if (error) this.end("unavailable");
+      }); } catch { finish(new HubProtocolError("uncertain")); this.end("unavailable"); }
+    });
     if (!this.current()) throw new HubProtocolError("uncertain");
   }
   retire(reason: "replaced" | "revoked"): void {
     if (this.ended) return; this.ended = true; clearInterval(this.heartbeat);
+    for (const finish of this.pendingSends) finish(new HubProtocolError("uncertain"));
     this.ws.close(1008, reason);
     const timer = setTimeout(() => this.ws.terminate(), 2_000); timer.unref(); this.ws.once("close", () => clearTimeout(timer));
     this.options.closed(reason);
   }
   end(code: HubLinkCloseCode = "unavailable"): void {
-    if (this.ended) return; this.ended = true; clearInterval(this.heartbeat); this.ws.terminate(); this.options.closed(code);
+    if (this.ended) return; this.ended = true; clearInterval(this.heartbeat);
+    for (const finish of this.pendingSends) finish(new HubProtocolError("uncertain")); this.ws.terminate(); this.options.closed(code);
   }
 }

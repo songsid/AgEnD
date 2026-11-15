@@ -1,0 +1,49 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-hotpaths-3184-alpha
+
+ ❯ tests/hub-socket-deadline-m3184.test.ts (4 tests | 3 failed) 12ms
+   × bounds a stalled write even when the peer still answers heartbeats, and ignores its late callback 8ms
+   × end settles an admitted write without waiting for its callback 1ms
+   × retire settles an admitted write without waiting for its callback 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-socket-deadline-m3184.test.ts > bounds a stalled write even when the peer still answers heartbeats, and ignores its late callback
+AssertionError: expected 'pending' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "pending"
+
+ ❯ tests/hub-socket-deadline-m3184.test.ts:28:18
+     26|   await vi.advanceTimersByTimeAsync(HUB_LIMITS.rpcTimeout - 1); expect…
+     27|   peer.emit("pong"); await vi.advanceTimersByTimeAsync(1);
+     28|   expect(result).toBe("uncertain"); expect(closed).toHaveBeenCalledOnc…
+       |                  ^
+     29|   peer.callbacks[0]!(); await pending; expect(result).toBe("uncertain"…
+     30| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-socket-deadline-m3184.test.ts > end settles an admitted write without waiting for its callback
+ FAIL  tests/hub-socket-deadline-m3184.test.ts > retire settles an admitted write without waiting for its callback
+AssertionError: expected 'pending' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "pending"
+
+ ❯ tests/hub-socket-deadline-m3184.test.ts:36:18
+     34|   if (how === "end") link.end(); else link.retire("replaced");
+     35|   await Promise.resolve(); await Promise.resolve();
+     36|   expect(result).toBe("uncertain"); peer.callbacks[0]!(); await pendin…
+       |                  ^
+     37| });
+     38| it("a completed callback releases its timer and does not close the hea…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 1 passed (4)
+   Start at  19:24:35
+   Duration  508ms (transform 181ms, setup 87ms, import 264ms, tests 12ms, environment 0ms)
+

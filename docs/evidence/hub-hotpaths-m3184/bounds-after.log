@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-hotpaths-3184-alpha
+
+
+ Test Files  3 passed (3)
+      Tests  12 passed (12)
+   Start at  19:28:53
+   Duration  1.98s (transform 1.64s, setup 196ms, import 2.29s, tests 50ms, environment 0ms)
+
