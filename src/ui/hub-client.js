@@ -559,6 +559,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     welcome() { return call("GET", "/hub/v1/me/welcome"); },
     // M-3137 / M-3136 (versions spec §2.3): the signed-in person's own active Fleets with their version state (the banner).
     myFleets() { return call("GET", "/hub/v1/me/fleets"); },
+    // M-3162 / M-3161: Administration → Overview's counts for Today or 7 days, in the viewer's time zone (counts only).
+    adminDashboard({ range = "7d", timeZone = "UTC" } = {}) { return call("GET", `/hub/v1/admin/dashboard?range=${encodeURIComponent(range)}&timeZone=${encodeURIComponent(timeZone)}`); },
     // M-3141 / M-3138 (versions spec §3.1): the Hub's recommended AgEnD version — read, preview (nothing saved), save.
     recommendedVersion() { return call("GET", "/hub/v1/admin/recommended-version"); },
     previewRecommendedVersion(input) { return call("POST", "/hub/v1/admin/recommended-version/preview", input); },

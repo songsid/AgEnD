@@ -588,6 +588,11 @@ are separate UI work; do not claim those screens or a remote-update switch from 
   listed there too and need **Acknowledge**.
 - **This Hub** shows the Hub's name (**Hub name**, up to 64 characters) and what identifies it; **Edit AD connection**
   opens the directory settings.
+- **Tabs** (M-3162): Administration opens on **Overview** (總覽) where the Hub serves it. The tabs are **Overview**,
+  **Manage** (管理項目, everything above on one page), **Teams**, **Groups** and **This Hub** (這個 Hub); a tab whose
+  feature is off isn't shown. Overview has **Today** / **7 days**, refreshes every minute, and its line under the
+  range says it shows counts only. On a Hub nobody has joined yet it shows **Let colleagues join** instead of numbers.
+  **See Connected Fleets** opens Manage at that card.
 
 ## Fleet versions
 
