@@ -20,7 +20,7 @@ import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { createMentionIndex } from "../src/ui/chat-mentions.js";
 
 const R = () => (globalThis as any).AgendChatRender;
-const USER = "368442276000694273", ROLE = "111111111111111111", CHANNEL = "222222222222222222", NOBODY = "999999999999999999";
+const USER = "400000000000000042", ROLE = "111111111111111111", CHANNEL = "222222222222222222", NOBODY = "999999999999999999";
 const NAMES: Record<string, string> = { [`u:${USER}`]: "Alex", [`r:${ROLE}`]: "Ops", [`c:${CHANNEL}`]: "general" };
 const lookup = (kind: string, id: string) => NAMES[`${kind}:${id}`] ?? null;
 const render = (text: string, names: ((k: string, id: string) => string | null) | null = lookup) => R().renderMarkdown(text, names ? { mentions: names } : {});
@@ -56,7 +56,7 @@ describe("the renderer draws mentions as pills", () => {
   });
   it("nothing inside code is converted — a code span or a fence keeps the token as text", () => {
     const html = render("`<@" + USER + ">` and `@telegram_user`\n\n```\n<@" + USER + "> @telegram_user\n```");
-    expect([pills(html), (html.match(/&lt;@368442276000694273&gt;/g) || []).length]).toEqual([[], 2]);
+    expect([pills(html), (html.match(/&lt;@400000000000000042&gt;/g) || []).length]).toEqual([[], 2]);
   });
   it("an HTML-ish name is escaped (text, never markup)", () => {
     const html = render(`<@${USER}>`, () => `<img src=x onerror=alert(1)>&amp;`);

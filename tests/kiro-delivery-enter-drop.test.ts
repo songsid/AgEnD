@@ -25,7 +25,7 @@ const TOOL_RUNNING = [
   "Purpose: Sleep 9 seconds then echo marker",
 ].join("\n");
 const IDLE_BARE = " ▸ Time: 15s\n2% !>";
-const MESSAGE = "[user:example via discord, id:368442276000694273] MSG-1 pasted while kiro was busy\n(message_id: 1)";
+const MESSAGE = "[user:example via discord, id:400000000000000042] MSG-1 pasted while kiro was busy\n(message_id: 1)";
 const STRANDED = ` ▸ Time: 15s\n2% !> ${MESSAGE.split("\n")[0]}`;
 const STRANDED_WITH_ID = ` ▸ Time: 15s\n2% !> ${MESSAGE.replace(/\n/g, " ")}`;
 const GENERATING = `2% !> ${MESSAGE.split("\n")[0]}\n⠇ Thinking...`;
