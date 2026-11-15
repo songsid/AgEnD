@@ -1,0 +1,184 @@
+{
+  "mode": "before (origin/release/2.3.5-alpha)",
+  "delayMs": 700,
+  "desk-light-en:noLoadUntilAnnotate": "PASS",
+  "desk-light-en:firstOpenFinalLayout": {
+    "FAIL": {
+      "ok": false,
+      "frames": 148,
+      "bareFrames": 43,
+      "canvasX": [
+        0,
+        104
+      ],
+      "first": {
+        "t": 56,
+        "x": null,
+        "w": null,
+        "bar": "rgba(0, 0, 0, 0)",
+        "css": false
+      },
+      "last": {
+        "t": 2506,
+        "x": 104,
+        "w": 1158,
+        "bar": "rgba(0, 0, 0, 0.75)",
+        "css": true
+      }
+    }
+  },
+  "desk-light-en:first:samples": [
+    {
+      "t": 56,
+      "x": null,
+      "w": null,
+      "bar": "rgba(0, 0, 0, 0)",
+      "css": false
+    },
+    {
+      "t": 74,
+      "x": 0,
+      "w": 1200,
+      "bar": "rgba(0, 0, 0, 0)",
+      "css": false
+    },
+    {
+      "t": 89,
+      "x": 0,
+      "w": 1200,
+      "bar": "rgba(0, 0, 0, 0)",
+      "css": false
+    },
+    {
+      "t": 2506,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    }
+  ],
+  "desk-light-en:secondOpenFinalLayout": "PASS",
+  "desk-light-en:second:samples": [
+    {
+      "t": 69,
+      "x": null,
+      "w": null,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 86,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 102,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 2502,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    }
+  ],
+  "desk-light-en:noPageError": "PASS",
+  "phone-dark-zh-TW:noLoadUntilAnnotate": "PASS",
+  "phone-dark-zh-TW:firstOpenFinalLayout": {
+    "FAIL": {
+      "ok": false,
+      "frames": 147,
+      "bareFrames": 43,
+      "canvasX": [
+        0,
+        12
+      ],
+      "first": {
+        "t": 68,
+        "x": null,
+        "w": null,
+        "bar": "rgba(0, 0, 0, 0)",
+        "css": false
+      },
+      "last": {
+        "t": 2501,
+        "x": 12,
+        "w": 366,
+        "bar": "rgba(0, 0, 0, 0.75)",
+        "css": true
+      }
+    }
+  },
+  "phone-dark-zh-TW:first:samples": [
+    {
+      "t": 68,
+      "x": null,
+      "w": null,
+      "bar": "rgba(0, 0, 0, 0)",
+      "css": false
+    },
+    {
+      "t": 86,
+      "x": 0,
+      "w": 1200,
+      "bar": "rgba(0, 0, 0, 0)",
+      "css": false
+    },
+    {
+      "t": 101,
+      "x": 0,
+      "w": 1200,
+      "bar": "rgba(0, 0, 0, 0)",
+      "css": false
+    },
+    {
+      "t": 2501,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    }
+  ],
+  "phone-dark-zh-TW:secondOpenFinalLayout": "PASS",
+  "phone-dark-zh-TW:second:samples": [
+    {
+      "t": 57,
+      "x": null,
+      "w": null,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 74,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 89,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 2506,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    }
+  ],
+  "phone-dark-zh-TW:noPageError": "PASS",
+  "fail": [
+    "desk-light-en:firstOpenFinalLayout",
+    "phone-dark-zh-TW:firstOpenFinalLayout"
+  ]
+}

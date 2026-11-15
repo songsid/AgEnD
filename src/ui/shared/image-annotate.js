@@ -122,6 +122,26 @@ export function linkAnnotateCss(doc = typeof document !== "undefined" ? document
 }
 
 /**
+ * M-3168: the stylesheet, linked once, and a promise that settles when it has arrived — loaded, failed, or after `wait` ms
+ * (a slow or missing stylesheet never keeps the editor shut). The viewer shows the editor only then, so its first open
+ * paints in its final layout; before, the first 「標註」 drew the bare editor (the picture at the far left) until the
+ * stylesheet arrived. Nothing is fetched before the first 「標註」: a page that never annotates loads none of it.
+ */
+export function annotateCssReady(doc = typeof document !== "undefined" ? document : null, wait = 4000) {
+  if (!doc || !doc.head) return Promise.resolve();
+  linkAnnotateCss(doc);
+  const link = doc.querySelector('link[data-annotate-css="1"]');
+  if (!link || link.sheet) return Promise.resolve();          // already loaded (a second open, or another chat's)
+  return new Promise((done) => {
+    let timer = null;
+    const settle = () => { if (timer === null) return; clearTimeout(timer); timer = null;
+      link.removeEventListener("load", settle); link.removeEventListener("error", settle); done(); };
+    timer = setTimeout(settle, wait);
+    link.addEventListener("load", settle); link.addEventListener("error", settle);
+  });
+}
+
+/**
  * The editor, inside the viewer's dialog. `src`, `name`: the picture. `targets`: [{ key, label, quote(file) }] — the first
  * is this chat's composer, a second the other pane's; quote() answers true when the file went in. `onClose`: ✕ / Esc
  * (the dialog's own cancel), and after a quote.

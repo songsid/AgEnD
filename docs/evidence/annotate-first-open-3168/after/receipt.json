@@ -1,0 +1,133 @@
+{
+  "mode": "after (this checkout)",
+  "delayMs": 700,
+  "desk-light-en:noLoadUntilAnnotate": "PASS",
+  "desk-light-en:firstOpenFinalLayout": "PASS",
+  "desk-light-en:first:samples": [
+    {
+      "t": 760,
+      "x": null,
+      "w": null,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 778,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 793,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 2509,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    }
+  ],
+  "desk-light-en:secondOpenFinalLayout": "PASS",
+  "desk-light-en:second:samples": [
+    {
+      "t": 65,
+      "x": null,
+      "w": null,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 82,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 98,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 2514,
+      "x": 104,
+      "w": 1158,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    }
+  ],
+  "desk-light-en:noPageError": "PASS",
+  "phone-dark-zh-TW:noLoadUntilAnnotate": "PASS",
+  "phone-dark-zh-TW:firstOpenFinalLayout": "PASS",
+  "phone-dark-zh-TW:first:samples": [
+    {
+      "t": 759,
+      "x": null,
+      "w": null,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 777,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 793,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 2509,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    }
+  ],
+  "phone-dark-zh-TW:secondOpenFinalLayout": "PASS",
+  "phone-dark-zh-TW:second:samples": [
+    {
+      "t": 58,
+      "x": null,
+      "w": null,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 78,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 91,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    },
+    {
+      "t": 2507,
+      "x": 12,
+      "w": 366,
+      "bar": "rgba(0, 0, 0, 0.75)",
+      "css": true
+    }
+  ],
+  "phone-dark-zh-TW:noPageError": "PASS",
+  "fail": []
+}
