@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-startup-recovery-m3171
+
+(node:64703) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-member-startup-3171.test.ts (7 tests | 1 failed | 6 skipped) 455ms
+   × retains the mounted owner API after a retryable first reconciliation failure 452ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-startup-3171.test.ts > retains the mounted owner API after a retryable first reconciliation failure
+AssertionError: expected null not to be null
+ ❯ tests/hub-member-startup-3171.test.ts:103:21
+    101|     await f.runtime.apply({ hub_member: { enabled: true } });
+    102|     const api = f.exposures();
+    103|     expect(api).not.toBeNull();
+       |                     ^
+    104|     expect(f.runtime.currentHolds()).toEqual([]);
+    105|     await vi.waitFor(() => expect(f.states.at(-1)).toBe("online"), { t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 skipped (7)
+   Start at  13:58:19
+   Duration  10.35s (transform 7.82s, setup 243ms, import 9.49s, tests 455ms, environment 0ms)
+

@@ -1,0 +1,12 @@
+diff --git a/src/hub/compose/member.ts b/src/hub/compose/member.ts
+index 26e4ebee3..bb1f42637 100644
+--- a/src/hub/compose/member.ts
++++ b/src/hub/compose/member.ts
+@@ -659,6 +659,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
+           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
+         } });
+       client = new HubMemberClient({
++        allowOfflineStart: false,
+         log: options.log,
+         fleetInfo: reportedInfo,
+         receiveRecommendations: !!recommendations,
