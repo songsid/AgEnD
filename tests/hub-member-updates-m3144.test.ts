@@ -136,3 +136,25 @@ it("lets the owner withdraw stored consent while the selected pairing is held, w
   expect(w.value.consent()).toEqual({ on: true, available: true });
   expect(w.value.setConsent(false).on).toBe(false); expect(() => w.value.setConsent(true)).toThrow();
 });
+it("cancels an accepted waiting request when its owner withdraws consent before the Fleet becomes idle", async () => {
+  const w = world(); w.value.setConsent(true); const request = w.request(); w.value.receive(request, w.link); await w.value.tick();
+  expect(w.value.view(request.id)?.state).toBe("waiting");
+  w.value.setConsent(false); await w.value.tick(); w.idle(true); await w.value.tick();
+  expect(w.value.view(request.id)?.state).toBe("cancelled");
+  expect(w.sent.at(-1)).toMatchObject({ payload: { state: "cancelled", reasonCode: "owner-disabled" } }); expect(w.launch).not.toHaveBeenCalled();
+});
+it.each(["not-found", "unavailable"] as const)("does not offer a local update for a request this Fleet could not verify (%s)", async result => {
+  const w = world(); w.value.setConsent(true); w.options.lookup = async () => result;
+  const request = w.request(); w.value.receive(request, w.link); await w.value.tick();
+  expect(w.value.view(request.id)?.state).toBe("refused"); expect(w.value.manualCandidate(request.id)).toBeNull();
+  expect(await w.value.updateNow(request.id, () => true)).toBe(false); expect(w.launch).not.toHaveBeenCalled();
+});
+it("waits for the composing host's readiness proof before reporting a restarted target as done", async () => {
+  const w = world(); w.value.setConsent(true); w.idle(true); const request = w.request(); w.value.receive(request, w.link);
+  await vi.waitFor(() => expect(w.launch).toHaveBeenCalledTimes(1)); w.value.close();
+  let ready = false;
+  const next = new HubMemberUpdates({ ...w.options, version: request.version, outcome: () => ready ? { state: "done", currentVersion: request.version } : null });
+  closes.push(() => next.close()); await next.start(); expect(next.view(request.id)?.state).toBe("updating");
+  expect(w.launch).toHaveBeenCalledTimes(1); ready = true; await next.tick();
+  expect(next.view(request.id)?.state).toBe("done"); expect(w.launch).toHaveBeenCalledTimes(1);
+});

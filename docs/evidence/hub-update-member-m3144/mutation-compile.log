@@ -1,0 +1,39 @@
+All three reversals compile together: exit 0
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-member-m3144
+
+ ❯ tests/hub-member-updates-m3144.test.ts (19 tests | 1 failed | 18 skipped) 77ms
+   × settles a claimed update after restart without launching it again or holding later requests busy 75ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-updates-m3144.test.ts > settles a claimed update after restart without launching it again or holding later requests busy
+AssertionError: expected { …(6) } to match object { state: 'done', …(1) }
+(6 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "currentVersion": "2.4.0",
+-   "state": "done",
++   "state": "updating",
+  }
+
+ ❯ tests/hub-member-updates-m3144.test.ts:37:53
+     35|   w.value.receive(request, w.link); await vi.waitFor(() => expect(w.la…
+     36|   const next = new HubMemberUpdates({ ...w.options, version: request.v…
+     37|   await next.start(); expect(next.view(request.id)).toMatchObject({ st…
+       |                                                     ^
+     38|   expect(w.launch).toHaveBeenCalledTimes(1);
+     39|   const later = { ...w.request(), version: "2.5.0" }; next.receive(lat…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 skipped (19)
+   Start at  11:50:20
+   Duration  539ms (transform 168ms, setup 131ms, import 148ms, tests 77ms, environment 0ms)
+
+Startup settlement reversal result: 1 CAUGHT

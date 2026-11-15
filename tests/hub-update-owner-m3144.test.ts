@@ -138,6 +138,14 @@ it("keeps exact boot progress for a late Hub mount after startup clears the ordi
   w.fm.hubUpdateOwned = null; clearUpdateMarker(w.dir);
   expect(w.fm.hubUpdateOutcome({ id: request.id, version: request.version })).toEqual({ state: "rolled-back", currentVersion: "2.3.5" });
   expect(w.fm.hubUpdateOutcome({ id: randomUUID(), version: request.version }).state).toBe("failed");
-  w.fm.runningAgendVersion.mockReturnValue(request.version);
+  w.fm.runningAgendVersion.mockReturnValue(request.version); w.fm.startupComplete = false;
+  expect(w.fm.hubUpdateOutcome({ id: request.id, version: request.version })).toBeNull(); w.fm.startupComplete = true;
   expect(w.fm.hubUpdateOutcome({ id: request.id, version: request.version })).toEqual({ state: "done", currentVersion: request.version });
+});
+it("refuses the expired-request Update button without a committed local verification", async () => {
+  const w = await world(), a = w.session();
+  w.options.lookup = async () => { w.advance(7 * 86_400_000); return "found"; };
+  const request = await w.admit(); expect(w.updates.view(request.id)?.state).toBe("expired");
+  const result = await raw(w.port, "POST", "/ui/update/start", a.write, { confirm: "update-agend", hubRequestId: request.id });
+  expect(result).toEqual({ status: 404, body: { error: "request_not_found" } }); expect(w.launcher).not.toHaveBeenCalled();
 });

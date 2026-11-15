@@ -36,6 +36,7 @@ export class HubMemberUpdates {
   private readonly reasons = new Map<string, FleetUpdateReason>();
   private readonly resultVersions = new Map<string, string>();
   private force: { id: string; current(): boolean } | null = null;
+  private recoveringClaim: string | null = null;
   constructor(private readonly options: MemberUpdatesOptions) {
     options.db.prepare("INSERT OR IGNORE INTO hub_member_update_consent VALUES(?,0)").run(options.binding);
     this.queue = new IdleUpdateQueue({ db: options.db, now: options.now, current: () => this.current(),
@@ -156,14 +157,20 @@ export class HubMemberUpdates {
     this.queue.request({ id: row.id, version: request.version });
   }
   /** Startup never replays a durable updating claim, even when the updater died without sending a result. */
+  private reconcileClaim(): void {
+    const row = this.queue.pending();
+    if (row?.state === "updating" && row.id === this.recoveringClaim && !this.options.active?.(row.id)) {
+      // A composed host may still be proving service readiness. Unknown is not success or failure.
+      const outcome = this.options.outcome ? this.options.outcome(row) : (compareSemver(this.options.version, row.version) === 0 ? { state: "done" as const, currentVersion: this.options.version }
+        : { state: "failed" as const, currentVersion: this.options.version });
+      if (outcome) this.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
+    }
+  }
   async start(): Promise<void> {
     if (!this.current()) return;
-    const row = this.queue.pending();
-    if (row?.state === "updating" && !this.options.active?.(row.id)) {
-      const outcome = this.options.outcome?.(row) ?? (compareSemver(this.options.version, row.version) === 0 ? { state: "done" as const, currentVersion: this.options.version }
-        : { state: "failed" as const, currentVersion: this.options.version });
-      this.complete(row.id, outcome.state, outcome.currentVersion, "interrupted");
-    }
+    const pending = this.queue.pending();
+    this.recoveringClaim = pending?.state === "updating" ? pending.id : null;
+    this.reconcileClaim();
     await this.queue.start(); await this.tick();
   }
   complete(id: string, state: "done" | "rolled-back" | "failed", currentVersion?: string, reason: FleetUpdateReason = "launch-failed"): void {
@@ -183,6 +190,7 @@ export class HubMemberUpdates {
             const rows = this.options.db.prepare("SELECT * FROM hub_member_updates WHERE binding=? AND body IS NOT NULL AND status IS NULL ORDER BY rowid").all(this.options.binding) as Row[];
             for (const row of rows) if (this.eligible(link)) await this.check(row, link);
           }
+          this.reconcileClaim();
           const pending = this.queue.pending(); if (pending) { this.sync(pending); this.notify(pending.id); }
           await this.queue.pump(); await this.flush();
         } while (this.dirty && this.current());

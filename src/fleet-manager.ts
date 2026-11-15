@@ -2034,7 +2034,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch { release(); return false; }
   }
   private hubUpdateOutcome(row: import("./update-idle.js").IdleUpdate): { state: "done" | "rolled-back" | "failed"; currentVersion: string } | null {
-    if (this.hubUpdateOwned?.id === row.id) return null;
+    if (!this.startupComplete || this.hubUpdateOwned?.id === row.id) return null;
     const currentVersion = this.runningAgendVersion();
     if (currentVersion.replace(/^v/, "") === row.version.replace(/^v/, "")) return { state: "done", currentVersion };
     const matches = (m: ReturnType<typeof readUpdateProgress>) => m?.progress.target.messageId === `hub-fleet-update:${row.id}` && m.progress.version === row.version;

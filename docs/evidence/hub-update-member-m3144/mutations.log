@@ -33,12 +33,13 @@ AssertionError: expected true to be false // Object.is equality
    Duration  421ms (transform 117ms, setup 96ms, import 115ms, tests 73ms, environment 0ms)
 
 RESULT 1: CAUGHT
-REVERSAL src/hub/member/updates.ts: row?.state === "updating" && !this.options.active?.(row.id)
+REVERSAL startup settlement: replace this.complete(...) with void outcome; preserving the narrowing condition.
+All three reversals compile together: exit 0
 
  RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-member-m3144
 
- ❯ tests/hub-member-updates-m3144.test.ts (18 tests | 1 failed | 17 skipped) 76ms
-   × settles a claimed update after restart without launching it again or holding later requests busy 74ms
+ ❯ tests/hub-member-updates-m3144.test.ts (19 tests | 1 failed | 18 skipped) 77ms
+   × settles a claimed update after restart without launching it again or holding later requests busy 75ms
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
 
@@ -67,11 +68,12 @@ AssertionError: expected { …(6) } to match object { state: 'done', …(1) }
 
 
  Test Files  1 failed (1)
-      Tests  1 failed | 17 skipped (18)
-   Start at  11:38:07
-   Duration  506ms (transform 132ms, setup 95ms, import 147ms, tests 76ms, environment 0ms)
+      Tests  1 failed | 18 skipped (19)
+   Start at  11:50:20
+   Duration  539ms (transform 168ms, setup 131ms, import 148ms, tests 77ms, environment 0ms)
 
-RESULT 1: CAUGHT
+Startup settlement reversal result: 1 CAUGHT
+
 REVERSAL src/fleet-manager.ts: undefined, userId => this.fleetAdminGate(userId, adapterId) === "ok");
     if (claimed === null) return false; if (claimed === "consumed") return true;
 
