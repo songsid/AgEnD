@@ -1,6 +1,6 @@
 /** Fleet-owned contact windows survive Hub disconnect/disable and Fleet restart. No question text is retained. */
 import { lstatSync, readFileSync } from "node:fs";
-import { atomicWriteFileSync } from "../atomic-write.js";
+import { atomicWriteFileSync } from "./atomic-write.js";
 export const HUB_CONTACT_WINDOW_MS = 30 * 60_000;
 type Window = { agent: string; correlationId: string; expiresAt: number };
 export class HubContactWindows {

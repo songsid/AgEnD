@@ -67,7 +67,7 @@ import { RuntimeCpuProfiler, ProfileBusyError, profileDuration, type ProfileTick
 import { ProfileControlServer } from "./profile-control.js";
 import type { CpuProfile } from "./cpu-profile.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, lstatSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
-import { HubContactWindows } from "./hub/contact-windows.js";
+import { HubContactWindows } from "./hub-contact-windows.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { freemem, totalmem, homedir, hostname } from "node:os";

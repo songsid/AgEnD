@@ -81,7 +81,7 @@ export function createHubMemberExposureApi(deps: {
     const reason = legacy ? "republish_required" : !deps.readinessCandidate ? "delivery_unavailable"
       : e?.state === "published" && deps.refused?.() ? "hub_refused" : null;
     return { agent: a.name, display: a.display, exposureId: e?.id ?? null, revision: e?.revision ?? 0, state: e?.state ?? "withdrawn",
-      contactLimit: c?.contactLimit !== false, contactLimitNotice: deps.store.contactLimitNotice(),
+      contactLimit: c?.contactLimit !== false, contactLimitNotice: deps.store.contactLimitNotice?.() ?? false,
       policy: e && e.state !== "withdrawn" ? { dataView: e.dataViewId, tools: [...e.allowedTools] } : null,
       enforceable: !reason || reason === "hub_refused", ...(reason ? { reason } : {}),
       choices: { dataViews: [{ id: HUB_AGENT_MODE, label: a.display }], tools: [] }, pending: deps.pending?.(a.name) ?? null };

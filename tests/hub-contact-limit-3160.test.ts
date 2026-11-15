@@ -40,7 +40,7 @@ describe("Hub-question contact limit", () => {
   });
 });
 
-import { HubContactWindows, HUB_CONTACT_WINDOW_MS } from "../src/hub/contact-windows.js";
+import { HubContactWindows, HUB_CONTACT_WINDOW_MS } from "../src/hub-contact-windows.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
