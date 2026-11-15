@@ -1013,9 +1013,10 @@ function ModelMenu({ name, c, lease }) {
   const place = (el) => {
     if (!el) return;
     const at = modelMenuAnchor, w = el.offsetWidth || 320, h = el.offsetHeight || 0;
+    const vw = globalThis.innerWidth || 1280, vh = globalThis.innerHeight || 800;   // (a test DOM has no viewport)
     let left, top;
     // Under the control, or above it when it sits in the lower half (the composer's chip): never over it.
-    if (at) { left = Math.min(Math.max(8, at.right - w), innerWidth - w - 8); top = at.top > innerHeight / 2 ? Math.max(8, at.top - h - 6) : Math.min(at.bottom + 6, innerHeight - h - 8); }
+    if (at) { left = Math.min(Math.max(8, at.right - w), vw - w - 8); top = at.top > vh / 2 ? Math.max(8, at.top - h - 6) : Math.min(at.bottom + 6, vh - h - 8); }
     else { const box = el.closest(".p-chat")?.querySelector(".composer-box")?.getBoundingClientRect(); left = box ? box.left : 16; top = box ? Math.max(8, box.top - h - 8) : 72; }
     el.style.setProperty("left", `${Math.round(left)}px`); el.style.setProperty("top", `${Math.round(top)}px`);
   };
