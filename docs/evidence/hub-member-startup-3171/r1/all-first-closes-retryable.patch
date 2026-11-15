@@ -1,0 +1,13 @@
+diff --git a/src/hub/client.ts b/src/hub/client.ts
+index 460e37a14..c8e993936 100644
+--- a/src/hub/client.ts
++++ b/src/hub/client.ts
+@@ -150,7 +150,7 @@ export class HubMemberClient implements HubMemberTransport {
+           // only a candidate: try the next address now, as before the upgrade. Never after replaced/revoked (stopped), and
+           // the anchor (last) never falls back.
+           if (!usable && !last && !this.stopped && this.current()) { this.rejectPending(); this.dialIndex++; this.connect(); return; }
+-          this.rejectPending(); if (!wasStopped) this.options.hold(code); this.firstFailure(new HubAuthorizationError("unavailable", code), code === "unavailable" || code === "backpressure"); this.reconnect();
++          this.rejectPending(); if (!wasStopped) this.options.hold(code); this.firstFailure(new HubAuthorizationError("unavailable", code), true); this.reconnect();
+         } });
+       this.link = link;
+       void link.send({ v: 1, type: "hello", requestId: handshake, linkEpoch: 0,

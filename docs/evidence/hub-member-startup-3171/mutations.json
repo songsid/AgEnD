@@ -1,0 +1,20 @@
+[
+  {
+    "name": "mount-closes-retry",
+    "test": "keeps a paired member mounted",
+    "exit": 1,
+    "sourceBeforeSha256": "4a92d896e6115ca8ab81be5332f0a3a7bce7b5d99368e953187dc73aca7fabc2",
+    "mutatedSha256": "21179010bd37def321b814fd15507c477f2455c36137cc456c1e280a7b3a8ad2",
+    "patchSha256": "52e583e66cbbf191780bb4688178c0d9d8a4981cf0ece2a9998d02484fc262e3",
+    "caught": "assertion failure"
+  },
+  {
+    "name": "handshake-closes-retry",
+    "test": "retains the mounted owner API",
+    "exit": 1,
+    "sourceBeforeSha256": "baeba3080fdfc28fcae7bf8fb272c956ab5c256f4db581a2456901cf39f90354",
+    "mutatedSha256": "bafcb4aeabcdab8662c072b7575866841e6a9fc98fb8840e66b4ff8089fa222d",
+    "patchSha256": "ce8655333d2eb034b5751b1e80060ae844c09435c157360cf7a095e4ed015d2a",
+    "caught": "assertion failure"
+  }
+]

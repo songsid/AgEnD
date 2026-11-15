@@ -237,6 +237,10 @@ consent are separate from the previous identity: old questions and receipts are 
 reconnect of the same identity keeps its delivery and acknowledgement history. Do not delete journal files to repair a
 connection; partial or inconsistent state is held rather than reset.
 
+If a paired Fleet starts while its Hub cannot be reached, it stays **Offline** and retries the connection automatically.
+The local sharing and update-consent controls remain available. When the Hub returns, the Fleet reconnects and
+reconciles its saved state; restarting the Fleet or pairing again is unnecessary for an ordinary network outage.
+
 **Other ways** holds the older **pairing code** method, and appears only for a Hub without company sign-in: once the
 Hub typed in **Hub address** answers that it takes company sign-in, **Other ways** is hidden and the company sign-in is
 the one way in. It stays while the Hub cannot be reached or its certificate is not trusted. A pairing code pasted into

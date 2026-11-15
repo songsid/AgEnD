@@ -1,0 +1,55 @@
+/** Real paired TLS/WSS + production runtime/member factory and private SQLite. No agent input or directory network. */
+import { expect, it, vi } from "vitest";
+import { HubRuntime, type HubMemberHost } from "../src/hub/runtime.js";
+import { HubServer } from "../src/hub/server.js";
+import type { HubMemberFrame } from "../src/hub/types.js";
+import { hubRig } from "./helpers/hub-rig.js";
+
+async function outage() {
+  const rig = await hubRig();
+  const profile = await rig.pair();
+  await rig.server.close();
+  const received: HubMemberFrame[] = [];
+  let restored: HubServer | undefined;
+  let exposures: Parameters<HubMemberHost["attachExposures"]>[0] = null;
+  let reports: unknown = null;
+  const states: string[] = [];
+  const runtime = new HubRuntime({ home: rig.memberHome, log: () => {}, member: {
+    boundHub: () => rig.identity.hubId,
+    agents: () => [{ name: "general", display: "General" }],
+    representative: { deliver: async () => false, agentToken: () => "t".repeat(64), attachReports: value => { reports = value; } },
+    attachExposures: value => { exposures = value; }, attachAttention: () => {}, pokeAttention: () => {},
+    linkState: state => states.push(state),
+  } });
+  return { rig, profile, runtime, states, received, exposures: () => exposures, reports: () => reports,
+    async restore() {
+      restored = new HubServer({ home: rig.root, hubId: rig.identity.hubId, memberOrigin: rig.memberOrigin,
+        listen: { host: "127.0.0.1", port: Number(new URL(rig.memberOrigin).port) }, pairing: rig.pairing,
+        current: () => true, hold: () => {}, receive: async (frame, link) => {
+          received.push(frame);
+          if (frame.type === "reconcile") return { v: 1, type: "reconcile", requestId: frame.requestId, linkEpoch: link.linkEpoch,
+            payload: { receipts: [], nextReceiptSequence: 0, more: false } };
+        } });
+      await restored.start();
+    },
+    async close() { await runtime.close(); await restored?.close(); await rig.close(); },
+  };
+}
+
+it("keeps a paired member mounted through a boot-time outage, then reconciles without a Fleet restart", async () => {
+  const f = await outage();
+  try {
+    await f.runtime.apply({ hub_member: { enabled: true } });
+    expect(f.states.at(-1)).toBe("offline");
+    expect(f.runtime.currentHolds()).toEqual([]);
+    const api = f.exposures();
+    expect(api, "the owner's local sharing API must remain mounted while offline").not.toBeNull();
+    expect(api!.list()).toHaveLength(1);
+    expect(f.reports()).toBeTypeOf("function");
+    await f.restore();
+    await vi.waitFor(() => expect(f.states.at(-1)).toBe("online"), { timeout: 5_000 });
+    expect(f.exposures()).toBe(api);
+    expect(f.received.filter(frame => frame.type === "reconcile")).toHaveLength(1);
+    expect(f.received.filter(frame => frame.type === "exposure.snapshot")).toHaveLength(1);
+  } finally { await f.close(); }
+});

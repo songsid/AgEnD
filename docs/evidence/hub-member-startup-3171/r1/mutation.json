@@ -1,0 +1,12 @@
+{
+  "name": "all-first-closes-retryable",
+  "request": "Fable P2 exact survivor",
+  "exit": 1,
+  "sourceBeforeSha256": "baeba3080fdfc28fcae7bf8fb272c956ab5c256f4db581a2456901cf39f90354",
+  "mutatedSha256": "b5d2a02309035e311ced1dc345047e1ab72ed31607dbc16f0289faf1ef91b302",
+  "patchSha256": "fe26c62aa757c03e094188b532b235168c3cd4109fe18e6b2c420aec932bd398",
+  "caught": "promise resolves instead of rejecting, invalid frame before welcome",
+  "selected": 1,
+  "unselected": 10,
+  "restoredSha256": "baeba3080fdfc28fcae7bf8fb272c956ab5c256f4db581a2456901cf39f90354"
+}
