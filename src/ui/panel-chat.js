@@ -932,7 +932,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
-    ${metaLine ? html`<${ChatMetaLine} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />`
+    ${metaLine ? html`<${ChatMetaLine} ids=${ids} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />`
       : html`<${WorkBar} ids=${ids} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />`}
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
@@ -1052,7 +1052,7 @@ function PromptText({ p, action }) {
  * is doing and for how long ("處理中 0:12 · 56%"). Right: Not verified · Authorize (and its other states) only while this
  * browser is not verified; while the agent works with something typed, Stop (Send sends again). Hit targets ≥ 32 px.
  */
-function ChatMetaLine({ name, inst, lease, exec, awaiting }) {
+function ChatMetaLine({ name, inst, lease, exec, awaiting, ids = {} }) {
   const s = store.state, busy = R().isBusy(exec) ? exec : "";
   const kind = awaiting != null ? "awaiting" : s.stopping[name] && busy ? "stopping" : busy;
   const [, tick] = useState(0);
@@ -1076,7 +1076,7 @@ function ChatMetaLine({ name, inst, lease, exec, awaiting }) {
       : commands ? html`<button type="button" class="chat-meta-left chat-meta-model" title=${t("chat.chipModel", label)} aria-label=${t("chat.chipModel", label)}
           onClick=${() => (inst?.runtime === "windows" ? navigate(sectionPath("agents")) : run("model"))}><span>${label}${tail}</span><span class="chev" aria-hidden="true">⌄</span></button>`
       : html`<span class="chat-meta-left"><span>${label}${tail}</span></span>`}
-    <span class="chat-meta-right">${busy ? html`<button type="button" class="chat-meta-stop btn-stop" disabled=${!!s.cancelling[name]} title=${t("chat.stopReplyTitle")}
+    <span class="chat-meta-right">${busy ? html`<button type="button" id=${ids.stopBtn || "stopBtn"} class="chat-meta-stop btn-stop" disabled=${!!s.cancelling[name]} title=${t("chat.stopReplyTitle")}
       onClick=${() => store.cancelReply(name)}>${t("chat.stopReply")}</button>` : null}<${ComposerAuth} /></span>
   </div>`;
 }
