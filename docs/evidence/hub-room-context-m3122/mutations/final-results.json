@@ -1,0 +1,37 @@
+[
+  {
+    "label": "restored",
+    "command": [
+      "../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-room-context-m3122.test.ts",
+      "tests/hub-room-context-member-m3122.test.ts",
+      "tests/hub-room-context-http-m3122.test.ts",
+      "tests/hub-room-context-daemon-m3122.test.ts",
+      "tests/hub-room-context-link-m3122.test.ts",
+      "tests/hub-room-context-fleet-m3122.test.ts",
+      "--maxWorkers=2"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "source-types",
+    "command": [
+      "../../node_modules/.bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.json"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "test-types",
+    "command": [
+      "../../node_modules/.bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "exit": 0
+  }
+]

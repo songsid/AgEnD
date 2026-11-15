@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+(node:40386) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  6 passed (6)
+      Tests  20 passed (20)
+   Start at  16:53:42
+   Duration  10.20s (transform 8.70s, setup 351ms, import 13.67s, tests 2.20s, environment 1ms)
+

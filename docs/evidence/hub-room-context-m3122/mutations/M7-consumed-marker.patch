@@ -1,0 +1,13 @@
+diff --git a/src/daemon.ts b/src/daemon.ts
+index 104e30fe7..d3538398e 100644
+--- a/src/daemon.ts
++++ b/src/daemon.ts
+@@ -2770,7 +2770,7 @@ export class Daemon extends EventEmitter {
+     const backend = this.config.backend ?? this.backend?.binaryName ?? "";
+     if (!["claude-code", "codex"].includes(backend)) return;
+     const marker = durableAttempt ? `[agend-delivery-id:${durableAttempt.deliveryId}]`
+-      : humanVerificationId ? verdict.humanReceipt?.marker ?? `[agend-human-id:${humanVerificationId}]` : roomContextInputMarker(track.meta);
++      : humanVerificationId ? verdict.humanReceipt?.marker ?? `[agend-human-id:${humanVerificationId}]` : null;
+     if (!marker || !formatted.startsWith(marker)) return;
+     let found: { path?: string; offset?: number; runtime?: RuntimeTranscriptReference } | null = verdict.transcriptCheckpoint ?? null;
+     if (!found) {

@@ -1,0 +1,42 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-member-m3122.test.ts (5 tests | 1 failed | 4 skipped) 32ms
+   × IPC acceptance never advances context; exact positive input receipts survive a lost ACK and adapter restart 30ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-member-m3122.test.ts > IPC acceptance never advances context; exact positive input receipts survive a lost ACK and adapter restart
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      Object {
+        "exposureId": "201d24e3-adc4-473f-923d-a5c01134e7aa",
+        "generation": "85b22103-653e-4307-afd6-02089b5dce7f",
+        "messageId": "63c81ea8-135e-4594-997e-5b858873184d",
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/hub-room-context-member-m3122.test.ts:30:35
+     28| it("IPC acceptance never advances context; exact positive input receip…
+     29|   const h=fixture(),ask=h.ask();h.adapter.accept(ask,h.link);await h.a…
+     30|   expect(h.link.contextInput).not.toHaveBeenCalled();
+       |                                   ^
+     31|   const cid=h.deliver.mock.calls[0][0].correlationId;
+     32|   vi.mocked(h.link.contextInput!).mockRejectedValueOnce(Error("ACK los…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  16:53:28
+   Duration  804ms (transform 487ms, setup 101ms, import 530ms, tests 32ms, environment 0ms)
+

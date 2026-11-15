@@ -1,0 +1,149 @@
+[
+  {
+    "id": "M1-repeat-context",
+    "path": "src/hub/rooms/context.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-room-context-m3122.test.ts",
+      "-t",
+      "sends only posts after",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "assertionFailure": true,
+    "originalSha256": "eb0e269367d14db25a45cb9b0ad7eee930a97a26c97b89429370125526d2ad4d",
+    "mutantSha256": "7d2a2f549cfb96bd946a21ecec4d2c2813dab5e60fb2573e78f0c29227907f80",
+    "restoredSha256": "eb0e269367d14db25a45cb9b0ad7eee930a97a26c97b89429370125526d2ad4d",
+    "load1": 2.5986328125
+  },
+  {
+    "id": "M2-stale-generation",
+    "path": "src/hub/rooms/context-cursor.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-room-context-m3122.test.ts",
+      "-t",
+      "keeps cursors across reconnect",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "assertionFailure": true,
+    "originalSha256": "af7c0a9d90584c29c27cf2b54caba24968a3150ba46f877695eef3620bc7f54a",
+    "mutantSha256": "220d02913b85c09ac9884b905596974b17df142cb943618bbc31905a53d48ac0",
+    "restoredSha256": "af7c0a9d90584c29c27cf2b54caba24968a3150ba46f877695eef3620bc7f54a",
+    "load1": 2.47021484375
+  },
+  {
+    "id": "M3-IPC-is-not-input",
+    "path": "src/hub/member/room-ask.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-room-context-member-m3122.test.ts",
+      "-t",
+      "IPC acceptance never advances",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "assertionFailure": true,
+    "originalSha256": "053c1aed5527544c8da17d9fb833dc1491fbf1cef3ef3424ffbc9a012826c950",
+    "mutantSha256": "bc8425dfa4f06785797337cf42b3bcca347a9d4364868a1811e5de910beb14f0",
+    "restoredSha256": "053c1aed5527544c8da17d9fb833dc1491fbf1cef3ef3424ffbc9a012826c950",
+    "load1": 2.47021484375
+  },
+  {
+    "id": "M4-reset-write-fence",
+    "path": "src/daemon.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-room-context-daemon-m3122.test.ts",
+      "-t",
+      "a reset during a readiness",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "assertionFailure": true,
+    "originalSha256": "f1c3044d8540f3588a20bf03c9612e7c359c42f7ce0038042cc0b9b0df6b5d04",
+    "mutantSha256": "11cb59c19f678e8cb01467a411b021410a08cc5d7f3842abb45f7dbf7b0a50c5",
+    "restoredSha256": "f1c3044d8540f3588a20bf03c9612e7c359c42f7ce0038042cc0b9b0df6b5d04",
+    "load1": 2.47021484375
+  },
+  {
+    "id": "M5-frozen-answer-reset",
+    "path": "src/hub/member/room-ask.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-room-context-member-m3122.test.ts",
+      "-t",
+      "keeps a frozen answer",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "assertionFailure": true,
+    "originalSha256": "053c1aed5527544c8da17d9fb833dc1491fbf1cef3ef3424ffbc9a012826c950",
+    "mutantSha256": "fc11c47627104b753c3e656c3aac1dc31d6a981f9ae8563211f50ee6fe625a7b",
+    "restoredSha256": "053c1aed5527544c8da17d9fb833dc1491fbf1cef3ef3424ffbc9a012826c950",
+    "load1": 2.35205078125
+  },
+  {
+    "id": "M6-local-opt-in",
+    "path": "src/hub/client.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-room-context-link-m3122.test.ts",
+      "-t",
+      "keeps legacy hello16",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "assertionFailure": true,
+    "originalSha256": "12c79067186727c010d2f0059e7e30cc4f6601d27150c42d31ec49c49c3ed320",
+    "mutantSha256": "1ca1061bd325c1abf0b6254b288058c3c0442316528da21757332e2da76f7b40",
+    "restoredSha256": "12c79067186727c010d2f0059e7e30cc4f6601d27150c42d31ec49c49c3ed320",
+    "load1": 2.16357421875
+  },
+  {
+    "id": "M7-consumed-marker",
+    "path": "src/daemon.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-room-context-daemon-m3122.test.ts",
+      "-t",
+      "a real busy Hub delivery",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "assertionFailure": true,
+    "originalSha256": "f1c3044d8540f3588a20bf03c9612e7c359c42f7ce0038042cc0b9b0df6b5d04",
+    "mutantSha256": "969f41a42e1cc3cff71340b43d919a954025e572fb059b122bf8d8d4407df767",
+    "restoredSha256": "f1c3044d8540f3588a20bf03c9612e7c359c42f7ce0038042cc0b9b0df6b5d04",
+    "load1": 2.16357421875
+  }
+]

@@ -1,0 +1,73 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-rooms-migration-r1.test.ts (7 tests | 2 failed) 90ms
+   × adds retry time without rewriting an issued delivery, and refuses the pre-retry registry 18ms
+   × adds unknown historical answer times and backfills only retained depth/rate stop counts once 13ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-rooms-migration-r1.test.ts > adds retry time without rewriting an issued delivery, and refuses the pre-retry registry
+AssertionError: expected { …(26) } to deeply equal { …(25) }
+
+- Expected
++ Received
+
+@@ -3,10 +3,11 @@
+    "answer_digest": null,
+    "answer_id": null,
+    "answered_at": null,
+    "asker": "corp/05bb2658-9efd-44ba-970a-4bf7be9b8fdc",
+    "asker_member": "e741f259-955f-4589-a2da-ae996e39d6f5",
++   "context_generation": null,
+    "created_at": 123,
+    "expires_at": 999999,
+    "exposure_id": "0c0eb30c-815f-4cfc-9644-d8edc10214a2",
+    "exposure_revision": 3,
+    "fleet_id": "5258d90d-a34a-4af8-a8e4-a6ffda34758a",
+
+ ❯ tests/hub-rooms-migration-r1.test.ts:87:67
+     85|     const before = db.prepare("SELECT * FROM hub_room_deliveries").get…
+     86|     applyHubMigrations(db, HUB_HTTP_MIGRATIONS); applyHubMigrations(db…
+     87|     expect(db.prepare("SELECT * FROM hub_room_deliveries").get()).toEq…
+       |                                                                   ^
+     88|     expect(() => applyHubMigrations(db, beforeRetry)).toThrow(/s3-room…
+     89|   } finally { db.close(); }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-rooms-migration-r1.test.ts > adds unknown historical answer times and backfills only retained depth/rate stop counts once
+AssertionError: expected { …(26) } to deeply equal { …(25) }
+
+- Expected
++ Received
+
+@@ -3,10 +3,11 @@
+    "answer_digest": null,
+    "answer_id": "a0b55bfa-c8e5-420a-882a-cbbfa19e1e2d",
+    "answered_at": null,
+    "asker": "corp/728c4e57-7da5-4d72-8c30-7d36b05bbead",
+    "asker_member": "3a8c54ff-9b4c-4703-9130-fd66330b8b3b",
++   "context_generation": null,
+    "created_at": 123,
+    "expires_at": 999999,
+    "exposure_id": "67398d64-8c9c-43dc-91a0-250d0a5c1024",
+    "exposure_revision": 1,
+    "fleet_id": "81ccba09-5659-49d8-ac95-3cc4e42f260d",
+
+ ❯ tests/hub-rooms-migration-r1.test.ts:109:67
+    107|     const before = db.prepare("SELECT * FROM hub_room_deliveries").get…
+    108|     applyHubMigrations(db, HUB_HTTP_MIGRATIONS); applyHubMigrations(db…
+    109|     expect(db.prepare("SELECT * FROM hub_room_deliveries").get()).toEq…
+       |                                                                   ^
+    110|     expect(db.prepare("SELECT * FROM hub_room_posts").all()).toEqual(p…
+    111|     expect(db.prepare("SELECT * FROM hub_chain_stop_counts ORDER BY re…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 14 passed (16)
+   Start at  16:49:34
+   Duration  4.14s (transform 2.35s, setup 194ms, import 3.12s, tests 1.69s, environment 0ms)
+
