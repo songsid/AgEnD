@@ -566,6 +566,10 @@ are separate UI work; do not claim those screens or a remote-update switch from 
 
 ## Administration
 
+- The administrator Overview reports people, shared-agent questions, answer times, failures, Fleets and rooms for today
+  or seven calendar days in the viewer’s time zone. Each agent asked counts once (including each @All target). It shows
+  counts only, never questions, answers, room names or per-person activity. Answer times need five measured answers;
+  older answers with no recorded time are excluded. Hub-assistant activity stays in the room message split.
 - **Connected fleets** lists each Fleet by its name with its owner under it. A row's menu has **Revoke…**: "It
   disconnects and everything it shares is withdrawn." Revoked Fleets fold under **Revoked (*n*)**.
   A revoked Fleet's old publications stay hidden even if it reconnects as a new Fleet. Reconnecting does not restore those shares; other active agents and their chats remain available.

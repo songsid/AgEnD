@@ -1,0 +1,7 @@
+{
+  "product": "26dcd29d5c9b781900830592c4df3fb8c8102d88",
+  "alpha": "aecdf5725996774d7f5103ec583eeaf43c4ae07d",
+  "sync": "72bf6ff4428f8c5457922645e73af32cd8fa626f",
+  "mergedTree": "56bc246c61c6f3eca8d4eb5f2efd1b35c835d531",
+  "proof": "Exact original binary patch applied to alpha in an isolated index reproduces the entire sync tree. Own source/tests unchanged; no sync rerun."
+}
