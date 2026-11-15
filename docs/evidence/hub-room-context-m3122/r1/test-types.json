@@ -1,0 +1,4 @@
+{
+  "command": "npx --no-install tsc --noEmit -p tsconfig.test.json",
+  "exit": 0
+}

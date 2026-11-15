@@ -2500,6 +2500,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           },
           attachAgentRooms: port => { this.hubAgentRooms = port; this.notifyHubRoomTools(); },
           roomToolsChanged: () => this.notifyHubRoomTools(),
+          roomConversationGeneration: agent => this.daemons.get(agent)?.roomConversationGeneration() ?? null,
+          attachRoomInputs: handler => { this.hubRoomInput = handler; },
           roomNotify: input => this.deliverHubRoomPostAnswer(input),
           roomReceipt: (caller, receiptId) => verifyRoomReceipt({
             lookup: (agent, id) => {
@@ -2777,6 +2779,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       requires_reply: "true",
       task_summary: "A question from the Hub",
     };
+    if (input.roomContextGeneration) ipcMeta.hub_room_context_generation = input.roomContextGeneration;
     const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: input.text, meta: ipcMeta },
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
         if (!(await input.beforeInput())) return false;
@@ -2894,6 +2897,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
+  private hubRoomInput: ((correlationId: string, agent: string, generation: string) => void) | null = null;
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
   /** The connected member adapter; never an agent-selectable identity. */
   private hubAgentRooms: import("./hub/member/room-post.js").AgentRoomPort | null = null;
@@ -12707,6 +12711,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.cacheInstanceActivity(name, msg.activity as string | null);
         } else if (msg.type === "instance_progress") {
           this.cacheInstanceProgress(name, (msg.progress as string) || null);
+        } else if (msg.type === "hub_room_input") {
+          if (this.instanceIpcClients.get(name) === ipc && typeof msg.correlationId === "string" && typeof msg.generation === "string")
+            this.hubRoomInput?.(msg.correlationId,name,msg.generation);
         } else if (msg.type === "cross_instance_delivery_failed") {
           const senderSession = String(msg.senderSession ?? "");
           const targetInstance = String(msg.targetInstance ?? name);

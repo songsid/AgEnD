@@ -1,0 +1,13 @@
+diff --git a/src/hub/rooms/agents.ts b/src/hub/rooms/agents.ts
+index aec985a5b..9cf77bdb8 100644
+--- a/src/hub/rooms/agents.ts
++++ b/src/hub/rooms/agents.ts
+@@ -111,7 +111,7 @@ export class HubRoomAgents {
+     if (!this.supports(link) || !link.features.has(HUB_ROOM_CONTEXT_CAPABILITY)) return {...body,ok:false,code:"denied"};
+     const ok = this.core.atomic(db => {
+       const d = db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(body.messageId) as Delivery | undefined;
+-      if (!link.current() || !d || d.exposure_id !== body.exposureId || d.fleet_id !== link.fleetId || d.owner !== personKeyString(link.owner)
++      if (!link.current() || !d || d.exposure_id !== body.exposureId || d.owner !== personKeyString(link.owner)
+         || !d.sent_epoch || !this.valid(db,d) || this.core.now() >= d.expires_at) return false;
+       const e=readExposure(db,d.exposure_id);
+       if (!e || exposureOf(e).state !== "published" || !this.sourcePublished(db,d)) return false;

@@ -60,7 +60,8 @@ export interface HubAnswer {
 /** Group room delivery has its own durable per-agent ID; it is not a direct grant-backed question. */
 export interface HubRoomContextRow { author: string; text: string; at: Millis; repliedTo?: true }
 export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: string; exposureId: ExposureId;
-  asker: { name: string }; text: string; context: readonly HubRoomContextRow[]; attachments?: HubAttachmentRef[] }
+  asker: { name: string }; text: string; context: readonly HubRoomContextRow[]; attachments?: HubAttachmentRef[];
+  contextState?: import("./room-context-model.js").HubRoomContextState }
 export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string;
   /** M-3127: room-answer-buttons-v1 links only; bound into the answer digest like its text. */
   buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[] }
@@ -130,6 +131,8 @@ export interface HubRevocation {
 }
 
 export type HubMemberFrame =
+  | HubFrame<"room.context-state", import("./room-context-model.js").HubRoomContextRequest>
+  | HubFrame<"room.context-input", import("./room-context-model.js").HubRoomContextInput>
   | HubFrame<"room.list", HubRoomListRequest>
   | HubFrame<"room.post", HubRoomPost>
   | HubFrame<"room.members", HubRoomMembersRequest>
@@ -160,6 +163,8 @@ export type HubPairingNotice = {
 /** #3429 option B: an issuer-signed member-address relocation (member-origin.ts). */
 export interface HubRelocation { v: 1; from: string; to: string; spkiSha256: Sha256; revision: Epoch; signature: string }
 export type HubServerFrame =
+  | HubFrame<"room.context-state-result", import("./room-context-model.js").HubRoomContextResult>
+  | HubFrame<"room.context-input-result", import("./room-context-model.js").HubRoomContextInputResult>
   | HubFrame<"room.list-result", HubRoomListResult>
   | HubFrame<"room.post-result", HubRoomPostResult>
   | HubFrame<"room.members-result", HubRoomMembersResult>

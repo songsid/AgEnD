@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+
+ Test Files  2 passed (2)
+      Tests  25 passed (25)
+   Start at  17:14:13
+   Duration  6.52s (transform 8.54s, setup 173ms, import 11.20s, tests 931ms, environment 0ms)
+

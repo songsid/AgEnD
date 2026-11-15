@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-link-m3122.test.ts (3 tests | 1 failed) 1297ms
+   × keeps legacy hello16 and modern17 without a context name, and admits the bounded welcome offer only with local opt-in 203ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-link-m3122.test.ts > keeps legacy hello16 and modern17 without a context name, and admits the bounded welcome offer only with local opt-in
+TypeError: Cannot read properties of undefined (reading 'type')
+ ❯ tests/hub-room-context-link-m3122.test.ts:28:64
+     26|   const net=await network([...hubCaps,HUB_FLEET_UPDATE_CAPABILITY]);
+     27|   const c=net.client(undefined,undefined,[...memberCaps,HUB_FLEET_UPDA…
+     28|   const hello=net.received.find(f=>f.type==="hello")!;if(hello.type!==…
+       |                                                                ^
+     29|   expect(hello.payload.capabilities).toHaveLength(17);expect(hello.pay…
+     30|   expect(c.state.link!.features.has(HUB_ROOM_CONTEXT_CAPABILITY)).toBe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  16:42:34
+   Duration  5.49s (transform 3.17s, setup 170ms, import 3.90s, tests 1.30s, environment 0ms)
+

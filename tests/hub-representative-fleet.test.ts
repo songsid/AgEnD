@@ -105,10 +105,11 @@ describe("beforeInput in the delivery facade", () => {
     (fm as any).fleetConfig = { instances: { worker: { working_directory: "/tmp/w", backend: "claude-code" } } };
     const deliver = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(true);
     const beforeInput = async () => true, stillCurrent = () => true;
-    await expect((fm as any).deliverHubQuestion({ agent: "worker", correlationId: "hub-0000", text: "Q", beforeInput, stillCurrent })).resolves.toBe(true);
+    const roomContextGeneration = "a8bca560-2787-4e3b-9c50-ec674f10cd72";
+    await expect((fm as any).deliverHubQuestion({ agent: "worker", correlationId: "hub-0000", text: "Q", beforeInput, stillCurrent, roomContextGeneration })).resolves.toBe(true);
     const [name, payload, options] = deliver.mock.calls[0]!;
     expect(name).toBe("worker");
-    expect(payload).toMatchObject({ type: "fleet_inbound", content: "Q", meta: { from_instance: HUB_REPORT_TARGET, correlation_id: "hub-0000", requires_reply: "true" } });
+    expect(payload).toMatchObject({ type: "fleet_inbound", content: "Q", meta: { from_instance: HUB_REPORT_TARGET, correlation_id: "hub-0000", requires_reply: "true", hub_room_context_generation: roomContextGeneration } });
     expect(options).toMatchObject({ isCrossInstance: true, beforeInput: expect.any(Function), stillCurrent });
     // Not a configured instance, or a Windows agent (no pre-input hook there): never delivered.
     await expect((fm as any).deliverHubQuestion({ agent: "gone", correlationId: "hub-1", text: "Q", beforeInput, stillCurrent })).resolves.toBe(false);

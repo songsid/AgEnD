@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-link-m3122.test.ts (3 tests | 1 failed | 2 skipped) 400ms
+   × keeps legacy hello16 and modern17 without a context name, and admits the bounded welcome offer only with local opt-in 398ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-link-m3122.test.ts > keeps legacy hello16 and modern17 without a context name, and admits the bounded welcome offer only with local opt-in
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-room-context-link-m3122.test.ts:35:72
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 skipped (3)
+   Start at  16:53:34
+   Duration  4.66s (transform 3.17s, setup 85ms, import 4.02s, tests 400ms, environment 0ms)
+

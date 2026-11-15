@@ -1,5 +1,7 @@
 /** Strict P1 frame schemas; importing this file creates no state, sockets or timers. */
 import { z } from "zod";
+import { roomContextStateSchema, roomContextRequestSchema, roomContextInputSchema, roomContextResultSchema, roomContextInputResultSchema } from "./room-context-model.js";
+export { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 import { fleetUpdateRequestSchema, fleetUpdateCancelSchema, fleetUpdateStatusSchema, fleetUpdateStatusAckSchema } from "./fleet-update-model.js";
 import { epoch, hash, identifier, person, plain, reason, uuid, validated, parseStrictJson } from "./validation.js";
 /** Phase 3 receiver offer; old-Hub compatibility is negotiated by the member client. */
@@ -86,7 +88,7 @@ export const answerSchema = z.strictObject({ messageId: uuid, answerId: uuid, te
   attachments: attachmentList.optional(), buttons: answerButtonsSchema.optional() });
 export const roomContextSchema = z.strictObject({ author: plain(256), text: plain(HUB_LIMITS.question), at: epoch, repliedTo: z.literal(true).optional() });
 export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roomName: plain(120), exposureId: uuid,
-  asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), context: z.array(roomContextSchema).max(31)
+  asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), contextState: roomContextStateSchema.optional(), context: z.array(roomContextSchema).max(31)
     .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1), attachments: attachmentList.optional() });
 export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
   buttons: answerButtonsSchema.optional(), attachments: attachmentList.optional() });
@@ -161,6 +163,7 @@ const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.arra
 export const memberLeavePayloadSchema = z.strictObject({});
 export const memberFrameSchema = z.union([
   frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
+  frame("room.context-state", roomContextRequestSchema), frame("room.context-input", roomContextInputSchema),
   frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema), frame("room.react", roomReactSchema),
   frame("member.leave", memberLeavePayloadSchema),
   frame("hello", hello), frame("fleet.update-status", fleetUpdateStatusSchema), frame("fleet.info", fleetInfoSchema), frame("fleet.recommendation-ack", recommendationAckSchema), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
@@ -175,6 +178,7 @@ export const memberFrameSchema = z.union([
 ]);
 export const serverFrameSchema = z.union([
   frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
+  frame("room.context-state-result", roomContextResultSchema), frame("room.context-input-result", roomContextInputResultSchema),
   frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema), frame("room.react-result", roomReactResultSchema),
   frame("welcome", welcome), frame("fleet.update", fleetUpdateRequestSchema), frame("fleet.update-cancel", fleetUpdateCancelSchema), frame("fleet.update-status-ack", fleetUpdateStatusAckSchema), frame("fleet.recommendation", recommendationSchema), frame("question", questionSchema), frame("receipt", receiptSchema),
   frame("reconcile", z.strictObject({ receipts: z.array(receiptSchema).max(128), nextReceiptSequence: epoch, more: z.boolean() })),

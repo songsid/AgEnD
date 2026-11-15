@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-member-m3122.test.ts (5 tests | 1 failed | 4 skipped) 24ms
+   × keeps a frozen answer retryable across a conversation reset without advancing the new cursor 22ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-member-m3122.test.ts > keeps a frozen answer retryable across a conversation reset without advancing the new cursor
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ tests/hub-room-context-member-m3122.test.ts:74:29
+     72|   expect(h.link.sendAnswer).toHaveBeenCalledTimes(1);
+     73|   h.reset();h.adapter.connected({...h.link});await h.adapter.flush();
+     74|   expect(h.link.sendAnswer).toHaveBeenCalledTimes(2);
+       |                             ^
+     75|   const answer=vi.mocked(h.link.sendAnswer).mock.calls[0][0];
+     76|   expect(vi.mocked(h.link.sendAnswer).mock.calls[1][0]).toEqual(answer…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  16:43:47
+   Duration  730ms (transform 412ms, setup 97ms, import 463ms, tests 24ms, environment 0ms)
+

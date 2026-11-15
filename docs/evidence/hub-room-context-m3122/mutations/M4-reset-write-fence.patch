@@ -1,0 +1,13 @@
+diff --git a/src/daemon.ts b/src/daemon.ts
+index 104e30fe7..6ea92d6cf 100644
+--- a/src/daemon.ts
++++ b/src/daemon.ts
+@@ -8752,7 +8752,7 @@ export class Daemon extends EventEmitter {
+     const verdict = opts?.verdict ?? { reached: false };
+     if (opts?.durableAttempt) verdict.durableAttempt = true;
+     const cancelled = () => (opts?.deliveryEpoch !== undefined && !this.isDeliveryEpochCurrent(opts.deliveryEpoch))
+-      || (!!opts?.roomContextGeneration && opts.roomContextGeneration !== this.roomConversationGeneration());
++;
+     if (cancelled() || this.stormWindow?.isStopped()) return false;
+     formatted = prepareDeliveryWire(formatted, opts?.preserveExactBytes);
+ 
