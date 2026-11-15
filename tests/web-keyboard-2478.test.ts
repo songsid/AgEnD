@@ -177,6 +177,20 @@ describe("IME: a candidate bar never takes the tabs out and back", () => {
     expect(c.kb(), "held: the keyboard really went").toBe(false);
   });
 
+  // #4011 review: a keyboard really put away while the field keeps focus sends ONE reading and nothing after. Past the focus
+  // follow window (no per-frame re-check), the hold's own re-check is what takes it down.
+  it("put away while focused, one reading and no further events (past the follow window): down after the hold", async () => {
+    const c = await phone();
+    await c.focus("#box");
+    await c.resize({ height: 480 });
+    await new Promise((r) => setTimeout(r, 900));                         // past the 800 ms focus follow: no frame loop
+    expect(c.kb()).toBe(true);
+    await c.resize({ height: 844 });                                       // the one reading; nothing else happens
+    expect(c.kb(), "held at first").toBe(true);
+    await new Promise((r) => setTimeout(r, 380)); await settle();
+    expect(c.kb(), "the hold's re-check took it down").toBe(false);
+  });
+
   // beta.4 (the user, iPhone): every keypress made the page re-align. A keystroke can move the view — the predictive or
   // candidate bar coming and going, the caret panned into view, one reading as tall as no keyboard at all — and none of it
   // may take the keyboard down and up again while the field keeps focus.

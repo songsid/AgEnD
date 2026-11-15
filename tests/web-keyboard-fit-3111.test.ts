@@ -83,6 +83,19 @@ describe("M-3111: with the keyboard up the shell is the visible view", () => {
     expect(seen).toEqual([["480px", "translateY(132px)"], ["480px", "translateY(120px)"], ["480px", "translateY(140px)"], ["480px", "translateY(120px)"]]);
   });
 
+  // #4011 review: one reading as tall as no keyboard, while the field keeps focus, is on hold — the shell keeps the height it
+  // had until the hold says the keyboard really went (else the box drops under a keyboard that is still there).
+  it("typing: a one-off full-height reading keeps the shell's height until the hold ends", async () => {
+    const { vv, vars, kb, focus } = await phone();
+    await focus();
+    vv.height = 480; vv.offsetTop = 0; vv.emit("resize"); await settle();
+    await new Promise((r) => setTimeout(r, 900));                         // past the focus follow window
+    vv.height = 844; vv.emit("resize"); await settle();
+    expect([kb(), ...vars()], "held").toEqual([true, "480px", null]);
+    vv.height = 480; vv.emit("resize"); await settle();                    // the keyboard was there all along
+    expect([kb(), ...vars()]).toEqual([true, "480px", null]);
+  });
+
   it("down: the shell follows the view back up every frame (no snap at the end), then gives the height back to its stylesheet", async () => {
     const { vv, vars, kb, focus, blur, frames } = await phone();
     await focus();
