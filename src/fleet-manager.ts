@@ -381,6 +381,7 @@ import { redactSecrets } from "./tool-progress.js";
 import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
 import { CODEX_INLINE_MODEL_MIN, codexModelCommand } from "./backend/codex-model-switch.js";
+import { CLI_RUNTIME_SWITCH, type CliSwitchWant } from "./backend/cli-runtime-switch.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
@@ -1164,6 +1165,8 @@ const CLI_ENV_FRESH_MS = 60 * 60 * 1000;
 export const RUNTIME_SWITCH_RESULT_MS = 12_000;
 /** M-3175: a codex switch may wait up to a minute for its pane to be idle, then up to 10 s for codex to record it. */
 export const CODEX_RUNTIME_SWITCH_RESULT_MS = 80_000;
+/** M-3180: a CLI_RUNTIME_SWITCH step's result; the fleet itself declines a model the CLI cannot vouch for, or a value that is not one command. */
+type CliSwitchResult = OwnSwitchOutcome | { outcome: "not_sent"; reason: "unknown_model" | "command"; version?: undefined };
 
 export const CLI_ENV_PROBE_DEADLINE_MS = 16_000;
 
@@ -24459,6 +24462,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
 
+  /**
+   * M-3180: the in-session switch of a CLI in CLI_RUNTIME_SWITCH, one command at a time (the entry's steps), each typed by the
+   * daemon only into an idle pane of a running binary at the entry's minimum for that step, and confirmed by what the CLI showed
+   * after it. The first step that did not switch ends it, with that step. A model the CLI cannot vouch for is not typed.
+   */
+  private async runCliRuntimeSwitch(instanceName: string, backend: string, want: CliSwitchWant): Promise<{ result: CliSwitchResult; step: CliSwitchWant }> {
+    const entry = CLI_RUNTIME_SWITCH[backend]!;
+    let last: { result: CliSwitchResult; step: CliSwitchWant } = { result: { outcome: "not_sent" }, step: want };
+    for (const step of entry.steps(want)) {
+      if (step.model !== null && entry.knownModel && entry.knownModel(step.model) !== true) return { result: { outcome: "not_sent", reason: "unknown_model" }, step };
+      const line = entry.command(step), ipc = this.instanceIpcClients.get(instanceName);
+      if (!line) return { result: { outcome: "not_sent", reason: "command" }, step };
+      if (!ipc) return { result: { outcome: "not_sent" }, step };
+      const id = `switch-${randomUUID()}`;
+      const result = await new Promise<OwnSwitchOutcome>(resolve => {
+        const timer = setTimeout(() => { this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_confirmed" }); }, CODEX_RUNTIME_SWITCH_RESULT_MS);
+        timer.unref?.();
+        this.runtimeSwitchWaiters.set(id, r => { clearTimeout(timer); resolve(r); });
+        const sent = ipc.send({ type: "raw_paste", content: line, runtime_switch: { id, kind: "model", requested: step.model ?? "", cli: { backend, model: step.model, effort: step.effort } } });
+        if (!sent) { clearTimeout(timer); this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_sent" }); return; }
+        this.logger.info({ instanceName, backend, step }, "CLI runtime switch sent");
+      });
+      last = { result, step };
+      if (result.outcome !== "switched") return last;
+    }
+    return last;
+  }
+
+  /** M-3180: why a CLI_RUNTIME_SWITCH switch fell back to a restart, in the reply's words. */
+  private cliSwitchFallbackReason(backend: string, { result, step }: { result: CliSwitchResult; step: CliSwitchWant }): string {
+    const cli = BACKEND_LABELS[backend] ?? backend, entry = CLI_RUNTIME_SWITCH[backend]!;
+    if (result.outcome === "not_sent" && result.reason === "busy") return t("codex_switch.busy");
+    if (result.outcome === "not_sent" && result.reason === "version") {
+      return t("cli_switch.version", cli, result.version ?? t("codex_switch.version_unknown"), step.model !== null ? entry.minVersion.model : entry.minVersion.effort);
+    }
+    if (result.outcome === "not_sent" && result.reason === "unknown_model") return t("cli_switch.unknown_model", cli, step.model ?? "");
+    if (result.outcome === "not_sent" && result.reason === "command") return t("cli_switch.not_one_command", cli, step.model ?? step.effort ?? "");
+    if (result.outcome === "mismatch") return t("cli_switch.mismatch", cli, result.shown);
+    return t("cli_switch.unconfirmed", cli);
+  }
+
   /** M-3175: why a codex switch fell back to a restart, in the reply's words. */
   private codexSwitchFallbackReason(result: OwnSwitchOutcome): string {
     if (result.outcome === "not_sent" && result.reason === "busy") return t("codex_switch.busy");
@@ -25743,6 +25787,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.saveFleetConfig();
     }
 
+    // M-3180: a CLI with a verified in-session switch (CLI_RUNTIME_SWITCH) — typed when it can be, confirmed, else restarted.
+    // The effort is already saved above, so a restart launches with it.
+    if (Object.hasOwn(CLI_RUNTIME_SWITCH, backendName) && this.instanceIpcClients.get(instanceName)) {
+      const done = await this.runCliRuntimeSwitch(instanceName, backendName, { model: null, effort: applied });
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
+      if (done.result.outcome === "switched") return `${warn}${t("effort.codex_switched", instanceName, applied)}`;
+      const why = this.cliSwitchFallbackReason(backendName, done);
+      this.logger.info({ instanceName, backend: backendName, effort: applied, result: done.result }, "CLI runtime effort switch fell back to a restart");
+      await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
+      return `${warn}${t("effort.codex_restarted", instanceName, applied, why)}`;
+    }
     if (strategy === "runtime") {
       if (!this.instanceIpcClients.get(instanceName)) return `${warn}${t("effort.not_running", instanceName)}`;
       this.pasteRawToClassicInstance(instanceName, `/effort ${applied}`);
@@ -25827,6 +25882,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (result.outcome === "switched") return `${warn}${t("model.codex_switched", instanceName, model)}${this.effortSuffix(instanceName)}`;
       const why = this.codexSwitchFallbackReason(result);
       this.logger.info({ instanceName, model, result }, "Codex runtime model switch fell back to a restart");
+      await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
+      return `${warn}${t("model.codex_restarted", instanceName, model, why)}${this.effortSuffix(instanceName)}`;
+    }
+
+    // M-3180: the same for a CLI with a verified in-session switch (CLI_RUNTIME_SWITCH): saved first, switched in place when
+    // it can be and confirmed, else restarted (as these CLIs always were).
+    if (Object.hasOwn(CLI_RUNTIME_SWITCH, backendName) && this.instanceIpcClients.get(instanceName)) {
+      if (!this.persistInstanceModel(instanceName, model)) return `${warn}${t("model.persist_failed", instanceName)}`;
+      const done = await this.runCliRuntimeSwitch(instanceName, backendName, { model, effort: null });
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
+      if (done.result.outcome === "switched") return `${warn}${t("model.codex_switched", instanceName, model)}${this.effortSuffix(instanceName)}`;
+      const why = this.cliSwitchFallbackReason(backendName, done);
+      this.logger.info({ instanceName, backend: backendName, model, result: done.result }, "CLI runtime model switch fell back to a restart");
       await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
       return `${warn}${t("model.codex_restarted", instanceName, model, why)}${this.effortSuffix(instanceName)}`;
     }

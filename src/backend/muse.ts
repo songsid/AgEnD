@@ -683,6 +683,11 @@ const MUSE_MODEL_FALLBACK: readonly ModelOption[] = [
  * session lookup).
  */
 export function readMuseModelCatalog(stateDir?: string): ModelOption[] {
+  return readMuseCachedCatalog(stateDir) ?? [...MUSE_MODEL_FALLBACK];
+}
+
+/** M-3180: the models muse's own cached catalog lists as visible; null when it has none (no cache: the fallback list is a guess). */
+export function readMuseCachedCatalog(stateDir?: string): ModelOption[] | null {
   // Root resolution mirrors the binary, not XDG_STATE_HOME: 1.4.7 builds its
   // state dir as `$XDG_DATA_HOME/muse` or `$HOME/.local/share/muse`
   // (MUSE_SESSIONS uses the same root).
@@ -692,7 +697,7 @@ export function readMuseModelCatalog(stateDir?: string): ModelOption[] {
   const dir = join(stateDir ?? base, "model-catalog");
   try {
     const files = readdirSync(dir).filter(f => f.endsWith(".json")).sort().slice(0, 16);
-    if (files.length === 0) return [...MUSE_MODEL_FALLBACK];
+    if (files.length === 0) return null;
     const seen = new Set<string>();
     const out: ModelOption[] = [];
     for (const file of files) {
@@ -715,9 +720,9 @@ export function readMuseModelCatalog(stateDir?: string): ModelOption[] {
         }
       } catch { /* one bad file never hides the rest */ }
     }
-    return out.length > 0 ? out : [...MUSE_MODEL_FALLBACK];
+    return out.length > 0 ? out : null;
   } catch {
-    return [...MUSE_MODEL_FALLBACK];
+    return null;
   }
 }
 

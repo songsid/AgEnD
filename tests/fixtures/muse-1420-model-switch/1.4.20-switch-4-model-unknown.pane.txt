@@ -1,0 +1,12 @@
+rh@rig:~/work$ clear; env -i HOME=/home/u/h-switch XDG_CONFIG_HOME=/home/u/h-switch/.config PATH=/usr/local/bin
+:/usr/bin:/bin TERM=xterm-256color LANG=C.UTF-8 MUSE_UPDATE_INTERVAL_SECONDS=31536000 META_API_KEY=dummy-key /home/u/bin
+/muse --provider meta --base-url http://127.0.0.1:18800 --model mock-model --disable-approval --trust-workspace; echo EX
+ITED=$?
+  Muse Code 1.4.20
+  Model set to mock-alt for this session (saved model unchanged)
+◆ unsupported reasoning effort `bogus`; expected minimal|low|medium|high|xhigh|max|ultra
+  Model set to nosuch-model for this session (saved model unchanged)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  nosuch-model · high · /home/u/work · Launch overrides
