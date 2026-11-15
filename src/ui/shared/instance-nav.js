@@ -492,6 +492,10 @@ function SortMenu({ sort }) {
     return () => { doc.removeEventListener("pointerdown", away, true); doc.removeEventListener("keydown", esc, true); };
   }, [open]);
   const recent = sort.mode === "recent";
+  // M-3164: the list's density, the same synced choice as Settings (nav.density, M-3129): either place changes it at once, for both.
+  const density = useStore(sidebarDensityStore).value;
+  const densityRadio = (value, label) => html`<label class="nav-sort-opt"><input type="radio" name="nav-sort-density" value=${value}
+      checked=${density === value} onChange=${() => setSidebarDensity(value)} /><span>${label}</span></label>`;
   const radio = (group, value, label, hint) => html`<label class="nav-sort-opt"><input type="radio" name=${`nav-sort-${group}`} value=${value}
       checked=${sort[group] === value} onChange=${() => setNavSort({ [group]: value })} /><span>${label}${hint ? html`<span class="nav-sort-hint">${hint}</span>` : null}</span></label>`;
   return html`<div class="nav-sort" ref=${box}>
@@ -504,6 +508,9 @@ function SortMenu({ sort }) {
       <fieldset><legend>${tn("sortFavs")}</legend>
         ${radio("favs", "fixed", tn("sortFavsFixed"), "")}
         ${radio("favs", "recent", tn("sortFavsRecent"), "")}</fieldset>
+      <fieldset><legend>${tn("sortDisplay")}</legend>
+        ${densityRadio("detailed", tn("sortDisplayDetailed"))}
+        ${densityRadio("compact", tn("sortDisplayCompact"))}</fieldset>
     </div>` : null}
   </div>`;
 }

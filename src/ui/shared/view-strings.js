@@ -275,6 +275,9 @@ register("view", {
   "sortFavs": "Favorites, in Recent replies",
   "sortFavsFixed": "Pinned on top, in your order",
   "sortFavsRecent": "Sorted by last reply too",
+  "sortDisplay": "Display",
+  "sortDisplayDetailed": "Detailed",
+  "sortDisplayCompact": "Compact",
   "recentOthers": "Recent replies first",
   "pinnedCurrent": "Current",
   "pinnedLabel": "The instance you have open"
@@ -548,6 +551,9 @@ register("view", {
   "sortFavs": "最愛（最近回覆模式時）",
   "sortFavsFixed": "固定在最上面，照你的順序",
   "sortFavsRecent": "也依最近回覆排序",
+  "sortDisplay": "顯示",
+  "sortDisplayDetailed": "詳細",
+  "sortDisplayCompact": "精簡",
   "recentOthers": "最近回覆在上",
   "pinnedCurrent": "目前",
   "pinnedLabel": "你目前開著的 Agent"
