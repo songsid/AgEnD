@@ -1,0 +1,12 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/model-switch-3180-grok-alpha
+
+(node:46429) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+error: no such file or directory: /tmp/agend-precheck-YQMzLL/none
+
+ Test Files  3 passed (3)
+      Tests  99 passed (99)
+   Start at  16:57:09
+   Duration  11.99s (transform 8.39s, setup 479ms, import 10.62s, tests 11.65s, environment 0ms)
+

@@ -9,6 +9,7 @@ import { basename } from "node:path";
 import { compareVersions, versionOf } from "../cli-audited.js";
 import { probeBackendVersion } from "../backend-availability.js";
 import { readMuseCachedCatalog } from "./muse.js";
+import { GROK_INLINE_MODEL_MIN, grokSwitchCommand, grokSwitchVerdict } from "./grok-model-switch.js";
 import { readAgyCliEnv } from "./effort-metadata.js";
 import { AGY_INLINE_MODEL_MIN, agySwitchCommand, agySwitchTarget, agySwitchVerdict } from "./agy-model-switch.js";
 
@@ -91,6 +92,16 @@ export const MUSE_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
   },
 };
 
+/** Grok: exact fresh model/effort response; transient notices may replace earlier notices. */
+export const GROK_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
+  minVersion: { model: GROK_INLINE_MODEL_MIN, effort: GROK_INLINE_MODEL_MIN },
+  matchExe: exe => /\/grok(?:-\d+\.\d+\.\d+[^/]*)?$/.test(exe),
+  modelWant: (model, effort) => ({ model, effort }),
+  steps: want => [want],
+  command: grokSwitchCommand,
+  verify: (want, before, now) => grokSwitchVerdict(want, before.pane, now.pane),
+};
+
 /** agy: exact catalog labels in its fresh command response, captured on 1.4.7 and 1.5.9. */
 export const AGY_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
   minVersion: { model: AGY_INLINE_MODEL_MIN, effort: AGY_INLINE_MODEL_MIN },
@@ -102,8 +113,9 @@ export const AGY_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
   verify: (want, before, now) => agySwitchVerdict(want, before.pane, now.pane, readAgyCliEnv()?.models ?? []),
 };
 
-/** The CLIs whose fleet `/model` / `/effort` try the in-session switch first. (agy, grok: their entries join here.) */
-export const CLI_RUNTIME_SWITCH: Readonly<Record<string, CliRuntimeSwitchEntry>> = Object.freeze({ muse: MUSE_RUNTIME_SWITCH, antigravity: AGY_RUNTIME_SWITCH });
+
+/** The CLIs whose model/effort changes use a verified in-session switch. */
+export const CLI_RUNTIME_SWITCH: Readonly<Record<string, CliRuntimeSwitchEntry>> = Object.freeze({ muse: MUSE_RUNTIME_SWITCH, antigravity: AGY_RUNTIME_SWITCH, grok: GROK_RUNTIME_SWITCH });
 
 export function cliSwitchAllowed(entry: CliRuntimeSwitchEntry, step: CliSwitchWant, version: string | null): boolean {
   const v = versionOf(version);
