@@ -1,0 +1,13 @@
+{
+  "commands": [
+    {
+      "command": "node_modules/.bin/tsc -p tsconfig.json --noEmit",
+      "exitCode": 0
+    },
+    {
+      "command": "node_modules/.bin/tsc -p tsconfig.test.json --noEmit",
+      "exitCode": 0
+    }
+  ],
+  "note": "Both programs passed during composition; exact-head CI checks the final published tree. Plain alpha sync has no own runtime/test delta and no rerun."
+}

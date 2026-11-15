@@ -38,4 +38,3 @@ AssertionError: expected [ { prefix: 'hub-update:', …(10) } ] to have a length
       Tests  1 failed | 75 passed (76)
    Start at  11:33:05
    Duration  23.57s (transform 22.69s, setup 389ms, import 35.10s, tests 8.28s, environment 1ms)
-
