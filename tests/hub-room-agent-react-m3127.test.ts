@@ -84,7 +84,7 @@ describe("A. the Hub takes an agent's reaction (room.react)", () => {
 });
 
 describe("the member hello's capability list (Fable #3935 info)", () => {
-  it("the fullest hello sends 16, refusing a 17th on send while the Hub accepts it — agent reactions add no capability", async () => {
+  it("the legacy hello keeps16; phase3 can offer a17th — agent reactions add no capability", async () => {
     const { HUB_CAPABILITIES, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, memberFrameSchema, encodeMemberFrame } = await import("../src/hub/protocol.js");
     const sent = [...HUB_CAPABILITIES, ...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY];   // compose/member.ts at its fullest
     expect(sent).toHaveLength(16);
@@ -96,7 +96,7 @@ describe("the member hello's capability list (Fable #3935 info)", () => {
     expect(() => encodeMemberFrame(hello(sent))).not.toThrow();
     const future = hello([...sent, "one-more-v1"]);
     expect(memberFrameSchema.safeParse(future).success).toBe(true);
-    expect(() => encodeMemberFrame(future)).toThrow();   // retain the old-Hub send bound during the receive-first rollout
+    expect(() => encodeMemberFrame(future)).not.toThrow(); // phase3 has a bounded legacy retry for older Hubs
   });
 });
 

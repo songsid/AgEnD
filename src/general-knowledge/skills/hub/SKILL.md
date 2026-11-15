@@ -528,6 +528,14 @@ Each answer uses the latest 30 supplied room messages, plus a replied-to message
 keeps no earlier model conversation, sees no other room and has no tools. Room membership, mentions and delivery
 are supplied by the rooms-server integration; these admin cards alone do not add a chat room or enable an account.
 
+## Connection compatibility
+
+A Fleet offering newer update support may retry once with its older capability list if an older Hub closes before
+welcome. It uses the same authenticated pairing and removes only the new update offer; it does not ask the user to pair
+again. The log says `Retrying Hub connection with a legacy capability offer` once. Ordinary Hub features remain usable;
+new remote-update support stays unavailable on that legacy connection. Authentication refusals and failures after welcome
+do not trigger this retry. Updating the Hub and restarting the Fleet's Hub connection lets them negotiate newer support.
+
 ## Fleet version reports
 
 Newer Fleets report their AgEnD version and whether they run as a service when connecting to a supporting Hub.

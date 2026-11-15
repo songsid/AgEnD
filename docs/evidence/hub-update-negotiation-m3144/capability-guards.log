@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-fleet-update-requests-m3144
+
+(node:75758) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  1 passed | 1 skipped (2)
+      Tests  2 passed | 17 skipped (19)
+   Start at  10:39:23
+   Duration  9.19s (transform 7.87s, setup 192ms, import 10.14s, tests 458ms, environment 0ms)
+

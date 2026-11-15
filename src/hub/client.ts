@@ -1,7 +1,7 @@
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
+import { HUB_FLEET_UPDATE_CAPABILITY, HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
 import { HubSocket } from "./socket.js";
 import { HUB_RECOMMENDATION_CAPABILITY } from "./recommendation-model.js";
 import { HUB_FLEET_INFO_CAPABILITY } from "./fleet-info.js";
@@ -27,6 +27,7 @@ export interface HubMemberLink {
 }
 interface Pending { expected: HubServerFrame["type"]; resolve(frame: HubServerFrame): void; reject(error: Error): void; timer: NodeJS.Timeout }
 export interface HubClientOptions {
+  log?(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   receiveRecommendations?: boolean;
   fleetInfo?: import("./types.js").HubFleetInfo;
   home: string; hubId: string; memberOrigin: string; current(): boolean;
@@ -71,6 +72,8 @@ export class HubMemberClient implements HubMemberTransport {
   private firstReject: ((error: Error) => void) | null = null;
   /** #3429 B: which of dial()'s addresses this attempt is on (a candidate that fails moves to the next one at once). */
   private dialIndex = 0;
+  private legacyHello = false;
+  private legacyTried = false;
   readonly bootId = randomUUID();
   constructor(private readonly options: HubClientOptions) {}
   private current(): boolean { return !this.stopped && this.options.current(); }
@@ -85,6 +88,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (!this.current() || !this.profile || this.connecting) return;
     this.connecting = true; this.ready = false; this.deferred = []; this.deferredBytes = 0;
     const profile = this.profile, handshake = randomUUID();
+    const offered = [...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)].filter(c => !this.legacyHello || c !== HUB_FLEET_UPDATE_CAPABILITY);
     const origins = this.options.dial ? this.options.dial() : [profile.hub.memberOrigin];
     if (!origins.length) {                                       // a relocation state that does not verify: fail closed
       this.connecting = false; this.stopped = true; this.options.hold("key-changed");
@@ -121,13 +125,20 @@ export class HubMemberClient implements HubMemberTransport {
     ws.once("open", () => {
       if (!this.current()) { ws.terminate(); return; } this.opening = null; connected = true; this.connecting = false;
       let link!: HubSocket<HubServerFrame, HubMemberFrame>;
+      let welcomed = false;
       const handshakeTimer = setTimeout(() => link.end(), HUB_LIMITS.rpcTimeout); handshakeTimer.unref();
       link = new HubSocket(ws, { current: () => this.current() && this.link === link, parse: parseServerFrame, encode: encodeMemberFrame,
-        receive: frame => this.receive(frame, link, handshake, handshakeTimer, origin), closed: code => {
+        receive: frame => { if (frame.type === "welcome") welcomed = true; return this.receive(frame, link, handshake, handshakeTimer, origin, offered); }, closed: code => {
           clearTimeout(handshakeTimer); const wasStopped = this.stopped, usable = this.ready;
           if (code === "replaced" || code === "revoked") this.stopped = true;
           if (this.link !== link) return;
           this.link = null; this.view = null; this.ready = false; this.deferred = []; this.deferredBytes = 0;
+          // Exactly one retry on this same pinned pairing/endpoint, before trying another relocation address.
+          if (!welcomed && !this.legacyTried && offered.includes(HUB_FLEET_UPDATE_CAPABILITY) && !this.stopped && this.current()) {
+            this.legacyTried = true; this.legacyHello = true; this.rejectPending();
+            try { this.options.log?.("info", "Retrying Hub connection with a legacy capability offer", { phase: "legacy-hello" }); } catch { /* diagnostics only */ }
+            this.connect(); return;
+          }
           // #3429 B: a pending `to` that upgraded but closed (or timed out) before a validated, reconciled welcome is still
           // only a candidate: try the next address now, as before the upgrade. Never after replaced/revoked (stopped), and
           // the anchor (last) never falls back.
@@ -136,10 +147,10 @@ export class HubMemberClient implements HubMemberTransport {
         } });
       this.link = link;
       void link.send({ v: 1, type: "hello", requestId: handshake, linkEpoch: 0,
-        payload: { supportedVersions: [1], capabilities: [...HUB_CAPABILITIES, ...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)], memberBootId: this.bootId } }).catch(() => link.end());
+        payload: { supportedVersions: [1], capabilities: [...HUB_CAPABILITIES, ...offered], memberBootId: this.bootId } }).catch(() => link.end());
     });
   }
-  private async receive(frame: HubServerFrame, link: HubSocket<HubServerFrame, HubMemberFrame>, handshake: string, timeout: NodeJS.Timeout, endpoint: string): Promise<void> {
+  private async receive(frame: HubServerFrame, link: HubSocket<HubServerFrame, HubMemberFrame>, handshake: string, timeout: NodeJS.Timeout, endpoint: string, offered: readonly string[]): Promise<void> {
     if (!link.current()) return;
     if (!this.view) {
       if (frame.type === "welcome" && frame.requestId === handshake && frame.payload.hubId !== this.profile!.hub.hubId) {
@@ -149,7 +160,7 @@ export class HubMemberClient implements HubMemberTransport {
         || frame.linkEpoch !== frame.payload.linkEpoch || frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       clearTimeout(timeout); this.epoch = frame.linkEpoch; this.revocation = frame.payload.revocationVersion;
       const profile = this.profile!, epoch = this.epoch;
-      const self = this, offered = this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES;
+      const self = this;
       const canReportInfo = offered.includes("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_FLEET_INFO_CAPABILITY) === true;
       const canReceiveRecommendation = canReportInfo && !!this.options.fleetInfo && this.options.receiveRecommendations === true && frame.payload.capabilities?.includes(HUB_RECOMMENDATION_CAPABILITY) === true;
       const features: ReadonlySet<string> = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);

@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-fleet-update-requests-m3144
+
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  10:37:34
+   Duration  2.07s (transform 978ms, setup 100ms, import 1.15s, tests 655ms, environment 0ms)
+

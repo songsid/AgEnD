@@ -1,0 +1,43 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-fleet-update-requests-m3144
+
+ ❯ tests/hub-update-capability-bounds-m3144.test.ts (2 tests | 2 failed) 26ms
+   × permits32 hello names for the phase3 offer, refuses33 17ms
+   × keeps legacy welcomes at16 and allows32 only on the explicit phase3 welcome 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-update-capability-bounds-m3144.test.ts > permits32 hello names for the phase3 offer, refuses33
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ encodeMemberFrame src/hub/protocol.ts:191:31
+ ❯ tests/hub-update-capability-bounds-m3144.test.ts:10:81
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-update-capability-bounds-m3144.test.ts > keeps legacy welcomes at16 and allows32 only on the explicit phase3 welcome
+Error: Hub protocol: invalid
+ ❯ validated src/hub/validation.ts:74:30
+     72| export function validated<T>(schema: z.ZodType<T>, value: unknown): T {
+     73|   const result = schema.safeParse(value);
+     74|   if (!result.success) throw new HubProtocolError();
+       |                              ^
+     75|   return result.data;
+     76| }
+ ❯ encodeServerFrame src/hub/protocol.ts:196:33
+ ❯ tests/hub-update-capability-bounds-m3144.test.ts:14:87
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  10:35:30
+   Duration  506ms (transform 210ms, setup 91ms, import 236ms, tests 26ms, environment 0ms)
+

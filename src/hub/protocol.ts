@@ -1,6 +1,8 @@
 /** Strict P1 frame schemas; importing this file creates no state, sockets or timers. */
 import { z } from "zod";
 import { epoch, hash, identifier, person, plain, reason, uuid, validated, parseStrictJson } from "./validation.js";
+/** Phase 3 receiver offer; old-Hub compatibility is negotiated by the member client. */
+export const HUB_FLEET_UPDATE_CAPABILITY = "fleet-update-v1";
 import type { HubMemberFrame, HubServerFrame, HubAuthorizationRequest, HubAskerEnvelope } from "./types.js";
 import { validHubAnswerButtons } from "./buttons-model.js";
 import { recommendationSchema, recommendationAckSchema } from "./recommendation-model.js";
@@ -32,9 +34,9 @@ export const roomFilesNegotiated = (features: ReadonlySet<string> | undefined): 
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending.
  * LIMIT (M-3127): a member's hello sends HUB_CAPABILITIES + these + room-ask-v1 (+ room-post-v1 when its agent-room adapter
- * is composed). That full list makes exactly 16 (pinned by tests/hub-room-agent-react-m3127.test.ts), the member's send
- * limit for older Hubs. This Hub accepts 32 names; raise member sends only in a later release, after that receive bound
- * ships — or let the new feature ride on a flag of the same release. */
+ * is composed). That legacy list makes exactly 16 (pinned by tests/hub-room-agent-react-m3127.test.ts).
+ * M-3144 permits 32 sends for fleet-update-v1, with one bounded retry dropping only that offer when an
+ * older 16-cap Hub closes before welcome. Do not silently truncate other features. */
 export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1", "web-origin-v1", "member-relocation-v1", "room-answer-buttons-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
@@ -141,11 +143,10 @@ export const webOriginStatementSchema = z.strictObject({ v: z.literal(1), webOri
 export const relocationStatementSchema = z.strictObject({ v: z.literal(1), from: z.string().min(1).max(2048), to: z.string().min(1).max(2048),
   spkiSha256: hash, revision: epoch.min(1), signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/) });
 const frame = <T extends string, P extends z.ZodType>(type: T, payload: P) => z.strictObject({ v: z.literal(1), type: z.literal(type), requestId: uuid, linkEpoch: epoch, payload });
-/** Receive-first rollout: Hubs accept 32 names, but this build's members still emit at most 16 (mandatory included)
- * for older Hubs. Raise the send bound only in a later release. Version reports travel as values, not capability names. */
-const memberHelloCapabilities = z.array(identifier).max(16);
+/** Members can offer 32 names. The client retries a rejected pre-welcome offer once without fleet-update-v1. */
+const memberHelloCapabilities = z.array(identifier).max(32);
 const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(32), memberBootId: uuid });
-/** The reverse receive-first rollout: members accept 32 welcome names; Hubs still send at most 16 for older members. */
+/** Members accept 32 welcome names; Hubs keep at most 16 unless the peer offered fleet-update-v1. */
 const hubWelcomeCapabilities = z.array(identifier).max(16).optional();
 const welcome = z.strictObject({ selectedVersion: z.literal(1), hubId: uuid, fleetId: uuid, linkEpoch: epoch.min(1), revocationVersion: epoch,
   /** Sent only when the hello offered welcome-caps-v1: the Hub's own optional features. */
@@ -193,7 +194,7 @@ export function encodeMemberFrame(value: HubMemberFrame): string {
 }
 export function encodeServerFrame(value: HubServerFrame): string {
   const frame = parseServerFrame(JSON.stringify(value));
-  if (frame.type === "welcome") validated(hubWelcomeCapabilities, frame.payload.capabilities);
+  if (frame.type === "welcome" && !frame.payload.capabilities?.includes(HUB_FLEET_UPDATE_CAPABILITY)) validated(hubWelcomeCapabilities, frame.payload.capabilities);
   return JSON.stringify(frame);
 }
 export const validateAsker = (input: unknown): HubAskerEnvelope => validated(askerSchema, input);
