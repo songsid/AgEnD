@@ -919,7 +919,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (!page.more) flushSoon(link);
         return { ...reply, type: "reconcile", payload: page };
       }
-      case "attachment.get": return { ...reply, type: "attachment.chunk", payload: await rooms.attachmentGet(frame.payload, link) };
+      case "attachment.get": return { ...reply, type: "attachment.chunk", payload: await (groupRooms.agents.ownsFile(frame.payload.id)
+        ? groupRooms.agents.attachmentGet(frame.payload, link) : rooms.attachmentGet(frame.payload, link)) };
       case "attachment.put": return { ...reply, type: "attachment.ack", payload: rooms.attachmentPut(frame.payload, link) };
       case "error": return;
     }
