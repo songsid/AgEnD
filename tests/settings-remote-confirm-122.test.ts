@@ -27,7 +27,7 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
@@ -52,7 +52,11 @@ const secretFor = (user: string) => base32Encode(Buffer.from(`secret-for-${user}
 /** The code of an app (its secret) `offset` time steps from now. Each step is accepted once per app: tests that use an app twice use two steps. */
 const appCode = (app: string | { secret: string }, offset = 0) => hotp(base32Decode(typeof app === "string" ? app : app.secret)!, totpStep(Date.now()) + offset);
 const roots: string[] = [], stores: SettingsConfirmationStore[] = [], fleets: any[] = [];
+// M-3150: every code here is taken at a step offset from Date.now() and the Fleet reads Date.now() again to check it, so a 30 s step boundary between the two
+// pushed an offset −1 code out of the ±1 window ("wrong", CI 43619500277). Each test holds the wall clock in the middle of a step; only Date is faked.
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(Math.floor(Date.now() / 30_000) * 30_000 + 15_000); });
 afterEach(() => {
+  vi.useRealTimers();
   for (const s of stores.splice(0)) s.close();
   for (const a of fleets.splice(0)) { a.fm.stormWindow.shutdown(); a.fm.spawnGate.shutdown(); }
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
