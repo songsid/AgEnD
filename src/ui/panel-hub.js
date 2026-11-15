@@ -525,11 +525,15 @@ export function HubFoot() {
 
 /** M-3190: 新對話 is the launcher's own address (the sidebar's and the phone list's 新對話 open it). */
 const NEW_CHAT_PATH = "/ui/hub?view=new";
-/** Once per page load (this window): 對話 opens the most recent room or chat (one with a message); back on 對話 later shows the list / launcher. */
+/**
+ * Once per page load (this window): 對話 opens the most recent room or 1:1 chat, by when it last moved; back on 對話 later shows
+ * the list / launcher. M-3204: by recency, never by preview text — the Hub sends a 1:1 chat without one. The one exception is the
+ * Hub assistant's chat, which the Hub makes for everyone when the list is read: unused (no message yet) it is not a chat to open.
+ */
 const openedIn = new WeakSet();
 const thisWindow = () => (typeof window !== "undefined" ? window : globalThis);
 const autoOpened = () => openedIn.has(thisWindow());
-const recentRoom = (rooms) => rooms.filter((r) => !r.archived && (r.kind === "group" || !!r.lastText))
+const recentRoom = (rooms) => rooms.filter((r) => !r.archived && (!r.assistant || !!r.lastText))
   .sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0))[0] || null;
 
 /**

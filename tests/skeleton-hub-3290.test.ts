@@ -108,7 +108,8 @@ describe("#3290 Hub initial reads", () => {
   });
 
   it("M-3190: the New chat launcher is pending until catalog data arrives — no empty card before it", async () => {
-    const catalog = held(); api({ "/hub/v1/exposures": () => catalog.promise }); await mount();
+    // No chat yet (a chat would open on 對話 — M-3204), so 對話 is the list and its 新對話 the launcher.
+    const catalog = held(); api({ "/hub/v1/exposures": () => catalog.promise, "/hub/v1/rooms": () => [200, { rooms: [] }] }); await mount();
     await until(() => p!.root.querySelector(".side-new")); fire(p!.root.querySelector(".side-new")!, "click");
     await until(() => p!.root.querySelector(".hub-launch .skeleton")); expect(p!.root.querySelector(".hub-launch-empty")).toBeNull();
     catalog.release([200, { askable: [] }]); await until(() => p!.root.querySelector(".hub-launch-empty"));

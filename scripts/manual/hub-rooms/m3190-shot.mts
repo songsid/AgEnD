@@ -1,5 +1,5 @@
 /** M-3190 rig (from real-server.mts): the Hub's 對話 and 我分享的 Agent for three people — a first-time member, a member with Fleets
- * and a room, and an administrator on a fresh Hub — on real R HTTP/SQLite over loopback (no account), desktop and phone, light and
+ * and a room, an administrator on a fresh Hub, and (M-3204) a member with only a 1:1 chat — on real R HTTP/SQLite over loopback (no account), desktop and phone, light and
  * dark. The pilot's Hub has quick pairing and company join on: the browser adds those features (and group-policy-v1) to the real
  * session answer and serves the welcome projection, so the pages draw as on that Hub. TAG=today|after names the pictures.
  *   PW_DIR=<checkout> OUT=<dir> TAG=after [PERSONAS=first,member,admin] [CASES=desktop-light,…] npx tsx scripts/manual/hub-rooms/m3190-shot.mts */
@@ -21,7 +21,8 @@ mkdirSync(out, { recursive: true });
 const keys = mkdtempSync(join(out, "keys-")), port = 49700 + Math.floor(Math.random() * 200), origin = `https://127.0.0.1:${port}`;
 const r = await s3bRig({ webOrigin: origin }), alex = r.addPerson("alex", "Alex"), unseen = r.addPerson("new-person", "Never signed in"), group = randomUUID();
 const bo = r.addPerson("bo", "Bo Wu"), olivia = r.addPerson("olivia", "林小華");
-const admin = await r.signIn("admin"), actor = await r.signIn("alex"), boS = await r.signIn("bo"), oliviaS = await r.signIn("olivia");
+r.addPerson("dana", "Dana Lee");
+const admin = await r.signIn("admin"), actor = await r.signIn("alex"), boS = await r.signIn("bo"), oliviaS = await r.signIn("olivia"), danaS = await r.signIn("dana");
 r.httpDeps.directoryReads = createHubDirectoryAdmission(() => true);
 r.directory.searchGrantPeople = async () => ({ ok: true, people: [], truncated: false });
 r.directory.searchPolicyGroups = async () => ({ ok: true, groups: [{ objectId: group, cn: "Pilot direct group", dn: "CN=Pilot,DC=test" }], truncated: false });
@@ -43,7 +44,12 @@ const initial = await r.call(actor, "POST", "/hub/v1/rooms", { name: "HanGeneral
 if (initial.status !== 200) throw Error("room seed");
 { const fleetO = randomUUID(), linkO = r.link(fleetO, olivia), xid = randomUUID();
   await r.http.receive(r.frame("exposure.snapshot", { revision: 1, exposures: [{ id: xid, fleetId: fleetO, owner: olivia, displayName: "規格審查員", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }, linkO) as never, linkO);
-  const g = await r.call(oliviaS, "POST", "/hub/v1/grants", { exposureId: xid, exposureRevision: 1, login: "alex", days: 7 }); if (g.status !== 200) throw Error("grant " + g.status); }
+  const g = await r.call(oliviaS, "POST", "/hub/v1/grants", { exposureId: xid, exposureRevision: 1, login: "alex", days: 7 }); if (g.status !== 200) throw Error("grant " + g.status);
+  // M-3204: Dana uses the shared agent one to one only — a 1:1 chat with a question in it, no room.
+  const gd = await r.call(oliviaS, "POST", "/hub/v1/grants", { exposureId: xid, exposureRevision: 1, login: "dana", days: 7 }); if (gd.status !== 200) throw Error("grant dana " + gd.status);
+  const chat = await r.call(danaS, "POST", "/hub/v1/rooms", { exposureId: xid, grantId: gd.json.grant?.id ?? gd.json.id }); if (chat.status !== 200) throw Error("chat dana " + chat.status + chat.text);
+  const asked = await r.call(danaS, "POST", `/hub/v1/rooms/${chat.json.room?.id ?? chat.json.id}/messages`, { idempotencyKey: randomUUID(), text: "幫我看一下這份規格的風險。" });
+  if (asked.status !== 200) throw Error("ask dana " + asked.status + asked.text); }
 await provisionHubIdentity({ home: keys, memberOrigin: origin });
 const server = createServer({ key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) }, (req, res) => {
   if (!r.http.handle(req, res)) { res.writeHead(404); res.end(); }
@@ -62,6 +68,7 @@ const PERSONAS: Record<string, { who: any; fleets: any[]; views: string[] }> = {
   first: { who: boS, fleets: [], views: ["chats"] },
   member: { who: actor, fleets: PILOT_FLEETS, views: ["chats", "new", "mine", "mine-menu"] },
   admin: { who: admin, fleets: [], views: ["chats"] },
+  direct: { who: danaS, fleets: [], views: ["chats"] },   // M-3204: 1:1 chats only
 };
 const TAG = process.env.TAG ?? "today";
 try {
