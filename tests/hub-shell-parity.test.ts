@@ -98,7 +98,8 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
   it("Search and Ctrl K open the conversation filter (the Hub's own — no fleet search here); Escape closes it", async () => {
     const rooms = [{ id: "11111111-2222-4333-8444-555555555555", exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", lastAt: 1, waiting: false, features: [] },
       { id: "21111111-2222-4333-8444-555555555555", exposureId: "e2", grantId: "g2", state: "active", exposureName: "Design guide", ownerName: "Olivia", lastAt: 2, waiting: false, features: [] }];
-    const pg = await hub({ rooms });
+    // On 新對話: landing on 對話 would open the newest chat (M-3204) — this is about the list beside it.
+    const pg = await hub({ rooms, path: "/ui/hub?view=new" });
     await until(() => pg.root.querySelectorAll("#sidebar .hub-side-rooms .v-inst").length === 2);
     expect([pg.root.querySelector("#sidebar .hub-side-filter"), pg.root.querySelector("#sidebar .hub-side-rooms .inst-head .count")!.textContent]).toEqual([null, "2"]);   // M-3092: the 「Agent」 group's count
     fire(pg.document as any, "keydown", { key: "k", ctrlKey: true });
