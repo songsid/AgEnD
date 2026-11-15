@@ -143,4 +143,25 @@ describe("the share page module (#2636)", () => {
     expect(asked.filter(u => u === `${BASE}/state`).length).toBe(asked.slice(0, after).filter(u => u === `${BASE}/state`).length);
     await p.unmount();
   });
+
+  it("does not offer Carousel even with two stored offices (#4010)", async () => {
+    const state = { instances: [{ name: "dev-a", display_name: "Ada", status: "running", execution_state: "working" }],
+      org: { general: [], teams: [{ name: "dev", members: ["dev-a"] }], instances: {} }, needs: [], traffic: { now: "t", items: [] }, office: "hq" };
+    const reply = (status: number, body: unknown) => ({ ok: status === 200, status, json: async () => body });
+    const timers = { ...globalThis, fetch: async (u: string) => {
+      if (u === `${BASE}/state`) return reply(200, state);
+      if (u === `${BASE}/offices`) return reply(200, { rev: 1, offices: [
+        { id: "hq", name: "HQ", skin: "pixel", members: ["dev-a"] },
+        { id: "lab", name: "Lab", skin: "pixel", members: [] },
+      ], readable: true });
+      if (u === `${BASE}/office-acts`) return reply(200, { acts: [], now: Date.now() });
+      if (u === `${BASE}/office-skins`) return reply(200, { packs: [] });
+      return reply(404, {});
+    } };
+    await p.mount(h(S.SharePage, { base: BASE, timers, pollMs: 60_000 }));
+    await settle(); await settle();
+    expect([...p.root.querySelectorAll("select.oo-office option")].map((o: any) => o.getAttribute("value") ?? o.value)).not.toContain("*carousel");
+    expect(p.root.querySelector(".oo-carousel")).toBeNull();
+    await p.unmount();
+  });
 });

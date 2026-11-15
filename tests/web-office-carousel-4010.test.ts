@@ -139,35 +139,102 @@ describe("Carousel on the page", () => {
     expect(edit.getAttribute("title")).toContain("carousel");
   });
 
+  function spyInterval() {
+    const real = globalThis.setTimeout.bind(globalThis);
+    const realClear = globalThis.clearTimeout.bind(globalThis);
+    const live = new Map<any, { fn: () => void; ms: number }>();
+    let seq = 0;
+    const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation((fn: any, ms?: number, ...a: any[]) => {
+      if (typeof ms === "number" && ms >= 15_000 && ms <= 600_000) {
+        const id = { fake: ++seq };
+        live.set(id, { fn, ms });
+        return id as any;
+      }
+      return real(fn, ms as number, ...a);
+    });
+    const cspy = vi.spyOn(globalThis, "clearTimeout").mockImplementation((id: any) => {
+      if (id && typeof id === "object" && "fake" in id) { live.delete(id); return; }
+      return realClear(id);
+    });
+    return {
+      live,
+      restore: () => { spy.mockRestore(); cspy.mockRestore(); },
+      last: () => [...live.values()].at(-1),
+    };
+  }
+
   it("advances after the interval while playing, and not while paused", async () => {
     offices = { rev: 2, offices: TWO };
     await office();
     await choose("*carousel");
-    const real = globalThis.setTimeout.bind(globalThis);
-    const realClear = globalThis.clearTimeout.bind(globalThis);
-    const held: Array<{ fn: () => void; ms: number }> = [];
-    const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation((fn: any, ms?: number, ...a: any[]) => {
-      if (typeof ms === "number" && ms >= 15_000 && ms <= 600_000) { held.push({ fn, ms }); return { fake: held.length } as any; }
-      return real(fn, ms as number, ...a);
-    });
-    const cspy = vi.spyOn(globalThis, "clearTimeout").mockImplementation((id: any) => {
-      if (id && typeof id === "object" && "fake" in id) return;
-      return realClear(id);
-    });
+    const t = spyInterval();
     try {
       const iv = p.root.querySelector(".oo-car-interval");
       iv.value = "15"; fire(iv, "change"); await settle(4);
-      expect(held.at(-1)?.ms).toBe(15_000);
-      held.at(-1)!.fn(); await settle(6);
+      expect(t.last()?.ms).toBe(15_000);
+      t.last()!.fn(); await settle(6);
       expect(who()).toEqual(["quill"]);
       p.root.querySelector(".oo-car-pause").click(); await settle(4);
-      const n = held.length;
+      expect(t.live.size).toBe(0);
       expect(now()).toContain("Paused");
       expect(who()).toEqual(["quill"]);
       p.root.querySelector(".oo-car-pause").click(); await settle(4);    // resume: a new timeout
-      expect(held.length).toBeGreaterThan(n);
-      expect(held.at(-1)?.ms).toBe(15_000);
-    } finally { spy.mockRestore(); cspy.mockRestore(); }
+      expect(t.live.size).toBe(1);
+      expect(t.last()?.ms).toBe(15_000);
+    } finally { t.restore(); }
+  });
+
+  it("Next resets the interval timer (the old timeout is cleared)", async () => {
+    offices = { rev: 2, offices: TWO };
+    await office();
+    await choose("*carousel");
+    const t = spyInterval();
+    try {
+      const iv = p.root.querySelector(".oo-car-interval");
+      iv.value = "15"; fire(iv, "change"); await settle(4);
+      expect(t.live.size).toBe(1);
+      const first = [...t.live.keys()][0];
+      p.root.querySelector(".oo-car-next").click(); await settle(6);
+      expect(who()).toEqual(["quill"]);
+      expect(t.live.has(first)).toBe(false);
+      expect(t.live.size).toBe(1);
+      expect(t.last()?.ms).toBe(15_000);
+      t.last()!.fn(); await settle(6);
+      expect(who()).toEqual(["atlas"]);
+    } finally { t.restore(); }
+  });
+
+  it("Space on a ticked office or a button does not drive the carousel", async () => {
+    offices = { rev: 2, offices: TWO };
+    await office();
+    await choose("*carousel");
+    expect(now()).toContain("Playing");
+    expect(who()).toEqual(["atlas"]);
+    const box = p.root.querySelector(".oo-carousel-offices input");
+    fire(box, "keydown", { key: " " }); await settle(4);
+    expect(now()).toContain("Playing");
+    expect(who()).toEqual(["atlas"]);
+    fire(p.root.querySelector(".oo-car-next"), "keydown", { key: "ArrowRight" }); await settle(6);
+    expect(who()).toEqual(["atlas"]);                                    // the button keeps the arrow
+    fire(p.window.document.body, "keydown", { key: "ArrowRight" }); await settle(6);
+    expect(who()).toEqual(["quill"]);                                    // nothing focused: the remote still steps
+  });
+
+  it("a share (opening set) never offers Carousel, even if the pick is forced", async () => {
+    offices = { rev: 2, offices: TWO };
+    const org = await import("/ui/js/fleet-org.js");
+    const ctx = await import("/assets/app-ctx.js");
+    const view = org.buildOrgView(ORG, app.appStore.get());
+    const lease = ctx.createLease();
+    try {
+      await p.mount(h(F.Office, { view, opening: "front", lease })); await settle(6);
+      expect(options().map(([v]: any) => v)).toEqual(["auto", "*all", "front", "lab"]);
+      expect(p.root.querySelector(".oo-carousel")).toBeNull();
+      const s = sw();
+      s.value = "*carousel"; fire(s, "change"); await settle(6);
+      expect(p.root.querySelector(".oo-carousel")).toBeNull();
+      expect(p.root.querySelector(".oo-car-pause")).toBeNull();
+    } finally { lease.dispose(); }
   });
 
   it("the store: nothing saved yet is null; a pick is kept per device", () => {

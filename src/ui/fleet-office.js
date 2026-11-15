@@ -81,7 +81,7 @@ import { ShareButton } from "./office-share-dialog.js";
 import { DLG, boxColours, boxLayout, createDialogue, createFaces, drawBox, fitBox, messageOf, onBox, pickFront, portraitSrc, stageOf, talkOf, wrap } from "./fleet-office-dialogue.js";
 import { applyOverrides, fitNight, fitSeatFor, stripBox } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
-import { CAROUSEL_ID, INTERVALS, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
+import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
 import { OK_MAX, OK_MIN, clampPan, desksK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
   wholeInView, zoomLabel, zoomOffice } from "./fleet-office-view.js";
@@ -1262,10 +1262,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "Escape") { if (fsRef.current === "immersive") { e.preventDefault(); exitFs(); } return; }
       const tg = e.target;
-      // #4010: carousel keys at document level so a TV remote works without the canvas focused. Not while typing
-      // (the interval menu, the checkboxes) or over Edit offices / Edit layout.
+      // #4010: carousel keys at document level so a TV remote works without the canvas focused. Not while a field,
+      // button or link is focused (Space/arrows stay with that control) or over Edit offices / Edit layout.
       const ck = carouselAct.current;
-      if (ck.on && !typing(tg) && !editingRef.current && !layoutRef.current) {
+      if (ck.on && !carouselHeld(tg) && !editingRef.current && !layoutRef.current) {
         const a = carouselKey(e);
         if (a) { e.preventDefault(); ck.act(a); return; }
       }

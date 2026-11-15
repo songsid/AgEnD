@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CAROUSEL_ID, INTERVAL_DEFAULT, INTERVAL_MAX, INTERVAL_MIN, INTERVALS,
-  carouselIdsOk, carouselKey, carouselOk, carouselSavedOk, intervalOk, nextIndex, prevIndex,
+  carouselHeld, carouselIdsOk, carouselKey, carouselOk, carouselSavedOk, intervalOk, nextIndex, prevIndex,
 } from "../src/ui/fleet-office-carousel.js";
 
 const TWO = [{ id: "front", name: "Front desk" }, { id: "lab", name: "Lab" }];
@@ -55,5 +55,17 @@ describe("Office carousel: the pure part (fleet-office-carousel.js)", () => {
     expect(carouselKey({ key: "ArrowRight", ctrlKey: true })).toBeNull();
     expect(carouselKey({ key: "f" })).toBeNull();
     expect(carouselKey(null)).toBeNull();
+  });
+  it("a focused field, button or link keeps Space and arrows; nothing focused does not", () => {
+    expect(carouselHeld(null)).toBe(false);
+    expect(carouselHeld({ tagName: "BODY" })).toBe(false);
+    expect(carouselHeld({ tagName: "CANVAS" })).toBe(false);
+    expect(carouselHeld({ tagName: "INPUT" })).toBe(true);
+    expect(carouselHeld({ tagName: "SELECT" })).toBe(true);
+    expect(carouselHeld({ tagName: "BUTTON" })).toBe(true);
+    expect(carouselHeld({ tagName: "A" })).toBe(true);
+    expect(carouselHeld({ tagName: "TEXTAREA" })).toBe(true);
+    expect(carouselHeld({ tagName: "DIV", isContentEditable: true })).toBe(true);
+    expect(carouselHeld({ tagName: "SPAN", closest: (sel: string) => sel.includes("button") ? {} : null })).toBe(true);
   });
 });

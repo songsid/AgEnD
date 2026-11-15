@@ -2,7 +2,7 @@
 // Pure helpers; fleet-office.js draws it. The switcher's id is none a stored office can have (CAROUSEL_ID: '*' is
 // not an office id's character). The offices and the interval are kept per browser; playing is not (it starts on
 // enter and on reload). Pause / next / previous come from the keyboard or a remote (Space, arrows, N / P, media
-// keys) and from on-screen Pause / Next.
+// keys) and from on-screen Pause / Next. A focused field, button or link keeps those keys.
 
 /** The switcher's "Carousel…" value: '*' is never in a stored office's id (fleet-office-model.js officeOk). */
 export const CAROUSEL_ID = "*carousel";
@@ -80,4 +80,16 @@ export function carouselKey(e) {
   if (k === "ArrowRight" || k === "n" || k === "N" || k === "MediaTrackNext") return "next";
   if (k === "ArrowLeft" || k === "p" || k === "P" || k === "MediaTrackPrevious") return "prev";
   return null;
+}
+
+const HELD = new Set(["INPUT", "SELECT", "TEXTAREA", "BUTTON", "A", "OPTION"]);
+/**
+ * True when the key should stay with the focused control (a field, button, or link) instead of the carousel. A TV
+ * remote with nothing focused still reaches the document handler.
+ */
+export function carouselHeld(el) {
+  if (!el) return false;
+  if (HELD.has(el.tagName) || el.isContentEditable === true) return true;
+  if (typeof el.closest !== "function") return false;
+  return !!el.closest("button, a, select, input, textarea, option, [contenteditable=true], [contenteditable='']");
 }
