@@ -12,15 +12,23 @@ import { ht } from "../src/hub/init/text.js";
 import { ADMIN, FakeIdentity, fakeDirectory, makeTestCerts, scriptedIO, tempDir } from "./support/hub-init-fixtures.js";
 
 const sockets: Server[] = [], roots: string[] = [];
+// M-3150: a port from freePair() stays bound (a lease) until a listener in the test asks for it, which is then handed that very socket (Node's bound-handle
+// listen: no close/rebind window). Closing and re-binding left a gap in which any other socket could take the port (CI 43260206372: the corrected pair was
+// refused and the wizard asked again). A test's own bind(port) takes the lease too, so a port it means to occupy is occupied.
+const leases = new Map<number, Server>();
 beforeEach(() => {
   const listen = Server.prototype.listen;
   vi.spyOn(Server.prototype, "listen").mockImplementation(function (this: Server, ...args: unknown[]) {
     if (!sockets.includes(this)) sockets.push(this);
+    const [first, second] = args, options = typeof first === "object" && first !== null && !(first instanceof Server) ? first as { port?: unknown; host?: unknown } : undefined;
+    const port = typeof first === "number" ? first : options?.port, host = typeof first === "number" ? second : options?.host;
+    const lease = typeof port === "number" && host === "127.0.0.1" ? leases.get(port) : undefined;
+    if (lease && lease !== this) { leases.delete(port as number); return Reflect.apply(listen, this, [lease, args.filter(arg => typeof arg === "function").pop()]) as Server; }
     return Reflect.apply(listen, this, args) as Server;
   });
 });
 afterEach(async () => {
-  vi.useRealTimers(); vi.restoreAllMocks(); setLocale("en");
+  vi.useRealTimers(); vi.restoreAllMocks(); setLocale("en"); leases.clear();
   for (const server of sockets.splice(0)) if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));
   for (const home of roots.splice(0)) rmSync(home, { recursive: true, force: true });
 });
@@ -33,7 +41,7 @@ const portOf = (server: Server) => (server.address() as AddressInfo).port;
 const pair = (web: number, member: number): HubInitListeners => ({ webListen: { host: "127.0.0.1", port: web }, memberListen: { host: "127.0.0.1", port: member } });
 async function freePair() {
   const a = await bind(), b = await bind(), ports = pair(portOf(a), portOf(b));
-  await Promise.all([a, b].map(server => new Promise<void>(resolve => server.close(() => resolve()))));
+  leases.set(ports.webListen.port, a); leases.set(ports.memberListen.port, b);
   return ports;
 }
 const home = () => { const h = tempDir("agend-hub-network-"); roots.push(h); return h; };
