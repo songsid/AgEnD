@@ -701,6 +701,64 @@ describe("a Settings apply drives the real reconcile", () => {
     expect(stop.mock.calls.map(call => call[0]).sort()).toEqual(["one", "two"]);
   });
 
+  it("does not list unchanged instances after a web public-link save, including ones with no live daemon (M-3165)", async () => {
+    // planConfigApply used to treat "no daemon" as restart, so a public-link-only
+    // fleet.yaml edit listed every parked / other-team agent as "restart this agent".
+    const dir = tempDir();
+    const { fm, configPath } = fleetWithInstance(dir, [
+      "instances:",
+      "  live:", "    working_directory: /tmp/live",
+      "  parked:", "    working_directory: /tmp/parked", "",
+    ]);
+    const liveRuntime = structuredClone(fm.fleetConfig!.instances.live!);
+    fm.lifecycle.daemons.set("live", {
+      getConfigSnapshot: () => liveRuntime,
+      applyConfigUpdate: vi.fn(),
+    } as never);
+    const start = vi.spyOn(fm as unknown as {
+      startInstanceUnattended(...args: unknown[]): Promise<boolean>;
+    }, "startInstanceUnattended").mockResolvedValue(false);
+
+    writeFileSync(configPath, [
+      "web:",
+      "  public_link:",
+      "    hostname: hanagend.example.org",
+      "    ttl_minutes: 60",
+      "    tunnel_token_env: AGEND_CLOUDFLARE_TUNNEL_TOKEN",
+      "    auto_open: true",
+      "instances:",
+      "  live:", "    working_directory: /tmp/live",
+      "  parked:", "    working_directory: /tmp/parked", "",
+    ].join("\n"));
+    fm.fleetConfig!.web = {
+      public_link: {
+        hostname: "hanagend.example.org", ttl_minutes: 60,
+        tunnel_token_env: "AGEND_CLOUDFLARE_TUNNEL_TOKEN", auto_open: true,
+      },
+    };
+
+    expect(fm.planConfigApply()).toEqual([]);
+    const { job } = fm.startSettingsApply("key-public-link-only") as { job: ApplyJob };
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
+    expect(fm.applyJobs.get(job.id)!.targets.map(row => row.target)).toEqual([]);
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("still lists a genuine instance change when that agent has no live daemon (M-3165)", () => {
+    const dir = tempDir();
+    const { fm, configPath } = fleetWithInstance(dir, [
+      "instances:",
+      "  parked:", "    working_directory: /tmp/parked",
+      "    backend: claude-code", "",
+    ]);
+    writeFileSync(configPath, [
+      "instances:",
+      "  parked:", "    working_directory: /tmp/parked",
+      "    backend: codex", "",
+    ].join("\n"));
+    expect(fm.planConfigApply()).toEqual([{ target: "parked", kind: "restart" }]);
+  });
+
   it("forecasts from the file even when the in-memory copy was not touched", async () => {
     // The other half of reading the config the reconcile will load: an edit
     // that reached disk but not memory (a hand edit, a failed in-memory patch)

@@ -27208,8 +27208,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!this.daemons.has(name)) {
         // New instance — startInstance already calls connectIpcToInstance. #2482: a paused one is not started (startInstance
         // returns at its pause); say so, quietly, instead of "starting" on every reload.
-        if (this.lifecycle.isPaused(name)) this.logger.debug({ name }, "Paused instance in config — not started");
-        else this.logger.info({ name }, "New instance in config — starting");
+        if (this.lifecycle.isPaused(name)) {
+          this.logger.debug({ name }, "Paused instance in config — not started");
+          continue;
+        }
+        const previous = oldConfig?.instances[name];
+        const change = previous ? classifyInstanceChange(previous, config) : "restart";
+        // A Settings apply (observe set) of an unrelated fleet field must not start or list every
+        // stopped agent whose instance block did not change (M-3165). SIGHUP still recovers missing ones.
+        if (observe && change === "none") continue;
+        this.logger.info({ name }, previous ? "Instance config changed — starting" : "New instance in config — starting");
         observe?.(name, "restart", "running");
         await this.startInstanceUnattended(name, config, topicMode, "new instance");
         observe?.(name, "restart", "done");
@@ -28572,9 +28580,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     for (const [name, config] of Object.entries(next)) {
       const daemon = this.daemons.get(name);
-      if (!daemon) { rows.push({ target: name, kind: "restart" }); continue; }
-      const runtime = daemon.getConfigSnapshot?.();
-      if (!runtime) continue;
+      // Compare the live snapshot when we have one; otherwise the in-memory instance
+      // (last load). "No daemon" is not itself a change — parked / other-team agents
+      // whose YAML block is untouched must not appear as "restart this agent" (M-3165).
+      const runtime = daemon?.getConfigSnapshot?.() ?? this.fleetConfig?.instances[name];
+      if (!runtime) {
+        if (!this.lifecycle.isPaused(name)) rows.push({ target: name, kind: "restart" });
+        continue;
+      }
       const change = classifyInstanceChange(runtime, config);
       if (change !== "none") rows.push({ target: name, kind: change === "restart" ? "restart" : "hot" });
     }
