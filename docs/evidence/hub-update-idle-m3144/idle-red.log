@@ -1,0 +1,55 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-idle-m3144
+
+ ❯ tests/update-idle-m3144.test.ts (3 tests | 3 failed) 22ms
+   × waits while busy, claims one durable launch once idle, and never replays after restart 13ms
+   × expires exactly at 24 hours without a launch, even if no idle event arrives 5ms
+   × cancel during preparation invalidates the final launch claim 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/update-idle-m3144.test.ts > waits while busy, claims one durable launch once idle, and never replays after restart
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/update-idle-m3144.test.ts:20:51
+     18| it("waits while busy, claims one durable launch once idle, and never r…
+     19|   const w = world(); expect(w.queue.request(w.request).state).toBe("wa…
+     20|   w.idle(); await w.queue.pump(); expect(w.spawn).toHaveBeenCalledTime…
+       |                                                   ^
+     21|   await w.queue.pump(); expect(w.spawn).toHaveBeenCalledTimes(1);
+     22|   w.queue.close(); const reopened = new IdleUpdateQueue(w.host); queue…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/update-idle-m3144.test.ts > expires exactly at 24 hours without a launch, even if no idle event arrives
+AssertionError: expected 'waiting' to be 'expired' // Object.is equality
+
+Expected: "expired"
+Received: "waiting"
+
+ ❯ tests/update-idle-m3144.test.ts:28:82
+     26|   const w = world(); w.queue.request(w.request);
+     27|   await vi.advanceTimersByTimeAsync(IDLE_UPDATE_WAIT_MS - 1); expect(w…
+     28|   await vi.advanceTimersByTimeAsync(1); expect(w.queue.get(w.request.i…
+       |                                                                                  ^
+     29| });
+     30| it("cancel during preparation invalidates the final launch claim", asy…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/update-idle-m3144.test.ts > cancel during preparation invalidates the final launch claim
+TypeError: release is not a function
+ ❯ tests/update-idle-m3144.test.ts:34:52
+     32|   w.launch.mockImplementation(async (_r, control) => { await new Promi…
+     33|   w.idle(); w.queue.request(w.request); const pumping = w.queue.pump()…
+     34|   expect(w.queue.cancel(w.request.id)).toBe(true); release(); await pu…
+       |                                                    ^
+     35|   expect(w.spawn).not.toHaveBeenCalled(); expect(w.queue.get(w.request…
+     36| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed (3)
+   Start at  10:21:12
+   Duration  322ms (transform 81ms, setup 93ms, import 42ms, tests 22ms, environment 0ms)
