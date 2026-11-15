@@ -158,10 +158,17 @@ export class HubServer {
       // A diagnostic refusal or failed write never changes the link's authority or availability.
       try {
         if (!context.features.has(HUB_FLEET_INFO_CAPABILITY)) throw new HubProtocolError("incompatible");
+        if (frame.type === "fleet.info" && frame.payload.updatesAllowed !== undefined && !context.features.has(HUB_FLEET_UPDATE_CAPABILITY)) throw new HubProtocolError("incompatible");
         if (frame.type === "fleet.info" && frame.payload.recommendations && this.options.capabilities?.includes(HUB_RECOMMENDATION_CAPABILITY)) (context.features as Set<string>).add(HUB_RECOMMENDATION_CAPABILITY);
         if (frame.type === "fleet.recommendation-ack" && !context.features.has(HUB_RECOMMENDATION_CAPABILITY)) throw new HubProtocolError("incompatible");
         await this.options.receive(frame, context);
       } catch { warnFleetDiagnostics(this.options.log, context.fleetId, "report"); }
+      return;
+    }
+    if (frame.type === "fleet.update-status") {
+      if (!context.features.has(HUB_FLEET_UPDATE_CAPABILITY)) return;
+      try { await this.options.receive(frame, context); }
+      catch { warnFleetDiagnostics(this.options.log, context.fleetId, "report"); }
       return;
     }
     if (frame.type === "member.leave") {
@@ -207,6 +214,7 @@ export class HubServer {
     const connection = this.connections.get(fleetId);
     if (!connection?.ready || !connection.context.current() || frame.linkEpoch !== connection.context.linkEpoch
       || frame.type === "welcome" || frame.type === "question" && (frame.payload.identity.destinationFleetId !== fleetId || frame.payload.identity.issuer !== this.options.hubId)) throw new HubProtocolError("unavailable");
+    if ((frame.type === "fleet.update" || frame.type === "fleet.update-cancel" || frame.type === "fleet.update-status-ack") && !connection.context.features.has(HUB_FLEET_UPDATE_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "fleet.recommendation" && !connection.context.features.has(HUB_RECOMMENDATION_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice" && (!connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v2" && (!connection.context.features.has("pairing-notices-v2") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");

@@ -83,3 +83,29 @@ admin confirmations or trigger a real update as part of validation.
 ## Startup outcome reconciliation
 
 The composing Fleet host must inspect any retained `updating` request at startup. It compares the exact request marker and running version, settles done or failed (or the verified rollback result), and never launches the claimed request again. A missing or interrupted marker must produce a terminal result rather than keep the single-active queue busy forever.
+
+## Hub request slice
+
+`src/hub/fleet-update-model.ts` supplies strict `fleet.update`, `fleet.update-cancel`, `fleet.update-status` and
+`fleet.update-status-ack` payloads. The first two are server-to-member. Statuses have an increasing durable sequence;
+ACKs bind the exact request ID, frozen version and sequence. These frames require `fleet-update-v1` on the current
+link. The receiving Fleet's permission remains an independent check. `fleet.info.updatesAllowed` is sent only on a
+negotiated phase-3 link, so an older Hub never sees the new strict-object field.
+
+The Hub saves each press with its actor and exact input under the idempotency ID. An atomic audit failure rolls back
+all requests from the press. The target is the saved recommendation, with its revision rechecked in the transaction.
+Permission, service mode and the current Fleet binding are checked; revocation terminates open requests. Statuses from
+another Fleet, generation, version or stale link cannot change them. Reused status sequences with changed content and
+backward updating-to-waiting transitions are ignored. Optional request/status traffic cannot end ordinary member work.
+
+Cancellation adds `cancelRequested:boolean` to the view. A never-sent request cancels immediately. Once it has been
+sent, the Hub retries cancellation until the Fleet confirms a terminal status; it cannot claim cancellation while the
+Fleet may already have launched. A new press for a different recommendation retains the old request as a predecessor:
+the new target is sent only after the old one confirms cancellation. If the old update already started, the replacement
+is refused. Concurrent presses for the same target return the same open request.
+
+Only live links are retried (30 seconds); offline Fleets are not polled. The seven-day queue deadline is checked on
+ready/read/request reconciliation. A Fleet acceptance reports its separate 24-hour idle deadline. The future receiving
+composition must persist cancellation tombstones, statuses and ACK state, and must not block the link on npm work.
+
+A status ACK confirms receipt, not permission to reopen a closed request. Late statuses for a matching closed request are acknowledged and discarded so the Fleet can retire its durable retry. A matching updating status clears pending cancellation: the Fleet already claimed the update and cannot cancel it.

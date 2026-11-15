@@ -1,5 +1,6 @@
 /** Strict P1 frame schemas; importing this file creates no state, sockets or timers. */
 import { z } from "zod";
+import { fleetUpdateRequestSchema, fleetUpdateCancelSchema, fleetUpdateStatusSchema, fleetUpdateStatusAckSchema } from "./fleet-update-model.js";
 import { epoch, hash, identifier, person, plain, reason, uuid, validated, parseStrictJson } from "./validation.js";
 /** Phase 3 receiver offer; old-Hub compatibility is negotiated by the member client. */
 export const HUB_FLEET_UPDATE_CAPABILITY = "fleet-update-v1";
@@ -162,7 +163,7 @@ export const memberFrameSchema = z.union([
   frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
   frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema), frame("room.react", roomReactSchema),
   frame("member.leave", memberLeavePayloadSchema),
-  frame("hello", hello), frame("fleet.info", fleetInfoSchema), frame("fleet.recommendation-ack", recommendationAckSchema), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
+  frame("hello", hello), frame("fleet.update-status", fleetUpdateStatusSchema), frame("fleet.info", fleetInfoSchema), frame("fleet.recommendation-ack", recommendationAckSchema), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
   frame("receipt", receiptSchema), frame("answer", answerSchema), frame("reconcile", reconcile),
   frame("authorize.request", authorizationSchema), frame("error", errorSchema),
   // attachments-v1 only: pull a question's file; push an answer's file before its answer frame.
@@ -175,7 +176,7 @@ export const memberFrameSchema = z.union([
 export const serverFrameSchema = z.union([
   frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
   frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema), frame("room.react-result", roomReactResultSchema),
-  frame("welcome", welcome), frame("fleet.recommendation", recommendationSchema), frame("question", questionSchema), frame("receipt", receiptSchema),
+  frame("welcome", welcome), frame("fleet.update", fleetUpdateRequestSchema), frame("fleet.update-cancel", fleetUpdateCancelSchema), frame("fleet.update-status-ack", fleetUpdateStatusAckSchema), frame("fleet.recommendation", recommendationSchema), frame("question", questionSchema), frame("receipt", receiptSchema),
   frame("reconcile", z.strictObject({ receipts: z.array(receiptSchema).max(128), nextReceiptSequence: epoch, more: z.boolean() })),
   frame("authorize.result", z.union([z.strictObject({ ok: z.literal(true), lease: leaseSchema }), z.strictObject({ ok: z.literal(false), reasonCode: reason })])),
   frame("revoke", revocationSchema), frame("error", errorSchema),

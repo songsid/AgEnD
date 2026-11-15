@@ -14,7 +14,7 @@ export type PersonId = string;    // personKeyString(key), not a login/name
 export interface HubFrame<T extends string, P> {
   v: 1; type: T; requestId: string; linkEpoch: Epoch; payload: P;
 }
-export interface HubFleetInfo { version: string; runsAsService: boolean; recommendations?: true }
+export interface HubFleetInfo { version: string; runsAsService: boolean; recommendations?: true; updatesAllowed?: boolean }
 export interface HubHello {
   supportedVersions: readonly number[];
   capabilities: readonly string[]; // P1: identity-v1, receipts-v1, reconcile-v1
@@ -139,6 +139,7 @@ export type HubMemberFrame =
   | HubFrame<"agent.state", HubAgentState>
   | HubFrame<"room.react", HubRoomReact>
   | HubFrame<"hello", HubHello>
+  | HubFrame<"fleet.update-status", import("./fleet-update-model.js").FleetUpdateStatus>
   | HubFrame<"fleet.info", HubFleetInfo>
   | HubFrame<"fleet.recommendation-ack", import("./recommendation-model.js").HubRecommendationAck>
   | HubFrame<"member.leave", Record<string, never>>
@@ -168,6 +169,9 @@ export type HubServerFrame =
   | HubFrame<"room.answer-ack", HubRoomAnswerAck>
   | HubFrame<"room.react-result", HubRoomReactResult>
   | HubFrame<"welcome", HubWelcome>
+  | HubFrame<"fleet.update", import("./fleet-update-model.js").FleetUpdateRequest>
+  | HubFrame<"fleet.update-cancel", { id: string; version: string }>
+  | HubFrame<"fleet.update-status-ack", import("./fleet-update-model.js").FleetUpdateStatusAck>
   | HubFrame<"fleet.recommendation", import("./recommendation-model.js").HubRecommendation>
   | HubFrame<"question", HubQuestion>
   | HubFrame<"receipt", HubReceipt> // acknowledgment of durably retained member evidence
