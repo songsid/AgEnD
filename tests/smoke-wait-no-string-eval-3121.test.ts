@@ -21,9 +21,9 @@ describe("M-3121: browser waits never hand the page a string to eval", () => {
     expect(hits).toEqual([]);
   });
 
-  it("mounted() waits with a function, counts a phone chat's ‹ as navigation, and refuses a selector for its timeout", () => {
+  it("mounted() waits with a function, counts a phone chat's ‹ and a phone's ☰ (M-3166) as navigation, and refuses a selector for its timeout", () => {
     const src = readFileSync(join(ROOT, "smoke-fixture/from-defaults.mts"), "utf8");
-    expect(src).toContain('page.waitForFunction(() => [...document.querySelectorAll("#app .sidebar, #app .tabs, #app .sb-back")]');
+    expect(src).toContain('page.waitForFunction(() => [...document.querySelectorAll("#app .sidebar, #app .tabs, #app .sb-back, #app .sb-open")]');
     expect(src).toContain('if (typeof timeoutMs !== "number") throw Error(');
     expect(readFileSync(join(ROOT, "smoke/smoke-3500-model-picker.mts"), "utf8")).not.toMatch(/mounted\(page, "/);
   });

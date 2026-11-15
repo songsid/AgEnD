@@ -4584,6 +4584,41 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .chat-popout .popup-pane-head { flex-wrap: nowrap; gap: var(--s-1); padding: var(--s-1) var(--s-2); }
 .chat-popout .popup-pane-head .inst-switch { flex-basis: auto; order: initial; width: auto; display: flex; }
 
+/* M-3166 (Argon 4–5, the user's OK of round 2): a phone moves around by its drawer alone — no bottom tab bar, no counts or
+   badges on the Fleet side. The drawer is a phone's own: 300 px; one search (the agent filter) with [+] beside it at the top;
+   Fleet 概覽 and 等你處理; then the agents, rows of 48 px with their dot and name (no avatar letters, CLI marks, % or ⋯);
+   設定 at the foot. Fleet is two rows: ☰ and its tabs, then the page's tools; the org page opens on its list. */
+@media (max-width: 899px) {
+  .tabs { display: none !important; }
+  /* The tab bar's room goes; a list page keeps the home-indicator inset. Not inside an agent's pages (the dock keeps it, #3972)
+     nor with the keyboard up (the box sits on the keyboard, #2478): there the padding stays 0. */
+  .shell:not(.in-agent):not(.kb-open) .main { padding-bottom: env(safe-area-inset-bottom); }
+  .sidebar.fleet-side .nav-count, .sidebar.fleet-side .v-group-head .count { display: none !important; }
+  .sidebar.fleet-side { width: 300px; }
+  .sidebar.fleet-side .side-nav, .sidebar.fleet-side .view-roster { display: contents; }
+  .sidebar.fleet-side .side-head { order: 0; }
+  .sidebar.fleet-side .v-filter { order: 1; position: relative; padding: var(--s-1) calc(var(--tap) + var(--s-3)) var(--s-2) var(--s-3); border: 0; }
+  .sidebar.fleet-side .v-filter .nav-facets { display: none; }
+  .sidebar.fleet-side .side-nav > .side-row { order: 2; }
+  .sidebar.fleet-side #instanceList { order: 3; flex: 1; min-height: 0; overflow-y: auto; }
+  .sidebar.fleet-side .side-foot { order: 4; }
+  .sidebar.fleet-side .side-search, .sidebar.fleet-side .side-nav > a[href="/ui/notices"], .sidebar.fleet-side .inst-head { display: none !important; }
+  .sidebar.fleet-side .side-new { position: absolute; top: calc(var(--header-h) + max(var(--s-1), env(safe-area-inset-top))); right: var(--s-2); width: var(--tap); height: var(--tap); padding: 0; justify-content: center; }
+  .sidebar.fleet-side .side-new .grow { display: none; }
+  .sidebar.fleet-side .inst-row-menu, .sidebar.fleet-side .av-cli, .sidebar.fleet-side .av-text, .sidebar.fleet-side .v-group-kind, .sidebar.fleet-side .v-meta { display: none !important; }
+  .sidebar.fleet-side .v-inst { min-height: 48px; }
+  .sidebar.fleet-side .v-inst .av { width: 10px; height: 10px; background: none; border: 0; box-shadow: none; margin: 0 var(--s-1); }
+  .sidebar.fleet-side .v-inst .av-dot { position: static; width: 8px; height: 8px; border: 0; }
+  .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-title h1, .p-fleet > .panel-head .panel-actions { display: none !important; }
+  /* The title gives way, but a host-memory warning (its subtitle) stays: a line of its own under ☰ and the tabs (#4008 review). */
+  .p-fleet > .panel-head .panel-title:not(:has(.host-mem)) { display: none; }
+  .p-fleet > .panel-head:has(.host-mem) { flex-wrap: wrap; }
+  .p-fleet > .panel-head .panel-title:has(.host-mem) { order: 10; flex: 1 0 100%; min-height: 0; padding-bottom: var(--s-1); }
+  .p-fleet > .panel-head .panel-title .panel-sub:has(.host-mem) { flex: 1 1 auto; width: auto; }
+  .p-fleet > .panel-head .fleet-phone-tabs { flex: 1; min-width: 0; order: initial; padding: 0; margin: 0; overflow-x: auto; flex-wrap: nowrap; }
+  .p-fleet .oc-bar > span:first-child, .p-fleet .oc-bar .org-counts { display: none; }
+  .p-fleet .oc-bar .oc-tools { flex-wrap: nowrap; overflow-x: auto; width: 100%; }
+}
 /* M-3166 (Argon 2, the user's OK of round 2): on a phone a toast (an agent waiting for you, a result) is one line — a pill that a
    tap puts away — and none shows while the keyboard is up. */
 @media (max-width: 899px) {

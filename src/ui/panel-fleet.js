@@ -168,6 +168,18 @@ export function measureTabsFit(root) {
     gaps: px(hs.columnGap) * (others.length + 1),
   });
 }
+/** M-3166: whether this is a phone's width (under 900 px), kept current as the window is resized. */
+function usePhoneWidth() {
+  const read = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+  const [on, setOn] = useState(read);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return undefined;
+    const mq = matchMedia("(max-width: 899px)"), changed = () => setOn(mq.matches);
+    changed(); mq.addEventListener?.("change", changed);
+    return () => mq.removeEventListener?.("change", changed);
+  }, []);
+  return on;
+}
 function useTabsInHeader(rootRef) {
   const mq = () => (typeof matchMedia === "function" ? matchMedia(NARROW) : null);
   const [inHeader, setInHeader] = useState(() => !(mq()?.matches ?? false));
@@ -207,7 +219,15 @@ export function FleetPanel({ route, navKey }) {
   const top = hostMemory && hostMemoryTop?.length ? t("fleet.hostMemory_top", hostMemoryTop.map(memoryHogText).join(" · ")) : "";
   const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}${top ? html`<span class="host-mem-top" title=${top}>${top}</span>` : null}</span>` : null;
   const root = useRef(null);
-  const wide = useTabsInHeader(root);
+  const wide = useTabsInHeader(root), phone = usePhoneWidth();
+  // The phone's tab row scrolls sideways when it does not fit beside ☰: bring the open tab into view (用量 is the last).
+  useLayoutEffect(() => {
+    const nav = phone ? root.current?.querySelector(".fleet-phone-tabs") : null, on = nav?.querySelector(".active");
+    if (!nav || !on) return;
+    const n = nav.getBoundingClientRect(), a = on.getBoundingClientRect();
+    if (a.right > n.right) nav.scrollLeft += a.right - n.right;
+    else if (a.left < n.left) nav.scrollLeft -= n.left - a.left;
+  }, [phone, tab]);
   const tabs = (cls) => html`<nav data-trust="panel-navigation" class=${cls} aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
     aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
   return html`<div ref=${root} data-effect-panel="fleet" class="panel p-fleet">
@@ -216,8 +236,10 @@ export function FleetPanel({ route, navKey }) {
          stay the row under the header they always were (.seg, the same markup as before). Not ".seg" in the header,
          and chosen here rather than by CSS: a previous release's app.css, cached in an open tab, has no rule for the
          header slot — this way either stylesheet lays both out (smoke-2542 SKEW). */ ""}
-    <${PanelHeader} title=${t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
-    ${wide ? null : tabs("seg")}
+    ${/* M-3166 (Argon 5, the user's OK of round 2): a phone's Fleet is two rows — its tabs in the header's row (☰, then the
+         tabs; the title, search, docs and text size give way: app.css), then the page's own tools. */ ""}
+    <${PanelHeader} title=${t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : phone ? tabs("seg fleet-phone-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
+    ${wide || phone ? null : tabs("seg")}
     <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
 }
