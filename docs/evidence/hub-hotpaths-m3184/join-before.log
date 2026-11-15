@@ -1,0 +1,64 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-hotpaths-3184-alpha
+
+ ❯ tests/hub-join-deadline-m3184.test.ts (4 tests | 3 failed) 31ms
+   × bounds DNS/connect time before any socket inactivity timeout can start 25ms
+   × bounds a response that keeps trickling bytes, and destroys both response and request 2ms
+   × retires an owner's streaming response before accepting another byte 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-join-deadline-m3184.test.ts > bounds DNS/connect time before any socket inactivity timeout can start
+AssertionError: expected 'pending' to be 'unavailable' // Object.is equality
+
+Expected: "unavailable"
+Received: "pending"
+
+ ❯ tests/hub-join-deadline-m3184.test.ts:18:57
+     16|   let outcome = "pending"; const pending = query().then(() => { outcom…
+     17|   await vi.advanceTimersByTimeAsync(HUB_LIMITS.rpcTimeout - 1); expect…
+     18|   await vi.advanceTimersByTimeAsync(1); expect(outcome).toBe("unavaila…
+       |                                                         ^
+     19| });
+     20| it("bounds a response that keeps trickling bytes, and destroys both re…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-join-deadline-m3184.test.ts > bounds a response that keeps trickling bytes, and destroys both response and request
+AssertionError: expected 'pending' to be 'unavailable' // Object.is equality
+
+Expected: "unavailable"
+Received: "pending"
+
+ ❯ tests/hub-join-deadline-m3184.test.ts:25:19
+     23|   let outcome = "pending"; const pending = query().then(() => { outcom…
+     24|   for (let n = 0; n < 5; n++) { res.emit("data", Buffer.from(" ")); aw…
+     25|   expect(outcome).toBe("unavailable"); expect(res.destroy).toHaveBeenC…
+       |                   ^
+     26| });
+     27| it("retires an owner's streaming response before accepting another byt…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-join-deadline-m3184.test.ts > retires an owner's streaming response before accepting another byte
+AssertionError: expected 'pending' to be 'stale' // Object.is equality
+
+Expected: "stale"
+Received: "pending"
+
+ ❯ tests/hub-join-deadline-m3184.test.ts:32:19
+     30|   let current = true, outcome = "pending"; const pending = query(() =>…
+     31|   current = false; res.emit("data", Buffer.from("{}")); await Promise.…
+     32|   expect(outcome).toBe("stale"); expect(res.destroy).toHaveBeenCalled(…
+       |                   ^
+     33| });
+     34| it("finishes successful JSON and clears its absolute deadline", async …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 1 passed (4)
+   Start at  19:25:45
+   Duration  553ms (transform 265ms, setup 79ms, import 318ms, tests 31ms, environment 0ms)
+

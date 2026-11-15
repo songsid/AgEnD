@@ -1,0 +1,22 @@
+[
+  {
+    "guard": "fleet",
+    "exit": 1,
+    "assertionFailure": true,
+    "originalSha256": "deb6bf02d6a981df5c8ec9ea888c09fbfb6860bf96ceceff6ef17be75b01cbdd",
+    "mutantSha256": "a82d4bd8fe9445d20956f741e6750f606c042ccdf018f921cdd0be2b8a302f13",
+    "restoredSha256": "deb6bf02d6a981df5c8ec9ea888c09fbfb6860bf96ceceff6ef17be75b01cbdd",
+    "selected": 1,
+    "unselected": 4
+  },
+  {
+    "guard": "owner",
+    "exit": 1,
+    "assertionFailure": true,
+    "originalSha256": "deb6bf02d6a981df5c8ec9ea888c09fbfb6860bf96ceceff6ef17be75b01cbdd",
+    "mutantSha256": "3efa2267f0a3480cacd17591783b6e3967958366e297fc58c3b0e63ff1df786c",
+    "restoredSha256": "deb6bf02d6a981df5c8ec9ea888c09fbfb6860bf96ceceff6ef17be75b01cbdd",
+    "selected": 1,
+    "unselected": 4
+  }
+]

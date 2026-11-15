@@ -67,7 +67,7 @@ export function AdminRooms({ client = hubClient() } = {}) {
           <td>${Array.isArray(room.managers) ? room.managers.join("、") : ""}</td>
           <td>${room.lastAt ? chatTime(room.lastAt) : ""}</td>
           <td>${room.archived ? hroom("archived") : hroom("active")}</td>
-          <td><${Menu} label=${ha("rowMenu", room.name)} disabled=${busy} items=${[
+          <td><${Menu} cls="hub-admin-row-menu" fit=${true} topLayer=${true} label=${ha("rowMenu", room.name)} disabled=${busy} items=${[
             { key: "join", label: hroom("joinAsManager"), onSelect: () => { void act(() => client.joinRoomAsAdmin(room.id), () => setNote(ha("joined", room.name))); } },
             room.archived ? null : { key: "archive", label: hroom("archive"), danger: true, onSelect: () => { void archive(room); } },
           ]} /></td></tr>`)}</tbody></table>` : html`<p class="note">${ha("none")}</p>`}

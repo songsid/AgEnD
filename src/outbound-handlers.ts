@@ -2566,7 +2566,8 @@ const hubRoom = (kind: "list"|"post"|"members"|"people"): Handler => async (ctx,
   if (!parsed.ok) { respond(null, parsed.error); return; }
   const boot = meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName);
   const current = () => (meta.callerCurrent?.() ?? true) && (!ctx.getDaemonBootId || !!boot && ctx.getDaemonBootId(meta.instanceName) === boot);
-  if (!current() || !ctx.hubRoomToolsAvailable?.()) { respond({ok:false,code:"unavailable"}); return; }
+  if (!current()) { respond({ok:false,code:"unavailable",message:"This invoking agent is no longer current."}); return; }
+  if (!ctx.hubRoomToolsAvailable?.()) { respond({ok:false,code:"unavailable",message:"This Fleet isn't connected to a Hub."}); return; }
   const caller = {agent:meta.instanceName,current};
   if (kind === "post") {
     if (!meta.operationId) { respond(null, "Hub room posts require an operation identity"); return; }

@@ -1,0 +1,36 @@
+[
+  {
+    "label": "final",
+    "command": [
+      "../../node_modules/.bin/vitest",
+      "run",
+      "tests/mcp-tool-list-startup-m3183.test.ts",
+      "tests/hub-room-post-mcp.test.ts",
+      "tests/dashboard-permissions.test.ts",
+      "tests/ipc-timeouts.test.ts",
+      "tests/hub-room-post-rc-integration-3118.test.ts",
+      "--maxWorkers=2"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "source-types-final",
+    "command": [
+      "../../node_modules/.bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.json"
+    ],
+    "exit": 0
+  },
+  {
+    "label": "test-types-final",
+    "command": [
+      "../../node_modules/.bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "exit": 0
+  }
+]

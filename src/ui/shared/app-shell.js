@@ -544,18 +544,19 @@ function PrefsPopover() {
  * (#1523 N2): an instance page's view switch — beside the title on a wide screen, a row of tabs under it on a phone.
  */
 // M-3115 (phone v2): inside an agent's pages a phone has no bottom tabs; the header's first button goes back to the
-// agents (the drawer) and carries what Needs you counts. Kept beside its caller: a retained dictionary has no such word.
+// agents (the drawer) — with no count since M-3166. Kept beside its caller: a retained dictionary has no such word.
 register("phoneNav", {
-  en: { back: "Back to your agents", backCount: "Back to your agents · {0} waiting" },
-  "zh-TW": { back: "回到 Agent 清單", backCount: "回到 Agent 清單 · {0} 件待處理" },
+  en: { back: "Back to your agents" },
+  "zh-TW": { back: "回到 Agent 清單" },
 });
 /** What Needs you counts: its items and the agents' proposals (the tab's badge, the sidebar's). */
 export function needsCount(app) { return (app.needs || []).length + (app.proposals || []).length; }
 
 export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions }) {
   const shell = useStore(shellStore);
-  const { route } = useStore(navStore), app = useStore(appStore);
-  const agent = !!openInstanceOf(route) && !guestPage(), waiting = agent ? needsCount(app) : 0;
+  const { route } = useStore(navStore);
+  // M-3166 (the user, round 2): no counts or badges on the Fleet side — ← goes back to the agents without a number.
+  const agent = !!openInstanceOf(route) && !guestPage();
   const admin = useCanCreate();
   const canCreate = admin && !!newInstanceOpener;
   const pane = paneContext.usePane?.();
@@ -565,9 +566,9 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice, pag
     pageControls=${pageControls} pageActions=${pageActions} />`;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
     <button type="button" id="sbOpen" class=${`icon-btn sb-open${agent ? " sb-back" : ""}`} onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
-      aria-label=${narrow() ? agent ? (waiting ? t("phoneNav.backCount", waiting) : t("phoneNav.back")) : t("app.openMenu") : t("app.expand")}
+      aria-label=${narrow() ? agent ? t("phoneNav.back") : t("app.openMenu") : t("app.expand")}
       title=${narrow() ? agent ? t("phoneNav.back") : t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" cls="ic-menu" />${agent
-        ? html`<${Icon} name="back" cls="ic-back" />${waiting ? html`<span class="sb-badge" aria-hidden="true">${waiting > 99 ? "99+" : waiting}</span>` : null}` : null}</button>
+        ? html`<${Icon} name="back" cls="ic-back" />` : null}</button>
     ${canCreate && shell.collapsed ? html`<button type="button" class="icon-btn sb-new" onClick=${requestNewInstance} aria-label=${t("app.newAgent")} title=${t("app.newAgent")}><${Icon} name="plus" /></button>` : null}
     ${searchOffered(admin) ? html`<button type="button" class="icon-btn sb-search" onClick=${() => openSearch()} aria-label=${t("app.search")} title=${t("app.searchTitle", searchShortcut())}><${Icon} name="search" /></button>` : null}
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
@@ -1236,7 +1237,12 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // field, or the view growing from its lowest by more than a keyboard (put away), takes it down. While an IME composes
     // nothing changes at all; what the view says then is applied at compositionend — or as soon as the field it composes
     // in has lost focus or left the page (a composition can end without its compositionend: #2517 review).
-    let width = -1, tallest = 0, held = false, lowest = 0, upLowest = 0, composing = null;
+    let width = -1, tallest = 0, held = false, lowest = 0, upLowest = 0, composing = null, downSince = 0, downTimer = 0;
+    // beta.4 (the user, iPhone): a keystroke can move the view (the predictive or candidate bar, the caret panned into view)
+    // so that one reading says "no keyboard" while the field still has focus. Taken at its word, the keyboard came down and
+    // went up again on every key, and the page re-aligned each time. While the field keeps focus, "down" now has to hold
+    // for DOWN_HOLD_MS (judged again then); leaving the field still takes it down at once.
+    const DOWN_HOLD_MS = 300;
     const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     // M-3111 (iPhone, alpha.4): with the keyboard up, and while it rises or falls, the shell is the visible view itself —
     // its height and where the browser has panned it, set on the shell itself only then (its stylesheet height otherwise:
@@ -1247,16 +1253,23 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // The keyboard rises and falls over a few hundred ms, and the view's resize comes when it has settled (iOS): for that
     // long after a field gains or loses focus the shell follows the view every frame — both ways — instead of jumping.
     const FOLLOW_MS = 800;
-    let raf = 0, followUntil = 0;
+    let raf = 0, followUntil = 0, fitH = 0;
     const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
     const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : null;
     const unfit = (el) => { if (el?.style) { el.style.removeProperty("height"); el.style.removeProperty("transform"); } };
     const fit = () => {
       const el = root.current;
       if (!el?.style) return;
-      const on = coarse() && (shellStore.get().keyboard || now() < followUntil) && Math.abs((Number(vv.scale) || 1) - 1) < 0.01;
-      if (!on) { unfit(el); return; }
-      el.style.setProperty("height", `${Math.round(vv.height)}px`);
+      // While typing (a text field focused on a touch screen) the shell keeps being the view, whatever the keyboard state
+      // says for the moment: a reading that dips must not hand the height back to the stylesheet for one frame.
+      const typingNow = coarse() && isTextEntry(document.activeElement);
+      const on = coarse() && (shellStore.get().keyboard || typingNow || now() < followUntil) && Math.abs((Number(vv.scale) || 1) - 1) < 0.01;
+      if (!on) { unfit(el); fitH = 0; return; }
+      // A reading that says "down" while the field keeps focus is on hold (below): until it holds, the shell keeps the height
+      // it had, so the box does not drop under a keyboard that is still there.
+      const pending = downSince && now() - downSince < DOWN_HOLD_MS && fitH;
+      fitH = pending ? fitH : Math.round(vv.height);
+      el.style.setProperty("height", `${fitH}px`);
       const top = Math.max(0, Math.round(Number(vv.offsetTop) || 0));
       if (top) el.style.setProperty("transform", `translateY(${top}px)`); else el.style.removeProperty("transform");
     };
@@ -1284,6 +1297,13 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       const was = shellStore.get().keyboard;
       let up = held || keyboardUp(h, tallest, typing);
       if (!up && was && typing && h - upLowest <= KEYBOARD_MIN_PX) up = true;          // a bar's height, not the keyboard
+      if (!up && was && typing) {                                                      // still in the field: "down" must hold
+        if (!downSince) downSince = now();
+        if (now() - downSince < DOWN_HOLD_MS) {
+          up = true;
+          if (!downTimer && typeof setTimeout === "function") downTimer = setTimeout(() => { downTimer = 0; check(); }, DOWN_HOLD_MS + 20);
+        }
+      } else downSince = 0;
       upLowest = up ? (was ? Math.min(upLowest, h) : h) : 0;
       if (up !== was) shellStore.set({ keyboard: up });
       fit();
@@ -1301,6 +1321,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     return () => {
       vv.removeEventListener("resize", check); vv.removeEventListener("scroll", fit); document.removeEventListener("focusin", focusChanged); document.removeEventListener("focusout", focusChanged);
       if (raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf);
+      if (downTimer && typeof clearTimeout === "function") clearTimeout(downTimer);
       unfit(root.current);
       document.removeEventListener("compositionstart", start, true); document.removeEventListener("compositionend", end, true);
     };

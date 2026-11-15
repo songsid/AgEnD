@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-rooms-migration-r1.test.ts (7 tests | 1 failed) 109ms
+   × adds unknown historical answer times and backfills only retained depth/rate stop counts once 21ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-rooms-migration-r1.test.ts > adds unknown historical answer times and backfills only retained depth/rate stop counts once
+AssertionError: expected [Function] to throw error matching /s3-admin-dashboard/ but got 'the Hub database has "s3-room-context…'
+
+- Expected:
+/s3-admin-dashboard/
+
++ Received:
+"the Hub database has \"s3-room-context\" (v1), which this version does not know"
+
+ ❯ tests/hub-rooms-migration-r1.test.ts:114:59
+    112|       { bucket: 60000, reason: "depth", count: 1 }, { bucket: 60000, r…
+    113|     ]);
+    114|     expect(() => applyHubMigrations(db, beforeDashboard)).toThrow(/s3-…
+       |                                                           ^
+    115|   } finally { db.close(); }
+    116| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 15 passed (16)
+   Start at  16:51:08
+   Duration  8.39s (transform 4.19s, setup 433ms, import 4.98s, tests 4.49s, environment 0ms)
+

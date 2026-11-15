@@ -1,0 +1,12 @@
+diff --git a/src/hub/member/room-ask.ts b/src/hub/member/room-ask.ts
+index 3a89edd3a..86924466f 100644
+--- a/src/hub/member/room-ask.ts
++++ b/src/hub/member/room-ask.ts
+@@ -230,6 +230,7 @@ export class HubRoomAskAdapter {
+           // Durable first-input intent BEFORE handing bytes to the ordinary Fleet delivery path.
+           this.save(id, "input", saved); return current();
+         } });
++      if (saved.generation) this.inputHandoff(saved.cid,saved.local.agent,saved.generation);
+       if (this.closed) return;
+       const latest = this.row(id);
+       if (latest?.state === "input") this.save(id, delivered ? "delivered" : "held", this.read(latest));

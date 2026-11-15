@@ -1,0 +1,74 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/model-switch-3180-grok-alpha
+
+(node:45902) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/grok-model-switch-integration-3180.test.ts (8 tests | 7 failed) 428ms
+     × registers the evidenced floor for both operations, and only Grok's executable 7ms
+     × persists a confirmed effort before sending the verified spec, without restarting 137ms
+     × restarts with the saved effort when the switch returns {"outcome":"not_sent","reason":"busy"} 43ms
+     × restarts with the saved effort when the switch returns {"outcome":"not_sent","reason":"version","version":"1.0.69"} 48ms
+     × restarts with the saved effort when the switch returns {"outcome":"mismatch","shown":"refused"} 40ms
+     × restarts with the saved effort when the switch returns {"outcome":"not_confirmed"} 52ms
+     × a model switch carries the configured supported effort and saves the requested model for restart 51ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/grok-model-switch-integration-3180.test.ts > Grok shared switch route > registers the evidenced floor for both operations, and only Grok's executable
+TypeError: Cannot read properties of undefined (reading 'minVersion')
+ ❯ cliSwitchAllowed src/backend/cli-runtime-switch.ts:122:71
+    120| export function cliSwitchAllowed(entry: CliRuntimeSwitchEntry, step: C…
+    121|   const v = versionOf(version);
+    122|   return v !== null && compareVersions(v, step.model !== null ? entry.…
+       |                                                                       ^
+    123| }
+    124|
+ ❯ tests/grok-model-switch-integration-3180.test.ts:34:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  tests/grok-model-switch-integration-3180.test.ts > Grok shared switch route > persists a confirmed effort before sending the verified spec, without restarting
+AssertionError: expected '✅ Set ag effort to `low` (runtime).' to match /running session/
+
+- Expected:
+/running session/
+
++ Received:
+"✅ Set ag effort to `low` (runtime)."
+
+ ❯ tests/grok-model-switch-integration-3180.test.ts:42:47
+     40|  it("persists a confirmed effort before sending the verified spec, wit…
+     41|   const f = fleet({ outcome: "switched", confirmed: true, shown: "low"…
+     42|   expect(await f.fm.applyEffort("ag", "low")).toMatch(/running session…
+       |                                               ^
+     43|   expect(f.send).toHaveBeenCalledWith(expect.objectContaining({ conten…
+     44|   expect(f.saved().effort).toBe("low"); expect(f.restart).not.toHaveBe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  tests/grok-model-switch-integration-3180.test.ts > Grok shared switch route > restarts with the saved effort when the switch returns {"outcome":"not_sent","reason":"busy"}
+ FAIL  tests/grok-model-switch-integration-3180.test.ts > Grok shared switch route > restarts with the saved effort when the switch returns {"outcome":"not_sent","reason":"version","version":"1.0.69"}
+ FAIL  tests/grok-model-switch-integration-3180.test.ts > Grok shared switch route > restarts with the saved effort when the switch returns {"outcome":"mismatch","shown":"refused"}
+ FAIL  tests/grok-model-switch-integration-3180.test.ts > Grok shared switch route > restarts with the saved effort when the switch returns {"outcome":"not_confirmed"}
+AssertionError: expected "vi.fn()" to be called once, but got 0 times
+ ❯ tests/grok-model-switch-integration-3180.test.ts:48:59
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  tests/grok-model-switch-integration-3180.test.ts > Grok shared switch route > a model switch carries the configured supported effort and saves the requested model for restart
+AssertionError: expected "vi.fn()" to be called with arguments: [ ObjectContaining{…} ]
+
+Number of calls: 0
+
+ ❯ tests/grok-model-switch-integration-3180.test.ts:53:18
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 1 passed (8)
+   Start at  16:56:58
+   Duration  8.59s (transform 6.17s, setup 187ms, import 7.81s, tests 428ms, environment 0ms)
+

@@ -1,0 +1,51 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-member-m3122.test.ts (5 tests | 1 failed) 43ms
+   × keeps a frozen answer retryable across a conversation reset without advancing the new cursor 9ms
+ ❯ tests/hub-room-context-link-m3122.test.ts (3 tests | 1 failed) 2134ms
+   × keeps legacy hello16 and modern17 without a context name, and admits the bounded welcome offer only with local opt-in 507ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-link-m3122.test.ts > keeps legacy hello16 and modern17 without a context name, and admits the bounded welcome offer only with local opt-in
+RangeError: Maximum call stack size exceeded
+ ❯ Server.<anonymous> tests/helpers/hub-listener-ports.ts:17:20
+     15|       return Reflect.apply(listen, this, [lease.server, args.filter(ar…
+     16|     }
+     17|     return Reflect.apply(listen, this, args);
+       |                    ^
+     18|   });
+     19|   const owned = (listeners: network.HubInitListeners, selected: readon…
+ ❯ Server.<anonymous> tests/helpers/hub-listener-ports.ts:17:20
+ ❯ Server.<anonymous> tests/helpers/hub-listener-ports.ts:17:20
+ ❯ Server.<anonymous> tests/helpers/hub-listener-ports.ts:17:20
+ ❯ Server.<anonymous> tests/helpers/hub-listener-ports.ts:17:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-context-member-m3122.test.ts > keeps a frozen answer retryable across a conversation reset without advancing the new cursor
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-room-context-member-m3122.test.ts:77:92
+     75|   const answer=vi.mocked(h.link.sendAnswer).mock.calls[0][0];
+     76|   expect(vi.mocked(h.link.sendAnswer).mock.calls[1][0]).toEqual(answer…
+     77|   expect(h.adapter.acknowledge({messageId:ask.messageId,answerId:answe…
+       |                                                                                            ^
+     78|   expect(h.link.contextInput).not.toHaveBeenCalled();h.adapter.close();
+     79| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 5 passed (7)
+      Tests  2 failed | 71 passed (73)
+   Start at  16:44:30
+   Duration  7.02s (transform 6.13s, setup 364ms, import 8.88s, tests 3.20s, environment 1ms)
+

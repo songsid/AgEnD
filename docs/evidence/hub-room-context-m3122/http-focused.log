@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-http-m3122.test.ts (3 tests | 1 failed) 1408ms
+   × ordinary reconnect preserves the cursor after re-negotiation; old peers retain their strict full-window ask 1098ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-http-m3122.test.ts > ordinary reconnect preserves the cursor after re-negotiation; old peers retain their strict full-window ask
+AssertionError: expected 3 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 3
+
+ ❯ tests/hub-room-context-http-m3122.test.ts:28:159
+     26|   };
+     27|   const asks=()=>r!.sent.filter(s=>s.frame.type==="room.ask").map(s=>s…
+     28|   const ask=async(text:string,replyTo?:string)=>{const before=asks().l…
+       |                                                                                                                                                               ^
+     29|   return {link,caps,fleetId,exposure,roomId,generation,state,input,pos…
+     30| }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  13:48:41
+   Duration  5.84s (transform 3.28s, setup 99ms, import 4.19s, tests 1.41s, environment 0ms)
+

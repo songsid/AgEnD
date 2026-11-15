@@ -110,7 +110,7 @@ function setupIpcListeners(client: IpcClient): void {
     // and the MCP client cannot respawn a server mid-session. Stay alive and let
     // the ensuing disconnect drive the backoff loop; if the fleet is stopped for
     // good, our own CLI exiting makes isOrphaned() end us.
-    if (msg.type === "hub_room_tools_changed") { void mcp.sendToolListChanged().catch(() => {}); return; }
+    if (msg.type === "hub_room_tools_changed") return; // Hub availability never changes the connector catalog.
     if (msg.type === "shutdown") {
       process.stderr.write("agend: daemon shutting down — will reconnect when it returns\n");
       ipcConnected = false;
@@ -304,16 +304,10 @@ const featureDataDir = SOCKET_PATH ? dirname(dirname(dirname(SOCKET_PATH))) : ge
 const spawnDashboardOff = featuresOffFromEnv(process.env.AGEND_DASHBOARD_OFF);
 const menuInstance = process.env.AGEND_INSTANCE_NAME ?? "";
 const dashboardOffNow = () => (menuInstance ? readDashboardOff(featureDataDir, menuInstance, spawnDashboardOff) : spawnDashboardOff);
-const currentTools = async () => {
-  let available = false;
-  if (ipcConnected && allowedTools.has("hub_room_list")) {
-    try { available = (await ipcRequest("hub_room_status", {}) as {available?:boolean})?.available === true; } catch { /* disconnected: hide tools */ }
-  }
-  return withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)), dashboardOffNow())
-    .filter(t => available || !["hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search"].includes(t.name));
-};
+// The connector catalog is static within its configured permission ceiling. Dependency availability is checked at call time.
+const currentTools = () => withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)), dashboardOffNow());
 
-mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await currentTools() }));
+mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentTools() }));
 
 // --- Tool call handler ---
 

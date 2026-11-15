@@ -29,7 +29,7 @@ class H(BaseHTTPRequestHandler):
         try: req = json.loads(raw)
         except Exception: req = {}
         tools = [t.get("name") or t.get("type") for t in req.get("tools", [])] if isinstance(req, dict) else []
-        log(f"POST {self.path} model={req.get('model')} tools={tools[:12]} bytes={len(raw)}")
+        log(f"POST {self.path} model={req.get('model')} reasoning={json.dumps(req.get('reasoning')) if isinstance(req, dict) else None} tools={tools[:12]} bytes={len(raw)}")
         with open("/home/rh/audit/mock-last-request.json", "wb") as f: f.write(raw)
         m = mode()
         if m in ("429", "402", "500", "401"):

@@ -1,0 +1,75 @@
+{
+  "sourceRef": "aba814ed110f59c1449ff62f06bfc6a718962f28",
+  "priorHead": "c0f0bed9fa69cfea0535fccf2ce1870a4be83f32",
+  "allSrcUnchanged": true,
+  "sourceInputs": [
+    {
+      "path": "src/hub/rooms/agents.ts",
+      "sha256": "deb6bf02d6a981df5c8ec9ea888c09fbfb6860bf96ceceff6ef17be75b01cbdd"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "12f3ffe5bef1d4472648807d0ecdb847146127f3fc6dc96658de13dc0f9f0bb7"
+    },
+    {
+      "path": "tests/hub-groups-mount-s89.test.ts",
+      "sha256": "21516658073c728e009343246d6c802dc1cd729abaef561bac0d2a752eb8f748"
+    },
+    {
+      "path": "tests/hub-room-context-http-m3122.test.ts",
+      "sha256": "382484e2eafce30893ed2788f7439c77d2e36d6465feca92f1310ace02a1864d"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "fleet.log",
+      "bytes": 1490,
+      "sha256": "b9ea8b3ab652869d94e5bd362d4c32f81a3dcdd8383fd8bd438a99bd517e16ab"
+    },
+    {
+      "path": "fleet.patch",
+      "bytes": 991,
+      "sha256": "dbf0e5192c7b2ed709b8a255fe248ffe61e0a39caa9ff5da5b9d78890b17c115"
+    },
+    {
+      "path": "focused.log",
+      "bytes": 269,
+      "sha256": "3eda4996a8352fbee03ae4465ca38ede5d3ca746f72bcbb95dddb3c673397723"
+    },
+    {
+      "path": "guards.json",
+      "bytes": 769,
+      "sha256": "5b659be9c165af5ba9fb3f4f4aeca9d238e71495a9d9d95b3579c207b5485d5d"
+    },
+    {
+      "path": "owner.log",
+      "bytes": 1489,
+      "sha256": "c7449c3550eac8430834a80d544a6b5a2d6866524706c2c3b46f9acd52d0e3b1"
+    },
+    {
+      "path": "owner.patch",
+      "bytes": 979,
+      "sha256": "4c0a45ce8f352ab6f5bae8857d2a64383b4881a19c1deedfc6ea32c4d507a713"
+    },
+    {
+      "path": "restored.log",
+      "bytes": 265,
+      "sha256": "701688612426b4512933e60f515721b3c2fa914d414e25434bc8f7a6fd8f42c3"
+    },
+    {
+      "path": "test-types.json",
+      "bytes": 84,
+      "sha256": "4f1b918602bd99026bdb4cf446eb7404ac01709de78dd8276828c6127ad17e49"
+    },
+    {
+      "path": "test-types.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "vector-before.log",
+      "bytes": 1521,
+      "sha256": "166f72c0e73f87f50501fa8cf29f2a9305de4dd4421b64215937892bfeea003c"
+    }
+  ]
+}

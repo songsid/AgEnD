@@ -1,0 +1,13 @@
+diff --git a/src/hub/rooms/context-cursor.ts b/src/hub/rooms/context-cursor.ts
+index 7f53f8339..5a1e884c1 100644
+--- a/src/hub/rooms/context-cursor.ts
++++ b/src/hub/rooms/context-cursor.ts
+@@ -45,7 +45,7 @@ export class RoomContextCursor {
+     return { generation, after, through };
+   }
+   received(room: string, exposure: string, binding: string, generation: string, interval: HubRoomContextState): boolean {
+-    if (interval.generation !== generation || this.generation(exposure,binding) !== generation) return false;
++    if (interval.generation !== generation) return false;
+     const current = this.position(room,exposure,binding,generation);
+     if (interval.after > current || interval.through <= interval.after) return false;
+     this.db.prepare(`INSERT INTO hub_room_context_positions VALUES(?,?,?,?,?)

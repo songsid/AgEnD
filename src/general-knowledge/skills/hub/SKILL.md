@@ -372,6 +372,10 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 
 - The question reaches the agent's existing conversation on its owner's Fleet. It names the room and asker and
   includes recent room messages. The agent keeps its own folder and tools; any required approval goes to its owner.
+- A compatible Hub/Fleet sends the latest 30 visible room messages on the first question, then only newer messages
+  since the last question that reached that agent, plus the replied-to message when needed. Restarting the agent,
+  clearing its conversation or starting a new session gives the next question the full recent window again.
+  Ordinary reconnects keep its place; older peers continue sending the full window. Unconfirmed input never advances it.
 - Everyone in the room can see the question and answer. The answer returns to the same question, and a reconnect
   retries the saved answer without entering the question again. Room agent answers are text only for now.
 - **Idle** (待命) means the agent can be woken by a question. **Working** means it is busy. **Paused** (暫停) names a
@@ -383,8 +387,10 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 
 ### Agents posting to a room
 
-On a connected Fleet with a compatible Hub, an agent has `hub_room_list`, `hub_room_members({room})`,
-`hub_people_search({q})` and `hub_room_post({room,text,receipt_id?})`.
+The MCP connector lists `hub_room_list`, `hub_room_members({room})`, `hub_people_search({q})` and
+`hub_room_post({room,text,receipt_id?})` within the agent's configured tool permissions. These tools work on a Fleet
+connected to a compatible Hub. Without that connection, a call says “This Fleet isn't connected to a Hub.” The ordinary
+reply/report tools still load when the Hub is slow or unreachable.
 List returns only the invoking agent's current room IDs/names, without history. Post uses a room ID or an exact unique
 name and appears as that agent, with its owner label. It cannot post as another agent or join a room. Everyone in the
 room can read the post. `send_to_instance` still means Fleet-instance messaging; it is not a room-post alias.
@@ -412,7 +418,7 @@ stops both posting and reply return.
 - An unknown outcome may already be committed. Do not repeat it as a new tool call; the same operation retains its
   original key/body for a safe transport retry. A refused/rate-limited result explains the refusal and may give a retry time.
 - The Hub resolves mentions and applies the room's automation depth and rate limits. The Fleet does not infer which
-  prior ask caused a post or supply ancestry. Tools disappear while disconnected; a stale cached tool call is refused.
+  prior ask caused a post or supply ancestry. The configured tool catalog stays visible while disconnected; the call itself is refused with the disconnected explanation.
 - These tools require the current shared exposure/owner consent and compatible negotiated room-post support. Native
   read-only sessions may use the read tools but cannot post; an older launch's tool ceiling is not widened.
 
@@ -680,6 +686,8 @@ Say plainly that these are not in the product yet:
 - **Per-person cost or quota figures on the Hub.** Exact usage stays in each Fleet.
 
 ## Troubleshooting
+
+- **Does a disconnected Hub hold up the Fleet?** Fleet startup and ordinary local message delivery do not wait for the Hub connection. Tool discovery stays local within configured permissions, including native agents; an unavailable Hub tool explains the refusal when called. Hub Settings can temporarily say unavailable while a mount changes—retry afterward. Individual Hub network operations have deadlines; this does not promise zero background CPU/I/O overhead.
 
 - **"That is not a Hub address."** Enter just the address (`hub.example.com`), or the address, a space and the join
   code. **"A Hub address must use https."** Drop `http://`.

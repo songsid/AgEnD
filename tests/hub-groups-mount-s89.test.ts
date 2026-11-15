@@ -172,8 +172,8 @@ describe("the group routes on the real Hub HTTP", () => {
       expect((await rigOff.call(a, m, p, m === "POST" ? { policy: POLICY } : undefined)).status, p).toBe(404);
   });
   it("the Hub HTTP reports group permissions only when composed with them (what marks the host fleet's Settings row)", () => {
-    expect(rigOff.http.features).toEqual(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", "person-prefs-v1", "sharing-pause-v1"]);
-    expect(rig.http.features).toEqual(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", "person-prefs-v1", "sharing-pause-v1", "group-policy-v1"]);
+    expect(rigOff.http.features).toEqual(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", "room-context-v1", "person-prefs-v1", "sharing-pause-v1"]);
+    expect(rig.http.features).toEqual(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", "room-context-v1", "person-prefs-v1", "sharing-pause-v1", "group-policy-v1"]);
   });
   it("with it: the mark on both the sign-in answer and the session read", async () => {
     expect(admin.body.features).toEqual(["admin-dashboard-v1", "rooms-v1", "person-prefs-v1", "sharing-pause-v1", "group-policy-v1"]);

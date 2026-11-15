@@ -1,3 +1,4 @@
+import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 /** Dedicated TLS machine listener. No Hub browser routes or ordinary fleet authority lives here. */
 import { HUB_FLEET_UPDATE_CAPABILITY } from "./protocol.js";
 import { createServer, type Server } from "node:https";
@@ -151,6 +152,7 @@ export class HubServer {
       for (const c of offered) if (frame.payload.capabilities.includes(c)) features.add(c);
       // This is a Hub-only receiver offer; it does not take a slot in a member hello.
       if (features.has("welcome-caps-v1") && offered.includes(HUB_FLEET_INFO_CAPABILITY)) features.add(HUB_FLEET_INFO_CAPABILITY);
+      if (features.has("welcome-caps-v1") && features.has(HUB_ROOM_ASK_CAPABILITY) && offered.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
       try { this.options.connected?.(context); } catch { warnFleetDiagnostics(this.options.log, context.fleetId, "connect"); }
       await link.send({ v: 1, type: "welcome", requestId: frame.requestId, linkEpoch: context.linkEpoch,
         payload: { selectedVersion: 1, hubId: this.options.hubId, fleetId: context.fleetId, linkEpoch: context.linkEpoch, revocationVersion,
@@ -159,6 +161,7 @@ export class HubServer {
           ...(features.has("welcome-caps-v1") && features.has(HUB_WEB_ORIGIN_CAPABILITY) && this.options.webOrigin ? { webOrigin: this.options.webOrigin(context.fleetId) } : {}) } }); return;
     }
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
+    if ((frame.type === "room.context-state" || frame.type === "room.context-input") && !context.features.has(HUB_ROOM_CONTEXT_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (!connection.ready && !["fleet.info", "exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
     if (frame.type === "fleet.info" || frame.type === "fleet.recommendation-ack") {
       // A diagnostic refusal or failed write never changes the link's authority or availability.

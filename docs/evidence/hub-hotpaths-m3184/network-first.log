@@ -1,0 +1,70 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.12 [39m[90m/repo[39m
+
+(node:26) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:25) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [32m✓[39m tests/hub-member-startup-3171.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 5539[2mms[22m[39m
+   [33m[2m✓[22m[39m keeps a paired member mounted through a boot-time outage, then reconciles without a Fleet restart [33m 688[2mms[22m[39m
+   [33m[2m✓[22m[39m retains the mounted owner API after a retryable first reconciliation failure [33m 667[2mms[22m[39m
+   [33m[2m✓[22m[39m treats an initial HTTP 503 as an outage and retries it [33m 461[2mms[22m[39m
+   [33m[2m✓[22m[39m keeps an initial HTTP 401 refusal terminal and detaches the failed mount [33m 793[2mms[22m[39m
+   [33m[2m✓[22m[39m keeps an initial HTTP 403 refusal terminal and detaches the failed mount [33m 794[2mms[22m[39m
+   [33m[2m✓[22m[39m cancels an offline startup retry on switch off [33m 785[2mms[22m[39m
+   [33m[2m✓[22m[39m cancels an offline startup retry on shutdown [33m 885[2mms[22m[39m
+(node:117) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [31m❯[39m tests/hub-hotpath-measure-m3184.test.ts [2m([22m[2m3 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 9417[2mms[22m[39m
+     [33m[2m✓[22m[39m none: synthetic agent readiness, static tools and ordinary delivery [33m 1158[2mms[22m[39m
+[31m     [31m×[31m up: synthetic agent readiness, static tools and ordinary delivery[39m[33m 6989[2mms[22m[39m
+     [33m[2m✓[22m[39m down: synthetic agent readiness, static tools and ordinary delivery [33m 1263[2mms[22m[39m
+ [32m✓[39m tests/hub-web-address-http-3428.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 4518[2mms[22m[39m
+     [33m[2m✓[22m[39m a held old sign-in cannot mint after SQL even when completion throws before config publication [33m 1916[2mms[22m[39m
+     [33m[2m✓[22m[39m moves real HTTPS, invalidates same-host old cookies, refuses the old port and preserves member identity [33m 934[2mms[22m[39m
+     [33m[2m✓[22m[39m a bind competitor after SQL returns saved-unavailable without reopening the old address [33m 763[2mms[22m[39m
+     [33m[2m✓[22m[39m rechecks a newly occupied candidate bind before the decision and keeps the old Hub running [33m 702[2mms[22m[39m
+ [32m✓[39m tests/hub-company-join-client.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 2234[2mms[22m[39m
+     [33m[2m✓[22m[39m uses browser CA trust for discovery, and the independently pinned member listener for all key proofs and delivery [33m 2231[2mms[22m[39m
+(node:207) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [32m✓[39m tests/native-mcp.test.ts [2m([22m[2m34 tests[22m[2m)[22m[33m 2132[2mms[22m[39m
+ [32m✓[39m tests/hub-member-address-http-3429.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 3205[2mms[22m[39m
+     [33m[2m✓[22m[39m moves only member HTTPS, preserves browser login and exact Hub identity, and leaves a durable admin/host notice [33m 1233[2mms[22m[39m
+     [33m[2m✓[22m[39m cold restart finishes a committed identity+manifest when saving the fleet config was interrupted [33m 827[2mms[22m[39m
+     [33m[2m✓[22m[39m a competitor before SQL keeps the old member listener and config; after SQL it stays saved-unavailable [33m 852[2mms[22m[39m
+ [32m✓[39m tests/mcp-tool-list-startup-m3183.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 1389[2mms[22m[39m
+   [33m[2m✓[22m[39m returns base and Hub tools in under1s while an independent hub_room_status is delayed35s [33m 503[2mms[22m[39m
+   [33m[2m✓[22m[39m keeps the menu static across Hub-state notifications without status lookups or menu notifications [33m 433[2mms[22m[39m
+   [33m[2m✓[22m[39m keeps the minimal profile ceiling without asking the Hub during tools/list [33m 452[2mms[22m[39m
+ [32m✓[39m tests/hub-join-deadline-m3184.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m tests/hub-socket-deadline-m3184.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+(node:288) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ [32m✓[39m tests/hub-runtime-hotpath-m3184.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m tests/hub-native-catalog-m3184.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 108[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/hub-hotpath-measure-m3184.test.ts[2m > [22mHub state never gates ordinary Fleet hot paths[2m > [22mup: synthetic agent readiness, static tools and ordinary delivery
+[31m[1mAssertionError[22m: []: expected 'offline' to be 'online' // Object.is equality[39m
+
+Expected: [32m"o[7mn[27mline"[39m
+Received: [31m"o[7mff[27mline"[39m
+
+[36m [2m❯[22m vi.waitFor.timeout tests/hub-hotpath-measure-m3184.test.ts:[2m194:102[22m[39m
+    [90m192|[39m   expect(state.statusCalls).toBe(0); expect(startupMs).toBeLessThan(40…
+    [90m193|[39m   [35mconst[39m hubStateAtReady [33m=[39m f[33m.[39mfm[33m.[39mhubMemberLink [33m??[39m [32m"off"[39m[33m;[39m
+    [90m194|[39m   if (mode === "up") await vi.waitFor(() => expect(f.fm.hubMemberLink,…
+    [90m   |[39m                                                                                                      [31m^[39m
+    [90m195|[39m   [35mconst[39m deliveryMs[33m:[39m number[] [33m=[39m [][33m,[39m steadyToolListMs[33m:[39m number[] [33m=[39m [][33m;[39m
+    [90m196|[39m   [35mfor[39m ([35mconst[39m [name[33m,[39m client] [35mof[39m f[33m.[39mclients) {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (11)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m74 passed[39m[22m[90m (75)[39m
+[2m   Start at [22m 11:46:13
+[2m   Duration [22m 24.69s[2m (transform 9.43s, setup 466ms, import 18.56s, tests 28.59s, environment 1ms)[22m
+

@@ -61,6 +61,8 @@ export interface HubRepresentativeLink {
 export interface HubRepresentativeDelivery {
   agent: string; correlationId: string; text: string;
   contactLimit?: boolean;
+  /** M-3122: internal room-only generation; a daemon confirms the actual input independently of IPC acceptance. */
+  roomContextGeneration?: string;
   /** Run by the fleet immediately before the IPC hand-off; false sends nothing. */
   beforeInput(): Promise<boolean>;
   /** The fleet's own fence through wake/idle/hand-off. */

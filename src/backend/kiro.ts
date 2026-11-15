@@ -2478,8 +2478,8 @@ export class KiroBackend implements CliBackend {
     };
   }
 
-  // kiro's in-session `/model` opens an interactive picker (not a one-shot
-  // command), so a runtime paste can't select a specific model — use restart.
+  // The strategy for a blind paste: restart. A TUI (v2 engine) instance from 2.30.0 takes `/model ID` and `/effort LEVEL` in place,
+  // typed and verified by the fleet through CLI_RUNTIME_SWITCH (M-3180), with this restart as its fallback; classic and V3 restart.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 
   /**
@@ -2521,7 +2521,7 @@ export class KiroBackend implements CliBackend {
 
   // `kiro-cli chat --effort <EFFORT>` (low|medium|high|xhigh|max) — it is on the
   // `chat` SUBCOMMAND, which is why a top-level `--help` search misses it. No
-  // `/effort` in the TUI command table, so changing it needs a respawn. Keep
+  // `/effort` in the classic command table, so changing it needs a respawn (the TUI's: see getModelSwitchStrategy). Keep
   // this capability surface stable when the binary is absent or old; buildCommand
   // is the compatibility boundary that omits an unsupported flag and warns.
   getEffortStrategy(): "runtime" | "restart" { return EFFORT_CAPABILITIES["kiro-cli"].strategy; }

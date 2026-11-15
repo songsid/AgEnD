@@ -7,10 +7,10 @@ export const boundedRoomText = (value: string, bytes: number): string => {
   for (const c of value) { const n = Buffer.byteLength(c); if (used + n > bytes) break; out += c; used += n; }
   return out;
 };
-export function roomContext(core: HubCore, db: Database.Database, post: { id: string; room_id: string; sequence: number; reply_to: string | null }, floor: number): HubRoomContextRow[] {
+export function roomContext(core: HubCore, db: Database.Database, post: { id: string; room_id: string; sequence: number; reply_to: string | null }, floor: number, after = 0): HubRoomContextRow[] {
   type Row = { id: string; sequence: number; author_name: string; content_ref: string; created_at: number };
-  const rows = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND sequence<? AND sequence>=? AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=hub_room_posts.id),sequence)>=? AND author_kind<>'system' AND (stage IS NULL OR stage='answered') ORDER BY sequence DESC LIMIT 30")
-    .all(post.room_id, post.sequence, floor, floor) as Row[];
+  const rows = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND sequence<? AND sequence>=? AND sequence>? AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=hub_room_posts.id),sequence)>=? AND author_kind<>'system' AND (stage IS NULL OR stage='answered') ORDER BY sequence DESC LIMIT 30")
+    .all(post.room_id, post.sequence, floor, after, floor) as Row[];
   const anchor = post.reply_to ? db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=? AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=hub_room_posts.id),sequence)>=?").get(post.reply_to, post.room_id, floor, floor) as Row | undefined : undefined;
   if (anchor && !rows.some(r => r.id === anchor.id)) rows.push(anchor);
   return rows.sort((a, b) => a.sequence - b.sequence).map(row => ({ author: boundedRoomText(row.author_name, 256),
