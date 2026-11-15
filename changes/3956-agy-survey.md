@@ -1,4 +1,4 @@
 ---
 section: Fixed
 ---
-- Antigravity's compact rating survey is skipped with 0 when its exact question and choices occupy the interactive bottom of the screen. Quoted replies and drafts are left alone. The existing legacy survey and nonblocking Auto-mode announcement support remain intact.
+- Antigravity's legacy feedback survey is skipped on narrow panes even when its title or option labels wrap across lines, or the final Skip label is clipped. The full question and all four numeric choices are required; quoted replies and drafts stay untouched. It sends only 0, with no Enter.

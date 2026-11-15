@@ -4386,27 +4386,27 @@
      "symbol": "AGY_LEGACY_BUSY_ROW"
     },
     {
-     "text": "s the CLI experience",
-     "kind": "regex",
+     "text": "How's the CLI experience so far? Help us improve:",
+     "kind": "string",
      "surface": "dialog",
      "file": "src/backend/antigravity.ts",
      "line": 124,
-     "symbol": "AGY_REPORTED_SURVEY"
+     "symbol": "AGY_FEEDBACK_SURVEY_TITLE"
     },
     {
      "text": "for shortcuts",
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/antigravity.ts",
-     "line": 139,
-     "symbol": "agyReportedSurveyActive"
+     "line": 146,
+     "symbol": "agyFeedbackSurveyActive"
     },
     {
      "text": "Auto mode: edits & safe commands auto-approved (shift+tab to cycle",
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/antigravity.ts",
-     "line": 148,
+     "line": 160,
      "symbol": "AGY_AUTO_MODE_COMPOSER"
     },
     {
@@ -4414,7 +4414,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/antigravity.ts",
-     "line": 171,
+     "line": 183,
      "symbol": "agyTrustDialogState"
     },
     {
@@ -4422,7 +4422,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/antigravity.ts",
-     "line": 174,
+     "line": 186,
      "symbol": "agyTrustDialogState.yes"
     },
     {
@@ -4430,7 +4430,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/antigravity.ts",
-     "line": 175,
+     "line": 187,
      "symbol": "agyTrustDialogState"
     },
     {
@@ -4438,7 +4438,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 640,
+     "line": 652,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4446,7 +4446,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 646,
+     "line": 658,
      "symbol": "AntigravityBackend.getErrorPatterns.notice.resets"
     },
     {
@@ -4454,7 +4454,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 651,
+     "line": 663,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4462,7 +4462,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 652,
+     "line": 664,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4470,7 +4470,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 652,
+     "line": 664,
      "symbol": "AntigravityBackend.getErrorPatterns.type"
     },
     {
@@ -4478,7 +4478,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 658,
+     "line": 670,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4486,7 +4486,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 658,
+     "line": 670,
      "symbol": "AntigravityBackend.getErrorPatterns.type"
     },
     {
@@ -4494,7 +4494,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
-     "line": 658,
+     "line": 670,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
@@ -4502,7 +4502,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/antigravity.ts",
-     "line": 707,
+     "line": 712,
      "symbol": "AntigravityBackend.getRuntimeDialogs.pattern"
     },
     {
