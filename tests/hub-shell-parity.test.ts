@@ -52,34 +52,37 @@ async function hub(o: { admin?: boolean; features?: string[]; rooms?: unknown[];
   mounted.push(pg);
   router.startRouter(pg.window);
   await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel }]]), onNewInstance() {} }));
-  await until(() => pg.root.querySelector(".side-nav .side-new"));
+  await until(() => pg.root.querySelector("#sidebar .hub-side-rooms .side-new"));
   await settle(10);
   return pg;
 }
 const rows = (pg: AppPage) => [...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent);
 
 describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
-  it("a one-line brand: AgEnD Hub, the name its tooltip — and plain AgEnD Hub when the Hub has no name (#3426)", async () => {
+  it("M-3190 (Argon): the brand, AgEnD Hub, with the Hub's name on a small line under it — and plain AgEnD Hub when the Hub has no name (#3426)", async () => {
     const named = await hub();
     const brand = named.root.querySelector(".side-head .brand")!;
-    expect([brand.textContent, brand.getAttribute("title"), brand.className]).toEqual(["AgEnD Hub", "Team Hub", "brand"]);
+    expect([brand.textContent, brand.className, named.root.querySelector(".side-head .side-brand-name")?.textContent]).toEqual(["AgEnD Hub", "brand", "Team Hub"]);
     await named.unmount(); mounted.splice(0); named.restore();
     const unnamed = await hub({ name: null });
     const plain = unnamed.root.querySelector(".side-head .brand")!;
-    expect([plain.textContent, plain.getAttribute("title")]).toEqual(["AgEnD Hub", null]);
+    expect([plain.textContent, unnamed.root.querySelector(".side-head .side-brand-name")]).toEqual(["AgEnD Hub", null]);
   });
-  it("the rows, as the dashboard draws them: Administration for the administrator only; New conversation a side-new row, never a pill", async () => {
+  it("the rows, as the dashboard draws them: Administration for the administrator only; New conversation a side-new row heading the conversation list (M-3190), never a pill", async () => {
     const person = await hub();
-    expect(rows(person)).toEqual(["Chats", "My shared agents", "Search", "New chat"]);
-    expect([person.root.querySelector("#sidebar .hub-new"), person.root.querySelector(".side-nav .side-new")!.tagName]).toEqual([null, "BUTTON"]);
+    expect(rows(person)).toEqual(["Chats", "My shared agents", "Search"]);
+    const newChat = person.root.querySelector("#sidebar .hub-side-rooms .side-new")!;
+    expect([person.root.querySelector("#sidebar .hub-new"), person.root.querySelector(".side-nav .side-new"), newChat.tagName, newChat.textContent.trim()]).toEqual([null, null, "BUTTON", "New chat"]);
+    fire(newChat, "click"); await settle(20);
+    expect([person.window.location.search, person.root.querySelector(".hub-launch-title")?.textContent]).toEqual(["?view=new", "Who do you want to talk to today?"]);
     await person.unmount(); mounted.splice(0); person.restore();
     const admin = await hub({ admin: true });
-    expect(rows(admin)).toEqual(["Chats", "My shared agents", "Administration", "Search", "New chat"]);
+    expect(rows(admin)).toEqual(["Chats", "My shared agents", "Administration", "Search"]);
     expect(admin.root.querySelector(".side-nav a.side-row.active .grow")!.textContent).toBe("Chats");
   });
   it("Notices only where the Hub offers its security notices — with no count (the Hub exposes no read state); it opens their own page", async () => {
     const pg = await hub({ features: ["quick-pairing-v1"] });
-    expect(rows(pg)).toEqual(["Chats", "My shared agents", "Notices", "Search", "New chat"]);
+    expect(rows(pg)).toEqual(["Chats", "My shared agents", "Notices", "Search"]);
     const notices = [...pg.root.querySelectorAll(".side-nav a.side-row")].find((a: any) => a.textContent.includes("Notices")) as any;
     expect([notices.getAttribute("href"), notices.querySelector(".nav-count")]).toEqual(["/ui/hub?view=notices", null]);
     notices.click(); await settle(20);
@@ -110,13 +113,13 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
     expect([pg.root.querySelectorAll(".hub-home-list .hub-side-rooms .v-inst").length, !!pg.root.querySelector(".hub-home-list .hub-side-filter input"),
       !!pg.root.querySelector(".hub-home-list .side-new"), pg.root.querySelector(".hub-home-list .hub-nav")]).toEqual([2, true, true, null]);
   });
-  it("no conversation yet: said once per screen, in one line — no paragraph (zh-TW)", async () => {
+  it("no conversation yet: the chats' home is the launcher with its one compact card (M-3190); the sidebar's list doesn't repeat it (zh-TW)", async () => {
     const pg = await hub({ lang: "zh-TW" });
-    await until(() => pg.root.querySelector(".hub-home-pick .empty-title"));
-    // On the chats' home the page says it (a wide screen: the centre; a phone: its own list) — the sidebar's list doesn't
-    // repeat it there (Argon #19).
-    expect([pg.root.querySelector("#sidebar .side-empty"), pg.root.querySelector(".hub-home-list .side-empty")!.textContent,
-      pg.root.querySelector(".hub-home-pick .empty-title")!.textContent, pg.root.querySelector(".hub-home-pick .empty-hint")]).toEqual([null, "還沒有對話", "還沒有對話", null]);
+    await until(() => pg.root.querySelector(".hub-home-pick .hub-launch-empty"));
+    // Nothing to list: the launcher takes the page (a phone too: .is-launch) — the sidebar's list doesn't say it again there (Argon #19).
+    expect([pg.root.querySelector("#sidebar .side-empty"), pg.root.querySelector(".hub-home")!.className,
+      pg.root.querySelector(".hub-home-pick .hub-launch-title")!.textContent, pg.root.querySelector(".hub-home-pick .hub-launch-empty strong")!.textContent])
+      .toEqual([null, "hub-home is-launch", "今天想找哪位 Agent？", "還沒有人直接分享 Agent 給你"]);
     await pg.unmount(); mounted.splice(0); pg.restore();
     // Elsewhere (My shared agents) the sidebar's list says it, in one line.
     const other = await hub({ lang: "zh-TW", path: "/ui/hub/exposures" });

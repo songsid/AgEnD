@@ -94,7 +94,10 @@ const SIDEBAR = `(() => {
   const empty = sb.querySelector(".hub-side-rooms .side-empty");
   const lines = (el) => { const rg = document.createRange(); rg.selectNodeContents(el); return new Set([...rg.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size; };
   return {
-    brand: brand ? { text: brand.textContent.trim(), title: brand.getAttribute("title"), lines: lines(brand), weight: bs.fontWeight } : null,
+    brand: brand ? { text: brand.textContent.trim(), title: brand.getAttribute("title"), lines: lines(brand), weight: bs.fontWeight,
+      name: (sb.querySelector(".side-head .side-brand-name")?.textContent || "").trim() || null } : null,
+    // M-3190 (Argon): 新對話 / 新房間 head the conversation list.
+    listNew: [...sb.querySelectorAll(".hub-side-rooms > .side-section > .side-new")].filter(vis).map((el) => ({ text: (el.querySelector(".grow")?.textContent || "").trim(), cls: el.className })),
     rows, foot: fb ? { bottomGap: Math.round(sb.getBoundingClientRect().bottom - fb.bottom), rows: footRows, prefs: !!foot.querySelector(".hub-prefs"), session: !!foot.querySelector(".hub-session-row") } : null,
     label: label ? label.textContent.trim() : null, empty: empty ? { text: empty.textContent.trim(), lines: lines(empty) } : null,
     legacy: [...sb.querySelectorAll(".hub-new, .hub-brand-name, .empty-hint, .hub-list-empty")].filter(vis).map((el) => el.className),
@@ -243,16 +246,17 @@ try {
       const sb = await page.evaluate(SIDEBAR) as any;
       if (sb.missing) { check(`${tag}:sidebar`, false, "no #sidebar"); continue; }
       // M-3092: a Hub with rooms adds 「新房間」 for someone who may open rooms (the administrator, by default).
-      const want = [...(c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "團隊", "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", "Teams", "Administration", "Notices", "Search", "New chat"]),
-        ...(roomsOffered ? [c.lang === "zh-TW" ? "新房間" : "New room"] : [])];
+      // M-3190 (Argon): the primary rows only; 新對話 (and 「新房間」 for someone who may open rooms — M-3092) head the conversation list.
+      const want = c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "團隊", "管理", "通知", "搜尋"] : ["Chats", "My shared agents", "Teams", "Administration", "Notices", "Search"];
+      const wantNew = [c.lang === "zh-TW" ? "新對話" : "New chat", ...(roomsOffered ? [c.lang === "zh-TW" ? "新房間" : "New room"] : [])];
       const rows = sb.rows as any[];
-      check(`${tag}:sidebar:brand`, !!sb.brand && sb.brand.text === "AgEnD Hub" && sb.brand.title === "Team Hub" && sb.brand.lines === 1, sb.brand);
+      check(`${tag}:sidebar:brand`, !!sb.brand && sb.brand.text === "AgEnD Hub" && sb.brand.title === null && sb.brand.lines === 1 && sb.brand.name === "Team Hub", sb.brand);   // M-3190: the name under it
       check(`${tag}:sidebar:rows`, JSON.stringify(rows.map((x) => x.text)) === JSON.stringify(want), rows.map((x) => x.text));
       check(`${tag}:sidebar:row-shape`, new Set(rows.map((x) => x.h)).size === 1 && new Set(rows.map((x) => x.iconX)).size === 1 && rows.every((x) => x.iconX !== null), rows.map((x) => [x.text, x.h, x.iconX]));
       check(`${tag}:sidebar:current`, rows.filter((x) => x.current).map((x) => x.text).join() === p.current[c.lang], rows.filter((x) => x.current).map((x) => x.text));
       check(`${tag}:sidebar:notices-no-count`, rows.every((x) => !x.count), rows.filter((x) => x.count).map((x) => x.text));
       check(`${tag}:sidebar:search`, /side-search/.test(rows[5]?.cls ?? "") && (phone || /K$/.test(rows[5]?.kbd ?? "")), rows[5]);
-      check(`${tag}:sidebar:new`, /side-new/.test(rows[6]?.cls ?? "") && sb.legacy.length === 0, { row: rows[6], legacy: sb.legacy });
+      check(`${tag}:sidebar:new`, JSON.stringify(sb.listNew.map((x: any) => x.text)) === JSON.stringify(wantNew) && sb.listNew.every((x: any) => /side-new/.test(x.cls)) && sb.legacy.length === 0, { listNew: sb.listNew, legacy: sb.legacy });
       // No chat yet: one line in the list — except on the chats' home, where the page itself says it (Argon #19).
       check(`${tag}:sidebar:list`, sb.label === (c.lang === "zh-TW" ? "對話" : "Chats") && (p.key === "chats" ? !sb.empty : !!sb.empty && sb.empty.lines === 1), { label: sb.label, empty: sb.empty });
       if (p.key === "chats") try {   // the session menu, opened: every item shown — inside the screen and topmost at its centre

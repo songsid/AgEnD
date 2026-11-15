@@ -6,6 +6,10 @@ import { register, t } from "/assets/app-i18n.js";
 register("hubChat", {
   en: {
     navSearch: "Search", notices: "Notices", noticesTitle: "Notices", noNotices: "No security notices", noticesLead: "When a new fleet connects to this Hub, you're told here. If you don't recognize it, revoke it.", settings: "Settings", signedIn: "Signed in", signOut: "Sign out",
+    // M-3190: the chat launcher (新對話, or 對話 with nothing to open)
+    launchTitle: "Who do you want to talk to today?", launchOwner: "Owner: {0}", launchInRoom: "In #{0}", launchGo: "Chat →", launchFilter: "Filter agents",
+    launchNone: "No agent has been shared with you directly yet", launchNoneHint: "Ask a colleague to share one with you in My shared agents, or go into a room on the left and work with its agents.",
+    launchNewRoom: "New room", launchShare: "Share my agent", launchNoMatch: "No agent matches.",
     chats: "Chats", newChat: "New chat", search: "Search chats", noChats: "No chats yet", noChatsHint: "Start one with New chat: it lists the agents someone allowed you to ask.",
     noMatch: "No chat matches.", waiting: "Waiting for an answer", represents: "Answers for {0}",
     pickTitle: "New chat", pickSearch: "Search agents or owners", pickHint: "Only the agents someone allowed you to ask are listed.",
@@ -36,6 +40,9 @@ register("hubChat", {
   },
   "zh-TW": {
     navSearch: "搜尋", notices: "通知", noticesTitle: "通知", noNotices: "沒有安全通知", noticesLead: "有新的 Fleet 連接到這個 Hub 時，會在這裡通知你。如果你不認得它，請撤銷。", settings: "設定", signedIn: "已登入", signOut: "登出",
+    launchTitle: "今天想找哪位 Agent？", launchOwner: "擁有者：{0}", launchInRoom: "位於 #{0}", launchGo: "對話 →", launchFilter: "篩選 Agent",
+    launchNone: "還沒有人直接分享 Agent 給你", launchNoneHint: "請同事在「我分享的 Agent」授權給你，或直接進入左側的房間與 Agent 協作。",
+    launchNewRoom: "開新房間", launchShare: "分享我的 Agent", launchNoMatch: "沒有符合的 Agent。",
     chats: "對話", newChat: "新對話", search: "搜尋對話", noChats: "還沒有對話", noChatsHint: "用「新對話」開始：會列出有人允許你提問的 Agent。",
     noMatch: "沒有符合的對話。", waiting: "等待回答", represents: "代表 {0} 回答",
     pickTitle: "新對話", pickSearch: "搜尋 Agent 或擁有者", pickHint: "只列出有人允許你提問的 Agent。",

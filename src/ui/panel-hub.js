@@ -374,7 +374,6 @@ export function HubNav({ onPick } = {}) {
   const s = useSession();
   const rs = useRooms();
   const [q, setQ] = useState("");
-  const [picking, setPicking] = useState(false);
   const star = useRoomStar(rs.rooms, s?.login);
   useEffect(() => { linkHubChatCss(); }, []);
   if (!s) return null;
@@ -382,7 +381,7 @@ export function HubNav({ onPick } = {}) {
   const shown = rs.rooms.filter((r) => !q.trim() || [r.name, r.agent?.owner?.name, r.lastText].some((v) => String(v || "").toLowerCase().includes(q.trim().toLowerCase())));
   const pick = (e, r) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(roomPath(r.id)); };
   return html`<div class="hub-nav">
-    <button type="button" class="btn hub-new" onClick=${() => setPicking(true)}><${Icon} name="plus" size=${16} />${hc("newChat")}</button>
+    <button type="button" class="btn hub-new" onClick=${() => { if (onPick) onPick(); navigate(NEW_CHAT_PATH); }}><${Icon} name="plus" size=${16} />${hc("newChat")}</button>
     <label class="hub-search"><${Icon} name="search" size=${14} /><input type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
       onInput=${(e) => setQ(e.target.value)} /></label>
     <div class="hub-sec">${hc("chats")}</div>
@@ -391,7 +390,6 @@ export function HubNav({ onPick } = {}) {
     ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChats")}</p>` : null}
     ${rs.rooms.length && !shown.length ? html`<p class="note hub-list-empty">${hc("noMatch")}</p>` : null}
     <div class="view-roster inst-nav hub-side-rooms"><${HubRoomRows} rooms=${rs.rooms} q=${q} current=${current} href=${(r) => roomPath(r.id)} onGo=${pick} star=${star} /></div>
-    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
   </div>`;
 }
 
@@ -409,7 +407,7 @@ export function HubSide({ onPick } = {}) {
   const { route } = useStore(navStore);
   const [q, setQ] = useState("");
   const [filtering, setFiltering] = useState(false);
-  const [picking, setPicking] = useState(false), [newRoom, setNewRoom] = useState(false);
+  const [newRoom, setNewRoom] = useState(false);
   // M-3127 C: on a Hub with rooms, Ctrl K is the search dialog (names, then messages); before rooms, the list's filter.
   const [searching, setSearching] = useState(false);
   const filter = useRef(null);
@@ -444,15 +442,14 @@ export function HubSide({ onPick } = {}) {
       ${noticesOffered(s) ? row("notices", NOTICES_PATH, "bell", hc("notices")) : null}
       <button type="button" class="side-row side-search" onClick=${openFilter} title=${`${hc("search")} (${searchShortcut()})`}
         aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${hc("navSearch")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>
-      <button type="button" class="side-row side-new" onClick=${() => setPicking(true)}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>
-      ${roomsLive() && rs.me?.canCreateRooms ? html`<button type="button" class="side-row side-new hub-new-room" onClick=${() => setNewRoom(true)}><${Icon} name="room" /><span class="grow">${hroom("newRoomTitle")}</span></button>` : null}
       ${searching ? html`<${LazyRoomPart} load=${() => import("./hub-room-search.js")} name="RoomSearch" props=${{ client: hubClient(), rooms: rs.rooms || [], onClose: () => setSearching(false),
         openRoom: (r) => { if (onPick) onPick(); navigate(roomPath(r.id)); },
         openHit: (h) => { if (onPick) onPick(); navigate(`${roomPath(h.roomId)}&m=${encodeURIComponent(h.messageId)}`); } }} />` : null}
     </nav>
 
-    <${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onPick=${onPick} quietEmpty=${home} foot=${roomsLive()} />
-    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
+    ${/* M-3190 (Argon): 新對話 and 新房間 head the conversation list, not the primary rows. */ ""}
+    <${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onPick=${onPick} quietEmpty=${home} foot=${roomsLive()}
+      onNew=${() => { if (onPick) onPick(); navigate(NEW_CHAT_PATH); }} onNewRoom=${roomsLive() && rs.me?.canCreateRooms ? () => setNewRoom(true) : null} />
     ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
       onClose: () => setNewRoom(false), onOpenRoom: (id) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(id)); } }} />` : null}`;
 }
@@ -462,12 +459,12 @@ export function HubSide({ onPick } = {}) {
  * count, one-line empty states) — the sidebar's (HubSide) and, on a phone, the chats' home page's (with its own New chat
  * row and the filter always shown): one drawing, not two (Argon #9). `quietEmpty`: the page beside it already says "No chats yet".
  */
-function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null, onNewRoom = null, foot = false }) {
+function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null, onNewRoom = null, foot = false, home = false }) {
   const current = roomParam();
   const star = useRoomStar(rs.rooms, useSession()?.login);   // S-145: favourites, as the Fleet sidebar's
   const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
   const shown = rs.rooms.filter((r) => !q.trim() || [r.name, r.agent?.owner?.name, r.lastText].some((v) => String(v || "").toLowerCase().includes(q.trim().toLowerCase())));
-  const always = !!onNew;                              // the home page's list: its filter is always there (when there's a list to filter)
+  const always = home;                                // the phone's home list: its filter is always there (when there's a list to filter)
   return html`<div class="view-roster inst-nav hub-side-rooms"><div data-trust="navigation" class="side-section">
       ${onNew ? html`<button type="button" class="side-row side-new" onClick=${onNew}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>` : null}
       ${/* Lumen (spec §2): on the phone's list too, beside New chat — not only in the drawer. */ ""}
@@ -496,11 +493,10 @@ function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, 
 /** The phone's chats home: the same roster, with New chat at its head and the filter in place. */
 function HubHomeList() {
   const rs = useRooms();
-  const [q, setQ] = useState(""), [filtering, setFiltering] = useState(false), [picking, setPicking] = useState(false), [newRoom, setNewRoom] = useState(false);
+  const [q, setQ] = useState(""), [filtering, setFiltering] = useState(false), [newRoom, setNewRoom] = useState(false);
   const filter = useRef(null);
-  return html`<${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onNew=${() => setPicking(true)}
+  return html`<${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} home=${true} onNew=${() => navigate(NEW_CHAT_PATH)}
       onNewRoom=${roomsLive() && rs.me?.canCreateRooms ? () => setNewRoom(true) : null} />
-    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
     ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
       onClose: () => setNewRoom(false), onOpenRoom: (id) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(id)); } }} />` : null}`;
 }
@@ -527,49 +523,32 @@ export function HubFoot() {
     trigger=${html`<span class="dot ok" aria-hidden="true"></span><span class="grow">${hc("signedIn")}</span><span class="meta" title=${s.displayName}>${s.displayName}</span>`} /></div>`;
 }
 
-/** New chat: the agents someone allowed this person to ask; Ask opens (or reopens) its room. */
-function NewChatDialog({ onClose }) {
-  const [cat, reload] = useRead(() => hubClient().catalog());
-  const rs = useStore(roomsStore);
-  const [q, setQ] = useState("");
-  const [msg, setMsg] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const open = async (it) => {
-    if (busy) return;
-    setBusy(true); setMsg(null);
-    const r = await hubClient().openRoom(it.exposure.id, it.grant.id);
-    setBusy(false);
-    if (!r.ok) { setMsg(errText(r)); return; }
-    onClose(); await refreshRooms(); navigate(roomPath(r.room.id));
-  };
-  const all = cat && cat.askable ? cat.askable : [];
-  const shown = all.filter((it) => !q.trim() || `${it.exposure.displayName} ${it.ownerName}`.toLowerCase().includes(q.trim().toLowerCase()));
-  const hasRoom = (it) => rs.rooms.some((r) => { const o = r.legacy || r; return o.exposureId === it.exposure.id && o.grantId === it.grant.id; });
-  return html`<${Dialog} title=${hc("pickTitle")} onClose=${onClose}>
-    <div class="hub-pick">
-      <label class="field"><span class="sr-only">${hc("pickSearch")}</span><input type="search" placeholder=${hc("pickSearch")} value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
-      ${!cat ? html`<${Skeleton} variant="rows" lines=${4} />` : cat.error ? html`<${ErrorState} message=${cat.error} onRetry=${reload} />` : null}
-      ${cat && !cat.error && !all.length ? html`<${Empty} icon="chat" title=${hc("pickEmpty")} hint=${hw("askHint")} />` : null}
-      ${all.length && !shown.length ? html`<p class="note">${hc("pickNone")}</p>` : null}
-      <ul class="hub-pick-list" role="list">${shown.map((it) => html`<li key=${it.grant.id} class="hub-pick-row">
-        <${Avatar} name=${it.exposure.displayName} />
-        <span class="hub-room-text"><span class="t">${it.exposure.displayName}</span><span class="s">${hc("pickUntil", it.ownerName || "—", dateOnly(it.grant.expiresAt))}</span></span>
-        <button type="button" class=${`btn btn-sm${hasRoom(it) ? "" : " btn-primary"}`} disabled=${busy} onClick=${() => open(it)}>${hasRoom(it) ? hc("pickOpen") : hc("pickAsk")}</button>
-      </li>`)}</ul>
-      <p class="note">${hc("pickHint")}</p>
-      ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-    </div>
-  </${Dialog}>`;
-}
+/** M-3190: 新對話 is the launcher's own address (the sidebar's and the phone list's 新對話 open it). */
+const NEW_CHAT_PATH = "/ui/hub?view=new";
+/** Once per page load (this window): 對話 opens the most recent room or chat (one with a message); back on 對話 later shows the list / launcher. */
+const openedIn = new WeakSet();
+const thisWindow = () => (typeof window !== "undefined" ? window : globalThis);
+const autoOpened = () => openedIn.has(thisWindow());
+const recentRoom = (rooms) => rooms.filter((r) => !r.archived && (r.kind === "group" || !!r.lastText))
+  .sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0))[0] || null;
 
-/** The Ask tab: the chosen room, or (none chosen) the list on a phone and a "pick a chat" note beside it on a wide screen. */
+/**
+ * The Ask tab: the chosen room; else (M-3190, Argon's chat-first review) the most recent room once per visit, and otherwise the
+ * launcher — beside the sidebar's list on a wide screen; on a phone the list, or the launcher on 新對話 or with nothing to list.
+ */
 function HubChats() {
   useStore(navStore);                               // ?room= changes without a new route
   const rs = useRooms();
   const s = useSession();
-  const [picking, setPicking] = useState(false);
   useEffect(() => { linkHubChatCss(); }, []);
-  const id = roomParam();
+  const id = roomParam(), launch = viewParam() === "new";
+  const opening = !id && !launch && !autoOpened();
+  useLayoutEffect(() => {
+    if (!rs.loaded || autoOpened()) return;
+    openedIn.add(thisWindow());
+    const recent = !id && !launch ? recentRoom(rs.rooms) : null;
+    if (recent) navigate(roomPath(recent.id), { replace: true });
+  }, [rs.loaded, id, launch]);
   // Today's chats (the list's `legacy` item) open the room view they always had; a room of a Hub with rooms opens the
   // shared thread (M-3092 PR 2).
   const listed = id ? rs.rooms.find((r) => r.id === id) : null;
@@ -580,17 +559,76 @@ function HubChats() {
     onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
-  return html`<${PanelHeader} title=${hc("chats")} />
+  if (opening && (!rs.loaded || recentRoom(rs.rooms))) return html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><div class="hub-home-pick center"><${Skeleton} variant="rows" lines=${4} /></div></div>`;
+  // On a phone the launcher takes the page on 新對話 and when there is nothing to list; otherwise the list does.
+  const alone = launch || (rs.loaded && !rs.error && !rs.rooms.length);
+  return html`<${PanelHeader} title=${launch ? hc("newChat") : hc("chats")} />
   ${/* M-3137 (versions spec §2.3): the signed-in person whose own Fleet is behind is told here, once per sign-in. */ ""}
   <${OlderFleetBanner} client=${hubClient()} signIn=${s?.csrf || ""} />
-  <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
+  <div class=${`hub-home${alone ? " is-launch" : ""}`}>
     <div class="hub-home-list"><${HubHomeList} /></div>
-    ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true), admin: s.admin === true, features: s.features }} /></div>`
-      : html`<div class="hub-home-pick center">${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : !rs.rooms.length
-      ? html`<${Empty} icon="chat" title=${hc("noChats")} />`
-      : html`<${Empty} icon="chat" title=${hc("choose")} hint=${hc("chooseHint")} />`}</div>`}
-    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
+    <div class="hub-home-pick hub-home-launch">${rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : html`<${ChatLauncher} />`}</div>
   </div>`;
+}
+
+/**
+ * M-3190: the launcher — one centred column, 「今天想找哪位 Agent？」, one row per agent this person can talk to: shared with them
+ * (one-to-one), the Hub's own (the assistant's chat) and the agents in their rooms (the five most recent rooms, read from each
+ * room's members); a row opens (or reopens) its chat or room. With no agent shared directly, a compact card says the next step.
+ * On a Hub with group permissions the welcome's frame adds its notes and the Fleet status line (hub-welcome.js).
+ */
+function ChatLauncher() {
+  const s = useSession(), rs = useRooms();
+  const [cat] = useRead(() => hubClient().catalog());
+  const [inRooms, setInRooms] = useState([]);
+  const [q, setQ] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState(null), [newRoom, setNewRoom] = useState(false);
+  const groups = rs.rooms.filter((r) => r.kind === "group" && !r.archived).sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0)).slice(0, 5);
+  const groupKey = groups.map((r) => r.id).join(",");
+  useEffect(() => {
+    let live = true;
+    if (typeof hubClient().room !== "function") return undefined;
+    Promise.all(groups.map((r) => hubClient().room(r.id).then((d) => (d && Array.isArray(d.members) ? d.members : [])
+      .filter((m) => m && m.kind === "agent" && !m.mine).map((m) => ({ key: `room:${r.id}:${m.id}`, name: m.name || "", sub: hc("launchInRoom", r.name), href: roomPath(r.id) })), () => [])))
+      .then((all) => { if (live) setInRooms(all.flat()); });
+    return () => { live = false; };
+  }, [groupKey]);
+  const askable = cat && Array.isArray(cat.askable) ? cat.askable : [];
+  const open = async (it) => {
+    if (busy) return;
+    setBusy(true); setMsg(null);
+    const r = await hubClient().openRoom(it.exposure.id, it.grant.id);
+    setBusy(false);
+    if (!r.ok) { setMsg(errText(r)); return; }
+    await refreshRooms(); navigate(roomPath(r.room.id));
+  };
+  const chats = rs.rooms.filter((r) => r.kind !== "group" && !r.archived);
+  const shownIn = new Set(chats.map((r) => (r.legacy || r.agent || {}).exposureId).filter(Boolean));
+  const rows = [
+    ...chats.map((r) => ({ key: r.id, name: r.assistant ? hroom("hubAssistant") : r.name, sub: r.assistant ? hroom("providedByHub") : r.agent?.owner?.name ? hc("launchOwner", r.agent.owner.name) : "",
+      href: roomPath(r.id), online: r.assistant ? (r.presence || "idle") !== "unavailable" : r.agent?.presence === "online" })),
+    ...askable.filter((it) => !shownIn.has(it.exposure.id)).map((it) => ({ key: it.grant.id, name: it.exposure.displayName, sub: hc("launchOwner", it.ownerName || "—"), ask: it })),
+    ...inRooms,
+  ];
+  const needle = q.trim().toLowerCase();
+  const shown = rows.filter((r) => !needle || `${r.name} ${r.sub}`.toLowerCase().includes(needle));
+  const go = (e, r) => { if (r.ask) { e.preventDefault(); void open(r.ask); return; } if (e.metaKey || e.ctrlKey) return; e.preventDefault(); navigate(r.href); };
+  const list = html`<h2 class="hub-launch-title">${hc("launchTitle")}</h2>
+    ${rows.length > 8 ? html`<label class="field hub-launch-filter"><span class="sr-only">${hc("launchFilter")}</span><input type="search" placeholder=${hc("launchFilter")} value=${q} onInput=${(e) => setQ(e.target.value)} /></label>` : null}
+    ${!cat || !rs.loaded ? html`<${Skeleton} variant="rows" lines=${3} />` : html`<div class="hub-launch-rows" role="list">${shown.map((r) => html`<a key=${r.key} role="listitem" class="hub-launch-row"
+        href=${r.href || NEW_CHAT_PATH} aria-disabled=${r.ask && busy ? "true" : undefined} onClick=${(e) => go(e, r)}>
+        <span class="hub-launch-av"><${Avatar} name=${r.name} />${r.online ? html`<span class="dot ok" aria-hidden="true"></span>` : null}</span>
+        <span class="hub-launch-text"><strong>${r.name}</strong><small>${r.sub}</small></span><span class="hub-launch-go" aria-hidden="true">${hc("launchGo")}</span></a>`)}</div>
+      ${rows.length && !shown.length ? html`<p class="note">${hc("launchNoMatch")}</p>` : null}`}
+    ${cat && cat.error ? html`<${ErrorState} message=${cat.error} />` : null}
+    ${cat && !cat.error && !askable.length ? html`<section class="hub-launch-empty" data-launch="none-shared"><strong><${Icon} name="chat" size=${18} />${hc("launchNone")}</strong>
+      <p>${hc("launchNoneHint")}</p>
+      <div class="hub-launch-actions">${roomsLive() && rs.me?.canCreateRooms ? html`<button type="button" class="btn btn-primary hub-launch-pill" onClick=${() => setNewRoom(true)}><${Icon} name="room" size=${16} />${hc("launchNewRoom")}</button>` : null}
+        <a class="btn hub-launch-pill" href="/ui/hub/exposures" onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); navigate("/ui/hub/exposures"); }}><${Icon} name="globe" size=${16} />${hc("launchShare")}</a></div></section>` : null}
+    ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+    ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
+      onClose: () => setNewRoom(false), onOpenRoom: (rid) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(rid)); } }} />` : null}`;
+  return html`<div class="hub-launch">${groupPolicyOn(s, hubClient())
+    ? html`<${LazyGroups} pick=${(m) => m.ChatLauncherFrame || (({ children }) => children)} props=${{ admin: s.admin === true, features: s.features, children: list }} />` : list}</div>`;
 }
 
 const RAIL_KEY = "agend_hub_context";
@@ -921,6 +959,8 @@ function HubMine() {
   // Nothing shared yet: the empty state below says where to share from, so the lead doesn't say it too (Argon #20).
   return html`<div class="col hub-owner"><${OlderFleetBanner} client=${hubClient()} signIn=${session?.csrf || ""} /><p class="s-page-lead hub-page-lead">${ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
     <div class="s-section-layout">
+      ${/* M-3190: 「我的 Fleet」 moved here from 對話 — the person's Fleets and the steps to connect one. */ ""}
+      ${groupPolicyOn(session, hubClient()) ? html`<${LazyGroups} pick=${(m) => m.MyFleetsCard || (() => null)} props=${{ quick: session.features.includes("quick-pairing-v1"), admin: session.admin === true, features: session.features }} />` : null}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: true }} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${!pairings ? html`<${Skeleton} lines=${2} />` : pairings.error ? html`<${ErrorState} message=${pairings.error} onRetry=${reloadPairings} />` : null}

@@ -49,7 +49,7 @@ describe("#3290 Hub initial reads", () => {
     const pending = held(); api({ "/hub/v1/rooms": () => pending.promise }); await mount();
     await until(() => p!.root.querySelector(".hub-home .skeleton"));
     expect(p!.root.querySelector(".hub-home .empty")).toBeNull();
-    pending.release([200, { rooms: [] }]); await until(() => p!.root.querySelector(".hub-home .empty"));
+    pending.release([200, { rooms: [] }]); await until(() => p!.root.querySelector(".hub-home .hub-launch"));   // M-3190: nothing to open — the launcher
     expect(p!.root.querySelector(".hub-home .skeleton")).toBeNull();
   });
 
@@ -107,13 +107,12 @@ describe("#3290 Hub initial reads", () => {
     await until(() => p!.root.querySelector(".hub-steps"));
   });
 
-  it("the New chat picker is pending until catalog data arrives, and a cancelled dialog stays closed", async () => {
+  it("M-3190: the New chat launcher is pending until catalog data arrives — no empty card before it", async () => {
     const catalog = held(); api({ "/hub/v1/exposures": () => catalog.promise }); await mount();
     await until(() => p!.root.querySelector(".side-new")); fire(p!.root.querySelector(".side-new")!, "click");
-    await until(() => p!.root.querySelector("dialog .skeleton")); expect(p!.root.querySelector("dialog .empty")).toBeNull();
-    fire(p!.root.querySelector("dialog .dlg-x")!, "click"); await settle();
-    catalog.release([200, { askable: [] }]); await settle();
-    expect(p!.root.querySelector("dialog")).toBeNull();
+    await until(() => p!.root.querySelector(".hub-launch .skeleton")); expect(p!.root.querySelector(".hub-launch-empty")).toBeNull();
+    catalog.release([200, { askable: [] }]); await until(() => p!.root.querySelector(".hub-launch-empty"));
+    expect([p!.root.querySelector(".hub-launch .skeleton"), p!.root.querySelector("dialog")]).toEqual([null, null]);
   });
 });
 

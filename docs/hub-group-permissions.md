@@ -62,21 +62,23 @@ Then choose **Save**, or **Turn on and save** the first time. *"Saved."* confirm
 
 ## 2. What a colleague sees after signing in
 
-After signing in, a colleague's home page greets them (**Welcome, *name*** — *"What would you like to do?"*) with two cards, **Chat with an agent** and **Connect your fleet**. What the cards say depends on what their groups allow:
+After signing in, **Chats** opens the colleague's most recent room or chat. With nothing to open yet (and on **New chat**), it shows one list, *"Who do you want to talk to today?"*. That list has one row for each agent they can talk to: those shared with them, the Hub assistant, and the agents in their rooms. When nobody has shared an agent with them directly, one small card says what to do next, with **New room** and **Share my agent**. On a wide screen a line under the list shows their fleets, for example *"2 fleets connected (Han, My fleet)"*, and links to **My shared agents**.
+
+Their fleets are listed in **My shared agents** → **My fleets**. Each fleet is a row with its state. When they may revoke it, **Revoke this fleet** is in the row's **⋯** menu and asks first. While they have no fleet, the steps to connect one are shown. Once they have one, the steps sit behind **+ Connect another fleet**: the address to paste in AgEnD's **Settings → Hub**, with **Copy**. What they see depends on what their groups allow:
 
 | Their access | What they see |
 |---|---|
-| **Chat and Connect a fleet** | Both cards on. **Chat with an agent** has **Open chats**; **Connect your fleet** shows *"Your fleets: N of M"*, a fleet-name field and **Connect my fleet**. An older Hub or cached client keeps the administrator pairing-code guidance. |
-| **Chat only** | **Chat with an agent** is on; **Connect your fleet** is off, with the reason *"Connecting a fleet is not included in your access."* |
-| **Nothing allowed** | Both off: *"Your account can sign in, but no actions are allowed yet."* *"Contact your Hub admin."* |
-| **At their fleet limit** | *"You have connected as many fleets as you may. Manage them, or ask your Hub admin for more."* |
+| **Chat and Connect a fleet** | The list in **Chats**. **My fleets** shows *"N of M"*, their fleets and the steps to connect one. An older Hub or cached client keeps the administrator pairing-code guidance. |
+| **Chat only** | The list in **Chats**. **My fleets** says *"Connecting a fleet is not included in your access."* |
+| **Nothing allowed** | **Chats** says *"Your account can sign in, but no actions are allowed yet."* *"Contact your Hub admin."* |
+| **At their fleet limit** | **My fleets** says *"You have connected as many fleets as you may. Manage them, or ask your Hub admin for more."* |
 | **Directory not answering** | *"The directory didn't answer, so this can't be checked right now."* with **Retry**. The Hub never falls back to an old answer. |
-| **Group permissions never turned on** | Chat works as before; **Connect your fleet** shows only the pairing-code note. |
-| **Group permissions switched off** | Both cards off with *"Paused by your Hub admin."*, and *"Your account can sign in, but no actions are allowed yet."* *"Contact your Hub admin."* |
+| **Group permissions never turned on** | Chat works as before. **My fleets** isn't shown. |
+| **Group permissions switched off** | **Chats** says *"Paused by your Hub admin."*, and *"Your account can sign in, but no actions are allowed yet."* *"Contact your Hub admin."* |
 
-If no agent has been shared with them yet, the chat card says *"No agents have been shared with you yet. An agent's owner has to give you access."* A card that is off says why: *"Your Hub admin has excluded your account from this."*, *"Your directory account can't use this right now."*, or *"Paused by your Hub admin."*
+When chatting isn't available to them now, **Chats** says why in one line: *"Your Hub admin has excluded your account from this."*, *"Your directory account can't use this right now."*, or *"Paused by your Hub admin."* Each of their fleets shows its state: **Active**, **Paused**, **Revoked**, or **Can't be checked right now**.
 
-Their own fleets are listed with their state: **Active**, **Paused**, **Revoked**, or **Can't be checked right now**.
+An administrator gets the same **Chats**. On a Hub with no fleet connected yet, they also get one line that can be dismissed: *"Your Hub is ready: create a pairing code to invite colleagues, or set up the room assistant → Open Administration"*.
 
 ## 3. Quick pairing
 

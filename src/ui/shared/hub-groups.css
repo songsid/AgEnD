@@ -1,21 +1,25 @@
 /* #3298 S-89: the Hub's signed-in welcome and Administration → Group permissions. Its own stylesheet (linked by
    hub-group-strings.js) so a tab holding an older hub-chat.css or hub-owner.css still draws these pages. Built on the shared
    card / s-row / field / btn / tag pieces; only the layout of the two entries and the group rows is here. */
-.hub-home.has-welcome .hub-home-pick.hub-home-welcome { align-items: flex-start; justify-content: flex-start; overflow-y: auto; }
-.hub-welcome-page { width: 100%; max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--s-3); }
-.hub-welcome { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s-3); }
-.hub-welcome-card { display: flex; flex-direction: column; gap: var(--s-2); min-height: 180px; }
-.hub-welcome-card h3 { font-size: var(--fs-lg, 1.15rem); margin: 0; }
-.hub-welcome-actions { margin-top: auto; display: flex; gap: var(--s-2); }
 .hub-groups-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
-.hub-welcome-card.is-off h3 { color: var(--text-2); }
-.hub-welcome-fleets { margin: 0; padding-left: var(--s-4); }
-@media (max-width: 899px) {
-  /* A phone shows the welcome first, then the chat list under it. */
-  .hub-home.has-welcome { flex-direction: column; overflow-y: auto; }
-  .hub-home.has-welcome .hub-home-pick.hub-home-welcome { display: block; flex: none; padding: var(--s-3); }
-  .hub-home.has-welcome .hub-home-list { flex: none; overflow: visible; }
-}
+/* M-3190: the chat launcher's frame (hub-welcome.js ChatLauncherFrame) and 我分享的 Agent → 「我的 Fleet」. */
+.hub-launch-banner { display: flex; align-items: center; gap: 10px; min-height: 40px; box-sizing: border-box; padding: 0 4px 0 14px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--surface); font-size: var(--fs-sm); }
+.hub-launch-banner > span { flex: 1; min-width: 0; }
+.hub-launch-foot { margin: 8px 0 0; color: var(--text-3); font-size: var(--fs-sm); }
+.hub-launch-foot a { color: inherit; }
+.hub-launch-ok { color: var(--ok); }
+@media (max-width: 640px) { .hub-launch-foot { display: none; } }   /* no Fleet or address text on a phone's 對話 */
+.hub-my-fleets h3 small { font-weight: var(--fw-regular); }
+.hub-my-fleets .hub-rows { display: flex; flex-direction: column; gap: 8px; }
+.hub-my-fleets .hub-rows .s-row.hub-row { border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.hub-fleet-menu > .menu-list { min-width: 148px; padding: 4px; border: 1px solid var(--border); background: var(--bg); box-shadow: var(--shadow-2); }
+.hub-pair-more { align-self: flex-start; }
+.hub-pair-steps { display: flex; flex-direction: column; gap: var(--s-2); }
+.hub-pair-steps > .note { margin: 0; }
+.hub-address-chip { display: inline-flex; align-items: center; gap: var(--s-2); align-self: flex-start; max-width: 100%; padding: 4px 4px 4px 12px; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--bg); }
+.hub-address-chip code { background: none; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 /* A group's DN takes its own full line; its permissions, fleets and Remove wrap under it (hub-owner.css rows don't wrap). */
 .hub-rows .s-row.hub-row.hub-group-row { flex-wrap: wrap; gap: var(--s-2) var(--s-3); }
 .hub-rows .s-row.hub-row.hub-group-row > .hub-row-text { flex: 1 1 100%; }

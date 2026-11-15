@@ -142,9 +142,10 @@ for (let i = 0; i < runs.length; i++) {
 
 const PAGES = [
   { name: "signin", who: null, path: "/ui/hub", ready: "#hubLogin" },
-  { name: "welcome", who: bo, path: "/ui/hub", ready: ".hub-welcome-card" },
+  // M-3190: with nothing to open, 對話 is the launcher (the welcome's cards became it and 我分享的 Agent → 我的 Fleet).
+  { name: "welcome", who: bo, path: "/ui/hub", ready: ".hub-launch-title" },
   { name: "chat", who: "asker", path: "/ui/hub?room=", ready: ".hub-chat-main" },
-  { name: "owner", who: owner, path: "/ui/hub/exposures", ready: ".hub-owner" },
+  { name: "owner", who: owner, path: "/ui/hub/exposures", ready: ".hub-owner .hub-my-fleets:not([aria-busy])" },
   // M-3162: Administration opens on Overview where the Hub serves it; the long page is the Manage tab (?view=manage).
   { name: "admin-overview", who: admin, path: "/ui/hub/admin", ready: ".hub-ov .hub-ov-section, .hub-ov-empty" },
   { name: "admin", who: admin, path: "/ui/hub/admin?view=manage", ready: ".hub-admin .hub-this-facts, .hub-admin:not(:has(.hub-this-hub)) .hub-steps" },

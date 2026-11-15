@@ -1,7 +1,8 @@
 /**
- * Hub UX U2 (spec 1.2, A-L9): the welcome. An administrator, while no Fleet is connected to the Hub, sees 「讓同仁加入」 and never
- * the "your Hub admin pairs fleets for you" line; a person with no Fleet reads step 3's sentence; 連接我的 Fleet (the code path)
- * sits folded under 其他方式. An older panel (no `admin`) keeps the person view.
+ * Hub UX U2 (spec 1.2, A-L9), after M-3190 (Argon's chat-first review): an administrator, while no Fleet is connected to the Hub,
+ * gets the launcher's one-line "Hub ready" pointing to Administration (where 「讓同仁加入」 lives) and never the "your Hub admin
+ * pairs fleets for you" line; a person with no Fleet reads step 3's instruction in 我分享的 Agent → 我的 Fleet, the address in a
+ * copyable chip; 連接我的 Fleet (the code path) sits folded under 其他方式. An older panel (no `admin`) keeps the person view.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
@@ -12,7 +13,7 @@ beforeAll(async () => {
   g.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: true, enabled: false, revision: 1, companyLink: null }), text: async () => "" });
   client = await import("/ui/js/hub-client.js"); welcome = await import("/ui/js/hub-welcome.js"); pg.restore();
 });
-afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); vi.unstubAllGlobals(); });
+afterEach(async () => { for (const p of mounted.splice(0).reverse()) { await p.unmount(); p.restore(); } client.setHubClient(null); vi.unstubAllGlobals(); });
 afterAll(() => { client.setHubClient(null); });
 const MANUAL = /pairs fleets for you|Ask them for a pairing code/;
 function fake(o: { admin?: boolean; fleets?: any[]; connect?: any; quick?: boolean; on?: boolean } = {}) {
@@ -29,26 +30,28 @@ function fake(o: { admin?: boolean; fleets?: any[]; connect?: any; quick?: boole
     joinMetadata: vi.fn(async () => ({ ok: true, v: 1, features: o.on === false ? [] : ["company-join-v1", "join-supersedes-v1", "member-leave-v1"] })),
   };
 }
-async function mount(c: any, props: any) {
+async function mount(c: any, props: any, part = "MyFleetsCard") {
   client.setHubClient(c);
   const pg = page({ url: "https://hub.example.test/ui/hub", storage: { agend_tour_done: "1", agend_lang: "en" } }); mounted.push(pg);
-  await pg.mount(h(welcome.HubWelcome, { name: "Ada", ...props })); for (let i = 0; i < 40; i++) await settle(5); return pg;
+  await pg.mount(h(welcome[part], props)); for (let i = 0; i < 40; i++) await settle(5); return pg;
 }
 describe("the welcome after U2", () => {
-  it("A-L9: an administrator with no Fleet on the Hub — the three-step card, never the pairing-code line", async () => {
-    const pg = await mount(fake(), { admin: true, features: ["group-policy-v1", "company-join-v1"] });
-    expect(pg.root.querySelector(".hub-welcome-admin .hub-join-card")).toBeTruthy();
-    expect([...pg.root.querySelectorAll(".hub-join-card li[data-step]")]).toHaveLength(3);
-    expect(pg.root.textContent).not.toMatch(MANUAL);
+  it("A-L9: an administrator with no Fleet on the Hub — the launcher's 'Hub ready' line to Administration, never the pairing-code line", async () => {
+    const frame = await mount(fake(), { admin: true, features: ["group-policy-v1", "company-join-v1"] }, "ChatLauncherFrame");
+    expect(frame.root.querySelector("[data-welcome='ready'] a").getAttribute("href")).toBe("/ui/hub/admin?view=manage");
+    const card = await mount(fake(), { admin: true, features: ["group-policy-v1", "company-join-v1"] });
+    expect(card.root.textContent).not.toMatch(MANUAL);
   });
-  it("an administrator once a Fleet is connected on the Hub: no card on the welcome (Administration keeps it)", async () => {
-    const pg = await mount(fake({ fleets: [{ id: "f1", status: "active" }] }), { admin: true, features: ["group-policy-v1", "company-join-v1"] });
-    expect(pg.root.querySelector(".hub-welcome-admin")).toBeNull(); expect(pg.root.textContent).not.toMatch(MANUAL);
+  it("an administrator once a Fleet is connected on the Hub: no 'Hub ready' line (Administration keeps its card)", async () => {
+    const pg = await mount(fake({ fleets: [{ id: "f1", status: "active" }] }), { admin: true, features: ["group-policy-v1", "company-join-v1"] }, "ChatLauncherFrame");
+    expect(pg.root.querySelector("[data-welcome='ready']")).toBeNull(); expect(pg.root.textContent).not.toMatch(MANUAL);
   });
   it("a person with no Fleet: step 3's sentence for this Hub is the primary text; no admin card, no admin read", async () => {
     const c = fake({ admin: false }); const pg = await mount(c, { admin: false, features: ["group-policy-v1", "company-join-v1"] });
-    expect(pg.root.querySelector("[data-welcome='sentence']").textContent).toBe("In AgEnD, open Settings → Hub, enter hub.example.test, then sign in with the company account.");
-    expect(pg.root.querySelector(".hub-welcome-admin")).toBeNull(); expect(c.adminOverview).not.toHaveBeenCalled();
+    expect([pg.root.querySelector("[data-welcome='sentence']").textContent, pg.root.querySelector(".hub-address-chip code").textContent])
+      .toEqual(["In AgEnD, open Settings → Hub, paste this address, then sign in with the company account:", "hub.example.test"]);
+    const frame = await mount(c, { admin: false, features: ["group-policy-v1", "company-join-v1"] }, "ChatLauncherFrame");
+    expect(frame.root.querySelector("[data-welcome='ready']")).toBeNull(); expect(c.adminOverview).not.toHaveBeenCalled();
   });
   it("連接我的 Fleet (the pairing-code path) is folded under 其他方式", async () => {
     const pg = await mount(fake({ admin: false, quick: true }), { admin: false, quick: true, features: ["group-policy-v1", "company-join-v1", "quick-pairing-v1"] });
@@ -71,6 +74,6 @@ describe("the welcome after U2", () => {
   });
   it("an older panel (no admin, no features): the person view as before — the pairing-code line, no card", async () => {
     const pg = await mount(fake({ admin: false }), {});
-    expect(pg.root.textContent).toMatch(MANUAL); expect(pg.root.querySelector(".hub-welcome-admin")).toBeNull();
+    expect(pg.root.textContent).toMatch(MANUAL); expect(pg.root.querySelector(".hub-address-chip")).toBeNull();
   });
 });

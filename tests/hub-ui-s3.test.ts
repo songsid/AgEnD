@@ -129,9 +129,9 @@ describe("the shell", () => {
     client.setHubClient(client.createHubWebClient());
     hubPanel.resetHubSession();
     const pg = await app("hub", "/ui/hub/exposures", "Team Hub");
-    // cid-hub-shell-parity (the user's approved mockup): the dashboard's brand row — one line, never the name repeated.
-    expect([pg.root.querySelector(".side-head .brand")!.textContent, pg.root.querySelector(".side-head .brand")!.getAttribute("title"), pg.root.querySelector(".hub-brand")])
-      .toEqual(["AgEnD Hub", "Team Hub", null]);
+    // cid-hub-shell-parity, M-3190 (Argon): the dashboard's brand row — AgEnD Hub, the Hub's name once, on a small line under it.
+    expect([pg.root.querySelector(".side-head .brand")!.textContent, pg.root.querySelector(".side-head .brand")!.getAttribute("title"), pg.root.querySelector(".hub-brand"),
+      [...pg.root.querySelectorAll(".side-head .side-brand-name")].map((x: any) => x.textContent)]).toEqual(["AgEnD Hub", null, null, ["Team Hub"]]);
     // #3226 B: the sidebar is the Hub module's conversation list — nothing of it while signed out (the page is the sign-in).
     await settle(10);
     expect([pg.root.querySelector(".side-nav .hub-nav"), pg.root.querySelectorAll(".side-nav a.side-row").length]).toEqual([null, 0]);
@@ -161,13 +161,13 @@ describe("the shell", () => {
       const row = pg.root.querySelector(".hub-side-rooms .v-inst")!;
       expect([row.getAttribute("href"), row.querySelector(".inst-name")!.textContent, row.querySelector(".inst-alt")!.textContent, !!row.querySelector(".av-dot.busy")])
         .toEqual(["/ui/hub?room=11111111-2222-4333-8444-555555555555", "Sales numbers", "Waiting for an answer", true]);
-      expect([...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent)).toEqual(["Chats", "My shared agents", "Search", "New chat"]);
-      expect(pg.root.querySelector(".side-nav .side-new")!.textContent).toBe("New chat");
+      expect([...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent)).toEqual(["Chats", "My shared agents", "Search"]);
+      expect([pg.root.querySelector(".side-nav .side-new"), pg.root.querySelector("#sidebar .hub-side-rooms .side-new")!.textContent]).toEqual([null, "New chat"]);   // M-3190: it heads the list
       await until(() => pg.root.querySelector(".side-foot .hub-session-row button"));
       (pg.root.querySelector(".side-foot .hub-session-row button") as any).click(); await settle(5);
       expect([...pg.root.querySelectorAll(".side-foot [role=menuitem]")].map((b: any) => b.textContent.trim())).toEqual(["Alex (alex)", "Sign out"]);   // Argon #10: the nav's rows aren't repeated in the menu
       i18n.setLang("zh-TW", { store: false }); await settle(5);
-      expect(pg.root.querySelector(".side-nav .side-new")!.textContent).toBe("新對話");
+      expect(pg.root.querySelector("#sidebar .hub-side-rooms .side-new")!.textContent).toBe("新對話");
     } finally { g.fetch = realFetch; }
   });
 });
@@ -291,11 +291,12 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     input(pg, "#hubPassword", "pw"); await settle(5);
     fire(pg.root.querySelector(".hub-signin form")!, "submit");
     await until(() => pg.root.querySelector(".hub-home"));
-    expect(pg.root.querySelector(".hub-home-pick")!.textContent).toContain("No chats yet");
+    await until(() => pg.root.querySelector(".hub-home-pick .hub-launch-empty"));   // M-3190: nothing to open — the launcher
+    expect(pg.root.querySelector(".hub-home-pick")!.textContent).toContain("No agent has been shared with you directly yet");
     expect(calls.filter((x) => x.method === "POST").map((x) => x.body)).toEqual([{ login: "alex", password: "pw" }, { login: "alex", password: "pw" }]);
   });
 
-  it("Ask: New chat lists what is granted, Ask opens the room — the question is sent with a fresh idempotency key and the CSRF token; its stage shows; one read per poll", async () => {
+  it("Ask: New chat (the launcher, M-3190) lists what is granted, a row opens the room — the question is sent with a fresh idempotency key and the CSRF token; its stage shows; one read per poll", async () => {
     const e = { id: "e1", displayName: "Sales numbers", revision: 1 };
     const R1 = "11111111-2222-4333-8444-555555555555";
     let opened = false;
@@ -313,9 +314,10 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     await pg.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "ask" }, navKey: "hub:ask|1|en" }));
     await until(() => pg.root.querySelector(".hub-home .side-new"));
     (pg.root.querySelector(".hub-home .side-new") as any).click();
-    await until(() => pg.root.querySelector(".hub-pick-row"));
-    expect(pg.root.querySelector(".hub-pick-row .s")!.textContent).toContain("Answers for Olivia");
-    (pg.root.querySelector(".hub-pick-row button") as any).click();
+    await until(() => pg.root.querySelector(".hub-launch-row"));
+    expect([pg.window.location.search, pg.root.querySelector(".hub-launch-row strong")!.textContent, pg.root.querySelector(".hub-launch-row small")!.textContent])
+      .toEqual(["?view=new", "Sales numbers", "Owner: Olivia"]);
+    fire(pg.root.querySelector(".hub-launch-row") as any, "click");
     await until(() => pg.root.querySelector(".hub-chat-main"));
     expect(pg.window.location.search).toBe(`?room=${R1}`);
     expect(pg.root.querySelector(".hub-chat-title strong")!.textContent).toBe("Sales numbers");
