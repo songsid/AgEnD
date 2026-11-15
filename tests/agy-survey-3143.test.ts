@@ -31,6 +31,9 @@ describe("agy legacy rating survey: reconstructed from exact 1.5.9 binary render
     expect(matches(legacy.replace(/  /g, "\n"))).toHaveLength(1);
     expect(matches(fixture("legacy-width-31.txt").replace(/\n/g, "\r\n"))).toHaveLength(1);
     expect(matches(legacy + "\n" + emptyBox)).toHaveLength(1);
+    // writeContextStatusLine installs this footer for AgEnD-launched agy.
+    expect(matches(fixture("legacy-width-31.txt") + "Context 22% used\n")).toHaveLength(1);
+    expect(matches(legacy + "\n" + emptyBox.replace(/\? for shortcuts[^\n]*/, "Context 22% used"))).toHaveLength(1);
   });
   it("recognizes the live bottom menu after an old menu remains in scrollback", () => {
     expect(matches(legacy + "\nEarlier menu was answered.\n" + fixture("legacy-width-33.txt"))).toHaveLength(1);
