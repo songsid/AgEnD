@@ -135,6 +135,23 @@ describe("M-3175: the daemon types it only past its gate, and reports what codex
     setTimeout(() => { screen.text = PANE_169; }, 300);   // codex's answer: ■ Model 'nosuch-model' is unavailable…
     expect(await d.verifyCodexSwitch({ model: "nosuch-model", effort: "high" }, before)).toMatchObject({ outcome: "mismatch", shown: expect.stringContaining("nosuch-model") });
   });
+  it("M-3178: with a rollout, codex's line on the pane alone is not the proof — the switch waits for the rollout's record", async () => {
+    const screen = { text: PANE_ON_SUCCESS };
+    const d = codexDaemon(screen);
+    const path = join(dir, "rollout.jsonl"); writeFileSync(path, ROLLOUT);
+    const before = { rollout: { path, offset: ROLLOUT.length }, answers: codexSwitchAnswerCount(PANE_ON_SUCCESS), version: "0.169.0" };
+    // codex's NEW success line, naming what was asked, is on the pane at once …
+    screen.text = PANE_ON_SUCCESS.replace(/^(• Model changed to gpt-6\.1-sol xhigh for this session only)$/m, "$1\n\n• Model changed to gpt-6-astra high for this session only");
+    // … but the rollout records nothing: not confirmed (the fleet restarts), never "switched" from the pane. The verify clock jumps 4 s a
+    // read, so its 10 s runs out after a few real looks (each one reads the rollout and the pane) — no waiting, no fake timers.
+    let clock = 0;
+    const now = vi.spyOn(performance, "now").mockImplementation(() => (clock += 4_000));
+    expect(await d.verifyCodexSwitch({ model: "gpt-6-astra", effort: "high" }, before)).toEqual({ outcome: "not_confirmed" });
+    now.mockRestore();
+    // The same pane, and the rollout's record there: switched, from the rollout.
+    appendFileSync(path, JSON.stringify({ type: "event_msg", payload: { type: "thread_settings_applied", thread_settings: { model: "gpt-6-astra", reasoning_effort: "high" } } }) + "\n");
+    expect(await d.verifyCodexSwitch({ model: "gpt-6-astra", effort: "high" }, before)).toEqual({ outcome: "switched", confirmed: true, shown: "gpt-6-astra high" });
+  });
   it("nothing new in time: not confirmed (the success already on screen is an older one)", async () => {
     vi.useFakeTimers();
     const d = codexDaemon({ text: PANE_ON_SUCCESS });
