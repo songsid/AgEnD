@@ -92,6 +92,12 @@ describe("a row's update part", () => {
     expect([c.cancelFleetUpdate.mock.calls[0][0], asked()]).toEqual(["r1", undefined]);
   });
 
+  it("a cancel the Fleet has not confirmed yet: Cancelling…, and no second Cancel", async () => {
+    const c = client(), p = await mount(h(v.FleetUpdateCell, { fleet: row({ updateRequest: req({ state: "waiting", waitingSince: NOW - HOUR, cancelRequested: true }) }), recommended: "2.4.0", client: c }));
+    const b = p.root.querySelector(".hub-fleet-update .btn") as any;
+    expect([b.textContent, b.disabled]).toEqual(["Cancelling…", true]);
+  });
+
   it("refused when started: the reason in words", async () => {
     const c = client({ updateFleets: vi.fn(async () => ({ ok: true, requests: [], refused: [{ fleetId: "f1", code: "not-service" }] })) });
     const p = await mount(h(v.FleetUpdateCell, { fleet: row(), recommended: "2.4.0", revision: 1, client: c }));

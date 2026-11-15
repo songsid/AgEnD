@@ -33,7 +33,7 @@ register("hubVersions", {
     stSending: "Sending…", stConnect: "Waiting for the Fleet to connect", stWaiting: "Waiting for its agents to be idle · since {0}",
     stUpdating: "Updating…", stDone: "Updated to v{0} · {1}", stRolledBack: "Update failed; back on v{0}",
     stBusy: "Did not start: agents were busy for 24 hours", stOffline: "Did not start: the Fleet has not connected for 7 days.",
-    stCancelled: "The owner cancelled this update", stGone: "Update failed and the Fleet has not come back. Contact {0}.",
+    stCancelled: "The owner cancelled this update", cancelling: "Cancelling…", stGone: "Update failed and the Fleet has not come back. Contact {0}.",
     startedMany: "Started for {0} Fleets.", startedSome: "Started for {0} Fleets; {1} could not start.",
     rfOwnerOff: "The owner no longer allows updates from the Hub.", rfNotService: "This Fleet was started by hand, so it cannot be updated from here.",
     rfNotFound: "That Fleet could not find v{0} on npm.", rfNpm: "That Fleet could not reach the update source. Nothing was changed.",
@@ -76,7 +76,7 @@ register("hubVersions", {
     stSending: "傳送中…", stConnect: "等待 Fleet 連接", stWaiting: "等待 Agent 閒置 · {0} 起",
     stUpdating: "更新中…", stDone: "已更新到 v{0} · {1}", stRolledBack: "更新失敗，已回到 v{0}",
     stBusy: "沒有開始：Agent 連續 24 小時都在忙", stOffline: "沒有開始：這個 Fleet 已經 7 天沒有連接。",
-    stCancelled: "擁有者取消了這次更新", stGone: "更新失敗，而且 Fleet 沒有重新連接。請聯絡 {0}。",
+    stCancelled: "擁有者取消了這次更新", cancelling: "取消中…", stGone: "更新失敗，而且 Fleet 沒有重新連接。請聯絡 {0}。",
     startedMany: "已為 {0} 個 Fleet 開始。", startedSome: "已為 {0} 個 Fleet 開始；{1} 個無法開始。",
     rfOwnerOff: "擁有者已不允許由 Hub 更新。", rfNotService: "這個 Fleet 是手動啟動的，無法從這裡更新。",
     rfNotFound: "那個 Fleet 在 npm 上找不到 v{0}。", rfNpm: "那個 Fleet 連不上更新來源，沒有任何變更。",
@@ -352,7 +352,8 @@ export function FleetUpdateCell({ fleet, recommended = null, revision = 0, clien
   const cancel = () => run(async () => { const r = await client.cancelFleetUpdate(fleet.updateRequest.id); return r && r.ok !== false ? { ok: true, text: "" } : { ok: false, text: updateReasonText(r?.code) }; });
   return html`<span class="hub-fleet-update">
     ${status ? html`<small class="note hub-fleet-update-status">${status.text}</small>
-      ${status.action === "cancel" ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${cancel}>${hv("cancel")}</button>` : null}
+      ${/* A cancel the Fleet has not confirmed yet (it may already have claimed the request): Cancelling…, once. */ ""}
+      ${status.action === "cancel" ? html`<button type="button" class="btn btn-sm" disabled=${busy || fleet.updateRequest?.cancelRequested === true} onClick=${cancel}>${fleet.updateRequest?.cancelRequested === true ? hv("cancelling") : hv("cancel")}</button>` : null}
       ${status.action === "retry" && updatable(fleet, recommended) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${start}>${hv("tryAgain")}</button>` : null}`
     : fleet.updatesAllowed === true ? html`<button type="button" class="btn btn-sm hub-fleet-update-btn" disabled=${busy} onClick=${start}>${hv("updateBtn")}</button>`
     : html`<small class="note hub-fleet-owner-updates">${hv("ownerUpdates")}</small>`}
