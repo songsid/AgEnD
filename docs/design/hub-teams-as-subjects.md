@@ -88,7 +88,7 @@ The owner's direction: managers manage their own teams.
 | Who can create a team | Chosen by the administrator: **Administrators only** (default), or named people and AD groups (for example the managers' group). The creator becomes its first lead |
 | Leads | One to five. Any lead can add or remove members, add or remove another lead, rename the team, and delete it. The last lead cannot leave without naming another |
 | Administrator | Can do all of this for any team, and sees every team |
-| Department | Optional, and still only a label. A product line that spans departments leaves it empty |
+| Department | Optional, and still only a label. A product line that spans departments leaves it empty. A lead can set, change or clear it. To pick one, a person allowed to create teams (when creating) and a lead (when editing) can search AD groups by name; the search returns group names only, never who is in a group, and grants nothing |
 | Members | Unchanged: anyone in the company directory with an enabled account, up to 200 |
 | Seeing a team | Any signed-in person can see a team's name and leads. Only its leads, its members and administrators see the list |
 
