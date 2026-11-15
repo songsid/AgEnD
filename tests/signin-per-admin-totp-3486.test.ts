@@ -1328,3 +1328,50 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
     });
   });
 });
+
+// M-3163: the one-box sign-in page offers 「傳一組新的裝置登入碼給我」 to a returning device only (GET /auth/device → returning). A code
+// DM'd to its owner made a browser one (#1570); an authenticator sign-in never did, so an admin who signs in with the app never saw it.
+// A chat admin's authenticator sign-in now makes the browser that admin's returning device too (their own General); nothing else does.
+describe("M-3163: an authenticator sign-in makes a chat admin's browser a returning device", () => {
+  const deviceCookieOf = (r: { headers: Record<string, any> }) => {
+    const set = r.headers["Set-Cookie"];
+    return (Array.isArray(set) ? set : set ? [set] : []).map(String).find(c => /agend_device[^=]*=/.test(c)) ?? null;
+  };
+  /** GET /auth/device with this browser's cookies, through the real handler. */
+  const returning = (f: ReturnType<typeof fleet>, jar: Map<string, string>, where: Where = "lan") => new Promise<any>((resolve, reject) => {
+    const w = WHERE[where];
+    const req: any = Object.assign(Readable.from([]), { method: "GET", url: "/auth/device", socket: { remoteAddress: w.remoteAddress },
+      headers: { host: w.host, cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; "), ...w.extra } });
+    const res: any = { destroyed: false, headersSent: false, writeHead(s: number) { this.s = s; }, end(b: string) { resolve({ status: this.s, json: b ? JSON.parse(b) : null }); } };
+    try { if (!handleAuthRequest(req, res, new URL(req.url, `http://${w.host}`), f.any)) reject(new Error("not handled")); } catch (err) { reject(err); }
+  });
+
+  it("chat fleet: the session's browser gets the device cookie; GET /auth/device then says returning; the device is that admin's, at their General", async () => {
+    const f = fleet(); (f.any.fleetConfig.instances.general as any).topic_id = 7;
+    const b = f.browser("lan");
+    expect([(await returning(f, b.jar)).json]).toEqual([{ returning: false }]);
+    const r = await b.post({ code: codeOf(secretFor(ADMIN_B)) });
+    expect(r.status).toBe(200);
+    const cookie = deviceCookieOf(r)!;
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect((await returning(f, b.jar)).json).toEqual({ returning: true });
+    const value = cookie.split(";")[0]!.split("=").slice(1).join("=");
+    expect(f.any.verifyReturningDevice(value)?.owner).toEqual({ adapterId: "a", userId: ADMIN_B, chatId: "-1001", threadId: "7" });
+  });
+
+  it("no device where there is no one to send a code to: a web-only fleet, the outside link, a chat fleet whose General has no topic", async () => {
+    const web = fleet({ chat: false });
+    expect(deviceCookieOf(await web.totp({ code: codeOf(HOST_SECRET) }, { where: "lan" }))).toBeNull();
+    const out = fleet({ chat: false, outside: true }); out.openLink(OUTSIDE_LINK_OWNER);
+    expect(deviceCookieOf(await out.totp({ code: codeOf(HOST_SECRET) }, { link: "quick" }))).toBeNull();
+    const bare = fleet();
+    const r = await bare.totp({ code: codeOf(secretFor(ADMIN)) }, { where: "lan" });
+    expect([r.status, deviceCookieOf(r)]).toEqual([200, null]);
+  });
+
+  it("a wrong code: no device", async () => {
+    const f = fleet(); (f.any.fleetConfig.instances.general as any).topic_id = 7;
+    const r = await f.totp({ code: codeOf(secretFor(STRANGER)) }, { where: "lan" });
+    expect([r.status, deviceCookieOf(r)]).toEqual([401, null]);
+  });
+});

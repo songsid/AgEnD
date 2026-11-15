@@ -72,7 +72,10 @@ const MAX_LOGIN_BODY = 1024;
 /** #3486: what FleetManager.totpSignIn answers (the route turns each into one response; `wrong` is the one answer for every way of not getting in). */
 export type TotpSignInResult =
   /** `knownCookie`: the value of the browser's "known device" mark after this sign-in (web-signin-device.ts); a mark vouches for nothing by itself. */
-  | { kind: "ok"; session: { owner?: { adapterId: string; userId: string }; remote?: "totp" }; knownCookie: string; commit(record: SessionRecord, label: string): boolean }
+  | { kind: "ok"; session: { owner?: { adapterId: string; userId: string }; remote?: "totp" }; knownCookie: string; commit(record: SessionRecord, label: string): boolean;
+      /** M-3163: a chat admin's own General, so this browser becomes their returning device (#1570) and its sign-in page later offers
+       *  "Send me a new code" (a code DM'd to that admin only). Absent on a web-only fleet and over the outside link: there is no chat. */
+      returningOwner?: LoginCodeOwner }
   | { kind: "wrong" }
   | { kind: "paused"; retryAfterMs: number }
   | { kind: "closed" }
@@ -471,9 +474,14 @@ export function handleAuthRequest(
       try { admitted = result.commit(record, label) === true; } catch (err) { ctx.logger.debug({ err }, "authenticator sign-in not admitted"); }
       if (!admitted || !isWebRequestCurrent(req) || ctx.webToken !== token) { sessions.revokeById(sessionId); json(res, 503, { error: "unavailable" }, withCookies()); return; }
       const session = buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000, token);
+      // M-3163: as a code delivered privately to its owner does (#1570 above), a chat admin's authenticator sign-in makes this browser
+      // a returning device of that admin, so a later visit can ask for a new code by DM. It grants nothing by itself.
+      let device: string | null = null;
+      try { device = result.returningOwner ? ctx.rememberReturningDevice?.(result.returningOwner, { surface: record.surface, label }) ?? null : null; }
+      catch (err) { ctx.logger.debug({ err }, "returning device not recorded"); }
       // The session, and this browser's marks: its id (when new) and the "known device" mark for this admin (it grants nothing by itself).
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry },
-        { "Set-Cookie": [session, ...issued, buildSigninCookie("known", result.knownCookie, secure, token)] });
+        { "Set-Cookie": [session, ...issued, buildSigninCookie("known", result.knownCookie, secure, token), ...(device ? [buildDeviceCookie(device, secure, token)] : [])] });
     }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); });
     return true;
   }

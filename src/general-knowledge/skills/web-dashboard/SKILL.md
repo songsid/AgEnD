@@ -54,8 +54,8 @@ codes — sign-in is paused for a few minutes."). The sign-in page is **Sign in 
 terminal otherwise; from another device it says `/web` only while a chat is connected (a fleet whose chat is not
 connected yet, or a web-only one, points at `agend web --code` on the AgEnD computer).
 
-**Send me a new code.** On the sign-in page, for a browser that signed in before with a `/web` code (remembered 90
-days). The code arrives by DM. Limits: one a minute and five an hour per browser; fleet-wide one per 20 s, 20 an hour.
+**Send me a new code.** On the sign-in page, for a browser that signed in before with a `/web` code or with a chat
+admin's own authenticator code (remembered 90 days). The code arrives by DM. Not on a web-only fleet (no chat to send it to). Limits: one a minute and five an hour per browser; fleet-wide one per 20 s, 20 an hour.
 
 **Local vs public link.** Local: the dashboard on the host itself (127.0.0.1; the address cannot be changed, only
 `health_port`). Public: **🌐 Other device (temporary public)** starts a Cloudflare quick tunnel (an address under

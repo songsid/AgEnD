@@ -9671,6 +9671,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && this.getInstanceAdapterId(name) === owner.adapterId && String(this.getGroupIdForInstance(name) ?? "") === owner.chatId
       && cfg.topic_id?.toString() === owner.threadId);
   }
+  /**
+   * M-3163: the one General of `adapterId` (its group and topic) as `userId`'s code owner — where a returning device's new code is
+   * meant for (#1570; requestReturningCode still checks it all again, with the live binding, before anything is sent). Null when
+   * that connection has no General with a topic, or more than one.
+   */
+  private generalOwnerOf(adapterId: string, userId: string): LoginCodeOwner | null {
+    const found: LoginCodeOwner[] = [];
+    for (const [name, cfg] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      if (!cfg.general_topic || this.getInstanceAdapterId(name) !== adapterId) continue;
+      const group = String(this.getGroupIdForInstance(name) ?? ""), topic = cfg.topic_id?.toString();
+      if (group && topic) found.push({ adapterId, userId, chatId: group, threadId: topic });
+    }
+    return found.length === 1 ? found[0]! : null;
+  }
   /** Exact owning General. No primary-adapter or name fallback participates in authorization. */
   private dashboardOwner(userId: string, adapterId: string, address: string, threadId?: string, username?: string): LoginCodeOwner | null {
     const world = this.worlds.get(adapterId);
@@ -19673,6 +19687,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       kind: "ok",
       knownCookie: addSigninKnownDevice(webToken, input.knownCookie, who, enrollment, epoch, now),
       session: outside ? { remote: "totp" } : actor ? { owner: actor } : {},
+      // M-3163: a chat admin's browser becomes their returning device, as a code DM'd to them makes it (#1570).
+      ...(!outside && actor ? (() => { const o = this.generalOwnerOf(actor.adapterId, actor.userId); return o ? { returningOwner: o } : {}; })() : {}),
       // Asked again as the session is made: the same app, still an admin, still allowed here.
       commit: (record, label) => {
         if (!this.totpSignInOpen(exposureId, peer) || store.enrollmentOf(who) !== enrollment) return false;
