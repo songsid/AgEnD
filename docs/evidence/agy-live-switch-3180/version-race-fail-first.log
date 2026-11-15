@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/model-switch-3180-agy-alpha
+
+(node:49880) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/cli-runtime-switch-m3180.test.ts (25 tests | 1 failed | 24 skipped) 23ms
+     × a binary replaced during the async version probe is unknown, even if the new file meets the floor 21ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/cli-runtime-switch-m3180.test.ts > M-3180: the RUNNING CLI's version (cliRunningVersion) > a binary replaced during the async version probe is unknown, even if the new file meets the floor
+AssertionError: expected '1.5.9' to be null
+
+- Expected:
+null
+
++ Received:
+"1.5.9"
+
+ ❯ tests/cli-runtime-switch-m3180.test.ts:117:20
+    115|       },
+    116|     });
+    117|     expect(result).toBeNull();
+       |                    ^
+    118|   });
+    119|   it("unknown (null) when it cannot be proven: none, replaced on disk,…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 skipped (25)
+   Start at  16:58:54
+   Duration  12.02s (transform 9.72s, setup 138ms, import 11.64s, tests 23ms, environment 0ms)
+

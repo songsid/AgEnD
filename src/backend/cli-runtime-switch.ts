@@ -9,6 +9,8 @@ import { basename } from "node:path";
 import { compareVersions, versionOf } from "../cli-audited.js";
 import { probeBackendVersion } from "../backend-availability.js";
 import { readMuseCachedCatalog } from "./muse.js";
+import { readAgyCliEnv } from "./effort-metadata.js";
+import { AGY_INLINE_MODEL_MIN, agySwitchCommand, agySwitchTarget, agySwitchVerdict } from "./agy-model-switch.js";
 
 /** What one switch asks for: null leaves that one as the session has it. */
 export interface CliSwitchWant { model: string | null; effort: string | null }
@@ -24,6 +26,8 @@ export interface CliRuntimeSwitchEntry {
   matchExe(exe: string): boolean;
   /** Its version from the executable's own name when the name carries it (the running file, whatever was installed since); else null. */
   versionFromExe?(exe: string): string | null;
+  /** Resolve a model request with the effort a restart would launch; omitted keeps the CLI default behavior. */
+  modelWant?(model: string, effort: string | null): CliSwitchWant;
   /** A request as one-command steps, in order. */
   steps(want: CliSwitchWant): CliSwitchWant[];
   /** The one command for a step; null when it cannot be one line the CLI parses (nothing is typed, the fleet restarts). */
@@ -87,8 +91,19 @@ export const MUSE_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
   },
 };
 
+/** agy: exact catalog labels in its fresh command response, captured on 1.4.7 and 1.5.9. */
+export const AGY_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
+  minVersion: { model: AGY_INLINE_MODEL_MIN, effort: AGY_INLINE_MODEL_MIN },
+  matchExe: exe => /\/agy$/.test(exe),
+  modelWant: (model, effort) => ({ model, effort }),
+  steps: want => [want],
+  command: want => agySwitchCommand(want, readAgyCliEnv()?.models ?? []),
+  knownModel: model => { const env = readAgyCliEnv(); return env ? agySwitchTarget({ model, effort: null }, env.models) !== null : null; },
+  verify: (want, before, now) => agySwitchVerdict(want, before.pane, now.pane, readAgyCliEnv()?.models ?? []),
+};
+
 /** The CLIs whose fleet `/model` / `/effort` try the in-session switch first. (agy, grok: their entries join here.) */
-export const CLI_RUNTIME_SWITCH: Readonly<Record<string, CliRuntimeSwitchEntry>> = Object.freeze({ muse: MUSE_RUNTIME_SWITCH });
+export const CLI_RUNTIME_SWITCH: Readonly<Record<string, CliRuntimeSwitchEntry>> = Object.freeze({ muse: MUSE_RUNTIME_SWITCH, antigravity: AGY_RUNTIME_SWITCH });
 
 export function cliSwitchAllowed(entry: CliRuntimeSwitchEntry, step: CliSwitchWant, version: string | null): boolean {
   const v = versionOf(version);
@@ -120,6 +135,7 @@ export async function cliRunningVersion(panePid: number, spec: { backend: string
     if (ppid !== null) children.set(ppid, [...(children.get(ppid) ?? []), Number(e)]);
   }
   const exes = new Set<string>();
+  const matched: Array<{ pid: number; exe: string; ino: number; dev: number }> = [];
   const queue = [panePid], seen = new Set<number>();
   while (queue.length && seen.size < 512) {
     const pid = queue.shift()!;
@@ -135,10 +151,20 @@ export async function cliRunningVersion(panePid: number, spec: { backend: string
     try {
       const [running, onDisk] = await Promise.all([stat(`${proc}/${pid}/exe`), stat(exe)]);
       if (running.ino !== onDisk.ino || running.dev !== onDisk.dev) return null;
+      matched.push({ pid, exe, ino: running.ino, dev: running.dev });
     } catch { return null; }
     exes.add(exe);
   }
   if (exes.size !== 1) return null;
   const exe = [...exes][0]!;
-  return spec.versionFromExe?.(exe) ?? versionOf(await probe(spec.backend, exe).catch(() => null));
+  const version = spec.versionFromExe?.(exe) ?? versionOf(await probe(spec.backend, exe).catch(() => null));
+  if (version === null) return null;
+  // The async probe may read an updated file at the same path. Never attribute that newer version to the old running inode.
+  for (const item of matched) {
+    try {
+      const [running, onDisk] = await Promise.all([stat(`${proc}/${item.pid}/exe`), stat(item.exe)]);
+      if (running.ino !== item.ino || running.dev !== item.dev || onDisk.ino !== item.ino || onDisk.dev !== item.dev) return null;
+    } catch { return null; }
+  }
+  return version;
 }

@@ -599,7 +599,7 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
   getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES["antigravity"].strategy; }
   getEffortLevels(): string[] { return agyEffortLevels(); }
 
-  // agy's model switch is an interactive TUI change → restart to apply reliably.
+  // Fleet first attempts the version-gated verified inline path (M-3180); restart remains the conservative fallback.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 
   async listModels(): Promise<import("./types.js").ModelOption[]> {
