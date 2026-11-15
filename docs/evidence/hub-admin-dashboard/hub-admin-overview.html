@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hub administration overview (mockup)</title>
+<style>
+:root {
+  --font-ui: Inter, "PingFang TC", "Noto Sans TC", "Noto Sans CJK TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px;
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-full: 999px; --tap: 44px;
+  color-scheme: dark;
+  --bg: #212121; --bg-sidebar: #171717; --surface: #2f2f2f; --surface-2: #3a3a3a; --border: #3d3d3d; --border-strong: #7a7a7a;
+  --text: #ececec; --text-2: #b4b4b4; --text-3: #a3a3a3; --accent: #7ab7ff; --accent-fill: #ececec; --on-accent: #0d0d0d;
+  --accent-dim: rgba(122,183,255,.14); --ok: #4cc38a; --warn: #e3b341; --danger: #ff8a80;
+  --ok-bg: rgba(76,195,138,.14); --warn-bg: rgba(227,179,65,.14); --warn-line: rgba(227,179,65,.45); --danger-bg: rgba(255,138,128,.14);
+  --bar: #7ab7ff; --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff; --bg-sidebar: #f9f9f9; --surface: #f4f4f4; --surface-2: #ececec; --border: #e5e5e5; --border-strong: #858585;
+  --text: #0d0d0d; --text-2: #5d5d5d; --text-3: #696969; --accent: #0a62c2; --accent-fill: #0d0d0d; --on-accent: #ffffff;
+  --accent-dim: rgba(10,98,194,.08); --ok: #1a7f37; --warn: #8a5a00; --danger: #c4222b;
+  --ok-bg: #e6f4ea; --warn-bg: #fff6d6; --warn-line: #e3b341; --danger-bg: #ffebe9;
+  --bar: #0a62c2; --shadow-1: 0 1px 2px rgba(0,0,0,.06);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg-sidebar); color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.55; }
+button { font: inherit; color: inherit; }
+
+/* The mockup's own controls: not part of the product. */
+.mock-bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); align-items: center;
+  padding: var(--s-2) var(--s-4); background: var(--warn-bg); border-bottom: 1px solid var(--warn-line); font-size: var(--fs-sm); }
+.mock-bar b { color: var(--warn); }
+.seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.seg button { border: 0; background: none; min-height: 28px; padding: 0 var(--s-3); border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: var(--fs-sm); white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--bg); color: var(--text); font-weight: 500; box-shadow: var(--shadow-1); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.stage { padding: var(--s-5) var(--s-4) var(--s-7); }
+.frame { container-type: inline-size; margin: 0 auto; max-width: 1120px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+body[data-view="phone"] .frame { max-width: 390px; }
+.page { padding: var(--s-5) var(--s-6) var(--s-7); }
+
+.crumb { font-size: var(--fs-sm); color: var(--text-2); }
+h1 { font-size: var(--fs-xl); line-height: 28px; margin: 2px 0 var(--s-3); font-weight: 600; }
+.tabs { display: flex; gap: var(--s-4); border-bottom: 1px solid var(--border); margin-bottom: var(--s-4); overflow-x: auto; }
+.tabs span { padding: var(--s-2) 0; font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; border-bottom: 2px solid transparent; }
+.tabs span.on { color: var(--text); font-weight: 600; border-bottom-color: var(--text); }
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); align-items: center; justify-content: space-between; margin-bottom: var(--s-4); }
+.updated { font-size: var(--fs-sm); color: var(--text-3); }
+.privacy { display: flex; gap: var(--s-2); align-items: flex-start; padding: var(--s-2) var(--s-3); border-radius: var(--r-md); background: var(--surface);
+  font-size: var(--fs-sm); color: var(--text-2); margin-bottom: var(--s-5); }
+.privacy svg { flex: none; margin-top: 2px; }
+
+h2 { font-size: var(--fs-lg); margin: var(--s-6) 0 var(--s-3); font-weight: 600; }
+.grid { display: grid; gap: var(--s-3); grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.two { display: grid; gap: var(--s-3); grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
+.card { background: var(--surface); border-radius: var(--r-md); padding: var(--s-4); min-width: 0; }
+.card h3 { margin: 0 0 var(--s-2); font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-2); align-items: center; justify-content: space-between; }
+.big { font-size: 32px; line-height: 38px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.big small { font-size: var(--fs-sm); font-weight: 400; color: var(--text-2); letter-spacing: 0; margin-left: var(--s-1); }
+.sub { font-size: var(--fs-sm); color: var(--text-2); margin-top: 2px; }
+.sub.warn { color: var(--warn); } .sub.danger { color: var(--danger); }
+
+/* Data labels: mockup annotation. */
+.src { font-size: 11px; line-height: 16px; font-weight: 600; padding: 0 var(--s-2); border-radius: var(--r-full); white-space: nowrap; }
+.src.has { background: var(--ok-bg); color: var(--ok); }
+.src.part { background: var(--warn-bg); color: var(--warn); }
+.src.new { background: var(--accent-dim); color: var(--accent); }
+.srcnote { font-size: var(--fs-xs); color: var(--text-3); margin-top: var(--s-2); }
+body[data-labels="off"] .src, body[data-labels="off"] .srcnote, body[data-labels="off"] .legend { display: none; }
+.legend { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); font-size: var(--fs-xs); color: var(--text-2); margin-bottom: var(--s-2); align-items: center; }
+.legend span.item { display: inline-flex; gap: var(--s-1); align-items: center; }
+
+.bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--s-2); align-items: end; height: 132px; margin-top: var(--s-3); }
+.bars div { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 2px; font-size: var(--fs-xs); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.bars i { display: block; width: 100%; max-width: 44px; background: var(--bar); border-radius: 4px 4px 0 0; opacity: .85; }
+.bars div.today i { opacity: 1; }
+.bars div.today b { color: var(--text); }
+.bars b { font-weight: 500; } .bars em { font-style: normal; color: var(--text-3); }
+
+.kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-1) var(--s-3); font-size: var(--fs-sm); margin: 0; }
+.kv dt { color: var(--text-2); } .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.kv .rule { grid-column: 1 / -1; border-top: 1px solid var(--border); margin: var(--s-1) 0; }
+
+table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
+th { text-align: left; font-weight: 500; color: var(--text-3); padding: var(--s-1) var(--s-2) var(--s-1) 0; white-space: nowrap; }
+td { padding: var(--s-2) var(--s-2) var(--s-2) 0; border-top: 1px solid var(--border); vertical-align: top; }
+th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; padding-right: 0; padding-left: var(--s-2); }
+td .who { display: block; color: var(--text-3); font-size: var(--fs-xs); }
+td.rank { color: var(--text-3); width: 1.6em; font-variant-numeric: tabular-nums; }
+.meter { display: block; height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: var(--s-1); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--bar); border-radius: 2px; }
+.tag { display: inline-block; font-size: var(--fs-xs); font-weight: 500; padding: 0 var(--s-2); border-radius: var(--r-full); }
+.tag.warn { background: var(--warn-bg); color: var(--warn); } .tag.ok { background: var(--ok-bg); color: var(--ok); }
+.link { color: var(--accent); font-size: var(--fs-sm); display: inline-block; margin-top: var(--s-3); min-height: 24px; }
+.split { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px; margin: var(--s-3) 0 var(--s-2); }
+.split i { display: block; height: 100%; }
+.split .p { background: var(--bar); } .split .a { background: var(--ok); } .split .h { background: var(--warn); }
+.key { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: var(--s-1); }
+
+.notes { margin-top: var(--s-7); border-top: 1px solid var(--border); padding-top: var(--s-4); font-size: var(--fs-sm); color: var(--text-2); }
+.notes h2 { margin-top: 0; font-size: var(--fs-md); color: var(--text); }
+.notes ul { margin: 0; padding-left: 1.2em; } .notes li { margin-bottom: var(--s-1); }
+
+@container (max-width: 760px) {
+  .page { padding: var(--s-4) var(--s-4) var(--s-6); }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .two { grid-template-columns: minmax(0, 1fr); }
+  .big { font-size: 26px; line-height: 32px; }
+  .seg.range button { min-height: var(--tap); padding: 0 var(--s-4); }
+  .link { min-height: var(--tap); display: inline-flex; align-items: center; margin-top: var(--s-1); }
+  th { white-space: normal; vertical-align: bottom; line-height: 1.25; }
+  td.rank, th.rank { display: none; }
+  th.n, td.n { width: 22%; }
+}
+</style>
+</head>
+<body data-view="desktop" data-labels="on">
+
+<div class="mock-bar">
+  <b data-t="mock"></b>
+  <span class="seg" data-set="lang"><button data-v="en">English</button><button data-v="zh">繁體中文</button></span>
+  <span class="seg" data-set="theme"><button data-v="light" data-t="light"></button><button data-v="dark" data-t="dark"></button></span>
+  <span class="seg" data-set="view"><button data-v="desktop" data-t="desktop"></button><button data-v="phone" data-t="phone"></button></span>
+  <span class="seg" data-set="labels"><button data-v="on" data-t="labelsOn"></button><button data-v="off" data-t="labelsOff"></button></span>
+</div>
+
+<div class="stage"><div class="frame"><div class="page" id="page"></div></div></div>
+
+<script>
+const T = {
+  en: {
+    mock: "Design mockup · sample numbers", light: "Light", dark: "Dark", desktop: "Desktop", phone: "Phone", labelsOn: "Data labels", labelsOff: "As shipped",
+    crumb: "Hub", title: "Administration",
+    tabs: ["Overview", "Connected Fleets", "Teams", "Groups", "Settings"],
+    today: "Today", week: "7 days", updated: "Updated 14:32 · refreshes every minute",
+    privacy: "Counts only. This page never shows what anyone asked or what an agent answered, and never counts by person.",
+    lgHas: "Data exists today", lgPart: "Partly new", lgNew: "New data",
+    has: "Exists", part: "Partly new", neu: "New",
+    hPeople: "People", hAsk: "Questions", hFleet: "Fleets", hRoom: "Rooms",
+    pToday: "Active today", pTodaySub: "of 41 people who have joined", pWeek: "Active in 7 days", pWeekSub: "7 have not signed in this week",
+    pJoin: "Joined this week", pJoinSub: "41 in total", pNow: "Signed in now", pNowSub: "sessions used in the last 5 minutes",
+    pNote: "From each sign-in's last-used time. The Hub keeps only the latest time, so a day-by-day line for people would be new data.",
+    qAsked: "Questions asked", qPerDay: "Questions per day", qToday: "today",
+    days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Today"],
+    qNote: "Counted from stored questions, direct chats and rooms together, for as long as the Hub keeps them.",
+    aTime: "Answer time", aMed: "Typical (median)", aSlow: "Slowest 1 in 10", aWait: "Waiting now", aWaitOld: "Longest wait now",
+    aNote: "Direct chats record both times today. Room questions need an answered-at time recorded.",
+    fTitle: "Not answered", fRate: "of questions", fOff: "The agent's Fleet was offline", fTime: "No answer in time", fPerm: "Permission ended first", fBusy: "Agent stopped or refused",
+    fNote: "Stored reason codes, grouped into four plain reasons.",
+    topTitle: "Most-asked agents", topAgent: "Agent", topAsk: "Questions", topMed: "Typical answer", topFail: "Not answered", topMore: "All 23 shared agents",
+    topNote: "Agent and owner names are already visible to the administrator on Connected Fleets.",
+    flOn: "Connected now", flOnSub: "of 18 paired Fleets", flBehind: "Need an update", flBehindSub: "below the recommended v2.4.0-beta.2",
+    flOld: "Too old for rooms", flOldSub: "their agents cannot answer in rooms", flUnk: "Version unknown", flUnkSub: "too old to report a version",
+    flLink: "See Connected Fleets", flNote: "The same data as the Connected Fleets list.",
+    rmActive: "Active rooms", rmActiveSub: "of 14 rooms · 2 created this week", rmPosts: "Messages", rmBy: "By who posted",
+    rmP: "People", rmA: "Agents", rmH: "Room assistant", rmAsk: "Agent questions in rooms", rmAskSub: "@mentions that asked an agent",
+    rmAuto: "Agent-to-agent chains stopped", rmAutoSub: "hit the depth or rate limit",
+    rmNote: "Counts across all rooms. Room names and members are not listed here: an administrator is not a member of every room.",
+    rmAutoNote: "Stops are shown in the room today but not counted.",
+    notesT: "About this mockup",
+    notes: [
+      "Every number here is made up. The green, amber and blue labels are for this review and would not ship.",
+      "\"Exists\" means the Hub already stores what the number needs; only the page and one read-only endpoint are new.",
+      "People are counted, never named. The smallest unit shown is an agent, with its owner.",
+      "Left out on purpose: per-person activity, room names, message text, and AI token or cost figures.",
+    ],
+    s: " s", m: " min",
+  },
+  zh: {
+    mock: "設計示意 · 數字為範例", light: "淺色", dark: "深色", desktop: "桌面", phone: "手機", labelsOn: "顯示資料標籤", labelsOff: "實際樣子",
+    crumb: "Hub", title: "管理",
+    tabs: ["總覽", "已連接的 Fleet", "團隊", "群組", "設定"],
+    today: "今天", week: "7 天", updated: "更新於 14:32 · 每分鐘更新一次",
+    privacy: "這裡只有數字。不會顯示任何人問了什麼、Agent 答了什麼，也不會按人統計。",
+    lgHas: "資料現在就有", lgPart: "部分要新增", lgNew: "要新增資料",
+    has: "已有", part: "部分新增", neu: "新增",
+    hPeople: "使用的人", hAsk: "提問", hFleet: "Fleet", hRoom: "房間",
+    pToday: "今天使用", pTodaySub: "已加入的 41 人當中", pWeek: "7 天內使用", pWeekSub: "有 7 人這週沒有登入",
+    pJoin: "這週加入", pJoinSub: "總共 41 人", pNow: "目前登入中", pNowSub: "最近 5 分鐘內有操作",
+    pNote: "依每次登入的最後使用時間計算。Hub 只記最新的時間，所以每天人數的趨勢線需要新增資料。",
+    qAsked: "提問數", qPerDay: "每天的提問數", qToday: "今天",
+    days: ["一", "二", "三", "四", "五", "六", "今天"],
+    qNote: "依 Hub 保存的提問計算，直接對話與房間合計，以 Hub 保存的期間為限。",
+    aTime: "回答時間", aMed: "一般（中位數）", aSlow: "最慢的十分之一", aWait: "正在等回答", aWaitOld: "目前等最久",
+    aNote: "直接對話現在就有兩個時間。房間裡的提問需要另外記下回答時間。",
+    fTitle: "沒有得到回答", fRate: "占全部提問", fOff: "Agent 的 Fleet 沒有連接", fTime: "逾時沒有回答", fPerm: "權限先到期", fBusy: "Agent 停止或拒絕",
+    fNote: "依已保存的原因代碼，歸成四種白話原因。",
+    topTitle: "最常被問的 Agent", topAgent: "Agent", topAsk: "提問數", topMed: "一般回答時間", topFail: "沒有回答", topMore: "全部 23 個分享的 Agent",
+    topNote: "Agent 與擁有者的名稱，管理員在「已連接的 Fleet」本來就看得到。",
+    flOn: "目前已連接", flOnSub: "已配對的 18 個 Fleet 當中", flBehind: "需要更新", flBehindSub: "低於建議版本 v2.4.0-beta.2",
+    flOld: "版本太舊，無法使用房間", flOldSub: "它們的 Agent 無法在房間裡回答", flUnk: "版本不明", flUnkSub: "版本太舊，無法回報版本",
+    flLink: "查看已連接的 Fleet", flNote: "與「已連接的 Fleet」清單是同一份資料。",
+    rmActive: "有活動的房間", rmActiveSub: "共 14 個房間 · 這週新增 2 個", rmPosts: "訊息數", rmBy: "依發言者",
+    rmP: "人", rmA: "Agent", rmH: "房間助理", rmAsk: "在房間裡問 Agent", rmAskSub: "用 @ 提及來問 Agent 的次數",
+    rmAuto: "Agent 互問被停止", rmAutoSub: "達到層數或頻率上限",
+    rmNote: "所有房間的合計。這裡不列出房間名稱與成員：管理員不一定是每個房間的成員。",
+    rmAutoNote: "停止時房間裡會顯示，但目前沒有計數。",
+    notesT: "關於這份示意",
+    notes: [
+      "這裡的數字都是編的。綠、黃、藍色標籤只給這次審閱看，不會出現在產品裡。",
+      "「已有」表示 Hub 已經存有算出這個數字需要的資料，只需要新增這個頁面與一個唯讀的查詢。",
+      "只算人數，不列人名。畫面上最小的單位是 Agent 與它的擁有者。",
+      "刻意不放：每個人的使用情形、房間名稱、訊息內容，以及 AI 的 token 或費用。",
+    ],
+    s: " 秒", m: " 分",
+  },
+};
+
+// Sample data: [today, 7 days].
+const D = {
+  asked: [58, 412], perDay: [71, 64, 83, 77, 52, 7, 58],
+  med: [38, 42], slow: [170, 190], waiting: 3, waitOld: 95,
+  fail: [2, 9], failRate: ["3.4%", "2.2%"], reasons: [[1, 4], [1, 3], [0, 1], [0, 1]],
+  top: [["build-agent", "Lin", [14, 96], 31, [0, 1]], ["project-helper", "Lin", [11, 81], 44, [1, 3]], ["docs-bot", "Chang", [9, 62], 28, [0, 0]],
+        ["release-notes", "Wang", [6, 47], 73, [1, 4]], ["qa-runner", "Wu", [5, 38], 52, [0, 1]]],
+  rooms: [6, 9], posts: [171, 1204], by: [[88, 610], [75, 540], [8, 54]], roomAsks: [41, 287], autoStops: [0, 2],
+};
+const state = { lang: "en", theme: "light", view: "desktop", labels: "on", range: 1 };
+const q = new URLSearchParams(location.search);
+for (const k of ["lang", "theme", "view", "labels"]) if (q.get(k)) state[k] = q.get(k);
+if (q.get("range") === "today") state.range = 0;
+
+const dur = (sec, t) => sec < 90 ? sec + t.s : (Math.round(sec / 6) / 10) + t.m;
+const src = (kind, t) => `<span class="src ${kind === "has" ? "has" : kind === "part" ? "part" : "new"}">${kind === "has" ? t.has : kind === "part" ? t.part : t.neu}</span>`;
+const stat = (title, value, sub, kind, t, cls = "") => `<div class="card"><h3><span>${title}</span>${src(kind, t)}</h3><div class="big">${value}</div><div class="sub ${cls}">${sub}</div></div>`;
+
+function render() {
+  const t = T[state.lang], r = state.range, n = (x) => x.toLocaleString("en-US");
+  document.documentElement.lang = state.lang === "zh" ? "zh-Hant" : "en";
+  document.documentElement.dataset.theme = state.theme;
+  document.body.dataset.view = state.view; document.body.dataset.labels = state.labels;
+  for (const el of document.querySelectorAll(".mock-bar [data-t]")) el.textContent = t[el.dataset.t];
+  for (const seg of document.querySelectorAll(".mock-bar .seg")) for (const b of seg.children) b.setAttribute("aria-pressed", String(state[seg.dataset.set] === b.dataset.v));
+  const max = Math.max(...D.perDay), topMax = D.top[0][2][r];
+  const lock = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>`;
+  const by = D.by.map((x) => x[r]), bySum = by.reduce((a, b) => a + b, 0);
+  document.getElementById("page").innerHTML = `
+    <div class="crumb">${t.crumb}</div><h1>${t.title}</h1>
+    <div class="tabs">${t.tabs.map((x, i) => `<span class="${i ? "" : "on"}">${x}</span>`).join("")}</div>
+    <div class="toolbar"><span class="seg range"><button data-range="0" aria-pressed="${r === 0}">${t.today}</button><button data-range="1" aria-pressed="${r === 1}">${t.week}</button></span><span class="updated">${t.updated}</span></div>
+    <div class="privacy">${lock}<span>${t.privacy}</span></div>
+    <div class="legend"><span class="item">${src("has", t)} ${t.lgHas}</span><span class="item">${src("part", t)} ${t.lgPart}</span><span class="item">${src("new", t)} ${t.lgNew}</span></div>
+
+    <h2>${t.hPeople}</h2>
+    <div class="grid">
+      ${stat(t.pToday, 23, t.pTodaySub, "has", t)}${stat(t.pWeek, 34, t.pWeekSub, "has", t)}
+      ${stat(t.pJoin, 4, t.pJoinSub, "has", t)}${stat(t.pNow, 9, t.pNowSub, "has", t)}
+    </div>
+    <div class="srcnote">${t.pNote}</div>
+
+    <h2>${t.hAsk}</h2>
+    <div class="two">
+      <div class="card"><h3><span>${t.qPerDay}</span>${src("has", t)}</h3>
+        <div class="big">${n(D.asked[r])}<small>${r ? t.week : t.qToday}</small></div>
+        <div class="bars">${D.perDay.map((v, i) => `<div class="${i === 6 ? "today" : ""}"><b>${v}</b><i style="height:${Math.max(3, Math.round(v / max * 84))}px"></i><em>${t.days[i]}</em></div>`).join("")}</div>
+        <div class="srcnote">${t.qNote}</div></div>
+      <div style="display:grid;gap:var(--s-3)">
+        <div class="card"><h3><span>${t.aTime}</span>${src("part", t)}</h3>
+          <dl class="kv"><dt>${t.aMed}</dt><dd>${dur(D.med[r], t)}</dd><dt>${t.aSlow}</dt><dd>${dur(D.slow[r], t)}</dd><div class="rule"></div>
+          <dt>${t.aWait}</dt><dd>${D.waiting}</dd><dt>${t.aWaitOld}</dt><dd>${dur(D.waitOld, t)}</dd></dl>
+          <div class="srcnote">${t.aNote}</div></div>
+        <div class="card"><h3><span>${t.fTitle}</span>${src("has", t)}</h3>
+          <div class="big">${D.fail[r]}<small>${D.failRate[r]} ${t.fRate}</small></div>
+          <dl class="kv" style="margin-top:var(--s-2)">${[t.fOff, t.fTime, t.fPerm, t.fBusy].map((x, i) => `<dt>${x}</dt><dd>${D.reasons[i][r]}</dd>`).join("")}</dl>
+          <div class="srcnote">${t.fNote}</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:var(--s-3)"><h3><span>${t.topTitle}</span>${src("has", t)}</h3>
+      <table><tr><th class="rank"></th><th>${t.topAgent}</th><th class="n">${t.topAsk}</th><th class="n">${t.topMed}</th><th class="n">${t.topFail}</th></tr>
+      ${D.top.map((a, i) => `<tr><td class="rank">${i + 1}</td><td>${a[0]}<span class="who">${a[1]}</span><span class="meter"><i style="width:${Math.round(a[2][r] / topMax * 100)}%"></i></span></td>
+        <td class="n">${a[2][r]}</td><td class="n">${dur(a[3], t)}</td><td class="n">${a[4][r] ? `<span class="tag warn">${a[4][r]}</span>` : "0"}</td></tr>`).join("")}</table>
+      <span class="link">${t.topMore} ›</span><div class="srcnote">${t.topNote}</div></div>
+
+    <h2>${t.hFleet}</h2>
+    <div class="grid">
+      ${stat(t.flOn, 12, t.flOnSub, "has", t)}${stat(t.flBehind, 3, t.flBehindSub, "has", t, "warn")}
+      ${stat(t.flOld, 1, t.flOldSub, "has", t, "warn")}${stat(t.flUnk, 1, t.flUnkSub, "has", t, "warn")}
+    </div>
+    <span class="link">${t.flLink} ›</span><div class="srcnote">${t.flNote}</div>
+
+    <h2>${t.hRoom}</h2>
+    <div class="two">
+      <div class="card"><h3><span>${t.rmPosts}</span>${src("has", t)}</h3>
+        <div class="big">${n(D.posts[r])}<small>${r ? t.week : t.qToday}</small></div>
+        <div class="split">${["p", "a", "h"].map((c, i) => `<i class="${c}" style="width:${by[i] / bySum * 100}%"></i>`).join("")}</div>
+        <dl class="kv">${[[t.rmP, "p", "--bar"], [t.rmA, "a", "--ok"], [t.rmH, "h", "--warn"]].map((x, i) => `<dt><span class="key" style="background:var(${x[2]})"></span>${x[0]}</dt><dd>${n(by[i])}</dd>`).join("")}</dl>
+        <div class="srcnote">${t.rmNote}</div></div>
+      <div style="display:grid;gap:var(--s-3)">
+        ${stat(t.rmActive, D.rooms[r], t.rmActiveSub, "has", t)}
+        ${stat(t.rmAsk, n(D.roomAsks[r]), t.rmAskSub, "has", t)}
+        <div class="card"><h3><span>${t.rmAuto}</span>${src("new", t)}</h3><div class="big">${D.autoStops[r]}</div><div class="sub">${t.rmAutoSub}</div><div class="srcnote">${t.rmAutoNote}</div></div>
+      </div>
+    </div>
+
+    <div class="notes legend-notes"><h2>${t.notesT}</h2><ul>${t.notes.map((x) => `<li>${x}</li>`).join("")}</ul></div>`;
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.range) state.range = Number(b.dataset.range);
+  else if (b.parentElement.dataset.set) state[b.parentElement.dataset.set] = b.dataset.v;
+  render();
+});
+render();
+</script>
+</body>
+</html>
