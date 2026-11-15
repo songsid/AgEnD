@@ -6,7 +6,9 @@
  *   admin.<case>.png    — Administration → Connected fleets: summary, filter, version / last connected / tag per row;
  *   filtered.<case>.png — the same with "Needs update" pressed;
  *   banner.<case>.png   — Chats home: "Your Fleet … runs an older AgEnD (…)";
- *   members.<case>.png  — a room's members panel: "Needs an AgEnD update · ask {owner}".
+ *   members.<case>.png  — a room's members panel: "Needs an AgEnD update · ask {owner}";
+ *   rec.<case>.png      — M-3141: the Recommended AgEnD version card, nothing saved yet (Same as this Hub chosen);
+ *   rec-preview.<case>.png — the same after Save: its effect, "{n} Fleets will be asked to update.", before it applies.
  * Cases: desktop/phone × light/dark × en/zh-TW (MATRIX=quick: desktop-en-light, phone-zh-TW-dark).
  *   PW_DIR=<playwright-core root> REPO=$PWD OUT=<dir> [MATRIX=full|quick] npx tsx scripts/manual/hub-rooms/versions.mts
  */
@@ -36,7 +38,7 @@ const NOW = Date.now(), DAY = 86_400_000, HOUR = 3_600_000;
 const owner = (name: string, login: string) => ({ realm: "example", objectId: login, name, login });
 const FLEETS = [
   { id: "f1", status: "active", label: "build-box", owner: owner("林小華", "lin"), version: "2.4.0-beta.3", runsAsService: true, versionReportedAt: NOW, connected: true, lastConnectedAt: NOW, versionState: "current" },
-  { id: "f2", status: "active", label: "design-pc", owner: owner("陳主任", "chen"), version: "2.4.0-beta.1", runsAsService: true, versionReportedAt: NOW - 5 * HOUR, connected: false, lastConnectedAt: NOW - 5 * HOUR, versionState: "needs-update" },
+  { id: "f2", status: "active", label: "design-pc", owner: owner("陳主任", "chen"), version: "2.4.0-beta.1", runsAsService: true, versionReportedAt: NOW - 5 * HOUR, connected: false, lastConnectedAt: NOW - 5 * HOUR, versionState: "needs-update", recommendationNotifiedAt: NOW - 4 * HOUR },
   { id: "f3", status: "active", label: "old-laptop", owner: owner("吳小安", "wu"), version: "2.3.4", runsAsService: false, versionReportedAt: NOW - 3 * DAY, connected: false, lastConnectedAt: NOW - 3 * DAY, versionState: "too-old-rooms" },
   { id: "f4", status: "active", label: "lab-server", owner: owner("王經理", "wang"), version: null, runsAsService: null, versionReportedAt: null, connected: false, lastConnectedAt: null, versionState: "unknown" },
   { id: "f5", status: "revoked", label: "retired-box", owner: owner("陳主任", "chen"), version: "2.2.0", runsAsService: null, versionReportedAt: null, connected: false, lastConnectedAt: NOW - 40 * DAY, versionState: "needs-update" },
@@ -63,6 +65,9 @@ async function open([device, lang, theme]: string[], path: string) {
     const req = q.request(), u = new URL(req.url()), p = u.pathname + u.search;
     if (u.pathname.endsWith("/events")) return q.fulfill({ status: 200, headers: { "content-type": "text/event-stream" }, body: "retry: 600000\n\n" });
     if (u.pathname === "/hub/v1/admin/overview") return q.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ fleets: FLEETS, pairings: [], recommendedVersion: RECOMMENDED }) });
+    // M-3141 (M-3138's API): nothing saved yet; a preview of Same as this Hub; a save.
+    if (u.pathname === "/hub/v1/admin/recommended-version" && req.method() === "GET") return q.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mode: "none", version: null, recommendedVersion: null, hubVersion: "2.4.0-beta.3", configured: false, revision: 0, setAt: null }) });
+    if (u.pathname === "/hub/v1/admin/recommended-version/preview") return q.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ recommendedVersion: "2.4.0-beta.3", affected: 3, revision: 0 }) });
     if (u.pathname === "/hub/v1/me/fleets") return q.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ fleets: MINE }) });
     const raw = req.postData(), answer = fx.handle({ method: req.method(), path: p, headers: req.headers(), body: raw ? JSON.parse(raw) : undefined });
     return q.fulfill({ status: answer?.status ?? 200, contentType: "application/json", body: JSON.stringify(answer?.body ?? {}) });
@@ -89,6 +94,19 @@ try {
     const shown = await o.pg.locator(".hub-fleet-list .hub-rows > [data-fleet]").evaluateAll((rs: Element[]) => rs.filter((x) => !x.closest("details")).map((x) => x.getAttribute("data-fleet")));
     check(`${tag} filtered: only the three that need an update`, JSON.stringify(shown) === JSON.stringify(["f2", "f3", "f4"]), { shown });
     await card.screenshot({ path: join(out, `filtered.${tag}.png`) }); keep(`filtered.${tag}.png`);
+    // M-3141: the card above the list — nothing checked on npm for opening the page; Save shows the effect first.
+    const rec = o.pg.locator(".hub-rec-card");
+    await rec.waitFor({ timeout: 10000 }); await rec.scrollIntoViewIfNeeded();
+    const hubChosen = await o.pg.locator('.hub-rec-choices input[value="hub"]').isChecked();
+    check(`${tag} rec: Same as this Hub chosen before anything is saved`, hubChosen, { hubChosen });
+    await rec.screenshot({ path: join(out, `rec.${tag}.png`) }); keep(`rec.${tag}.png`);
+    await rec.locator(".save-row .btn-primary").click();
+    await o.pg.waitForSelector(".hub-rec-preview", { timeout: 10000 }); await o.pg.waitForTimeout(200);
+    const effect = await o.pg.locator(".hub-rec-preview").textContent();
+    check(`${tag} rec: Save first shows the effect`, /3/.test(effect ?? ""), { effect });
+    await rec.screenshot({ path: join(out, `rec-preview.${tag}.png`) }); keep(`rec-preview.${tag}.png`);
+    const notified = await o.pg.locator('[data-fleet="f2"] .hub-fleet-notified').textContent().catch(() => null);
+    check(`${tag} rows: a notified Fleet says when`, /(Owner notified|已通知擁有者)/.test(notified ?? ""), { notified });
     await o.ctx.close();
     // Chats home: the banner.
     o = await open(c, "/ui/hub");

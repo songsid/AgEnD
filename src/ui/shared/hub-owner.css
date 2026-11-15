@@ -23,6 +23,11 @@
 .hub-fleet-version { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-1) var(--s-3); font-size: var(--fs-sm); }
 .hub-fleet-version > span { display: inline-flex; align-items: center; gap: var(--s-1); white-space: nowrap; }
 .hub-fleet-version .hub-fleet-why { flex: 1 1 100%; white-space: normal; }
+/* M-3141 (§3.1): the recommended version card — three choices, a version box beside "A specific version". */
+.hub-rec-choices { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-2) 0; }
+.hub-rec-choice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+.hub-rec-version input { width: 12ch; }
+.hub-fleet-version .hub-fleet-notified { flex: 1 1 100%; white-space: normal; }
 /* §2.3: the older-Fleet banner — its words, and Close beside them (never on a line of its own). */
 .hub-versions-banner { display: flex; align-items: flex-start; gap: var(--s-2); }
 .hub-versions-banner > span { flex: 1 1 auto; min-width: 0; }
