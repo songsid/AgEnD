@@ -478,14 +478,16 @@ after an upgrade. Do not offer an assistant when the Hub has no enabled assistan
 ## Teams
 
 These controls appear only when the Hub offers Teams. The Hub administrator opens **Administration → Teams**
-(管理 → 團隊), between Let colleagues join and Rooms. **New team** needs a name, an AD department and a lead.
-A department groups the team; it does not implicitly add that AD group's members. Each person is explicitly selected.
+(管理 → 團隊), between Let colleagues join and Rooms. **Who can create teams** defaults to administrators only.
+Administrators may also select named company people and AD groups; they retain their own creation permission.
+**New team** needs a name; the creator becomes its first lead. **Department (optional)** is a label, never an implicit roster.
 
-- The lead is always a member. Changing the lead adds the new person in the same save; the former lead stays until
-  removed later. A disabled lead stays named, with a warning to choose a replacement; nobody is promoted automatically.
-- Administrators can create, rename, change department or lead, delete, and edit any roster. A lead uses **My teams**
-  (我的團隊), in the shared desktop sidebar or phone ☰ drawer, to add or remove members only. A plain member has no
-  My teams entry in this phase. Both paths use the same roster editor.
+- Each team has 1–5 leads, all explicit members. Any lead may rename or delete the team, change its optional department,
+  manage members and name other leads. A last lead must name another before leaving. A disabled lead stays named;
+  nobody is promoted automatically. Existing teams keep their original lead after upgrading.
+- Signed-in people can browse team names and leads from the Teams entry in the desktop sidebar or phone drawer.
+  Only administrators, leads and members see the roster; only administrators and current leads edit it.
+  Both paths use the same roster editor. Lead and member changes are audited with their actor and affected person.
 - Adding or removing roster members edits a draft until **Save** (儲存). **Unsaved changes** (尚未儲存) appears beside
   Save while the draft differs from the saved team; leaving without saving does not apply those roster edits.
 - People search is **Search everyone by name** (輸入姓名搜尋所有人), including other departments. Results

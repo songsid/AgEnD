@@ -192,6 +192,7 @@ try {
       await route.fulfill({ response: res, json });
     });
     // Team service is not mounted in this shell rig: light cases lead one team, dark cases lead none.
+    // T2 exposes the team directory to both; lead authority still controls roster mutation.
     await ctx.route(/\/hub\/v1\/teams$/, (route: any) => route.fulfill({ status: 200, json: { teams: [{ id: "shell-team", name: "Research", departmentName: "Engineering", lead: teamLead ? teamPerson : "corp/other", members: [teamPerson], canManage: true, isLead: teamLead }] } }));
     const noticeStreams: string[] = [];
     // rooms-v1 moves notices onto the tab's one rooms stream. Match its version query as well as the older notices URL;
@@ -242,7 +243,7 @@ try {
       const sb = await page.evaluate(SIDEBAR) as any;
       if (sb.missing) { check(`${tag}:sidebar`, false, "no #sidebar"); continue; }
       // M-3092: a Hub with rooms adds 「新房間」 for someone who may open rooms (the administrator, by default).
-      const want = [...(c.lang === "zh-TW" ? ["對話", "我分享的 Agent", ...(teamLead ? ["我的團隊"] : []), "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", ...(teamLead ? ["My teams"] : []), "Administration", "Notices", "Search", "New chat"]),
+      const want = [...(c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "團隊", "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", "Teams", "Administration", "Notices", "Search", "New chat"]),
         ...(roomsOffered ? [c.lang === "zh-TW" ? "新房間" : "New room"] : [])];
       const rows = sb.rows as any[];
       check(`${tag}:sidebar:brand`, !!sb.brand && sb.brand.text === "AgEnD Hub" && sb.brand.title === "Team Hub" && sb.brand.lines === 1, sb.brand);
@@ -250,8 +251,8 @@ try {
       check(`${tag}:sidebar:row-shape`, new Set(rows.map((x) => x.h)).size === 1 && new Set(rows.map((x) => x.iconX)).size === 1 && rows.every((x) => x.iconX !== null), rows.map((x) => [x.text, x.h, x.iconX]));
       check(`${tag}:sidebar:current`, rows.filter((x) => x.current).map((x) => x.text).join() === p.current[c.lang], rows.filter((x) => x.current).map((x) => x.text));
       check(`${tag}:sidebar:notices-no-count`, rows.every((x) => !x.count), rows.filter((x) => x.count).map((x) => x.text));
-      check(`${tag}:sidebar:search`, /side-search/.test(rows[teamLead ? 5 : 4]?.cls ?? "") && (phone || /K$/.test(rows[teamLead ? 5 : 4]?.kbd ?? "")), rows[teamLead ? 5 : 4]);
-      check(`${tag}:sidebar:new`, /side-new/.test(rows[teamLead ? 6 : 5]?.cls ?? "") && sb.legacy.length === 0, { row: rows[teamLead ? 6 : 5], legacy: sb.legacy });
+      check(`${tag}:sidebar:search`, /side-search/.test(rows[5]?.cls ?? "") && (phone || /K$/.test(rows[5]?.kbd ?? "")), rows[5]);
+      check(`${tag}:sidebar:new`, /side-new/.test(rows[6]?.cls ?? "") && sb.legacy.length === 0, { row: rows[6], legacy: sb.legacy });
       // No chat yet: one line in the list — except on the chats' home, where the page itself says it (Argon #19).
       check(`${tag}:sidebar:list`, sb.label === (c.lang === "zh-TW" ? "對話" : "Chats") && (p.key === "chats" ? !sb.empty : !!sb.empty && sb.empty.lines === 1), { label: sb.label, empty: sb.empty });
       if (p.key === "chats") try {   // the session menu, opened: every item shown — inside the screen and topmost at its centre

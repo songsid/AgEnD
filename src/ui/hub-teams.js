@@ -8,7 +8,8 @@ const changes = new Set();
 const changed = () => { for (const fn of changes) fn(); };
 // Only a fallback for older/fixture servers without isLead; real sessions omit person.
 const personId = person => typeof person === "string" ? person : person?.realm && person?.objectId ? `${person.realm}/${person.objectId}` : person?.id || "";
-const leads = (row, me) => row.isLead === true || row.isLead === undefined && !!me && row.lead === me;
+const leadIds = row => row?.leads || (row?.lead ? [row.lead] : []);
+const leads = (row, me) => row.isLead === true || row.isLead === undefined && !!me && leadIds(row).includes(me);
 const errorText = (out, writing = false) => out?.status === 429 ? ht("busy") : out?.status === 401 || out?.status === 403 ? ht("denied") : ht(writing ? "saveFailed" : "failed");
 const date = value => new Date(value).toLocaleDateString();
 const cssLoads = new WeakMap();
@@ -34,17 +35,19 @@ function StyleWait({ ready, retry }) {
   return html`<p role="status">${ht(ready === false ? "styleFailed" : "styleLoading")}</p>${ready === false ? html`<button type="button" class="btn" onClick=${retry}>${ht("retry")}</button>` : null}`;
 }
 function useTeams(client) {
+  const [settings, setSettings] = useState(null);
   const [rows, setRows] = useState(null), [error, setError] = useState(null), [revision, setRevision] = useState(0), epoch = useRef(0);
   useEffect(() => {
     let live = true; const mine = ++epoch.current;
     Promise.resolve().then(() => client.teams()).then(out => { if (!live || mine !== epoch.current) return;
       if (out.ok) { setRows(Array.isArray(out.teams) ? out.teams : []); setError(null); } else setError(errorText(out));
     }, () => { if (live && mine === epoch.current) setError(ht("failed")); });
-    const end = client.onSignedOut?.(() => { epoch.current++; setRows([]); setError(ht("denied")); });
+    if (client.teamSettings) Promise.resolve().then(() => client.teamSettings()).then(out => { if (live && mine === epoch.current && out.ok) setSettings(out.settings); }, () => {});
+    const end = client.onSignedOut?.(() => { epoch.current++; setSettings(null); setRows([]); setError(ht("denied")); });
     const refresh = () => setRevision(n => n + 1); changes.add(refresh);
     return () => { live = false; epoch.current++; changes.delete(refresh); end?.(); };
   }, [client, revision]);
-  return { rows, error, refresh: () => setRevision(n => n + 1) };
+  return { rows, settings, error, refresh: () => setRevision(n => n + 1) };
 }
 export function HubTeamsEntry() {
   const [ready, retry] = useStyle();
@@ -52,15 +55,15 @@ export function HubTeamsEntry() {
     ${ready ? html`<a class="btn hub-team-button" href="/ui/hub/admin?view=teams" onClick=${e => { if (!e.metaKey && !e.ctrlKey) { e.preventDefault(); navigate("/ui/hub/admin?view=teams"); } }}>${ht("manage")}</a>` : html`<${StyleWait} ready=${ready} retry=${retry} />`}</section>`;
 }
 export function HubMyTeamsEntry({ client, person, active, onPick }) {
-  const { rows } = useTeams(client), me = personId(person);
-  if (!rows?.some(row => leads(row, me))) return null;
+  const { rows, error } = useTeams(client);
+  if (rows === null || error) return null;
   const href = "/ui/hub?view=teams";
   return html`<a class=${`side-row${active ? " active" : ""}`} href=${href} aria-current=${active ? "page" : undefined}
-    onClick=${e => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); onPick?.(); navigate(href); }}><${Icon} name="user" /><span class="grow">${ht("mine")}</span></a>`;
+    onClick=${e => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); onPick?.(); navigate(href); }}><${Icon} name="user" /><span class="grow">${ht("title")}</span></a>`;
 }
 
 /** Feedback is cancellable and never applies a result from a previous query or team. */
-export function TeamSuggestions({ client, kind = "person", teamId, disabled, onPick }) {
+export function TeamSuggestions({ client, kind = "person", teamId, disabled, onPick, policy = false }) {
   const [query, setQuery] = useState(""), [answer, setAnswer] = useState(null), [busy, setBusy] = useState(false), epoch = useRef(0), controller = useRef(null);
   useEffect(() => { epoch.current++; controller.current?.abort(); setAnswer(null); setBusy(false);
     return () => { epoch.current++; controller.current?.abort(); }; }, [client, kind, teamId]);
@@ -73,8 +76,8 @@ export function TeamSuggestions({ client, kind = "person", teamId, disabled, onP
   };
   const hits = answer?.ok && Array.isArray(answer.candidates) ? answer.candidates.slice(0, 20).filter(row => row.kind === kind) : [];
   return html`<div class="hub-team-search">
-    <div class="hub-team-search-line"><label class="field grow"><span>${ht(kind === "group" ? "department" : "members")}</span><input type="search" maxlength="64" autocomplete="off" spellcheck=${false}
-      placeholder=${ht(kind === "group" ? "departmentQuery" : "personQuery")} value=${query} disabled=${disabled}
+    <div class="hub-team-search-line"><label class="field grow"><span>${ht(kind === "group" ? policy ? "groupKind" : "department" : "members")}</span><input type="search" maxlength="64" autocomplete="off" spellcheck=${false}
+      placeholder=${ht(kind === "group" ? policy ? "groupQuery" : "departmentQuery" : "personQuery")} value=${query} disabled=${disabled}
       onInput=${e => { epoch.current++; controller.current?.abort(); setQuery(e.target.value); setAnswer(null); setBusy(false); }}
       onKeyDown=${e => { if (e.key === "Enter") { e.preventDefault(); void search(); } }} /></label>
       <button type="button" class="btn hub-team-button" disabled=${disabled || busy || query.trim().length < 2 || query.trim().length > 64} onClick=${search}>${ht("search")}</button></div>
@@ -83,11 +86,11 @@ export function TeamSuggestions({ client, kind = "person", teamId, disabled, onP
       <button type="button" class="btn hub-team-button" disabled=${disabled} aria-label=${ht("choose", row.name)} onClick=${() => { epoch.current++; controller.current?.abort(); onPick(row); setQuery(""); setAnswer(null); }}>${ht("pick")}</button></li>`)}</ul>` : null}
   </div>`;
 }
-const draftFrom = team => ({ name: team?.name || "", department: team?.department || "", departmentName: team?.departmentName || "", lead: team?.lead || "",
+const draftFrom = team => ({ name: team?.name || "", department: team?.department || "", departmentName: team?.departmentName || "", lead: team?.lead || "", leads: leadIds(team),
   members: (team?.memberInfo || (team?.members || []).map(id => ({ id, name: id }))).map(row => ({ ...row })) });
-const editableImage = draft => JSON.stringify([draft.name.trim(), draft.department, draft.lead, draft.members.map(row => row.id).sort()]);
+const editableImage = draft => JSON.stringify([draft.name.trim(), draft.department, draft.leads, draft.members.map(row => row.id).sort()]);
 function TeamEditor({ client, id, mode, onSaved, onBack }) {
-  const [view, setView] = useState(null), [draft, setDraft] = useState(draftFrom(null)), [error, setError] = useState(null), [busy, setBusy] = useState(false), [picker, setPicker] = useState(id ? null : "department"), [deleting, setDeleting] = useState(false), [reload, setReload] = useState(0), [saved, setSaved] = useState(false);
+  const [view, setView] = useState(null), [draft, setDraft] = useState(draftFrom(null)), [error, setError] = useState(null), [busy, setBusy] = useState(false), [picker, setPicker] = useState(null), [deleting, setDeleting] = useState(false), [reload, setReload] = useState(0), [saved, setSaved] = useState(false);
   const epoch = useRef(0), writing = useRef(false), admin = mode === "admin";
   useEffect(() => {
     let live = true; const mine = ++epoch.current;
@@ -102,10 +105,10 @@ function TeamEditor({ client, id, mode, onSaved, onBack }) {
   const allowed = !id || view?.canManage === true;
   const dirty = editableImage(draft) !== editableImage(draftFrom(view));
   const save = async e => {
-    e?.preventDefault?.(); if (writing.current || !allowed || !draft.lead || !draft.department || !draft.name.trim()) return;
+    e?.preventDefault?.(); if (writing.current || !allowed || (id && !draft.leads.length) || !draft.name.trim()) return;
     writing.current = true; setBusy(true); setError(null); setSaved(false); const mine = ++epoch.current;
-    const members = [...new Set([...draft.members.map(row => row.id), draft.lead])];
-    const value = admin ? { name: draft.name.trim(), department: draft.department, lead: draft.lead, members } : { members };
+    const members = [...new Set([...draft.members.map(row => row.id), ...draft.leads])];
+    const value = { name: draft.name.trim(), department: draft.department || null, ...(id ? {leads:draft.leads} : {}), members };
     let out; try { out = id ? await client.updateTeam(id, { ...value, revision: view.revision }) : await client.createTeam(value); } catch { out = { ok: false }; }
     if (mine !== epoch.current) return;
     writing.current = false; setBusy(false);
@@ -121,7 +124,7 @@ function TeamEditor({ client, id, mode, onSaved, onBack }) {
     else setError(errorText(out, true));
   };
   const remove = async () => {
-    if (writing.current || !admin || !id) return;
+    if (writing.current || !allowed || !id) return;
     writing.current = true; setBusy(true); setError(null); const mine = ++epoch.current;
     let out; try { out = await client.deleteTeam(id); } catch { out = { ok: false }; }
     if (mine !== epoch.current) return; writing.current = false; setBusy(false);
@@ -130,25 +133,29 @@ function TeamEditor({ client, id, mode, onSaved, onBack }) {
   const pick = row => {
     setSaved(false);
     if (picker === "department") setDraft(old => ({ ...old, department: row.id, departmentName: row.name }));
-    else setDraft(old => ({ ...old, ...(picker === "lead" ? { lead: row.id } : {}), members: old.members.some(member => member.id === row.id) ? old.members : [...old.members, row] }));
+    else setDraft(old => ({ ...old, ...(picker === "lead" ? { leads: [...new Set([...old.leads,row.id])].slice(0,5) } : {}), members: old.members.some(member => member.id === row.id) ? old.members : [...old.members, row] }));
     setPicker(null);
   };
+  const used = [view?.impact?.grants?.length ? ht("usedAgents",new Set(view.impact.grants.map(g => g.exposureId)).size) : null, view?.impact?.roomCreator ? ht("usedRooms") : null, view?.impact?.allowedList ? ht("usedList") : null].filter(Boolean);
   return html`<section class="card hub-team-editor"><div class="hub-team-head"><h3>${ht(id ? "edit" : "create", view?.name || draft.name)}</h3><button type="button" class="btn hub-team-button" disabled=${busy} onClick=${onBack}>${ht("back")}</button></div>
     ${error ? html`<p class="err" role="alert">${error}</p><button type="button" class="btn hub-team-button" disabled=${busy} onClick=${() => setReload(n => n + 1)}>${ht("refresh")}</button>` : null}
+    ${id && view ? html`<p class="note hub-team-usage">${used.length ? ht("usedFor",used.join(" · ")) : ht("unused")}</p><p class="note">${ht("snapshot")}</p>` : null}
     ${id && !view ? html`<p role="status">${ht("loading")}</p>` : html`<form class="form" onSubmit=${save}>
-      ${admin ? html`<label class="field"><span>${ht("name")}</span><input data-team-name maxlength="100" required value=${draft.name} disabled=${busy || !allowed} onInput=${e => { setDraft(old => ({ ...old, name: e.target.value })); setSaved(false); }} /></label>` : null}
-      <div class="hub-team-head"><p class="note">${ht("departmentLine", draft.departmentName || ht("chooseDepartment"))}</p>${admin ? html`<button type="button" class="btn hub-team-button" disabled=${busy || !allowed} onClick=${() => setPicker("department")}>${ht("change")}</button>` : null}</div>
+      ${html`<label class="field"><span>${ht("name")}</span><input data-team-name maxlength="100" required value=${draft.name} disabled=${busy || !allowed} onInput=${e => { setDraft(old => ({ ...old, name: e.target.value })); setSaved(false); }} /></label>`}
+      <div class="hub-team-head"><p class="note">${ht("departmentLine", draft.departmentName || ht("chooseDepartment"))}</p>${html`<button type="button" class="btn hub-team-button" disabled=${busy || !allowed} onClick=${() => setPicker("department")}>${ht("change")}</button>${draft.department ? html`<button type="button" class="btn hub-team-button" disabled=${busy || !allowed} onClick=${() => setDraft(old => ({...old,department:"",departmentName:""}))}>${ht("clearDepartment")}</button>` : null}`}</div>
       ${view?.leadEligible === false ? html`<p class="warn" role="status">${ht("disabledLead")}</p>` : null}
-      ${admin ? html`<div class="hub-team-head"><p>${ht("leadPerson")}: <strong>${draft.members.find(row => row.id === draft.lead)?.name || ht("chooseLead")}</strong></p><button type="button" class="btn hub-team-button" disabled=${busy || !allowed} onClick=${() => setPicker("lead")}>${ht("chooseLead")}</button></div>` : null}
+      <div class="hub-team-head"><p>${ht("leadPerson")}: <strong>${draft.leads.map(id => draft.members.find(row => row.id === id)?.name || id).join(", ") || ht("creatorLead")}</strong></p>${id ? html`<button type="button" class="btn hub-team-button" disabled=${busy || !allowed || draft.leads.length >= 5} onClick=${() => setPicker("lead")}>${ht("chooseLead")}</button>` : null}</div>
       ${picker ? html`<div class="hub-team-picker"><${TeamSuggestions} key=${picker} client=${client} kind=${picker === "department" ? "group" : "person"} teamId=${id || undefined} disabled=${busy || !allowed} onPick=${pick} /><button type="button" class="btn hub-team-button" onClick=${() => setPicker(null)}>${ht("cancel")}</button></div>` : null}
       <div class="hub-team-head"><h4>${ht("members")} · ${draft.members.length}</h4><button type="button" class="btn hub-team-button" disabled=${busy || !allowed || draft.members.length >= 200} onClick=${() => setPicker("member")}>${ht("add")}</button></div>
       <p class="note">${ht("limit")} ${ht("leadRequired")}</p>
       <div class="hub-team-table-wrap"><table class="hub-team-table"><thead><tr><th>${ht("members")}</th><th>${ht("role")}</th><th>${ht("signedIn")}</th><th>${ht("agents")}</th><th><span class="sr-only">${ht("remove")}</span></th></tr></thead><tbody>
-        ${draft.members.map(row => html`<tr key=${row.id}><td><strong>${row.name}</strong>${row.login ? html`<small class="note hub-team-detail">${row.login}</small>` : null}${row.department ? html`<small class="note hub-team-detail">${row.department}</small>` : null}</td><td data-label=${ht("role")}>${ht(row.id === draft.lead ? "roleLead" : "roleMember")}</td>
-          <td data-label=${ht("signedIn")}>${row.signedIn === true ? ht("yes") : row.signedIn === false ? ht("notYet") : ht("unobserved")}</td><td data-label=${ht("agents")}>${row.agents?.length ? row.agents.map(agent => agent.name).join(", ") : ht("none")}</td><td><button type="button" class="btn hub-team-button" disabled=${busy || !allowed || row.id === draft.lead || row.id === view?.lead} aria-label=${`${ht("remove")} ${row.name}`} onClick=${() => { setDraft(old => ({ ...old, members: old.members.filter(member => member.id !== row.id) })); setSaved(false); }}>${ht("remove")}</button></td></tr>`)}
+        ${draft.members.map(row => html`<tr key=${row.id}><td><strong>${row.name}</strong>${row.login ? html`<small class="note hub-team-detail">${row.login}</small>` : null}${row.department ? html`<small class="note hub-team-detail">${row.department}</small>` : null}</td><td data-label=${ht("role")}>${ht(draft.leads.includes(row.id) ? "roleLead" : "roleMember")}</td>
+          <td data-label=${ht("signedIn")}>${row.signedIn === true ? ht("yes") : row.signedIn === false ? ht("notYet") : ht("unobserved")}</td><td data-label=${ht("agents")}>${row.agents?.length ? row.agents.map(agent => agent.name).join(", ") : ht("none")}</td><td>${id ? html`<button type="button" class="btn hub-team-button" disabled=${busy || !allowed || (draft.leads.includes(row.id) ? draft.leads.length === 1 : draft.leads.length >= 5)}
+          aria-label=${ht(draft.leads.includes(row.id) ? "removeLead" : "makeLead",row.name)} onClick=${() => {setDraft(old => ({...old,leads:old.leads.includes(row.id) ? old.leads.filter(id => id !== row.id) : [...old.leads,row.id]})); setSaved(false);}}>${ht(draft.leads.includes(row.id) ? "demote" : "promote")}</button>` : null}
+          <button type="button" class="btn hub-team-button" disabled=${busy || !allowed || draft.leads.includes(row.id)} aria-label=${`${ht("remove")} ${row.name}`} onClick=${() => { setDraft(old => ({ ...old, members: old.members.filter(member => member.id !== row.id) })); setSaved(false); }}>${ht("remove")}</button></td></tr>`)}
       </tbody></table></div>
-      <div class="hub-team-actions"><button type="submit" class="btn btn-primary hub-team-button" disabled=${busy || !allowed || !draft.name.trim() || !draft.department || !draft.lead}>${ht(busy ? "saving" : "save")}</button>${dirty || saved ? html`<span role="status">${ht(dirty ? "unsaved" : "saved")}</span>` : null}
-        ${admin && id ? html`<button type="button" class="btn btn-danger hub-team-button" disabled=${busy || !allowed} onClick=${() => setDeleting(true)}>${ht("delete")}</button>` : null}</div>
+      <div class="hub-team-actions"><button type="submit" class="btn btn-primary hub-team-button" disabled=${busy || !allowed || !draft.name.trim() || (id && !draft.leads.length)}>${ht(busy ? "saving" : "save")}</button>${dirty || saved ? html`<span role="status">${ht(dirty ? "unsaved" : "saved")}</span>` : null}
+        ${allowed && id ? html`<button type="button" class="btn btn-danger hub-team-button" disabled=${busy || !allowed} onClick=${() => setDeleting(true)}>${ht("delete")}</button>` : null}</div>
     </form>`}
     ${deleting ? html`<div class="hub-team-delete" role="region" aria-label=${ht("deleteTitle", view.name)}><h4>${ht("deleteTitle", view.name)}</h4><p>${ht("deleteLead")}</p>
       ${view.impact?.grants?.length || view.impact?.roomCreator ? html`<ul>${view.impact.grants.map(grant => html`<li>${ht("grantExpiry", grant.name, date(grant.expiresAt))}</li>`)}${view.impact.roomCreator ? html`<li>${ht("creators")}</li>` : null}</ul>` : html`<p class="note">${ht("noImpact")}</p>`}
@@ -156,14 +163,35 @@ function TeamEditor({ client, id, mode, onSaved, onBack }) {
   </section>`;
 }
 export function HubTeamsPage({ client, mode = "lead", person }) {
-  const [ready, retry] = useStyle(), { rows, error, refresh } = useTeams(client), [selected, setSelected] = useState(null), me = personId(person);
-  const shown = (rows || []).filter(row => mode === "admin" || leads(row, me));
+  const [ready, retry] = useStyle(), { rows, settings, error, refresh } = useTeams(client), [selected, setSelected] = useState(null), me = personId(person);
+  const shown = rows || [];
   return html`<div class="hub-teams"><p class="s-page-lead hub-page-lead">${ht(mode === "admin" ? "pageLead" : "myLead")}</p>
     ${!ready ? html`<${StyleWait} ready=${ready} retry=${retry} />` : html`<div class="s-section-layout">
+      ${mode === "admin" && settings?.canConfigure ? html`<${CreationSettings} client=${client} settings=${settings} onSaved=${refresh} />` : null}
       ${selected !== null ? html`<${TeamEditor} key=${selected} client=${client} id=${selected || null} mode=${mode} onBack=${() => { setSelected(null); refresh(); }} onSaved=${team => { setSelected(team.id); refresh(); }} />`
-        : html`<section class="card"><div class="hub-team-head"><h3>${ht(mode === "admin" ? "title" : "mine")}</h3>${mode === "admin" ? html`<button type="button" class="btn btn-primary hub-team-button" onClick=${() => setSelected("")}>${ht("create")}</button>` : null}</div>
+        : html`<section class="card"><div class="hub-team-head"><h3>${ht("title")}</h3>${settings?.canCreate || mode === "admin" && !settings ? html`<button type="button" class="btn btn-primary hub-team-button" onClick=${() => setSelected("")}>${ht("create")}</button>` : null}</div>
           ${error ? html`<p class="err" role="alert">${error}</p><button type="button" class="btn hub-team-button" onClick=${refresh}>${ht("retry")}</button>` : null}
-          ${rows === null ? html`<p role="status">${ht("loading")}</p>` : shown.length ? html`<ul class="hub-team-list">${shown.map(row => html`<li key=${row.id}><span class="grow"><strong>${row.name}</strong><small class="note hub-team-detail">${ht("departmentLine", row.departmentName)} · ${ht("count", row.members.length)}</small></span><button type="button" class="btn hub-team-button" aria-label=${ht("edit", row.name)} onClick=${() => setSelected(row.id)}>${ht("manage")}</button></li>`)}</ul>` : html`<p class="note">${ht(mode === "admin" ? "empty" : "noMine")}</p>`}
+          ${rows === null ? html`<p role="status">${ht("loading")}</p>` : shown.length ? html`<ul class="hub-team-list">${shown.map(row => html`<li key=${row.id}><span class="grow"><strong>${row.name}</strong><small class="note hub-team-detail">${row.leadNames?.join(", ") || row.leadName} · ${row.departmentName ? ht("departmentLine", row.departmentName) + " · " : ""} ${ht("count", row.memberCount ?? row.members.length)}</small></span>${row.canManage || row.members?.length ? html`<button type="button" class="btn hub-team-button" aria-label=${ht("edit", row.name)} onClick=${() => setSelected(row.id)}>${ht(row.canManage ? "manage" : "view")}</button>` : null}</li>`)}</ul>` : html`<p class="note">${ht(mode === "admin" ? "empty" : "noMine")}</p>`}
         </section>`}
     </div>`}</div>`;
+}
+
+/** Policy edits stay local until Save; server re-proves selected identities and admin authority. */
+function CreationSettings({client,settings,onSaved}) {
+  const [rows,setRows] = useState(settings.creators), [selected,setSelected] = useState(settings.creators.length > 0), [kind,setKind] = useState(null), [busy,setBusy] = useState(false), [error,setError] = useState(null);
+  const epoch = useRef(0), writing = useRef(false);
+  useEffect(() => {setRows(settings.creators);setSelected(settings.creators.length > 0); return () => {epoch.current++;};},[settings]);
+  const save = async () => {
+    if (writing.current) return; writing.current=true; setBusy(true); setError(null); const mine=++epoch.current;
+    let out; try { out=await client.saveTeamSettings({revision:settings.revision,creators:selected ? rows.map(({kind,id}) => ({kind,id})) : []}); } catch {out={ok:false};}
+    if (mine !== epoch.current) return; writing.current=false;setBusy(false);
+    if (out.ok) {setKind(null); onSaved();} else setError(errorText(out,true));
+  };
+  return html`<section class="card hub-team-policy"><h3>${ht("creationTitle")}</h3>
+    <label class="field"><span>${ht("creationTitle")}</span><select value=${selected ? "selected" : "admin"} disabled=${busy} onChange=${e => setSelected(e.target.value === "selected")}><option value="admin">${ht("adminOnly")}</option><option value="selected">${ht("selectedCreators")}</option></select></label>
+    ${selected ? html`<p class="note">${ht("adminSelected")}</p>` : null}
+    ${selected ? html`<ul class="hub-team-list">${rows.map(row => html`<li key=${row.kind+row.id}><span class="grow">${row.name} · ${ht(row.kind === "person" ? "personKind" : "groupKind")}</span><button type="button" class="btn hub-team-button" disabled=${busy} aria-label=${ht("remove")+" "+row.name} onClick=${() => setRows(rows.filter(r => r !== row))}>${ht("remove")}</button></li>`)}</ul>
+    <div class="hub-team-actions"><button type="button" class="btn hub-team-button" disabled=${busy || rows.length >= 100} onClick=${() => setKind("person")}>${ht("addPerson")}</button><button type="button" class="btn hub-team-button" disabled=${busy || rows.length >= 100} onClick=${() => setKind("group")}>${ht("addGroup")}</button></div>
+    ${kind ? html`<${TeamSuggestions} client=${client} kind=${kind} policy=${true} disabled=${busy} onPick=${row => {setRows(old => old.some(r => r.kind === row.kind && r.id === row.id) ? old : [...old,row]);setKind(null);}} />` : null}` : null}
+    ${error ? html`<p class="err" role="alert">${error}</p>` : null}<button type="button" class="btn hub-team-button" disabled=${busy} onClick=${save}>${ht(busy ? "saving" : "save")}</button></section>`;
 }

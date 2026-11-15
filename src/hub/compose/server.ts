@@ -30,7 +30,7 @@ import { HUB_GROUP_RESOURCES_MIGRATION } from "../group-policy/resources.js";
 import { createHubGroupAuthorization, type HubGroupAuthorization } from "../group-policy/authorization.js";
 import { HUB_ENROLMENT_CODE_MIGRATION } from "../enrolment-code.js";
 import { createHubRoomInvitations, HUB_ROOM_INVITATIONS_MIGRATION } from "../invitations.js";
-import { createHubTeams, HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION } from "../teams/index.js";
+import { createHubTeams, HUB_TEAM_MANAGEMENT_MIGRATION, HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION } from "../teams/index.js";
 import { HubPairingNotices, HUB_PAIRING_NOTICES_MIGRATION } from "../pairing-notices.js";
 import { createHubGroupAdminControl } from "../group-policy/admin-control.js";
 import { createHubGroupAdminInventory } from "../group-policy/admin-inventory.js";
@@ -236,7 +236,7 @@ export function hubServerDatabasePlan(cfg: Record<string, unknown>, httpMigratio
     caSha256: resolvedDirectory.caPem === undefined ? null : sha256(resolvedDirectory.caPem) }));
   // An injected older HTTP entry has no owner-grant subjects or Team routes to migrate.
   const teamMigrations = httpMigrations.some(m => m.component === "s3-grant-subjects")
-    ? [HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION] : [];
+    ? [HUB_TEAMS_MIGRATION, HUB_TEAM_MANAGEMENT_MIGRATION, HUB_TEAM_GRANTS_MIGRATION] : [];
   const migrations = [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_WEB_INIT_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpMigrations,
     ...teamMigrations,
     HUB_ROOM_INVITATIONS_MIGRATION,
