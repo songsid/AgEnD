@@ -30,8 +30,12 @@ describe("one Fleet, said as one", () => {
     expect([v.summaryText([cur], "2.4.0"), v.summaryText([cur, row({ id: "f2", versionState: "current" })], "2.4.0"),
       v.summaryText([row(), cur], "2.4.0"), v.summaryText([row(), row({ id: "f2" })], "2.4.0"),
       v.summaryText([cur], null), v.summaryText([cur], null, true)]).toEqual([
-      "The 1 Fleet is on the recommended version or newer.", "All 2 Fleets are on the recommended version or newer.",
+      "Your Fleet is on the recommended version or newer.", "All 2 Fleets are on the recommended version or newer.",
       "1 of 2 Fleets needs an update.", "2 of 2 Fleets need an update.",
       "1 active Fleet.", "1 active Fleet. Set a recommended version to see whether it is behind."]);
+    // M-3177: one Fleet in all, behind — never "1 of 1 Fleets…"; zh-TW the same sentence as for any count.
+    expect(v.summaryText([row()], "2.4.0")).toBe("The Fleet needs an update.");
+    words.setLang("zh-TW");
+    expect(v.summaryText([row()], "2.4.0")).toBe("1 個 Fleet 當中有 1 個需要更新。");
   });
 });

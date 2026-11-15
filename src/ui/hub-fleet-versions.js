@@ -13,8 +13,8 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 
 register("hubVersions", {
   en: {
-    allCurrent: "All {0} Fleets are on the recommended version or newer.", allCurrentOne: "The {0} Fleet is on the recommended version or newer.",
-    someBehind: "{0} of {1} Fleets need an update.", someBehindOne: "{0} of {1} Fleets needs an update.",
+    allCurrent: "All {0} Fleets are on the recommended version or newer.", allCurrentOne: "Your Fleet is on the recommended version or newer.",
+    someBehind: "{0} of {1} Fleets need an update.", someBehindOne: "{0} of {1} Fleets needs an update.", someBehindOnly: "The Fleet needs an update.",
     // Phase 1 has no recommended version and no way to set one yet (M-3138 adds it, with "Set a recommended version…").
     noRecommended: "{0} active Fleets.", noRecommendedOne: "{0} active Fleet.",
     noRecommendedSet: "{0} active Fleets. Set a recommended version to see which ones are behind.", noRecommendedSetOne: "{0} active Fleet. Set a recommended version to see whether it is behind.",
@@ -60,7 +60,7 @@ register("hubVersions", {
   },
   "zh-TW": {
     allCurrent: "{0} 個 Fleet 都是建議版本或更新的版本。", allCurrentOne: "{0} 個 Fleet 都是建議版本或更新的版本。",
-    someBehind: "{1} 個 Fleet 當中有 {0} 個需要更新。", someBehindOne: "{1} 個 Fleet 當中有 {0} 個需要更新。",
+    someBehind: "{1} 個 Fleet 當中有 {0} 個需要更新。", someBehindOnly: "{1} 個 Fleet 當中有 {0} 個需要更新。", someBehindOne: "{1} 個 Fleet 當中有 {0} 個需要更新。",
     noRecommended: "{0} 個使用中的 Fleet。", noRecommendedOne: "{0} 個使用中的 Fleet。",
     noRecommendedSet: "{0} 個使用中的 Fleet。設定建議版本後，就能看出哪些落後。", noRecommendedSetOne: "{0} 個使用中的 Fleet。設定建議版本後，就能看出哪些落後。",
     recTitle: "建議的 AgEnD 版本", recHub: "與這個 Hub 相同（{0}）", recHubPlain: "與這個 Hub 相同",
@@ -127,6 +127,8 @@ export function summaryText(fleets, recommended, canRecommend = false) {
   const { total, needs } = versionCounts(fleets);
   // M-3141: the clause comes back only where there is a control to set it (this Hub serves the setting).
   if (!recommended) return hvn(canRecommend ? "noRecommendedSet" : "noRecommended", total);
+  // M-3177 (Fable): one Fleet in all is "The Fleet needs an update.", never "1 of 1 Fleets…".
+  if (needs > 0 && total === 1) return hv("someBehindOnly", String(needs), String(total));
   return needs > 0 ? hvn("someBehind", needs, String(total)) : hvn("allCurrent", total);
 }
 

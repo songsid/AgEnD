@@ -46,7 +46,7 @@ describe("the words (pure)", () => {
     words.setLang("en");
     expect(v.summaryText(FLEETS, null)).toBe("3 active Fleets.");
     expect(v.summaryText(FLEETS, "2.4.0")).toBe("2 of 3 Fleets need an update.");
-    expect(v.summaryText([FLEETS[0]], "2.4.0")).toBe("The 1 Fleet is on the recommended version or newer.");
+    expect(v.summaryText([FLEETS[0]], "2.4.0")).toBe("Your Fleet is on the recommended version or newer.");
     words.setLang("zh-TW");
     expect(v.summaryText(FLEETS, "2.4.0")).toBe("3 個 Fleet 當中有 2 個需要更新。");
     expect(v.versionCounts(FLEETS)).toEqual({ total: 3, needs: 2 });
