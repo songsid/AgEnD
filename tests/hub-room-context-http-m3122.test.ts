@@ -64,3 +64,14 @@ it("ordinary reconnect preserves the cursor after re-negotiation; old peers reta
   const full=await w.ask("Legacy");expect(full.contextState).toBeUndefined();
   expect(full.context.map(v=>v.text)).toContain("History");expect(()=>roomAskSchema.omit({contextState:true}).parse(full)).not.toThrow();
 });
+it.each(["fleet","owner"] as const)("context input refuses a foreign %s before advancing the cursor",async kind=>{
+  const w=await world();await w.state();const first=await w.ask("Scoped receipt");
+  const before=r!.db.prepare("SELECT * FROM hub_room_context_positions").all();
+  // Keep a current link and matching epoch: refusal must come from the binding guard, not an unrelated stale epoch.
+  // These are inert API contexts, not a claim that a WSS peer can forge its authenticated identity.
+  const foreign={...w.link,fleetId:kind==="fleet"?randomUUID():w.fleetId,
+    owner:kind==="owner"?r!.addPerson("other","Other"):r!.admin};
+  expect(await w.input(first,w.generation,foreign)).toMatchObject({type:"room.context-input-result",payload:{ok:false,code:"stale"}});
+  expect(r!.db.prepare("SELECT * FROM hub_room_context_positions").all()).toEqual(before);
+  expect(await w.input(first)).toMatchObject({payload:{ok:true}});
+});
