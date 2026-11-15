@@ -1,0 +1,48 @@
+{
+  "sourceCommit": "03407389b4c2421be553c8a1e92ac6acdd659ca7",
+  "sourceUnchangedSince": "3de33f96427ed271d399d1d38a3a580f7d3cc99f",
+  "inputs": [
+    {
+      "path": "src/hub/client.ts",
+      "sha256": "baeba3080fdfc28fcae7bf8fb272c956ab5c256f4db581a2456901cf39f90354"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "4a92d896e6115ca8ab81be5332f0a3a7bce7b5d99368e953187dc73aca7fabc2"
+    },
+    {
+      "path": "src/hub/socket.ts",
+      "sha256": "1cb97661c5c9562796e8bb89491529c71cb4f40734e8c3d6c02a882a6f972418"
+    },
+    {
+      "path": "tests/hub-member-startup-3171.test.ts",
+      "sha256": "162d1b12e71a03e487db32c8b4ca635f2e642ad0c26c5938695044f6979b1746"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "all-first-closes-retryable.log",
+      "sha256": "e81b9ab49f9071c947c9932489714eeb9b86f680842578dc2361505e1dfc74c9"
+    },
+    {
+      "path": "all-first-closes-retryable.patch",
+      "sha256": "fe26c62aa757c03e094188b532b235168c3cd4109fe18e6b2c420aec932bd398"
+    },
+    {
+      "path": "focused.log",
+      "sha256": "915ae573099b40a490a992422e8bd926be019e2dbddab67f55e4ba8997dcf7f4"
+    },
+    {
+      "path": "mutation.json",
+      "sha256": "adb0861a8c1038de91602d05b4f9b89ae6a41b1fba2dd9def780ff65a11a64bd"
+    },
+    {
+      "path": "test-types-result.json",
+      "sha256": "6ff94882ea67decb5644497d8b339ca2423071904af838df293986e8dfd5a12a"
+    },
+    {
+      "path": "test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

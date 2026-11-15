@@ -372,7 +372,7 @@ export class HubRoomAgents {
       const e = readExposure(db, d.exposure_id);
       if (pending(current) && this.valid(db, current) && e && (exposureOf(e).state !== "published" || !this.sourcePublished(db, current))) throw new HubProtocolError("unavailable");
       const disclose = pending(current) && this.valid(db, current) && this.core.now() < current.expires_at && !!e && exposureOf(e).state === "published";
-      db.prepare("UPDATE hub_room_deliveries SET state=?,answer_id=?,answer_digest=? WHERE id=?").run(disclose ? "answered" : "retired", body.answerId, hash, d.id);
+      db.prepare("UPDATE hub_room_deliveries SET state=?,answer_id=?,answer_digest=?,answered_at=CASE WHEN ? THEN COALESCE(answered_at,?) ELSE answered_at END WHERE id=?").run(disclose ? "answered" : "retired", body.answerId, hash, disclose ? 1 : 0, this.core.now(), d.id);
       if (disclose) {
         const seq = (db.prepare("SELECT MAX(sequence) AS n FROM hub_room_posts WHERE room_id=?").get(d.room_id) as { n: number }).n + 1;
         const answerRef = this.core.deps.content.put(tx, { question: body.text });

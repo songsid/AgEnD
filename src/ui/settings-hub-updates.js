@@ -15,6 +15,7 @@ register("hubUpdates", {
     lead: "When this is on, an administrator of {0} can start an AgEnD update on this computer. It installs only versions published by AgEnD, waits until your agents are idle, tells you before and after, and goes back to the previous version if the update fails. You can turn this off at any time.",
     askTitle: "Let {0}'s administrator update this Fleet?", allow: "Allow",
     notService: "Not available: this AgEnD was started by hand, so a failed update could not be undone automatically.",
+    hubOlder: "Not available yet: {0} runs an older AgEnD that can't update Fleets. This works once the Hub is updated.",
     failed: "It wasn't changed. Try again.",
   },
   "zh-TW": {
@@ -22,13 +23,15 @@ register("hubUpdates", {
     lead: "開啟後，{0} 的管理員可以在這台電腦上啟動 AgEnD 更新。只會安裝 AgEnD 正式發布的版本，會等你的 Agent 都閒置才開始，更新前後都會通知你，失敗時會回到原本的版本。你隨時可以關閉。",
     askTitle: "要允許 {0} 的管理員更新這個 Fleet 嗎？", allow: "允許",
     notService: "無法使用：這個 AgEnD 是手動啟動的，更新失敗時無法自動復原。",
+    hubOlder: "目前無法使用：{0} 的 AgEnD 版本較舊，還不能更新 Fleet。Hub 更新之後就能使用。",
     failed: "沒有變更，請再試一次。",
   },
 });
 export const hu = (key, ...args) => t(`hubUpdates.${key}`, ...args);
 
 /**
- * The switch. `client.hubUpdateConsent()` → { ok, on, available, reason? } (`available: false, reason: "not-service"`:
+ * The switch. `client.hubUpdateConsent()` → { ok, on, available, reason? } (`available: false`, reason "hub-older": the Hub
+ * runs an AgEnD older than phase 3 (M-3173); reason "not-service":
  * started by hand); `client.setHubUpdateConsent(on)` → the same shape. `hubName`: the paired Hub's name.
  */
 export function HubUpdateConsent({ client, hubName = "" }) {
@@ -58,7 +61,7 @@ export function HubUpdateConsent({ client, hubName = "" }) {
     <label class="check hub-update-switch"><input class="s-ui-toggle" type="checkbox" role="switch" id="hubUpdateConsent"
       checked=${available && state.on === true} disabled=${!available || busy} aria-describedby="hubUpdateConsent-note"
       onChange=${(e) => { void change(e.target.checked, e.target); }} /><span>${hu("switch")}</span></label>
-    <p class="note" id="hubUpdateConsent-note">${available ? hu("lead", hubName) : hu("notService")}</p>
+    <p class="note" id="hubUpdateConsent-note">${available ? hu("lead", hubName) : state.reason === "hub-older" ? hu("hubOlder", hubName) : hu("notService")}</p>
     ${err ? html`<p class="err" role="alert">${err}</p>` : null}
   </div>`;
 }

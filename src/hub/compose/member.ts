@@ -43,6 +43,8 @@ import { HubMemberUpdates, HUB_MEMBER_UPDATES_MIGRATION, type MemberUpdatesOptio
 import { IDLE_UPDATE_MIGRATION } from "../../update-idle.js";
 import { createPublishedVersionLookup } from "../published-version.js";
 import { HubMemberRecommendations, HUB_MEMBER_RECOMMENDATION_MIGRATION } from "../member/recommendations.js";
+import { readHubDisplayName } from "../display-name.js";
+import { refreshHubDisplayName } from "../member/display-name.js";
 import { HubMemberFiles } from "../member/attachments.js";
 import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../member/pairing-notices.js";
 import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_FLEET_UPDATE_CAPABILITY } from "../protocol.js";
@@ -468,6 +470,22 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const binding = links.binding;
       let client: HubMemberClient | null = null;
       let online: HubMemberLink | null = null;
+      const hubName = () => readHubDisplayName(options.home, profile) || new URL(profile.hub.webOrigin).hostname;
+      let displayRequest: AbortController | null = null, displayKick: NodeJS.Immediate | null = null;
+      const stopDisplay = () => { if (displayKick) clearImmediate(displayKick); displayKick = null; displayRequest?.abort(); displayRequest = null; };
+      const learnDisplay = (l: HubMemberLink) => {
+        stopDisplay();
+        const controller = displayRequest = new AbortController();
+        // The client completes ready in its microtask queue first. Optional metadata never delays startup/reconciliation.
+        displayKick = setImmediate(() => {
+          displayKick = null;
+          void refreshHubDisplayName({ home: options.home, profile, endpoint: l.endpoint,
+            current: () => live() && l.current() && profileCurrent(), signal: controller.signal }).then(changed => {
+              if (changed && live() && l.current() && profileCurrent()) { options.recommendationChanged?.(); options.pokeAttention(); }
+            }).catch(() => {}).finally(() => { if (displayRequest === controller) displayRequest = null; });
+        }); displayKick.unref();
+      };
+      teardown.add("Hub display metadata", stopDisplay);
       // M-3125: one file handler for the 1:1 representative and the room asks (the inbox and the reply rule are the same).
       const memberFiles = options.representative.files ? new HubMemberFiles(options.representative.files) : undefined;
       const service = new HubRepresentativeExecution({
@@ -514,7 +532,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!local || !service.readiness(id, local.exposure.revision).ok) return null;
           const consent = db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(local.consentId) as { agent: string; token: string } | undefined;
           if (!consent || consent.agent !== local.agent || options.representative.agentToken(local.agent) !== consent.token) return null;
-          return { agent: local.agent, consentId: local.consentId, revision: local.exposure.revision, token: consent.token };
+          return { agent: local.agent, consentId: local.consentId, revision: local.exposure.revision, token: consent.token, contactLimit: local.contactLimit !== false };
         },
         deliver: input => options.representative.deliver(input), ...(memberFiles ? { files: memberFiles } : {}) });
       const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,
@@ -626,13 +644,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             ...(l.features.has("fleet-recommend-v1") ? { recommendations: true as const } : {}) } }).catch(() => {});
       };
       const updates = options.updates && reportedInfo ? new HubMemberUpdates({ ...options.updates, db, binding: profileDigest ?? roomBinding,
-        hubName: new URL(profile.hub.webOrigin).hostname, version: reportedInfo.version, current: () => live() && !terminalHold && profileCurrent(),
+        get hubName() { return hubName(); }, version: reportedInfo.version, current: () => live() && !terminalHold && profileCurrent(),
         service: () => reportedInfo.runsAsService, now, lookup: options.versionRegistry ?? createPublishedVersionLookup(), changed: reportUpdateConsent }) : null;
       if (updates && reportedInfo) reportedInfo.updatesAllowed = updates.consent().on;
       let updateTimer: ReturnType<typeof setInterval> | null = null;
       teardown.add("Fleet updates", () => { if (updateTimer) clearInterval(updateTimer); updates?.close(); options.attachUpdates?.(null); });
       const recommendations = options.fleetInfo ? new HubMemberRecommendations({ db, hubId,
-        hubName: new URL(profile.hub.webOrigin).hostname, version: options.fleetInfo.version, current: live, now,
+        get hubName() { return hubName(); }, version: options.fleetInfo.version, current: live, now,
         lookup: options.versionRegistry, changed: options.recommendationChanged, log: options.log }) : null;
       options.attachRecommendations?.(recommendations ? () => recommendations.view() : null);
       if (recommendations?.view()) options.recommendationChanged?.();
@@ -666,6 +684,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
         } });
       client = new HubMemberClient({
+        allowOfflineStart: true,
         log: options.log,
         fleetInfo: reportedInfo,
         receiveRecommendations: !!recommendations,
@@ -701,6 +720,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             startRooms(l);
             // Questions admitted while offline (or before a restart, with no input yet) go out on this link.
             service.pump();
+            learnDisplay(l);
           }
         },
         receive: (frame, l) => {
@@ -749,6 +769,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         hold: (code) => {
+          stopDisplay();
           stopRooms();
           updates?.connected(null);
           quota.stop();
@@ -801,6 +822,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         fence() {
           fenced = true;
+          stopDisplay();
           updates?.close(); options.attachUpdates?.(null);
           stopRooms();
           quota.stop();

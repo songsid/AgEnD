@@ -1,0 +1,42 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-startup-recovery-m3171
+
+(node:64296) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-member-startup-3171.test.ts (7 tests | 1 failed | 6 skipped) 360ms
+   × keeps a paired member mounted through a boot-time outage, then reconciles without a Fleet restart 358ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-startup-3171.test.ts > keeps a paired member mounted through a boot-time outage, then reconciles without a Fleet restart
+AssertionError: expected [ { side: 'member', …(3) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "code": "service-unavailable",
++     "detail": "service-unavailable",
++     "side": "member",
++     "since": 1794722298282,
++   },
++ ]
+
+ ❯ tests/hub-member-startup-3171.test.ts:62:38
+     60|     await f.runtime.apply({ hub_member: { enabled: true } });
+     61|     expect(f.states.at(-1)).toBe("offline");
+     62|     expect(f.runtime.currentHolds()).toEqual([]);
+       |                                      ^
+     63|     const api = f.exposures();
+     64|     expect(api, "the owner's local sharing API must remain mounted whi…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 skipped (7)
+   Start at  13:58:08
+   Duration  10.17s (transform 7.60s, setup 132ms, import 9.53s, tests 360ms, environment 0ms)
+

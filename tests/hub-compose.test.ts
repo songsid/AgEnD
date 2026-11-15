@@ -320,6 +320,8 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     expect(deps.issuer.keyId).toMatch(/\S/);
 
     expect(await get(hub.webPort, "/hub/v1/ping", hub.caPem)).toEqual({ status: 200, body: JSON.stringify({ name: "Compose Hub", transport: true }) });
+    expect(await get(hub.memberPort, "/hub/v1/display-name", readFileSync(join(hub.home, "hub/keys/tls-cert.pem"), "utf8")))
+      .toEqual({ status: 200, body: JSON.stringify({ name: "Compose Hub" }) });
     expect((await get(hub.webPort, "/web", hub.caPem)).status).toBe(404);
     expect(await refused(hub.memberPort)).toBe(false); // S1's member listener is up
 

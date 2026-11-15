@@ -35,6 +35,15 @@ function prefix(at: string, opts: { npm?: boolean; agend?: boolean } = {}): stri
   }
   return at;
 }
+/**
+ * M-3151: the dispatch deps of a scratch host. Its home is the scratch one, and only an npm inside the scratch layout counts:
+ * M-2858's usual places (nvm under the home, /usr/local/bin, /usr/bin, Homebrew) would otherwise find the machine's real npms,
+ * run them (`npm root -g` ×2 each, on a loaded CI runner past the 10 s test timeout: run 43434752253) and answer from them.
+ */
+function scratch(t: string) {
+  return { ...defaultDispatchDeps, homeDir: join(t, "home"),
+    isExecutable: async (p: string) => p.startsWith(`${t}/`) && await defaultDispatchDeps.isExecutable!(p) };
+}
 /** nvm's prefix holds AgEnD; the system prefix has its own npm and node (and no AgEnD). */
 function host() {
   const t = realpathSync(mkdtempSync(join(tmpdir(), "agend-3440-"))); dirs.push(t);
@@ -42,7 +51,7 @@ function host() {
   const sys = prefix(join(t, "usr"));
   const pkg = join(nvm, "lib", "node_modules", "@songsid", "agend");
   // AgEnD runs on its bundled Node: no npm beside process.execPath.
-  const deps = { ...defaultDispatchDeps, packageDir: pkg, execPath: join(pkg, "node_modules", "@songsid", "agend-node-linux-x64", "bin", "node") };
+  const deps = { ...scratch(t), packageDir: pkg, execPath: join(pkg, "node_modules", "@songsid", "agend-node-linux-x64", "bin", "node") };
   return { t, nvm, sys, pkg, deps };
 }
 
@@ -75,6 +84,8 @@ describe("#3440: /update uses the npm of the running install, not the first npm 
     const reason = (r as { reason: string }).reason;
     expect(reason).toContain(`no npm here manages the running AgEnD: expected the npm whose global root is ${join(h.nvm, "lib", "node_modules")}`);
     expect(reason).toContain(`${join(h.sys, "bin", "npm")} (PATH's) → ${join(h.sys, "lib", "node_modules")}`);
+    // M-3151: what was tried is the scratch layout only — never an npm of the machine running the test.
+    expect((reason.match(/\/[^\s;,()]+/g) ?? []).filter(path => !path.startsWith(`${h.t}/`))).toEqual([]);
   });
 
   it("an npm that answers but manages another root (a custom global prefix) is not taken", async () => {
@@ -95,7 +106,7 @@ describe("#3440: /update uses the npm of the running install, not the first npm 
     const node = prefix(join(h.t, "opt", "node"));                    // the plain Node AgEnD runs on, and its npm
     writeFileSync(join(node, "bin", "npm"), `#!/bin/sh\ncase "$1" in root) echo "${join(custom, "lib", "node_modules")}" ;; prefix) echo "${custom}" ;; esac\n`);
     vi.stubEnv("PATH", `${join(h.sys, "bin")}:/usr/bin:/bin`);
-    const deps = { ...defaultDispatchDeps, packageDir: join(custom, "lib", "node_modules", "@songsid", "agend"), execPath: join(node, "bin", "node") };
+    const deps = { ...scratch(h.t), packageDir: join(custom, "lib", "node_modules", "@songsid", "agend"), execPath: join(node, "bin", "node") };
     expect(await resolveInstalledAgend(deps)).toEqual({ ok: true, agend: join(custom, "bin", "agend"), version: "2.3.5-beta.1", npmDir: join(node, "bin") });
   });
 
@@ -124,7 +135,7 @@ describe("#3440: /update uses the npm of the running install, not the first npm 
     writeFileSync(join(node, "bin", "npm"), `#!/bin/sh\ncase "$1" in root) echo "${join(custom, "lib", "node_modules")}" ;; prefix) echo "${custom}" ;; esac\n`);
     const decoyPath = `${join(h.sys, "bin")}:/usr/bin:/bin`;
     vi.stubEnv("PATH", decoyPath);
-    const installed = await resolveInstalledAgend({ ...defaultDispatchDeps, packageDir: join(custom, "lib", "node_modules", "@songsid", "agend"), execPath: join(node, "bin", "node") });
+    const installed = await resolveInstalledAgend({ ...scratch(h.t), packageDir: join(custom, "lib", "node_modules", "@songsid", "agend"), execPath: join(node, "bin", "node") });
     expect(installed).toMatchObject({ ok: true, agend: join(custom, "bin", "agend"), npmDir: join(node, "bin") });
     // The installed agend (its launcher) as the updater: what npm it finds, and where that npm installs.
     const out = join(h.t, "seen");

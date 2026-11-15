@@ -59,6 +59,27 @@ versions under `unshare -rn` (no network). `pass1.sh` gained the workspace-limit
 real-account calls without the user's OK. No backend change was needed for 0.166. A pre-existing bug the audit found,
 `--full-auto` refused by every supported codex, is fixed separately (#2886).
 
+## Every audit: the in-session model switch (M-3175)
+
+AgEnD switches a running codex's model and effort with `/model [NAME] --reasoning=LEVEL` instead of a restart, for a codex
+whose running binary is 0.164.0 or later (`src/backend/codex-model-switch.ts`). Before a new version is marked audited,
+check that the line still does that and is still answered in the same two places:
+
+1. Launch an instance (`launch b fresh`), then run
+   `AGEND_HOME=$AH SOCK=… INST=$RUN/inst-b WORKDIR=$RUN/b-work WIN=b npx tsx model-switch.mts <cases>` with
+   `MODEL:EFFORT` (both), `:EFFORT` (the effort alone), `MODEL:` (the model alone) and an unknown model, first before any
+   turn (no rollout yet: the verdict comes from the pane), then after one turn (from the rollout).
+   `AGEND_HOME` must be the rig's `AH`: the script refuses the host's.
+2. Expect `"outcome":"switched"` for each valid case, with `"via":"rollout"` once the session has a rollout (its
+   `thread_settings_applied` names exactly what was asked), and `"mismatch"` with codex's `■ …` refusal for the unknown model.
+3. Run one turn with `BODY_LOG` set on the mock: the request's `model` and `reasoning.effort` are the switched ones.
+4. On the previous version too, if it is older than 0.164.0: `"typed":false`, `"reason":"version"`, the pane unchanged
+   and no mock request (0.163.0 sends the line to the model as a prompt).
+
+Any change to the answer line (`• Model changed to MODEL EFFORT for this session only`), the refusal row (`■ …`), the
+rollout record, or the `/model` arguments is a detector change: update `codex-model-switch.ts` and its fixtures
+(`tests/fixtures/codex-0169-model-switch`).
+
 ## A package without codex-code-mode-host (#2357)
 
 `companion-missing.sh <package-dir> <label> [toolexec|tool|toolshell]` launches a codex package layout through

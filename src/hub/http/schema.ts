@@ -7,6 +7,7 @@ import { HUB_ROOM_CONTEXT_MIGRATION } from "../rooms/context-cursor.js";
  * secrets are kept only as SHA-256 digests.
  */
 import type Database from "better-sqlite3";
+import { HUB_ADMIN_DASHBOARD_MIGRATION } from "../admin-dashboard.js";
 import { HUB_PERSON_PREFS_MIGRATION } from "../person-prefs.js";
 import { HUB_BUTTONS_MIGRATION } from "../buttons.js";
 import { HUB_SESSION_AUTHENTICATION_MIGRATION } from "../session-directory-transition.js";
@@ -121,4 +122,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_ROOM_CONTEXT_MIGRATION,
   HUB_FLEET_VERSIONS_MIGRATION,
   HUB_RECOMMENDATIONS_MIGRATION, HUB_FLEET_UPDATES_MIGRATION,
+  HUB_ADMIN_DASHBOARD_MIGRATION,
 ]);

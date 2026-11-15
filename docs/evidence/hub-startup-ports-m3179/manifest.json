@@ -1,0 +1,69 @@
+{
+  "sourceCommit": "492279387288baef80567a80b5df14834a7ea9fb",
+  "base": "16b1a25f84c4c54bee28ee165d609615a20924b4",
+  "node": "22.22.2",
+  "inputs": [
+    {
+      "path": "tests/helpers/hub-rig.ts",
+      "sha256": "9a173ab0be0daeca91e488f2545d8059bbc5a5359cfe93af483f52dec7bff74f"
+    },
+    {
+      "path": "tests/helpers/hub-listener-ports.ts",
+      "sha256": "b01d241652e12aca54716cd4f8cf8e8ccf343aeafeef656984a8ff5390d24f59"
+    },
+    {
+      "path": "tests/hub-member-startup-3171.test.ts",
+      "sha256": "3afdcfa17c3327e4b4091a8a2c7ea884c3dfab7082d7fe8e1a4e52cdb2224498"
+    },
+    {
+      "path": "tests/hub-web-address-http-3428.test.ts",
+      "sha256": "5b3159e5da08c86f3ada3fb41c334b287c8052a2e7722ef49532454b711f6c77"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "before.log",
+      "sha256": "f1dc84fbe697ccc446c1e0ce2fdc92bfa5810eef174b4e0a7dd6c732807ce6d2"
+    },
+    {
+      "path": "ci-failure.txt",
+      "sha256": "169394396b0d67e569ad2d591c28c76d1ce9c67fa873f3afd682e650cc5844bc"
+    },
+    {
+      "path": "ci-run.json",
+      "sha256": "67d08f3f9e49f894a5739e19d447ab5939c45c2e4e08b6702b919a8132922280"
+    },
+    {
+      "path": "close-for-outage.log",
+      "sha256": "09beca32ef7838240aaccf32cb04d64564efdcace6e9254cfe56650871c140d0"
+    },
+    {
+      "path": "close-for-outage.patch",
+      "sha256": "80f2761d8d496df6fcc7a953b1c3013ce40da7dbed6f8c0913c2e7f0ba7e46b0"
+    },
+    {
+      "path": "final.log",
+      "sha256": "bf63f885763ca661406ad9a8c8f1dabeb4992b8713d7d99dbb388a02ad688230"
+    },
+    {
+      "path": "release-before-bind.log",
+      "sha256": "3c3c12068d6acdbaec42190dddc43b95577c6b18bc71d2bc7ccefa714a04e69b"
+    },
+    {
+      "path": "release-before-bind.patch",
+      "sha256": "ff10faae8c27d8143294b2e2b11734923e7385b7771b3f0ede6bae4ada1a2484"
+    },
+    {
+      "path": "reversals.json",
+      "sha256": "e4325114648fe67aa9638a4ce40b5d888930169d4d104d1e4d2a02daec867f51"
+    },
+    {
+      "path": "test-types-result.json",
+      "sha256": "6ff94882ea67decb5644497d8b339ca2423071904af838df293986e8dfd5a12a"
+    },
+    {
+      "path": "test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

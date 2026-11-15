@@ -109,7 +109,7 @@ describe("beforeInput in the delivery facade", () => {
     const [name, payload, options] = deliver.mock.calls[0]!;
     expect(name).toBe("worker");
     expect(payload).toMatchObject({ type: "fleet_inbound", content: "Q", meta: { from_instance: HUB_REPORT_TARGET, correlation_id: "hub-0000", requires_reply: "true" } });
-    expect(options).toMatchObject({ isCrossInstance: true, beforeInput, stillCurrent });
+    expect(options).toMatchObject({ isCrossInstance: true, beforeInput: expect.any(Function), stillCurrent });
     // Not a configured instance, or a Windows agent (no pre-input hook there): never delivered.
     await expect((fm as any).deliverHubQuestion({ agent: "gone", correlationId: "hub-1", text: "Q", beforeInput, stillCurrent })).resolves.toBe(false);
     (fm as any).fleetConfig.instances.win = { working_directory: "C:/w", runtime: "windows" };
@@ -328,5 +328,39 @@ describe("report_result to the Hub", () => {
   it("a claimed id the Hub refuses tells the agent so", async () => {
     const ctx = { ...base(), hubReport: () => Promise.resolve({ ok: false as const, message: "Not delivered to the Hub asker" }) };
     expect(await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-x", summary: "x" })).toEqual({ result: null, error: "Not delivered to the Hub asker" });
+  });
+});
+
+
+describe("Hub contact window at the Fleet handoff", () => {
+  it("activates at input, persists across Fleet replacement, and only a successful matching report closes it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hub-contact-fleet-"));
+    const fm = new FleetManager(dir), restored = new FleetManager(dir);
+    try {
+      (fm as any).fleetConfig = { instances: { worker: {} } };
+      let hook: (() => Promise<boolean>) | undefined;
+      vi.spyOn(fm, "deliverToInstance").mockImplementation(async (_name, _payload, options) => { hook = options?.beforeInput; return true; });
+      await (fm as any).deliverHubQuestion({ agent: "worker", correlationId: "hub-first", text: "Q", stillCurrent: () => true, beforeInput: async () => true });
+      expect(fm.hubContactRestricted("worker")).toBe(false); // queued/waiting delivery is not input
+      expect(await hook!()).toBe(true);
+      expect(restored.hubContactRestricted("worker")).toBe(true);
+      (fm as any).hubReports = () => Promise.resolve({ ok: false });
+      await fm.hubReport({ caller: "worker", correlationId: "hub-first", text: "invalid", callerCurrent: () => true });
+      expect(fm.hubContactRestricted("worker")).toBe(true);
+      (fm as any).hubReports = () => Promise.resolve({ ok: true });
+      await fm.hubReport({ caller: "worker", correlationId: "hub-first", text: "answer", callerCurrent: () => true });
+      expect(fm.hubContactRestricted("worker")).toBe(false);
+    } finally { fm.stormWindow.shutdown(); restored.stormWindow.shutdown(); rmSync(dir, { recursive: true, force: true }); }
+  });
+  it("does not open a window for a declined input or an opted-out share", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hub-contact-fleet-")), fm = new FleetManager(dir);
+    try {
+      (fm as any).fleetConfig = { instances: { worker: {} } };
+      vi.spyOn(fm, "deliverToInstance").mockImplementation(async (_name, _payload, options) => { await options?.beforeInput?.(); return true; });
+      for (const [before, limit] of [[false, true], [true, false]]) {
+        await (fm as any).deliverHubQuestion({ agent: "worker", correlationId: "hub-first", text: "Q", contactLimit: limit, stillCurrent: () => true, beforeInput: async () => before });
+        expect(fm.hubContactRestricted("worker")).toBe(false);
+      }
+    } finally { fm.stormWindow.shutdown(); rmSync(dir, { recursive: true, force: true }); }
   });
 });

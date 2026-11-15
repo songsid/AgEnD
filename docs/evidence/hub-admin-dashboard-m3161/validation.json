@@ -1,0 +1,84 @@
+{
+  "base": "93c6e9fb7bd6c3d63364e6e181e24ad1bfa0dcf9",
+  "initialFailFirst": {
+    "tests": 3,
+    "failed": 3,
+    "cause": [
+      "missing endpoint",
+      "missing answered_at"
+    ]
+  },
+  "focused": {
+    "firstIntegrated": {
+      "files": 5,
+      "passed": 74
+    },
+    "laterAffected": {
+      "files": 2,
+      "passed": 14
+    },
+    "finalAtomicControls": {
+      "files": 1,
+      "passed": 8
+    },
+    "scopesOverlap": true
+  },
+  "typecheck": {
+    "source": 0,
+    "tests": 0
+  },
+  "changelogCheck": 0,
+  "mutations": {
+    "combinedMutantsTypecheck": 0,
+    "results": [
+      {
+        "name": "admin-only",
+        "caught": true,
+        "exitCode": 1
+      },
+      {
+        "name": "room-answer-time",
+        "caught": true,
+        "exitCode": 1
+      },
+      {
+        "name": "direct-answer-time",
+        "caught": true,
+        "exitCode": 1
+      },
+      {
+        "name": "stop-counter",
+        "caught": true,
+        "exitCode": 1
+      },
+      {
+        "name": "five-samples",
+        "caught": true,
+        "exitCode": 1
+      },
+      {
+        "name": "viewer-day",
+        "caught": true,
+        "exitCode": 1
+      }
+    ]
+  },
+  "effects": "inert fixture directory/transport/input; owned localhost HTTP; no live updater, Fleet, AD, vendor or browser campaign",
+  "featureR1": {
+    "parent": "fe61927f9fe004d2d0aee5c616e32ea66feb1f45",
+    "request": "M-3162 first-draw capability detection",
+    "feature": "admin-dashboard-v1",
+    "baselineSemanticFailures": 1,
+    "affectedSuitePassed": 9,
+    "testTypecheck": 0,
+    "scope": "browser session/composition features only; member capability lists unchanged; no repeated heavy campaign"
+  },
+  "featureExpectationsR2": {
+    "parent": "4b9c90ab52301463c38dbb482e536894ac525a58",
+    "scope": "tests only: two HTTP feature lists and four sign-in/session lists",
+    "affectedFiles": 2,
+    "passed": 29,
+    "productSourceUnchanged": true,
+    "newHeavyCampaign": false
+  }
+}

@@ -50,13 +50,34 @@ function member(opts: { agents?: () => Array<{ name: string; display: string }>;
 }
 const AGENT = { agent: "atlas", dataViewId: "agent", tools: [] as string[] };
 
+describe("Hub contact policy defaults and owner notice", () => {
+  it("defaults old clients to on, persists opt-out, and validates the boolean", () => {
+    const m = member();
+    expect(m.api.publish({ ...AGENT, expectedRevision: 0 }).contactLimit).toBe(true);
+    expect(m.store.list()[0]!.committed!.contactLimit).toBe(true);
+    expect(m.api.publish({ ...AGENT, expectedRevision: 1, contactLimit: false }).contactLimit).toBe(false);
+    expect(() => m.api.preview({ ...AGENT, contactLimit: "false" })).toThrow();
+  });
+  it("old published shares are limited and their notice is acknowledged durably once", () => {
+    const m = member(); m.api.publish({ ...AGENT, expectedRevision: 0 });
+    const old = m.store.list()[0]!.committed!; delete old.contactLimit;
+    m.store.database.prepare("UPDATE hub_exposures SET committed=?").run(JSON.stringify(old));
+    expect(m.api.list()[0]).toMatchObject({ contactLimit: true, contactLimitNotice: true });
+    m.api.acknowledgeContactLimitNotice!();
+    expect(m.store.list()[0]!.committed!.contactLimit).toBe(true);
+    expect(m.api.list()[0]).toMatchObject({ contactLimit: true, contactLimitNotice: false });
+    m.api.acknowledgeContactLimitNotice!();
+    expect(m.store.database.prepare("SELECT count(*) n FROM hub_audit WHERE action='exposure.contact-limit-notice-seen'").get()).toEqual({ n: 1 });
+  });
+});
+
 describe("the member's exposure API", () => {
   it("lists the owner's agents with the agent itself as the one choice; publish (after confirmation) and withdraw move the revision; each commit sends the snapshot", async () => {
     const m = member();
-    expect(m.api.list()).toEqual([{ agent: "atlas", display: "Atlas", exposureId: null, revision: 0, state: "withdrawn", policy: null, enforceable: true,
+    expect(m.api.list()).toEqual([{ agent: "atlas", display: "Atlas", exposureId: null, revision: 0, state: "withdrawn", policy: null, enforceable: true, contactLimit: true, contactLimitNotice: false,
       choices: { dataViews: [{ id: "agent", label: "Atlas" }], tools: [] }, pending: null }]);
     expect(m.api.preview({ ...AGENT, expectedRevision: 0 }).summary).toEqual(
-      ['Share "Atlas" with the Hub', "Hub questions go to this agent's own conversation, with its folder and Settings tools", "Revision: 1"]);
+      ['Share "Atlas" with the Hub', "Hub questions go to this agent's own conversation, with its folder and Settings tools", "While answering a Hub question, this agent may not contact other agents", "Revision: 1"]);
     const v = m.api.publish({ ...AGENT, expectedRevision: 0 });
     expect(v).toMatchObject({ state: "published", revision: 1, policy: { dataView: "agent", tools: [] }, enforceable: true });
     expect(v.reason).toBeUndefined();
@@ -155,6 +176,14 @@ describe("the routes", () => {
       if (!o.replay) { req.emit("data", raw); req.emit("end"); }
     });
   }
+  it("only a local admin can acknowledge the notice; a public-link caller cannot", async () => {
+    const api = member().api, ack = vi.spyOn(api, "acknowledgeContactLimitNotice");
+    const path = "/api/hub/member/contact-limit-notice";
+    expect((await call({ method: "POST", path, api, admin: false })).status).toBe(403);
+    expect((await call({ method: "POST", path, api, gateway: true })).status).toBe(403);
+    expect(ack).not.toHaveBeenCalled();
+    expect((await call({ method: "POST", path, api })).body).toEqual({ ok: true }); expect(ack).toHaveBeenCalledTimes(1);
+  });
   it("the confirmation layer: publish is a Settings mutation whose effect is the request; withdraw and the list are not", () => {
     expect([isSettingsMutation("POST", "/api/hub/member/exposures"), isSettingsMutation("GET", "/api/hub/member/exposures"),
       isSettingsMutation("POST", `/api/hub/member/exposures/${randomUUID()}/withdraw`)]).toEqual([true, false, false]);

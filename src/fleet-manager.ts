@@ -67,6 +67,7 @@ import { RuntimeCpuProfiler, ProfileBusyError, profileDuration, type ProfileTick
 import { ProfileControlServer } from "./profile-control.js";
 import type { CpuProfile } from "./cpu-profile.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, lstatSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
+import { HubContactWindows } from "./hub-contact-windows.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { freemem, totalmem, homedir, hostname } from "node:os";
@@ -379,6 +380,7 @@ import type { RemoteCardAction, RemoteCardOutcome } from "./remote-card-answer.j
 import { redactSecrets } from "./tool-progress.js";
 import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
+import { CODEX_INLINE_MODEL_MIN, codexModelCommand } from "./backend/codex-model-switch.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
@@ -1160,6 +1162,8 @@ const CLI_ENV_FRESH_MS = 60 * 60 * 1000;
  */
 /** #1690: how long `/model` waits for the daemon's word on our own runtime switch (its dialog wait plus settling). */
 export const RUNTIME_SWITCH_RESULT_MS = 12_000;
+/** M-3175: a codex switch may wait up to a minute for its pane to be idle, then up to 10 s for codex to record it. */
+export const CODEX_RUNTIME_SWITCH_RESULT_MS = 80_000;
 
 export const CLI_ENV_PROBE_DEADLINE_MS = 16_000;
 
@@ -2744,6 +2748,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  private hubContactWindows: HubContactWindows | null = null;
+  private contactWindows(): HubContactWindows {
+    return this.hubContactWindows ??= new HubContactWindows(join(this.dataDir, "hub-contact-windows.json"));
+  }
+  hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent); }
   /**
    * A Hub question to its representative agent: ordinary cross-instance delivery (idle gate, wake, retries), from the
    * reserved Hub sender with the Hub-issued correlation id. beforeInput runs immediately before the IPC hand-off.
@@ -2769,7 +2778,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     if (input.roomContextGeneration) ipcMeta.hub_room_context_generation = input.roomContextGeneration;
     const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: input.text, meta: ipcMeta },
-      { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: input.beforeInput });
+      { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
+        if (!(await input.beforeInput())) return false;
+        // Before any possible IPC exposure. An uncertain write retains the window, never replays the question.
+        if (input.contactLimit !== false) this.contactWindows().begin(input.agent, input.correlationId);
+        return input.stillCurrent();
+      } });
     return result !== false;
   }
   private async deliverHubRoomPostAnswer(input: import("./hub/member/room-post-answers.js").RoomPostNotification): Promise<boolean> {
@@ -2864,7 +2878,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberLinkBinding: string | null = null;
   /** OutboundContext: the Hub representative's answer hook (null: no member service running, or not a Hub answer). */
   hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
-    return this.hubReports?.(input) ?? null;
+    const result = this.hubReports?.(input) ?? null;
+    if (!result) return null;
+    return result.then(outcome => {
+      if (outcome.ok) {
+        try { this.contactWindows().answered(input.caller, input.correlationId); }
+        catch (err) { this.logger.warn({ err }, "Hub contact window could not be closed; it will expire"); }
+      }
+      return outcome;
+    });
   }
   /** M-3127 OutboundContext: an agent's `react` on a Hub room question (its correlation id as message_id); null: not one. */
   hubReact(input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
@@ -9674,6 +9696,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return Object.entries(this.fleetConfig?.instances ?? {}).some(([name, cfg]) => cfg.general_topic
       && this.getInstanceAdapterId(name) === owner.adapterId && String(this.getGroupIdForInstance(name) ?? "") === owner.chatId
       && cfg.topic_id?.toString() === owner.threadId);
+  }
+  /**
+   * M-3163: the one General of `adapterId` (its group and topic) as `userId`'s code owner — where a returning device's new code is
+   * meant for (#1570; requestReturningCode still checks it all again, with the live binding, before anything is sent). Null when
+   * that connection has no General with a topic, or more than one.
+   */
+  private generalOwnerOf(adapterId: string, userId: string): LoginCodeOwner | null {
+    const found: LoginCodeOwner[] = [];
+    for (const [name, cfg] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      if (!cfg.general_topic || this.getInstanceAdapterId(name) !== adapterId) continue;
+      const group = String(this.getGroupIdForInstance(name) ?? ""), topic = cfg.topic_id?.toString();
+      if (group && topic) found.push({ adapterId, userId, chatId: group, threadId: topic });
+    }
+    return found.length === 1 ? found[0]! : null;
   }
   /** Exact owning General. No primary-adapter or name fallback participates in authorization. */
   private dashboardOwner(userId: string, adapterId: string, address: string, threadId?: string, username?: string): LoginCodeOwner | null {
@@ -19680,6 +19716,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       kind: "ok",
       knownCookie: addSigninKnownDevice(webToken, input.knownCookie, who, enrollment, epoch, now),
       session: outside ? { remote: "totp" } : actor ? { owner: actor } : {},
+      // M-3163: a chat admin's browser becomes their returning device, as a code DM'd to them makes it (#1570).
+      ...(!outside && actor ? (() => { const o = this.generalOwnerOf(actor.adapterId, actor.userId); return o ? { returningOwner: o } : {}; })() : {}),
       // Asked again as the session is made: the same app, still an admin, still allowed here.
       commit: (record, label) => {
         if (!this.totpSignInOpen(exposureId, peer) || store.enrollmentOf(who) !== enrollment) return false;
@@ -24410,6 +24448,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * M-3175: codex's `/model [NAME] --reasoning=LEVEL` in the running session. The daemon types it only into an idle pane of a
+   * codex at 0.164.0 or later (else `not_sent`, with the reason) and reports what codex recorded. Its wait for idle is part of
+   * the time allowed here.
+   */
+  private runCodexRuntimeSwitch(instanceName: string, model: string | null, effort: string | null): Promise<OwnSwitchOutcome> {
+    const ipc = this.instanceIpcClients.get(instanceName), line = codexModelCommand(model, effort);
+    if (!ipc || !line) return Promise.resolve({ outcome: "not_sent" });
+    const id = `switch-${randomUUID()}`;
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_confirmed" }); }, CODEX_RUNTIME_SWITCH_RESULT_MS);
+      timer.unref?.();
+      this.runtimeSwitchWaiters.set(id, result => { clearTimeout(timer); resolve(result); });
+      const sent = ipc.send({ type: "raw_paste", content: line, runtime_switch: { id, kind: "model", requested: model ?? "", codex: { model, effort } } });
+      if (!sent) { clearTimeout(timer); this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_sent" }); return; }
+      this.logger.info({ instanceName, model, effort }, "Codex runtime switch sent");
+    });
+  }
+
+  /** M-3175: why a codex switch fell back to a restart, in the reply's words. */
+  private codexSwitchFallbackReason(result: OwnSwitchOutcome): string {
+    if (result.outcome === "not_sent" && result.reason === "busy") return t("codex_switch.busy");
+    if (result.outcome === "not_sent" && result.reason === "version") return t("codex_switch.version", result.version ?? t("codex_switch.version_unknown"), CODEX_INLINE_MODEL_MIN);
+    if (result.outcome === "mismatch") return t("codex_switch.mismatch", result.shown);
+    return t("codex_switch.unconfirmed");
+  }
+
+  /**
+   * M-3175: the effort a codex model switch carries — the one a restart would launch with (configured, and listed by that
+   * model's catalog, as the launch flag is gated); null when there is none, and codex then takes the model's default, as a
+   * launch without an effort does.
+   */
+  private codexSwitchEffort(instanceName: string, model: string): string | null {
+    const effort = this.resolveInstanceEffort(instanceName).effort;
+    if (!effort) return null;
+    return this.instanceEffortMetadata(instanceName, model).levels.includes(effort) ? effort : null;
+  }
+
+  /**
    * #1690: the names claude-code is known to accept, for checking `/model <name>` BEFORE it is typed — claude itself
    * accepts any string ("Set model to opsu"), and its "Switch model?" then names the typo. Static aliases (with [1m]),
    * the cached account catalog, the configured model; without a cached catalog, any `claude-…` id too (cannot check).
@@ -25679,6 +25755,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.pasteRawToClassicInstance(instanceName, `/effort ${applied}`);
       return `${warn}${t("effort.runtime_success", instanceName, applied)}`;
     }
+    // M-3175: codex 0.164+ takes the effort in the running session (`/model [MODEL] --reasoning=L`, its configured model named
+    // when known); restarted when the switch was not typed or not confirmed. The effort is already saved above.
+    if (backendName === "codex" && this.instanceIpcClients.get(instanceName)) {
+      const resolved = this.resolveInstanceModel(instanceName);
+      const model = resolved.source === "instance" || resolved.source === "fleet-default" ? resolved.model : null;
+      const result = await this.runCodexRuntimeSwitch(instanceName, model, applied);
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
+      if (result.outcome === "switched") return `${warn}${t("effort.codex_switched", instanceName, applied)}`;
+      const why = this.codexSwitchFallbackReason(result);
+      this.logger.info({ instanceName, effort: applied, result }, "Codex runtime effort switch fell back to a restart");
+      await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
+      return `${warn}${t("effort.codex_restarted", instanceName, applied, why)}`;
+    }
     await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("effort.restart_success", instanceName, applied)}`;
   }
@@ -25733,6 +25822,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? (result.confirmed ? t("model.switch_confirmed", instanceName, model) : t("model.runtime_success", instanceName, model))
         : t("model.switch_unconfirmed", instanceName, model, Math.round(RUNTIME_SWITCH_RESULT_MS / 1000));
       return `${warn}${head}${this.effortSuffix(instanceName)}`;
+    }
+
+    // M-3175: codex 0.164+ switches in the running session; saved first (a fallback restart launches from it), restarted when
+    // the switch was not typed or not confirmed.
+    if (backendName === "codex" && this.instanceIpcClients.get(instanceName)) {
+      if (!this.persistInstanceModel(instanceName, model)) return `${warn}${t("model.persist_failed", instanceName)}`;
+      const effort = this.codexSwitchEffort(instanceName, model);
+      const result = await this.runCodexRuntimeSwitch(instanceName, model, effort);
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
+      if (result.outcome === "switched") return `${warn}${t("model.codex_switched", instanceName, model)}${this.effortSuffix(instanceName)}`;
+      const why = this.codexSwitchFallbackReason(result);
+      this.logger.info({ instanceName, model, result }, "Codex runtime model switch fell back to a restart");
+      await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
+      return `${warn}${t("model.codex_restarted", instanceName, model, why)}${this.effortSuffix(instanceName)}`;
     }
 
     // Persist either way: a runtime switch must survive the next respawn too,
@@ -27215,8 +27318,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!this.daemons.has(name)) {
         // New instance — startInstance already calls connectIpcToInstance. #2482: a paused one is not started (startInstance
         // returns at its pause); say so, quietly, instead of "starting" on every reload.
-        if (this.lifecycle.isPaused(name)) this.logger.debug({ name }, "Paused instance in config — not started");
-        else this.logger.info({ name }, "New instance in config — starting");
+        if (this.lifecycle.isPaused(name)) {
+          this.logger.debug({ name }, "Paused instance in config — not started");
+          continue;
+        }
+        const previous = oldConfig?.instances[name];
+        const change = previous ? classifyInstanceChange(previous, config) : "restart";
+        // A Settings apply (observe set) of an unrelated fleet field must not start or list every
+        // stopped agent whose instance block did not change (M-3165). SIGHUP still recovers missing ones.
+        if (observe && change === "none") continue;
+        this.logger.info({ name }, !previous
+          ? "New instance in config — starting"
+          : change === "none"
+            ? "Instance not running — starting"
+            : "Instance config changed — starting");
         observe?.(name, "restart", "running");
         await this.startInstanceUnattended(name, config, topicMode, "new instance");
         observe?.(name, "restart", "done");
@@ -28579,9 +28694,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     for (const [name, config] of Object.entries(next)) {
       const daemon = this.daemons.get(name);
-      if (!daemon) { rows.push({ target: name, kind: "restart" }); continue; }
-      const runtime = daemon.getConfigSnapshot?.();
-      if (!runtime) continue;
+      // Compare the live snapshot when we have one; otherwise the in-memory instance
+      // (last load). "No daemon" is not itself a change — parked / other-team agents
+      // whose YAML block is untouched must not appear as "restart this agent" (M-3165).
+      const runtime = daemon?.getConfigSnapshot?.() ?? this.fleetConfig?.instances[name];
+      if (!runtime) {
+        if (!this.lifecycle.isPaused(name)) rows.push({ target: name, kind: "restart" });
+        continue;
+      }
       const change = classifyInstanceChange(runtime, config);
       if (change !== "none") rows.push({ target: name, kind: change === "restart" ? "restart" : "hot" });
     }

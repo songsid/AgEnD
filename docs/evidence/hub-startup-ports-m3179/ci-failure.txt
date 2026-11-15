@@ -1,0 +1,5 @@
+test-shard (3)	Run test shard 3/4	2026-11-15T07:06:47.9023578Z 
+test-shard (3)	Run test shard 3/4	2026-11-15T07:06:47.9026588Z  FAIL  tests/hub-member-startup-3171.test.ts > keeps a paired member mounted through a boot-time outage, then reconciles without a Fleet restart
+test-shard (3)	Run test shard 3/4	2026-11-15T07:06:47.9031998Z Error: listen EADDRINUSE: address already in use 127.0.0.1:36577
+test-shard (3)	Run test shard 3/4	2026-11-15T07:06:47.9034288Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+test-shard (3)	Run test shard 3/4	2026-11-15T07:06:47.9034712Z 

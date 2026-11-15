@@ -32,7 +32,7 @@ export interface AgentStateInput {
   waitingForApproval?: boolean;
 }
 export const ROOM_ASK_CAPABILITY = "room-ask-v1";
-export interface RoomExposure { agent: string; consentId: string; revision: number; token: string }
+export interface RoomExposure { agent: string; consentId: string; revision: number; token: string; contactLimit?: boolean }
 export interface RoomAskLink {
   current(): boolean;
   readonly features?: ReadonlySet<string>;
@@ -193,7 +193,7 @@ export class HubRoomAskAdapter {
     if (ask.contextState && (!generation || ask.contextState.generation!==generation || !source.contextState || !source.contextInput)) throw new HubProtocolError("stale");
     const pending = this.options.db.prepare("SELECT count(*) AS n FROM hub_room_asks WHERE state NOT IN ('acked','held')").get() as { n: number };
     if (pending.n >= 4096) throw new HubProtocolError("backpressure");
-    this.save(ask.messageId, "queued", { ask, local: { ...local }, cid: `hub-room-${randomUUID()}`, ...(generation ? {generation} : {}) });
+    this.save(ask.messageId, "queued", { ask, local: { agent: local.agent, consentId: local.consentId, revision: local.revision, token: local.token }, cid: `hub-room-${randomUUID()}`, ...(generation ? {generation} : {}) });
     this.admitted.set(ask.messageId, source); this.kick(ask.messageId);
     return "accepted";
   }
@@ -222,7 +222,7 @@ export class HubRoomAskAdapter {
           ? await store.receive(saved.local.agent, saved.ask.messageId, files, (fid, offset) => fetch(fid, offset)).catch(() => files.map(f => `(${f.name}: could not be fetched)`))
           : files.map(f => `(${f.name}: not available on this Fleet)`);
       }
-      const delivered = await this.options.deliver({ agent: saved.local.agent, correlationId: saved.cid,
+      const delivered = await this.options.deliver({ agent: saved.local.agent, correlationId: saved.cid, contactLimit: this.options.localExposure(saved.ask.exposureId)?.contactLimit !== false,
         ...(saved.generation ? {roomContextGeneration:saved.generation} : {}),
         text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", fileLines }), stillCurrent: current,
         beforeInput: async () => {

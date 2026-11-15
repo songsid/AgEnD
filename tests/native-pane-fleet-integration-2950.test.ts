@@ -151,6 +151,15 @@ it('native status offers pane controls without coordinator cost/context or effor
  const f=await fixture();f.models.mockRestore();vi.spyOn(f.fleet,'readCliEnv').mockImplementation(()=>{throw Error('No coordinator cache');});
  const row=f.fleet.getUiStatus().instances.find((value:any)=>value.name==='native');expect(row).toMatchObject({runtime:'windows',native_adapter:'pane',cost:null,context_pct:null,effort:null,capabilities:{commands:true,effort:false,log:true,details:true,attachments:false,terminal:false,send_while_busy:true}});
 });
+/** M-3150: after a native crash, the restart on the 1 s retry backoff, with no polling deadline. The stop transition is awaited (it releases the receipt and
+ * installs the backoff), the backoff is fired synchronously so only its callback runs on fake time, and the restart transition it queued then starts on real
+ * timers and is awaited as a transition. The `vi.waitFor` calls here advanced fake time 50 ms per check under a 1 s real deadline: the backoff could fire inside
+ * them, leaving the replacement's two 500 ms ready polls on the fake clock, racing that deadline (CI 43493166816: still restarting). Leaves real timers on. */
+async function restartAfterBackoff(f:Awaited<ReturnType<typeof fixture>>){
+ await f.fleet.lifecycle.runTransition('native',async()=>{});expect(f.store.get(f.agent.id).activeId).toBeUndefined();
+ vi.advanceTimersByTime(1000);vi.useRealTimers();
+ await f.fleet.lifecycle.runTransition('native',async()=>{});expect(f.fleet.isInstanceRestarting('native')).toBe(false);
+}
 async function nativeExit(f:Awaited<ReturnType<typeof fixture>>,code=1){
  const daemon=f.fleet.daemons.get('native');f.setExitCode(code);f.cli.kill();await daemon.tmux.getPaneStatus();
  const snapshot={...daemon.nativePaneLifecycle.snapshot(),exitCode:code};
@@ -289,7 +298,7 @@ it('automatic Claude recovery publishes an unknown-session hold instead of a fal
  f.models.mockRestore();const call=f.hub.callPane.getMockImplementation()!,events=vi.fn(),incident=vi.spyOn(f.fleet.lifecycle,'notifyIncident').mockReturnValue(true);
  f.fleet.eventLog={insert:events};f.hub.callPane.mockImplementation(async(machine,request)=>{const value:any=await call(machine,request);return request.action==='session-proof'?{...value,state:'unknown'}:value;});
  vi.useFakeTimers();try{
-  await nativeExit(f);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));
+  await nativeExit(f);await restartAfterBackoff(f);
   expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).paneRecovery?.kind).toBe('session-unconfirmed');expect(f.fleet.instanceProcessStatus.get('native')).toBe('stopped');
   expect(events).toHaveBeenCalledWith('native','native_pane_recovery_needed',expect.objectContaining({kind:'session-unconfirmed'}));
   expect(incident).not.toHaveBeenCalledWith('native','supervision_ended',expect.anything());
@@ -301,9 +310,9 @@ it('automatic absence recovery clears stale process state, then a second unwritt
  const call=f.hub.callPane.getMockImplementation()!;f.hub.callPane.mockImplementation(async(machine,request)=>{const value:any=await call(machine,request);return request.action==='session-proof'?{...value,state:'absent'}:value;});
  const notice=vi.spyOn(f.fleet,'notifyInstanceTopic').mockResolvedValue(true),incident=vi.spyOn(f.fleet.lifecycle,'notifyIncident').mockReturnValue(true);
  vi.useFakeTimers();try{
-  await nativeExit(f);f.fleet.instanceProcessStatus.set('native','crashed');await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));
+  await nativeExit(f);f.fleet.instanceProcessStatus.set('native','crashed');await restartAfterBackoff(f);
   expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.store.get(f.agent.id).threadId).not.toBe(old);expect(f.fleet.instanceProcessStatus.has('native')).toBe(false);expect(f.fleet.getInstanceInteraction('native')).not.toBeNull();expect(f.fleet.getInstanceExecutionState('native')).not.toBeNull();
-  const replacement=f.store.get(f.agent.id).threadId;await nativeExit(f);await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));
+  const replacement=f.store.get(f.agent.id).threadId;vi.useFakeTimers();await nativeExit(f);await restartAfterBackoff(f);
   expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.store.get(f.agent.id).threadId).toBe(replacement);expect(f.store.get(f.agent.id).paneRecovery?.kind).toBe('session-unconfirmed');expect(f.fleet.instanceProcessStatus.get('native')).toBe('stopped');
   expect(notice.mock.calls.filter(([,text])=>String(text).includes('its first turn never finished'))).toHaveLength(1);expect(incident).not.toHaveBeenCalledWith('native','supervision_ended',expect.anything());
  }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
@@ -330,7 +339,7 @@ it('a lost initial state response cannot leave a recovered native pane masked by
  const {Daemon}=await import('../src/daemon.js'),accept=Daemon.prototype.acceptNativeFleetMessage;let missed=0;
  vi.spyOn(Daemon.prototype,'acceptNativeFleetMessage').mockImplementation(function(this:InstanceType<typeof Daemon>,message){if(message.type==='query_instance_state'){missed++;return false;}return accept.call(this,message);});
  vi.useFakeTimers();try{
-  await nativeExit(f);f.fleet.instanceProcessStatus.set('native','crashed');await vi.waitFor(()=>expect(f.store.get(f.agent.id).activeId).toBeUndefined());await vi.advanceTimersByTimeAsync(1001);await vi.waitFor(()=>expect(f.fleet.isInstanceRestarting('native')).toBe(false));
+  await nativeExit(f);f.fleet.instanceProcessStatus.set('native','crashed');await restartAfterBackoff(f);
   expect(missed).toBeGreaterThan(0);expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.fleet.getInstanceStatus('native')).toBe('running');expect(f.fleet.getInstanceInteraction('native')).not.toBeNull();
  }finally{vi.useRealTimers();f.fleet.lifecycle.cancelNativeRecovery();}
 });

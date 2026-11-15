@@ -1,0 +1,10 @@
+{"timestamp": "2026-11-15T06:29:52.073Z", "type": "session_meta", "payload": {"id": "01a1dde5-b409-7432-a85a-51dd0a0b5513", "cli_version": "0.169.0"}}
+{"timestamp": "2026-11-15T06:29:52.090Z", "type": "turn_context", "payload": {"model": "gpt-6-astra", "effort": "high"}}
+{"timestamp": "2026-11-15T06:29:52.090Z", "type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6-astra", "model_provider_id": "mock", "reasoning_effort": "high"}}}
+{"timestamp": "2026-11-15T06:29:59.340Z", "type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6-astra", "model_provider_id": "mock", "reasoning_effort": "low"}}}
+{"timestamp": "2026-11-15T06:29:59.821Z", "type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6-astra", "model_provider_id": "mock", "reasoning_effort": "medium"}}}
+{"timestamp": "2026-11-15T06:30:00.480Z", "type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6.1-sol", "model_provider_id": "mock", "reasoning_effort": "low"}}}
+{"timestamp": "2026-11-15T06:30:42.248Z", "type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6-astra", "model_provider_id": "mock", "reasoning_effort": "high"}}}
+{"timestamp": "2026-11-15T06:30:42.879Z", "type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6-astra", "model_provider_id": "mock", "reasoning_effort": "low"}}}
+{"timestamp": "2026-11-15T06:30:43.308Z", "type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6.1-sol", "model_provider_id": "mock", "reasoning_effort": "low"}}}
+{"timestamp": "2026-11-15T06:30:43.725Z", "type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {"model": "gpt-6.1-sol", "model_provider_id": "mock", "reasoning_effort": "xhigh"}}}

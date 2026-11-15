@@ -1,0 +1,16 @@
+[
+  {
+    "case": "desk-light-en",
+    "defaultOn": true,
+    "noticeDismissed": true,
+    "explicitOptOut": true,
+    "errors": []
+  },
+  {
+    "case": "phone-dark-zh-TW",
+    "defaultOn": true,
+    "noticeDismissed": true,
+    "explicitOptOut": true,
+    "errors": []
+  }
+]

@@ -28,9 +28,10 @@ it('pairing keeps exact Hub, binding prefix and fingerprint in both raw and proj
 });
 it('sharing metadata retains the chosen agent and next revision through effect dispatch',()=>{
  const diff=effectSummaryCases().find(c=>c.name==='exposure')!.read().diff!;
- expect(diff.summary).toEqual(['Share "Atlas <text>" with the Hub',"Hub questions go to this agent's own conversation, with its folder and Settings tools",'Revision: 8']);
+ expect(diff.summary).toEqual(['Share "Atlas <text>" with the Hub',"Hub questions go to this agent's own conversation, with its folder and Settings tools",'While answering a Hub question, this agent may not contact other agents','Revision: 8']);
  expect(diff.summary_i18n![0]!.parts).toContainEqual({key:'hub.exposure.summary.share',args:['Atlas <text>']});
- expect(diff.summary_i18n![2]!.parts).toContainEqual({key:'hub.exposure.summary.revision',args:[8]});
+ expect(diff.summary_i18n![2]!.parts).toContainEqual({key:'hub.exposure.summary.contactLimited',args:[]});
+ expect(diff.summary_i18n![3]!.parts).toContainEqual({key:'hub.exposure.summary.revision',args:[8]});
 });
 
 it.each(["host","windows"])("General's %s preview retains display descriptors through effect dispatch",async location=>{

@@ -186,7 +186,7 @@ describe("Settings → Connect to a Hub", () => {
     expect(text).toContain(lang === "en" ? "Images are never pulled automatically" : "系統不會自動下載映像檔");
     expect(text).not.toContain("PRIVATE-KEY"); expect(text).not.toContain("hub.provider_");
     expect(pg.root.querySelectorAll("script").length).toBe(0);
-    const boxes = [...pg.root.querySelectorAll(".hub-exposure input")] as any[];
+    const boxes = [...pg.root.querySelectorAll(".hub-exposure-main input")] as any[];
     expect(boxes).toHaveLength(reasons.length); expect(boxes.every(box => box.disabled)).toBe(true);
   });
   async function mountCard() {
@@ -226,7 +226,7 @@ describe("Settings → Connect to a Hub", () => {
     expect(pg.root.querySelector(".hub-paired h4")!.textContent).toContain("Connected to Team Hub");
     expect(pg.root.querySelector(".hub-fp-label")!.textContent).toBe("Hub key fingerprint");
     expect((pg.root.querySelector(".hub-paired a.btn") as any).getAttribute("href")).toBe("https://hub.example.test");
-    const boxes = [...pg.root.querySelectorAll(".hub-exposure input")] as any[];
+    const boxes = [...pg.root.querySelectorAll(".hub-exposure-main input")] as any[];
     expect(boxes.map((b) => [b.checked, b.disabled])).toEqual([[false, true], [false, true]]);
     expect(pg.root.querySelector(".hub-exposure-why")!.textContent).toBe("This agent can't be shared right now. Reload the page and try again.");
   });

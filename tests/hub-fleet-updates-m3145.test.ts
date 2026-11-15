@@ -147,7 +147,7 @@ describe("Update {n} Fleets that allow it", () => {
     fire(button(p, "Update 2 Fleets that allow it"), "click"); await until(() => asked());
     expect(asked().message).toBe("Update 2 Fleets to AgEnD v2.4.0?");
     confirm.answerConfirm(asked().id, true); await until(() => p.root.querySelector(".hub-fleet-update-all .err"));
-    expect([c.updateFleets.mock.calls[0][0].fleetIds, p.root.querySelector(".hub-fleet-update-all .err").textContent]).toEqual([["f1", "f2"], "Started for 1 Fleets; 1 could not start."]);
+    expect([c.updateFleets.mock.calls[0][0].fleetIds, p.root.querySelector(".hub-fleet-update-all .err").textContent]).toEqual([["f1", "f2"], "Started for 1 Fleet; 1 could not start."]);
   });
 
   it("none qualifies: no button", async () => {

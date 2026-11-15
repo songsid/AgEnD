@@ -1,0 +1,204 @@
+{
+  "sourceHead": "f78d457d361b33baf94658787e04a37ba31714c9",
+  "dirty": [
+    "M scripts/manual/hub-rooms/overview.mts",
+    " M src/ui/hub-admin-overview.js",
+    " M src/ui/shared/hub-owner.css"
+  ],
+  "checks": [
+    {
+      "name": "desktop-en-light overview: Overview current, 4 sections, the privacy line, no token/cost, no overflow, no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light link: Manage, Connected fleets in view",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light empty: the line, the button, the Fleets; no questions",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark overview: Overview current, 4 sections, the privacy line, no token/cost, no overflow, no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark link: Manage, Connected fleets in view",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark empty: the line, the button, the Fleets; no questions",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light overview: Overview current, 4 sections, the privacy line, no token/cost, no overflow, no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light link: Manage, Connected fleets in view",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light empty: the line, the button, the Fleets; no questions",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark overview: Overview current, 4 sections, the privacy line, no token/cost, no overflow, no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark link: Manage, Connected fleets in view",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark empty: the line, the button, the Fleets; no questions",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light overview: Overview current, 4 sections, the privacy line, no token/cost, no overflow, no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light link: Manage, Connected fleets in view",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light empty: the line, the button, the Fleets; no questions",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark overview: Overview current, 4 sections, the privacy line, no token/cost, no overflow, no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark link: Manage, Connected fleets in view",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark empty: the line, the button, the Fleets; no questions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light overview: Overview current, 4 sections, the privacy line, no token/cost, no overflow, no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light link: Manage, Connected fleets in view",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light empty: the line, the button, the Fleets; no questions",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark overview: Overview current, 4 sections, the privacy line, no token/cost, no overflow, no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark link: Manage, Connected fleets in view",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark empty: the line, the button, the Fleets; no questions",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "overview.desktop-en-light.png",
+      "sha256": "4d3e7063219fa04e8cd7127857fc060fabd025d5c4f05f2414a90644e84ef113"
+    },
+    {
+      "path": "manage.desktop-en-light.png",
+      "sha256": "920526321c0b0cbaf95cfe9f51f543e417f8993e33e4544823ae68bc6f704d59"
+    },
+    {
+      "path": "empty.desktop-en-light.png",
+      "sha256": "44593879cd09542527da8b3eeae49ef4088e68d5e3b24e17bd04101d9780aa28"
+    },
+    {
+      "path": "overview.desktop-en-dark.png",
+      "sha256": "ab7a031ea1dade48d9455221eb42f629abf02fc2332f6df484c7aa0fbc59d189"
+    },
+    {
+      "path": "manage.desktop-en-dark.png",
+      "sha256": "774ff3a3790d9e5953c98817a61c8be2d496def02d900ceb4acfa2ad17cf2561"
+    },
+    {
+      "path": "empty.desktop-en-dark.png",
+      "sha256": "a6bc68cd2cf36c4831faafad491b9e963eb503e8a1036b4bebf024ee318aa7d7"
+    },
+    {
+      "path": "overview.desktop-zh-TW-light.png",
+      "sha256": "1d1787a6bae0a9d8391edb8aff8e2edb25fbe84f407f0a2d1b13cbe7c87e6141"
+    },
+    {
+      "path": "manage.desktop-zh-TW-light.png",
+      "sha256": "0bcb867348cd96873a47bb022ca0f9fc6e287e543b07ae7c8d585804c0cf6d1e"
+    },
+    {
+      "path": "empty.desktop-zh-TW-light.png",
+      "sha256": "2e7ba8e53a43cfebf63aa69dd88c919a7b1ca1549612f92f1a85a00a0783748f"
+    },
+    {
+      "path": "overview.desktop-zh-TW-dark.png",
+      "sha256": "0f0af440b1e49b10cc8916c17d6ab3178e79fddd530cbaddeb1d7bca7f42b732"
+    },
+    {
+      "path": "manage.desktop-zh-TW-dark.png",
+      "sha256": "e0defbcc9d2968bd8887fd4126d301b80a4dbf9d2e434d69bf02090635233285"
+    },
+    {
+      "path": "empty.desktop-zh-TW-dark.png",
+      "sha256": "defcf89adf607c5b7506b33e0e17f2518c8f89c429642099222bd8b4aaa2b143"
+    },
+    {
+      "path": "overview.phone-en-light.png",
+      "sha256": "24c72871fb2b7fd526c2a1ddea3d253c8da45e94f353978661969945ef92c57d"
+    },
+    {
+      "path": "manage.phone-en-light.png",
+      "sha256": "b83f018f80bf6c8294827dc0bbe9dd5a8f9ccbba548a648f5d8af729b45663b0"
+    },
+    {
+      "path": "empty.phone-en-light.png",
+      "sha256": "ed06389ba73c013796b94d4b5aaf6b1ed8c7359f8c1a2ea32911f4b942d3ad90"
+    },
+    {
+      "path": "overview.phone-en-dark.png",
+      "sha256": "9c91bb25d032dda132edcd197162c8e419e059fad2291ecccd5f708d01e897a0"
+    },
+    {
+      "path": "manage.phone-en-dark.png",
+      "sha256": "d723e4d09d136faa7125a9219cb3298381afad0e4cbef122fb57ccdd128b9302"
+    },
+    {
+      "path": "empty.phone-en-dark.png",
+      "sha256": "629dc3b289635347a9a2e64d0a46a5419b3d19d7b1f5935edc71f4ca79474755"
+    },
+    {
+      "path": "overview.phone-zh-TW-light.png",
+      "sha256": "1554edbd134e67eea6a6ab99481b74bb61235538bf3971ddcfac4c83247fbcc4"
+    },
+    {
+      "path": "manage.phone-zh-TW-light.png",
+      "sha256": "3ab1463cfc2986e9294460f62991960a5896e7fb11777b4ae976a171f47e8d51"
+    },
+    {
+      "path": "empty.phone-zh-TW-light.png",
+      "sha256": "ddc301a1b256f35d69111c187af1357c8de92925760e36008abae23cb73a58e7"
+    },
+    {
+      "path": "overview.phone-zh-TW-dark.png",
+      "sha256": "8523c0a1a868f4d07021b7fb4d9e75066fdb73a60dfa5c626442a5f697dfc411"
+    },
+    {
+      "path": "manage.phone-zh-TW-dark.png",
+      "sha256": "1d35c7d45f2a595fec6d4a507c13cb3dbba5b3abf8ee7ffa072a7c06d35eb97a"
+    },
+    {
+      "path": "empty.phone-zh-TW-dark.png",
+      "sha256": "412a07b6ad3c5bd34de91b26a79996d6554bc87745fc6d2730cf3f8ec29babf4"
+    }
+  ]
+}

@@ -11,8 +11,9 @@ import type { HubMemberFrame, HubServerFrame, PersonKey } from "./types.js";
 import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, parseMemberFrame, encodeServerFrame } from "./protocol.js";
 import { HubSocket, type HubLinkCloseCode } from "./socket.js";
 import { HUB_RECOMMENDATION_CAPABILITY } from "./recommendation-model.js";
+import { HUB_DISPLAY_NAME_PATH, hubDisplayNameSchema } from "./display-name.js";
 import { HUB_FLEET_INFO_CAPABILITY, warnFleetDiagnostics } from "./fleet-info.js";
-import { HubProtocolError, parseStrictJson } from "./validation.js";
+import { HubProtocolError, parseStrictJson, validated } from "./validation.js";
 import { HubPairingService } from "./pairing.js";
 import { readHubMemberTls } from "./tls.js";
 import { personKeyString } from "./identity.js";
@@ -31,6 +32,8 @@ interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context:
   /** The credential binding the link authenticated with (#3429 B: what a relocation ack's proof is rechecked against). */
   binding: { generation: number; revocationVersion: number } }
 export interface HubServerOptions {
+  /** Optional cosmetic metadata from validated Hub settings; older mounts serve no endpoint. */
+  displayName?: string;
   connected?(link: HubLinkContext): void;
   ready?(link: HubLinkContext): void;
   log?(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
@@ -92,6 +95,9 @@ export class HubServer {
   private async http(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // A still-bound old generation is temporarily unavailable, not a missing endpoint. Never read a body or mint work.
     if (!this.current()) { this.response(res, 503, { code: "unavailable" }); return; }
+    if (this.machine(req) && req.method === "GET" && req.url === HUB_DISPLAY_NAME_PATH && this.options.displayName !== undefined) {
+      this.response(res, 200, validated(hubDisplayNameSchema, { name: this.options.displayName })); return;
+    }
     if (this.options.companyJoin && this.machine(req) && req.headers.authorization === undefined
       && req.method === "POST" && /^\/hub\/v1\/join\/(challenge|push|status|redeem|ack|cancel|tombstone)$/.test(req.url ?? "")) {
       if (++this.accepting > HUB_LIMITS.pending) { this.accepting--; this.response(res, 429, { code: "backpressure" }); return; }

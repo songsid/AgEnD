@@ -101,6 +101,7 @@ import { TranscriptDeltaReader, type TranscriptLook } from "./transcript-delta-r
 import type { NativePaneLifecycle } from "./native-pane-lifecycle.js";
 import type { RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { checkpointCodexPane } from "./codex-pane-ownership.js";
+import { codexAppliedFromRollout, codexRunningVersion, codexSupportsInlineModel, codexSwitchAnswerCount, codexSwitchFromPane, readFrom } from "./backend/codex-model-switch.js";
 import {
   buildResumeContinuation,
   clearInFlightTurnMarker,
@@ -760,7 +761,19 @@ export type OwnSwitchOutcome =
   | { outcome: "switched"; confirmed: boolean; shown?: string }
   | { outcome: "mismatch"; shown: string; answered: boolean }
   | { outcome: "not_confirmed"; shown?: string }
-  | { outcome: "not_sent" };
+  /** M-3175: `reason` says why a codex switch was not typed (busy: never idle in time; version: not a codex known to have it). */
+  | { outcome: "not_sent"; reason?: "busy" | "version"; version?: string | null };
+/** M-3175: AgEnD's own codex `/model … --reasoning=…`: what it asks for (null: leave that one as the session has it). */
+export interface CodexOwnSwitch { model: string | null; effort: string | null }
+/** M-3175: how long a codex switch waits for the pane to be idle before it is not typed (the fleet then restarts instead). */
+const CODEX_SWITCH_IDLE_MS = 60_000;
+/** M-3175: how long codex gets to record the switch (rollout) or answer it (pane) after it is typed. */
+const CODEX_SWITCH_VERIFY_MS = 10_000;
+/** M-3175: the scrollback read around a codex switch (codex's answer rows are counted in it) and the most of a rollout delta read. */
+const CODEX_SWITCH_HISTORY_LINES = 200;
+const CODEX_SWITCH_ROLLOUT_READ = 4 * 1024 * 1024;
+/** M-3175: what a codex switch is verified against: the rollout's end before it (null: no rollout yet) and codex's answers on the pane. */
+interface CodexSwitchBefore { rollout: { path: string; offset: number } | null; answers: number; version: string | null }
 /** A blocking dialog still on screen this long after first being seen is reported for a human. */
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
 /** #2675: a card a person can answer from the chat is posted once it has been on screen, unchanged, this long. */
@@ -5192,7 +5205,7 @@ export class Daemon extends EventEmitter {
     deliveryEpoch = this.deliveryEpoch,
     confirmClear = false,
     durableAttempt?: DurableDeliveryAttempt,
-    ownSwitch?: { id: string; kind: "model"; requested: string },
+    ownSwitch?: { id: string; kind: "model"; requested: string; codex?: CodexOwnSwitch },
     notifyWritten?: string,
     contextReset?: "clear" | "compact",
   ): void {
@@ -5243,6 +5256,7 @@ export class Daemon extends EventEmitter {
         return;
       }
       const verdict: DeliveryVerdict = { reached: false };
+      let codexBefore: CodexSwitchBefore | null = null;
       try {
         await this.wake();
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
@@ -5250,6 +5264,17 @@ export class Daemon extends EventEmitter {
           reportSwitch({ outcome: "not_sent" });   // #1690: cancelled before anything was typed — said at once, nothing saved
           tellWritten(false);
           return;
+        }
+        // M-3175: a codex switch is typed only into an idle pane of a codex known to take it, with the rollout's end taken first.
+        if (ownSwitch?.codex) {
+          const gate = await this.codexSwitchGate();
+          if ("blocked" in gate) {
+            this.logger.info({ requested: ownSwitch.codex, reason: gate.blocked, version: gate.version }, "Codex runtime switch not typed");
+            reportSwitch({ outcome: "not_sent", reason: gate.blocked, version: gate.version ?? null });
+            tellWritten(false);
+            return;
+          }
+          codexBefore = gate;
         }
         // Board 907c7899: the pane just before this attempt's paste — after its readiness wait, last capture and fence,
         // under the paste lock (no other input lands in between). Each attempt looks again.
@@ -5301,7 +5326,7 @@ export class Daemon extends EventEmitter {
       if (ownSwitch) {
         if (this.ownSwitch !== ownSwitch) reportSwitch({ outcome: "not_sent" });   // its write never began
         else {
-          try { reportSwitch(await this.answerOwnSwitchDialog(ownSwitch)); }
+          try { reportSwitch(ownSwitch.codex ? await this.verifyCodexSwitch(ownSwitch.codex, codexBefore) : await this.answerOwnSwitchDialog(ownSwitch)); }
           catch (err) { this.logger.warn({ err: (err as Error).message }, "Answering our own model switch failed"); reportSwitch({ outcome: "not_confirmed" }); }
           finally { this.ownSwitch = null; }
         }
@@ -5325,9 +5350,13 @@ export class Daemon extends EventEmitter {
       this.deferDurableDelivery(deliveryMeta, "invalid raw_paste delivery attempt metadata");
       return;
     }
-    const sw = msg.runtime_switch as { id?: unknown; kind?: unknown; requested?: unknown } | undefined;
+    const sw = msg.runtime_switch as { id?: unknown; kind?: unknown; requested?: unknown; codex?: { model?: unknown; effort?: unknown } } | undefined;
+    const codexPart = (v: unknown): string | null | undefined => v === null ? null : typeof v === "string" && v ? v : undefined;
+    const codex = sw?.codex && typeof sw.codex === "object" ? { model: codexPart(sw.codex.model), effort: codexPart(sw.codex.effort) } : undefined;
     const ownSwitch = sw && typeof sw.id === "string" && sw.kind === "model" && typeof sw.requested === "string"
-      ? { id: sw.id, kind: "model" as const, requested: sw.requested } : undefined;
+      && (!codex || (codex.model !== undefined && codex.effort !== undefined && (codex.model !== null || codex.effort !== null)))
+      ? { id: sw.id, kind: "model" as const, requested: sw.requested,
+        ...(codex ? { codex: { model: codex.model as string | null, effort: codex.effort as string | null } } : {}) } : undefined;
     const notifyWritten = typeof msg.notify_written === "string" && /^[0-9a-f]{16}$/.test(msg.notify_written) ? msg.notify_written : undefined;
     this.queueRawPaste(
       msg.content as string,
@@ -5338,6 +5367,60 @@ export class Daemon extends EventEmitter {
       notifyWritten,
       msg.context_reset === "clear" || msg.context_reset === "compact" ? msg.context_reset : undefined,
     );
+  }
+
+  /**
+   * M-3175: before typing a codex `/model … --reasoning=…`: the pane authoritatively idle (bounded), the RUNNING codex at a
+   * version that has the inline form (an older one would send the line to the model as a prompt), and what the switch is
+   * verified against afterwards — the rollout's end when the session has one, and the count of codex's answers on the pane.
+   */
+  private async codexSwitchGate(): Promise<CodexSwitchBefore | { blocked: "busy" | "version"; version?: string | null }> {
+    const tmux = this.tmux;
+    if (!tmux || !await this.waitForAuthoritativePaneIdle(CODEX_SWITCH_IDLE_MS, 500) || this.tmux !== tmux) return { blocked: "busy" };
+    const pid = await tmux.getPanePid?.() ?? null;
+    const version = pid ? await codexRunningVersion(pid) : null;
+    if (!codexSupportsInlineModel(version)) return { blocked: "version", version };
+    const pane = await tmux.capturePaneWithHistory(CODEX_SWITCH_HISTORY_LINES).catch(() => "");
+    let rollout: { path: string; offset: number } | null = null;
+    const session = this.backend?.readRawPasteSession?.(pane);
+    if (session) {
+      const file = await checkpointCodexPane(session.sessionsDir, session.sessionId, this.config.working_directory || process.cwd()).catch(() => null);
+      if (file) rollout = { path: file.path, offset: file.offset };
+    }
+    return { rollout, answers: codexSwitchAnswerCount(pane), version };
+  }
+
+  /**
+   * M-3175: what our codex switch came to. The rollout's `thread_settings_applied` written after our checkpoint is the proof
+   * (codex writes it at once once the session has a rollout); a session with none yet has codex's own answer on the pane —
+   * a NEW `• Model changed to … for this session only` (or `■` refusal) after the ones counted before the line was typed.
+   * Anything that does not name what was asked is a mismatch; no answer in time is not confirmed. The fleet restarts on both.
+   */
+  private async verifyCodexSwitch(want: CodexOwnSwitch, before: CodexSwitchBefore | null): Promise<OwnSwitchOutcome> {
+    const tmux = this.tmux;
+    if (!tmux || !before) return { outcome: "not_confirmed" };
+    const fits = (model: string, effort: string | null) => (want.model === null || model === want.model) && (want.effort === null || effort === want.effort);
+    const deadline = performance.now() + CODEX_SWITCH_VERIFY_MS;
+    while (performance.now() < deadline && this.tmux === tmux) {
+      if (before.rollout) {
+        const applied = codexAppliedFromRollout(await readFrom(before.rollout.path, before.rollout.offset, CODEX_SWITCH_ROLLOUT_READ));
+        if (applied) {
+          const shown = `${applied.model} ${applied.effort ?? "default"}`;
+          return fits(applied.model, applied.effort) ? { outcome: "switched", confirmed: true, shown } : { outcome: "mismatch", shown, answered: true };
+        }
+      }
+      const pane = await tmux.capturePaneWithHistory(CODEX_SWITCH_HISTORY_LINES).catch(() => "");
+      if (codexSwitchAnswerCount(pane) > before.answers) {
+        const answer = codexSwitchFromPane(pane);
+        if (answer?.kind === "refused") return { outcome: "mismatch", shown: answer.text, answered: true };
+        if (answer?.kind === "switched" && !before.rollout) {
+          const shown = `${answer.model} ${answer.effort}`;
+          return fits(answer.model, answer.effort) ? { outcome: "switched", confirmed: true, shown } : { outcome: "mismatch", shown, answered: true };
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return { outcome: "not_confirmed" };
   }
 
   /**

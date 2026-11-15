@@ -507,6 +507,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       teardown.add("the Hub web service (S3)", () => http.close());
       memberServer = new HubServer({
         home: options.home,
+        displayName: settings.name,
         hubId: settings.hubId,
         memberOrigin: settings.memberOrigin,
         listen: settings.memberListen,

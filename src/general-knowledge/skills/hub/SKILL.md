@@ -232,10 +232,18 @@ Connecting shares nothing. **Reconnect** appears when the connection stopped (re
 ends the old connection and opens the Hub sign-in again. **Remove this connection** ends it from your side ("Agents
 you share will stop answering.").
 
+The connected Hub card, Hub update requests and recommended-update line use the Hub's name once this Fleet has
+learned it from the paired Hub. An older Hub that supplies no name keeps the address fallback. The name is a display
+label; learning it does not change the connection, update consent or which updates are available.
+
 Reconnecting after revocation or removal creates a new Fleet identity on the same Hub. Its member journal and sharing
 consent are separate from the previous identity: old questions and receipts are not replayed. An ordinary network
 reconnect of the same identity keeps its delivery and acknowledgement history. Do not delete journal files to repair a
 connection; partial or inconsistent state is held rather than reset.
+
+If a paired Fleet starts while its Hub cannot be reached, it stays **Offline** and retries the connection automatically.
+The local sharing and update-consent controls remain available. When the Hub returns, the Fleet reconnects and
+reconciles its saved state; restarting the Fleet or pairing again is unnecessary for an ordinary network outage.
 
 **Other ways** holds the older **pairing code** method, and appears only for a Hub without company sign-in: once the
 Hub typed in **Hub address** answers that it takes company sign-in, **Other ways** is hidden and the company sign-in is
@@ -281,6 +289,13 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
 - **Who may share:** when group permissions are on, only people whose group has **Share agents**. Otherwise the row
   reads "Not shared: your Hub administrator hasn't allowed you to share agents. It will be shared once they do."
   (未分享：Hub 管理員還沒有允許你分享 Agent。) with **Don't share it** to take the request back.
+- **While it answers a Hub question, this agent may not contact other agents** defaults on, including existing shares.
+  In Fleet **Settings → Hub → Shared agents**, untick it to allow agent-to-agent help; saving a shared agent's choice
+  follows the same confirmation as sharing. Existing owners get a Settings notice they acknowledge once. Each question
+  opens a durable 30-minute window at delivery, ending earlier when its answer is accepted. While any window is open,
+  send_to_instance, delegate_task, request_information and broadcast are refused; the agent can retry after answering.
+  Answers to agend-hub and hub_room_post still work. The agent's own tools/folder, previously learned information and
+  actions after the window ends are not isolated. Hub General and MCP agents are not changed by this setting.
 - Only fleet agents can be shared for now: "ClassicBot rooms can't be shared yet." A Fleet with nothing to share reads
   "This fleet has no agents to share yet."
 - "Shared under the older restricted mode. Hub questions are refused until you share this agent again." → **Share
@@ -559,6 +574,10 @@ are separate UI work; do not claim those screens or a remote-update switch from 
 
 ## Administration
 
+- The administrator Overview reports people, shared-agent questions, answer times, failures, Fleets and rooms for today
+  or seven calendar days in the viewer’s time zone. Each agent asked counts once (including each @All target). It shows
+  counts only, never questions, answers, room names or per-person activity. Answer times need five measured answers;
+  older answers with no recorded time are excluded. Hub-assistant activity stays in the room message split.
 - **Connected fleets** lists each Fleet by its name with its owner under it. A row's menu has **Revoke…**: "It
   disconnects and everything it shares is withdrawn." Revoked Fleets fold under **Revoked (*n*)**.
   A revoked Fleet's old publications stay hidden even if it reconnects as a new Fleet. Reconnecting does not restore those shares; other active agents and their chats remain available.
@@ -573,6 +592,11 @@ are separate UI work; do not claim those screens or a remote-update switch from 
   listed there too and need **Acknowledge**.
 - **This Hub** shows the Hub's name (**Hub name**, up to 64 characters) and what identifies it; **Edit AD connection**
   opens the directory settings.
+- **Tabs** (M-3162): Administration opens on **Overview** (總覽) where the Hub serves it. The tabs are **Overview**,
+  **Manage** (管理項目, everything above on one page), **Teams**, **Groups** and **This Hub** (這個 Hub); a tab whose
+  feature is off isn't shown. Overview has **Today** / **7 days**, refreshes every minute, and its line under the
+  range says it shows counts only. On a Hub nobody has joined yet it shows **Let colleagues join** instead of numbers.
+  **See Connected Fleets** opens Manage at that card.
 
 ## Fleet versions
 

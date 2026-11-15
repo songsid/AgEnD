@@ -35,6 +35,8 @@ export interface Pane {
   pasteText(text: string, opts?: { retryEnter?: boolean }): Promise<boolean>;
   pasteBuffer(text: string, opts?: { guard?: () => boolean; timeoutMs?: number; proof?: PaneInputProof }): Promise<boolean>;
   pipeOutput(logPath: string): Promise<void>;
+  /** M-3175: the pane process's pid (its shell). Optional: a native pane has none (a codex switch there is then never typed). */
+  getPanePid?(): Promise<number | null>;
   capturePane(timeoutMs?: number): Promise<string>;
   capturePaneWithHistory(lines?: number, timeoutMs?: number): Promise<string>;
   capturePaneJoined(lines?: number): Promise<string>;

@@ -237,6 +237,7 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {}, prefi
 function HubExposures({ client, pairing }) {
   const store = useStore(appStore);
   const [rows, setRows] = useState(null);
+  const [contactChoices, setContactChoices] = useState({});
   const [readError, setReadError] = useState(false);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -245,7 +246,8 @@ function HubExposures({ client, pairing }) {
   // rows it has on a failure instead of turning the list into an error.
   const load = (background = false) => {
     const n = ++seq.current; if (!background) setReadError(false);
-    return client.exposures().then((r) => { if (live.current && n === seq.current) { setRows(r); setReadError(false); } },
+    return client.exposures().then((r) => { if (live.current && n === seq.current) { setRows(r); setReadError(false);
+      setContactChoices(current => Object.fromEntries(Object.entries(current).filter(([agent]) => !r.some(row => row.agent === agent && row.state === "published")))); } },
       () => { if (live.current && n === seq.current && !background) setReadError(true); });
   };
   useEffect(() => { live.current = true; load(); return () => { live.current = false; }; }, []);
@@ -259,11 +261,11 @@ function HubExposures({ client, pairing }) {
     if (!live.current || polling.current || busyRef.current) return;
     polling.current = true; load(true).finally(() => { polling.current = false; });
   }, [pairing]);
-  const toggle = async (row, on) => {
+  const toggle = async (row, on, contactLimit = contactChoices[row.agent] ?? (row.contactLimit !== false)) => {
     if (busy) return;
     setBusy(row.agent); busyRef.current = row.agent; setMsg(null);
     try {
-      const r = await client.setExposed(row.agent, on, row.revision, on ? AGENT_CHOICE : null);
+      const r = await client.setExposed(row.agent, on, row.revision, on ? { ...AGENT_CHOICE, contactLimit } : null);
       if (!live.current) return;
       if (!r.ok) { setMsg({ error: true, text: hw(PUBLISH_ERRORS[r.error] || "errUnsaved") }); if (r.error === "conflict") await load(); return; }
       if (!on && r.remote === "pending") setMsg({ error: false, text: hw("withdrawPending") });
@@ -289,6 +291,15 @@ function HubExposures({ client, pairing }) {
     <p class="note">${hw("agentLead")}</p>
     <p class="note hub-sharing-hint">${t("hubSharingFleet.hint")}</p>
     ${readError ? html`<${ErrorState} message=${hw("errFailed")} onRetry=${load} />` : !rows ? html`<${Skeleton} variant="rows" lines=${3} />` : null}
+    ${rows?.some(row => row.contactLimitNotice) ? html`<div class="note hub-contact-notice" role="status">
+      <p>${hw("contactLimitNotice")}</p>
+      <button type="button" class="btn btn-sm" disabled=${busy !== null} onClick=${async () => {
+        setBusy("notice");
+        try { if (!(await client.acknowledgeContactLimitNotice())) throw Error(); await load(); }
+        catch { if (live.current) setMsg({ error: true, text: hw("errUnsaved") }); }
+        finally { if (live.current) setBusy(null); }
+      }}>${hw("contactNoticeDone")}</button>
+    </div>` : null}
     ${rows && !rows.length ? html`<p class="note">${hw("noAgents")}</p>` : null}
     ${rows && rows.length ? html`<ul class="hub-exposure-list">${rows.map((row) => html`<li key=${row.agent} class=${`hub-exposure${row.state === "published" ? " is-shared" : ""}`}>
       <label class="hub-exposure-main">
@@ -297,6 +308,17 @@ function HubExposures({ client, pairing }) {
           onChange=${(e) => toggle(row, e.target.checked)} />
         <span class="hub-exposure-name">${row.display}${row.display !== row.agent ? html` <small><code>${row.agent}</code></small>` : null}</span>
       </label>
+      <label class="check hub-contact-limit">
+        <input type="checkbox" checked=${contactChoices[row.agent] ?? (row.contactLimit !== false)}
+          disabled=${busy !== null || !!row.pending || row.state === "frozen" || row.reason === "hub_refused"}
+          onChange=${e => {
+            const on = e.target.checked;
+            if (row.state === "published") toggle(row, true, on);
+            else setContactChoices(current => ({ ...current, [row.agent]: on }));
+          }} />
+        <span>${hw("contactLimit")}</span>
+      </label>
+      <small class="note hub-contact-hint">${hw("contactLimitHint")}</small>
       ${row.pending ? html`<small class="hub-exposure-why hub-exposure-pending">${hw("waitingConfirm")}</small>`
         : row.state === "frozen" ? html`<small class="hub-exposure-why">${hw("frozen")}</small>`
         : !row.enforceable && row.state !== "published" ? html`<small class="hub-exposure-why">${hw(row.reason === "delivery_unavailable" ? "agentDeliveryUnavailable" : "agentNotShareable")}</small>`

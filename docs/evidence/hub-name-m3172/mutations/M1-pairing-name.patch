@@ -1,0 +1,13 @@
+diff --git a/src/hub/member/pairing-api.ts b/src/hub/member/pairing-api.ts
+index 326b314e9..00631d317 100644
+--- a/src/hub/member/pairing-api.ts
++++ b/src/hub/member/pairing-api.ts
+@@ -137,7 +137,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
+         if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId, binding };
+         // M-2901: the Hub's current web address when it told this Fleet (verified against the pinned issuer key), else the
+         // one it paired with — every link this Fleet's pages build to the Hub (open, who may ask, the switcher) follows it.
+-        return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: readHubDisplayName(deps.home, p), memberOrigin: memberAnchor(deps.home, p, store.profileDigest()), webOrigin: new HubMemberWebOriginStore(deps.home, s.hubId).effective(p, knownMemberOrigins(deps.home, p, store.profileDigest())), fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
++        return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: null, memberOrigin: memberAnchor(deps.home, p, store.profileDigest()), webOrigin: new HubMemberWebOriginStore(deps.home, s.hubId).effective(p, knownMemberOrigins(deps.home, p, store.profileDigest())), fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
+           link: deps.link?.(store.profileDigest()) === "online" ? "online" : "offline" };
+       }
+       if (f.pending) {

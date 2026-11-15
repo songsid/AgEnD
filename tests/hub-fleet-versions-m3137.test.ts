@@ -46,7 +46,7 @@ describe("the words (pure)", () => {
     words.setLang("en");
     expect(v.summaryText(FLEETS, null)).toBe("3 active Fleets.");
     expect(v.summaryText(FLEETS, "2.4.0")).toBe("2 of 3 Fleets need an update.");
-    expect(v.summaryText([FLEETS[0]], "2.4.0")).toBe("All 1 Fleets are on the recommended version or newer.");
+    expect(v.summaryText([FLEETS[0]], "2.4.0")).toBe("Your Fleet is on the recommended version or newer.");
     words.setLang("zh-TW");
     expect(v.summaryText(FLEETS, "2.4.0")).toBe("3 個 Fleet 當中有 2 個需要更新。");
     expect(v.versionCounts(FLEETS)).toEqual({ total: 3, needs: 2 });
@@ -156,7 +156,7 @@ describe("the signed-in person's own Fleet is behind (§2.3)", () => {
 
 it("the module is the Hub's own (served by the Hub listener) and its stylesheet rules are there", () => {
   const compose = readFileSync(join(process.cwd(), "src/hub/http/compose.ts"), "utf8");
-  expect(compose).toContain('"hub-fleet-versions.js"]);');
+  expect(compose).toContain('"hub-fleet-versions.js"');
   const css = readFileSync(join(process.cwd(), "src/ui/shared/hub-owner.css"), "utf8");
   for (const rule of [".hub-fleet-version .hub-fleet-why { flex: 1 1 100%; white-space: normal; }",
     ".hub-fleet-list .hub-fleet-version { flex: 1 1 100%; flex-direction: column; align-items: flex-start; gap: 2px; }"]) expect(css).toContain(rule);
