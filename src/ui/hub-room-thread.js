@@ -25,7 +25,7 @@ import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { workingLine } from "./hub-room-working.js";
 import { countsLine } from "./hub-room-list.js";
-import { hubFileAttachment } from "./hub-attachments.js";
+import { PendingFiles, hf, hubFileAttachment, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
 
 linkRoomsU2Css();   // M-3127: the reaction chips and picker are drawn from hub-rooms-u2.css (a room opened before any U2 panel)
 /** M-3127 C: the message a search hit opens (`?room=…&m=<id>`), or null. */
@@ -263,9 +263,11 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
     detail: () => st.detail, raw: () => st.messages, messages: () => st.view, loaded: () => st.loaded, error: () => st.error,
     closed: closedNow, removed: () => st.removed, more: () => st.more,
     room: () => ({ ...(st.detail?.room || {}), ownerName: "" }),
-    async send(text, { mentions = [], replyTo } = {}) {
+    // M-3125: this store carries files (pageCarriesFiles reads the mark), sent as the post's `files`.
+    filesV1: true,
+    async send(text, { mentions = [], replyTo, files } = {}) {
       const idempotencyKey = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^A-Za-z0-9-]/g, "");
-      const r = await client.sendRoomMessage(roomId, { text, mentions, replyTo, idempotencyKey });
+      const r = await client.sendRoomMessage(roomId, { text, mentions, replyTo, idempotencyKey, ...(files?.length ? { files } : {}) });
       // The stored message, as the Hub answers it: `{ message }`, or the message itself (Ridge's server) — drawn at once,
       // whether or not the stream is up yet (a first send after opening the room must not vanish).
       const { ok, ...bare } = r || {};
@@ -345,6 +347,12 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // The first read may land before this subscribes: read once more on subscribing.
   useEffect(() => { const off = store.subscribe(() => tick((n) => n + 1)); tick((n) => n + 1); return off; }, [store]);
   const [reply, setReply] = useState(null), [rail, setRail] = useState(true), [sheet, setSheet] = useState(false);
+  // M-3125: the room's pending files, as in a 1:1 chat (hub-attachments.js): Attach left of the box, chips inside it.
+  // The ref moves with every set, not on the next render: uploadChosen reads it between its own sets (as panel-hub.js does).
+  const [files, setFilesState] = useState([]), filesRef = useRef([]), alive = useRef(true), [fileMsg, setFileMsg] = useState("");
+  const setFiles = (next) => { filesRef.current = next; setFilesState(next); };
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => { setFiles([]); setFileMsg(""); }, [roomId]);
   const wide = useRailWide();
   const input = useRef(null), threadRef = useRef(null), insert = useRef(null);
   const Panel = useMembersPanel();
@@ -361,6 +369,23 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     if (r.ok) onLeft(); else setLeaveError(r.text);
   };
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
+  // M-3125: Attach only where this page and this room carry files and the room is open; chosen files ride the next send.
+  const takesFiles = pageCarriesFiles(client, store) && roomTakesFiles(room) && !store.closed();
+  const attach = takesFiles ? { title: hf("attach"), onFiles: async (list) => {
+    setFileMsg("");
+    const refused = await uploadChosen(client, room.id || roomId, list, { current: () => filesRef.current, set: setFiles, alive: () => alive.current });
+    if (alive.current && refused.length) setFileMsg(refused.join(" "));
+  } } : null;
+  const pending = files.length || fileMsg ? html`<${PendingFiles} files=${files} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
+    formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />${fileMsg ? html`<p class="note" role="alert">${fileMsg}</p>` : null}` : null;
+  // The composer sends through the store; this one adds the ready files, waits for uploads, and clears only what was sent.
+  const sendStore = useMemo(() => ({ ...store, send: async (text, opts = {}) => {
+    if (filesRef.current.some((f) => f.state === "uploading")) { setFileMsg(hf("waitUpload")); return { ok: false, code: "uploading" }; }
+    const chosen = filesRef.current.filter((f) => f.state === "ready");
+    const r = await store.send(text, { ...opts, ...(chosen.length ? { files: chosen.map((f) => f.id) } : {}) });
+    if (r?.ok && chosen.length) { const sent = new Set(chosen.map((f) => f.key)); setFiles(filesRef.current.filter((f) => !sent.has(f.key))); }
+    return r;
+  } }), [store]);
   // The Hub assistant's one-to-one is named by its flag, in this viewer's words (its stored name is a fallback).
   const title = room.assistant ? hroom("hubAssistant") : String(room.name || "");
   const hasAssistant = (detail?.members || []).some((m) => m.kind === "assistant");
@@ -431,7 +456,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       ${/* M-3117: under the thread, the Fleet chat's dock — its column, its padding, the working line and the box in it. */ ""}
       <div class="dock hub-dock" data-trust="composer"><div class="dock-col">
         ${working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
-        <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} />
+        <${RoomComposer} store=${sendStore} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert}
+          attach=${attach} pending=${pending} canSendEmpty=${files.some((f) => f.state === "ready")} />
       </div></div>
     </section>
     ${showRail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>${panel}</${RailFrame}>` : null}

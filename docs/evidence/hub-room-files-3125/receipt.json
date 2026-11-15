@@ -1,0 +1,430 @@
+{
+  "sourceHead": "839307dcab98f9fc498490959b6550782f52c51d",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desktop-en-light the manager's image shows inline on the thread",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Attach shows left of the box",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light two chips inside the composer box, both ready",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light the post shows its text file as a card",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light the post's image shows inline",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark the manager's image shows inline on the thread",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark Attach shows left of the box",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark two chips inside the composer box, both ready",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark the post shows its text file as a card",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark the post's image shows inline",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light the manager's image shows inline on the thread",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light Attach shows left of the box",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light two chips inside the composer box, both ready",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light the post shows its text file as a card",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light the post's image shows inline",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark the manager's image shows inline on the thread",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Attach shows left of the box",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark two chips inside the composer box, both ready",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark the post shows its text file as a card",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark the post's image shows inline",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no page error",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "desktop-en-light-attach-pending.png",
+      "sha256": "ffd1c5c33c8ed9f2d9c82eea161e81243f8697f59fd573017d6a3b659d73724d"
+    },
+    {
+      "path": "desktop-en-light-posted.png",
+      "sha256": "86eb20084365376a345d0e0de0dc70ff822099645725aff8ad6dacd33ed4b21e"
+    },
+    {
+      "path": "desktop-zh-TW-dark-attach-pending.png",
+      "sha256": "6c9a4aab7ddbd58730d481e539fa7519f42a3df4ee364bfa19278e6bee56cc53"
+    },
+    {
+      "path": "desktop-zh-TW-dark-posted.png",
+      "sha256": "573d9bb0e7b0d92c2fdc7378ffa31d527bc0d8a3d2d9c3dfc07819cee54d7e38"
+    },
+    {
+      "path": "phone-en-light-attach-pending.png",
+      "sha256": "16dd17756a2d10d9d613eaef9a35902337c9be90e0fbd8c658a49fe250b563b0"
+    },
+    {
+      "path": "phone-en-light-posted.png",
+      "sha256": "7cdfaf82709f2068bc9410dbe583c86eeed2cf28069946754da3778cab7c7911"
+    },
+    {
+      "path": "phone-zh-TW-dark-attach-pending.png",
+      "sha256": "572b9d8353759891cecf5f9118bdad9829332995aa0e1cae343b6947f86a733f"
+    },
+    {
+      "path": "phone-zh-TW-dark-posted.png",
+      "sha256": "8863a5b022bcf8c029a8e708cabc5965ad5a61dc9b1945af297e717e0d284220"
+    }
+  ],
+  "requests": [
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/aa611d03-a31d-4315-b2fe-68bc0b41fd96/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/read",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/read",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/50207a7c-7b1f-445c-926c-6736652c51a8/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/aa611d03-a31d-4315-b2fe-68bc0b41fd96/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/50207a7c-7b1f-445c-926c-6736652c51a8/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/read",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/read",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/83b2928d-6064-4711-bec6-3f05336b9c98/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/aa611d03-a31d-4315-b2fe-68bc0b41fd96/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/50207a7c-7b1f-445c-926c-6736652c51a8/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/83b2928d-6064-4711-bec6-3f05336b9c98/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/c230ad06-5e50-47fc-b211-1164f29a19ab/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/aa611d03-a31d-4315-b2fe-68bc0b41fd96/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/50207a7c-7b1f-445c-926c-6736652c51a8/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/83b2928d-6064-4711-bec6-3f05336b9c98/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/c230ad06-5e50-47fc-b211-1164f29a19ab/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/1ee8b4df-4055-4f9f-ae8c-5c746990a7f8/files/724456a4-ee0c-4a7e-9e7f-b60a823ce4f2/inline",
+      "status": 200
+    }
+  ]
+}
