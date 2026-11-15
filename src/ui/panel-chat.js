@@ -976,8 +976,12 @@ register("modelMenu", {
 });
 const mm = (key, ...args) => t(`modelMenu.${key}`, ...args);
 /** Where the model control that opened the menu is (a desk anchors the menu under it); null: under the box's left end. */
-let modelMenuAnchor = null;
-export function noteModelMenuAnchor(el) { try { modelMenuAnchor = el ? el.getBoundingClientRect() : null; } catch { modelMenuAnchor = null; } }
+let modelMenuAnchor = null, modelMenuOpener = null;
+/** The control that opens the menu: where it sits (the menu goes by it) and itself (focus goes back to it on close, M-3192). */
+export function noteModelMenuAnchor(el) {
+  try { modelMenuAnchor = el ? el.getBoundingClientRect() : null; } catch { modelMenuAnchor = null; }
+  modelMenuOpener = el || null;
+}
 /** A model's one line: its family's (Opus / Sonnet / Haiku), else its own id when the name doesn't say it. */
 function modelDescription(o, name) {
   const s = `${o.id} ${o.label}`;
@@ -998,7 +1002,34 @@ function ModelMenu({ name, c, lease }) {
   const alive = () => lease.current();
   const run = (args, action) => store.runCommand(name, "model", args, { alive, ...(action ? { action } : {}) });
   // The control that opened it is this opening's only: gone with the menu, a later typed /model is placed by the box.
-  useEffect(() => () => { modelMenuAnchor = null; }, []);
+  // M-3192: on a desk, focus goes back where it came from when the menu closes — that control, else the box (a typed /model).
+  useEffect(() => () => {
+    const back = modelMenuOpener;
+    modelMenuAnchor = null; modelMenuOpener = null;
+    if (narrow || typeof document === "undefined") return;
+    const inMenu = !document.activeElement || document.activeElement === document.body || !!document.activeElement.closest?.(".model-menu-pop");
+    if (!inMenu) return;                                   // the person moved on (clicked elsewhere): leave their focus be
+    const to = back && back.isConnected !== false ? back : document.getElementById("msgIn");
+    try { to?.focus?.(); } catch { /* gone */ }
+  }, []);
+  const pop = useRef(null);
+  // M-3192: a desk's menu takes the keyboard — focus on the model in use (else the first), ↑ ↓ Home End move between its
+  // buttons (rows, More, the effort row), Enter picks (they are buttons), Escape closes, Tab goes on as anywhere.
+  const items = () => [...(pop.current?.querySelectorAll(".model-menu button:not([disabled])") || [])];
+  useEffect(() => {
+    if (narrow || !pop.current || pop.current.contains(document.activeElement)) return;
+    const first = pop.current.querySelector(".model-menu-row.on:not([disabled])") || items()[0];
+    try { first?.focus?.(); } catch { /* none */ }
+  }, [narrow, c.choices?.options?.length || 0, !!c.busy]);
+  const onKeys = (e) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+    const list = items(); if (!list.length) return;
+    e.preventDefault();
+    const at = list.indexOf(document.activeElement);
+    const next = e.key === "Home" ? 0 : e.key === "End" ? list.length - 1
+      : e.key === "ArrowDown" ? (at + 1) % list.length : (at <= 0 ? list.length - 1 : at - 1);
+    try { list[next].focus(); } catch { /* gone */ }
+  };
   const options = c.choices?.options || [], current = c.choices?.current ?? null, actions = c.choices?.actions || [];
   const refresh = actions.find((a) => a === "refresh" || a === "refreshAll");
   const cur = options.find((o) => o.id === current && o.effort);
@@ -1042,7 +1073,7 @@ function ModelMenu({ name, c, lease }) {
     else { const box = el.closest(".p-chat")?.querySelector(".composer-box")?.getBoundingClientRect(); left = box ? box.left : 16; top = box ? Math.max(8, box.top - h - 8) : 72; }
     el.style.setProperty("left", `${Math.round(left)}px`); el.style.setProperty("top", `${Math.round(top)}px`);
   };
-  return html`<div class="model-menu-scrim" onClick=${close}></div><div class="model-menu-pop" ref=${place}>${body}</div>`;
+  return html`<div class="model-menu-scrim" onClick=${close}></div><div class="model-menu-pop" ref=${(el) => { pop.current = el; place(el); }} onKeyDown=${onKeys}>${body}</div>`;
 }
 
 function CommandCard({ name, lease }) {

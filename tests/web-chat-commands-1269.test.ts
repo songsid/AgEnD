@@ -325,6 +325,43 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.card().querySelector(".cmd-text").textContent).toBe("ok");
   });
 
+  // M-3192: a desk's menu takes the keyboard, and gives focus back where it came from; the control that opened it is that
+  // opening's only (#4003 review: a later typed /model is placed by the box, not by a control clicked earlier).
+  describe("the desk menu's keyboard and its anchor (M-3192)", () => {
+    const LIST = { choices: { current: "b", options: [{ id: "a", label: "Alpha" }, { id: "b", label: "✓ Beta" }, { id: "c", label: "Gamma" }], actions: ["more"] } };
+    const focused = (c: any) => { const a = c.p.window.document.activeElement as any; return a?.classList?.contains("model-menu-row") ? a.querySelector("b").textContent : a?.className || a?.id || null; };
+    const press = async (c: any, k: string) => { fire(c.p.window.document.activeElement, "keydown", { key: k, bubbles: true }); await settle(); };
+    it("opened from the header's chip: focus on the model in use; ↓ ↑ Home End move (wrapping); Escape closes and focus goes back to the chip", async () => {
+      const c = await chatPage({ model: "claude-opus-5-5" });
+      c.fx.respond = (path: string, body: any) => (path === "/ui/command" && !body.args ? LIST : {});
+      const chip = c.p.root.querySelectorAll(".hd-chip")[1];
+      fire(chip, "click"); await settle(); await settle();
+      expect(c.menu(), "the menu").toBeTruthy();
+      expect(focused(c), "the model in use").toBe("Beta");
+      await press(c, "ArrowDown"); expect(focused(c)).toBe("Gamma");
+      await press(c, "ArrowDown"); expect(focused(c), "then More").toBe("model-menu-more");
+      await press(c, "ArrowDown"); expect(focused(c), "wraps to the top").toBe("Alpha");
+      await press(c, "ArrowUp"); expect(focused(c), "and back").toBe("model-menu-more");
+      await press(c, "Home"); expect(focused(c)).toBe("Alpha");
+      await press(c, "End"); expect(focused(c)).toBe("model-menu-more");
+      fire(c.p.window.document.activeElement, "keydown", { key: "Escape", bubbles: true }); await settle();
+      expect(c.menu(), "Escape closed it").toBeNull();
+      expect(c.p.window.document.activeElement, "focus is back on the chip").toBe(chip);
+    });
+    it("a later typed /model is placed by the box, not by the chip clicked before (the anchor goes with the menu)", async () => {
+      const c = await chatPage({ model: "claude-opus-5-5" });
+      c.fx.respond = (path: string, body: any) => (path === "/ui/command" && !body.args ? LIST : {});
+      fire(c.p.root.querySelectorAll(".hd-chip")[1], "click"); await settle(); await settle();
+      const byChip = (c.p.root.querySelector(".model-menu-pop") as any).style.left;
+      fire(c.p.root.querySelector(".model-menu-scrim"), "click"); await settle();
+      expect(c.menu()).toBeNull();
+      await c.type("/model"); await c.key("Enter"); await settle();
+      const byBox = (c.p.root.querySelector(".model-menu-pop") as any).style.left;
+      // In this DOM every rect is 0: by a control the menu keeps 8 px from the edge; by the box it takes the box's left (0).
+      expect([byChip, byBox]).toEqual(["8px", "0px"]);
+    });
+  });
+
   it("the header shows the model and effort it runs; each opens its list (/model, /effort)", async () => {
     const c = await chatPage({ context_pct: 69.4, model: "claude-opus-5-5", effort: "high" });
     expect(!!c.p.root.querySelector(".quick-actions"), "69% is under the line").toBe(false);
