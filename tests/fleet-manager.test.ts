@@ -968,7 +968,7 @@ describe("FleetManager", () => {
     const debug = vi.spyOn(fm.logger, "debug").mockImplementation(() => {});
     await (fm as any).reconcileInstances();
     const said = (spy: typeof info, msg: string) => spy.mock.calls.filter(c => c[1] === msg).map(c => (c[0] as { name: string }).name);
-    expect(said(info, "New instance in config — starting")).toEqual(["fresh-one"]);
+    expect(said(info, "Instance not running — starting")).toEqual(["fresh-one"]);
     expect(said(debug, "Paused instance in config — not started")).toEqual(["paused-one"]);
     expect(info.mock.calls.some(c => (c[0] as { name?: string })?.name === "paused-one")).toBe(false);
   });
