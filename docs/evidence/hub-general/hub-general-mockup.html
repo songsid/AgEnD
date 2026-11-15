@@ -133,8 +133,8 @@ body[data-view="phone"] .stage { max-width: 422px; }
 </div>
 <div class="stage">
 <div class="shot">
-  <h2><span class="l-en">1 · A member asks who to ask</span><span class="l-zh">1 · 同仁問「這件事該問誰」</span> <span class="step"><span class="l-en">Step 1 · no tools</span><span class="l-zh">第 1 步 · 沒有工具</span></span></h2>
-  <p class="cap"><span class="l-en">Hub General is pinned first in the list. It answers from the agents this person may already ask, and the Hub draws the cards. "Ask" opens that agent's chat with the question in the box; the person presses Send.</span><span class="l-zh">Hub General 固定在清單最上面。它只從這個人本來就可以問的 Agent 裡回答，卡片由 Hub 畫出。按「提問」會開啟那個 Agent 的對話，問題已經放在輸入框裡，由本人按送出。</span></p>
+  <h2><span class="l-en">1 · Someone allowed to use it asks who to ask</span><span class="l-zh">1 · 可以使用的人問「這件事該問誰」</span> <span class="step"><span class="l-en">Step 1 · no tools</span><span class="l-zh">第 1 步 · 沒有工具</span></span></h2>
+  <p class="cap"><span class="l-en">Hub General is pinned first in the list for the people the administrator allows; others don't see it. It answers from the agents this person may already ask, and the Hub draws the cards. "Ask" opens that agent's chat with the question in the box; the person presses Send.</span><span class="l-zh">管理員允許的人，清單最上面會固定出現 Hub General；其他人看不到它。它只從這個人本來就可以問的 Agent 裡回答，卡片由 Hub 畫出。按「提問」會開啟那個 Agent 的對話，問題已經放在輸入框裡，由本人按送出。</span></p>
   <div class="frame"><div class="app">
     <div class="rail">
       <div class="ritem on"><span class="av sq hub">H</span><span>Hub General<small><span class="l-en">Help, and who to ask</span><span class="l-zh">使用說明，以及該問誰</span></small></span></div>
@@ -146,7 +146,7 @@ body[data-view="phone"] .stage { max-width: 422px; }
       <div class="ritem"><span class="av ag">D</span><span><span class="dot on"></span>docs-bot</span></div>
     </div>
     <div class="main">
-      <div class="head"><span class="av sq hub">H</span><div><b>Hub General</b><small><span class="l-en">Runs on this Hub's AI account · can't see rooms or other people's conversations</span><span class="l-zh">使用這個 Hub 的 AI 帳號 · 看不到房間，也看不到其他人的對話</span></small></div></div>
+      <div class="head"><span class="av sq hub">H</span><div><b>Hub General</b><small><span class="l-en">Only you can see this conversation · runs on this Hub's AI account</span><span class="l-zh">這個對話只有你看得到 · 使用這個 Hub 的 AI 帳號</span></small></div></div>
       <div class="thread">
         <div class="msg me"><div class="body"><div class="bub"><span class="l-en">The login page tests fail on the staging build. Who can I ask?</span><span class="l-zh">登入頁的測試在測試環境的版本上失敗了，我該問誰？</span></div></div></div>
         <div class="msg"><span class="av sq hub">H</span><div class="body"><div class="who"><b>Hub General</b></div><div class="bub">
@@ -206,7 +206,7 @@ body[data-view="phone"] .stage { max-width: 422px; }
 
 <div class="shot">
   <h2><span class="l-en">4 · Administration → Hub AI</span><span class="l-zh">4 · 管理 → Hub 的 AI</span> <span class="step"><span class="l-en">Settings</span><span class="l-zh">設定</span></span></h2>
-  <p class="cap"><span class="l-en">Today's "Room assistant" page gains Hub General. One AI account and one quota serve both.</span><span class="l-zh">現在的「房間助理」頁加上 Hub General。兩者共用同一個 AI 帳號與額度。</span></p>
+  <p class="cap"><span class="l-en">Today's "Room assistant" page gains Hub General. Only administrators can use it until an administrator adds people or groups; everyone is an explicit choice.</span><span class="l-zh">現在的「房間助理」頁加上 Hub General。預設只有管理員可以使用，由管理員加入其他人或群組；開放給所有人要另外選擇。</span></p>
   <div class="frame"><div class="page">
     <h3><span class="l-en">Hub AI</span><span class="l-zh">Hub 的 AI</span></h3>
     <p class="lead"><span class="l-en">The room assistant and Hub General run on this Hub and use the account below.</span><span class="l-zh">房間助理與 Hub General 在這個 Hub 上執行，使用下面的帳號。</span></p>
@@ -215,21 +215,27 @@ body[data-view="phone"] .stage { max-width: 422px; }
       <div class="row"><span class="l"><span class="l-en">Answers at once</span><span class="l-zh">同時回答的數量</span><small><span class="l-en">Room questions go first when all are busy.</span><span class="l-zh">都在忙的時候，房間裡的提問優先。</span></small></span><span class="r"><span class="inp">3</span></span></div>
     </div>
     <div class="set"><h5>Hub General</h5>
-      <div class="row"><span class="l">Hub General<small><span class="l-en">Everyone gets a one-to-one chat for help and for finding who to ask.</span><span class="l-zh">每個人都有一個一對一對話，用來查使用說明與找該問的人。</span></small></span><span class="sw on"></span></div>
-      <div class="row"><span class="l"><span class="l-en">Who can use it</span><span class="l-zh">誰可以使用</span></span><span class="r"><span class="l-en">Everyone who has joined</span><span class="l-zh">所有已加入的人</span> ▾</span></div>
+      <div class="row"><span class="l">Hub General<small><span class="l-en">A one-to-one chat for help and for finding who to ask.</span><span class="l-zh">一個一對一對話，用來查使用說明與找該問的人。</span></small><small><span class="l-en">Each person has their own private conversation. Up to 3 answers run at once; nothing runs between questions.</span><span class="l-zh">每個人有自己的私人對話。同時最多回答 3 個；沒有人提問時不會執行。</span></small></span><span class="sw on"></span></div>
+      <div class="row" style="display:block"><span class="l"><span class="l-en">Who can use it</span><span class="l-zh">誰可以使用</span></span>
+        <div class="ck"><span class="radio"></span><span><span class="l-en">Administrators only</span><span class="l-zh">只有管理員</span></span></div>
+        <div class="ck"><span class="radio on"></span><span><span class="l-en">Administrators and these people or groups</span><span class="l-zh">管理員，以及這些人或群組</span>
+          <div class="sugg" style="margin-top:var(--s-2)"><span class="chip"><span class="l-en">Lin</span><span class="l-zh">林小華</span> ✕</span><span class="chip"><span class="l-en">Wang</span><span class="l-zh">王經理</span> ✕</span><span class="chip"><span class="l-en">Group: Department leads · 6</span><span class="l-zh">群組：部門主管 · 6 人</span> ✕</span><span class="chip">＋ <span class="l-en">Add people or groups</span><span class="l-zh">加入人或群組</span></span></div></span></div>
+        <div class="ck"><span class="radio"></span><span><span class="l-en">Everyone who has joined</span><span class="l-zh">所有已加入的人</span><small><span class="l-en">Asks you to confirm: 41 people, up to 1,230 questions a day on this Hub's AI account.</span><span class="l-zh">會請你確認：41 人，每天最多 1,230 次提問，用的是這個 Hub 的 AI 帳號。</span></small></span></div>
+      </div>
       <div class="row"><span class="l"><span class="l-en">Questions per person per day</span><span class="l-zh">每人每天可以問幾次</span></span><span class="r"><span class="inp">30</span></span></div>
       <div class="row"><span class="l"><span class="l-en">Answer administrators' questions about this Hub</span><span class="l-zh">回答管理員關於這個 Hub 的問題</span><small><span class="l-en">Read-only. Each answer links to the page it came from.</span><span class="l-zh">唯讀。每個回答都附上資料來源的頁面。</span></small></span><span class="sw on"></span></div>
       <div class="row"><span class="l"><span class="l-en">Let Hub General prepare actions for administrators to confirm</span><span class="l-zh">讓 Hub General 準備動作，由管理員確認後執行</span><small><span class="l-en">Join codes, teams, rooms. Nothing happens without the press on the card.</span><span class="l-zh">加入碼、團隊、房間。沒有按下卡片上的按鈕就不會執行。</span></small></span><span class="sw"></span></div>
     </div>
     <div class="set"><h5><span class="l-en">Usage</span><span class="l-zh">用量</span></h5>
       <div class="row"><span class="l"><span class="l-en">Room assistant</span><span class="l-zh">房間助理</span></span><span class="r"><span class="l-en">42 today · 268 this week</span><span class="l-zh">今天 42 · 這週 268</span></span></div>
-      <div class="row"><span class="l">Hub General</span><span class="r"><span class="l-en">57 today · 311 this week</span><span class="l-zh">今天 57 · 這週 311</span></span></div>
+      <div class="row"><span class="l">Hub General</span><span class="r"><span class="l-en">12 today · 64 this week</span><span class="l-zh">今天 12 · 這週 64</span></span></div>
     </div>
   </div></div>
 </div>
 
 <div class="foot"><ul>
   <li><span class="l-en">All names and numbers are samples. Spec: docs/design/hub-general.md.</span><span class="l-zh">所有名稱與數字都是範例。規格：docs/design/hub-general.md。</span></li>
+  <li><span class="l-en">Each person's conversation is separate: every question is answered on its own, from that person's own chat and lists only.</span><span class="l-zh">每個人的對話是分開的：每個問題各自回答，只用那個人自己的對話與清單。</span></li>
   <li><span class="l-en">Hub General never reads rooms, conversations or files, and never contacts an agent: it suggests, the person asks.</span><span class="l-zh">Hub General 不讀房間、對話或檔案，也不會聯絡任何 Agent：它只建議，由本人去問。</span></li>
 </ul></div>
 
