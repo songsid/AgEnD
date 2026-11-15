@@ -1,0 +1,6 @@
+{"at":1794754598856,"runBoot":"7e62ea02-0954-4ac9-acb3-7d9f4c031ee6","level":"debug","msg":"Queued channel message for delivery"}
+{"at":1794754598861,"runBoot":"7e62ea02-0954-4ac9-acb3-7d9f4c031ee6","level":"debug","msg":"CLI busy — handing message to backend-native input queue"}
+{"at":1794754598910,"runBoot":"7e62ea02-0954-4ac9-acb3-7d9f4c031ee6","level":"warn","msg":"Native pane input refused before write","reason":"expected_seq_changed","retryCount":0,"expectedSeq":888,"observedSeq":890,"operationId":"d00fe87e-c733-410b-9018-b43e846a33b9","commandSequence":5}
+{"at":1794754599573,"runBoot":"7e62ea02-0954-4ac9-acb3-7d9f4c031ee6","level":"debug","msg":"Delivery settle telemetry"}
+{"at":1794754601610,"runBoot":"7e62ea02-0954-4ac9-acb3-7d9f4c031ee6","level":"warn","msg":"Native-queue paste not confirmed as submitted — retrying via idle-gated delivery","proof":"unproven"}
+{"at":1794754610178,"runBoot":"7e62ea02-0954-4ac9-acb3-7d9f4c031ee6","level":"debug","msg":"Native MCP result awaits transport-written confirmation"}

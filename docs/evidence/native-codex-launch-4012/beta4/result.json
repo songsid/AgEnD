@@ -1,0 +1,61 @@
+{
+  "case": ".artifacts/m4012-beta4",
+  "mode": "ordinary",
+  "sourceHead": "4ab65bb4bd563aea6135dd1e44d58a5325bd2123",
+  "sourceTrackedClean": true,
+  "startedAt": 1794753492032,
+  "sessionId": "01a1dfa5-2200-7b12-9bb3-f6e647279552",
+  "pane": {
+    "paneId": "ef3dbc9c-f90c-4941-b3c4-d9c699d9bff5",
+    "launchId": "abe77cd8-fd3c-4364-8348-d43377f054fc",
+    "hostBootId": "7dff2416-d4c7-41ac-92c3-63355e95e239"
+  },
+  "reply": [
+    {
+      "kind": "reply",
+      "text": "M4012_ORDINARY"
+    }
+  ],
+  "events": [
+    {
+      "kind": "event",
+      "event": "message_delivered",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwhxwbz8-90ddffb5"
+      }
+    },
+    {
+      "kind": "event",
+      "event": "message_confirmed",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwhxwbz8-90ddffb5"
+      }
+    }
+  ],
+  "snapshot": {
+    "kind": "snapshot",
+    "nativeCurrent": true,
+    "instanceState": "working",
+    "isPaused": false,
+    "runBoot": "ebcb42ba-2adc-40c2-8b1f-4929d3134599",
+    "flags": {
+      "unreadable": true
+    },
+    "handoffs": [],
+    "rpc": {
+      "input": 2,
+      "key": 2
+    },
+    "pane": {
+      "paneId": "ef3dbc9c-f90c-4941-b3c4-d9c699d9bff5",
+      "launchId": "abe77cd8-fd3c-4364-8348-d43377f054fc",
+      "hostBootId": "7dff2416-d4c7-41ac-92c3-63355e95e239"
+    },
+    "sessionId": "01a1dfa5-2200-7b12-9bb3-f6e647279552"
+  },
+  "composerPaste": false,
+  "queuedMarker": false,
+  "finishedAt": 1794753512823
+}
