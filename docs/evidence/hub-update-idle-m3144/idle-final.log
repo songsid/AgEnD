@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-idle-m3144
+
+
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  10:27:12
+   Duration  496ms (transform 153ms, setup 139ms, import 96ms, tests 69ms, environment 0ms)
+
