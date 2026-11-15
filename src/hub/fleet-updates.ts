@@ -141,11 +141,13 @@ export class HubFleetUpdates {
       const digest = sha256(canonicalArguments(status));
       if (status.sequence === row.sequence) return digest === row.status_digest;
       if (status.sequence < row.sequence) return true;
-      if (!openFleetUpdate(row.state) || (row.state === "updating" && status.state === "waiting")) return false;
+      // A late status cannot reopen a closed request. Receipt ACK still retires the Fleet's durable retry.
+      if (!openFleetUpdate(row.state)) return true;
+      if (row.state === "updating" && status.state === "waiting") return false;
       db.prepare(`UPDATE hub_fleet_update_requests SET state=?,sequence=?,status_digest=?,updated_at=?,waiting_since=COALESCE(waiting_since,?),
         started_at=COALESCE(started_at,?),expires_at=?,reason_code=?,current_version=?,cancel_requested=CASE WHEN ? THEN cancel_requested ELSE 0 END WHERE id=?`)
         .run(status.state, status.sequence, digest, this.core.now(), status.waitingSince ?? null, status.startedAt ?? null, status.expiresAt ?? row.expires_at,
-          status.reasonCode ?? null, status.currentVersion ?? null, openFleetUpdate(status.state) ? 1 : 0, status.id);
+          status.reasonCode ?? null, status.currentVersion ?? null, status.state === "waiting" ? 1 : 0, status.id);
       return true;
     });
     if (accepted && this.eligible(link)) await this.core.deps.transport()?.send(link.fleetId, { v: 1, type: "fleet.update-status-ack", requestId: randomUUID(), linkEpoch: link.linkEpoch,

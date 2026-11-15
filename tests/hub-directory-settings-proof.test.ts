@@ -11,6 +11,13 @@ import { applyHubMigrations } from "../src/hub/db.js";
 import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
 import { BIND_PASSWORD_REF } from "../src/hub/init/layout.js";
 import { directoryCertificates } from "./support/hub-directory-ca-fixture.js";
+import { canonicalArguments } from "../src/hub/identity.js";
+
+// M-3146: the same canonical form, counted, so a test can bound how often a Save canonicalizes the whole reference list (work, not wall time).
+vi.mock("../src/hub/identity.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../src/hub/identity.js")>();
+  return { ...actual, canonicalArguments: vi.fn(actual.canonicalArguments) };
+});
 
 const who = { realm: "fictional", objectId: "11111111-1111-4111-8111-111111111111" }, other = { ...who, objectId: "22222222-2222-4222-8222-222222222222" };
 const group = { key: { ...who, objectId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }, dn: "CN=Old-label,DC=example,DC=test" };
@@ -58,6 +65,23 @@ describe("directory setting preparation authority", () => {
     const r = fixture(); r.source.groups = Array.from({ length: count }, (_, i) => ({ key: { realm: who.realm, objectId: randomUUID() }, dn: `CN=Retained${i}` }));
     await expect(r.save()).resolves.toMatchObject({ directoryEpoch: 1 });
     expect(r.next.checkPolicyGroup).toHaveBeenCalledTimes(count); expect(r.next.close).toHaveBeenCalledOnce();
+  });
+  it("canonicalizes the retained reference list a fixed number of times per Save, not once per reference checked (M-3146)", async () => {
+    const r = fixture(); r.source.groups = Array.from({ length: 512 }, (_, i) => ({ key: { realm: who.realm, objectId: randomUUID() }, dn: `CN=Retained${i}` }));
+    const counted = vi.mocked(canonicalArguments); counted.mockClear();
+    await expect(r.save()).resolves.toMatchObject({ directoryEpoch: 1 });
+    expect(r.next.checkPolicyGroup).toHaveBeenCalledTimes(512);
+    // The first look at the draft compares (and so proves) the list in full: two canonical forms. Before M-3146 every look did, over a thousand.
+    expect(counted.mock.calls.filter(([value]) => Array.isArray(value) && value.length === 512)).toHaveLength(2);
+  });
+  it("a reference changed in the middle of the re-proof is still stale, after the list was proven", async () => {
+    const r = fixture(); r.source.groups = Array.from({ length: 40 }, (_, i) => ({ key: { realm: who.realm, objectId: randomUUID() }, dn: `CN=Retained${i}` }));
+    r.next.checkPolicyGroup.mockImplementation(async key => {
+      if (r.next.checkPolicyGroup.mock.calls.length === 20) r.source.groups = r.source.groups.map((g, i) => i === 30 ? { ...g, dn: "CN=Moved" } : g);
+      return { ok: true, group: { key, dn: "CN=Renamed,DC=example,DC=test" } };
+    });
+    await expect(r.save()).rejects.toMatchObject({ code: "stale" });
+    expect(r.next.checkPolicyGroup).toHaveBeenCalledTimes(20); expect(r.commit).not.toHaveBeenCalled();
   });
   it("refuses a reference graph over the schema bound before any directory I/O", async () => {
     const r = fixture(); r.source.groups = Array.from({ length: 513 }, () => structuredClone(group));

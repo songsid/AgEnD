@@ -133,3 +133,4 @@ WebUpdateHost exposes optional `startHubRequestedUpdate(key,person,stillAllowed,
 The cancellation notice says the result will be reported, rather than claiming the Hub was already told while
 its link may be offline. The chat nonce follows the existing expiring administrator callback; after a Fleet restart,
 old chat buttons expire and the durable dashboard notice remains usable.
+A status ACK confirms receipt, not permission to reopen a closed request. Late statuses for a matching closed request are acknowledged and discarded so the Fleet can retire its durable retry. A matching updating status clears pending cancellation: the Fleet already claimed the update and cannot cancel it.
