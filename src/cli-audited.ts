@@ -19,8 +19,8 @@ export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = 
   "claude-code": Object.freeze(["2.1.316", "2.1.318", "2.1.319"]),
   // 0.165.0: native persistent-pane acceptance (#2954 / #3001 / #3219). 0.166.0: upstream watch audit. 0.167.0: tests/codex-0167-audit.test.ts.
   codex: Object.freeze(["0.165.0", "0.166.0", "0.167.0"]),
-  // tests/kiro-*-audit.test.ts: 2.29.0 … 3.1.0.
-  "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0"]),
+  // tests/kiro-*-audit.test.ts: 2.29.0 … 3.1.0. 3.3.0: no detector change (M-3072, #3831), on the maintainer's ledger.
+  "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0", "3.3.0"]),
   // tests/fixtures/agy-1.3.5-audit, agy-1.3.6-audit; 1.5.3 on the maintainer's ledger.
   antigravity: Object.freeze(["1.3.5", "1.3.6", "1.5.3"]),
   // tests/grok-1.0.*-audit.test.ts: 1.0.52 … 1.0.77.

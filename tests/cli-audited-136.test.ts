@@ -12,6 +12,33 @@ import { hostFacts, hostIds, runtimeIds } from "../src/cli-registry.js";
 import { hostUpdatePlan } from "../src/web-host-install.js";
 import { NATIVE_CLI_AUDITED } from "../src/runtime-pane-native.js";
 import { INSTALLABLE_CLIS } from "../src/runtime-cli-install.js";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+/**
+ * M-3174: the shipped ledger lags the maintainer's when an audit PR lands its evidence but not its entry here (Muse 1.4.20 shipped as "newer than audited").
+ * The evidence an audit leaves in the repository names its release; none may be newer than the newest shipped audited release of that CLI, unless it is
+ * listed here with why. An entry here that is no longer needed fails too, so the list cannot go stale.
+ */
+const SHIPPED_LAG: Readonly<Record<string, string>> = {
+  // The Windows Runtime's pinned install (runtime-cli-install.ts, npm integrity + signer) and the Windows pane gate read the newest entry: moving it needs those pins too.
+  "codex 0.169.0": "Windows Runtime pin and pane gate not yet moved to 0.169.0",
+};
+function auditEvidence(): Array<{ cli: string; version: string; file: string }> {
+  const found: Array<{ cli: string; version: string; file: string }> = [];
+  const tests = join(__dirname, "."), fixtures = join(__dirname, "fixtures");
+  for (const name of readdirSync(tests)) {
+    let m = /^(grok|kiro|muse)-(\d+\.\d+\.\d+)-audit\.test\.ts$/.exec(name);
+    if (m) found.push({ cli: m[1] === "kiro" ? "kiro-cli" : m[1]!, version: m[2]!, file: `tests/${name}` });
+    m = /^codex-0(\d{3})-audit\.test\.ts$/.exec(name);
+    if (m) found.push({ cli: "codex", version: `0.${Number(m[1])}.0`, file: `tests/${name}` });
+  }
+  if (existsSync(fixtures)) for (const name of readdirSync(fixtures)) {
+    const m = /^agy-(\d+\.\d+\.\d+)-audit$/.exec(name);
+    if (m) found.push({ cli: "antigravity", version: m[1]!, file: `tests/fixtures/${name}` });
+  }
+  return found;
+}
 
 describe("the ledger", () => {
   it("every CLI has audited releases, each a plain x.y.z (Muse's newest with its build), with no duplicate", () => {
@@ -26,7 +53,7 @@ describe("the ledger", () => {
   it("the newest audited release is the one an update goes to, compared by number (not as text)", () => {
     expect(Object.fromEntries(CLI_IDS.map(id => [id, auditedVersion(id)]))).toEqual({
       // The maintainer-confirmed ledger of 2026-11-09 21:00 (Taipei).
-      "claude-code": "2.1.319", "codex": "0.167.0", "kiro-cli": "3.1.0", "antigravity": "1.5.3", "grok": "1.0.77", "muse": "1.4.20-R8619.1", "opencode": "1.19.5",
+      "claude-code": "2.1.319", "codex": "0.167.0", "kiro-cli": "3.3.0", "antigravity": "1.5.3", "grok": "1.0.77", "muse": "1.4.20-R8619.1", "opencode": "1.19.5",
     });
     expect(compareVersions("2.1.99", "2.1.316")).toBe(-1);
     expect(compareVersions("1.4.14", "1.4.4")).toBe(1);
@@ -51,6 +78,16 @@ describe("the ledger", () => {
       expect(AUDITED_CLI_VERSIONS[id], id).toContain(pin);
       expect(pin, id).toBe(auditedVersion(id));
     }
+  });
+});
+
+describe("the shipped ledger keeps up with the audits in this repository (M-3174)", () => {
+  it("no audit evidence names a release newer than the newest shipped audited one, except a listed lag", () => {
+    const evidence = auditEvidence();
+    expect(evidence.length).toBeGreaterThan(20);   // the scan finds the audits (a renamed folder must not make this pass on nothing)
+    const ahead = evidence.filter(e => compareVersions(e.version, auditedVersion(e.cli as keyof typeof AUDITED_CLI_VERSIONS)!) > 0).map(e => `${e.cli} ${e.version}`);
+    expect([...new Set(ahead)].filter(k => !Object.hasOwn(SHIPPED_LAG, k)), "add it to src/cli-audited.ts (or list it in SHIPPED_LAG with why)").toEqual([]);
+    expect(Object.keys(SHIPPED_LAG).filter(k => !ahead.includes(k)), "no longer lagging: remove it from SHIPPED_LAG").toEqual([]);
   });
 });
 
@@ -111,7 +148,7 @@ describe("the update command", () => {
     expect(hostUpdatePlan("grok")).toEqual({ command: "curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.77", target: "1.0.77" });
     expect(hostUpdatePlan("claude-code")!.command).toBe("curl -fsSL https://claude.ai/install.sh | bash -s 2.1.319");
     expect(hostUpdatePlan("codex")!.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release 0.167.0");
-    expect(hostUpdatePlan("kiro-cli")!.command).toBe("curl -fsSL https://cli.kiro.dev/install | bash -s -- --version 3.1.0 --force");
+    expect(hostUpdatePlan("kiro-cli")!.command).toBe("curl -fsSL https://cli.kiro.dev/install | bash -s -- --version 3.3.0 --force");
     expect(hostUpdatePlan("opencode")!.command).toBe("curl -fsSL https://opencode.ai/install | bash -s -- --version 1.19.5");
   });
   it("a CLI that updates itself with no exception, or an id that is not a CLI, has none", () => {
