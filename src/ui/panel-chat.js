@@ -985,16 +985,20 @@ function SubagentProgress({ name }) {
 function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, focused }) {
   useChatTick(name, ["state"]);
   const s = store.state;
+  // M-3166 (Argon 0): a phone's one line above the box — model · effort · context, or what the agent is doing — instead of
+  // the working bar; the line under the box goes with it (its Not verified is this line's right end).
+  const metaLine = useMedia("(max-width: 899px)") && !guestPage();
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
-    <${WorkBar} ids=${ids} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
+    ${metaLine ? html`<${ChatMetaLine} ids=${ids} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />`
+      : html`<${WorkBar} ids=${ids} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />`}
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
     ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
     <${Composer} name=${name} inst=${inst} bindings=${bindings} ids=${ids} focused=${focused} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
-    <div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
-      class="hint" title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>
+    ${metaLine ? null : html`<div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
+      class="hint" title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>`}
   </div></div>`;
 }
 
@@ -1101,6 +1105,40 @@ function PromptText({ p, action }) {
  * #3724: the strip is always there — idle it keeps its height and shows nothing (no button), so a state change only changes
  * what is inside it and never moves the thread or the composer (chat-work-bar.css fixes the height; long text stays one line).
  */
+/**
+ * M-3166 (Argon 0, the user's OK of round 2): a phone's meta line above the box, 26 px, 12 px text. Left: the model, its
+ * effort and the context ("Opus 5.5 · high · 56%", which opens the model's pick list) — or, while the agent is busy, what it
+ * is doing and for how long ("處理中 0:12 · 56%"). Right: Not verified · Authorize (and its other states) only while this
+ * browser is not verified; while the agent works with something typed, Stop (Send sends again). Hit targets ≥ 32 px.
+ */
+function ChatMetaLine({ name, inst, lease, exec, awaiting, ids = {} }) {
+  const s = store.state, busy = R().isBusy(exec) ? exec : "";
+  const kind = awaiting != null ? "awaiting" : s.stopping[name] && busy ? "stopping" : busy;
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!kind || kind === "awaiting") return undefined;
+    const h = lease.interval(() => tick((n) => n + 1), 1000);
+    return () => lease.clear(h);
+  }, [kind, lease]);
+  const pct = inst?.context_pct == null ? null : Math.round(inst.context_pct);
+  const since = s.workingSince[name];
+  const tail = pct != null ? ` · ${pct}%` : "";
+  const commands = supportsInstanceFeature(inst, "commands");
+  const model = shortModelName(modelLabel(inst?.model || modelText(inst || {})));
+  const effort = supportsInstanceFeature(inst, "effort") ? effortChip(inst || {}) : "";
+  const doing = kind ? `${t(kind === "stuck" ? "chat.metaStuck" : kind === "stopping" ? "chat.metaStopping" : kind === "awaiting" ? "chat.metaAwaiting" : "chat.metaWorking")}${
+    kind !== "awaiting" && since != null ? ` ${R().formatElapsed(performance.now() - since)}` : ""}` : "";
+  const run = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
+  const label = `${model}${effort ? ` · ${effort}` : ""}`;
+  return html`<div class=${`chat-meta${kind ? ` busy ${kind}` : ""}`} data-trust="status" role="status">
+    ${kind ? html`<span class="chat-meta-left"><span class="chat-meta-dot" aria-hidden="true"></span><span>${doing}${tail}</span></span>`
+      : commands ? html`<button type="button" class="chat-meta-left chat-meta-model" title=${t("chat.chipModel", label)} aria-label=${t("chat.chipModel", label)}
+          onClick=${() => (inst?.runtime === "windows" ? navigate(sectionPath("agents")) : run("model"))}><span>${label}${tail}</span><span class="chev" aria-hidden="true">⌄</span></button>`
+      : html`<span class="chat-meta-left"><span>${label}${tail}</span></span>`}
+    <span class="chat-meta-right">${busy ? html`<button type="button" id=${ids.stopBtn || "stopBtn"} class="chat-meta-stop btn-stop" disabled=${!!s.cancelling[name]} title=${t("chat.stopReplyTitle")}
+      onClick=${() => store.cancelReply(name)}>${t("chat.stopReply")}</button>` : null}<${ComposerAuth} /></span>
+  </div>`;
+}
 function WorkBar({ name, lease, exec, awaiting, workingLabel, ids }) {
   const s = store.state;
   const busy = R().isBusy(exec) ? exec : "";
@@ -1230,7 +1268,7 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
       onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${pick ? optId(pick) : undefined}
       attach=${attachmentsSupported ? { title: t("chat.attachTitle"), onFiles: (list) => store.addFiles(name, list) } : null}
       stop=${HIDDEN_STOP}
-      tools=${toolsHere && !guestPage() ? html`<${ComposerTools} name=${name} inst=${inst} lease=${lease} short=${!narrow} />` : null}
+      tools=${toolsHere && !narrow && !guestPage() ? html`<${ComposerTools} name=${name} inst=${inst} lease=${lease} short=${true} />` : null}
       send=${stopNow ? { hidden: false, stop: true, disabled: !!s.cancelling[name], label: t("chat.stopReply"), title: t("chat.stopReplyTitle"), onClick: () => store.cancelReply(name) }
         : { hidden: false, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
     </div>`;

@@ -55,7 +55,8 @@ try {
         const stop = await page.evaluate(() => {
           const b = document.getElementById("stopBtn"); if (!b) return null;
           const r = b.getBoundingClientRect();
-          return { inBar: !!b.closest(".work-bar"), inComposer: !!b.closest(".composer"), w: r.width, h: r.height, label: b.getAttribute("aria-label") };
+          // M-3166: a phone's Stop is its meta line's (the line above the box that replaced the working bar).
+          return { inBar: !!b.closest(".work-bar, .chat-meta"), inComposer: !!b.closest(".composer"), meta: !!b.closest(".chat-meta"), w: r.width, h: r.height, label: b.getAttribute("aria-label") };
         });
         const busy = exec === "working" || exec === "stuck";
         if (busy !== !!stop || (stop && (!stop.inBar || stop.inComposer))) fail.push(`${leg}/${caseName(c)}/${label}/${state}: Stop ${JSON.stringify(stop)} (busy ${busy})`);
@@ -66,7 +67,7 @@ try {
         const phoneEmptyBusy = busy && c.device === "phone" && label === "empty";
         if (phoneEmptyBusy) {
           if (!send?.stop || send.w < 44 || send.h < 44) fail.push(`${leg}/${caseName(c)}/${label}/${state}: phone Send-as-Stop ${JSON.stringify(send)}`);
-        } else if (stop && c.device === "phone" && (stop.w < 44 || stop.h < 44)) fail.push(`${leg}/${caseName(c)}/${label}/${state}: phone Stop ${stop.w}×${stop.h} < 44`);
+        } else if (stop && c.device === "phone" && (stop.meta ? stop.h < 32 : stop.w < 44 || stop.h < 44)) fail.push(`${leg}/${caseName(c)}/${label}/${state}: phone Stop ${stop.w}×${stop.h} too small`);   // the meta line's targets: 32 px (Argon 0, the user's OK)
         await page.locator(".dock").screenshot({ path: join(OUT, `${leg === "skew" ? "skew-" : ""}${caseName(c)}-${label}-${i}-${state}.png`) });
       }
       const key = `${leg}/${caseName(c)}/${label}`;

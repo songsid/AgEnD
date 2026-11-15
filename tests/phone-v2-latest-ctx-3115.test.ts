@@ -56,7 +56,7 @@ describe("M-3115 PR 3: the context hint as one line with ✕ (phone)", () => {
     const pg = await app();
     fire($(pg, ".qa-dismiss"), "click"); await settle(4);
     expect([$(pg, ".quick-actions"), (globalThis as any).sessionStorage.getItem("agend_ctx_hint_hidden:web-dev")]).toEqual([null, "1"]);
-    expect($(pg, ".ctx-ring")?.className, "the ring still says it").toBe("ctx-ring warn");
+    expect($(pg, ".chat-meta-model")?.textContent, "the meta line still says it (M-3166: the ring's place)").toContain("74%");
     for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
     const again = await app({ storage: {} });
     (globalThis as any).sessionStorage.setItem("agend_ctx_hint_hidden:web-dev", "1");   // this tab's session (a fresh page's store)
