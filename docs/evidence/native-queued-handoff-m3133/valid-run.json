@@ -1,0 +1,146 @@
+{
+  "scope": "valid same-endpoint retry B; earlier diagnostic-client replacement excluded",
+  "coordinatorBootId": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+  "messageId": "web-mwhx0h2d-46046534",
+  "messageEvents": [
+    {
+      "at": 1794752019318,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "kind": "event",
+      "event": "message_queued",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwhx0h2d-46046534"
+      }
+    },
+    {
+      "at": 1794752019972,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "kind": "event",
+      "event": "message_delivered",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwhx0h2d-46046534"
+      }
+    }
+  ],
+  "handoffEvents": [
+    {
+      "at": 1794751998279,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "rows": []
+    },
+    {
+      "at": 1794752019356,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "rows": [
+        {
+          "id": "ef260b64-8d06-492e-86ca-1857e1aa2ce0",
+          "holder": "831f4018-94da-4ef5-833a-d4565bf9187b:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwhx0h2d-46046534",
+          "wireHash": "b724c21af951f12128acfe745a4217fbeccf96aedf00059dcf06a5b45403a692",
+          "runtime": {
+            "version": 1,
+            "machineId": "local",
+            "hostBootId": "2c55db42-b1fc-476a-9d66-a9b140234e37",
+            "paneId": "e53ce3cb-0782-4235-a622-102ed2a6cdb7",
+            "launchId": "a59e60de-a279-44b4-bced-349f0fd8a39a",
+            "agentId": "99478120-79ea-4d2a-9ca2-1809c20c66cc",
+            "provider": "codex",
+            "cursor": {
+              "sessionId": "01a1df8b-249e-7d02-b2c7-7afeb185e75d",
+              "offset": 231234,
+              "fileId": "d52a2bd15955a9b27c9aaf8590688ae1eb80d3bb58531262ee03835d0aa04536",
+              "anchor": "cee5b473c50c0e927cb3d6373672f4f8b3ea9e33ca9e6b5f5fbf15ef4ab07edc"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "at": 1794752021984,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "rows": []
+    }
+  ],
+  "nativePasteRequests": [
+    {
+      "at": 1794752019368,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "action": "input",
+      "textHash": "b724c21af951f12128acfe745a4217fbeccf96aedf00059dcf06a5b45403a692"
+    }
+  ],
+  "pasteAndEnterACKs": [
+    {
+      "at": 1794752019391,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "action": "input",
+      "operationId": "e1697223-e6fc-4d66-8343-8d26f4a2a07d",
+      "sequence": 9,
+      "expectedSeq": 2454,
+      "observedSeq": 2454,
+      "inputRefused": false
+    },
+    {
+      "at": 1794752019962,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "action": "key",
+      "operationId": "d68d2f01-55e6-433e-ad74-2c29c4132c96",
+      "sequence": 10,
+      "expectedSeq": 2461,
+      "observedSeq": 2461,
+      "inputRefused": false
+    }
+  ],
+  "diagnostics": [
+    {
+      "at": 1794752019310,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "level": "debug",
+      "msg": "Queued channel message for delivery"
+    },
+    {
+      "at": 1794752019326,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "level": "debug",
+      "msg": "CLI busy \u2014 handing message to backend-native input queue"
+    },
+    {
+      "at": 1794752019971,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "level": "debug",
+      "msg": "Delivery settle telemetry"
+    },
+    {
+      "at": 1794752021977,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "level": "warn",
+      "msg": "Native-queue paste not confirmed as submitted \u2014 retrying via idle-gated delivery",
+      "proof": "unproven"
+    },
+    {
+      "at": 1794752198388,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "level": "debug",
+      "msg": "Native MCP result awaits transport-written confirmation"
+    }
+  ],
+  "replies": [
+    {
+      "at": 1794752198385,
+      "runBoot": "fa2133ab-b57b-48f4-8bce-a6b6a75d692d",
+      "kind": "reply",
+      "text": "M3133_BUSY_B"
+    }
+  ],
+  "duplicateCheck": {
+    "matchingPasteRequests": 1,
+    "appliedMatchingPasteACKs": 1,
+    "furtherPasteOrEnterAfterSequence10": false,
+    "takenCanaryReplies": 0
+  }
+}

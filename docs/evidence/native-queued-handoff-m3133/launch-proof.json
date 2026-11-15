@@ -1,0 +1,17 @@
+{
+  "kind": "source-reconstructed-argv-from-recorded-launch",
+  "sourceHead": "0f7e0e39270781e60ccf719b4777e72441356f7e",
+  "codeBundleSha256": "f7b555ed2743c44bc18f1a5b910425b300cde4ddb0099b89eb222c9c17c4c273",
+  "nativeNoDaemon": true,
+  "nativeNoAltScreen": false,
+  "nativeInstantInterruptFalse": false,
+  "nativeUpdateDisabled": true,
+  "nativeModuleSha256": "bde7b87b57509a6e3d3768a49f58f3eea12c77ea06a6cdcf1889da99c24cfe5b",
+  "callPath": [
+    "src/runtime-pane-worker.ts:74",
+    "src/runtime-pane-native.ts:99"
+  ],
+  "ordinaryBackendPinsBoth": "src/backend/codex.ts:1995-2001",
+  "caveat": "The running process command line was not captured before cleanup. This reconstructs the flags from the clean built module and retained exact launch; it does not prove which omitted flag causes the observed submit failure.",
+  "stagedNativeModuleByteEqual": true
+}
