@@ -170,7 +170,7 @@ describe("M-3140: General's notice and its 7-day reminder", () => {
     const f = await fleet();
     try {
       const retired: string[] = [];
-      vi.spyOn(f.fm, "retireNonceButtons").mockImplementation(async (_e: any, _m: any, text: string) => { retired.push(text); });
+      vi.spyOn(f.fm, "retireNonceButtons").mockImplementation(async (...a: unknown[]) => { retired.push(String(a[2])); });
       vi.spyOn(f.fm, "beginUpdateProgress").mockImplementation(() => {});
       const press = async (nonce: string, user = "1") => {
         vi.spyOn(f.fm, "consumeNonceCallback").mockReturnValueOnce({ entry: { messageId: "m1", adapter: {}, chatId: "-100", threadId: "7" }, action: "update" });
