@@ -375,6 +375,15 @@ jobs:
             export SKEW_APP_CSS="$RUNNER_TEMP/base-app.css"
           fi
           PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-composer-width.mts
+      # beta.4 (the user, iPhone): every keypress made the page re-align. With the keyboard up, the view's readings on a
+      # keystroke (bars, pans, a one-off full height) never change the keyboard state, the dock's padding or the box's place.
+      - name: Phone keyboard steady while typing (no re-align on a keystroke)
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19661'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-kb-steady.mts
       - name: Save verified CJK archive (best effort, after the gate)
         if: always() && needs.detect-changes.outputs.text-only != 'true' && steps.cjk-fonts.outcome == 'success' && steps.cjk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5

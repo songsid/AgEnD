@@ -66,6 +66,23 @@ describe("M-3111: with the keyboard up the shell is the visible view", () => {
     expect(vars()).toEqual(["480px", null]);
   });
 
+  // beta.4 (the user, iPhone): every keypress made the page re-align. While the field keeps focus the shell stays the view
+  // even if the keyboard state dips for a moment: the height and pan are never handed back to the stylesheet mid-typing.
+  it("typing: a keyboard state that dips for a moment leaves the shell as the view (no re-align on a keystroke)", async () => {
+    const { vv, vars, focus } = await phone();
+    const { shellStore } = await import("/assets/app-shell.js");
+    await focus();
+    vv.height = 480; vv.offsetTop = 120; vv.emit("resize"); await settle();
+    await new Promise((r) => setTimeout(r, 900));                         // past the focus follow window
+    const seen: Array<Array<string | null>> = [];
+    for (const top of [132, 120, 140, 120]) {
+      shellStore.set({ keyboard: false });                                 // the state dips (one reading said "down")
+      vv.offsetTop = top; vv.emit("scroll"); await settle();
+      seen.push(vars());
+    }
+    expect(seen).toEqual([["480px", "translateY(132px)"], ["480px", "translateY(120px)"], ["480px", "translateY(140px)"], ["480px", "translateY(120px)"]]);
+  });
+
   it("down: the shell follows the view back up every frame (no snap at the end), then gives the height back to its stylesheet", async () => {
     const { vv, vars, kb, focus, blur, frames } = await phone();
     await focus();

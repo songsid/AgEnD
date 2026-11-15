@@ -127,6 +127,8 @@ describe("#2478: the shell on a phone (real Shell, fake visualViewport)", () => 
     await p.resize({ width: 844, height: 200, inner: 200 });
     expect(p.kb()).toBe(true);
     await p.resize({ height: 390, inner: 390 });                                 // grew by 190: the keyboard went
+    expect(p.kb(), "still in the field: down holds a moment first (beta.4 flicker)").toBe(true);
+    await new Promise((r) => setTimeout(r, 360)); await settle();
     expect(p.kb()).toBe(false);
     await p.resize({ height: 200, inner: 200 });                                 // and up again, measured from 390
     expect(p.kb()).toBe(true);
@@ -170,7 +172,24 @@ describe("IME: a candidate bar never takes the tabs out and back", () => {
     await c.resize({ height: 500 });
     expect(c.kb()).toBe(true);
     await c.resize({ height: 844 });
-    expect(c.kb()).toBe(false);
+    expect(c.kb(), "still in the field: down holds a moment first (beta.4 flicker)").toBe(true);
+    await new Promise((r) => setTimeout(r, 360)); await settle();
+    expect(c.kb(), "held: the keyboard really went").toBe(false);
+  });
+
+  // beta.4 (the user, iPhone): every keypress made the page re-align. A keystroke can move the view — the predictive or
+  // candidate bar coming and going, the caret panned into view, one reading as tall as no keyboard at all — and none of it
+  // may take the keyboard down and up again while the field keeps focus.
+  it("keystrokes with the keyboard up: bars, pans and a one-reading full height — kb-open never drops", async () => {
+    const c = await phone();
+    await c.focus("#box");
+    await c.resize({ height: 480 });
+    expect(c.kb()).toBe(true);
+    const seen: boolean[] = [];
+    for (const h of [436, 480, 844, 480, 436, 844, 436, 480]) { await c.resize({ height: h }); seen.push(c.kb()); await new Promise((r) => setTimeout(r, 40)); }
+    await new Promise((r) => setTimeout(r, 360)); await settle();
+    seen.push(c.kb());
+    expect(seen.every(Boolean), JSON.stringify(seen)).toBe(true);
   });
   it("while an IME composes nothing changes; compositionend applies what the view says", async () => {
     const c = await phone();
