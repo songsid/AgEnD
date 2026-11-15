@@ -4,7 +4,7 @@
 //   desk  — the model control (the composer's chip under 1440 px, M-3167; the header's wider) opens a menu by it — above
 //           the composer's, under the header's; its left near the control's —, no card;
 //           one row per model (its short name, one line, ✓ on the current one), the effort row (the set one pressed),
-//           More and Refresh; Escape closes it
+//           More and Refresh; the keyboard (focus on the model in use, ↓ moves on, M-3192); Escape closes it, focus back on the control
 //   phone — its model control opens the menu as a bottom sheet (the dialog), the same rows and effort, every control ≥ 44 px
 // Everywhere: no page error. Pictures: <case>-menu.png. Run it on the base too (SMOKE_NAME=…-before): it FAILs (the card).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-model-menu-m3166.mts
@@ -69,7 +69,18 @@ try {
       else need(m.sheet && m.small === 0, `a bottom sheet, every control ≥ 44 px (${m.sheet}, ${m.small} small)`);
     }
     await page.screenshot({ path: shotPath(SMOKE, caseName(c as any), "menu") });
-    if (c.device === "desk") { await page.keyboard.press("Escape"); await page.waitForTimeout(300); need(!(await page.locator(".model-menu").count()), "Escape closes it"); }
+    if (c.device === "desk") {
+      // M-3192: the menu takes the keyboard — focus on the model in use; ↓ moves to the next button; Escape closes it and focus
+      // goes back to the control that opened it.
+      const k = async () => page.evaluate(() => { const a = document.activeElement as HTMLElement | null;
+        return { inMenu: !!a?.closest(".model-menu"), row: a?.classList.contains("model-menu-row") ? (a.querySelector("b")?.textContent || "") : null, on: a?.getAttribute("aria-checked") === "true",
+          control: !!a?.matches(".composer-pick, .chat-model-entry") }; });
+      const k0 = await k(); await page.keyboard.press("ArrowDown"); await page.waitForTimeout(150); const k1 = await k();
+      need(k0.inMenu && k0.on && k1.inMenu && k1.row !== k0.row, `keyboard: focus on the model in use, ↓ moves on (${JSON.stringify([k0, k1])})`);
+      await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+      need(!(await page.locator(".model-menu").count()), "Escape closes it");
+      need((await k()).control, "Escape: focus is back on the control that opened it");
+    }
     need(errs.length === 0, `page errors: ${errs.join(" | ")}`);
     results.push({ name: caseName(c as any), ok: failed.length === 0, failed });
     await p.ctx.close();
