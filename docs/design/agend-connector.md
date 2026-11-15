@@ -1,6 +1,10 @@
 # The AgEnD connector: one extension point for every agent and desktop app (M-3185)
 
-Status: first draft for the owner to iterate on. Nothing is built. Facts about today's server come from a source
+Status: second draft. On 2026-11-15 the owner chose the direction after comparing OpenClaw and Manus: a module is
+its own MCP server process behind the connector, skills stay as SKILL.md, listing is static, sources are ours first
+and curated later, approvals and isolation are AgEnD's own. Nothing is built.
+
+Facts about today's server come from a source
 survey of `release/2.3.5-alpha` at `616e8f75d` and from Sentinel's narrow source checks for M-3184 (the full audit
 has not run), and from Cairn's M-3183 work (draft #4004, not yet merged).
 
@@ -8,10 +12,11 @@ has not run), and from Cairn's M-3183 work (draft #4004, not yet merged).
 
 Every agent in a Fleet already talks to one AgEnD program, whatever its CLI: the AgEnD connector (our MCP server).
 Today a new ability, such as reading SharePoint files or using a browser, is installed into each CLI separately, so
-it works on some backends and not others, and nobody can see or control it from AgEnD. The proposal: a new ability
-is a **module** inside the connector. It is installed once with AgEnD, switched on per agent in Settings, works the
-same on every backend, asks for approval through AgEnD, and can also be reached by a person's desktop Claude or
-Codex app through the same connector.
+it works on some backends and not others, and nobody can see or control it from AgEnD. The design: a new ability
+is a **module**, an ordinary MCP server that runs as its own process **behind** the connector. The connector
+becomes a gateway: agents still see one connector, and it passes each call to the right module. A module is
+installed once with AgEnD, switched on per agent in Settings, works the same on every backend, asks for approval
+through AgEnD, and can also be reached by a person's desktop Claude or Codex app through the same connector.
 
 Names used here: **AgEnD connector** / 「AgEnD 連接器」, **module** / 「模組」.
 
@@ -50,71 +55,160 @@ that behaves like it.
 
 ## 2. Module model
 
-A module is a named group of tools that ships **inside an AgEnD release**. It is described by a manifest, a small
-fixed record that AgEnD can read without running the module:
+**A module is an MCP server in its own process, plus a manifest.** MCP is the module interface (the Manus-style
+standard), so a module can be one we write or an existing MCP server we wrap. Modules are not code loaded into the
+Fleet process (the OpenClaw style): a module that crashes or hangs fails one call.
 
-| Manifest field | Meaning |
+```
+agent's CLI ── connector (stdio, per agent) ── Fleet process = gateway ──┬─ Core and Hub tools (inside the gateway)
+                                                                        ├─ module process: SharePoint files
+desktop app ── connector (section 7) ─────────┘                         ├─ module process: Browser
+                                                                        └─ module process: …
+```
+
+### 2.1 The manifest
+
+The manifest is a small file AgEnD reads **without starting the module**. It has two parts.
+
+| Part | Fields | Where it comes from |
+|---|---|---|
+| **Recorded from the module** | Server name and version; each tool's name, description and input shape; a fingerprint of all of that | Captured by asking the module for its tool list **once**: when we build AgEnD (shipped modules) or when an administrator adds or updates it (later sources). Never at listing time |
+| **Added by AgEnD** | Name and one-line description in EN and zh-TW; how to start it (program and version, fixed); what it needs (a Hub connection, a Microsoft sign-in, a desktop, a platform); risk of each tool (reads only / changes things / needs approval, section 6); which callers each tool serves (section 7); tools left out; default on or off; one process for the Fleet or one per agent; time limits; its skill | Written by us for shipped and catalog modules; chosen by the administrator for a server they add |
+
+How a module's own tool list maps to what an agent sees:
+
+- **Names.** A tool appears as `<module>_<tool>`, for example `browser_open`, so two modules cannot collide and
+  logs show where a call went. Core and Hub tools keep today's names.
+- **Descriptions and input shapes** are passed through as recorded. The gateway does not rewrite them; for a
+  server someone else wrote, an administrator sees them before switching the module on.
+- **Left out.** A manifest can leave tools out (a wrapped server often has more than we want). A tool that is not
+  in the manifest does not exist for agents, whatever the module says.
+- **Every tool must have a risk.** For a shipped module the build fails if one is missing. For a server an
+  administrator adds, an unclassified tool is "needs approval each time" until they choose.
+
+### 2.2 Core and Hub stay inside the gateway
+
+Today's 83 tools, the four Hub tools among them, are Fleet functions: they act on the Fleet's own state and its Hub
+link. They stay in the Fleet process, described by the same kind of manifest so that listing, Settings and
+approvals treat everything alike. Moving them into separate processes would add risk and gain nothing. "A module
+is a process" applies to everything new.
+
+### 2.3 The gateway: routing
+
+1. The agent calls a tool on its connector. The connector forwards it to the Fleet process, as today.
+2. The gateway finds the tool in the manifests and checks, in this order: the caller is who its socket says; the
+   module is on for this agent and not off for the Fleet; the agent's tool set and switches allow it; the module's
+   needs are met; the tool's approval rule (section 6).
+3. It passes the call to the module's process, starting it if needed, with the caller's identity attached by the
+   gateway. The module never learns identity from the agent, and never sees another module.
+4. The result goes back the same way. The log records the agent, the module, the real tool and the outcome.
+
+These checks run in the gateway for every way in, including "find on demand" (section 5) and desktop apps
+(section 7). A hidden tool is not a refused tool; the gateway refuses (Sentinel).
+
+**One process or several.** The manifest says which: **one for the Fleet** when the module keeps nothing per
+agent (SharePoint files), or **one per agent** when it does (a browser, with each agent's own profile and
+sign-ins). Calls to one process run one at a time unless the manifest allows more.
+
+### 2.4 Starting, stopping, restarting
+
+| Rule | Proposed value |
 |---|---|
-| Name and one-line description | Shown in Settings, in EN and zh-TW |
-| Tools | Name, description and input shape of each tool. Fixed for the release |
-| Needs | What must be present for it to work: a Hub connection, a signed-in Microsoft account, a desktop, a platform |
-| Risk of each tool | Reads only / changes things / needs a person's approval (section 6) |
-| Who may call it | Fleet agents, a person's desktop app, or both (section 7) |
-| Default | On or off for a new agent |
-| Runs | Inside the Fleet process (light modules), or as its own worker process (anything that drives a browser, a desktop or outside code) |
-| Skill | An optional short "how to use this" skill, published only to agents that have the module |
+| **Lazy start** | A module process starts on the first call that needs it, never at Fleet start and never for listing |
+| Start limit | 20 seconds to start and answer the opening handshake; otherwise the call fails with "could not start" |
+| **Idle stop** | Stopped after 10 minutes with no call; the next call starts it again |
+| **Crash** | Calls in progress end with a clear failure. The next call starts a fresh process |
+| Repeated failure | 3 failed starts or crashes within 5 minutes: the module shows **Not working** in Settings, calls are refused at once with that reason, and it is tried again after 5 minutes or when an administrator presses **Try again** |
+| **Its own restart** | Restarting or stopping one module does not restart the Fleet, the agents or other modules |
+| **Its own update** | A module's version can change while the Fleet runs: the gateway waits until the module is idle, swaps the process and the manifest together, and announces the new tool list. Shipped modules change version with an AgEnD release at first; the catalog (section 2.6) lets one module move between releases |
+| Fleet stop or update | Module processes stop with the Fleet and are started again on demand |
 
-Rules:
+### 2.5 Time limits
 
-1. **Built-in first.** Phase 1 modules are written by us and ship with AgEnD. No module code arrives from the Hub
-   or from the network, the same rule as M-3130.
-2. **One check, in the Fleet process.** Whether an agent may use a module is decided where the call runs, not only
-   by what the list shows. A hidden tool is not a refused tool (Sentinel).
-3. **Heavy modules run apart.** A browser or desktop module runs as its own worker process, started on first use,
-   with a time limit per call. If it hangs or crashes, that one call fails with a reason and the Fleet keeps
-   running.
-4. **Every call ends with a clear result**: done, refused (with the reason), not available (what is missing), or
-   uncertain (it may have happened; here is how to check). Never a silent wait.
+Two limits exist today that the gateway must stay inside: the connector gives up after 45 seconds, and Codex gives
+a tool 90 seconds.
 
-### 2.1 First modules
+- **A call answers within 30 seconds.** If the module has finished, the agent gets the result.
+- **If it has not**, the agent gets "Still working. The result will arrive as a message.", and the result is
+  delivered to the agent when it is ready, the same route an approved action uses (section 6).
+- **Hard limit** per call, from the manifest: 5 minutes by default, 30 at most. At the limit the gateway asks the
+  module to cancel, waits 5 seconds, then stops the process.
+- **What the agent is told** depends on the tool's risk. A read: "Timed out. Nothing was changed." A tool that
+  changes things: "Timed out. It may have partly happened; check before trying again."
 
-| Module | What it gives an agent | Default | Notes |
-|---|---|---|---|
-| **Core** | Today's AgEnD tools: reply, messaging, tasks, schedules, decisions | Always on | Still shaped by the agent's tool set. Not re-cut in the first phases |
-| **Hub** | The four Hub room tools that exist (M-3118) | On when the Fleet is connected to a Hub | The first module, because it exists and M-3183 touches it |
-| **SharePoint files** | List, read (including protected Excel), download, see who a file is shared with | Off | Today a skill for one CLI. Needs a Microsoft sign-in, approved through AgEnD |
-| **Browser** | Open a page, read it, click, fill in, take a picture | Off | Own worker process, own browser profile per agent |
-| **Computer use** | See and operate the desktop of the AgEnD computer, or of a paired Windows computer | Off | The riskiest. Needs its own short design before it is built |
+### 2.6 Catching drift between the manifest and the module
 
-Today's five dashboard switches are modules in all but name. They move into the same list later (phase 6), so
-there is one place to look.
+The manifest is a recording, so the module can come to differ from it: a wrong version on disk, a server that
+changes its tools after an update, or a server that changes them on purpose. A changed description matters as
+much as a changed tool, because the model reads it.
 
-### 2.2 Other people's MCP servers, as wrapped modules
+| When | Check | If it differs |
+|---|---|---|
+| **Building AgEnD** | A test starts every shipped module and compares its live tool list with the manifest | The build fails. A shipped module cannot reach users out of step |
+| **Each process start** (not at listing) | After the handshake the gateway asks the module for its tool list and server version, and compares the fingerprint with the manifest | **Shipped or catalog module**: it does not run; it shows "Not working: does not match this AgEnD version", and the log has the difference. **Added by an administrator**: the module is paused and the administrator sees what changed (new, removed and changed tools, with the old and new descriptions) and chooses **Accept** or **Keep off**. Nothing is accepted on its own |
+| **Each call** | The tool must be in the manifest | Refused by the gateway. The module is not asked |
+| **While running** | The module announces that its tools changed, or answers "no such tool" for one the manifest has | Treated as a start check: compare, then the same outcomes |
+| **Before starting** | The program on disk matches the fixed version and file hash in the manifest | It is not started |
 
-The fastest way to gain abilities is to wrap an existing MCP server (many exist for browsers, files, trackers)
-instead of rewriting it. A **wrapped module** is an existing MCP server that AgEnD starts as a worker process and
-passes through, under the same switches, approvals and limits as a built-in module.
+Listing still never asks a module. If a start check fails after the list was shown, the agent has tools that now
+answer "Not available: this module is not working"; the list does not change under it.
 
-- Its tool list is **recorded once**, when an administrator adds or updates it, and listing reads that record.
-  AgEnD never starts the server just to list tools.
-- It runs outside code under the Fleet's OS account. Only a Fleet administrator can add one, and the version is
-  fixed until they change it.
-- Recommended later (phase 5), after built-in modules prove the model.
+### 2.7 Where modules come from
+
+1. **Shipped with AgEnD** (now). We write or wrap them, test them, and record their manifests at build time.
+2. **A curated catalog** (later, like Manus's): a list we maintain and ship, each entry an exact version with its
+   hash and a manifest we recorded and classified. An administrator picks from it; installing fetches that one
+   published version.
+3. **A server an administrator adds** (later still): any MCP server, by exact version. Fleet administrators only.
+   Its manifest is recorded when it is added, and every tool starts as "needs approval each time".
+
+No open marketplace, and no module or manifest sent from the Hub. A wrapped server someone else wrote runs their
+code under the Fleet's OS account in all three cases; the catalog only means we looked at that version.
+
+### 2.8 First modules
+
+| Module | What it gives an agent | Runs as | Default | Notes |
+|---|---|---|---|---|
+| **Core** | Today's AgEnD tools: reply, messaging, tasks, schedules, decisions | Inside the gateway | Always on | Still shaped by the agent's tool set |
+| **Hub** | The four Hub room tools that exist (M-3118) | Inside the gateway | On when the Fleet is connected to a Hub | Listing already fixed by M-3183 |
+| **SharePoint files** | List, read (including protected Excel), download, see who a file is shared with | One process for the Fleet | Off | Today a skill for one CLI. Needs a Microsoft sign-in, approved through AgEnD |
+| **Browser** | Open a page, read it, click, fill in, take a picture | One process per agent | Off | A wrapped existing browser server is the likely start; own profile per agent |
+| **Computer use** | See and operate the desktop of the AgEnD computer, or of a paired Windows computer | One process per agent | Off | The riskiest. Needs its own short design first |
+
+Today's five dashboard switches are modules in all but name. They move into the same list later, so there is one
+place to look.
+
+### 2.9 Skills
+
+Skills stay as they are: a `SKILL.md`, published into each agent's skills folder, which the CLI brings into
+context only when it is relevant (as OpenClaw and Claude do). A skill is text that teaches; the module is the
+ability. A module's manifest can name one skill, and AgEnD's existing publisher gives it only to agents that have
+the module on. For a backend with no skills folder, the same short text is what `agend_find_tool` returns with the
+module's tools (section 5).
+
+### 2.10 What process isolation is, and is not
+
+- It **is** protection against a crash, a hang or a memory leak in one module, and it lets one module restart or
+  update alone.
+- It is **not** a sandbox. A module process runs under the Fleet's OS account and can read what that account can
+  read. The gateway starts it with a minimal environment (no Fleet secrets, its own data folder), which limits
+  accidents, not intent. An operating-system sandbox for modules belongs on the pre-launch list.
 
 ## 3. The tool list: fixed and fast
 
 The M-3183 lesson, as a rule: **listing tools never waits on anything.**
 
-- The list is built from two things only: the module manifests in this AgEnD version, and the agent's saved
-  settings. Both are on disk when the connector starts.
-- Listing does not ask the Fleet process, the Hub, a module worker or the network.
+- The list is built from two things only: the module manifests on disk, and the agent's saved settings. Both are
+  there when the connector starts.
+- Listing does not ask the Fleet process, the Hub, a module process or the network, and does not start a module.
 - A module that is switched on but cannot work right now **stays listed**. Calling its tool returns "not
   available" with the reason, for example: "Not available: this Fleet is not connected to a Hub." The agent can
   say so in its answer. This is what M-3183 already does for the Hub tools; the module model makes it the rule
   for every module.
 - The list changes only when a person changes the agent's modules in Settings. The connector announces the change;
   a CLI that does not pick it up mid-session gets it at the agent's next restart, and Settings says so.
-- A module that fails to load leaves the rest of the list untouched.
+- A manifest that cannot be read leaves the rest of the list untouched, and Settings shows that module as "Not
+  working".
 
 What this costs: an agent sometimes sees a tool it cannot use at that moment, and spends one call to find out.
 That is cheaper than a list that can hang or change under the model.
@@ -132,11 +226,13 @@ default sits beside the default tool set in Settings.
 | Row state, working | On | 已開啟 |
 | Row state, something missing | On · Needs a Microsoft sign-in | 已開啟 · 需要登入 Microsoft |
 | Row state, off by the Fleet | Off for this Fleet | 這個 Fleet 已關閉 |
+| Row state, failing (section 2.4) | Not working · Try again | 無法運作 · 再試一次 |
+| Row state, changed (section 2.6) | Changed since it was added · Review | 加入後內容有變動 · 檢視 |
 | After a change, when a restart is needed | Applies when this agent restarts. | 這個 Agent 重新啟動後生效。 |
 | Fleet default hint | New agents start with these modules. | 新的 Agent 會從這些模組開始。 |
 
 - **Basics on by default**: Core always; Hub when the Fleet is connected to one. Everything that reaches outside
-  the Fleet (SharePoint, Browser, Computer use, wrapped modules) is off until someone switches it on.
+  the Fleet (SharePoint, Browser, Computer use, anything from the catalog) is off until someone switches it on.
 - A module with a missing need shows what is missing, with the one action that fixes it.
 - A Fleet administrator can switch a module off for the whole Fleet; agents then cannot turn it on.
 - Agents shared on a Hub: modules that reach outside are **off while the agent answers a Hub question**, unless
@@ -177,7 +273,7 @@ What this costs:
 - The CLI no longer checks the input shape; the connector must, and must return a readable error.
 - Any per-tool view in the CLI shows only "agend_use_tool". AgEnD's own log must name the real tool.
 - `agend_use_tool` must run the real tool's own caller and permission checks, not a check on the wrapper (Cairn).
-  Cairn sees no blocker in our own path, but it is unproven, and Muse's and Kiro's limits are unknown: card 1c
+  Cairn sees no blocker in our own path, but it is unproven, and Muse's and Kiro's limits are unknown: card 1e
   starts with a trial.
 
 ## 6. Approvals through AgEnD
@@ -259,7 +355,7 @@ provider; a token on the person's computer acts as them; posts are written by an
 ## 8. What stays as it is
 
 - **Tool sets.** They keep shaping Core. Replacing them with modules is a later clean-up, not a condition.
-- **Skills.** A skill is text that teaches; a module is the ability. A module can carry its skill.
+- **Skills.** Still `SKILL.md`, brought in only when relevant (section 2.9).
 - **Each CLI's own MCP servers and tools.** AgEnD does not remove them. The point is that new abilities no longer
   have to be installed there.
 - **Personal agents** (`hub-personal-agent.md`): they run with no AgEnD tools, so no modules.
@@ -267,43 +363,50 @@ provider; a token on the person's computer acts as them; posts are written by an
 ## 9. What the whole design costs
 
 - **One place to fail.** If the connector or the Fleet process is down, every ability is down, on every agent.
-  Worker processes and per-call time limits keep one module from taking the rest with it.
+  Separate module processes and per-call time limits keep one module from taking the rest with it.
 - **Wider reach for every agent.** Today a browser exists only where someone installed it. With modules, any agent
   is one switch away from the browser, SharePoint or the desktop. Defaults are off, the switch is an
   administrator's, and risky tools need approval, but the reach is still wider than today.
 - **AgEnD becomes the only gate** where the CLI's own prompts are off. A mistake in our approval flow has no
   second check behind it.
-- **We own the modules.** Each built-in module is ours to keep working as SharePoint, browsers and desktops
-  change. Wrapped modules shift that work to their authors and add outside code.
+- **We own the modules.** Each module we write is ours to keep working as SharePoint, browsers and desktops
+  change. A wrapped server shifts that work to its authors and adds outside code under the Fleet's OS account;
+  process isolation does not contain it (section 2.10).
+- **Descriptions are instructions to a model.** A wrapped server's tool descriptions reach the model as written.
+  Recording them and stopping on any change (section 2.6) is the guard; it depends on someone reading them.
+- **More moving parts.** Each module is a process to start, watch and stop. The first call after an idle period
+  is slower, and a per-agent module costs memory for each agent that uses it.
 - **Find on demand** trades context for an extra step and some missed tools (section 5).
 
 ## 10. Phases and cards
 
 | Card | What | Size | Depends on |
 |---|---|---|---|
-| 1a | Module manifests and registry. The Hub tools become the first module. Listing reads manifests and saved settings only; the check moves to where the call runs; a missing need answers "not available" | M | M-3183 |
-| 1b | Settings: the Modules list per agent and the Fleet default, with the states in section 4 | M | 1a |
-| 1c | Measure the catalog per backend (bytes per request, every backend we ship), then "find on demand" with the Automatic rule | M | 1a, M-3184 |
+| 1a | Manifest format and the gateway's registry. Core and Hub described by manifests. Listing reads manifests and saved settings only; every check runs in the gateway; a missing need answers "not available" | M | M-3183 |
+| 1b | Module processes: lazy start, routing with the caller attached, the 30-second answer and hand-off for long calls, hard limit and cancel, crash and repeated-failure rules, idle stop, per-Fleet and per-agent processes. Proven with a small test module | L | 1a |
+| 1c | Drift: manifest recording at build time, the build test, the check at each process start, the version and hash check before starting | M | 1b |
+| 1d | Settings: the Modules list per agent and the Fleet default, with the states in section 4 | M | 1a |
+| 1e | Measure the catalog per backend (bytes per request, every backend we ship), trial "find on demand" on Muse, then build it with the Automatic rule | M | 1a, M-3184 |
 | 2a | Approvals: a stored request, Needs you and chat buttons, run-on-approve, expiry, "always allow" scopes in Settings | L | 1a |
-| 2b | Worker processes for heavy modules: start on first use, per-call time limit, clean failure | M | 1a |
-| 3a | SharePoint files module, with sign-in through an approval request. The first new ability on every backend | M | 2a |
-| 3b | Browser module | L | 2a, 2b |
-| 3c | Computer use: its own design first (session approval, live view, Stop), then the module | L | 2a, 2b |
+| 3a | SharePoint files module, with sign-in through an approval request. The first new ability on every backend | M | 1b, 1c, 2a |
+| 3b | Browser module, wrapping an existing browser server at a fixed version | L | 3a |
+| 3c | Computer use: its own design first (session approval, live view, Stop), then the module | L | 2a, 1b |
 | 4a | A person's desktop app to their own Fleet, by a local command | M | 1a |
 | 4b | The same from another computer, by the Fleet's web address and sign-in | M | 4a |
 | 4c | The Hub door: `hub-mcp-agent.md` step 1 as the Hub module for a person | L | 1a, the Hub's trusted certificate |
-| 5 | Wrapped modules: an administrator adds an existing MCP server as a module | L | 2a, 2b |
-| 6 | Clean-up: dashboard switches become modules; decide whether tool sets do too | M | 1b |
+| 5a | The curated catalog: entries with exact version, hash and our manifest; install, update when idle, remove | L | 1c |
+| 5b | A server an administrator adds: record its manifest, classify tools, review on change | L | 5a |
+| 6 | Clean-up: dashboard switches become modules; decide whether tool sets do too; an operating-system sandbox for module processes before launch | M | 1d |
 
-Suggested order: 1a → 1b → 2a → 3a gives the owner one new ability working on every backend with approvals, which
-proves the model end to end. 1c runs alongside. 4a can go any time after 1a.
+Suggested order: 1a → 1b → 1c → 2a → 3a gives the owner one new ability working on every backend, in its own
+process, with approvals, which proves the model end to end. 1d and 1e run alongside. 4a can go any time after 1a.
 
 ## 11. Open questions, with recommendations
 
 | # | Question | Recommendation |
 |---|---|---|
-| C1 | Built-in modules only, or other people's MCP servers too? | **Built-in first.** Wrapped modules in phase 5, administrator only. |
-| C2 | Which module first? | **SharePoint files.** The skill exists, the need is real, and its sign-in exercises the approval flow. |
+| C1 | What a module is, and where modules come from | **Decided 2026-11-15**: an MCP server in its own process with a manifest. Shipped with AgEnD first; later a curated catalog; servers added by administrators only. No open marketplace. |
+| C2 | Which module first? | **SharePoint files.** The skill exists, the need is real, and its sign-in exercises the approval flow. Whether we write it or wrap an existing server is the builder's call after looking at what exists for protected Excel. |
 | C3 | A tool whose module cannot work right now: listed and refusing, or hidden? | **Listed and refusing with the reason.** It is what keeps listing fixed and fast. |
 | C4 | Who approves? | **Fleet administrators**, on the web and in Discord or Telegram. Not the agent's team lead agent, not another agent. |
 | C5 | On approval, does AgEnD run the action, or does the agent call again? | **AgEnD runs it** and sends the result. What was shown is what runs. |
@@ -314,3 +417,9 @@ proves the model end to end. 1c runs alongside. 4a can go any time after 1a.
 | C10 | Do tool sets become modules? | **Not now.** Decide after modules have shipped and the Settings card can be judged as a whole. |
 | C11 | The words "connector" and "module" in the product | **Keep both** / 「連接器」「模組」. In Settings the row names carry the meaning ("SharePoint files"), so the words matter little. |
 | C12 | Computer use on whose desktop? | **Its own design.** The AgEnD computer is usually a server with no desktop; a paired Windows computer (Runtime) is the likelier target. |
+| C13 | Do Core and Hub become separate processes too? | **No.** They are Fleet functions and stay inside the gateway, described by the same manifests. |
+| C14 | One process per module, or per agent? | **The manifest decides**: one for the Fleet when nothing is kept per agent, one per agent when it is (browser, computer use). |
+| C15 | A server whose tools change after an administrator added it | **Pause it until the administrator reviews the change.** Never accept on its own. A shipped or catalog module that differs does not run at all. |
+| C16 | A call that takes longer than a CLI waits | **Answer within 30 seconds; hand off the result as a message.** Hard limit 5 minutes by default, 30 at most. |
+| C17 | When does a module update? | **With an AgEnD release at first.** Between releases only once the catalog exists, only to an exact version we listed, and only when the module is idle. |
+| C18 | Idle stop | **10 minutes.** Saves memory on a busy host; costs a slower first call afterwards. |
