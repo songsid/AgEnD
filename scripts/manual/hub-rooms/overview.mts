@@ -97,7 +97,9 @@ try {
       JSON.stringify(tabs[0]) === JSON.stringify([c[1] === "en" ? "Overview" : "總覽", true]) && sections === 4 && /(Counts only|這裡只有數字)/.test(text)
       && !/token|cost|費用/i.test(text) && !wide && o.errors.length === 0, { tabs, sections, wide, errors: o.errors });
     await o.pg.setViewportSize({ width: VIEW[c[0]].width, height: 3200 }); await o.pg.waitForTimeout(300);
-    await o.pg.locator(".panel-body").first().screenshot({ path: join(out, `overview.${tag}.png`) }); keep(`overview.${tag}.png`);
+    // The tabs and the Overview themselves (the tall viewport is only so it all lays out; the page ends where the content does).
+    const end = await o.pg.evaluate(() => { const h = document.querySelector(".panel-body")!.getBoundingClientRect(), c = document.querySelector(".hub-admin-ov-col")!.getBoundingClientRect(); return [Math.round(h.top), Math.round(c.bottom)]; });
+    await o.pg.screenshot({ path: join(out, `overview.${tag}.png`), clip: { x: 0, y: end[0]!, width: VIEW[c[0]].width, height: end[1]! - end[0]! + 16 } }); keep(`overview.${tag}.png`);
     await o.pg.setViewportSize(VIEW[c[0]]); await o.pg.waitForTimeout(200);
     // See Connected Fleets → Manage, that card in view.
     await o.pg.locator(".hub-ov-link").click();

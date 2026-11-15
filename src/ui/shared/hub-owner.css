@@ -112,9 +112,14 @@
 
 /* M-3162: Administration → Overview — counts in cards. Numbers in tabular figures; the bars and the split drawn in the
    theme's own colours (their sizes are set through the CSSOM, never an inline style). */
-.hub-ov { display: flex; flex-direction: column; gap: var(--s-5); }
+.hub-ov { display: flex; flex-direction: column; gap: var(--s-5); padding-top: var(--s-2); }   /* clear of the tab row's underline */
 .hub-ov-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; }
-.hub-ov-range { width: auto; margin: 0; padding: 0; }
+/* Lumen (#3980): the Hub's segmented switch (as .hub-switch) — one track, the current range on a raised surface. */
+.hub-ov-range { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.hub-ov-range-item { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; min-width: 4.5rem; padding: 0 var(--s-3); border: 0; border-radius: calc(var(--r-md) - 2px);
+  background: none; color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.hub-ov-range-item:hover { color: var(--text); }
+.hub-ov-range-item.is-current { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); font-weight: var(--fw-semibold); }
 .hub-ov-privacy { margin: 0; padding: var(--s-2) var(--s-3); border-radius: var(--r-md); background: var(--surface-2); }
 .hub-ov-section { display: flex; flex-direction: column; gap: var(--s-3); }
 .hub-ov-section > h3 { margin: 0; font-size: var(--fs-md); }
@@ -159,6 +164,6 @@
 @media (max-width: 899px) {
   .hub-ov-grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hub-ov-split { grid-template-columns: minmax(0, 1fr); }
-  .hub-ov-range .seg-item { min-height: var(--tap); }
+  .hub-ov-range-item { min-height: calc(var(--tap) - 6px); }
   .hub-ov-link { min-height: var(--tap); display: inline-flex; align-items: center; }
 }

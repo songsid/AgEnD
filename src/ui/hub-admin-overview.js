@@ -107,8 +107,8 @@ export function HubAdminOverview({ client, onOpen = () => {}, onGone = () => {} 
   useEffect(() => { live.current = true; void load(range); const id = setInterval(() => { void load(range); }, REFRESH_MS); return () => { live.current = false; clearInterval(id); }; }, [range]);
   const pick = (r) => { if (r === range) return; try { sessionStorage.setItem(RANGE_KEY, r); } catch { /* private mode */ } setRange(r); };
   const head = html`<div class="hub-ov-bar">
-      <div class="seg hub-ov-range" role="group" aria-label=${ho("rangeLabel")}>
-        ${["today", "7d"].map((r) => html`<button key=${r} type="button" class=${`seg-item${range === r ? " active" : ""}`} aria-pressed=${range === r ? "true" : "false"} onClick=${() => pick(r)}>${ho(r === "today" ? "today" : "week")}</button>`)}
+      <div class="hub-ov-range" role="group" aria-label=${ho("rangeLabel")}>
+        ${["today", "7d"].map((r) => html`<button key=${r} type="button" class=${`hub-ov-range-item${range === r ? " is-current" : ""}`} aria-pressed=${range === r ? "true" : "false"} onClick=${() => pick(r)}>${ho(r === "today" ? "today" : "week")}</button>`)}
       </div>
       ${at ? html`<span class="note hub-ov-updated">${ho("updated", new Date(at).toLocaleTimeString(lang() === "zh-TW" ? "zh-TW" : "en", { hour: "2-digit", minute: "2-digit" }))}</span>` : null}
     </div>
