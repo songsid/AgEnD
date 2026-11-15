@@ -100,10 +100,10 @@ function CardMenu({ card, ownerKey }) {
 register("chatPhone", {
   en: { goTo: "Go to", thisChat: "This chat", verifiedUntil: "Verified · speaks as you until {0}", needsToast: "{0} needs you", ctxHide: "Hide this for now",
     // M-3166 (Argon 3): a phone's ⋯ sheet.
-    sheet: "{0}: more", search: "Search", files: "Files & changes", card: "Card", usage: "Usage", model: "Model & effort", textSize: "Text size",
+    sheet: "{0}: more", search: "Search", files: "Files & changes", card: "Card", usage: "Usage", model: "Model & effort", backend: "CLI backend", textSize: "Text size",
     textSizes: "Small,Medium,Large", look: "Appearance", agent: "This agent", details: "Agent details" },
   "zh-TW": { goTo: "前往", thisChat: "這個對話", verifiedUntil: "已驗證 · 以你的身分發言到 {0}", needsToast: "{0} 正在等你回應", ctxHide: "這次先不提醒",
-    sheet: "{0}：更多", search: "搜尋", files: "檔案與變更", card: "卡片", usage: "用量", model: "模型與推理", textSize: "文字大小",
+    sheet: "{0}：更多", search: "搜尋", files: "檔案與變更", card: "卡片", usage: "用量", model: "模型與推理", backend: "CLI backend", textSize: "文字大小",
     textSizes: "小,中,大", look: "外觀", agent: "這個 Agent", details: "Agent 詳細資料" },
 });
 const untilClock = (ms) => { try { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
@@ -115,13 +115,13 @@ const needKey = (item) => String(item?.nonce || item?.id || JSON.stringify(item 
  * activity items in place —, Agent details), then This agent's controls (start/restart, stop, delete), and ✓ Verified at
  * the foot. Every one is the chat's own item or the header's own control (the header shows none of them on a phone).
  */
-function AgentSheetButton({ items, name, inst, card, navKey, auth }) {
+function AgentSheetButton({ items, name, inst, card, navKey, auth, lease }) {
   const [open, setOpen] = useState(false), [usage, setUsage] = useState(false);
   return html`<button type="button" class="icon-btn chat-sheet-more" aria-haspopup="dialog" aria-label=${t("app.more")} title=${t("app.more")} onClick=${() => setOpen(true)}><${Icon} name="more" /></button>
-    ${open ? html`<${AgentSheet} items=${items} name=${name} inst=${inst} card=${card} auth=${auth} onUsage=${() => { setOpen(false); setUsage(true); }} onClose=${() => setOpen(false)} />` : null}
+    ${open ? html`<${AgentSheet} items=${items} name=${name} inst=${inst} card=${card} auth=${auth} lease=${lease} onUsage=${() => { setOpen(false); setUsage(true); }} onClose=${() => setOpen(false)} />` : null}
     ${usage ? html`<${UsageDialog} owner=${navKey} onClose=${() => setUsage(false)} />` : null}`;
 }
-function AgentSheet({ items, name, inst, card, auth, onUsage, onClose }) {
+function AgentSheet({ items, name, inst, card, auth, lease, onUsage, onClose }) {
   const [look, setLook] = useState(false);
   const prefs = useStore(chatCardPrefs), size = useStore(textSizeStore).size;
   const by = (key) => items.find((i) => i && i.key === key);
@@ -133,6 +133,8 @@ function AgentSheet({ items, name, inst, card, auth, onUsage, onClose }) {
     <span>${item.label}</span>${extra || item.checkbox ? html`<small>${extra || (item.checked ? "✓" : "")}</small>` : null}</button>` : null;
   const words = t("chatPhone.textSizes").split(","), at = Math.max(0, TEXT_SIZES.indexOf(size));
   const commands = supportsInstanceFeature(inst, "commands");
+  // The header's chips, here: the same commands, bound to this page's lease (a reply after the page moved on is dropped).
+  const run = (command) => store.runCommand(name, command, "", lease ? { alive: () => lease.current() } : {});
   const model = `${shortModelName(modelLabel(inst.model || modelText(inst)))}${supportsInstanceFeature(inst, "effort") && effortChip(inst) ? ` · ${effortChip(inst)}` : ""}`;
   // Appearance: this chat's colour, theme, effect and activity items, in place (their headings as the menu's).
   const looks = items.filter((i) => i && !["details", "splitChat", "settings", "start", "restart", "stop", "workspace", "fullWidth", "delete"].includes(i.key));
@@ -146,7 +148,8 @@ function AgentSheet({ items, name, inst, card, auth, onUsage, onClose }) {
       ${card ? tile("idcard", t("chatPhone.card"), () => setChatCardOpen(!prefs.open)) : null}
       ${supportsInstanceFeature(inst, "usage") && usageOffered() ? html`<button type="button" class="chat-sheet-tile" onClick=${onUsage}><${Icon} name="chart" size=${20} /><span>${t("chatPhone.usage")}</span></button>` : null}
     </div>
-    ${commands ? row({ key: "model", icon: "sliders", label: t("chatPhone.model"), onSelect: () => store.runCommand(name, "model", "", {}) }, model) : null}
+    ${commands ? row({ key: "model", icon: "sliders", label: t("chatPhone.model"), onSelect: () => run("model") }, model) : null}
+    ${commands ? row({ key: "backend", icon: "bot", label: t("chatPhone.backend"), onSelect: () => (inst.runtime === "windows" ? navigate(sectionPath("agents")) : run("backend")) }, backendLabel(inst.backend)) : null}
     <button type="button" class="menu-item chat-sheet-row" onClick=${() => setTextSize(TEXT_SIZES[(at + 1) % TEXT_SIZES.length])}><${Icon} name="type" size=${18} /><span>${t("chatPhone.textSize")}</span><small>${words[at] || ""}</small></button>
     ${looks.length ? html`<button type="button" class="menu-item chat-sheet-row" aria-expanded=${look ? "true" : "false"} onClick=${() => setLook((v) => !v)}><${Icon} name="palette" size=${18} /><span>${t("chatPhone.look")}</span><small>${look ? "⌃" : "⌄"}</small></button>
       ${look ? html`<div class="chat-sheet-sub">${looks.map((i) => i.heading ? html`<div key=${i.key} class="menu-heading">${i.label}</div>` : html`<span key=${i.key}>${row(i)}</span>`)}</div>` : null}` : null}
@@ -162,7 +165,7 @@ function AgentSheet({ items, name, inst, card, auth, onUsage, onClose }) {
  * count), Fleet, Settings — then this chat's items, and ends with 「✓ 已驗證」 (the line under the composer no longer
  * says it). A Needs-you item that arrives meanwhile, for another agent, is a short toast. A desk's ⋯ is unchanged.
  */
-function ChatMoreMenu({ items, name, inst = null, card = null, navKey }) {
+function ChatMoreMenu({ items, name, inst = null, card = null, navKey, lease = null }) {
   const app = useStore(appStore);
   const auth = useWebAuthorization();
   const seen = useRef(null);
@@ -180,7 +183,7 @@ function ChatMoreMenu({ items, name, inst = null, card = null, navKey }) {
   }, [name]);
   if (!narrowScreen()) return html`<${Menu} items=${items} label=${t("app.more")} />`;
   // M-3166 (Argon 3, the user's OK of round 2): a phone's ⋯ is a sheet (below); its Go to went to the drawer.
-  if (inst) return html`<${AgentSheetButton} items=${items} name=${name} inst=${inst} card=${card} navKey=${navKey} auth=${auth} />`;
+  if (inst) return html`<${AgentSheetButton} items=${items} name=${name} inst=${inst} card=${card} navKey=${navKey} auth=${auth} lease=${lease} />`;
   const waiting = needsCount(app);
   const route = navStore.get().route;
   const verified = auth.st?.state === "verified";
@@ -667,7 +670,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub}
       pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage") }} pageActions=${[
         ...items]}
-      nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${ChatMoreMenu} items=${items} name=${name} inst=${inst} card=${card} navKey=${navKey} />`}</${PanelHeader}>
+      nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${ChatMoreMenu} items=${items} name=${name} inst=${inst} card=${card} navKey=${navKey} lease=${lease} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>

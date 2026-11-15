@@ -22,6 +22,8 @@ async function fakeFetch(url: string, init: { method?: string } = {}) {
 }
 const INSTANCES = [{ name: "web-dev", status: "running", backend: "claude-code", model: "opus" }, { name: "planner", status: "running", backend: "claude-code" }];
 let chat: any;
+// The chat store's own fetch (boot's deps): a test may answer it; otherwise it never settles, as before.
+let chatFetch: null | ((url: string, init: any) => Promise<any>) = null;
 beforeAll(async () => {
   // @ts-expect-error — a JS module of the app, with no types
   await import("../src/ui/chat-render.js");
@@ -29,11 +31,13 @@ beforeAll(async () => {
   (globalThis as any).fetch = fakeFetch;
   // @ts-expect-error — a JS module of the app, with no types
   chat = await import("../src/ui/panel-chat.js");
-  chat.boot({ stream: { on() {} }, boot: null, deps: { fetch: () => new Promise(() => {}) } });
+  chat.boot({ stream: { on() {} }, boot: null, deps: { fetch: (url: string, init: any) => (chatFetch ? chatFetch(url, init) : new Promise(() => {})) } });
   base.restore();
 });
 afterEach(async () => {
   for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
+  if (typeof document !== "undefined" && document.body) { delete document.body.dataset.tier; delete document.body.dataset.guestLevel; }
+  chatFetch = null;
   const { appStore } = await import("/assets/app-store.js");
   appStore.set({ needs: [], proposals: [], needsLoaded: false });
   auth = { state: "verified", until: Date.now() + 3_600_000 };
@@ -42,9 +46,11 @@ const PANELS = () => new Map<string, any>([
   ["chat", { load: async () => chat.ChatPanel }],
   ...["view", "fleet", "settings", "needs", "details", "log"].map((k) => [k, { Component: () => h("div", { class: `stub-${k}` }, k) }] as [string, any]),
 ]);
-async function app(path: string, { narrow = true } = {}) {
+async function app(path: string, { narrow = true, guest = null as null | "trusted" | "chat" } = {}) {
   const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1" }, matchNarrow: narrow });
   mounted.push(pg);
+  // A guest's page: the server marks <body> (data-tier="guest", and data-guest-level="trusted" for a Trusted guest, #2855).
+  if (guest) { document.body.dataset.tier = "guest"; if (guest === "trusted") document.body.dataset.guestLevel = "trusted"; }
   (globalThis as any).fetch = fakeFetch;
   const { resetWebAuthorization } = await import("/assets/web-authorize.js");
   resetWebAuthorization();
@@ -108,6 +114,56 @@ describe("M-3115 PR 1: inside an agent's pages a phone has no bottom tabs", () =
     expect(rows.some((r) => r === "# Go to" || /^Needs you/.test(r))).toBe(false);   // Go to is the drawer's now
     fire([...sheet.querySelectorAll(".chat-sheet-tile")].find((b: any) => b.textContent.trim() === "View"), "click"); await settle(6);
     expect(pg.window.location.pathname).toMatch(/^\/view\/web-dev/);
+  });
+
+  // #4002 review (P3a, P3b): the header's backend and model chips are hidden on a phone, so the sheet has both; like the
+  // chips, each runs bound to this page — a reply that comes after you left this chat is dropped, never shown on return.
+  it("the sheet's Model & effort and CLI backend rows run /model and /backend, bound to the page: a reply after leaving is dropped", async () => {
+    const posted: any[] = [];
+    const replies: Array<(v: any) => void> = [];
+    const { pg } = await app("/ui/chat/web-dev");
+    chatFetch = async (url: string, init: { method?: string; body?: string } = {}) => {
+      if (url !== "/ui/command" || init.method !== "POST") return new Promise(() => {});
+      posted.push(JSON.parse(init.body || "{}"));
+      const v = await new Promise<any>((r) => replies.push(r));
+      return { ok: true, status: 200, json: async () => v, text: async () => JSON.stringify(v) };
+    };
+    const rowsOf = (sheet: any) => [...sheet.querySelectorAll(".chat-sheet-row")] as any[];
+    let sheet = await openSheet(pg);
+    const backend = rowsOf(sheet).find((b) => /^CLI backend/.test(b.textContent.trim()));
+    expect(backend, "a CLI backend row").toBeTruthy();
+    fire(backend, "click"); await settle(4);
+    replies.shift()!({ text: "Backend: claude-code" }); await settle(6);   // one command at a time per chat: answer it
+    sheet = await openSheet(pg);
+    fire(rowsOf(sheet).find((b) => /^Model & effort/.test(b.textContent.trim())), "click"); await settle(4);
+    expect(posted.map((b) => [b.instance, b.command])).toEqual([["web-dev", "backend"], ["web-dev", "model"]]);
+    // Leave this chat before the replies come; come back after.
+    const { navigate } = await import("/assets/app-nav.js");
+    navigate("/ui/chat/planner"); await settle(8);
+    for (const r of replies) r({ choices: { current: "sonnet", options: [{ id: "late-pick", label: "Arrived after you left" }] } });
+    await settle(8);
+    navigate("/ui/chat/web-dev"); await settle(8);
+    expect(pg.root.textContent).not.toContain("Arrived after you left");
+  });
+
+  // #4002 review (P2): a guest's header has no ⋯ sheet, so it keeps its own controls on a phone (the hide rules need the sheet).
+  for (const level of ["trusted", "chat"] as const) {
+    it(`a ${level} guest on a phone: no sheet, and its header keeps ${level === "trusted" ? "its tab row" : "its controls"}`, async () => {
+      const { pg } = await app("/ui/chat/web-dev", { guest: level });
+      const head = pg.root.querySelector(".p-chat > .panel-head") as any;
+      expect(head, "the chat's header").toBeTruthy();
+      expect(head.querySelector(".chat-sheet-more")).toBeNull();
+      expect(!!head.querySelector(".inst-switch")).toBe(level === "trusted");
+    });
+  }
+  it("the CSS: a phone's chat header gives its controls up only when it has the ⋯ sheet", () => {
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/chat-work-bar.css"), "utf8");
+    const rule = css.slice(css.indexOf("@media (max-width: 899px)", css.indexOf("M-3166 (Argon 2–3")));
+    const hides = rule.slice(0, rule.indexOf("{ display: none !important; }")).split("\n").filter((l) => /\.sb-search|\.inst-switch|\.panel-actions >/.test(l)).join(" ");
+    const selectors = hides.split(",").map((x) => x.trim()).filter(Boolean);
+    expect(selectors.length).toBe(3);
+    for (const sel of selectors) expect(sel, sel).toMatch(/^\.p-chat > \.panel-head:has\(\.chat-sheet-more\) /);
+    expect(rule).toContain(".p-chat > .panel-head:has(.chat-sheet-more) { flex-wrap: nowrap; }");
   });
 
   it("not verified: no ✓ Verified in the sheet (the line under the composer still says Not verified · Authorize)", async () => {

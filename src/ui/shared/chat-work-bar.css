@@ -61,9 +61,12 @@
 /* M-3166 (Argon 2–3, the user's OK of round 2): a phone's chat header is "← name ● ⋯" in 44 px — the status is its 6 px dot
    (its title still says it), and the search, card, text size and usage buttons and the tab row are the ⋯ sheet's. */
 @media (max-width: 899px) {
-  .p-chat > .panel-head { min-height: 44px; padding-bottom: 0; flex-wrap: nowrap; }
+  .p-chat > .panel-head { min-height: 44px; padding-bottom: 0; }
   .p-chat > .panel-head .panel-title { min-height: 44px; gap: var(--s-2); }
-  .p-chat > .panel-head .sb-search, .p-chat > .panel-head .inst-switch, .p-chat > .panel-head .panel-actions > :not(.chat-sheet-more):not(.dlg) { display: none !important; }
+  /* Only a header with the ⋯ sheet gives its controls up to it: a guest's has none, so it keeps its own (#4002 review). */
+  .p-chat > .panel-head:has(.chat-sheet-more) { flex-wrap: nowrap; }
+  .p-chat > .panel-head:has(.chat-sheet-more) .sb-search, .p-chat > .panel-head:has(.chat-sheet-more) .inst-switch,
+  .p-chat > .panel-head:has(.chat-sheet-more) .panel-actions > :not(.chat-sheet-more):not(.dlg) { display: none !important; }
   .p-chat > .panel-head .panel-title h1 { flex: 0 1 auto; }
   .p-chat > .panel-head .panel-sub > :not(.status) { display: none; }
   .p-chat > .panel-head .panel-sub .status { font-size: 0; gap: 0; }

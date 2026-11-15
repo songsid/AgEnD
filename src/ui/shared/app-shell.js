@@ -544,19 +544,19 @@ function PrefsPopover() {
  * (#1523 N2): an instance page's view switch — beside the title on a wide screen, a row of tabs under it on a phone.
  */
 // M-3115 (phone v2): inside an agent's pages a phone has no bottom tabs; the header's first button goes back to the
-// agents (the drawer) and carries what Needs you counts. Kept beside its caller: a retained dictionary has no such word.
+// agents (the drawer) — with no count since M-3166. Kept beside its caller: a retained dictionary has no such word.
 register("phoneNav", {
-  en: { back: "Back to your agents", backCount: "Back to your agents · {0} waiting" },
-  "zh-TW": { back: "回到 Agent 清單", backCount: "回到 Agent 清單 · {0} 件待處理" },
+  en: { back: "Back to your agents" },
+  "zh-TW": { back: "回到 Agent 清單" },
 });
 /** What Needs you counts: its items and the agents' proposals (the tab's badge, the sidebar's). */
 export function needsCount(app) { return (app.needs || []).length + (app.proposals || []).length; }
 
 export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions }) {
   const shell = useStore(shellStore);
-  const { route } = useStore(navStore), app = useStore(appStore);
+  const { route } = useStore(navStore);
   // M-3166 (the user, round 2): no counts or badges on the Fleet side — ← goes back to the agents without a number.
-  const agent = !!openInstanceOf(route) && !guestPage(), waiting = 0;
+  const agent = !!openInstanceOf(route) && !guestPage();
   const admin = useCanCreate();
   const canCreate = admin && !!newInstanceOpener;
   const pane = paneContext.usePane?.();
@@ -566,9 +566,9 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice, pag
     pageControls=${pageControls} pageActions=${pageActions} />`;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
     <button type="button" id="sbOpen" class=${`icon-btn sb-open${agent ? " sb-back" : ""}`} onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
-      aria-label=${narrow() ? agent ? (waiting ? t("phoneNav.backCount", waiting) : t("phoneNav.back")) : t("app.openMenu") : t("app.expand")}
+      aria-label=${narrow() ? agent ? t("phoneNav.back") : t("app.openMenu") : t("app.expand")}
       title=${narrow() ? agent ? t("phoneNav.back") : t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" cls="ic-menu" />${agent
-        ? html`<${Icon} name="back" cls="ic-back" />${waiting ? html`<span class="sb-badge" aria-hidden="true">${waiting > 99 ? "99+" : waiting}</span>` : null}` : null}</button>
+        ? html`<${Icon} name="back" cls="ic-back" />` : null}</button>
     ${canCreate && shell.collapsed ? html`<button type="button" class="icon-btn sb-new" onClick=${requestNewInstance} aria-label=${t("app.newAgent")} title=${t("app.newAgent")}><${Icon} name="plus" /></button>` : null}
     ${searchOffered(admin) ? html`<button type="button" class="icon-btn sb-search" onClick=${() => openSearch()} aria-label=${t("app.search")} title=${t("app.searchTitle", searchShortcut())}><${Icon} name="search" /></button>` : null}
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>

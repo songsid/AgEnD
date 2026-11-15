@@ -6,13 +6,15 @@
 //             controls (…, Stop, Delete…), ✓ Verified at the foot; every control at least 44 px tall
 //   3-look    Appearance opens this chat's colour / theme items in place
 //   4-toast   a toast is one line (a pill)
-// The desk: the header as before (its chips, the tab row, the ⋯ menu), no sheet. Everywhere: no horizontal overflow, no page error.
+// The desk: the header as before (its chips, the tab row, the ⋯ menu), no sheet. A guest on a phone (chat-level and Trusted,
+// #4002 review): no ⋯ sheet, so its header keeps its own controls — a Trusted guest's tab row too. Everywhere: no horizontal
+// overflow, no page error.
 // Run it on the base too (REPO=<base checkout> SMOKE_NAME=…-before): every phone case FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-phone-agent-sheet-m3166.mts
-import { bootFixture, caseName, freshPage, matrix, mounted, seedChat, shotPath } from "../smoke-fixture/index.mts";
+import { bootFixture, caseName, freshPage, matrix, mounted, seedChat, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-agent-sheet-m3166";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 48960), instances: 4 });
+const fx = await bootFixture({ port: Number(process.env.HP ?? 48960), instances: 4, webYaml: "  guests:\n    enabled: true" });
 const name = fx.instances[1]!.name;
 await seedChat(fx as never, [name], 12);
 const results: Array<{ name: string; ok: boolean; failed: string[] }> = [];
@@ -88,6 +90,37 @@ try {
     results.push({ name: `desk-${theme}`, ok: JSON.stringify(d) === "[false,true,true]", failed: JSON.stringify(d) === "[false,true,true]" ? [] : [`desk: no sheet, the tab row and the ⋯ menu (${JSON.stringify(d)})`] });
     await page.screenshot({ path: shotPath(SMOKE, `desk-${theme}`, "header") });
     await p.ctx.close();
+  }
+  // A guest's phone: no sheet to give its controls to, so it keeps them (a guest's session, as smoke-2848 makes one).
+  const fm = fx.fm as any;
+  const { tokenEpoch } = await import(process.env.REPO + "/src/web-session.ts");
+  const owner = { adapterId: "discord", userId: "424242424242424242" };
+  fm.guestScope = () => new Set([name]);
+  fm.initializeWebSessions();
+  for (const level of ["chat", "trusted"] as const) {
+    fm.guestTrusted = () => level === "trusted";
+    const sid = fm.webSessions.create({ tier: "guest", surface: "local", label: "smoke", tokenEpoch: tokenEpoch(fm.webToken), owner }).sessionId;
+    const ctx = await fx.browser.newContext({ viewport: VIEWPORTS.phone, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+    await ctx.addCookies([{ name: "agend_session", value: sid, url: fx.base }]);
+    await ctx.addInitScript({ content: `window.__name = (f) => f; try { localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1"); } catch {}` });
+    const page = await ctx.newPage();
+    const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
+    await page.goto(`${fx.base}/ui/chat/${encodeURIComponent(name)}`);
+    await page.waitForSelector("#msgIn", { timeout: 20000 }); await page.waitForTimeout(1200);
+    const g = await page.evaluate(() => {
+      const head = document.querySelector(".p-chat > .panel-head") as HTMLElement;
+      const shown = (e: Element) => (e as HTMLElement).getBoundingClientRect().width > 0;
+      return { tier: document.body.dataset.tier, level: document.body.dataset.guestLevel || "chat", sheet: !!head.querySelector(".chat-sheet-more"),
+        controls: [...head.querySelectorAll(".panel-actions > *")].filter(shown).length, tabs: [...head.querySelectorAll(".inst-switch")].some(shown),
+        wide: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+    });
+    const failed: string[] = [];
+    if (!(g.tier === "guest" && g.level === level)) failed.push(`a ${level} guest's page (${JSON.stringify(g)})`);
+    if (g.sheet || g.controls < 1 || g.tabs !== (level === "trusted") || g.wide) failed.push(`no sheet; its own controls shown${level === "trusted" ? ", its tab row too" : ""} (${JSON.stringify(g)})`);
+    if (errs.length) failed.push(`page errors: ${errs.join(" | ")}`);
+    results.push({ name: `guest-${level}-phone`, ok: failed.length === 0, failed });
+    await page.screenshot({ path: shotPath(SMOKE, `guest-${level}-phone`, "header") });
+    await ctx.close();
   }
 } finally {
   for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"} ${r.name}${r.failed.length ? " — " + r.failed.join("; ") : ""}`);
