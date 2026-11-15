@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -15,8 +15,6 @@ const models = [
 beforeEach(() => {
  dir = mkdtempSync(join(tmpdir(), "agend-grok3180-"));
  vi.stubEnv("AGEND_HOME", dir); setLocale("en");
- mkdirSync(join(dir, "cli-env"));
- writeFileSync(join(dir, "cli-env/antigravity.json"), JSON.stringify({ probedAt: Date.now(), models }));
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
 function fleet(result: unknown, effort = "high") {
@@ -30,13 +28,13 @@ function fleet(result: unknown, effort = "high") {
  return { fm, send, restart, saved };
 }
 describe("Grok shared switch route", () => {
- it("registers the evidenced floor for both operations, and only agy's executable", () => {
+ it("registers the evidenced floor for both operations, and only Grok's executable", () => {
   const e = CLI_RUNTIME_SWITCH.grok!;
   for (const step of [{ model: models[0]!.id, effort: null }, { model: null, effort: "low" }]) {
    expect(cliSwitchAllowed(e, step, "1.0.70")).toBe(true);
    for (const v of [null, "1.0.69"]) expect(cliSwitchAllowed(e, step, v)).toBe(false);
   }
-  expect(e.matchExe("/rig/bin/grok")).toBe(true); expect(e.matchExe("/rig/bin/grok-helper")).toBe(false);
+  expect(e.matchExe("/rig/bin/grok")).toBe(true); expect(e.matchExe("/rig/bin/grok-1.0.70-linux-x86_64")).toBe(true); expect(e.matchExe("/rig/bin/grok-helper")).toBe(false);
 
  });
  it("persists a confirmed effort before sending the verified spec, without restarting", async () => {
