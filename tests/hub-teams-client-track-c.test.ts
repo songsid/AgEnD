@@ -51,3 +51,21 @@ it("encodes Team feedback queries and quietly retires an aborted search", async 
   await c.teamSuggestions("person", "Riley", null);
   expect(calls[2]!.path).toBe("/hub/v1/teams/candidates?kind=person&q=Riley");
 });
+
+it("uses the admin-only allowed-person search and forwards an abort without throwing", async () => {
+  const calls: { path: string; init: any }[] = [];
+  const c = createHubWebClient({ fetchImpl: async (path: string, init: any) => {
+    calls.push({ path, init });
+    if (JSON.parse(init.body || "{}").q === "Held") return new Promise((_, reject) => {
+      init.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    });
+    return response({ ok: true, people: [], truncated: false });
+  } });
+  expect(await c.searchAllowedPeople("Riley & 王")).toMatchObject({ ok: true });
+  expect(calls[0]!.path).toBe("/hub/v1/admin/group-policy/people/search");
+  expect(JSON.parse(calls[0]!.init.body)).toEqual({ q: "Riley & 王" });
+  const controller = new AbortController(), pending = c.searchAllowedPeople("Held", controller.signal);
+  for (let n = 0; n < 10 && calls.length < 2; n++) await Promise.resolve();
+  controller.abort(); expect(await pending).toMatchObject({ ok: false, status: 0 });
+  expect(calls[1]!.init.signal.aborted).toBe(true);
+});

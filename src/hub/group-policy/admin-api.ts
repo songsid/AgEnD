@@ -49,6 +49,12 @@ export async function handleGroupHttp(deps: GroupHttpDeps | undefined, q: GroupH
     const limited = !result.ok && result.reason === "limited";
     q.send(limited ? 429 : 200, result, limited ? { "Retry-After": "60" } : {}); return true;
   }
+  if (path === "/hub/v1/admin/group-policy/people/search") {
+    const input = parsed(searchRequest, raw); if (!input) return bad(), true;
+    const result = deps.control.searchPeople ? await deps.control.searchPeople(input, adminCtx) : { ok: false as const, reason: "unsupported" as const };
+    const limited = !result.ok && result.reason === "limited";
+    q.send(limited ? 429 : 200, result, limited ? { "Retry-After": "60" } : {}); return true;
+  }
   if (path === "/hub/v1/admin/group-policy/resolve") {
     const input = parsed(resolveRequest, raw); if (!input) return bad(), true;
     // A refusal is input feedback (200 with its reason), never authority.

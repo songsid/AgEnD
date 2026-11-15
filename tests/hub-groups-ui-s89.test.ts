@@ -395,7 +395,7 @@ describe("M-2724: the group add says what failed; on with no group asks first", 
     await until(() => pg.root.querySelector(`[data-group="${ID1}"] .btn-ghost`));
     fire(pg.root.querySelector(`[data-group="${ID1}"] .btn-ghost`), "click");
     await until(() => pg.root.querySelector(".hub-groups-preview .btn-primary"), 400);
-    expect(text(pg.root.querySelector('.hub-groups-preview [data-reason="no-groups"]'))).toContain("nobody gets access through a group");
+    expect(text(pg.root.querySelector('.hub-groups-preview [data-reason="no-groups"]'))).toContain("nobody gets access through it");
     const asked: string[] = []; let yes = false;
     vi.stubGlobal("confirm", (m: string) => { asked.push(m); return yes; });
     try {

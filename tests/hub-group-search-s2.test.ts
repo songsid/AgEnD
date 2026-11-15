@@ -14,6 +14,17 @@ afterEach(async () => { await rig?.close(); rig = undefined; vi.restoreAllMocks(
 async function world() { const r = rig = await companyJoinRig(p => { dc.port = p; }); return { r, admin: await r.signIn("alice") }; }
 const path = "/hub/v1/admin/group-policy/search";
 describe("bounded group prefix suggestions", () => {
+  it("T1 serves bounded person suggestions on the same authenticated admin boundary", async () => {
+    const { r, admin } = await world();
+    const result = await r.call(admin, "POST", "/hub/v1/admin/group-policy/people/search", { q: "car" });
+    expect(result).toMatchObject({ status: 200, body: { ok: true, truncated: false } });
+    expect(result.body.people.some((p: { login: string }) => p.login === "carol")).toBe(true);
+    const carol = await r.signIn("carol");
+    expect((await r.call(carol, "POST", "/hub/v1/admin/group-policy/people/search", { q: "car" })).status).toBe(403);
+    expect((await r.call(admin, "POST", "/hub/v1/admin/group-policy/people/search", { q: "car" }, { "X-AgEnD-Hub-CSRF": "" })).status).toBe(403);
+    expect((await r.call(admin, "POST", "/hub/v1/admin/group-policy/people/search", { q: "x" })).status).toBe(400);
+  });
+
   it("finds Owners case-insensitively, spends service bind, and leaves selection authority to resolve", async () => {
     const { r, admin } = await world(), before = r.wire.searches.length;
     const mailing = randomUUID(); r.wire.state.labels.set(mailing, "CN=OwnerMailing,DC=example,DC=test");

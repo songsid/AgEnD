@@ -139,7 +139,7 @@ connected, the same card is also on the administrator's welcome page. Three step
 what the Hub has saved.
 
 1. **Let colleagues connect Fleets with their company account** — turn on **Allow company-account Fleet connections**.
-2. **Who can join** — search for the AD groups whose members may connect (type the start of the name) and add them. For
+2. **Who can join** — choose an **AD group**, **Team**, or **Person** in the shared picker and add them. Search group/person names; choose an existing team. For
    each group set **Each person up to** *N* **Fleets**, and whether its members may also **Chat with agents** and
    **Share agents**. The card shows what the change does before **Save**. A group the search does not find goes under
    **Add by distinguished name**. A live join code also completes this step.
@@ -188,7 +188,7 @@ key: anyone in its scope who gets it can connect a Fleet under their own name un
 next is what they could do without it:
 - **Asking, group permissions never turned on:** they can ask an agent as soon as its owner allows them, like anyone
   who signs in. Do not tell them to have group permissions turned on for this: that switch changes access for everyone.
-- **Asking, group permissions on:** they need **Chat with agents** from one of their groups *and* the owner's
+- **Asking, group permissions on:** they need **Chat with agents** from an allowed AD group, team, or personal row *and* the owner's
   allowance. In no allowed group, they cannot chat until a group allows it.
 - **Sharing** is never given by a code. The Hub has to allow that person to share; until it does, the row reads "Not
   shared: your Hub administrator hasn't allowed you to share agents."
@@ -286,7 +286,7 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
   confirmation"): on the confirm card at the top of the page, or on the card in General when the page names Discord or
   Telegram. Then the row reads "Shared: Hub questions go to this agent's own conversation."
 - Turning the switch off withdraws the agent.
-- **Who may share:** when group permissions are on, only people whose group has **Share agents**. Otherwise the row
+- **Who may share:** when group permissions are on, only people whose AD group, team, or personal row has **Share agents**. Otherwise the row
   reads "Not shared: your Hub administrator hasn't allowed you to share agents. It will be shared once they do."
   (未分享：Hub 管理員還沒有允許你分享 Agent。) with **Don't share it** to take the request back.
 - **While it answers a Hub question, this agent may not contact other agents** defaults on, including existing shares.
@@ -513,9 +513,14 @@ or, signed in as the administrator, the address `https://<hub address>/ui/hub/ad
 are turned on, the Hub behaves as before: everyone who signs in can chat, and connecting needs the administrator's
 approval or a join code.
 
-- Three permissions per AD security group: **Chat with agents**, **Share agents**, **Connect a fleet** with a
-  **Fleets** number (0–8). A person in several groups gets everything any group allows and the highest Fleets number.
-  **People excluded** win over any group.
+- The allowed list accepts **AD group · Team · Person** (AD 群組 · 團隊 · 人員), using the same picker as agent grants.
+  Each row allows **Chat with agents**, **Share agents**, and **Connect a Fleet** with **Fleets** (0–8).
+  A person gets the union of applicable rows and the highest Fleet limit, not their sum. **People excluded** win over all rows.
+  Sign-in remains governed by AD eligibility; an allowed team never grants sign-in or replaces the owner's ask grant.
+- Team rows show the current member count and leads: their leads decide who belongs. The preview includes the distinct
+  local team members checked, including people who have not signed in. A changed roster invalidates the preview; check again.
+  Team membership is read locally; an ordinary action still checks current directory eligibility. Removing someone changes
+  their next action; this T1 feature does not add background disconnection or team-scoped join codes.
 - The editor shows **What this change does** before **Save** (**Turn on and save** the first time).
 - **Turn off** pauses what depends on groups (chatting, sharing, self-service connecting), for the administrator too.
   Turning it on again resumes nothing by itself: **Resume** each paused item under **Paused**.

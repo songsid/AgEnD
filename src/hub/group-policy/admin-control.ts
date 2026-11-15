@@ -203,6 +203,6 @@ export function createHubGroupAdminControl(options: {
       const code = failure(error); if (code) return { ok: false, code: code === "invalid" ? "stale-preview" : code }; throw error; }
     finally { working--; }
   };
-  return { read: reads.read, resolve: reads.resolve, search: suggestions.search, resume: reads.resume, preview, apply,
+  return { read: reads.read, resolve: reads.resolve, search: suggestions.search, searchPeople: suggestions.searchPeople, resume: reads.resume, preview, apply,
     close(): void { closed = true; candidates.clear(); boundary.close(); reads.close(); suggestions.close(); } };
 }

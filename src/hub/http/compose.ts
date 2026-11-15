@@ -63,7 +63,7 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
   "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",
   // Hub UX U2 (M-2932): the group-search picker (its own words inside), shared with B2's join-code scope.
-  "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js",
+  "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js", "hub-subject-picker.js", "hub-policy-subjects.js",
   // B2: code management and the same-request Hub approval queue.
   "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js",
   // Hub rooms (hub-rooms-ux.md §§2,5): the rooms words (#3850) then the presence helper (pure, no DOM).
