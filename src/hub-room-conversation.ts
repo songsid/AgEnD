@@ -2,7 +2,14 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { HUB_REPORT_TARGET } from "./hub-report-target.js";
 const ID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
+/** An internal consumed-watch marker, never a human receipt or caller-supplied authority. */
+export function roomContextInputMarker(meta: Record<string,string>): string | null {
+  return meta.from_instance === HUB_REPORT_TARGET && ID.test(meta.hub_room_context_generation ?? "")
+    && /^hub-room-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(meta.correlation_id ?? "")
+    ? `[agend-room-input:${meta.correlation_id}]` : null;
+}
 export class RoomConversationGeneration {
   private value: string | null = null;
   private session: string | null = null;

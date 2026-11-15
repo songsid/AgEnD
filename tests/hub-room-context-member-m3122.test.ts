@@ -65,3 +65,15 @@ it("keeps a generation across reattachment, rotates on restart/clear/session cha
   attached.reset();const c=attached.current();expect(c).not.toBe(b);
   attached.start(false);expect(attached.current()).not.toBe(c);
 });
+it("keeps a frozen answer retryable across a conversation reset without advancing the new cursor",async()=>{
+  const h=fixture(),ask=h.ask();h.adapter.accept(ask,h.link);await h.adapter.settled();
+  const cid=h.deliver.mock.calls[0][0].correlationId;
+  expect(await h.adapter.report({correlationId:cid,caller:"Notes",text:"Frozen answer"})).toMatchObject({ok:true});
+  expect(h.link.sendAnswer).toHaveBeenCalledTimes(1);
+  h.reset();const next={...h.link};h.adapter.connected(next);await h.adapter.flush();
+  expect(h.link.sendAnswer).toHaveBeenCalledTimes(2);
+  const answer=vi.mocked(h.link.sendAnswer).mock.calls[0][0];
+  expect(vi.mocked(h.link.sendAnswer).mock.calls[1][0]).toEqual(answer);
+  expect(h.adapter.acknowledge({messageId:ask.messageId,answerId:answer.answerId},next)).toBe(true);
+  expect(h.link.contextInput).not.toHaveBeenCalled();h.adapter.close();
+});

@@ -5,7 +5,7 @@ import { applyHubMigrations } from "../src/hub/db.js";
 import { HUB_HTTP_MIGRATIONS } from "../src/hub/http/schema.js";
 
 it("migrates once, preserves direct-room bytes and refuses an older migration registry", () => {
-  const db = new Database(":memory:"), older = HUB_HTTP_MIGRATIONS.filter(m => !["s3-admin-dashboard", "s3-room-agent-posts", "s3-rooms", "s3-room-agents", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
+  const db = new Database(":memory:"), older = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-room-context" && !["s3-admin-dashboard", "s3-room-agent-posts", "s3-rooms", "s3-room-agents", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
   try {
     applyHubMigrations(db, older);
     const id = randomUUID(), grant = randomUUID(), owner = `corp/${randomUUID()}`, asker = `corp/${randomUUID()}`, exposure = randomUUID();
@@ -21,7 +21,7 @@ it("migrates once, preserves direct-room bytes and refuses an older migration re
 });
 
 it("adds retained agent deliveries without changing existing group message or membership fields", () => {
-  const db = new Database(":memory:"), r1 = HUB_HTTP_MIGRATIONS.filter(m => !["s3-admin-dashboard", "s3-room-agent-posts", "s3-room-agents", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
+  const db = new Database(":memory:"), r1 = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-room-context" && !["s3-admin-dashboard", "s3-room-agent-posts", "s3-room-agents", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
   try {
     applyHubMigrations(db, r1);
     const room = randomUUID(), member = randomUUID(), post = randomUUID(), person = `corp/${randomUUID()}`;
@@ -40,7 +40,7 @@ it("adds retained agent deliveries without changing existing group message or me
 });
 
 it("adds creator and assistant storage once without changing retained R2 membership or posts", () => {
-  const db = new Database(":memory:"), r2 = HUB_HTTP_MIGRATIONS.filter(m => !["s3-admin-dashboard", "s3-room-agent-posts", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
+  const db = new Database(":memory:"), r2 = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-room-context" && !["s3-admin-dashboard", "s3-room-agent-posts", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
   try {
     applyHubMigrations(db, r2);
     const room = randomUUID(), member = randomUUID(), person = `corp/${randomUUID()}`;
@@ -57,7 +57,7 @@ it("adds creator and assistant storage once without changing retained R2 members
 });
 
 it("keeps pre-sign-in room labels separate from permanent Hub sign-in rows", () => {
-  const db = new Database(":memory:"), r3 = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-room-directory");
+  const db = new Database(":memory:"), r3 = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-room-context" && m.component !== "s3-room-directory");
   try {
     applyHubMigrations(db, r3);
     const person = `corp/${randomUUID()}`, room = randomUUID(), member = randomUUID();
@@ -74,7 +74,7 @@ it("keeps pre-sign-in room labels separate from permanent Hub sign-in rows", () 
 });
 
 it("adds retry time without rewriting an issued delivery, and refuses the pre-retry registry", () => {
-  const db = new Database(":memory:"), beforeRetry = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-room-retry");
+  const db = new Database(":memory:"), beforeRetry = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-room-context" && m.component !== "s3-room-retry");
   try {
     applyHubMigrations(db, beforeRetry);
     const room = randomUUID(), parent = randomUUID(), reply = randomUUID(), person = `corp/${randomUUID()}`;
@@ -90,7 +90,7 @@ it("adds retry time without rewriting an issued delivery, and refuses the pre-re
 });
 
 it("adds unknown historical answer times and backfills only retained depth/rate stop counts once", () => {
-  const db = new Database(":memory:"), beforeDashboard = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-admin-dashboard");
+  const db = new Database(":memory:"), beforeDashboard = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-room-context" && m.component !== "s3-admin-dashboard");
   try {
     applyHubMigrations(db, beforeDashboard);
     const room = randomUUID(), person = `corp/${randomUUID()}`, parent = randomUUID(), reply = randomUUID();
@@ -113,4 +113,19 @@ it("adds unknown historical answer times and backfills only retained depth/rate 
     ]);
     expect(() => applyHubMigrations(db, beforeDashboard)).toThrow(/s3-admin-dashboard/);
   } finally { db.close(); }
+});
+
+it("adds room context cursors once after the retained delivery schema without changing its foreign keys",()=>{
+  const db=new Database(":memory:"),before=HUB_HTTP_MIGRATIONS.filter(m=>m.component!=="s3-room-context");
+  try{
+    applyHubMigrations(db,before);const foreignKeys=db.prepare("PRAGMA foreign_key_list(hub_room_deliveries)").all();
+    applyHubMigrations(db,HUB_HTTP_MIGRATIONS);
+    expect(db.prepare("PRAGMA table_info(hub_room_deliveries)").all()).toContainEqual(expect.objectContaining({name:"context_generation",notnull:0}));
+    expect(db.prepare("PRAGMA foreign_key_list(hub_room_deliveries)").all()).toEqual(foreignKeys);
+    const exposure=randomUUID(),generation=randomUUID();
+    db.prepare("INSERT INTO hub_room_context_generations VALUES(?,?,?,?)").run(exposure,"binding",generation,7);
+    applyHubMigrations(db,HUB_HTTP_MIGRATIONS);
+    expect(db.prepare("SELECT generation,link_epoch FROM hub_room_context_generations").get()).toEqual({generation,link_epoch:7});
+    expect(()=>applyHubMigrations(db,before)).toThrow(/s3-room-context/);
+  }finally{db.close();}
 });

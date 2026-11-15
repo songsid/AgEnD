@@ -25,7 +25,8 @@ async function world(modern=true){
     expect(got.status).toBe(200);return got.json;
   };
   const asks=()=>r!.sent.filter(s=>s.frame.type==="room.ask").map(s=>s.frame.payload as HubRoomAsk);
-  const ask=async(text:string,replyTo?:string)=>{const before=asks().length;await post(text,[exposure.id],replyTo);await vi.waitFor(()=>expect(asks().length).toBe(before+1));return asks().at(-1)!;};
+  // Reconnect may replay another frozen delivery; select this parent by its exact question identity.
+  const ask=async(text:string,replyTo?:string)=>{await post(text,[exposure.id],replyTo);await vi.waitFor(()=>expect(asks().some(a=>a.text===text)).toBe(true));return asks().find(a=>a.text===text)!;};
   return {link,caps,fleetId,exposure,roomId,generation,state,input,post,ask};
 }
 it("first/reset includes the full window; confirmed repeat uses only new posts plus its visible reply anchor",async()=>{

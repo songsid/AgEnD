@@ -1,5 +1,5 @@
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
-import { RoomConversationGeneration } from "./hub-room-conversation.js";
+import { RoomConversationGeneration, roomContextInputMarker } from "./hub-room-conversation.js";
 import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
 import { generalByName } from "./general-instance.js";
@@ -2770,7 +2770,7 @@ export class Daemon extends EventEmitter {
     const backend = this.config.backend ?? this.backend?.binaryName ?? "";
     if (!["claude-code", "codex"].includes(backend)) return;
     const marker = durableAttempt ? `[agend-delivery-id:${durableAttempt.deliveryId}]`
-      : humanVerificationId ? verdict.humanReceipt?.marker ?? `[agend-human-id:${humanVerificationId}]` : null;
+      : humanVerificationId ? verdict.humanReceipt?.marker ?? `[agend-human-id:${humanVerificationId}]` : roomContextInputMarker(track.meta);
     if (!marker || !formatted.startsWith(marker)) return;
     let found: { path?: string; offset?: number; runtime?: RuntimeTranscriptReference } | null = verdict.transcriptCheckpoint ?? null;
     if (!found) {
@@ -8614,7 +8614,9 @@ export class Daemon extends EventEmitter {
         // byte for byte (its proof is the wire's hash), so the notice waits for the next delivery without one.
         const whatsNew = this.pendingWhatsNew && !meta.human_receipt_id && !meta.handoff_redelivery
           ? this.currentWhatsNew(this.pendingWhatsNew) : null;
-        const pasted = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
+        const body = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
+        const roomMarker = roomContextInputMarker(meta);
+        const pasted = roomMarker ? `${roomMarker}\n${body}` : body;
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
@@ -8646,6 +8648,7 @@ export class Daemon extends EventEmitter {
           sent = await this.deliverMessage(pasted, status, {
             deliveryEpoch,
             submissionId: meta.message_id,
+            ...(meta.hub_room_context_generation ? { roomContextGeneration: meta.hub_room_context_generation } : {}),
             ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),
             verdict,
             durableAttempt: durableAttempt || undefined,
@@ -8725,6 +8728,8 @@ export class Daemon extends EventEmitter {
       steer?: boolean;
       deliveryEpoch?: number;
       submissionId?: string;
+      /** Rechecked at every wait/write fence; old frozen context cannot enter a reset conversation. */
+      roomContextGeneration?: string;
       humanVerificationId?: string;
       humanMeta?: Record<string, string>;
       verdict?: DeliveryVerdict;
@@ -8746,8 +8751,8 @@ export class Daemon extends EventEmitter {
     // that ignores the outcome gets a throwaway.
     const verdict = opts?.verdict ?? { reached: false };
     if (opts?.durableAttempt) verdict.durableAttempt = true;
-    const cancelled = () => opts?.deliveryEpoch !== undefined
-      && !this.isDeliveryEpochCurrent(opts.deliveryEpoch);
+    const cancelled = () => (opts?.deliveryEpoch !== undefined && !this.isDeliveryEpochCurrent(opts.deliveryEpoch))
+      || (!!opts?.roomContextGeneration && opts.roomContextGeneration !== this.roomConversationGeneration());
     if (cancelled() || this.stormWindow?.isStopped()) return false;
     formatted = prepareDeliveryWire(formatted, opts?.preserveExactBytes);
 
@@ -11251,6 +11256,7 @@ export class Daemon extends EventEmitter {
                   : after === "queue" ? "composer-empty-queue" : "composer-empty-idle");
                 verdict.phase = steer ? "steer-accepted" : "composer-accepted";
                 verdict.proof = `${steer ? "steer" : "handoff"}-composer-${after}`;
+                verdict.roomInputQueued = after === "queue";
                 if (status) this.emit("message_confirmed", status); // ✅ taken from the box
                 return true;
               }
@@ -11323,6 +11329,7 @@ export class Daemon extends EventEmitter {
         // #3030: what follows is an idle submission (or a failure the caller reports): no longer a queued hand-off.
         if (verdict.handoff && !verdict.trackHandoff?.id) this.dropQueuedHandoff(verdict);
         verdict.handoff = undefined;
+        verdict.roomInputQueued = false;
         if (windowId && this.controlClient && !(await this.controlClient.waitUntilIdle(windowId))) {
           verdict.phase = "native-queue-idle-wait";
           verdict.proof = "idle-wait-failed";
@@ -14622,7 +14629,11 @@ export class Daemon extends EventEmitter {
 
   private roomConversationState: RoomConversationGeneration | null = null;
   roomConversationGeneration(): string | null {
-    try { this.roomConversationState?.observeSession(this.ownedWorkingSession); }
+    try {
+      // Local non-Claude backends checkpoint their own session below; do not replace it with a Claude-only field.
+      if (this.nativePaneLifecycle || (this.config.backend ?? "claude-code") === "claude-code")
+        this.roomConversationState?.observeSession(this.ownedWorkingSession);
+    }
     catch (err) { this.logger.warn({err}, "Room conversation checkpoint failed"); return null; }
     return this.roomConversationState?.current() ?? null;
   }
@@ -14639,7 +14650,8 @@ export class Daemon extends EventEmitter {
 
   private saveSessionId(): void {
     if (this.nativePaneLifecycle) {
-      try { this.nativePaneLifecycle.checkpointSession(); this.ownedWorkingSession = this.backend?.getSessionId() ?? null; }
+      try { this.nativePaneLifecycle.checkpointSession(); this.ownedWorkingSession = this.backend?.getSessionId() ?? null;
+        this.roomConversationState?.observeSession(this.ownedWorkingSession); }
       catch (err) { this.logger.warn({ err }, "Native conversation checkpoint is unconfirmed"); }
       return;
     }
@@ -14649,6 +14661,7 @@ export class Daemon extends EventEmitter {
     try {
       const sid = this.backend?.getSessionId();
       if (!sid) return;
+      this.roomConversationState?.observeSession(sid);
       if ((this.config.backend ?? "claude-code") === "claude-code" && Buffer.byteLength(sid) <= 256
         && !/[\u0000-\u001f\u007f]/.test(sid) && this.ownedWorkingSession !== sid) {
         this.ownedWorkingSession = sid;

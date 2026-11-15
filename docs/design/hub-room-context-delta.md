@@ -34,6 +34,12 @@ handoff watcher proves that a turn took it. A busy CLI queue, lost/uncertain inp
 The encrypted member row retains the generation and input receipt; it retries that receipt until the Hub ACKs it.
 The existing input/held/answer state machine and no-repaste rules remain.
 
+A busy Claude/Codex submission uses an internal `agend-room-input` marker with the existing retained consumed watcher;
+it is not a human receipt or new tool authority. The generation is rechecked after every readiness wait and at the
+final pane write. Other owned backend session checkpoints also update this generation. A frozen answer can still be
+retried and ACKed after a reset; that return never advances the new conversation's context cursor. An old frozen
+delta is held instead of being relabelled or automatically entered into a new conversation; the next new ask is full.
+
 Old peers retain the complete existing full-window behavior. A legacy full-window ask in transit at feature startup
 may be acknowledged in the newly confirmed generation; only a full legacy window can take this path, never a delta.
 The model-facing prompt contains the same quoted room messages/question, without protocol cursor details.

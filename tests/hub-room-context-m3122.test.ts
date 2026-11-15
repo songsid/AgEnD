@@ -16,7 +16,7 @@ function fixture() {
     content.set(`c${n}`, {question:`Message ${n}`});
     db.prepare("INSERT INTO hub_room_posts VALUES(?,?,?,?,?,?,?,NULL)").run(`p${n}`,"room",n,"Alex",`c${n}`,n,"person");
   }
-  return {db, core:{deps:{content:{get:(id:string)=>content.get(id)}}} as HubCore};
+  return {db, content, core:{deps:{content:{get:(id:string)=>content.get(id)}}} as HubCore};
 }
 it("sends only posts after the last confirmed ask while retaining its visible older reply anchor", () => {
   const {db,core}=fixture(),post={id:"p6",room_id:"room",sequence:6,reply_to:"p1"};
@@ -47,4 +47,17 @@ it("keeps cursors across reconnect, resets once, and rejects old generations, ga
   expect(cursor.observe("agent","binding",g1,2)).toBe(false);
   expect(cursor.snapshot("other-room","agent","binding",9,2)?.after).toBe(0);
   expect(cursor.snapshot("room","other-agent","binding",9,2)).toBeNull();
+});
+it("keeps the30-row/2KiB bounds and applies join/audience floors to a delta and its older reply anchor",()=>{
+  const {db,core,content}=fixture();
+  content.set("c5",{question:"中".repeat(1000)});
+  db.prepare("INSERT INTO hub_room_post_lineage VALUES(?,?)").run("p4",2);
+  const scoped=roomContext(core,db,{id:"p6",room_id:"room",sequence:6,reply_to:"p1"},3,3);
+  expect(scoped).toHaveLength(1);expect(Buffer.byteLength(scoped[0].text)).toBeLessThanOrEqual(2048);
+  expect(scoped[0].text).not.toContain("�");expect(scoped[0].repliedTo).toBeUndefined();
+  for(let n=7;n<=41;n++){content.set(`c${n}`,{question:`Message ${n}`});db.prepare("INSERT INTO hub_room_posts VALUES(?,?,?,?,?,?,?,NULL)").run(`p${n}`,"room",n,"Alex",`c${n}`,n,"person");}
+  const first=roomContext(core,db,{id:"p41",room_id:"room",sequence:41,reply_to:"p1"},1);
+  expect(first).toHaveLength(31);expect(first[0]).toMatchObject({text:"Message 1",repliedTo:true});
+  const delta=roomContext(core,db,{id:"p41",room_id:"room",sequence:41,reply_to:"p1"},1,35);
+  expect(delta.map(v=>v.text)).toEqual(["Message 1",...Array.from({length:5},(_,i)=>`Message ${36+i}`)]);
 });

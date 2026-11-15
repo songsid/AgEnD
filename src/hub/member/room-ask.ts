@@ -163,11 +163,11 @@ export class HubRoomAskAdapter {
     return !this.closed && this.options.current() && source !== null && source === this.link && source.current()
       && !!source.features?.has("welcome-caps-v1") && source.features.has(ROOM_ASK_CAPABILITY);
   }
-  private current(saved: Saved): boolean {
+  private current(saved: Saved, checkGeneration = true): boolean {
     const local = this.options.localExposure(saved.ask.exposureId), was = saved.local;
     return !this.closed && this.options.current() && !!local && local.agent === was.agent && local.consentId === was.consentId
       && local.revision === was.revision && local.token === was.token
-      && (!saved.generation || this.options.generation?.(was.agent)===saved.generation);
+      && (!checkGeneration || !saved.generation || this.options.generation?.(was.agent)===saved.generation);
   }
   connected(link: RoomAskLink | null): void {
     this.link = link; this.admitted.clear(); this.contextFlights.clear();
@@ -316,14 +316,15 @@ export class HubRoomAskAdapter {
     for (const row of this.rows("answered")) {
       if (!this.usable(source)) return;
       const saved = this.read(row);
-      if (this.current(saved)) await this.send(saved, source);
+      // Returning an already frozen answer does not reuse context or advance the next conversation's cursor.
+      if (this.current(saved, false)) await this.send(saved, source);
     }
   }
   private send(saved: Saved, source: RoomAskLink): Promise<void> {
     const id = saved.ask.messageId, existing = this.sending.get(id);
     if (existing?.link === source) return existing.work;
     const work = Promise.resolve().then(async () => {
-      if (!this.usable(source) || !this.current(saved) || this.row(id)?.state !== "answered") return;
+      if (!this.usable(source) || !this.current(saved, false) || this.row(id)?.state !== "answered") return;
       try {
         // M-3125: an answer's files are staged before its frame on every send (staging expires); the bytes must still be the
         // frozen refs' bytes, or the answer stays unsent rather than naming other content.
@@ -411,7 +412,7 @@ export class HubRoomAskAdapter {
     const row = this.row(ack.messageId);
     if (!row || !["answered", "acked"].includes(row.state)) return false;
     const saved = this.read(row);
-    if (!this.current(saved) || saved.answer?.answerId !== ack.answerId) return false;
+    if (!this.current(saved, false) || saved.answer?.answerId !== ack.answerId) return false;
     if (row.state !== "acked") this.save(row.message_id, "acked", saved);
     return true;
   }
