@@ -9,7 +9,8 @@ import { CODEX_EMPTY_PASSIVE_COMPOSER, CODEX_STATUS_PASSIVE_COMPOSER } from "../
 import { Daemon } from "../src/daemon.js";
 
 const capture = (name: string) => readFileSync(new URL("./fixtures/codex-readiness-4019/" + name, import.meta.url), "utf8");
-const draft = capture("restored-draft.txt"), resumed = capture("footerless-resume.txt");
+const draft = capture("restored-draft.txt"), resumed = capture("footerless-resume.txt"), status = capture("footerless-status.txt");
+const SESSION = "00000000-0000-4000-8000-000000004019";
 const roots: string[] = [];
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const context = { statusLineItems: () => ["context-remaining"], launchMayResume: () => true };
@@ -20,7 +21,8 @@ describe("#4019: the same real restored draft under Unix and ConPTY", () => {
     expect(backend.ownsComposerRows(draft)).toBe(true);
     expect(backend.getBusyPattern().test(draft)).toBe(false);
     expect(backend.getReadyPattern().test(draft)).toBe(true);
-    expect(backend.isPeriodicRedrawIdlePane(draft)).toBe(true);
+    expect(backend.isPeriodicRedrawIdlePane(draft)).toBe(false);
+    expect(backend.isDraftIdlePane(draft)).toBe(true);
   });
 
   it.each(["linux", "native"] as const)("the real %s state monitor starts idle time for the draft and never types", async mode => {
@@ -48,7 +50,7 @@ describe("#4019: the same real restored draft under Unix and ConPTY", () => {
   it("keeps the same draft proof when a configured Context item follows the model", () => {
     const b = new CodexPaneDetectors({ statusLineItems: () => ["model-with-reasoning", "context-remaining", "current-dir"], launchMayResume: () => false });
     const screen = draft.replace("Context 100% left", "gpt-6-luna medium · Context 100% left · ~/scratch");
-    expect(b.getReadyPattern().test(screen)).toBe(true); expect(b.isPeriodicRedrawIdlePane(screen)).toBe(true);
+    expect(b.getReadyPattern().test(screen)).toBe(true); expect(b.isPeriodicRedrawIdlePane(screen)).toBe(false); expect(b.isDraftIdlePane(screen)).toBe(true);
   });
 
   it("keeps working, numbered selections, historical output and unknown footers out of idle", () => {
@@ -64,7 +66,7 @@ describe("#4019: the same real restored draft under Unix and ConPTY", () => {
 });
 
 describe("#4019: only an owned native resume may recognize the exact empty footerless composer", () => {
-  const backend = (resume = true, items = ["context-remaining"]) => createNativePaneBackend("codex", () => ({ sessionId: null, contextPercentage: null, statusLineItems: items, resumes: true }), { contextlessResume: resume });
+  const backend = (resume = true, items = ["context-remaining"], sessionId: string | null = SESSION) => createNativePaneBackend("codex", () => ({ sessionId, contextPercentage: null, statusLineItems: items, resumes: true }), { contextlessResume: resume });
   it("recognizes the captured empty layout only with resume admission and its configured status", () => {
     const b = backend();
     expect(CODEX_EMPTY_PASSIVE_COMPOSER.test(resumed)).toBe(false);
@@ -77,6 +79,15 @@ describe("#4019: only an owned native resume may recognize the exact empty foote
       expect(other.getReadyPattern().test(resumed)).toBe(false);
     }
   });
+  it("keeps the captured status report bound to the owned resume UUID and known rows", () => {
+    const b = backend(); expect(b.getReadyPattern().test(status)).toBe(true); expect(b.isDeliveryInputReadyPane!(status)).toBe(true);
+    expect(backend(true, ["context-remaining"], null).isDeliveryInputReadyPane!(status)).toBe(false);
+    expect(backend(true, ["context-remaining"], "00000000-0000-4000-8000-000000000000").isDeliveryInputReadyPane!(status)).toBe(false);
+    for (const bad of [status.replace("  Monthly limit:", "  Unknown menu:"), status.replace("  Session:", "  Session: " + SESSION + "\n  Session:"), resumed.replace("› Ask Codex", "  /model choose something\n› Ask Codex"), "› Ask Codex to do anything\n"]) {
+      expect(b.isDeliveryInputReadyPane!(bad)).toBe(false); expect(b.getReadyPattern().test(bad)).toBe(false);
+    }
+  });
+
   it("does not grant this exception to a draft, output, unknown footer, live work or a dialog", () => {
     const b = backend();
     for (const bad of [resumed.replace("› Ask Codex to do anything", "› unsent text"), resumed.trimEnd() + "\n  unknown footer", resumed.trimEnd() + "\n• output"]) expect(b.isDeliveryInputReadyPane!(bad)).toBe(false);

@@ -6315,7 +6315,7 @@ export class Daemon extends EventEmitter {
       && (this.instanceState === "idle" || allowStuck && this.instanceState === "stuck") && (!admission || admission.current());
     if (!pane || !ready()) { this.pauseRequested = false; return false; }
     let text: string; try { text = await pane.capturePane(); } catch { this.pauseRequested = false; return false; }
-    if (!ready() || admission && !admission.accepts(text) || this.backend?.backgroundWorkRunning?.(text)
+    if (!ready() || admission && !admission.accepts(text) || this.backend?.isDraftIdlePane?.(text) === true || this.backend?.backgroundWorkRunning?.(text)
       || !allowStuck && !this.paneAuthoritativelyIdle(text)) { this.pauseRequested = false; return false; }
     this.nativePauseProof = ready; return true;
   }
@@ -7624,7 +7624,7 @@ export class Daemon extends EventEmitter {
           // work cannot hide behind this: it changes the layout, the next
           // output arms another probe, and the debounce capture still fires.
           // #1641: never while the transcript shows a turn running — that idle-looking screen is mid-turn.
-          if (this.instanceState === "idle" && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true
+          if (this.instanceState === "idle" && this.executionIdleProof()?.(pane) === true
             && this.transcriptTurnState() !== "open") return;
           // A second burst overtook the probe. Do not bless its stale capture as
           // idle: continuous output is the safer working signal, while the next
@@ -7663,7 +7663,7 @@ export class Daemon extends EventEmitter {
       // decisions about *now*. The old double-observe expressed that by calling
       // observe twice, which silently disabled the "content moved" branch.
       if (this.backend?.periodicRedrawFrom) this.periodicRedrawLayout = this.backend.periodicRedrawFrom(pane);
-      const structuredPeriodicIdle = this.periodicIdleProof();
+      const structuredPeriodicIdle = this.executionIdleProof();
       // #1641: the transcript outranks the pane: while it shows the turn running, no reading of this pane is idle (codex
       // hides its status row while streaming, leaving the idle composer and footer in view mid-turn).
       const transcriptTurn = this.transcriptTurnState();
@@ -7876,6 +7876,13 @@ export class Daemon extends EventEmitter {
     if (!proof) return undefined;
     if (this.backend?.periodicRedrawFrom && !this.periodicRedrawLayout) return undefined;
     return proof;
+  }
+
+  /** Draft text can be execution-idle, but must not become empty-composer proof for delivery, pause or nudges. */
+  private executionIdleProof(): ((pane: string) => boolean) | undefined {
+    const empty = this.periodicIdleProof(), draft = this.backend?.isDraftIdlePane;
+    if (!empty && !draft) return undefined;
+    return pane => empty?.call(this.backend, pane) === true || draft?.call(this.backend, pane) === true;
   }
 
   private bindInstanceStateOutputListener(windowId: string): void {

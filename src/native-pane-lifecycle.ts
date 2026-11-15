@@ -1,5 +1,5 @@
 /** Optional native adapter for the ordinary Daemon. The runner retains processes across coordinator detach. */
-import { CODEX_STATUS_PASSIVE_COMPOSER, CODEX_STATUS_FOOTERLESS_RESUME_COMPOSER, isCodexStatusAutocompleteComposer } from "./backend/codex-footer-hints.js";
+import { CODEX_STATUS_PASSIVE_COMPOSER, codexFooterlessResumeComposer, isCodexStatusAutocompleteComposer } from "./backend/codex-footer-hints.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import type { CliBackend } from "./backend/types.js";
 import { createNativePaneBackend } from "./backend/native-pane.js";
@@ -94,7 +94,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     const backend = this.backend;
     return ((backend.isDeliveryInputReadyPane?.(text) ?? backend.getReadyPattern().test(text))
       // Only the command already typed by this retained one-shot intent. Other drafts do not become ready.
-      || fixedStatus && (CODEX_STATUS_PASSIVE_COMPOSER.test(text) || CODEX_STATUS_FOOTERLESS_RESUME_COMPOSER.test(text)
+      || fixedStatus && (CODEX_STATUS_PASSIVE_COMPOSER.test(text) || codexFooterlessResumeComposer("/status", this.port.ownedSnapshot()?.sessionId).test(text)
         || isCodexStatusAutocompleteComposer(text)) && backend.ownsComposerRows?.(text) === true) && !backend.getBusyPattern?.()?.test(text)
       && ![...(backend.getStartupDialogs?.() ?? []), ...(backend.getRuntimeDialogs?.() ?? [])].some(dialog => dialog.pattern.test(text) && (!dialog.isActive || dialog.isActive(text)));
   }

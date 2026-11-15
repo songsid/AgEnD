@@ -156,7 +156,10 @@ it('fixed status autocomplete retains live work, disconnect and every active-dia
 
 it('#4019: the real empty footerless interrupted resume verifies its exact session without clearing or another prompt',async()=>{
  const screen=readFileSync(new URL('./fixtures/codex-readiness-4019/footerless-resume.txt',import.meta.url),'utf8').replace(/\r?\n/g,'\r\n');
- const f=await fixture('codex',undefined,true,false,screen);f.launch.sessionId=f.actual;const native=f.make();let retired=false,result:unknown;
+ const f=await fixture('codex',undefined,true,false,screen);f.launch.sessionId=f.actual;
+ const report=readFileSync(new URL('./fixtures/codex-readiness-4019/footerless-status.txt',import.meta.url),'utf8').replace('00000000-0000-4000-8000-000000004019',f.actual).replace(/\r?\n/g,'\r\n');
+ const paint=f.write.getMockImplementation()!;f.write.mockImplementation(text=>{if(text==='\r')f.output('\x1b[2J\x1b[H'+report);else paint(text);});
+ const native=f.make();let retired=false,result:unknown;
  const pending=native.acquire(()=>{if(retired)throw Error('test admission retired');});void pending.then(value=>{result=value;},()=>{});
  try{await vi.waitFor(()=>expect(result).toBeDefined(),{timeout:5000});expect(result).toMatchObject({disposition:'resumed'});expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status','\r']);expect(f.options.pin).toHaveBeenCalledExactlyOnceWith(f.launch.launchId,f.actual);}
  finally{retired=true;await native.release('close');await pending.catch(()=>{});}

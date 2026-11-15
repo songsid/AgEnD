@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 import { execFile } from "../child-process.js";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
-import { stripCodexPassiveHintRow, withCodexPassiveHintTail, CODEX_EMPTY_PASSIVE_COMPOSER, CODEX_EMPTY_FOOTERLESS_RESUME_COMPOSER, CODEX_STATUS_FOOTERLESS_RESUME_COMPOSER, isCodexStatusAutocompleteComposer } from "./codex-footer-hints.js";
+import { stripCodexPassiveHintRow, withCodexPassiveHintTail, CODEX_EMPTY_PASSIVE_COMPOSER, codexFooterlessResumeComposer, isCodexStatusAutocompleteComposer } from "./codex-footer-hints.js";
 import { codexPackageWarning } from "./codex-package.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
@@ -1010,7 +1010,7 @@ export const CODEX_RESUME_LARGE_BYTES = 20 * 1024 * 1024;
 
 /** Pane-only detectors: construction performs no provider, config or session discovery. */
 export class CodexPaneDetectors {
-  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean; contextlessResume?: boolean }) {}
+  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean; contextlessResume?: boolean; resumeSessionId?(): string | null }) {}
   protected readConfiguredStatusLineItems(): string[] | null { return this.paneDetectorContext?.statusLineItems()?.slice() ?? null; }
   protected trustPaneFields(pane: string): Record<string, unknown> { const state = codexTrustPromptState(pane); return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote }; }
   protected trustHoldReason(pane: string): Record<string, unknown> { return { ...this.trustPaneFields(pane), reason: "Folder permission needs confirmation on this execution machine" }; }
@@ -1099,9 +1099,13 @@ export class CodexPaneDetectors {
 
   private nativeContextlessEmpty(pane: string): boolean {
     const pattern = this.nativeContextlessPattern();
-    return !!pattern && (pattern.test(pane) || CODEX_EMPTY_FOOTERLESS_RESUME_COMPOSER.test(pane))
+    return !!pattern && (pattern.test(pane) || this.nativeResumeComposerPattern("Ask Codex to do anything")?.test(pane) === true)
       && !codexAppServerDisconnected(pane) && !this.getBusyPattern().test(pane)
       && ![...this.getStartupDialogs(), ...this.getRuntimeDialogs()].some(dialog => dialog.pattern.test(pane) && (!dialog.isActive || dialog.isActive(pane)));
+  }
+
+  private nativeResumeComposerPattern(text: "Ask Codex to do anything" | "/status"): RegExp | null {
+    return this.nativeContextlessPattern() ? codexFooterlessResumeComposer(text, this.paneDetectorContext?.resumeSessionId?.()) : null;
   }
 
   private nativeContextlessRows(pane: string): string[] | null {
@@ -1109,7 +1113,7 @@ export class CodexPaneDetectors {
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows.at(-1)!.trim()) rows.pop();
     if (isCodexStatusAutocompleteComposer(pane)) return rows;
-    if (CODEX_EMPTY_FOOTERLESS_RESUME_COMPOSER.test(pane) || CODEX_STATUS_FOOTERLESS_RESUME_COMPOSER.test(pane)) return rows;
+    if (this.nativeResumeComposerPattern("Ask Codex to do anything")?.test(pane) === true || this.nativeResumeComposerPattern("/status")?.test(pane) === true) return rows;
     const before = rows.length; stripCodexPassiveHintRow(rows);
     if (rows.length === before) return null;
     const remaining = [...rows]; stripCodexPassiveHintRow(remaining);
@@ -1167,20 +1171,14 @@ export class CodexPaneDetectors {
    * Those cosmetic redraws keep tmux control mode noisy, so the daemon cannot
    * wait for two seconds of output silence.
    *
-   * The Codex header, context meter and input chrome remain visible while a
-   * turn runs. Require both the owned composer/footer shape and no live work;
-   * a restored multiline draft is idle too, without editing its text. The
-   * empty-composer fallback below also covers cosmetic starfield redraws and
-   * the exact configured no-Context status-line shape.
+   * Do not use getReadyPattern() here: the Codex header, context meter and
+   * input chrome remain visible while a turn runs. Require the live EMPTY
+   * composer with its footer and no live status row. This stronger proof is
+   * also used by pause/nudge callers; drafts have a separate state-only proof.
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
     if (codexAppServerDisconnected(pane)) return false;
     if (this.nativeContextlessEmpty(pane)) return true;
-    // A restored draft is still idle. Reuse the same positive composer/footer proof under Unix and ConPTY;
-    // observing it never edits or submits the user's text. Transcript output and live work still veto this proof.
-    const frame = this.composerFrame(pane);
-    if (frame?.contextFooter && ownedComposerRow(frame.rows) >= 0 && this.getReadyPattern().test(pane)
-      && !this.getBusyPattern().test(pane)) return true;
     // Astra's 0.154 theme animates U+22C6 star points across otherwise-stable
     // idle chrome.  Remove only that observed decorative glyph; broader
     // punctuation stripping could turn real tool output into a false prompt.
@@ -1212,6 +1210,15 @@ export class CodexPaneDetectors {
     const activeRegion = rows.slice(Math.max(0, prompt - 8), prompt);
     if (activeRegion.some(row => /^•\s+\S.*\besc to interrupt\b/i.test(row))) return false;
     return true;
+  }
+
+  isDraftIdlePane(pane: string): boolean {
+    if (codexAppServerDisconnected(pane) || this.getBusyPattern().test(pane)) return false;
+    const frame = this.composerFrame(pane);
+    const prompt = frame?.contextFooter ? ownedComposerRow(frame.rows) : -1;
+    return !!frame && prompt >= 0 && this.getReadyPattern().test(pane)
+      && (!/^[>›][ \t⋆]+Ask Codex to do anything[ \t⋆]*$/.test(frame.rows[prompt])
+        || frame.rows.slice(prompt + 1).some(row => row.replace(/⋆/gu, "").trim() !== ""));
   }
 
   getReadyPattern(): RegExp {
@@ -1250,7 +1257,7 @@ export class CodexPaneDetectors {
       : null;
     return new RegExp(
       [contextReady.source, noContextReady.source, configuredContextReady?.source, this.nativeContextlessPattern()?.source,
-        this.nativeContextlessPattern() ? CODEX_EMPTY_FOOTERLESS_RESUME_COMPOSER.source : undefined]
+        this.nativeResumeComposerPattern("Ask Codex to do anything")?.source]
         .filter((source): source is string => !!source)
         .map(source => `(?:${source})`)
         .join("|"),
