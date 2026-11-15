@@ -1,3 +1,4 @@
+import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
@@ -29,6 +30,8 @@ interface Pending { expected: HubServerFrame["type"]; resolve(frame: HubServerFr
 export interface HubClientOptions {
   log?(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   receiveRecommendations?: boolean;
+  /** Explicit opt-in without another hello capability name. */
+  roomContext?: boolean;
   fleetInfo?: import("./types.js").HubFleetInfo;
   home: string; hubId: string; memberOrigin: string; current(): boolean;
   /** Must durably reconcile the current revocation version and journal BEFORE returning. No input here. */
@@ -163,12 +166,14 @@ export class HubMemberClient implements HubMemberTransport {
       const self = this;
       const canReportInfo = offered.includes("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_FLEET_INFO_CAPABILITY) === true;
       const canReceiveRecommendation = canReportInfo && !!this.options.fleetInfo && this.options.receiveRecommendations === true && frame.payload.capabilities?.includes(HUB_RECOMMENDATION_CAPABILITY) === true;
-      const features: ReadonlySet<string> = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
+      const features = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
+      if (this.options.roomContext && features.has(HUB_ROOM_ASK_CAPABILITY) && frame.payload.capabilities?.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
       if (canReceiveRecommendation) (features as Set<string>).add(HUB_RECOMMENDATION_CAPABILITY);
       const view: HubMemberLink = { profile: structuredClone(profile), linkEpoch: epoch, endpoint, features, get revocationVersion() { return self.revocation; },
         current: () => this.current() && this.link === link && this.view === view && this.epoch === epoch && link.current(),
         send: value => {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
+          if ((value.type === "room.context-state" || value.type === "room.context-input") && !features.has(HUB_ROOM_CONTEXT_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "fleet.recommendation-ack" && !canReceiveRecommendation) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "fleet.update-status" && !features.has(HUB_FLEET_UPDATE_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "fleet.info" && value.payload.updatesAllowed !== undefined && !features.has(HUB_FLEET_UPDATE_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
@@ -213,6 +218,8 @@ export class HubMemberClient implements HubMemberTransport {
   }
   private async dispatch(frame: HubServerFrame, view: HubMemberLink): Promise<void> {
     if (!view.current() || frame.type === "welcome") throw new HubProtocolError("stale");
+    if ((frame.type === "room.context-state-result" || frame.type === "room.context-input-result"
+      || frame.type === "room.ask" && !!frame.payload.contextState) && !view.features.has(HUB_ROOM_CONTEXT_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice" && (!view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v2" && (!view.features.has("pairing-notices-v2") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v3" && (!view.features.has("pairing-notices-v3") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");

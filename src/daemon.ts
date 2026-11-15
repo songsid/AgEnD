@@ -1,3 +1,5 @@
+import { HUB_REPORT_TARGET } from "./hub-report-target.js";
+import { RoomConversationGeneration } from "./hub-room-conversation.js";
 import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
 import { generalByName } from "./general-instance.js";
@@ -900,6 +902,7 @@ type DeliveryVerdict = {
   transcriptCheckpoint?: DurableTranscriptCheckpoint;
   /** How the attempt was written (#1201: steer and native-queue hand-offs get a late consumed watch). */
   submissionMode?: DurableSubmissionMode;
+  roomInputQueued?: boolean;
   /** The submission was proven by the CLI's transcript rather than the pane: the evidence the outbox records. */
   transcriptProof?: TranscriptMarkerKind;
   /** Strict human evidence; independent of weaker legacy transport outcomes. */
@@ -2795,6 +2798,7 @@ export class Daemon extends EventEmitter {
         else if (!verdict.trackHandoff?.id || cancelled) this.dropQueuedHandoff(verdict);
         return;
       }
+      if (sent && !verdict.roomInputQueued && meta.hub_room_context_generation) this.roomInputHandedOff(meta);
       const id = meta.handoff_redelivery;
       if (!id) return;
       if (sent || verdict.paneWriteStarted || cancelled) {
@@ -2862,6 +2866,7 @@ export class Daemon extends EventEmitter {
     const meta = entry.meta;
     const status = channelStatus(meta);
     if (outcome === "taken") {
+      if (meta.hub_room_context_generation) this.roomInputHandedOff(meta);
       this.logger.info({ handoff: entry.id, proof, redeliveries: entry.redeliveries }, "Queued hand-off taken by the CLI");
       if (status) this.emit("message_confirmed", status);
       return;
@@ -3395,6 +3400,7 @@ export class Daemon extends EventEmitter {
 
     }
     if (nativeDisposition) this.isNewSession = nativeDisposition === "fresh";
+    this.resetRoomConversation(nativeDisposition === "reattached");
 
     // #1209: conditional continuation for the turn interrupted by the last
     // restart, if the gates allow. Detached; the gate
@@ -5259,7 +5265,7 @@ export class Daemon extends EventEmitter {
           preserveExactBytes: true,
           // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
           // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
-          ...(ownSwitch || notifyWritten || contextReset ? { onPaneWritten: () => { if (contextReset) this.resetInboundPresentation(); if (ownSwitch) { this.ownSwitch = ownSwitch; if (currentModelOwner()) modelObserver?.ownIntent(ownSwitch.requested); } tellWritten(true); } } : {}),
+          ...(ownSwitch || notifyWritten || contextReset ? { onPaneWritten: () => { if (contextReset) { this.resetInboundPresentation(); this.resetRoomConversation(); } if (ownSwitch) { this.ownSwitch = ownSwitch; if (currentModelOwner()) modelObserver?.ownIntent(ownSwitch.requested); } tellWritten(true); } } : {}),
           ...(notifyWritten ? { beforePaneWrite: takeCheckpoint, ...(this.backend?.compactPaneUi?.() ? { lookBeforePaneWrite: lookBefore } : {}) } : {}),
         });
         tellWritten(false);                                                // never written (once told, this says nothing)
@@ -8543,6 +8549,9 @@ export class Daemon extends EventEmitter {
           this.logger.info({ handoff: meta.handoff_redelivery }, "Queued hand-off redelivery dropped: its CLI was replaced before the write");
           return;
         }
+        if (meta.hub_room_context_generation && meta.hub_room_context_generation!==this.roomConversationGeneration()) {
+          this.reportCrossInstanceDeliveryFailure(meta,{reached:true,phase:"room-context",proof:"stale-generation"}); return;
+        }
         const durableAttempt = this.durableDeliveryAttempt(meta, content);
         if (durableAttempt === false) {
           this.deferDurableDelivery(meta, "invalid durable delivery attempt metadata");
@@ -10810,6 +10819,7 @@ export class Daemon extends EventEmitter {
     if (leadMarker && formatted.startsWith(leadMarker + "\n")) signature.takenMarker = leadMarker;
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     const humanAttempt = verdict.humanReceipt;
+    verdict.roomInputQueued = handingOffToNativeQueue || steer;
     const humanMode: HumanWriteMode = rawPaste ? "raw_paste" : steer ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
     if (humanAttempt && signature.unique && signature.value === humanReceiptMarker(humanAttempt.verificationId, humanDialect).slice(1, -1)
@@ -14525,6 +14535,23 @@ export class Daemon extends EventEmitter {
     if (now - this.lastIdleSessionRefreshAt < Daemon.SESSION_CHECKPOINT_IDLE_THROTTLE_MS) return;
     this.lastIdleSessionRefreshAt = now;
     void refresh.call(this.backend).then(() => this.saveSessionId(), () => {});
+  }
+
+  private roomConversationState: RoomConversationGeneration | null = null;
+  roomConversationGeneration(): string | null {
+    try { this.roomConversationState?.observeSession(this.ownedWorkingSession); }
+    catch (err) { this.logger.warn({err}, "Room conversation checkpoint failed"); return null; }
+    return this.roomConversationState?.current() ?? null;
+  }
+  private resetRoomConversation(reattached = false): void {
+    this.roomConversationState ??= new RoomConversationGeneration(this.instanceDir);
+    try { this.roomConversationState.start(reattached); }
+    catch (err) { this.logger.warn({err}, "Room conversation generation is unconfirmed"); }
+  }
+  private roomInputHandedOff(meta: Record<string,string>): void {
+    const generation=meta.hub_room_context_generation;
+    if (meta.from_instance!==HUB_REPORT_TARGET || !generation || generation!==this.roomConversationGeneration()) return;
+    this.broadcastFleetMessage({type:"hub_room_input",correlationId:meta.correlation_id,generation});
   }
 
   private saveSessionId(): void {
