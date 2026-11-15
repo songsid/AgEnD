@@ -42,6 +42,8 @@ export interface FixtureMessage {
   text: string; mentions: string[]; replyTo?: string; files?: Array<{ id: string; name: string; size: number; mime: string; url: string }>;
   ask?: { total: number; answered: number; working: number; later: number; failed?: number; blocked?: number; reason?: string };
   answerTo?: string; stage?: "queued" | "working" | "answered" | "not-answered"; idempotencyKey?: string;
+  /** M-3128 (web-claude M-3117): the question's author id, set when an answer row is created. */
+  askedBy?: string;
   /** Ridge: a soft warning on a stored message (HTTP 200) — never a resend. */
   warning?: "assistant-unavailable";
   /** M-3127: reactions; an agent answer's buttons or poll (the Hub's RoomButtonsView). */
@@ -104,7 +106,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   const answering = agentMembers.filter(a => a.presence === "idle" || a.presence === "working");
   answering.forEach((a, i) => {
     if (a.name === "project-helper") return;                            // still working on it
-    say(group, a, minutes(10 + i), `${a.name}：進度 ${60 + i * 3}%；風險：${i % 2 ? "測試資料不足" : "無"}；下週：整理文件。`, { replyTo: all.id, answerTo: all.id, stage: "answered" });
+    say(group, a, minutes(10 + i), `${a.name}：進度 ${60 + i * 3}%；風險：${i % 2 ? "測試資料不足" : "無"}；下週：整理文件。`, { replyTo: all.id, answerTo: all.id, stage: "answered", askedBy: all.author.id });
   });
   for (const a of agentMembers.filter(x => x.presence === "paused" || x.presence === "offline" || x.presence === "later"))
     say(group, a, minutes(25), "", { replyTo: all.id, answerTo: all.id, stage: "queued" });
@@ -460,6 +462,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
     const agent = room.members.find(x => x.id === pending.author.id)!;
     agent.presence = "idle"; pending.stage = "answered"; pending.text = `${agent.name}：上線後補答，進度 80%。`; pending.at = now();
     const question = room.messages.find(x => x.id === pending.answerTo)!;
+    pending.askedBy = question.author.id;
     if (question.ask) question.ask = { ...question.ask, answered: question.ask.answered + 1, later: Math.max(0, question.ask.later - 1) };
     emit("presence.changed", { roomId, memberId: agent.id, presence: agent.presence });
     emit("message.updated", { roomId, message: pending, ...(question.ask ? { parent: { id: question.id, ask: question.ask } } : {}) });
