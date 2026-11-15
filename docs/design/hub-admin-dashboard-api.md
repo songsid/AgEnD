@@ -2,6 +2,8 @@
 
 M-3161 implements the approved M-3147 mockup, read at `docs/hub-ux-review-m2902` / `673782a4`. M-3162 supplies the page. The existing `/hub/v1/admin/overview` Fleet-management response is unchanged.
 
+Browser sessions advertise `admin-dashboard-v1` when this dashboard route is composed. The page can select its first tab from `session.features` without probing the route; an older Hub omits the feature. A 404 remains a quiet Manage-tab fallback. This is browser composition metadata, not a member-link capability.
+
 `GET /hub/v1/admin/dashboard?range=today|7d&timeZone=<IANA>` requires the current Hub administrator (`hub.admin` management permission). Defaults: `range=7d`, `timeZone=UTC`. Unknown/repeated query keys, other ranges and invalid zones return 400. Other methods return 405. Signed-out callers get 401; signed-in non-administrators get 403. Normal session/directory fences apply through the read transaction.
 
 The response contains:

@@ -63,5 +63,14 @@
       }
     ]
   },
-  "effects": "inert fixture directory/transport/input; owned localhost HTTP; no live updater, Fleet, AD, vendor or browser campaign"
+  "effects": "inert fixture directory/transport/input; owned localhost HTTP; no live updater, Fleet, AD, vendor or browser campaign",
+  "featureR1": {
+    "parent": "fe61927f9fe004d2d0aee5c616e32ea66feb1f45",
+    "request": "M-3162 first-draw capability detection",
+    "feature": "admin-dashboard-v1",
+    "baselineSemanticFailures": 1,
+    "affectedSuitePassed": 9,
+    "testTypecheck": 0,
+    "scope": "browser session/composition features only; member capability lists unchanged; no repeated heavy campaign"
+  }
 }

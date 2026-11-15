@@ -14,3 +14,5 @@ Validation:
 - Source and test TypeScript: exit 0. The six isolated mutants also compile together (exit 0); each fails its targeted assertion: administrator gate, room answer timestamp, direct answer timestamp, stop counter, five-answer threshold, viewer calendar day. Originals restored after every case. No repeat mutation/network/browser campaign.
 
 Machine-readable receipt: `validation.json`. API semantics and rollback: `docs/design/hub-admin-dashboard-api.md`.
+
+M-3162 feature follow-up: browser sessions and the composed HTTP entry advertise `admin-dashboard-v1`, so the initial Administration tab does not probe an older Hub. The new contract failed before the change; affected dashboard tests pass 9/9 and test TypeScript exits 0. Member hello/welcome capabilities and metrics/migration behavior are unchanged; no repeated campaign.

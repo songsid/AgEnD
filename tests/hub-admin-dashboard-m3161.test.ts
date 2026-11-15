@@ -8,6 +8,18 @@ let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; });
 const path = "/hub/v1/admin/dashboard";
 
+it("advertises the composed dashboard in the browser session before its first draw", async () => {
+  r = await s3bRig(); const admin = await r.signIn("admin");
+  const session = await r.call(admin, "GET", "/hub/v1/session");
+  expect(session.status).toBe(200);
+  expect(session.json.features.filter((f: string) => f === "admin-dashboard-v1")).toHaveLength(1);
+  expect(r.http.features.filter(f => f === "admin-dashboard-v1")).toHaveLength(1);
+  expect((await r.call(admin, "GET", path)).status).toBe(200);
+  r.disable();
+  const held = await r.call(admin, "GET", "/hub/v1/session");
+  expect(held.status).toBe(503); expect(held.json.features).toBeUndefined();
+});
+
 function directRows(now: number) {
   const db = r!.db, person = personKeyString(r!.admin), fleet = randomUUID(), exposure = randomUUID(), grant = randomUUID(), room = randomUUID();
   db.prepare("INSERT INTO hub_exposures(id,fleet_id,owner,display_name,revision,state,data_view_id,allowed_tools,policy_digest,updated_at) VALUES(?,?,?,'Stats agent',1,'published','agent','[]','digest',?)").run(exposure, fleet, person, now);
