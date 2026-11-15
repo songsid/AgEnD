@@ -71,3 +71,13 @@ it.each(['fresh','resumed','reattached'] as const)('native header capability is 
  expect(f.daemon.humanReminders.prepare('next').replyHint).toBe(true);
  expect(f.forbidden).not.toHaveBeenCalled();
 });
+
+it('#4019: execution-idle with a restored draft is not permission to close the native pane',async()=>{
+ const f=fixture();await f.daemon.start();
+ try{
+  const {readFileSync}=await import('node:fs');const draft=readFileSync(new URL('./fixtures/codex-readiness-4019/restored-draft.txt',import.meta.url),'utf8');
+  f.daemon.instanceState='idle';f.pane.capturePane.mockResolvedValue(draft);
+  expect(f.native.backend.getReadyPattern().test(draft)).toBe(true);
+  expect(await f.daemon.nativePauseReady()).toBe(false);expect(f.native.release).not.toHaveBeenCalled();
+ }finally{await f.daemon.stop();}
+});

@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 import { execFile } from "../child-process.js";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
-import { stripCodexPassiveHintRow, withCodexPassiveHintTail, CODEX_EMPTY_PASSIVE_COMPOSER, isCodexStatusAutocompleteComposer } from "./codex-footer-hints.js";
+import { stripCodexPassiveHintRow, withCodexPassiveHintTail, CODEX_EMPTY_PASSIVE_COMPOSER, codexFooterlessResumeComposer, isCodexStatusAutocompleteComposer } from "./codex-footer-hints.js";
 import { codexPackageWarning } from "./codex-package.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
@@ -1010,7 +1010,7 @@ export const CODEX_RESUME_LARGE_BYTES = 20 * 1024 * 1024;
 
 /** Pane-only detectors: construction performs no provider, config or session discovery. */
 export class CodexPaneDetectors {
-  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean; contextlessResume?: boolean }) {}
+  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean; contextlessResume?: boolean; resumeSessionId?(): string | null }) {}
   protected readConfiguredStatusLineItems(): string[] | null { return this.paneDetectorContext?.statusLineItems()?.slice() ?? null; }
   protected trustPaneFields(pane: string): Record<string, unknown> { const state = codexTrustPromptState(pane); return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote }; }
   protected trustHoldReason(pane: string): Record<string, unknown> { return { ...this.trustPaneFields(pane), reason: "Folder permission needs confirmation on this execution machine" }; }
@@ -1098,8 +1098,14 @@ export class CodexPaneDetectors {
   }
 
   private nativeContextlessEmpty(pane: string): boolean {
-    return !!this.nativeContextlessPattern()?.test(pane) && !codexAppServerDisconnected(pane) && !this.getBusyPattern().test(pane)
+    const pattern = this.nativeContextlessPattern();
+    return !!pattern && (pattern.test(pane) || this.nativeResumeComposerPattern("Ask Codex to do anything")?.test(pane) === true)
+      && !codexAppServerDisconnected(pane) && !this.getBusyPattern().test(pane)
       && ![...this.getStartupDialogs(), ...this.getRuntimeDialogs()].some(dialog => dialog.pattern.test(pane) && (!dialog.isActive || dialog.isActive(pane)));
+  }
+
+  private nativeResumeComposerPattern(text: "Ask Codex to do anything" | "/status"): RegExp | null {
+    return this.nativeContextlessPattern() ? codexFooterlessResumeComposer(text, this.paneDetectorContext?.resumeSessionId?.()) : null;
   }
 
   private nativeContextlessRows(pane: string): string[] | null {
@@ -1107,6 +1113,7 @@ export class CodexPaneDetectors {
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows.at(-1)!.trim()) rows.pop();
     if (isCodexStatusAutocompleteComposer(pane)) return rows;
+    if (this.nativeResumeComposerPattern("Ask Codex to do anything")?.test(pane) === true || this.nativeResumeComposerPattern("/status")?.test(pane) === true) return rows;
     const before = rows.length; stripCodexPassiveHintRow(rows);
     if (rows.length === before) return null;
     const remaining = [...rows]; stripCodexPassiveHintRow(remaining);
@@ -1165,10 +1172,9 @@ export class CodexPaneDetectors {
    * wait for two seconds of output silence.
    *
    * Do not use getReadyPattern() here: the Codex header, context meter and
-   * input chrome all remain visible while a turn is running.  Instead require
-   * the live, empty prompt followed by the context footer at the bottom of the
-   * viewport, and reject a live status row immediately above it. A configured
-   * no-Context status line must satisfy the same exact prompt/footer shape.
+   * input chrome remain visible while a turn runs. Require the live EMPTY
+   * composer with its footer and no live status row. This stronger proof is
+   * also used by pause/nudge callers; drafts have a separate state-only proof.
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
     if (codexAppServerDisconnected(pane)) return false;
@@ -1206,6 +1212,15 @@ export class CodexPaneDetectors {
     return true;
   }
 
+  isDraftIdlePane(pane: string): boolean {
+    if (codexAppServerDisconnected(pane) || this.getBusyPattern().test(pane)) return false;
+    const frame = this.composerFrame(pane);
+    const prompt = frame?.contextFooter ? ownedComposerRow(frame.rows) : -1;
+    return !!frame && prompt >= 0 && this.getReadyPattern().test(pane)
+      && (!/^[>›][ \t⋆]+Ask Codex to do anything[ \t⋆]*$/.test(frame.rows[prompt])
+        || frame.rows.slice(prompt + 1).some(row => row.replace(/⋆/gu, "").trim() !== ""));
+  }
+
   getReadyPattern(): RegExp {
     // Header and context text persist in inline scrollback and even while the
     // CLI is loading or a modal owns stdin. Require the live prompt followed
@@ -1216,7 +1231,8 @@ export class CodexPaneDetectors {
     // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
     // prompt, between prompt/footer, and below the footer. A drafted composer
     // is also idle once this same bottom footer proves it owns the screen.
-    const contextReady = withCodexPassiveHintTail(/(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i);
+    // Only indented continuation rows may wrap it; a column-zero output or selection row still breaks ownership.
+    const contextReady = withCodexPassiveHintTail(/(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:(?:[ \t][^\r\n]*|⋆[ \t⋆]*|)\r?\n)*[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i);
     const footerPattern = this.configuredStatusLineFooterPattern();
     if (!footerPattern) return contextReady;
 
@@ -1235,12 +1251,13 @@ export class CodexPaneDetectors {
     // indented line that merely contains `Context N% left` cannot pass.
     const configuredContextReady = this.configuredHasContextItem()
       ? withCodexPassiveHintTail(new RegExp(
-        String.raw`(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}(?=[^\r\n]*${CODEX_CONTEXT_ITEM})${footerSource}(?:\r?\n[ \t⋆]*)*$`,
+        String.raw`(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:(?:[ \t][^\r\n]*|⋆[ \t⋆]*|)\r?\n)*(?=[^\r\n]*${CODEX_CONTEXT_ITEM})${footerSource}(?:\r?\n[ \t⋆]*)*$`,
         "iu",
       ))
       : null;
     return new RegExp(
-      [contextReady.source, noContextReady.source, configuredContextReady?.source, this.nativeContextlessPattern()?.source]
+      [contextReady.source, noContextReady.source, configuredContextReady?.source, this.nativeContextlessPattern()?.source,
+        this.nativeResumeComposerPattern("Ask Codex to do anything")?.source]
         .filter((source): source is string => !!source)
         .map(source => `(?:${source})`)
         .join("|"),

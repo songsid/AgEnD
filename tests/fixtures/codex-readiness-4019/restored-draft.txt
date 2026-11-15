@@ -1,0 +1,10 @@
+■ Conversation interrupted - use /feedback if something went wrong
+
+
+› [hid:hmsg-6a91d37a-9a7e-460f-b1fd-29d3778411e2]
+  [user:Acceptance operator@web] Use the AgEnD reply tool once with exactly M4012_TAKEN_A. Do not run commands or edit
+  files. Then finish.
+  (message_id: web-mwi0ubn8-7ac0ba72)
+  (Answer with the reply tool; terminal text does not reach them.)
+
+  Context 100% left

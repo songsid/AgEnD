@@ -797,6 +797,9 @@ export interface CliBackend {
    */
   isPeriodicRedrawIdlePane?(pane: string): boolean;
 
+  /** Execution-idle proof while retaining draft text. State observation only: never proof of empty input or permission to write/pause. */
+  isDraftIdlePane?(pane: string): boolean;
+
   /**
    * #2770 (ii): for a TUI that repaints periodically only in some layouts (Claude's background-agent list), whether
    * this pane is one. Absent: every pane is (isPeriodicRedrawIdlePane applies always, as for Codex and Muse). When

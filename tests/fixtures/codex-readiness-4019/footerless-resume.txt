@@ -1,0 +1,22 @@
+
+  >_ OpenAI Codex (v0.165.0)
+     C:\scratch
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+  /permissions - choose what Codex is allowed to do
+  /model - choose what model and reasoning effort to use
+  /review - review any changes and find issues
+
+
+› Run powershell.exe -NoProfile -Command "while(-not(Test-Path 'release_A.txt')){Start-Sleep -Milliseconds 250}" using
+  exec_command with yield_time_ms=30000 in one blocking call; do not poll or invoke another tool until it returns; then
+  reply M4012_BUSY_A. No other commands or file edits.
+
+
+■ Conversation interrupted - use /feedback if something went wrong
+
+
+› Ask Codex to do anything

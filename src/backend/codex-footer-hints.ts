@@ -30,6 +30,22 @@ const passiveComposer = (text: "Ask Codex to do anything" | "/status") => new Re
 export const CODEX_EMPTY_PASSIVE_COMPOSER = passiveComposer("Ask Codex to do anything");
 export const CODEX_STATUS_PASSIVE_COMPOSER = passiveComposer("/status");
 
+// #4019: an interrupted native resume can have no footer at all. These exact tails are separate from the general
+// passive-footer grammar. Callers must also prove an owned native resume with the context-only status configuration.
+export function codexFooterlessResumeComposer(text: "Ask Codex to do anything" | "/status", sessionId?: string | null): RegExp {
+  const blank = String.raw`[ \t]*\r?\n`;
+  const interrupted = String.raw`(?:^|\n)■ Conversation interrupted - use /feedback if something went wrong[ \t]*\r?\n(?:${blank})*`;
+  const prefixes = [interrupted];
+  if (sessionId && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(sessionId)) {
+    // The real once-typed /status replaces the interrupted tail with this metadata report. Unknown menus,
+    // extra Session rows and arbitrary footer text cannot borrow it; the expected UUID comes from this owned launch.
+    const field = String.raw`[ \t]+(?:Visit https://chatgpt\.com/settings/usage for up-to-date|information on rate limits and credits|(?:Model|Model provider|Directory|Permissions|Agents\.md|Account|Collaboration mode):[ \t]+[^\r\n]+)[ \t]*\r?\n`;
+    const usage = String.raw`[ \t]+(?:Monthly limit|Weekly limit|5h limit):[ \t]+[^\r\n]+\r?\n`;
+    prefixes.push(String.raw`(?:^|\n)/status[ \t]*\r?\n(?:${blank})*[ \t]+>_ OpenAI Codex \(v[0-9]+\.[0-9]+\.[0-9]+\)[ \t]*\r?\n(?:${blank}|${field})*[ \t]+Session:[ \t]+${sessionId}[ \t]*\r?\n(?:${blank}|${usage})*`);
+  }
+  return new RegExp(String.raw`(?:${prefixes.join("|")})[>›][ \t]+${text}[ \t]*(?:\r?\n[ \t]*)*$`, "iu");
+}
+
 // Real 0.165 contextless /status completion replaces the passive footer. This is only the exact selected
 // built-in command plus its one sibling and the same typed command; it is never empty-composer readiness.
 const statusAutocomplete = /(?:^|\n)[>›][ \t]+\/status[ \t]{2,}show current session configuration and token usage[ \t]*\n[ \t]+\/statusline[ \t]{2,}configure which items appear in the status line[ \t]*\n(?:[ \t]*\n){0,3}[>›][ \t]+\/status[ \t]*(?:\n[ \t]*)*$/u;

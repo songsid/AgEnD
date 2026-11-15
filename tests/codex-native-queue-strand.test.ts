@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { CodexBackend } from "../src/backend/codex.js";
+import { createNativePaneBackend } from "../src/backend/native-pane.js";
 
 /**
  * Regression for the silent message loss reported on a codex instance
@@ -133,7 +134,7 @@ interface Harness {
   dir: string;
 }
 
-function makeHarness(): Harness {
+function makeHarness(mode: "codex" | "native" = "codex"): Harness {
   const dir = mkdtempSync(join(tmpdir(), "agend-codex-strand-"));
   writeFileSync(join(dir, "window-id"), "@19");
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -144,7 +145,8 @@ function makeHarness(): Harness {
     context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
     hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
     log_level: "silent",
-  } as any, dir, false, new CodexBackend(dir) as any, undefined, { child: () => logger } as any) as any;
+  } as any, dir, false, (mode === "native" ? createNativePaneBackend("codex", () => ({ sessionId: null, contextPercentage: null, statusLineItems: ["context-remaining"], resumes: false })) : new CodexBackend(dir)) as any, undefined, { child: () => logger } as any) as any;
+  if (mode === "native") daemon.nativePaneLifecycle = { current: () => true, mcpProof: () => "alive" };
 
   const state: Harness["state"] = { pane: BUSY_BEFORE_PASTE, idle: false, outputSince: true };
   // A redelivery that actually lands paints the message; the first paste in
@@ -489,8 +491,8 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     expect(h.events).toContain("message_confirmed");
   });
 
-  it("submits a positively identified old Codex strand before pasting the next message", async () => {
-    const h = makeHarness(); dirs.push(h.dir);
+  it.each(["codex", "native"] as const)("submits a positively identified old Codex strand before pasting the next message (%s)", async mode => {
+    const h = makeHarness(mode); dirs.push(h.dir);
     h.state.idle = true;
     h.state.pane = STRANDED_MULTILINE.replaceAll("m-1", "old-1");
     h.state.afterPaste = STRANDED_MULTILINE;
@@ -500,6 +502,8 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
       h.state.pane = enters === 1 ? READY_EMPTY : SUBMITTED;
       return true;
     });
+    const beforePastes: string[] = [];
+    h.paste.mockImplementation(async () => { beforePastes.push(h.state.pane); h.state.pane = STRANDED_MULTILINE; return true; });
 
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
@@ -507,6 +511,41 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     expect(h.paste).toHaveBeenCalledTimes(1);
     expect(h.enter).toHaveBeenCalledTimes(2);
     expect(h.enter.mock.invocationCallOrder[0]).toBeLessThan(h.paste.mock.invocationCallOrder[0]);
+    expect(beforePastes).toEqual([READY_EMPTY]);
+  });
+
+  it.each(["codex", "native"] as const)("#4019: a retained old strand blocks every new paste if its recovery Enter is swallowed (%s)", async mode => {
+    const h = makeHarness(mode); dirs.push(h.dir); h.state.idle = true;
+    h.state.pane = STRANDED_MULTILINE.replaceAll("m-1", "old-1"); h.enter.mockResolvedValue(true);
+    expect(await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }))).toBe(false);
+    expect(h.paste).not.toHaveBeenCalled(); expect(h.state.pane).toContain("old-1");
+  });
+
+  it.each(["codex", "native"] as const)("#4019: a next delivery neither submits nor appends to the restored human draft (%s)", async mode => {
+    const h = makeHarness(mode); dirs.push(h.dir); h.state.idle = true;
+    const restored = readFileSync(join(FIXTURES, "codex-readiness-4019/restored-draft.txt"), "utf8"); h.state.pane = restored;
+    expect(await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }))).toBe(false);
+    expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHaveBeenCalled(); expect(h.state.pane).toBe(restored);
+  });
+
+  it.each(["codex", "native"] as const)("#4019: a strand restored at the final baseline is not pasted over or submitted (%s)", async mode => {
+    const h = makeHarness(mode); dirs.push(h.dir); h.state.idle = true; h.state.pane = READY_EMPTY;
+    const baseline = h.daemon.capturePaneEvidence.bind(h.daemon);
+    vi.spyOn(h.daemon, "capturePaneEvidence").mockImplementation(async (signature: unknown) => {
+      h.state.pane = STRANDED_MULTILINE.replaceAll("m-1", "old-1"); return baseline(signature);
+    });
+    expect(await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }))).toBe(false);
+    expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHaveBeenCalled(); expect(h.state.pane).toContain("old-1");
+  });
+
+  it("#4019: native's last expected-screen read refuses a strand restored after the baseline", async () => {
+    const h = makeHarness("native"); dirs.push(h.dir); h.state.idle = true; h.state.pane = READY_EMPTY;
+    const baseline = h.daemon.capturePaneEvidence.bind(h.daemon);
+    vi.spyOn(h.daemon, "capturePaneEvidence").mockImplementation(async (signature: unknown) => {
+      const picture = await baseline(signature); h.state.pane = STRANDED_MULTILINE.replaceAll("m-1", "old-1"); return picture;
+    });
+    expect(await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }))).toBe(false);
+    expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHaveBeenCalled(); expect(h.state.pane).toContain("old-1");
   });
 
   // THE GATE. Reverting the success criterion to "the pasted text is visible in
@@ -654,10 +693,10 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.afterSecondPaste = SUBMITTED; // the recovery paste lands
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
-    // The older strand cannot confirm ours, but it also cannot prove our
-    // unique message was not accepted off-screen. No blind second paste.
-    expect(h.paste).toHaveBeenCalledTimes(1);
-    expect(h.events).not.toContain("message_failed");
+    // The observed old strand is occupied before any new bytes: reject this
+    // delivery there, rather than appending and then trying to attribute it.
+    expect(h.paste).not.toHaveBeenCalled();
+    expect(h.events).toContain("message_failed");
     expect(ok).toBe(false);
   });
 
@@ -699,8 +738,8 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.afterSecondPaste = [identicalOlderStrand, SUBMITTED].join("\n");
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_SINGLELINE, STATUS, {}));
 
-    expect(h.paste, "the older strand is not ours to claim as delivered").toHaveBeenCalledTimes(1);
-    expect(h.events).not.toContain("message_failed");
+    expect(h.paste, "the older strand must not receive this delivery's bytes").not.toHaveBeenCalled();
+    expect(h.events).toContain("message_failed");
     expect(ok).toBe(false);
   });
 

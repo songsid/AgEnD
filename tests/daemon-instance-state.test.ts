@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon, PaneStateMachine, PendingWorkTracker, sanitizePaneTail, UNKNOWN_LAYOUT_STABLE_MS } from "../src/daemon.js";
@@ -182,6 +182,23 @@ describe("Daemon event-driven pane monitor", () => {
     "› Ask Codex to do anything",
     "  Context 19% left",
   ].join("\n");
+
+  it("#4019: a safety sweep during draft redraw keeps execution idle and its hand-off idle clock", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      const draft = readFileSync(new URL("./fixtures/codex-readiness-4019/restored-draft.txt", import.meta.url), "utf8");
+      (monitor.daemon as any).startInstanceStateMonitor(); await vi.advanceTimersByTimeAsync(0);
+      monitor.setPane(draft); monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(2_500); expect(monitor.daemon.getInstanceState()).toBe("idle");
+      const since = (monitor.daemon as any).instanceIdleSinceMono;
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(1); // recent output, not a stale or settled capture
+      await (monitor.daemon as any).captureAndEvaluateInstanceState("safety_sweep");
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+      expect((monitor.daemon as any).instanceIdleSinceMono).toBe(since);
+    } finally { monitor.close(); vi.useRealTimers(); }
+  });
 
   it("settles a continuously animating Codex 0.154 pane after two structural idle captures", async () => {
     vi.useFakeTimers();
