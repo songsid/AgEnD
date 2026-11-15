@@ -84,7 +84,7 @@ it("adds retry time without rewriting an issued delivery, and refuses the pre-re
       VALUES(?,?,?,?,?,3,?,?,?, ?,?,'retained-payload',?,'sent',7,123,999999)`).run(randomUUID(), room, parent, reply, randomUUID(), randomUUID(), person, person, randomUUID(), randomUUID(), "d".repeat(64));
     const before = db.prepare("SELECT * FROM hub_room_deliveries").get();
     applyHubMigrations(db, HUB_HTTP_MIGRATIONS); applyHubMigrations(db, HUB_HTTP_MIGRATIONS);
-    expect(db.prepare("SELECT * FROM hub_room_deliveries").get()).toEqual({ ...before as object, last_sent_at: 0 });
+    expect(db.prepare("SELECT * FROM hub_room_deliveries").get()).toEqual({ ...before as object, last_sent_at: 0, context_generation: null });
     expect(() => applyHubMigrations(db, beforeRetry)).toThrow(/s3-room-retry/);
   } finally { db.close(); }
 });
@@ -106,7 +106,7 @@ it("adds unknown historical answer times and backfills only retained depth/rate 
       .run(randomUUID(), room, parent, reply, randomUUID(), randomUUID(), person, person, randomUUID(), randomUUID(), randomUUID());
     const before = db.prepare("SELECT * FROM hub_room_deliveries").get(), posts = db.prepare("SELECT * FROM hub_room_posts").all();
     applyHubMigrations(db, HUB_HTTP_MIGRATIONS); applyHubMigrations(db, HUB_HTTP_MIGRATIONS);
-    expect(db.prepare("SELECT * FROM hub_room_deliveries").get()).toEqual({ ...before as object, answered_at: null });
+    expect(db.prepare("SELECT * FROM hub_room_deliveries").get()).toEqual({ ...before as object, answered_at: null, context_generation: null });
     expect(db.prepare("SELECT * FROM hub_room_posts").all()).toEqual(posts);
     expect(db.prepare("SELECT * FROM hub_chain_stop_counts ORDER BY reason").all()).toEqual([
       { bucket: 60000, reason: "depth", count: 1 }, { bucket: 60000, reason: "rate", count: 1 },
