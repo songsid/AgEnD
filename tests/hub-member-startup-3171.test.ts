@@ -2,10 +2,12 @@
 import { expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:https";
 import { request, type Server as HttpServer } from "node:http";
+import { WebSocketServer } from "ws";
 import { FleetManager } from "../src/fleet-manager.js";
 import { tokenEpoch } from "../src/web-session.js";
 import { HubRuntime, type HubMemberHost } from "../src/hub/runtime.js";
 import { HubServer } from "../src/hub/server.js";
+import { HubMemberClient } from "../src/hub/client.js";
 import { readHubMemberTls } from "../src/hub/tls.js";
 import type { HubMemberFrame } from "../src/hub/types.js";
 import { hubRig } from "./helpers/hub-rig.js";
@@ -150,4 +152,35 @@ it.each(["switch off", "shutdown"])("cancels an offline startup retry on %s", as
     expect(f.received).toEqual([]);
     expect(f.states).not.toContain("online");
   } finally { await f.close(); }
+});
+
+it.each(["invalid", "revoked", "replaced", "stop"] as const)("rejects offline startup when the first link is %s before welcome", async reason => {
+  const f = await outage();
+  const tls = readHubMemberTls({ home: f.rig.root });
+  const server = createServer({ key: tls.keyPem, cert: tls.certificatePem });
+  const wss = new WebSocketServer({ noServer: true });
+  let reconciles = 0;
+  const holds: string[] = [];
+  const client = new HubMemberClient({ home: f.rig.memberHome, hubId: f.rig.identity.hubId, memberOrigin: f.rig.memberOrigin,
+    allowOfflineStart: true, capabilities: ["welcome-caps-v1"], current: () => true, hold: code => holds.push(code),
+    receive: async () => {}, reconcile: async () => { reconciles++; } });
+  server.on("upgrade", (request, socket, head) => wss.handleUpgrade(request, socket, head, ws => {
+    ws.once("message", () => {
+      if (reason === "stop") client.fence();
+      else if (reason === "invalid") ws.send("{}"); // Rejected by the real frame parser; close classification matters independently of stopped.
+      else ws.close(1008, reason);
+    });
+  }));
+  try {
+    await new Promise<void>(resolve => server.listen(Number(new URL(f.rig.memberOrigin).port), "127.0.0.1", resolve));
+    await expect(client.start()).rejects.toMatchObject({ code: "unavailable", reasonCode: reason === "stop" ? "unavailable" : reason });
+    expect(reconciles).toBe(0);
+    if (reason !== "stop") expect(holds).toEqual([reason]);
+  } finally {
+    await client.close();
+    for (const ws of wss.clients) ws.terminate();
+    await new Promise<void>(resolve => wss.close(() => resolve()));
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    await f.close();
+  }
 });
