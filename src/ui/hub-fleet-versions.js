@@ -13,21 +13,21 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 
 register("hubVersions", {
   en: {
-    allCurrent: "All {0} Fleets are on the recommended version or newer.",
-    someBehind: "{0} of {1} Fleets need an update.",
+    allCurrent: "All {0} Fleets are on the recommended version or newer.", allCurrentOne: "The {0} Fleet is on the recommended version or newer.",
+    someBehind: "{0} of {1} Fleets need an update.", someBehindOne: "{0} of {1} Fleets needs an update.",
     // Phase 1 has no recommended version and no way to set one yet (M-3138 adds it, with "Set a recommended version…").
-    noRecommended: "{0} active Fleets.",
-    noRecommendedSet: "{0} active Fleets. Set a recommended version to see which ones are behind.",
+    noRecommended: "{0} active Fleets.", noRecommendedOne: "{0} active Fleet.",
+    noRecommendedSet: "{0} active Fleets. Set a recommended version to see which ones are behind.", noRecommendedSetOne: "{0} active Fleet. Set a recommended version to see whether it is behind.",
     recTitle: "Recommended AgEnD version", recHub: "Same as this Hub ({0})", recHubPlain: "Same as this Hub",
     recSpecific: "A specific version", recVersion: "Version", recVersionPh: "e.g. 2.4.0", recNone: "No recommendation",
     recLead: "Fleets below this version tell their owner and offer Update. Nothing is updated without the owner.",
-    recPreview: "{0} Fleets will be asked to update.", recPreviewNone: "No Fleet will be asked to update.",
+    recPreview: "{0} Fleets will be asked to update.", recPreviewOne: "{0} Fleet will be asked to update.", recPreviewNone: "No Fleet will be asked to update.",
     recChecking: "Checking npm…", recSave: "Save", recSaving: "Saving…", recSaved: "Saved.",
     errInvalid: "Enter a version number such as 2.4.0.", errNotFound: "Version {0} was not found on npm.",
     errNpm: "Couldn't reach npm to check {0}. Try again.", errHubVersion: "This Hub's own version can't be read. Choose a specific version.",
     errConflict: "Someone else changed this just now; their choice is shown. Check it and save again.", errFailed: "It wasn't saved. Try again.",
     notified: "Owner notified · {0}", notNotified: "Not notified yet",
-    updateBtn: "Update", ownerUpdates: "Owner updates it", updateMany: "Update {0} Fleets that allow it",
+    updateBtn: "Update", ownerUpdates: "Owner updates it", updateMany: "Update {0} Fleets that allow it", updateManyOne: "Update {0} Fleet that allows it",
     askOne: "Update {0} to AgEnD v{1}? It starts when that Fleet's agents are idle. Its owner is told now and when it finishes.",
     askMany: "Update {0} Fleets to AgEnD v{1}?", askOk: "Update",
     replaceBtn: "Update to v{0} instead",
@@ -36,7 +36,7 @@ register("hubVersions", {
     stUpdating: "Updating…", stDone: "Updated to v{0} · {1}", stRolledBack: "Update failed; back on v{0}",
     stBusy: "Did not start: agents were busy for 24 hours", stOffline: "Did not start: the Fleet has not connected for 7 days.",
     stCancelled: "The owner cancelled this update", cancelling: "Cancelling…", stGone: "Update failed and the Fleet has not come back. Contact {0}.",
-    startedMany: "Started for {0} Fleets.", startedSome: "Started for {0} Fleets; {1} could not start.",
+    startedMany: "Started for {0} Fleets.", startedManyOne: "Started for {0} Fleet.", startedSome: "Started for {0} Fleets; {1} could not start.", startedSomeOne: "Started for {0} Fleet; {1} could not start.",
     rfOwnerOff: "The owner no longer allows updates from the Hub.", rfNotService: "This Fleet was started by hand, so it cannot be updated from here.",
     rfNotFound: "That Fleet could not find v{0} on npm.", rfNpm: "That Fleet could not reach the update source. Nothing was changed.",
     rfPermission: "That Fleet has no permission to install updates. Its owner must update it by hand.", rfCurrent: "Already on v{0}.",
@@ -105,6 +105,8 @@ register("hubVersions", {
   },
 });
 export const hv = (key, ...args) => t(`hubVersions.${key}`, ...args);
+/** M-3170: a count of Fleets — English has a one-Fleet sentence (`<key>One`); zh-TW's sentence is the same for every count. */
+const hvn = (key, n, ...args) => hv(n === 1 && lang() !== "zh-TW" ? `${key}One` : key, String(n), ...args);
 
 // The server's states (M-3136), in its priority order.
 const STATES = ["too-old-rooms", "needs-update", "unknown", "current"];
@@ -124,8 +126,8 @@ export function versionCounts(fleets) {
 export function summaryText(fleets, recommended, canRecommend = false) {
   const { total, needs } = versionCounts(fleets);
   // M-3141: the clause comes back only where there is a control to set it (this Hub serves the setting).
-  if (!recommended) return hv(canRecommend ? "noRecommendedSet" : "noRecommended", String(total));
-  return needs > 0 ? hv("someBehind", String(needs), String(total)) : hv("allCurrent", String(total));
+  if (!recommended) return hvn(canRecommend ? "noRecommendedSet" : "noRecommended", total);
+  return needs > 0 ? hvn("someBehind", needs, String(total)) : hvn("allCurrent", total);
 }
 
 /** "Now" (with the green dot), a relative time ("3 days ago" / 「3 天前」), or "Never". */
@@ -288,7 +290,7 @@ export function RecommendedVersionCard({ client, onSaved = () => {}, onAvailable
     </div>
     <p class="note">${hv("recLead")}</p>
     ${changed && preview ? html`<p class=${preview.error ? "err" : "note hub-rec-preview"} role="status" aria-live="polite">${preview.pending ? hv("recChecking")
-      : preview.error ? preview.error : mode === "none" || preview.affected === 0 ? hv("recPreviewNone") : hv("recPreview", String(preview.affected))}</p>` : null}
+      : preview.error ? preview.error : mode === "none" || preview.affected === 0 ? hv("recPreviewNone") : hvn("recPreview", preview.affected)}</p>` : null}
     ${msg ? html`<p class=${msg.ok ? "note" : "err"} role=${msg.ok ? "status" : "alert"}>${msg.text}</p>` : null}
     ${changed ? html`<div class="save-row"><button type="button" class="btn btn-primary" disabled=${saving || !!preview?.pending || !!preview?.error || (mode === "specific" && !target)} onClick=${save}>${saving ? hv("recSaving") : hv("recSave")}</button></div>` : null}
   </section>`;
@@ -352,7 +354,7 @@ export async function startUpdates(client, fleets, recommended, revision, replac
   if (!r || r.ok === false) return { ok: false, text: updateReasonText(r?.code, recommended) };
   const started = Array.isArray(r.requests) ? r.requests.length : 0, refused = Array.isArray(r.refused) ? r.refused : [];
   if (one) return refused.length ? { ok: false, text: updateReasonText(refused[0].code, recommended) } : { ok: true, text: "" };
-  return { ok: refused.length === 0, text: refused.length ? hv("startedSome", String(started), String(refused.length)) : hv("startedMany", String(started)) };
+  return { ok: refused.length === 0, text: refused.length ? hvn("startedSome", started, String(refused.length)) : hvn("startedMany", started) };
 }
 
 /** A Connected fleets row's update part: its status line, else Update (the owner allows it) or "Owner updates it". */
@@ -383,7 +385,7 @@ export function UpdateAllowedButton({ fleets, recommended = null, revision = 0, 
   if (!ready.length && !msg) return null;
   const go = async () => { if (busy) return; setBusy(true); setMsg(null); const r = await startUpdates(client, ready, recommended, revision); setBusy(false); if (r) { setMsg(r.text ? r : null); onChanged(); } };
   return html`<div class="hub-fleet-update-all">
-    ${ready.length ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${go}>${hv("updateMany", String(ready.length))}</button>` : null}
+    ${ready.length ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${go}>${hvn("updateMany", ready.length)}</button>` : null}
     ${msg ? html`<p class=${msg.ok ? "note" : "err"} role=${msg.ok ? "status" : "alert"}>${msg.text}</p>` : null}
   </div>`;
 }
