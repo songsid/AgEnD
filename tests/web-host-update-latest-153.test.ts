@@ -90,7 +90,7 @@ describe("startWebInstall — Antigravity's update to the latest (the named exce
     expect(flow.backend).toBe("antigravity");
     expect(flow.command).toContain("agend-install");
     expect(flow.command).toContain("agy update");
-    expect(flow.command).not.toMatch(/\{version\}|1\.5\.3|curl|install\.sh/);
+    expect(flow.command).not.toMatch(/\{version\}|1\.5\.9|curl|install\.sh/);
     expect((fm as any).loginWindow.heldFor("antigravity")).toMatchObject({ kind: "install", backend: "antigravity" });
   });
   it("success: the version afterwards is the binary probe's own, read again; the window is released", async () => {

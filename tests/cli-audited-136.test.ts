@@ -21,8 +21,7 @@ import { join } from "node:path";
  * listed here with why. An entry here that is no longer needed fails too, so the list cannot go stale.
  */
 const SHIPPED_LAG: Readonly<Record<string, string>> = {
-  // The Windows Runtime's pinned install (runtime-cli-install.ts, npm integrity + signer) and the Windows pane gate read the newest entry: moving it needs those pins too.
-  "codex 0.169.0": "Windows Runtime pin and pane gate not yet moved to 0.169.0",
+  // (none: M-3176 moved codex 0.169.0 with its Windows Runtime pin and pane gate. A CLI pinned for the Windows Runtime moves its runtime-cli-install.ts pin with it.)
 };
 function auditEvidence(): Array<{ cli: string; version: string; file: string }> {
   const found: Array<{ cli: string; version: string; file: string }> = [];
@@ -53,7 +52,7 @@ describe("the ledger", () => {
   it("the newest audited release is the one an update goes to, compared by number (not as text)", () => {
     expect(Object.fromEntries(CLI_IDS.map(id => [id, auditedVersion(id)]))).toEqual({
       // The maintainer-confirmed ledger of 2026-11-09 21:00 (Taipei).
-      "claude-code": "2.1.319", "codex": "0.167.0", "kiro-cli": "3.3.0", "antigravity": "1.5.3", "grok": "1.0.77", "muse": "1.4.20-R8619.1", "opencode": "1.19.5",
+      "claude-code": "2.1.325", "codex": "0.169.0", "kiro-cli": "3.3.0", "antigravity": "1.5.9", "grok": "1.0.77", "muse": "1.4.20-R8619.1", "opencode": "1.19.5",
     });
     expect(compareVersions("2.1.99", "2.1.316")).toBe(-1);
     expect(compareVersions("1.4.14", "1.4.4")).toBe(1);
@@ -102,7 +101,7 @@ describe("reading a version", () => {
 describe("where an installed CLI stands", () => {
   it("behind the audited release: the button, where the registry has an update for it", () => {
     expect(cliUpdateView("grok", "grok 1.0.70 (abc)", true)).toEqual({ state: "behind", audited: "1.0.77", installed: "1.0.70", button: true, latest: false });
-    expect(cliUpdateView("claude-code", "2.1.316 (Claude Code)", true)).toMatchObject({ state: "behind", audited: "2.1.319", button: true });
+    expect(cliUpdateView("claude-code", "2.1.316 (Claude Code)", true)).toMatchObject({ state: "behind", audited: "2.1.325", button: true });
   });
   it("behind, but the CLI updates itself (no update in the registry): the versions only, no button", () => {
     expect(cliUpdateView("muse", "1.4.12-R6909.1", false)).toEqual({ state: "behind", audited: "1.4.20-R8619.1", installed: "1.4.12-R6909.1", button: false, latest: false });
@@ -110,11 +109,11 @@ describe("where an installed CLI stands", () => {
     expect(cliUpdateView("muse", "Muse Code 1.4.20-R8500.1", false)).toEqual({ state: "behind", audited: "1.4.20-R8619.1", installed: "1.4.20-R8500.1", button: false, latest: false });
   });
   it("at the audited release: current, no button", () => {
-    expect(cliUpdateView("codex", "codex-cli 0.167.0", true)).toEqual({ state: "current", audited: "0.167.0", installed: "0.167.0", button: false, latest: false });
+    expect(cliUpdateView("codex", "codex-cli 0.169.0", true)).toEqual({ state: "current", audited: "0.169.0", installed: "0.169.0", button: false, latest: false });
     expect(cliUpdateView("muse", "1.4.20-R8619.1", false)).toEqual({ state: "current", audited: "1.4.20-R8619.1", installed: "1.4.20-R8619.1", button: false, latest: false });
   });
   it("newer than anything audited (a host that updated itself ahead of the ledger): not verified, never a button", () => {
-    expect(cliUpdateView("claude-code", "2.1.320 (Claude Code)", true)).toEqual({ state: "newer", audited: "2.1.319", installed: "2.1.320", button: false, latest: false });
+    expect(cliUpdateView("claude-code", "2.1.326 (Claude Code)", true)).toEqual({ state: "newer", audited: "2.1.325", installed: "2.1.326", button: false, latest: false });
     expect(cliUpdateView("opencode", "1.19.6", true)).toMatchObject({ state: "newer", button: false, latest: false });
     expect(cliUpdateView("muse", "1.4.20-R8700.1", false)).toMatchObject({ state: "newer", button: false });
   });
@@ -124,13 +123,13 @@ describe("where an installed CLI stands", () => {
   });
   // AGEND-153: the named exception goes to the vendor's newest release, so the audited release does not decide whether it is offered — at, below and above it — but a version nobody could read still is not.
   it("the named exception (latest-unaudited) is offered behind, at and above the audited release, and flagged as such", () => {
-    expect(cliUpdateView("antigravity", "1.3.5", true, true)).toEqual({ state: "behind", audited: "1.5.3", installed: "1.3.5", button: true, latest: true });
-    expect(cliUpdateView("antigravity", "1.5.3", true, true)).toEqual({ state: "current", audited: "1.5.3", installed: "1.5.3", button: true, latest: true });
-    expect(cliUpdateView("antigravity", "1.5.4", true, true)).toEqual({ state: "newer", audited: "1.5.3", installed: "1.5.4", button: true, latest: true });
-    expect(cliUpdateView("antigravity", "who knows", true, true)).toEqual({ state: "unknown", audited: "1.5.3", installed: null, button: false, latest: true });
+    expect(cliUpdateView("antigravity", "1.3.5", true, true)).toEqual({ state: "behind", audited: "1.5.9", installed: "1.3.5", button: true, latest: true });
+    expect(cliUpdateView("antigravity", "1.5.9", true, true)).toEqual({ state: "current", audited: "1.5.9", installed: "1.5.9", button: true, latest: true });
+    expect(cliUpdateView("antigravity", "1.5.10", true, true)).toEqual({ state: "newer", audited: "1.5.9", installed: "1.5.10", button: true, latest: true });
+    expect(cliUpdateView("antigravity", "who knows", true, true)).toEqual({ state: "unknown", audited: "1.5.9", installed: null, button: false, latest: true });
   });
   it("`latest` without an update in the registry is nothing: no button, not flagged", () => {
-    expect(cliUpdateView("antigravity", "1.3.5", false, true)).toEqual({ state: "behind", audited: "1.5.3", installed: "1.3.5", button: false, latest: false });
+    expect(cliUpdateView("antigravity", "1.3.5", false, true)).toEqual({ state: "behind", audited: "1.5.9", installed: "1.3.5", button: false, latest: false });
   });
   it("an id with no audited release has no reading", () => { expect(cliUpdateView("nonesuch", "1.0.0", true)).toBeNull(); });
 });
@@ -146,8 +145,8 @@ describe("the update command", () => {
       expect(plan.command, id).not.toMatch(/\{|\}|latest|stable/);
     }
     expect(hostUpdatePlan("grok")).toEqual({ command: "curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.77", target: "1.0.77" });
-    expect(hostUpdatePlan("claude-code")!.command).toBe("curl -fsSL https://claude.ai/install.sh | bash -s 2.1.319");
-    expect(hostUpdatePlan("codex")!.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release 0.167.0");
+    expect(hostUpdatePlan("claude-code")!.command).toBe("curl -fsSL https://claude.ai/install.sh | bash -s 2.1.325");
+    expect(hostUpdatePlan("codex")!.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release 0.169.0");
     expect(hostUpdatePlan("kiro-cli")!.command).toBe("curl -fsSL https://cli.kiro.dev/install | bash -s -- --version 3.3.0 --force");
     expect(hostUpdatePlan("opencode")!.command).toBe("curl -fsSL https://opencode.ai/install | bash -s -- --version 1.19.5");
   });
