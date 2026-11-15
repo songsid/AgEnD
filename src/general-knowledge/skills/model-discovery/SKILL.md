@@ -78,3 +78,5 @@ agy starts on **another model**, with a warning in its pane.
 then handed to the CLI anyway. So a name missing from `list_models` may still be
 valid, and a typo fails *in the CLI at launch*, not at config time — if an
 instance won't start after a model change, suspect the name first.
+
+On agy 1.4.7 or later, AgEnD first tries a model/effort change in the running session while idle and verifies a new CLI confirmation. It resolves the same catalog effort variant a restart would launch. Older/unknown running versions, a missing model catalog, picker or unverified result keep restart fallback. The saved Fleet setting survives restart.
