@@ -7,7 +7,9 @@ case "$AGY_VERSION" in *[!0-9.]*|'') echo 'numeric version required' >&2; exit 2
 script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
 rig="$(mktemp -d "${TMPDIR:-/tmp}/agy-model-switch.XXXXXX")"
 mkdir -p "$rig"/{home,work,out,cert,bin}; chmod 700 "$rig" "$rig/home"
-cp -- "$AGY_BIN" "$rig/bin/agy"; chmod 700 "$rig/bin/agy"
+mkdir -p "$rig/releases/$AGY_VERSION"
+cp -- "$AGY_BIN" "$rig/releases/$AGY_VERSION/agy"; chmod 700 "$rig/releases/$AGY_VERSION/agy"
+ln -s "../releases/$AGY_VERSION/agy" "$rig/bin/agy"
 cp -- "$script_dir/switch-rig.py" "$rig/switch-rig.py"
 openssl req -x509 -newkey rsa:2048 -nodes -keyout "$rig/cert/key.pem" -out "$rig/cert/cert.pem" -days 2 \
  -subj '/CN=daily-cloudcode-pa.googleapis.com' \
@@ -19,7 +21,7 @@ if [[ "${DAEMON_PROOF:-0}" == 1 ]]; then
  repo="$(cd -- "$script_dir/../../.." && pwd)"
  deps="$(readlink -f "$repo/node_modules")"
  cp -- "$(command -v node)" "$rig/bin/node"
- extra=(--dir /repo --ro-bind "$repo/src" /repo/src --ro-bind "$repo/scripts/manual/agy-version-audit" /repo/scripts/manual/agy-version-audit --ro-bind "$repo/package.json" /repo/package.json --ro-bind "$deps" /repo/node_modules)
+ extra=(--dir /repo --ro-bind "$repo/src" /repo/src --ro-bind "$repo/launcher" /repo/launcher --ro-bind "$repo/scripts/manual/agy-version-audit" /repo/scripts/manual/agy-version-audit --ro-bind "$repo/package.json" /repo/package.json --ro-bind "$deps" /repo/node_modules)
 fi
 # Only this user/network namespace gets low-port privilege; the host has no listener or hosts-file change.
 bwrap --unshare-all --uid 0 --gid 0 --cap-add CAP_NET_BIND_SERVICE --die-with-parent \

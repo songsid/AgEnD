@@ -25890,7 +25890,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // it can be and confirmed, else restarted (as these CLIs always were).
     if (Object.hasOwn(CLI_RUNTIME_SWITCH, backendName) && this.instanceIpcClients.get(instanceName)) {
       if (!this.persistInstanceModel(instanceName, model)) return `${warn}${t("model.persist_failed", instanceName)}`;
-      const done = await this.runCliRuntimeSwitch(instanceName, backendName, { model, effort: null });
+      const entry = CLI_RUNTIME_SWITCH[backendName]!;
+      const effort = this.codexSwitchEffort(instanceName, model); // configured level, only when the target model supports it
+      const want = entry.modelWant?.(model, effort) ?? { model, effort: null };
+      const done = await this.runCliRuntimeSwitch(instanceName, backendName, want);
       if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
       if (done.result.outcome === "switched") return `${warn}${t("model.codex_switched", instanceName, model)}${this.effortSuffix(instanceName)}`;
       const why = this.cliSwitchFallbackReason(backendName, done);

@@ -18,6 +18,7 @@ const d: any = new Daemon("rig", {
 } as any, INST, false, new AntigravityBackend(INST), undefined, logger);
 d.tmux = new TmuxManager(SESSION, windowId);
 const results: unknown[] = [];
+
 d.ipcServer = { broadcast: (m: { type?: string }) => { if (m.type === "runtime_switch_result") results.push(m); }, send: () => {} };
 d.wake = async () => {};
 
