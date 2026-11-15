@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/mcp-tool-list-startup-m3183
+
+(node:19668) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  5 passed (5)
+      Tests  38 passed (38)
+   Start at  17:39:23
+   Duration  10.51s (transform 9.64s, setup 328ms, import 13.97s, tests 5.21s, environment 1ms)
+
