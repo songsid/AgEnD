@@ -2321,6 +2321,19 @@ describe.skipIf(process.platform === "win32")("room consent factory composition"
       const root = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
       expect(root.json.features).toContain("teams-v1");
       expect((await directoryBrowser(r.hub, root.cookie, undefined, "/hub/v1/teams")).json).toEqual({ teams: [] });
+      const created = await directoryBrowser(r.hub, root.cookie, { name: "Allowed-list fixture" }, "/hub/v1/teams",
+        { headers: { "X-AgEnD-Hub-CSRF": root.json.csrf } });
+      expect(created.status).toBe(201);
+      const teamId = created.json.team.id;
+      // Private policy fixture only: pin the production factory's local Used-for callback, not another policy writer.
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx), row = db.prepare("SELECT body FROM hub_group_policy").get() as { body: string };
+        const policy = JSON.parse(row.body);
+        policy.teams = [{ teamId, name: "Allowed-list fixture", allow: ["ask_agents"], maxFleets: 1 }];
+        db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+      });
+      const detail = await directoryBrowser(r.hub, root.cookie, undefined, `/hub/v1/teams/${teamId}`);
+      expect(detail.json.team.impact.allowedList).toBe(true);
     } finally { await r.runtime.close(); }
   });
 

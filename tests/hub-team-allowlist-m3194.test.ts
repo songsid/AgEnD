@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
 import { evaluateGroupPolicy, initialGroupPolicy, parseGroupPolicy } from "../src/hub/group-policy/model.js";
 import { assertHubSelfUseDecisionCurrent, createHubGroupPolicyStore, groupPolicyMigration } from "../src/hub/group-policy/store.js";
-import { HUB_TEAMS_MIGRATION } from "../src/hub/teams/store.js";
+import { HUB_TEAMS_MIGRATION, HUB_TEAM_MANAGEMENT_MIGRATION } from "../src/hub/teams/store.js";
 import type { HubDirectory } from "../src/hub/directory/types.js";
 import { hubAllowedListUsesTeam } from "../src/hub/group-policy/team-subjects.js";
 
@@ -19,7 +19,7 @@ afterEach(() => { for (const db of databases.splice(0)) db.close(); });
 
 function fixture() {
   const db = new Database(":memory:"); databases.push(db); db.pragma("foreign_keys=ON");
-  for (const m of [HUB_AUDIT_MIGRATION, HUB_TEAMS_MIGRATION, groupPolicyMigration("hub-1", "example", "gen-1")]) m.up(db);
+  for (const m of [HUB_AUDIT_MIGRATION, HUB_TEAMS_MIGRATION, HUB_TEAM_MANAGEMENT_MIGRATION, groupPolicyMigration("hub-1", "example", "gen-1")]) m.up(db);
   db.prepare("INSERT INTO hub_teams VALUES(?,1,'Product team','example',?,'Department',?,100,100,0)").run(teamId, groupId, `example/${user.objectId}`);
   db.prepare("INSERT INTO hub_team_members VALUES(?,?,'Alex','alex','')").run(teamId, `example/${user.objectId}`);
   const readPolicyGroups = vi.fn(async () => facts());

@@ -32,7 +32,7 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | New chat, asking someone's agent, Waiting / Answered, favorites (最愛) | [Asking an agent](#asking-an-agent) |
 | @agent, @all, room answers, Idle, Paused, Stopped | [Agents in a Hub room](#agents-in-a-hub-room) |
 | room creators, room administration, Hub assistant | [Rooms and the Hub assistant](#rooms-and-the-hub-assistant) |
-| Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
+| Chat with agents / Share agents / Connect a Fleet by AD group / team / person, Paused | [Group permissions](#group-permissions) |
 | Room assistant, backend/account, cap, idle stop, answer counts | [Room assistant administration](#room-assistant-administration) |
 | Connected fleets, Revoke, Individual invitations, pairing code, Notices | [Administration](#administration) |
 | AgEnD version of a Fleet, Needs update (需要更新), Too old for rooms, Version unknown, "Your Fleet runs an older AgEnD" | [Fleet versions](#fleet-versions) |
@@ -140,7 +140,7 @@ what the Hub has saved.
 
 1. **Let colleagues connect Fleets with their company account** — turn on **Allow company-account Fleet connections**.
 2. **Who can join** — choose an **AD group**, **Team**, or **Person** in the shared picker and add them. Search group/person names; choose an existing team. For
-   each group set **Each person up to** *N* **Fleets**, and whether its members may also **Chat with agents** and
+   each row set **Each person up to** *N* **Fleets**, and whether its members may also **Chat with agents** and
    **Share agents**. The card shows what the change does before **Save**. A group the search does not find goes under
    **Add by distinguished name**. A live join code also completes this step.
    - Group search needs Active Directory over LDAPS. If the directory cannot list groups the card says so: check it
@@ -189,7 +189,7 @@ next is what they could do without it:
 - **Asking, group permissions never turned on:** they can ask an agent as soon as its owner allows them, like anyone
   who signs in. Do not tell them to have group permissions turned on for this: that switch changes access for everyone.
 - **Asking, group permissions on:** they need **Chat with agents** from an allowed AD group, team, or personal row *and* the owner's
-  allowance. In no allowed group, they cannot chat until a group allows it.
+  allowance. With no applicable allowance, they cannot chat until the allowed list permits it.
 - **Sharing** is never given by a code. The Hub has to allow that person to share; until it does, the row reads "Not
   shared: your Hub administrator hasn't allowed you to share agents."
 - Either way the owner still allows each asker ([Who may ask](#who-may-ask)); no code or group replaces that.

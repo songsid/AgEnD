@@ -16,7 +16,7 @@ import type { HubActor, HubDirectory, PersonKey } from "../src/hub/types.js";
 import type { PolicyGroupFacts, PolicyGroupLookup } from "../src/hub/directory/groups.js";
 import type { HubGroupPolicy } from "../src/hub/group-policy/model.js";
 import type { GroupAdminContext, GroupImpact } from "../src/hub/group-policy/admin-dto.js";
-import { HUB_TEAMS_MIGRATION } from "../src/hub/teams/store.js";
+import { HUB_TEAMS_MIGRATION, HUB_TEAM_MANAGEMENT_MIGRATION } from "../src/hub/teams/store.js";
 const databases: Database.Database[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); vi.restoreAllMocks(); });
 function gate<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
@@ -78,7 +78,7 @@ function fixture() {
 }
 describe("sealed group policy confirmation control", () => {
   function teamProposal(w: ReturnType<typeof fixture>) {
-    HUB_TEAMS_MIGRATION.up(w.db);
+    HUB_TEAMS_MIGRATION.up(w.db); HUB_TEAM_MANAGEMENT_MIGRATION.up(w.db);
     const id = randomUUID(), unseen = key();
     w.db.prepare("INSERT INTO hub_teams VALUES(?,1,'Product team','example',?,'Department',?,100,100,0)").run(id, w.group.objectId, personKeyString(w.owner));
     for (const member of [w.owner, unseen]) w.db.prepare("INSERT INTO hub_team_members VALUES(?,?,'Team member','member','')").run(id, personKeyString(member));

@@ -34,6 +34,7 @@ import { createHubTeams, HUB_TEAM_MANAGEMENT_MIGRATION, HUB_TEAMS_MIGRATION, HUB
 import { HubPairingNotices, HUB_PAIRING_NOTICES_MIGRATION } from "../pairing-notices.js";
 import { createHubGroupAdminControl } from "../group-policy/admin-control.js";
 import { createHubGroupAdminInventory } from "../group-policy/admin-inventory.js";
+import { hubAllowedListUsesTeam } from "../group-policy/team-subjects.js";
 import { createHubGroupWelcome } from "../group-policy/welcome.js";
 import { signAsker, canonicalArguments, sha256, personKeyString } from "../identity.js";
 import { signHubWebOrigin } from "../web-origin.js";
@@ -468,7 +469,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const roomAssistant = options.roomAssistant?.();
       if (roomAssistant) teardown.add("the room assistant", () => roomAssistant.close());
       const http = httpEntry.createHubHttp({
-        ...(migrations.some(m => m.component === HUB_TEAMS_MIGRATION.component) ? { teams: createHubTeams } : {}),
+        ...(migrations.some(m => m.component === HUB_TEAMS_MIGRATION.component) ? { teams: core => createHubTeams(core, { allowedListUsesTeam: hubAllowedListUsesTeam }) } : {}),
         log: (level, message, meta) => options.log(level, message, meta),
         roomInvitations: createHubRoomInvitations,
         ...(roomAssistant ? { roomAssistant, assistantAdmin: roomAssistant } : {}),
