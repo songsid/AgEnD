@@ -8,7 +8,7 @@ import { HubSessions } from "../src/hub/sessions.js";
 import { grantOf, HubCatalogService } from "../src/hub/catalog.js";
 import { personKeyString } from "../src/hub/identity.js";
 import { HubProtocolError } from "../src/hub/validation.js";
-import { createHubTeams, HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION } from "../src/hub/teams/index.js";
+import { createHubTeams, HUB_TEAM_MANAGEMENT_MIGRATION, HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION } from "../src/hub/teams/index.js";
 import { HUB_GROUP_RESOURCES_MIGRATION } from "../src/hub/group-policy/resources.js";
 import { createHubGroupAdminInventory } from "../src/hub/group-policy/admin-inventory.js";
 import { createHubGroupImpactInventory } from "../src/hub/group-policy/impact-inventory.js";
@@ -22,12 +22,13 @@ async function world() {
   const owner = r.addPerson("olivia"), recipient = r.addPerson("alex"), outsider = r.addPerson("other");
   const department = randomUUID();
   r.directory.checkPolicyGroup = async key => ({ ok: true, group: { key, dn: "CN=Engineering,DC=example,DC=test" } });
-  r.httpDeps.uow.atomic(tx => { HUB_TEAMS_MIGRATION.up(r.sql(tx)); HUB_TEAM_GRANTS_MIGRATION.up(r.sql(tx)); });
+  r.httpDeps.uow.atomic(tx => { HUB_TEAMS_MIGRATION.up(r.sql(tx)); HUB_TEAM_MANAGEMENT_MIGRATION.up(r.sql(tx)); HUB_TEAM_GRANTS_MIGRATION.up(r.sql(tx)); });
   const core = new HubCore(r.httpDeps, r.sql), teams = createHubTeams(core), sessions = new HubSessions(core);
   r.httpDeps.roomTeams = teams; r.httpDeps.roomTeamCandidates = teams.candidates;
   const browser = await r.signIn("olivia"), asker = await r.signIn("alex"), other = await r.signIn("other"), admin = await r.signIn("admin");
   const ctx = sessions.context({ headers: { cookie: admin.cookie } } as IncomingMessage);
-  const team = await teams.create(ctx, { name: "Project", department, lead: personKeyString(owner), members: [personKeyString(recipient)] });
+  const made = await teams.create(ctx,{name:"Project",department,members:[personKeyString(owner),personKeyString(recipient)]});
+  const team = await teams.update(ctx,made.id,{leads:[personKeyString(owner)],members:[personKeyString(owner),personKeyString(recipient)]});
   const exposureId = randomUUID(), link = r.link(randomUUID(), owner);
   await r.http.receive(r.frame("exposure.snapshot", { revision: 1, exposures: [{ id: exposureId, fleetId: link.fleetId, owner,
     displayName: "Shared agent", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }, link) as never, link);

@@ -38,7 +38,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 
 **Moving around.** Drag to pan. The wheel or a pinch zooms. **+** / **−** step the zoom in whole pixel levels, and **Fit** shows the whole scene. **Fill** (kept per office) fills the panel instead and crops what overflows, so drag to see the rest. The keys `+`, `-` and `0` (fit) work while the office has focus, and `f` toggles **Fullscreen** (Esc leaves). The overview at the bottom right jumps to a spot. It hides while a single office is all in view (it would repeat the panel) and comes back once you zoom in, pan or Fill; All offices always shows it. It's not shown on a phone. The zoom, centre and Fit/Fill are kept per device for each office and style. Drawing is always unsmoothed pixel art. Zooming and panning never animate.
 
-**Fullscreen** shows the office alone, with the zoom buttons, the overview, a compact office switcher and Exit floating over it. Where a page can't go fullscreen (an iPhone) or the browser refuses, the office covers the window instead. Opening a chat leaves fullscreen, and nothing about it is remembered.
+**Fullscreen** shows the office alone, with the zoom buttons, the overview, a compact office switcher and Exit floating over it. In the carousel, Pause, Next and the current office's name sit beside the switcher. Where a page can't go fullscreen (an iPhone) or the browser refuses, the office covers the window instead. Opening a chat leaves fullscreen, and nothing about it is remembered.
 
 **On a phone** the scene takes the height left under the bars, so a zoomed-in scene can be dragged to its bottom edge. Outside fullscreen the zoom buttons are a row along the top. Only a very short screen keeps a 200 px stage and scrolls the panel; swipe on the bars to scroll it.
 
@@ -48,7 +48,8 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 
 | Control | What it does | Kept |
 |---|---|---|
-| **Office** | which office to show: **Whole fleet**, one of the stored offices, or **All offices** | per device |
+| **Office** | which office to show: **Whole fleet**, one of the stored offices, **All offices**, or **Carousel…** | per device |
+| **Carousel…** | chosen offices, each full screen in turn (signage). **Pause** / **Next**, or Space / ← / → | offices and interval per browser; playing starts on enter |
 | **Show** | a team or the Lobby only | per browser |
 | **People** | pin chosen instances; **Show everyone** clears it | per browser |
 | **Style** | **Desks**, **Studio**, **Cozy** or an uploaded skin pack (for Whole fleet; a stored office has its own) | for the whole fleet when a fleet admin picks it; anyone else's pick is their own browser's |
@@ -70,6 +71,8 @@ Studio, Cozy, Guild, School and zones packs are called **zones styles** below. O
 **Crowds.** An area with more people than seats packs the rest into a tighter grid, then shows "+N" in its corner. There only calls and work get bubbles (a few at most), and name tags show on hover or focus.
 
 **All offices** (in the switcher once two or more offices are stored) shows every stored office as a tile, each drawn exactly as its own view and labelled with its name and head count. The **Lobby tile** adds the instances in no office. It's disabled, with a note, when everyone is in an office. A tile's label, or a double-click on the tile, opens that office. Traffic between people in different offices flies straight between their seats. Below 75% zoom a tile's name tags show on hover only. Edit offices and Edit layout wait until a single office is shown.
+
+**Carousel…** (the same switcher, two or more stored offices, on the signed-in dashboard) is signage for a TV: each ticked office fills the screen in turn, at the interval you pick (15 seconds to 10 minutes). Tick the offices in the bar; the order is the stored list. **Pause** and **Next** sit in the bar and in fullscreen; Space pauses, ← / → (or N / P, or a remote's play/next/previous) step. The offices and the interval are kept in this browser; playing starts whenever you enter the carousel. Edit offices and Edit layout wait. A share link does not offer it.
 
 **Reduced motion** (the system setting) shows still poses, nothing in the air, and bubbles whole at once.
 
@@ -523,3 +526,9 @@ Every feature below is in 2.3.2; the table names the version it first appeared i
 | Furniture `activeOn` and `hides`; offices with a layout survive a rollback to 2.3.1 (#2706) | 2.3.2-beta.12 |
 | Whole fleet's style kept for everyone; Whole fleet as a share; a share's Look (#2715, #2716); `mailDrop`; the overview hides while one office is all in view | 2.3.2-beta.15 |
 | Levels and the profile card (#2661); an office for nobody (NPCs only) (#2752) | 2.3.2-beta.16 |
+
+**2.4.**
+
+| Feature | First version |
+|---|---|
+| Carousel (signage): chosen offices fill the screen in turn, Pause/Next, kept per browser (#4010) | 2.4.0-beta |

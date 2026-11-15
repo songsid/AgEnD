@@ -6,7 +6,8 @@ import type { HubRequestContext } from "../types.js";
 export interface HubTeamSnapshot {
   readonly id: string; readonly revision: number; readonly name: string;
   /** Immutable AD group identity, never its mutable name or DN. */
-  readonly department: { readonly realm: string; readonly objectGuid: string };
+  readonly department: { readonly realm: string; readonly objectGuid: string } | null;
+  readonly leads: readonly PersonId[];
   readonly lead: PersonId;
   /** The selected roster, not an implicit AD-group expansion. */
   readonly members: readonly PersonId[];
@@ -35,7 +36,8 @@ export interface HubTeamReader {
 /** Seam-5 browser DTO. Canonical IDs stay separate from display-only directory labels. */
 export interface HubTeamView {
   readonly id: string; readonly revision: number; readonly name: string;
-  readonly department: string; readonly departmentName: string;
+  readonly department: string | null; readonly departmentName: string;
+  readonly leads: readonly PersonId[]; readonly leadNames: readonly string[]; readonly memberCount: number;
   readonly lead: PersonId; readonly leadName: string; readonly members: readonly PersonId[];
   readonly canManage: boolean;
   /** Presentation of this request's actor, not a replacement for current mutation authority. */
@@ -47,11 +49,17 @@ export interface HubTeamView {
     readonly signedIn: boolean; readonly agents: readonly { readonly id: string; readonly name: string }[];
   }[];
   readonly impact?: { readonly grants: readonly { readonly id: string; readonly exposureId: string; readonly name: string; readonly expiresAt: number }[];
-    readonly roomCreator: boolean };
+    readonly roomCreator: boolean; readonly allowedList?: boolean };
 }
 
 /** One mounted instance supplies CRUD and the existing room/permission reader ports. R wraps HTTP envelopes. */
+export interface TeamCreationSettings {
+  readonly revision: number; readonly creators: readonly {readonly kind: "person" | "group"; readonly id: string; readonly name: string}[];
+  readonly canCreate: boolean; readonly canConfigure: boolean;
+}
 export interface HubTeams extends HubTeamReader {
+  settings(ctx: HubRequestContext): Promise<TeamCreationSettings>;
+  saveSettings(ctx: HubRequestContext, input: unknown): Promise<TeamCreationSettings>;
   candidates(db: Database.Database, prefix: string): readonly { readonly id: string; readonly name: string; readonly people: number }[];
   /** Directory feedback only; the selected people/group are re-proved by create/update. */
   suggestions(ctx: HubRequestContext, input: unknown): Promise<readonly { readonly kind: "person" | "group"; readonly id: string; readonly name: string; readonly login?: string }[]>;

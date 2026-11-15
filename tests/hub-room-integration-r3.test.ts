@@ -63,7 +63,7 @@ it("routes invitation lists/actions and sends an owner invitation event without 
 });
 it("uses a Team's live roster for creator rights and snapshots expansion when creating a room", async () => {
   const w = await world(), team = randomUUID(); let active = true, revision = 1;
-  r!.httpDeps.roomTeams = { read: () => active ? { id: team, revision, name: "Project", department: { realm: "corp", objectGuid: randomUUID() }, lead: personKeyString(w.alex), members: [personKeyString(w.alex)] } : null,
+  r!.httpDeps.roomTeams = { read: () => active ? { id: team, revision, name: "Project", department: { realm: "corp", objectGuid: randomUUID() }, lead: personKeyString(w.alex), leads: [personKeyString(w.alex)], members: [personKeyString(w.alex)] } : null,
     expand: (_db, ids) => ({ teams: active ? ids.map(id => ({ id, revision })) : [], people: active ? [personKeyString(w.alex)] : [], missing: active ? [] : [...ids] }),
     isMember: () => active ? { revision, member: true } : null };
   await r!.restartHttp();

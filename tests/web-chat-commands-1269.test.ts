@@ -75,19 +75,21 @@ describe("the chat's commands (the real page modules)", () => {
     const sends = () => fx.calls.filter((c) => c.path === "/ui/send");
     /** Run the timers set for `ms` so far (each once). */
     const elapse = async (ms: number) => { for (const t of timers.splice(0).filter((x) => { const due = x.ms === ms; if (!due) timers.push(x); return due; })) t.fn(); await settle(); };
-    return { p, fx, box, type, key, commands, sends, panel, stream, timers, elapse, card: () => p.root.querySelector(".cmd-card"), options: () => p.root.querySelectorAll(".cmd-palette li[role=option]") };
+    return { p, fx, box, type, key, commands, sends, panel, stream, timers, elapse, card: () => p.root.querySelector(".cmd-card"), options: () => p.root.querySelectorAll(".cmd-palette li[role=option]"),
+      menu: () => p.root.querySelector(".model-menu") };   // M-3166 PR 3: /model's list is a menu
   }
 
   it("M-2731: title Refresh and separate More are typed actions; failed refresh retains selected model chips", async () => {
     const c = await chatPage({ model: "sonnet" });
     c.fx.respond = (_path: string, body: any) => body?.action ? { error: "offline" } : { choices: { current: "sonnet", options: [{ id: "sonnet", label: "Sonnet" }], actions: ["refresh", "more"] } };
     await c.type("/model"); await c.key("Enter");
-    expect(c.card().querySelector('.cmd-choices .current')!.getAttribute("aria-current")).toBe("true");
-    const refresh = c.card().querySelector('.cmd-head [data-model-action="refresh"]'); expect(refresh).not.toBeNull();
-    expect(c.card().querySelector('.cmd-choices [data-model-action]')).toBeNull();
+    expect(c.menu().querySelector('.model-menu-row.on')!.getAttribute("aria-checked")).toBe("true");
+    const refresh = c.menu().querySelector('.model-menu-head [data-model-action="refresh"]'); expect(refresh).not.toBeNull();
+    expect(c.menu().querySelector('.model-menu-row[data-model-action]')).toBeNull();
+    expect(c.menu().querySelector('[data-model-action="more"]')).not.toBeNull();   // More: its own action, apart from the rows
     fire(refresh, "click"); await settle(8);
     expect(c.commands().at(-1)!.body).toEqual({ instance: "w", command: "model", action: "refresh" });
-    expect(c.card().textContent).toContain("offline"); expect(c.card().querySelector('.cmd-choices .current')).not.toBeNull();
+    expect(c.menu().textContent).toContain("offline"); expect(c.menu().querySelector('.model-menu-row.on')).not.toBeNull();
   });
 
   it("M-2738 (D3): /update + Enter opens AgEnD's Update dialog — never a message or an agent command", async () => {
@@ -230,8 +232,9 @@ describe("the chat's commands (the real page modules)", () => {
     c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.args ? { text: `Model set to ${body.args}` }
       : { choices: { current: "a", options: [{ id: "a", label: "✓ Alpha" }, { id: "b", label: "Beta" }] } });
     await c.type("/model"); await c.key("Enter");
-    const opts = c.card().querySelectorAll(".cmd-choices .btn");
-    expect(opts.map((b: any) => [b.textContent, b.getAttribute("aria-current")])).toEqual([["Alpha", "true"], ["Beta", null]]);
+    expect(c.card(), "the list is a menu, not the card").toBeNull();
+    const opts = c.menu().querySelectorAll(".model-menu-row");
+    expect(opts.map((b: any) => [b.querySelector("b").textContent, b.getAttribute("aria-checked")])).toEqual([["Alpha", "true"], ["Beta", "false"]]);
     fire(opts[1], "click"); await settle();
     expect(c.commands().at(-1)!.body).toEqual({ instance: "w", command: "model", args: "b" });
     expect(c.card().querySelector(".cmd-text").textContent).toBe("Model set to b");
@@ -241,61 +244,57 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.card().className).toContain("bad");
   });
 
-  describe("a phone's model list with each model's effort (AGEND-176)", () => {
+  // #4003 review: the menu is /model's list. A model being switched to — a pick from the menu, or a typed "/model <id>" — is
+  // the card while it runs, never an empty "Loading models…" menu placed by the last control clicked.
+  it("a pick in flight, or a typed /model <id>: the card while it runs, not the menu", async () => {
+    const c = await chatPage();
+    let release: (v: unknown) => void = () => {};
+    c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.args ? new Promise((r) => { release = r; })
+      : { choices: { current: "a", options: [{ id: "a", label: "✓ Alpha" }, { id: "b", label: "Beta" }] } });
+    await c.type("/model"); await c.key("Enter");
+    fire(c.menu().querySelectorAll(".model-menu-row")[1], "click"); await settle();
+    expect([!!c.p.root.querySelector(".model-menu"), !!c.card()], "picked: switching shows as the card").toEqual([false, true]);
+    release({ text: "Model set to b" }); await settle();
+    expect(c.card().querySelector(".cmd-text").textContent).toBe("Model set to b");
+    await c.type("/model a"); await c.key("Enter");
+    expect([!!c.p.root.querySelector(".model-menu"), !!c.card()], "typed with an id: the card").toEqual([false, true]);
+    release({ text: "Model set to a" }); await settle();
+  });
+
+  // M-3166 PR 3 (the user's OK of round 2): the model in use's effort is one segmented row in the menu (it replaced the
+  // phone's per-model "›" list): /effort <level> alone. Another model's effort is chosen after switching to it.
+  describe("the menu's effort (AGEND-176, M-3166)", () => {
     const options = [
       { id: "a", label: "✓ Alpha", effort: { levels: ["low", "medium", "high", "xhigh"], current: "medium" } },
       { id: "b", label: "Beta", effort: { levels: ["low", "high"], current: null } },
       { id: "c", label: "Gamma" },
     ];
-    const open = async () => {
+    const open = async (current = "a") => {
       const c = await chatPage();
-      c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.args ? { text: `ok ${body.command} ${body.args}` } : { choices: { current: "a", options } });
+      c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.args ? { text: `ok ${body.command} ${body.args}` } : { choices: { current, options } });
       await c.type("/model"); await c.key("Enter");
       return c;
     };
-    const rows = (c: any) => c.card().querySelectorAll(".cmd-choices > .cmd-choice, .cmd-choices > .btn");
+    const levels = (c: any) => c.menu().querySelectorAll(".model-menu-seg button");
 
-    it("a model with an effort has its row's effort and a ›; one without is the plain button; the model button still applies it", async () => {
+    it("one row per model; the model in use's efforts, the set one pressed; a model button applies it", async () => {
       const c = await open();
-      expect(rows(c).map((r: any) => r.textContent.replace(/\s+/g, " ").trim())).toEqual(["AlphaMedium ›", "BetaAuto ›", "Gamma"]);
-      const go = c.card().querySelectorAll(".cmd-effort-go");
-      expect(go).toHaveLength(2);
-      expect(go[1].getAttribute("aria-label")).toContain("Beta");
-      fire(rows(c)[1].querySelector(".btn"), "click"); await settle();
+      expect(c.menu().querySelectorAll(".model-menu-row").map((r: any) => r.querySelector("b").textContent)).toEqual(["Alpha", "Beta", "Gamma"]);
+      expect(levels(c).map((b: any) => [b.textContent, b.getAttribute("aria-pressed")])).toEqual([["Low", "false"], ["Medium", "true"], ["High", "false"], ["XHigh", "false"]]);
+      fire(c.menu().querySelectorAll(".model-menu-row")[1], "click"); await settle();
       expect(c.commands().at(-1)!.body).toEqual({ instance: "w", command: "model", args: "b" });
     });
 
-    it("› opens that model's efforts (the set one marked), ‹ goes back to the models", async () => {
+    it("an effort is /effort <level> alone, for the model in use", async () => {
       const c = await open();
-      fire(c.card().querySelectorAll(".cmd-effort-go")[0], "click"); await settle();
-      const levels = c.card().querySelectorAll(".cmd-effort-levels .btn");
-      expect(levels.map((b: any) => [b.textContent, b.getAttribute("aria-current")])).toEqual([["Low", null], ["Medium", "true"], ["High", null], ["XHigh", null]]);
-      expect(c.card().querySelector(".cmd-sub-back").textContent).toContain("Alpha");
-      expect(c.card().querySelector(".cmd-effort-go")).toBeNull();
-      fire(c.card().querySelector(".cmd-sub-back"), "click"); await settle();
-      expect(rows(c)).toHaveLength(3);
-    });
-
-    it("an effort of the model in use is /effort <level> alone; of another model, the model first, then the effort", async () => {
-      const c = await open();
-      fire(c.card().querySelectorAll(".cmd-effort-go")[0], "click"); await settle();
-      fire(c.card().querySelectorAll(".cmd-effort-levels .btn")[3], "click"); await settle();
+      fire(levels(c)[3], "click"); await settle();
       expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "model" }, { instance: "w", command: "effort", args: "xhigh" }]);
       expect(c.card().querySelector(".cmd-text").textContent).toBe("ok effort xhigh");
     });
-    it("another model: /model b, then /effort high", async () => {
-      const c = await open();
-      fire(c.card().querySelectorAll(".cmd-effort-go")[1], "click"); await settle();
-      fire(c.card().querySelectorAll(".cmd-effort-levels .btn")[1], "click"); await settle();
-      expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "model" }, { instance: "w", command: "model", args: "b" }, { instance: "w", command: "effort", args: "high" }]);
-    });
-    it("a refused model switch leaves the effort unsent", async () => {
-      const c = await open();
-      c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.command === "model" && body.args ? { error: "no such model" } : { choices: { current: "a", options } });
-      fire(c.card().querySelectorAll(".cmd-effort-go")[1], "click"); await settle();
-      fire(c.card().querySelectorAll(".cmd-effort-levels .btn")[0], "click"); await settle();
-      expect(c.commands().map((x) => x.body.command + (x.body.args ? ` ${x.body.args}` : ""))).toEqual(["model", "model b"]);
-      expect(c.card().getAttribute("role")).toBe("alert");
+
+    it("a model in use without efforts: no effort row", async () => {
+      const c = await open("c");
+      expect(c.menu().querySelector(".model-menu-seg")).toBeNull();
     });
   });
 
@@ -515,7 +514,7 @@ describe("the chat's commands (the real page modules)", () => {
       c.fx.respond = (path: string) => (path === "/ui/command" ? answer : {});
       await c.type(`/${command}`); await c.key("Enter"); await settle();
       for (const ms of [6000, 8000, 12000, 11 * 60_000]) await c.elapse(ms);
-      expect(!!c.card()).toBe(true);
+      expect(!!(c.card() || c.menu())).toBe(true);   // M-3166 PR 3: /model's list stays as its menu
       expect(phase(c)).toBeNull();
     });
 });

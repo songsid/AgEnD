@@ -219,7 +219,7 @@ describe("All offices on the page", () => {
     await p.unmount();
     offices = { rev: 2, offices: TWO };
     await office();
-    expect(options()).toEqual([["auto", "Whole fleet"], ["*all", "All offices"], ["front", "Front desk"], ["lab", "Lab"]]);
+    expect(options()).toEqual([["auto", "Whole fleet"], ["*all", "All offices"], ["*carousel", "Carousel…"], ["front", "Front desk"], ["lab", "Lab"]]);
     expect(p.root.querySelectorAll(".oo-tile-label")).toHaveLength(0);
     await choose("*all");
     expect([sw().value, localStorage.getItem("agend_org_office")]).toEqual(["*all", "*all"]);

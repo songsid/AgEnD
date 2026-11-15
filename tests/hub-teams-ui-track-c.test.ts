@@ -32,15 +32,15 @@ it.each(["en", "zh-TW"])("draws the same roster, retained lead warning and recor
   expect(p.root.querySelector("tbody tr button").disabled).toBe(true);
   expect(c.teamSuggestions).not.toHaveBeenCalled(); expect(isServedAsset("hub-teams.css")).toBe(true);
 });
-it("lets a lead edit only the roster, searches the whole company with login disambiguation, and writes no metadata", async () => {
+it("lets a lead edit the roster and team metadata, searches the whole company with login disambiguation, and writes no metadata", async () => {
   const { p, c } = await mount("lead"); await open(p);
-  expect(p.root.querySelector("[data-team-name]")).toBeNull(); expect(button(p, "Delete team")).toBeUndefined(); expect(button(p, "Choose a lead")).toBeUndefined();
+  expect(p.root.querySelector("[data-team-name]")).toBeTruthy(); expect(button(p, "Delete team")).toBeTruthy(); expect(button(p, "Choose a lead")).toBeTruthy();
   fire(button(p, "Add member"), "click"); await settle(10);
   const input = p.root.querySelector('input[type="search"]'); expect(input.getAttribute("placeholder")).toBe("Search everyone by name");
   change(input, "Ca"); await settle(5); fire(button(p, "Search"), "click"); await settle(10);
   expect(c.teamSuggestions).toHaveBeenCalledWith("person", "Ca", "team-a", expect.any(AbortSignal)); expect(p.root.textContent).toContain("other.casey");
   fire(button(p, "Choose"), "click"); await settle(10); fire(p.root.querySelector("form"), "submit"); await settle(20);
-  expect(c.updateTeam).toHaveBeenCalledExactlyOnceWith("team-a", { members: [lead, member, "corp/new"], revision: 3 });
+  expect(c.updateTeam).toHaveBeenCalledExactlyOnceWith("team-a", { name:"Research", department:"department-a", leads:[lead], members: [lead, member, "corp/new"], revision: 3 });
 });
 it("keeps edits and known roster after a failed write, and fences a held refresh after a successful save", async () => {
   let resolve!: (value: any) => void;
@@ -76,9 +76,9 @@ it("shows affected grants and room creation before an explicit delete", async ()
   const region = p.root.querySelector('[role="region"]'); expect(region.textContent).toContain("Helper"); expect(region.textContent).toContain("May create rooms"); expect(region.textContent).toContain("already accepted into rooms stay");
   expect(c.deleteTeam).not.toHaveBeenCalled(); fire(region.querySelector(".btn-danger"), "click"); await settle(15); expect(c.deleteTeam).toHaveBeenCalledExactlyOnceWith("team-a");
 });
-it("shows the navigation entry only to a current lead and retires a held result on sign-out", async () => {
+it("shows the team directory navigation to signed-in people and retires a held result on sign-out", async () => {
   const { p, c, end } = await mount();
-  await p.mount(h(ui.HubMyTeamsEntry, { client: c, person: "corp/plain" })); await settle(15); expect(p.root.querySelector("a")).toBeNull();
+  await p.mount(h(ui.HubMyTeamsEntry, { client: c, person: "corp/plain" })); await settle(15); expect(p.root.querySelector("a")).toBeTruthy();
   await p.mount(h(ui.HubMyTeamsEntry, { client: c, person: lead, active: true })); await settle(15); expect(p.root.querySelector("a")?.getAttribute("aria-current")).toBe("page");
   end(); await settle(10); expect(p.root.querySelector("a")).toBeNull();
 });
@@ -127,4 +127,30 @@ it.each(["en", "zh-TW"])("distinguishes never-joined members from a pending join
   const rows = [...p.root.querySelectorAll("tbody tr")];
   expect(rows.find((row: any) => row.textContent.includes("Casey")).textContent).toContain(language === "en" ? "Not yet" : "尚未加入");
   expect(rows.find((row: any) => row.textContent.includes("Unknown status")).textContent).toContain(language === "en" ? "Not checked yet" : "尚未確認");
+});
+
+it("lets another lead promote and demote members, while keeping a last lead", async () => {
+  const value = {...team(),leads:[lead],leadNames:["Riley"],memberCount:2};
+  const {p,c} = await mount("lead","en",{team:vi.fn(async () => ({ok:true,team:value}))}); await open(p);
+  const last = [...p.root.querySelectorAll("button")].find((b:any) => b.getAttribute("aria-label") === "Remove Riley as lead"); expect(last.disabled).toBe(true);
+  fire([...p.root.querySelectorAll("button")].find((b:any) => b.getAttribute("aria-label") === "Make Casey a lead"),"click"); await settle(10);
+  expect([...p.root.querySelectorAll("button")].find((b:any) => b.getAttribute("aria-label") === "Remove Riley as lead").disabled).toBe(false);
+  fire(p.root.querySelector("form"),"submit"); await settle(20);
+  expect(c.updateTeam).toHaveBeenCalledWith("team-a",expect.objectContaining({leads:[lead,member],members:[lead,member]}));
+});
+it.each(["en","zh-TW"])("shows creation policy to admins and saves selected identities only (%s)", async lang => {
+  const saveTeamSettings=vi.fn(async () => ({ok:true}));
+  const {p} = await mount("admin",lang,{teamSettings:vi.fn(async () => ({ok:true,settings:{revision:7,canCreate:true,canConfigure:true,creators:[{kind:"person",id:member,name:"Casey"}]}})),saveTeamSettings});
+  const policy=p.root.querySelector(".hub-team-policy"); expect(policy.textContent).toContain(lang === "en" ? "Who can create teams" : "誰可以建立團隊");
+  fire([...policy.querySelectorAll("button")].find((b:any) => b.textContent === (lang === "en" ? "Save" : "儲存")),"click"); await settle(20);
+  expect(saveTeamSettings).toHaveBeenCalledWith({revision:7,creators:[{kind:"person",id:member}]});
+});
+it("a permitted manager can create with no department, and ordinary members cannot edit", async () => {
+  const {p,c}=await mount("lead","en",{teamSettings:vi.fn(async () => ({ok:true,settings:{revision:1,canCreate:true,canConfigure:false,creators:[]}}))});
+  fire(button(p,"New team"),"click"); await settle(15);
+  change(p.root.querySelector("[data-team-name]"),"Cross company"); await settle(10);
+  expect(button(p,"Save").disabled).toBe(false);
+  c.createTeam.mockResolvedValue({ok:false,status:409}); fire(p.root.querySelector("form"),"submit"); await settle(15);
+  expect(c.createTeam).toHaveBeenCalledWith({name:"Cross company",department:null,members:[]});
+  expect(p.root.querySelector("[data-team-name]").value).toBe("Cross company");
 });

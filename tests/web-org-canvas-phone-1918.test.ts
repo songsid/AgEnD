@@ -24,6 +24,8 @@ afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 
 describe("the canvas on a phone", () => {
   it("narrow packing; opens on General and the first team at a readable size, starting at the left", async () => {
+    // M-3166 (Argon 5): a phone opens the org page on its list; this device chose the canvas.
+    try { (globalThis as any).localStorage.setItem("agend_org_mode", "canvas"); } catch { /* none */ }
     app.appStore.set({ ready: true, instances: INSTANCES, exec: {}, awaiting: {}, needs: [] });
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "org" }, navKey: "fleet:org|1|en" })); await settle(6);
     const L = C.canvasLayout(O.buildOrgView(ORG, app.appStore.get()), new Set(), { narrow: true });

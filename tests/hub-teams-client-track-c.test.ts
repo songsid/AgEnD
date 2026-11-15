@@ -51,3 +51,12 @@ it("encodes Team feedback queries and quietly retires an aborted search", async 
   await c.teamSuggestions("person", "Riley", null);
   expect(calls[2]!.path).toBe("/hub/v1/teams/candidates?kind=person&q=Riley");
 });
+
+it("uses the shared client CSRF path for team creation settings", async () => {
+  const calls:any[]=[];
+  const c=createHubWebClient({fetchImpl:async (path:string,init:any) => {calls.push({path,init});return response({signedIn:true,csrf:"test-csrf",settings:{revision:1,creators:[]}});}});
+  await c.session(); await c.teamSettings(); await c.saveTeamSettings({revision:1,creators:[]});
+  expect(calls[1].path).toBe("/hub/v1/teams/settings"); expect(calls[1].init.method).toBe("GET");
+  expect(calls[2].path).toBe("/hub/v1/teams/settings"); expect(calls[2].init.method).toBe("PUT");
+  expect(calls[2].init.headers["X-AgEnD-Hub-CSRF"]).toBe("test-csrf");
+});

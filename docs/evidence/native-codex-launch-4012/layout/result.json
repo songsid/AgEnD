@@ -1,0 +1,135 @@
+{
+  "case": ".artifacts/m4012-matched-layout",
+  "mode": "queued",
+  "sourceHead": "42462a18aded32e14db8b36e9cb51b6bd68e45ba",
+  "sourceTrackedClean": true,
+  "startedAt": 1794754641785,
+  "sessionId": "01a1dfb6-92d4-72e1-b119-ec77c9f5dc25",
+  "pane": {
+    "paneId": "1f28f484-8821-44a0-ac9a-acdc1ac3c48a",
+    "launchId": "afdfdbe3-ed3c-4312-b6d3-c6eee145ea0a",
+    "hostBootId": "f0fdf19b-375a-4d09-9dbd-d8a20e950dd8"
+  },
+  "eventsBeforeRelease": [
+    {
+      "kind": "event",
+      "event": "message_queued",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwhyl5d6-385473e2"
+      }
+    },
+    {
+      "kind": "event",
+      "event": "message_delivered",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwhyl5d6-385473e2"
+      }
+    }
+  ],
+  "queuedSnapshot": {
+    "kind": "snapshot",
+    "nativeCurrent": true,
+    "instanceState": "working",
+    "isPaused": false,
+    "runBoot": "1c875417-482c-43c7-b5d3-e2f9a8d38faa",
+    "flags": {
+      "unreadable": false,
+      "busy": true,
+      "idle": false,
+      "trust": false,
+      "login": false,
+      "approval": false,
+      "queueMention": false
+    },
+    "handoffs": [
+      {
+        "id": "3cf471ea-6b6a-4549-8590-e714ba4cf54d",
+        "holder": "d752da7b-298d-422c-8dd4-630ed3a5da0e:1",
+        "hasRuntime": true,
+        "hasPath": false,
+        "redeliveries": 0,
+        "metaId": "web-mwhyl5d6-385473e2",
+        "wireHash": "9d817df024b0398cfccc62bb827a9686f1ee95c3558552f146b63b15f8e04fec",
+        "runtime": {
+          "paneId": "1f28f484-8821-44a0-ac9a-acdc1ac3c48a",
+          "launchId": "afdfdbe3-ed3c-4312-b6d3-c6eee145ea0a",
+          "hostBootId": "f0fdf19b-375a-4d09-9dbd-d8a20e950dd8",
+          "sessionId": "01a1dfb6-92d4-72e1-b119-ec77c9f5dc25"
+        }
+      }
+    ],
+    "rpc": {
+      "input": 3,
+      "key": 3
+    },
+    "pane": {
+      "paneId": "1f28f484-8821-44a0-ac9a-acdc1ac3c48a",
+      "launchId": "afdfdbe3-ed3c-4312-b6d3-c6eee145ea0a",
+      "hostBootId": "f0fdf19b-375a-4d09-9dbd-d8a20e950dd8"
+    },
+    "sessionId": "01a1dfb6-92d4-72e1-b119-ec77c9f5dc25"
+  },
+  "nativeQueuedBeforeRelease": false,
+  "repliesBeforeRelease": [],
+  "releasedAt": 1794754667775,
+  "reply": [
+    {
+      "kind": "reply",
+      "text": "M4012_TAKEN_A"
+    }
+  ],
+  "events": [
+    {
+      "kind": "event",
+      "event": "message_queued",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwhyl5d6-385473e2"
+      }
+    },
+    {
+      "kind": "event",
+      "event": "message_delivered",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwhyl5d6-385473e2"
+      }
+    },
+    {
+      "kind": "event",
+      "event": "message_confirmed",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwhyl5d6-385473e2"
+      }
+    }
+  ],
+  "snapshot": {
+    "kind": "snapshot",
+    "nativeCurrent": true,
+    "instanceState": "working",
+    "isPaused": false,
+    "runBoot": "1c875417-482c-43c7-b5d3-e2f9a8d38faa",
+    "flags": {
+      "unreadable": true
+    },
+    "handoffs": [],
+    "rpc": {
+      "input": 3,
+      "key": 3
+    },
+    "pane": {
+      "paneId": "1f28f484-8821-44a0-ac9a-acdc1ac3c48a",
+      "launchId": "afdfdbe3-ed3c-4312-b6d3-c6eee145ea0a",
+      "hostBootId": "f0fdf19b-375a-4d09-9dbd-d8a20e950dd8"
+    },
+    "sessionId": "01a1dfb6-92d4-72e1-b119-ec77c9f5dc25"
+  },
+  "composerPaste": false,
+  "queuedMarker": false,
+  "submissionPassed": true,
+  "contractPassed": false,
+  "finishedAt": 1794754672792
+}

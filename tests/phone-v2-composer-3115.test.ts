@@ -48,26 +48,21 @@ const $ = (pg: AppPage, sel: string) => pg.root.querySelector(`.p-chat ${sel}`) 
 const type = async (pg: AppPage, text: string) => { const box = $(pg, "#msgIn"); box.value = text; fire(box, "input"); await settle(4); };
 
 describe("M-3115 PR 2: one composer row on a phone", () => {
-  it("the row: ＋, the box, the picker (model · effort), Send — in that order; no ring under 50%; no chip row", async () => {
+  // M-3166 (Argon 0–1, the user's OK) replaced PR 2's row: the box is ＋ · the text · Send; the model, its effort and the
+  // context are the meta line above the box (tests/phone-meta-line-m3166.test.ts has its states).
+  it("the row: ＋, the box, Send — the whole width for the text; the model · effort · context on the line above", async () => {
     const { pg } = await app();
     const row = $(pg, ".composer");
     const kinds = [...row.children].filter((n: any) => n.tagName !== "INPUT").map((n: any) => n.id || n.className.split(" ")[0]);
-    expect(kinds).toEqual(["attachBtn", "composer-field", "composer-tools", "sendBtn"]);
-    // The row shows the model (the box keeps its room); its name says the effort too.
-    expect([$(pg, ".composer-pick b").textContent, $(pg, ".composer-pick .pick-effort"), $(pg, ".composer-pick").getAttribute("aria-label"), $(pg, ".ctx-ring"), $(pg, ".model-entry-row")])
-      .toEqual(["Opus", null, "Model: Opus · High — choose another", null, null]);
+    expect(kinds).toEqual(["attachBtn", "composer-field", "sendBtn"]);
+    expect([$(pg, ".composer-tools"), $(pg, ".chat-meta-model").textContent.replace(/\s+/g, " ").trim(), $(pg, ".chat-meta-model").getAttribute("aria-label"), $(pg, ".model-entry-row")])
+      .toEqual([null, "Opus · high · 42%⌄", "Model: Opus · high — choose another", null]);
   });
 
-  it("the picker opens /model; the ring from 50% (amber from 70%) opens /ctx", async () => {
-    const { pg, status } = await app();
-    fire($(pg, ".composer-pick"), "click"); await settle(4);
+  it("the model on the line above opens /model", async () => {
+    const { pg } = await app();
+    fire($(pg, ".chat-meta-model"), "click"); await settle(4);
     expect(calls.some((c) => c.path === "/ui/command" && c.body?.command === "model")).toBe(true);
-    await status({ context_pct: 55 });
-    expect([$(pg, ".ctx-ring")?.className, $(pg, ".ctx-pct")?.textContent, $(pg, ".ctx-ring")?.getAttribute("aria-label")]).toEqual(["ctx-ring", "55", "Context 55% used"]);
-    await status({ context_pct: 74 });
-    expect($(pg, ".ctx-ring").className).toBe("ctx-ring warn");
-    fire($(pg, ".ctx-ring"), "click"); await settle(4);
-    expect(calls.some((c) => c.path === "/ui/command" && c.body?.command === "ctx")).toBe(true);
   });
 
   it("working with nothing typed: Send is Stop (it stops the reply); typing makes it Send again", async () => {
@@ -78,7 +73,7 @@ describe("M-3115 PR 2: one composer row on a phone", () => {
     expect(calls.some((c) => c.method === "POST" && c.path === "/ui/cancel/web-dev")).toBe(true);
     await type(pg, "only the first part");
     expect([send().className.includes("is-stop"), send().getAttribute("aria-label")]).toEqual([false, "Send"]);
-    expect(pg.root.querySelector(".p-chat .work-bar .btn-stop"), "the status line's 停止 (CSS shows it now)").toBeTruthy();
+    expect(pg.root.querySelector(".p-chat .chat-meta .chat-meta-stop"), "the meta line's 停止 (CSS shows it now)").toBeTruthy();
   });
 
   it("a desk: no tools beside the box, and Send never turns into Stop (Stop stays in the working bar)", async () => {

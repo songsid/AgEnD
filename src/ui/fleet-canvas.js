@@ -72,7 +72,11 @@ export { K_MIN, K_MAX, fitView, pinchView, zoomAt };
 
 const MODE_KEY = "agend_org_mode", FOLD_KEY = "agend_org_folded", LIVE_KEY = "agend_org_live", KEY_KEY = "agend_org_key";
 const MODES = ["canvas", "list", "office"];
-function readMode() { try { const m = localStorage.getItem(MODE_KEY); return MODES.includes(m) ? m : "canvas"; } catch { return "canvas"; } }
+/** The org page's view: this device's choice, else the canvas — on a phone the list (M-3166, Argon 5: a phone opens on it). */
+function readMode() {
+  const phone = typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches, fallback = phone ? "list" : "canvas";
+  try { const m = localStorage.getItem(MODE_KEY); return MODES.includes(m) ? m : fallback; } catch { return fallback; }
+}
 function readLive() { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch { return true; } }
 function readFolded() {
   try { const a = JSON.parse(localStorage.getItem(FOLD_KEY) || "[]"); return new Set(Array.isArray(a) ? a.filter((x) => typeof x === "string").slice(0, 500) : []); } catch { return new Set(); }

@@ -114,15 +114,15 @@ async function signIn(page: any, code: string, home: string) {
 }
 
 /**
- * The app mounted: a visible navigation holding at least one control — the sidebar, the phone's tab bar, or (inside an
- * agent's pages on a phone, where the tabs are hidden) the header's ‹ back to the agents.
+ * The app mounted: a visible navigation holding at least one control — the sidebar, the phone's tab bar, inside an
+ * agent's pages on a phone the header's ‹ back to the agents, or the header's ☰ (a phone has no tab bar since M-3166).
  * A function, never a string: Playwright evals a string expression in the page on every poll after the first, and the
  * dashboard's CSP (no 'unsafe-eval') refuses those — an EvalError page error and a "script-src eval" violation (M-3121).
  */
 export async function mounted(page: any, timeoutMs = 10000): Promise<boolean> {
   if (typeof timeoutMs !== "number") throw Error(`mounted(page, timeoutMs): a timeout in ms, not ${JSON.stringify(timeoutMs)}`);
   try {
-    await page.waitForFunction(() => [...document.querySelectorAll("#app .sidebar, #app .tabs, #app .sb-back")].some((n) => {
+    await page.waitForFunction(() => [...document.querySelectorAll("#app .sidebar, #app .tabs, #app .sb-back, #app .sb-open")].some((n) => {
       const r = n.getBoundingClientRect(), cs = getComputedStyle(n);
       return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none" && (n.matches("a, button") || !!n.querySelector("a, button"));
     }), null, { timeout: timeoutMs });

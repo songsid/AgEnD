@@ -71,9 +71,9 @@ describe("M-3167: one composer between a phone and a wide desk", () => {
     expect([$(pg, "#msgIn") !== null, $(pg, ".composer-tools")]).toEqual([true, null]);
   });
 
-  it("a phone keeps its own (long) chip; the window resized across a width redraws the composer, nothing else changing", async () => {
+  it("a phone: no tools in the box — the model is the meta line's (M-3166); the window resized across a width redraws the composer", async () => {
     const { pg, win } = await app(390);
-    expect($(pg, ".composer-pick b")?.textContent).not.toBe("Opus 5.5");
+    expect([$(pg, ".composer-tools"), $(pg, ".chat-meta-model")?.textContent.startsWith("Opus 5.5")]).toEqual([null, true]);
     win.resize(1600); await settle(6);
     expect($(pg, ".composer-tools")).toBeNull();
     win.resize(1000); await settle(6);

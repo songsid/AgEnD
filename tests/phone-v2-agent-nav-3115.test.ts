@@ -166,11 +166,11 @@ describe("M-3115 PR 1: inside an agent's pages a phone has no bottom tabs", () =
     expect(rule).toContain(".p-chat > .panel-head:has(.chat-sheet-more) { flex-wrap: nowrap; }");
   });
 
-  it("not verified: no ✓ Verified in the sheet (the line under the composer still says Not verified · Authorize)", async () => {
+  it("not verified: no ✓ Verified in the sheet (the meta line above the box says Not verified · Authorize — M-3166)", async () => {
     auth = { state: "none", reason: "not_authorized" };
     const { pg } = await app("/ui/chat/web-dev");
     expect((await openSheet(pg)).querySelector(".chat-sheet-foot")).toBeNull();
-    expect(pg.root.querySelector(".composer-row .webauth-row")?.getAttribute("data-state")).toBe("none");
+    expect(pg.root.querySelector(".chat-meta-right .webauth-row")?.getAttribute("data-state")).toBe("none");
   });
 
   it("a desk: ☰ and the ⋯ it always had (no 前往, no ✓)", async () => {
