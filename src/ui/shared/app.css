@@ -2480,10 +2480,18 @@ html.oo-immersive, html.oo-immersive body { overflow: hidden; }
 html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .oo-fs-bar { position: absolute; left: var(--s-3); top: var(--s-3); z-index: 6; display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
 .oo-fs-bar .tb-select { max-width: 180px; }
-/* #4010: carousel — ticked offices and the interval in the Office bar; Pause / Next / name in the bar and in fullscreen. */
-.oo-carousel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
-.oo-carousel-offices { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
-.oo-car-now { font-size: var(--fs-xs); }
+/* #4010: carousel — n/m picker + interval in the Office bar (one row); Pause / Next / name in the bar and in fullscreen.
+   The checklist is a popover so 15–20 offices never wrap the bar. */
+.oo-carousel { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--s-2) var(--s-3); min-width: 0; }
+.oo-car-pick { position: relative; flex: 0 0 auto; }
+.oo-car-offices { white-space: nowrap; }
+.oo-car-menu { position: absolute; z-index: 8; left: 0; top: calc(100% + 4px); min-width: 12em; max-width: min(22em, calc(100vw - 2 * var(--s-3)));
+  max-height: min(50vh, 16rem); overflow: hidden; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); }
+.oo-car-menu-acts { display: flex; gap: var(--s-2); padding: var(--s-2); border-bottom: 1px solid var(--border); flex: none; }
+.oo-carousel-offices { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0; overflow-y: auto; padding: var(--s-2); }
+.oo-carousel-offices .check { padding: 4px 0; }
+.oo-car-now { font-size: var(--fs-xs); white-space: nowrap; }
 .ol-overlay { position: absolute; left: 0; top: 0; z-index: 4; }
 .ol-svg { display: block; overflow: visible; touch-action: none; }
 .ol-grid { stroke: var(--text-3); stroke-opacity: 0.25; stroke-width: 1; }
@@ -2528,6 +2536,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oo > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
   .oo-stage { min-height: 200px; }
   .oo-pick .tb-select { max-width: 150px; }
+  .oo-carousel { flex-wrap: wrap; }   /* Pause / Next stay on screen; the n/m picker is still one button */
   .oo-mini { display: none; }
   .oo-zoom .icon-btn { width: 40px; height: 40px; }
   /* #2689: a column of the label and five 40 px buttons (~240 px) is taller than that stage: a row along its top
