@@ -158,7 +158,7 @@ describe("fleet host memory wiring", () => {
 
   it("never starts polling in the constructor and health is a cache-only host/process split", () => {
     const { fm, read, set } = make();
-    expect(vi.getTimerCount()).toBe(0);
+    expect((fm.memoryPressure as unknown as { timer: unknown }).timer).toBeNull();   // M-3154: the monitor's own interval, not every timer
     expect(read).not.toHaveBeenCalled();
     expect(fm.getFleetHealth().hostMemory).toMatchObject({ level: "unknown", sampledAt: null });
     fm.memoryPressure.start();
@@ -235,7 +235,10 @@ describe("fleet host memory wiring", () => {
     vi.spyOn(internal, "shutdownLoginWindows").mockImplementation(() => new Promise<void>(() => {}));
     void fm.stopAll();
     const reads = read.mock.calls.length;
-    expect(vi.getTimerCount()).toBe(0);
+    // M-3154: the monitor's own interval is cleared and it is stopped — not "no timer anywhere": the global fake-timer count also holds
+    // any unrelated async work's timer that lands on this test's clock (an earlier test's shutdown finishing between the hooks), and read
+    // 1 (CI 42478181470). The reads below are the behaviour: none while time runs.
+    expect(fm.memoryPressure as unknown as { timer: unknown; stopped: boolean }).toMatchObject({ timer: null, stopped: true });
     await vi.advanceTimersByTimeAsync(120_000);
     expect(read).toHaveBeenCalledTimes(reads);
   });
@@ -286,7 +289,6 @@ describe("fleet host memory wiring", () => {
     await fm.startInstance("existing", { working_directory: "/fixture/existing" } as any, false, "classic");
     expect((fm.memoryPressure as any).timer).toBeNull();
     expect(read).toHaveBeenCalledTimes(reads);
-    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("labels fleet startup reservations so nested physical callbacks can wait safely", async () => {
