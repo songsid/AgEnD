@@ -12,8 +12,8 @@ import { personKeyString, sha256 } from "../src/hub/identity.js";
 import { retireCompanyJoinForWebAddress } from "../src/hub/join/store.js";
 let rig: Awaited<ReturnType<typeof companyJoinRig>> | undefined;
 afterEach(async () => { await rig?.close(); rig = undefined; vi.restoreAllMocks(); });
-async function world(groups = false) {
-  const r = rig = await companyJoinRig(port => { dc.port = port; }), admin = await r.signIn("alice"); if (groups) await r.enable(admin);
+async function world(groups = false, now?: () => number) {
+  const r = rig = await companyJoinRig(port => { dc.port = port; }, { now }), admin = await r.signIn("alice"); if (groups) await r.enable(admin);
   expect((await r.call(admin, "PUT", "/hub/v1/admin/company-join", { enabled: true, expectedRevision: 1 })).status).toBe(200);
   return { r, admin };
 }
@@ -109,12 +109,17 @@ describe("B1 enrolment-code protected routes and actual join", () => {
     expect(r.db.prepare("SELECT uses,sealed FROM hub_enrolment_codes WHERE id=?").get(code.id)).toEqual({ uses: 1, sealed: null });
   });
   it("eleven wrong codes pause even valid pushes for a minute, with no request rows and no group starvation", async () => {
-    const { r, admin } = await world(true), code = await make(r, admin);
+    // Cross midnight deliberately: this test exercises a minute budget, not end-of-day code expiry.
+    const nearMidnight = new Date(); nearMidnight.setHours(23, 59, 30, 0);
+    const started = nearMidnight.getTime(); let now = started;
+    const { r, admin } = await world(true, () => now), code = await make(r, admin, { expires: "1h" });
     for (let i = 0; i < 11; i++) expect((await begin(r, "WRNG2345")).pushed.status).toBe(403);
     expect((await begin(r, code.code)).pushed.status).toBe(403);
     expect(r.db.prepare("SELECT count(*) n FROM hub_company_join_requests").get()).toEqual({ n: 0 });
     const group = await begin(r, null); expect(group.pushed.status).toBe(200);
-    const now = Date.now(); vi.spyOn(Date, "now").mockReturnValue(now + 60001);
+    now = started + 59_999;
+    expect((await begin(r, code.code)).pushed.status).toBe(403);
+    now = started + 60_000;
     expect((await begin(r, code.code)).pushed.status).toBe(200);
   });
   it("code admission uses its per-code and global 120 budgets independently of quick/group 48", async () => {

@@ -1,0 +1,42 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-version-recommendations-m3138
+
+ ❯ tests/hub-compose-member.test.ts (9 tests | 1 failed) 1988ms
+     × composes S1 + the representative adapter + S3c on a private member DB, connects, and attaches the report hook 366ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-compose-member.test.ts > Hub member factory (S5b PR 2b) > composes S1 + the representative adapter + S3c on a private member DB, connects, and attaches the report hook
+AssertionError: expected [ 'room-ask-v1', …(8) ] to deeply equal [ 'room-ask-v1', …(7) ]
+
+- Expected
++ Received
+
+@@ -1,9 +1,10 @@
+  [
+    "room-ask-v1",
+    "s1-member-journal",
+    "s3c-exposures",
++   "s3c-version-recommendation",
+    "s4-execution",
+    "s5-audit",
+    "s5-instance",
+    "s5-representative",
+    "s90-pairing-inbox",
+
+ ❯ tests/hub-compose-member.test.ts:68:8
+     66|     const db = new Database(join(rig.memberHome, set.database), { read…
+     67|     expect((db.prepare("SELECT component FROM hub_schema ORDER BY comp…
+     68|       .toEqual(["room-ask-v1", "s1-member-journal", "s3c-exposures", "…
+       |        ^
+     69|     db.close();
+     70|     // Attached to the fleet: the exposure API (P1 representative agen…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 3 passed (4)
+      Tests  1 failed | 223 passed (224)
+   Start at  07:35:21
+   Duration  66.65s (transform 10.71s, setup 577ms, import 9.00s, tests 84.11s, environment 0ms)
+

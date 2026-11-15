@@ -44,7 +44,7 @@ const rows = (p: AppPage) => [...p.root.querySelectorAll(".hub-fleet-list .hub-r
 describe("the words (pure)", () => {
   it("the summary: no recommendation (phase 1), some behind, all current — over the active rows only", () => {
     words.setLang("en");
-    expect(v.summaryText(FLEETS, null)).toBe("3 Fleets connected. Set a recommended version to see which ones are behind.");
+    expect(v.summaryText(FLEETS, null)).toBe("3 active Fleets.");
     expect(v.summaryText(FLEETS, "2.4.0")).toBe("2 of 3 Fleets need an update.");
     expect(v.summaryText([FLEETS[0]], "2.4.0")).toBe("All 1 Fleets are on the recommended version or newer.");
     words.setLang("zh-TW");
@@ -71,7 +71,7 @@ describe("Administration → Connected fleets", () => {
   it("each active row: its tag first, AgEnD version, last connected; a warn tag's sentence under it; plain tags, no badge", async () => {
     const { p } = await fixture();
     await until(() => p.root.querySelector(".hub-fleet-summary"));
-    expect(p.root.querySelector(".hub-fleet-summary .note").textContent).toBe("3 Fleets connected. Set a recommended version to see which ones are behind.");
+    expect(p.root.querySelector(".hub-fleet-summary .note").textContent).toBe("3 active Fleets.");
     const facts = rows(p).map((r) => [r.getAttribute("data-fleet"), r.querySelector(".hub-fleet-tag").textContent, r.querySelector(".hub-fleet-tag").className,
       r.querySelector(".hub-fleet-ver span").textContent, r.querySelector(".hub-fleet-last").textContent.replace(/\s+/g, " ").trim(), r.querySelector(".hub-fleet-why")?.textContent ?? null]);
     expect(facts).toEqual([
@@ -93,6 +93,18 @@ describe("Administration → Connected fleets", () => {
     expect([rows(p).map((r) => r.getAttribute("data-fleet")), (p.root.querySelector(".hub-fleet-filter") as any).getAttribute("aria-pressed")]).toEqual([["b", "c"], "true"]);
     fire(p.root.querySelector(".hub-fleet-filter") as any, "click"); await settle(5);
     expect(rows(p).map((r) => r.getAttribute("data-fleet"))).toEqual(["a", "b", "c"]);
+  });
+
+  it("pressed, the filter stays once nothing needs an update any more (the last one updated meanwhile), so the list can come back", async () => {
+    const pg = page({ url: "https://hub.example.test/ui/hub/admin", storage: { agend_lang: "en" } }); pages.push(pg); words.setLang("en");
+    const allCurrent = FLEETS.map((f) => ({ ...f, versionState: "current" })), clicks: boolean[] = [];
+    await pg.mount(h("div", {}, h(v.FleetVersionsSummary, { fleets: allCurrent, recommended: "2.4.0", filtered: true, onFilter: (x: boolean) => clicks.push(x) }),
+      h("div", { class: "unpressed" }, h(v.FleetVersionsSummary, { fleets: allCurrent, recommended: "2.4.0", filtered: false }))));
+    await settle(3);
+    const [pressed, unpressed] = [pg.root.querySelector(".hub-fleet-filter") as any, pg.root.querySelector(".unpressed .hub-fleet-filter")];
+    expect([pressed?.getAttribute("aria-pressed"), unpressed]).toEqual(["true", null]);
+    fire(pressed, "click");
+    expect(clicks).toEqual([false]);
   });
 
   it("every Fleet current: the all-current line and no filter (zh-TW)", async () => {

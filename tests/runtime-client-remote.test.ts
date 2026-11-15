@@ -34,8 +34,8 @@ class FakeChild extends EventEmitter {
   kill(): boolean { queueMicrotask(() => { this.exitCode = 1; this.emit("close", 1); }); return true; }
 }
 async function fixture(clientOptions: Partial<ConstructorParameters<typeof RuntimeClient>[0]> = {}) {
-  const http = createServer(), sockets = new WebSocketServer({ server: http }), machineId = randomUUID(), frames: any[] = []; let socket: WebSocket | undefined, hello: any, helloCount = 0;
-  const welcomed = new Promise<void>(done => sockets.on("connection", ws => { socket = ws; ws.on("message", raw => { const frame = JSON.parse(raw.toString()); if (frame.type === "hello") { hello = frame; helloCount++; ws.send(JSON.stringify({ v: 1, type: "welcome", machineId, generation: 1 })); done(); } else frames.push(frame); }); }));
+  const http = createServer(), sockets = new WebSocketServer({ server: http }), machineId = randomUUID(), frames: any[] = [], answers = new Map<string, (frame: any) => void>(); let socket: WebSocket | undefined, hello: any, helloCount = 0;
+  const welcomed = new Promise<void>(done => sockets.on("connection", ws => { socket = ws; ws.on("message", raw => { const frame = JSON.parse(raw.toString()); if (frame.type === "hello") { hello = frame; helloCount++; ws.send(JSON.stringify({ v: 1, type: "welcome", machineId, generation: 1 })); done(); } else { frames.push(frame); answers.get(frame.id)?.(frame); } }); }));
   http.listen(0, "127.0.0.1"); await once(http, "listening"); const address = http.address(); if (!address || typeof address === "string") throw Error("No fixture port");
   closers.push(async () => { for (const ws of sockets.clients) ws.terminate(); await new Promise<void>(done => sockets.close(() => done())); http.closeAllConnections(); await new Promise<void>(done => http.close(() => done())); });
   const home = scratch(), root = credentialProfilesRoot(join(home, "state")), store = new RuntimeClientStore(join(home, "state"));
@@ -46,7 +46,11 @@ async function fixture(clientOptions: Partial<ConstructorParameters<typeof Runti
       signIn: { scratchRoot: scratch(), spawn: () => { const child = new FakeChild(); children.push(child); return child as unknown as ChildProcess; } } }, ...clientOptions });
   clients.push(client); await client.start(); await welcomed; await vi.waitFor(() => expect(client.online()).toBe(true));
   const send = (frame: unknown): void => socket!.send(JSON.stringify(frame));
-  const call = async (operation: string, payload: unknown, id = `a-${randomUUID()}`): Promise<any> => { send({ v: 1, type: "account.request", id, operation, payload }); await vi.waitFor(() => expect(frames.some(f => f.id === id)).toBe(true)); return frames.find(f => f.id === id); };
+  // The answer is waited for as it arrives, not polled against a deadline: a slow CI runner makes an operation slow, not wrong (M-3139). The test's own timeout still bounds it.
+  const call = async (operation: string, payload: unknown, id = `a-${randomUUID()}`): Promise<any> => {
+    const answered = new Promise<any>(done => answers.set(id, done)); send({ v: 1, type: "account.request", id, operation, payload });
+    try { return await answered; } finally { answers.delete(id); }
+  };
   return { client, store, root, home: store.directory, frames, children, hello: () => hello, call, send, machineId, drop: () => socket!.terminate(), hellos: () => helloCount };
 }
 
@@ -332,36 +336,47 @@ describe("P2: a stop that asked for the terminals to be retired keeps that reque
 describe("the new inventory reaches AgEnD before the answer to an account operation (#3190 Part 3c)", () => {
   // The dashboard reads the computer's inventory the moment it has the answer, so the answer must not overtake the inventory it changed: with a slow detection the
   // old fire-and-forget report came after it, and the Accounts view showed the profile that had just been removed.
-  const slowBridge = (state: { slow: boolean }): RuntimeBridge => ({ ...bridge, probe: async (): Promise<WindowsCliProbe> => { if (state.slow) await new Promise(done => setTimeout(done, 120)); return { home: "C:\\fixture", clis: [], probedAt: 1 }; } });
+  // A detection the test holds open (M-3139: no timer, so "slow" is as slow as the test needs, on any runner): `hold()` makes every detection that starts from now on wait,
+  // `entered()` is when one has started, `release()` lets them finish.
+  const heldBridge = () => {
+    let gate: ReturnType<typeof held<void>> | null = null, entered = held();
+    const probe = async (): Promise<WindowsCliProbe> => { const waiting = gate; if (waiting) { entered.resolve(); await waiting.promise; } return { home: "C:\\fixture", clis: [], probedAt: 1 }; };
+    return { bridge: { ...bridge, probe } as RuntimeBridge, hold: () => { gate = held(); entered = held(); }, entered: () => entered.promise, release: () => { gate?.resolve(); gate = null; } };
+  };
   const order = (f: Awaited<ReturnType<typeof fixture>>) => f.frames.map((frame: any) => frame.type === "account.response" ? "answer" : frame.type);
   const names = (f: Awaited<ReturnType<typeof fixture>>) => (f.frames.filter((frame: any) => frame.type === "inventory").at(-1)?.inventory?.credentialProfiles?.profiles ?? []).map((p: any) => [p.name, p.created]);
-  it("accounts.remove and accounts.signout send the changed inventory first, though detection is slow", async () => {
-    const state = { slow: false }, f = await fixture({ bridge: slowBridge(state) }); setRemoteSwitch(f.home, "accounts", true);
-    createRuntimeProfile(f.root, "claude-code", "work"); createRuntimeProfile(f.root, "claude-code", "spare");
-    state.slow = true; f.frames.length = 0;
-    expect((await f.call("accounts.signout", { cli: "claude-code", profile: "work", actor: "admin:u1" })).ok).toBe(true);
+  // What an operation does after its detection has started is synchronous or awaits only promises, so one turn of the event loop (not a timer) runs all of it: an
+  // answer that did not wait for the inventory has been written to the socket before the detection is let go, and is first on the wire.
+  const everythingElseRan = (): Promise<void> => new Promise(done => setImmediate(done));
+  /** Runs the operation with its detection held: the answer waits for the inventory, so the inventory arrives first. */
+  const heldCall = async (f: Awaited<ReturnType<typeof fixture>>, detection: ReturnType<typeof heldBridge>, operation: string, payload: unknown): Promise<any> => {
+    f.frames.length = 0; detection.hold();
+    const answer = f.call(operation, payload);
+    await detection.entered(); await everythingElseRan();
+    detection.release(); const frame = await answer;
     expect(order(f)).toEqual(["inventory", "answer"]);
-    f.frames.length = 0;
-    expect((await f.call("accounts.remove", { cli: "claude-code", profile: "spare", actor: "admin:u1" })).ok).toBe(true);
-    expect(order(f)).toEqual(["inventory", "answer"]); expect(names(f)).toEqual([["work", true]]);                  // the removed profile is already gone from what AgEnD was sent
+    return frame;
+  };
+  it("accounts.remove and accounts.signout send the changed inventory first, though detection is slow", async () => {
+    const detection = heldBridge(), f = await fixture({ bridge: detection.bridge }); setRemoteSwitch(f.home, "accounts", true);
+    createRuntimeProfile(f.root, "claude-code", "work"); createRuntimeProfile(f.root, "claude-code", "spare");
+    expect((await heldCall(f, detection, "accounts.signout", { cli: "claude-code", profile: "work", actor: "admin:u1" })).ok).toBe(true);
+    expect((await heldCall(f, detection, "accounts.remove", { cli: "claude-code", profile: "spare", actor: "admin:u1" })).ok).toBe(true);
+    expect(names(f)).toEqual([["work", true]]);                  // the removed profile is already gone from what AgEnD was sent
   });
   it("accounts.check and a sign-in that creates a profile do the same: the new profile is in the inventory, as one this Runtime created, before the answer", async () => {
-    const state = { slow: false }, f = await fixture({ bridge: slowBridge(state) }); setRemoteSwitch(f.home, "accounts", true);
+    const detection = heldBridge(), f = await fixture({ bridge: detection.bridge }); setRemoteSwitch(f.home, "accounts", true);
     createRuntimeProfile(f.root, "claude-code", "work");
-    state.slow = true; f.frames.length = 0;
-    const started = await f.call("signin.start", { cli: "claude-code", profile: "fresh", method: "subscription", actor: "admin:u1" });
-    expect(started.ok).toBe(true);
-    expect(order(f)).toEqual(["inventory", "answer"]); expect(names(f)).toEqual([["fresh", true], ["work", true]]);
-    f.frames.length = 0;
-    expect((await f.call("accounts.check", { cli: "claude-code", profile: "work" })).ok).toBe(true);
-    expect(order(f)).toEqual(["inventory", "answer"]);
+    expect((await heldCall(f, detection, "signin.start", { cli: "claude-code", profile: "fresh", method: "subscription", actor: "admin:u1" })).ok).toBe(true);
+    expect(names(f)).toEqual([["fresh", true], ["work", true]]);
+    expect((await heldCall(f, detection, "accounts.check", { cli: "claude-code", profile: "work" })).ok).toBe(true);
   });
   it("a revoked consent sends no inventory: the switch turned off while the detection waits stops it, and the operation's own answer still comes", async () => {
-    const state = { slow: false }, f = await fixture({ bridge: slowBridge(state) }); setRemoteSwitch(f.home, "accounts", true);
+    const detection = heldBridge(), f = await fixture({ bridge: detection.bridge }); setRemoteSwitch(f.home, "accounts", true);
     createRuntimeProfile(f.root, "claude-code", "work");
-    state.slow = true; f.frames.length = 0;
+    f.frames.length = 0; detection.hold();
     const pending = f.call("accounts.check", { cli: "claude-code", profile: "work" });
-    await new Promise(done => setTimeout(done, 30)); setRemoteSwitch(f.home, "accounts", false);
+    await detection.entered(); setRemoteSwitch(f.home, "accounts", false); detection.release();
     expect((await pending).type).toBe("account.response");
     expect(f.frames.filter((frame: any) => frame.type === "inventory")).toEqual([]);
   });

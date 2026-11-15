@@ -8,6 +8,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { HubMemberFrame, HubServerFrame, PersonKey } from "./types.js";
 import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, parseMemberFrame, encodeServerFrame } from "./protocol.js";
 import { HubSocket, type HubLinkCloseCode } from "./socket.js";
+import { HUB_RECOMMENDATION_CAPABILITY } from "./recommendation-model.js";
 import { HUB_FLEET_INFO_CAPABILITY, warnFleetDiagnostics } from "./fleet-info.js";
 import { HubProtocolError, parseStrictJson } from "./validation.js";
 import { HubPairingService } from "./pairing.js";
@@ -29,6 +30,7 @@ interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context:
   binding: { generation: number; revocationVersion: number } }
 export interface HubServerOptions {
   connected?(link: HubLinkContext): void;
+  ready?(link: HubLinkContext): void;
   log?(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   home: string; hubId: string; memberOrigin: string; listen: { host: string; port: number }; pairing: HubPairingService;
   current(): boolean;
@@ -151,10 +153,12 @@ export class HubServer {
     }
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
     if (!connection.ready && !["fleet.info", "exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
-    if (frame.type === "fleet.info") {
+    if (frame.type === "fleet.info" || frame.type === "fleet.recommendation-ack") {
       // A diagnostic refusal or failed write never changes the link's authority or availability.
       try {
         if (!context.features.has(HUB_FLEET_INFO_CAPABILITY)) throw new HubProtocolError("incompatible");
+        if (frame.type === "fleet.info" && frame.payload.recommendations && this.options.capabilities?.includes(HUB_RECOMMENDATION_CAPABILITY)) (context.features as Set<string>).add(HUB_RECOMMENDATION_CAPABILITY);
+        if (frame.type === "fleet.recommendation-ack" && !context.features.has(HUB_RECOMMENDATION_CAPABILITY)) throw new HubProtocolError("incompatible");
         await this.options.receive(frame, context);
       } catch { warnFleetDiagnostics(this.options.log, context.fleetId, "report"); }
       return;
@@ -192,13 +196,17 @@ export class HubServer {
     if (result) {
       if (result.requestId !== frame.requestId || result.linkEpoch !== context.linkEpoch) throw new HubProtocolError("invalid");
       await link.send(result);
-      if (frame.type === "reconcile" && result.type === "reconcile" && !result.payload.more) connection.ready = true;
+      if (frame.type === "reconcile" && result.type === "reconcile" && !result.payload.more) {
+        connection.ready = true;
+        try { this.options.ready?.(context); } catch { warnFleetDiagnostics(this.options.log, context.fleetId, "report"); }
+      }
     }
   }
   async send(fleetId: string, frame: HubServerFrame): Promise<void> {
     const connection = this.connections.get(fleetId);
     if (!connection?.ready || !connection.context.current() || frame.linkEpoch !== connection.context.linkEpoch
       || frame.type === "welcome" || frame.type === "question" && (frame.payload.identity.destinationFleetId !== fleetId || frame.payload.identity.issuer !== this.options.hubId)) throw new HubProtocolError("unavailable");
+    if (frame.type === "fleet.recommendation" && !connection.context.features.has(HUB_RECOMMENDATION_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice" && (!connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v2" && (!connection.context.features.has("pairing-notices-v2") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v3" && (!connection.context.features.has("pairing-notices-v3") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");

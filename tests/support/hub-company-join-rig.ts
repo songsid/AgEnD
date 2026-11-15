@@ -39,8 +39,9 @@ export interface JoinHttpResult {
 }
 
 /** Only dummy passwords. Mutable entries let tests change eligibility/membership across a held browser operation. */
-export async function companyJoinRig(directoryListening: (port: number) => void, options: { host?: string; certificates?: CompanyJoinCertificates } = {}) {
+export async function companyJoinRig(directoryListening: (port: number) => void, options: { host?: string; certificates?: CompanyJoinCertificates; now?: () => number } = {}) {
   const host = options.host ?? "hub.example.test";
+  const now = options.now ?? (() => Date.now());
   if (options.certificates && options.certificates.host !== host) throw Error("Owned certificate hostname mismatch");
   const home = mkdtempSync(join(tmpdir(), "agend-company-join-"));
   chmodSync(home, 0o700);
@@ -97,8 +98,8 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
       components: { http: async () => ({ migrations: httpEntry.migrations, createHubHttp(value) {
         deps = value; return httpEntry.createHubHttp(value, hubTxDatabase);
       } }) },
-      createDirectory: (cfg, secrets) => directory = createHubDirectory({ ...cfg, caPem: dcCerts.ca }, secrets, { now: () => Date.now() }),
-      report: () => {}, log: () => {}, now: () => Date.now(),
+      createDirectory: (cfg, secrets) => directory = createHubDirectory({ ...cfg, caPem: dcCerts.ca }, secrets, { now }),
+      report: () => {}, log: () => {}, now,
     });
     let service = await create(config, () => !closed); cleanups.push(() => service.close());
     await service.start();

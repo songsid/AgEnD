@@ -3,6 +3,7 @@ import { z } from "zod";
 import { epoch, hash, identifier, person, plain, reason, uuid, validated, parseStrictJson } from "./validation.js";
 import type { HubMemberFrame, HubServerFrame, HubAuthorizationRequest, HubAskerEnvelope } from "./types.js";
 import { validHubAnswerButtons } from "./buttons-model.js";
+import { recommendationSchema, recommendationAckSchema } from "./recommendation-model.js";
 import { fleetInfoSchema } from "./fleet-info.js";
 export const HUB_VERSION = 1;
 export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect: "/hub/v1/connect" } as const;
@@ -152,7 +153,7 @@ export const memberFrameSchema = z.union([
   frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
   frame("room.answer", roomAnswerSchema), frame("agent.state", agentStateSchema), frame("room.react", roomReactSchema),
   frame("member.leave", memberLeavePayloadSchema),
-  frame("hello", hello), frame("fleet.info", fleetInfoSchema), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
+  frame("hello", hello), frame("fleet.info", fleetInfoSchema), frame("fleet.recommendation-ack", recommendationAckSchema), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),
   frame("receipt", receiptSchema), frame("answer", answerSchema), frame("reconcile", reconcile),
   frame("authorize.request", authorizationSchema), frame("error", errorSchema),
   // attachments-v1 only: pull a question's file; push an answer's file before its answer frame.
@@ -165,7 +166,7 @@ export const memberFrameSchema = z.union([
 export const serverFrameSchema = z.union([
   frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
   frame("room.ask", roomAskSchema), frame("room.answer-ack", roomAnswerAckSchema), frame("room.react-result", roomReactResultSchema),
-  frame("welcome", welcome), frame("question", questionSchema), frame("receipt", receiptSchema),
+  frame("welcome", welcome), frame("fleet.recommendation", recommendationSchema), frame("question", questionSchema), frame("receipt", receiptSchema),
   frame("reconcile", z.strictObject({ receipts: z.array(receiptSchema).max(128), nextReceiptSequence: epoch, more: z.boolean() })),
   frame("authorize.result", z.union([z.strictObject({ ok: z.literal(true), lease: leaseSchema }), z.strictObject({ ok: z.literal(false), reasonCode: reason })])),
   frame("revoke", revocationSchema), frame("error", errorSchema),
