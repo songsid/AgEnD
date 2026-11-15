@@ -50,6 +50,8 @@ async function shell(opts: { narrow?: boolean; media?: ReturnType<typeof liveMed
 const hrefs = (pg: AppPage, sel: string) => [...pg.root.querySelectorAll(sel)].map((a: any) => a.getAttribute("href"));
 /** Where the tab row is: [in the header, under the header], each the tabs' hrefs. */
 const placement = (pg: AppPage) => [hrefs(pg, ".p-fleet .panel-head nav.fleet-tabs > a"), hrefs(pg, ".p-fleet > nav.seg > a")];
+/** M-3166 (Argon 5): a phone's tabs are in the header's row, beside ☰ (its own nav: .fleet-phone-tabs). */
+const phoneTabs = (pg: AppPage) => hrefs(pg, ".p-fleet .panel-head nav.fleet-phone-tabs > a");
 
 describe("M-2542: Fleet's tab row", () => {
   it("on a desktop is in the header (the nav slot, before the tools), with no row under it", async () => {
@@ -61,10 +63,9 @@ describe("M-2542: Fleet's tab row", () => {
     expect(pg.root.querySelector(".p-fleet nav.fleet-tabs a.active")?.getAttribute("aria-current")).toBe("page");
   });
 
-  it("on a phone is the .seg row under the header, as before, and not in the header", async () => {
+  it("on a phone is in the header's row beside ☰ (M-3166: Fleet in two rows), with no row under it", async () => {
     const pg = await shell({ narrow: true });
-    expect(placement(pg)).toEqual([[], TABS]);
-    expect(pg.root.querySelector(".p-fleet .panel-head nav")).toBeNull();
+    expect([placement(pg), phoneTabs(pg)]).toEqual([[[], []], TABS]);
   });
 
   it("re-measures on every render: a host memory warning that no longer fits moves the row under the header, and back", async () => {
@@ -90,10 +91,10 @@ describe("M-2542: Fleet's tab row", () => {
   it("follows the viewport: desktop → phone → desktop moves the row across and back", async () => {
     const media = liveMedia(false);
     const pg = await shell({ media });
-    const seen = [placement(pg)];
-    media.set(true); await settle(4); seen.push(placement(pg));
-    media.set(false); await settle(4); seen.push(placement(pg));
-    expect(seen).toEqual([[TABS, []], [[], TABS], [TABS, []]]);
+    const seen = [[...placement(pg), phoneTabs(pg)]];
+    media.set(true); await settle(4); seen.push([...placement(pg), phoneTabs(pg)]);
+    media.set(false); await settle(4); seen.push([...placement(pg), phoneTabs(pg)]);
+    expect(seen).toEqual([[TABS, [], []], [[], [], TABS], [TABS, [], []]]);
   });
 });
 

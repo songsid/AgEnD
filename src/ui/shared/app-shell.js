@@ -455,7 +455,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   const onFleet = !!route && route.panel === "fleet";
   const overview = html`<a class=${`side-row side-overview${onFleet ? " active" : ""}`} href=${fleetEntryPath(route)}
     aria-current=${onFleet ? "page" : undefined} onClick=${closeDrawer}><${Icon} name="org" /><span class="grow">${t("app.fleetOverview")}</span></a>`;
-  return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
+  return html`<aside id="sidebar" class="sidebar fleet-side" aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
       <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
