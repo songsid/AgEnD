@@ -31,17 +31,21 @@ owner's only lever today is the tool set, which cannot remove `send_to_instance`
 **The check.** One place: the outbound handler for `send_to_instance`, `delegate_task` and `request_information`.
 
 - A applies always.
-- B applies from the moment a Hub question is delivered to the agent until it reports the answer to `agend-hub`, or
-  the question expires. During that time, any target except `agend-hub` is refused.
+- B applies from the moment a Hub question is delivered to the agent until its answer is accepted, or for 30
+  minutes, whichever comes first (decided with the builder, M-3160: neither ask journal has an answer deadline, and a
+  question that is never answered must not lock the agent for good). The window survives a restart; each question
+  has its own, and the agent is restricted while any is open. During that time, any target except `agend-hub` is
+  refused.
 - The refusal tells the agent why, so it can say so in its answer:
-  "Not sent: this agent may not contact other agents while it answers a Hub question." /
-  「沒有送出：這個 Agent 在回答 Hub 的提問時不能聯絡其他 Agent。」
+  "Not sent: this agent may not contact other agents while it answers a Hub question. Try again after you answer." /
+  「沒有送出：這個 Agent 在回答 Hub 的提問時不能聯絡其他 Agent。回答之後可以再試一次。」
 - Room posts through `hub_room_post` are not affected: they have their own limits (M-3118).
 
 ## 3. What it does not stop, honestly
 
 - **The agent's own reach.** It still reads its own folder and uses its own tools. What a Hub asker can learn from
   the agent itself is governed by the tool set and by what the owner chose to share.
+- **Slow answers.** An agent still working on a Hub question after 30 minutes can contact other agents again.
 - **Later action.** "After you answer me, message the release agent" is sent after the window closes. Closing that
   needs the agent to treat Hub text as not-instructions, which the prompt already says and a model can still get wrong.
 - **Work in progress.** The agent has one conversation. If its owner gave it a task that needs another agent, that
