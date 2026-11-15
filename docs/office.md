@@ -49,7 +49,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 | Control | What it does | Kept |
 |---|---|---|
 | **Office** | which office to show: **Whole fleet**, one of the stored offices, **All offices**, or **Carousel…** | per device |
-| **Carousel…** | chosen offices, each full screen in turn (signage). **Pause** / **Next**, or Space / ← / → | offices and interval per browser; playing starts on enter |
+| **Carousel…** | chosen offices, each full screen in turn (signage). **Carousel n/m offices ▾** picks them; **Pause** / **Next**, or Space / ← / → | offices and interval per browser; playing starts on enter |
 | **Show** | a team or the Lobby only | per browser |
 | **People** | pin chosen instances; **Show everyone** clears it | per browser |
 | **Style** | **Desks**, **Studio**, **Cozy** or an uploaded skin pack (for Whole fleet; a stored office has its own) | for the whole fleet when a fleet admin picks it; anyone else's pick is their own browser's |
@@ -72,7 +72,7 @@ Studio, Cozy, Guild, School and zones packs are called **zones styles** below. O
 
 **All offices** (in the switcher once two or more offices are stored) shows every stored office as a tile, each drawn exactly as its own view and labelled with its name and head count. The **Lobby tile** adds the instances in no office. It's disabled, with a note, when everyone is in an office. A tile's label, or a double-click on the tile, opens that office. Traffic between people in different offices flies straight between their seats. Below 75% zoom a tile's name tags show on hover only. Edit offices and Edit layout wait until a single office is shown.
 
-**Carousel…** (the same switcher, two or more stored offices, on the signed-in dashboard) is signage for a TV: each ticked office fills the screen in turn, at the interval you pick (15 seconds to 10 minutes). Tick the offices in the bar; the order is the stored list. **Pause** and **Next** sit in the bar and in fullscreen; Space pauses, ← / → (or N / P, or a remote's play/next/previous) step. The offices and the interval are kept in this browser; playing starts whenever you enter the carousel. Edit offices and Edit layout wait. A share link does not offer it.
+**Carousel…** (the same switcher, two or more stored offices, on the signed-in dashboard) is signage for a TV: each ticked office fills the screen in turn, at the interval you pick (15 seconds to 10 minutes). **Carousel n/m offices ▾** in the bar opens a scrollable checklist (Select all / Select none; Esc or a click outside closes it), so twenty offices still leave the bar one row; the order is the stored list. **Pause** and **Next** sit in the bar and in fullscreen; Space pauses, ← / → (or N / P, or a remote's play/next/previous) step. The offices and the interval are kept in this browser; playing starts whenever you enter the carousel. Edit offices and Edit layout wait. A share link does not offer it.
 
 **Reduced motion** (the system setting) shows still poses, nothing in the air, and bubbles whole at once.
 
@@ -531,4 +531,4 @@ Every feature below is in 2.3.2; the table names the version it first appeared i
 
 | Feature | First version |
 |---|---|
-| Carousel (signage): chosen offices fill the screen in turn, Pause/Next, kept per browser (#4010) | 2.4.0-beta |
+| Carousel (signage): chosen offices fill the screen in turn, n/m picker, Pause/Next, kept per browser (#4010) | 2.4.0-beta |

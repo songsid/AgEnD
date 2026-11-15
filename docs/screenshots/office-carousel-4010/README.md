@@ -1,12 +1,14 @@
-#4010 Office carousel (signage), captured on a smoke fixture (8 instances, three stored offices: Front desk / Lab / Ward). Real Chromium, signed-in dashboard.
+#4010 Office carousel picker (signage), captured on a smoke fixture (8 instances). Real Chromium, signed-in dashboard.
 
 | File | What it shows |
 |---|---|
-| `desk-light-en-1-playing.png` | Carousel…, ticked offices, 30 s, Pause / Next, Front desk · Playing (Cozy, full size) |
-| `desk-light-en-2-next.png` | After Next: Lab · Playing (Studio, full size) |
-| `desk-light-en-3-paused.png` | Pause: Lab · Paused |
-| `desk-light-en-4-fullscreen.png` | Fullscreen: compact switcher, Play / Next, Lab · Paused |
-| `desk-dark-zh-TW-*.png` | Same path in dark zh-TW (輪播…, 暫停, 下一間, 播放中) |
-| `phone-dark-zh-TW-*.png` | Phone 390×844: the bar wraps; Pause / Next still there |
+| `desk-light-en-3-bar.png` | 3 offices, closed: **Carousel 3/3 offices ▾** on one row with Interval / Pause / Next |
+| `desk-dark-en-3-open.png` | 3 offices, open checklist (Front desk / Lab / Ward, Select all / none) |
+| `phone-light-en-3-bar.png` | Phone 390×844, 3 offices, closed; Pause / Next wrap to the next compact row |
+| `phone-dark-en-3-open.png` | Phone, 3 offices, open checklist |
+| `desk-light-en-15-bar.png` | 15 offices, closed: still one row (**Carousel 15/15 offices ▾**), no inline ticks |
+| `desk-dark-en-15-open.png` | 15 offices, scrollable checklist (Office 01–06 visible) |
+| `phone-light-en-15-bar.png` | Phone, 15 offices, closed: same compact rows as 3, not 15 ticks |
+| `phone-dark-en-15-open.png` | Phone, 15 offices, open + scroll |
 
-Not in this gallery: a share link (Carousel is hidden when `opening` is set), skip-asleep, fade, a share-link that carries the carousel.
+Not in this gallery: a share link (Carousel is hidden when `opening` is set), skip-asleep, fade.

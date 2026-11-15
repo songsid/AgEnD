@@ -69,6 +69,8 @@ describe("Carousel on the page", () => {
   const choose = async (v: string) => { const s = sw(); s.value = v; fire(s, "change"); await settle(6); };
   const who = () => p.root.querySelectorAll(".oo-desk").map((d: any) => d.getAttribute("data-name"));
   const now = () => p.root.querySelector(".oo-car-now")?.textContent?.trim() ?? "";
+  const pickBtn = () => p.root.querySelector(".oo-car-offices");
+  const openPick = async () => { pickBtn().click(); await settle(4); };
   const ticks = () => p.root.querySelectorAll(".oo-carousel-offices input").map((el: any) => [el.parentNode.textContent.trim(), el.checked]);
 
   it("the switcher: Carousel only with two or more offices; picked, it is kept per device; with one it is gone", async () => {
@@ -86,6 +88,9 @@ describe("Carousel on the page", () => {
     expect(who()).toEqual(["atlas"]);                                    // Front desk first (stored order)
     expect(now()).toContain("Front desk");
     expect(now()).toContain("Playing");
+    expect(pickBtn().textContent.trim()).toBe("Carousel 2/2 offices ▾");
+    expect(p.root.querySelector(".oo-carousel-offices")).toBeNull();
+    await openPick();
     expect(ticks()).toEqual([["Front desk", true], ["Lab", true]]);
     const kept = JSON.parse(localStorage.getItem("agend_org_office_carousel")!);
     expect(kept).toEqual({ ids: ["front", "lab"], interval: 30 });
@@ -127,6 +132,7 @@ describe("Carousel on the page", () => {
     await office();
     await choose("*carousel");
     expect(who()).toEqual(["atlas"]);
+    await openPick();
     const boxes = p.root.querySelectorAll(".oo-carousel-offices input");
     fire(boxes[0], "change"); await settle(6);                           // drop Front desk: Lab is now first
     expect(who()).toEqual(["quill"]);
@@ -210,6 +216,7 @@ describe("Carousel on the page", () => {
     await choose("*carousel");
     expect(now()).toContain("Playing");
     expect(who()).toEqual(["atlas"]);
+    await openPick();
     const box = p.root.querySelector(".oo-carousel-offices input");
     fire(box, "keydown", { key: " " }); await settle(4);
     expect(now()).toContain("Playing");
@@ -249,8 +256,32 @@ describe("Carousel on the page", () => {
   it("its words in both languages", async () => {
     const I = await import("/assets/app-i18n.js");
     I.setLang("zh-TW", { store: false });
-    try { expect([I.t("orgo.carousel"), I.t("orgo.pause"), I.t("orgo.next"), I.t("orgo.intervalSec", 15)]).toEqual(["輪播…", "暫停", "下一間", "15 秒"]); }
+    try { expect([I.t("orgo.carousel"), I.t("orgo.pause"), I.t("orgo.next"), I.t("orgo.intervalSec", 15), I.t("orgo.officesCount", 3, 15), I.t("orgo.selectAll")]).toEqual(["輪播…", "暫停", "下一間", "15 秒", "輪播 3/15 間 ▾", "全選"]); }
     finally { I.setLang("en", { store: false }); }
-    expect([I.t("orgo.carousel"), I.t("orgo.pause"), I.t("orgo.next"), I.t("orgo.playing")]).toEqual(["Carousel…", "Pause", "Next", "Playing"]);
+    expect([I.t("orgo.carousel"), I.t("orgo.pause"), I.t("orgo.next"), I.t("orgo.playing"), I.t("orgo.officesCount", 2, 2), I.t("orgo.selectNone")]).toEqual(["Carousel…", "Pause", "Next", "Playing", "Carousel 2/2 offices ▾", "Select none"]);
+  });
+
+  it("the n/m button opens a checklist; Select all / none, Esc and a click outside close it; 15 offices stay off the bar", async () => {
+    const MANY = Array.from({ length: 15 }, (_, i) => ({ id: `o${i}`, name: `Office ${i}`, skin: "pixel", members: ["atlas"] }));
+    offices = { rev: 4, offices: MANY };
+    await office();
+    await choose("*carousel");
+    expect(pickBtn().textContent.trim()).toBe("Carousel 15/15 offices ▾");
+    expect(p.root.querySelector(".oo-carousel-offices")).toBeNull();     // closed: no ticks in the bar
+    expect(p.root.querySelector(".oo-car-pause")).not.toBeNull();
+    await openPick();
+    expect(p.root.querySelectorAll(".oo-carousel-offices input")).toHaveLength(15);
+    p.root.querySelector(".oo-car-none").click(); await settle(4);
+    expect(pickBtn().textContent.trim()).toBe("Carousel 0/15 offices ▾");
+    expect(p.root.querySelector(".oo-car-pause")).toBeNull();            // fewer than two: timer off, panel stays
+    expect(p.root.querySelector(".oo-car-menu")).not.toBeNull();         // still open
+    p.root.querySelector(".oo-car-all").click(); await settle(4);
+    expect(pickBtn().textContent.trim()).toBe("Carousel 15/15 offices ▾");
+    expect(p.root.querySelector(".oo-car-pause")).not.toBeNull();
+    fire(p.window.document.body, "keydown", { key: "Escape" }); await settle(4);
+    expect(p.root.querySelector(".oo-car-menu")).toBeNull();
+    await openPick();
+    fire(p.window.document.body, "pointerdown"); await settle(4);
+    expect(p.root.querySelector(".oo-car-menu")).toBeNull();
   });
 });

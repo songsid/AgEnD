@@ -56,9 +56,10 @@
 //   bubbles are drawn after every tile (never cut at a tile's edge). Fit keeps the tiles clear of the controls
 //   (FIT_PAD). Edit offices and Edit layout wait for a single office.
 // - Carousel (#4010; offered with two or more stored offices, on the signed-in dashboard only): chosen offices, each
-//   the full-size office in turn (not All offices' tiles), for a TV. The offices and the interval are kept per browser;
-//   playing starts on enter and on reload. Space pauses, ← / → (and N / P, media keys) step; Pause and Next on the
-//   bar and in fullscreen. Edit offices and Edit layout wait. A share link does not offer it.
+//   the full-size office in turn (not All offices' tiles), for a TV. One n/m button opens a scrollable checklist
+//   (inline ticks wrapped the bar at ~10). The offices and the interval are kept per browser; playing starts on enter
+//   and on reload. Space pauses, ← / → (and N / P, media keys) step; Pause and Next on the bar and in fullscreen.
+//   Edit offices and Edit layout wait. A share link does not offer it.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { appStore } from "/assets/app-store.js";
 import { t, lang, register } from "/assets/app-i18n.js";
@@ -110,6 +111,7 @@ register("orgo", {
     carouselNoEdit: "Leave the carousel to edit offices or a layout", pause: "Pause", resume: "Play", next: "Next",
     playing: "Playing", paused: "Paused", interval: "Interval", intervalSec: "{0} s", intervalMin: "{0} min",
     officesInCarousel: "Offices in the carousel",
+    officesCount: "Carousel {0}/{1} offices ▾", selectAll: "Select all", selectNone: "Select none",
     dialogue: "Dialogue", dialogueTitle: "When a person messages someone here, show their words and the reply in a box at the bottom (this browser only)",
     dlgWorking: "Working…", dlgSomeone: "Someone", dlgHeardShare: "Sent {0} a message.", dlgAnsweredShare: "Replied.", dlgFile: "(sent a file)", dlgSays: "{0}: {1}",
     dlgBox: "Dialogue: {0}. Click for their card, double-click for their chat.",
@@ -137,12 +139,42 @@ register("orgo", {
     carouselNoEdit: "請先離開輪播，再編輯辦公室或配置", pause: "暫停", resume: "播放", next: "下一間",
     playing: "播放中", paused: "已暫停", interval: "間隔", intervalSec: "{0} 秒", intervalMin: "{0} 分鐘",
     officesInCarousel: "輪播的辦公室",
+    officesCount: "輪播 {0}/{1} 間 ▾", selectAll: "全選", selectNone: "全不選",
     dialogue: "對話框", dialogueTitle: "有人傳訊息給這裡的成員時，在下方的對話框顯示訊息與回覆（只限這個瀏覽器）",
     dlgWorking: "處理中…", dlgSomeone: "有人", dlgHeardShare: "傳了一則訊息給 {0}。", dlgAnsweredShare: "已回覆。", dlgFile: "（傳了一個檔案）", dlgSays: "{0}：{1}",
     dlgBox: "對話框：{0}。點一下看資料卡，點兩下開啟聊天。",
   },
 });
 const to = (k, ...v) => t(`orgo.${k}`, ...v);
+/**
+ * #4010 follow-up: the carousel's offices as one n/m button, not inline checkboxes (those wrap the bar at ~10).
+ * Esc and a click outside close it; Select all / Select none sit above the scrollable list.
+ */
+function CarouselOffices({ stored, carIds, open, onOpen, onToggle, onAll, onNone }) {
+  const wrap = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const doc = globalThis.document;
+    const key = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onOpen(false); } };
+    const press = (e) => { if (wrap.current && !wrap.current.contains(e.target)) onOpen(false); };
+    doc?.addEventListener?.("keydown", key, true);
+    doc?.addEventListener?.("pointerdown", press, true);
+    return () => { doc?.removeEventListener?.("keydown", key, true); doc?.removeEventListener?.("pointerdown", press, true); };
+  }, [open]);
+  const n = carIds.length, m = stored.length;
+  return html`<div class="oo-car-pick" ref=${wrap}>
+    <button type="button" class="btn btn-sm oo-car-offices" aria-haspopup="true" aria-expanded=${open ? "true" : "false"}
+      aria-label=${to("officesInCarousel")} onClick=${() => onOpen(!open)}>${to("officesCount", n, m)}</button>
+    ${open ? html`<div class="oo-car-menu" role="group" aria-label=${to("officesInCarousel")}>
+      <div class="oo-car-menu-acts">
+        <button type="button" class="btn btn-sm oo-car-all" onClick=${onAll}>${to("selectAll")}</button>
+        <button type="button" class="btn btn-sm oo-car-none" onClick=${onNone}>${to("selectNone")}</button>
+      </div>
+      <div class="oo-carousel-offices">${stored.map((o) => html`<label key=${o.id} class="check"><input type="checkbox" checked=${carIds.includes(o.id)}
+        onChange=${() => onToggle(o.id)} /><span>${o.name}</span></label>`)}</div>
+    </div>` : null}
+  </div>`;
+}
 const CAPTION = { working: "capWorking", idle: "capIdle", paused: "capPaused", needs: "capNeeds", walk: "capIdle", away: "capAway" };
 /** States whose pose is shared but whose words are their own (a queued instance is not asleep). */
 const CAPTION_OF_STATE = { starting: "capStarting", queued: "capQueued" };
@@ -653,6 +685,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [carSaved, setCarSaved] = useState(() => store.carousel());
   const [carIndex, setCarIndex] = useState(0);
   const [carPlaying, setCarPlaying] = useState(true);
+  const [carMenu, setCarMenu] = useState(false);
   // #2716: the whole-fleet office's style — the host's (for everyone) and this browser's own pick. An admin sees the
   // host's (their own pick only while the host keeps none) and picks for everyone; anyone else's own pick, else the host's.
   const [hostStyle, setHostStyle] = useState(undefined);            // undefined: not read yet; null: none kept
@@ -922,6 +955,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const carouselPick = opening == null && choice === CAROUSEL_ID && carouselOk(stored);
   const carIds = carouselPick ? carouselIdsOk(carSaved ? carSaved.ids : null, stored) : [];
   const carousel = carouselPick && carIds.length >= 2;
+  useEffect(() => { if (!carouselPick) setCarMenu(false); }, [carouselPick]);
   const slideId = carouselPick && carIds.length ? carIds[((carIndex % carIds.length) + carIds.length) % carIds.length] : null;
   const custom = slideId ? stored.find((o) => o.id === slideId) || null
     : (choice !== AUTO_ID && !overview ? stored.find((o) => o.id === choice) || null : null);
@@ -1636,11 +1670,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     }
     store.saveChoice(id); setChoice(id); setTip(null);
   };
+  const setCarIds = (ids) => {
+    const next = { ids, interval: intervalOk(carSaved && carSaved.interval) };
+    store.saveCarousel(next); setCarSaved(next);
+  };
   const toggleCarId = (id) => {
     const have = new Set(carIds);
     if (have.has(id)) have.delete(id); else have.add(id);
-    const next = { ids: stored.map((o) => o.id).filter((x) => have.has(x)), interval: intervalOk(carSaved && carSaved.interval) };
-    store.saveCarousel(next); setCarSaved(next);
+    setCarIds(stored.map((o) => o.id).filter((x) => have.has(x)));
   };
   const setCarInterval = (n) => {
     const next = { ids: carSaved && Array.isArray(carSaved.ids) ? carSaved.ids : carIds, interval: intervalOk(n) };
@@ -1732,9 +1769,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         disabled=${!lobbyAll.length} onChange=${() => { const v = !lobbyOn; store.saveLobbyTile(v); setLobbyOn(v); setTip(null); }} /><span>${to("lobbyTile")}</span></label>
         ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
       ${carouselPick ? html`<div class="oo-carousel">
-        <span class="oo-pick-label">${to("officesInCarousel")}</span>
-        <div class="oo-carousel-offices">${stored.map((o) => html`<label key=${o.id} class="check"><input type="checkbox" checked=${carIds.includes(o.id)}
-          onChange=${() => toggleCarId(o.id)} /><span>${o.name}</span></label>`)}</div>
+        <${CarouselOffices} stored=${stored} carIds=${carIds} open=${carMenu} onOpen=${setCarMenu} onToggle=${toggleCarId}
+          onAll=${() => setCarIds(stored.map((o) => o.id))} onNone=${() => setCarIds([])} />
         <label class="oo-pick"><span class="oo-pick-label">${to("interval")}</span>
           <select class="tb-select oo-car-interval" value=${String(intervalOk(carSaved && carSaved.interval))} onChange=${(e) => setCarInterval(Number(e.target.value))}>
             ${INTERVALS.map((n) => html`<option key=${n} value=${n}>${n < 60 ? to("intervalSec", n) : to("intervalMin", n / 60)}</option>`)}
