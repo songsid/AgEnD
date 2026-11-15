@@ -83,6 +83,7 @@
       { "file": "src/context-percent.ts", "symbols": ["parseContextPercent"], "surfaces": { "parseContextPercent": "idle-busy" } }
     ],
     "grok": [
+      { "file": "src/backend/grok-model-switch.ts", "symbols": ["answers"], "surfaces": { "answers": "other" } },
       { "file": "src/backend/grok.ts", "exclude": ["parseGrokModelsOutput", "buildCommand", "writeConfig", "probeCLIEnv", "listModels"],
         "surfaces": { "grokWeeklyLimitDialog": "error", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
           "getStartupDialogs": "onboarding", "getRuntimeDialogs": "approval" } },

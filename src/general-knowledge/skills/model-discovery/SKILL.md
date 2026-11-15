@@ -78,3 +78,5 @@ agy starts on **another model**, with a warning in its pane.
 then handed to the CLI anyway. So a name missing from `list_models` may still be
 valid, and a typo fails *in the CLI at launch*, not at config time — if an
 instance won't start after a model change, suspect the name first.
+
+Grok 1.0.70 and later can apply a model or effort in the idle session when its own fresh response verifies the target. Older or unknown running versions and unconfirmed/picker results keep the saved target and restart.
