@@ -1890,6 +1890,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   invalidateHubCompanyJoin(): void { this.companyJoinController?.invalidate(); }
   private hubMemberPairingApi: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null = null;
+  private hubRecommendationRead: (() => import("./hub/recommendation-model.js").HubRecommendedUpdate | null) | null = null;
+  private hubRecommendationListeners = new Set<() => void>();
+  hubRecommendedUpdate(): import("./hub/recommendation-model.js").HubRecommendedUpdate | null { return this.hubRecommendationRead?.() ?? null; }
+  onHubRecommendation(listener: () => void): () => void { this.hubRecommendationListeners.add(listener); return () => { this.hubRecommendationListeners.delete(listener); }; }
+  private hubRecommendationChanged(): void { for (const listener of this.hubRecommendationListeners) { try { listener(); } catch { /* local presentation observer */ } } }
   private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
   /** Explicit owner Settings read only. A paused binding is not permission to mount or connect a member. */
@@ -2317,6 +2322,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
+          attachRecommendations: read => { this.hubRecommendationRead = read; },
+          recommendationChanged: () => this.hubRecommendationChanged(),
           attachPairingNotices: read => { this.hubPairingNotices = read; },
           pokeAttention: () => this.needsYou?.poke(),
           linkState: (state, digest) => { this.hubMemberLink = state; this.hubMemberLinkBinding = digest ?? null; },
@@ -28759,7 +28766,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         let current: string | null = null;
         try { current = this.runningAgendVersion(); } catch { /* unknown: the page compares nothing */ }
         const s = this.updateCheckState;
-        return { current, offer: s?.offer ?? null, checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
+        return { current, offer: s?.offer ?? null, hubRecommendation: this.hubRecommendedUpdate(), checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
       },
       checkUpdateNow: () => this.checkUpdateNow(),
       updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
