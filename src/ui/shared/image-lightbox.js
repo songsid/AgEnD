@@ -83,8 +83,12 @@ function ImageLightbox({ items, index, opener, annotate = null, onClose }) {
   const [Editor, setEditor] = useState(null);
   const editing = !!Editor;
   const startAnnotate = () => {
-    loadAnnotate().then((m) => { if (m && m.annotateV1 === true && typeof m.AnnotateEditor === "function") setEditor(() => m.AnnotateEditor); else throw new Error("old module"); })
-      .catch(() => annotate?.notice?.(t("lbAnnotate.failed")));
+    // M-3168: shown once its stylesheet has arrived too (annotateCssReady settles on load, error or a bounded wait), so the
+    // first open paints in its final layout. A module without it (an older cached one) opens as before.
+    loadAnnotate().then((m) => {
+      if (!(m && m.annotateV1 === true && typeof m.AnnotateEditor === "function")) throw new Error("old module");
+      return Promise.resolve(typeof m.annotateCssReady === "function" ? m.annotateCssReady() : null).then(() => setEditor(() => m.AnnotateEditor));
+    }).catch(() => annotate?.notice?.(t("lbAnnotate.failed")));
   };
   const step = (d) => setAt((n) => (n + d + items.length) % items.length);
   useLayoutEffect(() => {
