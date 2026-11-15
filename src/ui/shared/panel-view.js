@@ -17,6 +17,7 @@ import { useLease, createLease } from "./app-ctx.js";
 import * as paneContext from "./app-ctx.js";
 import { PanelHeader, setTitle, onPanelKey, signInHref } from "./app-shell.js";
 import { InstanceSwitch } from "./instance-switch.js";
+import { AgentSheetButton, usePhone } from "./agent-sheet.js";
 import { HeaderTools, VIEW_SCALE, textSizeStore } from "./header-tools.js";
 import { readStream } from "./read-stream.js";
 // The usage dialog's metric row lives with the dialog now (usage-dialog.js); re-exported for what imported it here.
@@ -172,6 +173,7 @@ export function ViewPanel({ route, navKey }) {
   const go = pane?.navigate || navigate;
   const viewed = useStore(viewStore);
   const { viewOnly, instances, ready } = useStore(appStore);
+  const phone = usePhone();   // M-3166 PR 5: a signed-in phone's header is "← name ● ⋯" (the ⋯ sheet holds the rest)
   const guest = guestPage(), trusted = guest && guestTrusted();
   // #2855: a guest's roster is its own agents, as its status frame lists them.
   const v = guest ? { loaded: ready !== false, error: null, roster: (instances || []).map((i) => ({ instance_name: i.name, display_name: i.display_name, status: i.status })) } : viewed;
@@ -239,6 +241,10 @@ export function ViewPanel({ route, navKey }) {
   const actions = html`<${HeaderTools} view=${true} navKey=${navKey} />
     ${guest ? null : html`<button type="button" class="icon-btn" onClick=${() => setDialog("help")} aria-label=${tn("helpButton")} title=${tn("helpButton")}><${Icon} name="info" /></button>`}`;
 
+  // M-3166 PR 5: the ⋯ sheet, for a signed-in admin on a phone (a guest's or an anonymous reader's View keeps its own header).
+  const full = !guest && !viewOnly && it ? (instances || []).find((i) => i.name === name) || null : null;
+  const sheet = phone && full ? html`<${AgentSheetButton} name=${name} inst=${full} current="view" navKey=${navKey}
+    extra=${[{ key: "viewHelp", label: tn("helpButton"), icon: "info", onSelect: () => setDialog("help") }]} />` : null;
   let body;
   if (v.error && !v.roster.length) body = html`<div data-trust="panel-content" class="panel-body center"><${ErrorState} message=${tn("rosterFailedShort")} onRetry=${() => go(route.instance ? viewPath(route.instance) : "/view", { replace: true })} /></div>`;
   else if (!v.loaded) body = html`<div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div>`;
@@ -255,7 +261,7 @@ export function ViewPanel({ route, navKey }) {
     <${PanelHeader} title=${it ? (it.display_name || it.instance_name) : tn("title")} pageControls=${{ navKey, view: true }}
       pageActions=${guest ? [] : [{ key: "viewHelp", label: tn("helpButton"), icon: "info", onSelect: () => setDialog("help") }]}
       sub=${it ? html`<span class="status"><span class=${`dot ${it.status === "running" ? "ok" : it.status === "crashed" ? "bad" : "off"}`} aria-hidden="true"></span>${tn(STATUS_KEYS[it.status] || "statusUnknown")}</span>` : null}
-      nav=${it && (guest ? trusted : !viewOnly) ? html`<${InstanceSwitch} name=${name} current="view" guest=${guest} />` : null}>${actions}</${PanelHeader}>
+      nav=${it && (guest ? trusted : !viewOnly) ? html`<${InstanceSwitch} name=${name} current="view" guest=${guest} />` : null}>${actions}${sheet}</${PanelHeader}>
     ${body}
     ${open === "edit" && it ? html`<${EditProfile} key=${navKey} it=${it} onClose=${() => setDialog(null)} />` : null}
     ${open === "help" ? html`<${HelpDialog} onClose=${() => setDialog(null)} />` : null}
