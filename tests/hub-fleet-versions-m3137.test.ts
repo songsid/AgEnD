@@ -156,7 +156,7 @@ describe("the signed-in person's own Fleet is behind (§2.3)", () => {
 
 it("the module is the Hub's own (served by the Hub listener) and its stylesheet rules are there", () => {
   const compose = readFileSync(join(process.cwd(), "src/hub/http/compose.ts"), "utf8");
-  expect(compose).toContain('"hub-fleet-versions.js"]);');
+  expect(compose).toContain('"hub-fleet-versions.js"');
   const css = readFileSync(join(process.cwd(), "src/ui/shared/hub-owner.css"), "utf8");
   for (const rule of [".hub-fleet-version .hub-fleet-why { flex: 1 1 100%; white-space: normal; }",
     ".hub-fleet-list .hub-fleet-version { flex: 1 1 100%; flex-direction: column; align-items: flex-start; gap: 2px; }"]) expect(css).toContain(rule);

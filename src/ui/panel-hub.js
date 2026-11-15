@@ -58,6 +58,12 @@ register("hubAccess", {
 });
 const ha = key => t(`hubAccess.${key}`);
 // Kept with the fresh renderer: retained owner dictionaries do not know this label.
+// M-3162: Administration's tabs (Lumen's names: "Manage" holds today's long page; "This Hub" its name already).
+register("hubAdminTabs", {
+  en: { label: "Administration", overview: "Overview", manage: "Manage", teams: "Teams", groups: "Groups", thisHub: "This Hub" },
+  "zh-TW": { label: "管理", overview: "總覽", manage: "管理項目", teams: "團隊", groups: "群組", thisHub: "這個 Hub" },
+});
+const hat = (key) => t(`hubAdminTabs.${key}`);
 register("hubGrantStatus", {
   en: { grantNeverSignedIn: "Hasn't signed in to Hub yet", grantADGroup: "AD group", grantTeam: "Team", grantSubjects: "People, groups and teams allowed: {0}" },
   "zh-TW": { grantNeverSignedIn: "還沒登入過 Hub", grantADGroup: "AD 群組", grantTeam: "團隊", grantSubjects: "已允許的個人、群組與團隊：{0}" },
@@ -1033,18 +1039,46 @@ function LegacyAllowDialog({ x, act, onClose }) {
 }
 
 // ── Administration ──
+/**
+ * M-3162 (Lumen): Administration's tabs — Overview (the counts dashboard, the default where this Hub serves it), Manage
+ * (today's long page, unchanged), Teams, Groups and This Hub (with its directory page); a tab whose feature is off is not
+ * drawn. The tab is the address's ?view=, so a reload or a shared link lands on it. On a phone the row scrolls sideways.
+ */
+const ADMIN_TAB_VIEWS = { overview: "overview", manage: "manage", teams: "teams", groups: "groups", "this-hub": "this-hub", directory: "this-hub" };
+let pendingAnchor = "";   // M-3162: a card on Manage to bring into view once it is drawn (Overview's links: "join", "fleets")
+export function takeAdminAnchor() { const a = pendingAnchor; pendingAnchor = ""; return a; }
+function openAdminTab(view, anchor = "") { pendingAnchor = anchor; navigate(`/ui/hub/admin?view=${view}`); }
+function AdminTabs({ tabs, current }) {
+  const row = useRef(null);
+  useEffect(() => { row.current?.querySelector?.('[aria-current="page"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" }); }, [current]);
+  const label = { overview: hat("overview"), manage: hat("manage"), teams: hat("teams"), groups: hat("groups"), "this-hub": hat("thisHub") };
+  return html`<div class="hub-admin-tabs-wrap"><nav class="hub-admin-tabs" aria-label=${hat("label")} ref=${row}>
+    ${tabs.map((k) => html`<a key=${k} href=${`/ui/hub/admin?view=${k}`} class=${`hub-admin-tab${k === current ? " active" : ""}`} aria-current=${k === current ? "page" : undefined}
+      onClick=${(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; e.preventDefault(); openAdminTab(k); }}>${label[k]}</a>`)}
+  </nav></div>`;
+}
 function HubAdmin({ admin }) {
   useStore(navStore);                               // ?view= changes without a new route
   const s = useSession();
+  const [overviewGone, setOverviewGone] = useState(false);   // the route answered 404: an older Hub after all
+  useEffect(() => { linkHubOwnerCss(); }, []);             // the tab row and Overview are styled there too (not only Manage)
   if (!admin) return html`<div class="center hub-empty"><${Empty} icon="key" title=${hw("adminOnly")} hint=${hw("adminOnlyHint")} /></div>`;
   const directory = s?.features?.includes("directory-editor-v1") && hubClient()?.directoryEditorV1 === true;
-  if (directory && adminView() === "directory") return html`<${LazyDirectory} session=${s} />`;
-  if (groupPolicyOn(s, hubClient()) && adminView() === "groups") return html`<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
-  if (teamsLive() && adminView() === "teams") return html`<div class="col hub-owner"><h2 class="sr-only">${ht("title")}</h2><${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsPage" props=${{ client: hubClient(), mode: "admin", person: s?.person }} /></div>`;
+  const groups = groupPolicyOn(s, hubClient()), teams = teamsLive();
+  const overview = !overviewGone && s?.features?.includes("admin-dashboard-v1") && typeof hubClient()?.adminDashboard === "function";
+  const tabs = [overview ? "overview" : null, "manage", teams ? "teams" : null, groups ? "groups" : null, "this-hub"].filter(Boolean);
+  const view = adminView();
+  const current = view === "" ? tabs[0] : tabs.includes(ADMIN_TAB_VIEWS[view]) ? ADMIN_TAB_VIEWS[view] : "manage";
+  const bar = html`<${AdminTabs} tabs=${tabs} current=${current} />`;
+  if (current === "overview") return html`${bar}<div class="col hub-owner hub-admin-ov-col"><${LazyRoomPart} load=${() => import("./hub-admin-overview.js")} name="HubAdminOverview"
+    props=${{ client: hubClient(), onOpen: openAdminTab, onGone: () => { setOverviewGone(true); openAdminTab("manage"); } }} /></div>`;
+  if (current === "this-hub") return html`${bar}${directory && view === "directory" ? html`<${LazyDirectory} session=${s} />` : html`<div class="col hub-owner"><${LazyThisHub} directory=${directory} /></div>`}`;
+  if (current === "groups") return html`${bar}<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
+  if (current === "teams") return html`${bar}<div class="col hub-owner"><h2 class="sr-only">${ht("title")}</h2><${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsPage" props=${{ client: hubClient(), mode: "admin", person: s?.person }} /></div>`;
   // Reached from a fleet's Settings link on a Hub (or a tab) without group permissions: say so instead of a silent admin page.
-  const unavailable = adminView() === "groups" && !groupPolicyOn(s, hubClient());
-  return html`${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${t("hubGroupsNote.unavailable")}</p>` : null}
-    <${HubAdminPage} groups=${groupPolicyOn(s, hubClient())} companyJoin=${s?.features?.includes("company-join-v1")} directory=${directory} />`;
+  const unavailable = view === "groups" && !groups;
+  return html`${bar}${unavailable ? html`<p class="note" role="status" data-groups="unavailable">${t("hubGroupsNote.unavailable")}</p>` : null}
+    <${HubAdminPage} groups=${groups} companyJoin=${s?.features?.includes("company-join-v1")} directory=${directory} />`;
 }
 function LazyDirectory({ session }) {
   const [Page, setPage] = useState(null);
@@ -1120,6 +1154,9 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     <div class="s-section-layout">${view?.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />`
       : html`<section class="card"><h3>${ho("pairSteps")}</h3><${Skeleton} variant="rows" lines=${3} /></section><section class="card"><${Skeleton} variant="rows" lines=${3} /></section>`}</div></div>`;
   const fleets = view.fleets || [], pairings = view.pairings || [];
+  const anchorAsked = takeAdminAnchor();   // M-3162: Overview's "See Connected Fleets" / "Let colleagues join"
+  const anchorSel = { fleets: "#hub-admin-fleets", join: '[data-entry="let-colleagues-join"]' }[anchorAsked];
+  if (anchorSel) setTimeout(() => { try { document.querySelector(anchorSel)?.scrollIntoView?.({ block: "start" }); } catch { /* none */ } }, 0);
   const accessEntry = companyJoin && companyViews.companyJoinAdminEntryV1 === true && ownerEntryWords.ownerAdminEntryV1 === true;
   const ManualFrame = accessEntry ? "details" : "div";
   return html`<div class="col hub-owner hub-admin">${lead}
@@ -1134,7 +1171,7 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${/* M-3141 (versions spec §3.1): the recommended version, a small card above the list. */ ""}
       ${hasVersions(fleets) ? html`<${RecommendedVersionCard} client=${hubClient()} onSaved=${reload} onAvailable=${setCanRecommend} />` : null}
-      <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
+      <section class="card hub-fleet-list" id="hub-admin-fleets"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
         ${/* M-3137 (versions spec §2.2): the summary line and its filter, when this Hub reports versions. */ ""}
         ${hasVersions(fleets) ? html`<${FleetVersionsSummary} fleets=${fleets} recommended=${view.recommendedVersion ?? null} canRecommend=${canRecommend} filtered=${needsOnly} onFilter=${setNeedsOnly} />` : null}
         ${/* M-3145 (§4.2): "Update {n} Fleets that allow it", while at least one qualifies. */ ""}
