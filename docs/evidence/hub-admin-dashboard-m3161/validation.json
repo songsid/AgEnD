@@ -72,5 +72,13 @@
     "affectedSuitePassed": 9,
     "testTypecheck": 0,
     "scope": "browser session/composition features only; member capability lists unchanged; no repeated heavy campaign"
+  },
+  "featureExpectationsR2": {
+    "parent": "4b9c90ab52301463c38dbb482e536894ac525a58",
+    "scope": "tests only: two HTTP feature lists and four sign-in/session lists",
+    "affectedFiles": 2,
+    "passed": 29,
+    "productSourceUnchanged": true,
+    "newHeavyCampaign": false
   }
 }

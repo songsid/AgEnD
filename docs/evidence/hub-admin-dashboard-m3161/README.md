@@ -16,3 +16,5 @@ Validation:
 Machine-readable receipt: `validation.json`. API semantics and rollback: `docs/design/hub-admin-dashboard-api.md`.
 
 M-3162 feature follow-up: browser sessions and the composed HTTP entry advertise `admin-dashboard-v1`, so the initial Administration tab does not probe an older Hub. The new contract failed before the change; affected dashboard tests pass 9/9 and test TypeScript exits 0. Member hello/welcome capabilities and metrics/migration behavior are unchanged; no repeated campaign.
+
+Feature-list follow-up: updated the two exact HTTP feature vectors and four exact sign-in/session vectors in `hub-groups-mount-s89` to include `admin-dashboard-v1`. Group-mount plus dashboard suites pass 29/29. All product source is unchanged since `4b9c90ab`; no additional campaign.
