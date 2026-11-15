@@ -761,7 +761,7 @@ export type OwnSwitchOutcome =
   | { outcome: "mismatch"; shown: string; answered: boolean }
   | { outcome: "not_confirmed"; shown?: string }
   /** M-3175: `reason` says why a codex switch was not typed (busy: never idle in time; version: not a codex known to have it). */
-  | { outcome: "not_sent"; reason?: "busy" | "version"; version?: string | null };
+  | { outcome: "not_sent"; reason?: "busy" | "version" | "command"; version?: string | null };
 /** M-3175: AgEnD's own codex `/model … --reasoning=…`: what it asks for (null: leave that one as the session has it). */
 export interface CodexOwnSwitch { model: string | null; effort: string | null }
 /** M-3180: AgEnD's own one-command switch of another CLI (CLI_RUNTIME_SWITCH[backend]): one step, model or effort. */
@@ -5361,11 +5361,17 @@ export class Daemon extends EventEmitter {
     const sw = msg.runtime_switch as { id?: unknown; kind?: unknown; requested?: unknown; codex?: { model?: unknown; effort?: unknown } } | undefined;
     const codexPart = (v: unknown): string | null | undefined => v === null ? null : typeof v === "string" && v ? v : undefined;
     const codex = sw?.codex && typeof sw.codex === "object" ? { model: codexPart(sw.codex.model), effort: codexPart(sw.codex.effort) } : undefined;
-    // M-3180: one generic spec for the CLIs of CLI_RUNTIME_SWITCH — a known backend and exactly one of model / effort (a step).
+    // M-3180: one generic spec for the CLIs of CLI_RUNTIME_SWITCH — a known backend and one command (which may carry both model and effort).
     const rawCli = (sw as { cli?: { backend?: unknown; model?: unknown; effort?: unknown } } | undefined)?.cli;
     const cli = rawCli && typeof rawCli === "object" && typeof rawCli.backend === "string" && Object.hasOwn(CLI_RUNTIME_SWITCH, rawCli.backend)
       ? { backend: rawCli.backend, model: codexPart(rawCli.model), effort: codexPart(rawCli.effort) } : rawCli === undefined ? undefined : null;
-    const cliOk = !cli || (cli.model !== undefined && cli.effort !== undefined && (cli.model === null) !== (cli.effort === null));
+    const cliOk = !cli || (cli.model !== undefined && cli.effort !== undefined && (cli.model !== null || cli.effort !== null)
+      && CLI_RUNTIME_SWITCH[cli.backend]!.command({ model: cli.model, effort: cli.effort }) === msg.content);
+    // A malformed switch must not downgrade into an ungated legacy raw paste.
+    if (rawCli !== undefined && (cli === null || !cliOk || codex || !sw || typeof sw.id !== "string" || sw.kind !== "model" || typeof sw.requested !== "string")) {
+      if (typeof sw?.id === "string") this.broadcastFleetMessage({ type: "runtime_switch_result", id: sw.id, outcome: "not_sent", reason: "command" });
+      return;
+    }
     const ownSwitch = sw && typeof sw.id === "string" && sw.kind === "model" && typeof sw.requested === "string" && cli !== null && cliOk && !(codex && cli)
       && (!codex || (codex.model !== undefined && codex.effort !== undefined && (codex.model !== null || codex.effort !== null)))
       ? { id: sw.id, kind: "model" as const, requested: sw.requested,

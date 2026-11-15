@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { CLI_RUNTIME_SWITCH, cliSwitchAllowed } from "../src/backend/cli-runtime-switch.js";
+import { Daemon } from "../src/daemon.js";
+import { AntigravityBackend } from "../src/backend/antigravity.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale } from "../src/locale.js";
 
@@ -48,6 +50,27 @@ describe("agy shared switch route", () => {
  it.each([{ outcome: "not_sent", reason: "busy" }, { outcome: "not_sent", reason: "version", version: "1.4.6" }, { outcome: "mismatch", shown: "refused" }, { outcome: "not_confirmed" }])("restarts with the saved effort when the switch returns %j", async result => {
   const f = fleet(result); await f.fm.applyEffort("ag", "low");
   expect(f.saved().effort).toBe("low"); expect(f.restart).toHaveBeenCalledOnce();
+ });
+ it("the real IPC parser keeps model+effort under the idle/version gate and refuses a mismatched wire", async () => {
+  const logger = { debug() {}, info() {}, warn() {}, error() {}, child() { return logger; } };
+  const d: any = new Daemon("ag", { working_directory: dir, backend: "antigravity", log_level: "silent", restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 }, context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 } } as any, dir, false, new AntigravityBackend(dir), undefined, logger as any);
+  const results: unknown[] = []; d.ipcServer = { broadcast: (m: unknown) => results.push(m), send() {} };
+  d.tmux = { isWindowAlive: async () => true, getWindowId: () => "@1" };
+  d.wake = async () => {};
+  d.cliSwitchGate = vi.fn(async () => ({ pane: "before" }));
+  d.verifyCliSwitch = vi.fn(async () => ({ outcome: "switched", confirmed: true, shown: models[1]!.label }));
+  d.deliverMessage = vi.fn(async (_text: string, _x: unknown, opts: any) => { opts.verdict.reached = true; opts.verdict.paneWriteStarted = true; opts.onPaneWritten?.(); return true; });
+  vi.spyOn(d, "queueRawPaste");
+  const message = { type: "raw_paste", content: "/model claude-sonnet-5-5-low", runtime_switch: { id: "ag-switch", kind: "model", requested: models[0]!.id, cli: { backend: "antigravity", model: models[0]!.id, effort: "low" } } };
+  d.handleRawPasteIpcMessage(message); await d.pasteLock;
+  expect(d.cliSwitchGate).toHaveBeenCalledWith(message.runtime_switch.cli);
+  expect(d.verifyCliSwitch).toHaveBeenCalledWith(message.runtime_switch.cli, { pane: "before" });
+  expect(results).toContainEqual({ type: "runtime_switch_result", id: "ag-switch", outcome: "switched", confirmed: true, shown: models[1]!.label });
+  expect(d.queueRawPaste.mock.calls[0]![4]).toMatchObject({ cli: message.runtime_switch.cli });
+  d.queueRawPaste.mockClear();
+  d.handleRawPasteIpcMessage({ ...message, content: "/model claude-sonnet-5-5-high" });
+  expect(d.queueRawPaste).not.toHaveBeenCalled();
+  expect(results).toContainEqual({ type: "runtime_switch_result", id: "ag-switch", outcome: "not_sent", reason: "command" });
  });
  it("a model switch carries the configured supported effort and saves the requested model for restart", async () => {
   const f = fleet({ outcome: "switched", confirmed: true, shown: models[1]!.label }, "low");
