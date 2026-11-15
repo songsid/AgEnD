@@ -57,6 +57,10 @@
       "sha256": "37205f5add29a3418a00af3d3554ba95c17d155d1cb365c15f01703ee7ecbffa"
     },
     {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/alpha-sync.json",
+      "sha256": "4eeab47ff682080ac73280de4859507a8a1b0c7b11f72dfadd416da35aaebca5"
+    },
+    {
       "path": "docs/evidence/hub-team-allowlist-m3194/checks/before.log",
       "sha256": "0ac7f421d7fe6cb6f0a2bbb46940fa78329fc1b5ae931d5e4f7f7f376ca1159c"
     },
