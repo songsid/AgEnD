@@ -19,7 +19,7 @@
 .hub-room-text { min-width: 0; display: flex; flex-direction: column; }
 .hub-room-text .t { font-weight: var(--fw-semibold, 600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hub-room-text .s { color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hub-room-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.hub-room-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .hub-room-side .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); animation: hub-pulse 1.4s ease-in-out infinite; }
 @keyframes hub-pulse { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .hub-room-side .pulse { animation: none; } }
@@ -78,6 +78,11 @@
 .hub-back { flex: none; }
 /* S-150: the phone's back to the list is a full tap target, as the header's other buttons are. */
 @media (max-width: 899px), (pointer: coarse) { .hub-chat-head .hub-back { min-width: var(--tap); min-height: var(--tap); } }
+/* M-3128: the rooms headers' own controls (Aa text size, the Notify bell) are full tap targets too. */
+.hub-head-tools { display: inline-flex; align-items: center; gap: var(--s-1); flex: none; }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-head-tools .hd-text, .hub-head-tools .hub-notify { min-width: var(--tap); min-height: var(--tap); }
+}
 .hub-scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; position: relative; }
 /* M-3117: the thread is the Fleet chat's (.thread in app.css: its column, padding and a phone's tighter one) — no Hub copy. */
 .hub-room-empty { padding: var(--s-6) var(--s-4); }

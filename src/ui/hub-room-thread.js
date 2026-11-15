@@ -21,6 +21,8 @@ import "./hub-strings.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
+import { TextSizeButton } from "/assets/header-tools.js";
+import { HubNotifyToggle } from "./hub-room-notify.js";
 import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { workingLine } from "./hub-room-working.js";
@@ -343,7 +345,7 @@ function useMembersPanel() {
  * Fleet chat's thread (panel-hub.js's HubThread, given as `Thread`: the thread wiring is one), the room's composer, and
  * the members panel on the right. `client`: the Hub client; `me`: { id } from the session.
  */
-export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {} }) {
+export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {}, onMe = () => {} }) {
   const store = useMemo(() => createRoomStore(roomId, { client, meId }), [roomId]);
   useEffect(() => () => store.stop(), [store]);
   const [, tick] = useState(0);
@@ -372,6 +374,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     if (r.ok) onLeft(); else setLeaveError(r.text);
   };
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
+  // The page-level rooms notifier learns this person's id for this room from its detail (§12; member
+  // ids are per room, so the id is kept under this room's id).
+  useEffect(() => { const id = detail && detail.me && detail.me.id; if (id) onMe(roomId, id); }, [detail && detail.me && detail.me.id]);
   // M-3125: Attach only where this page and this room carry files and the room is open; chosen files ride the next send.
   const takesFiles = pageCarriesFiles(client, store) && roomTakesFiles(room) && !store.closed();
   const attach = takesFiles ? { title: hf("attach"), onFiles: async (list) => {
@@ -464,6 +469,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
           onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); goList(); }}><${Icon} name="back" /></a>
         <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
         <span class="hub-chat-title"><strong>${title}</strong><span class="s">${line2}</span></span>
+        <span class="hub-head-tools"><${TextSizeButton} /><${HubNotifyToggle} /></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}
         ${group && detail?.me ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${[

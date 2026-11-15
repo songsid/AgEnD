@@ -40,6 +40,8 @@ import { HubRoomRows, readRoomList } from "./hub-room-list.js";
 import * as roomFavorites from "./hub-room-favorites.js";
 const { useRoomStar } = roomFavorites;
 import { HubRoomPage } from "./hub-room-thread.js";
+import { TextSizeButton } from "/assets/header-tools.js";
+import { HubNotifyToggle, clearHubMeId, noteHubMeId, rememberedMeId, startHubRoomNotifier } from "./hub-room-notify.js";
 import { hroom } from "./hub-room-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { ht } from "./hub-teams-strings.js";
@@ -104,6 +106,9 @@ let session;                                     // undefined: not read yet; nul
 const sessionSubs = new Set();
 function setSession(next) {
   const was = session;
+  // The notifier's remembered person id belongs to the signed-in login: a sign-out, or in as someone else on the
+  // same tab, forgets it (the next login's id is learned again from a room detail or the lazy resolve).
+  if (!next || !was || was.login !== next.login) clearHubMeId();
   session = next;
   roomFavorites.configureHubFavorites?.(hubClient(), next);
   // #3226 B: the conversation list is this person's: cleared when no one is signed in, read again when someone is.
@@ -144,6 +149,25 @@ export function HubPanel({ route }) {
   const view = viewParam();
   // The owner stylesheet holds the page column (.hub-owner, 860 px) every page with a column uses — Notices too (Argon #12).
   useEffect(() => { linkHubCss(); linkHubOwnerCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
+  // Rooms desktop notifications (§12): one page-level watcher over every room this person may see. Member ids
+  // are per room, so the id is kept per room: from a room detail once read, or lazily by reading that room
+  // itself on its first live event while opted in.
+  useEffect(() => {
+    if (!s || !s.login) return undefined;
+    const stop = startHubRoomNotifier({
+      client: hubClient(), me: (rid) => { const id = rememberedMeId(rid); return id ? { id } : null; },
+      setMe: (rid, m) => noteHubMeId(rid, m && m.id),
+      resolveMe: async (rid) => {
+        if (typeof hubClient().room !== "function") return null;
+        const d = await hubClient().room(rid).catch(() => null);
+        return d && d.ok && d.me && d.me.id ? { id: d.me.id } : null;
+      },
+      roomName: (id) => { const r = (roomsStore.get().rooms || []).find((x) => x.id === id); return (r && r.name) || ""; },
+      roomKind: (id) => { const r = (roomsStore.get().rooms || []).find((x) => x.id === id); return (r && r.kind) || ""; },
+      open: (rid) => navigate(roomPath(rid)),
+    });
+    return stop;
+  }, [s && s.login]);
   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
   const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : hc("admin") : view === "notices" ? hc("noticesTitle")
     : view === "invitations" ? hroom("invitationsTitle") : view === "teams" ? ht("mine") : hc("chats");
@@ -159,7 +183,7 @@ export function HubPanel({ route }) {
     <${PanelHeader} title=${hj("title")} /><div data-trust="panel-content" class="panel-body hub-page-body"><${HubCompanyJoinPage} session=${s} /></div></div>`;
   // Security notices stay on their own page. The bound join branch above never renders the chat or notices page.
   if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
-    <${PanelHeader} title=${hc("noticesTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body">
+    <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
       <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
         ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
         ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}</div></div></div>`;
@@ -547,7 +571,7 @@ function HubChats() {
   // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
   if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()}
     rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} goList=${() => navigate("/ui/hub")}
-    onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} />`;
+    onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
@@ -702,6 +726,7 @@ function HubRoomView({ room: given }) {
         <span class="hub-chat-title"><strong>${name}</strong><span class="s">${room.ownerName ? hc("answersFor", room.ownerName) : ""}</span></span>
         ${tag}
         <button type="button" class="icon-btn" aria-pressed=${wide ? String(showRail) : undefined} aria-label=${hc("showInfo")} title=${hc("showInfo")} onClick=${toggleInfo}><${Icon} name="info" /></button>
+        <span class="hub-head-tools"><${TextSizeButton} /></span>
       </header>
       <${HubThread} store=${store} name=${name} panelKey=${panelKey} threadRef=${threadRef} />
       <div class="dock hub-dock" data-trust="composer"><div class="dock-col">
