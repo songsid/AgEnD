@@ -70,7 +70,8 @@ try {
         const bg = (el: Element | null) => el ? getComputedStyle(el).backgroundColor : null;
         const flat = (c: string | null) => c !== null && c !== "rgba(0, 0, 0, 0)" && c !== "transparent";
         const headModel = [...head.querySelectorAll(".panel-sub .chat-model-entry")].some(shown);
-        const composerModel = !!pick && shown(pick);
+        const meta = document.querySelector(".chat-meta-model");   // M-3166: a phone's model is its meta line's
+        const composerModel = (!!pick && shown(pick)) || (!!meta && shown(meta));
         if (flat(bg(pick))) bad.push(`the composer's model chip is a filled block (${bg(pick)})`);
         if (flat(bg(ring))) bad.push(`the context figure is a filled block (${bg(ring)})`);
         if (ring && getComputedStyle(ring.querySelector(".ctx-dial") ?? ring).backgroundImage.indexOf("conic-gradient") < 0) bad.push("the context figure is not a ring");

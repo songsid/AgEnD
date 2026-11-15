@@ -99,11 +99,11 @@ describe("M-3115 PR 1: inside an agent's pages a phone has no bottom tabs", () =
     expect(pg.window.location.pathname).toMatch(/^\/ui\/fleet/);
   });
 
-  it("not verified: no ✓ Verified in ⋯ (the line under the composer still says Not verified · Authorize)", async () => {
+  it("not verified: no ✓ Verified in ⋯ (the meta line above the box says Not verified · Authorize — M-3166)", async () => {
     auth = { state: "none", reason: "not_authorized" };
     const { pg } = await app("/ui/chat/web-dev");
     expect((await moreMenu(pg)).some((r) => r.includes("Verified"))).toBe(false);
-    expect(pg.root.querySelector(".composer-row .webauth-row")?.getAttribute("data-state")).toBe("none");
+    expect(pg.root.querySelector(".chat-meta-right .webauth-row")?.getAttribute("data-state")).toBe("none");
   });
 
   it("a desk: ☰ and the ⋯ it always had (no 前往, no ✓)", async () => {

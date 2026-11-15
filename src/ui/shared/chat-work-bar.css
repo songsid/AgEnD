@@ -58,3 +58,25 @@
   .p-chat .panel-head .panel-sub { min-width: 0; overflow: hidden; }
   .p-chat .panel-head .panel-title h1 { flex: 0 1000 auto; min-width: min(8ch, 40%); }   /* the name gives way before the status */
 }
+/* M-3166 (Argon 0 and 1, the user's OK of round 2): a phone's meta line above the box — 26 px, the small type, hit targets of
+   at least 32 px — in place of the working bar and of the line under the box (its Not verified is the meta line's right end,
+   amber; ✓ Verified isn't drawn there). The box is 📎 · the text, the whole width · Send/Stop; files in a strip at the top;
+   at most five lines, then it scrolls. */
+@media (max-width: 899px) {
+  .chat-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); height: 26px; padding: 0 var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
+  .chat-meta-left { display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 32px; margin: -3px 0; padding: 0 var(--s-2); border: 0; border-radius: var(--r-sm); background: none; color: inherit; font: inherit; white-space: nowrap; overflow: hidden; }
+  .chat-meta-left > span:not(.chat-meta-dot):not(.chev) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .chat-meta-model .chev { flex: none; color: var(--text-3); }
+  .chat-meta-dot { flex: none; width: 6px; height: 6px; border-radius: var(--r-full); background: var(--ok); animation: pulse 1.6s ease-in-out infinite; }
+  .chat-meta.awaiting .chat-meta-dot, .chat-meta.stuck .chat-meta-dot { background: var(--warn); animation: none; }
+  .chat-meta-right { display: inline-flex; align-items: center; gap: var(--s-2); flex: none; }
+  .chat-meta-right .webauth-row[data-state="verified"] > :not(.webauth-notice) { display: none; }
+  .chat-meta-right .webauth-row, .chat-meta-right .webauth-row .note { color: var(--warn); font-weight: var(--fw-semibold); }
+  .chat-meta-right .webauth-row :is(button, a) { min-height: 32px; color: var(--warn); font-weight: var(--fw-semibold); }
+  .chat-meta-stop { min-height: 32px; padding: 0 var(--s-2); border: 0; background: none; color: var(--accent); font: inherit; font-weight: var(--fw-semibold); }
+  .p-chat .dock:has(.composer-field textarea:placeholder-shown) .chat-meta-stop { display: none; }
+  .p-chat .dock:has(.chat-meta.busy) .qa-line { display: none; }
+  .p-chat .dock:has(.chat-meta) .composer-row { display: none; }
+  .p-chat .composer textarea { max-height: calc(5 * var(--lh-md)); overflow-y: auto; }
+  .p-chat .composer-box .pending-files { flex-wrap: nowrap; overflow-x: auto; }
+}
