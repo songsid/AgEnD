@@ -5,7 +5,8 @@
 #               | raw <name> <inst> <workdir-name> <codex args…> | cap <scenario> <secs>
 #               | send <text> | key <tmux-key> | mode <ok|slow|near|usage|wscredits|wsspend|e401|e500|notfound|capacity> | kill | stop
 #               | paths (prints SOCK AH SH RUN for this run)
-# Env: AUDIT (scratch root, required), PORT (default 18762), WIN (tmux window target, default "a").
+# Env: AUDIT (scratch root, required), PORT (default 18762), WIN (tmux window target, default "a"),
+#      BODY_LOG (the mock appends every request body, one per line).
 # Every name is owned by ONE run — the version AND the audit root (a short hash of its real path): the private tmux
 # socket cx<version-digits>-<ns>, the homes $HOME/.cxa<ver><ns> / .cxs<ver><ns> (short, under $HOME: codex refuses
 # helper binaries under /tmp and its socket path must fit SUN_LEN). kill/stop/launch touch only that run's names, so
@@ -27,7 +28,7 @@ case "$STEP" in
     if ! T has-session -t mock 2>/dev/null; then
       : > "$RUN/mock.log"
       T new-session -d -s mock -x 120 -y 20 \
-        "PORT=$PORT MOCK_MODE_FILE=$RUN/mode MOCK_LOG=$RUN/mock.log exec node $HERE/mock.mjs"
+        "PORT=$PORT MOCK_MODE_FILE=$RUN/mode MOCK_LOG=$RUN/mock.log ${BODY_LOG:+BODY_LOG=$BODY_LOG} exec node $HERE/mock.mjs"
     fi
     # This run's own server must be the one listening: another run on the same PORT would answer our codex with ITS
     # mode file. A mock that cannot bind exits and never writes the line.

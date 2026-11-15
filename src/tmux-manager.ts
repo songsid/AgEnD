@@ -702,4 +702,6 @@ export class TmuxManager implements Pane {
   }
 
   getWindowId(): string { return this.windowId; }
+  /** M-3175: the pid of this window's pane process (its shell), or null. */
+  getPanePid(): Promise<number | null> { return TmuxManager.getPanePid(this.sessionName, this.windowId).catch(() => null); }
 }

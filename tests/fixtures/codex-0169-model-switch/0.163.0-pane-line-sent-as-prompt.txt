@@ -1,0 +1,63 @@
+
+  >_ OpenAI Codex (v0.163.0)
+     ~/.cache/rh-3175/run-01630/work
+
+
+› Ask Codex to do anything
+
+
+
+  >_ OpenAI Codex (v0.163.0)
+     ~/.cache/rh-3175/run-01630/work
+  permissions: YOLO mode
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                                    ⚠ 1 warning · f2 to view
+
+
+  >_ OpenAI Codex (v0.163.0)
+     ~/.cache/rh-3175/run-01630/work
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› /model gpt-6.1-sol --reasoning=high
+
+
+• ok
+
+  Worked for <1s • 14:23
+
+
+› Ask Codex to do anything
+
+  01a1dde0-4d83-7a32-bc0c-f82898492c6a · Context 100% left                                                                            ⚠ 2 warnings · f2 to view
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
