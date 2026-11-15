@@ -31,7 +31,7 @@ INSERT INTO hub_team_creation_policy VALUES(1,1,'[]');
 `); } });
 export function teamLeads(db: Database.Database, id: string): string[] {
   const leads = (db.prepare("SELECT person FROM hub_team_leads WHERE team_id=? ORDER BY position").all(id) as {person:string}[]).map(row => row.person);
-  // A rolled-back older binary can still create a v1 row; upgrade reads its original lead.
+  // Retained v1 imports may have only the original primary-lead field.
   const legacy = db.prepare("SELECT lead FROM hub_teams WHERE id=?").get(id) as {lead:string} | undefined;
   if (legacy && leads[0] !== legacy.lead) return [legacy.lead];
   return leads.length ? leads : legacy ? [legacy.lead] : [];

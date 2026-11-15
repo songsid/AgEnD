@@ -2,7 +2,7 @@ import { register, t } from "/assets/app-i18n.js";
 register("hubTeam", {
   en: {
     usedFor: "This team is used for: {0}", usedAgents: "asking {0} agents", usedRooms: "starting rooms", usedList: "the allowed list", unused: "This team isn’t used anywhere yet.", snapshot: "People added to a room with this team stay in that room when the team changes.",
-    creationTitle: "Who can create teams", adminOnly: "Administrators only", adminSelected: "Administrators and these people or groups", addPerson: "Add person", addGroup: "Add AD group", personKind: "Person", groupKind: "AD group", groupQuery: "Search AD groups", clearDepartment: "No department", creatorLead: "You become the first lead", makeLead: "Make {0} a lead", removeLead: "Remove {0} as lead", promote: "Make lead", demote: "Remove as lead", view: "View team",
+    creationTitle: "Who can create teams", adminOnly: "Administrators only", adminSelected: "Administrators and these people or groups", selectedCreators: "Selected people and groups", addPerson: "Add person", addGroup: "Add AD group", personKind: "Person", groupKind: "AD group", groupQuery: "Search AD groups", clearDepartment: "No department", creatorLead: "You become the first lead", makeLead: "Make {0} a lead", removeLead: "Remove {0} as lead", promote: "Make lead", demote: "Remove as lead", view: "View team",
     title: "Teams", mine: "My teams", manage: "Manage teams", lead: "AD groups stop at departments. A team is a list you pick, usable for rooms and for who may ask.",
     pageLead: "Pick the people in each team. Rooms keep the people added at that moment; asking permissions and room-creation rights follow the current roster.",
     myLead: "See teams and their leads. Leads manage their team’s name, members and other leads.",
@@ -19,7 +19,7 @@ register("hubTeam", {
   },
   "zh-TW": {
     usedFor: "這個團隊用在：{0}", usedAgents: "提問 {0} 個 Agent", usedRooms: "開房間", usedList: "允許清單", unused: "這個團隊還沒有用在任何地方。", snapshot: "跟著這個團隊加入房間的人，團隊名單變動後仍會留在房間裡。",
-    creationTitle: "誰可以建立團隊", adminOnly: "只有管理員", adminSelected: "管理員和這些人員或群組", addPerson: "加入人員", addGroup: "加入 AD 群組", personKind: "人員", groupKind: "AD 群組", groupQuery: "搜尋 AD 群組", clearDepartment: "不指定部門", creatorLead: "你會成為第一位負責人", makeLead: "將 {0} 設為負責人", removeLead: "移除 {0} 的負責人身分", promote: "設為負責人", demote: "移除負責人身分", view: "查看團隊",
+    creationTitle: "誰可以建立團隊", adminOnly: "只有管理員", adminSelected: "管理員和這些人員或群組", selectedCreators: "指定人員或群組", addPerson: "加入人員", addGroup: "加入 AD 群組", personKind: "人員", groupKind: "AD 群組", groupQuery: "搜尋 AD 群組", clearDepartment: "不指定部門", creatorLead: "你會成為第一位負責人", makeLead: "將 {0} 設為負責人", removeLead: "移除 {0} 的負責人身分", promote: "設為負責人", demote: "移除負責人身分", view: "查看團隊",
     title: "團隊", mine: "我的團隊", manage: "管理團隊", lead: "AD 群組只到部門。團隊是你自己挑的一份名單，可以用在房間與提問權限。",
     pageLead: "選擇各團隊的成員。加入房間時會保留當下的名單；提問權限與建立房間的權限則依團隊目前的成員判斷。",
     myLead: "查看團隊與負責人。負責人可以管理團隊名稱、成員與其他負責人。",

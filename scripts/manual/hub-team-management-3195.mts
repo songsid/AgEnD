@@ -26,6 +26,7 @@ try {
   browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
   for (const device of ["desktop", "phone"]) for (const lang of ["en", "zh-TW"]) for (const theme of ["light", "dark"]) {
     if ((device === "desktop" && theme !== (lang === "en" ? "light" : "dark")) || (device === "phone" && theme !== (lang === "en" ? "dark" : "light"))) continue;
+    if (process.env.CASE && process.env.CASE !== `${device}-${lang}-${theme}`) continue;
     const tag = `${device}-${lang}-${theme}`, english = lang === "en", errors: string[] = [], fx = createHubRoomsFixture({ csrf: auth.csrf, features: ["rooms-v1", "teams-v1"], teamLead: true });
     const context = await browser.newContext({ viewport: device === "phone" ? { width: 390, height: 844 } : { width: 1366, height: 1000 }, locale: english ? "en-US" : "zh-TW", colorScheme: theme,
       ignoreHTTPSErrors: true, isMobile: device === "phone", hasTouch: device === "phone" });
@@ -62,7 +63,7 @@ try {
     await page.locator(".hub-team-list button").last().click(); await page.locator(".hub-team-editor tbody tr").first().waitFor();
     check(tag + " fresh feature stylesheet", await page.locator('link[data-hub-teams-css="1"]').evaluate((link: HTMLLinkElement) => !!link.sheet));
     check(tag + " admin metadata", await page.locator("[data-team-name]").count() === 1);
-    check(tag + " lead cannot be removed", await page.locator("tbody tr").first().locator("button").isDisabled());
+    check(tag + " lead cannot be removed", await page.locator("tbody tr").first().locator("button").first().isDisabled());
     check(tag + " four roster columns", (await page.locator("thead th").allTextContents()).slice(0, 4).join("|") === (english ? "Members|Role|Joined Hub|Shared agents" : "成員|身分|已加入 Hub|分享的 Agent"));
     await page.getByRole("button", { name: english ? "Add member" : "加入成員", exact: true }).click();
     const query = page.locator(".hub-team-search input"); await query.fill("new");

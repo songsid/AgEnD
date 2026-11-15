@@ -81,7 +81,7 @@ it("migrates existing lead identity and defaults creation to administrators only
   expect(teams.read(r.db,id)).toMatchObject({revision:7,lead:person,leads:[person],department:null,members:[person]});
   expect(r.db.prepare("SELECT creators FROM hub_team_creation_policy").get()).toEqual({creators:"[]"});
 });
-it("reads the original single-lead field after an older rollback binary changes it", async () => {
+it("reads the primary-lead alias if a retained v1 import replaces it", async () => {
   const w=await world(),t=await w.teams.create(w.admin,{name:"Compatible",members:[w.ids[0],w.ids[1]]});
   await w.teams.update(w.admin,t.id,{leads:[w.ids[0],w.ids[1]]});
   r!.db.prepare("UPDATE hub_teams SET lead=?,revision=revision+1 WHERE id=?").run(w.ids[1],t.id);

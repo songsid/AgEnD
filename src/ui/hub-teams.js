@@ -188,7 +188,8 @@ function CreationSettings({client,settings,onSaved}) {
     if (out.ok) {setKind(null); onSaved();} else setError(errorText(out,true));
   };
   return html`<section class="card hub-team-policy"><h3>${ht("creationTitle")}</h3>
-    <label class="field"><span>${ht("creationTitle")}</span><select value=${selected ? "selected" : "admin"} disabled=${busy} onChange=${e => setSelected(e.target.value === "selected")}><option value="admin">${ht("adminOnly")}</option><option value="selected">${ht("adminSelected")}</option></select></label>
+    <label class="field"><span>${ht("creationTitle")}</span><select value=${selected ? "selected" : "admin"} disabled=${busy} onChange=${e => setSelected(e.target.value === "selected")}><option value="admin">${ht("adminOnly")}</option><option value="selected">${ht("selectedCreators")}</option></select></label>
+    ${selected ? html`<p class="note">${ht("adminSelected")}</p>` : null}
     ${selected ? html`<ul class="hub-team-list">${rows.map(row => html`<li key=${row.kind+row.id}><span class="grow">${row.name} · ${ht(row.kind === "person" ? "personKind" : "groupKind")}</span><button type="button" class="btn hub-team-button" disabled=${busy} aria-label=${ht("remove")+" "+row.name} onClick=${() => setRows(rows.filter(r => r !== row))}>${ht("remove")}</button></li>`)}</ul>
     <div class="hub-team-actions"><button type="button" class="btn hub-team-button" disabled=${busy || rows.length >= 100} onClick=${() => setKind("person")}>${ht("addPerson")}</button><button type="button" class="btn hub-team-button" disabled=${busy || rows.length >= 100} onClick=${() => setKind("group")}>${ht("addGroup")}</button></div>
     ${kind ? html`<${TeamSuggestions} client=${client} kind=${kind} policy=${true} disabled=${busy} onPick=${row => {setRows(old => old.some(r => r.kind === row.kind && r.id === row.id) ? old : [...old,row]);setKind(null);}} />` : null}` : null}
