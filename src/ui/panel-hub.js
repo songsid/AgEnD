@@ -579,7 +579,7 @@ function HubChats() {
  */
 function ChatLauncher() {
   const s = useSession(), rs = useRooms();
-  const [cat] = useRead(() => hubClient().catalog());
+  const [cat, reloadCat] = useRead(() => hubClient().catalog());
   const [inRooms, setInRooms] = useState([]);
   const [q, setQ] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState(null), [newRoom, setNewRoom] = useState(false);
   const groups = rs.rooms.filter((r) => r.kind === "group" && !r.archived).sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0)).slice(0, 5);
@@ -619,7 +619,7 @@ function ChatLauncher() {
         <span class="hub-launch-av"><${Avatar} name=${r.name} />${r.online ? html`<span class="dot ok" aria-hidden="true"></span>` : null}</span>
         <span class="hub-launch-text"><strong>${r.name}</strong><small>${r.sub}</small></span><span class="hub-launch-go" aria-hidden="true">${hc("launchGo")}</span></a>`)}</div>
       ${rows.length && !shown.length ? html`<p class="note">${hc("launchNoMatch")}</p>` : null}`}
-    ${cat && cat.error ? html`<${ErrorState} message=${cat.error} />` : null}
+    ${cat && cat.error ? html`<${ErrorState} message=${cat.error} onRetry=${reloadCat} />` : null}
     ${cat && !cat.error && !askable.length ? html`<section class="hub-launch-empty" data-launch="none-shared"><strong><${Icon} name="chat" size=${18} />${hc("launchNone")}</strong>
       <p>${hc("launchNoneHint")}</p>
       <div class="hub-launch-actions">${roomsLive() && rs.me?.canCreateRooms ? html`<button type="button" class="btn btn-primary hub-launch-pill" onClick=${() => setNewRoom(true)}><${Icon} name="room" size=${16} />${hc("launchNewRoom")}</button>` : null}

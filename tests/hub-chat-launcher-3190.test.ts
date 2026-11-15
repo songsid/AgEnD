@@ -22,10 +22,11 @@ beforeAll(async () => {
 afterEach(async () => { for (const p of mounted.splice(0).reverse()) { await p.unmount(); p.restore(); } client.setHubClient(null); i18n.setLang("en", { store: false }); g.EventSource = realES; });
 
 /** The Hub app at `path` on the fixture; `askable` answers the catalog; `myAgentIn`: the room whose members also list one of mine. */
-async function hubAt(path: string, { askable = [] as any[], myAgentIn = "" } = {}) {
+async function hubAt(path: string, { askable = [] as any[], myAgentIn = "", catalogFails = 0 } = {}) {
   const fx = createHubRoomsFixture(), realFetch = g.fetch;
   g.fetch = async (url: string, init?: any) => {
     const p = new URL(url, "http://127.0.0.1:19280").pathname;
+    if (p === "/hub/v1/exposures" && catalogFails > 0) { catalogFails--; return { ok: false, status: 503, headers: { get: () => null }, json: async () => ({ code: "unreachable" }), text: async () => "" }; }
     if (p === "/hub/v1/exposures") return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ mine: [], askable }), text: async () => "" };
     const res = await fx.fetch(url, init);
     if (myAgentIn && p === `/hub/v1/rooms/${myAgentIn}` && (!init || !init.method || init.method === "GET")) {
@@ -88,6 +89,20 @@ describe("M-3190: the launcher's rows", () => {
       // The chat's row opens that chat (its own address); the new one asks the Hub to open a chat.
       const helper = [...pg.root.querySelectorAll(".hub-launch-row")].find((r: any) => r.querySelector("strong").textContent === "project-helper") as any;
       expect(helper.getAttribute("href")).toBe("/ui/hub?room=room-helper");
+    } finally { restore(); }
+  });
+});
+
+describe("M-3190: the launcher's catalog read", () => {
+  it("a failed read says so with Retry; Retry reads again and the rows come", async () => {
+    const askable = [{ exposure: { id: "exp-77", displayName: "fresh-agent", revision: 1 }, grant: { id: "g-77", expiresAt: 2_000_000_000_000 }, ownerName: "吳小安" }];
+    const { pg, restore } = await hubAt("/ui/hub?view=new", { askable, catalogFails: 1 });
+    try {
+      await until(() => pg.root.querySelector(".hub-launch .error-state button"));
+      expect(rows(pg).map(([name]) => name)).not.toContain("fresh-agent");
+      (pg.root.querySelector(".hub-launch .error-state button") as any).click();
+      await until(() => rows(pg).some(([name]) => name === "fresh-agent"));
+      expect(pg.root.querySelector(".hub-launch .error-state")).toBe(null);
     } finally { restore(); }
   });
 });
