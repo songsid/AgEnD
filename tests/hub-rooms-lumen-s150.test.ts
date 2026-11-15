@@ -91,6 +91,9 @@ describe("3. New room on the phone's list", () => {
   it("beside New chat for someone who may open rooms; not on a Hub without rooms", async () => {
     const { pg, restore } = await hubAt("/ui/hub", { narrow: true });
     try {
+      // M-3190: the first visit opens the most recent room; back on 對話 the phone shows its list.
+      await until(() => pg.window.location.search.startsWith("?room="));
+      router.navigate("/ui/hub"); await settle(20);
       await until(() => pg.root.querySelector(".hub-home-list .hub-new-room"));
       const rows = [...pg.root.querySelectorAll(".hub-home-list .side-new")].map((b: any) => b.textContent.trim());
       expect(rows).toEqual(["New chat", "New room"]);

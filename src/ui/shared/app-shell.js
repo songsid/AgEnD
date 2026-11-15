@@ -350,8 +350,8 @@ function hubMarks() {
 }
 /**
  * The Hub workspace's sidebar — cid-hub-shell-parity (the user's approved mockup): the fleet dashboard's own, so the two
- * read as one product (style guide rule 1). The brand is one line ("AgEnD Hub"; the Hub's name, when it has one, is its
- * tooltip — never a second line, never repeated); the rows, the conversation list and the foot come from the Hub's lazy
+ * read as one product (style guide rule 1). The brand: "AgEnD Hub" and, when it has one, the Hub's name on a small line under it
+ * (M-3190, Argon: it replaced the welcome's greeting on 對話); the rows, the conversation list and the foot come from the Hub's lazy
  * module (HubSide, HubFoot). An older Hub module without them gets its HubNav and session row, or the three page links.
  */
 function HubSidebar({ route }) {
@@ -361,7 +361,7 @@ function HubSidebar({ route }) {
     aria-current=${tab === key ? "page" : undefined} onClick=${closeDrawer}><${Icon} name=${icon} /><span class="grow">${t(`hubShell.${key}`)}</span></a>`;
   return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
-      <a class="brand" href="/ui/hub" title=${name || undefined} onClick=${closeDrawer}>${t("hubShell.brand")}</a><span class="tag warn hub-preview-tag">${t("hubShell.preview")}</span>
+      <span class="side-brand"><span class="side-brand-line"><a class="brand" href="/ui/hub" onClick=${closeDrawer}>${t("hubShell.brand")}</a><span class="tag warn hub-preview-tag">${t("hubShell.preview")}</span></span>${name ? html`<small class="side-brand-name" title=${name}>${name}</small>` : null}</span>
       <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name=${narrow() ? "close" : "sidebar"} /></button>
     </div>
     <${HubSideSlot} fallback=${html`<nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>${row("ask", "/ui/hub", "chat")}${row("exposures", "/ui/hub/exposures", "globe")}${row("admin", "/ui/hub/admin", "key")}</nav>`} />

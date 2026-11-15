@@ -121,7 +121,7 @@ describe("the sidebar, drawn as the Fleet roster", () => {
     const { pg, restore } = await hubApp((url: string, init?: any) => fx.fetch(url, init), "zh-TW");
     try {
       await until(() => rows(pg).length === 6);
-      expect(pg.root.querySelector("#sidebar .side-nav .hub-new-room")!.textContent).toBe("新房間");
+      expect([pg.root.querySelector("#sidebar .side-nav .hub-new-room"), pg.root.querySelector("#sidebar .hub-side-rooms .hub-new-room")!.textContent]).toEqual([null, "新房間"]);   // M-3190: it heads the list
     } finally { restore(); }
   });
   it("invitations are an ordinary sidebar row with their count, like Needs you (Lumen's walk)", async () => {

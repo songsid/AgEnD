@@ -9,7 +9,7 @@ import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
 const g = globalThis as any;
-let client: any, welcome: any, editor: any, panel: any, section: any;
+let client: any, welcome: any, editor: any, panel: any, section: any, confirmUi: any;
 const mounted: AppPage[] = [];
 const until = async (fn: () => unknown, n = 200) => { for (let i = 0; i < n && !fn(); i++) await settle(5); };
 const ID1 = "0f1e2d3c-4b5a-4968-8776-655443322110", ID2 = "1f1e2d3c-4b5a-4968-8776-655443322111";
@@ -22,12 +22,13 @@ beforeAll(async () => {
   await import("/assets/app-store.js");
   client = await import("/ui/js/hub-client.js");
   welcome = await import("/ui/js/hub-welcome.js");
+  confirmUi = await import("/assets/ui-confirm.js");
   editor = await import("/ui/js/hub-group-policy.js");
   panel = await import("/ui/js/panel-hub.js");
   section = await import("/ui/js/settings-hub-section.js");
   pg.restore();
 });
-afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); panel.resetHubSession(); });
+afterEach(async () => { for (const p of mounted.splice(0).reverse()) { await p.unmount(); p.restore(); } client.setHubClient(null); panel.resetHubSession(); });   // the last page first: each restores what it found
 afterAll(() => { client.setHubClient(null); });
 
 function fake(over: Record<string, any> = {}) {
@@ -56,93 +57,144 @@ async function mountWith(c: any, node: any, url = "http://127.0.0.1:19290/ui/hub
 }
 const text = (el: any) => (el?.textContent || "").replace(/\s+/g, " ").trim();
 
-describe("the welcome: shaped by what the person may do now", () => {
-  it.each(["welcome", "catalog"].flatMap(which => [3, 0, undefined].map(retryAfter => ({ which, retryAfter }))))("says busy and retries after the advertised delay: $which / $retryAfter", async ({ which, retryAfter }) => {
+// M-3190 (Argon's chat-first review): the welcome's two cards became 我分享的 Agent → 「我的 Fleet」 (MyFleetsCard) and the chat
+// launcher's frame (ChatLauncherFrame: a note when chatting isn't available now, the administrator's "Hub ready" line, the Fleet line).
+const W = (over: Record<string, any> = {}) => ({ ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 2, fleets: [] }, ...over });
+describe("the welcome's projection: 我的 Fleet and the launcher's frame, shaped by what the person may do now", () => {
+  it.each([3, 0, undefined])("says busy and retries after the advertised delay (%s)", async (retryAfter) => {
     const timers: Array<{ fn: () => void; ms: number }> = [], original = g.setTimeout;
     const spy = vi.spyOn(g, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => {
       if (ms >= 1000) { timers.push({ fn, ms }); return 999; } return original(fn, ms, ...args);
     });
     let tries = 0;
-    const good = { ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "deny" }, connect: { state: "deny", maxFleets: 0, fleets: [] } };
-    const busy = { ok: false, status: 429, code: "backpressure", retryAfter };
-    const f = fake({ [which]: vi.fn(async () => ++tries === 1 ? busy : which === "welcome" ? good : { ok: true, askable: [] }),
-      ...(which === "catalog" ? { welcome: vi.fn(async () => good) } : {}) });
+    const f = fake({ welcome: vi.fn(async () => ++tries === 1 ? { ok: false, status: 429, code: "backpressure", retryAfter } : W()) });
     try {
-      const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
+      const pg = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
       expect(text(pg.root)).toContain("The Hub is busy. Retrying shortly");
       expect(text(pg.root)).not.toContain("The directory didn't answer");
-      expect(pg.root.querySelector('[data-welcome="nothing-shared"]')).toBe(null);
       expect(timers.map(t => t.ms)).toEqual([retryAfter ? retryAfter * 1000 : 10_000]); expect(tries).toBe(1);
       const stale = timers.shift()!.fn; stale(); await settle(20);
-      expect(tries).toBe(2); expect(text(pg.root)).toContain("No agents have been shared with you yet");
+      expect(tries).toBe(2); expect(text(pg.root.querySelector(".hub-my-fleets h3"))).toBe("My fleets 0 of 2");
       stale(); await settle(5); expect(tries).toBe(2);
     } finally { spy.mockRestore(); }
   });
-
-  it("cancels a busy welcome retry on unmount and ignores its queued callback", async () => {
+  it("cancels a busy retry on unmount and ignores its queued callback", async () => {
     let captured!: () => void; const original = g.setTimeout;
     const timer = vi.spyOn(g, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => {
       if (ms >= 1000) { captured = fn; return 999; } return original(fn, ms, ...args);
     });
     const cancelled = vi.spyOn(g, "clearTimeout"), f = fake({ welcome: vi.fn(async () => ({ ok: false, code: "backpressure", retryAfter: 3 })) });
     try {
-      const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
+      const pg = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
       expect(captured).toBeTypeOf("function");
       await pg.unmount(); mounted.splice(mounted.indexOf(pg), 1); pg.restore();
       expect(cancelled).toHaveBeenCalledWith(999); captured(); await settle(5); expect(f.c.welcome).toHaveBeenCalledOnce();
     } finally { timer.mockRestore(); cancelled.mockRestore(); }
   });
-
-  it("no actions: both entries stay visible but unavailable, with 'Contact your Hub administrator'", async () => {
-    const f = fake(); const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
+  it("no actions: the launcher says so ('Contact your Hub administrator'); 我的 Fleet says connecting isn't available", async () => {
+    const f = fake(); const pg = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
     expect(text(pg.root.querySelector('[data-welcome="no-actions"]'))).toBe("Your account can sign in, but no actions are allowed yet. Contact your Hub administrator.");
-    for (const e of ["chat", "connect"]) expect(pg.root.querySelector(`[data-entry="${e}"]`).getAttribute("aria-disabled"), e).toBe("true");
-    expect(pg.root.querySelector('[data-entry="chat"] .btn')).toBe(null);
+    const card = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
+    expect(text(card.root.querySelector(".hub-my-fleets"))).toContain("Contact your Hub administrator.");
+    expect(card.root.querySelector(".hub-pair-steps, .hub-pair-more")).toBe(null);
   });
-  it("ask only: Chat opens; Connect says fleet connection isn't included", async () => {
-    const onChats = vi.fn();
-    const f = fake({ welcome: async () => ({ ok: true, v: 1, mode: "enabled", chat: { state: "allow", reason: "group" }, publish: { state: "deny", reason: "no-group" }, connect: { state: "deny", reason: "no-group", maxFleets: 0, fleets: [] } }),
-      catalog: async () => ({ ok: true, askable: [{}, {}] }) });
-    const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo", onChats }));
-    fire(pg.root.querySelector('[data-entry="chat"] .btn'), "click"); expect(onChats).toHaveBeenCalledTimes(1);
-    expect(pg.root.querySelector('[data-welcome="nothing-shared"]')).toBe(null);
-    expect(text(pg.root.querySelector('[data-entry="connect"]'))).toContain("Connecting a fleet is not included in your access.");
+  it("ask only: no note on the launcher; 我的 Fleet says fleet connection isn't included", async () => {
+    const f = fake({ welcome: async () => W({ publish: { state: "deny", reason: "no-group" }, connect: { state: "deny", reason: "no-group", maxFleets: 0, fleets: [] } }) });
+    const pg = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
+    expect(pg.root.querySelector("[data-welcome]")).toBe(null);
+    const card = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
+    expect(text(card.root.querySelector(".hub-my-fleets"))).toContain("Connecting a fleet is not included in your access.");
   });
-  it("full, nothing shared yet: 'No agents have been shared with you yet', never a list of private agents; fleets 0 of 2", async () => {
-    const f = fake({ welcome: async () => ({ ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 2, fleets: [] } }) });
-    const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
-    expect(text(pg.root.querySelector('[data-welcome="nothing-shared"]'))).toBe("No agents have been shared with you yet. An agent's owner has to give you access.");
-    // Argon #6: no "Open chats" button that would open an empty list.
-    expect(pg.root.querySelector('[data-entry="chat"] .btn')).toBe(null);
-    expect(text(pg.root.querySelector('[data-welcome="fleets"]'))).toBe("Your fleets: 0 of 2");
-    expect(text(pg.root.querySelector('[data-entry="connect"]'))).not.toMatch(/automatic|instantly/i);          // no quick-pairing promise before S-90
+  it("chatting not in this person's access: one note on the launcher, in their words", async () => {
+    const f = fake({ welcome: async () => W({ chat: { state: "deny", reason: "person-denied" } }) });
+    const pg = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
+    expect(text(pg.root.querySelector('[data-welcome="chat-off"]'))).toBe("Your Hub administrator has excluded your account from this.");
   });
-  it("at the fleet limit: manage guidance instead of connecting more", async () => {
-    const f = fake({ welcome: async () => ({ ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 1, fleets: [{ id: "f1", label: "Desk", status: "active" }] } }) });
-    const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
-    expect(pg.root.querySelector('[data-welcome="limit"]')).not.toBe(null);
+  it("no Fleet yet: 0 of 2, the connect hint and the steps shown (the pairing-code line for a person without quick pairing); the launcher's line asks", async () => {
+    const f = fake({ welcome: async () => W() });
+    const card = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
+    expect(text(card.root.querySelector(".hub-my-fleets h3"))).toBe("My fleets 0 of 2");
+    expect(text(card.root.querySelector(".hub-pair-steps"))).toBe("Your Hub administrator connects fleets for you. Ask them for a pairing code.");
+    expect(card.root.querySelector(".hub-pair-more")).toBe(null);
+    expect(text(card.root.querySelector(".hub-my-fleets"))).not.toMatch(/automatic|instantly/i);          // no quick-pairing promise
+    const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
+    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("Want to share agents from your own AgEnD? Connect a fleet in My shared agents →");
+    expect(frame.root.querySelector('[data-welcome="fleets"] a').getAttribute("href")).toBe("/ui/hub/exposures");
+  });
+  it("with a Fleet: its row (normal text, its state) and the steps behind 「+ Connect another fleet」; the launcher's line names them", async () => {
+    const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 8, fleets: [{ id: "f1", label: "Han", status: "active", generation: 1 }, { id: "f2", label: "My fleet", status: "active", generation: 2 }] } }) });
+    const card = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
+    expect([...card.root.querySelectorAll(".hub-my-fleets .hub-row")].map((r: any) => [text(r.querySelector("strong")), text(r.querySelector(".tag"))])).toEqual([["Han", "Active"], ["My fleet", "Active"]]);
+    expect([card.root.querySelector(".hub-my-fleets code"), card.root.querySelector(".hub-pair-steps")]).toEqual([null, null]);   // names are not code; steps folded
+    fire(card.root.querySelector(".hub-pair-more"), "click"); await settle(10);
+    expect([card.root.querySelector(".hub-pair-more"), !!card.root.querySelector(".hub-pair-steps")]).toEqual([null, true]);
+    const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
+    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Han, My fleet) · Manage in My shared agents →");
+  });
+  it("the launcher's Fleet line counts and names only the Fleets still connected — a revoked one is left out", async () => {
+    const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 8, fleets: [{ id: "f1", label: "Han", status: "active" }, { id: "f2", label: "Old desk", status: "revoked" }, { id: "f3", label: "Lab", status: "suspended" }] } }) });
+    const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
+    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Han, Lab) · Manage in My shared agents →");
+  });
+  it("revoke is in the row's ⋯ (quick pairing): it asks first; No sends nothing, Yes revokes that Fleet's generation and reads again", async () => {
+    const fleets = [{ id: "f1", label: "Han", status: "active", generation: 7 }];
+    const revokeOwnFleet = vi.fn(async () => ({ ok: true }));
+    const f = fake({ quickPairingV1: true, revokeOwnFleet, welcome: vi.fn(async () => W({ connect: { state: "allow", maxFleets: 8, fleets } })) });
+    const card = await mountWith(f.c, h("div", null, h(welcome.MyFleetsCard, { quick: true }), h(confirmUi.ConfirmHost, {})));
+    const prior = g.confirm; g.confirm = undefined;   // the app's own confirm dialog, not the page's
+    try {
+    expect(card.root.querySelector(".hub-my-fleets .btn-danger")).toBe(null);   // no inline red button
+    const open = async () => { fire(card.root.querySelector(".hub-fleet-menu button"), "click"); await settle(10);
+      fire([...card.document.querySelectorAll("[role=menuitem]")].find((x: any) => text(x) === "Revoke this fleet")!, "click"); await settle(10); };
+    await open();
+    expect(text(card.document.querySelector("dialog"))).toContain("Revoke Han? It loses its Hub access at once.");
+    fire([...card.document.querySelectorAll("dialog .btn")].find((b: any) => text(b) === "Cancel")!, "click"); await settle(10);
+    expect(revokeOwnFleet).not.toHaveBeenCalled();
+    await open(); fire(card.document.querySelector("[data-confirm=yes]")!, "click"); await settle(20);
+    expect([revokeOwnFleet.mock.calls, f.c.welcome.mock.calls.length]).toEqual([[["f1", 7]], 2]);
+    } finally { g.confirm = prior; }
+  });
+  it("at the fleet limit: the limit line instead of connecting more", async () => {
+    const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 1, fleets: [{ id: "f1", label: "Desk", status: "active" }] } }) });
+    const pg = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
+    expect([!!pg.root.querySelector('[data-welcome="limit"]'), pg.root.querySelector(".hub-pair-more")]).toEqual([true, null]);
   });
   it("each fleet's state in words: paused and can't-be-checked are marked, never shown as active", async () => {
-    const f = fake({ welcome: async () => ({ ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 4, fleets: [
+    const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 4, fleets: [
       { id: "f1", label: "Desk", status: "active" }, { id: "f2", label: "Lab", status: "suspended" }, { id: "f3", label: "Old", status: "revoked" }, { id: "f4", label: "Far", status: "unknown" }] } }) });
-    const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
+    const pg = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
     const tags = [...pg.root.querySelectorAll("[data-fleet-status]")].map((t: any) => [t.getAttribute("data-fleet-status"), text(t), t.getAttribute("class")]);
     expect(tags).toEqual([["active", "Active", "tag ok"], ["suspended", "Paused", "tag warn"], ["revoked", "Revoked", "tag"], ["unknown", "Can't be checked right now", "tag warn"]]);
   });
   it("the directory didn't answer: 'can't be checked right now' with Retry — never a cached yes", async () => {
     let n = 0;
-    const f = fake({ welcome: async () => { n++; return { ok: true, v: 1, mode: "enabled", chat: { state: "unknown" }, publish: { state: "unknown" }, connect: { state: "unknown", maxFleets: 0, fleets: [] } }; } });
-    const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
-    expect(pg.root.querySelector('[data-entry="chat"]').getAttribute("aria-disabled")).toBe("true");
+    const f = fake({ welcome: async () => { n++; return W({ chat: { state: "unknown" }, publish: { state: "unknown" }, connect: { state: "unknown", maxFleets: 0, fleets: [] } }); } });
+    const pg = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
     fire(pg.root.querySelector('[data-welcome="unknown"] .btn'), "click"); await settle(20);
     expect(n).toBe(2);
+    const card = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
+    expect(text(card.root.querySelector(".hub-my-fleets"))).toContain("The directory didn't answer, so this can't be checked right now.");
   });
-  it("legacy (group permissions never enabled): today's behaviour — chat by grants, connect through the admin's pairing", async () => {
-    const f = fake({ welcome: async () => ({ ok: true, v: 1, mode: "legacy", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "deny", maxFleets: 0, fleets: [] } }),
-      catalog: async () => ({ ok: true, askable: [{ exposure: { id: "e1" }, grant: { id: "g1" } }] }) });
-    const pg = await mountWith(f.c, h(welcome.HubWelcome, { name: "Bo" }));
-    expect(pg.root.querySelector('[data-entry="chat"] .btn')).not.toBe(null);
-    expect(text(pg.root.querySelector('[data-entry="connect"]'))).toContain("Your Hub administrator connects fleets for you.");
+  it("legacy (group permissions never enabled): today's behaviour — no launcher note or Fleet line; connect through the admin's pairing", async () => {
+    const f = fake({ welcome: async () => W({ mode: "legacy", connect: { state: "deny", maxFleets: 0, fleets: [] } }) });
+    const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
+    expect(frame.root.querySelector("[data-welcome]")).toBe(null);
+    const card = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
+    expect(text(card.root.querySelector(".hub-my-fleets"))).toContain("Your Hub administrator connects fleets for you.");
+  });
+  it("an administrator on a fresh Hub (no Fleet connected): the one-line 'Hub ready', dismissed for good; a person, or a Hub with a Fleet, never", async () => {
+    const features = ["company-join-v1"];
+    const fresh = await mountWith(fake().c, h(welcome.ChatLauncherFrame, { admin: true, features }));
+    await settle(10);
+    const line = fresh.root.querySelector('[data-welcome="ready"]');
+    expect([text(line), line.querySelector("a").getAttribute("href")]).toEqual(["Your Hub is ready: create a pairing code to invite colleagues, or set up the room assistant → Open Administration", "/ui/hub/admin?view=manage"]);
+    fire(line.querySelector("button"), "click"); await settle(5);
+    expect([fresh.root.querySelector('[data-welcome="ready"]'), g.localStorage.getItem("agend_hub_ready_dismissed")]).toEqual([null, "1"]);
+    const person = await mountWith(fake().c, h(welcome.ChatLauncherFrame, { admin: false, features }));
+    await settle(10); expect(person.root.querySelector('[data-welcome="ready"]')).toBe(null);
+    const busy = fake({ adminOverview: async () => ({ ok: true, fleets: [{ id: "f", status: "active" }], pairings: [] }) });
+    const used = await mountWith(busy.c, h(welcome.ChatLauncherFrame, { admin: true, features }));
+    await settle(10); expect(used.root.querySelector('[data-welcome="ready"]')).toBe(null);
   });
 });
 
@@ -280,8 +332,8 @@ describe("discovery and gating", () => {
     try {
       const pg = await mountWith(f.c, h(panel.HubPanel, { route: { panel: "hub", tab: "ask" } }));
       await settle(30); expect(peak).toBeLessThanOrEqual(4);
-      release(); await until(() => pg.root.querySelector('[data-welcome="nothing-shared"]'));
-      expect(text(pg.root)).toContain("No agents have been shared with you yet"); expect(peak).toBeLessThanOrEqual(4);
+      release(); await until(() => pg.root.querySelector('[data-launch="none-shared"]'));
+      expect(text(pg.root)).toContain("No agent has been shared with you directly yet"); expect(peak).toBeLessThanOrEqual(4);
     } finally { release(); await settle(10); }
   });
 
@@ -322,7 +374,7 @@ describe("discovery and gating", () => {
     for (const code of ["denied", "revoked"]) {
       const f = fake({ rooms: async () => ({ ok: false, status: 403, code }) });
       const pg = await mountWith(f.c, h(panel.HubPanel, { route: { panel: "hub", tab: "ask" } }));
-      await until(() => pg.root.querySelector(".hub-welcome-page"), 300); await settle(10);
+      await until(() => pg.root.querySelector(".hub-launch"), 300); await settle(10);
       expect(text(pg.root), code).not.toContain("You're not allowed to do that");
       expect(pg.root.querySelector(".hub-home-list [role=alert], .hub-home-list .err"), code).toBe(null);
       await pg.unmount(); mounted.splice(mounted.indexOf(pg), 1); pg.restore(); client.setHubClient(null); panel.resetHubSession();
@@ -335,12 +387,16 @@ describe("discovery and gating", () => {
     await until(() => text(pg.root).includes("You're not allowed to do that"), 300);
     expect(text(pg.root)).toContain("You're not allowed to do that");
   });
-  it("the signed-in landing is the welcome when marked; the chat list otherwise", async () => {
+  it("M-3190: the signed-in landing with nothing to open is the launcher — framed by the welcome's projection when marked, not without", async () => {
     const f = fake();
     const pg = await mountWith(f.c, h(panel.HubPanel, { route: { panel: "hub", tab: "ask" } }));
-    await until(() => pg.root.querySelector(".hub-welcome-page"), 300);
-    expect(pg.root.querySelector(".hub-home").className).toContain("has-welcome");
-    expect(f.calls.some(c => c[0] === "welcome")).toBe(true);
+    await until(() => pg.root.querySelector(".hub-launch [data-welcome]"), 300);
+    expect([pg.root.querySelector(".hub-welcome-page"), f.calls.some(c => c[0] === "welcome")]).toEqual([null, true]);
+    await pg.unmount(); mounted.splice(mounted.indexOf(pg), 1); pg.restore(); client.setHubClient(null); panel.resetHubSession();
+    const plain = fake({ session: async () => ({ ok: true, signedIn: true, displayName: "Bo", login: "bo", admin: false, csrf: "x" }) });
+    const other = await mountWith(plain.c, h(panel.HubPanel, { route: { panel: "hub", tab: "ask" } }));
+    await until(() => other.root.querySelector(".hub-launch-title"), 300); await settle(10);
+    expect([other.root.querySelector(".hub-launch [data-welcome]"), plain.calls.some(c => c[0] === "welcome")]).toEqual([null, false]);
   });
   it("fleet Settings → Hub: a Group permissions row on a Hub host, linking to its own configured HTTPS web origin only", async () => {
     expect(section.hubGroupsHref("https://hub.example.test")).toBe("https://hub.example.test/ui/hub/admin?view=groups");

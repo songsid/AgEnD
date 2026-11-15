@@ -62,10 +62,43 @@
 .hub-home { flex: 1; min-height: 0; display: flex; }
 .hub-home-list { display: none; }
 .hub-home-pick { flex: 1; display: flex; align-items: center; justify-content: center; padding: var(--s-6); }
+/* M-3190 (Argon's chat-first review): the launcher — one centred column of agent rows. On a phone the list keeps the page,
+   except on 新對話 and with nothing to list (.is-launch). */
+.hub-home-pick.hub-home-launch { align-items: flex-start; overflow-y: auto; padding: 0; }
+.hub-launch { width: 100%; max-width: 600px; margin: 0 auto; padding: 48px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; }
+.hub-launch-title { font-size: var(--fs-xl); font-weight: var(--fw-semibold); margin: 0; }
+.hub-launch-filter { margin: 0; }
+.hub-launch-rows { display: flex; flex-direction: column; gap: 8px; }
+.hub-launch-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 14px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--bg); color: var(--text); text-decoration: none; }
+.hub-launch-row:hover, .hub-launch-row:focus-visible { background: var(--surface); }
+.hub-launch-av { position: relative; display: inline-flex; flex: none; }
+.hub-launch-av .hub-av { width: 36px; height: 36px; }
+.hub-launch-av .dot { position: absolute; right: -1px; bottom: -1px; width: 6px; height: 6px; box-shadow: 0 0 0 2px var(--bg); }
+.hub-launch-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hub-launch-text strong { font-size: var(--fs-md); font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-launch-text small { color: var(--text-3); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-launch-go { flex: none; color: var(--text-3); font-size: var(--fs-sm); opacity: 0; }
+.hub-launch-row:hover .hub-launch-go, .hub-launch-row:focus-visible .hub-launch-go { opacity: 1; }
+.hub-launch-empty { max-width: 520px; box-sizing: border-box; padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg);
+  display: flex; flex-direction: column; gap: 8px; }
+.hub-launch-empty strong { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-lg); }
+.hub-launch-empty p { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+.hub-launch-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.hub-launch-pill { min-height: 36px; border-radius: 999px; padding: 0 16px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+a.hub-launch-pill { border: 1px solid var(--border); background: transparent; color: var(--text); }
+@media (hover: none) { .hub-launch-go { opacity: 1; } }
+@media (max-width: 899px), (pointer: coarse) { .hub-launch-pill { min-height: var(--tap); } }   /* a fingertip on a phone */
 @media (max-width: 899px) {
   .hub-home-list { display: block; flex: 1; overflow-y: auto; padding-top: var(--s-2); }
   .hub-home-pick { display: none; }
+  .hub-home.is-launch .hub-home-list { display: none; }
+  .hub-home.is-launch .hub-home-pick { display: flex; }
+  .hub-launch { padding: 24px 16px; }
 }
+/* The Hub sidebar's current page: a filled pill, semibold (Argon) — not a focus ring after a click. */
+.side-nav .side-row.active { background: var(--surface-2); font-weight: var(--fw-semibold); }
+.side-nav .side-row:focus:not(:focus-visible) { outline: none; }
 
 /* ── a room ── */
 .hub-chat { flex: 1; min-height: 0; display: flex; }

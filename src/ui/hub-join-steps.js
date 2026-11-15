@@ -21,6 +21,8 @@ export const joinStepsV1 = true;
 register("hubJoinSteps", {
   en: {
     step3: "Tell colleagues how to join", sentence: "In AgEnD, open Settings → Hub, enter {0}, then sign in with the company account.",
+    // M-3190: 我分享的 Agent → My fleets — the same step, its address in a copyable chip under this line.
+    pasteLead: "In AgEnD, open Settings → Hub, paste this address, then sign in with the company account:",
     copy: "Copy these instructions", copied: "Copied", copyFailed: "Copy failed. Select the sentence and copy it.",
     step3Off: "Finish steps 1 and 2 first.", reading: "Checking the saved Hub settings…", readFailed: "Could not refresh the Hub settings. Try again.", retry: "Try again",
     title: "Let colleagues join", lead: "Three steps. Each one is checked against what the Hub has saved.", done: "Done",
@@ -39,6 +41,7 @@ register("hubJoinSteps", {
   },
   "zh-TW": {
     step3: "告訴同仁怎麼加入", sentence: "在 AgEnD 的「設定 → Hub」輸入 {0}，再用公司帳號登入。",
+    pasteLead: "在 AgEnD 的「設定 → Hub」貼上這個位址，再用公司帳號登入：",
     copy: "複製這段說明", copied: "已複製", copyFailed: "複製失敗。請選取這段說明再複製。",
     step3Off: "請先完成步驟 1 和 2。", reading: "正在確認 Hub 已儲存的設定…", readFailed: "目前無法更新 Hub 設定，請再試一次。", retry: "再試一次",
     title: "讓同仁加入", lead: "三個步驟，每一步都依 Hub 已儲存的設定判斷是否完成。", done: "已完成",
@@ -64,6 +67,7 @@ export function displayHost(webOrigin) {
 /** The one sentence colleagues need (step 3's), for this Hub. */
 export const joinSentence = (webOrigin) => { const host = displayHost(webOrigin); return host ? sw("sentence", host) : ""; };
 export const otherWaysLabel = () => sw("otherWays");
+export const pasteLeadLabel = () => sw("pasteLead");
 /** B2's join-code component in its slot, or nothing (see the contract above). */
 // B2 ships the module; until then (and on a Hub that does not serve it) the import fails and the slot stays empty.
 const CODE_MODULE = "./hub-enrolment-code.js";

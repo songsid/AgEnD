@@ -51,6 +51,11 @@ register("hubGroups", {
     unknown: "The directory didn't answer, so this can't be checked right now.", retry: "Retry", ineligible: "Your directory account can't use this right now.",
     deniedPerson: "Your Hub administrator has excluded your account from this.", suspended: "Paused by your Hub administrator.",
     publishNot: "Sharing agents is not included in your access.",
+    // M-3190: the chat launcher's frame and 我分享的 Agent → My fleets
+    readyBanner: "Your Hub is ready: create a pairing code to invite colleagues, or set up the room assistant →", readyGo: "Open Administration", readyDismiss: "Dismiss",
+    footFleets: "{0} fleets connected ({1})", listSep: ", ", footManage: "Manage in My shared agents →", footNone: "Want to share agents from your own AgEnD?", footConnect: "Connect a fleet in My shared agents →",
+    fleetsTitle: "My fleets", connectCount: "{0} of {1}", fleetMenu: "Fleet {0}", connectAnother: "+ Connect another fleet",
+    copy: "Copy", copied: "Copied", copyFailed: "Copy failed. Select the address and copy it.",
   },
   "zh-TW": {
     entryTitle: "群組權限", entryHint: "讓指定目錄群組的成員與 Agent 對話、分享 Agent 或連接自己的 Fleet，不必逐一核准每個人。",
@@ -95,6 +100,10 @@ register("hubGroups", {
     unknown: "目錄沒有回應，現在無法確認。", retry: "重試", ineligible: "你的目錄帳號目前無法使用這個功能。",
     deniedPerson: "Hub 管理員已將你的帳號排除在外。", suspended: "已被 Hub 管理員暫停。",
     publishNot: "你的存取權不包含分享 Agent。",
+    readyBanner: "Hub 已就緒：產生配對碼邀請同事加入，或設定房間助理 →", readyGo: "前往「管理」", readyDismiss: "關閉",
+    footFleets: "已連接 {0} 個 Fleet（{1}）", listSep: "、", footManage: "前往「我分享的 Agent」管理 →", footNone: "要用自己的 AgEnD 分享 Agent？", footConnect: "前往「我分享的 Agent」連接 Fleet →",
+    fleetsTitle: "我的 Fleet", connectCount: "{0} / {1}", fleetMenu: "Fleet {0}", connectAnother: "＋ 連接另一個 Fleet",
+    copy: "複製", copied: "已複製", copyFailed: "複製失敗。請選取位址再複製。",
   },
 });
 export const hg = (key, ...values) => t(`hubGroups.${key}`, ...values);
