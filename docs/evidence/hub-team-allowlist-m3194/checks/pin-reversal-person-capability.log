@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-team-allowlist-m3194
+
+ ❯ tests/hub-team-allowlist-m3194.test.ts (13 tests | 1 failed | 12 skipped) 47ms
+     × does not expand an ask-only person row into sharing or Fleet connection 44ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-allowlist-m3194.test.ts > T1 allowed-list subjects > does not expand an ask-only person row into sharing or Fleet connection
+AssertionError: expected { outcome: 'allow', …(5) } to match object { outcome: 'deny' }
+(5 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "outcome": "deny",
++   "outcome": "allow",
+  }
+
+ ❯ tests/hub-team-allowlist-m3194.test.ts:92:64
+     90|     f.store.replace({ ...f.store.read(), state: "enabled", people: [{ …
+     91|     expect(await f.store.check(user, "ask_agents", f.ctx)).toMatchObje…
+     92|     expect(await f.store.check(user, "publish_agents", f.ctx)).toMatch…
+       |                                                                ^
+     93|     expect(await f.store.check(user, "pair_fleet", f.ctx)).toMatchObje…
+     94|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 skipped (13)
+   Start at  23:49:43
+   Duration  1.21s (transform 611ms, setup 175ms, import 808ms, tests 47ms, environment 0ms)

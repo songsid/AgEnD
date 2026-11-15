@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "name": "person-capability",
+      "file": "src/hub/group-policy/model.ts",
+      "selectedTest": "ask-only person row",
+      "exitCode": 1,
+      "semanticAssertion": true,
+      "restoredSha256": "92da2f32849ac0528ade7edbf2c33bcfcbc9aba805ad4e4735310349d833f52e"
+    },
+    {
+      "name": "roster-fingerprint",
+      "file": "src/hub/group-policy/impact-inventory.ts",
+      "selectedTest": "exact roster even",
+      "exitCode": 1,
+      "semanticAssertion": true,
+      "restoredSha256": "3ba196d90008db157845a9af4d8342792a67ed36710c0a98df1dc92dfc4e5c91"
+    }
+  ]
+}

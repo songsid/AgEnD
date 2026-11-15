@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "docs/evidence/hub-team-allowlist-m3194/README.md",
-      "sha256": "c775a4ff61ad122de284276958588de07c9e6eb963ec6eff6f8caa63ae62e519"
+      "sha256": "1087271482c73b2f4dfd30ddc0d27b21f1b60886c68b5f5626031c2bb704a7c5"
     },
     {
       "path": "docs/evidence/hub-team-allowlist-m3194/browser/browser-initial-receipt.json",
@@ -97,6 +97,22 @@
       "sha256": "ed558c66a200ee9bc5246cd2ac20fcaa24219b86596b1312250541bca70c4c82"
     },
     {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/pin-reversal-person-capability.log",
+      "sha256": "d3a68e14e9ebbdb0c6ba9683795b6633707ed569452575abc932eb21ac368791"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/pin-reversal-roster-fingerprint.log",
+      "sha256": "696a08bed889ee8945a1932d18f85becf402cc1a497c32576b7eb9d392b25538"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/reviewer-pin-reversals.json",
+      "sha256": "b151ee1b5bd5e8872a0696b15cbc3b1088067499703751c0af8071a6c386cef7"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/reviewer-pins-after.log",
+      "sha256": "50ef103256bfafc5d497ac7679d62bfd4d5a3d114701528aa05d1fa2196702d5"
+    },
+    {
       "path": "docs/evidence/hub-team-allowlist-m3194/checks/source-types-combined.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
@@ -106,6 +122,10 @@
     },
     {
       "path": "docs/evidence/hub-team-allowlist-m3194/checks/test-types-combined.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-team-allowlist-m3194/checks/test-types-pins.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
@@ -142,7 +162,7 @@
     },
     {
       "path": "docs/evidence/hub-team-allowlist-m3194/source-bindings.json",
-      "sha256": "a45ee2190cb456e1711509928eb3c85dc45c11dbe67cbcc3fa6e500cf26d3727"
+      "sha256": "ec09c1aa10a62f531bf357e3a2176c5a59a155dc29c20e961879748435594ce8"
     }
   ]
 }

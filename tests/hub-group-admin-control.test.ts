@@ -91,6 +91,22 @@ describe("sealed group policy confirmation control", () => {
     expect(w.directory.checkEligibility).toHaveBeenCalledWith(t.unseen); expect(w.read).not.toHaveBeenCalled();
     expect(w.db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(personKeyString(t.unseen))).toBeUndefined();
   });
+  it("T1 binds the exact roster even when all members were already in the same known-person inventory", async () => {
+    const w = fixture(), t = teamProposal(w);
+    w.db.prepare("DELETE FROM hub_team_members WHERE team_id=?").run(t.id);
+    for (const p of [w.owner, w.asker]) w.db.prepare("INSERT INTO hub_team_members VALUES(?,?,'Member','member','')").run(t.id, personKeyString(p));
+    const next = { ...w.proposal(), teams: t.next.teams }, preview = await w.control.preview({ policy: next }, w.ctx);
+    expect(preview.ok).toBe(true); if (!preview.ok) throw Error("preview refused");
+    const before = w.impactInventory.snapshot([w.policy.read(), next]);
+    w.db.prepare("DELETE FROM hub_team_members WHERE team_id=? AND person=?").run(t.id, personKeyString(w.asker));
+    w.db.prepare("INSERT INTO hub_team_members VALUES(?,?,'Admin','avery','')").run(t.id, personKeyString(w.administrator));
+    w.db.prepare("UPDATE hub_teams SET revision=revision+1 WHERE id=?").run(t.id);
+    const after = w.impactInventory.snapshot([w.policy.read(), next]);
+    expect(after.people).toEqual(before.people); expect(after.resources).toEqual(before.resources); expect(after.teamMembers).toBe(before.teamMembers);
+    expect(after.fingerprint).not.toBe(before.fingerprint);
+    expect(await w.control.apply({ policy: next, previewDigest: preview.previewDigest }, w.ctx)).toMatchObject({ ok: false, code: "conflict" });
+    expect(w.policy.read().state).toBe("never-enabled");
+  });
   it("T1 preview/apply removes empty optional fields from the committed policy", async () => {
     const w = fixture(), t = teamProposal(w);
     expect((await w.apply(t.next)).result).toMatchObject({ ok: true });

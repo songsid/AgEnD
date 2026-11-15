@@ -85,6 +85,18 @@ describe("T1 allowed-list subjects", () => {
     f.checkEligibility.mockResolvedValue({ eligible: false, reason: "disabled" });
     expect(await f.store.check(user, "ask_agents", f.ctx)).toMatchObject({ outcome: "deny", reason: "ineligible" });
   });
+  it("does not expand an ask-only person row into sharing or Fleet connection", async () => {
+    const f = fixture();
+    f.store.replace({ ...f.store.read(), state: "enabled", people: [{ person: user, name: "Alex", allow: ["ask_agents"], maxFleets: 8 }] }, user, f.ctx);
+    expect(await f.store.check(user, "ask_agents", f.ctx)).toMatchObject({ outcome: "allow" });
+    expect(await f.store.check(user, "publish_agents", f.ctx)).toMatchObject({ outcome: "deny" });
+    expect(await f.store.check(user, "pair_fleet", f.ctx)).toMatchObject({ outcome: "deny", maxFleets: 0 });
+  });
+  it("keeps eligibility-only facts uncertain when an AD allowance could still apply", () => {
+    const p = parseGroupPolicy({ ...base(), groups: [{ group: { realm: "example", objectId: groupId }, dn: "CN=Department,DC=example", allow: ["ask_agents"], maxFleets: 1 }] });
+    expect(evaluateGroupPolicy(p, user, "ask_agents", { kind: "eligible", person: user, observedAt: 100 }))
+      .toMatchObject({ outcome: "unknown", authoritative: false });
+  });
   it("canonicalizes removed optional subjects away on write for the legacy strict format", () => {
     const f = fixture(); f.enable();
     f.store.replace({ ...f.store.read(), people: [{ person: user, name: "Alex", allow: ["ask_agents"], maxFleets: 1 }] }, user, f.ctx);

@@ -1,0 +1,25 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-team-allowlist-m3194
+
+ ❯ tests/hub-group-admin-control.test.ts (57 tests | 1 failed | 56 skipped) 58ms
+     × T1 binds the exact roster even when all members were already in the same known-person inventory 56ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-group-admin-control.test.ts > sealed group policy confirmation control > T1 binds the exact roster even when all members were already in the same known-person inventory
+AssertionError: expected '1c140ef6eccd8f692ae79baffc5e7b78db3bd…' not to be '1c140ef6eccd8f692ae79baffc5e7b78db3bd…' // Object.is equality
+ ❯ tests/hub-group-admin-control.test.ts:106:35
+    104|     const after = w.impactInventory.snapshot([w.policy.read(), next]);
+    105|     expect(after.people).toEqual(before.people); expect(after.resource…
+    106|     expect(after.fingerprint).not.toBe(before.fingerprint);
+       |                                   ^
+    107|     expect(await w.control.apply({ policy: next, previewDigest: previe…
+    108|     expect(w.policy.read().state).toBe("never-enabled");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 56 skipped (57)
+   Start at  23:49:45
+   Duration  1.39s (transform 808ms, setup 178ms, import 957ms, tests 58ms, environment 0ms)

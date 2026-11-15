@@ -120,7 +120,7 @@
     },
     {
       "path": "tests/hub-group-admin-control.test.ts",
-      "sha256": "194196644401df7e085ea3fee957b863a1a9eac06d231615313401211aebd52f"
+      "sha256": "cdf4e65f5f36917f513707a908ea4b6e90c5ba0d81a727b8eb142907c94b8b35"
     },
     {
       "path": "tests/hub-group-search-s2.test.ts",
@@ -136,7 +136,7 @@
     },
     {
       "path": "tests/hub-team-allowlist-m3194.test.ts",
-      "sha256": "c09b6e7b205468d5483f5c4d9218fbdeb2b2dcc3ec714454f8570f33ee54ab7f"
+      "sha256": "db948ffe78260936c0591ac88598745b6d45e347af28a402590e14131ecab6ec"
     },
     {
       "path": "tests/hub-team-allowlist-ui-m3194.test.ts",
@@ -152,5 +152,7 @@
     }
   ],
   "r1Delta": "Common writer deletes empty optional arrays; two regression pins. No JS/CSS/visual change from capture source. Four zero-count tap exceptions removed after capture.",
-  "scope": "Logs retain individual historical stages; current JS/CSS capture bindings verified against actual response hashes. R1 native and84/3 tests bind writer delta."
+  "scope": "Logs retain individual historical stages; current JS/CSS capture bindings verified against actual response hashes. R1 native and84/3 tests bind writer delta.",
+  "r2Parent": "e1173950699a78db992b2a4126257380f7a2b378",
+  "r2Delta": "Only three reviewer-requested assertion pins in two test files; runtime unchanged from R1."
 }
