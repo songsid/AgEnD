@@ -18,6 +18,10 @@
       "sha256": "ee56677b972a1f30c2619d58ac303fe5e7a25859d5380728a44523f07bfb6ed8"
     },
     {
+      "path": "src/backend/claude-code.ts",
+      "sha256": "af619e95ec7451e91c7130abb9ecbc88806ae133118d74d385a0718489ead205"
+    },
+    {
       "path": "src/daemon.ts",
       "sha256": "f1c3044d8540f3588a20bf03c9612e7c359c42f7ce0038042cc0b9b0df6b5d04"
     },
@@ -124,6 +128,18 @@
     {
       "path": "src/queued-handoffs.ts",
       "sha256": "f68f430ed6bb2301ac066b6785ec20232fe9c87c97dd24dafd1b2ae9c3cf9d53"
+    },
+    {
+      "path": "tests/fixtures/claude-2.1.293-busy-empty.pane.txt",
+      "sha256": "06ed92978a7f4a67bc2e57e4282cddaad38f544994ec11d80df5819483a99a72"
+    },
+    {
+      "path": "tests/fixtures/claude-2.1.293-long-busy-pasted.pane.txt",
+      "sha256": "a1e03691d56e1b87c0be587c11bb9f6ef8615531b12b9085f10b49776443828b"
+    },
+    {
+      "path": "tests/fixtures/claude-2.1.293-long-busy-queued.pane.txt",
+      "sha256": "d1d7f5829c44118b026a98f3e5ab7ddfd0a69c6f43c1674e0020e368252ab81d"
     },
     {
       "path": "tests/helpers/hub-listener-ports.ts",
