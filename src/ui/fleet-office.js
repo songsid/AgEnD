@@ -55,6 +55,10 @@
 //   that office; a person opens their chat. A tile too small to read (under TAG_MIN_K) shows name tags on hover only;
 //   bubbles are drawn after every tile (never cut at a tile's edge). Fit keeps the tiles clear of the controls
 //   (FIT_PAD). Edit offices and Edit layout wait for a single office.
+// - Carousel (#4010; offered with two or more stored offices, on the signed-in dashboard only): chosen offices, each
+//   the full-size office in turn (not All offices' tiles), for a TV. The offices and the interval are kept per browser;
+//   playing starts on enter and on reload. Space pauses, ← / → (and N / P, media keys) step; Pause and Next on the
+//   bar and in fullscreen. Edit offices and Edit layout wait. A share link does not offer it.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { appStore } from "/assets/app-store.js";
 import { t, lang, register } from "/assets/app-i18n.js";
@@ -77,6 +81,7 @@ import { ShareButton } from "./office-share-dialog.js";
 import { DLG, boxColours, boxLayout, createDialogue, createFaces, drawBox, fitBox, messageOf, onBox, pickFront, portraitSrc, stageOf, talkOf, wrap } from "./fleet-office-dialogue.js";
 import { applyOverrides, fitNight, fitSeatFor, stripBox } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
+import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
 import { OK_MAX, OK_MIN, clampPan, desksK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
   wholeInView, zoomLabel, zoomOffice } from "./fleet-office-view.js";
@@ -101,6 +106,10 @@ register("orgo", {
     key: "Key", keyTitle: "What the items carried between desks are", keyLabel: "Carried between desks",
     keyTask: "Folder: a task", keySend: "Envelope: a message", keyReport: "Paper: a report", keyBroadcast: "Horn: a broadcast",
     tileLabel: "{0} ({1})", openOffice: "Open the office {0}", lobbyTile: "Lobby tile (in no office)", lobbyEveryone: "Everyone is in an office", overviewNoEdit: "Pick one office to edit offices or a layout",
+    carousel: "Carousel…", labelCarousel: "Carousel: each chosen office fills the screen in turn. Space pauses; ← and → step; F is fullscreen.",
+    carouselNoEdit: "Leave the carousel to edit offices or a layout", pause: "Pause", resume: "Play", next: "Next",
+    playing: "Playing", paused: "Paused", interval: "Interval", intervalSec: "{0} s", intervalMin: "{0} min",
+    officesInCarousel: "Offices in the carousel",
     dialogue: "Dialogue", dialogueTitle: "When a person messages someone here, show their words and the reply in a box at the bottom (this browser only)",
     dlgWorking: "Working…", dlgSomeone: "Someone", dlgHeardShare: "Sent {0} a message.", dlgAnsweredShare: "Replied.", dlgFile: "(sent a file)", dlgSays: "{0}: {1}",
     dlgBox: "Dialogue: {0}. Click for their card, double-click for their chat.",
@@ -124,6 +133,10 @@ register("orgo", {
     key: "圖例", keyTitle: "桌子之間傳遞的物品代表什麼", keyLabel: "桌子之間傳遞的物品",
     keyTask: "資料夾：任務", keySend: "信封：訊息", keyReport: "紙張：回報", keyBroadcast: "喇叭：廣播",
     tileLabel: "{0}（{1}）", openOffice: "開啟辦公室「{0}」", lobbyTile: "大廳格（不在任何辦公室）", lobbyEveryone: "每個成員都已在某間辦公室", overviewNoEdit: "請先選一間辦公室，再編輯辦公室或配置",
+    carousel: "輪播…", labelCarousel: "輪播：每間勾選的辦公室輪流佔滿畫面。空白鍵暫停；← 與 → 切換；F 切換全螢幕。",
+    carouselNoEdit: "請先離開輪播，再編輯辦公室或配置", pause: "暫停", resume: "播放", next: "下一間",
+    playing: "播放中", paused: "已暫停", interval: "間隔", intervalSec: "{0} 秒", intervalMin: "{0} 分鐘",
+    officesInCarousel: "輪播的辦公室",
     dialogue: "對話框", dialogueTitle: "有人傳訊息給這裡的成員時，在下方的對話框顯示訊息與回覆（只限這個瀏覽器）",
     dlgWorking: "處理中…", dlgSomeone: "有人", dlgHeardShare: "傳了一則訊息給 {0}。", dlgAnsweredShare: "已回覆。", dlgFile: "（傳了一個檔案）", dlgSays: "{0}：{1}",
     dlgBox: "對話框：{0}。點一下看資料卡，點兩下開啟聊天。",
@@ -636,6 +649,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [editing, setEditing] = useState(false);
   const [choice, setChoice] = useState(() => opening ?? store.choice());
   const [filter, setFilter] = useState(() => store.filter());
+  // #4010: the carousel's offices and interval (per browser); the slide index and playing are this visit only.
+  const [carSaved, setCarSaved] = useState(() => store.carousel());
+  const [carIndex, setCarIndex] = useState(0);
+  const [carPlaying, setCarPlaying] = useState(true);
   // #2716: the whole-fleet office's style — the host's (for everyone) and this browser's own pick. An admin sees the
   // host's (their own pick only while the host keeps none) and picks for everyone; anyone else's own pick, else the host's.
   const [hostStyle, setHostStyle] = useState(undefined);            // undefined: not read yet; null: none kept
@@ -899,7 +916,24 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
 
   // #2554: All offices — chosen, and at least two offices stored (else the whole fleet, as an office gone is).
   const overview = choice === ALL_ID && overviewOk(stored);
-  const custom = choice !== AUTO_ID && !overview ? stored.find((o) => o.id === choice) || null : null;
+  // #4010: Carousel — chosen on the signed-in dashboard, at least two stored; the ticked list may be shorter (then
+  // the one left is shown still, or the whole fleet with none). Playing starts on enter; the timer is a timeout so a
+  // Next or an interval change resets it.
+  const carouselPick = opening == null && choice === CAROUSEL_ID && carouselOk(stored);
+  const carIds = carouselPick ? carouselIdsOk(carSaved ? carSaved.ids : null, stored) : [];
+  const carousel = carouselPick && carIds.length >= 2;
+  const slideId = carouselPick && carIds.length ? carIds[((carIndex % carIds.length) + carIds.length) % carIds.length] : null;
+  const custom = slideId ? stored.find((o) => o.id === slideId) || null
+    : (choice !== AUTO_ID && !overview ? stored.find((o) => o.id === choice) || null : null);
+  const carouselAct = useRef({ on: false, act: () => {} });
+  const stepCar = (dir) => { if (!carIds.length) return; setCarIndex((i) => (dir > 0 ? nextIndex(i, carIds.length) : prevIndex(i, carIds.length))); };
+  carouselAct.current = { on: carousel, act: (kind) => { if (kind === "pause") setCarPlaying((p) => !p); else if (kind === "next") stepCar(1); else if (kind === "prev") stepCar(-1); } };
+  useEffect(() => {
+    if (!carousel || !carPlaying) return undefined;
+    const ms = intervalOk(carSaved && carSaved.interval) * 1000;
+    const t = setTimeout(() => stepCar(1), ms);
+    return () => clearTimeout(t);
+  }, [carousel, carPlaying, carSaved && carSaved.interval, carIndex, carIds.join("|")]);
   // The style: a built-in one, or an uploaded pack once it is loaded (until then, and when it is not one, Desks).
   const wanted = custom ? custom.skin : style;
   // A kept pack wins its id: one kept as "cozy" before it was built in (#2631) is still the style of the offices naming it.
@@ -1227,8 +1261,16 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const key = (e) => {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "Escape") { if (fsRef.current === "immersive") { e.preventDefault(); exitFs(); } return; }
+      const tg = e.target;
+      // #4010: carousel keys at document level so a TV remote works without the canvas focused. Not while a field,
+      // button or link is focused (Space/arrows stay with that control) or over Edit offices / Edit layout.
+      const ck = carouselAct.current;
+      if (ck.on && !carouselHeld(tg) && !editingRef.current && !layoutRef.current) {
+        const a = carouselKey(e);
+        if (a) { e.preventDefault(); ck.act(a); return; }
+      }
       if (e.key !== "f" && e.key !== "F") return;
-      const el = ooRef.current, tg = e.target;
+      const el = ooRef.current;
       // Only here: from inside the view, or with nothing focused (never while typing, nor over Edit offices' dialog).
       if (!el || typing(tg) || editingRef.current || !(tg === d.body || tg === d.documentElement || tg === d || (tg && el.contains(tg)))) return;
       e.preventDefault();
@@ -1490,7 +1532,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const z = zoomKey(e);
     if (z) { e.preventDefault(); if (z === "fit") fit(); else zoomStep(z === "in" ? 1 : -1); return; }
     const dir = PAN_KEYS[e.key];
-    if (dir && e.target === canvasRef.current && !e.altKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); const v = view0(); setView({ ...v, x: v.x - dir[0] * 80, y: v.y - dir[1] * 80 }); }
+    if (dir && e.target === canvasRef.current && !carousel && !e.altKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); const v = view0(); setView({ ...v, x: v.x - dir[0] * 80, y: v.y - dir[1] * 80 }); }
   };
   // The keyboard's way through: a desk in the list, or a handle of Edit layout, is brought into view when focused.
   const onFocusIn = (e) => {
@@ -1549,8 +1591,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
 
   const auto = !custom && !overview;
   // Edit layout: an admin, a stored office, a zones style (built in, or a pack loaded here); not while the offices'
-  // editor is open, nor a second session (nor in All offices: custom is null there).
-  const canLayout = canEdit && storedRev !== null && !!custom && zones && !loading && baseSkin.id === custom.skin && !editing && !layout;
+  // editor is open, nor a second session (nor in All offices: custom is null there; nor in the carousel: the slide is
+  // a stored office but Edit waits).
+  const canLayout = canEdit && storedRev !== null && !!custom && zones && !loading && baseSkin.id === custom.skin && !editing && !layout && !carouselPick;
   const openLayout = () => {
     setLayout({ id: ++layoutSeq.current, officeId: custom.id, skin: custom.skin, pack: styleKey, base: baseSkin.pack, start: skin.pack, draft: skin.pack, rev: storedRev, list: stored });
     setTip(null);
@@ -1583,7 +1626,26 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const teamValue = (opts.find((o) => o.team === f.team) || opts[0]).value;
   const setF = (next) => { const v = filterOk(next); store.saveFilter(v); setFilter(v); };
   // While Edit layout is open the office stays (its picker is disabled; this is the guard behind it).
-  const pick = (id) => { if (layoutRef.current) return; store.saveChoice(id); setChoice(id); setTip(null); };
+  const pick = (id) => {
+    if (layoutRef.current) return;
+    if (id === CAROUSEL_ID) {
+      const cur = store.carousel();
+      const ids = carouselIdsOk(cur ? cur.ids : null, stored);
+      const next = { ids: ids.length ? ids : stored.map((o) => o.id), interval: intervalOk(cur && cur.interval) };
+      store.saveCarousel(next); setCarSaved(next); setCarIndex(0); setCarPlaying(true);
+    }
+    store.saveChoice(id); setChoice(id); setTip(null);
+  };
+  const toggleCarId = (id) => {
+    const have = new Set(carIds);
+    if (have.has(id)) have.delete(id); else have.add(id);
+    const next = { ids: stored.map((o) => o.id).filter((x) => have.has(x)), interval: intervalOk(carSaved && carSaved.interval) };
+    store.saveCarousel(next); setCarSaved(next);
+  };
+  const setCarInterval = (n) => {
+    const next = { ids: carSaved && Array.isArray(carSaved.ids) ? carSaved.ids : carIds, interval: intervalOk(n) };
+    store.saveCarousel(next); setCarSaved(next);
+  };
   const everyone = useMemo(() => { const m = new Map(); for (const n of [...view.top, ...view.teams.flatMap((tm) => tm.nodes), ...view.rest.nodes]) if (!m.has(n.name)) m.set(n.name, n); return [...m.values()]; }, [view]);
   const tipText = tipDesk ? nodeText(tipDesk.node) : null;
   // #2661: the card's person (gone from the office, filtered out or the office changed: it closes).
@@ -1639,13 +1701,17 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const miniRects = overview ? arranged.tiles.map((tt) => ({ key: tt.key, x: tt.x, y: tt.y, w: tt.w, h: tt.h }))
     : zones ? Object.values(L.areas || {}).map((a) => ({ key: a.name, ...a.rect })) : L.rooms.map((r) => ({ key: r.key, x: r.x, y: r.y, w: r.w, h: r.h }));
   const dotR = Math.max(L.width, L.height) / 90;
-  // The switcher: the whole fleet, All offices (two or more stored), each stored office.
-  const officeSelect = (cls) => html`<select class=${`tb-select ${cls}`} value=${layout ? layout.officeId : overview ? ALL_ID : custom ? custom.id : AUTO_ID} disabled=${!!layout}
+  // The switcher: the whole fleet, All offices (two or more stored), Carousel (two or more, signed-in), each stored office.
+  const officeSelect = (cls) => html`<select class=${`tb-select ${cls}`} value=${layout ? layout.officeId : overview ? ALL_ID : carouselPick ? CAROUSEL_ID : custom ? custom.id : AUTO_ID} disabled=${!!layout}
     aria-label=${to("office")} onChange=${(e) => pick(e.target.value)}>
       <option value=${AUTO_ID}>${to("allOffice")}</option>
       ${overviewOk(stored) ? html`<option value=${ALL_ID}>${to("allOffices")}</option>` : null}
+      ${opening == null && carouselOk(stored) ? html`<option value=${CAROUSEL_ID}>${to("carousel")}</option>` : null}
       ${stored.map((o) => html`<option key=${o.id} value=${o.id}>${o.name}</option>`)}
     </select>`;
+  const carChrome = () => !carousel ? null : html`<button type="button" class="btn btn-sm oo-car-pause" onClick=${() => setCarPlaying((p) => !p)}>${to(carPlaying ? "pause" : "resume")}</button>
+    <button type="button" class="btn btn-sm oo-car-next" onClick=${() => stepCar(1)}>${to("next")}</button>
+    <span class="muted oo-car-now">${custom ? custom.name : ""} · ${to(carPlaying ? "playing" : "paused")}</span>`;
   return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}`} ref=${ooRef}>
     <div class="oo-bar">
       <label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>
@@ -1665,26 +1731,36 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
         disabled=${!lobbyAll.length} onChange=${() => { const v = !lobbyOn; store.saveLobbyTile(v); setLobbyOn(v); setTip(null); }} /><span>${to("lobbyTile")}</span></label>
         ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
+      ${carouselPick ? html`<div class="oo-carousel">
+        <span class="oo-pick-label">${to("officesInCarousel")}</span>
+        <div class="oo-carousel-offices">${stored.map((o) => html`<label key=${o.id} class="check"><input type="checkbox" checked=${carIds.includes(o.id)}
+          onChange=${() => toggleCarId(o.id)} /><span>${o.name}</span></label>`)}</div>
+        <label class="oo-pick"><span class="oo-pick-label">${to("interval")}</span>
+          <select class="tb-select oo-car-interval" value=${String(intervalOk(carSaved && carSaved.interval))} onChange=${(e) => setCarInterval(Number(e.target.value))}>
+            ${INTERVALS.map((n) => html`<option key=${n} value=${n}>${n < 60 ? to("intervalSec", n) : to("intervalMin", n / 60)}</option>`)}
+          </select></label>
+        ${carChrome()}
+      </div>` : null}
       ${custom && baseSkin.id !== custom.skin && !loading ? html`<span class="muted oo-note">${to("skinUnknown", styleName(custom.skin))}</span>` : null}
       ${placed.ignored ? html`<span class="muted oo-note">${to("layoutIgnored")}</span>` : null}
       ${styleErr && auto ? html`<span class="note oo-note oo-style-err" role="status">${styleErr}</span>` : null}
       ${traffic ? html`<button type="button" class=${`btn btn-sm oo-key-btn${keyOpen ? " on" : ""}`} aria-expanded=${keyOpen ? "true" : "false"} title=${to("keyTitle")}
         onClick=${() => { const v = !keyOpen; store.saveKeyOpen(v); setKeyOpen(v); }}>${to("key")}</button>` : null}
       ${L.unseated ? html`<span class="muted oo-note">${to("unseated", L.unseated)}</span>` : null}
-      ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => { if (!overview) setEditing(true); }} disabled=${!!layout || overview}
-        title=${overview ? to("overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}
+      ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => { if (!overview && !carouselPick) setEditing(true); }} disabled=${!!layout || overview || carouselPick}
+        title=${overview || carouselPick ? to(carouselPick ? "carouselNoEdit" : "overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}
       ${canLayout ? html`<button type="button" class="btn btn-sm oo-layout" onClick=${openLayout}>${t("orgl.edit")}</button>` : null}
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
         get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
     </div>
     ${traffic && keyOpen ? html`<${OfficeKey} pal=${pal} />` : null}
-    ${editing && !overview ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store} packs=${packs}
+    ${editing && !overview && !carouselPick ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store} packs=${packs}
       ask=${ask} current=${() => shown.current} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
     ${overview || people.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
     <div class=${`oo-stage${layout ? " editing" : ""}`} ref=${stageRef} onPointerDown=${onDown} onPointerMove=${g.move} onPointerUp=${g.up} onPointerCancel=${g.up}
       onWheel=${onWheel} onKeyDown=${onKeyDown} onFocusIn=${onFocusIn} onClickCapture=${g.clickCapture}>
       ${dialogueOn ? html`<div class="sr-only oo-dialogue-live" aria-live="polite">${dlgSay}</div>` : null}
-      <canvas ref=${canvasRef} class=${`oo-canvas${(tipDesk && tipDesk.node.i) || dlgHot ? " hot" : ""}`} role="application" tabindex="0" aria-label=${to(overview ? "labelAll" : "label")}
+      <canvas ref=${canvasRef} class=${`oo-canvas${(tipDesk && tipDesk.node.i) || dlgHot ? " hot" : ""}`} role="application" tabindex="0" aria-label=${to(carouselPick ? "labelCarousel" : overview ? "labelAll" : "label")}
         onPointerMove=${onMove} onPointerLeave=${() => setTip(null)} onClick=${onClick} ondblclick=${onDblClick}></canvas>
       ${overview ? tiles.map((tl) => {
         const text = to("tileLabel", tl.name, tl.count), at = (el) => { if (el) labelEls.current.set(tl.key, el); else labelEls.current.delete(tl.key); };
@@ -1721,7 +1797,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           title=${to("fillTitle")} onClick=${toggleFill}>${to("fill")}</button>
         <button type="button" class="icon-btn oo-fs" aria-label=${to(fs ? "exitFullscreen" : "fullscreen")} title=${to(fs ? "exitFullscreen" : "fullscreen")} onClick=${toggleFs}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${16} /></button>
       </div>
-      ${fs ? html`<div class="oo-fs-bar">${officeSelect("oo-fs-office")}</div>` : null}
+      ${fs ? html`<div class="oo-fs-bar">${officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
       <svg ref=${miniRef} class="oc-mini oo-mini" viewBox=${`0 0 ${Math.max(1, L.width)} ${Math.max(1, L.height)}`} aria-hidden="true" onClick=${onMini}>
         <title>${to("overview")}</title>
         <rect class="oo-mini-matte" x=${-L.width} y=${-L.height} width=${L.width * 3} height=${L.height * 3} fill=${matte} />

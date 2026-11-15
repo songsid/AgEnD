@@ -2478,8 +2478,12 @@ button.oo-tile-label:focus-visible { outline: 2px solid var(--focus); outline-of
 .oo.fs.immersive { position: fixed; inset: 0; z-index: 50; width: 100vw; height: 100vh; width: 100dvw; height: 100dvh; }
 html.oo-immersive, html.oo-immersive body { overflow: hidden; }
 html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
-.oo-fs-bar { position: absolute; left: var(--s-3); top: var(--s-3); z-index: 6; display: flex; align-items: center; gap: var(--s-2); }
+.oo-fs-bar { position: absolute; left: var(--s-3); top: var(--s-3); z-index: 6; display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
 .oo-fs-bar .tb-select { max-width: 180px; }
+/* #4010: carousel — ticked offices and the interval in the Office bar; Pause / Next / name in the bar and in fullscreen. */
+.oo-carousel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
+.oo-carousel-offices { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
+.oo-car-now { font-size: var(--fs-xs); }
 .ol-overlay { position: absolute; left: 0; top: 0; z-index: 4; }
 .ol-svg { display: block; overflow: visible; touch-action: none; }
 .ol-grid { stroke: var(--text-3); stroke-opacity: 0.25; stroke-width: 1; }
