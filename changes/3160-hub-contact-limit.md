@@ -1,1 +1,4 @@
-Shared agents now default to refusing contact with other Fleet agents while answering a Hub question, until the answer is accepted or 30 minutes pass. Configure the choice in Settings → Hub → Shared agents; existing shares get the default and a one-time notice.
+---
+section: Added
+---
+- Shared agents now default to refusing contact with other Fleet agents while answering a Hub question, until the answer is accepted or 30 minutes pass. Configure the choice in Settings → Hub → Shared agents; existing shares get the default and a one-time notice.
