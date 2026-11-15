@@ -1,6 +1,8 @@
 {
-  "sourceHead": "2ce5cc38a7f0686a0c3c94094e07dec4be49d011",
-  "dirty": [],
+  "sourceHead": "be18e80d936eac12e6adcf9009b656905c68d0d7",
+  "dirty": [
+    "?? docs/screenshots/hub-update-notices-3145/"
+  ],
   "checks": [
     {
       "name": "desktop-en-light admin: five active rows tagged in the server's states, no badge, no page error",
@@ -11,7 +13,7 @@
       "ok": true
     },
     {
-      "name": "desktop-en-light updates: Update {2} above; Update / Owner updates it / waiting + Cancel / rolled back + Try again",
+      "name": "desktop-en-light updates: Update {2} above; Update / Owner updates it / waiting (older version) + Cancel + Update to v{new} instead / rolled back + Try again",
       "ok": true
     },
     {
@@ -43,7 +45,7 @@
       "ok": true
     },
     {
-      "name": "desktop-en-dark updates: Update {2} above; Update / Owner updates it / waiting + Cancel / rolled back + Try again",
+      "name": "desktop-en-dark updates: Update {2} above; Update / Owner updates it / waiting (older version) + Cancel + Update to v{new} instead / rolled back + Try again",
       "ok": true
     },
     {
@@ -75,7 +77,7 @@
       "ok": true
     },
     {
-      "name": "desktop-zh-TW-light updates: Update {2} above; Update / Owner updates it / waiting + Cancel / rolled back + Try again",
+      "name": "desktop-zh-TW-light updates: Update {2} above; Update / Owner updates it / waiting (older version) + Cancel + Update to v{new} instead / rolled back + Try again",
       "ok": true
     },
     {
@@ -107,7 +109,7 @@
       "ok": true
     },
     {
-      "name": "desktop-zh-TW-dark updates: Update {2} above; Update / Owner updates it / waiting + Cancel / rolled back + Try again",
+      "name": "desktop-zh-TW-dark updates: Update {2} above; Update / Owner updates it / waiting (older version) + Cancel + Update to v{new} instead / rolled back + Try again",
       "ok": true
     },
     {
@@ -139,7 +141,7 @@
       "ok": true
     },
     {
-      "name": "phone-en-light updates: Update {2} above; Update / Owner updates it / waiting + Cancel / rolled back + Try again",
+      "name": "phone-en-light updates: Update {2} above; Update / Owner updates it / waiting (older version) + Cancel + Update to v{new} instead / rolled back + Try again",
       "ok": true
     },
     {
@@ -171,7 +173,7 @@
       "ok": true
     },
     {
-      "name": "phone-en-dark updates: Update {2} above; Update / Owner updates it / waiting + Cancel / rolled back + Try again",
+      "name": "phone-en-dark updates: Update {2} above; Update / Owner updates it / waiting (older version) + Cancel + Update to v{new} instead / rolled back + Try again",
       "ok": true
     },
     {
@@ -203,7 +205,7 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-light updates: Update {2} above; Update / Owner updates it / waiting + Cancel / rolled back + Try again",
+      "name": "phone-zh-TW-light updates: Update {2} above; Update / Owner updates it / waiting (older version) + Cancel + Update to v{new} instead / rolled back + Try again",
       "ok": true
     },
     {
@@ -235,7 +237,7 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark updates: Update {2} above; Update / Owner updates it / waiting + Cancel / rolled back + Try again",
+      "name": "phone-zh-TW-dark updates: Update {2} above; Update / Owner updates it / waiting (older version) + Cancel + Update to v{new} instead / rolled back + Try again",
       "ok": true
     },
     {
@@ -266,11 +268,11 @@
     },
     {
       "path": "filtered.desktop-en-light.png",
-      "sha256": "6981a7fbf6367b1a152b680ee374c7f66aef908be6394655fc04a81492b5f73d"
+      "sha256": "cbcee8c7aab6f7fc47793743478e8fc6f9cda31312401885f81439edd4f6fcb5"
     },
     {
       "path": "updates.desktop-en-light.png",
-      "sha256": "7f8ffb8c5342329ae04174a66609465b8d7873659f60bf53f6bae1dfa98cb02c"
+      "sha256": "af56429bbacaf6208cacab45015ad80095ad93603c03411238610156c64ca8ae"
     },
     {
       "path": "rec.desktop-en-light.png",
@@ -286,7 +288,7 @@
     },
     {
       "path": "members.desktop-en-light.png",
-      "sha256": "591552fdf80c1c42e0c64a8121a6e38a0462d974bfd1edaf9f60324ffa75f072"
+      "sha256": "b39f7de660767030ebd4f60f086e7c4fc79034b879cfb111af104704c16abbb1"
     },
     {
       "path": "admin.desktop-en-dark.png",
@@ -294,11 +296,11 @@
     },
     {
       "path": "filtered.desktop-en-dark.png",
-      "sha256": "4e8e13f7406a5a97ab71ddf75ca395c45b87d88191244e181ac6d656f365e4e5"
+      "sha256": "ad1493571b109526acc5bd8406a939d23b7591546e2e80b30e44a18917ae0e8d"
     },
     {
       "path": "updates.desktop-en-dark.png",
-      "sha256": "1d06b560a55c77aa1c47e76e0b3bfd0c78d6f5b0dbe591b542874cebbc503bed"
+      "sha256": "be876d6bfeb57d6f9b42058303291a512fd6e19d3a3f21848a8069d8f641aa0d"
     },
     {
       "path": "rec.desktop-en-dark.png",
@@ -306,11 +308,11 @@
     },
     {
       "path": "rec-preview.desktop-en-dark.png",
-      "sha256": "e1fbc833f2bdbbe759b46dfccf11c32b46eb839106e97528e46b1dd810debf7d"
+      "sha256": "420532d68587d66f6ff9595c21670f67f33998c9a9549ede9dbcd8f499ea6a4d"
     },
     {
       "path": "banner.desktop-en-dark.png",
-      "sha256": "55be571b9cb74ca57fdf0da262b0ebbce82faa309c3de8dae15b9445ddd53ea9"
+      "sha256": "37c6dcac645f71cdf62637b464142354afc0c25e81f4eae002e27c7cf23bd03e"
     },
     {
       "path": "members.desktop-en-dark.png",
@@ -322,11 +324,11 @@
     },
     {
       "path": "filtered.desktop-zh-TW-light.png",
-      "sha256": "203a908f64603a54f6a95b23739f51a6c4f1193b76e9bd88a5e60dc75019c99b"
+      "sha256": "ff62fcb4b0a99458c5bf1b43e4d13585d538cedd85ce427d9bf122e1ac77b065"
     },
     {
       "path": "updates.desktop-zh-TW-light.png",
-      "sha256": "b0cd5ff6f06d81f6703bf6aa954930e906eef7cfecbfc62f4782eeb01ece1e37"
+      "sha256": "e17ead4035f1498fbbf481b910f8f4ad984e27616e4188da7450ea6121a7bdca"
     },
     {
       "path": "rec.desktop-zh-TW-light.png",
@@ -338,11 +340,11 @@
     },
     {
       "path": "banner.desktop-zh-TW-light.png",
-      "sha256": "f8be8288c2108248f00e4b0603f60374bbab1b686a79d2526c9e42324dae439a"
+      "sha256": "4f9d07b900b391c55f33c13d99b1e74fe79456d152bdded1ddce97974ecfe577"
     },
     {
       "path": "members.desktop-zh-TW-light.png",
-      "sha256": "74ffd9d98df0d4be185bdb130d23290ea077961432b416f804d776bbae7d2d13"
+      "sha256": "71e437315f5d85727249400d0ec209c456ab106a943db5fbe603953ae2610af1"
     },
     {
       "path": "admin.desktop-zh-TW-dark.png",
@@ -350,11 +352,11 @@
     },
     {
       "path": "filtered.desktop-zh-TW-dark.png",
-      "sha256": "9e57ff5193c4fae30a3b074900fa6f6866885315ca92b5ab1ea20fad01ce91af"
+      "sha256": "47d9dd010d298984be7642bc3c308cf4371e2e48f19ea1b8674b4b6fb558131c"
     },
     {
       "path": "updates.desktop-zh-TW-dark.png",
-      "sha256": "c3471250be61dd50f3990a05243f3ab859755c942709003ca2b579bbae0fa59b"
+      "sha256": "6c35e600dcdea2fb323007ed48ac5057da1fbe5421ec26d53fe0f6b51f27c6b8"
     },
     {
       "path": "rec.desktop-zh-TW-dark.png",
@@ -370,11 +372,11 @@
     },
     {
       "path": "members.desktop-zh-TW-dark.png",
-      "sha256": "205de5da41dcd156228bebddb49925ba67a04b78922128ec956a6d8770ce5f24"
+      "sha256": "e09d2e9e21ea9c3ef563468779e680097229bedcaad099456e2f7f5454a5808a"
     },
     {
       "path": "admin.phone-en-light.png",
-      "sha256": "e1e8b3a746172a5720f27507aa319043fb1b41225422f1bc4cf20b67a1d544e3"
+      "sha256": "2e86ab6c2d90eb580cdc85edb862389053c133667fd0af8631b48189feeb5b62"
     },
     {
       "path": "filtered.phone-en-light.png",
@@ -382,7 +384,7 @@
     },
     {
       "path": "updates.phone-en-light.png",
-      "sha256": "df10c1f09cbebd6a6ab4ad93a3ed1fc4aa21e169046f971c66dc6b7846d60ccd"
+      "sha256": "f86a33b4fab46ede1722413d96914f9568e621a26f135ba2ac9b04afecb07d26"
     },
     {
       "path": "rec.phone-en-light.png",
@@ -390,7 +392,7 @@
     },
     {
       "path": "rec-preview.phone-en-light.png",
-      "sha256": "6db2e163bf44fd00ef00130cfcc5657d358ea1654e06cd914a4d244df20f03f5"
+      "sha256": "7f7cd5c7863b111da5767ccac1d31a695887c30e0055493cd3ac996994d2cca0"
     },
     {
       "path": "banner.phone-en-light.png",
@@ -398,11 +400,11 @@
     },
     {
       "path": "members.phone-en-light.png",
-      "sha256": "dd35406eabb993d240ec9e760212ba19365325421de42b334b403d3524c00c5d"
+      "sha256": "562eedb5672e71dbeca3edc134d759363429ded05465b4c2e48f09880ffdf4ae"
     },
     {
       "path": "admin.phone-en-dark.png",
-      "sha256": "3d0fba752610bae85faa625f7e3788db0e999161c9d137316184c999cb498d4d"
+      "sha256": "3923b8add5f269228adf4793279a97d570ce0b5ce183981da9ce157c9dc61650"
     },
     {
       "path": "filtered.phone-en-dark.png",
@@ -410,7 +412,7 @@
     },
     {
       "path": "updates.phone-en-dark.png",
-      "sha256": "d6b848060ba5dd10c650f811a2f45c33380fab0b0272fd3436d1738775a05ffe"
+      "sha256": "e14e98e7b27a3ec743b79159c076be745a6b79621a961fde5eca7c7895c309c1"
     },
     {
       "path": "rec.phone-en-dark.png",
@@ -418,27 +420,27 @@
     },
     {
       "path": "rec-preview.phone-en-dark.png",
-      "sha256": "419b6401853d0c47b67d12f95482b809bd6b112f5f13780fcdd8ed6e65bf43c2"
+      "sha256": "d46fb26dd63bae6fd38e899c187e2bc1292bdd804c7e7b7f9ed414be63ac78a6"
     },
     {
       "path": "banner.phone-en-dark.png",
-      "sha256": "6bfaf86341079f6521c99dd5918a6ef0ffdfb8e23146984fb091dad842f8314d"
+      "sha256": "8ceab51c7586f29f4c2c33e70b566447976236c14966fa53c7d10fe34511994e"
     },
     {
       "path": "members.phone-en-dark.png",
-      "sha256": "fe1d4211e2b3d4e97efcf8c1b6c831cf04794b9db71435fa79adfd57ff5c8cff"
+      "sha256": "1f7cecad8d04b10bd84bd834ecb5130bfd02f0f35d110ee1a6629f7bbb74a81c"
     },
     {
       "path": "admin.phone-zh-TW-light.png",
-      "sha256": "f4ac9a306aad0ae03ce9c85437eb67f507d01e6cfef062cc2eb0039caba2c1f6"
+      "sha256": "f970a801f885e0c3cac86ceda3d6d089e609316388a8007d732088016ff93b72"
     },
     {
       "path": "filtered.phone-zh-TW-light.png",
-      "sha256": "85ed8b1f512557a5b7a5658af057ddfa6bf666bb2ef32af64baddb691ffb0c34"
+      "sha256": "a82f5ebfb36a42494d35bce1058a4a7758b4e689eac78d360d400c7cc6e6b914"
     },
     {
       "path": "updates.phone-zh-TW-light.png",
-      "sha256": "f9bd1943ed9e1e7247ad28b17e4ad9e020434303efcd82b13339b84d14684888"
+      "sha256": "f1bb38d542ac38eef968b82fea8caa20ed74f5971e93591f7f5836b97bec64b0"
     },
     {
       "path": "rec.phone-zh-TW-light.png",
@@ -446,27 +448,27 @@
     },
     {
       "path": "rec-preview.phone-zh-TW-light.png",
-      "sha256": "dbb883da4cbb30021729de14e246cdb0d9ce7120b42f9c44426e046ce92f311a"
+      "sha256": "ae3736f1403d8bded84a5d1845af79b0fad47d743f0543a5e6bafe3d9c5b4f32"
     },
     {
       "path": "banner.phone-zh-TW-light.png",
-      "sha256": "5f9dd7c058bc6b20b0657b14d5b3cf57a67d4c30ba72f2686cd72c1e6e76f107"
+      "sha256": "9de56254c7239c593ff0e35b6027e20649cc122027cddc889cd1b757e40d8bdc"
     },
     {
       "path": "members.phone-zh-TW-light.png",
-      "sha256": "380b0a2cb9043e8d83cddbfcdd2c0906d4c540a3c3b2c0bd4997a2879d5e3d1a"
+      "sha256": "b611a8570b43c08cc74fdaafab7f9edcc2ef02858b81bf635c26144fd0aa767f"
     },
     {
       "path": "admin.phone-zh-TW-dark.png",
-      "sha256": "5245743a24772aa1713ee5da2cba7d0d4c4b5f3238446277d47ebf7a71dfc96b"
+      "sha256": "f336d7dd07ab9907e1e2d2475134617e94eb142486263a2778f7bb15a2281ed9"
     },
     {
       "path": "filtered.phone-zh-TW-dark.png",
-      "sha256": "e2a80df9b299226a2e6b0f1f7d3318311a58436f93fc3366357383423ae29e8b"
+      "sha256": "ef0abb77c57ad0849c47e23d49b27c347f42413ae4fbc2438e61fb3767129916"
     },
     {
       "path": "updates.phone-zh-TW-dark.png",
-      "sha256": "36db793b5a4da49532a18fec49ef747ec97df586c272f59f75e53be13f2ba545"
+      "sha256": "1c35085fe6eb130cf7b8dd1dea6b64627c9083921e8a91ca5efd5e937a592891"
     },
     {
       "path": "rec.phone-zh-TW-dark.png",
@@ -478,11 +480,11 @@
     },
     {
       "path": "banner.phone-zh-TW-dark.png",
-      "sha256": "351c64229643c39cd4f8e021ca15c649de02fe9d987c227bf43a063c2f255f18"
+      "sha256": "e891d23a312f37c88b695dfffd8a612404152c9c5d56c4ebdeab5e6accc3a289"
     },
     {
       "path": "members.phone-zh-TW-dark.png",
-      "sha256": "f47da65923cbd0dabceaa7a5197beb1dc8c2f1119a866bfee2ecfbf6bb74b54a"
+      "sha256": "770f50c5d3fbc2286fabf18aa2343512d290eb12e9564c29da11b2c2bd277bc1"
     }
   ]
 }
