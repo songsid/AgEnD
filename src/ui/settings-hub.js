@@ -21,6 +21,7 @@ import { confirmPlace, pendingView } from "./hub-confirm-place.js";
 import { hq } from "./hub-quick-strings.js";
 import { hp } from "./hub-pairing-progress-strings.js";
 import { hpf, pairingCodeState, pairingFailure } from "./hub-pairing-form-strings.js";
+import { HubUpdateConsent } from "./settings-hub-updates.js";
 
 register("hubSharingFleet", {
   en: { hint: "To pause and resume without clearing the allow list, open this agent under My shared agents on the Hub. Turning Share off stops sharing." },
@@ -223,6 +224,8 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {}, prefi
     ${p?.state === "paired" && client.pairingNotices?.().length ? html`<${PairingNotices} memberNotices=${client.pairingNotices()} memberOrigin=${safeWebOrigin(p)} />` : null}
     ${msg && waitingForPairing(msg, p) ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
     ${p && p.state === "paired" ? html`<${HubExposures} key=${`${p.binding}|${p.hub.hubId}|${p.hub.fingerprint?.digest}|${safeWebOrigin(p)}`} client=${client} pairing=${p} />` : null}
+    ${/* M-3145 (versions spec §4.1): under Shared agents, the owner's switch for updates started by this Hub's administrator. */ ""}
+    ${p && p.state === "paired" ? html`<${HubUpdateConsent} client=${client} hubName=${p.hub.name || p.hub.memberOrigin || ""} />` : null}
   </${Frame}>`;
 }
 
