@@ -213,6 +213,19 @@ jobs:
         if: needs.detect-changes.outputs.text-only != 'true'
         timeout-minutes: 2
         run: node scripts/ci/prepare-pwsh.mjs
+      # M-3156: the installer-flow test's Linux side is the node:22-bookworm image. Pulled here, with a bounded retry, so a registry
+      # hiccup is retried and a real outage fails as this infrastructure step, not as an installer test (run 42869574465).
+      - name: Pull the installer test image
+        if: needs.detect-changes.outputs.text-only != 'true'
+        timeout-minutes: 5
+        run: |
+          for attempt in 1 2 3; do
+            if docker pull -q node:22-bookworm; then exit 0; fi
+            echo "::warning::docker pull node:22-bookworm failed (attempt $attempt of 3)"
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 15))
+          done
+          echo "::error::Could not pull node:22-bookworm from the registry after 3 attempts: an infrastructure failure, not an installer test failure."
+          exit 1
       - name: Run isolated installer tests
         if: needs.detect-changes.outputs.text-only != 'true'
         run: npx vitest run --config vitest.config.pwsh.ts
