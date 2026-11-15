@@ -1,0 +1,107 @@
+[
+  {
+    "id": "M1-pairing-name",
+    "file": "src/hub/member/pairing-api.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172/../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-pairing-api-s3c.test.ts",
+      "-t",
+      "projects the known Hub display name",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "originalSha256": "aa5fcb9d61817f200d1f103a89ab5b1ba03baa66ec4a9754bb4e33e5c0a1710d",
+    "mutantSha256": "859a1527e49ec13e042f64a47d22a7ef0d99bf3ac31e6895093b7a73a944d416",
+    "restoredSha256": "aa5fcb9d61817f200d1f103a89ab5b1ba03baa66ec4a9754bb4e33e5c0a1710d",
+    "load1": 5.919921875,
+    "assertionFailure": true
+  },
+  {
+    "id": "M2-factory-name",
+    "file": "src/hub/compose/server.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172/../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-compose.test.ts",
+      "-t",
+      "composes S1 \\+ S2 \\+ S3 \\+ DB \\+ audit",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "originalSha256": "53be4704192371a25136a79d13a40d64d325d52a2bedf1e6183ecfa6ea8c1486",
+    "mutantSha256": "e6f6deba6a1d355b4d77876d12a0056218c86923d1a2f7e6e6b3059e70e7a6b0",
+    "restoredSha256": "53be4704192371a25136a79d13a40d64d325d52a2bedf1e6183ecfa6ea8c1486",
+    "load1": 5.919921875,
+    "assertionFailure": true
+  },
+  {
+    "id": "M3-live-name-getters",
+    "file": "src/hub/compose/member.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172/../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-display-name-m3172.test.ts",
+      "-t",
+      "does not gate member startup",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "originalSha256": "32e3a28e0601d93faeab1ca267da9c003bd48cd0cc7fc4e8e0930d4b461b11d3",
+    "mutantSha256": "39a3edf6006dee8547bc78be4be5d0ea83a2a74c0d65a873aa64afc49e20a4f3",
+    "restoredSha256": "32e3a28e0601d93faeab1ca267da9c003bd48cd0cc7fc4e8e0930d4b461b11d3",
+    "load1": 5.310546875,
+    "assertionFailure": true
+  },
+  {
+    "id": "M4-cached-advice-name",
+    "file": "src/hub/member/recommendations.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172/../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-member-recommendations-m3138.test.ts",
+      "-t",
+      "refreshes a cached recommendation",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "originalSha256": "663b69b77cdec67c228464a4c5620796dddc0fc5140e69e153358cdd743d0593",
+    "mutantSha256": "5dc6176f91fb08698264ac91cf89a3dfa8f85b75f38e71fb1fa2f48f0ef76c7e",
+    "restoredSha256": "663b69b77cdec67c228464a4c5620796dddc0fc5140e69e153358cdd743d0593",
+    "load1": 5.310546875,
+    "assertionFailure": true
+  },
+  {
+    "id": "M5-binding-check",
+    "file": "src/hub/display-name.ts",
+    "command": [
+      "nice",
+      "-n",
+      "10",
+      "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172/../../node_modules/.bin/vitest",
+      "run",
+      "tests/hub-display-name-m3172.test.ts",
+      "-t",
+      "learns a code-only pairing",
+      "--maxWorkers=2"
+    ],
+    "exit": 1,
+    "originalSha256": "35f1c2c71e58683eb75a5c2adeb5707d91ba66728536d26d03d66c55da33b5e8",
+    "mutantSha256": "3c6ca28ed59dd1f6f0aa7f25fc1f1a4ea55f9e47b9e8dfa42f4a505e5a005f7e",
+    "restoredSha256": "35f1c2c71e58683eb75a5c2adeb5707d91ba66728536d26d03d66c55da33b5e8",
+    "load1": 5.3662109375,
+    "assertionFailure": true
+  }
+]

@@ -1,0 +1,42 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172
+
+ ❯ tests/hub-pairing-api-s3c.test.ts (31 tests | 1 failed | 30 skipped) 60ms
+   × projects the known Hub display name without changing its paired identity or origins 58ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-pairing-api-s3c.test.ts > projects the known Hub display name without changing its paired identity or origins
+AssertionError: expected { state: 'paired', …(3) } to match object { state: 'paired', hub: { …(4) } }
+(5 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "hub": {
+      "hubId": "6010536c-95a9-453a-ae20-86ac65c7a793",
+      "memberOrigin": "https://hub.test",
+-     "name": "Rig Hub",
++     "name": null,
+      "webOrigin": "https://web.hub.test",
+    },
+    "state": "paired",
+  }
+
+ ❯ tests/hub-pairing-api-s3c.test.ts:59:24
+     57|   saveStartDisplay(r.home, operation, "https://web.hub.test", "My Flee…
+     58|   settleDisplay(r.home, operation, r.hubId, { hubName: "Rig Hub", owne…
+     59|   expect(r.api.view()).toMatchObject({ state: "paired", hub: { hubId: …
+       |                        ^
+     60| });
+     61| /** The pairing the page shows (what a disconnect is confirmed for). */
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 30 skipped (31)
+   Start at  16:14:06
+   Duration  4.57s (transform 3.44s, setup 101ms, import 4.25s, tests 60ms, environment 0ms)
+

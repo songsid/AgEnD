@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172
+
+
+ Test Files  3 passed (3)
+      Tests  47 passed (47)
+   Start at  16:14:27
+   Duration  5.61s (transform 5.96s, setup 301ms, import 7.76s, tests 2.28s, environment 0ms)
+

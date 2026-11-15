@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createHubMemberPairingApi, httpsOrigin } from "../src/hub/member/pairing-api.js";
+import { saveStartDisplay, settleDisplay } from "../src/hub/join/display.js";
 
 const homes: string[] = [];
 afterEach(() => { homes.splice(0).forEach((h) => rmSync(h, { recursive: true, force: true })); });
@@ -47,6 +48,16 @@ function rig(over: Record<string, unknown> = {}) {
   return { home, hubId, digest, api, begin, claim, answers, fence, withdrawAll, sleeps, flush, setLink: (l: typeof link) => { link = l; }, expire: () => { expires = now - 1; } };
 }
 const yes = () => true;
+
+it("projects the known Hub display name without changing its paired identity or origins", async () => {
+  const r = rig(), operation = randomUUID();
+  await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+  r.answers.push("paired");
+  await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+  saveStartDisplay(r.home, operation, "https://web.hub.test", "My Fleet");
+  settleDisplay(r.home, operation, r.hubId, { hubName: "Rig Hub", ownerLabel: "Alice" });
+  expect(r.api.view()).toMatchObject({ state: "paired", hub: { hubId: r.hubId, name: "Rig Hub", memberOrigin: "https://hub.test", webOrigin: "https://web.hub.test" } });
+});
 /** The pairing the page shows (what a disconnect is confirmed for). */
 const shownOf = (api: { boundHub(): { hubId: string; binding: string | null } | null }) => { const b = api.boundHub()!; return { hubId: b.hubId, binding: b.binding }; };
 

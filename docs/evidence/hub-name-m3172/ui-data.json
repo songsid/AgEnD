@@ -1,0 +1,66 @@
+{
+  "candidate": {
+    "pairing": {
+      "state": "paired",
+      "binding": "3eb765014986ccf4e5ca5ebcabacae46fdb555b5792bd88c67105c7318183814",
+      "hub": {
+        "hubId": "7a8272df-b0ff-4c50-9c46-049b90479e7d",
+        "name": "Rig Hub",
+        "memberOrigin": "https://127.0.0.1:41479",
+        "webOrigin": "https://127.0.0.1:41480",
+        "fingerprint": {
+          "kind": "hub-key",
+          "digest": "9aa5af881df9cad184809ae3058110756c8205d4a42fe3ead4a588f6996e6940"
+        }
+      },
+      "link": "offline"
+    },
+    "notice": {
+      "requestId": "74c1f09d-4053-47af-af9f-9018e860047a",
+      "hubName": "Rig Hub",
+      "requestedBy": "Alice",
+      "version": "2.4.0-beta.4",
+      "state": "waiting"
+    },
+    "advice": {
+      "hubId": "7a8272df-b0ff-4c50-9c46-049b90479e7d",
+      "hubName": "Rig Hub",
+      "version": "2.4.0-beta.4",
+      "revision": 1,
+      "setAt": 1794729644663,
+      "receivedAt": 1794729644701
+    }
+  },
+  "baseline": {
+    "pairing": {
+      "state": "paired",
+      "binding": "3eb765014986ccf4e5ca5ebcabacae46fdb555b5792bd88c67105c7318183814",
+      "hub": {
+        "hubId": "7a8272df-b0ff-4c50-9c46-049b90479e7d",
+        "name": null,
+        "memberOrigin": "https://127.0.0.1:41479",
+        "webOrigin": "https://127.0.0.1:41480",
+        "fingerprint": {
+          "kind": "hub-key",
+          "digest": "9aa5af881df9cad184809ae3058110756c8205d4a42fe3ead4a588f6996e6940"
+        }
+      },
+      "link": "offline"
+    },
+    "notice": {
+      "requestId": "74c1f09d-4053-47af-af9f-9018e860047a",
+      "hubName": "127.0.0.1",
+      "requestedBy": "Alice",
+      "version": "2.4.0-beta.4",
+      "state": "waiting"
+    },
+    "advice": {
+      "hubId": "7a8272df-b0ff-4c50-9c46-049b90479e7d",
+      "hubName": "127.0.0.1",
+      "version": "2.4.0-beta.4",
+      "revision": 1,
+      "setAt": 1794729644663,
+      "receivedAt": 1794729644701
+    }
+  }
+}
