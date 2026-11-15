@@ -114,7 +114,7 @@ export function readLogTail(path: string, max = 32 * 1024): string | null {
 /** What the fleet gives the web routes. */
 export interface WebUpdateHost {
   /** The running version, the last check's offer, and when it was checked (null: not yet). */
-  updateState(): { current: string | null; offer: UpdateOffer | null; checkedAt: number | null; checkFailed: boolean };
+  updateState(): { current: string | null; offer: UpdateOffer | null; hubRecommendation?: import("./hub/recommendation-model.js").HubRecommendedUpdate | null; checkedAt: number | null; checkFailed: boolean };
   /** Look now (no chat notice); rate-limited by the caller's host. */
   checkUpdateNow(): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   updateProgress(): WebUpdateProgress | null;

@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-version-recommendations-m3138
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 8 skipped (9)
+   Start at  07:36:37
+   Duration  2.87s (transform 1.78s, setup 97ms, import 2.31s, tests 312ms, environment 0ms)
+

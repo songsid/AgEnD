@@ -411,3 +411,19 @@ describe("M-2738: the new fleet and a web-started update", () => {
     } finally { await f.stop(); }
   });
 });
+
+it("M3138 exposes cached Hub advice and its arrival signal only through the admin update view", async () => {
+  const f = await fleet();
+  try {
+    const advice = { hubId: "hub", hubName: "hub.test", version: "2.4.0-beta.4", setAt: 100, receivedAt: 200, revision: 1 };
+    f.fm.hubRecommendationRead = () => advice;
+    const listener = vi.fn(), remove = f.fm.onHubRecommendation(listener);
+    f.fm.hubRecommendationChanged(); expect(listener).toHaveBeenCalledTimes(1);
+    expect(f.fm.hubRecommendedUpdate()).toEqual(advice);
+    expect((await raw(f.port, "GET", "/ui/update", f.session("admin").read)).body.hubRecommendation).toEqual(advice);
+    expect((await raw(f.port, "GET", "/ui/update", f.session("read").read)).body).toEqual({ admin: false, current: "2.3.5-beta.2" });
+    f.fm.hubRecommendationRead = null; f.fm.hubRecommendationChanged(); expect(f.fm.hubRecommendedUpdate()).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(2); remove(); f.fm.hubRecommendationChanged(); expect(listener).toHaveBeenCalledTimes(2);
+    expect(spawned).toHaveLength(0);
+  } finally { await f.stop(); }
+});

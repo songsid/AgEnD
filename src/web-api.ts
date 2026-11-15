@@ -787,7 +787,7 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
     const st = host.updateState();
     if (!admin) return { admin: false, current: st.current };
     const progress = host.updateProgress();
-    return { admin: true, current: st.current, offer: st.offer, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, now: Date.now() };
+    return { admin: true, current: st.current, offer: st.offer, hubRecommendation: st.hubRecommendation ?? null, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, now: Date.now() };
   };
   const first = who();
   if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
