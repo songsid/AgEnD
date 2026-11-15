@@ -112,7 +112,7 @@ describe("this browser's authorization line", () => {
     const c = await chip({ state: "none", reason });
     expect(c.textContent.trim()).toBe(settings ? `${text} Settings` : text);
     expect(c.querySelector("button")).toBeNull();
-    expect(c.querySelector('a[href="/settings/access"]') !== null).toBe(settings);
+    expect(c.querySelector('a[href="/settings/access#webAuthority"]') !== null).toBe(settings);
   });
   // §0.3: over the public link the server answers too — Authorize while its link's option is on, why not while it is off.
   it("the temporary public link: asks the server like any page — the option off says how to turn it on (no Settings link: not over the link)", async () => {

@@ -77,8 +77,8 @@ describe("ClassicBot completes the channel human's delegated request", () => {
   it("fits the actual MCP instruction budget", () => {
     expect(Buffer.byteLength(buildMcpCoreInstructions(params))).toBeLessThan(2048);
     expect(Buffer.byteLength(buildMcpCoreInstructions({
-      ...params, instanceName: "classic-宋承翰的ai-4716",
-      workingDirectory: "/home/fixture/.agend/workspaces/classic-宋承翰的ai-4716",
+      ...params, instanceName: "classic-王小明的ai-4716",
+      workingDirectory: "/home/fixture/.agend/workspaces/classic-王小明的ai-4716",
       agendVersion: "2.3.5-beta.2",
       runtimeIdentity: { kind: "classic", backend: "codex", model: "gpt-6.1-sol" },
     }))).toBeLessThan(2048);

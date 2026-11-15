@@ -19,7 +19,7 @@ import { fire } from "./helpers/mini-dom.js";
 import { isServedAsset } from "../src/auth-api.js";
 import { HUB_UI_MODULES } from "../src/hub/http/compose.js";
 
-const MOVED = ["chat-thread.js", "chat-render.js", "preview.js", "html-attachment.js", "chat-time.js", "chat-strings.js", "chat-md-strings.js"];
+const MOVED = ["chat-thread.js", "chat-render.js", "preview.js", "html-attachment.js", "chat-time.js", "chat-strings.js", "chat-md-strings.js", "chat-msg-actions.js", "image-lightbox.js", "image-zoom.js", "image-annotate.js"];
 const NEW = ["chat-composer.js", "side-rail.js", "page-head.js"];
 const ui = (...p: string[]) => join(process.cwd(), "src", "ui", ...p);
 
@@ -33,7 +33,7 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
     for (const f of NEW) expect(existsSync(ui(f)), `${f} has no old path`).toBe(false);
   });
   it("the old path and /assets are one module (one instance)", async () => {
-    const pairs = [["chat-thread.js", "createThread"], ["chat-time.js", "chatTime"], ["html-attachment.js", "loadHtmlAttachment"]] as const;
+    const pairs = [["chat-thread.js", "createThread"], ["chat-time.js", "chatTime"], ["html-attachment.js", "loadHtmlAttachment"], ["chat-msg-actions.js", "installMessageActions"]] as const;
     for (const [f, name] of pairs) {
       const old = await import(/* @vite-ignore */ `/ui/js/${f}`), shared = await import(/* @vite-ignore */ `/assets/${f}`);
       expect(old[name], f).toBe(shared[name]);
@@ -49,7 +49,9 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
       "hub-room-new.js", "hub-room-new-strings.js", "hub-room-settings.js", "hub-room-settings-strings.js", "hub-room-members.js", "hub-room-members-strings.js", "hub-invitations.js", "hub-invitations-strings.js", "hub-admin-rooms.js", "hub-admin-rooms-strings.js",   // Hub rooms, track U2
       "hub-room-list.js", "hub-room-thread.js", "hub-room-agent-strings.js", "hub-room-composer.js", "hub-assistant-admin.js", "hub-assistant-admin-strings.js",   // M-3092 (Hub rooms, track U)
       "hub-room-favorites.js",   // M-3092 S-145
-      "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js"]);   // S-148
+      "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js",   // S-148
+      "hub-room-search.js",   // M-3127 C: Ctrl K's search dialog
+      "hub-fleet-versions.js"]);   // M-3137: Fleet versions
   });
 });
 

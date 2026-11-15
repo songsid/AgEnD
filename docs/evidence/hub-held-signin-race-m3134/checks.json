@@ -1,0 +1,15 @@
+{
+  "product": "3939afb10158f0852831792c64959c74f2e2b3a0",
+  "base": "faefee6924d08d6356f73aaf7a502840dd879a45",
+  "before": {
+    "failed": 1,
+    "skipped": 4
+  },
+  "final": {
+    "passed": 5
+  },
+  "testTypesExit": 0,
+  "productionChanged": false,
+  "newSleeps": false,
+  "mainTestFilePresent": false
+}

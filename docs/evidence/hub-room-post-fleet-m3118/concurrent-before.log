@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-post-m3118
+
+ ❯ tests/hub-room-post-fleet.test.ts (11 tests | 1 failed | 10 skipped) 27ms
+   × holds concurrent calls to the same durable identity and refuses a changed body 25ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-post-fleet.test.ts > holds concurrent calls to the same durable identity and refuses a changed body
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ ❯ tests/hub-room-post-fleet.test.ts:87:67
+     85|   expect(h.link.post).toHaveBeenCalledTimes(1);
+     86|   expect(await h.adapter.post(h.caller,{...value,text:"Different"})).t…
+     87|   const third=h.adapter.post(h.caller,value); expect(h.link.post).toHa…
+       |                                                                   ^
+     88|   release();expect((await first).ok).toBe(true);expect((await second).…
+     89| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  00:17:42
+   Duration  1.92s (transform 1.26s, setup 89ms, import 1.65s, tests 27ms, environment 0ms)
+

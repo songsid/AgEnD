@@ -342,8 +342,9 @@ import { GUEST_ROOM_TICK_MS, GuestRoomMembership, guestGroupRooms, type GuestRoo
 import { Delegations, TrafficLog, trafficItem, type Delegation, type TrafficItem } from "./fleet-traffic.js";
 import { installedChannel, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
+import { HUB_UPDATE_NOTICE_FILE, HUB_UPDATE_REMIND_MS, hubNoticeDue, hubNoticeKey, readHubNoticeState, writeHubNoticeState } from "./hub-update-notice.js";
 import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
-import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
+import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdatePin, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
 import { WebHostInstalls, hostUpdatePlan, type HostInstallMode, type HostInstallReporter, type HostInstallStart } from "./web-host-install.js";
@@ -1060,6 +1061,8 @@ const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 /** #2598 B2: a kiro classic → TUI move's Confirm in General. "kiro-migrate:" (13) + 32 hex + ":confirm" (8) = 53 bytes. */
 const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
+/** M-3140: Update now on a Hub-recommended-version notice in General ("hub-update:" + 32 hex + ":update" = 50 bytes). */
+const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
 const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
 /** #2692: a fleet admin's Approve / Reject on an agent's pending skin-pack change, in General. */
 const OFFICE_PACK_CALLBACK_PREFIX = "office-pack:";
@@ -1664,7 +1667,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { NativePaneManager } = await import("./native-pane-manager.js");
     if (this.paneManager) return this.paneManager;
     const store = windowsAgentsFor(this, this.runtimeWindowsExecutor());
-    const allowed = (name: string, tool: string): boolean => nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
+    const allowed = (name: string, tool: string): boolean => (!["hub_room_list","hub_room_post","hub_room_members","hub_people_search"].includes(tool) || this.hubRoomToolsAvailable()) && nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
@@ -1717,14 +1720,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (!isWindowsInstance(this.fleetConfig?.instances[target])) return { result: null, error: "Native panes can only read Windows runtime model inventories" };
           return { result: await this.listModelCatalog({ instanceName: target }) };
         }
-        const ops: Record<string, string> = { list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
+        const ops: Record<string, string> = { hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",hub_room_members:"hub-room-members",hub_people_search:"hub-people-search",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
           delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
         const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
         return daemon.handlePaneToolCall(input, { current, allowed: tool => allowed(name, tool),
           dispatch: (tool, args) => ops[tool] ? dispatchAgentOperation(nativeAgentAdmissionContext(this, {
             instance: name, current: () => current() && allowed(name, tool), taskAllowed: () => current() && allowed(name, "task"),
-          }), name, ops[tool], args, input.operationId) : undefined });
+          }), name, ops[tool], args, input.operationId, () => current() && allowed(name,tool)) : undefined });
       },
     });
   }
@@ -1890,6 +1893,89 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   invalidateHubCompanyJoin(): void { this.companyJoinController?.invalidate(); }
   private hubMemberPairingApi: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null = null;
+  private hubRecommendationRead: (() => import("./hub/recommendation-model.js").HubRecommendedUpdate | null) | null = null;
+  private hubRecommendationListeners = new Set<() => void>();
+  hubRecommendedUpdate(): import("./hub/recommendation-model.js").HubRecommendedUpdate | null { return this.hubRecommendationRead?.() ?? null; }
+  /**
+   * M-3140: the Hub's advice the asker was shown, if it is still this Fleet's current verified advice and still newer
+   * than what runs (same Hub, version and revision) — else null. What a pinned Update installs comes only from here.
+   */
+  private hubRecommendationFor(pin: WebUpdatePin): import("./hub/recommendation-model.js").HubRecommendedUpdate | null {
+    const advice = this.hubRecommendedUpdate();
+    if (!advice || advice.version !== pin.version || advice.revision !== pin.revision) return null;
+    let current: string;
+    try { current = this.runningAgendVersion(); } catch { return null; }
+    return this.semverGt(advice.version, current) ? advice : null;
+  }
+  onHubRecommendation(listener: () => void): () => void { this.hubRecommendationListeners.add(listener); return () => { this.hubRecommendationListeners.delete(listener); }; }
+  private hubRecommendationChanged(): void {
+    for (const listener of this.hubRecommendationListeners) { try { listener(); } catch { /* local presentation observer */ } }
+    void this.maybeNotifyHubRecommendation();   // M-3140: the first notice need not wait for the daily check
+  }
+
+  /**
+   * M-3140 (spec §3.3, chat): the Hub's recommended version in General, with Update now — when it first applies to this
+   * Fleet, then every 7 days while still behind (hub-update-notice.ts). A web-only fleet has no chat: its banner says it.
+   * Asked on every change of the advice and on the daily update check.
+   */
+  private async maybeNotifyHubRecommendation(): Promise<void> {
+    if (this.hubUpdateNoticeBusy || this.shuttingDown) return;
+    this.hubUpdateNoticeBusy = true;
+    try {
+      const advice = this.hubRecommendedUpdate();
+      let current: string | null = null;
+      try { current = this.runningAgendVersion(); } catch { return; }
+      const path = join(this.dataDir, HUB_UPDATE_NOTICE_FILE), now = Date.now();
+      if (!hubNoticeDue(readHubNoticeState(path), advice, current, now, (a, b) => this.semverGt(a, b)) || !advice) return;
+      if (this.webOnlyPromptPlace()) return;
+      const general = this.findGeneralInstance();
+      const adapterId = general ? this.getInstanceAdapterId(general) : undefined;
+      const adapter = general ? this.getAdapterForInstance(general) : undefined;
+      const chatId = general ? this.getGroupIdForInstance(general) : undefined;
+      const topic = general ? String(this.fleetConfig?.instances[general]?.topic_id ?? "") : "";
+      if (!general || !adapterId || !adapter || !chatId) return;
+      const nonce = await this.postNonceButtonPromptOrThrow({
+        prefix: HUB_UPDATE_CALLBACK_PREFIX, alertType: "tip", instanceName: general, adapter, adapterId, chatId,
+        ...(topic ? { threadId: topic } : {}),
+        message: t("hub_update.notice", advice.hubName, `v${advice.version}`, `v${current}`),
+        choices: [{ action: "update", label: t("hub_update.button") }],
+        expiredText: t("hub_update.expired"),
+        timeoutMs: HUB_UPDATE_REMIND_MS,
+      });
+      this.pendingHubUpdates.set(nonce, { version: advice.version, revision: advice.revision });
+      const expiry = setTimeout(() => this.pendingHubUpdates.delete(nonce), HUB_UPDATE_REMIND_MS + 60_000);
+      expiry.unref?.();
+      writeHubNoticeState(path, { key: hubNoticeKey(advice), at: now });
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message }, "Hub recommended-version notice not posted");
+    } finally { this.hubUpdateNoticeBusy = false; }
+  }
+
+  /**
+   * M-3140: Update now on that notice — what chat /update does (a fleet admin's, the installed agend launched
+   * independently, its progress on the message), pinned to the advice the notice named, re-read now and at the launch.
+   */
+  private async handleHubUpdateCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    // Fable #3955: a fleet admin's press only. Anyone else in General is told privately, and the nonce and the button stay
+    // for an admin (consumeNonceCallback's authorize: refused before anything is consumed or retired).
+    const claimed = this.consumeNonceCallback(HUB_UPDATE_CALLBACK_PREFIX, /^hub-update:([0-9a-f]{32}):(update)$/, data, adapterId, adapter,
+      undefined, userId => this.fleetAdminGate(userId, adapterId) === "ok");
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry } = claimed;
+    const nonce = data.callbackData.slice(HUB_UPDATE_CALLBACK_PREFIX.length, HUB_UPDATE_CALLBACK_PREFIX.length + 32);
+    const pin = this.pendingHubUpdates.get(nonce);
+    this.pendingHubUpdates.delete(nonce);
+    const messageId = entry.messageId ?? data.messageId;
+    const advice = pin ? this.hubRecommendationFor(pin) : null;
+    if (!pin || !advice) { await this.retireNonceButtons(entry, messageId, t("hub_update.changed")); return true; }
+    const by = data.userId ?? "";
+    await this.retireNonceButtons(entry, messageId, t("update.progress.preparing", 0));
+    if (messageId && entry.adapter) this.beginUpdateProgress(entry.adapter, entry.chatId, entry.threadId, messageId);
+    await this.launchInstalledUpdate(`hub-recommended /update by ${adapterId}:${by}`,
+      () => this.fleetAdminGate(by, adapterId) === "ok" && !this.shuttingDown && this.hubRecommendationFor(pin) !== null, advice.version);
+    return true;
+  }
   private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
   /** Explicit owner Settings read only. A paused binding is not permission to mount or connect a member. */
@@ -2233,6 +2319,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubRuntimeCreated(): Promise<import("./hub/runtime.js").HubRuntime> {
     this.hubRuntimeInit ??= (async () => {
       const { HubRuntime } = await import("./hub/runtime.js");
+      const { verifyRoomReceipt } = await import("./hub/member/room-post-receipt.js");
       // M-2682: the one writer for sealed Hub settings (a rename from Hub Administration). It saves hub.* through this
       // fleet's own synchronous writer, so nothing else here runs between its commit point and the new pair in force.
       const { createHubSettingsWriter } = await import("./hub/settings-commit.js");
@@ -2298,9 +2385,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               inboxDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "inbox") : null,
               scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
+            attachReacts: handler => { this.hubReacts = handler; },
           },
+          attachAgentRooms: port => { this.hubAgentRooms = port; this.notifyHubRoomTools(); },
+          roomToolsChanged: () => this.notifyHubRoomTools(),
+          roomNotify: input => this.deliverHubRoomPostAnswer(input),
+          roomReceipt: (caller, receiptId) => verifyRoomReceipt({
+            lookup: (agent, id) => {
+              const item = this.queryDurableDeliveryStatus(agent, {messageId:id}).items[0];
+              if (item?.message_id !== id || !item.authority) return null;
+              const row = this.deliveryOutbox?.getHumanReceipt(id.slice(5));
+              return row ? {row,authority:item.authority} : null;
+            },
+            admin: (agent, actor) => actor.adapter_id === HOST_OPERATOR.adapterId && actor.user_id === HOST_OPERATOR.userId
+              ? this.isWebOnlyFleet()
+              : this.getInstanceAdapterId(agent) === actor.adapter_id && this.isFleetAdmin(actor.user_id, actor.adapter_id),
+          }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
+          attachRecommendations: read => { this.hubRecommendationRead = read; },
+          recommendationChanged: () => this.hubRecommendationChanged(),
           attachPairingNotices: read => { this.hubPairingNotices = read; },
           pokeAttention: () => this.needsYou?.poke(),
           linkState: (state, digest) => { this.hubMemberLink = state; this.hubMemberLinkBinding = digest ?? null; },
@@ -2557,6 +2661,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: input.beforeInput });
     return result !== false;
   }
+  private async deliverHubRoomPostAnswer(input: import("./hub/member/room-post-answers.js").RoomPostNotification): Promise<boolean> {
+    const { HUB_REPORT_TARGET } = await import("./hub/representative.js");
+    if (this.shuttingDown || !this.fleetConfig?.instances[input.agent] || isNativeExecInstance(this.fleetConfig.instances[input.agent])) return false;
+    const result=await this.deliverToInstance(input.agent,{type:"fleet_inbound",targetSession:input.agent,content:input.text,
+      meta:{chat_id:"",message_id:`hub-room-post-answer-${input.id}`,user:`instance:${HUB_REPORT_TARGET}`,user_id:`instance:${HUB_REPORT_TARGET}`,
+        ts:new Date().toISOString(),thread_id:"",from_instance:HUB_REPORT_TARGET,from_display:"Hub",correlation_id:`hub-room-post-answer-${input.id}`,
+        request_kind:"notification",requires_reply:"false",task_summary:"A reply to your Hub room post"}},
+      {isCrossInstance:true,stillCurrent:input.stillCurrent,beforeInput:input.beforeInput});
+    return result!==false;
+  }
 
   /** S-51: why the Hub (or this fleet's Hub membership) is not running, if it is held. Empty while off or running. */
   getHubHolds(): readonly import("./hub/runtime.js").HubHold[] {
@@ -2641,8 +2755,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     return this.hubReports?.(input) ?? null;
   }
+  /** M-3127 OutboundContext: an agent's `react` on a Hub room question (its correlation id as message_id); null: not one. */
+  hubReact(input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+    return this.hubReacts?.(input) ?? null;
+  }
+  private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
+  /** The connected member adapter; never an agent-selectable identity. */
+  private hubAgentRooms: import("./hub/member/room-post.js").AgentRoomPort | null = null;
+  hubRoomToolsAvailable(): boolean { return this.hubAgentRooms?.available() === true; }
+  hubRoomList(caller: import("./hub/member/room-post.js").RoomCaller) {
+    return this.hubAgentRooms?.rooms(caller) ?? Promise.resolve({ok:false as const,code:"unavailable"});
+  }
+  hubRoomMembers(caller: import("./hub/member/room-post.js").RoomCaller, room:string) {
+    return this.hubAgentRooms?.members(caller,room)??Promise.resolve({ok:false as const,code:"unavailable" as const});
+  }
+  hubPeopleSearch(caller: import("./hub/member/room-post.js").RoomCaller, q:string) {
+    return this.hubAgentRooms?.people(caller,q)??Promise.resolve({ok:false as const,code:"unavailable" as const});
+  }
+  hubRoomPost(caller: import("./hub/member/room-post.js").RoomCaller, value:{room:string;text:string;operationId:string;receiptId?:string}) {
+    return this.hubAgentRooms?.post(caller,value) ?? Promise.resolve({ok:false as const,code:"unavailable"});
+  }
+  private notifyHubRoomTools(): void {
+    for (const ipc of this.instanceIpcClients.values()) ipc.send({type:"hub_room_tools_changed"});
+  }
   /** The member side's report_result hook for HUB_REPORT_TARGET while a representative service runs (else null). */
   private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
@@ -2844,6 +2981,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
   /** #2598 B2: the kiro moves waiting on a fleet admin's Confirm in General, by prompt nonce. */
   private pendingKiroMigrations = new Map<string, KiroMigrationPlan>();
+  /** M-3140: a posted Hub-update notice's advice (by its nonce) — which advice the button was offered for. */
+  private pendingHubUpdates = new Map<string, WebUpdatePin>();
+  private hubUpdateNoticeBusy = false;
   private pendingKiroReconciliations = new Map<string, KiroReconciliation>();
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
@@ -6155,7 +6295,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * independently with its log — or a failure in the progress marker. `stillAllowed` is asked again once the awaits
    * are done (the asker may have lost the right, or the fleet begun stopping, meanwhile).
    */
-  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean): Promise<import("node:child_process").ChildProcess | null> {
+  private async launchInstalledUpdate(origin: string, stillAllowed: () => boolean, pin?: string): Promise<import("node:child_process").ChildProcess | null> {
     const { spawn } = await import("./child-process.js");
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
@@ -6163,7 +6303,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return null;
     }
     recordInternalRequest(this.dataDir, "update", origin);
-    const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir);
+    // M-3140: `pin` — this exact version (a Hub's recommendation, re-resolved by the caller), not the install's channel.
+    const launch = await resolveUpdateLaunch(installed.agend, undefined, installed.npmDir, pin);
     if (!launch.ok) {
       this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
       return null;
@@ -13847,7 +13988,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Above the adapter check on purpose: "retry shortly" is the wrong answer
     // to a call that will never be allowed, and an agent that believes it is a
     // timing problem will keep trying.
-    const permitted = this.checkToolPermission("ipc-outbound", instanceName, tool);
+    const permitted = this.checkToolPermission("ipc-outbound", instanceName, tool === "hub_room_status" ? "hub_room_list" : tool);
     if (!permitted.allowed) {
       respond(null, permitted.message);
       return;
@@ -13864,6 +14005,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    // M-3127: a reaction to a Hub room question (message_id = the correlation id it came with) goes to that room, under
+    // the question — never to a chat. Only that question's agent; the same source-daemon fence as its Hub answer.
+    if (tool === "react" && typeof args.message_id === "string" && /^hub-room-[0-9a-f-]{36}$/.test(args.message_id)) {
+      const bootNow = this.getDaemonBootId(instanceName), bootSent = sourceDaemonBootId ?? bootNow;
+      if (!bootNow || bootSent !== bootNow) { respond(null, "Source daemon generation is no longer current; outcome is unknown"); return; }
+      const claimed = this.hubReact({ correlationId: args.message_id, caller: instanceName, emoji: typeof args.emoji === "string" ? args.emoji : "",
+        callerCurrent: () => this.getDaemonBootId(instanceName) === bootSent });
+      if (!claimed) { respond(null, "That message_id is not a Hub room question you were asked."); return; }
+      const outcome = await claimed;
+      if (outcome.ok) respond("ok"); else respond(null, outcome.message);
+      return;
+    }
     // #2305: a reaction to a web chat message is the web chat's own (any fleet, web-only included): never an adapter's.
     if (tool === "react" && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
       // The socket's own instance, never a session name the caller wrote itself (as checkToolPermission: it was not
@@ -18010,6 +18163,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
+    if (await this.handleHubUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroReconcileCallback(data, adapterId, adapter)) return true;
     if (await this.handleOfficePackCallback(data, adapterId, adapter)) return true;
     if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;
@@ -28687,6 +28841,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
       }
     } catch { this.recordUpdateCheck(currentVersion, null); /* silent — network issues */ }
+    await this.maybeNotifyHubRecommendation();   // M-3140: the 7-day reminder rides the daily check
   }
 
   // ── M-2738: updating from the web (src/web-update.ts) ───────────────
@@ -28698,11 +28853,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         let current: string | null = null;
         try { current = this.runningAgendVersion(); } catch { /* unknown: the page compares nothing */ }
         const s = this.updateCheckState;
-        return { current, offer: s?.offer ?? null, checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
+        return { current, offer: s?.offer ?? null, hubRecommendation: this.hubRecommendedUpdate(), checkedAt: s?.checkedAt ?? null, checkFailed: s?.failed ?? false };
       },
       checkUpdateNow: () => this.checkUpdateNow(),
       updateProgress: (): WebUpdateProgress | null => webProgressOf(readUpdateProgress(this.dataDir)),
-      startWebUpdate: (key, person, stillAllowed) => this.startWebUpdateOnce(key, person, stillAllowed),
+      startWebUpdate: (key, person, stillAllowed, pin) => this.startWebUpdateOnce(key, person, stillAllowed, pin),
       updateLog: () => ({ text: readLogTail(updateLogPath(this.dataDir)), error: readUpdateProgress(this.dataDir)?.progress.error ?? null }),
     };
   }
@@ -28728,12 +28883,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * last check offers as installable; the update itself is chat `/update`'s (launchInstalledUpdate). Its progress marker
    * targets no chat message (WEB_UPDATE_ADAPTER); the page reads the stages the updater writes into it.
    */
-  private async startWebUpdate(person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  private async startWebUpdate(person: string, stillAllowed: () => boolean, pin?: WebUpdatePin): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
     if (this.shuttingDown) return { ok: false, status: 409, error: "stopping" };
     // Synchronous from here to the claim: a second start cannot slip in between on the event loop.
     if (this.webUpdateOwned || isUpdateInProgress(this.dataDir)) return { ok: false, status: 409, error: "update_running" };
-    const offer = this.updateCheckState?.offer;
-    if (!offer?.installable) return { ok: false, status: 409, error: "nothing_to_install" };
+    // M-3140: Update pinned to the Hub's recommendation. The page only names which advice it was shown; the version is
+    // this Fleet's own verified view, re-read now (and again at the launch) — a page's word never chooses what installs.
+    let pinned: string | undefined;
+    if (pin) {
+      const advice = this.hubRecommendationFor(pin);
+      if (!advice) return { ok: false, status: 409, error: "recommendation_changed" };
+      pinned = advice.version;
+    }
+    const offer = pinned ? { version: pinned } : this.updateCheckState?.offer;
+    if (!pinned && !this.updateCheckState?.offer?.installable) return { ok: false, status: 409, error: "nothing_to_install" };
+    if (!offer) return { ok: false, status: 409, error: "nothing_to_install" };
     const startedAt = Date.now();
     const claim = { startedAt };
     this.webUpdateOwned = claim;
@@ -28747,7 +28911,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const origin = `web update by ${person}`;
     // Prism #3505 P2-3: the asking session must still be current and an admin's when the updater is launched.
-    void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed()).then(child => {
+    void this.launchInstalledUpdate(origin, () => !this.shuttingDown && stillAllowed() && (!pin || this.hubRecommendationFor(pin) !== null), pinned).then(child => {
       if (!child) { release(); return; }
       child.once("exit", release);
       child.once("error", release);
@@ -28760,11 +28924,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** M-2738: a web start's answer for its key, the same on a retry (at most 32 kept). */
-  private startWebUpdateOnce(key: string, person: string, stillAllowed: () => boolean): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  private startWebUpdateOnce(key: string, person: string, stillAllowed: () => boolean, pin?: WebUpdatePin): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
     // Prism #3505 P3: reserved before anything is awaited — a concurrent request with the same key shares this answer.
     const known = this.webUpdateStarts.get(key);
     if (known) return known;
-    const answer = this.startWebUpdate(person, stillAllowed);
+    const answer = this.startWebUpdate(person, stillAllowed, pin);
     this.webUpdateStarts.set(key, answer);
     while (this.webUpdateStarts.size > 32) this.webUpdateStarts.delete(this.webUpdateStarts.keys().next().value!);
     return answer;

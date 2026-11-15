@@ -1,0 +1,48 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-post-m3118
+
+ ❯ tests/hub-room-post-fleet.test.ts (15 tests | 2 failed | 13 skipped) 41ms
+   × recovers a permanently lost post result only from the exact retained operation in a Hub reply 35ms
+   × refuses reply recovery for an unknown operation, foreign body binding, retired consent or changed canonical post 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-post-fleet.test.ts > recovers a permanently lost post result only from the exact retained operation in a Hub reply
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-room-post-fleet.test.ts:114:49
+    112|   const reply={id:randomUUID(),idempotencyKey:operationId,postId:h.mes…
+    113|     message:{id:randomUUID(),author:{name:"Alex"},text:"Reply",at:1000…
+    114|   expect(h.adapter.receiveAnswer(reply,h.link)).toBe(true);await h.ada…
+       |                                                 ^
+    115|   expect(h.link.ack).toHaveBeenCalledWith(reply.id);h.adapter.close();
+    116|   const restored=h.make();restored.connected(h.link);expect(restored.r…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-post-fleet.test.ts > refuses reply recovery for an unknown operation, foreign body binding, retired consent or changed canonical post
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-room-post-fleet.test.ts:124:49
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 13 skipped (15)
+   Start at  00:47:34
+   Duration  3.26s (transform 2.29s, setup 111ms, import 2.87s, tests 41ms, environment 0ms)
+

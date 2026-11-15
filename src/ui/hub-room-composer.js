@@ -71,10 +71,11 @@ export function refusalText(r) {
 /**
  * The composer. `store`: the room's (send); `detail`: the room GET; `reply`/`onReply`: the message being answered (the
  * thread's Reply); `closed`: archived or no longer a member (the box says why, nothing is sent).
+ * M-3125: `canSendEmpty` — Send works with an empty box (the caller has files ready).
  * M-3117 (for M-3125's files): `attach` is ComposerInput's own ({ title, onFiles } — the Fleet's ＋ left of the box), `pending`
  * the files waiting, drawn first in the box (where the 1:1 chat puts its PendingFiles). Neither given: no Attach.
  */
-export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef, attach = null, pending = null }) {
+export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef, attach = null, pending = null, canSendEmpty = false }) {
   const [value, setValue] = useState(""), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false), [pick, setPick] = useState(0);
   const own = useRef(null), input = inputRef || own;
   const [caret, setCaret] = useState(0);
@@ -92,7 +93,8 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     setTimeout(() => { const el = input.current; if (el) { const n = at.start + o.label.length + 1; el.focus(); try { el.setSelectionRange(n, n); } catch { /* not a text field */ } setCaret(n); } }, 0);
   };
   const send = async () => {
-    const text = value.trim(); if (!text || busy || closed) return;
+    // M-3125: `canSendEmpty` — files are ready to go, so a post may be the files alone (the server takes it).
+    const text = value.trim(); if ((!text && !canSendEmpty) || busy || closed) return;
     setBusy(true); setMsg(null);
     const r = await store.send(text, { mentions: mentionsIn(text, detail), ...(reply ? { replyTo: reply.roomMessage } : {}) });
     setBusy(false);
@@ -122,7 +124,7 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     <${ComposerInput} inputRef=${input} value=${value} attach=${attach} placeholder=${room.assistant ? hroom("composerAssistant") : group ? (short ? hroom("composerShort") : hroom("composer", room.name || "")) : hroom("composerDirect", room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
       controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${chosen ? optId(chosen) : undefined}
       stop=${{ hidden: true, disabled: true, title: t("chat.stopReply"), label: t("chat.stopReply"), onClick: () => {} }}
-      send=${{ hidden: false, disabled: !value.trim() || busy, label: t("chat.send"), onClick: () => { void send(); } }} />
+      send=${{ hidden: false, disabled: (!value.trim() && !canSendEmpty) || busy, label: t("chat.send"), onClick: () => { void send(); } }} />
   </div>
   ${msg ? html`<p class="err" role="alert">${msg.text}${msg.retry ? html` <button type="button" class="btn btn-sm" onClick=${send}>${hroom("retrySend")}</button>` : null}</p>` : null}
   ${group ? html`<div class="composer-row"><span class="hint hub-room-hint">${hroom("composerHint")}</span></div>` : null}`;

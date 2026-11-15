@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-post-m3118
+
+ ❯ tests/hub-room-post-receipt.test.ts (4 tests | 1 failed | 3 skipped) 67ms
+   × allows follow-ups before 24 h, refuses new posts at the boundary, and preserves accepted posts and answers 63ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-post-receipt.test.ts > allows follow-ups before 24 h, refuses new posts at the boundary, and preserves accepted posts and answers
+AssertionError: expected { ok: true, …(3) } to match object { ok: false, code: 'denied', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "code": "denied",
+-   "ok": false,
+-   "reason": StringContaining "Ask your owner again",
++   "ok": true,
+  }
+
+ ❯ tests/hub-room-post-receipt.test.ts:74:76
+     72|     expect((await adapter.post(caller,{...input,operationId:randomUUID…
+     73|     now=delivered+24*60*60*1000;
+     74|     expect(await adapter.post(caller,{...input,operationId:randomUUID(…
+       |                                                                            ^
+     75|     now++;
+     76|     expect(await adapter.post(caller,{...input,operationId:randomUUID(…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 skipped (4)
+   Start at  01:05:48
+   Duration  861ms (transform 364ms, setup 137ms, import 465ms, tests 67ms, environment 0ms)
+

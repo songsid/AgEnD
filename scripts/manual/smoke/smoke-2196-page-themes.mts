@@ -32,7 +32,7 @@ const dir = fm.dataDir ?? fx.dir;
 
 const H = "ota-builder", A = "release-notes-drafter", P = "docs-site-builder", B = "grok-scout";
 fm.fleetConfig.instances = Object.fromEntries(["general", H, A, P, B].map((name, i) => [name, { working_directory: dir, backend: ["claude-code", "codex", "kiro-cli"][i % 3], ...(name === "general" ? { general_topic: true } : {}) }]));
-fm.fleetConfig.teams = { "awp-ota": { members: [H] } };
+fm.fleetConfig.teams = { "ota-svc": { members: [H] } };
 fm.getInstanceStatus = () => "running";
 const HARBOR = {
   v: 1, colors: { light: { bg: "#f3f9f8", surface: "#ffffff", text: "#0c1f1d", text2: "#3a5a56", accent: "#0f766e" },

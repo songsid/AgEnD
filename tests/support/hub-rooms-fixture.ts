@@ -3,11 +3,11 @@
  * Track U builds against it until the rooms server (track R) replaces it. Screens and words: docs/design/hub-rooms-ux.md.
  *
  * The seed (the split's ask, in the spec's own names):
- * - 研一主管週會: 王經理 (me, manager), 陳主任, 吳小安; 12 agents in every presence state; the room assistant.
+ * - 每週主管會議: 王經理 (me, manager), 陳主任, 吳小安; 12 agents in every presence state; the room assistant.
  *   An @all with 6 answers, 1 still working (project-helper) and 5 that reply later (paused, offline, reply-later;
  *   answerLater() brings one), and an assistant
  *   summary of the answers. One invitation waits for its owner (the room's own list).
- * - 研發例會: I am a member (not a manager) and members may not @all (allMention off).
+ * - 專案例會: I am a member (not a manager) and members may not @all (allMention off).
  * - 去年專案: archived (read-only).
  * - Direct chats (「對話」, the list's 「Agent」 group): project-helper (林小華) with a short history, report-bot (offline),
  *   and 「Hub 助理」 (the assistant). One invitation to my own agent waits for me (GET /hub/v1/invitations).
@@ -40,12 +40,16 @@ export interface FixtureMember {
 export interface FixtureMessage {
   id: string; roomId: string; at: number; author: { kind: "person" | "agent" | "assistant" | "system"; id: string; name: string; owner?: { name: string } };
   text: string; mentions: string[]; replyTo?: string; files?: Array<{ id: string; name: string; size: number; mime: string; url: string }>;
-  ask?: { total: number; answered: number; working: number; later: number };
+  ask?: { total: number; answered: number; working: number; later: number; failed?: number; blocked?: number; reason?: string };
   answerTo?: string; stage?: "queued" | "working" | "answered" | "not-answered"; idempotencyKey?: string;
   /** M-3128 (web-claude M-3117): the question's author id, set when an answer row is created. */
   askedBy?: string;
   /** Ridge: a soft warning on a stored message (HTTP 200) — never a resend. */
   warning?: "assistant-unavailable";
+  /** M-3127: reactions; an agent answer's buttons or poll (the Hub's RoomButtonsView). */
+  reactions?: { emoji: string; count: number; members: string[] }[];
+  buttons?: { id: string; labels: string[]; state: string; chosen?: number; by?: string; asker: { id: string; name: string };
+    poll?: { deadline: number; answered: number; multi: boolean; reveal: "close" | "live"; rev: number; counts?: number[]; voters?: string[][] } };
 }
 export interface FixtureRoom {
   id: string; kind: "direct" | "group"; name: string; members: FixtureMember[]; messages: FixtureMessage[];
@@ -67,8 +71,9 @@ const AGENTS: Array<[string, string, Presence, string?]> = [
 ];
 
 /** A fresh fixture (each test or smoke owns its own; nothing is shared). */
-export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixture-csrf", features = ["rooms-v1", "attachments-v1"], teamLead = false } = {}) {
+export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixture-csrf", features = ["rooms-v1", "attachments-v1"], teamLead = false, buttons = false } = {}) {
   let seq = 0;
+  const ballots = new Map<string, number>();   // M-3127: my poll ballot per set
   const nextId = (p: string) => `${p}-${String(++seq).padStart(4, "0")}`;
   const agentMembers: FixtureMember[] = AGENTS.map(([name, owner, presence, note], i) => ({ id: `exp-${String(i + 1).padStart(2, "0")}`, kind: presence === "later" ? "later" : "agent",
     name, owner: { name: owner }, role: "member", presence, ...(note ? { presenceNote: note } : {}),
@@ -82,8 +87,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   const assistant: FixtureMember = { id: "assistant", kind: "assistant", name: "房間助理", role: "member", presence: "idle" };
   const author = (m: FixtureMember) => ({ kind: m.kind === "later" ? "agent" as const : m.kind, id: m.id, name: m.name, ...(m.owner ? { owner: m.owner } : {}) });
 
-  // 研一主管週會: people talk, an @all with answers (9 answered, 1 working, 2 later), the assistant's summary.
-  const group: FixtureRoom = { id: "room-weekly", kind: "group", name: "研一主管週會", members: [...people, ...agentMembers, assistant], messages: [],
+  // 每週主管會議: people talk, an @all with answers (9 answered, 1 working, 2 later), the assistant's summary.
+  const group: FixtureRoom = { id: "room-weekly", kind: "group", name: "每週主管會議", members: [...people, ...agentMembers, assistant], messages: [],
     settings: { allMention: true, historyForNew: "since-join" }, archived: false, readUpTo: null, assistant: true,
     // U2: one pending invitation and one that lapsed after 7 days (the manager can 重新邀請 it).
     invited: [{ id: "inv-0001", exposureId: "exp-90", name: "audit-helper", owner: { name: "周小明" }, at: minutes(10), state: "pending" },
@@ -111,6 +116,21 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   say(group, assistant, minutes(31), "**本週摘要**\n- 9 個 Agent 回報，平均進度約 72%。\n- 風險：測試資料不足（4 個）。\n- 還在處理：project-helper；稍後回覆：2 個。",
     { replyTo: askSummary.id, answerTo: askSummary.id, stage: "answered" });
   say(group, people[1]!, minutes(40), "@project-helper 剛剛那一點再說清楚", { mentions: ["exp-01"], ask: { total: 1, answered: 0, working: 1, later: 0 } });
+  // M-3127 (opt-in, `buttons: true`): budget-check's buttons for me (open), spec-writer's for 陳主任 (shut to me), and a poll.
+  if (buttons) {
+    const budget = agentMembers.find(a => a.name === "budget-check")!, spec = agentMembers.find(a => a.name === "spec-writer")!;
+    const q1 = say(group, people[0]!, minutes(41), "@budget-check 這筆預算要先送審嗎？", { mentions: [budget.id] });
+    say(group, budget, minutes(42), "要先送審，還是等下週一起送？", { replyTo: q1.id, answerTo: q1.id, stage: "answered",
+      buttons: { id: "a".repeat(32), labels: ["先送審", "下週一起"], state: "open", asker: { id: FIXTURE_ME.id, name: FIXTURE_ME.name } } });
+    const q2 = say(group, people[1]!, minutes(43), "@spec-writer 規格要用哪一版？", { mentions: [spec.id] });
+    say(group, spec, minutes(44), "請選規格版本：", { replyTo: q2.id, answerTo: q2.id, stage: "answered",
+      buttons: { id: "b".repeat(32), labels: ["v2", "v3"], state: "open", asker: { id: "person-chen", name: "陳主任" } } });
+    const q3 = say(group, people[1]!, minutes(45), "@budget-check 幫大家開個投票：週會改哪天？", { mentions: [budget.id] });
+    say(group, budget, minutes(46), "週會改哪天？", { replyTo: q3.id, answerTo: q3.id, stage: "answered",
+      buttons: { id: "c".repeat(32), labels: ["週三", "週四", "週五"], state: "open", asker: { id: "person-chen", name: "陳主任" },
+        // The deadline is on the real clock: the page counts down on its own.
+        poll: { deadline: Date.now() + 25 * 60_000, answered: 1, multi: false, reveal: "live", rev: 1, counts: [1, 0, 0] } } });
+  }
   group.readUpTo = group.messages[group.messages.length - 3]!.id;            // 2 unread, one of them @-free
 
   const direct = (id: string, agent: FixtureMember, lines: Array<[number, string, string]>, extra: Partial<FixtureRoom> = {}): FixtureRoom => {
@@ -126,8 +146,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   report.messages[0]!.stage = "queued";
   // Stored as the server stores it: an English fallback name; the page names it by its flag in the viewer's words (Ridge).
   const hubAssistant = direct("room-assistant", { ...assistant, name: "Hub assistant" }, []);
-  // 研發例會: I am only a member here, and members may not @all.
-  const meeting: FixtureRoom = { id: "room-rd", kind: "group", name: "研發例會", members: [{ ...people[0]!, role: "member" }, { ...people[1]!, role: "manager" }, ...agentMembers.slice(0, 4)],
+  // 專案例會: I am only a member here, and members may not @all.
+  const meeting: FixtureRoom = { id: "room-rd", kind: "group", name: "專案例會", members: [{ ...people[0]!, role: "member" }, { ...people[1]!, role: "manager" }, ...agentMembers.slice(0, 4)],
     messages: [], settings: { allMention: false, historyForNew: "since-join" }, archived: false, readUpTo: null, assistant: false, invited: [] };
   say(meeting, system, minutes(1), "陳主任 建立了這個房間。");
   say(meeting, people[1]!, minutes(60), "下週例會改到週三。");
@@ -139,7 +159,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   archived.readUpTo = archived.messages.at(-1)!.id;
   const rooms: FixtureRoom[] = [group, meeting, archived, helper, report, hubAssistant];
   const invitations = [{ id: "inv-in-0001", room: { id: "room-other", name: "產品規劃", people: 4 }, agent: { exposureId: "exp-mine-1", name: "my-notes" }, by: { name: "陳主任" }, at: minutes(100) }];
-  const teams = [{ id: "team-1", name: "研一", department: "group-rd1", departmentName: "研發一部", revision: 1, lead: teamLead ? FIXTURE_ME.id : "person-chen", leadName: teamLead ? FIXTURE_ME.name : "陳主任", members: teamLead ? [FIXTURE_ME.id, "person-wu"] : ["person-chen", "person-wu"], canManage: true, isLead: teamLead, leadEligible: true }];
+  const teams = [{ id: "team-1", name: "研發", department: "group-tm1", departmentName: "研發一部", revision: 1, lead: teamLead ? FIXTURE_ME.id : "person-chen", leadName: teamLead ? FIXTURE_ME.name : "陳主任", members: teamLead ? [FIXTURE_ME.id, "person-wu"] : ["person-chen", "person-wu"], canManage: true, isLead: teamLead, leadEligible: true }];
   const teamView = (team: typeof teams[number]) => ({ ...team, memberInfo: team.members.map(id => ({ id, name: [...people, NEW_PERSON].find(p => p.id === id)?.name || id, login: id === FIXTURE_ME.id ? FIXTURE_ME.login : id.replace("person-", ""), department: "", signedIn: id !== "person-new", agents: id === FIXTURE_ME.id ? [{ id: "exp-mine-1", name: "my-notes" }] : [] })), impact: { grants: [], roomCreator: creators.teams.includes(team.id) } });
   let creators = { people: [FIXTURE_ME.id], teams: [] as string[] };
 
@@ -163,7 +183,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   const fail = (status: number, code: string, extra: Record<string, unknown> = {}): Reply => ({ status, body: { code, ...extra } });
   // U2 (R #3866): AD groups. 研發一部 reads whole (20 direct members, 張新人 among them has never signed in), 研發二部 the
   // directory cannot read whole (503 group-unavailable), 全公司 is too big for a room (over 100 → 409 people-limit).
-  const GROUPS: Record<string, { name: string; people: number }> = { "group-rd1": { name: "研發一部", people: 20 }, "group-rd2": { name: "研發二部", people: 8 }, "group-all": { name: "全公司", people: 132 } };
+  const GROUPS: Record<string, { name: string; people: number }> = { "group-tm1": { name: "研發一部", people: 20 }, "group-rd2": { name: "研發二部", people: 8 }, "group-all": { name: "全公司", people: 132 } };
   const NEW_PERSON: FixtureMember = { id: "person-new", kind: "person", name: "張新人", role: "member", presence: "offline", signedIn: false };
   /** A room write's people check: the deduplicated union (the room's people, chosen people, teams' members, groups' heads). */
   const peopleCheck = (current: string[], chosen: { people?: unknown; teams?: unknown; groups?: unknown }): Reply | null => {
@@ -196,7 +216,19 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       rooms.push(room); emit("room.changed", { roomId: room.id, room: listItem(room) });
       return { status: 200, body: { room: listItem(room) } };
     }
-    const m = p.match(/^\/hub\/v1\/rooms\/([^/]+)(?:\/(members|messages|read|invitations)(?:\/([^/]+))?)?$/);
+    // M-3127 C: message search over the group rooms I am in (every word, case-folded), newest first; `limit`, no cursor.
+    if (p === "/hub/v1/rooms/search" && method === "GET") {
+      const q = (url.searchParams.get("q") ?? "").trim().toLowerCase(), terms = q.split(/\s+/).filter(Boolean);
+      if (!terms.length) return fail(400, "invalid");
+      const limit = Math.min(50, Number(url.searchParams.get("limit")) || 20);
+      const hits = rooms.filter(r => r.kind === "group" && r.members.some(x => x.id === FIXTURE_ME.id))
+        .flatMap(r => r.messages.filter(x => x.author.kind !== "system" && x.text && terms.every(t => x.text.toLowerCase().includes(t)) && (!x.stage || x.stage === "answered"))
+          .map(x => { const at = x.text.toLowerCase().indexOf(terms[0]!);
+            return { roomId: r.id, roomName: r.name, messageId: x.id, sequence: 0, at: x.at, author: { kind: x.author.kind, name: x.author.name }, snippet: x.text, marks: at >= 0 ? [[at, at + terms[0]!.length]] : [] }; }))
+        .sort((a, b) => b.at - a.at).slice(0, limit);
+      return { status: 200, body: { hits } };
+    }
+    const m = p.match(/^\/hub\/v1\/rooms\/([^/]+)(?:\/(members|messages|read|invitations|buttons)(?:\/([^/]+)(?:\/reactions)?)?)?$/);
     if (m && m[1] !== "events" && m[1] !== "candidates") {   // candidates: Track U2 below
       const room = roomOf(decodeURIComponent(m[1]!));
       if (!room) return fail(404, "not-found");
@@ -241,7 +273,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
         const page = room.messages.slice(Math.max(0, (end < 0 ? room.messages.length : end) - limit), end < 0 ? room.messages.length : end);
         return { status: 200, body: { messages: page, more: page.length > 0 && room.messages[0] !== page[0] } };
       }
-      if (sub === "messages" && method === "POST") {
+      if (sub === "messages" && !m[3] && method === "POST") {
         const b = req.body ?? {};
         if (room.archived) return fail(409, "archived");
         if (!room.members.some(x => x.id === FIXTURE_ME.id)) return fail(403, "not-member");
@@ -261,6 +293,47 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
         room.readUpTo = msg.id;
         emit("message.added", { roomId: room.id, message: msg });
         return { status: 200, body: { message: msg } };
+      }
+      // M-3127: my reaction on a message (`/messages/:id/reactions`): set semantics, the whole message on the stream.
+      if (sub === "messages" && m[3] && p.endsWith("/reactions") && method === "POST") {
+        const b = req.body ?? {}, msg = room.messages.find(x => x.id === m[3]) as any;
+        if (room.archived) return fail(409, "archived");
+        if (!msg) return fail(404, "not-found");
+        if (typeof b.emoji !== "string" || typeof b.on !== "boolean") return fail(400, "invalid");
+        if (b.emoji === "💥") return fail(409, "limit");
+        const list: { emoji: string; count: number; members: string[] }[] = (msg.reactions ?? []).map((r: any) => ({ ...r, members: [...r.members] }));
+        let r = list.find(x => x.emoji === b.emoji);
+        if (b.on && !r) list.push(r = { emoji: b.emoji, count: 0, members: [] });
+        if (r && b.on && !r.members.includes(FIXTURE_ME.id)) r.members.push(FIXTURE_ME.id);
+        if (r && !b.on) r.members = r.members.filter(id => id !== FIXTURE_ME.id);
+        for (const x of list) x.count = x.members.length;
+        const next = list.filter(x => x.count > 0);
+        if (next.length) msg.reactions = next; else delete msg.reactions;
+        emit("message.updated", { roomId: room.id, message: msg });
+        return { status: 200, body: { reactions: next } };
+      }
+      // M-3127: an answer's buttons (its asker only: the first press is my own post) and polls (my one ballot).
+      if (sub === "buttons" && method === "POST" && room.kind === "group") {
+        const b = req.body ?? {}, msg = room.messages.find(x => x.buttons?.id === b.setId);
+        if (room.archived) return fail(409, "archived");
+        if (!msg?.buttons) return fail(404, "not-found");
+        const set = msg.buttons;
+        if (set.state !== "open") return fail(409, "expired");
+        if (set.poll) {
+          if (!Array.isArray(b.options) || b.options.length !== 1) return fail(400, "invalid");
+          const was = ballots.get(set.id); const counts = [...(set.poll.counts ?? set.labels.map(() => 0))];
+          if (was !== undefined) counts[was]!--; counts[b.options[0]]!++;
+          ballots.set(set.id, b.options[0]);
+          set.poll = { ...set.poll, counts, answered: set.poll.answered + (was === undefined ? 1 : 0), rev: set.poll.rev + 1 };
+        } else {
+          if (set.asker.id !== FIXTURE_ME.id) return fail(403, "not-asker");
+          if (!Number.isInteger(b.index) || b.index < 0 || b.index >= set.labels.length) return fail(400, "invalid");
+          msg.buttons = { ...set, state: "chosen", chosen: b.index, by: FIXTURE_ME.name };
+          const click = say(room, people[0]!, now(), set.labels[b.index]!, { replyTo: msg.id, mentions: [msg.author.id] });
+          emit("message.added", { roomId: room.id, message: click });
+        }
+        emit("message.updated", { roomId: room.id, message: msg });
+        return { status: 200, body: { ok: true } };
       }
       if (sub === "read" && method === "POST") {
         const upTo = req.body?.upTo;

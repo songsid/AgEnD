@@ -39,11 +39,13 @@ import type { HubAuditRecord, HubServerFrame } from "../types.js";
 import { EMPTY_VIEW_SOURCE, type HubViewSource } from "./views.js";
 import { HUB_REPRESENTATIVE_MIGRATION, HubRepresentativeExecution, type HubReportOutcome, type HubRepresentativeDelivery } from "../representative.js";
 import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
+import { HubMemberRecommendations, HUB_MEMBER_RECOMMENDATION_MIGRATION } from "../member/recommendations.js";
 import { HubMemberFiles } from "../member/attachments.js";
 import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../member/pairing-notices.js";
-import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY } from "../protocol.js";
+import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY } from "../protocol.js";
 import { createRoomStatePublisher, HubRoomAskAdapter, HUB_ROOM_ASK_MIGRATION, verifyRoomAskJournal,
   type AgentStateInput, type RoomAskLink, type RoomStateLink } from "../member/room-ask.js";
+import { HubRoomPostAdapter, verifyRoomPostJournal } from "../member/room-post.js";
 import { HubProtocolError } from "../validation.js";
 
 /** The legacy location remains assigned to its first proven binding; later pairings get separate complete sets. */
@@ -74,6 +76,10 @@ export interface HubMemberComponents {
 }
 
 export interface HubMemberFactoryOptions {
+  fleetInfo?: import("../types.js").HubFleetInfo;
+  versionRegistry?: import("../published-version.js").PublishedVersionLookup;
+  attachRecommendations?(read: (() => import("../recommendation-model.js").HubRecommendedUpdate | null) | null): void;
+  recommendationChanged?(): void;
   home: string;
   components: HubMemberComponents;
   /** S3c's current binding (its pairing state): the Hub id, or null when unpaired or disconnected. */
@@ -83,6 +89,10 @@ export interface HubMemberFactoryOptions {
   views?: HubViewSource;
   /** P1's representative mode: the fleet's ordinary delivery, the agent lifecycle token and the report_result hook. */
   representative: HubRepresentativeHost;
+  attachAgentRooms?(port: import("../member/room-post.js").AgentRoomPort | null): void;
+  roomToolsChanged?(): void;
+  roomReceipt?(caller: import("../member/room-post.js").RoomCaller, receiptId: string): import("../member/room-post-receipt.js").RoomReceiptProof | null;
+  roomNotify?(input: import("../member/room-post-answers.js").RoomPostNotification): Promise<boolean>;
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
   attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null): void;
   /** Security inbox is available to the current binding's local Settings page, on chat and web-only fleets. */
@@ -117,6 +127,8 @@ export interface HubRepresentativeHost {
     handler: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("../../hub-report-target.js").HubReportExtras }) => Promise<HubReportOutcome> | null) | null,
     failed: ((correlationId: string, agent: string) => void) | null,
   ): void;
+  /** M-3127: the `react` hook for a room question's correlation id (null: detached). Absent: this Fleet has none. */
+  attachReacts?(handler: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<HubReportOutcome> | null) | null): void;
 }
 
 /** Ordered cleanup that stops at the first unconfirmed step (same rules as the server factory). */
@@ -304,7 +316,7 @@ function openMemberState(options: {
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_MEMBER_JOURNAL_MIGRATION,
         { component: "s4-execution", version: 1, up: execution.migrateHubExecution }, exposureStore.HUB_EXPOSURE_MIGRATION,
-        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION]);
+        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION, HUB_MEMBER_RECOMMENDATION_MIGRATION]);
       bindHubInstance(db, hubId, state, now());
       // P1 never initialized S4, so its absent meta row is valid only with the untouched zero floor.
       const executionMeta = db.prepare("SELECT revision FROM hub_execution_meta WHERE singleton=1").get() as { revision: number } | undefined;
@@ -317,11 +329,17 @@ function openMemberState(options: {
       const roomBinding = memberSet(hubId, profile).database;
       const roomKey = Buffer.from(hkdfSync("sha256", readKey(home, set.keys[1]!), Buffer.alloc(0),
         Buffer.from(JSON.stringify(["agend-hub-room-journal-key-v1", roomBinding])), 32));
+      const postKey = Buffer.from(hkdfSync("sha256", readKey(home, set.keys[1]!), Buffer.alloc(0),
+        Buffer.from(JSON.stringify(["agend-hub-room-post-key-v1", roomBinding])), 32));
       if (!db.transaction(() => {
         // An unbound legacy set must authenticate room history before bindPairing can advance its durable floor.
         const meta = db.prepare("SELECT binding FROM hub_member_meta WHERE singleton=1").get() as { binding: string | null };
-        if (meta.binding === null) verifyRoomAskJournal(db, { bindingKey: roomBinding, encryptionKey: roomKey });
+        if (meta.binding === null) {
+          verifyRoomPostJournal({db,binding:roomBinding,encryptionKey:postKey});
+          verifyRoomAskJournal(db, { bindingKey: roomBinding, encryptionKey: roomKey });
+        }
         if (!journal.bindPairing(profile, exposures.list())) return false;
+        verifyRoomPostJournal({db,binding:roomBinding,encryptionKey:postKey});
         verifyRoomAskJournal(db, { bindingKey: roomBinding, encryptionKey: roomKey });
         return true;
       }).immediate()) {
@@ -330,7 +348,7 @@ function openMemberState(options: {
       }
       if (!options.current()) throw new HubStateError("hub-member-pairing", "the pairing changed while opening its state");
       selected = true;
-      return { db, journal, exposures, audit, roomKey, roomBinding };
+      return { db, journal, exposures, audit, roomKey, postKey, roomBinding };
     } finally { if (!selected) db.close(); }
   }
   throw new HubStateError("hub-state-mismatch", "no member state belongs to this pairing");
@@ -426,7 +444,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       };
       const profileCurrent = () => current() && options.boundHub() === hubId
         && new HubMemberProfileStore(options.home, hubId).profileDigest() === profileDigest;
-      const { db, journal, exposures, audit, roomKey, roomBinding } = openMemberState({ home: options.home, hubId, profile, execution,
+      const { db, journal, exposures, audit, roomKey, postKey, roomBinding } = openMemberState({ home: options.home, hubId, profile, execution,
         exposureStore: exposureMods.store, views, outbox: forwarding, now, current: profileCurrent });
       teardown.add("the member database", () => db.close());
       if ((cfg as { execution?: { provider?: unknown } }).execution?.provider !== undefined) {
@@ -443,6 +461,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const binding = links.binding;
       let client: HubMemberClient | null = null;
       let online: HubMemberLink | null = null;
+      // M-3125: one file handler for the 1:1 representative and the room asks (the inbox and the reply rule are the same).
+      const memberFiles = options.representative.files ? new HubMemberFiles(options.representative.files) : undefined;
       const service = new HubRepresentativeExecution({
         db,
         journal,
@@ -452,7 +472,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         authorize: (request) => (client ? client.authorize(request) : Promise.reject(new HubStateError("service-unavailable", "not connected"))),
         link: () => (online && online.current() && links.link() === online ? online : null),
         deliver: (input) => options.representative.deliver(input),
-        ...(options.representative.files ? { files: new HubMemberFiles(options.representative.files) } : {}),
+        ...(memberFiles ? { files: memberFiles } : {}),
         audit: (event, database) =>
           audit.appendInTransaction(
             {
@@ -489,7 +509,20 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!consent || consent.agent !== local.agent || options.representative.agentToken(local.agent) !== consent.token) return null;
           return { agent: local.agent, consentId: local.consentId, revision: local.exposure.revision, token: consent.token };
         },
-        deliver: input => options.representative.deliver(input) });
+        deliver: input => options.representative.deliver(input), ...(memberFiles ? { files: memberFiles } : {}) });
+      const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,
+        receipt: options.roomReceipt,
+        notify: options.roomNotify,
+        held: id => options.log("warn", "Hub room reply delivery held", {notificationId:id}),
+        changed: () => options.roomToolsChanged?.(),
+        local: agent => {
+          if (!roomCurrent()) return null;
+          const row = exposures.list().find(row => row.agent === agent), local = row?.committed;
+          if (!local || local.exposure.state !== "published") return null;
+          const consent = db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(local.consentId) as {agent:string;token:string}|undefined;
+          if (!consent || consent.agent !== agent || options.representative.agentToken(agent) !== consent.token) return null;
+          return {exposureId:local.exposure.id,revision:local.exposure.revision,consentId:local.consentId,token:consent.token};
+        }});
       const roomState = createRoomStatePublisher({
         exposures: () => exposures.list().flatMap(row => row.committed?.exposure.state === "published"
           ? [{ exposureId: row.committed.exposure.id, agent: row.agent }] : []),
@@ -503,22 +536,50 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           view = { features: l.features,
             current: () => roomCurrent() && online === l && links.link() === l && l.current() && l.revocationVersion === version,
             sendAnswer: payload => l.send({ v: 1, type: "room.answer", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
-            sendState: payload => l.send({ v: 1, type: "agent.state", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }) };
+            // M-3125 (room files, roomFilesNegotiated): the 1:1 chat's own file frames, on this link.
+            fetchFile: async (id: string, offset: number) => { const reply = await l.exchange({ v: 1, type: "attachment.get", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload: { id, offset } }, "attachment.chunk");
+              if (reply.type !== "attachment.chunk") throw new HubProtocolError("invalid"); return reply.payload; },
+            putFile: async (chunk: import("../types.js").HubAttachmentChunk) => { const ack = await l.exchange({ v: 1, type: "attachment.put", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload: chunk }, "attachment.ack");
+              if (ack.type !== "attachment.ack" || ack.payload.id !== chunk.id || ack.payload.offset !== chunk.offset) throw new HubProtocolError("uncertain"); },
+            sendState: payload => l.send({ v: 1, type: "agent.state", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
+            sendReact: payload => l.send({ v: 1, type: "room.react", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }) };
           roomLinks.set(l, view);
         }
         return view;
       };
       let roomTimer: NodeJS.Timeout | null = null;
-      const stopRooms = () => { if (roomTimer) clearInterval(roomTimer); roomTimer = null; room.connected(null); roomState.connected(null); };
-      const refreshRooms = () => Promise.all([room.flush(), roomState.refresh()]).then(() => undefined);
+      const stopRooms = () => { if (roomTimer) clearInterval(roomTimer); roomTimer = null; room.connected(null); roomState.connected(null); posts.connected(null); };
+      const refreshRooms = () => Promise.all([room.flush(), roomState.refresh(), posts.flushAnswers()]).then(() => undefined);
+      let postLink: import("../member/room-post.js").RoomPostLink | null = null;
       const startRooms = (l: HubMemberLink) => {
         stopRooms();
         if (!options.representative.readState || !l.features.has(HUB_ROOM_ASK_CAPABILITY) || !l.features.has("welcome-caps-v1")) return;
         const view = roomLink(l); room.connected(view); roomState.connected(view);
+        if (options.attachAgentRooms && options.roomNotify) posts.connected(postLink={features:l.features,current:view.current,
+          list: async exposureId => {
+            const result = await l.exchange({v:1,type:"room.list",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId}},"room.list-result");
+            if (result.type !== "room.list-result") throw new HubProtocolError("invalid");
+            return result.payload;
+          },
+          post: async payload => {
+            const result = await l.exchange({v:1,type:"room.post",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload},"room.post-result");
+            if (result.type !== "room.post-result") throw new HubProtocolError("invalid");
+            return result.payload;
+          },
+          members: async (exposureId,room) => {
+            const result=await l.exchange({v:1,type:"room.members",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId,room}},"room.members-result");
+            if(result.type!=="room.members-result")throw new HubProtocolError("invalid");return result.payload;
+          },
+          people: async (exposureId,q) => {
+            const result=await l.exchange({v:1,type:"people.search",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId,q}},"people.search-result");
+            if(result.type!=="people.search-result")throw new HubProtocolError("invalid");return result.payload;
+          },
+          ack: id => l.send({v:1,type:"room.post-answer-ack",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{id}}),
+        });
         roomTimer = setInterval(() => { void refreshRooms().catch(() => {}); }, 5_000); roomTimer.unref();
         void refreshRooms().catch(() => {});
       };
-      teardown.add("room asks and presence", () => { stopRooms(); roomState.close(); room.close(); });
+      teardown.add("room asks and presence", () => { stopRooms(); posts.close(); roomState.close(); room.close(); });
 
       // 6. S1 admission + client: #3116's handshake on (re)connect, S5's receive routing.
       const sender = exposureMods.store.exposureSnapshotSender(exposures);
@@ -542,6 +603,12 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         hold: (messageId, reason) => options.log("warn", "Hub question held", { messageId, reason }),
         now,
       });
+      const recommendations = options.fleetInfo ? new HubMemberRecommendations({ db, hubId,
+        hubName: new URL(profile.hub.webOrigin).hostname, version: options.fleetInfo.version, current: live, now,
+        lookup: options.versionRegistry, changed: options.recommendationChanged, log: options.log }) : null;
+      options.attachRecommendations?.(recommendations ? () => recommendations.view() : null);
+      if (recommendations?.view()) options.recommendationChanged?.();
+      teardown.add("version advice", () => { recommendations?.close(); options.attachRecommendations?.(null); options.recommendationChanged?.(); });
       const notices = createHubPairingNoticeInbox({ db, audit, current: live, now,
         changed: () => options.pokeAttention() });
       options.attachPairingNotices?.(() => notices.list());
@@ -571,9 +638,11 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
         } });
       client = new HubMemberClient({
+        fleetInfo: options.fleetInfo,
+        receiveRecommendations: !!recommendations,
         home: options.home,
         hubId,
-        ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY] } : {}),
+        ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] } : {}),
         memberOrigin: profile.hub.memberOrigin,
         // #3429 B: a pending relocation's `to` first, then the anchor; a relocation state that does not verify: none.
         ...(profileDigest ? { dial: () => relocations.dialOrder(profile, profileDigest) } : {}),
@@ -603,6 +672,15 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         receive: (frame, l) => {
+          if (frame.type === "fleet.recommendation" && recommendations) {
+            try { recommendations.receive(frame.payload, l); }
+            catch { options.log("warn", "Hub version advice was refused", { phase: "receive" }); }
+            return Promise.resolve();
+          }
+          if(frame.type === "room.post-answer") {
+            if(postLink && roomLink(l).current())posts.receiveAnswer(frame.payload,postLink);
+            return Promise.resolve();
+          }
           if (frame.type === "room.ask") {
             try { room.accept(frame.payload, roomLink(l)); }
             catch (error) {
@@ -613,6 +691,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             return Promise.resolve();
           }
           if (frame.type === "room.answer-ack") { room.acknowledge(frame.payload, roomLink(l)); return Promise.resolve(); }
+          // M-3127: a reaction's result — a refusal is logged; nothing is retried (a gesture, not an answer).
+          if (frame.type === "room.react-result") { if (!frame.payload.ok) options.log("warn", "Hub room reaction not taken", { messageId: frame.payload.messageId, reason: frame.payload.code }); return Promise.resolve(); }
           return receive(frame, l);
         },
         // M-2901: where the Hub's pages are now. Kept beside the pairing (never in it), only when it verifies against the
@@ -656,12 +736,17 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
           options.attachAttention(() => service.attentionItems());
           options.attachExposures(api);
+          options.attachAgentRooms?.(posts);
           options.representative.attachReports(input => room.report(input) ?? service.report(input), (cid, agent) => {
+            if(cid.startsWith("hub-room-post-answer-"))posts.deliveryFailed(cid.slice("hub-room-post-answer-".length),agent);
             room.deliveryFailed(cid, agent); service.deliveryFailed(cid, agent);
           });
+          options.representative.attachReacts?.(input => room.react(input));
           teardown.add("the fleet attachments", () => {
+            options.representative.attachReacts?.(null);
             options.representative.attachReports(null, null);
             options.attachExposures(null);
+            options.attachAgentRooms?.(null);
             options.attachAttention(null);
           });
           await client!.start();
@@ -674,6 +759,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           client?.fence();
           options.representative.attachReports(null, null);
           options.attachExposures(null);
+          options.attachAgentRooms?.(null);
           // Mount drains failed startup too. Keep its actionable rejection until a different pairing takes over.
           if (!terminalHold) reportLink("offline");
         },

@@ -787,7 +787,7 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
     const st = host.updateState();
     if (!admin) return { admin: false, current: st.current };
     const progress = host.updateProgress();
-    return { admin: true, current: st.current, offer: st.offer, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, now: Date.now() };
+    return { admin: true, current: st.current, offer: st.offer, hubRecommendation: st.hubRecommendation ?? null, checked_at: st.checkedAt, check_failed: st.checkFailed, progress, now: Date.now() };
   };
   const first = who();
   if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -814,7 +814,11 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
     if (body.confirm !== "update-agend") { json(res, 400, { error: 'confirm must be the literal "update-agend"' }); return; }
     // Prism #3505 P2-3: the session that asked, still current and still an admin's, right up to the updater's launch.
     const stillAllowed = (): boolean => { const v = who(); return !("status" in v) && v.admin && v.person === now.person; };
-    const r = await host.startWebUpdate(key, now.person, stillAllowed);
+    // M-3140: `recommended` — the Hub's advice this page showed ({ version, revision }); the server re-reads its own.
+    const rec = body.recommended as { version?: unknown; revision?: unknown } | undefined;
+    if (rec !== undefined && (typeof rec !== "object" || rec === null || typeof rec.version !== "string" || rec.version.length > 128
+      || typeof rec.revision !== "number" || !Number.isSafeInteger(rec.revision) || rec.revision < 1)) { json(res, 400, { error: "recommended must be { version, revision }" }); return; }
+    const r = await host.startWebUpdate(key, now.person, stillAllowed, rec ? { version: rec.version as string, revision: rec.revision as number } : undefined);
     if (!r.ok) { json(res, r.status, { error: r.error }); return; }
     ctx.logger.info({ person: now.person }, "web: update started");
     json(res, 202, { started: true });

@@ -1,0 +1,93 @@
+{
+  "results": [
+    {
+      "device": "desktop",
+      "theme": "light",
+      "heights": [
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30
+      ],
+      "counts": [
+        4,
+        7
+      ],
+      "workingPulse": "pulse"
+    },
+    {
+      "device": "desktop",
+      "theme": "dark",
+      "heights": [
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30,
+        30
+      ],
+      "counts": [
+        4,
+        7
+      ],
+      "workingPulse": "pulse"
+    },
+    {
+      "device": "phone",
+      "theme": "light",
+      "heights": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "counts": [
+        4,
+        6
+      ],
+      "workingPulse": "pulse"
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "heights": [
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40,
+        40
+      ],
+      "counts": [
+        4,
+        6
+      ],
+      "workingPulse": "pulse"
+    }
+  ],
+  "errors": []
+}

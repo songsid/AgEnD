@@ -22,7 +22,7 @@
 // Every page logs no error. Guests are covered by the unit tests (a guest's page shows no line).
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-1939-authorize-defaults.mts
-import { bootFixture, demoAccount, freshPage, mounted, openPublicLink, shotPath, type DemoAccount, type FreshPage } from "../smoke-fixture/index.mts";
+import { bootFixture, demoAccount, freshPage, mounted, shotPath, type DemoAccount, type FreshPage } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-1939-authorize-defaults";
 const CHAT = "observability-dashboards";
@@ -112,6 +112,7 @@ async function openSettingsWeb(p: FreshPage): Promise<void> {
   await p.page.waitForURL("**/settings", { timeout: 10000 });
   await clickVisible(p.page, 'a[href="/settings/access"]');   // #2347: Web authority is in Access & security
   await p.page.waitForURL("**/settings/access", { timeout: 10000 });
+  await clickVisible(p.page, "#access-tab-login");               // M-3131: …on its sign-in tab (Access & security has tabs now)
 }
 /** The session menu's full line (AuthorizeChip). */
 const chip = (p: FreshPage, scope = "") => p.page.locator(`${scope} .webauth-chip`.trim()).first();
@@ -134,7 +135,8 @@ async function rowState(p: FreshPage, state: string, timeout = 10000): Promise<s
   })()`) as Promise<string>;
 }
 /** What the row says at length: the title on its words (why it can't be authorized, what it waits for). */
-const rowWhy = (p: FreshPage) => row(p).locator(".note").first().getAttribute("title");
+// M-3131: the reason is a button now (webauth-why: a tap opens it as a tooltip), its title the same words.
+const rowWhy = (p: FreshPage) => row(p).locator(".webauth-why[title], .note[title]").first().getAttribute("title");
 async function shootChip(p: FreshPage, name: string, scope = ""): Promise<void> {
   await (scope ? chip(p, scope) : row(p)).scrollIntoViewIfNeeded();
   await p.page.screenshot({ path: shotPath(SMOKE, name, "page") });
@@ -195,7 +197,7 @@ if (only("confirm")) {
   await p.page.keyboard.press("Escape");
   // Settings → Web, from defaults.
   await openSettingsWeb(p);
-  await p.page.waitForSelector(".s-web-authority #vaEnabled", { timeout: 10000 });
+  await p.page.waitForSelector(".s-web-authority #vaEnabled", { state: "attached", timeout: 10000 });
   const s = await p.page.evaluate(`(() => ({ enabled: document.querySelector("#vaEnabled").checked, loopbackOnly: document.querySelector("#vaLoopbackOnly").checked,
     hours: document.querySelector("#vaHours").value, inEffect: document.querySelector("#vaHours").parentNode.querySelector(".s-effect")?.textContent ?? "",
     rows: [...document.querySelectorAll("#vaSessions li")].map((li) => li.textContent) }))()`) as any;
@@ -208,10 +210,12 @@ if (only("confirm")) {
   await p.page.click("#vaRevoke");
   await p.page.waitForSelector("dialog[open]", { timeout: 5000 });
   await p.page.click("dialog[open] .btn-danger, dialog[open] .btn-primary");
-  await p.page.waitForSelector("#vaSessionsNone", { timeout: 5000 });
+  // M-3131: Settings' Revoke is "Revoke other devices' authorization" now — every other device's authority ends (the
+  // epoch moves on) and this one, the device that asked, keeps its own (vaRevokeKept): it stays Verified.
+  for (const end = Date.now() + 5000; fm.webAuthorityState().epoch !== epoch + 1 && Date.now() < end;) await p.page.waitForTimeout(100);
   c.revoked = fm.webAuthorityState().epoch === epoch + 1;
   await openChat(p);
-  c.lineAfterRevoke = (await rowState(p, "none")) === "Not verified · Authorize";
+  c.lineAfterRevoke = (await rowState(p, "verified")) === "✓ Verified";
   await shootChip(p, "confirm-8-after-revoke");
   // Not me after Confirm: the card still offers it; the browser is signed out.
   await tap(card, "notme");
@@ -226,7 +230,9 @@ if (only("confirm")) {
   const after = p.errors.splice(errorsBefore);
   c.onlyExpected401s = after.every((e) => /status of 401/.test(e) && /(\/ui\/chat\/|\/auth\/session)/.test(e));
   await p.page.screenshot({ path: shotPath(SMOKE, "confirm-10-signed-out", "page") });
-  c.noErrors = p.errors.length === 0;
+  // M-3131: once "Not me" ends this browser's authority, the usage head's account list (/ui/accounts) is refused (403)
+  // and the page shows it as unavailable; the browser logs the refused load. That one is expected; nothing else is.
+  c.noErrors = p.errors.filter((e) => !/status of 403 \(Forbidden\) @ \S+\/ui\/accounts$/.test(e)).length === 0;
   record("confirm-desk-light-en", c, { errors: p.errors });
   await p.ctx.close();
 }
@@ -366,7 +372,7 @@ if (only("switch")) {
   const p = await freshPage(fx, DESK_LIGHT, { account: a });
   const c: Record<string, boolean> = { mounted: await mounted(p.page) };
   await openSettingsWeb(p);
-  await p.page.waitForSelector(".s-web-authority #vaEnabled", { timeout: 10000 });
+  await p.page.waitForSelector(".s-web-authority #vaEnabled", { state: "attached", timeout: 10000 });
   c.onByDefault = await p.page.isChecked("#vaEnabled");
   const setSwitch = async (on: boolean) => {
     await p.page.setChecked("#vaEnabled", on);                                          // #2347: unsaved at once; the bar's Save writes it
@@ -383,9 +389,11 @@ if (only("switch")) {
   const off = await rowState(p, "none");
   c.lineOff = off === "Not verified · Settings" && (await rowWhy(p)) === "Web authority is turned off.";
   await shootChip(p, "switch-1-off");
-  await clickVisible(p.page, '.webauth-row a[href="/settings/access"]');
-  await p.page.waitForSelector(".s-web-authority #vaEnabled", { timeout: 10000 });
-  c.linkLandsOnCard = p.page.url().endsWith("/settings/access") && !(await p.page.isChecked("#vaEnabled"));
+  await clickVisible(p.page, '.webauth-row a[href="/settings/access#webAuthority"]');
+  await p.page.waitForSelector(".s-web-authority #vaEnabled", { state: "attached", timeout: 10000 });
+  // M-3131: the link names the card (#webAuthority); Settings opens the tab that owns it, so the switch is on screen.
+  await p.page.waitForSelector(".s-web-authority #vaEnabled", { state: "visible", timeout: 10000 });
+  c.linkLandsOnCard = p.page.url().endsWith("/settings/access#webAuthority") && !(await p.page.isChecked("#vaEnabled"));
   c.applyOnLanded = await setSwitch(true);
   c.appliedOn = fm.fleetConfig.web?.verified_authority?.enabled !== false && fm.webAuthorityState().enabled === true;
   await openChat(p);
@@ -396,28 +404,10 @@ if (only("switch")) {
   await p.ctx.close();
 }
 
-// ── the temporary public link ──────────────────────────────────────────────────────────────────────────────────────────
-if (only("public")) {
-  const link = await openPublicLink(fx);
-  admins.push(link.owner.userId);
-  const asked: string[] = [];
-  const p = await link.publicPage({ device: "phone", theme: "light", lang: "en" }, { reducedMotion: true,
-    beforeNavigate: (_ctx: any, page: any) => { page.on("request", (r: any) => { if (new URL(r.url()).pathname === "/ui/authorization") asked.push(r.method()); }); } });
-  const c: Record<string, boolean> = { mounted: await mounted(p.page) };
-  await openChat(p);
-  c.says = (await rowState(p, "public")) === "Not on the temporary public link: open the dashboard directly to authorize.";
-  c.noOverflow = !(await overflow(p));
-  await shootChip(p, "public-1-line");
-  c.neverAsked = asked.length === 0;
-  await openSettingsWeb(p);
-  await p.page.waitForSelector("#webPublicRefused", { timeout: 10000 });
-  c.noSettingsCards = (await p.page.locator(".s-web-authority, .s-guest-fields").count()) === 0;
-  await p.page.screenshot({ path: shotPath(SMOKE, "public-2-settings-web", "page") });
-  c.noErrors = p.errors.length === 0;
-  record("public-link-phone-light-en", c, { errors: p.errors, asked });
-  await p.ctx.close();
-  await link.close();
-}
+// ── the temporary public link: retired here (M-3131) ──────────────────────────────────────────────────────────────
+// Since the quick-link authority (#2525 review, §0.2/§0.3) a browser on the temporary public link may be offered
+// Authorize: the server says whether it may. This case pinned the older rule ("Not on the temporary public link", never
+// asking); scripts/manual/smoke/smoke-quick-link-authority.mts covers the link's authorization now.
 
 console.log(JSON.stringify(results, null, 1));
 const bad = results.filter(r => !r.ok);

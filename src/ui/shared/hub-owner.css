@@ -14,6 +14,31 @@
 .hub-row-link:hover { background: var(--surface-2); }
 .hub-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .hub-row-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* M-3137 (versions spec §2.2): Connected fleets' summary line and its filter, and each row's version facts. */
+.hub-fleet-summary { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-1); }
+.hub-fleet-summary > .note { margin: 0; flex: 1 1 auto; min-width: 0; }
+.hub-fleet-list .hub-rows .s-row.hub-row { flex-wrap: wrap; }
+/* The version facts are the row's second line, under the name: its Active tag and menu stay on the first. */
+.hub-fleet-list .s-row.hub-row > .hub-fleet-version { order: 1; flex: 1 1 100%; }
+.hub-fleet-version { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-1) var(--s-3); font-size: var(--fs-sm); }
+.hub-fleet-version > span { display: inline-flex; align-items: center; gap: var(--s-1); white-space: nowrap; }
+.hub-fleet-version .hub-fleet-why { flex: 1 1 100%; white-space: normal; }
+/* M-3141 (§3.1): the recommended version card — three choices, a version box beside "A specific version". */
+.hub-rec-choices { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-2) 0; }
+.hub-rec-choice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+.hub-rec-version input { width: 12ch; }
+.hub-fleet-version .hub-fleet-notified { flex: 1 1 100%; white-space: normal; }
+/* §2.3: the older-Fleet banner — its words, and Close beside them (never on a line of its own). */
+.hub-versions-banner { display: flex; align-items: flex-start; gap: var(--s-2); }
+.hub-versions-banner > span { flex: 1 1 auto; min-width: 0; }
+.hub-versions-banner > .icon-btn { flex: none; }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-versions-banner > .icon-btn, .hub-fleet-summary .hub-fleet-filter { min-width: var(--tap); min-height: var(--tap); }
+}
+@media (max-width: 899px) {
+  /* A phone stacks the row as the Teams roster does: the name, then labelled lines, the tag first. */
+  .hub-fleet-list .hub-fleet-version { flex: 1 1 100%; flex-direction: column; align-items: flex-start; gap: 2px; }
+}
 .hub-row-text .note { overflow-wrap: anywhere; }
 .hub-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .hub-card-head h3 { margin: 0; color: var(--text); font-size: var(--fs-lg); text-transform: none; letter-spacing: 0; }

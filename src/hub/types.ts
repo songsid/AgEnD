@@ -14,6 +14,7 @@ export type PersonId = string;    // personKeyString(key), not a login/name
 export interface HubFrame<T extends string, P> {
   v: 1; type: T; requestId: string; linkEpoch: Epoch; payload: P;
 }
+export interface HubFleetInfo { version: string; runsAsService: boolean; recommendations?: true }
 export interface HubHello {
   supportedVersions: readonly number[];
   capabilities: readonly string[]; // P1: identity-v1, receipts-v1, reconcile-v1
@@ -59,9 +60,14 @@ export interface HubAnswer {
 /** Group room delivery has its own durable per-agent ID; it is not a direct grant-backed question. */
 export interface HubRoomContextRow { author: string; text: string; at: Millis; repliedTo?: true }
 export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: string; exposureId: ExposureId;
-  asker: { name: string }; text: string; context: readonly HubRoomContextRow[] }
-export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string }
+  asker: { name: string }; text: string; context: readonly HubRoomContextRow[]; attachments?: HubAttachmentRef[] }
+export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string;
+  /** M-3127: room-answer-buttons-v1 links only; bound into the answer digest like its text. */
+  buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[] }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string }
+/** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked ("" takes it back). */
+export interface HubRoomReact { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; emoji: string }
+export interface HubRoomReactResult { messageId: MessageId; ok: boolean; code?: "invalid" | "denied" | "not-found" | "archived" | "revoked" }
 /** Proactive group-room messages are scoped by the authenticated link and its own published exposure. */
 export type HubRoomPostRefusalCode = "invalid" | "denied" | "revoked" | "not-found" | "archived" | "ambiguous-room" | "rate-limited" | "conflict" | "unavailable" | "stale" | "backpressure";
 export interface HubRoomListRequest { exposureId: ExposureId }
@@ -131,7 +137,10 @@ export type HubMemberFrame =
   | HubFrame<"room.post-answer-ack", HubRoomPostAnswerAck>
   | HubFrame<"room.answer", HubRoomAnswer>
   | HubFrame<"agent.state", HubAgentState>
+  | HubFrame<"room.react", HubRoomReact>
   | HubFrame<"hello", HubHello>
+  | HubFrame<"fleet.info", HubFleetInfo>
+  | HubFrame<"fleet.recommendation-ack", import("./recommendation-model.js").HubRecommendationAck>
   | HubFrame<"member.leave", Record<string, never>>
   | HubFrame<"exposure.snapshot", HubExposureSnapshot>
   | HubFrame<"receipt", HubReceipt>
@@ -157,7 +166,9 @@ export type HubServerFrame =
   | HubFrame<"room.post-answer", HubRoomPostAnswer>
   | HubFrame<"room.ask", HubRoomAsk>
   | HubFrame<"room.answer-ack", HubRoomAnswerAck>
+  | HubFrame<"room.react-result", HubRoomReactResult>
   | HubFrame<"welcome", HubWelcome>
+  | HubFrame<"fleet.recommendation", import("./recommendation-model.js").HubRecommendation>
   | HubFrame<"question", HubQuestion>
   | HubFrame<"receipt", HubReceipt> // acknowledgment of durably retained member evidence
   | HubFrame<"reconcile", HubReconcileReply>

@@ -16,7 +16,7 @@ const soon = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
 const weekly = (used: number) => [{ type: "percent", label: "Weekly", labelI18n: { key: "usage.metric.weekly" }, used, resetsAt: soon(120), windowMs: 6048e5 }];
 const row = (id: string, name: string, plan: string, profile?: string, used = 10) => ({ id, name, status: "ok", plan, metrics: weekly(used), ...(profile ? { profile } : {}) });
 setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), providers: [
-  row("codex:yanxianchen", "Codex (yanxianchen)", "Self Serve Business Usage Based", "yanxianchen"),
+  row("codex:yvonnechang", "Codex (yvonnechang)", "Self Serve Business Usage Based", "yvonnechang"),
   row("claude", "Claude", "Max (20x)", undefined, 64),
   row("claude:research-team-long-profile-name", "Claude (research-team-long-profile-name)", "Team Premium (6.25x)", "research-team-long-profile-name", 12),
   row("codex:platform-infrastructure-oncall-rotation", "Codex (platform-infrastructure-oncall-rotation)", "Enterprise", "platform-infrastructure-oncall-rotation", 40),

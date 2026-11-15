@@ -1,0 +1,652 @@
+{
+  "sourceHead": "6ca7282934fa14099fb0d8573b6a22ab716ef052",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desktop-en-light the manager's image shows inline on the thread",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Attach shows left of the box",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light two chips inside the composer box, both ready",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light the post shows its text file as a card",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light the post's image shows inline",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light a room picture opens in the viewer with Annotate",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light one quote target: this room",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light the marked-up copy is a chip and the reply quotes its message",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light sent: the post quotes the picture's message and carries the marked-up copy",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark the manager's image shows inline on the thread",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark Attach shows left of the box",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark two chips inside the composer box, both ready",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark the post shows its text file as a card",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark the post's image shows inline",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark a room picture opens in the viewer with Annotate",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark one quote target: this room",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark the marked-up copy is a chip and the reply quotes its message",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark sent: the post quotes the picture's message and carries the marked-up copy",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light the manager's image shows inline on the thread",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light Attach shows left of the box",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light two chips inside the composer box, both ready",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light the post shows its text file as a card",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light the post's image shows inline",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light a room picture opens in the viewer with Annotate",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light one quote target: this room",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light the marked-up copy is a chip and the reply quotes its message",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light sent: the post quotes the picture's message and carries the marked-up copy",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark the manager's image shows inline on the thread",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Attach shows left of the box",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark two chips inside the composer box, both ready",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark the post shows its text file as a card",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark the post's image shows inline",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark a room picture opens in the viewer with Annotate",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark one quote target: this room",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark the marked-up copy is a chip and the reply quotes its message",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark sent: the post quotes the picture's message and carries the marked-up copy",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no page error",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "desktop-en-light-attach-pending.png",
+      "sha256": "11a525ac9deea2143d312fe2946722291c74e4f797a46a02af17d8f0bbffda8f"
+    },
+    {
+      "path": "desktop-en-light-posted.png",
+      "sha256": "b8b33515c193ea648a2e1c1c6aa1edd87d91ef9560f5f85f3f93a12b2eaab036"
+    },
+    {
+      "path": "desktop-en-light-annotate.png",
+      "sha256": "dd843c85ddc62d625f1d74cbb6969a3202c4a37ff0b2b6e83854f686ac759e74"
+    },
+    {
+      "path": "desktop-en-light-annotate-quoted.png",
+      "sha256": "2e4959cf35a15999e2a4a7aa9b3ebde381dcb150cec6614777fe2e4134c80e91"
+    },
+    {
+      "path": "desktop-zh-TW-dark-attach-pending.png",
+      "sha256": "1b05c5768c84e7536433f6710ba4b2666d1ad26e3d44b77a6a5430e272b2902e"
+    },
+    {
+      "path": "desktop-zh-TW-dark-posted.png",
+      "sha256": "866921239660304cdabc473f4c47d8435589eeaf8af7f5a302f2573a3ac4f58f"
+    },
+    {
+      "path": "desktop-zh-TW-dark-annotate.png",
+      "sha256": "3b737a3c8155e32bd522d559fb7a66b3e8ae5b792af3fc13857c59689516f048"
+    },
+    {
+      "path": "desktop-zh-TW-dark-annotate-quoted.png",
+      "sha256": "a02a8739b5940f8f9c58cca41a36ea64ed49ab9419226337fc015b3e058f7079"
+    },
+    {
+      "path": "phone-en-light-attach-pending.png",
+      "sha256": "8f6e94bf279290394b163280b0d3df17aa9646ac2312b975c1b7913cb3eae3e8"
+    },
+    {
+      "path": "phone-en-light-posted.png",
+      "sha256": "0be798b5a1aa05855f97b002c9181e6d44f543cb57e21c402297235bfa988ce1"
+    },
+    {
+      "path": "phone-en-light-annotate.png",
+      "sha256": "bb5b96c45fcb8525d869085828b1fbe2870aecae62f55ca899010c08cf5b6ee6"
+    },
+    {
+      "path": "phone-en-light-annotate-quoted.png",
+      "sha256": "839dcf7a95985d95cc3603b60e58b46065d6ea5951294de3ee40dda25a160f5f"
+    },
+    {
+      "path": "phone-zh-TW-dark-attach-pending.png",
+      "sha256": "a0881f1dfa99dd2d15cc4b4335d8a98f8066f498cdfb78038be928f02f425350"
+    },
+    {
+      "path": "phone-zh-TW-dark-posted.png",
+      "sha256": "4de0e912657aef44fc312b4d79441f630639d8a02dc41d5bcb52b3c348f60720"
+    },
+    {
+      "path": "phone-zh-TW-dark-annotate.png",
+      "sha256": "31ddc961af3ae45b50b4bc32cab0e60beb71273885ac32dc8f853f49150d5dcc"
+    },
+    {
+      "path": "phone-zh-TW-dark-annotate-quoted.png",
+      "sha256": "c5cfcade53e1c5f6210acf4e9befb8f3e91e24bcfa47134c930e9672a0ead143"
+    }
+  ],
+  "requests": [
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/4fc6b1db-9a9d-4506-9211-c9a1694e04de/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/577e5b64-1267-4380-88d0-c97583ce5b16/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/0be738f9-19e8-4d07-ac2d-9690c762044c/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/4fc6b1db-9a9d-4506-9211-c9a1694e04de/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/577e5b64-1267-4380-88d0-c97583ce5b16/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/0be738f9-19e8-4d07-ac2d-9690c762044c/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/bf1d3ce8-aedf-4547-a641-a14d93736164/inline",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "desktop-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/4fc6b1db-9a9d-4506-9211-c9a1694e04de/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/577e5b64-1267-4380-88d0-c97583ce5b16/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/0be738f9-19e8-4d07-ac2d-9690c762044c/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/bf1d3ce8-aedf-4547-a641-a14d93736164/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/b4957893-b737-4031-b4f4-8412ff3d2018/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/6c0eb628-b7ec-4c66-981b-7c930ca6b27d/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-en-light",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/80b2a7c3-7572-4b0f-9387-601d918930c0/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/4fc6b1db-9a9d-4506-9211-c9a1694e04de/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/577e5b64-1267-4380-88d0-c97583ce5b16/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/bf1d3ce8-aedf-4547-a641-a14d93736164/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/0be738f9-19e8-4d07-ac2d-9690c762044c/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/b4957893-b737-4031-b4f4-8412ff3d2018/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/6c0eb628-b7ec-4c66-981b-7c930ca6b27d/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/80b2a7c3-7572-4b0f-9387-601d918930c0/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/140b22a1-c7b2-4230-a2e6-fcc5a7978b35/inline",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/messages",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "POST",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/read",
+      "status": 200
+    },
+    {
+      "tag": "phone-zh-TW-dark",
+      "method": "GET",
+      "path": "/hub/v1/rooms/bfbd1780-7ebd-449f-a466-a2787ad21ddf/files/8fc94e8d-57de-49a6-a21c-e177808d5dc8/inline",
+      "status": 200
+    }
+  ]
+}

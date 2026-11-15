@@ -45,13 +45,13 @@ DONE-MARKER
 ⠋ Thinking... - Completed in 9.6s
 > DONE
  ▸ Time: 15s
-2% !> [user:hanhanv via discord, id:368442276000694273] MSG-1 pasted while kiro was busy
+2% !> [user:example via discord, id:368442276000694273] MSG-1 pasted while kiro was busy
 `;
 
 /** Both messages submitted together; the CLI is generating its reply. */
 const GENERATING = `
-2% !> [user:hanhanv via discord, id:368442276000694273] MSG-1 pasted while kiro was busy
-[user:hanhanv via discord, id:368442276000694273] MSG-2 pasted after idle
+2% !> [user:example via discord, id:368442276000694273] MSG-1 pasted while kiro was busy
+[user:example via discord, id:368442276000694273] MSG-2 pasted after idle
 ⠇ Thinking...
 `;
 
@@ -71,7 +71,7 @@ const IDLE_BARE = `
 /** A long paste wraps across rows; the prompt row is not the last row. */
 const STRANDED_WRAPPED = `
  ▸ Time: 3s
-12% !> [from:agend-leader-t1503382358143799511] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）
+12% !> [from:agend-leader-t1500000000000799511] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）
 使用者回報一個偶發、低機率、只在 kiro 看到的 delivery bug，想請你查根因。
 `;
 
@@ -83,7 +83,7 @@ const STRANDED_WRAPPED = `
 const SUBMITTED_WITH_AGENT_OUTPUT = `
  ▸ Time: 9s
 32% λ !>
-[user:hanhanv via discord, id:368442276000694273] 繼續確認目前進度推進
+[user:example via discord, id:368442276000694273] 繼續確認目前進度推進
 (message_id: 1547447698142138419)
 我會繼續確認目前的進度。
 Running tool: list_instances
@@ -132,12 +132,12 @@ describe("pane-input-residue: bottom-anchored readiness", () => {
 
 describe("pane-input-residue: input area text", () => {
   it("returns the text after the last prompt marker", () => {
-    expect(inputAreaText(STRANDED, PROMPT)).toBe("[user:hanhanv via discord, id:368442276000694273] MSG-1 pasted while kiro was busy");
+    expect(inputAreaText(STRANDED, PROMPT)).toBe("[user:example via discord, id:368442276000694273] MSG-1 pasted while kiro was busy");
   });
 
   it("joins wrapped continuation rows below the prompt row", () => {
     const text = inputAreaText(STRANDED_WRAPPED, PROMPT)!;
-    expect(text.startsWith("[from:agend-leader-t1503382358143799511]")).toBe(true);
+    expect(text.startsWith("[from:agend-leader-t1500000000000799511]")).toBe(true);
     expect(text).toContain("使用者回報一個偶發");
   });
 
@@ -148,7 +148,7 @@ describe("pane-input-residue: input area text", () => {
 });
 
 describe("pane-input-residue: did our paste get submitted?", () => {
-  const formatted = "[user:hanhanv via discord, id:368442276000694273] MSG-1 pasted while kiro was busy\n(message_id: 1)";
+  const formatted = "[user:example via discord, id:368442276000694273] MSG-1 pasted while kiro was busy\n(message_id: 1)";
 
   it("detects the pasted text still sitting in the input row", () => {
     expect(pasteLeftInInput(STRANDED, PROMPT, formatted)).toBe(true);
@@ -160,18 +160,18 @@ describe("pane-input-residue: did our paste get submitted?", () => {
   });
 
   it("survives the TUI re-wrapping the pasted text", () => {
-    const long = "[from:agend-leader-t1503382358143799511] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）\n\n使用者回報一個偶發、低機率、只在 kiro 看到的 delivery bug，想請你查根因。\n(message_id: 2)";
+    const long = "[from:agend-leader-t1500000000000799511] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）\n\n使用者回報一個偶發、低機率、只在 kiro 看到的 delivery bug，想請你查根因。\n(message_id: 2)";
     expect(pasteLeftInInput(STRANDED_WRAPPED, PROMPT, long)).toBe(true);
     expect(pastedTextSignature(long)).toHaveLength(24);
   });
 
   it("does not mistake a submitted transcript followed by agent output for active input", () => {
-    const submitted = "[user:hanhanv via discord, id:368442276000694273] 繼續確認目前進度推進\n(message_id: 1547447698142138419)";
+    const submitted = "[user:example via discord, id:368442276000694273] 繼續確認目前進度推進\n(message_id: 1547447698142138419)";
     expect(pasteLeftInInput(SUBMITTED_WITH_AGENT_OUTPUT, PROMPT, submitted)).toBe(false);
   });
 
   it("is a whitespace-insensitive prefix match, so a different message is not mistaken for ours", () => {
-    expect(pasteLeftInInput(STRANDED, PROMPT, "[user:hanhanv via discord, id:368442276000694273] MSG-9 something else")).toBe(false);
+    expect(pasteLeftInInput(STRANDED, PROMPT, "[user:example via discord, id:368442276000694273] MSG-9 something else")).toBe(false);
   });
 });
 

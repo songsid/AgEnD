@@ -9,7 +9,7 @@ import { createInterface } from 'node:readline';
 let phase = 'arguments';
 process.on('uncaughtException', error => { process.stdout.write(JSON.stringify({ failed: true, phase, kind: error.name, code: error.code || error.cause?.code }) + '\n'); process.stdin.destroy(); process.exitCode = 1; });
 const [bundle, root, mode, action, arg] = process.argv.slice(2);
-assert(process.platform === 'win32' && win32.normalize(root).toLowerCase().startsWith('c:\\users\\changhansung\\agend-adapter-proto\\upgrade-'));
+assert(process.platform === 'win32' && win32.normalize(root).toLowerCase().startsWith('c:\\users\\demo-account\\agend-adapter-proto\\upgrade-'));
 const load = name => import(pathToFileURL(join(bundle, 'dist', name + '.js')).href);
 phase = 'imports';
 if (mode === 'pids') {

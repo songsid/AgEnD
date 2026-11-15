@@ -17,7 +17,14 @@ import { resolveRoomMentions, type MentionMember } from "./mentions.js";
 import type { HubRoomListResult, HubRoomPostResult, HubRoomMembersResult, HubPeopleSearchResult, HubRequestContext, HubTx } from "../types.js";
 import type { RoomEvent, RoomMessage, RoomSystemEvent } from "./types.js";
 import type { RoomInvitationHost } from "../invitations.js";
+import { RoomButtons } from "./buttons.js";
+import { HUB_ROOM_REACT_CAPABILITY, roomReactSchema } from "../protocol.js";
+import { replyButtonClickText } from "../../reply-buttons.js";
+import { pollResultsText, type PollBallot } from "../../reply-polls.js";
 import { RoomDirectoryCandidates, rememberRoomPeople, type RoomPersonSelection } from "./directory.js";
+import type { HubAttachmentStore } from "../attachments/store.js";
+import type { HubAttachmentRef } from "../types.js";
+import { isInlineImage } from "../attachments/limits.js";
 
 type DB = Database.Database;
 interface RoomRow { id: string; name: string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null }
@@ -27,8 +34,46 @@ const label = plain(120).transform(s => s.trim()).refine(s => s.length > 0 && !/
 const personId = z.string().max(128).refine(s => /^[a-z][a-z0-9_-]{0,63}\/[a-f0-9-]{36}$/.test(s));
 const createSchema = z.strictObject({ name: label, people: z.array(personId).max(100).default([]), teams: z.array(uuid).max(100).default([]),
   groups: z.array(uuid).max(100).default([]), agents: z.array(uuid).max(64).default([]), assistant: z.boolean().default(false) });
-const postSchema = z.strictObject({ text: plain(64 * 1024).refine(s => s.trim().length > 0), mentions: z.array(z.string().max(128)).max(100).default([]),
-  replyTo: uuid.optional(), files: z.array(uuid).max(0).optional(), idempotencyKey: uuid });
+// M-3125: a post carries up to 10 of the poster's own pending uploads in this room; with files the text may be empty.
+const postSchema = z.strictObject({ text: plain(64 * 1024), mentions: z.array(z.string().max(128)).max(100).default([]),
+  replyTo: uuid.optional(), files: z.array(uuid).max(10).optional(), idempotencyKey: uuid })
+  .refine(b => b.text.trim().length > 0 || (b.files?.length ?? 0) > 0);
+export interface GroupRoomFileView { id: string; name: string; size: number; mime: string; url: string }
+const groupFileView = (roomId: string, r: HubAttachmentRef): GroupRoomFileView => ({ id: r.id, name: r.name, size: r.size, mime: r.mime, url: `/hub/v1/rooms/${roomId}/files/${r.id}` });
+const clickSchema = z.strictObject({ setId: z.string().regex(/^[a-f0-9]{32}$/), index: z.number().int().min(0).max(9).optional(),
+  options: z.array(z.number().int().min(0).max(9)).max(10).optional(), idempotencyKey: uuid });
+/** M-3127: one press per set — its click post's idempotency key, a UUID shape derived from the set id. */
+const setKey = (setId: string) => { const h = createHash("sha256").update(`room-button:${setId}`).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`; };
+/** M-3127 C: how many posts one search reads at most, and the most hits it returns. */
+export const ROOM_SEARCH_SCAN = 2000, ROOM_SEARCH_LIMIT = 50, ROOM_SEARCH_PER_MINUTE = 30;
+const fold = (s: string) => s.normalize("NFKC").toLowerCase();
+/**
+ * M-3127 C: a hit's words — up to `width` characters around its first term, on whole characters, with every term's places
+ * in that snippet (`marks`: [start, end) ranges, merged). The page marks them; it never parses HTML.
+ */
+export function searchSnippet(text: string, terms: string[], width = 120): { snippet: string; marks: [number, number][] } {
+  const chars = [...text], lower = fold(text);
+  const first = Math.min(...terms.map(t => lower.indexOf(t)).filter(i => i >= 0), Number.MAX_SAFE_INTEGER);
+  // A code-unit index → a character index (an emoji is two units): count the characters before it.
+  const at = first === Number.MAX_SAFE_INTEGER ? 0 : [...text.slice(0, first)].length;
+  const start = Math.max(0, Math.min(at - Math.floor(width / 3), chars.length - width)), end = Math.min(chars.length, start + width);
+  const snippet = `${start > 0 ? "…" : ""}${chars.slice(start, end).join("").replace(/\s+/g, " ")}${end < chars.length ? "…" : ""}`;
+  const low = snippet.toLowerCase(), ranges: [number, number][] = [];
+  for (const t of terms) for (let i = low.indexOf(t); i !== -1 && ranges.length < 64; i = low.indexOf(t, i + Math.max(1, t.length))) ranges.push([i, i + t.length]);
+  ranges.sort((a, b) => a[0] - b[0]);
+  const marks: [number, number][] = [];
+  for (const r of ranges) { const last = marks[marks.length - 1]; if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]); else marks.push([...r]); }
+  return { snippet, marks };
+}
+const reactSchema = z.strictObject({ emoji: z.string().min(1).max(16), on: z.boolean() });
+/** M-3127: the most distinct emoji one post carries. */
+export const ROOM_REACTION_LIMIT = 12;
+/** One emoji as a person picks it: one grapheme, a pictograph (ZWJ sequences, FE0F and skin tones kept), no controls. */
+export function validRoomEmoji(s: unknown): s is string {
+  if (typeof s !== "string" || s.length < 1 || s.length > 16 || /[\u0000-\u001f\u007f\s]/u.test(s)) return false;
+  if (!/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(s)) return false;
+  return [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(s)].length === 1;
+}
 const patchSchema = z.strictObject({ name: label.optional(), allMention: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional() });
 
 export class HubRoomRefusal extends Error {
@@ -42,12 +87,26 @@ export class HubGroupRooms {
   readonly postReplies: RoomPostReplies;
   private readonly directory: RoomDirectoryCandidates;
   private readonly automation: RoomAutomation;
+  /** M-3127 B: answers' buttons and polls; one timer for the next deadline (cleared by close()). */
+  private readonly buttons: RoomButtons;
+  private buttonsTimer: NodeJS.Timeout | null = null;
+  private buttonsClosed = false;
+  /** M-3127 C (Fable P3b): each person's recent searches (their times), for ROOM_SEARCH_PER_MINUTE. */
+  private readonly searches = new Map<string, number[]>();
   private readonly agentSearch: HubGrantSearch;
   private readonly agentReadBuckets = new Map<string, { at: number; count: number }>();
   constructor(private readonly core: HubCore) { this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
     this.agents = new HubRoomAgents(core, event => this.emit(event), post => this.projection(post), this.automation,
       (db, tx, post) => { this.agentMentions(db, tx, post); this.postReplies.enqueue(db, tx, post); }, id => { this.agentEffects(id); this.postReplies.wake(); });
-    this.assistant = new HubRoomAssistant(core, event => this.emit(event), post => this.projection(post)); this.directory = new RoomDirectoryCandidates(core); }
+    this.assistant = new HubRoomAssistant(core, event => this.emit(event), post => this.projection(post)); this.directory = new RoomDirectoryCandidates(core);
+    this.buttons = new RoomButtons(core.deps.content, () => core.now());
+    this.agents.onAnswerButtons = (db, tx, d, b) => {
+      const ref = this.buttons.record(db, tx, d, b);
+      if (!ref) return;   // that set id is taken: no buttons on this answer, nothing opened
+      this.core.audit(tx, { requestId: d.id, actor: { kind: "local-host" }, action: b.poll ? "room.poll-opened" : "room.buttons-opened", result: "completed", roomId: d.room_id, messageId: d.reply_id, contentRef: ref });
+      queueMicrotask(() => this.armButtons());
+    };
+    this.armButtons(); }
   has(id: string): boolean { return this.core.atomic(db => !!db.prepare("SELECT 1 FROM hub_group_rooms WHERE id=?").get(id)); }
   subscribe(listener: (event: RoomEvent) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   /** Cheap queue admission only; event() still freshly authorizes and projects the eventual disclosure. */
@@ -55,7 +114,7 @@ export class HubGroupRooms {
     if (event.removedPerson) return event.removedPerson === person;
     return this.core.atomic(db => !!db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(event.roomId, person));
   }
-  async close(): Promise<void> { this.listeners.clear(); this.directory.close(); this.agentSearch.close(); this.agentReadBuckets.clear(); this.assistant.close(); await this.agents.close(); await this.postReplies.close(); }
+  async close(): Promise<void> { this.buttonsClosed = true; if (this.buttonsTimer) clearTimeout(this.buttonsTimer); this.buttonsTimer = null; this.listeners.clear(); this.directory.close(); this.agentSearch.close(); this.agentReadBuckets.clear(); this.assistant.close(); await this.agents.close(); await this.postReplies.close(); }
   /** The direct-chat receiver shares this stream without changing its grant-backed delivery path. */
   publish(event: RoomEvent): void { this.emit(event); }
   /** C owns invitation checks; these synchronous effects remain on its current SQL transaction. */
@@ -113,17 +172,42 @@ export class HubGroupRooms {
   }
   private maximum(db: DB, id: string): number { return (db.prepare("SELECT COALESCE(MAX(sequence),0) AS n FROM hub_room_posts WHERE room_id=?").get(id) as { n: number }).n; }
   private projection(row: PostRow): RoomMessage {
-    const system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined"].includes(row.author_id)
-      ? { kind: row.author_id as "room-created" | "member-joined" | "admin-joined", name: row.author_name } : undefined;
+    const system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined", "poll-closed"].includes(row.author_id)
+      ? { kind: row.author_id as "room-created" | "member-joined" | "admin-joined" | "poll-closed", name: row.author_name } : undefined;
     // Agent rows retain their owner-at-message in author_subject; a later exposure transfer must not relabel history.
     const owner = row.author_kind === "agent" ? this.core.atomic(db => ({ name: this.name(db, row.author_subject) })) : undefined;
     return { id: row.id, roomId: row.room_id, at: row.created_at, sequence: row.sequence, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...(owner ? { owner } : {}), ...this.viaAuthor(row) },
       ...(system ? { system } : {}), ...this.agentMetadata(row), text: this.core.deps.content.get(row.content_ref)?.question ?? "", mentions: JSON.parse(row.mentions) as string[],
       ...(row.reply_to ? { replyTo: row.reply_to } : {}), ...(row.idempotency_key ? { idempotencyKey: row.idempotency_key } : {}),
-      ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}),
+      ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}), ...this.filesOf(row),
       ...this.core.atomic(db => { const a = this.agents.progress(db, row.id), b = this.assistant.progress(db, row.id);
-        const ask = a || b ? { total: (a?.total ?? 0)+(b?.total ?? 0), answered: (a?.answered ?? 0)+(b?.answered ?? 0), working: (a?.working ?? 0)+(b?.working ?? 0), later: (a?.later ?? 0)+(b?.later ?? 0) } : undefined;
-        return { ...(ask ? { ask } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}) }; }) };
+        const total = (a?.total ?? 0)+(b?.total ?? 0), failed = (a?.failed ?? 0)+(b?.failed ?? 0), blocked = (a?.blocked ?? 0)+(b?.blocked ?? 0);
+        const ask = a || b ? { total, answered: (a?.answered ?? 0)+(b?.answered ?? 0), working: (a?.working ?? 0)+(b?.working ?? 0), later: (a?.later ?? 0)+(b?.later ?? 0),
+          ...(failed ? { failed } : {}), ...(blocked ? { blocked } : {}),
+          ...(total === 1 && (failed === 1 || blocked === 1) && (a?.reason || b?.reason) ? { reason: (a?.reason || b?.reason)! } : {}) } : undefined;
+        // The retained parent records who asked when the answer was queued. Do not infer from this viewer or the
+        // delivery's owner: an agent can ask too, and an absent owner's via post uses its agent member as a fallback id.
+        const asker = row.answer_to ? db.prepare(`SELECT p.author_id AS id FROM hub_room_posts p
+          WHERE p.id=? AND p.room_id=? AND p.author_kind='person' AND NOT EXISTS
+          (SELECT 1 FROM hub_room_agent_operations op WHERE op.post_id=p.id AND op.member_id=p.author_id)`)
+          .get(row.answer_to, row.room_id) as { id: string } | undefined : undefined;
+        const reactions = this.reactions(db, row.id), buttons = row.author_kind === "agent" ? this.buttons.view(db, row.id, id => this.memberName(db, id)) : undefined;
+        return { ...(ask ? { ask } : {}), ...(asker ? { askedBy: asker.id } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}), ...(buttons ? { buttons } : {}) }; }) };
+  }
+  /** M-3127: a post's reactions, each emoji in the order it first appeared, its members in the order they reacted. */
+  private reactions(db: DB, postId: string): NonNullable<RoomMessage["reactions"]> {
+    const rows = db.prepare("SELECT emoji,member_id FROM hub_room_reactions WHERE post_id=? ORDER BY created_at,rowid").all(postId) as { emoji: string; member_id: string }[];
+    const out = new Map<string, string[]>();
+    for (const r of rows) out.set(r.emoji, [...(out.get(r.emoji) ?? []), r.member_id]);
+    return [...out].map(([emoji, members]) => ({ emoji, count: members.length, members }));
+  }
+  private filesStore(): HubAttachmentStore | undefined { return this.core.deps.attachments ?? undefined; }
+  private store(): HubAttachmentStore { const s = this.filesStore(); if (!s) throw new HubProtocolError("incompatible"); return s; }
+  /** M-3125: a post's files, in order (none when the Hub has no attachment store). */
+  private filesOf(row: PostRow): { files?: GroupRoomFileView[] } {
+    const store = this.filesStore(); if (!store) return {};
+    const refs = this.core.atomic(db => [...store.forMessage(db, row.id, "question"), ...store.forMessage(db, row.id, "answer")]);
+    return refs.length ? { files: refs.map(r => groupFileView(row.room_id, r)) } : {};
   }
   private viaAuthor(row: PostRow): { name?: string; via?: { id: string; name: string } } {
     return this.core.atomic(db => { const op = db.prepare("SELECT exposure_id,person_name,via_name FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NOT NULL").get(row.id) as { exposure_id: string; person_name: string; via_name: string } | undefined;
@@ -440,7 +524,8 @@ export class HubGroupRooms {
           signedIn: !!db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(m.subject),
           presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };
       });
-      return { room: this.summary(db, room, own), me: { id: own.id, role: own.role }, members,
+      // M-3125: the room takes people's files when this Hub stores files (the 1:1 chat's own attachments-v1 mark).
+      return { room: { ...this.summary(db, room, own), ...(this.filesStore() ? { features: ["attachments-v1"] } : {}) }, me: { id: own.id, role: own.role }, members,
         settings: { allMention: room.all_mention === 1, historyForNew: room.history_for_new, ...(members.some(m => m.kind === "assistant") ? { assistant: true } : {}) }, invited: [] };
     }, { assertCurrent: () => { this.fence(ctx).assertCurrent(); for (const proof of directProofs) proof.assertCurrent(); } });
   }
@@ -542,7 +627,7 @@ export class HubGroupRooms {
   }
   async messages(ctx: HubRequestContext, id: string, before: string | null, limit = 50) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new HubProtocolError("invalid");
-    const me = await this.who(ctx); this.agents.sweep(id);
+    const me = await this.who(ctx); this.agents.sweep(id); this.settleButtons();
     return this.core.atomic(db => {
       const member = this.member(db, id, me); let until = Number.MAX_SAFE_INTEGER;
       if (before) { const row = db.prepare("SELECT sequence FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(validated(uuid, before), id, member.joined_sequence) as { sequence: number } | undefined;
@@ -553,7 +638,9 @@ export class HubGroupRooms {
   }
   async post(ctx: HubRequestContext, id: string, input: unknown): Promise<RoomMessage> {
     const body = validated(postSchema, input), me = await this.who(ctx);
-    const digest = createHash("sha256").update(JSON.stringify({ text: body.text, mentions: body.mentions, replyTo: body.replyTo ?? null })).digest("hex");
+    const files = body.files ?? [];
+    const digest = createHash("sha256").update(JSON.stringify(files.length ? { text: body.text, mentions: body.mentions, replyTo: body.replyTo ?? null, files }
+      : { text: body.text, mentions: body.mentions, replyTo: body.replyTo ?? null })).digest("hex");
     let added = false;
     const row = this.core.atomic((db, tx) => {
       const member = this.member(db, id, me), room = this.room(db, id);
@@ -562,7 +649,9 @@ export class HubGroupRooms {
       const old = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND author_subject=? AND idempotency_key=?").get(id, me, body.idempotencyKey) as PostRow | undefined;
       if (old) { if (old.digest !== digest || old.sequence < member.joined_sequence) throw new HubRoomRefusal(409, "conflict"); return old; }
       if (body.replyTo && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(body.replyTo, id, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
+      const refs = files.length ? this.store().pending(db, id, me, files) : [];
       const post = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name: this.name(db, me) }, body.text, body.mentions, body.idempotencyKey, digest, body.replyTo ?? null);
+      if (refs.length) this.store().bindPost(db, refs, post.id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.message", result: "completed", roomId: id, messageId: post.id, contentRef: post.content_ref });
       this.automation.human(db, post);
       this.agents.enqueue(db, tx, { ...post, mentions: JSON.stringify(body.mentions.filter(m => m !== "assistant")) }, member.id);
@@ -573,6 +662,287 @@ export class HubGroupRooms {
     if (added) { this.emit({ type: "message.added", roomId: id, data: { roomId: id, message }, sequence: row.sequence }); this.emit({ type: "unread.changed", roomId: id, data: { roomId: id } }); }
     if (added) { this.agents.publishQueued(row.id); this.assistant.publishQueued(row.id); }
     this.agents.wake(); this.assistant.wake(); return message;
+  }
+  /**
+   * M-3127: add or take back my reaction on a post I can see (since my joined_sequence; not a room line, not an answer
+   * still to come). Set semantics: adding twice or removing what is not there changes nothing and emits nothing.
+   */
+  async react(ctx: HubRequestContext, id: string, postId: unknown, input: unknown): Promise<{ reactions: NonNullable<RoomMessage["reactions"]> }> {
+    const body = validated(reactSchema, input), target = validated(uuid, postId);
+    if (!validRoomEmoji(body.emoji)) throw new HubProtocolError("invalid");
+    const me = await this.who(ctx);
+    const done = this.core.atomic(db => {
+      const member = this.member(db, id, me);
+      if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived");
+      const post = this.visiblePost(db, id, member, target);
+      if (post.author_kind === "system" || post.stage && post.stage !== "answered") throw new HubRoomRefusal(409, "invalid");
+      let changed: boolean;
+      if (body.on) {
+        const has = db.prepare("SELECT emoji FROM hub_room_reactions WHERE post_id=? GROUP BY emoji").all(post.id) as { emoji: string }[];
+        if (!has.some(r => r.emoji === body.emoji) && has.length >= ROOM_REACTION_LIMIT) throw new HubRoomRefusal(409, "limit");
+        changed = db.prepare("INSERT OR IGNORE INTO hub_room_reactions(room_id,post_id,member_id,emoji,created_at) VALUES(?,?,?,?,?)").run(id, post.id, member.id, body.emoji, this.core.now()).changes > 0;
+      } else changed = db.prepare("DELETE FROM hub_room_reactions WHERE post_id=? AND member_id=? AND emoji=?").run(post.id, member.id, body.emoji).changes > 0;
+      return { post, changed, reactions: this.reactions(db, post.id) };
+    }, this.fence(ctx));
+    // The post as it now is, on the stream every open tab already reads (message.updated): no new event name.
+    if (done.changed) this.emit({ type: "message.updated", roomId: id, data: { roomId: id, message: this.projection(done.post) }, sequence: done.post.sequence });
+    return { reactions: done.reactions };
+  }
+  /**
+   * M-3127: a post exactly as messages() shows it to `member` — since their joined_sequence, its lineage's audience floor
+   * too (Ridge, M-3118: the descendants of a question older than them stay hidden), and an answer only when its question
+   * is theirs to see. 404 otherwise.
+   */
+  private visiblePost(db: DB, roomId: string, member: MemberRow, postId: string): PostRow {
+    const post = db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=? AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=hub_room_posts.id),sequence)>=?")
+      .get(postId, roomId, member.joined_sequence, member.joined_sequence) as PostRow | undefined;
+    if (!post || post.answer_to && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(post.answer_to, roomId, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
+    return post;
+  }
+  /** M-3127: a member's name as the room shows it (a person's display name, an agent's exposure name, the assistant). */
+  private memberName(db: DB, memberId: string): string {
+    const m = db.prepare("SELECT * FROM hub_room_members WHERE id=?").get(memberId) as MemberRow | undefined;
+    if (!m) return "";
+    if (m.kind === "person") return this.name(db, m.subject);
+    if (m.kind === "assistant") return "Room assistant";
+    return readExposure(db, m.subject)?.display_name ?? "";
+  }
+  /**
+   * M-3127 B: press an answer's button, or vote in its poll (the direct chat's body: { setId, index | options,
+   * idempotencyKey }). Plain buttons: the question's asker only (403 not-asker), the first press wins, and it becomes the
+   * asker's own room message — the button's label, replying to the answer, to that agent — delivered by the ordinary room
+   * ask (the agent gets the click line). Polls: every person who can see it; a later vote replaces mine until it closes.
+   */
+  async click(ctx: HubRequestContext, id: string, input: unknown): Promise<{ ok: true }> {
+    const body = validated(clickSchema, input), me = await this.who(ctx);
+    this.settleButtons();
+    const done = this.core.atomic((db, tx) => {
+      const member = this.member(db, id, me);
+      if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived");
+      const row = this.buttons.row(db, body.setId);
+      if (!row || row.room_id !== id) throw new HubRoomRefusal(404, "not-found");
+      const answer = this.visiblePost(db, id, member, row.post_id), b = this.buttons.choices(row);
+      if (!b) throw new HubRoomRefusal(409, "expired");
+      let picked: number[];
+      if (b.poll) {
+        const o = body.options;
+        if (body.index !== undefined || !o || o.some(i => i >= b.labels.length) || new Set(o).size !== o.length || !b.poll.multi && o.length !== 1) throw new HubProtocolError("invalid");
+        picked = [...o].sort((x, y) => x - y);
+      } else {
+        if (body.options !== undefined || body.index === undefined || body.index >= b.labels.length) throw new HubProtocolError("invalid");
+        picked = [body.index];
+      }
+      const digest = createHash("sha256").update(JSON.stringify([body.setId, !!b.poll, picked])).digest("hex");
+      const dup = db.prepare("SELECT set_id,digest FROM hub_room_button_operations WHERE room_id=? AND member_id=? AND idempotency_key=?").get(id, member.id, body.idempotencyKey) as { set_id: string; digest: string } | undefined;
+      if (dup) { if (dup.set_id !== body.setId || dup.digest !== digest) throw new HubRoomRefusal(409, "conflict"); return { answer, click: null as PostRow | null, changed: false }; }
+      if (row.state !== "open" || this.core.now() >= row.expires_at) throw new HubRoomRefusal(409, "expired");
+      let click: PostRow | null = null;
+      if (!b.poll) {
+        if (row.asker_member !== member.id) throw new HubRoomRefusal(403, "not-asker");
+        const i = picked[0]!, label = b.labels[i]!, value = b.values?.[i] ?? label, name = this.name(db, me);
+        // One click per set, whatever the browser's key: the set's own key makes a second press a conflict, not a post.
+        const key = setKey(body.setId), clickDigest = createHash("sha256").update(JSON.stringify({ text: label, mentions: [answer.author_id], replyTo: answer.id })).digest("hex");
+        click = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name }, label, [answer.author_id], key, clickDigest, answer.id);
+        this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.message", result: "completed", roomId: id, messageId: click.id, contentRef: click.content_ref });
+        this.automation.human(db, click);
+        if (db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(id, answer.author_id))
+          this.agents.enqueue(db, tx, click, member.id, { asker: me, name, text: replyButtonClickText({ label, value }) });
+        db.prepare("UPDATE hub_room_buttons SET state='chosen',chosen_index=?,chosen_member=?,closed_at=?,revision=revision+1 WHERE id=? AND state='open'").run(i, member.id, this.core.now(), row.id);
+      } else {
+        db.prepare("INSERT INTO hub_room_votes(set_id,member_id,options,at) VALUES(?,?,?,?) ON CONFLICT(set_id,member_id) DO UPDATE SET options=excluded.options,at=excluded.at")
+          .run(row.id, member.id, JSON.stringify(picked), this.core.now());
+        db.prepare("UPDATE hub_room_buttons SET revision=revision+1 WHERE id=?").run(row.id);
+      }
+      db.prepare("INSERT INTO hub_room_button_operations VALUES(?,?,?,?,?)").run(id, member.id, body.idempotencyKey, body.setId, digest);
+      return { answer, click, changed: true };
+    }, this.fence(ctx));
+    if (done.changed) this.emit({ type: "message.updated", roomId: id, data: { roomId: id, message: this.projection(done.answer) }, sequence: done.answer.sequence });
+    if (done.click) {
+      this.emit({ type: "message.added", roomId: id, data: { roomId: id, message: this.projection(done.click) }, sequence: done.click.sequence });
+      this.emit({ type: "unread.changed", roomId: id, data: { roomId: id } });
+      this.agents.publishQueued(done.click.id); this.agents.wake();
+    }
+    return { ok: true };
+  }
+  /** M-3127 B: the next open set's deadline, once; closes what is due and arms again (30 s after a failure). */
+  private armButtons(delay?: number): void {
+    if (this.buttonsClosed || !this.core.live()) return;
+    if (this.buttonsTimer) clearTimeout(this.buttonsTimer);
+    let wait = delay;
+    if (wait === undefined) {
+      const next = this.core.atomic(db => this.buttons.nextDeadline(db));
+      if (next === null) { this.buttonsTimer = null; return; }
+      wait = Math.max(0, next - this.core.now());
+    }
+    this.buttonsTimer = setTimeout(() => { this.buttonsTimer = null; try { this.closeDueButtons(); this.armButtons(); } catch { this.armButtons(30_000); } }, Math.min(wait, 2 ** 31 - 1));
+    this.buttonsTimer.unref?.();
+  }
+  /**
+   * M-3127 B: sets past their deadline. Buttons expire. A poll closes: one room line (「投票結束」, in the poll's lineage —
+   * Ridge: a system consequence, never a fresh human root) and the results delivered to the agent that asked it, on behalf
+   * of that question's asker (the Fleet chat's [poll results]).
+   */
+  private closeDueButtons(): void {
+    if (this.buttonsClosed || !this.core.live()) return;
+    const out = this.core.atomic((db, tx) => {
+      const changed: { answer: PostRow; line: PostRow | null }[] = [];
+      for (const row of this.buttons.due(db)) {
+        const b = this.buttons.choices(row), now = this.core.now();
+        const answer = db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(row.post_id) as PostRow | undefined;
+        if (!b?.poll || !answer) { db.prepare("UPDATE hub_room_buttons SET state='expired',closed_at=?,revision=revision+1 WHERE id=? AND state='open'").run(now, row.id); if (answer) changed.push({ answer, line: null }); continue; }
+        db.prepare("UPDATE hub_room_buttons SET state='closed',closed_at=?,revision=revision+1 WHERE id=? AND state='open'").run(now, row.id);
+        const votes = this.buttons.votes(db, row.id);
+        const ballots: PollBallot[] = votes.map(v => ({ voter: v.member_id, name: this.memberName(db, v.member_id), options: v.options, at: v.at }));
+        const text = pollResultsText({ id: row.id, buttons: b.labels.map((label, i) => ({ label, value: b.values?.[i] ?? label })), createdAt: row.created_at, expiresAt: row.expires_at }, b.poll, ballots, now);
+        // The room line says only that it closed (counts are on the poll; names only with showVoters, on the poll too).
+        const line = this.insert(db, tx, row.room_id, { kind: "system", id: "poll-closed", subject: "system", name: answer.author_name }, `Poll closed · ${votes.length} voted`);
+        const l = this.automation.lineage(db, answer);
+        db.prepare("INSERT INTO hub_room_post_lineage VALUES(?,?,?,?,NULL)").run(line.id, l.root_id, l.depth, l.audience_sequence);
+        db.prepare("UPDATE hub_room_buttons SET result_post=? WHERE id=?").run(line.id, row.id);
+        const d = db.prepare("SELECT asker,asker_member FROM hub_room_deliveries WHERE id=?").get(row.delivery_id) as { asker: string; asker_member: string } | undefined;
+        const room = this.room(db, row.room_id);
+        const agentHere = db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(row.room_id, answer.author_id);
+        const askerHere = d && db.prepare("SELECT 1 FROM hub_room_members WHERE id=? AND room_id=?").get(d.asker_member, row.room_id);
+        if (d && agentHere && askerHere && !room.archived)
+          this.agents.enqueue(db, tx, { ...line, mentions: JSON.stringify([answer.author_id]) }, d.asker_member, { asker: d.asker, name: "Poll results", text });
+        this.core.audit(tx, { requestId: row.id, actor: { kind: "local-host" }, action: "room.poll-closed", result: "completed", roomId: row.room_id, messageId: line.id, contentRef: line.content_ref });
+        changed.push({ answer, line });
+      }
+      return changed;
+    });
+    for (const { answer, line } of out) {
+      this.emit({ type: "message.updated", roomId: answer.room_id, data: { roomId: answer.room_id, message: this.projection(answer) }, sequence: answer.sequence });
+      if (line) { this.emit({ type: "message.added", roomId: line.room_id, data: { roomId: line.room_id, message: this.projection(line) }, sequence: line.sequence }); this.agents.publishQueued(line.id); }
+    }
+    if (out.some(x => x.line)) this.agents.wake();
+  }
+  /**
+   * M-3127 (agent reactions, on room-answer-buttons-v1): an agent's reaction (its `react`) to the room question it was asked — only on that delivery's
+   * own question, from the Fleet and owner it went to, while the agent is still in the room. One reaction per agent and
+   * post (a later one replaces it; "" takes it back), stored under the agent's membership; the post as it now is goes out
+   * on the room stream (message.updated).
+   */
+  async agentReact(input: import("../types.js").HubRoomReact, link: import("../server.js").HubLinkContext): Promise<import("../types.js").HubRoomReactResult> {
+    const body = validated(roomReactSchema, input);
+    if (body.emoji !== "" && !validRoomEmoji(body.emoji)) throw new HubProtocolError("invalid");
+    if (!link.current() || !link.features.has(HUB_ROOM_REACT_CAPABILITY)) throw new HubProtocolError("revoked");
+    const done = this.core.atomic(db => {
+      const d = db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(body.messageId) as { room_id: string; parent_id: string; exposure_id: string; fleet_id: string; owner: string; agent_member: string } | undefined;
+      if (!d || d.fleet_id !== link.fleetId || d.owner !== personKeyString(link.owner) || d.room_id !== body.roomId || d.exposure_id !== body.exposureId) throw new HubProtocolError("denied");
+      const room = this.room(db, d.room_id);
+      if (room.archived) return { post: null, changed: false, archived: true };   // a result, never a broken member link
+      if (!db.prepare("SELECT 1 FROM hub_room_members WHERE id=? AND room_id=? AND kind='agent' AND subject=?").get(d.agent_member, d.room_id, d.exposure_id)) throw new HubProtocolError("revoked");
+      const post = db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=?").get(d.parent_id, d.room_id) as PostRow | undefined;
+      if (!post) throw new HubProtocolError("not-found");
+      // Under the agent as the room lists it (its exposure id: the members panel's id for an agent), so the page can name it.
+      const who = d.exposure_id;
+      const had = db.prepare("SELECT emoji FROM hub_room_reactions WHERE post_id=? AND member_id=?").all(post.id, who) as { emoji: string }[];
+      if (had.length === (body.emoji ? 1 : 0) && (!body.emoji || had[0]!.emoji === body.emoji)) return { post, changed: false };
+      if (body.emoji && !had.some(r => r.emoji === body.emoji)
+        && (db.prepare("SELECT COUNT(DISTINCT emoji) n FROM hub_room_reactions WHERE post_id=? AND member_id<>?").get(post.id, who) as { n: number }).n >= ROOM_REACTION_LIMIT
+        && !(db.prepare("SELECT 1 FROM hub_room_reactions WHERE post_id=? AND emoji=?").get(post.id, body.emoji))) throw new HubProtocolError("invalid");
+      db.prepare("DELETE FROM hub_room_reactions WHERE post_id=? AND member_id=?").run(post.id, who);
+      if (body.emoji) db.prepare("INSERT INTO hub_room_reactions(room_id,post_id,member_id,emoji,created_at) VALUES(?,?,?,?,?)").run(d.room_id, post.id, who, body.emoji, this.core.now());
+      return { post, changed: true };
+    });
+    if ("archived" in done) return { messageId: body.messageId, ok: false, code: "archived" };
+    if (done.changed && done.post) this.emit({ type: "message.updated", roomId: done.post.room_id, data: { roomId: done.post.room_id, message: this.projection(done.post) }, sequence: done.post.sequence });
+    return { messageId: body.messageId, ok: true };
+  }
+  /** A read or a press first closes what is already due (a suspended host's timer may be late): never a stale open poll. */
+  private settleButtons(): void {
+    const next = this.core.atomic(db => this.buttons.nextDeadline(db));
+    if (next !== null && next <= this.core.now()) { this.closeDueButtons(); this.armButtons(); }
+  }
+  /**
+   * M-3127 C: messages with these words in the group rooms I am in, newest first — exactly what messages() would show me
+   * (since my joined_sequence, the lineage floor, answered rows only, no room lines). The text is encrypted at rest and
+   * retention deletes it, so there is no plaintext index: a bounded scan (ROOM_SEARCH_SCAN posts a request), and `cursor`
+   * when more remain ("search older messages"). Every word must appear (NFKC, case-folded). ROOM_SEARCH_PER_MINUTE each.
+   */
+  async search(ctx: HubRequestContext, q: unknown, limit: unknown = 20, cursor: unknown = null) {
+    const query = typeof q === "string" ? q.trim() : "", n = typeof limit === "number" ? limit : Number(limit);
+    const terms = [...new Set(fold(query).split(/\s+/).filter(Boolean))].slice(0, 8);
+    if (query.length < 1 || query.length > 100 || !terms.length || !Number.isSafeInteger(n) || n < 1 || n > ROOM_SEARCH_LIMIT) throw new HubProtocolError("invalid");
+    let after: { at: number; id: string } | null = null;
+    if (cursor !== null && cursor !== undefined && cursor !== "") {
+      const c = typeof cursor === "string" ? /^(\d{1,15})\.([a-f0-9-]{36})$/.exec(cursor) : null;
+      if (!c) throw new HubProtocolError("invalid");
+      after = { at: Number(c[1]), id: c[2]! };
+    }
+    const me = await this.who(ctx);
+    // A search reads and decrypts up to ROOM_SEARCH_SCAN posts on the event loop: at most ROOM_SEARCH_PER_MINUTE a minute
+    // each (429 busy, the page says to try again in a moment). One person's map entry; old times drop on every call.
+    const now = this.core.now(), recent = (this.searches.get(me) ?? []).filter(t => t > now - 60_000);
+    if (recent.length >= ROOM_SEARCH_PER_MINUTE) { this.searches.set(me, recent); throw new HubRoomRefusal(429, "busy"); }
+    this.searches.set(me, [...recent, now]);
+    if (this.searches.size > 10_000) for (const [k, v] of this.searches) if (!v.some(t => t > now - 60_000)) this.searches.delete(k);
+    {
+      return this.core.atomic(db => {
+        const rows = db.prepare(`SELECT p.*,r.name AS room_name FROM hub_room_posts p
+          JOIN hub_room_members m ON m.room_id=p.room_id AND m.kind='person' AND m.subject=?
+          JOIN hub_group_rooms r ON r.id=p.room_id
+          WHERE p.sequence>=m.joined_sequence AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=p.id),p.sequence)>=m.joined_sequence
+            AND p.author_kind<>'system' AND (p.stage IS NULL OR p.stage='answered')
+            AND (p.answer_to IS NULL OR EXISTS(SELECT 1 FROM hub_room_posts o WHERE o.id=p.answer_to AND o.sequence>=m.joined_sequence))
+            AND (? IS NULL OR p.created_at<? OR p.created_at=? AND p.id<?)
+          ORDER BY p.created_at DESC,p.id DESC LIMIT ?`).all(me, after?.at ?? null, after?.at ?? 0, after?.at ?? 0, after?.id ?? "", ROOM_SEARCH_SCAN) as (PostRow & { room_name: string })[];
+        const hits: { roomId: string; roomName: string; messageId: string; sequence: number; at: number; author: { kind: string; name: string }; snippet: string; marks: [number, number][] }[] = [];
+        let last: PostRow | null = null;
+        for (const row of rows) {
+          last = row;
+          const text = this.core.deps.content.get(row.content_ref)?.question;
+          if (!text) continue;   // retention removed it
+          const lower = fold(text);
+          if (!terms.every(t => lower.includes(t))) continue;
+          const author = this.projection(row).author;
+          hits.push({ roomId: row.room_id, roomName: row.room_name, messageId: row.id, sequence: row.sequence, at: row.created_at,
+            author: { kind: author.kind, name: author.name }, ...searchSnippet(text, terms) });
+          if (hits.length >= n) break;
+        }
+        const more = !!last && (hits.length >= n ? last !== rows[rows.length - 1] || rows.length === ROOM_SEARCH_SCAN : rows.length === ROOM_SEARCH_SCAN);
+        return { hits, ...(more && last ? { cursor: `${last.created_at}.${last.id}` } : {}) };
+      }, this.fence(ctx));
+    }
+  }
+  /** M-3125: before any upload body is read — a member of a room that is not archived, and room in their pending budget. */
+  async uploadAdmit(ctx: HubRequestContext, id: string, declaredBytes: number): Promise<void> {
+    const me = await this.who(ctx), store = this.store();
+    this.core.atomic(db => { this.member(db, id, me); if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived"); store.admit(db, { uploader: me }, declaredBytes); }, this.fence(ctx));
+  }
+  /** M-3125: a member's file for a later post in this room, pending one hour (as in a 1:1 chat). */
+  async upload(ctx: HubRequestContext, id: string, name: string, bytes: Buffer): Promise<GroupRoomFileView> {
+    const me = await this.who(ctx), store = this.store();
+    return this.core.atomic((db, tx) => {
+      this.member(db, id, me); if (this.room(db, id).archived) throw new HubRoomRefusal(409, "archived");
+      const ref = store.createUpload(db, { roomId: id, uploader: me, name, bytes });
+      this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "file.upload", result: "allowed",
+        reasonCode: `question:${ref.size}:${ref.mime}:${ref.sha256}`, contentRef: this.core.deps.content.put(tx, { question: ref.name }), roomId: id });
+      return groupFileView(id, ref);
+    }, this.fence(ctx));
+  }
+  /**
+   * M-3125: one of this room's files, for a current member: a file on a post they can see (at or after their join floor, the
+   * room's history rule) or their own pending upload. Every read is audited.
+   */
+  async download(ctx: HubRequestContext, id: string, fileId: string): Promise<{ name: string; mime: string; image: boolean; bytes: Buffer }> {
+    const me = await this.who(ctx), store = this.store(), now = this.core.now();
+    return this.core.atomic((db, tx) => {
+      const member = this.member(db, id, me), row = store.row(db, fileId);
+      if (!row || row.room_id !== id) throw new HubProtocolError("not-found");
+      // The listing's own visibility rule (Ridge, M-3118): the post at or after the floor, its lineage's audience at or after it, and the
+      // post it answers too — a chained answer after a viewer joined does not reveal a hidden question's files, nor its own.
+      const visible = row.state === "bound" && !!row.message_id && !!db.prepare(`SELECT 1 FROM hub_room_posts p WHERE p.id=? AND p.room_id=? AND p.sequence>=?
+        AND (p.stage IS NULL OR p.stage='answered')
+        AND COALESCE((SELECT audience_sequence FROM hub_room_post_lineage l WHERE l.post_id=p.id),p.sequence)>=?
+        AND (p.answer_to IS NULL OR EXISTS(SELECT 1 FROM hub_room_posts o WHERE o.id=p.answer_to AND o.sequence>=?))`).get(row.message_id, id, member.joined_sequence, member.joined_sequence, member.joined_sequence);
+      const own = row.state === "pending" && row.uploader === me && (row.expires_at ?? 0) > now;
+      if (!own && !visible) throw new HubProtocolError("not-found");
+      const bytes = store.read(db, row.sha256);
+      this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "file.read", result: "allowed",
+        reasonCode: `${row.direction}:${row.size}:${row.mime}:${row.sha256}`, ...(row.message_id ? { messageId: row.message_id } : {}), roomId: id });
+      return { name: row.name, mime: row.mime, image: isInlineImage(row.mime), bytes };
+    }, this.fence(ctx));
   }
   async markRead(ctx: HubRequestContext, id: string, upTo: unknown) {
     const target = validated(uuid, upTo), me = await this.who(ctx);

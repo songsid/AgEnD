@@ -1,8 +1,10 @@
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
+import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
 import { HubSocket } from "./socket.js";
+import { HUB_RECOMMENDATION_CAPABILITY } from "./recommendation-model.js";
+import { HUB_FLEET_INFO_CAPABILITY } from "./fleet-info.js";
 import { HubProtocolError } from "./validation.js";
 import { pinnedHubAgent, HubTlsIdentityError } from "./tls.js";
 import { verifyLease, sha256, canonicalArguments } from "./identity.js";
@@ -25,6 +27,8 @@ export interface HubMemberLink {
 }
 interface Pending { expected: HubServerFrame["type"]; resolve(frame: HubServerFrame): void; reject(error: Error): void; timer: NodeJS.Timeout }
 export interface HubClientOptions {
+  receiveRecommendations?: boolean;
+  fleetInfo?: import("./types.js").HubFleetInfo;
   home: string; hubId: string; memberOrigin: string; current(): boolean;
   /** Must durably reconcile the current revocation version and journal BEFORE returning. No input here. */
   reconcile(link: HubMemberLink): Promise<void>;
@@ -146,13 +150,20 @@ export class HubMemberClient implements HubMemberTransport {
       clearTimeout(timeout); this.epoch = frame.linkEpoch; this.revocation = frame.payload.revocationVersion;
       const profile = this.profile!, epoch = this.epoch;
       const self = this, offered = this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES;
+      const canReportInfo = offered.includes("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_FLEET_INFO_CAPABILITY) === true;
+      const canReceiveRecommendation = canReportInfo && !!this.options.fleetInfo && this.options.receiveRecommendations === true && frame.payload.capabilities?.includes(HUB_RECOMMENDATION_CAPABILITY) === true;
       const features: ReadonlySet<string> = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
+      if (canReceiveRecommendation) (features as Set<string>).add(HUB_RECOMMENDATION_CAPABILITY);
       const view: HubMemberLink = { profile: structuredClone(profile), linkEpoch: epoch, endpoint, features, get revocationVersion() { return self.revocation; },
         current: () => this.current() && this.link === link && this.view === view && this.epoch === epoch && link.current(),
         send: value => {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
+          if (value.type === "fleet.recommendation-ack" && !canReceiveRecommendation) return Promise.reject(new HubProtocolError("incompatible"));
+          if (value.type === "fleet.info" && !canReportInfo) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "exposure.quota" && !features.has("quota-band-v1")) return Promise.reject(new HubAuthorizationError("unavailable", "incompatible"));
           if ((value.type === "room.answer" || value.type === "agent.state") && (!features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
+          if (value.type === "room.answer" && value.payload.buttons && !features.has(HUB_ROOM_BUTTONS_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
+          if (value.type === "room.react" && (!features.has(HUB_ROOM_REACT_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY))) return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "room.list" || value.type === "room.post" || value.type === "room.members" || value.type === "people.search" || value.type === "room.post-answer-ack") && (!features.has(HUB_ROOM_POST_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
           return link.send(value);
         },
@@ -161,7 +172,10 @@ export class HubMemberClient implements HubMemberTransport {
       // Do not await reconciliation on the receive queue: its RPC response arrives on that queue.
       const statement = features.has(HUB_WEB_ORIGIN_CAPABILITY) ? frame.payload.webOrigin : undefined, learn = this.options.webOrigin;
       const learned = statement && learn ? Promise.resolve().then(() => view.current() ? learn(statement, view) : undefined).catch(() => undefined) : Promise.resolve();
-      void learned.then(() => this.options.reconcile(view)).then(async () => {
+      void learned.then(async () => {
+        if (canReportInfo && this.options.fleetInfo && view.current()) await view.send({ v: 1, type: "fleet.info", requestId: randomUUID(), linkEpoch: epoch, payload: { ...this.options.fleetInfo, ...(canReceiveRecommendation ? { recommendations: true as const } : {}) } });
+        await this.options.reconcile(view);
+      }).then(async () => {
         if (!view.current()) return;
         this.ready = true; this.attempt = 0; this.dialIndex = 0; this.firstResolve?.(); this.firstReject = this.firstResolve = null;
         const queued = this.deferred.splice(0); this.deferredBytes = 0;
@@ -189,8 +203,10 @@ export class HubMemberClient implements HubMemberTransport {
     if (frame.type === "pairing.notice" && (!view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v2" && (!view.features.has("pairing-notices-v2") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v3" && (!view.features.has("pairing-notices-v3") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "fleet.recommendation" && !view.features.has(HUB_RECOMMENDATION_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "relocate" && (!view.features.has(HUB_MEMBER_RELOCATION_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.ask" || frame.type === "room.answer-ack") && (!view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "room.react-result" && (!view.features.has(HUB_ROOM_REACT_CAPABILITY) || !view.features.has(HUB_ROOM_ASK_CAPABILITY))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.list-result" || frame.type === "room.post-result" || frame.type === "room.members-result" || frame.type === "people.search-result" || frame.type === "room.post-answer") && (!view.features.has(HUB_ROOM_POST_CAPABILITY) || !view.features.has(HUB_ROOM_ASK_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "revoke") {
       if (frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");

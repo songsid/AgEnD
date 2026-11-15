@@ -13,11 +13,11 @@ const fx = await bootFixture({ port: Number(process.env.HP ?? 48400) });
 const enc = encodeURIComponent;
 
 // The instances the checks read, at their real long names (fixture data, not the short demo names of the first port).
-const PERSON_PICK = "研一官網-t1544335726169165914";             // a person's pick on the name and bar (pink)
-const AGENT_RING = "rd1-platform-backend-sr4-server-t1547091841202130997"; // the agent's own colour on its ring (teal preset)
+const PERSON_PICK = "產品官網-t1500000000000165914";             // a person's pick on the name and bar (pink)
+const AGENT_RING = "tm1-platform-backend-sr4-server-t1500000000000130997"; // the agent's own colour on its ring (teal preset)
 const QUIET = "資料清洗與報表自動化助理";                          // colour shown nowhere
-const CHAT = "agend-dev-claude-t1519896892392083558";             // the chat the checks open
-const AUTO = "awp-ota-frontend-release-candidate-t1505801094666915890"; // automatic colour
+const CHAT = "agend-dev-claude-t1500000000000083558";             // the chat the checks open
+const AUTO = "ota-svc-frontend-release-candidate-t1500000000000915890"; // automatic colour
 
 // Avatars on the first 30 rows (the rings need a photo to sit on), then the colours the checks read.
 const avatars = await seedAvatars(fx, 30);

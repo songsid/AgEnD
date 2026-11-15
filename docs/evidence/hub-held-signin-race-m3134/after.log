@@ -1,0 +1,9 @@
+RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-held-signin-race-m3134
+
+(node:8068) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  05:33:28
+   Duration  13.02s (transform 6.25s, setup 85ms, import 7.07s, tests 5.73s, environment 0ms)

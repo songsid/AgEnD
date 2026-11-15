@@ -22,7 +22,7 @@ import { Daemon } from "../src/daemon.js";
 
 const REAL_ERROR = [
   "● Execution failed after 0.0s:",
-  "Transport to MCP server 'agend-agend-leader-t1503382358143799511' is closed.",
+  "Transport to MCP server 'agend-agend-leader-t1500000000000799511' is closed.",
   "The server may have written non-JSON-RPC output to stdout which caused the connection to close.",
   "Check the server's stdout output and restart the session.",
 ].join("\n");

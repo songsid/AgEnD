@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-post-m3118
+
+
+ Test Files  2 passed (2)
+      Tests  13 passed (13)
+   Start at  00:18:22
+   Duration  4.94s (transform 4.85s, setup 188ms, import 6.96s, tests 1.36s, environment 0ms)
+

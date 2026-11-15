@@ -4,9 +4,9 @@ import type Database from "better-sqlite3";
 import { exposureOf, readExposure } from "../catalog.js";
 import { personFromString, type HubCore } from "../http/core.js";
 import { personKeyString } from "../identity.js";
-import { HUB_LIMITS, HUB_ROOM_ASK_CAPABILITY, roomAskSchema, roomAnswerSchema, agentStateSchema } from "../protocol.js";
+import { HUB_LIMITS, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, roomAskSchema, roomFilesNegotiated, roomAnswerSchema, agentStateSchema } from "../protocol.js";
 import type { HubLinkContext } from "../server.js";
-import type { HubAgentState, HubRoomAsk, HubRoomAnswer, HubRoomAnswerAck, HubTx } from "../types.js";
+import type { HubAgentState, HubAnswerButtons, HubAttachmentChunk, HubAttachmentRef, HubRoomAsk, HubRoomAnswer, HubRoomAnswerAck, HubTx } from "../types.js";
 import { HubProtocolError, validated } from "../validation.js";
 import { boundedRoomText as trim, roomContext } from "./context.js";
 import { RoomAutomation } from "./automation.js";
@@ -35,6 +35,8 @@ export class HubRoomAgents {
   private timer: NodeJS.Timeout | null = null;
   private timerAt = Number.POSITIVE_INFINITY;
   private stopped = false;
+  /** M-3127: an answer's buttons or poll, recorded in the answer's own transaction (HubGroupRooms sets it). */
+  onAnswerButtons: ((db: DB, tx: HubTx, d: { id: string; room_id: string; reply_id: string; asker_member: string }, buttons: HubAnswerButtons) => void) | null = null;
   constructor(private readonly core: HubCore, private readonly emit: (event: RoomEvent) => void,
     private readonly project: (post: RoomPostRow) => RoomMessage,
     private readonly automation = new RoomAutomation(() => core.now()),
@@ -89,14 +91,21 @@ export class HubRoomAgents {
     });
     this.states.set(body.exposureId, { link, value: body }); this.presenceChanged(body.exposureId); this.wake();
   }
-  progress(db: DB, parentId: string) {
+  progress(db: DB, parentId: string): RoomMessage["ask"] {
     const rows = db.prepare("SELECT state,COUNT(*) AS n FROM hub_room_deliveries WHERE parent_id=? GROUP BY state").all(parentId) as { state: Delivery["state"]; n: number }[];
     if (!rows.length) return undefined;
     const n = (state: Delivery["state"]) => rows.find(r => r.state === state)?.n ?? 0;
-    return { total: rows.reduce((v, r) => v + r.n, 0), answered: n("answered"), working: n("sent"), later: n("queued") };
+    const total = rows.reduce((v, r) => v + r.n, 0), failed = n("expired"), blocked = n("retired");
+    return { total, answered: n("answered"), working: n("sent"), later: n("queued"),
+      ...(failed ? { failed } : {}), ...(blocked ? { blocked } : {}),
+      ...(total === 1 && failed === 1 ? { reason: "expired" as const } : total === 1 && blocked === 1 ? { reason: "retired" as const } : {}) };
   }
   /** Called inside the person's message transaction, once per idempotency key. */
-  enqueue(db: DB, tx: HubTx, parent: RoomPostRow, askerMember: string): void {
+  /**
+   * M-3127 `as`: a Hub-made post asks on someone's behalf (a poll's results go to the agent that asked it, from that
+   * question's asker): its asker, the name the agent sees, and the text it gets instead of the post's own words.
+   */
+  enqueue(db: DB, tx: HubTx, parent: RoomPostRow, askerMember: string, as?: { asker: string; name: string; text: string }): void {
     const mentions = JSON.parse(parent.mentions) as string[];
     if (!mentions.length) return;
     const room = db.prepare("SELECT name FROM hub_group_rooms WHERE id=?").get(parent.room_id) as { name: string };
@@ -115,8 +124,10 @@ export class HubRoomAgents {
       if (this.automation.lineage(db, parent).audience_sequence < m.joined_sequence) continue;
       const context = roomContext(this.core, db, parent, Math.max(m.joined_sequence, sourceMember.joined_sequence));
       const id = randomUUID(), replyId = randomUUID(), now = this.core.now();
-      const payload: HubRoomAsk = validated(roomAskSchema, { messageId: id, roomId: parent.room_id, roomName: trim(room.name, 120), exposureId: e.id,
-        asker: { name: trim(source && !operation?.receipt_id ? `${parent.author_name} · ${this.project(parent).author.owner?.name ?? ""}'s agent` : parent.author_name, 256) }, text: trim(this.core.deps.content.get(parent.content_ref)?.question ?? "", HUB_LIMITS.question), context });
+      // M-3125: a person's post carries its files; a Hub-made post on someone's behalf (`as`) has none.
+      const files = as ? [] : this.postFiles(db, parent.id);
+      const payload: HubRoomAsk = validated(roomAskSchema, { ...(files.length ? { attachments: files } : {}), messageId: id, roomId: parent.room_id, roomName: trim(room.name, 120), exposureId: e.id,
+        asker: { name: trim(as ? as.name : source && !operation?.receipt_id ? `${parent.author_name} · ${this.project(parent).author.owner?.name ?? ""}'s agent` : parent.author_name, 256) }, text: trim(as ? as.text : this.core.deps.content.get(parent.content_ref)?.question ?? "", HUB_LIMITS.question), context });
       const bytes = JSON.stringify(payload);
       if (Buffer.byteLength(bytes) + 512 > HUB_LIMITS.frame) throw new HubProtocolError("backpressure");
       const max = (db.prepare("SELECT MAX(sequence) AS n FROM hub_room_posts WHERE room_id=?").get(parent.room_id) as { n: number }).n;
@@ -124,9 +135,9 @@ export class HubRoomAgents {
         VALUES(?,?,?,'agent',?,?,?,?,?,'[]',?,?,?,'queued')`).run(replyId, parent.room_id, max + 1, e.id, e.owner, e.display_name,
           this.core.deps.content.put(tx, { question: "" }), "", now, parent.id, id);
       const payloadRef = this.core.deps.content.put(tx, { question: bytes });
-      this.core.audit(tx, { requestId: id, actor: { kind: "person", person: personFromString(parent.author_subject) }, action: "room.ask-queued", result: "completed", roomId: parent.room_id, messageId: parent.id, exposureId: e.id, fleetId: e.fleet_id, contentRef: payloadRef });
+      this.core.audit(tx, { requestId: id, actor: { kind: "person", person: personFromString(as?.asker ?? parent.author_subject) }, action: "room.ask-queued", result: "completed", roomId: parent.room_id, messageId: parent.id, exposureId: e.id, fleetId: e.fleet_id, contentRef: payloadRef });
       db.prepare(`INSERT INTO hub_room_deliveries(id,room_id,parent_id,reply_id,exposure_id,exposure_revision,fleet_id,owner,asker,asker_member,agent_member,payload_ref,payload_digest,state,created_at,expires_at,source_exposure_id,source_exposure_revision,source_fleet_id,on_behalf)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?)`).run(id, parent.room_id, parent.id, replyId, e.id, e.revision, e.fleet_id, e.owner, parent.author_subject, askerMember, m.id,
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?)`).run(id, parent.room_id, parent.id, replyId, e.id, e.revision, e.fleet_id, e.owner, as?.asker ?? parent.author_subject, askerMember, m.id,
           payloadRef, digest(bytes), now, now + 24 * 60 * 60_000, source?.id ?? null, source?.revision ?? null, source?.fleet_id ?? null, operation?.receipt_id ? 1 : 0);
       this.automation.child(db, parent, replyId, e.id);
     }
@@ -151,6 +162,39 @@ export class HubRoomAgents {
   private sourcePublished(db: DB, d: Delivery): boolean {
     const e = d.source_exposure_id ? readExposure(db, d.source_exposure_id) : undefined;
     return !d.source_exposure_id || !!e && exposureOf(e).state === "published";
+  }
+  /** M-3125: the files on a post (a person's, or an agent answer's), in order; none when the Hub has no attachment store. */
+  private postFiles(db: DB, postId: string): HubAttachmentRef[] {
+    const store = this.core.deps.attachments; if (!store) return [];
+    return [...store.forMessage(db, postId, "question"), ...store.forMessage(db, postId, "answer")];
+  }
+  /** M-3125: is this a file on a group-room post (so its transfer is this service's, not a 1:1 room's)? */
+  ownsFile(id: string): boolean {
+    const store = this.core.deps.attachments; if (!store) return false;
+    return this.core.atomic(db => { const row = store.row(db, id); return !!row?.message_id && !!db.prepare("SELECT 1 FROM hub_room_posts WHERE id=?").get(row.message_id); });
+  }
+  /**
+   * M-3125 (room files, roomFilesNegotiated): the member pulls one chunk of a file on a post its fleet was asked about. Only a fleet holding an
+   * open delivery of that exact post, under the delivery's own permission and validity re-checked at the read; audited once.
+   */
+  async attachmentGet(input: { id: string; offset: number }, link: HubLinkContext): Promise<HubAttachmentChunk> {
+    if (!roomFilesNegotiated(link.features)) throw new HubProtocolError("incompatible");
+    const store = this.core.deps.attachments; if (!store) throw new HubProtocolError("incompatible");
+    const find = (db: DB) => { const row = store.row(db, input.id);
+      const d = row?.state === "bound" && row.message_id ? db.prepare("SELECT * FROM hub_room_deliveries WHERE parent_id=? AND fleet_id=? AND state IN ('queued','sent') ORDER BY created_at DESC LIMIT 1")
+        .get(row.message_id, link.fleetId) as Delivery | undefined : undefined; return { row, d }; };
+    const found = this.core.atomic(find);
+    if (!found.row || !found.d || found.row.room_id !== found.d.room_id) throw new HubProtocolError("not-found");
+    const permit = await this.permission(found.d, link);
+    if (!link.current()) throw new HubProtocolError("stale");
+    return this.core.atomic((db, tx) => {
+      const { row, d } = find(db);
+      if (!row || !d || d.id !== found.d!.id || !this.valid(db, d) || this.core.now() >= d.expires_at) throw new HubProtocolError("not-found");
+      const chunk = store.chunk(db, row.sha256, input.offset);
+      if (input.offset === 0) this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "member", fleetId: link.fleetId }, action: "file.transfer", result: "allowed",
+        reasonCode: `${row.direction}:${row.size}:${row.mime}:${row.sha256}`, messageId: d.parent_id, roomId: d.room_id, fleetId: link.fleetId, exposureId: d.exposure_id });
+      return { id: row.id, offset: input.offset, total: chunk.total, sha256: row.sha256, data: chunk.data.toString("base64") };
+    }, permit);
   }
   private async permission(d: Delivery, link: HubLinkContext) {
     const ctx = { requestId: d.id, current: () => this.live() && link.current() && this.links.get(link.fleetId) === link };
@@ -225,7 +269,10 @@ export class HubRoomAgents {
           const state = this.states.get(d.exposure_id); if (state?.link === link && state.value.state === "paused") return null;
           const bytes = this.core.deps.content.get(d.payload_ref)?.question;
           if (bytes === undefined || digest(bytes) !== d.payload_digest) throw new HubProtocolError("uncertain");
-          return validated(roomAskSchema, JSON.parse(bytes));
+          const ask = validated(roomAskSchema, JSON.parse(bytes));
+          // M-3125: an older member's strict schema refuses `attachments`; it gets the words only.
+          if (ask.attachments && !roomFilesNegotiated(link.features)) delete ask.attachments;
+          return ask;
         }, permit);
         if (!payload || !link.current()) continue;
         // Persist dispatch intent before the socket write: a fast member answer may arrive before send() settles.
@@ -251,7 +298,7 @@ export class HubRoomAgents {
   }
   async answer(input: HubRoomAnswer, link: HubLinkContext): Promise<HubRoomAnswerAck> {
     const body = validated(roomAnswerSchema, input), hash = digest(JSON.stringify(body));
-    if (!this.supports(link)) throw new HubProtocolError("incompatible");
+    if (!this.supports(link) || body.buttons && !link.features.has(HUB_ROOM_BUTTONS_CAPABILITY) || body.attachments && !roomFilesNegotiated(link.features)) throw new HubProtocolError("incompatible");
     const d = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(body.messageId) as Delivery | undefined);
     if (!d || d.fleet_id !== link.fleetId || d.owner !== personKeyString(link.owner) || body.roomId !== d.room_id || body.exposureId !== d.exposure_id || !d.sent_epoch) throw new HubProtocolError("denied");
     if (d.answer_id) {
@@ -283,7 +330,11 @@ export class HubRoomAgents {
         const seq = (db.prepare("SELECT MAX(sequence) AS n FROM hub_room_posts WHERE room_id=?").get(d.room_id) as { n: number }).n + 1;
         const answerRef = this.core.deps.content.put(tx, { question: body.text });
         db.prepare("UPDATE hub_room_posts SET content_ref=?,stage='answered',sequence=?,created_at=? WHERE id=?").run(answerRef, seq, this.core.now(), d.reply_id);
+        // M-3125: the answer's staged files bind to its post in this same audited transaction (a refusal undoes the answer).
+        if (body.attachments) { const store = this.core.deps.attachments; if (!store) throw new HubProtocolError("incompatible");
+          store.bindAnswer(db, body.attachments, d.reply_id, d.room_id, link.fleetId); }
         this.core.audit(tx, { requestId: d.id, actor: { kind: "person", person: link.owner }, action: "room.answer", result: "completed", roomId: d.room_id, messageId: d.reply_id, exposureId: d.exposure_id, fleetId: d.fleet_id, contentRef: answerRef });
+        if (body.buttons) this.onAnswerButtons?.(db, tx, current, body.buttons);
         this.onAgentMessage(db, tx, db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(d.reply_id) as RoomPostRow);
       } else db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id);
     }, permit);

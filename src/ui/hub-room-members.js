@@ -25,7 +25,8 @@ export function memberStatus(m) {
   const v = presenceView(m);
   const word = m.kind === "assistant" && v.word === "stIdle" ? hroom("assistantIdleHub") : hroom(v.word);
   const note = v.noteKey ? hroom(v.noteKey) : v.noteText;
-  return { dot: presenceDot(v.dot), text: note ? `${word} · ${note}` : word };
+  // M-3137 (versions spec §2.4): an agent whose Fleet needs an AgEnD update says whom to ask, not only whose it is.
+  return { dot: presenceDot(v.dot), text: note ? `${word} · ${note}` : word, ...(v.word === "needsUpdate" ? { update: true } : {}) };
 }
 
 /** 「林小華的 Agent」, but 「Alex 的 Agent」: a name ending in a Latin letter or digit takes a space before 的 (Lumen). */
@@ -73,7 +74,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   };
   // An agent's second line names whose it is beside its state (「處理中 · 林小華的 Agent」), always shown, not only on hover.
   const row = (m, extra = null) => {
-    const v = memberStatus(m), owner = (m.kind === "agent" || m.kind === "later") && m.owner?.name ? ownerAgent(m.owner.name) : "";
+    const v = memberStatus(m), owner = (m.kind === "agent" || m.kind === "later") && m.owner?.name ? (v.update ? hm("askOwner", m.owner.name) : ownerAgent(m.owner.name)) : "";
     return html`<span class="hub-member-name">${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>`;
   };
   return html`<aside class="hub-room-members">

@@ -27,6 +27,8 @@ import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
 // #3226 B: the chat is the fleet chat's own drawing (PR A's shared modules), in the fleet chat's words.
 import { createThread, msgKey } from "/assets/chat-thread.js";
+import { installMessageActions } from "/assets/chat-msg-actions.js";
+import { OlderFleetBanner, FleetVersionCells, FleetVersionsSummary, RecommendedVersionCard, hasVersions, behind } from "./hub-fleet-versions.js";
 import { PreviewPanel, closePanel, panelStore } from "/assets/preview-panel.js";
 import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
 import { RailFrame } from "/assets/side-rail.js";
@@ -402,9 +404,11 @@ export function HubSide({ onPick } = {}) {
   const [q, setQ] = useState("");
   const [filtering, setFiltering] = useState(false);
   const [picking, setPicking] = useState(false), [newRoom, setNewRoom] = useState(false);
+  // M-3127 C: on a Hub with rooms, Ctrl K is the search dialog (names, then messages); before rooms, the list's filter.
+  const [searching, setSearching] = useState(false);
   const filter = useRef(null);
   useEffect(() => { linkHubChatCss(); }, []);
-  const openFilter = () => { setFiltering(true); setTimeout(() => filter.current?.focus(), 0); };
+  const openFilter = () => { if (roomsLive()) { setSearching(true); return; } setFiltering(true); setTimeout(() => filter.current?.focus(), 0); };
   // Ctrl K (⌘K): the conversation filter — the dashboard's search shortcut, on the Hub's own search (no fleet search here).
   useEffect(() => {
     const onKey = (e) => {
@@ -436,9 +440,12 @@ export function HubSide({ onPick } = {}) {
         aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${hc("navSearch")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>
       <button type="button" class="side-row side-new" onClick=${() => setPicking(true)}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>
       ${roomsLive() && rs.me?.canCreateRooms ? html`<button type="button" class="side-row side-new hub-new-room" onClick=${() => setNewRoom(true)}><${Icon} name="room" /><span class="grow">${hroom("newRoomTitle")}</span></button>` : null}
+      ${searching ? html`<${LazyRoomPart} load=${() => import("./hub-room-search.js")} name="RoomSearch" props=${{ client: hubClient(), rooms: rs.rooms || [], onClose: () => setSearching(false),
+        openRoom: (r) => { if (onPick) onPick(); navigate(roomPath(r.id)); },
+        openHit: (h) => { if (onPick) onPick(); navigate(`${roomPath(h.roomId)}&m=${encodeURIComponent(h.messageId)}`); } }} />` : null}
     </nav>
 
-    <${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onPick=${onPick} quietEmpty=${home} />
+    <${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onPick=${onPick} quietEmpty=${home} foot=${roomsLive()} />
     ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
     ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
       onClose: () => setNewRoom(false), onOpenRoom: (id) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(id)); } }} />` : null}`;
@@ -449,7 +456,7 @@ export function HubSide({ onPick } = {}) {
  * count, one-line empty states) — the sidebar's (HubSide) and, on a phone, the chats' home page's (with its own New chat
  * row and the filter always shown): one drawing, not two (Argon #9). `quietEmpty`: the page beside it already says "No chats yet".
  */
-function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null, onNewRoom = null }) {
+function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null, onNewRoom = null, foot = false }) {
   const current = roomParam();
   const star = useRoomStar(rs.rooms, useSession()?.login);   // S-145: favourites, as the Fleet sidebar's
   const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
@@ -460,14 +467,24 @@ function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, 
       ${/* Lumen (spec §2): on the phone's list too, beside New chat — not only in the drawer. */ ""}
       ${onNewRoom ? html`<button type="button" class="side-row side-new hub-new-room" onClick=${onNewRoom}><${Icon} name="room" /><span class="grow">${hroom("newRoomTitle")}</span></button>` : null}
       ${!rs.rooms.length ? html`<div class="inst-head"><h2 class="side-label">${hc("chats")}</h2></div>` : null}
-      ${filtering || q || (always && rs.rooms.length) ? html`<label class="hub-side-filter"><${Icon} name="search" size=${14} /><input ref=${filterRef} type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
+      ${/* M-3127 C (web-claude): on a Hub with rooms the sidebar's filter is the Fleet's, at its foot, always there (below). */ ""}
+      ${!foot && (filtering || q || (always && rs.rooms.length)) ? html`<label class="hub-side-filter"><${Icon} name="search" size=${14} /><input ref=${filterRef} type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
         onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape") { setQ(""); setFiltering(false); } }} /></label>` : null}
       ${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : null}
       ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
       ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length && !quietEmpty ? html`<p class="side-empty muted">${hc("noChats")}</p>` : null}
       ${rs.rooms.length && !shown.length ? html`<p class="side-empty muted">${hc("noMatch")}</p>` : null}
       <${HubRoomRows} rooms=${rs.rooms} q=${q} current=${current} href=${(r) => roomPath(r.id)} onGo=${(e, r) => go(e, roomPath(r.id))} star=${star} />
-    </div></div>`;
+    </div>
+    ${/* The Fleet sidebar's filter box (instance-nav.js .v-filter): a name or an owner; Esc or ✕ clears it. Ctrl K is the search. */ ""}
+    ${foot && rs.rooms.length ? html`<div class="v-filter hub-side-foot-filter">
+      <label class="v-filter-box"><${Icon} name="search" size=${14} /><span class="sr-only">${hroom("filterPh")}</span>
+        <input ref=${filterRef} type="text" autocomplete="off" spellcheck=${false} placeholder=${hroom("filterPh")} value=${q}
+          onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape" && q) { e.preventDefault(); e.stopPropagation(); setQ(""); } }} />
+        ${q ? html`<button type="button" class="icon-btn v-filter-clear" aria-label=${hroom("filterClear")} title=${hroom("filterClear")}
+          onClick=${() => { setQ(""); filterRef.current && filterRef.current.focus(); }}><${Icon} name="close" size=${14} /></button>` : null}
+      </label></div>` : null}
+  </div>`;
 }
 
 /** The phone's chats home: the same roster, with New chat at its head and the filter in place. */
@@ -558,6 +575,8 @@ function HubChats() {
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
+  ${/* M-3137 (versions spec §2.3): the signed-in person whose own Fleet is behind is told here, once per sign-in. */ ""}
+  <${OlderFleetBanner} client=${hubClient()} signIn=${s?.csrf || ""} />
   <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
     <div class="hub-home-list"><${HubHomeList} /></div>
     ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true), admin: s.admin === true, features: s.features }} /></div>`
@@ -772,16 +791,39 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
     host.current.append(list);
     thread.attach(scroller.current);
     thread.render(store.messages());
-    const off = store.subscribe(() => thread.render(store.messages()));
+    const sc = scroller.current;
+    // The next `before=` page when the reader is at the top, or when the held messages do not fill the view. createThread
+    // already grows through what is held; a tall room at the bottom must not fetch the whole history on open.
+    let paging = true;
+    const maybeOlder = () => {
+      if (!paging || !sc || typeof store.older !== "function" || !store.more?.()) return;
+      const high = sc.scrollHeight, view = sc.clientHeight;
+      if (high > view && sc.scrollTop >= 96) return;
+      void store.older();
+    };
+    const off = store.subscribe(() => { thread.render(store.messages()); maybeOlder(); });
+    requestAnimationFrame(() => requestAnimationFrame(maybeOlder));
     // A card shows whether this browser allows previews and whether the panel has its page.
     const P = globalThis.AgendPreview;
     const offOpt = P && typeof P.onChange === "function" ? P.onChange(() => thread.refreshCards()) : () => {};
     const offPanel = panelStore.subscribe(() => thread.refreshCards());
-    const sc = scroller.current;
-    const onScroll = () => thread.onScroll();
+    const onScroll = () => { thread.onScroll(); maybeOlder(); };
     sc.addEventListener("scroll", onScroll, { passive: true });
     list.addEventListener("click", thread.onClick);
+    // S-152 (M-3117): the Fleet chat's message menu — right-click, a phone's long press (where the hover strip is hidden),
+    // swipe left to reply, R on a focused message. Reply where this page may reply (a room), Copy text everywhere; no Copy
+    // link (a Hub message has no address). React (the picker) when the page gives extra.react (M-3127).
+    const ex = extra || {};
+    const offActions = installMessageActions(list, {
+      t: threadT, messageOf: thread.messageOf, rove: thread.rove, copyText, notice: (text, ok = true) => toast(text, ok),
+      canReply: () => (typeof ex.canReply === "function" ? ex.canReply() !== false : false) && typeof ex.startReply === "function",
+      reply: (x) => ex.startReply?.(x),
+      // React opens the thread's picker for that message (extra.react is the thread's own add/remove call, with an emoji).
+      ...(typeof ex.react === "function" ? { react: (x) => thread.pickReaction?.(msgKey(x)), canReact: (x) => !!x.roomMessage && ex.canReact?.(x) !== false, reactLabel: ex.reactLabel } : {}),
+    });
     return () => {
+      offActions();
+      paging = false;
       off(); offOpt(); offPanel(); sc.removeEventListener("scroll", onScroll); list.removeEventListener("click", thread.onClick);
       thread.dispose(true); list.remove(); th.current = null; if (threadRef && threadRef.current === thread) threadRef.current = null;
     };
@@ -871,7 +913,7 @@ function HubMine() {
   // lands nowhere (useRead's own liveness ends with that page).
   if (x) return html`<${HubAgentPage} key=${x.id} x=${x} act=${act} msg=${msg} />`;
   // Nothing shared yet: the empty state below says where to share from, so the lead doesn't say it too (Argon #20).
-  return html`<div class="col hub-owner"><p class="s-page-lead hub-page-lead">${ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
+  return html`<div class="col hub-owner"><${OlderFleetBanner} client=${hubClient()} signIn=${session?.csrf || ""} /><p class="s-page-lead hub-page-lead">${ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
     <div class="s-section-layout">
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: true }} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
@@ -1040,6 +1082,8 @@ function GroupPermissionsEntry() {
 function HubAdminPage({ groups = false, companyJoin = false, directory = false } = {}) {
   const assistantSession = useSession();
   const [view, reload] = useRead(() => hubClient().adminOverview());
+  const [needsOnly, setNeedsOnly] = useState(false);   // M-3137: Connected fleets' "Needs update" filter
+  const [canRecommend, setCanRecommend] = useState(false);   // M-3141: this Hub serves the recommended-version setting
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -1088,16 +1132,21 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
       ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+      ${/* M-3141 (versions spec §3.1): the recommended version, a small card above the list. */ ""}
+      ${hasVersions(fleets) ? html`<${RecommendedVersionCard} client=${hubClient()} onSaved=${reload} onAvailable=${setCanRecommend} />` : null}
       <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
+        ${/* M-3137 (versions spec §2.2): the summary line and its filter, when this Hub reports versions. */ ""}
+        ${hasVersions(fleets) ? html`<${FleetVersionsSummary} fleets=${fleets} recommended=${view.recommendedVersion ?? null} canRecommend=${canRecommend} filtered=${needsOnly} onFilter=${setNeedsOnly} />` : null}
         ${fleets.length ? (() => {
           // Spec 1.2: the row's title is the Fleet's label (S1 overview), its subtitle the owner; active first, revoked folded.
           const row = (f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
             <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
             <span class="hub-row-text"><strong>${typeof f.label === "string" && f.label ? f.label : ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note">${f.owner.name}${f.owner.login ? html` · <code>${f.owner.login}</code>` : null}</small>` : null}</span>
+            ${hasVersions(fleets) && f.status !== "revoked" ? html`<${FleetVersionCells} fleet=${f} recommended=${view.recommendedVersion ?? null} />` : null}
             ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.label || (f.owner ? f.owner.name : f.id))} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
               : html`<span class="tag">${ho("revokedTag")}</span>`}
           </div>`;
-          const current = fleets.filter((f) => f.status !== "revoked").sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1));
+          const current = fleets.filter((f) => f.status !== "revoked" && (!needsOnly || behind(f))).sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1));
           const revoked = fleets.filter((f) => f.status === "revoked");
           return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
             ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;

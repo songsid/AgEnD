@@ -1,0 +1,18 @@
+{
+  "product": "8cb9062fbf680c7f24e2d840f216d7f97ab3c08b",
+  "base": "3abce4026b9b70341cefaf7e2a278b8a4048fe5d",
+  "helloReceiveMax": 32,
+  "memberHelloSendMax": 16,
+  "welcomeReceiveMax": 16,
+  "before": {
+    "failed": 1,
+    "passed": 26
+  },
+  "after": {
+    "passed": 27
+  },
+  "sourceTypesExit": 0,
+  "testTypesExit": 0,
+  "newCapabilities": [],
+  "versionFieldsChanged": false
+}
