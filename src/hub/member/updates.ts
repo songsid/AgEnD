@@ -30,6 +30,9 @@ interface Row { id: string; binding: string; version: string; body: string | nul
 export class HubMemberUpdates {
   private stopped = false;
   private link: HubMemberLink | null = null;
+  /** M-3173: whether the Hub this pairing last connected to negotiated fleet-update-v1 (null: not connected yet). A Hub that
+   *  did not (a beta.3 Hub: the legacy hello) can't ask for an update, so the owner's switch says so instead of turning on. */
+  private hubSupports: boolean | null = null;
   private running: Promise<void> | null = null;
   private dirty = false;
   private readonly queue: IdleUpdateQueue;
@@ -47,10 +50,11 @@ export class HubMemberUpdates {
   private current(): boolean { try { return !this.stopped && this.options.current(); } catch { return false; } }
   private service(): boolean { try { return this.options.service() === true; } catch { return false; } }
   private row(id: string): Row | undefined { return this.options.db.prepare("SELECT * FROM hub_member_updates WHERE id=?").get(id) as Row | undefined; }
-  consent(): { on: boolean; available: boolean; reason?: "not-service" } {
-    const available = !this.stopped && this.service();
+  consent(): { on: boolean; available: boolean; reason?: "not-service" | "hub-older" } {
+    const service = this.service(), hubOlder = this.hubSupports === false;
+    const available = !this.stopped && service && !hubOlder;
     const row = this.options.db.prepare("SELECT allowed FROM hub_member_update_consent WHERE binding=?").get(this.options.binding) as { allowed: number } | undefined;
-    return { on: !!row?.allowed && available, available, ...(!this.service() ? { reason: "not-service" as const } : {}) };
+    return { on: !!row?.allowed && available, available, ...(!service ? { reason: "not-service" as const } : hubOlder ? { reason: "hub-older" as const } : {}) };
   }
   private allowed(): boolean { return this.consent().on; }
   setConsent(on: boolean): ReturnType<HubMemberUpdates["consent"]> {
@@ -74,7 +78,14 @@ export class HubMemberUpdates {
   }
   private ownerWasTold(): boolean { const row = this.queue.pending(); return !!row && this.row(row.id)?.notice_state === "waiting"; }
   private eligible(link: HubMemberLink): boolean { return this.current() && link.current() && link.features.has("fleet-update-v1"); }
-  connected(link: HubMemberLink | null): void { this.link = link && this.eligible(link) ? link : null; void this.tick(); }
+  connected(link: HubMemberLink | null): void {
+    // M-3173: what this Hub can do is known once it has welcomed this Fleet; disconnected, the last answer stands.
+    if (link) {
+      const supports = link.features.has("fleet-update-v1");
+      if (supports !== this.hubSupports) { this.hubSupports = supports; try { this.options.changed?.(); } catch { /* presentation only */ } }
+    }
+    this.link = link && this.eligible(link) ? link : null; void this.tick();
+  }
   receive(input: unknown, link: HubMemberLink): void {
     const value = validated(fleetUpdateRequestSchema, input); if (!this.eligible(link)) return;
     const body = JSON.stringify(value), prior = this.row(value.id);

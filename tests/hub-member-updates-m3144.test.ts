@@ -158,3 +158,14 @@ it("waits for the composing host's readiness proof before reporting a restarted 
   expect(w.launch).toHaveBeenCalledTimes(1); ready = true; await next.tick();
   expect(next.view(request.id)?.state).toBe("done"); expect(w.launch).toHaveBeenCalledTimes(1);
 });
+it("M-3173: a Hub that did not negotiate fleet-update-v1 (a beta.3 Hub) — the switch is unavailable, says why, and does not turn on; an updated Hub brings back the saved choice", () => {
+  const w = world(); w.value.setConsent(true);
+  const older = { current: () => true, features: new Set<string>(), linkEpoch: 1, send: async () => {} } as unknown as HubMemberLink;
+  w.value.connected(older);
+  expect(w.value.consent()).toEqual({ on: false, available: false, reason: "hub-older" });
+  expect(w.value.setConsent(true)).toEqual({ on: false, available: false, reason: "hub-older" });
+  w.value.connected(null);   // offline: the last answer stands
+  expect(w.value.consent().reason).toBe("hub-older");
+  w.value.connected(w.link);   // the Hub updated: available again, the saved choice as it was before the older Hub
+  expect(w.value.consent()).toEqual({ on: true, available: true });
+});
