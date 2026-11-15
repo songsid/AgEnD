@@ -131,6 +131,11 @@ describe("the welcome's projection: 我的 Fleet and the launcher's frame, shape
     const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
     expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Han, My fleet) · Manage in My shared agents →");
   });
+  it("the launcher's Fleet line counts and names only the Fleets still connected — a revoked one is left out", async () => {
+    const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 8, fleets: [{ id: "f1", label: "Han", status: "active" }, { id: "f2", label: "Old desk", status: "revoked" }, { id: "f3", label: "Lab", status: "suspended" }] } }) });
+    const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
+    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Han, Lab) · Manage in My shared agents →");
+  });
   it("revoke is in the row's ⋯ (quick pairing): it asks first; No sends nothing, Yes revokes that Fleet's generation and reads again", async () => {
     const fleets = [{ id: "f1", label: "Han", status: "active", generation: 7 }];
     const revokeOwnFleet = vi.fn(async () => ({ ok: true }));
