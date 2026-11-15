@@ -5,7 +5,7 @@
  *
  * Daemon.start/stop/abortStartup are stubbed on the real prototype (no tmux, no CLI); scratch data directories only; no real fleet (bd0c88aa).
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { Daemon } from "../src/daemon.js";
 import { IpcServer } from "../src/channel/ipc-bridge.js";
 import * as binaryDiscovery from "../src/backend/types.js";
+import { flushProfileTimelineWrites, PROFILE_TIMELINE_FILE } from "../src/usage/profile-timeline.js";
 
 const started: Array<{ name: string; backend: string }> = [];
 beforeEach(() => {
@@ -37,7 +38,9 @@ beforeEach(() => {
 
 const dirs: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-1280-")); dirs.push(d); return d; };
-afterEach(() => { started.length = 0; vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+// M-3153: a Codex start records its profile in the instance folder without being awaited (fleet-manager: `void recordProfileLaunch`); the
+// folders are removed only after every such write has finished, or the rmdir races it (ENOTEMPTY, CI 42553584533).
+afterEach(async () => { started.length = 0; vi.restoreAllMocks(); await flushProfileTimelineWrites(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 const REMOVED = /backend gemini-cli was removed in AgEnD 2\.1\.12 — set `backend: antigravity`/;
 
@@ -143,6 +146,9 @@ describe("fleet startup with a gemini-cli instance (after `agend update`)", () =
       expect(started.map(s => s.backend).sort()).toEqual(["ClaudeCodeBackend", "CodexBackend"]);
       expect(retries).not.toHaveBeenCalled();
       expect(notices.filter(([name]) => name === "legacy")).toEqual([["legacy", expect.stringContaining("backend: antigravity")]]);
+      // M-3153: the Codex start's profile record, written after the start returns, is done once flushed (the cleanup waits for the same).
+      await flushProfileTimelineWrites();
+      expect(existsSync(join(any.getInstanceDir("b"), PROFILE_TIMELINE_FILE))).toBe(true);
     } finally {
       fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); fm.memoryPressure.stop();
     }
