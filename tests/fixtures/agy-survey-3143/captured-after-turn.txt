@@ -1,0 +1,40 @@
+
+      ▄▀▀▄        Antigravity CLI 1.5.9
+     ▀▀▀▀▀▀       [account redacted] (Google AI Pro)
+    ▀▀▀▀▀▀▀▀      Gemini 4 Argon (Medium)
+   ▄▀▀    ▀▀▄     /scratch/agy-work
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> Reply exactly OK. No tools, browsing, or file access.
+
+  OK
+
+> /settings
+  ⎿  Exited /settings command
+
+────────────────────────────────────────────────────────────
+> Reply exactly OK2. Do not use any tools.
+
+  OK2
+
+────────────────────────────────────────────────────────────
+> Reply exactly OK3. Do not use any tools.
+
+  OK3
+
+────────────────────────────────────────────────────────────
+> Reply exactly OK4. Do not use tools, browse, or access files.
+
+  OK4
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+? for shortcuts                                                                           auto · Gemini 4 Argon · medium
+
+
+
+
+
+

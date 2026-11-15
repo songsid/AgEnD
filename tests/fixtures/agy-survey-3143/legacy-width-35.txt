@@ -1,0 +1,4 @@
+How's the CLI experience so far? He
+lp us improve:
+ [1] Good  [2] Fine  [3] Bad  [0] S
+kip
