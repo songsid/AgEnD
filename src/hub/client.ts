@@ -27,6 +27,8 @@ export interface HubMemberLink {
 }
 interface Pending { expected: HubServerFrame["type"]; resolve(frame: HubServerFrame): void; reject(error: Error): void; timer: NodeJS.Timeout }
 export interface HubClientOptions {
+  /** A mounted Fleet owns reconnects: a retryable first outage leaves it mounted offline. Direct callers still await a ready link. */
+  allowOfflineStart?: boolean;
   log?(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   receiveRecommendations?: boolean;
   fleetInfo?: import("./types.js").HubFleetInfo;
@@ -84,6 +86,11 @@ export class HubMemberClient implements HubMemberTransport {
     if (!this.options.dial && this.profile.hub.memberOrigin !== this.options.memberOrigin) { this.options.hold("key-changed"); throw new HubAuthorizationError("stale", "stale"); }
     await new Promise<void>((resolve, reject) => { this.firstResolve = resolve; this.firstReject = reject; this.connect(); });
   }
+  private firstFailure(error: HubAuthorizationError, retryable: boolean): void {
+    if (this.options.allowOfflineStart && retryable && this.current()) this.firstResolve?.();
+    else this.firstReject?.(error);
+    this.firstReject = this.firstResolve = null;
+  }
   private connect(): void {
     if (!this.current() || !this.profile || this.connecting) return;
     this.connecting = true; this.ready = false; this.deferred = []; this.deferredBytes = 0;
@@ -110,7 +117,7 @@ export class HubMemberClient implements HubMemberTransport {
       // candidate: try the next address now. Never after a refused credential (401/403: stopped) — that is recovery.
       if (!connected && !last && !this.stopped) { this.dialIndex++; this.connect(); return; }
       if (error instanceof HubTlsIdentityError) { this.options.hold("key-changed"); this.stopped = true; }
-      if (!connected) { if (!this.stopped) this.options.hold("unavailable"); this.firstReject?.(new HubAuthorizationError("unavailable", "unavailable")); this.firstReject = this.firstResolve = null; this.reconnect(); }
+      if (!connected) { if (!this.stopped) this.options.hold("unavailable"); this.firstFailure(new HubAuthorizationError("unavailable", "unavailable"), !this.stopped); this.reconnect(); }
     };
     ws.once("unexpected-response", (_request, response) => {
       // TLS pinning already succeeded. Only an explicit authentication refusal is terminal; 5xx/overload stay outages.
@@ -143,7 +150,7 @@ export class HubMemberClient implements HubMemberTransport {
           // only a candidate: try the next address now, as before the upgrade. Never after replaced/revoked (stopped), and
           // the anchor (last) never falls back.
           if (!usable && !last && !this.stopped && this.current()) { this.rejectPending(); this.dialIndex++; this.connect(); return; }
-          this.rejectPending(); if (!wasStopped) this.options.hold(code); this.firstReject?.(new HubAuthorizationError("unavailable", code)); this.firstReject = this.firstResolve = null; this.reconnect();
+          this.rejectPending(); if (!wasStopped) this.options.hold(code); this.firstFailure(new HubAuthorizationError("unavailable", code), code === "unavailable" || code === "backpressure"); this.reconnect();
         } });
       this.link = link;
       void link.send({ v: 1, type: "hello", requestId: handshake, linkEpoch: 0,

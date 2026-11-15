@@ -659,6 +659,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
         } });
       client = new HubMemberClient({
+        allowOfflineStart: true,
         log: options.log,
         fleetInfo: reportedInfo,
         receiveRecommendations: !!recommendations,
