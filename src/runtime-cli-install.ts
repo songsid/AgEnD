@@ -73,29 +73,32 @@ export type InstallableCli = NpmInstallableCli | DownloadInstallableCli;
 export interface ExpectedSigner { cn: string; o: string }
 export const INSTALLABLE_CLIS = Object.freeze({
   "claude-code": {
-    id: "claude-code", kind: "npm", spec: "@anthropic-ai/claude-code", version: "2.1.319",
+    id: "claude-code", kind: "npm", spec: "@anthropic-ai/claude-code", version: "2.1.325",
     integrity: {
-      "node_modules/@anthropic-ai/claude-code": "sha512-XoyAxGXBmNsb9ahz0xLAtyz/I6b1j+4lyLpucyTQIq4FcKUxrMDM2AzA2sHipHoN1DdMJINQQrLZxRZRq7FqBA==",
-      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-wncPKSYL/zvjs84k7wZEj+IGQx/LjqQNhgnQhzDEibP0yAVBguAs4p8nBfFAEDbDdUc4Z2co+OaKZV1t02xINA==",
+      "node_modules/@anthropic-ai/claude-code": "sha512-OUxCb0sx734zJh9zGTP9oF01gZ44DCGFaw7hgD4byepjRRGyvHzgUOwC7dlCgVIljV6CiEVDjq+anY3GUvKFQw==",
+      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-AGuh2ImOYbdsKCq8J0jaamvquCddB9HC70u+Ik8OYQ28xkGPH+xF4oEAr8GKZCgT1mbuoDl1qinI/AXErwLyuw==",
     },
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
   codex: {
-    id: "codex", kind: "npm", spec: "@openai/codex", version: "0.167.0",
+    id: "codex", kind: "npm", spec: "@openai/codex", version: "0.169.0",
     integrity: {
-      "node_modules/@openai/codex": "sha512-1FSQgbTIKAdTub5Ln6z36NT4eXDmBRkinfigzycbgn9yLZdJ3UdkQZqr0N7jnl8/D1xxT/Pz3Fl2l7S2dmRaFA==",
-      "node_modules/@openai/codex-win32-x64": "sha512-duPCBwflc8qhQdLekbL8fDYF646tW4gj0/l9BDnsVhEzoqm6OwxMAJXDFwSOLUUJPCmjBeM+eHYAx4fP/hwfjg==",
+      "node_modules/@openai/codex": "sha512-KhzYlkKPxoNssR8CEm45IjqnFWn7UtlF4CiD3tOJPea51xBs7MaHy0UQG9GSbCqk6Lrjn5QdJDV0QD1/FgWlGw==",
+      "node_modules/@openai/codex-win32-x64": "sha512-nC+McFU8xRNL9tk3IhxcKdhcyOElwF/HhPO+gzSQCY7yjh3XdzSajX+MYWcHUVHWRHajfwn3/WgJYJK2wS+XWg==",
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },
+  // M-3176: Claude 2.1.325 and Codex 0.169.0 (their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
+  // downloaded tarball's own sha512, and the native path above is in that tarball; the signer is still verified at install. Antigravity 1.5.9: the windows_amd64
+  // manifest read 2026-11-15 (version 1.5.9, this url, this sha512); the file downloaded is 231726744 bytes with that sha512.
   // AGEND-135 (#3521): Antigravity — no npm package (`agy` / `antigravity-cli` on npm are not Google's), so a pinned download: the vendor's own versioned file, named by its manifest
-  // (https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json, read 2026-11-09: version 1.5.3, this url, this sha512). Measured: the file is 225159320
+  // (https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json; first read 2026-11-09 for 1.5.3, now 1.5.9: M-3176 above). Measured on 1.5.3: the file is 225159320
   // bytes, its sha512 equals the manifest's, `Get-AuthenticodeSignature` says Valid with the subject CN=Google LLC, O=Google LLC, and `agy.exe --version` prints 1.5.3 without the vendor's
   // `install` step (which only edits PATH and shell aliases, and so is not run). Windows x64 only: no arm64 pin has been measured. The CLI updates itself afterwards; the pin governs the first install.
   antigravity: {
-    id: "antigravity", kind: "download", version: "1.5.3",
-    url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.3-6604829099950080/windows-x64/cli_windows_x64.exe", bytes: 225159320,
-    sha512: "b282c10ca3266078806d7bcae66db8ec0c6e2953ee6e62de1da6499182d24c02fffa8a74c620817bd35b15cf5f5a18287fb1ab30bcb9c7a67592c248696ed909",
+    id: "antigravity", kind: "download", version: "1.5.9",
+    url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.9-4515810895593472/windows-x64/cli_windows_x64.exe", bytes: 231726744,
+    sha512: "539a9415a686d9ec45f5c59fe7d32c485c6fa9abaea50208ae8ede4ed3622b9fb2bfd6680c87dc52344981172a96ddacb261ff4231276b5572fb5b62a9b0221e",
     native: { path: "agy.exe", signer: { cn: "Google LLC", o: "Google LLC" } },
   },
   // AGEND-133 (#3521): OpenCode — npm `opencode-ai` (published from GitHub Actions by npm trusted publishing) and its per-platform packages. npm installs BOTH Windows x64
