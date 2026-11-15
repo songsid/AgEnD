@@ -1,5 +1,6 @@
 {
-  "sourceHead": "2785632c24b0a6124391f134260b7ba0aeda2613",
+  "captureSource": "2785632c24b0a6124391f134260b7ba0aeda2613",
+  "r1Parent": "44705b63d",
   "parent": {
     "pr": 4015,
     "head": "604b6598ac2ada283a8252a34f651d1ea3c9de64"
@@ -67,7 +68,7 @@
     },
     {
       "path": "src/hub/group-policy/store.ts",
-      "sha256": "b31f9bca6a10577192f5813e830751ac3643734a6357701ed58c3b34cc36647a"
+      "sha256": "cd4c84a437fa87eb66a7066c97abe7ab9738f0e3e4147e8005c972b17f6a7167"
     },
     {
       "path": "src/hub/group-policy/team-subjects.ts",
@@ -119,7 +120,7 @@
     },
     {
       "path": "tests/hub-group-admin-control.test.ts",
-      "sha256": "6094ef7d2caf40bce28104914327586cd336c8f97de959d9a2d8f599a8bf7b0b"
+      "sha256": "194196644401df7e085ea3fee957b863a1a9eac06d231615313401211aebd52f"
     },
     {
       "path": "tests/hub-group-search-s2.test.ts",
@@ -135,7 +136,7 @@
     },
     {
       "path": "tests/hub-team-allowlist-m3194.test.ts",
-      "sha256": "c3c47f02dba451cafc6813f80209aec537f987bd4d0556cd875497bba27ef759"
+      "sha256": "c09b6e7b205468d5483f5c4d9218fbdeb2b2dcc3ec714454f8570f33ee54ab7f"
     },
     {
       "path": "tests/hub-team-allowlist-ui-m3194.test.ts",
@@ -150,6 +151,6 @@
       "sha256": "7d823616c296aacc3176cb5c6c02c9abcb87e733eb32c9c3104552f7e8472d03"
     }
   ],
-  "postCaptureChange": "Only the four zero-count tap exceptions were removed; no runtime or visual source change after the final retake/gates.",
-  "scope": "Logs retain their individual historical stage; current capture JS/CSS verified against actual served response digests."
+  "r1Delta": "Common writer deletes empty optional arrays; two regression pins. No JS/CSS/visual change from capture source. Four zero-count tap exceptions removed after capture.",
+  "scope": "Logs retain individual historical stages; current JS/CSS capture bindings verified against actual response hashes. R1 native and84/3 tests bind writer delta."
 }

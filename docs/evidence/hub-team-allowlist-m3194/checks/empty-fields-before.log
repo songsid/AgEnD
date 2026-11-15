@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-team-allowlist-m3194
+
+ ❯ tests/hub-team-allowlist-m3194.test.ts (11 tests | 1 failed | 10 skipped) 23ms
+     × canonicalizes removed optional subjects away on write for the legacy strict format 21ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-team-allowlist-m3194.test.ts > T1 allowed-list subjects > canonicalizes removed optional subjects away on write for the legacy strict format
+AssertionError: expected { realm: 'example', …(7) } to not have property "teams"
+
+- Expected:
+undefined
+
++ Received:
+[]
+
+ ❯ tests/hub-team-allowlist-m3194.test.ts:92:24
+     90|     f.store.replace({ ...f.store.read(), teams: [], people: [] }, user…
+     91|     const stored = JSON.parse((f.db.prepare("SELECT body FROM hub_grou…
+     92|     expect(stored).not.toHaveProperty("teams"); expect(stored).not.toH…
+       |                        ^
+     93|     expect(f.store.read()).toEqual(stored);
+     94|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  23:41:46
+   Duration  731ms (transform 421ms, setup 89ms, import 480ms, tests 23ms, environment 0ms)
+

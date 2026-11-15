@@ -91,6 +91,14 @@ describe("sealed group policy confirmation control", () => {
     expect(w.directory.checkEligibility).toHaveBeenCalledWith(t.unseen); expect(w.read).not.toHaveBeenCalled();
     expect(w.db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(personKeyString(t.unseen))).toBeUndefined();
   });
+  it("T1 preview/apply removes empty optional fields from the committed policy", async () => {
+    const w = fixture(), t = teamProposal(w);
+    expect((await w.apply(t.next)).result).toMatchObject({ ok: true });
+    const emptied = { ...w.policy.read(), teams: [], people: [] };
+    expect((await w.apply(emptied)).result).toMatchObject({ ok: true });
+    const stored = JSON.parse((w.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body);
+    expect(stored).not.toHaveProperty("teams"); expect(stored).not.toHaveProperty("people");
+  });
   it("T1 refuses an apply if the selected team changes after preview", async () => {
     const w = fixture(), t = teamProposal(w), preview = await w.control.preview({ policy: t.next }, w.ctx);
     expect(preview.ok).toBe(true); if (!preview.ok) throw Error("preview refused");

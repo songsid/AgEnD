@@ -85,6 +85,14 @@ describe("T1 allowed-list subjects", () => {
     f.checkEligibility.mockResolvedValue({ eligible: false, reason: "disabled" });
     expect(await f.store.check(user, "ask_agents", f.ctx)).toMatchObject({ outcome: "deny", reason: "ineligible" });
   });
+  it("canonicalizes removed optional subjects away on write for the legacy strict format", () => {
+    const f = fixture(); f.enable();
+    f.store.replace({ ...f.store.read(), people: [{ person: user, name: "Alex", allow: ["ask_agents"], maxFleets: 1 }] }, user, f.ctx);
+    f.store.replace({ ...f.store.read(), teams: [], people: [] }, user, f.ctx);
+    const stored = JSON.parse((f.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body);
+    expect(stored).not.toHaveProperty("teams"); expect(stored).not.toHaveProperty("people");
+    expect(f.store.read()).toEqual(stored);
+  });
   it("exposes the local T2 Used-for hook without a second team model", () => {
     const f = fixture(); expect(hubAllowedListUsesTeam(f.db, teamId)).toBe(false); f.enable();
     expect(hubAllowedListUsesTeam(f.db, teamId)).toBe(true);

@@ -196,6 +196,9 @@ export function createHubGroupPolicyStore(options: {
     });
   }, replace(input, actor, incoming) {
     const next = parseGroupPolicy(input), who = validated(person, actor), ctx = context(incoming);
+    // Removing the last new subject restores the legacy strict policy format, including stored JSON.
+    if (next.teams?.length === 0) delete next.teams;
+    if (next.people?.length === 0) delete next.people;
     if (who.realm !== binding.realm || next.realm !== binding.realm || next.generation !== binding.generation) throw new HubGroupPolicyError("invalid");
     if ((next.state === "enabled" || next.groups.length > 0) && directory.groupPolicy !== "ad-direct-guid") throw new HubGroupPolicyError("unsupported");
     return db.transaction(() => {
