@@ -1,0 +1,11 @@
+{"at":1794757694491,"runBoot":"6c7d00b9-7694-4be2-aab7-c58e9cad4c02","kind":"coordinator-ready","pid":418221,"base":"http://127.0.0.1:43445","sessionId":"01a1dfe5-0974-7b00-803e-928edbd69ca8","pane":{"paneId":"ff14cda9-74ec-4346-9f94-ad82ddf4442e","launchId":"000cf7b1-87f7-4e7c-888e-5982722958f9","hostBootId":"130a02b5-2927-4893-bb27-0b195e96400c"},"model":"gpt-6-luna"}
+{"at":1794757696614,"runBoot":"6c7d00b9-7694-4be2-aab7-c58e9cad4c02","kind":"setup-submitted","label":"A"}
+{"at":1794757702991,"runBoot":"6c7d00b9-7694-4be2-aab7-c58e9cad4c02","kind":"event","event":"message_queued","data":{"chatId":"","messageId":"web-mwi0eamh-dbd26ea3"}}
+{"at":1794757702991,"runBoot":"6c7d00b9-7694-4be2-aab7-c58e9cad4c02","kind":"sent","id":"web-mwi0eamh-dbd26ea3","label":"queued-A"}
+{"at":1794757702995,"runBoot":"6c7d00b9-7694-4be2-aab7-c58e9cad4c02","kind":"armed","label":"A","releaseBasename":"release_A.txt"}
+{"at":1794757703686,"runBoot":"6c7d00b9-7694-4be2-aab7-c58e9cad4c02","kind":"event","event":"message_delivered","data":{"chatId":"","messageId":"web-mwi0eamh-dbd26ea3"}}
+{"at":1794757706377,"runBoot":"6c7d00b9-7694-4be2-aab7-c58e9cad4c02","kind":"coordinator-stopped","paneMode":"detach"}
+{"at":1794757707553,"runBoot":"27e8f290-9db2-4688-bead-fdb5867464e3","kind":"coordinator-ready","pid":418861,"base":"http://127.0.0.1:44097","sessionId":"01a1dfe5-0974-7b00-803e-928edbd69ca8","pane":{"paneId":"ff14cda9-74ec-4346-9f94-ad82ddf4442e","launchId":"000cf7b1-87f7-4e7c-888e-5982722958f9","hostBootId":"130a02b5-2927-4893-bb27-0b195e96400c"},"model":"gpt-6-luna"}
+{"at":1794757712621,"runBoot":"27e8f290-9db2-4688-bead-fdb5867464e3","kind":"event","event":"message_confirmed","data":{"chatId":"","messageId":"web-mwi0eamh-dbd26ea3"}}
+{"at":1794757714874,"runBoot":"27e8f290-9db2-4688-bead-fdb5867464e3","kind":"reply","text":"M4012_TAKEN_A"}
+{"at":1794757719263,"runBoot":"27e8f290-9db2-4688-bead-fdb5867464e3","kind":"coordinator-stopped","paneMode":"exit"}

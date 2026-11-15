@@ -1,0 +1,8 @@
+Error: Native Codex composer needs attention before conversation verification
+    at RuntimeNativePaneLifecycle.codexIdentity (file://[OWNED_WORKTREE]/.artifacts/4012-package/dist/native-pane-lifecycle.js:106:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async RuntimeNativePaneLifecycle.acquire (file://[OWNED_WORKTREE]/.artifacts/4012-package/dist/native-pane-lifecycle.js:187:17)
+    at async Daemon.startAdmitted (file://[OWNED_WORKTREE]/.artifacts/4012-package/dist/daemon.js:3142:34)
+    at async Daemon.start (file://[OWNED_WORKTREE]/.artifacts/4012-package/dist/daemon.js:3008:13)
+    at async InstanceLifecycle.startOrDispose (file://[OWNED_WORKTREE]/.artifacts/4012-package/dist/instance-lifecycle.js:2027:17)
+    at async InstanceLifecycle.startInTransition (file://[OWNED_WORKTREE]/.artifacts/4012-package/dist/instance-lifecycle.js:1791:13)

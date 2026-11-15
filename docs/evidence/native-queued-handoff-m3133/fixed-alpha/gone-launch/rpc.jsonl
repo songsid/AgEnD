@@ -1,0 +1,8 @@
+{"at":1794758241181,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"input","operationId":"41cc9ed2-11c8-4146-b5df-62a2107802b0","sequence":1,"textHash":"ae4267a01f1269fbbf4824d26cf3bb22e8059a4797cc5bb46e43c40ff7ed090f","textLength":7}
+{"at":1794758241812,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"28a03de1-8eb3-45b3-b39d-6de00eeeba94","sequence":2,"key":"Enter"}
+{"at":1794758243959,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"input","operationId":"e0d3e421-3714-4341-abc5-b0023176ff39","sequence":3,"textHash":"1fb4cacdc705e14c408c9bd2bc35520e741715b682e4a4c260b4f2d028b7553d","textLength":287}
+{"at":1794758244982,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"0f894193-2b72-4803-90e2-c10f32d4e4ce","sequence":4,"key":"Enter"}
+{"at":1794758251311,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"input","operationId":"b612659b-280b-4727-bf85-a31d3edd193d","sequence":5,"textHash":"0e0a4038c5efb9332204d1af1fac97dacef1bcffc03e9cddafdbd69dee3685b5","textLength":285}
+{"at":1794758251959,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"69b76989-e7ab-48e8-8b42-5a2323ccf19f","sequence":6,"key":"Enter"}
+{"at":1794758252095,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"b481a97f-6b18-4154-b3a2-4cd479d4b4fd","sequence":7,"key":"Enter"}
+{"at":1794758252479,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"fedaf37c-a4fa-48ad-ac40-1040d05450cf","sequence":8,"key":"Enter"}

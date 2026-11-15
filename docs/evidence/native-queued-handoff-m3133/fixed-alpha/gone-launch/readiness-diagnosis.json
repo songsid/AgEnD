@@ -1,0 +1,15 @@
+{
+  "sourceHead": "afd4ac65bc01b3c692fbc1e36721978633444ea2",
+  "captureSha256": "c92e7d5d88dc5a6031efdba392d0c3daf3d0eaf4abe88483168e5629c5c6eef7",
+  "captureCount": 471,
+  "observedForMs": 119996,
+  "readiness": false,
+  "readyPattern": false,
+  "busy": false,
+  "ownsComposer": false,
+  "activeDialogs": [],
+  "hasContextFooter": false,
+  "hasInterrupted": true,
+  "hasQueuedCanary": false,
+  "endsEmptyComposer": true
+}

@@ -1,0 +1,124 @@
+{
+  "sha256ToPaths": {
+    "11f455650fdbb629182463681f1319acffaae85c9478cbad01e90a276b3a5da0": [
+      "README.md"
+    ],
+    "ea47af99f789110bcdf682d479fa433fa54e773550592c7adce57ab1bf32b0c3": [
+      "build-receipt.json"
+    ],
+    "16b5d047820d8a88d54435af9c2b93fd98304fa1a488b42539d0525c900c58d3": [
+      "cleanup-ledger.json"
+    ],
+    "98213dc85e244e2ef2ba52938fba55adefe9380e883aa10bee55ecf3c6190001": [
+      "controller-source/README.md"
+    ],
+    "fe4eb015133f87d3987b2530b6ad426a499a6a496baeae9d4ddc57b8da3c2ac2": [
+      "controller-source/build.mjs"
+    ],
+    "3c15f2a62c6f43c554d137714cbf01ff0cea1083c3702e48167389a1c5882353": [
+      "controller-source/coordinator-gone-observer.mjs"
+    ],
+    "e4cd91a51790b8208dd84beffee972d418b6f993b245f8ec05fa0e28052e1a2a": [
+      "controller-source/coordinator-interrupted.mjs"
+    ],
+    "09dfe00444c67e0e6c4a585f47db183c86008ca9f3073b5972a3341738afe31a": [
+      "controller-source/coordinator-same.mjs"
+    ],
+    "9193080258ebb9af0ae4c1e1b32f475dcb060534c3f169e5c81337a1d1ea5e27": [
+      "controller-source/observe-idle.mjs"
+    ],
+    "48bac3585d382f932ccd550271109268b82d5163d7ef7e78f0836623615aa264": [
+      "gone-launch/acks.jsonl"
+    ],
+    "a422876791505506c5331529ad4d51bdffd8c94c32442c17014080601484de10": [
+      "gone-launch/cleanup.json"
+    ],
+    "8900eb7a2db5cc50ad9728c65ceddb8006ffa462eedf93eb67dadd1e521cd10a": [
+      "gone-launch/events.jsonl"
+    ],
+    "3447fc5e633a801dae45ced009f64208587297c77f9e5044e2406cc03ffb37cb": [
+      "gone-launch/exit-provenance.json"
+    ],
+    "aa6c47436a985e6d34d37b86eb775f32f48fb491d4e32385f170df682672d7d5": [
+      "gone-launch/handoff-events.jsonl"
+    ],
+    "76c9355013d67c1ae6d2939a58fb76f913d31bed5a258438058caaeff11655e0": [
+      "gone-launch/pane-sanitized.txt"
+    ],
+    "700de19e65a33ac0fb752c0ac137cafa9d9461f85702969d2be3598948be7e86": [
+      "gone-launch/pending-after-refused-start.json"
+    ],
+    "1bcc8562f5a8c4effe2ab8ef613c298037f801b87761ddcb4252c67ad9d90f70": [
+      "gone-launch/process-check.json"
+    ],
+    "6105f5297cc98caf62999c0d37b9d7fe79fdc2fb91f8a5f82ac8f719771145a9": [
+      "gone-launch/readiness-diagnosis.json"
+    ],
+    "f3c3a61311fd5e5dc97c559946e893bb68dcf4532e5a1a297a01bcccacd7a79f": [
+      "gone-launch/rpc.jsonl"
+    ],
+    "72ce872fcf9c0bdcffa6f22c6e8203ed66739eb0c0ac01cbdf826b96ffaac80b": [
+      "gone-launch/startup-error.txt"
+    ],
+    "1defd1583e3868ddbe643f3fe3258094bdb5a53a28503e37e548bf63e1ca5377": [
+      "interrupted/acceptance-result.json"
+    ],
+    "5ec7102c8a818b2947c7c00a39a65f9310f500cfc7b1aad29d2fd3c75d26e6ea": [
+      "interrupted/acks.jsonl"
+    ],
+    "fb28fafb2f671c9c99760bf5d8c1cdfc3874f14eebcd5b40a1f36c46694ad833": [
+      "interrupted/cleanup.json"
+    ],
+    "0b6abb3f2e20c7a681b83b6b173fad2d78f39e7aa856818569d8b0e674213d70": [
+      "interrupted/diagnostics.jsonl"
+    ],
+    "73916d9d64a2da5e30f553a36aa2a94dd67f5bf7ef715d5abf16a93064ec809f": [
+      "interrupted/events.jsonl"
+    ],
+    "ceecc3c018a168b7dd7a9c7446a8344cfe5f64c5fb896c246ad1f7ff9760f3b2": [
+      "interrupted/handoff-events.jsonl"
+    ],
+    "58dab06d4e60ef31014e45b0cec13144611b179a9a0e5e101156567a885839aa": [
+      "interrupted/pane-sanitized.txt"
+    ],
+    "221be22b747afe717a570bd0b8b420da36fb9e196fab08eb1c9ac71f15e5a651": [
+      "interrupted/process-check.json"
+    ],
+    "ac56d1a55f741e1e5d0ec7f44e7222a3b0e3a2aca4e502579c1a2a44571ffd63": [
+      "interrupted/rpc.jsonl"
+    ],
+    "000791b9eea534edf6544a85dd1ecfc0104c8886940d1ced882e8a313e00b450": [
+      "m3133-interrupted-still-processing.png"
+    ],
+    "4a4937c149bf0b9561f97a48fe014017f5e8bbecb1ff0bc6c83dd51cc6867df6": [
+      "m3133-same-launch-taken.png"
+    ],
+    "5f13f3c22085ae63e0269d8357a112d11cc2b825582d5f46b95367758d8b3ce1": [
+      "same-launch/acceptance-result.json"
+    ],
+    "857a2d7052f0d6cb6e44013459985c865b113cd0a4c2ce241fbca447f8620ee6": [
+      "same-launch/acks.jsonl"
+    ],
+    "f5c11992590ef5af03b36599d5bfa26c9b5c479cd6b9332eaa390b21f338abdf": [
+      "same-launch/archive-family.json"
+    ],
+    "2df61e483c2d7f82105b4021a34af257a6690575b6826fec088e09ec4f881334": [
+      "same-launch/cleanup.json"
+    ],
+    "bc87cfaf26a87ed7b1bbb6f4f107624dbe610fa8a68b29035baaf93ff243fb97": [
+      "same-launch/diagnostics.jsonl"
+    ],
+    "42584b9f8c4f56ee997d7ed49d25e4df14dc35c79515ed0c1dbad843a3fbdb07": [
+      "same-launch/events.jsonl"
+    ],
+    "e539f47de64b11511cacfa61d56de3e85b533a2b49a82cdbf87f5f94fbba896f": [
+      "same-launch/handoff-events.jsonl"
+    ],
+    "207f6f48a8ebc492eb83886c87bd032407cee4ae7c0c5a3826101906a37a4ca0": [
+      "same-launch/process-check.json"
+    ],
+    "07e090760c92d70057b41f7814160a38626d4477b14e9c90e6c733dc0c88469c": [
+      "same-launch/rpc.jsonl"
+    ]
+  }
+}

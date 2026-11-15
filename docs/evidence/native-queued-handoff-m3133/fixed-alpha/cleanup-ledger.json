@@ -1,0 +1,68 @@
+[
+  {
+    "case": "not-taken",
+    "scratchTag": "69238baa-2b7e-4570-9d50-78c10ca58de6",
+    "sourceHead": "afd4ac65bc01b3c692fbc1e36721978633444ea2",
+    "session": "01a1dfdf-ae2e-73c3-b93b-d0012f522fda",
+    "paneClosed": true,
+    "hostExited": true,
+    "officialArchive": true,
+    "matchingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "same",
+    "scratchTag": "c7b291ef-3c02-4103-81c1-df862fb9d960",
+    "sourceHead": "afd4ac65bc01b3c692fbc1e36721978633444ea2",
+    "session": "01a1dfe5-0974-7b00-803e-928edbd69ca8",
+    "paneClosed": true,
+    "hostExited": true,
+    "officialArchive": true,
+    "matchingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "gone",
+    "scratchTag": "66f070a9-999b-4ba4-9ef1-bacf4ba09a4b",
+    "sourceHead": "afd4ac65bc01b3c692fbc1e36721978633444ea2",
+    "session": "01a1dfe5-b6bc-7c50-9090-5cfa7ebca66e",
+    "paneClosed": true,
+    "hostExited": true,
+    "officialArchive": true,
+    "matchingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "not-taken-clear",
+    "scratchTag": "c1993140-45ad-48bb-8168-b8d822e1f3fd",
+    "sourceHead": "afd4ac65bc01b3c692fbc1e36721978633444ea2",
+    "session": "01a1dfea-0ad5-7552-a467-364055c44b04",
+    "paneClosed": true,
+    "hostExited": true,
+    "officialArchive": true,
+    "matchingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "gone-observe",
+    "scratchTag": "b9533058-3a20-47d7-b63d-e7312f731701",
+    "sourceHead": "afd4ac65bc01b3c692fbc1e36721978633444ea2",
+    "session": "01a1dfed-6a0d-79a3-a4a8-77b19e2fa465",
+    "paneClosed": true,
+    "hostExited": true,
+    "officialArchive": true,
+    "matchingOwnedProcesses": 0,
+    "scratchRemoved": true
+  },
+  {
+    "case": "not-taken-observe",
+    "scratchTag": "eb30d94c-588e-46df-8436-8a668c0d71c1",
+    "sourceHead": "afd4ac65bc01b3c692fbc1e36721978633444ea2",
+    "session": "01a1dff0-7409-7ab1-82d9-829a93e3857d",
+    "paneClosed": true,
+    "hostExited": true,
+    "officialArchive": true,
+    "matchingOwnedProcesses": 0,
+    "scratchRemoved": true
+  }
+]

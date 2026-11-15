@@ -1,0 +1,8 @@
+{"at":1794758442542,"runBoot":"a6dc5e9a-a75a-432d-851b-24a716fa8fa9","kind":"coordinator-ready","pid":438523,"base":"http://127.0.0.1:40601","sessionId":"01a1dff0-7409-7ab1-82d9-829a93e3857d","pane":{"paneId":"a1495b0e-b409-4f72-85fa-6dc5196558ce","launchId":"2a1c4ddf-75cb-401d-9a11-11d360fe5ad5","hostBootId":"4b8c334b-7314-4d98-bb69-065a495256ae"},"model":"gpt-6-luna"}
+{"at":1794758444576,"runBoot":"a6dc5e9a-a75a-432d-851b-24a716fa8fa9","kind":"setup-submitted","label":"A"}
+{"at":1794758450808,"runBoot":"a6dc5e9a-a75a-432d-851b-24a716fa8fa9","kind":"sent","id":"web-mwi0ubn8-7ac0ba72","label":"queued-A"}
+{"at":1794758450808,"runBoot":"a6dc5e9a-a75a-432d-851b-24a716fa8fa9","kind":"event","event":"message_queued","data":{"chatId":"","messageId":"web-mwi0ubn8-7ac0ba72"}}
+{"at":1794758450811,"runBoot":"a6dc5e9a-a75a-432d-851b-24a716fa8fa9","kind":"armed","label":"A","releaseBasename":"release_A.txt"}
+{"at":1794758451401,"runBoot":"a6dc5e9a-a75a-432d-851b-24a716fa8fa9","kind":"event","event":"message_delivered","data":{"chatId":"","messageId":"web-mwi0ubn8-7ac0ba72"}}
+{"at":1794758454047,"runBoot":"a6dc5e9a-a75a-432d-851b-24a716fa8fa9","kind":"owned-key","key":"C-c"}
+{"at":1794758600143,"runBoot":"a6dc5e9a-a75a-432d-851b-24a716fa8fa9","kind":"coordinator-stopped","paneMode":"exit"}

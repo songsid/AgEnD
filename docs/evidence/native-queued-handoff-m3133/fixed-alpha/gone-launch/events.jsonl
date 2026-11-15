@@ -1,0 +1,7 @@
+{"at":1794758242999,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","kind":"coordinator-ready","pid":435755,"base":"http://127.0.0.1:45611","sessionId":"01a1dfed-6a0d-79a3-a4a8-77b19e2fa465","pane":{"paneId":"d9d78b8b-065a-4203-ba88-d09464854d3e","launchId":"9b582db2-3f5d-4aa4-8989-e6b83cd2a14b","hostBootId":"695b7dcd-89c3-4b01-a324-de1a73de2d90"},"model":"gpt-6-luna"}
+{"at":1794758245006,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","kind":"setup-submitted","label":"A"}
+{"at":1794758251227,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","kind":"sent","id":"web-mwi0q1n8-552b82ce","label":"queued-A"}
+{"at":1794758251227,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","kind":"event","event":"message_queued","data":{"chatId":"","messageId":"web-mwi0q1n8-552b82ce"}}
+{"at":1794758251272,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","kind":"armed","label":"A","releaseBasename":"release_A.txt"}
+{"at":1794758252503,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","kind":"event","event":"message_delivered","data":{"chatId":"","messageId":"web-mwi0q1n8-552b82ce"}}
+{"at":1794758255388,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","kind":"coordinator-stopped","paneMode":"exit"}

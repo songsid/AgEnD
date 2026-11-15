@@ -1,0 +1,8 @@
+{"at":1794758241194,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"input","operationId":"41cc9ed2-11c8-4146-b5df-62a2107802b0","sequence":1,"expectedSeq":61,"observedSeq":61,"inputRefused":false}
+{"at":1794758241823,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"28a03de1-8eb3-45b3-b39d-6de00eeeba94","sequence":2,"expectedSeq":97,"observedSeq":97,"inputRefused":false}
+{"at":1794758243967,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"input","operationId":"e0d3e421-3714-4341-abc5-b0023176ff39","sequence":3,"expectedSeq":140,"observedSeq":140,"inputRefused":false}
+{"at":1794758245001,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"0f894193-2b72-4803-90e2-c10f32d4e4ce","sequence":4,"expectedSeq":146,"observedSeq":146,"inputRefused":false}
+{"at":1794758251331,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"input","operationId":"b612659b-280b-4727-bf85-a31d3edd193d","sequence":5,"expectedSeq":558,"observedSeq":558,"inputRefused":false}
+{"at":1794758251983,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"69b76989-e7ab-48e8-8b42-5a2323ccf19f","sequence":6,"expectedSeq":597,"observedSeq":599,"inputRefused":true}
+{"at":1794758252127,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"b481a97f-6b18-4154-b3a2-4cd479d4b4fd","sequence":7,"expectedSeq":606,"observedSeq":611,"inputRefused":true}
+{"at":1794758252498,"runBoot":"97d3d29d-44f5-4abe-84ef-9af4f30f2110","action":"key","operationId":"fedaf37c-a4fa-48ad-ac40-1040d05450cf","sequence":8,"expectedSeq":639,"observedSeq":639,"inputRefused":false}
