@@ -16,7 +16,7 @@ export async function freeHubPort(): Promise<number> {
   const server = netServer(); await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as { port: number }).port; await new Promise<void>(resolve => server.close(() => resolve())); return port;
 }
-export async function hubRig(options: { clientLog?: HubClientOptions["log"]; serverReady?: HubServerOptions["ready"]; clientRecommendations?: boolean; serverConnected?: HubServerOptions["connected"]; serverLog?: HubServerOptions["log"]; serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[];
+export async function hubRig(options: { parentDir?: string; clientLog?: HubClientOptions["log"]; serverReady?: HubServerOptions["ready"]; clientRecommendations?: boolean; serverConnected?: HubServerOptions["connected"]; serverLog?: HubServerOptions["log"]; serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[];
   clientRoomContext?: HubClientOptions["roomContext"];
   /** A suite may supply a held socket from hubListenerPorts; its TLS listener adopts that same handle. */
   memberPort?: number;
@@ -27,7 +27,8 @@ export async function hubRig(options: { clientLog?: HubClientOptions["log"]; ser
   clientInfo?: HubClientOptions["fleetInfo"];
   /** #3429 B: the member's dial order (a pending relocation's `to`, then the anchor). */
   clientDial?: HubClientOptions["dial"] } = {}) {
-  mkdirSync(".artifacts", { recursive: true }); const root = mkdtempSync(join(process.cwd(), ".artifacts/hub-net-test-")); chmodSync(root, 0o700);
+  const parent = options.parentDir ?? join(process.cwd(), ".artifacts"); mkdirSync(parent, { recursive: true });
+  const root = mkdtempSync(join(parent, "hub-net-test-")); chmodSync(root, 0o700);
   const memberHome = join(root, "member"); mkdirSync(memberHome, { mode: 0o700 }); const port = options.memberPort ?? await freeHubPort();
   const memberOrigin = `https://127.0.0.1:${port}`, identity = await provisionHubIdentity({ home: root, memberOrigin });
   const owner = { realm: "directory", objectId: randomUUID() }; let eligible = true, enabled = true, floor = 0;

@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/hub-hotpaths-3184-alpha
+
+(node:25992) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  2 passed (2)
+      Tests  35 passed (35)
+   Start at  19:31:36
+   Duration  7.28s (transform 7.28s, setup 193ms, import 9.67s, tests 2.23s, environment 0ms)
+

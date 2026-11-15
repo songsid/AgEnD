@@ -41,7 +41,7 @@ describe("native MCP capabilities and live menus",()=>{
   it("grants one ephemeral child capability and exposes only the supported profile-filtered tools",async()=>{
     const f=fixture();expect(f.lease.connection.token).toMatch(/^[a-f0-9]{64}$/);expect(f.manager.hasActive(name)).toBe(true);
     const {status,value}=await invoke(f,listing).done();expect(status).toBe(200);
-    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","send_to_instance","delegate_task","request_information","report_result","delivery_status"].sort());
+    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","send_to_instance","delegate_task","request_information","report_result","delivery_status","hub_room_list","hub_room_post","hub_room_members","hub_people_search"].sort());
     expect(f.lease.connection.tools.sort()).toEqual(value.tools.map((tool:any)=>tool.name).sort());
     expect(value.tools.find((tool:any)=>tool.name==="task").annotations.readOnlyHint).toBe(false);
     expect(value.tools.find((tool:any)=>tool.name==="delegate_task").annotations.readOnlyHint).toBe(false);
@@ -50,7 +50,7 @@ describe("native MCP capabilities and live menus",()=>{
   });
   it("restricts read-only tools and the task action schema, and rejects guessed writes",async()=>{
     const f=fixture("read-only"),{value}=await invoke(f,listing).done();
-    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","delivery_status"].sort());
+    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","delivery_status","hub_room_list","hub_room_members","hub_people_search"].sort());
     expect(value.tools.find((tool:any)=>tool.name==="task").inputSchema.properties.action.enum).toEqual(["list","get","mine","projects"]);
     expect(value.tools.every((tool:any)=>tool.annotations.readOnlyHint===true)).toBe(true);
     expect((await invoke(f,call("write","task",{action:"create",title:"Must not create"})).done()).status).toBe(403);
@@ -86,14 +86,29 @@ describe("native MCP capabilities and live menus",()=>{
 });
 
 describe("Hub room native MCP scope",()=>{
-  it("uses live connected menus while preserving the native read-only ceiling",async()=>{
+  it("keeps offline/online menus static while preserving the native read-only ceiling",async()=>{
     const f=fixture();let online=false;f.ctx.hubRoomToolsAvailable=()=>online;
-    expect((await invoke(f,listing).done()).value.tools.map((t:any)=>t.name)).not.toContain("hub_room_post");
-    online=true;
-    expect((await invoke(f,listing).done()).value.tools.map((t:any)=>t.name)).toEqual(expect.arrayContaining(["hub_room_list","hub_room_post"]));
+    const names=(await invoke(f,listing).done()).value.tools.map((t:any)=>t.name);
+    expect(names).toEqual(expect.arrayContaining(["hub_room_list","hub_room_post","hub_room_members","hub_people_search"]));
+    expect(f.lease.connection.tools).toEqual(expect.arrayContaining(names));
+    online=true;expect((await invoke(f,listing).done()).value.tools.map((t:any)=>t.name)).toEqual(names);
+    online=false;expect((await invoke(f,listing).done()).value.tools.map((t:any)=>t.name)).toEqual(names);
     const read=fixture("read-only");read.ctx.hubRoomToolsAvailable=()=>true;
     expect((await invoke(read,listing).done()).value.tools.map((t:any)=>t.name)).toContain("hub_room_list");
     expect((await invoke(read,call("post","hub_room_post",{room:"Weekly",text:"No"})).done()).status).toBe(403);
+  });
+  it.each([
+    ["hub_room_list",{}],["hub_room_post",{room:"Weekly",text:"Hello"}],
+    ["hub_room_members",{room:"Weekly"}],["hub_people_search",{q:"Alex"}],
+  ])("%s remains visible offline but refuses at dispatch without a remote call",async(tool,args)=>{
+    const f=fixture();let online=false;f.ctx.hubRoomToolsAvailable=()=>online;
+    const remote=vi.fn(async()=>({ok:true,rows:[]}));
+    f.ctx.hubRoomList=remote;f.ctx.hubRoomPost=remote;f.ctx.hubRoomMembers=remote;f.ctx.hubPeopleSearch=remote;
+    const {status,value}=await invoke(f,call("offline-"+tool,tool as string,args as Record<string,unknown>)).done();
+    expect(status).toBe(200);expect(JSON.parse(value.content[0].text)).toMatchObject({ok:false,code:"unavailable",message:"This Fleet isn't connected to a Hub."});
+    expect(remote).not.toHaveBeenCalled();
+    online=true;const active=await invoke(f,call("online-"+tool,tool as string,args as Record<string,unknown>)).done();
+    expect(active.status).toBe(200);expect(JSON.parse(active.value.content[0].text)).toMatchObject({ok:true});expect(remote).toHaveBeenCalledOnce();
   });
   it("retains post operation identity and retires the exact native caller during a suspended call",async()=>{
     const f=fixture();f.ctx.hubRoomToolsAvailable=()=>true;

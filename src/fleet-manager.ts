@@ -1676,7 +1676,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { NativePaneManager } = await import("./native-pane-manager.js");
     if (this.paneManager) return this.paneManager;
     const store = windowsAgentsFor(this, this.runtimeWindowsExecutor());
-    const allowed = (name: string, tool: string): boolean => (!["hub_room_list","hub_room_post","hub_room_members","hub_people_search"].includes(tool) || this.hubRoomToolsAvailable()) && nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
+    const allowed = (name: string, tool: string): boolean => nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],

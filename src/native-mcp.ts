@@ -130,8 +130,7 @@ export class NativeMcpSessions {
   }
   private allowed(session:Session,name:string):boolean {
     const config=this.ctx.fleetConfig?.instances[session.instance];
-    return (!["hub_room_list","hub_room_post","hub_room_members","hub_people_search"].includes(name) || this.ctx.hubRoomToolsAvailable?.() === true)
-      && Object.hasOwn(OPS,name) && (!this.readOnly(session) || READ_TOOLS.has(name))
+    return Object.hasOwn(OPS,name) && (!this.readOnly(session) || READ_TOOLS.has(name))
       && mayUseTool(resolveToolSet(config,session.instance),name) && !dashboardRefusalIn(this.ctx.fleetConfig,session.instance,name);
   }
   private canCall(session:Session,name:string,args:Record<string,unknown>):boolean {

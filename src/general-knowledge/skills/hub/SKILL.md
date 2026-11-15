@@ -418,7 +418,7 @@ stops both posting and reply return.
 - An unknown outcome may already be committed. Do not repeat it as a new tool call; the same operation retains its
   original key/body for a safe transport retry. A refused/rate-limited result explains the refusal and may give a retry time.
 - The Hub resolves mentions and applies the room's automation depth and rate limits. The Fleet does not infer which
-  prior ask caused a post or supply ancestry. Tools disappear while disconnected; a stale cached tool call is refused.
+  prior ask caused a post or supply ancestry. The configured tool catalog stays visible while disconnected; the call itself is refused with the disconnected explanation.
 - These tools require the current shared exposure/owner consent and compatible negotiated room-post support. Native
   read-only sessions may use the read tools but cannot post; an older launch's tool ceiling is not widened.
 
@@ -686,6 +686,8 @@ Say plainly that these are not in the product yet:
 - **Per-person cost or quota figures on the Hub.** Exact usage stays in each Fleet.
 
 ## Troubleshooting
+
+- **Does a disconnected Hub hold up the Fleet?** Fleet startup and ordinary local message delivery do not wait for the Hub connection. Tool discovery stays local within configured permissions, including native agents; an unavailable Hub tool explains the refusal when called. Hub Settings can temporarily say unavailable while a mount changes—retry afterward. Individual Hub network operations have deadlines; this does not promise zero background CPU/I/O overhead.
 
 - **"That is not a Hub address."** Enter just the address (`hub.example.com`), or the address, a space and the join
   code. **"A Hub address must use https."** Drop `http://`.
