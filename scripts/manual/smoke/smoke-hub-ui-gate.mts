@@ -145,7 +145,9 @@ const PAGES = [
   { name: "welcome", who: bo, path: "/ui/hub", ready: ".hub-welcome-card" },
   { name: "chat", who: "asker", path: "/ui/hub?room=", ready: ".hub-chat-main" },
   { name: "owner", who: owner, path: "/ui/hub/exposures", ready: ".hub-owner" },
-  { name: "admin", who: admin, path: "/ui/hub/admin", ready: ".hub-admin .hub-this-facts, .hub-admin:not(:has(.hub-this-hub)) .hub-steps" },
+  // M-3162: Administration opens on Overview where the Hub serves it; the long page is the Manage tab (?view=manage).
+  { name: "admin-overview", who: admin, path: "/ui/hub/admin", ready: ".hub-ov .hub-ov-section, .hub-ov-empty" },
+  { name: "admin", who: admin, path: "/ui/hub/admin?view=manage", ready: ".hub-admin .hub-this-facts, .hub-admin:not(:has(.hub-this-hub)) .hub-steps" },
   { name: "admin-groups", who: admin, path: "/ui/hub/admin?view=groups", ready: ".hub-group-row" },
 ] as const;
 

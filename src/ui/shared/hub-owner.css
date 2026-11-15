@@ -107,7 +107,7 @@
 .hub-admin-tab.active { color: var(--text); font-weight: var(--fw-semibold); border-bottom-color: var(--text); }
 @media (max-width: 899px) {
   .hub-admin-tabs-wrap { padding: var(--s-2) var(--s-4) 0; }
-  .hub-admin-tab { min-height: var(--tap); display: inline-flex; align-items: center; }
+  .hub-admin-tab { min-height: var(--tap); min-width: var(--tap); display: inline-flex; align-items: center; justify-content: center; }
 }
 
 /* M-3162: Administration → Overview — counts in cards. Numbers in tabular figures; the bars and the split drawn in the
@@ -164,6 +164,6 @@
 @media (max-width: 899px) {
   .hub-ov-grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hub-ov-split { grid-template-columns: minmax(0, 1fr); }
-  .hub-ov-range-item { min-height: calc(var(--tap) - 6px); }
+  .hub-ov-range-item { min-height: var(--tap); }
   .hub-ov-link { min-height: var(--tap); display: inline-flex; align-items: center; }
 }
