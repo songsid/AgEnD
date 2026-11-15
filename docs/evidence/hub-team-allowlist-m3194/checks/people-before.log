@@ -75,4 +75,3 @@ TypeError: (intermediate value)(intermediate value)(intermediate value) is not a
       Tests  5 failed (5)
    Start at  23:05:36
    Duration  693ms (transform 346ms, setup 96ms, import 418ms, tests 17ms, environment 0ms)
-

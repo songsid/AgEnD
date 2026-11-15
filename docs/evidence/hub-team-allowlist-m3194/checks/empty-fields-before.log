@@ -30,4 +30,3 @@ undefined
       Tests  1 failed | 10 skipped (11)
    Start at  23:41:46
    Duration  731ms (transform 421ms, setup 89ms, import 480ms, tests 23ms, environment 0ms)
-

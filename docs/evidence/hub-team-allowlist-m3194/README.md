@@ -25,3 +25,5 @@ R1 reviewer repair: removing the final new subjects formerly left empty arrays i
 Person-row names remain administrator-supplied display labels. The picker obtains them from the bounded directory search, but the authority/effect uses the canonical person ID and current eligibility, never that name. Refreshing stored cosmetic labels is deferred.
 
 Risk and rollback: putting a Team on the list intentionally lets its current leads control which eligible people receive those abilities; the row shows size and leads. Old binaries' strict policy parser will not accept the new optional fields. Remove all team/person allowances with a compatible build; the writer removes their now-empty optional fields. Alternatively restore a pre-upgrade policy/database backup before rollback; prefer a compatible fix. T2's additive schema additionally needs its own documented rollback. No automatic destructive downgrade is supplied.
+
+Public text logs omit terminal trailing blank lines; original raw captures remain in the owned private artifact directory.
