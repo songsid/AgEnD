@@ -325,8 +325,8 @@ describe.skipIf(!pwsh)("with pwsh: the encoded script itself", () => {
     { name: "same target", distro: "AgEnD", user: "root", record: { distro: "AgEnD", user: "root" }, made: true },
     { name: "record changed after confirmation", distro: "AgEnD", user: "root", record: { distro: "Ubuntu-B", user: "root" }, seen: { distro: "Ubuntu-24.04", user: "root" }, made: false },
     { name: "exact confirmed replacement", distro: "AgEnD", user: "root", record: { distro: "Ubuntu-24.04", user: "root" }, seen: { distro: "Ubuntu-24.04", user: "root" }, made: true },
-    { name: "user case differs", distro: "agend", user: "han", record: { distro: "AgEnD", user: "Han" }, made: false },
-    { name: "distro case differs, exact user", distro: "agend", user: "Han", record: { distro: "AgEnD", user: "Han" }, made: true },
+    { name: "user case differs", distro: "agend", user: "alex", record: { distro: "AgEnD", user: "Alex" }, made: false },
+    { name: "distro case differs, exact user", distro: "agend", user: "Alex", record: { distro: "AgEnD", user: "Alex" }, made: true },
   ])("writes scripts/record only for the accepted target: $name", async ({ distro, user, record, seen, made }) => {
     const w = scratchWindows();
     try {

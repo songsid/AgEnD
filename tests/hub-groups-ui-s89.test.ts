@@ -122,22 +122,22 @@ describe("the welcome's projection: 我的 Fleet and the launcher's frame, shape
     expect(frame.root.querySelector('[data-welcome="fleets"] a').getAttribute("href")).toBe("/ui/hub/exposures");
   });
   it("with a Fleet: its row (normal text, its state) and the steps behind 「+ Connect another fleet」; the launcher's line names them", async () => {
-    const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 8, fleets: [{ id: "f1", label: "Han", status: "active", generation: 1 }, { id: "f2", label: "My fleet", status: "active", generation: 2 }] } }) });
+    const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 8, fleets: [{ id: "f1", label: "Alex", status: "active", generation: 1 }, { id: "f2", label: "My fleet", status: "active", generation: 2 }] } }) });
     const card = await mountWith(f.c, h(welcome.MyFleetsCard, {}));
-    expect([...card.root.querySelectorAll(".hub-my-fleets .hub-row")].map((r: any) => [text(r.querySelector("strong")), text(r.querySelector(".tag"))])).toEqual([["Han", "Active"], ["My fleet", "Active"]]);
+    expect([...card.root.querySelectorAll(".hub-my-fleets .hub-row")].map((r: any) => [text(r.querySelector("strong")), text(r.querySelector(".tag"))])).toEqual([["Alex", "Active"], ["My fleet", "Active"]]);
     expect([card.root.querySelector(".hub-my-fleets code"), card.root.querySelector(".hub-pair-steps")]).toEqual([null, null]);   // names are not code; steps folded
     fire(card.root.querySelector(".hub-pair-more"), "click"); await settle(10);
     expect([card.root.querySelector(".hub-pair-more"), !!card.root.querySelector(".hub-pair-steps")]).toEqual([null, true]);
     const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
-    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Han, My fleet) · Manage in My shared agents →");
+    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Alex, My fleet) · Manage in My shared agents →");
   });
   it("the launcher's Fleet line counts and names only the Fleets still connected — a revoked one is left out", async () => {
-    const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 8, fleets: [{ id: "f1", label: "Han", status: "active" }, { id: "f2", label: "Old desk", status: "revoked" }, { id: "f3", label: "Lab", status: "suspended" }] } }) });
+    const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 8, fleets: [{ id: "f1", label: "Alex", status: "active" }, { id: "f2", label: "Old desk", status: "revoked" }, { id: "f3", label: "Lab", status: "suspended" }] } }) });
     const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
-    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Han, Lab) · Manage in My shared agents →");
+    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Alex, Lab) · Manage in My shared agents →");
   });
   it("revoke is in the row's ⋯ (quick pairing): it asks first; No sends nothing, Yes revokes that Fleet's generation and reads again", async () => {
-    const fleets = [{ id: "f1", label: "Han", status: "active", generation: 7 }];
+    const fleets = [{ id: "f1", label: "Alex", status: "active", generation: 7 }];
     const revokeOwnFleet = vi.fn(async () => ({ ok: true }));
     const f = fake({ quickPairingV1: true, revokeOwnFleet, welcome: vi.fn(async () => W({ connect: { state: "allow", maxFleets: 8, fleets } })) });
     const card = await mountWith(f.c, h("div", null, h(welcome.MyFleetsCard, { quick: true }), h(confirmUi.ConfirmHost, {})));
@@ -147,7 +147,7 @@ describe("the welcome's projection: 我的 Fleet and the launcher's frame, shape
     const open = async () => { fire(card.root.querySelector(".hub-fleet-menu button"), "click"); await settle(10);
       fire([...card.document.querySelectorAll("[role=menuitem]")].find((x: any) => text(x) === "Revoke this fleet")!, "click"); await settle(10); };
     await open();
-    expect(text(card.document.querySelector("dialog"))).toContain("Revoke Han? It loses its Hub access at once.");
+    expect(text(card.document.querySelector("dialog"))).toContain("Revoke Alex? It loses its Hub access at once.");
     fire([...card.document.querySelectorAll("dialog .btn")].find((b: any) => text(b) === "Cancel")!, "click"); await settle(10);
     expect(revokeOwnFleet).not.toHaveBeenCalled();
     await open(); fire(card.document.querySelector("[data-confirm=yes]")!, "click"); await settle(20);

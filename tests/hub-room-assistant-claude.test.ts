@@ -8,7 +8,7 @@ import type { spawn } from "../src/child-process.js";
 import { CLAUDE_ASSISTANT_MIN_VERSION, createClaudeAssistantHost } from "../src/hub/assistant/claude-host.js";
 import type { RoomAssistantAsk, RoomAssistantSession } from "../src/hub/assistant/types.js";
 
-const request = (roomId = "room-a"): RoomAssistantAsk => ({ roomId, roomName: "Weekly meeting", messageId: "m-1", asker: { name: "Han" }, text: "Summarise", context: [{ author: "Jo", text: "Done", at: 1 }] });
+const request = (roomId = "room-a"): RoomAssistantAsk => ({ roomId, roomName: "Weekly meeting", messageId: "m-1", asker: { name: "Alex" }, text: "Summarise", context: [{ author: "Jo", text: "Done", at: 1 }] });
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(yes => { resolve = yes; });
@@ -122,8 +122,8 @@ describe("Hub host Fleet tools-off Claude adapter (inert process only)", () => {
     expect(w.launch).toHaveBeenCalledTimes(2);
     const sent = [...a.child.writes, ...secondChild.writes].map(line => JSON.parse(line));
     expect(sent.map(frame => JSON.parse(frame.message.content))).toEqual([
-      { room: { id: "room-a", name: "Weekly meeting" }, messageId: "m-1", asker: "Han", recentMessages: request().context, request: "Summarise" },
-      { room: { id: "room-a", name: "Weekly meeting" }, messageId: "m-2", asker: "Han", recentMessages: request().context, request: "Follow up" },
+      { room: { id: "room-a", name: "Weekly meeting" }, messageId: "m-1", asker: "Alex", recentMessages: request().context, request: "Summarise" },
+      { room: { id: "room-a", name: "Weekly meeting" }, messageId: "m-2", asker: "Alex", recentMessages: request().context, request: "Follow up" },
     ]);
     await expect(a.session.ask(request("room-b"), a.controller.signal)).rejects.toThrow("unavailable");
     expect(a.child.writes).toHaveLength(1); expect(secondChild.writes).toHaveLength(1);
@@ -176,7 +176,7 @@ describe("Hub host Fleet tools-off Claude adapter (inert process only)", () => {
 
   it("returns an answer only after the one-shot worker closes, preserving an older replied-to anchor", async () => {
     const w = await world(), a = await w.start(), ask = request();
-    ask.context = Array.from({ length: 35 }, (_, at) => ({ author: "Han", text: `Row ${at}`, at, ...(at === 1 ? { repliedTo: true as const } : {}) }));
+    ask.context = Array.from({ length: 35 }, (_, at) => ({ author: "Alex", text: `Row ${at}`, at, ...(at === 1 ? { repliedTo: true as const } : {}) }));
     const result = a.session.ask(ask, a.controller.signal), settled = vi.fn(); void result.then(settled);
     await flush();
     const sent = JSON.parse(JSON.parse(a.child.writes[0]).message.content);

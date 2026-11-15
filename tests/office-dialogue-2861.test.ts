@@ -28,8 +28,8 @@ const iso = (ms: number) => new Date(ms).toISOString();
 
 describe("what the box takes from the stream (messageOf, talkOf)", () => {
   it("a person's message is heard, the agent's reply answers; a status line, another role or a replay is nothing", () => {
-    expect(D.messageOf({ instance: "atlas", role: "user", sender: "Han", from: "discord:42", text: "hello", ts: iso(NOW - 5000) }, NOW))
-      .toEqual({ kind: "heard", instance: "atlas", person: { name: "Han", account: "discord:42" }, text: "hello", files: false });
+    expect(D.messageOf({ instance: "atlas", role: "user", sender: "Alex", from: "discord:42", text: "hello", ts: iso(NOW - 5000) }, NOW))
+      .toEqual({ kind: "heard", instance: "atlas", person: { name: "Alex", account: "discord:42" }, text: "hello", files: false });
     expect(D.messageOf({ instance: "atlas", role: "agent", sender: "atlas", text: "hi", ts: iso(NOW) }, NOW)).toEqual({ kind: "answered", instance: "atlas", text: "hi", files: false });
     expect(D.messageOf({ instance: "atlas", role: "status", text: "x", ts: iso(NOW) }, NOW)).toBeNull();
     expect(D.messageOf({ instance: "atlas", role: "user", text: "old", ts: iso(NOW - D.DLG.FRESH_MS - 1) }, NOW)).toBeNull();     // a replay
@@ -54,7 +54,7 @@ describe("the conversations (createDialogue, pickFront, stageOf)", () => {
   it("heard → answered → gone after the hold and fade; never answered → gone after WAIT_MS; a reply with nothing heard is nothing", () => {
     const d = D.createDialogue();
     expect(d.answered("atlas", "hi", 0)).toBeNull();
-    const c = d.heard("atlas", { name: "Han", account: null }, "hello", 1000)!;
+    const c = d.heard("atlas", { name: "Alex", account: null }, "hello", 1000)!;
     expect(d.answered("atlas", "hi there", 2000)).toBe(c);
     expect(d.answered("atlas", "again", 2500)).toBeNull();                 // answered once
     expect([c.text, c.reply]).toEqual(["hello", "hi there"]);
@@ -221,14 +221,14 @@ describe("the host's talk record and a share's /state (no words, no one named, t
   it("OfficeTalk: a person's message is heard, a reply answered; status and odd ones nothing; only the scope, only younger than TALK_MAX_AGE_MS", () => {
     let t = NOW;
     const k = new OfficeTalk(() => t);
-    k.noteMessage({ instance: "atlas", role: "user", text: "secret words", sender: "Han" });
+    k.noteMessage({ instance: "atlas", role: "user", text: "secret words", sender: "Alex" });
     t += 1000;
     k.noteMessage({ instance: "atlas", role: "agent", text: "secret reply" });
     k.noteMessage({ instance: "quill", role: "status", text: "x" });
     k.noteMessage({ instance: "", role: "user" }); k.noteMessage(null); k.noteMessage("x");
     k.noteMessage({ instance: "hidden", role: "user" });
     expect(k.recent(new Set(["atlas", "quill"]))).toEqual({ now: NOW + 1000, items: [{ instance: "atlas", kind: "heard", at: NOW }, { instance: "atlas", kind: "answered", at: NOW + 1000 }] });
-    expect(JSON.stringify(k.recent(new Set(["atlas", "hidden"])))).not.toMatch(/secret|Han/);
+    expect(JSON.stringify(k.recent(new Set(["atlas", "hidden"])))).not.toMatch(/secret|Alex/);
     t = NOW + TALK_MAX_AGE_MS + 1;
     expect(k.recent(new Set(["atlas"])).items).toEqual([{ instance: "atlas", kind: "answered", at: NOW + 1000 }]);
   });
@@ -237,11 +237,11 @@ describe("the host's talk record and a share's /state (no words, no one named, t
     const src: any = {
       status: () => status, org: () => ({ general: ["atlas", "quill"], teams: [] }), offices: () => ({ rev: 1, offices: [{ id: "o1", name: "One", skin: "cozy", members: ["atlas"] }] }),
       acts: () => [], traffic: () => ({ now: iso(NOW), items: [] }), needs: () => [], hidden: () => false,
-      talk: () => ({ now: NOW, items: [{ instance: "atlas", kind: "heard", at: NOW, text: "leak", sender: "Han" }, { instance: "quill", kind: "heard", at: NOW }, { instance: "atlas", kind: "said", at: NOW }] }),
+      talk: () => ({ now: NOW, items: [{ instance: "atlas", kind: "heard", at: NOW, text: "leak", sender: "Alex" }, { instance: "quill", kind: "heard", at: NOW }, { instance: "atlas", kind: "said", at: NOW }] }),
     };
     const one = new OfficeShareView({ office: "o1", text: false }, src).state() as any;
     expect(one.talk).toEqual({ now: NOW, items: [{ instance: "atlas", kind: "heard", at: NOW }] });
-    expect(JSON.stringify(one)).not.toMatch(/leak|Han/);
+    expect(JSON.stringify(one)).not.toMatch(/leak|Alex/);
     const all = new OfficeShareView({ office: "all", text: false }, src).state() as any;
     expect(all.talk.items.map((i: any) => i.instance)).toEqual(["atlas", "quill"]);
     // #3111 review P1: the pack a share hands out — portraits of shown instances only, no person's at all, an NPC's kept;
@@ -308,7 +308,7 @@ describe("the box on the page", () => {
     expect(toggle().checked).toBe(false);
     expect(p.root.querySelector(".oo-dialogue").textContent).toBe("Dialogue");
     expect(listeners.get("message")?.size ?? 0).toBe(0);
-    emit("message", { instance: "atlas", role: "user", sender: "Han", text: "secret hello", ts: new Date().toISOString() });
+    emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "secret hello", ts: new Date().toISOString() });
     await tick();
     expect(texts().some((s: string) => s.includes("secret"))).toBe(false);
     expect(p.root.querySelector(".oo-dialogue-live")).toBeNull();
@@ -318,17 +318,17 @@ describe("the box on the page", () => {
     fire(toggle(), "change"); await settle(4);
     expect(localStorage.getItem("agend_org_office_dialogue")).toBe("1");
     expect(listeners.get("message")?.size).toBe(1);
-    emit("message", { instance: "atlas", role: "user", sender: "Han", text: "deploy the docs please", ts: new Date().toISOString() });
+    emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "deploy the docs please", ts: new Date().toISOString() });
     await tick(20);
-    expect(texts()).toEqual(expect.arrayContaining(["Han"]));
+    expect(texts()).toEqual(expect.arrayContaining(["Alex"]));
     expect(texts().some((s: string) => "deploy the docs please".startsWith(s) && s.length > 0)).toBe(true);
-    expect(p.root.querySelector(".oo-dialogue-live").textContent).toBe("Han: deploy the docs please");
+    expect(p.root.querySelector(".oo-dialogue-live").textContent).toBe("Alex: deploy the docs please");
     emit("message", { instance: "atlas", role: "agent", sender: "atlas", text: "Done.", ts: new Date().toISOString() });
     await tick(20);
     expect(texts()).toEqual(expect.arrayContaining(["Atlas"]));
     expect(p.root.querySelector(".oo-dialogue-live").textContent).toBe("Atlas: Done.");
     // A replay of an old one is not news.
-    emit("message", { instance: "quill", role: "user", sender: "Han", text: "old news", ts: new Date(Date.now() - 10 * 60_000).toISOString() });
+    emit("message", { instance: "quill", role: "user", sender: "Alex", text: "old news", ts: new Date(Date.now() - 10 * 60_000).toISOString() });
     await tick();
     expect(texts().some((s: string) => s.includes("old news"))).toBe(false);
     // Off again: the listener goes, the box with it.
@@ -355,26 +355,26 @@ describe("the box on the page", () => {
     try {
       localStorage.setItem("agend_org_office_dialogue", "1");
       await office();
-      emit("message", { instance: "atlas", role: "user", sender: "Han", text: "whole at once", ts: new Date().toISOString() });
+      emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "whole at once", ts: new Date().toISOString() });
       await settle(2);
-      expect(texts()).toEqual(expect.arrayContaining(["Han", "whole at once"]));
+      expect(texts()).toEqual(expect.arrayContaining(["Alex", "whole at once"]));
     } finally { (globalThis as any).matchMedia = real; }
   });
   it("an agent drawn asleep: its conversation waits (nothing drawn) — hide paused and stopped: not shown at all", async () => {
     app.appStore.set({ ready: true, instances: [{ ...INSTANCES[0], status: "paused" }, INSTANCES[1]], exec: {}, awaiting: {}, needs: [], streamOn });
     localStorage.setItem("agend_org_office_dialogue", "1");
     await office();
-    emit("message", { instance: "atlas", role: "user", sender: "Han", text: "are you there", ts: new Date().toISOString() });
+    emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "are you there", ts: new Date().toISOString() });
     await tick(20);
     expect(texts().some((s: string) => s.startsWith("are"))).toBe(false);
-    emit("message", { instance: "quill", role: "user", sender: "Han", text: "quill please", ts: new Date().toISOString() });
+    emit("message", { instance: "quill", role: "user", sender: "Alex", text: "quill please", ts: new Date().toISOString() });
     await tick(20);
     expect(texts().some((s: string) => s.length > 2 && "quill please".startsWith(s))).toBe(true);
   });
   it("a click on the box opens its agent's card", async () => {
     await office();
     fire(toggle(), "change"); await settle(4);
-    emit("message", { instance: "atlas", role: "user", sender: "Han", text: "hi", ts: new Date().toISOString() });
+    emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "hi", ts: new Date().toISOString() });
     await tick(20);
     const cv = p.root.querySelector(".oo-canvas");
     cv.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 600, right: 960, bottom: 600 });
