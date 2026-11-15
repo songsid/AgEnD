@@ -2,7 +2,7 @@
 
 Status: first draft for the owner to iterate on. Nothing is built. Facts about today's server come from a source
 survey of `release/2.3.5-alpha` at `616e8f75d` and from Sentinel's narrow source checks for M-3184 (the full audit
-has not run). Cairn's M-3183 facts are still to be folded in; places that depend on them are marked **(Cairn)**.
+has not run), and from Cairn's M-3183 work (draft #4004, not yet merged).
 
 ## 0. The idea in one paragraph
 
@@ -25,8 +25,9 @@ Names used here: **AgEnD connector** / 「AgEnD 連接器」, **module** / 「�
 | Tools | 83, in one registry (`src/channel/mcp-tools.ts`) |
 | Tool sets | `full` 83, `coordinator` 83, `general` 81, `worker` 63 (the default), `standard` 54, `minimal` 9. Set per agent (`instances.<name>.tool_set`) or as the Fleet default |
 | Feature switches | Five "dashboard access" switches (appearance, task board, web settings, office, office packs) hide a group of tools and also refuse them. This is the nearest thing to a module today |
-| Listing | **Waits on live state.** Each listing asks the Fleet process whether the Hub is available (`hub_room_status`), with a 45-second limit, and drops the four Hub tools if not. Sentinel confirmed this couples the whole list to a Hub round trip; M-3183 is the repair **(Cairn)** |
-| List changes | The list is re-announced when the Hub state changes, when the socket drops or returns, and when a dashboard switch changes |
+| Listing, on alpha today | **Waits on live state.** Each listing asks the Fleet process whether the Hub is available (`hub_room_status`), with a 45-second limit, and drops the four Hub tools if not. At startup this could outlast a CLI's own deadline |
+| Listing, with M-3183 (#4004, draft) | Built at once from the tool registry, the agent's tool set and its dashboard switches, with no Hub lookup. Hub tools the agent is allowed stay listed; a call refuses clearly if the Fleet is not connected. Measured: 2.9 to 8.8 ms, even while a Hub status request is left hanging. The `worker` list is 63 tools, 70,100 bytes |
+| List changes | Re-announced when the socket drops or returns and when a dashboard switch changes; with M-3183, no longer when the Hub state changes. Which CLIs pick up a change mid-session is not measured (Claude Code is known to need the announcement after a timeout) |
 | On-demand loading | None. No "find a tool" mechanism of our own |
 | Approvals | No general flow. A few tools return "pending" and wait for an administrator's yes in General or in the web's Needs you list (Windows agent create and settings, Kiro migration). They do not hold the call open (Sentinel). The chat adapters have an unused approval method. Claude Code runs with its own permission prompts switched off |
 | Other ways to extend | Bundled skills (22), published per backend into each agent's skills folder by role. A person's own skills and MCP servers reach an agent only by accident of each CLI's configuration; AgEnD has no setting for them |
@@ -109,7 +110,8 @@ The M-3183 lesson, as a rule: **listing tools never waits on anything.**
 - Listing does not ask the Fleet process, the Hub, a module worker or the network.
 - A module that is switched on but cannot work right now **stays listed**. Calling its tool returns "not
   available" with the reason, for example: "Not available: this Fleet is not connected to a Hub." The agent can
-  say so in its answer. **(Cairn: confirm this matches M-3183.)**
+  say so in its answer. This is what M-3183 already does for the Hub tools; the module model makes it the rule
+  for every module.
 - The list changes only when a person changes the agent's modules in Settings. The connector announces the change;
   a CLI that does not pick it up mid-session gets it at the agent's next restart, and Settings says so.
 - A module that fails to load leaves the rest of the list untouched.
@@ -174,6 +176,9 @@ What this costs:
   have used had it been listed. Core tools stay listed for that reason.
 - The CLI no longer checks the input shape; the connector must, and must return a readable error.
 - Any per-tool view in the CLI shows only "agend_use_tool". AgEnD's own log must name the real tool.
+- `agend_use_tool` must run the real tool's own caller and permission checks, not a check on the wrapper (Cairn).
+  Cairn sees no blocker in our own path, but it is unproven, and Muse's and Kiro's limits are unknown: card 1c
+  starts with a trial.
 
 ## 6. Approvals through AgEnD
 
@@ -241,8 +246,9 @@ Fleet-agent room tools are the same module's agent-facing tools. Its step 2 (the
 **The second row is new**, and is the cheaper one to build first: a person's desktop app on the AgEnD computer can
 use a local command, which needs no certificate and no network sign-in. It gives the owner's stated goal for
 managers ("ask the agents they are authorized to ask") a desktop form without waiting for the Hub's certificate.
-**(Cairn: can the Fleet process serve a caller that is a person, not an agent? Today identity is the agent's
-socket.)**
+Today the connector is stdio only and a caller's identity is the agent's own socket (Cairn). A door for a person
+needs its own binding: the signed-in session decides which agents the caller owns or may ask; a name sent by the
+app is never trusted.
 
 What an app caller must never get: the tools that let an agent act as the Fleet (create or delete agents, change
 settings, approve requests). An app can ask an agent; it cannot be an administrator.
