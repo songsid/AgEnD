@@ -59,7 +59,15 @@ it has completed onboarding or changed the account's server-side data preference
 After an interactive setup, the CLI's `/config` page shows **Enable Telemetry off**;
 this is the visible confirmation to inspect, rather than the completion file.
 
-### Antigravity announcement above an idle composer
+### Antigravity rating surveys and announcements
+
+Agy's rating survey is skipped with the literal `0`, never Enter. AgEnD requires
+the legacy full question and all four numeric choices. Physical line wraps
+inside the title or option labels are normalized; only the final **Skip** label
+may be clipped (the complete `[0]` is still required). Prose, indented/fenced
+quotes, drafts and other dialogs are not answered. A qualitative `/feedback`
+report form is different and is never automatically submitted. The wrap
+fixtures reconstruct the exact1.5.9 binary strings, not a live survey capture.
 
 An agy announcement such as “Introducing Gemini 4 Hydrogen” is not itself proof
 of work. The empty Auto-mode composer may show `> Auto mode: edits & safe

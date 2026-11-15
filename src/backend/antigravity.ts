@@ -117,6 +117,45 @@ const AGY_WORKING_ROW_ABOVE_COMPOSER = new RegExp(
   "mu",
 );
 
+// M-3143: exact title and option arguments recovered offline from agy 1.5.9.
+// A narrow pane can split any label across physical rows; capture-pane can also
+// trim whitespace at a wrap. Preserve the original row structure for quote and
+// current-screen checks, then compare the menu with its whitespace removed.
+const AGY_FEEDBACK_SURVEY_TITLE = "How's the CLI experience so far? Help us improve:";
+function agyFeedbackSurveyActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let start = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    // agy indents ordinary reply text two columns. Never flatten that into UI.
+    if (/^ ?How's /.test(rows[i]!)) { start = i; break; }
+  }
+  if (start < 0) return false;
+  let fence: string | null = null;
+  for (const row of rows.slice(0, start)) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(row)?.[1];
+    if (marker) {
+      if (fence === null) fence = marker;
+      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null;
+    }
+  }
+  if (fence !== null) return false;
+  const below = rows.slice(start);
+  const tailStart = below.findIndex(row => /^(?:─{20,}[ \t]*|Context \d+% used[ \t]*|\? for shortcuts[^\n]*)$/.test(row));
+  const menu = (tailStart < 0 ? below : below.slice(0, tailStart)).filter(row => row.trim() !== "");
+  if (menu.length > 8) return false;
+  if (tailStart >= 0) {
+    const tail = below.slice(tailStart).join("\n").trimEnd();
+    const footer = /^(?:Context \d+% used|\? for shortcuts[^\n]*)\s*$/;
+    const composer = /^─{20,}[ \t]*\n>[ \t]*\n─{20,}[ \t]*(?:\n(?:Context \d+% used|\? for shortcuts[^\n]*))?\s*$/;
+    if (!footer.test(tail) && !composer.test(tail)) return false;
+  }
+  const flat = menu.join("").replace(/[ \t]/g, "");
+  const title = AGY_FEEDBACK_SURVEY_TITLE.replace(/[ \t]/g, "");
+  // All four numeric tokens and the first three labels must be visible. Only
+  // the final Skip label may be clipped; a partial/missing [0] is never enough.
+  return flat.startsWith(title) && /^\[1\]Good\[2\]Fine\[3\]Bad\[0\](?:S|Sk|Ski|Skip)?$/.test(flat.slice(title.length));
+}
+
 /**
  * agy 1.5.9's empty Auto-mode composer (M-3116 screenshot): the mode hint is a
  * placeholder after `>`, not submitted input. Anchor the entire box and its
@@ -676,6 +715,8 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
         // Google may sample this after any completed turn. A single numeric
         // hotkey dismisses it; Enter would submit an empty follow-up prompt.
         pattern: /^\s*\[1\] Good\s+\[2\] Fine\s+\[3\] Bad\s+\[0\] Skip\s*$/m,
+        isActive: agyFeedbackSurveyActive,
+        blocksDelivery: true,
         keys: ["0"],
         description: "Antigravity feedback survey — skip",
       },
