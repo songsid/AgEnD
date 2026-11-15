@@ -1,0 +1,55 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/mcp-tool-list-startup-m3183
+
+ ❯ tests/mcp-tool-list-startup-m3183.test.ts (3 tests | 2 failed) 3433ms
+   × returns base and Hub tools in under1s while an independent hub_room_status is delayed35s 1564ms
+   × keeps the menu static across Hub-state notifications without status lookups or menu notifications 1388ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/mcp-tool-list-startup-m3183.test.ts > returns base and Hub tools in under1s while an independent hub_room_status is delayed35s
+AssertionError: {"ok":false,"error":"McpError: MCP error -32001: Request timed out"}: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ Object.fastList tests/mcp-tool-list-startup-m3183.test.ts:37:44
+     35|     const start=performance.now();const value=await client.listTools({…
+     36|     const elapsed=performance.now()-start;timings.push(elapsed);
+     37|     expect(value.ok,JSON.stringify(value)).toBe(true);expect(elapsed).…
+       |                                            ^
+     38|     if(!value.ok)throw Error(value.error);catalogBytes.push(Buffer.byt…
+     39|   };
+ ❯ tests/mcp-tool-list-startup-m3183.test.ts:47:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/mcp-tool-list-startup-m3183.test.ts > keeps the menu static across Hub-state notifications without status lookups or menu notifications
+AssertionError: {"ok":false,"error":"McpError: MCP error -32001: Request timed out"}: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ Object.fastList tests/mcp-tool-list-startup-m3183.test.ts:37:44
+     35|     const start=performance.now();const value=await client.listTools({…
+     36|     const elapsed=performance.now()-start;timings.push(elapsed);
+     37|     expect(value.ok,JSON.stringify(value)).toBe(true);expect(elapsed).…
+       |                                            ^
+     38|     if(!value.ok)throw Error(value.error);catalogBytes.push(Buffer.byt…
+     39|   };
+ ❯ tests/mcp-tool-list-startup-m3183.test.ts:57:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)
+   Start at  17:39:19
+   Duration  3.91s (transform 85ms, setup 113ms, import 132ms, tests 3.43s, environment 0ms)
+

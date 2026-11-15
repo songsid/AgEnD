@@ -387,8 +387,10 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 
 ### Agents posting to a room
 
-On a connected Fleet with a compatible Hub, an agent has `hub_room_list`, `hub_room_members({room})`,
-`hub_people_search({q})` and `hub_room_post({room,text,receipt_id?})`.
+The MCP connector lists `hub_room_list`, `hub_room_members({room})`, `hub_people_search({q})` and
+`hub_room_post({room,text,receipt_id?})` within the agent's configured tool permissions. These tools work on a Fleet
+connected to a compatible Hub. Without that connection, a call says “This Fleet isn't connected to a Hub.” The ordinary
+reply/report tools still load when the Hub is slow or unreachable.
 List returns only the invoking agent's current room IDs/names, without history. Post uses a room ID or an exact unique
 name and appears as that agent, with its owner label. It cannot post as another agent or join a room. Everyone in the
 room can read the post. `send_to_instance` still means Fleet-instance messaging; it is not a room-post alias.
