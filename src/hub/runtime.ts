@@ -41,7 +41,7 @@ export const MEMBER_COMPONENTS: HubMemberComponents = {
 };
 
 /** What the fleet gives the member side (FleetManager): its binding, agents and attachment points. */
-export type HubMemberHost = Pick<HubMemberFactoryOptions, "updates" | "attachUpdates" | "boundHub" | "agents" | "representative" | "attachAgentRooms" | "roomToolsChanged" | "roomReceipt" | "roomNotify" | "attachExposures" | "attachAttention" | "attachPairingNotices" | "attachRecommendations" | "recommendationChanged" | "pokeAttention" | "linkState"> & {
+export type HubMemberHost = Pick<HubMemberFactoryOptions, "updates" | "attachUpdates" | "boundHub" | "agents" | "representative" | "attachAgentRooms" | "roomToolsChanged" | "roomConversationGeneration" | "attachRoomInputs" | "roomReceipt" | "roomNotify" | "attachExposures" | "attachAttention" | "attachPairingNotices" | "attachRecommendations" | "recommendationChanged" | "pokeAttention" | "linkState"> & {
   views?: HubViewSource;
 };
 
@@ -164,6 +164,7 @@ export class HubRuntime {
   async acquireDirectorySettings(): Promise<HubMountedDirectory> {
     if (this.stopped || this.options.settingsWriter?.pending()) throw Error("Directory settings are unavailable");
     const existing = this.directorySettings(); if (existing) return existing;
+    if (this.running) throw Error("Directory settings mount is changing");
     const read = () => this.options.readConfig?.() ?? this.lastConfig ?? {};
     const snapshot = structuredClone(read()), hub = obj(snapshot.hub);
     if (!hub) throw Error("The Hub has not been initialized");
@@ -171,7 +172,6 @@ export class HubRuntime {
     const ticket = this.directoryAdmissionTicket, admissionTicket = this.admissionTicket, view = canonicalArguments(hub);
     const current = () => !this.stopped && ticket === this.directoryAdmissionTicket && admissionTicket === this.admissionTicket && canonicalArguments(read().hub) === view;
     const pending = this.coldDirectoryInit ??= (async () => {
-      await this.running;
       if (!current()) throw Error("Directory settings admission changed");
       const mounted = this.directorySettings(); if (mounted) return mounted;
       await this.drainColdDirectory();
@@ -223,7 +223,7 @@ export class HubRuntime {
     const snapshot=structuredClone(this.options.readConfig?.()??this.lastConfig??{}),ticket=this.admissionTicket;
     const current=()=>!this.stopped&&ownerCurrent()===true&&ticket===this.admissionTicket;
     if(!current())throw Error("Web address authority changed");
-    if(this.running)await this.running;
+    if(this.running)throw Error("Web address mount is changing");
     if(!current())throw Error("Web address generation changed");
     const mounted=this.webAddressDecision();if(mounted){
       if(this.serverHealth(snapshot.hub)!=="ready")throw Error("Web address mount is changing");
@@ -245,7 +245,7 @@ export class HubRuntime {
     const snapshot=structuredClone(this.options.readConfig?.()??this.lastConfig??{}),ticket=this.admissionTicket;
     const current=()=>!this.stopped&&ownerCurrent()===true&&ticket===this.admissionTicket;
     if(!current())throw Error("Member address authority changed");
-    if(this.running)await this.running;
+    if(this.running)throw Error("Member address mount is changing");
     if(!current())throw Error("Member address generation changed");
     const mounted=this.memberAddressDecision();if(mounted){
       if(this.serverHealth(snapshot.hub)!=="ready")throw Error("Member address mount is changing");

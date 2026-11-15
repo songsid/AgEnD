@@ -1,0 +1,2 @@
+{"asked":{"model":"claude-sonnet-5-5-high","effort":null},"typed":"/model claude-sonnet-5-5-high","result":{"type":"runtime_switch_result","id":"rig-0","outcome":"switched","confirmed":true,"shown":"Claude Sonnet 5.5 (High)"}}
+{"asked":{"model":null,"effort":"low"},"typed":"/effort low","result":{"type":"runtime_switch_result","id":"rig-1","outcome":"switched","confirmed":true,"shown":"low"}}

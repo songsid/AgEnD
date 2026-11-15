@@ -58,3 +58,32 @@
   .p-chat .panel-head .panel-sub { min-width: 0; overflow: hidden; }
   .p-chat .panel-head .panel-title h1 { flex: 0 1000 auto; min-width: min(8ch, 40%); }   /* the name gives way before the status */
 }
+/* M-3166 (Argon 2–3, the user's OK of round 2): a phone's chat header is "← name ● ⋯" in 44 px — the status is its 6 px dot
+   (its title still says it), and the search, card, text size and usage buttons and the tab row are the ⋯ sheet's. */
+@media (max-width: 899px) {
+  .p-chat > .panel-head { min-height: 44px; padding-bottom: 0; }
+  .p-chat > .panel-head .panel-title { min-height: 44px; gap: var(--s-2); }
+  /* Only a header with the ⋯ sheet gives its controls up to it: a guest's has none, so it keeps its own (#4002 review). */
+  .p-chat > .panel-head:has(.chat-sheet-more) { flex-wrap: nowrap; }
+  .p-chat > .panel-head:has(.chat-sheet-more) .sb-search, .p-chat > .panel-head:has(.chat-sheet-more) .inst-switch,
+  .p-chat > .panel-head:has(.chat-sheet-more) .panel-actions > :not(.chat-sheet-more):not(.dlg) { display: none !important; }
+  .p-chat > .panel-head .panel-title h1 { flex: 0 1 auto; }
+  .p-chat > .panel-head .panel-sub > :not(.status) { display: none; }
+  .p-chat > .panel-head .panel-sub .status { font-size: 0; gap: 0; }
+  .p-chat > .panel-head .panel-sub .dot { width: 6px; height: 6px; }
+  /* The ⋯ sheet (the dialog's own bottom sheet on a phone). */
+  /* The sheet's name stays its accessible name (the dialog's title), drawn as a handle instead, as approved. */
+  .chat-sheet .dlg-head { position: relative; justify-content: center; min-height: var(--s-6); padding-bottom: var(--s-1); }
+  .chat-sheet .dlg-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .chat-sheet .dlg-head::before { content: ""; width: 36px; height: 5px; border-radius: var(--r-full); background: var(--border-strong); }
+  .chat-sheet .dlg-head .dlg-x { position: absolute; right: var(--s-2); top: 50%; transform: translateY(-50%); }
+  .chat-sheet-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); margin-bottom: var(--s-3); }
+  .chat-sheet-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-1); min-height: 64px; border: 0; border-radius: var(--r-md);
+    background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+  .chat-sheet-row { width: 100%; min-height: var(--tap); font-size: var(--fs-md); }
+  .chat-sheet-row small { margin-left: auto; color: var(--text-2); font-size: var(--fs-sm); }
+  .chat-sheet-gap { width: 18px; flex: none; }
+  .chat-sheet-sub { padding-left: var(--s-3); border-left: 2px solid var(--border); margin: 0 0 var(--s-2) var(--s-3); }
+  .chat-sheet-head { margin-top: var(--s-2); }
+  .chat-sheet-foot { border-top: 1px solid var(--border); margin-top: var(--s-2); padding: var(--s-3) var(--s-3) 0; font-size: var(--fs-sm); color: var(--ok); font-weight: var(--fw-semibold); }
+}

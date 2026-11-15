@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/model-switch-3180-agy-alpha
+
+(node:34374) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  16:50:29
+   Duration  7.81s (transform 5.61s, setup 82ms, import 7.16s, tests 430ms, environment 0ms)
+

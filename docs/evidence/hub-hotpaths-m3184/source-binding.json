@@ -1,0 +1,18 @@
+{
+  "base": "ebe54b6ba549181f773cbcee282f130c50b7c1d4",
+  "staticCatalogParent": "1e3b59371c820a0e0934e7f4ead70061df1cdc6f",
+  "sha256": {
+    "src/hub/socket.ts": "49d406081c3fb672337a0b03d0880e4809ea3b8835a978dd096f652f279b7170",
+    "src/hub/join/client.ts": "52a0678fd3fa7764e725d83e97bbc83d7f99342cb0d37cdfdede72136a82c29b",
+    "src/hub/runtime.ts": "dfe7bbe33ac40429ba9c41f034a2b45690fc1e38693efadd44c88a8170df531b",
+    "src/native-mcp.ts": "abc292b348749e4710b4d5097b53b302549384d745a40752fb224844878470b5",
+    "src/fleet-manager.ts": "8d350de2030da158d4d0cebb2fbd66773b947c4fbad95e8a392667f92387ef48",
+    "src/channel/mcp-server.ts": "9462f5e530da73ff33ba32fe0c2fee8552d71b971be661716ff45778f5570b96",
+    "src/outbound-handlers.ts": "45b8d8cba01867f42ce47cac87c9e16304c2c2e43ddea3c1d97d83b913c2e776",
+    "tests/hub-hotpath-measure-m3184.test.ts": "4a9bc2fa514786980f80584f9a7caf9ed3be2f6d2e879abd4ae0d16069e20953",
+    "src/channel/mcp-tools.ts": "2b2f15c1d24ee0d526de605b79757c0e82b4a893d35f2bdf8ff2a17411fce897",
+    "src/tool-permissions.ts": "3a93eff67ad466b36263048080434c47b96f13377b85f286edd90bde3ead0bc4"
+  },
+  "measuredHarnessSha256": "d4506c5986cace287c53acf8635bbfecb242a7df850d13df254107f0d41ca25f",
+  "harnessNote": "After measurement, only an obsolete comment and an unused fs import were removed; measured control flow and all production sources are unchanged."
+}

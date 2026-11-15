@@ -36,14 +36,15 @@ async function harness(profile = "worker") {
   const client = new Client({name:"room-post-control",version:"1"});
   cleanup.push(async () => { await client.close(); await server.close(); rmSync(dir,{recursive:true,force:true}); });
   await client.connect(transport);
-  await vi.waitFor(async () => { await client.listTools(); expect(calls.some(c => c.name === "hub_room_status")).toBe(true); });
+  expect((await client.listTools()).tools.some(t=>t.name==="reply")).toBe(true);
   return {client,server,state,calls,ctx};
 }
-it("actual MCP menu follows connection changes and posts only as its IPC owner", async () => {
+it("actual MCP menu stays static and posts only as its current connected IPC owner", async () => {
   const h = await harness();
-  expect((await h.client.listTools()).tools.map(t=>t.name)).not.toContain("hub_room_post");
+  const staticMenu=(await h.client.listTools()).tools.map(t=>t.name);
+  expect(staticMenu).toEqual(expect.arrayContaining(["reply","hub_room_list","hub_room_post","hub_room_members","hub_people_search"]));
   h.state.online=true; h.server.broadcast({type:"hub_room_tools_changed"});
-  expect((await h.client.listTools()).tools.map(t=>t.name)).toEqual(expect.arrayContaining(["hub_room_list","hub_room_post","hub_room_members","hub_people_search"]));
+  expect((await h.client.listTools()).tools.map(t=>t.name)).toEqual(staticMenu);
   const members:any=await h.client.callTool({name:"hub_room_members",arguments:{room:"Weekly"}});
   const people:any=await h.client.callTool({name:"hub_people_search",arguments:{q:"Al"}});
   expect(JSON.parse(members.content[0].text)).toMatchObject({ok:true,members:[{name:"Alex"}]});
@@ -57,11 +58,10 @@ it("actual MCP menu follows connection changes and posts only as its IPC owner",
   const bad:any=await h.client.callTool({name:"hub_room_post",arguments:{room:"Weekly",text:"Update",agent:"agent-B"}});
   expect(bad.isError).toBe(true); expect(h.ctx.hubRoomPost).toHaveBeenCalledTimes(1);
   h.state.online=false; h.server.broadcast({type:"hub_room_tools_changed"});
-  expect((await h.client.listTools()).tools.map(t=>t.name)).not.toContain("hub_room_post");
-  expect((await h.client.listTools()).tools.map(t=>t.name)).not.toContain("hub_people_search");
   const cached:any=await h.client.callTool({name:"hub_room_post",arguments:{room:"Weekly",text:"Cached"}});
-  expect(JSON.parse(cached.content[0].text)).toMatchObject({ok:false,code:"unavailable"});
+  expect(JSON.parse(cached.content[0].text)).toMatchObject({ok:false,code:"unavailable",message:"This Fleet isn't connected to a Hub."});
   expect(h.ctx.hubRoomPost).toHaveBeenCalledTimes(1);
+  expect((await h.client.listTools()).tools.map(t=>t.name)).toEqual(staticMenu);
 });
 it("does not widen the minimal tool profile", () => {
   expect(mayUseTool("minimal","hub_room_post")).toBe(false);

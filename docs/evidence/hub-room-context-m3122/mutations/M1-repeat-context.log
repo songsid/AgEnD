@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-m3122.test.ts (3 tests | 1 failed | 2 skipped) 17ms
+   × sends only posts after the last confirmed ask while retaining its visible older reply anchor 15ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-m3122.test.ts > sends only posts after the last confirmed ask while retaining its visible older reply anchor
+AssertionError: expected [ 'Message 1', 'Message 2', …(3) ] to deeply equal [ 'Message 1', 'Message 4', …(1) ]
+
+- Expected
++ Received
+
+  [
+    "Message 1",
++   "Message 2",
++   "Message 3",
+    "Message 4",
+    "Message 5",
+  ]
+
+ ❯ tests/hub-room-context-m3122.test.ts:26:32
+     24|   // The extra argument is deliberately ignored by the old production …
+     25|   const delta=(roomContext as (...args:any[])=>ReturnType<typeof roomC…
+     26|   expect(delta.map(r=>r.text)).toEqual(["Message 1","Message 4","Messa…
+       |                                ^
+     27|   expect(delta[0].repliedTo).toBe(true);
+     28| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 skipped (3)
+   Start at  16:53:27
+   Duration  298ms (transform 67ms, setup 83ms, import 30ms, tests 17ms, environment 0ms)
+

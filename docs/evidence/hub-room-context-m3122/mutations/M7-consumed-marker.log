@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-daemon-m3122.test.ts (5 tests | 1 failed | 4 skipped) 31ms
+   × a real busy Hub delivery advances only when its recorded input is consumed, never at IPC or queue acceptance 29ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-daemon-m3122.test.ts > a real busy Hub delivery advances only when its recorded input is consumed, never at IPC or queue acceptance
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/hub-room-context-daemon-m3122.test.ts:49:21
+     47|   expect(w.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+     48|   expect(w.notices.filter(n => n.type === "hub_room_input")).toEqual([…
+     49|   expect(w.watches).toHaveLength(1);
+       |                     ^
+     50|   w.watches[0].consumed("turn", "transcript-consumed:user-entry");
+     51|   expect(w.notices.filter(n => n.type === "hub_room_input")).toEqual([…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  16:53:39
+   Duration  2.47s (transform 1.75s, setup 96ms, import 2.19s, tests 31ms, environment 0ms)
+

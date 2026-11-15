@@ -382,6 +382,7 @@ import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
 import { CODEX_INLINE_MODEL_MIN, codexModelCommand } from "./backend/codex-model-switch.js";
 import { CLI_RUNTIME_SWITCH, type CliSwitchWant } from "./backend/cli-runtime-switch.js";
+import { readKiroLedger } from "./backend/kiro-engine-ledger.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
@@ -1675,7 +1676,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { NativePaneManager } = await import("./native-pane-manager.js");
     if (this.paneManager) return this.paneManager;
     const store = windowsAgentsFor(this, this.runtimeWindowsExecutor());
-    const allowed = (name: string, tool: string): boolean => (!["hub_room_list","hub_room_post","hub_room_members","hub_people_search"].includes(tool) || this.hubRoomToolsAvailable()) && nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
+    const allowed = (name: string, tool: string): boolean => nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
@@ -2500,6 +2501,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           },
           attachAgentRooms: port => { this.hubAgentRooms = port; this.notifyHubRoomTools(); },
           roomToolsChanged: () => this.notifyHubRoomTools(),
+          roomConversationGeneration: agent => this.daemons.get(agent)?.roomConversationGeneration() ?? null,
+          attachRoomInputs: handler => { this.hubRoomInput = handler; },
           roomNotify: input => this.deliverHubRoomPostAnswer(input),
           roomReceipt: (caller, receiptId) => verifyRoomReceipt({
             lookup: (agent, id) => {
@@ -2777,6 +2780,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       requires_reply: "true",
       task_summary: "A question from the Hub",
     };
+    if (input.roomContextGeneration) ipcMeta.hub_room_context_generation = input.roomContextGeneration;
     const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: input.text, meta: ipcMeta },
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
         if (!(await input.beforeInput())) return false;
@@ -2894,6 +2898,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
+  private hubRoomInput: ((correlationId: string, agent: string, generation: string) => void) | null = null;
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
   /** The connected member adapter; never an agent-selectable identity. */
   private hubAgentRooms: import("./hub/member/room-post.js").AgentRoomPort | null = null;
@@ -12707,6 +12712,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.cacheInstanceActivity(name, msg.activity as string | null);
         } else if (msg.type === "instance_progress") {
           this.cacheInstanceProgress(name, (msg.progress as string) || null);
+        } else if (msg.type === "hub_room_input") {
+          if (this.instanceIpcClients.get(name) === ipc && typeof msg.correlationId === "string" && typeof msg.generation === "string")
+            this.hubRoomInput?.(msg.correlationId,name,msg.generation);
         } else if (msg.type === "cross_instance_delivery_failed") {
           const senderSession = String(msg.senderSession ?? "");
           const targetInstance = String(msg.targetInstance ?? name);
@@ -24490,6 +24498,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return last;
   }
 
+  /**
+   * M-3180: whether this instance's `/model` / `/effort` try its CLI's in-session switch. kiro: only an instance last launched on the
+   * TUI (the v2 engine; the engine ledger) — classic and V3 keep the restart.
+   */
+  private cliSwitchRouted(instanceName: string, backend: string): boolean {
+    if (!Object.hasOwn(CLI_RUNTIME_SWITCH, backend)) return false;
+    if (backend === "kiro-cli") return readKiroLedger()[instanceName]?.lastLaunch.ui === "tui";
+    return true;
+  }
+
   /** M-3180: why a CLI_RUNTIME_SWITCH switch fell back to a restart, in the reply's words. */
   private cliSwitchFallbackReason(backend: string, { result, step }: { result: CliSwitchResult; step: CliSwitchWant }): string {
     const cli = BACKEND_LABELS[backend] ?? backend, entry = CLI_RUNTIME_SWITCH[backend]!;
@@ -25789,7 +25807,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // M-3180: a CLI with a verified in-session switch (CLI_RUNTIME_SWITCH) — typed when it can be, confirmed, else restarted.
     // The effort is already saved above, so a restart launches with it.
-    if (Object.hasOwn(CLI_RUNTIME_SWITCH, backendName) && this.instanceIpcClients.get(instanceName)) {
+    if (this.cliSwitchRouted(instanceName, backendName) && this.instanceIpcClients.get(instanceName)) {
       const done = await this.runCliRuntimeSwitch(instanceName, backendName, { model: null, effort: applied });
       if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
       if (done.result.outcome === "switched") return `${warn}${t("effort.codex_switched", instanceName, applied)}`;
@@ -25888,9 +25906,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // M-3180: the same for a CLI with a verified in-session switch (CLI_RUNTIME_SWITCH): saved first, switched in place when
     // it can be and confirmed, else restarted (as these CLIs always were).
-    if (Object.hasOwn(CLI_RUNTIME_SWITCH, backendName) && this.instanceIpcClients.get(instanceName)) {
+    if (this.cliSwitchRouted(instanceName, backendName) && this.instanceIpcClients.get(instanceName)) {
       if (!this.persistInstanceModel(instanceName, model)) return `${warn}${t("model.persist_failed", instanceName)}`;
-      const done = await this.runCliRuntimeSwitch(instanceName, backendName, { model, effort: null });
+      const entry = CLI_RUNTIME_SWITCH[backendName]!;
+      const effort = this.codexSwitchEffort(instanceName, model); // configured level, only when the target model supports it
+      const want = entry.modelWant?.(model, effort) ?? { model, effort: null };
+      const done = await this.runCliRuntimeSwitch(instanceName, backendName, want);
       if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
       if (done.result.outcome === "switched") return `${warn}${t("model.codex_switched", instanceName, model)}${this.effortSuffix(instanceName)}`;
       const why = this.cliSwitchFallbackReason(backendName, done);

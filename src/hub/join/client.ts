@@ -1,5 +1,7 @@
 /** Fleet backchannel. Discovery uses browser HTTPS trust; secret-bearing requests use the existing pinned member agent. */
 import { request, type Agent } from "node:https";
+import type { IncomingMessage } from "node:http";
+import { HUB_LIMITS } from "../protocol.js";
 import * as tls from "node:tls";
 import type { LookupFunction } from "node:net";
 import type { KeyObject } from "node:crypto";
@@ -40,40 +42,58 @@ export class CompanyJoinClient {
     const bytes = body === undefined ? undefined : JSON.stringify(body);
     if (bytes !== undefined && Buffer.byteLength(bytes) > 24 * 1024) throw new HubProtocolError("invalid");
     return new Promise((resolve, reject) => {
-      const req = request(origin + path, { method: bytes === undefined ? "GET" : "POST", agent: agent ?? false,
-        ...(agent ? {} : { ca: this.options.ca ?? browserRoots() }), minVersion: "TLSv1.2", lookup: this.options.lookup,
-        headers: { Accept: "application/json", ...extraHeaders, ...(bytes === undefined ? {} : { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bytes) }) } }, res => {
-        const chunks: Buffer[] = []; let length = 0;
-        const fail = (error: unknown) => { res.destroy(); req.destroy(); reject(error); };
-        if (!current()) return fail(new HubProtocolError("stale"));
-        // Never follow redirects (including to a different origin), accept cookies, or treat HTML as a machine result.
-        if ((res.statusCode ?? 0) >= 300 && (res.statusCode ?? 0) < 400 || res.headers["set-cookie"] !== undefined
-          || res.headers["content-encoding"] !== undefined || !/^application\/json(?:;|$)/i.test(String(res.headers["content-type"] ?? "")))
-          return fail(new CompanyJoinReachError("not-hub"));
-        res.on("data", part => {
-          length += part.length; if (length > 48 * 1024) return fail(new HubProtocolError("unavailable")); chunks.push(Buffer.from(part));
+      let settled = false, req: ReturnType<typeof request> | undefined, response: IncomingMessage | undefined;
+      let deadline: NodeJS.Timeout | undefined;
+      const finish = (error?: unknown, value?: unknown) => {
+        if (settled) return; settled = true; clearTimeout(deadline);
+        if (error !== undefined) reject(error); else resolve(value);
+      };
+      const fail = (error: unknown) => {
+        if (settled) return; finish(error); response?.destroy(); req?.destroy();
+      };
+      // Socket inactivity does not bound DNS, connect, or a response that keeps trickling bytes.
+      deadline = setTimeout(() => fail(new CompanyJoinReachError("unreachable")), HUB_LIMITS.rpcTimeout);
+      deadline.unref();
+      try {
+        req = request(origin + path, { method: bytes === undefined ? "GET" : "POST", agent: agent ?? false,
+          ...(agent ? {} : { ca: this.options.ca ?? browserRoots() }), minVersion: "TLSv1.2", lookup: this.options.lookup,
+          headers: { Accept: "application/json", ...extraHeaders, ...(bytes === undefined ? {} : { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bytes) }) } }, res => {
+          response = res;
+          const chunks: Buffer[] = []; let length = 0;
+          if (!current()) return fail(new HubProtocolError("stale"));
+          // Never follow redirects (including to a different origin), accept cookies, or treat HTML as a machine result.
+          if ((res.statusCode ?? 0) >= 300 && (res.statusCode ?? 0) < 400 || res.headers["set-cookie"] !== undefined
+            || res.headers["content-encoding"] !== undefined || !/^application\/json(?:;|$)/i.test(String(res.headers["content-type"] ?? "")))
+            return fail(new CompanyJoinReachError("not-hub"));
+          res.on("data", part => {
+            if (settled) return;
+            if (!current()) return fail(new HubProtocolError("stale"));
+            length += part.length; if (length > 48 * 1024) return fail(new HubProtocolError("unavailable")); chunks.push(Buffer.from(part));
+          });
+          res.on("error", () => fail(new HubProtocolError("unavailable")));
+          res.on("end", () => {
+            if (settled) return;
+            try {
+              if (!current()) throw new HubProtocolError("stale");
+              const value = parseStrictJson(Buffer.concat(chunks), 48 * 1024);
+              if (res.statusCode !== 200) {
+                const parsed = z.strictObject({ code: z.enum(["denied", "invalid", "stale", "conflict", "expired", "revoked", "not-found", "backpressure", "limit-reached", "incompatible", "unavailable", "uncertain"]) }).safeParse(value);
+                if (!parsed.success) throw new CompanyJoinReachError("not-hub", "invalid");
+                throw new CompanyJoinRemoteError(parsed.data.code);
+              }
+              finish(undefined, value);
+            } catch (error) { fail(error); }
+          });
         });
-        res.on("error", () => reject(new HubProtocolError("unavailable")));
-        res.on("end", () => {
-          try {
-            if (!current()) throw new HubProtocolError("stale");
-            const value = parseStrictJson(Buffer.concat(chunks), 48 * 1024);
-            if (res.statusCode !== 200) {
-              const parsed = z.strictObject({ code: z.enum(["denied", "invalid", "stale", "conflict", "expired", "revoked", "not-found", "backpressure", "limit-reached", "incompatible", "unavailable", "uncertain"]) }).safeParse(value);
-              if (!parsed.success) throw new CompanyJoinReachError("not-hub", "invalid");     // an answer that is not a Hub's
-              throw new CompanyJoinRemoteError(parsed.data.code);
-            }
-            resolve(value);
-          } catch (error) { reject(error); }
-        });
-      });
-      req.setTimeout(5_000, () => req.destroy(new Error("Join request timed out")));
-      req.on("error", error => reject(error instanceof HubTlsIdentityError ? new CompanyIdentityChanged()
-        : new CompanyJoinReachError(CERT_ERRORS.has(String((error as NodeJS.ErrnoException).code)) ? "certificate" : "unreachable")));
-      if (!current()) { req.destroy(); reject(new HubProtocolError("stale")); return; }
-      req.end(bytes);
+        req.setTimeout(HUB_LIMITS.rpcTimeout, () => fail(new CompanyJoinReachError("unreachable")));
+        req.on("error", error => fail(error instanceof HubTlsIdentityError ? new CompanyIdentityChanged()
+          : new CompanyJoinReachError(CERT_ERRORS.has(String((error as NodeJS.ErrnoException).code)) ? "certificate" : "unreachable")));
+        if (!current()) { fail(new HubProtocolError("stale")); return; }
+        req.end(bytes);
+      } catch (error) { fail(error); }
     });
   }
+
   /** `display` (M-2921 / S1.1): ask for the display-only extras (`name`); a Hub that predates them answers without. */
   async discover(origin: string, current: () => boolean, options: { display?: boolean; descriptor?: boolean; certificateFingerprint?: string } = {}): Promise<CompanyJoinMetadata> {
     const canonical = hubOrigin(origin);

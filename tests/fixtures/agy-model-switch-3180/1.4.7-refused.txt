@@ -1,0 +1,42 @@
+
+
+      ▄▀▀▄        Antigravity CLI 1.4.7
+     ▀▀▀▀▀▀       rig@example.invalid
+    ▀▀▀▀▀▀▀▀      Claude Sonnet 5.5 (Low)
+   ▄▀▀    ▀▀▄     /work
+  ▄▀▀      ▀▀▄
+
+> /model
+  ⎿  Model set to Claude Sonnet 5.5 (High)
+
+> /effort
+  ⎿  Effort set to low
+
+> /model
+  ⎿  Invalid model "definitely-unknown" (available: gemini-3.8-flash-low, gemini-3.8-flash-medium, gemini-3.8-flash-high,
+     claude-sonnet-5-5-low, claude-sonnet-5-5-high)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+? for shortcuts                                                                                                      Claude Sonnet 5.5 · low
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

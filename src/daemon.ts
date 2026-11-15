@@ -1,3 +1,5 @@
+import { HUB_REPORT_TARGET } from "./hub-report-target.js";
+import { RoomConversationGeneration, roomContextInputMarker } from "./hub-room-conversation.js";
 import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
 import { generalByName } from "./general-instance.js";
@@ -761,7 +763,7 @@ export type OwnSwitchOutcome =
   | { outcome: "mismatch"; shown: string; answered: boolean }
   | { outcome: "not_confirmed"; shown?: string }
   /** M-3175: `reason` says why a codex switch was not typed (busy: never idle in time; version: not a codex known to have it). */
-  | { outcome: "not_sent"; reason?: "busy" | "version"; version?: string | null };
+  | { outcome: "not_sent"; reason?: "busy" | "version" | "command"; version?: string | null };
 /** M-3175: AgEnD's own codex `/model … --reasoning=…`: what it asks for (null: leave that one as the session has it). */
 export interface CodexOwnSwitch { model: string | null; effort: string | null }
 /** M-3180: AgEnD's own one-command switch of another CLI (CLI_RUNTIME_SWITCH[backend]): one step, model or effort. */
@@ -916,6 +918,7 @@ type DeliveryVerdict = {
   transcriptCheckpoint?: DurableTranscriptCheckpoint;
   /** How the attempt was written (#1201: steer and native-queue hand-offs get a late consumed watch). */
   submissionMode?: DurableSubmissionMode;
+  roomInputQueued?: boolean;
   /** The submission was proven by the CLI's transcript rather than the pane: the evidence the outbox records. */
   transcriptProof?: TranscriptMarkerKind;
   /** Strict human evidence; independent of weaker legacy transport outcomes. */
@@ -2770,7 +2773,7 @@ export class Daemon extends EventEmitter {
     const backend = this.config.backend ?? this.backend?.binaryName ?? "";
     if (!["claude-code", "codex"].includes(backend)) return;
     const marker = durableAttempt ? `[agend-delivery-id:${durableAttempt.deliveryId}]`
-      : humanVerificationId ? verdict.humanReceipt?.marker ?? `[agend-human-id:${humanVerificationId}]` : null;
+      : humanVerificationId ? verdict.humanReceipt?.marker ?? `[agend-human-id:${humanVerificationId}]` : roomContextInputMarker(track.meta);
     if (!marker || !formatted.startsWith(marker)) return;
     let found: { path?: string; offset?: number; runtime?: RuntimeTranscriptReference } | null = verdict.transcriptCheckpoint ?? null;
     if (!found) {
@@ -2811,6 +2814,7 @@ export class Daemon extends EventEmitter {
         else if (!verdict.trackHandoff?.id || cancelled) this.dropQueuedHandoff(verdict);
         return;
       }
+      if (sent && !verdict.roomInputQueued && meta.hub_room_context_generation) this.roomInputHandedOff(meta);
       const id = meta.handoff_redelivery;
       if (!id) return;
       if (sent || verdict.paneWriteStarted || cancelled) {
@@ -2878,6 +2882,7 @@ export class Daemon extends EventEmitter {
     const meta = entry.meta;
     const status = channelStatus(meta);
     if (outcome === "taken") {
+      if (meta.hub_room_context_generation) this.roomInputHandedOff(meta);
       this.logger.info({ handoff: entry.id, proof, redeliveries: entry.redeliveries }, "Queued hand-off taken by the CLI");
       if (status) this.emit("message_confirmed", status);
       return;
@@ -3411,6 +3416,7 @@ export class Daemon extends EventEmitter {
 
     }
     if (nativeDisposition) this.isNewSession = nativeDisposition === "fresh";
+    this.resetRoomConversation(nativeDisposition === "reattached");
 
     // #1209: conditional continuation for the turn interrupted by the last
     // restart, if the gates allow. Detached; the gate
@@ -5298,7 +5304,7 @@ export class Daemon extends EventEmitter {
           preserveExactBytes: true,
           // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
           // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
-          ...(ownSwitch || notifyWritten || contextReset ? { onPaneWritten: () => { if (contextReset) this.resetInboundPresentation(); if (ownSwitch) { this.ownSwitch = ownSwitch; if (currentModelOwner()) modelObserver?.ownIntent(ownSwitch.requested); } tellWritten(true); } } : {}),
+          ...(ownSwitch || notifyWritten || contextReset ? { onPaneWritten: () => { if (contextReset) { this.resetInboundPresentation(); this.resetRoomConversation(); } if (ownSwitch) { this.ownSwitch = ownSwitch; if (currentModelOwner()) modelObserver?.ownIntent(ownSwitch.requested); } tellWritten(true); } } : {}),
           ...(notifyWritten ? { beforePaneWrite: takeCheckpoint, ...(this.backend?.compactPaneUi?.() ? { lookBeforePaneWrite: lookBefore } : {}) } : {}),
         });
         tellWritten(false);                                                // never written (once told, this says nothing)
@@ -5361,11 +5367,17 @@ export class Daemon extends EventEmitter {
     const sw = msg.runtime_switch as { id?: unknown; kind?: unknown; requested?: unknown; codex?: { model?: unknown; effort?: unknown } } | undefined;
     const codexPart = (v: unknown): string | null | undefined => v === null ? null : typeof v === "string" && v ? v : undefined;
     const codex = sw?.codex && typeof sw.codex === "object" ? { model: codexPart(sw.codex.model), effort: codexPart(sw.codex.effort) } : undefined;
-    // M-3180: one generic spec for the CLIs of CLI_RUNTIME_SWITCH — a known backend and exactly one of model / effort (a step).
+    // M-3180: one generic spec for the CLIs of CLI_RUNTIME_SWITCH — a known backend and one command (which may carry both model and effort).
     const rawCli = (sw as { cli?: { backend?: unknown; model?: unknown; effort?: unknown } } | undefined)?.cli;
     const cli = rawCli && typeof rawCli === "object" && typeof rawCli.backend === "string" && Object.hasOwn(CLI_RUNTIME_SWITCH, rawCli.backend)
       ? { backend: rawCli.backend, model: codexPart(rawCli.model), effort: codexPart(rawCli.effort) } : rawCli === undefined ? undefined : null;
-    const cliOk = !cli || (cli.model !== undefined && cli.effort !== undefined && (cli.model === null) !== (cli.effort === null));
+    const cliOk = !cli || (cli.model !== undefined && cli.effort !== undefined && (cli.model !== null || cli.effort !== null)
+      && CLI_RUNTIME_SWITCH[cli.backend]!.command({ model: cli.model, effort: cli.effort }) === msg.content);
+    // A malformed switch must not downgrade into an ungated legacy raw paste.
+    if (rawCli !== undefined && (cli === null || !cliOk || codex || !sw || typeof sw.id !== "string" || sw.kind !== "model" || typeof sw.requested !== "string")) {
+      if (typeof sw?.id === "string") this.broadcastFleetMessage({ type: "runtime_switch_result", id: sw.id, outcome: "not_sent", reason: "command" });
+      return;
+    }
     const ownSwitch = sw && typeof sw.id === "string" && sw.kind === "model" && typeof sw.requested === "string" && cli !== null && cliOk && !(codex && cli)
       && (!codex || (codex.model !== undefined && codex.effort !== undefined && (codex.model !== null || codex.effort !== null)))
       ? { id: sw.id, kind: "model" as const, requested: sw.requested,
@@ -5415,7 +5427,7 @@ export class Daemon extends EventEmitter {
     const version = pid ? await cliRunningVersion(pid, { backend: step.backend, matchExe: entry.matchExe, versionFromExe: entry.versionFromExe }) : null;
     if (!cliSwitchAllowed(entry, step, version)) return { blocked: "version", version };
     const pane = await tmux.capturePaneWithHistory(CODEX_SWITCH_HISTORY_LINES).catch(() => "");
-    const record = entry.checkpoint ? await entry.checkpoint(pane, this.config.working_directory || process.cwd()).catch(() => undefined) : undefined;
+    const record = entry.checkpoint ? await entry.checkpoint(pane, this.config.working_directory || process.cwd(), pid).catch(() => undefined) : undefined;
     return { pane, ...(record !== undefined ? { record } : {}) };
   }
 
@@ -8658,7 +8670,9 @@ export class Daemon extends EventEmitter {
         // byte for byte (its proof is the wire's hash), so the notice waits for the next delivery without one.
         const whatsNew = this.pendingWhatsNew && !meta.human_receipt_id && !meta.handoff_redelivery
           ? this.currentWhatsNew(this.pendingWhatsNew) : null;
-        const pasted = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
+        const body = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
+        const roomMarker = roomContextInputMarker(meta);
+        const pasted = roomMarker ? `${roomMarker}\n${body}` : body;
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
@@ -8676,6 +8690,9 @@ export class Daemon extends EventEmitter {
           this.logger.info({ handoff: meta.handoff_redelivery }, "Queued hand-off redelivery dropped: its CLI was replaced before the write");
           return;
         }
+        if (meta.hub_room_context_generation && meta.hub_room_context_generation!==this.roomConversationGeneration()) {
+          this.reportCrossInstanceDeliveryFailure(meta,{reached:true,phase:"room-context",proof:"stale-generation"}); return;
+        }
         const durableAttempt = this.durableDeliveryAttempt(meta, content);
         if (durableAttempt === false) {
           this.deferDurableDelivery(meta, "invalid durable delivery attempt metadata");
@@ -8687,6 +8704,7 @@ export class Daemon extends EventEmitter {
           sent = await this.deliverMessage(pasted, status, {
             deliveryEpoch,
             submissionId: meta.message_id,
+            ...(meta.hub_room_context_generation ? { roomContextGeneration: meta.hub_room_context_generation } : {}),
             ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),
             verdict,
             durableAttempt: durableAttempt || undefined,
@@ -8766,6 +8784,8 @@ export class Daemon extends EventEmitter {
       steer?: boolean;
       deliveryEpoch?: number;
       submissionId?: string;
+      /** Rechecked at every wait/write fence; old frozen context cannot enter a reset conversation. */
+      roomContextGeneration?: string;
       humanVerificationId?: string;
       humanMeta?: Record<string, string>;
       verdict?: DeliveryVerdict;
@@ -8787,8 +8807,8 @@ export class Daemon extends EventEmitter {
     // that ignores the outcome gets a throwaway.
     const verdict = opts?.verdict ?? { reached: false };
     if (opts?.durableAttempt) verdict.durableAttempt = true;
-    const cancelled = () => opts?.deliveryEpoch !== undefined
-      && !this.isDeliveryEpochCurrent(opts.deliveryEpoch);
+    const cancelled = () => (opts?.deliveryEpoch !== undefined && !this.isDeliveryEpochCurrent(opts.deliveryEpoch))
+      || (!!opts?.roomContextGeneration && opts.roomContextGeneration !== this.roomConversationGeneration());
     if (cancelled() || this.stormWindow?.isStopped()) return false;
     formatted = prepareDeliveryWire(formatted, opts?.preserveExactBytes);
 
@@ -10943,6 +10963,7 @@ export class Daemon extends EventEmitter {
     if (leadMarker && formatted.startsWith(leadMarker + "\n")) signature.takenMarker = leadMarker;
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     const humanAttempt = verdict.humanReceipt;
+    verdict.roomInputQueued = handingOffToNativeQueue || steer;
     const humanMode: HumanWriteMode = rawPaste ? "raw_paste" : steer ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
     if (humanAttempt && signature.unique && signature.value === humanReceiptMarker(humanAttempt.verificationId, humanDialect).slice(1, -1)
@@ -11291,6 +11312,7 @@ export class Daemon extends EventEmitter {
                   : after === "queue" ? "composer-empty-queue" : "composer-empty-idle");
                 verdict.phase = steer ? "steer-accepted" : "composer-accepted";
                 verdict.proof = `${steer ? "steer" : "handoff"}-composer-${after}`;
+                verdict.roomInputQueued = after === "queue";
                 if (status) this.emit("message_confirmed", status); // ✅ taken from the box
                 return true;
               }
@@ -11363,6 +11385,7 @@ export class Daemon extends EventEmitter {
         // #3030: what follows is an idle submission (or a failure the caller reports): no longer a queued hand-off.
         if (verdict.handoff && !verdict.trackHandoff?.id) this.dropQueuedHandoff(verdict);
         verdict.handoff = undefined;
+        verdict.roomInputQueued = false;
         if (windowId && this.controlClient && !(await this.controlClient.waitUntilIdle(windowId))) {
           verdict.phase = "native-queue-idle-wait";
           verdict.proof = "idle-wait-failed";
@@ -14660,9 +14683,31 @@ export class Daemon extends EventEmitter {
     void refresh.call(this.backend).then(() => this.saveSessionId(), () => {});
   }
 
+  private roomConversationState: RoomConversationGeneration | null = null;
+  roomConversationGeneration(): string | null {
+    try {
+      // Local non-Claude backends checkpoint their own session below; do not replace it with a Claude-only field.
+      if (this.nativePaneLifecycle || (this.config.backend ?? "claude-code") === "claude-code")
+        this.roomConversationState?.observeSession(this.ownedWorkingSession);
+    }
+    catch (err) { this.logger.warn({err}, "Room conversation checkpoint failed"); return null; }
+    return this.roomConversationState?.current() ?? null;
+  }
+  private resetRoomConversation(reattached = false): void {
+    this.roomConversationState ??= new RoomConversationGeneration(this.instanceDir);
+    try { this.roomConversationState.start(reattached); }
+    catch (err) { this.logger.warn({err}, "Room conversation generation is unconfirmed"); }
+  }
+  private roomInputHandedOff(meta: Record<string,string>): void {
+    const generation=meta.hub_room_context_generation;
+    if (meta.from_instance!==HUB_REPORT_TARGET || !generation || generation!==this.roomConversationGeneration()) return;
+    this.broadcastFleetMessage({type:"hub_room_input",correlationId:meta.correlation_id,generation});
+  }
+
   private saveSessionId(): void {
     if (this.nativePaneLifecycle) {
-      try { this.nativePaneLifecycle.checkpointSession(); this.ownedWorkingSession = this.backend?.getSessionId() ?? null; }
+      try { this.nativePaneLifecycle.checkpointSession(); this.ownedWorkingSession = this.backend?.getSessionId() ?? null;
+        this.roomConversationState?.observeSession(this.ownedWorkingSession); }
       catch (err) { this.logger.warn({ err }, "Native conversation checkpoint is unconfirmed"); }
       return;
     }
@@ -14672,6 +14717,7 @@ export class Daemon extends EventEmitter {
     try {
       const sid = this.backend?.getSessionId();
       if (!sid) return;
+      this.roomConversationState?.observeSession(sid);
       if ((this.config.backend ?? "claude-code") === "claude-code" && Buffer.byteLength(sid) <= 256
         && !/[\u0000-\u001f\u007f]/.test(sid) && this.ownedWorkingSession !== sid) {
         this.ownedWorkingSession = sid;

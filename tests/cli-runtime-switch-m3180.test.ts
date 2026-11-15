@@ -3,7 +3,7 @@
  * the offline rig's (scripts/manual/muse-version-audit/switch.sh; muse 1.4.20 and 1.4.4 on a mock provider, no network).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -101,6 +101,21 @@ describe("M-3180: the RUNNING CLI's version (cliRunningVersion)", () => {
     symlinkSync(muse, join(root, "100", "exe"));
     expect(await cliRunningVersion(100, spec, { procRoot: root })).toBe("1.4.6");
   });
+  it("a binary replaced during the async version probe is unknown, even if the new file meets the floor", async () => {
+    const exe = binary("race/agy");
+    const procRoot = proc([{ pid: 101, ppid: 100, exe }]);
+    const result = await cliRunningVersion(100, { backend: "antigravity", matchExe: e => e.endsWith("/agy") }, {
+      procRoot,
+      probe: async () => {
+        const old = `${exe}.running`;
+        renameSync(exe, old);
+        unlinkSync(join(procRoot, "101/exe")); symlinkSync(old, join(procRoot, "101/exe"));
+        writeFileSync(exe, "new version on disk");
+        return "1.5.9";
+      },
+    });
+    expect(result).toBeNull();
+  });
   it("unknown (null) when it cannot be proven: none, replaced on disk, two different files, no version", async () => {
     const a = binary("a/muse-bin-1.4.20"), b = binary("b/muse-bin-1.4.6");
     expect(await cliRunningVersion(100, spec, { procRoot: proc([{ pid: 101, ppid: 100, exe: binary("n/node") }]) })).toBeNull();
@@ -167,18 +182,19 @@ describe("M-3180: the daemon types a step only past its gate, and reports muse's
     expect(ok.d.verifyCliSwitch).toHaveBeenCalledWith({ backend: "muse", model: "mock-alt", effort: null }, { pane: IDLE });
     expect(ok.broadcast).toEqual([{ type: "runtime_switch_result", id: "sw-m1", outcome: "switched", confirmed: true, shown: "mock-alt high" }]);
   });
-  it("a malformed cli spec (unknown backend, both or neither part, a wrong type, with a codex spec too) is no switch at all", async () => {
+  it("a malformed or unrepresentable cli spec is refused without downgrading to raw paste", async () => {
     const bad = [{ backend: "nope", model: "m", effort: null }, { backend: "muse", model: "m", effort: "low" }, { backend: "muse", model: null, effort: null },
       { backend: "muse", model: 5, effort: null }, { backend: "muse", model: "m" }, "muse"];
     for (const cli of bad) {
       const r = routed({ pane: IDLE });
       r.d.handleRawPasteIpcMessage(msg(cli)); await r.d.pasteLock;
-      expect([r.broadcast, r.d.cliSwitchGate.mock.calls.length], JSON.stringify(cli)).toEqual([[], 0]);
+      expect([r.broadcast, r.typed, r.d.cliSwitchGate.mock.calls.length], JSON.stringify(cli)).toEqual([[{ type: "runtime_switch_result", id: "sw-m1", outcome: "not_sent", reason: "command" }], [], 0]);
     }
     const both = routed({ pane: IDLE });
     both.d.handleRawPasteIpcMessage({ ...msg({ backend: "muse", model: "m", effort: null }), runtime_switch: { id: "x", kind: "model", requested: "m", cli: { backend: "muse", model: "m", effort: null }, codex: { model: "m", effort: null } } });
     await both.d.pasteLock;
-    expect(both.broadcast).toEqual([]);
+    expect(both.broadcast).toEqual([{ type: "runtime_switch_result", id: "x", outcome: "not_sent", reason: "command" }]);
+    expect(both.typed).toEqual([]);
   });
 });
 
