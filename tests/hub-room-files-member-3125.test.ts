@@ -1,7 +1,7 @@
 /**
- * M-3125 PR2, the Fleet side (HubRoomAskAdapter, room-files-v1): an ask's files reach the agent's inbox before the prompt
+ * M-3125 PR2, the Fleet side (HubRoomAskAdapter, room files): an ask's files reach the agent's inbox before the prompt
  * and are named in it; report_result's files are staged (attachment.put) before the frozen answer frame names them, again on
- * every resend; an older link (no room-files-v1) gets the words only and an answer with files is refused with a reason.
+ * every resend; an older link (no room-answer-buttons-v1) gets the words only and an answer with files is refused with a reason.
  */
 import { afterEach, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
@@ -30,7 +30,7 @@ function member(opts: { roomFiles?: boolean; askFiles?: HubAttachmentRef[] } = {
     send: vi.fn(async (file: { ref: HubAttachmentRef; bytes: Buffer }, put: (c: HubAttachmentChunk) => Promise<void>) => {
       await put({ id: file.ref.id, offset: 0, total: file.ref.size, sha256: file.ref.sha256, data: file.bytes.toString("base64") }); }),
   };
-  const link: RoomAskLink = { current: () => true, features: new Set(["welcome-caps-v1", "room-ask-v1", ...(opts.roomFiles === false ? [] : ["room-files-v1"])]),
+  const link: RoomAskLink = { current: () => true, features: new Set(["welcome-caps-v1", "room-ask-v1", "attachments-v1", ...(opts.roomFiles === false ? [] : ["room-answer-buttons-v1"])]),
     sendAnswer: vi.fn(async a => { events.push("answer"); sent.push(structuredClone(a)); }),
     fetchFile: vi.fn(async (id: string, offset: number) => { events.push(`get:${id}`); return { id, offset, total: 4, sha256: "a".repeat(64), data: "ZGF0YQ==" } as HubAttachmentChunk; }),
     putFile: vi.fn(async (c: HubAttachmentChunk) => { events.push(`put:${c.id}`); }) };
@@ -50,7 +50,7 @@ it("an ask's files are pulled into the agent's inbox and named in the prompt bef
   expect(f.inputs[0]!.text).toContain("Files attached to the question (saved in your inbox):\n[📎 File: /inbox/plan.txt]");
 });
 
-it("on a link without room-files-v1, the prompt names the files as not available and nothing is fetched", async () => {
+it("on a link without room files, the prompt names the files as not available and nothing is fetched", async () => {
   const f = member({ roomFiles: false, askFiles: [ref("plan.txt")] });
   f.adapter.accept(f.ask, f.link); await f.adapter.settled();
   expect(f.link.fetchFile).not.toHaveBeenCalled();
@@ -77,7 +77,7 @@ it("a files-only answer is accepted; a different answer later is refused; button
   expect(await f.report("", { files: ["/work/a.png"] })).toMatchObject({ ok: true });
 });
 
-it("on a link without room-files-v1, an answer with files is refused with a reason and nothing is sent", async () => {
+it("on a link without room files, an answer with files is refused with a reason and nothing is sent", async () => {
   const f = member({ roomFiles: false }); f.adapter.accept(f.ask, f.link); await f.adapter.settled();
   const out = await f.report("see attached", { files: ["/work/out.csv"] });
   expect(out).toMatchObject({ ok: false, message: expect.stringContaining("does not take files in rooms") });

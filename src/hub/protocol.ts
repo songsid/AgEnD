@@ -9,8 +9,6 @@ export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
 /** Track C's injectable adapter uses these frames; advertised only when live dispatch is composed (R2). */
 export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";
-/** M-3125: files on a room ask and its answer (both ends list it; an old peer's strict schema never sees `attachments`). */
-export const HUB_ROOM_FILES_CAPABILITY = "room-files-v1";
 /** Opted into by the mounted agent room-post adapter, never by an uncomposed member. */
 export const HUB_ROOM_POST_CAPABILITY = "room-post-v1";
 /** M-3127: a room answer may carry the reply's buttons or poll (answerButtonsSchema); both ends list it. */
@@ -21,6 +19,14 @@ export const HUB_ROOM_BUTTONS_CAPABILITY = "room-answer-buttons-v1";
  * older Hubs refuse and members still must not send (see HUB_OPTIONAL_CAPABILITIES).
  */
 export const HUB_ROOM_REACT_CAPABILITY = HUB_ROOM_BUTTONS_CAPABILITY;
+/**
+ * M-3125: files on a room ask and its answer (`attachments`). Like reactions, they ride on room-answer-buttons-v1 — unreleased,
+ * shipping in the same release as these files — plus attachments-v1 (the file frames). A name of their own would be a 17th in
+ * the member hello (Fable #3925). Never room-ask-v1 + attachments-v1: released alpha Fleets list both, and their strict
+ * room.ask schema refuses `attachments`. So #3925 must land in the same release as room-answer-buttons-v1 (#3935).
+ */
+export const roomFilesNegotiated = (features: ReadonlySet<string> | undefined): boolean =>
+  !!features && features.has(HUB_ROOM_BUTTONS_CAPABILITY) && features.has("attachments-v1");
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending.

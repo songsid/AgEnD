@@ -5,7 +5,7 @@ The user's first priority for Hub rooms (2026-11-15): Fleet-chat file parity in 
 ## Slices
 
 1. **People's files** (this PR, PR1a). Upload, post, list and read, plus the thread showing them. The composer's Attach button comes in PR1b, once web-claude's M-3117 adds the composer's `attach`/`pending` props.
-2. **Agents' files** (PR2). The new `room-files-v1` link feature: optional `attachments` on `room.ask` and `room.answer`, and on on-behalf posts once Ridge's `room.post` composes it. The member's `room-ask.ts` takes report_result `files`, and an ask's files reach the agent's inbox.
+2. **Agents' files** (PR2). Room files on the link (negotiated as below): optional `attachments` on `room.ask` and `room.answer`, and on on-behalf posts once Ridge's `room.post` composes it. The member's `room-ask.ts` takes report_result `files`, and an ask's files reach the agent's inbox.
 3. **Annotate → quote** on a room image (PR3). It reuses the Fleet chat's lightbox and annotate, with the Hub file URL accepted as an exact anchored pattern.
 
 The HTML preview needs no slice of its own: the shared thread draws an `.html` attachment's preview card once a message carries it.
@@ -39,12 +39,16 @@ A chained answer posted after someone joined therefore doesn't reveal the files 
 
 ## Not in PR1
 
-- Agents don't receive a person's files yet. An @agent post with files reaches the agent as text until `room-files-v1` (PR2).
+- Agents don't receive a person's files yet. An @agent post with files reaches the agent as text until PR2.
 - The room assistant stays text only.
 
-## PR2: agents' files (`room-files-v1`)
+## PR2: agents' files (room files on the link)
 
-Both ends list the link feature `room-files-v1`: the Hub when it has an attachment store, the member when the Fleet has Hub file handling. An older peer's strict schema never sees `attachments`.
+Room files have no link feature of their own (Fable #3925). Both hello lists are full: the member's is at the 16 names an older Hub accepts. So, like agent reactions, they ride on `room-answer-buttons-v1` plus `attachments-v1` (`roomFilesNegotiated` in protocol.ts).
+- `room-answer-buttons-v1` is unreleased and ships in the same release as this PR, so every peer that lists it has this code.
+- It must never be `room-ask-v1` + `attachments-v1`: released alpha Fleets list both, and their strict `room.ask` schema refuses `attachments`.
+- **Release gate:** #3925 lands in the same release as #3935 (`room-answer-buttons-v1`). If a release ships that flag without this PR, a later Hub would send `attachments` to Fleets that refuse them.
+- A Hub without an attachment store sends no files. A member without Hub file handling says the files are not available on this Fleet, and refuses an answer with files.
 
 - **Ask.** The ask payload stored at enqueue names the asking post's files, in both directions: a person's upload or an agent answer's files on a chained ask. At send time the names are dropped for a link without the feature.
   - The asked fleet pulls the chunks with `attachment.get`. The group branch (`HubRoomAgents.attachmentGet`) serves only a fleet holding an open delivery of that exact post, re-checks that delivery's permission and validity at the read, and audits `file.transfer` once.

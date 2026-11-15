@@ -1,6 +1,6 @@
 /**
- * M-3125 PR2, the Hub side (room-files-v1), on the actual Hub HTTP/SQLite/audit with inert Fleet links:
- * - a person's @agent post with files sends a room.ask that names them, to a link with room-files-v1 only;
+ * M-3125 PR2, the Hub side (room files: room-answer-buttons-v1 + attachments-v1), on the actual Hub HTTP/SQLite/audit with inert Fleet links:
+ * - a person's @agent post with files sends a room.ask that names them, to a link that negotiated room files only;
  * - that fleet (and only a fleet holding the delivery) pulls the file's chunks;
  * - the agent's answer names files it staged; they bind to the answer post and members read them;
  * - an answer with files from an older link is refused; a member whose floor hides the question cannot read the answer's files
@@ -16,7 +16,7 @@ let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; });
 const BASE = ["welcome-caps-v1", "room-ask-v1", "room-post-v1", "attachments-v1"];
 
-async function world(caps = [...BASE, "room-files-v1"]) {
+async function world(caps = [...BASE, "room-answer-buttons-v1"]) {
   r = await s3bRig({ realAudit: true, attachments: true });
   const alexKey = r.addPerson("alex", "Alex"), beaKey = r.addPerson("bea", "Bea");
   const alex = await r.signIn("alex"), bea = await r.signIn("bea"), admin = await r.signIn("admin");
@@ -51,11 +51,11 @@ it("an @agent post's files travel on its room.ask, and only the asked fleet pull
   expect(sent.attachments).toEqual([{ id: f.id, name: "plan.txt", size: 8, mime: "text/plain", sha256: createHash("sha256").update("the plan").digest("hex") }]);
   const chunk = await w.r.http.receive(w.r.frame("attachment.get", { id: f.id, offset: 0 }, w.link) as never, w.link) as any;
   expect(Buffer.from(chunk.payload.data, "base64").toString()).toBe("the plan");
-  const other = w.r.link(randomUUID(), w.r.admin, 1, [...BASE, "room-files-v1"]);
+  const other = w.r.link(randomUUID(), w.r.admin, 1, [...BASE, "room-answer-buttons-v1"]);
   await expect(w.r.http.receive(w.r.frame("attachment.get", { id: f.id, offset: 0 }, other) as never, other)).rejects.toThrow();
 });
 
-it("an older link (no room-files-v1) gets the words only", async () => {
+it("an older link (no room-answer-buttons-v1) gets the words only", async () => {
   const w = await world(BASE), f = await w.upload("plan.txt", "the plan");
   const sent = await w.ask([f.id]);
   expect(sent).not.toHaveProperty("attachments");
@@ -70,7 +70,7 @@ it("an answer's staged files bind to the answer post, which members see and read
   expect((await w.r.call(w.alex, "GET", reply.files[0].url)).status).toBe(200);
 });
 
-it("an answer naming files from a link without room-files-v1 is refused", async () => {
+it("an answer naming files from a link without room files (no room-answer-buttons-v1) is refused", async () => {
   const w = await world(BASE), a = await w.ask(), staged = await w.stage(Buffer.from("data"));
   await expect(w.answer(a, "files", [{ ...staged, name: "a.txt", mime: "text/plain" }])).rejects.toMatchObject({ code: "incompatible" });
 });

@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { exposureOf, readExposure } from "../catalog.js";
 import { personFromString, type HubCore } from "../http/core.js";
 import { personKeyString } from "../identity.js";
-import { HUB_LIMITS, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_FILES_CAPABILITY, roomAskSchema, roomAnswerSchema, agentStateSchema } from "../protocol.js";
+import { HUB_LIMITS, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, roomAskSchema, roomFilesNegotiated, roomAnswerSchema, agentStateSchema } from "../protocol.js";
 import type { HubLinkContext } from "../server.js";
 import type { HubAgentState, HubAnswerButtons, HubAttachmentChunk, HubAttachmentRef, HubRoomAsk, HubRoomAnswer, HubRoomAnswerAck, HubTx } from "../types.js";
 import { HubProtocolError, validated } from "../validation.js";
@@ -174,11 +174,11 @@ export class HubRoomAgents {
     return this.core.atomic(db => { const row = store.row(db, id); return !!row?.message_id && !!db.prepare("SELECT 1 FROM hub_room_posts WHERE id=?").get(row.message_id); });
   }
   /**
-   * M-3125 room-files-v1: the member pulls one chunk of a file on a post its fleet was asked about. Only a fleet holding an
+   * M-3125 (room files, roomFilesNegotiated): the member pulls one chunk of a file on a post its fleet was asked about. Only a fleet holding an
    * open delivery of that exact post, under the delivery's own permission and validity re-checked at the read; audited once.
    */
   async attachmentGet(input: { id: string; offset: number }, link: HubLinkContext): Promise<HubAttachmentChunk> {
-    if (!link.features.has(HUB_ROOM_FILES_CAPABILITY)) throw new HubProtocolError("incompatible");
+    if (!roomFilesNegotiated(link.features)) throw new HubProtocolError("incompatible");
     const store = this.core.deps.attachments; if (!store) throw new HubProtocolError("incompatible");
     const find = (db: DB) => { const row = store.row(db, input.id);
       const d = row?.state === "bound" && row.message_id ? db.prepare("SELECT * FROM hub_room_deliveries WHERE parent_id=? AND fleet_id=? AND state IN ('queued','sent') ORDER BY created_at DESC LIMIT 1")
@@ -271,7 +271,7 @@ export class HubRoomAgents {
           if (bytes === undefined || digest(bytes) !== d.payload_digest) throw new HubProtocolError("uncertain");
           const ask = validated(roomAskSchema, JSON.parse(bytes));
           // M-3125: an older member's strict schema refuses `attachments`; it gets the words only.
-          if (ask.attachments && !link.features.has(HUB_ROOM_FILES_CAPABILITY)) delete ask.attachments;
+          if (ask.attachments && !roomFilesNegotiated(link.features)) delete ask.attachments;
           return ask;
         }, permit);
         if (!payload || !link.current()) continue;
@@ -298,7 +298,7 @@ export class HubRoomAgents {
   }
   async answer(input: HubRoomAnswer, link: HubLinkContext): Promise<HubRoomAnswerAck> {
     const body = validated(roomAnswerSchema, input), hash = digest(JSON.stringify(body));
-    if (!this.supports(link) || body.buttons && !link.features.has(HUB_ROOM_BUTTONS_CAPABILITY) || body.attachments && !link.features.has(HUB_ROOM_FILES_CAPABILITY)) throw new HubProtocolError("incompatible");
+    if (!this.supports(link) || body.buttons && !link.features.has(HUB_ROOM_BUTTONS_CAPABILITY) || body.attachments && !roomFilesNegotiated(link.features)) throw new HubProtocolError("incompatible");
     const d = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(body.messageId) as Delivery | undefined);
     if (!d || d.fleet_id !== link.fleetId || d.owner !== personKeyString(link.owner) || body.roomId !== d.room_id || body.exposureId !== d.exposure_id || !d.sent_epoch) throw new HubProtocolError("denied");
     if (d.answer_id) {

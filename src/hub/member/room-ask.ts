@@ -3,7 +3,7 @@ import type Database from "better-sqlite3";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { epoch, HubProtocolError, plain, uuid, validated } from "../validation.js";
-import { answerButtonsSchema, HUB_LIMITS, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_FILES_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, attachmentRefSchema } from "../protocol.js";
+import { answerButtonsSchema, HUB_LIMITS, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, attachmentRefSchema, roomFilesNegotiated } from "../protocol.js";
 import { prepareHubAnswerButtons } from "../buttons-model.js";
 import { HubFileRefusal, type HubMemberFiles } from "./attachments.js";
 import type { HubAnswerButtons, HubAttachmentChunk, HubAttachmentRef } from "../types.js";
@@ -13,7 +13,7 @@ export interface RoomContextRow { author: string; text: string; at: number; repl
 export interface RoomAsk {
   messageId: string; roomId: string; roomName: string; exposureId: string;
   asker: { name: string }; text: string; context: readonly RoomContextRow[];
-  /** M-3125 room-files-v1: the asking post's files (pulled into the agent's inbox before the prompt). */
+  /** M-3125 (room files): the asking post's files (pulled into the agent's inbox before the prompt). */
   attachments?: readonly HubAttachmentRef[];
 }
 export interface RoomAnswer { messageId: string; roomId: string; exposureId: string; answerId: string; text: string; buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[] }
@@ -36,7 +36,7 @@ export interface RoomAskLink {
   sendAnswer(answer: RoomAnswer): Promise<void>;
   /** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked (absent: an older link). */
   sendReact?(react: { messageId: string; roomId: string; exposureId: string; emoji: string }): Promise<void>;
-  /** M-3125 room-files-v1: pull one chunk of an ask's file / push one chunk of an answer's file (attachment.get / .put). */
+  /** M-3125 (room files): pull one chunk of an ask's file / push one chunk of an answer's file (attachment.get / .put). */
   fetchFile?(id: string, offset: number): Promise<HubAttachmentChunk>;
   putFile?(chunk: HubAttachmentChunk): Promise<void>;
 }
@@ -190,7 +190,7 @@ export class HubRoomAskAdapter {
       const files = saved.ask.attachments ?? [];
       if (files.length) {
         const fetch = source.fetchFile, store = this.options.files;
-        fileLines = store && fetch && source.features?.has(HUB_ROOM_FILES_CAPABILITY)
+        fileLines = store && fetch && roomFilesNegotiated(source.features)
           ? await store.receive(saved.local.agent, saved.ask.messageId, files, (fid, offset) => fetch(fid, offset)).catch(() => files.map(f => `(${f.name}: could not be fetched)`))
           : files.map(f => `(${f.name}: not available on this Fleet)`);
       }
@@ -261,7 +261,7 @@ export class HubRoomAskAdapter {
   }
   private async stageFiles(saved: Saved, source: RoomAskLink): Promise<void> {
     const store = this.options.files, put = source.putFile, refs = saved.answer!.attachments!;
-    if (!store || !put || !saved.answerFiles || !source.features?.has(HUB_ROOM_FILES_CAPABILITY)) throw new HubProtocolError("incompatible");
+    if (!store || !put || !saved.answerFiles || !roomFilesNegotiated(source.features)) throw new HubProtocolError("incompatible");
     const prepared = await store.prepare(saved.local.agent, saved.answerFiles);
     if (prepared.length !== refs.length || prepared.some((p, i) => p.ref.sha256 !== refs[i]!.sha256 || p.ref.size !== refs[i]!.size || p.ref.name !== refs[i]!.name)) throw new HubProtocolError("conflict");
     for (const [i, file] of prepared.entries()) await store.send({ ref: refs[i]!, bytes: file.bytes }, chunk => put(chunk));
@@ -275,9 +275,9 @@ export class HubRoomAskAdapter {
     const no = (message: string) => Promise.resolve<HubReportOutcome>({ ok: false, message });
     if (!this.current(saved) || input.callerCurrent?.() === false) return no("Not sent: this room question is no longer current.");
     // M-3127: the reply's buttons or poll ride along when this Hub takes them (room-answer-buttons-v1); M-3125: its files
-    // when it takes room-files-v1 (the agent's own paths, read now and again on every send).
+    // when it takes room files (roomFilesNegotiated; the agent's own paths, read now and again on every send).
     const files = input.extras?.files?.length ? [...input.extras.files] : [];
-    if (files.length && !(this.options.files && this.link?.putFile && this.link.features?.has(HUB_ROOM_FILES_CAPABILITY)))
+    if (files.length && !(this.options.files && this.link?.putFile && roomFilesNegotiated(this.link.features)))
       return no("Not sent: this Hub connection does not take files in rooms yet. Send the answer as text.");
     const wantsButtons = input.extras?.buttons !== undefined || input.extras?.poll !== undefined;
     if (wantsButtons && !this.link?.features?.has(HUB_ROOM_BUTTONS_CAPABILITY)) return no("Not sent: this Hub does not take buttons or polls in rooms yet. Send the answer as text.");

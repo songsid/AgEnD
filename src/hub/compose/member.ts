@@ -41,7 +41,7 @@ import { HUB_REPRESENTATIVE_MIGRATION, HubRepresentativeExecution, type HubRepor
 import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
 import { HubMemberFiles } from "../member/attachments.js";
 import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../member/pairing-notices.js";
-import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_FILES_CAPABILITY, HUB_ROOM_POST_CAPABILITY } from "../protocol.js";
+import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY } from "../protocol.js";
 import { createRoomStatePublisher, HubRoomAskAdapter, HUB_ROOM_ASK_MIGRATION, verifyRoomAskJournal,
   type AgentStateInput, type RoomAskLink, type RoomStateLink } from "../member/room-ask.js";
 import { HubRoomPostAdapter, verifyRoomPostJournal } from "../member/room-post.js";
@@ -532,7 +532,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           view = { features: l.features,
             current: () => roomCurrent() && online === l && links.link() === l && l.current() && l.revocationVersion === version,
             sendAnswer: payload => l.send({ v: 1, type: "room.answer", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
-            // M-3125 room-files-v1: the 1:1 chat's own file frames, on this link.
+            // M-3125 (room files, roomFilesNegotiated): the 1:1 chat's own file frames, on this link.
             fetchFile: async (id: string, offset: number) => { const reply = await l.exchange({ v: 1, type: "attachment.get", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload: { id, offset } }, "attachment.chunk");
               if (reply.type !== "attachment.chunk") throw new HubProtocolError("invalid"); return reply.payload; },
             putFile: async (chunk: import("../types.js").HubAttachmentChunk) => { const ack = await l.exchange({ v: 1, type: "attachment.put", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload: chunk }, "attachment.ack");
@@ -631,7 +631,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         fleetInfo: options.fleetInfo,
         home: options.home,
         hubId,
-        ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : []), ...(options.representative.files ? [HUB_ROOM_FILES_CAPABILITY] : [])] } : {}),
+        ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] } : {}),
         memberOrigin: profile.hub.memberOrigin,
         // #3429 B: a pending relocation's `to` first, then the anchor; a relocation state that does not verify: none.
         ...(profileDigest ? { dial: () => relocations.dialOrder(profile, profileDigest) } : {}),
