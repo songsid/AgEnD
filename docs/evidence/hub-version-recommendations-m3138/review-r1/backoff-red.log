@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-version-recommendations-m3138
+
+ ❯ tests/hub-member-recommendations-m3138.test.ts (10 tests | 2 failed | 8 skipped) 30ms
+   × backs off repeated not-found checks per revision across replay, reconnect and restart 25ms
+   × backs off repeated unavailable checks per revision across replay, reconnect and restart 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-recommendations-m3138.test.ts > backs off repeated not-found checks per revision across replay, reconnect and restart
+ FAIL  tests/hub-member-recommendations-m3138.test.ts > backs off repeated unavailable checks per revision across replay, reconnect and restart
+AssertionError: expected "vi.fn()" to be called 1 times, but got 10 times
+ ❯ tests/hub-member-recommendations-m3138.test.ts:74:20
+     72|   w.receiver.receive(w.recommendation(), w.link); await settle();
+     73|   for (let i = 0; i < 9; i++) { w.advance(30_000); w.receiver.receive(…
+     74|   expect(w.lookup).toHaveBeenCalledTimes(1); expect(w.send).not.toHave…
+       |                    ^
+     75|   w.receiver.close(); const restored = new HubMemberRecommendations(w.…
+     76|   restored.receive(w.recommendation(), next); await settle(); expect(w…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 8 skipped (10)
+   Start at  07:46:56
+   Duration  563ms (transform 174ms, setup 126ms, import 213ms, tests 30ms, environment 0ms)
+

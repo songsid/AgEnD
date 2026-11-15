@@ -14,7 +14,8 @@ register("hubVersions", {
   en: {
     allCurrent: "All {0} Fleets are on the recommended version or newer.",
     someBehind: "{0} of {1} Fleets need an update.",
-    noRecommended: "{0} Fleets connected. Set a recommended version to see which ones are behind.",
+    // Phase 1 has no recommended version and no way to set one yet (M-3138 adds it, with "Set a recommended version…").
+    noRecommended: "{0} active Fleets.",
     filter: "Needs update",
     colVersion: "AgEnD version", colLast: "Last connected",
     unknown: "Unknown", now: "Now", never: "Never",
@@ -32,7 +33,7 @@ register("hubVersions", {
   "zh-TW": {
     allCurrent: "{0} 個 Fleet 都是建議版本或更新的版本。",
     someBehind: "{1} 個 Fleet 當中有 {0} 個需要更新。",
-    noRecommended: "已連接 {0} 個 Fleet。設定建議版本後，就能看出哪些落後。",
+    noRecommended: "{0} 個使用中的 Fleet。",
     filter: "需要更新",
     colVersion: "AgEnD 版本", colLast: "上次連接",
     unknown: "不明", now: "目前已連接", never: "從未連接",
@@ -110,7 +111,8 @@ export function FleetVersionCells({ fleet, recommended = null, now }) {
 export function FleetVersionsSummary({ fleets, recommended = null, filtered = false, onFilter = () => {} }) {
   const { needs } = versionCounts(fleets);
   return html`<div class="hub-fleet-summary"><p class="note" role="status">${summaryText(fleets, recommended)}</p>
-    ${needs > 0 ? html`<button type="button" class="btn btn-sm hub-fleet-filter" aria-pressed=${filtered ? "true" : "false"} onClick=${() => onFilter(!filtered)}>${hv("filter")}</button>` : null}</div>`;
+    ${/* Pressed, it stays (Fable): the last Fleet that needed an update may be updated meanwhile, and the list must come back. */ ""}
+    ${needs > 0 || filtered ? html`<button type="button" class="btn btn-sm hub-fleet-filter" aria-pressed=${filtered ? "true" : "false"} onClick=${() => onFilter(!filtered)}>${hv("filter")}</button>` : null}</div>`;
 }
 
 const SEEN_KEY = "agend_hub_versions_banner_closed";

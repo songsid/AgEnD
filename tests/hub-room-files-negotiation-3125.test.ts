@@ -22,7 +22,7 @@ afterEach(async () => { for (const s of services.splice(0)) { s.fence(); await s
 it("the fullest member (files + agent rooms) is accepted by the encoder, and on the Hub's own list the link has room files", async () => {
   const hubFeatures = ["rooms-v1", "room-ask-v1", "room-post-v1", "person-prefs-v1"];
   const links: { features: ReadonlySet<string> }[] = [];
-  const r = await hubRig({ serverCapabilities: hubLinkCapabilities({ memberConnected: () => {}, features: hubFeatures }), serverConnected: link => { links.push(link); } });
+  const r = await hubRig({ serverCapabilities: hubLinkCapabilities({ memberConnected: () => {}, memberReady: () => {}, features: hubFeatures }), serverConnected: link => { links.push(link); } });
   rigs.push(r);
   const profile = await r.pair();
   r.setReceive(async (frame, link) => {
