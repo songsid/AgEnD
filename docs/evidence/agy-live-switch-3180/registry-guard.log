@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/model-switch-3180-agy-alpha
+
+
+ Test Files  2 passed (2)
+      Tests  30 passed (30)
+   Start at  17:12:55
+   Duration  6.83s (transform 3.99s, setup 318ms, import 4.55s, tests 6.18s, environment 0ms)
+
