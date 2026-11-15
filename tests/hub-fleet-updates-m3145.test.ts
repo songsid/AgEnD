@@ -22,7 +22,7 @@ const req = (over: Record<string, unknown>) => ({ id: "r1", fleetId: "f1", versi
   expiresAt: NOW + HOUR, updatedAt: NOW - HOUR, startedAt: null, waitingSince: null, ...over });
 function client(over: Record<string, any> = {}) {
   return { updateFleets: vi.fn(async (b: any) => ({ ok: true, requests: b.fleetIds.map((id: string) => ({ id: `r-${id}`, fleetId: id, state: "queued" })), refused: [] })),
-    cancelFleetUpdate: vi.fn(async () => ({ ok: true })), ...over };
+    cancelFleetUpdate: vi.fn(async (_id: string) => ({ ok: true })), ...over };
 }
 async function mount(node: any, lang = "en") {
   const p = page({ storage: { agend_lang: lang } }); pages.push(p); words.setLang(lang);
