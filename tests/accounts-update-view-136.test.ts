@@ -18,7 +18,7 @@ const hostRow = (view: ReturnType<typeof buildAccountsView>, backend: string) =>
 
 describe("the version of an installed CLI against the audited release", () => {
   const view = buildAccountsView(input({
-    "claude-code": "2.1.316 (Claude Code)", codex: "codex-cli 0.167.0", "kiro-cli": "kiro-cli 3.1.0", antigravity: "1.3.5", grok: "grok 1.0.99 (abc)", muse: "1.4.12-R6909.1", opencode: null,
+    "claude-code": "2.1.316 (Claude Code)", codex: "codex-cli 0.167.0", "kiro-cli": "kiro-cli 3.3.0", antigravity: "1.3.5", grok: "grok 1.0.99 (abc)", muse: "1.4.12-R6909.1", opencode: null,
   }));
   it("behind, and the registry has an update: a dashboard Update to the audited release", () => {
     expect(hostRow(view, "claude-code")).toMatchObject({ version: "2.1.316", cliUpdate: { state: "behind", installed: "2.1.316", audited: "2.1.319", button: true, via: "dashboard" } });
@@ -31,7 +31,7 @@ describe("the version of an installed CLI against the audited release", () => {
     expect(hostRow(view, "grok")).toMatchObject({ version: "1.0.99", cliUpdate: { state: "newer", audited: "1.0.77", installed: "1.0.99", button: false } });
   });
   it("a CLI that updates itself with no exception shows the versions and who updates it, and no button even when behind", () => {
-    expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12-R6909.1", cliUpdate: { state: "behind", installed: "1.4.12-R6909.1", audited: "1.4.14-R7309.1", button: false, via: "self", latest: false } });
+    expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12-R6909.1", cliUpdate: { state: "behind", installed: "1.4.12-R6909.1", audited: "1.4.20-R8619.1", button: false, via: "self", latest: false } });
   });
   it("AGEND-153: Antigravity is the named exception — the button is there behind, at and above the audited release, and the reading says it goes to the latest (not audited)", () => {
     expect(hostRow(view, "antigravity")).toMatchObject({ cliUpdate: { state: "behind", installed: "1.3.5", audited: "1.5.3", button: true, via: "dashboard", latest: true } });
