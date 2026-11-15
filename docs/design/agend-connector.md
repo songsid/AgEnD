@@ -1,6 +1,6 @@
 # The AgEnD connector: one extension point for every agent and desktop app (M-3185)
 
-Status: second draft. On 2026-11-15 the owner chose the direction after comparing OpenClaw and Manus: a module is
+Status: third draft (adds the other ways in that exist today, after junsion's review on #4006). On 2026-11-15 the owner chose the direction after comparing OpenClaw and Manus: a module is
 its own MCP server process behind the connector, skills stay as SKILL.md, listing is static, sources are ours first
 and curated later, approvals and isolation are AgEnD's own. Nothing is built.
 
@@ -53,6 +53,31 @@ M-3184 does not cover token size, so these need re-measuring before any number i
 So adding modules costs nothing in context on three backends and costs every request on Muse and on any backend
 that behaves like it.
 
+### 1.1 There are four ways in today, not one
+
+The table above describes the stdio connector. Source at `8430ef136` shows three more ways an agent reaches the
+same tools (junsion raised the Windows ones on #4006):
+
+| Way in | Who uses it | How the caller is known | Tool list |
+|---|---|---|---|
+| **Stdio connector** | Every agent on the AgEnD computer, all backends | The agent's own socket | Built locally by the connector (after M-3183) |
+| **Host `/agent`, instance token** | Agents set to `agent_mode: cli` | A token per agent | No MCP list; the agent calls operations by name |
+| **Windows one-shot** | Agents on a Windows computer in one-shot mode (Codex, Claude Code) | A grant per turn: 6 minutes, 64 calls | Built locally by the helper: 12 operations only |
+| **Windows pane relay** | Agents in a long-lived pane on a Windows computer (Codex, Claude Code) | The paired computer's authenticated link plus the pane's owner, which must equal the host's own record. The token stays on the Windows computer | Asked from the host on every listing, through four hops, each with an 80 to 90 second limit, then cut to the list fixed at launch |
+
+What they share: all four end in the same handler and the same permission checks in the Fleet process (tool set
+and dashboard switches are enforced on each). What differs is everything before that.
+
+Facts about the Windows pane relay that the design must fit:
+
+- **The list is fixed at launch.** The pane's allowed tools are taken from the agent's menu when the pane starts
+  and cannot grow until the next launch. The pane's connector does not announce list changes. A tool taken away
+  meanwhile is refused at the call with a generic error. A changed tool set does not cause a relaunch.
+- **Limits.** At most 128 tool names per launch, each matching `^[a-z][a-z0-9_]{0,63}$`. A request is at most
+  64 KiB, a response 192 KiB, a tool result 128 KiB, and 32 calls can wait at once. (One-shot: 64 KiB each way.)
+- **Hub state** no longer shapes these lists either (#4007). Before that, a pane started while the Hub was
+  offline had no Hub tools for its whole life.
+
 ## 2. Module model
 
 **A module is an MCP server in its own process, plus a manifest.** MCP is the module interface (the Manus-style
@@ -73,7 +98,7 @@ The manifest is a small file AgEnD reads **without starting the module**. It has
 | Part | Fields | Where it comes from |
 |---|---|---|
 | **Recorded from the module** | Server name and version; each tool's name, description and input shape; a fingerprint of all of that | Captured by asking the module for its tool list **once**: when we build AgEnD (shipped modules) or when an administrator adds or updates it (later sources). Never at listing time |
-| **Added by AgEnD** | Name and one-line description in EN and zh-TW; how to start it (program and version, fixed); what it needs (a Hub connection, a Microsoft sign-in, a desktop, a platform); risk of each tool (reads only / changes things / needs approval, section 6); which callers each tool serves (section 7); tools left out; default on or off; one process for the Fleet or one per agent; time limits; its skill | Written by us for shipped and catalog modules; chosen by the administrator for a server they add |
+| **Added by AgEnD** | Name and one-line description in EN and zh-TW; how to start it (program and version, fixed); which computer it runs on and on which platforms (section 2.3.1); what it needs (a Hub connection, an account of a named kind such as Microsoft, a desktop); risk of each tool (reads only / changes things / needs approval, section 6); which callers each tool serves (section 7); tools left out; default on or off; one process for the Fleet or one per agent; time limits; its skill | Written by us for shipped and catalog modules; chosen by the administrator for a server they add |
 
 How a module's own tool list maps to what an agent sees:
 
@@ -96,15 +121,55 @@ is a process" applies to everything new.
 ### 2.3 The gateway: routing
 
 1. The agent calls a tool on its connector. The connector forwards it to the Fleet process, as today.
-2. The gateway finds the tool in the manifests and checks, in this order: the caller is who its socket says; the
-   module is on for this agent and not off for the Fleet; the agent's tool set and switches allow it; the module's
-   needs are met; the tool's approval rule (section 6).
+2. The gateway finds the tool in the manifests and checks, in this order: the caller is who its way in says
+   (section 2.3.1); the module is on for this agent and not off for the Fleet; the agent's tool set and switches
+   allow it; the module's needs are met; the tool's approval rule (section 6).
 3. It passes the call to the module's process, starting it if needed, with the caller's identity attached by the
    gateway. The module never learns identity from the agent, and never sees another module.
 4. The result goes back the same way. The log records the agent, the module, the real tool and the outcome.
 
 These checks run in the gateway for every way in, including "find on demand" (section 5) and desktop apps
 (section 7). A hidden tool is not a refused tool; the gateway refuses (Sentinel).
+
+#### 2.3.1 One gateway behind every way in
+
+A way in is only a transport. It delivers three things to the gateway: who is calling, which tool, with what
+input. It does not build its own list, keep its own module rules or run its own approvals. The caller is
+established once per way in, and everything after that is the same code:
+
+| Way in | The caller is established by |
+|---|---|
+| Stdio connector | The agent's socket |
+| Host `/agent` for `agent_mode: cli` | The agent's token |
+| Windows one-shot | The per-turn grant |
+| Windows pane relay | The paired computer's link and the pane's owner, checked against the host's record |
+| A person's app (section 7) | The signed-in session |
+
+What "the same" means for the Windows ways in:
+
+- **Listing.** The launch carries the manifest-built list itself (names, descriptions, input shapes), not only
+  names, and the helper on the Windows computer answers a listing from that. No round trip to the host, so
+  section 3 holds there too.
+- **Changes need a restart.** For an agent on a Windows computer, Settings always says "Applies when this agent
+  restarts", and a change of modules or tool set marks the pane as needing one.
+- **Names.** The build check that records a manifest refuses a `<module>_<tool>` name that does not match the
+  pane rule above.
+- **More than 128 tools.** `full` is 83 today, so a few modules pass the limit. On the Windows ways in, the list
+  switches to "find on demand" (section 5) when it would pass 128 names or the launch size; raising the limit is
+  the alternative (C19).
+- **Long calls.** The 30-second answer and hand-off (section 2.5) apply on every way in, so no call holds a
+  request on the Windows chain for minutes.
+- **Large results.** A result bigger than the way in allows is handed off as a message or a file, with a short
+  result saying so, not turned into an error.
+- **One-shot agents** have 12 operations today. They get module tools through "find on demand" only, after panes
+  are done; until then Settings shows the module as not available for that agent.
+
+**Where a module runs.** The manifest also says on which computer: **the AgEnD computer** or **the agent's
+computer**, and which platforms it supports. Everything runs on the AgEnD computer at first. The field exists
+from the start because it changes what a module means for an agent on a Windows computer: a browser on the
+AgEnD computer shares neither that agent's workspace nor its sign-ins, and computer use is expected on the
+paired Windows computer (C12). When modules run there, the gateway's checks still run on the AgEnD computer,
+and the paired computer's existing pinned, verified install path is the way to place them.
 
 **One process or several.** The manifest says which: **one for the Fleet** when the module keeps nothing per
 agent (SharePoint files), or **one per agent** when it does (a browser, with each agent's own profile and
@@ -161,6 +226,10 @@ answer "Not available: this module is not working"; the list does not change und
    published version.
 3. **A server an administrator adds** (later still): any MCP server, by exact version. Fleet administrators only.
    Its manifest is recorded when it is added, and every tool starts as "needs approval each time".
+
+**One ledger for versions.** AgEnD already keeps a ledger of audited CLI versions that the Update buttons read.
+Module versions and hashes should live in the same ledger and be verified by the same path, so "audited" means
+one thing in Settings.
 
 No open marketplace, and no module or manifest sent from the Hub. A wrapped server someone else wrote runs their
 code under the Fleet's OS account in all three cases; the catalog only means we looked at that version.
@@ -258,6 +327,11 @@ Proposed rule:
 |---|---|
 | Claude Code, Codex with a catalog model, Grok | All listed |
 | Muse, Codex with a custom model, and any backend not yet measured | Find on demand |
+| Any agent on a Windows computer whose list would pass the pane limits | Find on demand |
+
+Where this fact lives: as a capability in the existing CLI registry ("defers tool descriptions: yes / no / not
+measured"), whose completeness test already forces every new CLI to answer. Antigravity and OpenCode are "not
+measured" today and are part of the measuring card.
 
 - "Everyday tools" are the ones an agent needs on almost every turn (reply, messaging, reporting a result, the
   task board). Starting point: today's `minimal` set plus reporting and tasks. Target for Muse: from about 84 KB
@@ -271,7 +345,10 @@ What this costs:
 - One extra step the first time an agent uses a module tool, and a model can fail to look for a tool it would
   have used had it been listed. Core tools stay listed for that reason.
 - The CLI no longer checks the input shape; the connector must, and must return a readable error.
-- Any per-tool view in the CLI shows only "agend_use_tool". AgEnD's own log must name the real tool.
+- Any per-tool view in the CLI shows only "agend_use_tool". AgEnD's own log must name the real tool. The web
+  chat's activity block reads tool names from the CLI's own transcript, so it would show the wrapper for every
+  module call: the result carries the real tool's name for the block to show, and a call that was handed off
+  shows as still working, then links to the delivered result, so it does not look finished.
 - `agend_use_tool` must run the real tool's own caller and permission checks, not a check on the wrapper (Cairn).
   Cairn sees no blocker in our own path, but it is unproven, and Muse's and Kiro's limits are unknown: card 1e
   starts with a trial.
@@ -319,16 +396,19 @@ What this costs, plainly:
   within that scope without anyone being asked.
 - **A session is trust for its whole length.** During a computer-use session the agent can do anything the
   desktop account can do.
-- **One account for all.** A module signed in as the Fleet owner acts as the owner for every agent that has it.
-  An agent with SharePoint reads what the owner can read.
+- **One account for all, unless chosen otherwise.** By default a module signed in as the Fleet owner acts as the
+  owner for every agent that has it: an agent with SharePoint reads what the owner can read. Because the manifest
+  asks for "an account of kind Microsoft" and not "a sign-in", the account can be chosen per agent in the existing
+  Accounts view, as CLI accounts are. That turns this from a given into a setting; the default stays the Fleet's.
 
 ## 7. Desktop Claude and Codex apps on the same connector
 
-One connector, three ways in. The module manifest says which callers each tool serves.
+One connector. Agents reach it by the four ways in of section 1.1; a person's app adds two more. The module
+manifest says which callers each tool serves, and the gateway behind them is the same (section 2.3.1).
 
 | Way in | Who the caller is | What it reaches | Transport |
 |---|---|---|---|
-| A Fleet agent (today) | The agent, known by its socket | Core and the agent's modules | Local stdio |
+| A Fleet agent (today) | The agent, established by its way in (section 2.3.1) | Core and the agent's modules | The four ways in of section 1.1 |
 | A person's app, to their own Fleet | The signed-in Fleet person | "Talk to my agents": list them, send a message, read the answer, see the task board. Modules marked for apps | On the AgEnD computer: a local command the app runs, no network. From another computer: the Fleet's web address, with the web sign-in |
 | A person's app, to the Hub | The signed-in company person | The **Hub module** as a person: rooms, asking shared agents, people search | The Hub's address, with company sign-in |
 
@@ -382,11 +462,12 @@ provider; a token on the person's computer acts as them; posts are written by an
 
 | Card | What | Size | Depends on |
 |---|---|---|---|
-| 1a | Manifest format and the gateway's registry. Core and Hub described by manifests. Listing reads manifests and saved settings only; every check runs in the gateway; a missing need answers "not available" | M | M-3183 |
+| 1a | Manifest format and the gateway's registry. Core and Hub described by manifests. Listing reads manifests and saved settings only; every check runs in the gateway; a missing need answers "not available". The format includes where a module runs, accounts by kind, and the name rule the Windows panes need | M | M-3183 |
+| 1f | One gateway behind every way in: the Windows pane relay and one-shot helper answer listings from a list carried at launch; module rules, hand-off for long calls and large results, and approvals apply there and on `agent_mode: cli`; "restart to apply" for agents on a Windows computer; the 128-name rule | L | 1a, 1b |
 | 1b | Module processes: lazy start, routing with the caller attached, the 30-second answer and hand-off for long calls, hard limit and cancel, crash and repeated-failure rules, idle stop, per-Fleet and per-agent processes. Proven with a small test module | L | 1a |
 | 1c | Drift: manifest recording at build time, the build test, the check at each process start, the version and hash check before starting | M | 1b |
 | 1d | Settings: the Modules list per agent and the Fleet default, with the states in section 4 | M | 1a |
-| 1e | Measure the catalog per backend (bytes per request, every backend we ship), trial "find on demand" on Muse, then build it with the Automatic rule | M | 1a, M-3184 |
+| 1e | Measure the catalog per backend (bytes per request, every backend we ship, Antigravity and OpenCode included) and record the answer in the CLI registry; trial "find on demand" on Muse, then build it with the Automatic rule; the real tool's name in the web chat's activity block | M | 1a, M-3184 |
 | 2a | Approvals: a stored request, Needs you and chat buttons, run-on-approve, expiry, "always allow" scopes in Settings | L | 1a |
 | 3a | SharePoint files module, with sign-in through an approval request. The first new ability on every backend | M | 1b, 1c, 2a |
 | 3b | Browser module, wrapping an existing browser server at a fixed version | L | 3a |
@@ -399,7 +480,8 @@ provider; a token on the person's computer acts as them; posts are written by an
 | 6 | Clean-up: dashboard switches become modules; decide whether tool sets do too; an operating-system sandbox for module processes before launch | M | 1d |
 
 Suggested order: 1a → 1b → 1c → 2a → 3a gives the owner one new ability working on every backend, in its own
-process, with approvals, which proves the model end to end. 1d and 1e run alongside. 4a can go any time after 1a.
+process, with approvals, which proves the model end to end. 1d and 1e run alongside. 1f follows 1b and must land before any module is
+offered to an agent on a Windows computer. 4a can go any time after 1a.
 
 ## 11. Open questions, with recommendations
 
@@ -423,3 +505,7 @@ process, with approvals, which proves the model end to end. 1d and 1e run alongs
 | C16 | A call that takes longer than a CLI waits | **Answer within 30 seconds; hand off the result as a message.** Hard limit 5 minutes by default, 30 at most. |
 | C17 | When does a module update? | **With an AgEnD release at first.** Between releases only once the catalog exists, only to an exact version we listed, and only when the module is idle. |
 | C18 | Idle stop | **10 minutes.** Saves memory on a busy host; costs a slower first call afterwards. |
+| C19 | More than 128 tools for an agent on a Windows computer | **Find on demand there**, not a higher limit. The limit also bounds what a launch carries; the builders may still raise it if measurement says so. |
+| C20 | Say in the manifest which computer a module runs on, from the first version? | **Yes.** Everything runs on the AgEnD computer at first, but the field avoids a format change when modules run on a paired Windows computer. |
+| C21 | Module sign-ins | **An account of a named kind, chosen per agent in Accounts**, defaulting to the Fleet's. |
+| C22 | Module versions and hashes | **In the same ledger as audited CLI versions**, one verification path. |
