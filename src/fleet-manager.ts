@@ -22919,7 +22919,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // A Settings apply (observe set) of an unrelated fleet field must not start or list every
         // stopped agent whose instance block did not change (M-3165). SIGHUP still recovers missing ones.
         if (observe && change === "none") continue;
-        this.logger.info({ name }, previous ? "Instance config changed — starting" : "New instance in config — starting");
+        this.logger.info({ name }, !previous
+          ? "New instance in config — starting"
+          : change === "none"
+            ? "Instance not running — starting"
+            : "Instance config changed — starting");
         observe?.(name, "restart", "running");
         await this.startInstanceUnattended(name, config, topicMode, "new instance");
         observe?.(name, "restart", "done");
