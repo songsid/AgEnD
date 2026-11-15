@@ -232,6 +232,10 @@ Connecting shares nothing. **Reconnect** appears when the connection stopped (re
 ends the old connection and opens the Hub sign-in again. **Remove this connection** ends it from your side ("Agents
 you share will stop answering.").
 
+The connected Hub card, Hub update requests and recommended-update line use the Hub's name once this Fleet has
+learned it from the paired Hub. An older Hub that supplies no name keeps the address fallback. The name is a display
+label; learning it does not change the connection, update consent or which updates are available.
+
 Reconnecting after revocation or removal creates a new Fleet identity on the same Hub. Its member journal and sharing
 consent are separate from the previous identity: old questions and receipts are not replayed. An ordinary network
 reconnect of the same identity keeps its delivery and acknowledgement history. Do not delete journal files to repair a

@@ -28,6 +28,13 @@ it("verifies newer advice once, persists it before ACK, and restores it without 
   const restored = new HubMemberRecommendations(w.options); expect(restored.view()).toEqual(w.receiver.view());
   expect(w.lookup).toHaveBeenCalledTimes(1); w.receiver.close(); expect(w.receiver.view()).toBeNull();
 });
+it("refreshes a cached recommendation's display name without another policy lookup or ACK", async () => {
+  const w = world(); w.receiver.receive(w.recommendation(), w.link); await settle();
+  expect(w.receiver.view()?.hubName).toBe("hub.test");
+  w.options.hubName = "Rig Hub";
+  expect(w.receiver.view()).toMatchObject({ hubName: "Rig Hub", version: "2.4.0-beta.4", revision: 1 });
+  expect(w.lookup).toHaveBeenCalledTimes(1); expect(w.send).toHaveBeenCalledTimes(1);
+});
 it.each(["not-found", "unavailable"] as const)("does not offer or ACK a version that npm reports as %s; exact replay retries when due", async result => {
   const w = world(); w.lookup.mockResolvedValueOnce(result); w.receiver.receive(w.recommendation(), w.link); await settle();
   expect(w.receiver.view()).toBeNull(); expect(w.send).not.toHaveBeenCalled();

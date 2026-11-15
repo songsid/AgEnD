@@ -2,7 +2,7 @@
  * S3c PR B (S-55): the member's "Connect to a Hub" backend — thin, local-admin wrappers over S1's pairing client
  * (pairing-client.ts beginHubPairing / claimHubPairing, profile.ts HubMemberProfileStore), as Sentinel specified:
  * - The projection says only what is known: paired (from the profile: the Hub key's spkiSha256, its origins; no stored
- *   name; the link from S5's client lifecycle, else offline), pending (the transcript fingerprint and expiry; the Hub
+ *   name in that profile; an optional cosmetic cache supplies its label; the link from S5's lifecycle, else offline), pending (the transcript fingerprint and expiry; the Hub
  *   owner's and administrator's confirmations are the Hub's and unknown here: null), held (a local fact), unpaired.
  *   Never key_changed or revoked inferred from an I/O failure; missing or malformed private state holds, never reads as
  *   unpaired.
@@ -23,6 +23,7 @@ import { ensurePrivateDirectory, privatePath, readPrivateFile } from "../private
 import { beginHubPairing as realBegin, claimHubPairing as realClaim } from "../pairing-client.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "../profile.js";
 import { HubMemberWebOriginStore } from "../web-origin.js";
+import { readHubDisplayName } from "../display-name.js";
 import { HubMemberRelocationStore, knownMemberOrigins } from "../member-origin.js";
 /** #3429 B: the member address this Fleet dials now (its confirmed relocations' end); pairing.json's own otherwise. */
 const memberAnchor = (home: string, p: HubMemberProfile, digest: string | null): string => {
@@ -136,7 +137,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
         if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId, binding };
         // M-2901: the Hub's current web address when it told this Fleet (verified against the pinned issuer key), else the
         // one it paired with — every link this Fleet's pages build to the Hub (open, who may ask, the switcher) follows it.
-        return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: null, memberOrigin: memberAnchor(deps.home, p, store.profileDigest()), webOrigin: new HubMemberWebOriginStore(deps.home, s.hubId).effective(p, knownMemberOrigins(deps.home, p, store.profileDigest())), fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
+        return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: readHubDisplayName(deps.home, p), memberOrigin: memberAnchor(deps.home, p, store.profileDigest()), webOrigin: new HubMemberWebOriginStore(deps.home, s.hubId).effective(p, knownMemberOrigins(deps.home, p, store.profileDigest())), fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
           link: deps.link?.(store.profileDigest()) === "online" ? "online" : "offline" };
       }
       if (f.pending) {

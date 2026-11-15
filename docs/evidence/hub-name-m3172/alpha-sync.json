@@ -1,0 +1,141 @@
+{
+  "mergeHead": "5a3da0267d4d7f161dab5fcc8f315dcbffdcc8ec",
+  "parents": [
+    "63304c2caf11bb574371f4108301f11636a0411f",
+    "20791759124ac95140b9029fca420fadaf9aff04"
+  ],
+  "incomingOnly": [
+    "src/usage/profile-timeline.ts",
+    "tests/codex-model-switch-m3175.test.ts",
+    "tests/remove-gemini-cli-1280.test.ts"
+  ],
+  "sourceInputsUnchanged": [
+    {
+      "path": "changes/3172-hub-display-name.md",
+      "sha256": "79d2eeb4dff2d551c71cd48121d92de206f949c17d2744e29d92bc75ab6741b2"
+    },
+    {
+      "path": "changes/3172-hub-display-name.zh-TW.md",
+      "sha256": "be84d6ef59a50c0a942adf7eb40918e447bc3a4a81b97386d9cdcfdbef2c2ab3"
+    },
+    {
+      "path": "scripts/manual/smoke-fixture/index.mts",
+      "sha256": "333248244d4651b1419a4c2ee32bae7c4d5d930019d9ffafcf94daaa7ee3ee3c"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-hub-name-m3172.mts",
+      "sha256": "1c69869eb827b8507d7d453d59baa18f190611ab2051a9da61788a6e1ba35c20"
+    },
+    {
+      "path": "src/atomic-write.ts",
+      "sha256": "7da91541dd709a6fa2fc4e5b48534635beb14c11cba876dd3490d651654260f4"
+    },
+    {
+      "path": "src/auth-api.ts",
+      "sha256": "851ac4058cd41bcdbc6c2adbc8d427348027f7f945110810492d0b0f7302bff4"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "35417d93c8a6b592cdf5ea0a8c2f6a75b1f2ce171b4851d49bf06ab1f6581fe0"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "87a2bb3f571f92173d39de4147681d9d14e843bb069d8e5cf1c9121640d19302"
+    },
+    {
+      "path": "src/hub-pairing-summary.ts",
+      "sha256": "72a8de490f87d57a4b250b5ea8aebf74532503fb0292203453afbc0799f41227"
+    },
+    {
+      "path": "src/hub/client.ts",
+      "sha256": "baeba3080fdfc28fcae7bf8fb272c956ab5c256f4db581a2456901cf39f90354"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "32e3a28e0601d93faeab1ca267da9c003bd48cd0cc7fc4e8e0930d4b461b11d3"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "53be4704192371a25136a79d13a40d64d325d52a2bedf1e6183ecfa6ea8c1486"
+    },
+    {
+      "path": "src/hub/display-name.ts",
+      "sha256": "35f1c2c71e58683eb75a5c2adeb5707d91ba66728536d26d03d66c55da33b5e8"
+    },
+    {
+      "path": "src/hub/join/display.ts",
+      "sha256": "73fc62f832259830bb2eaa039530c8e801f1bc4dc3b6b2896225adcb4e5d972b"
+    },
+    {
+      "path": "src/hub/member/display-name.ts",
+      "sha256": "27466422cbe58e462b17d11b5a997bd33b962ea4e412358f4e76547dcc33acf5"
+    },
+    {
+      "path": "src/hub/member/pairing-api.ts",
+      "sha256": "aa5fcb9d61817f200d1f103a89ab5b1ba03baa66ec4a9754bb4e33e5c0a1710d"
+    },
+    {
+      "path": "src/hub/member/recommendations.ts",
+      "sha256": "663b69b77cdec67c228464a4c5620796dddc0fc5140e69e153358cdd743d0593"
+    },
+    {
+      "path": "src/hub/member/updates.ts",
+      "sha256": "7b3e6133b8994e718c60d9445361c11595f96de3649ca988dfce619868a05c01"
+    },
+    {
+      "path": "src/hub/private-files.ts",
+      "sha256": "ff020485550366fd7c65826b9b6b5a101cfdbd90505aa164e35bcb6139d231fb"
+    },
+    {
+      "path": "src/hub/profile.ts",
+      "sha256": "95494a8033cd648f0d97bfd40e01b65db2af4366ed5caf92546b2a4a6f8ef3d9"
+    },
+    {
+      "path": "src/hub/runtime.ts",
+      "sha256": "9e1b583e4d58468edaea2833cedaa7769a33935de5df968a657a804fcc073594"
+    },
+    {
+      "path": "src/hub/server.ts",
+      "sha256": "5f8904f57322326b1f599b26a2bfa3127379bfc374ebf7e1c750b08cfa16ff0c"
+    },
+    {
+      "path": "src/hub/tls.ts",
+      "sha256": "67c6a1335749aca9506df5e3e55913f9cd4324835084805ec11a51f9b09db6c8"
+    },
+    {
+      "path": "src/hub/validation.ts",
+      "sha256": "a68306277bbaecd0b6aa35304e1fb483d73027f8b000796dc75efd547ac6f029"
+    },
+    {
+      "path": "src/web-notices.ts",
+      "sha256": "cbd04b6c52573d5aacd0007349df46408de961f682ee1eab07649b5d8b816829"
+    },
+    {
+      "path": "tests/helpers/hub-listener-ports.ts",
+      "sha256": "b01d241652e12aca54716cd4f8cf8e8ccf343aeafeef656984a8ff5390d24f59"
+    },
+    {
+      "path": "tests/helpers/hub-rig.ts",
+      "sha256": "8f67b7cd5a5e6f2f8b4cc8abc53a1bdf7ccb31639d59fd61c44168290e6a93e0"
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "sha256": "4f8ebcfe9da3e3c3fc9d7103a5b24b97b132f519514b114e0bcd8af4878e70fb"
+    },
+    {
+      "path": "tests/hub-display-name-m3172.test.ts",
+      "sha256": "b1e7f30ae370a45b2108f5fcc0318cd6bf7ffa90d0851e0ca56ab1dd473d418f"
+    },
+    {
+      "path": "tests/hub-member-recommendations-m3138.test.ts",
+      "sha256": "6e30bb1d27e8ba42ba1c9d6bdd4f35cd56cd07d313b242d9beb3d8a73617a0e0"
+    },
+    {
+      "path": "tests/hub-pairing-api-s3c.test.ts",
+      "sha256": "4c6fd7a886aeae79a8f4046c0e99d9c6df4bc23f75e9ecb50c4bb8ebe897bcb0"
+    }
+  ],
+  "all172ServedBindingsUnchanged": true,
+  "localRerun": false,
+  "rule": "5afe2996: plain sync with own source/tests unchanged uses exact-head CI; no repeated local campaign"
+}

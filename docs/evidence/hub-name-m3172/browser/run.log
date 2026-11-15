@@ -1,0 +1,3 @@
+(node:81612) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{"checks":21,"failed":[]}

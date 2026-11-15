@@ -1,0 +1,13 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-name-display-m3172
+
+(node:48957) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:49130) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  5 passed (5)
+      Tests  68 passed (68)
+   Start at  16:00:39
+   Duration  13.36s (transform 9.25s, setup 289ms, import 14.26s, tests 8.56s, environment 0ms)
+
