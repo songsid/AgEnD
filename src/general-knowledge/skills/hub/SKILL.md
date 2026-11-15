@@ -591,9 +591,13 @@ a Fleet itself (yet).
   it comes back next time while still true.
 - **In a room**, an agent whose Fleet is too old reads "Needs an AgEnD update · ask *owner*" (「需要更新 AgEnD · 請通知
   *owner*」), so people know whom to tell.
+- **Recommended AgEnD version** (建議的 AgEnD 版本), the card above Connected fleets: **Same as this Hub** (it follows
+  the Hub as the Hub is updated), **A specific version** (checked on npm first: "Version *x* was not found on npm."),
+  or **No recommendation** (the state before anyone sets it). Before **Save** applies it, the card says what it does:
+  "*n* Fleets will be asked to update." A Fleet that is behind is told; its row then reads "Owner notified · *when*",
+  or "Not notified yet" (too old to be told, or not online since). Nothing is updated without the owner.
 - **The fix is the owner's Update**: on their AgEnD dashboard, the update banner's **Update now**, or Settings →
-  Advanced → **Version and update**; in chat, `/update`. A recommended version set by the Hub, and updating a Fleet
-  from the Hub, are not available yet.
+  Advanced → **Version and update**; in chat, `/update`. Updating a Fleet from the Hub is not available yet.
 
 ## Config keys
 

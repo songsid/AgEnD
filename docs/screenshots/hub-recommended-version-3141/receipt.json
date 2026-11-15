@@ -1,0 +1,424 @@
+{
+  "sourceHead": "5ba7a7df7c96717a7cc89f7924e556811e87a788",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desktop-en-light admin: four active rows tagged in the server's states, no badge, no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light filtered: only the three that need an update",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light rec: Same as this Hub chosen before anything is saved",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light rec: Save first shows the effect",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light rows: a notified Fleet says when",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light banner: names the person's own Fleet (version unknown: no parenthesis)",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light members: the agent that needs an update says whom to ask",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark admin: four active rows tagged in the server's states, no badge, no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark filtered: only the three that need an update",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark rec: Same as this Hub chosen before anything is saved",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark rec: Save first shows the effect",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark rows: a notified Fleet says when",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark banner: names the person's own Fleet (version unknown: no parenthesis)",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-dark members: the agent that needs an update says whom to ask",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light admin: four active rows tagged in the server's states, no badge, no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light filtered: only the three that need an update",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light rec: Same as this Hub chosen before anything is saved",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light rec: Save first shows the effect",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light rows: a notified Fleet says when",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light banner: names the person's own Fleet (version unknown: no parenthesis)",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-light members: the agent that needs an update says whom to ask",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark admin: four active rows tagged in the server's states, no badge, no page error",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark filtered: only the three that need an update",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark rec: Same as this Hub chosen before anything is saved",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark rec: Save first shows the effect",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark rows: a notified Fleet says when",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark banner: names the person's own Fleet (version unknown: no parenthesis)",
+      "ok": true
+    },
+    {
+      "name": "desktop-zh-TW-dark members: the agent that needs an update says whom to ask",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light admin: four active rows tagged in the server's states, no badge, no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light filtered: only the three that need an update",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light rec: Same as this Hub chosen before anything is saved",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light rec: Save first shows the effect",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light rows: a notified Fleet says when",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light banner: names the person's own Fleet (version unknown: no parenthesis)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light members: the agent that needs an update says whom to ask",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark admin: four active rows tagged in the server's states, no badge, no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark filtered: only the three that need an update",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark rec: Same as this Hub chosen before anything is saved",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark rec: Save first shows the effect",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark rows: a notified Fleet says when",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark banner: names the person's own Fleet (version unknown: no parenthesis)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-dark members: the agent that needs an update says whom to ask",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light admin: four active rows tagged in the server's states, no badge, no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light filtered: only the three that need an update",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light rec: Same as this Hub chosen before anything is saved",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light rec: Save first shows the effect",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light rows: a notified Fleet says when",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light banner: names the person's own Fleet (version unknown: no parenthesis)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-light members: the agent that needs an update says whom to ask",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark admin: four active rows tagged in the server's states, no badge, no page error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark filtered: only the three that need an update",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark rec: Same as this Hub chosen before anything is saved",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark rec: Save first shows the effect",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark rows: a notified Fleet says when",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark banner: names the person's own Fleet (version unknown: no parenthesis)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark members: the agent that needs an update says whom to ask",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "admin.desktop-en-light.png",
+      "sha256": "8edb4c1a5add64325edc72bc4a3cf444ba4d2ded3715cdfe8eacc8d40a189342"
+    },
+    {
+      "path": "filtered.desktop-en-light.png",
+      "sha256": "91de8fd69680ba27bceb14c69a2bc1549d5710f602d13236e69d56be66d426a6"
+    },
+    {
+      "path": "rec.desktop-en-light.png",
+      "sha256": "c414aa0b3eff4fd92837540daea0310c0d4fbaf0f9f2a32feedc8adb0f0d8158"
+    },
+    {
+      "path": "rec-preview.desktop-en-light.png",
+      "sha256": "d15a099e384b2d85842b2c9f02f62b86579ef8f995ffadc9ef816965c5de5245"
+    },
+    {
+      "path": "banner.desktop-en-light.png",
+      "sha256": "c53ed3b4eb22115d8a146f1bece092c8605fc09c52bce332f887a06e32af1345"
+    },
+    {
+      "path": "members.desktop-en-light.png",
+      "sha256": "591552fdf80c1c42e0c64a8121a6e38a0462d974bfd1edaf9f60324ffa75f072"
+    },
+    {
+      "path": "admin.desktop-en-dark.png",
+      "sha256": "9205676eb31a527612fc6a2df4b49a7c99c4af300058ec3f0fbce5ac4233cffc"
+    },
+    {
+      "path": "filtered.desktop-en-dark.png",
+      "sha256": "d94045d45c29d6b9b749814231c14c614b521344536dd30d28e45fbaef58e4a9"
+    },
+    {
+      "path": "rec.desktop-en-dark.png",
+      "sha256": "c849e7932071e3f48c748ec7374734deba6f537c21d736d7a062d3f6ef4d64ab"
+    },
+    {
+      "path": "rec-preview.desktop-en-dark.png",
+      "sha256": "be5f3b288ebda3d0d78dda338658f5896fe0bfa37757799e0183d38d3aa9f7a7"
+    },
+    {
+      "path": "banner.desktop-en-dark.png",
+      "sha256": "55be571b9cb74ca57fdf0da262b0ebbce82faa309c3de8dae15b9445ddd53ea9"
+    },
+    {
+      "path": "members.desktop-en-dark.png",
+      "sha256": "2da8a1d47b37cdd938c0ef8a39d383b92267b340bb68b0f7ef3c576c505aa0a5"
+    },
+    {
+      "path": "admin.desktop-zh-TW-light.png",
+      "sha256": "4b3b531732c9109a95621b3d3c8eaeb265e8661f3349057f4ab0bf2edadff32a"
+    },
+    {
+      "path": "filtered.desktop-zh-TW-light.png",
+      "sha256": "853cd7146226261f395991459b3120649697222a4ff3c2699ad4523a6cbd9357"
+    },
+    {
+      "path": "rec.desktop-zh-TW-light.png",
+      "sha256": "0505f2f87bec813db4c6f4d60bc96fff29627950fa312548cf1d3ad5df6177ed"
+    },
+    {
+      "path": "rec-preview.desktop-zh-TW-light.png",
+      "sha256": "c44430f11a458c8a1c2a1432ca87451b3dc752f152cbddd0c737f03c2529a2ab"
+    },
+    {
+      "path": "banner.desktop-zh-TW-light.png",
+      "sha256": "4f9d07b900b391c55f33c13d99b1e74fe79456d152bdded1ddce97974ecfe577"
+    },
+    {
+      "path": "members.desktop-zh-TW-light.png",
+      "sha256": "71e437315f5d85727249400d0ec209c456ab106a943db5fbe603953ae2610af1"
+    },
+    {
+      "path": "admin.desktop-zh-TW-dark.png",
+      "sha256": "e8a25a7cc0e3df20e074a51b21aede8c353d670a7e73984a0ac031732bbe3d4e"
+    },
+    {
+      "path": "filtered.desktop-zh-TW-dark.png",
+      "sha256": "cb556daf3cd8c501ef9d994cdecf10486f59bcc01d289f15d3b4096907423be1"
+    },
+    {
+      "path": "rec.desktop-zh-TW-dark.png",
+      "sha256": "6cc8dc4e7e4fda9ee61b04ba46dc3ac8cadfe1087ced7c012251c62ed8f24138"
+    },
+    {
+      "path": "rec-preview.desktop-zh-TW-dark.png",
+      "sha256": "166f9fd0f3426aa83b500780cea104aaba0a4a85c53ab9fbd2992ffeaf3b24e2"
+    },
+    {
+      "path": "banner.desktop-zh-TW-dark.png",
+      "sha256": "000fa86a28077d2594db34dd55bd5728ec4c4cb944a89defef60e9ae9e51fcc2"
+    },
+    {
+      "path": "members.desktop-zh-TW-dark.png",
+      "sha256": "205de5da41dcd156228bebddb49925ba67a04b78922128ec956a6d8770ce5f24"
+    },
+    {
+      "path": "admin.phone-en-light.png",
+      "sha256": "008985fb2243a0f40e6417065860a028d2f4f14ef705f2cbf68c65a965f51220"
+    },
+    {
+      "path": "filtered.phone-en-light.png",
+      "sha256": "4aff9ed7033437aca6879ebdb58fe1bb05bcbfd0a16357e6f225b876d7545223"
+    },
+    {
+      "path": "rec.phone-en-light.png",
+      "sha256": "183916604638f3b4e4fa33dcd04d3a17a693c141e79e7ebdec24a4415edb2e08"
+    },
+    {
+      "path": "rec-preview.phone-en-light.png",
+      "sha256": "7f7cd5c7863b111da5767ccac1d31a695887c30e0055493cd3ac996994d2cca0"
+    },
+    {
+      "path": "banner.phone-en-light.png",
+      "sha256": "b552111a5a9c6aa28f11cc7611db88d927ded0bf1746106067f9952721c9a7f2"
+    },
+    {
+      "path": "members.phone-en-light.png",
+      "sha256": "ef5a375ad60b530d48fe2f04ef252c532c4bbeba95eeaab0f3a8efb18ac162a4"
+    },
+    {
+      "path": "admin.phone-en-dark.png",
+      "sha256": "a239217fdccd51feaa5ea340d593eb80041619b43ea15c3521eb9454a9f5ba0f"
+    },
+    {
+      "path": "filtered.phone-en-dark.png",
+      "sha256": "d865380d901b6f628f5fc52dc420924b530015549108e97174d82656a5571e0c"
+    },
+    {
+      "path": "rec.phone-en-dark.png",
+      "sha256": "7f7ed54a24c09b5a36d33c3ff78496ad2399992697f0c55c66ad1e3f479fd926"
+    },
+    {
+      "path": "rec-preview.phone-en-dark.png",
+      "sha256": "d46fb26dd63bae6fd38e899c187e2bc1292bdd804c7e7b7f9ed414be63ac78a6"
+    },
+    {
+      "path": "banner.phone-en-dark.png",
+      "sha256": "50b21dd0fab56c65c1c87af228cda5f8bcb4e34fc4a59ea708c0d3e977cfd348"
+    },
+    {
+      "path": "members.phone-en-dark.png",
+      "sha256": "e4fad30348ac4ae51dd7918abf168bfc737fed1d4fa19b301d49f66e54001451"
+    },
+    {
+      "path": "admin.phone-zh-TW-light.png",
+      "sha256": "4bb4392c6cc882bd168c45e8776c9a31858f5000c5a0c19de469de7edf08c006"
+    },
+    {
+      "path": "filtered.phone-zh-TW-light.png",
+      "sha256": "1a58a3c108b72e49baba98b8ce978765624f1fc71c82ee2e78ad2ccacf662133"
+    },
+    {
+      "path": "rec.phone-zh-TW-light.png",
+      "sha256": "b86c936f53e6702222177d62a540feae7774782f8921cc9f47ca8feb102b0388"
+    },
+    {
+      "path": "rec-preview.phone-zh-TW-light.png",
+      "sha256": "ae3736f1403d8bded84a5d1845af79b0fad47d743f0543a5e6bafe3d9c5b4f32"
+    },
+    {
+      "path": "banner.phone-zh-TW-light.png",
+      "sha256": "9de56254c7239c593ff0e35b6027e20649cc122027cddc889cd1b757e40d8bdc"
+    },
+    {
+      "path": "members.phone-zh-TW-light.png",
+      "sha256": "86c49cf6e113cc091441f86274997a104b68b144156352141141743b2840f1c4"
+    },
+    {
+      "path": "admin.phone-zh-TW-dark.png",
+      "sha256": "281feba848d2c46a2592e8a95ce84d5efd42ad776e4d79214ca5f3729121cbd9"
+    },
+    {
+      "path": "filtered.phone-zh-TW-dark.png",
+      "sha256": "5657230057c155b5ef2af52e536235c0c65d95ef2cfa9f0945bfac289ad09a52"
+    },
+    {
+      "path": "rec.phone-zh-TW-dark.png",
+      "sha256": "3149d00abbcede2fc9ed2b20de4d2a0b486fb2819684d11f9b2930d40d3ec9d4"
+    },
+    {
+      "path": "rec-preview.phone-zh-TW-dark.png",
+      "sha256": "2fe4f83ecef1667d43c3cf1e744d94efa02f65625c9fceaf27f3830a7248659d"
+    },
+    {
+      "path": "banner.phone-zh-TW-dark.png",
+      "sha256": "e891d23a312f37c88b695dfffd8a612404152c9c5d56c4ebdeab5e6accc3a289"
+    },
+    {
+      "path": "members.phone-zh-TW-dark.png",
+      "sha256": "d98c324893e9e8b0d3d3c7e8db9230c5bdc84914c0df5f1981663d3adc9b02a9"
+    }
+  ]
+}

@@ -28,7 +28,7 @@ import { toast } from "/assets/ui-toast.js";
 // #3226 B: the chat is the fleet chat's own drawing (PR A's shared modules), in the fleet chat's words.
 import { createThread, msgKey } from "/assets/chat-thread.js";
 import { installMessageActions } from "/assets/chat-msg-actions.js";
-import { OlderFleetBanner, FleetVersionCells, FleetVersionsSummary, hasVersions, behind } from "./hub-fleet-versions.js";
+import { OlderFleetBanner, FleetVersionCells, FleetVersionsSummary, RecommendedVersionCard, hasVersions, behind } from "./hub-fleet-versions.js";
 import { PreviewPanel, closePanel, panelStore } from "/assets/preview-panel.js";
 import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
 import { RailFrame } from "/assets/side-rail.js";
@@ -1058,6 +1058,7 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
   const assistantSession = useSession();
   const [view, reload] = useRead(() => hubClient().adminOverview());
   const [needsOnly, setNeedsOnly] = useState(false);   // M-3137: Connected fleets' "Needs update" filter
+  const [canRecommend, setCanRecommend] = useState(false);   // M-3141: this Hub serves the recommended-version setting
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -1106,9 +1107,11 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
       ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+      ${/* M-3141 (versions spec §3.1): the recommended version, a small card above the list. */ ""}
+      ${hasVersions(fleets) ? html`<${RecommendedVersionCard} client=${hubClient()} onSaved=${reload} onAvailable=${setCanRecommend} />` : null}
       <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
         ${/* M-3137 (versions spec §2.2): the summary line and its filter, when this Hub reports versions. */ ""}
-        ${hasVersions(fleets) ? html`<${FleetVersionsSummary} fleets=${fleets} recommended=${view.recommendedVersion ?? null} filtered=${needsOnly} onFilter=${setNeedsOnly} />` : null}
+        ${hasVersions(fleets) ? html`<${FleetVersionsSummary} fleets=${fleets} recommended=${view.recommendedVersion ?? null} canRecommend=${canRecommend} filtered=${needsOnly} onFilter=${setNeedsOnly} />` : null}
         ${fleets.length ? (() => {
           // Spec 1.2: the row's title is the Fleet's label (S1 overview), its subtitle the owner; active first, revoked folded.
           const row = (f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
