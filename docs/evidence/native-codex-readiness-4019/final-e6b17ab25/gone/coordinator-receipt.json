@@ -1,0 +1,21 @@
+{
+  "sourceHead": "e6b17ab25babd68e03d44a256d7576c97b8c235f",
+  "runtimeSourceEqualTo": "c6c0efcba62b7cc9157286ab7282fa5e4d8c353c",
+  "compiledCoordinatorSha256ToPaths": {
+    "e74af0b8cdcdc1ec50fff777331da448b2e78f497d2c8706771ee86558e91e8b": [
+      "daemon.js"
+    ],
+    "8017eb49d597f98e63963b941daa96be1aa72909cc538dfffffc94c3f634655f": [
+      "backend/codex.js"
+    ],
+    "e0b658695a9a3e54105d50218cd5711fb22f21f30de4620165e969fea22622f1": [
+      "backend/codex-footer-hints.js"
+    ],
+    "417310d93ca6df6cc0eae653fa8fa8c7335b7854c4b934fa6abcbadb6ba1325b": [
+      "backend/native-pane.js"
+    ],
+    "26b5916cf3dc8d32b5c966dd22da0d954c1e9d8804b45e1df4dda14a1bff6309": [
+      "native-pane-lifecycle.js"
+    ]
+  }
+}

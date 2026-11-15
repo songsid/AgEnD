@@ -1,0 +1,32 @@
+{
+  "sourceHead": "e6b17ab25babd68e03d44a256d7576c97b8c235f",
+  "sha256ToPaths": {
+    "582b8694d062c797340d0abae275cd5bf642a051cb87e37b8da384712e2a2cfa": [
+      "archive.mjs"
+    ],
+    "2b8965e505aa5711aab748abcb722d3a24b65a76862c49f2f874e4fbf8d0eba0": [
+      "browser-run.mjs"
+    ],
+    "323ca03c113de12319b9cdd38640e9cd8f7b9485930e5e388be9c40c76e70861": [
+      "browser.mjs"
+    ],
+    "e8683234f6c5ba97ef77a357c58b22a8364ebf96b7c1380f0589a6e05b6e17eb": [
+      "check-native.mjs"
+    ],
+    "71d8954368f08d3f003642862560ba6dade04fc561ee3b8bf5e5ce0ca955e7be": [
+      "coordinator.mjs"
+    ],
+    "0e9e129d40a33592d5c54279b91001e72d1d151938d72e213524e099ff779949": [
+      "host.mjs"
+    ],
+    "54bd71572dc8af7380b92c8a958574f08e6472d3bb39b6fd1f90a1179c2f2861": [
+      "pane-control.mjs"
+    ],
+    "3a88300938516ae7c56b360a35fb3da2f793a2dc6312512ba62dd4fc1545e295": [
+      "stage.mjs"
+    ],
+    "4634c6c77adcd556fda1792574c605f6f2e1ac69d8a1c5cc3c0976a2c3e67038": [
+      "acceptance.mjs"
+    ]
+  }
+}

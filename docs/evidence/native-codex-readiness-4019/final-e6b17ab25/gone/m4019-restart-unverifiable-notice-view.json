@@ -1,0 +1,4 @@
+{
+  "path": "/ui/notices",
+  "text": "\u8df3\u5230\u5c0d\u8a71\nAgEnD\nFleet \u6982\u89bd\n\u7b49\u4f60\u8655\u7406\n\u901a\u77e5\n\u641c\u5c0b\nCtrl K\n\u65b0\u589e Agent\nAgent\n\u81ea\u8a02\n\u7de8\u8f2f\n\u5176\u4ed6\n1\nM\nX\nm4019-native-codex\nWindows\nCodex\n\u5f8c\u7aef\uff1aCodex\n\u7be9\u9078\uff1a\u540d\u7a31\u3001\u6a21\u578b\u3001\u5f8c\u7aef\n\u72c0\u614b\n\n1 / 1\n\n\u8a2d\u5b9a\n\u767b\u5165\u72c0\u614b\n\u901a\u77e5\n\n\u539f\u672c\u6703\u767c\u5230 General \u7684\u8a0a\u606f\n\nAgent \u00b7 m4019-native-codex\n\u65b0\n\u525b\u525b\n\n\u26a0\ufe0f m4019-native-codex restarted while 1 message(s) you sent were still waiting in its CLI's queue, and AgEnD could not check whether they were taken, so they were not sent again (marked \u274c). Send them again if you still need them.\n\n\u958b\u555f\u804a\u5929"
+}

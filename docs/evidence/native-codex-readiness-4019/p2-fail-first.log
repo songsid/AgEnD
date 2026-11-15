@@ -1,0 +1,155 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/native-codex-readiness-4019
+
+ ❯ tests/codex-native-queue-strand.test.ts (39 tests | 3 failed | 32 skipped) 101ms
+     × #4019: a strand restored at the final baseline is not pasted over or submitted (codex) 14ms
+     × #4019: a strand restored at the final baseline is not pasted over or submitted (native) 4ms
+     × #4019: native's last expected-screen read refuses a strand restored after the baseline 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-native-queue-strand.test.ts > codex native-queue handoff: text left in the input row is NOT a delivery > #4019: a strand restored at the final baseline is not pasted over or submitted (codex)
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[from:agend-dev-claude-t1500000000000083558] 減法設計驗證用的投遞測試訊息，請忽略不要回覆。
+    (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/codex-native-queue-strand.test.ts:531:25
+    529|     });
+    530|     expect(await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STA…
+    531|     expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHave…
+       |                         ^
+    532|   });
+    533|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/codex-native-queue-strand.test.ts > codex native-queue handoff: text left in the input row is NOT a delivery > #4019: a strand restored at the final baseline is not pasted over or submitted (native)
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[from:agend-dev-claude-t1500000000000083558] 減法設計驗證用的投遞測試訊息，請忽略不要回覆。
+    (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
+      Object {
+        "guard": [Function current],
+        "proof": Object {
+          "kind": "composer",
+          "retryCount": 0,
+          "screen": "╰──────────────────────────────────────────────────────────────────────────────╯
+    
+    ⚠ Codex could not find bubblewrap on PATH. Install bubblewrap with your OS
+      package manager. See the sandbox prerequisites:
+      https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex
+      will use the bundled bubblewrap in the meantime.
+    
+    ╭──────────────────────────────────────────────────╮
+    │ >_ OpenAI Codex (v0.153.4)                       │
+    │                                                  │
+    │ model:     gpt-5.6-luna xhigh   /model to change │
+    │ directory: /tmp                                  │
+    ╰──────────────────────────────────────────────────╯
+    
+      Tip: New Use /fast to enable our fastest inference with increased plan usage.
+    
+    • You have 1 usage limit reset available. Run /usage to use one.
+    
+    
+    › [from:agend-dev-claude-t1519896892392083558] 減法設計驗證用的投遞測試訊息，請
+      忽略不要回覆。
+      (message_id: old-1 | correlation_id: cid-1789356482291-pjykib)
+    
+      Context 100% left
+    ",
+        },
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/codex-native-queue-strand.test.ts:531:25
+    529|     });
+    530|     expect(await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STA…
+    531|     expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHave…
+       |                         ^
+    532|   });
+    533|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/codex-native-queue-strand.test.ts > codex native-queue handoff: text left in the input row is NOT a delivery > #4019: native's last expected-screen read refuses a strand restored after the baseline
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[from:agend-dev-claude-t1500000000000083558] 減法設計驗證用的投遞測試訊息，請忽略不要回覆。
+    (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
+      Object {
+        "guard": [Function current],
+        "proof": Object {
+          "kind": "composer",
+          "retryCount": 0,
+          "screen": "╰──────────────────────────────────────────────────────────────────────────────╯
+    
+    ⚠ Codex could not find bubblewrap on PATH. Install bubblewrap with your OS
+      package manager. See the sandbox prerequisites:
+      https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex
+      will use the bundled bubblewrap in the meantime.
+    
+    ╭──────────────────────────────────────────────────╮
+    │ >_ OpenAI Codex (v0.153.4)                       │
+    │                                                  │
+    │ model:     gpt-5.6-luna xhigh   /model to change │
+    │ directory: /tmp                                  │
+    ╰──────────────────────────────────────────────────╯
+    
+      Tip: New Use /fast to enable our fastest inference with increased plan usage.
+    
+    • You have 1 usage limit reset available. Run /usage to use one.
+    
+    
+    › [from:agend-dev-claude-t1519896892392083558] 減法設計驗證用的投遞測試訊息，請
+      忽略不要回覆。
+      (message_id: old-1 | correlation_id: cid-1789356482291-pjykib)
+    
+      Context 100% left
+    ",
+        },
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/codex-native-queue-strand.test.ts:541:25
+    539|     });
+    540|     expect(await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STA…
+    541|     expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHave…
+       |                         ^
+    542|   });
+    543|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 4 passed | 32 skipped (39)
+   Start at  00:33:44
+   Duration  2.48s (transform 1.72s, setup 86ms, import 2.17s, tests 101ms, environment 0ms)
+

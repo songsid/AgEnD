@@ -1,0 +1,135 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/native-codex-readiness-4019
+
+ ❯ tests/codex-native-queue-strand.test.ts (41 tests | 2 failed | 39 skipped) 70ms
+     × #4019: a next delivery neither submits nor appends to the restored human draft (codex) 58ms
+     × #4019: a next delivery neither submits nor appends to the restored human draft (native) 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-native-queue-strand.test.ts > codex native-queue handoff: text left in the input row is NOT a delivery > #4019: a next delivery neither submits nor appends to the restored human draft (codex)
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 3 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "Enter",
+    ]
+
+  2nd vi.fn() call:
+
+    Array [
+      "Enter",
+    ]
+
+  3rd vi.fn() call:
+
+    Array [
+      "Enter",
+    ]
+
+
+Number of calls: 3
+
+ ❯ tests/codex-native-queue-strand.test.ts:528:65
+    526|     const restored = readFileSync(join(FIXTURES, "codex-readiness-4019…
+    527|     expect(await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STA…
+    528|     expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHave…
+       |                                                                 ^
+    529|   });
+    530|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/codex-native-queue-strand.test.ts > codex native-queue handoff: text left in the input row is NOT a delivery > #4019: a next delivery neither submits nor appends to the restored human draft (native)
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 3 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "Enter",
+      undefined,
+      Object {
+        "kind": "delivery",
+        "retryCount": 0,
+        "screen": "■ Conversation interrupted - use /feedback if something went wrong
+    
+    
+    › [hid:hmsg-6a91d37a-9a7e-460f-b1fd-29d3778411e2]
+      [user:Acceptance operator@web] Use the AgEnD reply tool once with exactly M4012_TAKEN_A. Do not run commands or edit
+      files. Then finish.
+      (message_id: web-mwi0ubn8-7ac0ba72)
+      (Answer with the reply tool; terminal text does not reach them.)
+    
+      Context 100% left
+    ",
+      },
+    ]
+
+  2nd vi.fn() call:
+
+    Array [
+      "Enter",
+      undefined,
+      Object {
+        "kind": "delivery",
+        "retryCount": 0,
+        "screen": "■ Conversation interrupted - use /feedback if something went wrong
+    
+    
+    › [hid:hmsg-6a91d37a-9a7e-460f-b1fd-29d3778411e2]
+      [user:Acceptance operator@web] Use the AgEnD reply tool once with exactly M4012_TAKEN_A. Do not run commands or edit
+      files. Then finish.
+      (message_id: web-mwi0ubn8-7ac0ba72)
+      (Answer with the reply tool; terminal text does not reach them.)
+    
+      Context 100% left
+    ",
+      },
+    ]
+
+  3rd vi.fn() call:
+
+    Array [
+      "Enter",
+      undefined,
+      Object {
+        "kind": "delivery",
+        "retryCount": 0,
+        "screen": "■ Conversation interrupted - use /feedback if something went wrong
+    
+    
+    › [hid:hmsg-6a91d37a-9a7e-460f-b1fd-29d3778411e2]
+      [user:Acceptance operator@web] Use the AgEnD reply tool once with exactly M4012_TAKEN_A. Do not run commands or edit
+      files. Then finish.
+      (message_id: web-mwi0ubn8-7ac0ba72)
+      (Answer with the reply tool; terminal text does not reach them.)
+    
+      Context 100% left
+    ",
+      },
+    ]
+
+
+Number of calls: 3
+
+ ❯ tests/codex-native-queue-strand.test.ts:528:65
+    526|     const restored = readFileSync(join(FIXTURES, "codex-readiness-4019…
+    527|     expect(await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STA…
+    528|     expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHave…
+       |                                                                 ^
+    529|   });
+    530|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 39 skipped (41)
+   Start at  00:37:24
+   Duration  2.50s (transform 1.74s, setup 75ms, import 2.21s, tests 70ms, environment 0ms)
+

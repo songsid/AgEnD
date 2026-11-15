@@ -1,0 +1,4 @@
+{"at": 1794764822484, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "level": "debug", "msg": "Queued channel message for delivery"}
+{"at": 1794764822489, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "level": "debug", "msg": "CLI busy \u2014 handing message to backend-native input queue"}
+{"at": 1794764823124, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "level": "debug", "msg": "Delivery settle telemetry"}
+{"at": 1794764833327, "runBoot": "6a942d5d-4531-43c0-a0fc-c1021422b2f3", "level": "warn", "msg": "Queued messages not taken by the CLI \u2014 telling the person", "reason": "unverifiable"}

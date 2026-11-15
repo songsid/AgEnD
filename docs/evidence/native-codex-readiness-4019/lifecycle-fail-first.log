@@ -1,0 +1,21 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/native-codex-readiness-4019
+
+ ❯ tests/native-pane-lifecycle-2950.test.ts (25 tests | 1 failed | 24 skipped) 5071ms
+   × #4019: the real empty footerless interrupted resume verifies its exact session without clearing or another prompt 5069ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/native-pane-lifecycle-2950.test.ts > #4019: the real empty footerless interrupted resume verifies its exact session without clearing or another prompt
+AssertionError: expected undefined to be defined
+ ❯ vi.waitFor.timeout tests/native-pane-lifecycle-2950.test.ts:161:42
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 skipped (25)
+   Start at  00:18:47
+   Duration  5.98s (transform 584ms, setup 72ms, import 711ms, tests 5.07s, environment 0ms)
+

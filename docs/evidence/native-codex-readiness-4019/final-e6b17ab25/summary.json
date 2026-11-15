@@ -1,0 +1,38 @@
+{
+  "sourceHead": "e6b17ab25babd68e03d44a256d7576c97b8c235f",
+  "tests": {
+    "affectedRuntimeFiles": 8,
+    "affectedRuntimePass": 273,
+    "manifestPass": 87,
+    "structuredSweepPass": 1,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0
+  },
+  "runtimeSourceEqualSince": "c6c0efcba62b7cc9157286ab7282fa5e4d8c353c",
+  "remainingNativeLegs": [
+    5,
+    7
+  ],
+  "nativeCasesFinal": [
+    {
+      "leg": 5,
+      "case": "not-taken",
+      "passed": true,
+      "once": true,
+      "originalPayloadApplications": 1
+    },
+    {
+      "leg": 7,
+      "case": "gone",
+      "passed": true,
+      "once": true,
+      "originalPayloadApplications": 1
+    }
+  ],
+  "limits": [
+    "No user text cleared or auto-submitted",
+    "No changes to the user Fleet or live panes",
+    "Only owned scratch launch UUIDs archived",
+    "Unknown layouts stay held"
+  ]
+}

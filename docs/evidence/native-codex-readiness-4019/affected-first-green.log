@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/native-codex-readiness-4019
+
+
+ Test Files  2 passed (2)
+      Tests  9 passed | 24 skipped (33)
+   Start at  00:20:15
+   Duration  3.04s (transform 2.43s, setup 160ms, import 3.24s, tests 1.59s, environment 0ms)
+

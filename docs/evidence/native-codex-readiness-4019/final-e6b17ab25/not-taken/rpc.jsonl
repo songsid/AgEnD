@@ -1,0 +1,8 @@
+{"at": 1794764634473, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "action": "input", "operationId": "5731a8ca-79ab-4019-8575-f5831691b6ed", "sequence": 1, "textHash": "ae4267a01f1269fbbf4824d26cf3bb22e8059a4797cc5bb46e43c40ff7ed090f", "textLength": 7}
+{"at": 1794764635822, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "action": "key", "operationId": "5b6c27ea-9158-4ac3-828f-b7521e64f0f1", "sequence": 2, "key": "Enter"}
+{"at": 1794764637980, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "action": "input", "operationId": "be7aba67-7a8c-4c16-acfe-698499baad8e", "sequence": 3, "textHash": "101026870ee6913543db0ee970b58c24ec11f6c1c1c8966227d8f2099e17fbff", "textLength": 287}
+{"at": 1794764639016, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "action": "key", "operationId": "0da580cd-9302-41ed-8a04-dc4ba4a3bcb5", "sequence": 4, "key": "Enter"}
+{"at": 1794764645502, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "action": "input", "operationId": "35285bcc-06c5-4beb-9740-e70276b01e16", "sequence": 5, "textHash": "7556b4dcda6339531f4ed5d6444e88b6566a5c87ffdf74536dc9f77b192ec72b", "textLength": 285}
+{"at": 1794764646055, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "action": "key", "operationId": "bef0dd03-89c0-4c00-9eb2-73f3c1d2d168", "sequence": 6, "key": "Enter"}
+{"at": 1794764648212, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "action": "key", "operationId": "627fa3b0-7e2b-4de6-bbb7-f0ed38ba292f", "sequence": 7, "key": "C-c"}
+{"at": 1794764648387, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "action": "key", "operationId": "548e82f4-b44e-40e9-a7d4-dd17d6878e20", "sequence": 8, "key": "C-c"}

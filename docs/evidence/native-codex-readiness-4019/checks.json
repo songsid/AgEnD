@@ -1,0 +1,36 @@
+{
+  "source": "fc17faa8b0e7303445c6b89e91df2b07ea46da07",
+  "firstControls": {
+    "capturedDetectorAndMonitorRed": 5,
+    "nativeLifecycleRed": 1,
+    "targetedGreen": 9,
+    "focusedFiles": 9,
+    "focusedPassed": 163
+  },
+  "writeFenceDelta": "4d0b9e42b4ef23ca29824ab07bd0d3aac41b43dc",
+  "p2Controls": {
+    "lateRestorationRed": 3,
+    "humanNextDeliveryRed": 2,
+    "affectedFiles": 6,
+    "affectedPassed": 108,
+    "sourceTypecheckExit": 0,
+    "testsTypecheckExit": 0
+  },
+  "nativeScopes": "Initial real native validation belongs to fc17. Final acceptance is separately recorded under final-e6b17ab25 on the final source head.",
+  "finalSource": "e6b17ab25babd68e03d44a256d7576c97b8c235f",
+  "runtimeSourceEqualSince": "c6c0efcba62b7cc9157286ab7282fa5e4d8c353c",
+  "finalChecks": {
+    "runtimeFiles": 8,
+    "runtimePassed": 273,
+    "manifestPassed": 87,
+    "structuredSweepPassed": 1,
+    "structuredSweepMutantCaught": true,
+    "sourceTypesExit": 0,
+    "testsTypesExit": 0,
+    "ciGreen": 23,
+    "nativeLegs": [
+      5,
+      7
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{"at": 1794764645335, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "level": "debug", "msg": "Queued channel message for delivery"}
+{"at": 1794764645432, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "level": "debug", "msg": "CLI busy \u2014 handing message to backend-native input queue"}
+{"at": 1794764646075, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "level": "debug", "msg": "Delivery settle telemetry"}
+{"at": 1794764648277, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "level": "warn", "msg": "Native pane input refused before write", "reason": "expected_seq_changed", "retryCount": 0, "expectedSeq": 766, "observedSeq": 771, "operationId": "627fa3b0-7e2b-4de6-bbb7-f0ed38ba292f", "commandSequence": 7}
+{"at": 1794764713408, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "level": "info", "msg": "Reply guard stood down \u2014 this delivery's turn is not in the transcript followed (fail-safe)", "reason": "transcript_unknown"}
+{"at": 1794764758205, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "level": "warn", "msg": "Queued hand-off was not taken by the CLI", "proof": "transcript:absent-while-idle", "outcome": "not-taken", "handoff": "da48b4e8-aeb9-4932-b931-3cbe0f2579ac", "redeliveries": 0}
+{"at": 1794764759205, "runBoot": "3129a918-e7df-48eb-9ad7-51341f823f18", "level": "warn", "msg": "Queued messages not taken by the CLI \u2014 telling the person", "reason": "not-taken"}

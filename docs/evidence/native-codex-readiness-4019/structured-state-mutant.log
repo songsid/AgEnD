@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/native-codex-readiness-4019
+
+ ❯ tests/daemon-instance-state.test.ts (51 tests | 1 failed | 50 skipped) 74ms
+     × #4019: a safety sweep during draft redraw keeps execution idle and its hand-off idle clock 71ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/daemon-instance-state.test.ts > Daemon event-driven pane monitor > #4019: a safety sweep during draft redraw keeps execution idle and its hand-off idle clock
+AssertionError: expected 'working' to be 'idle' // Object.is equality
+
+Expected: "idle"
+Received: "working"
+
+ ❯ tests/daemon-instance-state.test.ts:198:49
+    196|       await vi.advanceTimersByTimeAsync(1); // recent output, not a st…
+    197|       await (monitor.daemon as any).captureAndEvaluateInstanceState("s…
+    198|       expect(monitor.daemon.getInstanceState()).toBe("idle");
+       |                                                 ^
+    199|       expect((monitor.daemon as any).instanceIdleSinceMono).toBe(since…
+    200|     } finally { monitor.close(); vi.useRealTimers(); }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 50 skipped (51)
+   Start at  01:32:12
+   Duration  2.63s (transform 1.87s, setup 75ms, import 2.33s, tests 74ms, environment 0ms)
+

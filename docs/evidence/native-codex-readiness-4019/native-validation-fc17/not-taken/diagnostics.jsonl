@@ -1,0 +1,8 @@
+{"at":1794759891479,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","level":"debug","msg":"Queued channel message for delivery"}
+{"at":1794759891484,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","level":"debug","msg":"CLI busy — handing message to backend-native input queue"}
+{"at":1794759891569,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","level":"warn","msg":"Native pane input refused before write","reason":"expected_seq_changed","retryCount":0,"expectedSeq":770,"observedSeq":775,"operationId":"3998f9c2-fc9e-46c5-81d4-de1f6986a961","commandSequence":5}
+{"at":1794759891731,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","level":"warn","msg":"Native pane input refused before write","reason":"expected_seq_changed","retryCount":1,"expectedSeq":784,"observedSeq":789,"operationId":"5018f812-06e2-4c1a-8251-d10507e53876","commandSequence":6}
+{"at":1794759892846,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","level":"debug","msg":"Delivery settle telemetry"}
+{"at":1794759959432,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","level":"info","msg":"Reply guard stood down — this delivery's turn is not in the transcript followed (fail-safe)","reason":"transcript_unknown"}
+{"at":1794760004980,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","level":"warn","msg":"Queued hand-off was not taken by the CLI","proof":"transcript:absent-while-idle","outcome":"not-taken","handoff":"b5527259-eff1-433a-9e6e-82bc61f21edc","redeliveries":0}
+{"at":1794760005981,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","level":"warn","msg":"Queued messages not taken by the CLI — telling the person","reason":"not-taken"}

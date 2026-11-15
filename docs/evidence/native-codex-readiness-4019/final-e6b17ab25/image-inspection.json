@@ -1,0 +1,22 @@
+{
+  "inspector": "native_handoff_inventory",
+  "notTakenChat": {
+    "failedMark": true,
+    "runtimeIdle": true,
+    "noticeBadge": 1
+  },
+  "goneChat": {
+    "deliveryOrFailureTickVisible": false,
+    "runtimeWorking": true
+  },
+  "notices": {
+    "notTakenCards": 1,
+    "unverifiableCards": 1,
+    "reasonTextVisible": true
+  },
+  "noCanaryReplyVisible": true,
+  "privateAccountPathTokenVisible": false,
+  "mainContentClipped": false,
+  "sidebarNameEllipsized": true,
+  "scope": "Notice screenshots prove specific reason; gone chat alone does not prove a failed mark."
+}

@@ -1,0 +1,12 @@
+{"at": 1794764814231, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "kind": "coordinator-ready", "pid": 552783, "base": "http://127.0.0.1:40289", "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205", "pane": {"paneId": "26358a66-5fc4-4262-9b1c-3890ddc49a82", "launchId": "b7fc815a-e0b5-4a04-91d8-16dfe8e68c15", "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"}, "model": "gpt-6-luna"}
+{"at": 1794764816294, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "kind": "setup-submitted", "label": "A"}
+{"at": 1794764822485, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "kind": "sent", "id": "web-mwi4mw27-05688e8c", "label": "queued-A"}
+{"at": 1794764822485, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "kind": "event", "event": "message_queued", "data": {"chatId": "", "messageId": "web-mwi4mw27-05688e8c"}}
+{"at": 1794764822489, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "kind": "armed", "label": "A", "releaseBasename": "release_A.txt"}
+{"at": 1794764823124, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "kind": "event", "event": "message_delivered", "data": {"chatId": "", "messageId": "web-mwi4mw27-05688e8c"}}
+{"at": 1794764825858, "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce", "kind": "coordinator-stopped", "paneMode": "exit"}
+{"at": 1794764832339, "runBoot": "6a942d5d-4531-43c0-a0fc-c1021422b2f3", "kind": "coordinator-ready", "pid": 553248, "base": "http://127.0.0.1:34537", "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205", "pane": {"paneId": "4fcff525-7b77-47fe-bdbc-30904c810f7b", "launchId": "fd82752b-4990-4ed3-bdd2-881f555f0174", "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"}, "model": "gpt-6-luna"}
+{"at": 1794764833338, "runBoot": "6a942d5d-4531-43c0-a0fc-c1021422b2f3", "kind": "event", "event": "human_handoffs_unsettled", "data": {"reason": "unverifiable", "messages": [{"chatId": "", "messageId": "web-mwi4mw27-05688e8c"}]}}
+{"at": 1794764833483, "runBoot": "6a942d5d-4531-43c0-a0fc-c1021422b2f3", "kind": "coordinator-stopped", "paneMode": "detach"}
+{"at": 1794764834708, "runBoot": "43385c18-ef05-4b20-858a-a44d6b448dee", "kind": "coordinator-ready", "pid": 553469, "base": "http://127.0.0.1:33103", "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205", "pane": {"paneId": "4fcff525-7b77-47fe-bdbc-30904c810f7b", "launchId": "fd82752b-4990-4ed3-bdd2-881f555f0174", "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"}, "model": "gpt-6-luna"}
+{"at": 1794764843290, "runBoot": "43385c18-ef05-4b20-858a-a44d6b448dee", "kind": "coordinator-stopped", "paneMode": "exit"}

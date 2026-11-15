@@ -1,0 +1,235 @@
+{
+  "headRefOid": "e6b17ab25babd68e03d44a256d7576c97b8c235f",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:33:31Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896173029",
+      "name": "detect-changes",
+      "startedAt": "2026-11-15T17:33:08Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:33:33Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741737050/job/132896172544",
+      "name": "dependency-review",
+      "startedAt": "2026-11-15T17:33:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Dependency review"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:33:30Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741737041/job/132896173315",
+      "name": "scan",
+      "startedAt": "2026-11-15T17:33:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Gitleaks"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:33:31Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736921/job/132896173221",
+      "name": "signatures",
+      "startedAt": "2026-11-15T17:33:08Z",
+      "status": "COMPLETED",
+      "workflowName": "npm audit signatures"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:33:29Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896172567",
+      "name": "changelog",
+      "startedAt": "2026-11-15T17:33:08Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:33:36Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896172890",
+      "name": "actions-pinned",
+      "startedAt": "2026-11-15T17:33:08Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:33:37Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896172847",
+      "name": "runtime-profile-privacy",
+      "startedAt": "2026-11-15T17:33:08Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:34:11Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896297239",
+      "name": "setup",
+      "startedAt": "2026-11-15T17:33:33Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:33:47Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896297150",
+      "name": "docs-tests",
+      "startedAt": "2026-11-15T17:33:33Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:36:45Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896297192",
+      "name": "ui-gate",
+      "startedAt": "2026-11-15T17:33:33Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:42:30Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497932",
+      "name": "test-shard (1)",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:42:14Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497917",
+      "name": "test-shard (2)",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:42:11Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497946",
+      "name": "test-shard (3)",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:42:16Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497954",
+      "name": "test-shard (4)",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:36:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497995",
+      "name": "test-integration",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:35:04Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497877",
+      "name": "hub-directory",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:41:36Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497885",
+      "name": "test-pwsh",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:35:11Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497955",
+      "name": "install-smoke (ubuntu-24.04, 22.14.0)",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:34:59Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497915",
+      "name": "install-smoke (ubuntu-24.04, 22)",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:35:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497941",
+      "name": "install-smoke (ubuntu-24.04, 24)",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:35:09Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497909",
+      "name": "install-smoke (ubuntu-24.04, 26)",
+      "startedAt": "2026-11-15T17:34:14Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:35:53Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132896497895",
+      "name": "release-rollback-smoke",
+      "startedAt": "2026-11-15T17:34:15Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-15T17:42:35Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/songsid/AgEnD/actions/runs/43741736961/job/132898881800",
+      "name": "build",
+      "startedAt": "2026-11-15T17:42:32Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ]
+}

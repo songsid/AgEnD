@@ -1,0 +1,6 @@
+{"at":1794760088025,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","level":"debug","msg":"Queued channel message for delivery"}
+{"at":1794760088049,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","level":"debug","msg":"CLI busy — handing message to backend-native input queue"}
+{"at":1794760088154,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","level":"warn","msg":"Native pane input refused before write","reason":"expected_seq_changed","retryCount":0,"expectedSeq":559,"observedSeq":561,"operationId":"48e7fffd-bd91-4d71-9ad8-fc91b4d4e76a","commandSequence":5}
+{"at":1794760088291,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","level":"warn","msg":"Native pane input refused before write","reason":"expected_seq_changed","retryCount":1,"expectedSeq":567,"observedSeq":569,"operationId":"f567ccf9-57a9-4078-ab57-0adcc54e12a8","commandSequence":6}
+{"at":1794760089035,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","level":"debug","msg":"Delivery settle telemetry"}
+{"at":1794760100119,"runBoot":"3a85bdff-09ba-4456-997c-ad9ab9bc2d29","level":"warn","msg":"Queued messages not taken by the CLI — telling the person","reason":"unverifiable"}

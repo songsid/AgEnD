@@ -1,0 +1,72 @@
+[
+  {
+    "case": "m4019-not-taken",
+    "scope": "intermediate fc17 pass",
+    "cleanup": {
+      "paneClosed": true,
+      "hostExited": true,
+      "archive": {
+        "id": "01a1e006-667d-7290-9e1e-12593be0e39d",
+        "archived": true
+      },
+      "remainingOwnedProcesses": 0,
+      "scratchRemoved": true
+    }
+  },
+  {
+    "case": "m4019-gone",
+    "scope": "intermediate fc17 pass",
+    "cleanup": {
+      "paneClosed": true,
+      "hostExited": true,
+      "archive": {
+        "id": "01a1e009-6f04-7753-8d96-b8adc2c8de52",
+        "archived": true
+      },
+      "remainingOwnedProcesses": 0,
+      "scratchRemoved": true
+    }
+  },
+  {
+    "case": "m4019-final-not-taken",
+    "scope": "excluded: native queue admission not proven",
+    "cleanup": {
+      "paneClosed": true,
+      "hostExited": true,
+      "archive": {
+        "id": "01a1e01a-f592-75f1-9d42-a710f18564b1",
+        "archived": true
+      },
+      "remainingOwnedProcesses": 0,
+      "scratchRemoved": true
+    }
+  },
+  {
+    "case": "m4019-final-gone",
+    "scope": "excluded: harness queue precondition method unavailable",
+    "cleanup": {
+      "paneClosed": true,
+      "hostExited": true,
+      "archive": {
+        "id": "01a1e01f-a1ea-7833-958c-6764b95ed09a",
+        "archived": true
+      },
+      "remainingOwnedProcesses": 0,
+      "scratchRemoved": true
+    }
+  },
+  {
+    "case": "m4019-final-not-taken-r1",
+    "scope": "intermediate 4d0 pass",
+    "cleanup": {
+      "paneClosed": true,
+      "hostExited": true,
+      "archive": {
+        "id": "01a1e022-0c29-7a52-9178-fc8066aa012a",
+        "archived": true
+      },
+      "remainingOwnedProcesses": 0,
+      "scratchRemoved": true
+    }
+  }
+]

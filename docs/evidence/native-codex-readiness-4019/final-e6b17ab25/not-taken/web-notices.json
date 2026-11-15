@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "next": 2,
+  "seen": 1,
+  "items": [
+    {
+      "id": 1,
+      "at": 1794764759206,
+      "kind": "instance",
+      "text": "\u26a0\ufe0f 1 message(s) you sent to m4019-native-codex while it was busy were queued in its CLI, but the CLI finished without taking them up (marked \u274c). Send them again if you still need them.",
+      "instance": "m4019-native-codex"
+    }
+  ]
+}

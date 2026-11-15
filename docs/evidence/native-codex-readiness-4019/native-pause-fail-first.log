@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/native-codex-readiness-4019
+
+ ❯ tests/native-pane-daemon-lifecycle-2950.test.ts (17 tests | 1 failed | 16 skipped) 47ms
+   × #4019: execution-idle with a restored draft is not permission to close the native pane 45ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/native-pane-daemon-lifecycle-2950.test.ts > #4019: execution-idle with a restored draft is not permission to close the native pane
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/native-pane-daemon-lifecycle-2950.test.ts:81:45
+     79|   f.daemon.instanceState='idle';f.pane.capturePane.mockResolvedValue(d…
+     80|   expect(f.native.backend.getReadyPattern().test(draft)).toBe(true);
+     81|   expect(await f.daemon.nativePauseReady()).toBe(false);expect(f.nativ…
+       |                                             ^
+     82|  }finally{await f.daemon.stop();}
+     83| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 16 skipped (17)
+   Start at  01:10:48
+   Duration  2.37s (transform 1.68s, setup 81ms, import 2.12s, tests 47ms, environment 0ms)
+

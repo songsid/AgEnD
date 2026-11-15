@@ -1,0 +1,2230 @@
+{
+  "case": ".artifacts/m4019-not-taken",
+  "mode": "not-taken",
+  "sourceHead": "fc17faa8b0e7303445c6b89e91df2b07ea46da07",
+  "startedAt": 1794759873376,
+  "originalCoordinator": {
+    "kind": "coordinator-ready",
+    "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+    "pid": 473334,
+    "base": "http://127.0.0.1:35571",
+    "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d",
+    "pane": {
+      "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+      "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+      "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+    },
+    "model": "gpt-6-luna"
+  },
+  "originalArgv": {
+    "kind": "actual-native-process-argv",
+    "pid": 36688,
+    "commandLineSha256": "39d7a046c5a0cc771e0edbd40d49f7ad32b96d9701aa0bdd6857478afba8d3f4",
+    "noAltScreen": true,
+    "instantInterruptFalse": true,
+    "noDaemon": true,
+    "updateDisabled": true
+  },
+  "messageId": "web-mwi1p79v-3f9a0379",
+  "pending": {
+    "kind": "snapshot",
+    "nativeCurrent": true,
+    "idleForMs": null,
+    "instanceState": "working",
+    "pasteQueueDepth": 0,
+    "isPaused": false,
+    "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+    "flags": {
+      "unreadable": false,
+      "busy": true,
+      "idle": false,
+      "trust": false,
+      "login": false,
+      "approval": false,
+      "queueMention": false
+    },
+    "handoffs": [
+      {
+        "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+        "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+        "hasRuntime": true,
+        "hasPath": false,
+        "redeliveries": 0,
+        "metaId": "web-mwi1p79v-3f9a0379",
+        "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+        "runtime": {
+          "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+          "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+          "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+          "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+        }
+      }
+    ],
+    "rpc": {
+      "input": 5,
+      "key": 3
+    },
+    "pane": {
+      "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+      "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+      "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+    },
+    "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+  },
+  "originalHandoff": {
+    "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+    "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+    "runtime": {
+      "version": 1,
+      "machineId": "local",
+      "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+      "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+      "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+      "agentId": "5ec76b4b-72d8-4c4a-9cb6-bda9557aaa21",
+      "provider": "codex",
+      "cursor": {
+        "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d",
+        "offset": 181898,
+        "fileId": "592c595b75daf78cf98ded14d3be6b21385b47453316a761d910ea5bb3a4c8e5",
+        "anchor": "db047da51b32c931ba2c039707837a3f229358a0ba68a2c1d5553f446377304c"
+      }
+    },
+    "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52"
+  },
+  "interruptedAt": 1794759895659,
+  "idleSamples": [
+    {
+      "at": 1794759895761,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": null,
+      "instanceState": "working",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": true,
+        "idle": false,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759898364,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": null,
+      "instanceState": "working",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": false,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759900968,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 1451.5915770000029,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759903572,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 4055.6793730000027,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759906176,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 6659.147988000001,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759908779,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 9263.067567000002,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759911381,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 11864.929425999999,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759913984,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 14468.409757999998,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759916588,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 17071.810312000005,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759919193,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 19674.502595,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759921798,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 22279.658915000004,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759924401,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 24882.124921,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759927004,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 27484.431922,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759929606,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 30087.165942000003,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759932211,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 32691.359981000005,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759934815,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 35295.680261999994,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759937418,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 37899.526281,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759940022,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 40503.082985,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759942625,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 43105.569575,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759945229,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 45708.81617800001,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759947838,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 48313.26401900001,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759950440,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 50914.936100000006,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759953043,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 53517.676747000005,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759955647,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 56122.321159,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759958250,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 58726.136448000005,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759960854,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 61330.051374,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759963457,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 63933.236435,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759966061,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 66535.719928,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759968665,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 69140.339949,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759971267,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 71744.098968,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759973869,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 74346.385265,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759976473,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 76947.725051,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759979079,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 79552.65275600001,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759981682,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 82153.704601,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759984285,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 84757.82581600001,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759986887,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 87359.9308,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759989491,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 89964.19063900001,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759992094,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 92567.41471900001,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759994698,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 95171.22582800001,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759997300,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 97774.44434300001,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794759999902,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 100374.664277,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794760002505,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 102980.130548,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [
+        {
+          "id": "b5527259-eff1-433a-9e6e-82bc61f21edc",
+          "holder": "bfaeccbc-ef3f-416d-b07f-1a38400ad10a:1",
+          "hasRuntime": true,
+          "hasPath": false,
+          "redeliveries": 0,
+          "metaId": "web-mwi1p79v-3f9a0379",
+          "wireHash": "be425cb74fc1b4b418a3552df6647b38664a52a2d46ce0f077a15ad4e8902a52",
+          "runtime": {
+            "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+            "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+            "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579",
+            "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+          }
+        }
+      ],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794760005108,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 105581.264347,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    },
+    {
+      "at": 1794760007708,
+      "kind": "snapshot",
+      "nativeCurrent": true,
+      "idleForMs": 108184.393818,
+      "instanceState": "idle",
+      "pasteQueueDepth": 0,
+      "isPaused": false,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "flags": {
+        "unreadable": false,
+        "busy": false,
+        "idle": true,
+        "trust": false,
+        "login": false,
+        "approval": false,
+        "queueMention": false
+      },
+      "handoffs": [],
+      "rpc": {
+        "input": 5,
+        "key": 4
+      },
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+    }
+  ],
+  "afterInterrupt": {
+    "kind": "snapshot",
+    "nativeCurrent": true,
+    "idleForMs": 108184.393818,
+    "instanceState": "idle",
+    "pasteQueueDepth": 0,
+    "isPaused": false,
+    "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+    "flags": {
+      "unreadable": false,
+      "busy": false,
+      "idle": true,
+      "trust": false,
+      "login": false,
+      "approval": false,
+      "queueMention": false
+    },
+    "handoffs": [],
+    "rpc": {
+      "input": 5,
+      "key": 4
+    },
+    "pane": {
+      "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+      "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+      "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+    },
+    "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+  },
+  "observedForMs": 112049,
+  "events": [
+    {
+      "at": 1794759880506,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "kind": "coordinator-ready",
+      "pid": 473334,
+      "base": "http://127.0.0.1:35571",
+      "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d",
+      "pane": {
+        "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+        "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+        "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+      },
+      "model": "gpt-6-luna"
+    },
+    {
+      "at": 1794759882582,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "kind": "setup-submitted",
+      "label": "A"
+    },
+    {
+      "at": 1794759891480,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "kind": "sent",
+      "id": "web-mwi1p79v-3f9a0379",
+      "label": "queued-A"
+    },
+    {
+      "at": 1794759891480,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "kind": "event",
+      "event": "message_queued",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwi1p79v-3f9a0379"
+      }
+    },
+    {
+      "at": 1794759891484,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "kind": "armed",
+      "label": "A",
+      "releaseBasename": "release_A.txt"
+    },
+    {
+      "at": 1794759892847,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "kind": "event",
+      "event": "message_delivered",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwi1p79v-3f9a0379"
+      }
+    },
+    {
+      "at": 1794759895575,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "kind": "owned-key",
+      "key": "C-c"
+    },
+    {
+      "at": 1794760005986,
+      "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+      "kind": "event",
+      "event": "human_handoffs_unsettled",
+      "data": {
+        "reason": "not-taken",
+        "messages": [
+          {
+            "chatId": "",
+            "messageId": "web-mwi1p79v-3f9a0379"
+          }
+        ]
+      }
+    }
+  ],
+  "notTakenCount": 1,
+  "confirmedCount": 0,
+  "replyCount": 0,
+  "passed": true,
+  "settled": {
+    "kind": "snapshot",
+    "nativeCurrent": true,
+    "idleForMs": 123906.28860700001,
+    "instanceState": "idle",
+    "pasteQueueDepth": 0,
+    "isPaused": false,
+    "runBoot": "e0fda435-5537-4d8a-817d-3671d0ef11c0",
+    "flags": {
+      "unreadable": false,
+      "busy": false,
+      "idle": true,
+      "trust": false,
+      "login": false,
+      "approval": false,
+      "queueMention": false
+    },
+    "handoffs": [],
+    "rpc": {
+      "input": 5,
+      "key": 4
+    },
+    "pane": {
+      "paneId": "224e9e6b-3bee-43e2-9fa7-662e05e73280",
+      "launchId": "1cf5ff4d-197b-47db-b30e-28c6894e569b",
+      "hostBootId": "6a14590e-1d32-4934-ae95-3b3a7a9aa579"
+    },
+    "sessionId": "01a1e006-667d-7290-9e1e-12593be0e39d"
+  },
+  "appliedOriginalPayloads": 1
+}

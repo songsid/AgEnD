@@ -1,0 +1,74 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/native-codex-readiness-4019
+
+ ❯ tests/codex-readiness-4019.test.ts (7 tests | 5 failed) 221ms
+     × recognizes the owned multiline composer as idle without changing its text (ConPTY=false) 131ms
+     × recognizes the owned multiline composer as idle without changing its text (ConPTY=true) 22ms
+     × the real linux state monitor starts idle time for the draft and never types 35ms
+     × the real native state monitor starts idle time for the draft and never types 3ms
+     × recognizes the captured empty layout only with resume admission and its configured status 22ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-readiness-4019.test.ts > #4019: the same real restored draft under Unix and ConPTY > recognizes the owned multiline composer as idle without changing its text (ConPTY=false)
+ FAIL  tests/codex-readiness-4019.test.ts > #4019: the same real restored draft under Unix and ConPTY > recognizes the owned multiline composer as idle without changing its text (ConPTY=true)
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/codex-readiness-4019.test.ts:21:51
+     19|     expect(backend.ownsComposerRows(draft)).toBe(true);
+     20|     expect(backend.getBusyPattern().test(draft)).toBe(false);
+     21|     expect(backend.getReadyPattern().test(draft)).toBe(true);
+       |                                                   ^
+     22|     expect(backend.isPeriodicRedrawIdlePane(draft)).toBe(true);
+     23|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/codex-readiness-4019.test.ts > #4019: the same real restored draft under Unix and ConPTY > the real linux state monitor starts idle time for the draft and never types
+ FAIL  tests/codex-readiness-4019.test.ts > #4019: the same real restored draft under Unix and ConPTY > the real native state monitor starts idle time for the draft and never types
+AssertionError: expected 'working' to be 'idle' // Object.is equality
+
+Expected: "idle"
+Received: "working"
+
+ ❯ tests/codex-readiness-4019.test.ts:41:41
+     39|       screen = draft; control.emit("output:@4019", { paneId: "%4019", …
+     40|       await vi.advanceTimersByTimeAsync(2_500);
+     41|       expect(daemon.getInstanceState()).toBe("idle");
+       |                                         ^
+     42|       expect(daemon.instanceIdleSinceMono).not.toBeNull();
+     43|       expect(screen).toBe(draft); expect(input).not.toHaveBeenCalled();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/codex-readiness-4019.test.ts > #4019: only an owned native resume may recognize the exact empty footerless composer > recognizes the captured empty layout only with resume admission and its configured status
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/codex-readiness-4019.test.ts:63:50
+     61|   it("recognizes the captured empty layout only with resume admission …
+     62|     const b = backend();
+     63|     expect(b.isDeliveryInputReadyPane!(resumed)).toBe(true);
+       |                                                  ^
+     64|     expect(b.getReadyPattern().test(resumed)).toBe(true);
+     65|     expect(b.isPeriodicRedrawIdlePane!(resumed)).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 2 passed (7)
+   Start at  00:18:27
+   Duration  2.67s (transform 1.74s, setup 83ms, import 2.22s, tests 221ms, environment 0ms)
+

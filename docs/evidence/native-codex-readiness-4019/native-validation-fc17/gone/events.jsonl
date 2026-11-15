@@ -1,0 +1,12 @@
+{"at":1794760079966,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","kind":"coordinator-ready","pid":476677,"base":"http://127.0.0.1:45773","sessionId":"01a1e009-6f04-7753-8d96-b8adc2c8de52","pane":{"paneId":"dc706534-711c-4bf8-9ecb-229fc258203e","launchId":"9350e2f3-b821-4315-ae19-fdcce0bfd218","hostBootId":"e978d9a7-e6d3-42c8-8c16-e6dc6e866515"},"model":"gpt-6-luna"}
+{"at":1794760081828,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","kind":"setup-submitted","label":"A"}
+{"at":1794760088028,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","kind":"sent","id":"web-mwi1texf-b0b424b7","label":"queued-A"}
+{"at":1794760088028,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","kind":"event","event":"message_queued","data":{"chatId":"","messageId":"web-mwi1texf-b0b424b7"}}
+{"at":1794760088048,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","kind":"armed","label":"A","releaseBasename":"release_A.txt"}
+{"at":1794760089035,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","kind":"event","event":"message_delivered","data":{"chatId":"","messageId":"web-mwi1texf-b0b424b7"}}
+{"at":1794760091970,"runBoot":"bc2b2ea6-fdcf-4139-841f-ac1673ba1e7e","kind":"coordinator-stopped","paneMode":"exit"}
+{"at":1794760099133,"runBoot":"3a85bdff-09ba-4456-997c-ad9ab9bc2d29","kind":"coordinator-ready","pid":476935,"base":"http://127.0.0.1:41121","sessionId":"01a1e009-6f04-7753-8d96-b8adc2c8de52","pane":{"paneId":"b587ce3f-a2b7-4475-a6ff-ad08546ba4a6","launchId":"163ec2f8-e1ec-4f20-a7ad-3498120da9f0","hostBootId":"e978d9a7-e6d3-42c8-8c16-e6dc6e866515"},"model":"gpt-6-luna"}
+{"at":1794760100124,"runBoot":"3a85bdff-09ba-4456-997c-ad9ab9bc2d29","kind":"event","event":"human_handoffs_unsettled","data":{"reason":"unverifiable","messages":[{"chatId":"","messageId":"web-mwi1texf-b0b424b7"}]}}
+{"at":1794760100277,"runBoot":"3a85bdff-09ba-4456-997c-ad9ab9bc2d29","kind":"coordinator-stopped","paneMode":"detach"}
+{"at":1794760101378,"runBoot":"b967c72e-2e20-4a48-8ba7-c9de28ac8934","kind":"coordinator-ready","pid":477063,"base":"http://127.0.0.1:41471","sessionId":"01a1e009-6f04-7753-8d96-b8adc2c8de52","pane":{"paneId":"b587ce3f-a2b7-4475-a6ff-ad08546ba4a6","launchId":"163ec2f8-e1ec-4f20-a7ad-3498120da9f0","hostBootId":"e978d9a7-e6d3-42c8-8c16-e6dc6e866515"},"model":"gpt-6-luna"}
+{"at":1794760109305,"runBoot":"b967c72e-2e20-4a48-8ba7-c9de28ac8934","kind":"coordinator-stopped","paneMode":"exit"}

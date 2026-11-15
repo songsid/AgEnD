@@ -1,0 +1,9 @@
+{"at":1794759880506,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","kind":"coordinator-ready","pid":473334,"base":"http://127.0.0.1:35571","sessionId":"01a1e006-667d-7290-9e1e-12593be0e39d","pane":{"paneId":"224e9e6b-3bee-43e2-9fa7-662e05e73280","launchId":"1cf5ff4d-197b-47db-b30e-28c6894e569b","hostBootId":"6a14590e-1d32-4934-ae95-3b3a7a9aa579"},"model":"gpt-6-luna"}
+{"at":1794759882582,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","kind":"setup-submitted","label":"A"}
+{"at":1794759891480,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","kind":"sent","id":"web-mwi1p79v-3f9a0379","label":"queued-A"}
+{"at":1794759891480,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","kind":"event","event":"message_queued","data":{"chatId":"","messageId":"web-mwi1p79v-3f9a0379"}}
+{"at":1794759891484,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","kind":"armed","label":"A","releaseBasename":"release_A.txt"}
+{"at":1794759892847,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","kind":"event","event":"message_delivered","data":{"chatId":"","messageId":"web-mwi1p79v-3f9a0379"}}
+{"at":1794759895575,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","kind":"owned-key","key":"C-c"}
+{"at":1794760005986,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","kind":"event","event":"human_handoffs_unsettled","data":{"reason":"not-taken","messages":[{"chatId":"","messageId":"web-mwi1p79v-3f9a0379"}]}}
+{"at":1794760023653,"runBoot":"e0fda435-5537-4d8a-817d-3671d0ef11c0","kind":"coordinator-stopped","paneMode":"exit"}

@@ -1,0 +1,294 @@
+{
+  "case": ".artifacts/m4019-accept-gone",
+  "mode": "gone",
+  "sourceHead": "e6b17ab25babd68e03d44a256d7576c97b8c235f",
+  "startedAt": 1794764796919,
+  "originalCoordinator": {
+    "kind": "coordinator-ready",
+    "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce",
+    "pid": 552783,
+    "base": "http://127.0.0.1:40289",
+    "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205",
+    "pane": {
+      "paneId": "26358a66-5fc4-4262-9b1c-3890ddc49a82",
+      "launchId": "b7fc815a-e0b5-4a04-91d8-16dfe8e68c15",
+      "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"
+    },
+    "model": "gpt-6-luna"
+  },
+  "originalArgv": {
+    "kind": "actual-native-process-argv",
+    "pid": 7008,
+    "commandLineSha256": "d78e9e7a07decc671b540af74de8f024f0570a3030a6f05771ae9630b1c36574",
+    "noAltScreen": true,
+    "instantInterruptFalse": true,
+    "noDaemon": true,
+    "updateDisabled": true
+  },
+  "messageId": "web-mwi4mw27-05688e8c",
+  "pending": {
+    "kind": "snapshot",
+    "nativeCurrent": true,
+    "idleForMs": null,
+    "instanceState": "working",
+    "pasteQueueDepth": 0,
+    "isPaused": false,
+    "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce",
+    "flags": {
+      "unreadable": false,
+      "busy": true,
+      "pauseReady": false,
+      "trust": false,
+      "login": false,
+      "approval": false,
+      "queueMention": false,
+      "nativeQueue": true
+    },
+    "handoffs": [
+      {
+        "id": "2f0d40d1-fe45-49a0-b962-643040888545",
+        "holder": "e2767a54-7103-4535-811f-6fa7f31adc8f:1",
+        "hasRuntime": true,
+        "hasPath": false,
+        "redeliveries": 0,
+        "metaId": "web-mwi4mw27-05688e8c",
+        "wireHash": "9b428775f97a2a8504d3fa98fe44a797342789bd62452e2aa8b7d65123bf4603",
+        "runtime": {
+          "paneId": "26358a66-5fc4-4262-9b1c-3890ddc49a82",
+          "launchId": "b7fc815a-e0b5-4a04-91d8-16dfe8e68c15",
+          "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3",
+          "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205"
+        }
+      }
+    ],
+    "rpc": {
+      "input": 3,
+      "key": 3
+    },
+    "pane": {
+      "paneId": "26358a66-5fc4-4262-9b1c-3890ddc49a82",
+      "launchId": "b7fc815a-e0b5-4a04-91d8-16dfe8e68c15",
+      "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"
+    },
+    "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205"
+  },
+  "originalHandoff": {
+    "id": "2f0d40d1-fe45-49a0-b962-643040888545",
+    "holder": "e2767a54-7103-4535-811f-6fa7f31adc8f:1",
+    "runtime": {
+      "version": 1,
+      "machineId": "local",
+      "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3",
+      "paneId": "26358a66-5fc4-4262-9b1c-3890ddc49a82",
+      "launchId": "b7fc815a-e0b5-4a04-91d8-16dfe8e68c15",
+      "agentId": "fcb060d2-de97-4702-9cbd-8ce7c56ce860",
+      "provider": "codex",
+      "cursor": {
+        "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205",
+        "offset": 177926,
+        "fileId": "9430c2d878bc51617b55246a81256169792dd4eb72079f69ca88f935810982ca",
+        "anchor": "d37a536e04bcc33dbb9087892e9304e21daf0b1ee01a93efbd45cd51c7606b1a"
+      }
+    },
+    "wireHash": "9b428775f97a2a8504d3fa98fe44a797342789bd62452e2aa8b7d65123bf4603"
+  },
+  "replacement": {
+    "kind": "coordinator-ready",
+    "runBoot": "6a942d5d-4531-43c0-a0fc-c1021422b2f3",
+    "pid": 553248,
+    "base": "http://127.0.0.1:34537",
+    "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205",
+    "pane": {
+      "paneId": "4fcff525-7b77-47fe-bdbc-30904c810f7b",
+      "launchId": "fd82752b-4990-4ed3-bdd2-881f555f0174",
+      "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"
+    },
+    "model": "gpt-6-luna"
+  },
+  "settled": {
+    "kind": "snapshot",
+    "nativeCurrent": true,
+    "idleForMs": 1038.0471909999997,
+    "instanceState": "idle",
+    "pasteQueueDepth": 0,
+    "isPaused": false,
+    "runBoot": "6a942d5d-4531-43c0-a0fc-c1021422b2f3",
+    "flags": {
+      "unreadable": false,
+      "busy": false,
+      "pauseReady": true,
+      "trust": false,
+      "login": false,
+      "approval": false,
+      "queueMention": false,
+      "nativeQueue": false
+    },
+    "handoffs": [],
+    "rpc": {
+      "input": 1,
+      "key": 1
+    },
+    "pane": {
+      "paneId": "4fcff525-7b77-47fe-bdbc-30904c810f7b",
+      "launchId": "fd82752b-4990-4ed3-bdd2-881f555f0174",
+      "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"
+    },
+    "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205"
+  },
+  "secondReplacement": {
+    "kind": "coordinator-ready",
+    "runBoot": "43385c18-ef05-4b20-858a-a44d6b448dee",
+    "pid": 553469,
+    "base": "http://127.0.0.1:33103",
+    "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205",
+    "pane": {
+      "paneId": "4fcff525-7b77-47fe-bdbc-30904c810f7b",
+      "launchId": "fd82752b-4990-4ed3-bdd2-881f555f0174",
+      "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"
+    },
+    "model": "gpt-6-luna"
+  },
+  "afterSecondRestart": {
+    "kind": "snapshot",
+    "nativeCurrent": true,
+    "idleForMs": 4106.961581,
+    "instanceState": "idle",
+    "pasteQueueDepth": 0,
+    "isPaused": false,
+    "runBoot": "43385c18-ef05-4b20-858a-a44d6b448dee",
+    "flags": {
+      "unreadable": false,
+      "busy": false,
+      "pauseReady": true,
+      "trust": false,
+      "login": false,
+      "approval": false,
+      "queueMention": false,
+      "nativeQueue": false
+    },
+    "handoffs": [],
+    "rpc": {
+      "input": 0,
+      "key": 0
+    },
+    "pane": {
+      "paneId": "4fcff525-7b77-47fe-bdbc-30904c810f7b",
+      "launchId": "fd82752b-4990-4ed3-bdd2-881f555f0174",
+      "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"
+    },
+    "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205"
+  },
+  "appliedOriginalPayloads": 1,
+  "events": [
+    {
+      "at": 1794764814231,
+      "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce",
+      "kind": "coordinator-ready",
+      "pid": 552783,
+      "base": "http://127.0.0.1:40289",
+      "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205",
+      "pane": {
+        "paneId": "26358a66-5fc4-4262-9b1c-3890ddc49a82",
+        "launchId": "b7fc815a-e0b5-4a04-91d8-16dfe8e68c15",
+        "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"
+      },
+      "model": "gpt-6-luna"
+    },
+    {
+      "at": 1794764816294,
+      "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce",
+      "kind": "setup-submitted",
+      "label": "A"
+    },
+    {
+      "at": 1794764822485,
+      "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce",
+      "kind": "sent",
+      "id": "web-mwi4mw27-05688e8c",
+      "label": "queued-A"
+    },
+    {
+      "at": 1794764822485,
+      "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce",
+      "kind": "event",
+      "event": "message_queued",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwi4mw27-05688e8c"
+      }
+    },
+    {
+      "at": 1794764822489,
+      "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce",
+      "kind": "armed",
+      "label": "A",
+      "releaseBasename": "release_A.txt"
+    },
+    {
+      "at": 1794764823124,
+      "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce",
+      "kind": "event",
+      "event": "message_delivered",
+      "data": {
+        "chatId": "",
+        "messageId": "web-mwi4mw27-05688e8c"
+      }
+    },
+    {
+      "at": 1794764825858,
+      "runBoot": "a0c640c7-6b5d-4698-b8cf-ebaf438271ce",
+      "kind": "coordinator-stopped",
+      "paneMode": "exit"
+    },
+    {
+      "at": 1794764832339,
+      "runBoot": "6a942d5d-4531-43c0-a0fc-c1021422b2f3",
+      "kind": "coordinator-ready",
+      "pid": 553248,
+      "base": "http://127.0.0.1:34537",
+      "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205",
+      "pane": {
+        "paneId": "4fcff525-7b77-47fe-bdbc-30904c810f7b",
+        "launchId": "fd82752b-4990-4ed3-bdd2-881f555f0174",
+        "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"
+      },
+      "model": "gpt-6-luna"
+    },
+    {
+      "at": 1794764833338,
+      "runBoot": "6a942d5d-4531-43c0-a0fc-c1021422b2f3",
+      "kind": "event",
+      "event": "human_handoffs_unsettled",
+      "data": {
+        "reason": "unverifiable",
+        "messages": [
+          {
+            "chatId": "",
+            "messageId": "web-mwi4mw27-05688e8c"
+          }
+        ]
+      }
+    },
+    {
+      "at": 1794764833483,
+      "runBoot": "6a942d5d-4531-43c0-a0fc-c1021422b2f3",
+      "kind": "coordinator-stopped",
+      "paneMode": "detach"
+    },
+    {
+      "at": 1794764834708,
+      "runBoot": "43385c18-ef05-4b20-858a-a44d6b448dee",
+      "kind": "coordinator-ready",
+      "pid": 553469,
+      "base": "http://127.0.0.1:33103",
+      "sessionId": "01a1e051-acd7-7a20-8247-3c0799e34205",
+      "pane": {
+        "paneId": "4fcff525-7b77-47fe-bdbc-30904c810f7b",
+        "launchId": "fd82752b-4990-4ed3-bdd2-881f555f0174",
+        "hostBootId": "7f654c61-5140-44ce-962f-9b86477e55c3"
+      },
+      "model": "gpt-6-luna"
+    }
+  ],
+  "passed": true
+}

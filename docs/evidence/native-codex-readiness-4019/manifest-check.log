@@ -1,0 +1,10 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/native-codex-readiness-4019
+
+error: no such file or directory: /tmp/agend-precheck-zAKP5r/none
+
+ Test Files  1 passed (1)
+      Tests  87 passed (87)
+   Start at  01:27:50
+   Duration  8.46s (transform 83ms, setup 72ms, import 313ms, tests 7.96s, environment 0ms)
+
