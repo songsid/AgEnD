@@ -79,7 +79,8 @@ item where waiting can lose everything. 4 is the first question a company's IT w
   - Nothing checks on a schedule, so a person who never comes back still looks active in every list.
   - Their Fleets stay connected, their shares and room memberships stay, their uploads stay.
   - A room whose only manager left has no manager until an administrator notices and joins it.
-  - "Removed from the allowed group" works only if the sign-in filter names that group.
+  - "Removed from the allowed group" stops sharing and connecting only at the person's next action, and never
+    ends their sign-in or room memberships (`hub-teams-as-subjects.md`, section 1.3).
 - **Proposal.** A daily AD check of everyone known to the Hub. When an account is disabled: end the Fleet
   connections, stop the shares, remove the person from rooms (their past messages stay, shown as from a former
   member), and for each room they alone managed, make the longest-standing member the manager and tell the room.
@@ -178,7 +179,9 @@ sign-in, and on the pre-launch list in `hub-product-plan.md`.
   made an auditor**.
 - A database backup taken by copying the one file **will not restore** unless the two files beside it are copied
   at the same moment.
-- A person removed from the allowed AD group keeps access **unless the sign-in filter names that group**.
+- A person removed from an allowed AD group is refused sharing and connecting at their next action, but **keeps
+  their sign-in, rooms and teams**, nothing is disconnected ahead of time, and a Fleet that came in by join code
+  or invitation is never re-checked. Details and the fix are in `hub-teams-as-subjects.md` (M-3191).
 
 ## 4. 給擁有者的摘要（zh-TW）
 
