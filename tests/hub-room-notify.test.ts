@@ -317,6 +317,30 @@ describe("startHubRoomNotifier", () => {
     stop();
   });
 
+  it("pings the first event in a room once its id resolves, exactly once (Fable: lost first ping)", async () => {
+    const fx = createHubRoomsFixture();
+    const env = optedEnv();
+    const client = fakeClient();
+    const starter = startHubRoomNotifier as (...args: Array<Record<string, unknown>>) => () => void;
+    const ids: Record<string, { id: string }> = {};
+    const stop = starter({
+      client, me: (rid: unknown) => ids[rid as string] ?? null,
+      setMe: (rid: unknown, m: unknown) => { ids[rid as string] = m as { id: string }; },
+      resolveMe: async (rid: unknown) => { await new Promise((r) => setTimeout(r, 0)); return { id: `member-${rid}` }; },
+      roomName: (id: unknown) => String(id), open: vi.fn(), env, doc: { hidden: true },
+    });
+    const weekly = fx.rooms.find((r) => r.id === "room-weekly")!;
+    const chen = weekly.messages.find((m) => m.author.id === "person-chen")!;
+    // No remembered id for room-new: an @mention there starts the resolve and stays silent for now.
+    (client.handlers["message.added"] as (d: unknown) => void)({ roomId: "room-new", message: { ...chen, mentions: ["member-room-new"] } });
+    expect(env.seen).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 10));
+    // Once the resolve lands, the same event replays through the normal path: exactly one ping, no double.
+    expect(env.seen).toHaveLength(1);
+    expect(env.seen[0]!.opts.body).toContain("陳主任");
+    stop();
+  });
+
   it("a second start replaces the first", () => {
     const a = started();
     const b = started();

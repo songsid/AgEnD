@@ -76,11 +76,12 @@ export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, r
   const seen = new Set();
   const resolving = new Map();
   const meOf = (roomId) => (typeof me === "function" ? me(roomId) : me);
+  // Starts (or joins) the lazy resolve for a room; returns its promise, or null when no resolve applies.
   const ensureMe = (roomId) => {
-    if (!roomId) return;
+    if (!roomId) return null;
     const m = meOf(roomId);
-    if (m && m.id) return;
-    if (typeof resolveMe !== "function" || typeof setMe !== "function" || !notifyOn(env)) return;
+    if (m && m.id) return null;
+    if (typeof resolveMe !== "function" || typeof setMe !== "function" || !notifyOn(env)) return null;
     if (!resolving.has(roomId)) {
       resolving.set(roomId, Promise.resolve()
         .then(() => resolveMe(roomId))
@@ -89,8 +90,9 @@ export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, r
         .then((got) => { if (gen === liveGen && got && got.id) setMe(roomId, got); }, () => {})
         .finally(() => { resolving.delete(roomId); }));
     }
+    return resolving.get(roomId) ?? null;
   };
-  const onEvent = (type) => (data) => {
+  const onEvent = (type) => (data, replayed) => {
     const event = { type, ...(data && typeof data === "object" ? data : {}) };
     const focus = !(doc && doc.hidden);
     // Member ids are per room: match each event against that room's own remembered id, so an @mention or
@@ -102,9 +104,16 @@ export function startHubRoomNotifier({ client, me, setMe, resolveMe, roomName, r
       const direct = typeof roomKind === "function" && roomKind(event.roomId) === "direct";
       kind = notifyKind(event, self, { direct });
     } else {
-      // The page has not learned this person's id for this room yet: its message rows cannot be matched,
-      // while a new invitation (no author) still pings under the same opt-in + hidden-tab rule.
-      ensureMe(event.roomId);
+      // The page has not learned this person's id for this room yet: message rows cannot be matched now.
+      // A new invitation (no author) still pings at once under the hidden-tab rule; any other first event
+      // in the room is replayed through the normal path once the resolve lands (seen-key dedupe stops a
+      // double ping), so the first @mention is never the one that stays silent.
+      if (!replayed) {
+        const pending = ensureMe(event.roomId);
+        if (pending) pending.then(() => {
+          if (gen === liveGen && doc && doc.hidden && notifyOn(env)) onEvent(type)(data, true);
+        });
+      }
       if (focus || !notifyOn(env)) return;
       const inv = event.invitation;
       if (event.type !== "invitation.changed" || !inv || typeof inv !== "object" || !(inv.id || inv.room)) return;
