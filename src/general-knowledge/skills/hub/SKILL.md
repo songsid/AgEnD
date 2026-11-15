@@ -372,6 +372,10 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 
 - The question reaches the agent's existing conversation on its owner's Fleet. It names the room and asker and
   includes recent room messages. The agent keeps its own folder and tools; any required approval goes to its owner.
+- A compatible Hub/Fleet sends the latest 30 visible room messages on the first question, then only newer messages
+  since the last question that reached that agent, plus the replied-to message when needed. Restarting the agent,
+  clearing its conversation or starting a new session gives the next question the full recent window again.
+  Ordinary reconnects keep its place; older peers continue sending the full window. Unconfirmed input never advances it.
 - Everyone in the room can see the question and answer. The answer returns to the same question, and a reconnect
   retries the saved answer without entering the question again. Room agent answers are text only for now.
 - **Idle** (待命) means the agent can be woken by a question. **Working** means it is busy. **Paused** (暫停) names a

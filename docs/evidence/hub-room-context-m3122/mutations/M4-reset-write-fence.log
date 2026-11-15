@@ -1,0 +1,40 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-daemon-m3122.test.ts (5 tests | 1 failed | 4 skipped) 35ms
+   × a reset during a readiness wait prevents an old room delta from reaching the pane 34ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-daemon-m3122.test.ts > a reset during a readiness wait prevents an old room delta from reaching the pane
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[agend-room-input:hub-room-19d9ce34-4be5-45d3-b41c-52728129a86d]
+    [from:agend-hub] Old room context
+    (message_id: hub-room-19d9ce34-4be5-45d3-b41c-52728129a86d | reply required → report_result hub-room-19d9ce34-4be5-45d3-b41c-52728129a86d)",
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/hub-room-context-daemon-m3122.test.ts:59:34
+     57|   await vi.advanceTimersByTimeAsync(1);
+     58|   expect(release).toBeTypeOf("function"); w.d.resetRoomConversation();…
+     59|   expect(w.tmux.pasteBuffer).not.toHaveBeenCalled();
+       |                                  ^
+     60|   expect(w.notices.filter(n => n.type === "hub_room_input")).toEqual([…
+     61| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  16:53:30
+   Duration  2.63s (transform 1.81s, setup 199ms, import 2.25s, tests 35ms, environment 0ms)
+

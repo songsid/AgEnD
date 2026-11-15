@@ -1,0 +1,41 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-groups-mount-s89.test.ts (20 tests | 1 failed | 19 skipped) 804ms
+     × the Hub HTTP reports group permissions only when composed with them (what marks the host fleet's Settings row) 7ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-groups-mount-s89.test.ts > the group routes on the real Hub HTTP > the Hub HTTP reports group permissions only when composed with them (what marks the host fleet's Settings row)
+AssertionError: expected [ 'admin-dashboard-v1', …(7) ] to deeply equal [ 'admin-dashboard-v1', …(6) ]
+
+- Expected
++ Received
+
+@@ -2,8 +2,9 @@
+    "admin-dashboard-v1",
+    "fleet-update-v1",
+    "rooms-v1",
+    "room-ask-v1",
+    "room-post-v1",
++   "room-context-v1",
+    "person-prefs-v1",
+    "sharing-pause-v1",
+  ]
+
+ ❯ tests/hub-groups-mount-s89.test.ts:175:34
+    173|   });
+    174|   it("the Hub HTTP reports group permissions only when composed with t…
+    175|     expect(rigOff.http.features).toEqual(["admin-dashboard-v1", "fleet…
+       |                                  ^
+    176|     expect(rig.http.features).toEqual(["admin-dashboard-v1", "fleet-up…
+    177|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 19 skipped (20)
+   Start at  17:13:24
+   Duration  12.78s (transform 8.63s, setup 173ms, import 11.50s, tests 804ms, environment 0ms)
+

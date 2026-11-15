@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-m3122.test.ts (3 tests | 1 failed | 2 skipped) 21ms
+   × keeps cursors across reconnect, resets once, and rejects old generations, gaps and duplicate regressions 19ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-m3122.test.ts > keeps cursors across reconnect, resets once, and rejects old generations, gaps and duplicate regressions
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-room-context-m3122.test.ts:46:68
+     44|   expect(cursor.observe("agent","binding",g2,2)).toBe(true);
+     45|   expect(cursor.snapshot("room","agent","binding",9,2)?.after).toBe(0);
+     46|   expect(cursor.received("room","agent","binding",g1,overlapping)).toB…
+       |                                                                    ^
+     47|   expect(cursor.observe("agent","binding",g1,2)).toBe(false);
+     48|   expect(cursor.snapshot("other-room","agent","binding",9,2)?.after).t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 skipped (3)
+   Start at  16:53:28
+   Duration  312ms (transform 80ms, setup 101ms, import 35ms, tests 21ms, environment 0ms)
+

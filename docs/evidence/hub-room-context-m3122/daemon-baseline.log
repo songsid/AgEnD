@@ -1,0 +1,72 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-daemon-m3122.test.ts (5 tests | 3 failed) 77ms
+   × a real busy Hub delivery advances only when its recorded input is consumed, never at IPC or queue acceptance 35ms
+   × a reset during a readiness wait prevents an old room delta from reaching the pane 13ms
+   × a newly checkpointed non-Claude session rotates the room generation without changing the working-session contract 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-daemon-m3122.test.ts > a real busy Hub delivery advances only when its recorded input is consumed, never at IPC or queue acceptance
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/hub-room-context-daemon-m3122.test.ts:49:21
+     47|   expect(w.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+     48|   expect(w.notices.filter(n => n.type === "hub_room_input")).toEqual([…
+     49|   expect(w.watches).toHaveLength(1);
+       |                     ^
+     50|   w.watches[0].consumed("turn", "transcript-consumed:user-entry");
+     51|   expect(w.notices.filter(n => n.type === "hub_room_input")).toEqual([…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-room-context-daemon-m3122.test.ts > a reset during a readiness wait prevents an old room delta from reaching the pane
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[from:agend-hub] Old room context
+    (message_id: hub-room-8dcf059f-3285-4362-9427-19a30389dd3a | reply required → report_result hub-room-8dcf059f-3285-4362-9427-19a30389dd3a)",
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/hub-room-context-daemon-m3122.test.ts:59:34
+     57|   await vi.advanceTimersByTimeAsync(1);
+     58|   expect(release).toBeTypeOf("function"); w.d.resetRoomConversation();…
+     59|   expect(w.tmux.pasteBuffer).not.toHaveBeenCalled();
+       |                                  ^
+     60|   expect(w.notices.filter(n => n.type === "hub_room_input")).toEqual([…
+     61| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-room-context-daemon-m3122.test.ts > a newly checkpointed non-Claude session rotates the room generation without changing the working-session contract
+AssertionError: expected '22e0ae1c-c763-4f5b-bed3-50ca965c2d4c' not to be '22e0ae1c-c763-4f5b-bed3-50ca965c2d4c' // Object.is equality
+ ❯ tests/hub-room-context-daemon-m3122.test.ts:66:82
+     64|   vi.spyOn(w.backend,"getSessionId").mockImplementation(() => session);
+     65|   w.d.saveSessionId(); const first = w.d.roomConversationGeneration();
+     66|   session="B"; w.d.saveSessionId(); expect(w.d.roomConversationGenerat…
+       |                                                                                  ^
+     67|   const next=w.d.roomConversationGeneration(); w.d.saveSessionId(); ex…
+     68| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 2 passed (5)
+   Start at  16:40:06
+   Duration  3.37s (transform 2.29s, setup 265ms, import 2.73s, tests 77ms, environment 0ms)
+

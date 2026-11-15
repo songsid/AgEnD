@@ -1,0 +1,40 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-context-delta-m3122
+
+ ❯ tests/hub-room-context-http-m3122.test.ts (5 tests | 1 failed | 4 skipped) 114ms
+   × context input refuses a foreign owner before advancing the cursor 112ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-context-http-m3122.test.ts > context input refuses a foreign owner before advancing the cursor
+AssertionError: expected { v: 1, …(4) } to match object { …(2) }
+(6 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "payload": {
+-     "code": "stale",
+-     "ok": false,
++     "ok": true,
+    },
+    "type": "room.context-input-result",
+  }
+
+ ❯ tests/hub-room-context-http-m3122.test.ts:74:53
+     72|   const foreign={...w.link,fleetId:kind==="fleet"?randomUUID():w.fleet…
+     73|     owner:kind==="owner"?r!.addPerson("other","Other"):r!.admin};
+     74|   expect(await w.input(first,w.generation,foreign)).toMatchObject({typ…
+       |                                                     ^
+     75|   expect(r!.db.prepare("SELECT * FROM hub_room_context_positions").all…
+     76|   expect(await w.input(first)).toMatchObject({payload:{ok:true}});
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  17:15:27
+   Duration  3.69s (transform 2.60s, setup 81ms, import 3.36s, tests 114ms, environment 0ms)
+

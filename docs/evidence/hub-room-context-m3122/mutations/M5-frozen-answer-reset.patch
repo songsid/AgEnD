@@ -1,0 +1,13 @@
+diff --git a/src/hub/member/room-ask.ts b/src/hub/member/room-ask.ts
+index 3a89edd3a..09941a8c5 100644
+--- a/src/hub/member/room-ask.ts
++++ b/src/hub/member/room-ask.ts
+@@ -317,7 +317,7 @@ export class HubRoomAskAdapter {
+       if (!this.usable(source)) return;
+       const saved = this.read(row);
+       // Returning an already frozen answer does not reuse context or advance the next conversation's cursor.
+-      if (this.current(saved, false)) await this.send(saved, source);
++      if (this.current(saved)) await this.send(saved, source);
+     }
+   }
+   private send(saved: Saved, source: RoomAskLink): Promise<void> {
