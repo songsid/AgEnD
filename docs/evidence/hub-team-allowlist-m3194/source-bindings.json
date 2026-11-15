@@ -1,5 +1,5 @@
 {
-  "sourceHead": "cdaa4cd15332d2d06ff1ecfc41acbc914a8f6b3f",
+  "sourceHead": "2785632c24b0a6124391f134260b7ba0aeda2613",
   "parent": {
     "pr": 4015,
     "head": "604b6598ac2ada283a8252a34f651d1ea3c9de64"
@@ -19,7 +19,11 @@
     },
     {
       "path": "scripts/manual/hub-team-allowlist-3194/accept.mts",
-      "sha256": "6b8bd49e9fd28928cb1554c060f51ec93fea17002f20f978e98b0014b79bdfe7"
+      "sha256": "3b6a750340476e06fefaca48f349613ed398d2257e8354c239f5c0472fdce3a0"
+    },
+    {
+      "path": "scripts/manual/smoke/ui-gate-hub-tap-allowlist.json",
+      "sha256": "edbb827275e53babcba526c7605a3216bec9a5fd22c649311dc24a3b0a171bd7"
     },
     {
       "path": "src/general-knowledge/skills/hub/SKILL.md",
@@ -95,11 +99,15 @@
     },
     {
       "path": "src/ui/hub-policy-subjects.js",
-      "sha256": "4d0275aa25f5a2b8872700505faf86c465cdd361c5ea9cd22e9a3e16418555df"
+      "sha256": "79fbc881a9ad1ad85fc308fd7d043a07338dd016d6925db7b1a0766ef856f097"
     },
     {
       "path": "src/ui/hub-subject-picker.js",
       "sha256": "af350a23e6208a1a17c337c9ed17b66650f6b40871fe077194f75f94947a7ed7"
+    },
+    {
+      "path": "src/ui/shared/hub-owner.css",
+      "sha256": "c0927b4cd12e3d1a0f7d25e1fc7db4b6b440646f1d02b600cc7a6dbcadd0d0d5"
     },
     {
       "path": "tests/hub-allowed-people-m3194.test.ts",
@@ -142,5 +150,6 @@
       "sha256": "7d823616c296aacc3176cb5c6c02c9abcb87e733eb32c9c3104552f7e8472d03"
     }
   ],
-  "scope": "First T1 final focused run and actual factory hook. Parent test-only follow-up604b has no source change from consumed8cf. Browser validation pending."
+  "postCaptureChange": "Only the four zero-count tap exceptions were removed; no runtime or visual source change after the final retake/gates.",
+  "scope": "Logs retain their individual historical stage; current capture JS/CSS verified against actual served response digests."
 }

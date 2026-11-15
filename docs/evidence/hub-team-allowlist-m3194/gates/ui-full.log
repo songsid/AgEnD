@@ -1,0 +1,13 @@
+Hub UI gate listener: https://127.0.0.1:42597
+{
+  "gate": "full",
+  "gate:tap-allowlist-stale": {
+    "FAIL": [
+      "admin-groups div.s-row.hub-row > label.field.hub-group-fleets > input (0 now, 1 listed)",
+      "admin-groups div.s-row.hub-row > label.hub-group-cap > input (0 now, 3 listed)",
+      "admin-groups form.hub-step-form > label.field > input (0 now, 1 listed)",
+      "admin-groups section.card.hub-groups-state > div.hub-groups-actions > button.btn.btn-sm (0 now, 1 listed)"
+    ]
+  }
+}
+366 checks; FAIL 1: gate:tap-allowlist-stale
