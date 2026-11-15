@@ -1493,6 +1493,10 @@ img.amb-p { object-fit: contain; }
      you counts) goes back to the agents, and ⋯ reaches Needs you, Fleet and Settings. The lists keep the tabs. */
   .in-agent .tabs { display: none; }
   .in-agent .main { padding-bottom: 0; }
+  /* M-3166: …so nothing under the composer holds the home-indicator inset any more. Once ✓ Verified hides the line under it
+     (below), the box sat in the screen's rounded corners. The dock keeps the inset itself, with the keyboard down (up, the
+     keyboard covers that area, and the box sits on it: #2478). */
+  .in-agent:not(.kb-open) .dock { padding-bottom: max(var(--s-2), env(safe-area-inset-bottom)); }
   .sb-back .ic-menu { display: none; }
   .sb-back .ic-back { display: inline-block; }
   .sb-back { position: relative; }
