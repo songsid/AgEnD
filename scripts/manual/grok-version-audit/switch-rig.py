@@ -28,4 +28,11 @@ try:
  for i,cmd in enumerate(['/model grok-4 high','/effort low','/model definitely-unknown']):
   tm('set-buffer','-b','rig',cmd);tm('paste-buffer','-p','-d','-b','rig','-t','rig');time.sleep(.3);tm('send-keys','-t','rig','Enter');time.sleep(2)
   pane=tm('capture-pane','-p','-t','rig','-S','-160').stdout;(out/f'switch-{i}.txt').write_text(pane);print(pane[-4000:],flush=True)
+ if os.environ.get('DAEMON_PROOF') == '1':
+  (root/'agend').mkdir(exist_ok=True);(root/'inst').mkdir(exist_ok=True)
+  env={**os.environ,'AGEND_HOME':'/rig/agend','SOCK':'grok3180','SESSION':'rig','INST':'/rig/inst','WORKDIR':'/work'}
+  specs=[{'model':'grok-4','effort':'high'},{'model':None,'effort':'low'}]
+  proof=subprocess.run(['/rig/bin/node','/repo/node_modules/tsx/dist/cli.mjs','/repo/scripts/manual/grok-version-audit/daemon-switch.mts',*[json.dumps(w) for w in specs]],env=env,capture_output=True,text=True,timeout=180)
+  (out/'daemon-proof.log').write_text(proof.stdout+proof.stderr)
+  if proof.returncode:raise RuntimeError('Production daemon proof failed; inspect daemon-proof.log')
 finally:tm('kill-session','-t','rig');tm('kill-server');server.shutdown()

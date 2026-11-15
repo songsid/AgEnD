@@ -9,6 +9,7 @@ import { basename } from "node:path";
 import { compareVersions, versionOf } from "../cli-audited.js";
 import { probeBackendVersion } from "../backend-availability.js";
 import { readMuseCachedCatalog } from "./muse.js";
+import { GROK_INLINE_MODEL_MIN, grokSwitchCommand, grokSwitchVerdict } from "./grok-model-switch.js";
 
 /** What one switch asks for: null leaves that one as the session has it. */
 export interface CliSwitchWant { model: string | null; effort: string | null }
@@ -87,8 +88,17 @@ export const MUSE_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
   },
 };
 
+/** Grok: exact fresh model/effort response; transient notices may replace earlier notices. */
+export const GROK_RUNTIME_SWITCH: CliRuntimeSwitchEntry = {
+  minVersion: { model: GROK_INLINE_MODEL_MIN, effort: GROK_INLINE_MODEL_MIN },
+  matchExe: exe => /\/grok(?:-\d+\.\d+\.\d+[^/]*)?$/.test(exe),
+  steps: want => [want],
+  command: grokSwitchCommand,
+  verify: (want, before, now) => grokSwitchVerdict(want, before.pane, now.pane),
+};
+
 /** The CLIs whose fleet `/model` / `/effort` try the in-session switch first. (agy, grok: their entries join here.) */
-export const CLI_RUNTIME_SWITCH: Readonly<Record<string, CliRuntimeSwitchEntry>> = Object.freeze({ muse: MUSE_RUNTIME_SWITCH });
+export const CLI_RUNTIME_SWITCH: Readonly<Record<string, CliRuntimeSwitchEntry>> = Object.freeze({ muse: MUSE_RUNTIME_SWITCH, grok: GROK_RUNTIME_SWITCH });
 
 export function cliSwitchAllowed(entry: CliRuntimeSwitchEntry, step: CliSwitchWant, version: string | null): boolean {
   const v = versionOf(version);
