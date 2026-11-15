@@ -30,6 +30,13 @@ const passiveComposer = (text: "Ask Codex to do anything" | "/status") => new Re
 export const CODEX_EMPTY_PASSIVE_COMPOSER = passiveComposer("Ask Codex to do anything");
 export const CODEX_STATUS_PASSIVE_COMPOSER = passiveComposer("/status");
 
+// #4019: an interrupted native resume can have no footer at all. These exact tails are separate from the general
+// passive-footer grammar. Callers must also prove an owned native resume with the context-only status configuration.
+const footerlessResumeComposer = (text: "Ask Codex to do anything" | "/status") => new RegExp(
+  String.raw`(?:^|\n)[>›][ \t]+${text}[ \t]*(?:\r?\n[ \t]*)*$`, "iu");
+export const CODEX_EMPTY_FOOTERLESS_RESUME_COMPOSER = footerlessResumeComposer("Ask Codex to do anything");
+export const CODEX_STATUS_FOOTERLESS_RESUME_COMPOSER = footerlessResumeComposer("/status");
+
 // Real 0.165 contextless /status completion replaces the passive footer. This is only the exact selected
 // built-in command plus its one sibling and the same typed command; it is never empty-composer readiness.
 const statusAutocomplete = /(?:^|\n)[>›][ \t]+\/status[ \t]{2,}show current session configuration and token usage[ \t]*\n[ \t]+\/statusline[ \t]{2,}configure which items appear in the status line[ \t]*\n(?:[ \t]*\n){0,3}[>›][ \t]+\/status[ \t]*(?:\n[ \t]*)*$/u;

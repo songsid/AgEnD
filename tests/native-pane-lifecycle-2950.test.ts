@@ -2,9 +2,9 @@
 import{afterEach,expect,it,vi}from'vitest';import{randomUUID}from'node:crypto';import{mkdtempSync,rmSync,readFileSync}from'node:fs';import{tmpdir}from'node:os';import{join}from'node:path';
 import{RuntimeNativePaneLifecycle,type NativePaneLifecycleOptions}from'../src/native-pane-lifecycle.js';import{RuntimePaneHost}from'../src/runtime-pane-host.js';import{RuntimePaneStore}from'../src/runtime-pane-store.js';import type{RuntimePaneLaunch}from'../src/runtime-pane-protocol.js';
 const clean:Array<()=>unknown>=[];afterEach(async()=>{for(const f of clean.splice(0).reverse())await f();vi.restoreAllMocks();});
-async function fixture(cli:'codex'|'claude-code'='codex',expected?:string,contextless=false,autocomplete=false){
- const root=mkdtempSync(join(tmpdir(),'agend-native-lifecycle-'));clean.push(()=>rmSync(root,{recursive:true,force:true}));const actual=randomUUID(),launch:RuntimePaneLaunch={paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:'native-agent',cli,cwd:'C:\\scratch',sandbox:'read-only',columns:autocomplete?120:100,rows:autocomplete?45:30,...(expected?{sessionId:expected}:{})};
- let output:(text:string)=>void=()=>{},exit:(value:{exitCode:number})=>void=()=>{};const idle=contextless?'› Ask Codex to do anything\r\n\r\n  ? for shortcuts    ⚠ 2 warnings · f2 to view\r\n':'› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n';
+async function fixture(cli:'codex'|'claude-code'='codex',expected?:string,contextless=false,autocomplete=false,idleOverride?:string){
+ const root=mkdtempSync(join(tmpdir(),'agend-native-lifecycle-'));clean.push(()=>rmSync(root,{recursive:true,force:true}));const actual=randomUUID(),launch:RuntimePaneLaunch={paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:'native-agent',cli,cwd:'C:\\scratch',sandbox:'read-only',columns:autocomplete||idleOverride?120:100,rows:autocomplete||idleOverride?45:30,...(expected?{sessionId:expected}:{})};
+ let output:(text:string)=>void=()=>{},exit:(value:{exitCode:number})=>void=()=>{};const idle=idleOverride??(contextless?'› Ask Codex to do anything\r\n\r\n  ? for shortcuts    ⚠ 2 warnings · f2 to view\r\n':'› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n');
  const write=vi.fn((text:string)=>{if(text==='/status')output('\x1b[2J\x1b[H'+(autocomplete?readFileSync(new URL('./fixtures/codex-0165-native-contextless-status-autocomplete.pane.txt',import.meta.url),'utf8').replace(/\r?\n/g,'\r\n'):idle.replace('Ask Codex to do anything','/status')));if(text==='\r')output(`\x1b[2J\x1b[HSession: ${actual}\r\n${idle}`);});
  const process={pid:12345,write,resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:(fn:typeof output)=>{output=fn;setTimeout(()=>output(cli==='codex'?idle:'Accessing workspace:\r\nC:\\scratch\r\nYes, I trust this folder\r\n❯ No, exit\r\n'),0);return{dispose(){}};},onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
  const spawn=vi.fn(async()=>process),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,'runner')),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:'pending' as const,cursor,data:'',lines:[],complete:false,gap:false};},close:async()=>{}})});clean.push(()=>host.stop());
@@ -152,4 +152,12 @@ it('fixed status autocomplete retains live work, disconnect and every active-dia
  expect(ready('• Working (1s • esc to interrupt)\n'+screen)).toBe(false);expect(ready(screen.replace(/(\n› \/status[ \t]*\n)/,'\n• Reconnecting to app-server… (8s)\n$1'))).toBe(false);
  vi.spyOn(native.backend,'getRuntimeDialogs').mockReturnValue([{pattern:/MENU ACTIVE/,keys:[],holdOnly:true,description:'active runtime fixture',isActive:()=>true}]);expect(ready('MENU ACTIVE\n'+screen)).toBe(false);
  vi.spyOn(native.backend,'getStartupDialogs').mockReturnValue([{pattern:/STARTUP ACTIVE/,keys:[],description:'active startup fixture',isActive:()=>true}]);expect(ready('STARTUP ACTIVE\n'+screen)).toBe(false);await native.release('detach');
+});
+
+it('#4019: the real empty footerless interrupted resume verifies its exact session without clearing or another prompt',async()=>{
+ const screen=readFileSync(new URL('./fixtures/codex-readiness-4019/footerless-resume.txt',import.meta.url),'utf8').replace(/\r?\n/g,'\r\n');
+ const f=await fixture('codex',undefined,true,false,screen);f.launch.sessionId=f.actual;const native=f.make();let retired=false,result:unknown;
+ const pending=native.acquire(()=>{if(retired)throw Error('test admission retired');});void pending.then(value=>{result=value;},()=>{});
+ try{await vi.waitFor(()=>expect(result).toBeDefined(),{timeout:5000});expect(result).toMatchObject({disposition:'resumed'});expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status','\r']);expect(f.options.pin).toHaveBeenCalledExactlyOnceWith(f.launch.launchId,f.actual);}
+ finally{retired=true;await native.release('close');await pending.catch(()=>{});}
 });
