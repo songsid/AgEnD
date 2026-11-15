@@ -1,0 +1,310 @@
+# The AgEnD connector: one extension point for every agent and desktop app (M-3185)
+
+Status: first draft for the owner to iterate on. Nothing is built. Facts about today's server come from a source
+survey of `release/2.3.5-alpha` at `616e8f75d` and from Sentinel's narrow source checks for M-3184 (the full audit
+has not run). Cairn's M-3183 facts are still to be folded in; places that depend on them are marked **(Cairn)**.
+
+## 0. The idea in one paragraph
+
+Every agent in a Fleet already talks to one AgEnD program, whatever its CLI: the AgEnD connector (our MCP server).
+Today a new ability, such as reading SharePoint files or using a browser, is installed into each CLI separately, so
+it works on some backends and not others, and nobody can see or control it from AgEnD. The proposal: a new ability
+is a **module** inside the connector. It is installed once with AgEnD, switched on per agent in Settings, works the
+same on every backend, asks for approval through AgEnD, and can also be reached by a person's desktop Claude or
+Codex app through the same connector.
+
+Names used here: **AgEnD connector** / 「AgEnD 連接器」, **module** / 「模組」.
+
+## 1. Today's connector (survey)
+
+| Topic | Today |
+|---|---|
+| Shape | One small stdio program per CLI process (`src/channel/mcp-server.ts`). It holds no tool logic; it forwards each call over the agent's local socket to the Fleet process, which checks permission and runs the handler |
+| Who is calling | Known from which agent's socket the call arrived on. The agent cannot claim to be another agent |
+| Registration | AgEnD writes the connector into each CLI's own configuration at launch: seven backends, seven different files and wrappers (Claude Code, Codex, Grok, Muse, Kiro, OpenCode, Antigravity) |
+| Tools | 83, in one registry (`src/channel/mcp-tools.ts`) |
+| Tool sets | `full` 83, `coordinator` 83, `general` 81, `worker` 63 (the default), `standard` 54, `minimal` 9. Set per agent (`instances.<name>.tool_set`) or as the Fleet default |
+| Feature switches | Five "dashboard access" switches (appearance, task board, web settings, office, office packs) hide a group of tools and also refuse them. This is the nearest thing to a module today |
+| Listing | **Waits on live state.** Each listing asks the Fleet process whether the Hub is available (`hub_room_status`), with a 45-second limit, and drops the four Hub tools if not. Sentinel confirmed this couples the whole list to a Hub round trip; M-3183 is the repair **(Cairn)** |
+| List changes | The list is re-announced when the Hub state changes, when the socket drops or returns, and when a dashboard switch changes |
+| On-demand loading | None. No "find a tool" mechanism of our own |
+| Approvals | No general flow. A few tools return "pending" and wait for an administrator's yes in General or in the web's Needs you list (Windows agent create and settings, Kiro migration). They do not hold the call open (Sentinel). The chat adapters have an unused approval method. Claude Code runs with its own permission prompts switched off |
+| Other ways to extend | Bundled skills (22), published per backend into each agent's skills folder by role. A person's own skills and MCP servers reach an agent only by accident of each CLI's configuration; AgEnD has no setting for them |
+| For outside apps | Nothing. No HTTP connector, no app sign-in. `hub-mcp-agent.md` (M-3158) proposes one on the Hub |
+| Browser, computer use | Nothing in AgEnD. SharePoint exists only as a skill in one person's own Claude folder |
+
+**Context cost per backend.** Measured once, on 2026-10-31, by capturing requests; versions have moved since, and
+M-3184 does not cover token size, so these need re-measuring before any number is promised:
+
+| Backend | What reaches the model |
+|---|---|
+| Claude Code | Tool descriptions are deferred: the model looks a tool up when it needs it |
+| Codex, catalog models | Deferred. With a custom provider or an unknown model: every description on every request (77 KB for `full`, 60 KB for `worker` at the time) |
+| Grok | Deferred |
+| Muse | **Everything, every request**: about 84 KB at the time. No switch found to defer |
+| Kiro, Antigravity, OpenCode | Not measured |
+
+So adding modules costs nothing in context on three backends and costs every request on Muse and on any backend
+that behaves like it.
+
+## 2. Module model
+
+A module is a named group of tools that ships **inside an AgEnD release**. It is described by a manifest, a small
+fixed record that AgEnD can read without running the module:
+
+| Manifest field | Meaning |
+|---|---|
+| Name and one-line description | Shown in Settings, in EN and zh-TW |
+| Tools | Name, description and input shape of each tool. Fixed for the release |
+| Needs | What must be present for it to work: a Hub connection, a signed-in Microsoft account, a desktop, a platform |
+| Risk of each tool | Reads only / changes things / needs a person's approval (section 6) |
+| Who may call it | Fleet agents, a person's desktop app, or both (section 7) |
+| Default | On or off for a new agent |
+| Runs | Inside the Fleet process (light modules), or as its own worker process (anything that drives a browser, a desktop or outside code) |
+| Skill | An optional short "how to use this" skill, published only to agents that have the module |
+
+Rules:
+
+1. **Built-in first.** Phase 1 modules are written by us and ship with AgEnD. No module code arrives from the Hub
+   or from the network, the same rule as M-3130.
+2. **One check, in the Fleet process.** Whether an agent may use a module is decided where the call runs, not only
+   by what the list shows. A hidden tool is not a refused tool (Sentinel).
+3. **Heavy modules run apart.** A browser or desktop module runs as its own worker process, started on first use,
+   with a time limit per call. If it hangs or crashes, that one call fails with a reason and the Fleet keeps
+   running.
+4. **Every call ends with a clear result**: done, refused (with the reason), not available (what is missing), or
+   uncertain (it may have happened; here is how to check). Never a silent wait.
+
+### 2.1 First modules
+
+| Module | What it gives an agent | Default | Notes |
+|---|---|---|---|
+| **Core** | Today's AgEnD tools: reply, messaging, tasks, schedules, decisions | Always on | Still shaped by the agent's tool set. Not re-cut in the first phases |
+| **Hub** | The four Hub room tools that exist (M-3118) | On when the Fleet is connected to a Hub | The first module, because it exists and M-3183 touches it |
+| **SharePoint files** | List, read (including protected Excel), download, see who a file is shared with | Off | Today a skill for one CLI. Needs a Microsoft sign-in, approved through AgEnD |
+| **Browser** | Open a page, read it, click, fill in, take a picture | Off | Own worker process, own browser profile per agent |
+| **Computer use** | See and operate the desktop of the AgEnD computer, or of a paired Windows computer | Off | The riskiest. Needs its own short design before it is built |
+
+Today's five dashboard switches are modules in all but name. They move into the same list later (phase 6), so
+there is one place to look.
+
+### 2.2 Other people's MCP servers, as wrapped modules
+
+The fastest way to gain abilities is to wrap an existing MCP server (many exist for browsers, files, trackers)
+instead of rewriting it. A **wrapped module** is an existing MCP server that AgEnD starts as a worker process and
+passes through, under the same switches, approvals and limits as a built-in module.
+
+- Its tool list is **recorded once**, when an administrator adds or updates it, and listing reads that record.
+  AgEnD never starts the server just to list tools.
+- It runs outside code under the Fleet's OS account. Only a Fleet administrator can add one, and the version is
+  fixed until they change it.
+- Recommended later (phase 5), after built-in modules prove the model.
+
+## 3. The tool list: fixed and fast
+
+The M-3183 lesson, as a rule: **listing tools never waits on anything.**
+
+- The list is built from two things only: the module manifests in this AgEnD version, and the agent's saved
+  settings. Both are on disk when the connector starts.
+- Listing does not ask the Fleet process, the Hub, a module worker or the network.
+- A module that is switched on but cannot work right now **stays listed**. Calling its tool returns "not
+  available" with the reason, for example: "Not available: this Fleet is not connected to a Hub." The agent can
+  say so in its answer. **(Cairn: confirm this matches M-3183.)**
+- The list changes only when a person changes the agent's modules in Settings. The connector announces the change;
+  a CLI that does not pick it up mid-session gets it at the agent's next restart, and Settings says so.
+- A module that fails to load leaves the rest of the list untouched.
+
+What this costs: an agent sometimes sees a tool it cannot use at that moment, and spends one call to find out.
+That is cheaper than a list that can hang or change under the model.
+
+## 4. Choosing modules per agent
+
+Where: Settings → an agent → Workspace → the existing **Tools & modes** card gets a **Modules** list. The Fleet
+default sits beside the default tool set in Settings.
+
+| | EN | zh-TW |
+|---|---|---|
+| Heading | Modules | 模組 |
+| Hint | Extra abilities for this agent. They work the same on every AI backend. | 這個 Agent 的額外能力。不論使用哪一種 AI，用法都一樣。 |
+| Row | **SharePoint files**: read files on the company SharePoint. | **SharePoint 檔案**：讀取公司 SharePoint 上的檔案。 |
+| Row state, working | On | 已開啟 |
+| Row state, something missing | On · Needs a Microsoft sign-in | 已開啟 · 需要登入 Microsoft |
+| Row state, off by the Fleet | Off for this Fleet | 這個 Fleet 已關閉 |
+| After a change, when a restart is needed | Applies when this agent restarts. | 這個 Agent 重新啟動後生效。 |
+| Fleet default hint | New agents start with these modules. | 新的 Agent 會從這些模組開始。 |
+
+- **Basics on by default**: Core always; Hub when the Fleet is connected to one. Everything that reaches outside
+  the Fleet (SharePoint, Browser, Computer use, wrapped modules) is off until someone switches it on.
+- A module with a missing need shows what is missing, with the one action that fixes it.
+- A Fleet administrator can switch a module off for the whole Fleet; agents then cannot turn it on.
+- Agents shared on a Hub: modules that reach outside are **off while the agent answers a Hub question**, unless
+  its owner ticks otherwise. Same reasoning as the contact limit (`hub-agent-contact-limits.md`): a Hub asker
+  should not be able to drive the owner's browser or SharePoint through a shared agent.
+
+## 5. Context cost: load on demand where the CLI does not
+
+Two ways to show tools to a model:
+
+- **All listed**: every tool with its full description. Right for CLIs that defer on their own (Claude Code,
+  Codex catalog models, Grok): they already load a description only when needed.
+- **Find on demand**: the list holds the everyday tools in full, plus two small tools:
+  - `agend_find_tool`: "what can I do about X?" returns matching tools with their descriptions.
+  - `agend_use_tool`: runs one of them by name.
+
+  A short index, one line per switched-on module, goes into the connector's opening instructions so the model
+  knows what exists.
+
+Proposed rule:
+
+| Backend | Default |
+|---|---|
+| Claude Code, Codex with a catalog model, Grok | All listed |
+| Muse, Codex with a custom model, and any backend not yet measured | Find on demand |
+
+- "Everyday tools" are the ones an agent needs on almost every turn (reply, messaging, reporting a result, the
+  task board). Starting point: today's `minimal` set plus reporting and tasks. Target for Muse: from about 84 KB
+  per request to under 15 KB. To be measured, not assumed.
+- Per agent, under Advanced: **How tools are shown** / 「工具的顯示方式」: Automatic / All listed / Find on demand
+  (自動 / 全部列出 / 需要時再找). Automatic follows the table.
+- Both ways use the same fixed manifests, so the listing rule in section 3 holds for both.
+
+What this costs:
+
+- One extra step the first time an agent uses a module tool, and a model can fail to look for a tool it would
+  have used had it been listed. Core tools stay listed for that reason.
+- The CLI no longer checks the input shape; the connector must, and must return a readable error.
+- Any per-tool view in the CLI shows only "agend_use_tool". AgEnD's own log must name the real tool.
+
+## 6. Approvals through AgEnD
+
+Why AgEnD's own flow: agents run unattended, Claude Code runs with its own prompts off, and each CLI asks
+differently. A module tool marked "needs approval" is approved in one place, the same way on every backend.
+
+**How it works**
+
+1. The agent calls the tool. It returns at once: "Waiting for approval. You will get the result as a message."
+   The call is not held open (the existing pattern, per Sentinel).
+2. A request appears in the web's **Needs you** list and as a message with buttons in the Fleet's Discord or
+   Telegram General. It shows the agent, the module, and exactly what will happen, in plain words.
+3. A Fleet administrator presses a button. The press must come from a verified person, as for other go-aheads.
+4. On **Approve**, AgEnD runs exactly what was shown and sends the result to the agent as a message. The agent
+   does not call again, so what was approved is what runs.
+5. On **Don't allow**, or after 30 minutes with no answer, the agent is told so and can say so.
+
+| | EN | zh-TW |
+|---|---|---|
+| Title | {agent} wants to use {module} | {agent} 想使用 {module} |
+| Detail, example | Open `https://example.com/report` in the browser and read the page. | 用瀏覽器開啟 `https://example.com/report` 並讀取頁面。 |
+| Buttons | Approve once · Always allow for this agent · Don't allow | 同意這一次 · 這個 Agent 一律同意 · 不同意 |
+| Expired | Not approved in time. Nothing was done. | 沒有在時間內同意，沒有執行任何動作。 |
+
+**Three approval shapes**, chosen by the module for each tool:
+
+- **Each time**: one request per action. For rare, weighty actions (sending a file out, changing sharing).
+- **Always allow, within a scope**: the administrator's "always" is remembered for that agent and that scope,
+  such as one website or one SharePoint site. Listed in Settings, removable there.
+- **A session**: for computer use and long browser tasks, where a request per click is unusable. "Let {agent}
+  control the desktop for this task, up to 30 minutes", with a Stop button while it runs.
+
+**Signing in is an approval too.** SharePoint needs a Microsoft sign-in code. Today the agent prints the code in
+chat. As a module, the same Needs you request carries the code and the link, and the person signs in on their own
+device.
+
+What this costs, plainly:
+
+- **Approval fatigue.** Too many requests train people to press Approve. Hence "always allow" scopes and sessions,
+  and reads that need no approval at all.
+- **"Always allow" is a standing permission.** Text an agent reads on a web page or in a file can then steer it
+  within that scope without anyone being asked.
+- **A session is trust for its whole length.** During a computer-use session the agent can do anything the
+  desktop account can do.
+- **One account for all.** A module signed in as the Fleet owner acts as the owner for every agent that has it.
+  An agent with SharePoint reads what the owner can read.
+
+## 7. Desktop Claude and Codex apps on the same connector
+
+One connector, three ways in. The module manifest says which callers each tool serves.
+
+| Way in | Who the caller is | What it reaches | Transport |
+|---|---|---|---|
+| A Fleet agent (today) | The agent, known by its socket | Core and the agent's modules | Local stdio |
+| A person's app, to their own Fleet | The signed-in Fleet person | "Talk to my agents": list them, send a message, read the answer, see the task board. Modules marked for apps | On the AgEnD computer: a local command the app runs, no network. From another computer: the Fleet's web address, with the web sign-in |
+| A person's app, to the Hub | The signed-in company person | The **Hub module** as a person: rooms, asking shared agents, people search | The Hub's address, with company sign-in |
+
+**How `hub-mcp-agent.md` folds in.** Its step 1, the app as the person's hands on the Hub, is the third row: the
+Hub module with a person as the caller. Everything in that spec about sign-in, consent, "Wang via Codex", the
+administrator's and room's switches, limits and costs stands; only the framing changes from "an MCP service on the
+Hub" to "the Hub door of the AgEnD connector". Its tools become the Hub module's person-facing tools, and the four
+Fleet-agent room tools are the same module's agent-facing tools. Its step 2 (the inbox) stays on hold, as P6 in
+`hub-personal-agent.md` recommends.
+
+**The second row is new**, and is the cheaper one to build first: a person's desktop app on the AgEnD computer can
+use a local command, which needs no certificate and no network sign-in. It gives the owner's stated goal for
+managers ("ask the agents they are authorized to ask") a desktop form without waiting for the Hub's certificate.
+**(Cairn: can the Fleet process serve a caller that is a person, not an agent? Today identity is the agent's
+socket.)**
+
+What an app caller must never get: the tools that let an agent act as the Fleet (create or delete agents, change
+settings, approve requests). An app can ask an agent; it cannot be an administrator.
+
+What this costs: the same as section 9 of `hub-mcp-agent.md`. What the app reads leaves to that app's AI
+provider; a token on the person's computer acts as them; posts are written by an AI under a person's name.
+
+## 8. What stays as it is
+
+- **Tool sets.** They keep shaping Core. Replacing them with modules is a later clean-up, not a condition.
+- **Skills.** A skill is text that teaches; a module is the ability. A module can carry its skill.
+- **Each CLI's own MCP servers and tools.** AgEnD does not remove them. The point is that new abilities no longer
+  have to be installed there.
+- **Personal agents** (`hub-personal-agent.md`): they run with no AgEnD tools, so no modules.
+
+## 9. What the whole design costs
+
+- **One place to fail.** If the connector or the Fleet process is down, every ability is down, on every agent.
+  Worker processes and per-call time limits keep one module from taking the rest with it.
+- **Wider reach for every agent.** Today a browser exists only where someone installed it. With modules, any agent
+  is one switch away from the browser, SharePoint or the desktop. Defaults are off, the switch is an
+  administrator's, and risky tools need approval, but the reach is still wider than today.
+- **AgEnD becomes the only gate** where the CLI's own prompts are off. A mistake in our approval flow has no
+  second check behind it.
+- **We own the modules.** Each built-in module is ours to keep working as SharePoint, browsers and desktops
+  change. Wrapped modules shift that work to their authors and add outside code.
+- **Find on demand** trades context for an extra step and some missed tools (section 5).
+
+## 10. Phases and cards
+
+| Card | What | Size | Depends on |
+|---|---|---|---|
+| 1a | Module manifests and registry. The Hub tools become the first module. Listing reads manifests and saved settings only; the check moves to where the call runs; a missing need answers "not available" | M | M-3183 |
+| 1b | Settings: the Modules list per agent and the Fleet default, with the states in section 4 | M | 1a |
+| 1c | Measure the catalog per backend (bytes per request, every backend we ship), then "find on demand" with the Automatic rule | M | 1a, M-3184 |
+| 2a | Approvals: a stored request, Needs you and chat buttons, run-on-approve, expiry, "always allow" scopes in Settings | L | 1a |
+| 2b | Worker processes for heavy modules: start on first use, per-call time limit, clean failure | M | 1a |
+| 3a | SharePoint files module, with sign-in through an approval request. The first new ability on every backend | M | 2a |
+| 3b | Browser module | L | 2a, 2b |
+| 3c | Computer use: its own design first (session approval, live view, Stop), then the module | L | 2a, 2b |
+| 4a | A person's desktop app to their own Fleet, by a local command | M | 1a |
+| 4b | The same from another computer, by the Fleet's web address and sign-in | M | 4a |
+| 4c | The Hub door: `hub-mcp-agent.md` step 1 as the Hub module for a person | L | 1a, the Hub's trusted certificate |
+| 5 | Wrapped modules: an administrator adds an existing MCP server as a module | L | 2a, 2b |
+| 6 | Clean-up: dashboard switches become modules; decide whether tool sets do too | M | 1b |
+
+Suggested order: 1a → 1b → 2a → 3a gives the owner one new ability working on every backend with approvals, which
+proves the model end to end. 1c runs alongside. 4a can go any time after 1a.
+
+## 11. Open questions, with recommendations
+
+| # | Question | Recommendation |
+|---|---|---|
+| C1 | Built-in modules only, or other people's MCP servers too? | **Built-in first.** Wrapped modules in phase 5, administrator only. |
+| C2 | Which module first? | **SharePoint files.** The skill exists, the need is real, and its sign-in exercises the approval flow. |
+| C3 | A tool whose module cannot work right now: listed and refusing, or hidden? | **Listed and refusing with the reason.** It is what keeps listing fixed and fast. |
+| C4 | Who approves? | **Fleet administrators**, on the web and in Discord or Telegram. Not the agent's team lead agent, not another agent. |
+| C5 | On approval, does AgEnD run the action, or does the agent call again? | **AgEnD runs it** and sends the result. What was shown is what runs. |
+| C6 | "Always allow" scopes? | **Yes**, per agent and per scope, visible and removable in Settings. Without them approvals become noise. |
+| C7 | Modules while a shared agent answers a Hub question | **Outside-reaching modules off by default**, owner can allow per agent. |
+| C8 | "Find on demand" default | **Automatic by backend**, from measurements; a per-agent override under Advanced. |
+| C9 | Desktop apps: which door first? | **The person's own Fleet by local command (4a).** No certificate needed. The Hub door waits for the Hub's certificate. |
+| C10 | Do tool sets become modules? | **Not now.** Decide after modules have shipped and the Settings card can be judged as a whole. |
+| C11 | The words "connector" and "module" in the product | **Keep both** / 「連接器」「模組」. In Settings the row names carry the meaning ("SharePoint files"), so the words matter little. |
+| C12 | Computer use on whose desktop? | **Its own design.** The AgEnD computer is usually a server with no desktop; a paired Windows computer (Runtime) is the likelier target. |
