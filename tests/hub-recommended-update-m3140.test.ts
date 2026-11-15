@@ -150,6 +150,7 @@ describe("M-3140: General's notice and its 7-day reminder", () => {
     try {
       const posted = await general(f);
       const t0 = Date.now();
+      vi.spyOn(Date, "now").mockReturnValue(t0);
       f.fm.hubRecommendationChanged(); await vi.waitFor(() => expect(posted).toHaveLength(1));
       expect(posted[0]).toMatchObject({ prefix: "hub-update:", instanceName: "general", threadId: "7", chatId: "-100",
         message: "🆕 hub.example recommends AgEnD v2.4.0-beta.4 (this Fleet runs v2.3.5-beta.2). Some Hub features need it.",

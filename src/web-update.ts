@@ -126,5 +126,7 @@ export interface WebUpdateHost {
    * asks whether that session is still current and an admin's: checked again right before the updater is launched.
    */
   startWebUpdate(key: string, person: string, stillAllowed: () => boolean, pin?: WebUpdatePin): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
+  /** Owner action on one retained Hub request. The host resolves its verified version. */
+  startHubRequestedUpdate?(key: string, person: string, stillAllowed: () => boolean, requestId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }>;
   updateLog(): { text: string | null; error: string | null };
 }

@@ -1,0 +1,63 @@
+{
+  "alpha": "a4286d1f1e4f49c5e0adf7b5547368aaffda9e99",
+  "source": "81c4c42bbfab4693fdd452f068853b6669a60724",
+  "merge": "b1b38fda27a11b4e4186448794e85745ef7b5ea7",
+  "paths": [
+    {
+      "path": "src/fleet-manager.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "src/hub/member/updates.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "src/hub/runtime.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "src/locale.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "src/settings-api.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "src/web-api.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "src/web-notices.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "src/web-update.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "tests/hub-compose-member.test.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "tests/hub-member-updates-m3144.test.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "tests/hub-recommended-update-m3140.test.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "tests/hub-update-factory-m3144.test.ts",
+      "ownPatchUnchanged": true
+    },
+    {
+      "path": "tests/hub-update-owner-m3144.test.ts",
+      "ownPatchUnchanged": true
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+REVERSAL src/hub/member/updates.ts: this.force.current()
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-member-m3144
+
+ ❯ tests/hub-member-updates-m3144.test.ts (18 tests | 1 failed | 17 skipped) 73ms
+   × does not claim an owner's immediate start after its local session is revoked during preparation 72ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-updates-m3144.test.ts > does not claim an owner's immediate start after its local session is revoked during preparation
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-member-updates-m3144.test.ts:119:23
+    117|   const start = w.value.updateNow(request.id, () => current);
+    118|   await vi.waitFor(() => expect(w.options.launch).toHaveBeenCalledTime…
+    119|   expect(await start).toBe(false); expect(claimed).toBe(false);
+       |                       ^
+    120| });
+    121| it("refuses while another updater is active and rejects changed reques…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 skipped (18)
+   Start at  11:38:06
+   Duration  421ms (transform 117ms, setup 96ms, import 115ms, tests 73ms, environment 0ms)
+
+RESULT 1: CAUGHT
+REVERSAL startup settlement: replace this.complete(...) with void outcome; preserving the narrowing condition.
+All three reversals compile together: exit 0
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-member-m3144
+
+ ❯ tests/hub-member-updates-m3144.test.ts (19 tests | 1 failed | 18 skipped) 77ms
+   × settles a claimed update after restart without launching it again or holding later requests busy 75ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-updates-m3144.test.ts > settles a claimed update after restart without launching it again or holding later requests busy
+AssertionError: expected { …(6) } to match object { state: 'done', …(1) }
+(6 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "currentVersion": "2.4.0",
+-   "state": "done",
++   "state": "updating",
+  }
+
+ ❯ tests/hub-member-updates-m3144.test.ts:37:53
+     35|   w.value.receive(request, w.link); await vi.waitFor(() => expect(w.la…
+     36|   const next = new HubMemberUpdates({ ...w.options, version: request.v…
+     37|   await next.start(); expect(next.view(request.id)).toMatchObject({ st…
+       |                                                     ^
+     38|   expect(w.launch).toHaveBeenCalledTimes(1);
+     39|   const later = { ...w.request(), version: "2.5.0" }; next.receive(lat…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 skipped (19)
+   Start at  11:50:20
+   Duration  539ms (transform 168ms, setup 131ms, import 148ms, tests 77ms, environment 0ms)
+
+Startup settlement reversal result: 1 CAUGHT
+
+REVERSAL src/fleet-manager.ts: undefined, userId => this.fleetAdminGate(userId, adapterId) === "ok");
+    if (claimed === null) return false; if (claimed === "consumed") return true;
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-member-m3144
+
+(node:44122) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-update-owner-m3144.test.ts (9 tests | 1 failed | 8 skipped) 91ms
+   × keeps a request-bound chat button for an administrator after refusing a stranger 90ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-update-owner-m3144.test.ts > keeps a request-bound chat button for an administrator after refusing a stranger
+AssertionError: expected undefined to be '8809ff80-a043-4f7d-a6f3-d107e6636355' // Object.is equality
+
+- Expected:
+"8809ff80-a043-4f7d-a6f3-d107e6636355"
+
++ Received:
+undefined
+
+ ❯ tests/hub-update-owner-m3144.test.ts:131:130
+    129|   const id = alerts[0].choices[0].id as string, nonce = id.slice("hub-…
+    130|   const press = (userId: string) => w.fm.handleHubFleetUpdateCallback(…
+    131|   expect(await press("9")).toBe(true); expect(w.launcher).not.toHaveBe…
+       |                                                                                                                                  ^
+    132|   expect(await press("1")).toBe(true); expect(w.launcher).toHaveBeenCa…
+    133| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  11:38:08
+   Duration  7.29s (transform 5.30s, setup 112ms, import 6.93s, tests 91ms, environment 0ms)
+
+RESULT 1: CAUGHT

@@ -108,4 +108,29 @@ Only live links are retried (30 seconds); offline Fleets are not polled. The sev
 ready/read/request reconciliation. A Fleet acceptance reports its separate 24-hour idle deadline. The future receiving
 composition must persist cancellation tombstones, statuses and ACK state, and must not block the link on npm work.
 
+
+## Fleet receiver and owner notice host
+
+`src/hub/member/updates.ts` exports `HubMemberUpdates`, `HUB_MEMBER_UPDATES_MIGRATION` and
+`MemberUpdateNotice`. The member factory composes it only with update host hooks and Fleet info, and offers
+fleet-update-v1 only then. `attachUpdates(controller|null)` owns its lifetime. A negotiated legacy fallback
+keeps phase 3 off on a beta.3 Hub. All launches reuse the installed updater and its pinned target.
+
+Local administrator + ordinary CSRF, never a public gateway:
+
+- `GET /api/settings/hub/fleet-updates/:id` returns the retained request with `state` and optional `currentVersion`.
+- `POST /api/settings/hub/fleet-updates/:id/cancel {}` cancels a waiting request; updating returns 409 update_running.
+- `POST /ui/update/start` keeps `confirm:"update-agend"` and Idempotency-Key, adding `hubRequestId:uuid`, mutually
+  exclusive with `recommended`. The browser names a retained request, never a version. An expired request's explicit
+  start uses the verified frozen version as a new local update without reopening the old Hub request.
+
+`WebNotice` keeps kind update and adds optional `hubUpdate`:
+`{requestId,hubName,requestedBy:string,version,state,currentVersion?}`. States are waiting, done, rolled-back,
+expired, cancelled or failed. Waiting and expired can offer Update now; only waiting offers Cancel update.
+The UI resolves each action by requestId and rereads the local request; metadata is not launch authority.
+WebUpdateHost exposes optional `startHubRequestedUpdate(key,person,stillAllowed,requestId)`.
+
+The cancellation notice says the result will be reported, rather than claiming the Hub was already told while
+its link may be offline. The chat nonce follows the existing expiring administrator callback; after a Fleet restart,
+old chat buttons expire and the durable dashboard notice remains usable.
 A status ACK confirms receipt, not permission to reopen a closed request. Late statuses for a matching closed request are acknowledged and discarded so the Fleet can retire its durable retry. A matching updating status clears pending cancellation: the Fleet already claimed the update and cannot cancel it.

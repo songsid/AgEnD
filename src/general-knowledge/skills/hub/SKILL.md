@@ -663,3 +663,16 @@ Say plainly that these are not in the product yet:
   computer running AgEnD.
 - **Pages look half old after an upgrade.** A tab opened before the upgrade can mix old and new pages. Reload it once.
 - **"Only the Hub administrator can see this"** on Administration: you are signed in, but not as the administrator.
+
+### Administrator-requested Fleet updates
+
+Supporting Hubs accept an administrator's update request only for a service-managed Fleet whose owner has opted in.
+The version comes from the saved Hub recommendation; the request cannot supply another version. A queued request waits
+up to seven days for that Fleet to connect. The receiving Fleet independently verifies permission and the published
+version, waits up to 24 hours for all agents to be idle, and reports its result. A request does not bypass the Fleet's
+local checks. Older Fleets remain owner-updated.
+
+After a request has reached a Fleet, Cancel can show as pending until that Fleet confirms it stopped; an update that
+already started cannot be cancelled. Changing the recommendation alone does not change a waiting request's version.
+A new press for a new version first cancels the waiting request and then sends the replacement. The server request
+slice alone does not compose the Fleet's opt-in switch or updater; those appear with the receiving Fleet integration.

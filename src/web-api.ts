@@ -818,7 +818,13 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
     const rec = body.recommended as { version?: unknown; revision?: unknown } | undefined;
     if (rec !== undefined && (typeof rec !== "object" || rec === null || typeof rec.version !== "string" || rec.version.length > 128
       || typeof rec.revision !== "number" || !Number.isSafeInteger(rec.revision) || rec.revision < 1)) { json(res, 400, { error: "recommended must be { version, revision }" }); return; }
-    const r = await host.startWebUpdate(key, now.person, stillAllowed, rec ? { version: rec.version as string, revision: rec.revision as number } : undefined);
+    const requestId = body.hubRequestId;
+    if (requestId !== undefined && (rec !== undefined || typeof requestId !== "string" || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(requestId))) {
+      json(res, 400, { error: "hubRequestId must name one request, without recommended" }); return;
+    }
+    if (requestId !== undefined && !host.startHubRequestedUpdate) { json(res, 404, { error: "unavailable" }); return; }
+    const r = requestId !== undefined ? await host.startHubRequestedUpdate!(key, now.person, stillAllowed, requestId as string)
+      : await host.startWebUpdate(key, now.person, stillAllowed, rec ? { version: rec.version as string, revision: rec.revision as number } : undefined);
     if (!r.ok) { json(res, r.status, { error: r.error }); return; }
     ctx.logger.info({ person: now.person }, "web: update started");
     json(res, 202, { started: true });

@@ -107,6 +107,7 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 }
 
 export interface SettingsApiContext extends AppShellContext {
+  hubFleetUpdates?(): import("./hub/member/updates.js").HubMemberUpdates | null;
   hubWebAddress?():Promise<import("./hub/settings-web-address-control.js").HubWebAddressControl>;
   hubMemberAddress?():Promise<import("./hub/settings-member-address-control.js").HubMemberAddressControl>;
   hubSetupSession?(req:IncomingMessage):import("./hub/init/types.js").HubInitHostOwner|null;
@@ -554,6 +555,39 @@ export function handleSettingsRequest(
   // #2667: validated with the ClassicBot rooms there are now — a guest grant naming one is not an unknown name.
   const validateFleet = (config: unknown) => validateFleetConfig(config, { rooms: ctx.classicRoomNames?.() ?? [] });
   const method = req.method ?? "GET";
+
+  const updateConsent = path === "/api/settings/hub/update-consent";
+  const updateRequest = path.match(/^\/api\/settings\/hub\/fleet-updates\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})(\/cancel)?$/);
+  if (updateConsent || updateRequest) {
+    if (gatewayRequestContext(req)) { json(res, 404, { error: "not_found" }); return true; }
+    const caller = () => {
+      const v = evaluateWebRequest(req as never, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session.handle : null;
+    };
+    const actor = caller(); if (!actor) { json(res, 403, { error: "admin_required" }); return true; }
+    const controller = ctx.hubFleetUpdates?.(); if (!controller) { json(res, 404, { error: "unavailable" }); return true; }
+    const read = () => updateConsent ? controller.consent() : controller.view(updateRequest![1]!);
+    if (method === "GET" && !updateRequest?.[2]) {
+      const value = read(); json(res, value ? 200 : 404, value ?? { error: "not_found" }); return true;
+    }
+    if (!(updateConsent && method === "PUT" || updateRequest?.[2] && method === "POST")) { json(res, 405, { error: "method_not_allowed" }); return true; }
+    readBody(req, 4096).then(bytes => {
+      if (caller() !== actor || ctx.hubFleetUpdates?.() !== controller) { json(res, 403, { error: "admin_required" }); return; }
+      const body: unknown = JSON.parse(bytes.toString("utf8") || "{}");
+      if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "invalid" }); return; }
+      if (updateConsent) {
+        if (Object.keys(body).length !== 1 || typeof (body as { on?: unknown }).on !== "boolean") { json(res, 400, { error: "invalid" }); return; }
+        json(res, 200, controller.setConsent((body as { on: boolean }).on));
+      } else {
+        if (Object.keys(body).length) { json(res, 400, { error: "invalid" }); return; }
+        const value = read();
+        if (!value || !("version" in value)) { json(res, 404, { error: "not_found" }); return; }
+        if (value.state === "updating") { json(res, 409, { error: "update_running" }); return; }
+        controller.cancel({ id: updateRequest![1]!, version: value.version }); json(res, 200, read());
+      }
+    }).catch(() => json(res, 400, { error: "invalid" }));
+    return true;
+  }
 
   // ── The page: the app shell, which mounts the Settings panel (#1408 step 3) ──
   if (isSettingsPage(path)) {

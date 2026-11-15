@@ -1,0 +1,10 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-member-m3144
+
+(node:61832) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  2 passed (2)
+      Tests  34 passed (34)
+   Start at  11:54:30
+   Duration  8.77s (transform 6.05s, setup 200ms, import 8.30s, tests 1.67s, environment 0ms)

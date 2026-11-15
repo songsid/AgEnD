@@ -1,0 +1,58 @@
+Reversal to original compiled source 6f818bd0, two exact runtime blobs; current readiness regressions.
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-update-member-m3144
+
+ ❯ tests/hub-member-updates-m3144.test.ts (23 tests | 1 failed | 22 skipped) 83ms
+   × waits for the composing host's readiness proof before reporting a restarted target as done 81ms
+(node:63181) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-update-owner-m3144.test.ts (11 tests | 1 failed | 10 skipped) 108ms
+   × keeps exact boot progress for a late Hub mount after startup clears the ordinary marker 107ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-updates-m3144.test.ts > waits for the composing host's readiness proof before reporting a restarted target as done
+AssertionError: expected 'done' to be 'updating' // Object.is equality
+
+Expected: "updating"
+Received: "done"
+
+ ❯ tests/hub-member-updates-m3144.test.ts:157:93
+    155|   let ready = false;
+    156|   const next = new HubMemberUpdates({ ...w.options, version: request.v…
+    157|   closes.push(() => next.close()); await next.start(); expect(next.vie…
+       |                                                                                             ^
+    158|   expect(w.launch).toHaveBeenCalledTimes(1); ready = true; await next.…
+    159|   expect(next.view(request.id)?.state).toBe("done"); expect(w.launch).…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-update-owner-m3144.test.ts > keeps exact boot progress for a late Hub mount after startup clears the ordinary marker
+AssertionError: expected { state: 'done', …(1) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "currentVersion": "2.4.0",
+  "state": "done",
+}
+
+ ❯ tests/hub-update-owner-m3144.test.ts:142:79
+    140|   expect(w.fm.hubUpdateOutcome({ id: randomUUID(), version: request.ve…
+    141|   w.fm.runningAgendVersion.mockReturnValue(request.version); w.fm.star…
+    142|   expect(w.fm.hubUpdateOutcome({ id: request.id, version: request.vers…
+       |                                                                               ^
+    143|   expect(w.fm.hubUpdateOutcome({ id: request.id, version: request.vers…
+    144| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 32 skipped (34)
+   Start at  11:55:41
+   Duration  8.46s (transform 6.83s, setup 239ms, import 9.03s, tests 192ms, environment 0ms)
+
+Original readiness behavior: exit 1
