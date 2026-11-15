@@ -3982,6 +3982,46 @@
   "grok": {
    "literals": [
     {
+     "text": "Switched to",
+     "kind": "regex",
+     "surface": "other",
+     "file": "src/backend/grok-model-switch.ts",
+     "line": 21,
+     "symbol": "answers.m"
+    },
+    {
+     "text": "Unknown model",
+     "kind": "regex",
+     "surface": "other",
+     "file": "src/backend/grok-model-switch.ts",
+     "line": 23,
+     "symbol": "answers"
+    },
+    {
+     "text": "current model does not support reasoning effort",
+     "kind": "regex",
+     "surface": "other",
+     "file": "src/backend/grok-model-switch.ts",
+     "line": 23,
+     "symbol": "answers"
+    },
+    {
+     "text": "no active model to apply effort to",
+     "kind": "regex",
+     "surface": "other",
+     "file": "src/backend/grok-model-switch.ts",
+     "line": 23,
+     "symbol": "answers"
+    },
+    {
+     "text": "unknown effort level",
+     "kind": "regex",
+     "surface": "other",
+     "file": "src/backend/grok-model-switch.ts",
+     "line": 23,
+     "symbol": "answers"
+    },
+    {
      "text": "Tab:next answer │ Esc:scrollback │ Shift+x:dismiss",
      "kind": "regex",
      "surface": "dialog",

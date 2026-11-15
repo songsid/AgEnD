@@ -1,4 +1,5 @@
 // Actual Daemon/TmuxManager route on the PRIVATE Grok audit pane. No Fleet starts.
+import { writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { TmuxManager } from "../../../src/tmux-manager.js";
 import { Daemon } from "../../../src/daemon.js";
@@ -17,6 +18,8 @@ const d: any = new Daemon("rig", {
 } as any, INST, false, new GrokBackend(INST), undefined, logger);
 d.tmux = new TmuxManager(SESSION, windowId);
 const results: unknown[] = [];
+const pane = await d.tmux.capturePane();
+console.log(JSON.stringify({ ready: d.backend.getReadyPattern().test(pane), busy: d.backend.getBusyPattern()?.test(pane), blockers: d.deliveryBlockingDialogs().filter((dialog: any) => Daemon.dialogMatches(dialog, pane)).map((dialog: any) => dialog.description), idle: await d.isPaneAuthoritativelyIdle() }));
 
 d.ipcServer = { broadcast: (m: { type?: string }) => { if (m.type === "runtime_switch_result") results.push(m); }, send: () => {} };
 d.wake = async () => {};
@@ -27,6 +30,7 @@ for (const [i, arg] of process.argv.slice(2).entries()) {
   if (!line) throw Error("The isolated catalog cannot build this switch");
   d.handleRawPasteIpcMessage({ type: "raw_paste", content: line, runtime_switch: { id: `rig-${i}`, kind: "model", requested: want.model ?? "", cli: { backend: "grok", ...want } } });
   await d.pasteLock;
+  writeFileSync(`/rig/out/daemon-after-${i}.txt`, await d.tmux.capturePaneWithHistory(200));
   const result = results.at(-1) as { outcome?: string } | undefined;
   console.log(JSON.stringify({ asked: want, typed: line, result: result ?? null }));
   if (result?.outcome !== (process.env.EXPECTED_OUTCOME || "switched")) throw Error("Unexpected production switch verdict");
