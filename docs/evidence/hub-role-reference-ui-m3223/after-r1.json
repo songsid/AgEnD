@@ -1,0 +1,432 @@
+{
+  "mode": "after",
+  "head": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d",
+  "tree": "7a85de6f629083a12314100c5fc98169ab30b0e7",
+  "dirty": "",
+  "checks": [
+    {
+      "label": "production Hub ready",
+      "pass": true
+    },
+    {
+      "label": "real HTTP creates described role, named assignment and own-access defaults",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en exactly nine choosable permissions",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW exactly nine choosable permissions",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en exactly nine choosable permissions",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW exactly nine choosable permissions",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en permissions panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en exactly nine choosable permissions",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en create panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en assign panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW permissions panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW exactly nine choosable permissions",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW create panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW assign panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en permissions panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en exactly nine choosable permissions",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en create panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en assign panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW permissions panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW exactly nine choosable permissions",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW create panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW assign panel fits phone",
+      "pass": true
+    },
+    {
+      "label": "all8 combinations and6 views",
+      "pass": true
+    },
+    {
+      "label": "no browser exceptions",
+      "pass": true
+    }
+  ],
+  "screens": [
+    {
+      "tag": "after-desk-light-en-permissions",
+      "file": "after-desk-light-en-permissions.png",
+      "sha256": "927aabe5bb3164c98104025dc5303de3f284d14ac7ffb20a6fe1769e45ac3c66"
+    },
+    {
+      "tag": "after-desk-light-en-permissions-2",
+      "file": "after-desk-light-en-permissions-2.png",
+      "sha256": "a139232d5d1b920466dddfdd682cc4bad93344e0aed7a3e38c1406d13fde4319"
+    },
+    {
+      "tag": "after-desk-light-en-create",
+      "file": "after-desk-light-en-create.png",
+      "sha256": "bab8dab653014bcca6038d00b880c22bca96f26da47ab0a51772374cb8fe3a4b"
+    },
+    {
+      "tag": "after-desk-light-en-create-2",
+      "file": "after-desk-light-en-create-2.png",
+      "sha256": "841aadefe6ac49edf969b217fb63a15c380bcec23327377a622c6db6d2e74907"
+    },
+    {
+      "tag": "after-desk-light-en-assign",
+      "file": "after-desk-light-en-assign.png",
+      "sha256": "322ccbe1f29ef0d65e2127fac60bb2cba02d5b314423cedf5c85733328f52ddd"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-permissions",
+      "file": "after-desk-light-zh-TW-permissions.png",
+      "sha256": "66196b6621ba9a30cb2ea6eff5f24d726e92c291d0c7311e755ce694fb471f7d"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-permissions-2",
+      "file": "after-desk-light-zh-TW-permissions-2.png",
+      "sha256": "f817b862574867374daaf9e4fbd80b602721f676adc3a6eb13e7a29166bb1afb"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-create",
+      "file": "after-desk-light-zh-TW-create.png",
+      "sha256": "d012811b64b6a6e9c660f1820c90cfba8252076cedbb5f78539112c41ad906de"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-create-2",
+      "file": "after-desk-light-zh-TW-create-2.png",
+      "sha256": "fd0675d435f71e9a52775a1b2510f4b2df132b8562035285ae05f2f322ba5999"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-assign",
+      "file": "after-desk-light-zh-TW-assign.png",
+      "sha256": "811368c9bb97ca2966e3003637ad0c1ba7cb6ec0e49e847b8311d68ebef1ade1"
+    },
+    {
+      "tag": "after-desk-dark-en-permissions",
+      "file": "after-desk-dark-en-permissions.png",
+      "sha256": "403bb56e304e90542dfacd8f28e47d2f9522eb1b7caf8622523eb95592792c79"
+    },
+    {
+      "tag": "after-desk-dark-en-permissions-2",
+      "file": "after-desk-dark-en-permissions-2.png",
+      "sha256": "857e63ef8f2f2e44f6a2a87e4509e007fedfe4779e5b52f1a8e7b34600c7f05e"
+    },
+    {
+      "tag": "after-desk-dark-en-create",
+      "file": "after-desk-dark-en-create.png",
+      "sha256": "f76a8d8081ffcec56b28049b330ee38d13224c44d6d9f85e1c8baa66fe19a1bf"
+    },
+    {
+      "tag": "after-desk-dark-en-create-2",
+      "file": "after-desk-dark-en-create-2.png",
+      "sha256": "78b1013b5830fe42c92e2548bbf4d5dd10c2494b5316f4ec04829cb643f7f7ca"
+    },
+    {
+      "tag": "after-desk-dark-en-assign",
+      "file": "after-desk-dark-en-assign.png",
+      "sha256": "55dcf95a3935ea0bbed074bda6dc7fe4ff3cade772af7550bd9d51d3592c29ce"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-permissions",
+      "file": "after-desk-dark-zh-TW-permissions.png",
+      "sha256": "3148faa7e65c36401f2d83ef9d8b9846f2f94154b45df35f4d3b4f67e3672885"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-permissions-2",
+      "file": "after-desk-dark-zh-TW-permissions-2.png",
+      "sha256": "7a5c9891e3adc1a9b701ea0f6c9966df1079bb2e27b8d71a783c23541a9ad4c1"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-create",
+      "file": "after-desk-dark-zh-TW-create.png",
+      "sha256": "d9f71cc20ff9f353d1b1454ca443f7babad24225086c45811fb8a06ada6eaac8"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-create-2",
+      "file": "after-desk-dark-zh-TW-create-2.png",
+      "sha256": "ddba3f2d46df7dc3eddf2fd30f9dd28b829f30f3d9ee7a749e77451527119f81"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-assign",
+      "file": "after-desk-dark-zh-TW-assign.png",
+      "sha256": "4bc929c225472053d35531636bf7e4753f737fe231ee534198d6213d667748d5"
+    },
+    {
+      "tag": "after-phone-light-en-permissions",
+      "file": "after-phone-light-en-permissions.png",
+      "sha256": "fe605e1bc7c8e911ec47026fea6e8d85c31f4d5dcf72337ecea3d522a17b2daa"
+    },
+    {
+      "tag": "after-phone-light-en-permissions-2",
+      "file": "after-phone-light-en-permissions-2.png",
+      "sha256": "ed19b8af1db4ca5868d872ea68c74fa105e8e71d71207f0b6d9d0ab7a59a52b5"
+    },
+    {
+      "tag": "after-phone-light-en-create",
+      "file": "after-phone-light-en-create.png",
+      "sha256": "1e51555fb7c5d797bdfa528b652f08b2b01f82a879c492bc6e7a8d76a4211e99"
+    },
+    {
+      "tag": "after-phone-light-en-create-2",
+      "file": "after-phone-light-en-create-2.png",
+      "sha256": "4f4a6697be28c673ffbfcaf21ceed00e256bf7ad0a3f5f19de25afacd5a58601"
+    },
+    {
+      "tag": "after-phone-light-en-create-3",
+      "file": "after-phone-light-en-create-3.png",
+      "sha256": "bc70c1a17454b9aea8e7c1843e11d9b57c0c07ed24650787f5fcb0db3cf5f1b8"
+    },
+    {
+      "tag": "after-phone-light-en-assign",
+      "file": "after-phone-light-en-assign.png",
+      "sha256": "511b662daecc6316017e39ccab53d5d29fdef6d990a5f6285a1922128bcef4cb"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-permissions",
+      "file": "after-phone-light-zh-TW-permissions.png",
+      "sha256": "5ea48cf5200d4af3dc9e271ad111be660c1026a5663b3428a8d1756a4e7a015f"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-permissions-2",
+      "file": "after-phone-light-zh-TW-permissions-2.png",
+      "sha256": "e2cf887f894be0faf394bbac26ea83149f6fd67c6c1984e7afdc0f3f492852c0"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-create",
+      "file": "after-phone-light-zh-TW-create.png",
+      "sha256": "60341d8916d30bfe5c01395c4264567c2b72fd6e940a0ddcffb6ffc145dd63de"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-create-2",
+      "file": "after-phone-light-zh-TW-create-2.png",
+      "sha256": "796b4fc39b49344c867fcc9f5e3473b8a765db176d036005df337767f401ffa6"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-create-3",
+      "file": "after-phone-light-zh-TW-create-3.png",
+      "sha256": "ecc8eb8cc7cbb4cca3ee8b181e0cc9b6f4b6983fdf4b9805448b6e6c670f48f9"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-assign",
+      "file": "after-phone-light-zh-TW-assign.png",
+      "sha256": "ce265b5c07e76c6926b557abda290e7f2f5e03a61ac21b370d0db2ce50de0559"
+    },
+    {
+      "tag": "after-phone-dark-en-permissions",
+      "file": "after-phone-dark-en-permissions.png",
+      "sha256": "5e31e44601c3d852652077874051a03c4551870f4699296b4be879c171baf649"
+    },
+    {
+      "tag": "after-phone-dark-en-permissions-2",
+      "file": "after-phone-dark-en-permissions-2.png",
+      "sha256": "e7c8b212183d2c5f1d2b7734698b2ff61cd842adb407466e765d52ed5b99c796"
+    },
+    {
+      "tag": "after-phone-dark-en-create",
+      "file": "after-phone-dark-en-create.png",
+      "sha256": "eb77af35ae66dfddb48f4ed87d22aff439eac61d67d6a52cdb32a88daf7f2655"
+    },
+    {
+      "tag": "after-phone-dark-en-create-2",
+      "file": "after-phone-dark-en-create-2.png",
+      "sha256": "082aec26355de4972b74387bfc3c5dfff811c7bb8ab20fdc2817eb593a88aeac"
+    },
+    {
+      "tag": "after-phone-dark-en-create-3",
+      "file": "after-phone-dark-en-create-3.png",
+      "sha256": "4fe8cee460fd2ef38135e34d99eea5f6a2559b0a4339cdd0a26848d4363f7044"
+    },
+    {
+      "tag": "after-phone-dark-en-assign",
+      "file": "after-phone-dark-en-assign.png",
+      "sha256": "8f5045eafa4d3985997fccdfe088005d1f57e8fbd6f9df28616143bd7d4dbbdc"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-permissions",
+      "file": "after-phone-dark-zh-TW-permissions.png",
+      "sha256": "d5027bd8830e7db8f50a7c63afdebd41a95bd40c252d3bc6d747254bc83eb4c3"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-permissions-2",
+      "file": "after-phone-dark-zh-TW-permissions-2.png",
+      "sha256": "7218c28411e3534c7f3c7ae5893b297e3799986fc40bc835f4e3ac6e8d4eef27"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-create",
+      "file": "after-phone-dark-zh-TW-create.png",
+      "sha256": "662fa4b7564e6300147231831e0454aee729083193356c414b7672a2e564e6f9"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-create-2",
+      "file": "after-phone-dark-zh-TW-create-2.png",
+      "sha256": "e42245988d322d741068b2a5756c8b1a6535efd4ffaddc11e9902e9cbe7fe0d8"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-create-3",
+      "file": "after-phone-dark-zh-TW-create-3.png",
+      "sha256": "30505f9d261509fff7131be4fa497a00a92a3390684071db2f10452352dbea56"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-assign",
+      "file": "after-phone-dark-zh-TW-assign.png",
+      "sha256": "38a2ca9740b0ba3aea49e5707cd9442a32fdec43f001ee822a0cea15e22cd833"
+    }
+  ],
+  "errors": [],
+  "scope": "Separate initialized production Hub runtime/HTTPS/SQLite and assets from REPO. Synthetic AD people/groups; no real credentials, Fleet or model process. Headless Chromium inside WSL.",
+  "stages": [
+    "permissions",
+    "create",
+    "assign"
+  ],
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}
