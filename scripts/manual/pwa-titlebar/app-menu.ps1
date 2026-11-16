@@ -59,7 +59,7 @@ if($Action -eq 'Install'){
  do{
   $windows=[Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children,[Windows.Automation.Condition]::TrueCondition)
   $dialog=$null
-  foreach($w in $windows){if($owned -contains $w.Current.ProcessId -and $w.Current.Name -match '安裝應用程式|Install app'){$dialog=$w;break}}
+  foreach($w in $windows){if($owned -notcontains $w.Current.ProcessId){continue};foreach($d in $w.FindAll([Windows.Automation.TreeScope]::Subtree,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Window))){if($d.Current.Name -match '安裝應用程式|Install app'){$dialog=$d;break}};if($dialog){break}}
   if(!$dialog){if($confirmed){break};Start-Sleep -Milliseconds 100;continue}
   $labels=$dialog.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
   $testName='AgEnD M3214 '+$Tag.Substring($Tag.Length-8)
