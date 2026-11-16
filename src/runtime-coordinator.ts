@@ -83,6 +83,10 @@ function inventory(value: unknown): WindowsCliProbe {
       readOnlySupport: row.readOnlySupport, permissionNote: row.permissionNote, models,
       ...(row.reason !== undefined ? { reason: row.reason as string } : {}),
       ...((MODEL_SOURCES as readonly unknown[]).includes(row.modelsSource) ? { modelsSource: row.modelsSource as NativeCliRow["modelsSource"] } : {}) };
+    if(row.personalStatus!==undefined){
+      if(typeof row.personalStatus!=="string"||!["ready","sandbox-unavailable","profile-unavailable"].includes(row.personalStatus))throw new RuntimeProtocolError("Invalid personal profile status");
+      entry.personalStatus=row.personalStatus as NativeCliRow["personalStatus"];
+    }
     seen.add(row.id); clis.push(entry);
   }
   if (Buffer.byteLength(JSON.stringify(value)) > RUNTIME_MAX_FRAME_BYTES / 2) throw new RuntimeProtocolError("Runtime inventory is too large");

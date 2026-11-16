@@ -91,16 +91,17 @@ export class HubRoomsService {
     const exposure = this.core.atomic(db => readExposure(db, exposureId));
     if (!exposure || exposure.state !== "published" || exposure.frozen_through >= exposure.revision) return "offline";
     if (exposure.sharing_paused) return "paused";
-    return this.links.get(exposure.fleet_id)?.current() ? "idle" : "offline";
+    return exposure.fleet_id&&this.links.get(exposure.fleet_id)?.current() ? "idle" : "offline";
   }
 
   private store(): HubAttachmentStore { const s = this.core.deps.attachments; if (!s) throw new HubProtocolError("incompatible"); return s; }
   /** The optional features of a fleet's current link (empty while it has none: nothing new is offered or sent). */
-  features(fleetId: string): readonly string[] {
+  features(fleetId: string|null): readonly string[] {
+    if(fleetId===null)return [];
     const link = this.links.get(fleetId);
     return link?.current() ? [...link.features].filter(f => f !== "welcome-caps-v1" && (f !== FILES || this.core.deps.attachments !== undefined)) : [];
   }
-  private requireFiles(fleetId: string): void { if (!this.features(fleetId).includes(FILES)) throw new HubProtocolError("incompatible"); }
+  private requireFiles(fleetId: string|null): asserts fleetId is string { if (!fleetId||!this.features(fleetId).includes(FILES)) throw new HubProtocolError("incompatible"); }
   /** The asker's room, its grant applying now with `permission`, inside a transaction. */
   private askerRoom(db: Parameters<Parameters<HubCore["atomic"]>[0]>[0], roomId: string, asker: import("./types.js").PersonKey, now: number, permission: "ask" | "read-own-room", proof?: HubGrantSubjectProof) {
     const r = db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow | undefined;
@@ -144,7 +145,7 @@ export class HubRoomsService {
       const ref = store.createUpload(db, { roomId: room.id, uploader: personKeyString(asker), name, bytes });
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: asker }, action: "file.upload", result: "allowed",
         reasonCode: `question:${ref.size}:${ref.mime}:${ref.sha256}`, contentRef: this.core.deps.content.put(tx, { question: ref.name }),
-        roomId, fleetId: exposure.fleetId, exposureId: exposure.id, ownerAtEvent: exposure.owner, grantId: grant.id, grantRevision: grant.revision });
+        roomId, fleetId: exposure.fleetId??undefined, exposureId: exposure.id, ownerAtEvent: exposure.owner, grantId: grant.id, grantRevision: grant.revision });
       return fileView(roomId, ref);
     }, permit);
   }
@@ -158,7 +159,7 @@ export class HubRoomsService {
       const bytes = store.read(db, row.sha256);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: asker }, action: "file.read", result: "allowed",
         reasonCode: `${row.direction}:${row.size}:${row.mime}:${row.sha256}`, ...(row.message_id ? { messageId: row.message_id } : {}),
-        roomId, fleetId: exposure.fleetId, exposureId: exposure.id, ownerAtEvent: exposure.owner, grantId: grant.id, grantRevision: grant.revision });
+        roomId, fleetId: exposure.fleetId??undefined, exposureId: exposure.id, ownerAtEvent: exposure.owner, grantId: grant.id, grantRevision: grant.revision });
       return { name: row.name, mime: row.mime, image: isInlineImage(row.mime), bytes };
     }, permit);
   }
@@ -184,7 +185,7 @@ export class HubRoomsService {
       db.prepare("INSERT INTO hub_rooms(id, asker, exposure_id, owner_at_creation, grant_id, state, created_at) VALUES(?,?,?,?,?,?,?)")
         .run(room.id, room.asker, room.exposure_id, room.owner_at_creation, room.grant_id, room.state, room.created_at);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: asker }, action: "room.opened", result: "completed",
-        roomId: room.id, fleetId: exposure.fleetId, exposureId, ownerAtEvent: exposure.owner, grantId, grantRevision: grant.revision });
+        roomId: room.id, fleetId: exposure.fleetId??undefined, exposureId, ownerAtEvent: exposure.owner, grantId, grantRevision: grant.revision });
       return { ...roomOf(room), exposure, grantProof: permit.grant };
     }, permit);
   }
@@ -237,7 +238,7 @@ export class HubRoomsService {
       const rows = db.prepare(`SELECT m.created_at, m.stage, p.display_name FROM hub_messages m LEFT JOIN hub_people p ON p.person = m.asker
         WHERE m.exposure_id=? ORDER BY m.created_at DESC LIMIT 20`).all(exposureId) as { created_at: number; stage: HubReceipt["stage"]; display_name: string | null }[];
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person }, action: "exposure.activity-read", result: "completed",
-        fleetId: e.fleet_id, exposureId, ownerAtEvent: person });
+        fleetId: e.fleet_id??undefined, exposureId, ownerAtEvent: person });
       return rows.map((r) => ({ askerName: r.display_name ?? "", askedAt: r.created_at, stage: r.stage }));
     });
   }
@@ -264,7 +265,7 @@ export class HubRoomsService {
   }
 
   /** What the room's fleet link negotiated (D's link.features, #3241): none while it has no current link. */
-  private featuresOf(fleetId: string): readonly string[] {
+  private featuresOf(fleetId: string|null): readonly string[] {
     return [...this.features(fleetId)].sort();
   }
 
@@ -303,12 +304,12 @@ export class HubRoomsService {
     const digest = messageContentDigest("question", text, { attachments: files });
     const sequence = ((db.prepare("SELECT MAX(sequence) AS n FROM hub_messages WHERE room_id=?").get(roomId) as { n: number | null }).n ?? 0) + 1;
     const id = randomUUID(), ref = this.core.deps.content.put(tx, { question: text });
-    if (files.length) store!.bindQuestion(db, files, id, exposure.fleetId);
+    if (files.length) { this.requireFiles(exposure.fleetId);store!.bindQuestion(db, files, id, exposure.fleetId); }
     db.prepare(`INSERT INTO hub_messages(id, room_id, idempotency_key, sequence, fleet_id, exposure_id, exposure_revision, grant_id, grant_revision, asker, owner,
       content_digest, question_ref, stage, stage_at, created_at, expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?)`)
       .run(id, roomId, idempotencyKey, sequence, exposure.fleetId, exposure.id, exposure.revision, grant.id, grant.revision, me, personKeyString(exposure.owner), digest, ref, now, now, now + QUESTION_LIFETIME_MS);
     this.core.audit(tx, { requestId: input.requestId, actor: input.actor, action: "question.accepted", result: "allowed",
-      messageId: id, roomId, fleetId: exposure.fleetId, exposureId: exposure.id, ownerAtEvent: exposure.owner, grantId: grant.id, grantRevision: grant.revision, contentRef: ref });
+      messageId: id, roomId, fleetId: exposure.fleetId??undefined, exposureId: exposure.id, ownerAtEvent: exposure.owner, grantId: grant.id, grantRevision: grant.revision, contentRef: ref });
     return { receipt: { messageId: id, contentDigest: digest, stage: "queued", sequence: 0, at: now }, fleet: exposure.fleetId };
   }
 

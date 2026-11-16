@@ -24,6 +24,8 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
   } },
   { why: "M-3224 personal agents: the approved phase-1 profile and terminal-answer formats support Codex/Claude only; this is a narrower product/execution boundary, not the registry's account or general Runtime capability list", files: {
     "src/runtime-personal-answer.ts": 3, "src/runtime-personal-profile.ts": 1,
+    // Durable personal-agent rows retain the same deliberately narrow phase-1 execution subset.
+    "src/hub/personal/schema.ts": 1,
   } },
   { why: "delivery, turn resume, transcripts and usage reports: which CLIs write which kind of transcript or report", files: {
     // #3810 also nests the existing Claude/Codex transcript family under the Grok-owned idle alternative.

@@ -48,9 +48,9 @@ export class HubSharingService {
       expected = JSON.stringify(readExposure(db, id));
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: owner },
         action: request.paused ? "exposure.paused" : "exposure.resumed", result: "completed",
-        fleetId: row.fleet_id, exposureId: id, ownerAtEvent: owner });
+        fleetId: row.fleet_id??undefined, exposureId: id, ownerAtEvent: owner });
       this.core.deps.store.mutate({ at: this.core.now(), requestId: ctx.requestId, actor: { kind: "person", person: owner },
-        action: "exposure.sharing-authorization-changed", result: "completed", fleetId: row.fleet_id, exposureId: id }, (state, owningDb) => {
+        action: "exposure.sharing-authorization-changed", result: "completed", fleetId: row.fleet_id??undefined, exposureId: id }, (state, owningDb) => {
         if (owningDb !== db) throw new HubProtocolError("unavailable");
         state.revocationVersion++;
       }, () => permit.assertCurrent());
