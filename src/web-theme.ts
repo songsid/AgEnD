@@ -55,8 +55,8 @@ const ASSET_ID = /^[0-9a-f]{32}$/;
  * to the stylesheet. An agent message has no bubble of its own: its "bubble" is the page background.
  */
 export const THEME_DEFAULTS: Record<ThemeMode, Required<Palette>> = {
-  dark: { bg: "#212121", surface: "#2f2f2f", text: "#ececec", text2: "#b4b4b4", accent: "#7ab7ff", userBubble: "#2f2f2f", agentBubble: "#212121" },
-  light: { bg: "#ffffff", surface: "#f4f4f4", text: "#0d0d0d", text2: "#5d5d5d", accent: "#0a62c2", userBubble: "#f4f4f4", agentBubble: "#ffffff" },
+  dark: { bg: "#212121", surface: "#2f2f2f", text: "#ececec", text2: "#cfcfcf", accent: "#7ab7ff", userBubble: "#2f2f2f", agentBubble: "#212121" },
+  light: { bg: "#ffffff", surface: "#f4f4f4", text: "#0d0d0d", text2: "#4d4d4d", accent: "#0a62c2", userBubble: "#f4f4f4", agentBubble: "#ffffff" },
 };
 /**
  * #2196: AgEnD's own status colours (src/ui/shared/tokens.css --ok, --warn, --danger, --danger-fill, --focus) — never

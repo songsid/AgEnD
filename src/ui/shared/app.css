@@ -416,8 +416,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 :root[data-text-size="s"] { --text-scale: 0.9; }
 :root[data-text-size="l"] { --text-scale: 1.15; }
 .thread, .p-details .panel-body, .p-fleet .panel-body, .p-log .panel-body {
-  --fs-xs: calc(12px * var(--text-scale)); --lh-xs: calc(16px * var(--text-scale));
-  --fs-sm: calc(13px * var(--text-scale)); --lh-sm: calc(18px * var(--text-scale));
+  --fs-xs: calc(var(--fs-xs-base) * var(--text-scale)); --lh-xs: calc(var(--lh-xs-base) * var(--text-scale));
+  --fs-sm: calc(var(--fs-sm-base) * var(--text-scale)); --lh-sm: calc(var(--lh-sm-base) * var(--text-scale));
   --fs-md: calc(15px * var(--text-scale)); --lh-md: calc(24px * var(--text-scale));
   --fs-lg: calc(17px * var(--text-scale)); --lh-lg: calc(24px * var(--text-scale));
   font-size: var(--fs-md); line-height: var(--lh-md);
@@ -4654,8 +4654,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side.drawer-narrow .v-inst { min-height: 48px; }
   /* M-3212: the drawer's agents follow 文字大小 (header-tools.js) in either width, as the chat does (#1523 N3). */
   .sidebar.fleet-side .inst-nav {
-    --fs-xs: calc(12px * var(--text-scale)); --lh-xs: calc(16px * var(--text-scale));
-    --fs-sm: calc(13px * var(--text-scale)); --lh-sm: calc(18px * var(--text-scale));
+    --fs-xs: calc(var(--fs-xs-base) * var(--text-scale)); --lh-xs: calc(var(--lh-xs-base) * var(--text-scale));
+    --fs-sm: calc(var(--fs-sm-base) * var(--text-scale)); --lh-sm: calc(var(--lh-sm-base) * var(--text-scale));
     --fs-md: calc(15px * var(--text-scale)); --lh-md: calc(24px * var(--text-scale));
     --fs-lg: calc(17px * var(--text-scale)); --lh-lg: calc(24px * var(--text-scale));
     --fs-xl: calc(22px * var(--text-scale)); --lh-xl: calc(28px * var(--text-scale));

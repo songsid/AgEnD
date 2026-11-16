@@ -61,7 +61,7 @@ try {
         wide: document.documentElement.scrollWidth > document.documentElement.clientWidth };
     });
     let m = await look();
-    need(m.meta === 26 && m.font === "12px", `idle: the meta line is 26 px, 12 px type (${m.meta}, ${m.font})`);
+    need(m.meta === 26 && m.font === "13px", `idle: the meta line is 26 px, 13 px type (--fs-xs on a phone, M-3216) (${m.meta}, ${m.font})`);
     need(m.leftH >= 32 && /^Opus 5\.5 · high · 56%/.test(m.leftText), `idle: the model button ≥ 32 px, "Opus 5.5 · high · 56%" (${m.leftH}, ${m.leftText})`);
     need(!m.workBar && !m.under, "idle: no working bar, no line under the box");
     need(JSON.stringify(m.kids) === JSON.stringify(["attachBtn", "composer-field", "sendBtn"]), `the box is 📎 · the text · Send (${m.kids.join(",")})`);
