@@ -79,6 +79,7 @@ import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
 import { ShareButton } from "./office-share-dialog.js";
+import { Dialog } from "/assets/ui-dialog.js";
 import { DLG, boxColours, boxLayout, createDialogue, createFaces, drawBox, fitBox, messageOf, onBox, pickFront, portraitSrc, stageOf, talkOf, wrap } from "./fleet-office-dialogue.js";
 import { applyOverrides, fitNight, fitSeatFor, stripBox } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
@@ -115,6 +116,7 @@ register("orgo", {
     dialogue: "Dialogue", dialogueTitle: "When a person messages someone here, show their words and the reply in a box at the bottom (this browser only)",
     dlgWorking: "Working…", dlgSomeone: "Someone", dlgHeardShare: "Sent {0} a message.", dlgAnsweredShare: "Replied.", dlgFile: "(sent a file)", dlgSays: "{0}: {1}",
     dlgBox: "Dialogue: {0}. Click for their card, double-click for their chat.",
+    zones: "Go to an area", zoneAll: "Whole office", zoneN: "{0} {1}",
   },
   "zh-TW": {
     label: "辦公室：每個 team 是一間房間，每個 Agent 一張桌子；General 和未加入 team 的 Agent 在大廳。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示整個場景，F 切換全螢幕。",
@@ -143,6 +145,7 @@ register("orgo", {
     dialogue: "對話框", dialogueTitle: "有人傳訊息給這裡的成員時，在下方的對話框顯示訊息與回覆（只限這個瀏覽器）",
     dlgWorking: "處理中…", dlgSomeone: "有人", dlgHeardShare: "傳了一則訊息給 {0}。", dlgAnsweredShare: "已回覆。", dlgFile: "（傳了一個檔案）", dlgSays: "{0}：{1}",
     dlgBox: "對話框：{0}。點一下看資料卡，點兩下開啟聊天。",
+    zones: "移到區域", zoneAll: "總覽", zoneN: "{0} {1}",
   },
 });
 const to = (k, ...v) => t(`orgo.${k}`, ...v);
@@ -221,6 +224,33 @@ const UP_MS = 1800;
 const FIND_K = 2;
 /** #2661: below this stage width (CSS px) the card is a bottom sheet. */
 const SHEET_W = 560;
+/**
+ * M-3253 (Argon's phone review): the Office's phone layout — a phone's width (the shell's), or a phone turned sideways (a
+ * coarse pointer in a short window: an iPhone's 956 × 440 is wider than 899 px). There the Office's tools are one ⋯ sheet,
+ * zone pills jump to a readable zoom, a tap near a person picks them, and their card is a bottom sheet.
+ */
+export const OFFICE_PHONE_Q = "(max-width: 899px), (pointer: coarse) and (max-height: 500px)";
+export function useOfficePhone() {
+  const read = () => { try { return typeof matchMedia === "function" && matchMedia(OFFICE_PHONE_Q).matches; } catch { return false; } };
+  const [on, setOn] = useState(read);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return undefined;
+    const mq = matchMedia(OFFICE_PHONE_Q), changed = () => setOn(!!mq.matches);
+    changed(); mq.addEventListener?.("change", changed);
+    return () => mq.removeEventListener?.("change", changed);
+  }, []);
+  return on;
+}
+/** M-3253: a tap this many CSS px from a person (a fingertip's 44 px across) picks them when nobody is right under it. */
+export const TAP_R = 22;
+/** M-3253: a zone pill's zoom (CSS px a logical unit): the name tags at their own size. */
+export const ZONE_K = 1;
+/** M-3253: of `list` ({ x, y } in logical units), the one nearest (x, y) within `r` logical units, or null. */
+export function nearestPerson(list, x, y, r) {
+  let best = null, bestD = r * r;
+  for (const it of list) { const d = (it.x - x) ** 2 + (it.y - y) ** 2; if (d <= bestD) { bestD = d; best = it; } }
+  return best;
+}
 /** How often the picture can change when nothing is in the air (the poses loop at 4 fps; a bubble types faster). */
 const FPS = 12;
 const STYLES = BUILT_IN_SKINS;
@@ -672,7 +702,10 @@ export function OfficeKey({ pal }) {
  * `opening` the office it opens on (the share's), instead of the one this browser chose last; #2861: `talk` the share's
  * conversations (its /state's: who heard or answered a person, when — never what was said), instead of the stream's.
  */
-export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk }) {
+export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null }) {
+  // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
+  // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
+  const phone = useOfficePhone(), compact = phone && typeof onMore === "function";
   const store = useMemo(() => createOfficeStore(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), [lease]);
   const [stored, setStored] = useState([]);
   const [storedRev, setStoredRev] = useState(null);                  // the rev the list was read at (a save sends it)
@@ -1599,10 +1632,21 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   // #2661: a click (or a tap) on a person opens their card; on the same person again, or off everyone, closes it; on
   // someone else, switches to theirs. A double-click skips the card and opens the chat.
+  /** M-3253: a tap that hits nobody: the person within TAP_R CSS px of it (one office; All offices' tiles keep the exact hit). */
+  const nearOf = (e) => {
+    const w = pointOf(e);
+    if (!w || overview) return null;
+    const at = now();
+    const list = people.filter((d) => d.node && d.node.i).map((d) => {
+      const wk = zones ? walkers.at(d.node.name, at) : null;
+      return { key: d.key, node: d.node, x: wk ? wk.x : d.box.x + d.box.w / 2, y: wk ? wk.y - 32 : d.box.y + d.box.h / 2 };
+    });
+    return nearestPerson(list, w.x, w.y, TAP_R / Math.max(OK_MIN, view0().k));
+  };
   const onClick = (e) => {
     const box = dlgAt(e);
     if (box) { focusPerson(box.key); return; }
-    const d = deskOf(e);
+    const d = deskOf(e) || (lastType.current === "touch" ? nearOf(e) : null);
     if (!d || !d.node.i) { setTip(null); setCard(null); return; }
     if (lastType.current === "touch") setTip(null);
     cardFrom.current = null;
@@ -1749,8 +1793,16 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const carChrome = () => !carousel ? null : html`<button type="button" class="btn btn-sm oo-car-pause" onClick=${() => setCarPlaying((p) => !p)}>${to(carPlaying ? "pause" : "resume")}</button>
     <button type="button" class="btn btn-sm oo-car-next" onClick=${() => stepCar(1)}>${to("next")}</button>
     <span class="muted oo-car-now">${custom ? custom.name : ""} · ${to(carPlaying ? "playing" : "paused")}</span>`;
-  return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}`} ref=${ooRef}>
-    <div class="oo-bar">
+  // M-3253: the zone pills (a phone, one office on a zones style): the whole office, or an area at ZONE_K, centred.
+  const zoneList = compact && zones && !overview && !layout ? Object.entries(L.areas || {}).map(([key, a]) => ({ key, rect: a.rect,
+    n: people.filter((d) => d.area === areaName(key)).length })).filter((z) => z.rect && z.n > 0) : [];
+  const toZone = (z) => { const v = view0(); raw.current = ZONE_K; setView(centreOn({ ...v, k: ZONE_K }, size, z.rect.x + z.rect.w / 2, z.rect.y + z.rect.h / 2)); };
+  const closeMore = () => onMore && onMore(false);
+  // In the sheet: Edit offices and Edit layout open their own editors (outside it): the sheet closes after their click.
+  const sheetClick = (e) => { if (typeof e.target?.closest === "function" && e.target.closest(".oo-edit, .oo-layout")) closeMore(); };
+  const tile = (icon, label, fn, cls, pressed) => html`<button type="button" class=${`oo-sheet-tile ${cls}`} aria-pressed=${pressed === undefined ? undefined : pressed ? "true" : "false"}
+    onClick=${fn}><${Icon} name=${icon} size=${20} /><span>${label}</span></button>`;
+  const barItems = html`
       <label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("styleLabel")}</span>
         <select class="tb-select" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
@@ -1787,8 +1839,18 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         title=${overview || carouselPick ? to(carouselPick ? "carouselNoEdit" : "overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}
       ${canLayout ? html`<button type="button" class="btn btn-sm oo-layout" onClick=${openLayout}>${t("orgl.edit")}</button>` : null}
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
-        get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
-    </div>
+        get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}`;
+  return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}`} ref=${ooRef}>
+    ${compact ? null : html`<div class="oo-bar">${barItems}</div>`}
+    ${compact && more ? html`<${Dialog} title=${to("office")} cls="oo-sheet" onClose=${closeMore}>
+      <div class="oo-sheet-tiles">
+        ${tile("fitwidth", to("fit"), () => { closeMore(); fit(); }, "oo-sheet-fit")}
+        ${tile("fitwidth", to("fill"), toggleFill, "oo-sheet-fill", fitMode === "cover")}
+        ${tile("fullscreen", to("fullscreen"), () => { closeMore(); enterFs(); }, "oo-sheet-fs")}
+      </div>
+      ${typeof onLive === "function" ? html`<label class="check oo-sheet-live"><input type="checkbox" checked=${!!live} onChange=${() => onLive(!live)} /><span>${t("orgc.live")}</span></label>` : null}
+      <div class="oo-bar oo-sheet-bar" onClick=${sheetClick}>${barItems}</div>
+    </${Dialog}>` : null}
     ${traffic && keyOpen ? html`<${OfficeKey} pal=${pal} />` : null}
     ${editing && !overview && !carouselPick ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store} packs=${packs}
       ask=${ask} current=${() => shown.current} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
@@ -1815,7 +1877,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen,
           state: stateWords(cardOf.node), now: caption(officePose(cardOf.node.state), cardOf.node.state),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
-        avatar=${drawAvatar} sheet=${size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
+        avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
         onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = caption(officePose(d.node.state), d.node.state), where = d.office ? ` · ${d.office}` : "";
@@ -1833,6 +1895,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           title=${to("fillTitle")} onClick=${toggleFill}>${to("fill")}</button>
         <button type="button" class="icon-btn oo-fs" aria-label=${to(fs ? "exitFullscreen" : "fullscreen")} title=${to(fs ? "exitFullscreen" : "fullscreen")} onClick=${toggleFs}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${16} /></button>
       </div>
+      ${zoneList.length ? html`<div class="oo-zone-pills" role="group" aria-label=${to("zones")}>
+        <button type="button" class="btn btn-sm oo-zone-all" onClick=${() => fit()}>${to("zoneAll")}</button>
+        ${zoneList.map((z) => html`<button key=${z.key} type="button" class="btn btn-sm oo-zone" data-area=${z.key} onClick=${() => toZone(z)}>${to("zoneN", areaName(z.key), z.n)}</button>`)}
+      </div>` : null}
       ${fs ? html`<div class="oo-fs-bar">${officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
       <svg ref=${miniRef} class="oc-mini oo-mini" viewBox=${`0 0 ${Math.max(1, L.width)} ${Math.max(1, L.height)}`} aria-hidden="true" onClick=${onMini}>
         <title>${to("overview")}</title>
