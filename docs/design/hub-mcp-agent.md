@@ -104,6 +104,14 @@ permission list to keep in step. When the person leaves a room or loses a grant,
 action, read one-to-one conversations other than its own asks, or @all (an app could spend every owner's quota with
 one sentence; a person can still @all in the browser).
 
+**Clarified with the builder (M-3240):**
+
+- The Hub's own assistant is out of reach: the one-to-one Hub assistant conversation is not in `hub_room_list`,
+  and the Hub assistant and Hub General are not in `hub_agent_list` or `hub_ask`.
+- A token is checked like a browser session on every call: a disabled or no-longer-allowed account ends it then.
+- A question from an app to a personal agent counts as the person asking (`hub-personal-agent.md`).
+- Connecting, the ticks given, disconnecting and an automatic end are recorded as actions; content never is.
+
 Room text returned to the app is marked as content from other people, not instructions. That is a label for the
 person's AI to respect, not something the Hub can enforce (section 9).
 
