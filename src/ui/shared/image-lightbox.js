@@ -1,7 +1,9 @@
 // A chat image, full size, in the page: a dark overlay with the image fitted to the viewport, ✕ to close, a click on
 // the dark area or Esc closes it too, and focus goes back to the thumbnail. "Open original" opens the same URL in a
 // new tab (the thumbnail's link, unchanged: a ctrl-, meta-, shift- or middle-click on it still does what the browser
-// does). Several images in one message: previous / next, and the arrow keys.
+// does). Several images: previous / next, and the arrow keys — M-3210: every picture in this chat, in message order (it
+// was the clicked message's alone), from the first to the last (no wrap). On a phone a picture that fits swipes:
+// sideways to the previous or next one, up or down to close, the backdrop fading as it is pulled (image-zoom.js).
 //
 // The native <dialog> opened with showModal(): the browser traps focus and makes the rest inert. No style attribute
 // (#1300): classes only. Only a file URL the chat itself rendered (/ui/file/<32 hex>, or a Hub room's
@@ -90,7 +92,11 @@ function ImageLightbox({ items, index, opener, annotate = null, onClose }) {
       return Promise.resolve(typeof m.annotateCssReady === "function" ? m.annotateCssReady() : null).then(() => setEditor(() => m.AnnotateEditor));
     }).catch(() => annotate?.notice?.(t("lbAnnotate.failed")));
   };
-  const step = (d) => setAt((n) => (n + d + items.length) % items.length);
+  // M-3210: from the first to the last, no wrap — a chat's pictures are a line, not a ring.
+  const step = (d) => setAt((n) => Math.min(items.length - 1, Math.max(0, n + d)));
+  const atRef = useRef(at); atRef.current = at;
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  const via = useRef(0);                                         // the last step came by a swipe: ±1 (its slide), else 0
   useLayoutEffect(() => {
     const d = ref.current;
     const root = typeof document !== "undefined" ? document.documentElement : null;
@@ -105,7 +111,13 @@ function ImageLightbox({ items, index, opener, annotate = null, onClose }) {
   }, []);
   useEffect(() => {
     if (!stage.current || !img.current) return undefined;
-    const z = createZoom({ stage: stage.current, img: img.current, onChange: setLevel });
+    const d = ref.current;
+    const pull = (p) => { if (d && d.style && typeof d.style.setProperty === "function") d.style.setProperty("--lb-pull", String(Math.round(p * 1000) / 1000)); };
+    const z = createZoom({ stage: stage.current, img: img.current, onChange: setLevel,
+      canSwipe: (dir) => atRef.current + dir >= 0 && atRef.current + dir < items.length,
+      onSwipe: (dir) => { via.current = dir; step(dir); },
+      onDismiss: () => closeRef.current(),
+      onPull: pull });
     zoom.current = z;
     return () => { z.destroy(); zoom.current = null; };
   }, []);
@@ -120,6 +132,15 @@ function ImageLightbox({ items, index, opener, annotate = null, onClose }) {
     const el = img.current;
     if (el) el.classList.remove("lb-ready");
     setLevel(null);
+    // A swipe's next picture slides in from the side it came from (app.css; none under reduced motion).
+    const st = stage.current;
+    if (st && st.classList && via.current) {
+      const cls = via.current > 0 ? "lb-in-next" : "lb-in-prev";
+      st.classList.remove("lb-in-next", "lb-in-prev");
+      st.classList.add(cls);
+      setTimeout(() => st.classList.remove(cls), 260);
+    }
+    via.current = 0;
     if (el && el.complete && el.naturalWidth > 0 && zoom.current) zoom.current.reset();
   }, [at]);
   useEffect(() => {
@@ -175,8 +196,8 @@ function ImageLightbox({ items, index, opener, annotate = null, onClose }) {
       <button type="button" class="icon-btn lb-close" ref=${close} aria-label=${t("chat.lbClose")} title=${t("chat.lbClose")} onClick=${onClose}><${Icon} name="close" /></button>
     </div>
     <div class="lb-stage" ref=${stage}><img class="lb-img" ref=${img} src=${item.src} alt=${item.name} draggable=${false} /></div>
-    ${many ? html`<button type="button" class="icon-btn lb-nav lb-prev" aria-label=${t("chat.lbPrev")} title=${t("chat.lbPrev")} onClick=${() => step(-1)}><${Icon} name="back" /></button>
-      <button type="button" class="icon-btn lb-nav lb-next" aria-label=${t("chat.lbNext")} title=${t("chat.lbNext")} onClick=${() => step(1)}><${Icon} name="forward" /></button>` : null}
+    ${many ? html`<button type="button" class="icon-btn lb-nav lb-prev" disabled=${at === 0} aria-label=${t("chat.lbPrev")} title=${t("chat.lbPrev")} onClick=${() => step(-1)}><${Icon} name="back" /></button>
+      <button type="button" class="icon-btn lb-nav lb-next" disabled=${at === items.length - 1} aria-label=${t("chat.lbNext")} title=${t("chat.lbNext")} onClick=${() => step(1)}><${Icon} name="forward" /></button>` : null}
   </dialog>`;
 }
 

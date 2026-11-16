@@ -94,6 +94,8 @@ export interface MissedOfflineInbound {
   preview: string;
   timestamp: Date;
   chatTitle?: string;
+  /** The whole message names this bot (`@username`, any case) — the live ClassicBot group trigger; the preview is cut. */
+  mentionsBot?: boolean;
 }
 
 function errorMessage(err: unknown): string {
@@ -992,6 +994,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const userId = msg.from?.id;
     if (userId == null || msg.chat?.id == null) return;
     const text = String(msg.text ?? msg.caption ?? "").replace(/\s+/g, " ").trim();
+    const botUser = this.bot.botInfo?.username;
+    const mentionsBot = !!botUser && text.toLowerCase().includes(`@${botUser.toLowerCase()}`);
     const preview = text.length > 160 ? `${text.slice(0, 159)}…` : text;
     const threadId = msg.message_thread_id != null ? String(msg.message_thread_id) : undefined;
     const payload: MissedOfflineInbound = {
@@ -1006,6 +1010,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       preview,
       timestamp: new Date((msg.date ?? 0) * 1000),
       ...(msg.chat.title ? { chatTitle: String(msg.chat.title) } : {}),
+      mentionsBot,
     };
     this.emit("missed_offline", payload);
   }
