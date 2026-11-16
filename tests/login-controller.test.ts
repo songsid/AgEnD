@@ -644,6 +644,16 @@ describe("session outcome", () => {
     await controller.cancel();
   });
 
+  // M-3249: chat names the reloaded agents as people see them (the fleet's display name), as #4051's dialog does.
+  it("success → the outcome line names the agents by display name (deps.agentLabel)", async () => {
+    const adapter = adapterOf("discord");
+    const { controller, sessions } = make({ agentLabel: (n: string) => (n === "kiro-a" ? "Weaver" : n) });
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
+    await sessions[0].finish({ ok: true, reason: "exit", exitCode: 0, detail: "clean exit" });
+    const texts = adapter.sendText.mock.calls.map((c: unknown[]) => String(c[1]));
+    expect(texts.at(-1)).toBe(t("login.recovered", "Weaver, kiro-b"));
+  });
+
   it("success → instances recovered and reported; the slot and window are released", async () => {
     const adapter = adapterOf("discord");
     const { controller, sessions, recover, lock } = make();
@@ -655,7 +665,7 @@ describe("session outcome", () => {
     // returned, so a slow restart left the user with nothing to read at all.
     const texts = adapter.sendText.mock.calls.map((c: unknown[]) => String(c[1]));
     expect(texts.at(-2)).toBe(t("login.completed", "claude-code"));
-    expect(texts.at(-1)).toBe(t("login.recovered", "claude-code", "kiro-a", "kiro-b"));
+    expect(texts.at(-1)).toBe(t("login.recovered", "kiro-a, kiro-b"));
     expect(controller.isActive()).toBe(false);
     expect(lock.isHeld).toBe(false);
     expect(await controller.start("claude-code", chat(adapter), CONFIRMED)).toBe(t("login.web_started", "claude-code"));

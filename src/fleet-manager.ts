@@ -21745,6 +21745,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.modelsAfterSignIn(backend, profile ?? null);   // Chat /login and the dashboard's terminal sign-in
           return this.recoverBackendInstances(backend, undefined, profile ?? null);
         },
+        agentLabel: name => this.fleetConfig?.instances[name]?.display_name?.trim() || name,   // M-3249: the outcome line names agents as people see them
         claimWindow: backend => this.loginWindow.tryClaim("web", backend),
         releaseWindow: claim => { this.loginWindow.release(claim); },
         isClaimCurrent: claim => this.loginWindow.isCurrent(claim),
