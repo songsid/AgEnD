@@ -153,6 +153,17 @@ describe("several images in a chat", () => {
     box(doc).querySelector(".lb-close").click(); await settle();
     expect(doc.activeElement === thumbs(doc)[1]).toBe(true);
   });
+  it("the picture shown is gone from the thread when it closes (its message removed): focus goes to the one opened", async () => {
+    const doc = await chat([msg(1, [photo(A, "a.png"), photo(B, "b.png")]), msg(2, [photo(C, "c.png")])]);
+    await clickThumb(doc, 0);
+    box(doc).querySelector(".lb-next").click(); await settle();
+    box(doc).querySelector(".lb-next").click(); await settle();
+    const gone = thumbs(doc)[2];
+    gone.closest(".msg").remove();
+    expect(doc.contains(gone)).toBe(false);
+    box(doc).querySelector(".lb-close").click(); await settle();
+    expect([isOpen(doc), doc.activeElement === thumbs(doc)[0]]).toEqual([null, true]);
+  });
   it("one image: no previous / next, no count", async () => {
     const doc = await chat([msg(1, [photo(A, "a.png")])]);
     await clickThumb(doc, 0);
