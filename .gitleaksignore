@@ -147,3 +147,6 @@ b1827bb363eac62e13091de50451437d0c9b69ba:docs/evidence/hub-rooms-integration-r3/
 
 # #4073: public JavaScript ternary assigned to a subject key, not a credential.
 9dc2316233b0abae63e569e393aae30dbad4abcd:src/ui/hub-role-forms.js:generic-api-key:75
+
+# Same public subject-key expression after its whitespace-only CI fix.
+8d738e6d5052a8405bf34174bb7ac405be244ab0:src/ui/hub-role-forms.js:generic-api-key:75
