@@ -127,6 +127,9 @@ export const CODE_HINT = /^[A-Za-z0-9][A-Za-z0-9 -]{4,62}[A-Za-z0-9]$/;
 /** The part of a fingerprint people compare: its first 32 hex digits (128 bits) in 8 groups of 4. */
 export function compareGroups(digest) { return String(digest || "").replace(/[^0-9a-f]/gi, "").toLowerCase().slice(0, 32).replace(/(.{4})(?=.)/g, "$1 "); }
 /** An origin the switcher may open: the approved webOrigin of a paired Hub, https only, nothing after the host. */
+/** M-3235: the most a Hub's name can be, in every editor (Hub setup, This Hub) — what the brand shows (src/hub-mode.ts
+ * HUB_NAME_MAX, pinned to it by tests/hub-web-setup-ui), so a name typed is never cut afterwards. */
+export const HUB_NAME_MAX = 60;
 export function safeWebOrigin(pairing) {
   if (!pairing || pairing.state !== "paired" || !pairing.hub) return null;
   try {

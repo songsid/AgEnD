@@ -4,8 +4,7 @@ import { register, t } from "/assets/app-i18n.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api } from "./settings-confirm.js";
 import { hs, setupError } from "./settings-hub-setup-strings.js";
-/** M-3235: the most a Hub's name can be — what the brand shows (src/hub-mode.ts HUB_NAME_MAX), so none typed is cut. */
-const HUB_NAME_MAX = 60;
+import { HUB_NAME_MAX } from "./hub-client.js";   // M-3235: the one Hub-name maximum (what the brand shows)
 // These words travel with the new renderer, even when the tab retains the setup dictionary.
 register("hubSetupReady", {
   en: {

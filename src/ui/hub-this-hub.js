@@ -8,7 +8,7 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { Skeleton } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
-import { hubClient, compareGroups } from "./hub-client.js";
+import { hubClient, compareGroups, HUB_NAME_MAX } from "./hub-client.js";
 
 register("hubThisHub", {
   en: {
@@ -93,7 +93,7 @@ export function ThisHubCard({ directory = false } = {}) {
   // The Hub's name shows here in plain sight (the sidebar's brand carries it only as its tooltip — the leader on Argon #18).
   return html`<section class="card hub-this-hub" data-section="this-hub"><div class="hub-card-head"><h3>${ht("title")}</h3><span class="s-scope" data-hub-name=${current ? "set" : "none"}>${current || ht("noName")}</span></div><p class="note">${ht("lead")}</p>
     ${info.rename ? html`<form class="hub-this-form" onSubmit=${(e) => { e.preventDefault(); if (typed && typed !== current) save(typed); }}>
-      <label class="field"><span>${ht("name")}</span><input id="hubThisName" maxlength="64" autocomplete="off" placeholder=${ht("namePlaceholder")} value=${draft} disabled=${busy}
+      <label class="field"><span>${ht("name")}</span><input id="hubThisName" maxlength=${HUB_NAME_MAX} autocomplete="off" placeholder=${ht("namePlaceholder")} value=${draft} disabled=${busy}
         onInput=${(e) => { setDraft(e.target.value); setError(""); }} /><small class="note">${ht("nameHint")}</small></label>
       <div class="hub-this-actions">
         <button type="submit" class="btn btn-primary" disabled=${busy || !typed || typed === current}>${busy ? ht("saving") : ht("save")}</button>
