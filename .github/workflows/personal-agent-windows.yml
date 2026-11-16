@@ -1,0 +1,50 @@
+name: Personal agent Windows profile
+on:
+  pull_request:
+    branches: [release/2.3.5-alpha]
+    paths:
+      - 'src/runtime-personal-*.ts'
+      - 'src/windows-cli-worker.ts'
+      - 'scripts/manual/personal-agent-profile/**'
+      - '.github/workflows/personal-agent-windows.yml'
+permissions:
+  contents: read
+jobs:
+  personal-profile-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build the exact worker source without package install hooks
+        shell: pwsh
+        run: |
+          npm ci --ignore-scripts
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npx tsc
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Copy-Item templates/runtime-assets/runtime-pane-private.ps1 dist/runtime-pane-private.ps1
+      - name: Install fixed CLI binaries on this disposable runner
+        shell: pwsh
+        run: |
+          $toolRoot = Join-Path $env:RUNNER_TEMP 'personal-agent-proof-tools'
+          npm install --prefix $toolRoot --ignore-scripts --no-audit --no-fund @openai/codex@0.167.0 @anthropic-ai/claude-code@2.1.325
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          (Join-Path $toolRoot 'node_modules/.bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Real native sandbox and argument controls, synthetic auth only
+        shell: pwsh
+        env:
+          PERSONAL_PROOF_OUTPUT: ${{ runner.temp }}/personal-agent-proof
+        run: node scripts/manual/personal-agent-profile/check.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
+        if: always()
+        with:
+          name: personal-agent-profile-windows
+          path: ${{ runner.temp }}/personal-agent-proof
+          if-no-files-found: ignore
+          retention-days: 7

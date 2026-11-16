@@ -29,3 +29,15 @@ Focused profile/answer tests use only synthetic protocol and Windows-path fixtur
 Skill update: N/A for this unmounted layer; it adds no user-visible command, setting, capability or flow. The later mounted UI/host layer updates the Hub skill.
 
 Rollback of this unmounted layer is a code revert; no stored data or migration.
+
+## Worker transport layer
+
+`personal-agent-v1` is offered only by a Runtime constructed with a local personal-folder binding. An ordinary Runtime refuses a personal run; a personal Runtime refuses ordinary runs, a different folder, conversation resume, MCP, alternate credentials, remote account operations, panes and managed updates. No production CLI entry constructs this binding yet. The Hub cannot enable it by sending a frame.
+
+The Windows worker stages authentication fields only into a fresh private NTFS directory and isolates HOME, USERPROFILE, AppData and XDG paths. It never changes the source account or logs it out. The Codex preflight checks effective disabled feature flags and renders the prompt locally to refuse inherited catalogs or AGENTS instructions. The final execution also uses strict configuration parsing. Browser, image, computer and shell-snapshot features are disabled separately from the command sandbox. Raw stdout/stderr are never the personal Runtime's preview or answer. Even a successful worker frame remains private until physical child exit.
+
+The hosted Windows proof uses fixed real CLI binaries and synthetic authentication. It checks shared-folder reading, outside/junction reads, writes and command network denial, with positive unsandboxed controls. It captures Claude help and checks its safety argument parser. This proof never calls a model or opens a desktop window. It is a composing-layer gate; unit fixtures alone do not claim Windows enforcement.
+
+## Phase 1 routing decision
+
+Per the product decision at `6375e660a`, personal agents answer people only. A verified M-3118 person-via-agent post counts as that person; an autonomous agent post does not. Personal agents are excluded from `@all`, and mentions in personal answers never launch other agents. A refused autonomous mention leaves its post visible, queues nothing and contributes no unanswered question to the overview. The posting agent receives the localized personal-agent/people-only refusal. Daily limits and agent-to-agent eligibility remain phase 2.

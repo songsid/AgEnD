@@ -24,10 +24,14 @@ describe("a separate personal-agent launch plan", () => {
     expect(p.files["config.toml"]).toContain('[permissions.hub-personal.network]\nenabled = false');
     expect(p.files["config.toml"]).not.toContain('"write"');
     expect(p.environment.CODEX_HOME).toBe("C:\\Private\\job\\auth");
+    expect(p.environment).toMatchObject({ HOME: "C:\\Private\\job\\auth", USERPROFILE: "C:\\Private\\job\\auth", HOMEDRIVE: "C:", HOMEPATH: "\\Private\\job\\auth",
+      APPDATA: "C:\\Private\\job\\auth\\AppData\\Roaming", XDG_CONFIG_HOME: "C:\\Private\\job\\auth\\.config" });
   });
   it("turns off personal setup and every locally discovered skill in the Codex profile", () => {
     const c = personalAgentProfile(input()).files["config.toml"];
-    for (const setting of ['project_doc_max_bytes = 0', 'web_search = "disabled"', 'apps = false', 'plugins = false', 'hooks = false', 'multi_agent = false', 'code_mode = false']) expect(c).toContain(setting);
+    for (const setting of ['project_doc_max_bytes = 0', 'web_search = "disabled"', 'apps = false', 'plugins = false', 'hooks = false', 'multi_agent = false', 'code_mode = false',
+      'view_image = false', 'image_generation = false', 'browser_use = false', 'browser_use_external = false', 'browser_use_full_cdp_access = false',
+      'in_app_browser = false', 'computer_use = false', 'shell_snapshot = false']) expect(c).toContain(setting);
     expect(c).toContain('[[skills.config]]\npath = "C:\\\\Private\\\\job\\\\auth\\\\skills\\\\.system\\\\example\\\\SKILL.md"\nenabled = false');
     expect(c).not.toContain("mcp_servers");
   });

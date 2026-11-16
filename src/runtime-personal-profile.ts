@@ -1,9 +1,12 @@
 /** Local Runtime-only launch plan. Network callers never supply these profile paths or configuration. */
 import { win32 } from "node:path";
 import { validateNativeModel } from "./windows-cli-providers.js";
-import type { PersonalAgentCli } from "./runtime-personal-answer.js";
+import { isPersonalAgentCli, type PersonalAgentCli } from "./runtime-personal-answer.js";
 
 export const PERSONAL_AGENT_DEADLINE_MS = 300_000;
+/** These tools can read outside a command sandbox or inherit personal setup. Verify the effective flags before each turn. */
+export const PERSONAL_CODEX_DISABLED_FEATURES = ["apps", "plugins", "remote_plugin", "hooks", "skill_search", "multi_agent", "code_mode",
+  "view_image", "image_generation", "browser_use", "browser_use_external", "browser_use_full_cdp_access", "in_app_browser", "computer_use", "shell_snapshot"] as const;
 export interface PersonalFolderContext {
   home: string;
   systemRoots: readonly string[];
@@ -55,7 +58,7 @@ export interface PersonalProfilePlan {
 }
 /** Does no I/O or execution. The worker must stage a fresh auth-only home and validate its final prompt before spawn. */
 export function personalAgentProfile(input: PersonalProfileInput): PersonalProfilePlan {
-  if (input.cli !== "codex" && input.cli !== "claude-code") throw Error("Unsupported personal agent CLI");
+  if (!isPersonalAgentCli(input.cli)) throw Error("Unsupported personal agent CLI");
   if (typeof input.question !== "string" || !input.question.trim() || input.question.length > 16_384 || input.question.includes("\0")) throw Error("Invalid personal-agent question");
   const work = path(input.work), home = path(input.home);
   if (/^[a-z]:$/i.test(work) || /^[a-z]:$/i.test(home) || within(work, home) || within(home, work)) throw Error("Personal-agent profile needs separate private directories");
@@ -65,17 +68,21 @@ export function personalAgentProfile(input: PersonalProfileInput): PersonalProfi
   if (runtimeReads.some(p => /^[a-z]:$/i.test(p) || within(p, input.context.home) || within(p, home))) throw Error("Personal-agent runtime read roots are too broad");
   const model = validateNativeModel(input.model), withModel = model ? ["--model", model] : [];
   const base = { cwd: work, stdin: `Answer the question using only the shared folder ${folder}. Do not change files or request approval.\n\nQuestion:\n${input.question}`, deadlineMs: PERSONAL_AGENT_DEADLINE_MS };
+  const environment = { HOME: home, USERPROFILE: home, HOMEDRIVE: home.slice(0, 2), HOMEPATH: home.slice(2),
+    APPDATA: win32.join(home, "AppData", "Roaming"), LOCALAPPDATA: win32.join(home, "AppData", "Local"),
+    XDG_CONFIG_HOME: win32.join(home, ".config"), XDG_DATA_HOME: win32.join(home, ".local", "share"), XDG_STATE_HOME: win32.join(home, ".local", "state"),
+    DISABLE_AUTOUPDATER: "1" };
   if (input.cli === "claude-code") return { ...base,
     args: ["--print", "--verbose", "--input-format", "text", "--output-format", "stream-json", "--safe-mode", "--restricted", "--disable-slash-commands",
       "--setting-sources", "", "--settings", JSON.stringify({ disableAllHooks: true, disableClaudeAiConnectors: true, disableBundledSkills: true,
         permissions: { blockWritesOutsideWorkingDirectories: true } }), "--permission-prompts", "none", "--permission-mode", "plan", "--tools", "Read,Glob,Grep",
       "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--no-session-persistence", "--no-chrome", "--add-dir", folder, ...withModel],
-    environment: { CLAUDE_CONFIG_DIR: home, DISABLE_AUTOUPDATER: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", ENABLE_TOOL_SEARCH: "false" }, files: {} };
+    environment: { ...environment, CLAUDE_CONFIG_DIR: home, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", ENABLE_TOOL_SEARCH: "false" }, files: {} };
   // Do not append --sandbox: that older option overrides the named read-root profile.
   const config = `approval_policy = "never"\ndefault_permissions = "hub-personal"\nproject_doc_max_bytes = 0\nweb_search = "disabled"\ncheck_for_update_on_startup = false\n` +
-    `[features]\napps = false\nplugins = false\nremote_plugin = false\nhooks = false\nskill_search = false\nskip_host_skill_discovery = true\nmulti_agent = false\ncode_mode = false\n` +
+    `[features]\n${PERSONAL_CODEX_DISABLED_FEATURES.map(name => `${name} = false\n`).join("")}skip_host_skill_discovery = true\n` +
     `[permissions.hub-personal.filesystem]\n":root" = "deny"\n":minimal" = "read"\n${uniquePaths([work, folder, ...runtimeReads]).map(p => `${toml(p)} = "read"`).join("\n")}\n` +
     `[permissions.hub-personal.network]\nenabled = false\n${skills.map(p => `\n[[skills.config]]\npath = ${toml(p)}\nenabled = false\n`).join("")}`;
   return { ...base, args: ["exec", "--json", "--ephemeral", "--ignore-rules", "--skip-git-repo-check", "-C", work, ...withModel, "-"],
-    environment: { CODEX_HOME: home, DISABLE_AUTOUPDATER: "1" }, files: { "config.toml": config } };
+    environment: { ...environment, CODEX_HOME: home }, files: { "config.toml": config } };
 }

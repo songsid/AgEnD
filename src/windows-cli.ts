@@ -10,11 +10,13 @@ import { fileURLToPath } from "node:url";
 import { validWindowsAgentId, validWindowsDirectory, validateNativeTask, withAuthenticated, type NativeCliRow, type NativeTaskInput } from "./windows-cli-worker.js";
 import { isCredentialProfileCli, type CredentialProfileReport } from "./runtime-credential-profiles.js";
 import { isNativeProviderId, parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
+import { assertPersonalTask, personalTaskFailure, type PersonalTaskFailure } from "./runtime-personal-protocol.js";
 
 const exec = promisify(execFile);
 /** `probedAt`: when an administrator last ran detection (ms), null when it never ran — then `clis` is empty. */
 export interface WindowsCliProbe {
   clis: NativeCliRow[]; home: string; probedAt: number | null; hostname?: string;
+  personalFolder?: string;
   /** Named CLI sign-ins kept on that computer: names and a signed-in yes/no only. Reported by a Runtime; absent for an older one. */
   credentialProfiles?: CredentialProfileReport;
 }
@@ -31,8 +33,12 @@ export interface WindowsCliTask {
   status: "starting" | "running" | "cancelling" | "completed" | "failed" | "cancelled";
   startedAt: number; finishedAt?: number; output: string; error?: string;
   threadId?: string; outcomeConfirmed?: boolean;
+  /** Only the dedicated personal profile supplies this field, after terminal process completion. */
+  answer?: string;
+  personalFailure?: PersonalTaskFailure;
 }
 export interface WindowsRunOptions {
+  personal?: true;
   resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; machineId?: string;
   /** A credential profile NAME for a paired Runtime computer. It is only a name: that computer's Runtime turns it into its own folder. */
   credentialProfile?: string;
@@ -90,7 +96,7 @@ export async function nativeWindowsTransport(): Promise<WindowsTransport> {
 }
 
 export class WindowsCliBridge {
-  private tasks = new Map<string, { input: NativeTaskInput; task: WindowsCliTask }>();
+  private tasks = new Map<string, { input: NativeTaskInput; task: WindowsCliTask; personal: boolean }>();
   private submitted = new Set<string>();
   private child: ChildProcess | null = null;
   private active: string | null = null;
@@ -105,7 +111,7 @@ export class WindowsCliBridge {
    * coordinator's bridge passes this PC's switch (admitLocalWindowsCli), the standalone runner passes nothing.
    */
   constructor(private readonly launcher: WindowsLauncher = nativeWindowsTransport, private readonly inventoryFile?: string,
-    readonly admit?: () => void) {
+    readonly admit?: () => void, private readonly personal = false) {
     this.cachedProbe = inventoryFile ? readInventory(inventoryFile) : null;
   }
 
@@ -160,11 +166,11 @@ export class WindowsCliBridge {
     return {models:value.models as import("./windows-cli-providers.js").NativeModelOption[],source:String(value.source)};
   }
   private async doProbe(authorized: () => boolean): Promise<WindowsCliProbe> {
-    const value = await this.workerResult({ op: "probe" }, 60_000, authorized);
+    const value = await this.workerResult({ op: "probe", ...(this.personal ? { personal: true as const } : {}) }, 60_000, authorized);
     if (value.type !== "probe" || !Array.isArray(value.clis) || typeof value.home !== "string") throw new Error(String(value.message || "Windows CLI probe failed"));
     return { clis: value.clis, home: value.home, probedAt: Date.now(), ...inventoryHostname(value.hostname) };
   }
-  private async workerResult(request: { op: "models"; cli: string } | { op: "probe" } | { op: "workspace"; agentId: string }, timeoutMs: number, authorized: () => boolean = () => true): Promise<Record<string, unknown>> {
+  private async workerResult(request: { op: "models"; cli: string } | { op: "probe"; personal?: true } | { op: "workspace"; agentId: string }, timeoutMs: number, authorized: () => boolean = () => true): Promise<Record<string, unknown>> {
     if (!authorized()) throw new Error("Authorization expired before the Windows operation started");
     const generation = this.workerGeneration;
     const transport = await this.launcher();
@@ -200,12 +206,14 @@ export class WindowsCliBridge {
   }
   start(value: unknown, authorized: () => boolean = () => true, options: WindowsRunOptions = {}): WindowsCliTask {
     const input = validateNativeTask(value);
+    if (this.personal && options.personal !== true) throw Error("This Runtime accepts personal-agent tasks only");
+    if (options.personal) assertPersonalTask(input, options as unknown as Record<string, unknown>);
     if (options.mcp) options = {...options,mcp:validateNativeMcpConnection(options.mcp)};
     if (options.context !== undefined && (typeof options.context !== "string" || options.context.length > 2000 || options.context.includes("\0"))) throw new Error("Invalid native task context");
     if (options.credentialHome !== undefined && (!isCredentialProfileCli(input.cli) || !validWindowsDirectory(options.credentialHome))) throw new Error("Invalid credential profile folder");
     const old = this.tasks.get(input.requestId);
     if (old) {
-      if (JSON.stringify(old.input) !== JSON.stringify(input)) throw new Error("requestId already belongs to another task");
+      if (JSON.stringify(old.input) !== JSON.stringify(input) || old.personal !== !!options.personal) throw new Error("requestId already belongs to another task");
       return visible(old.task);
     }
     if (this.submitted.has(input.requestId)) throw new Error("This requestId was already used; its task history has expired");
@@ -221,7 +229,7 @@ export class WindowsCliBridge {
     // Reserve before any await: retries and competing requests cannot launch another process.
     this.active = task.id;
     this.submitted.add(task.id);
-    this.tasks.set(task.id, { input, task });
+    this.tasks.set(task.id, { input, task, personal: !!options.personal });
     if (this.tasks.size > MAX_TASKS) this.tasks.delete(this.tasks.keys().next().value!);
     void this.run(input, task, authorized, options);
     return visible(task);
@@ -260,7 +268,7 @@ export class WindowsCliBridge {
         const child = this.child = spawn(transport.executable, transport.args, { stdio: ["pipe", "pipe", "pipe"] });
         this.physicalWorkers.add(child); child.once("close", () => this.physicalWorkers.delete(child));
         let wire = "", provider = "", stderr = "", received = 0, finished = false, turnCompleted = false;
-        const fail = (message: string): void => { task.error = message.slice(0,8192); if (task.status !== "cancelling") task.status = "failed"; };
+        const fail = (message: string): void => { if (options.personal) delete task.answer; task.error = message.slice(0,8192); if (task.status !== "cancelling") task.status = "failed"; };
         const append = (text: string): void => { task.output = (task.output + text + (input.cli === "grok" ? "" : "\n")).slice(-TEXT_LIMIT); };
         const providerEvent = (line: string): void => {
           const event = parseNativeProviderEvent(input.cli, line);
@@ -284,7 +292,7 @@ export class WindowsCliBridge {
             try {
               const e = JSON.parse(line);
               if (e.type === "started" && task.status === "starting") task.status = "running";
-              if (e.type === "stdout" && typeof e.text === "string") {
+              if (!options.personal && e.type === "stdout" && typeof e.text === "string") {
                 provider += e.text;
                 let end: number;
                 while ((end = provider.indexOf("\n")) >= 0) {
@@ -292,20 +300,33 @@ export class WindowsCliBridge {
                   providerEvent(line);
                 }
               }
-              if (e.type === "stderr" && typeof e.text === "string") stderr = (stderr + e.text).slice(-8192);
-              if (e.type === "error") { fail(String(e.message)); if (e.terminal === true) finished = true; }
+              if (!options.personal && e.type === "stderr" && typeof e.text === "string") stderr = (stderr + e.text).slice(-8192);
+              if (e.type === "error") {
+                if (options.personal) task.personalFailure = personalTaskFailure(e.reason) ? e.reason : "failed";
+                fail(options.personal ? `Personal agent: ${task.personalFailure}` : String(e.message));
+                if (e.terminal === true) finished = true;
+              }
               if (e.type === "finished") {
+                if (options.personal) {
+                  if (!task.error && task.status !== "cancelling" && e.personal?.ok === true && e.code === 0 && !e.cancelled && typeof e.personal.answer === "string"
+                    && e.personal.answer.trim() && Buffer.byteLength(e.personal.answer) <= 64 * 1024) {
+                    task.answer = e.personal.answer; turnCompleted = true;
+                  } else if (!task.error && task.status !== "cancelling") {
+                    task.personalFailure = personalTaskFailure(e.personal?.reason) ? e.personal.reason : "protocol";
+                    fail(`Personal agent: ${task.personalFailure}`);
+                  }
+                }
                 if (provider.trim()) { providerEvent(provider); provider = ""; }
                 finished = true;
                 if (task.status === "cancelling" || e.cancelled) task.status = "cancelled";
                 else if (task.status !== "failed") task.status = e.code === 0 && turnCompleted ? "completed" : "failed";
                 if (e.code === 0 && !turnCompleted && task.status !== "cancelled" && !task.error) task.error = "CLI exited without a turn-completed event; task outcome is unknown";
-                if (e.code !== 0 && !task.error && task.status !== "cancelled") task.error = stderr || "Windows CLI exited without completing the task";
+                if (e.code !== 0 && !task.error && task.status !== "cancelled") task.error = options.personal ? "Personal agent failed" : stderr || "Windows CLI exited without completing the task";
               }
             } catch { fail("Invalid Windows worker event"); child.stdin!.end(); }
           }
         });
-        child.stderr!.setEncoding("utf8").on("data", (s: string) => { stderr = (stderr+s).slice(-8192); });
+        child.stderr!.setEncoding("utf8").on("data", (s: string) => { if (!options.personal) stderr = (stderr+s).slice(-8192); });
         child.on("close", () => {
           clearTimeout(timer);
           if (!finished) { task.status = "failed"; fail(stderr || task.error || "Worker connection ended; task outcome is unknown. Verify the Windows process before restarting AgEnD; do not retry automatically."); }
@@ -315,10 +336,10 @@ export class WindowsCliBridge {
           if (finished) this.active = null;
           resolve();
         });
-        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),...(options.credentialHome ? {credentialHome:options.credentialHome} : {}) })}\n`);
+        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.personal ? { personal: true } : {}), ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),...(options.credentialHome ? {credentialHome:options.credentialHome} : {}) })}\n`);
       });
     } catch (e) { task.error = e instanceof Error ? e.message : "Windows CLI launch failed"; task.status = "failed"; task.outcomeConfirmed = true; task.finishedAt = Date.now(); this.active = null; }
-    finally { try { options.onSettled?.({ ...task }); } catch (e) { task.error = `Could not save Windows conversation: ${e instanceof Error ? e.message : e}`; task.status = "failed"; } }
+    finally { try { options.onSettled?.(visible(task)); } catch (e) { task.error = `Could not save Windows conversation: ${e instanceof Error ? e.message : e}`; task.status = "failed"; } }
   }
 }
 
@@ -329,7 +350,10 @@ const SETTLED: readonly WindowsCliTask["status"][] = ["completed", "failed", "ca
  * one the coordinator refuses — it dropped the machine, which then cancelled the run that had just finished.
  */
 function visible(task: WindowsCliTask): WindowsCliTask {
-  return !task.finishedAt && SETTLED.includes(task.status) ? { ...task, status: "running" } : { ...task };
+  if (!task.finishedAt || task.status !== "completed" || task.outcomeConfirmed !== true) {
+    const { answer: _answer, ...pending } = task; return { ...pending, ...(!task.finishedAt && SETTLED.includes(task.status) ? { status: "running" as const } : {}) };
+  }
+  return { ...task };
 }
 
 const bridges = new WeakMap<object, WindowsCliBridge>();
