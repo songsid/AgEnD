@@ -1,3 +1,4 @@
+import {hp} from "./hub-personal-agent-strings.js";
 // M-3092 PR 2 (Hub rooms, track U): a room's composer — the Fleet chat's own ComposerInput, its palette (`cmd-palette`)
 // and its reply bar (`reply-bar`), with what a room adds (docs/design/hub-rooms-ux.md §4):
 // - typing `@` opens a menu: 「@所有 Agent」 (when this room lets me), 「@房間助理」 (when the room has one), each agent
@@ -40,7 +41,7 @@ export function mentionOptions(detail, query = "") {
     out.push({ kind: "all", key: "all", label: hroom("mentionAll"), hint: hroom("mentionAllHint", String(agents.length)) });
   if ((detail?.members || []).some((m) => m.kind === "assistant") && hit(hroom("mentionAssistant")))
     out.push({ kind: "assistant", key: "assistant", label: hroom("mentionAssistant"), hint: hroom("mentionAssistantHint") });
-  for (const a of agents) if (hit(a.name, a.owner?.name)) out.push({ kind: "agent", key: a.id, label: `@${a.name}`, hint: a.owner?.name || "", dot: presenceDot(a.presence, a.presenceReason) });
+  for (const a of agents) if (hit(a.name, a.owner?.name)) out.push({ kind: "agent", key: a.id, label: `@${a.name}`, ...(a.answerOnly?{answerOnly:true}:{}), hint: a.answerOnly ? hp("answerOnlyAsker") : a.owner?.name || "", dot: presenceDot(a.presence, a.presenceReason) });
   for (const p of (detail?.members || []).filter((m) => m.kind === "person" && m.id !== detail?.me?.id)) if (hit(p.name)) out.push({ kind: "person", key: p.id, label: `@${p.name}`, hint: "" });
   return out;
 }
@@ -116,7 +117,7 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     ${palette ? html`<ul data-trust="palette" class="cmd-palette" id=${paletteId} role="listbox" aria-label=${hroom("mentionAll")}>
       ${palette.map((o) => html`<li key=${o.key} id=${optId(o)} role="option" aria-selected=${o === chosen ? "true" : "false"} class=${o === chosen ? "on" : ""}
         onMouseDown=${(e) => { e.preventDefault(); complete(o); }}>
-        <span class="cmd-name">${o.dot ? html`<span class=${`dot ${o.dot}`} aria-hidden="true"></span> ` : null}${o.label}</span><span class="cmd-desc">${o.hint}</span></li>`)}
+        <span class="cmd-name">${o.dot ? html`<span class=${`dot ${o.dot}`} aria-hidden="true"></span> ` : null}${o.label}</span><span class=${`cmd-desc${o.answerOnly?" hub-answer-only-note":""}`}>${o.hint}</span></li>`)}
     </ul>` : null}
     ${group && value.includes(hroom("mentionAll")) ? html`<p class="note hub-room-allbar" role="status">${allBar(detail)}</p>` : null}
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status"><span class="reply-text">${reply.sender ? `${reply.sender} · ` : ""}${String(reply.text || "").slice(0, 80)}</span>

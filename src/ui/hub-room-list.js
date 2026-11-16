@@ -1,3 +1,4 @@
+import {hp} from "./hub-personal-agent-strings.js";
 // M-3092 (Hub rooms, track U): the Hub's conversation list, drawn as the Fleet chat draws its roster — the same row
 // (`li.v-li > a.inst.v-inst`: avatar with its status dot, the name line and the second line), the same section head
 // (`inst-head > side-label`, its count) and the same count badge (`nav-count`). docs/design/hub-rooms-ux.md §2:
@@ -29,7 +30,7 @@ export function listRoomOf(item) {
   if (!item || typeof item !== "object" || typeof item.id !== "string") return null;
   return { id: item.id, kind: "direct", name: String(item.exposureName || ""), people: 1, agents: 1, online: null, unread: 0,
     lastAt: Number.isFinite(item.lastAt) ? item.lastAt : 0, lastText: "", lastAuthor: "",
-    agent: { exposureId: String(item.exposureId || ""), owner: { name: String(item.ownerName || "") }, presence: null }, limited: true, legacy: item };
+    agent: { ...(item.answerOnly?{answerOnly:true}:{}), exposureId: String(item.exposureId || ""), owner: { name: String(item.ownerName || "") }, presence: null }, limited: true, legacy: item };
 }
 /** The rooms list from whichever client this page has: roomList() when it can, else rooms() mapped by listRoomOf(). */
 export function readRoomList(client) {
@@ -72,7 +73,7 @@ export function rowView(r) {
   const closed = limited && r.legacy?.state === "closed", waiting = limited && !closed && r.legacy?.waiting === true;
   const line2 = group ? countsLine(r.people, r.agents)
     : closed ? t("hubChat.tagClosed") : waiting ? t("hubChat.waiting")
-    : r.assistant ? tr("providedByHub") : String(r.agent?.owner?.name || "");
+    : r.assistant ? tr("providedByHub") : r.agent?.answerOnly ? hp("answerOnlyAsker") : String(r.agent?.owner?.name || "");
   return {
     title: r.assistant ? tr("hubAssistant") : String(r.name || ""), line2,
     avatar: { square: group, text: firstCharacter(r.assistant ? tr("hubAssistant") : String(r.name || "?")) || "?" },
@@ -131,7 +132,7 @@ export function HubRoomRows({ rooms, q = "", current = null, href, onGo, star = 
           <span class=${`av${v.avatar.square ? " av-square" : ""}`}><span class="av-text" aria-hidden="true">${v.avatar.text}</span>${v.dot
             ? html`<span class=${`av-dot dot ${v.dot}`} aria-hidden="true"></span>` : null}</span>
           <span class="inst-text"><span class="inst-line"><span class="inst-name" title=${v.title}>${v.title}</span><span class="v-meta">${listTime(r.lastAt)}</span></span>
-            <span class="inst-line inst-line2"><span class="inst-alt" title=${v.line2 || undefined}>${v.archived ? `${tr("archived")} · ${v.line2}` : v.line2}</span>
+            <span class="inst-line inst-line2"><span class=${`inst-alt${r.agent?.answerOnly?" hub-answer-only-note":""}`} title=${v.line2 || undefined}>${v.archived ? `${tr("archived")} · ${v.line2}` : v.line2}</span>
               ${v.mentioned ? html`<span class="hub-room-at" title=${tr("mentionedYou")}>@</span>` : null}
               ${v.unread ? html`<span class="nav-count" title=${tr("unreadN", String(v.unread))}>${v.unread > 99 ? "99+" : v.unread}</span>` : null}</span></span>
         </a>${items.length ? html`<${Menu} cls=${`inst-workspace inst-row-menu agent-menu${starred ? " is-favorite" : ""}`} fit=${true} topLayer=${true}

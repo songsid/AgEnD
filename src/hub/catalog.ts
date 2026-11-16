@@ -45,7 +45,7 @@ const grantInput = z.strictObject({ exposureId: uuid, exposureRevision: epoch, d
   login: z.string().trim().min(1).max(256).optional(), subject: selectedSubject.optional(),
 }).refine(v => v.subject?.kind === "group" || v.subject?.kind === "team" || !!v.login);
 
-interface ExposureRow { id: string; fleet_id: string|null; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string|null; allowed_tools: string|null; policy_digest: string|null; frozen_through: number; sharing_paused?: number; sharing_epoch?: number;source_kind?:"fleet"|"personal";personal_agent_id?:string|null }
+interface ExposureRow { id: string; fleet_id: string|null; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string|null; allowed_tools: string|null; policy_digest: string|null; frozen_through: number; sharing_paused?: number; sharing_epoch?: number;source_kind?:"fleet"|"personal";personal_agent_id?:string|null;answer_only?:number }
 interface GrantRow { id: string; revision: number; owner: string; exposure_id: string; exposure_revision: number; approved_by: string; approved_at: number; subject: string; subject_kind?: "person" | "group" | "team"; subject_label?: string; permissions: string; starts_at: number; expires_at: number; state: HubGrant["state"] }
 
 /** Presentation only: AD group DNs normally start with CN. Never use this label as identity or rewrite it.
@@ -68,7 +68,7 @@ export function exposureOf(row: ExposureRow): HubExposure {
     ...(row.sharing_epoch ? { sharingEpoch: row.sharing_epoch } : {}) };
   if(row.source_kind==="personal"){
     if(!row.personal_agent_id||row.fleet_id!==null||row.data_view_id!==null||row.allowed_tools!==null||row.policy_digest!==null)throw new HubProtocolError("unavailable");
-    return {...common,kind:"personal",personalAgentId:row.personal_agent_id,fleetId:null,dataViewId:null,allowedTools:[],policyDigest:null};
+    return {...common,kind:"personal",personalAgentId:row.personal_agent_id,...(row.answer_only===1?{answerOnly:true as const}:{}),fleetId:null,dataViewId:null,allowedTools:[],policyDigest:null};
   }
   if(row.source_kind!==undefined&&row.source_kind!=="fleet"||row.fleet_id===null||row.data_view_id===null||row.allowed_tools===null||row.policy_digest===null)throw new HubProtocolError("unavailable");
   return {...common,fleetId:row.fleet_id,dataViewId:row.data_view_id,allowedTools:JSON.parse(row.allowed_tools) as string[],policyDigest:row.policy_digest};

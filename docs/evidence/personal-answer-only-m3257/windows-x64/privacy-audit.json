@@ -1,0 +1,44 @@
+{
+  "scope": "All current PR files against origin/release/2.3.5-alpha, plus forward evidence/guard files; current tree only, no history rewrite",
+  "source": "6a7aeaacbe913cd54b9d12b7ca874db92e7b6446",
+  "previousEvidenceHead": "fcf9c1d5e3598413c931b7cad6458445f0b9bb7c",
+  "checked": {
+    "textFiles": 89,
+    "pngFiles": 20
+  },
+  "actualHostIdentifierMatches": 0,
+  "redacted": [
+    "Expanded Windows profile paths -> %USERPROFILE%",
+    "WSL repository paths -> %REPO%",
+    "Other WSL home paths -> %HOME%"
+  ],
+  "reviewedCategories": [
+    "Windows username/profile",
+    "Computer and domain fields",
+    "User SIDs",
+    "Email",
+    "MAC",
+    "IPv4 and IPv6 host addresses",
+    "PNG ancillary metadata and known private identifier byte scan"
+  ],
+  "remainingSyntheticFixtures": [
+    "Windows profile names colleague, fixture and Alex in inert test/visual inputs",
+    "Synthetic guard identities and documentation-network addresses",
+    "Hard-coded app/card test email, unrelated to a host account",
+    "Standard 127.0.0.1 loopback literals"
+  ],
+  "parsedProofAndRedactedLedgerEqual": true,
+  "guardTests": {
+    "passed": 6,
+    "failed": 0,
+    "backend": "WSL Node built-ins only"
+  },
+  "newWindowsOrModelRuns": 0,
+  "standaloneCheck": "harness/public-evidence.check.mjs",
+  "vitestCollection": {
+    "beforeEvidenceFiles": 1,
+    "afterEvidenceFiles": 0,
+    "afterAllUnitFiles": 2346,
+    "realPersonalSuiteStillCollected": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "source": "6a7aeaacbe913cd54b9d12b7ca874db92e7b6446",
+  "redaction": "Forward privacy repair. These SHA-256 values cover the published redacted files and guarded future harness, not the earlier unredacted text. Original private preparation hashes are superseded for publication. No new Windows/model run.",
+  "portableArchiveSha256": "075304c882f6618eb73037bdd1164f942516f214108540bdbb9130eff4ab1e08",
+  "productionLibrarySha256": "6f8ab3c3bcce723956dc2a77c042d6f45452c5c4db4d37509b96caadb96a67b6",
+  "publishedEvidenceSha256": {
+    "README.md": "7de23c7ce95453609882eaf5c2742252214fe37e1271b4031cc8f9ca650a03f9",
+    "cleanup-ledger.json": "50c3fab3f0b893d41a315908b879c43a24f9a14d9e295c56e54fad40a528ef03",
+    "harness/proof.mjs": "876bf04c115df33619ff0ef46f61cdc7add0cdfe8c7231be79c17d57940ed1a3",
+    "harness/public-evidence.check.mjs": "b50c77ee97f14bf9fee829b8fb88f6d45308a28dbcd0d7278459a5b89e5906cf",
+    "harness/public-evidence.mjs": "b2e44c68a04f87c2954de92a01baa58a9012359e99edddfb062a45831b27e391",
+    "harness/run-once.py": "05905ce51d87fd9f1a8cacfb45e6a954c918aa88531fbf15a6004c2616af1daa",
+    "privacy-audit.json": "c9465b7922969795cd69e86319d020bb9ab6695b334f34d37290f39ab4664cfe",
+    "result.json": "39bf957ad7e27c3593f3fe6f9a784020766025987bcb46e677bdf2f2fc43074a"
+  }
+}

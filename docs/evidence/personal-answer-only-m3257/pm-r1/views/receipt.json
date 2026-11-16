@@ -1,0 +1,139 @@
+{
+  "scope": "Headless Linux only; product HTTP/SQL/audit, inert directory/Runtime; no Windows, credentials, installer, model or updater",
+  "checks": [
+    {
+      "name": "en/default-off",
+      "pass": true
+    },
+    {
+      "name": "en/tick-layout",
+      "pass": true
+    },
+    {
+      "name": "en/off/fits",
+      "pass": true
+    },
+    {
+      "name": "en/failed-option-hidden",
+      "pass": true
+    },
+    {
+      "name": "en/check-failed/fits",
+      "pass": true
+    },
+    {
+      "name": "en/folder-hidden",
+      "pass": true
+    },
+    {
+      "name": "en/on/fits",
+      "pass": true
+    },
+    {
+      "name": "en/saved-mode",
+      "pass": true
+    },
+    {
+      "name": "en/saved/fits",
+      "pass": true
+    },
+    {
+      "name": "en/opened",
+      "pass": true
+    },
+    {
+      "name": "en/no-shared-personal-warning",
+      "pass": true
+    },
+    {
+      "name": "en/asker/fits",
+      "pass": true
+    },
+    {
+      "name": "en/folder-published",
+      "pass": true
+    },
+    {
+      "name": "en/folder-asker/fits",
+      "pass": true
+    },
+    {
+      "name": "en/no-page-errors",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/default-off",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/tick-layout",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/off/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/failed-option-hidden",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/check-failed/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/folder-hidden",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/on/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/saved-mode",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/saved/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/opened",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/no-shared-personal-warning",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/asker/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/folder-published",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/folder-asker/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/no-page-errors",
+      "pass": true
+    }
+  ],
+  "pictures": [
+    "en-off.png",
+    "en-check-failed.png",
+    "en-on.png",
+    "en-saved.png",
+    "en-asker.png",
+    "en-folder-asker.png",
+    "zh-TW-off.png",
+    "zh-TW-check-failed.png",
+    "zh-TW-on.png",
+    "zh-TW-saved.png",
+    "zh-TW-asker.png",
+    "zh-TW-folder-asker.png"
+  ]
+}

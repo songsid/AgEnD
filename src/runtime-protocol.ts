@@ -206,7 +206,7 @@ export function parseRuntimeRemotePayload<K extends RuntimeRemoteOperation>(oper
 export interface RuntimeRunPayload {
   task: NativeTaskInput;
   /** Opted-in local personal binding only; never widens the task's permissions. */
-  profile?: "personal-agent-v1";
+  profile?: import("./runtime-personal-protocol.js").PersonalProfile;
   resumeSessionId?: string;
   context?: string;
   /** Tool names only; coordinator credentials never cross this transport. */

@@ -1,0 +1,51 @@
+
+ RUN  v4.1.12 %REPO%
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (22 tests | 4 failed | 18 skipped) 217ms
+   × keeps a failed empty-tool check unavailable and never selects it automatically 55ms
+   × keeps a saved Answer only choice compact, with its tick and access restriction 36ms
+   × uses the actual owner's independent-question explanation for personal mode=false 34ms
+   × uses the actual owner's independent-question explanation for personal mode=true 34ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > keeps a failed empty-tool check unavailable and never selects it automatically
+AssertionError: expected 'Personal agentAnswer colleagues with …' to contain 'Codex can\'t be used here: this compu…'
+
+Expected: "Codex can't be used here: this computer can't keep it inside one folder, and Answer only mode isn't available either. Claude can be used."
+Received: "Personal agentAnswer colleagues with Codex or Claude on your computer. No Fleet is needed. Windows only for now.Read-only, and only one folder: the Hub agent folder on your computer. People allowed to ask may receive anything in that folder. Your own AI account pays for answers.RefreshAlex PCC:\SharedUnavailableCodexCodex can't be used here: this version of Windows can't keep it inside one folder. Claude can be used.Use Codex to answer onlyCodex can't be kept inside one folder on this computer. In this mode it has no access to the computer at all: it answers from the question and what it already knows.It cannot read your files, run anything or go online. It also cannot look anything up for the asker.Your own AI account pays for answers.Codex can't be used here in Answer only mode either. Claude can be used.Turn on Answer onlyClaudeInstall it on that computer, then refresh.Use a different computerDisconnect computer"
+
+ ❯ tests/hub-personal-ui-m3224.test.ts:119:71
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > keeps a saved Answer only choice compact, with its tick and access restriction
+AssertionError: expected 'Use Codex to answer onlyCodex can\'t …' not to contain 'Codex can\'t be kept inside one folde…'
+
+Expected: "Codex can't be kept inside one folder on this computer."
+Received: "Use Codex to answer onlyCodex can't be kept inside one folder on this computer. In this mode it has no access to the computer at all: it answers from the question and what it already knows.It cannot read your files, run anything or go online. It also cannot look anything up for the asker.Your own AI account pays for answers.Turn on Answer only"
+
+ ❯ tests/hub-personal-ui-m3224.test.ts:129:33
+    127|  expect(option.querySelector('input[type="checkbox"]').checked).toBe(t…
+    128|  expect(option.textContent).toContain("It cannot read your files, run …
+    129|  expect(option.textContent).not.toContain("Codex can't be kept inside …
+       |                                 ^
+    130| });
+    131| it.each([false,true])("uses the actual owner's independent-question ex…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > uses the actual owner's independent-question explanation for personal mode=false
+ FAIL  tests/hub-personal-ui-m3224.test.ts > uses the actual owner's independent-question explanation for personal mode=true
+TypeError: personalCopy.personalAgentQuestionHint is not a function
+ ❯ tests/hub-personal-ui-m3224.test.ts:133:26
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 18 skipped (22)
+   Start at  02:35:34
+   Duration  563ms (transform 193ms, setup 92ms, import 122ms, tests 217ms, environment 0ms)

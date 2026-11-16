@@ -1,0 +1,87 @@
+{
+  "scope": "Headless Linux only; product HTTP/SQL/audit, inert directory/Runtime; no Windows, credentials, installer, model or updater",
+  "checks": [
+    {
+      "name": "en/default-off",
+      "pass": true
+    },
+    {
+      "name": "en/off/fits",
+      "pass": true
+    },
+    {
+      "name": "en/check-failed/fits",
+      "pass": true
+    },
+    {
+      "name": "en/folder-hidden",
+      "pass": true
+    },
+    {
+      "name": "en/on/fits",
+      "pass": true
+    },
+    {
+      "name": "en/saved-mode",
+      "pass": true
+    },
+    {
+      "name": "en/opened",
+      "pass": true
+    },
+    {
+      "name": "en/asker/fits",
+      "pass": true
+    },
+    {
+      "name": "en/no-page-errors",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/default-off",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/off/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/check-failed/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/folder-hidden",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/on/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/saved-mode",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/opened",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/asker/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/no-page-errors",
+      "pass": true
+    }
+  ],
+  "pictures": [
+    "en-off.png",
+    "en-check-failed.png",
+    "en-on.png",
+    "en-asker.png",
+    "zh-TW-off.png",
+    "zh-TW-check-failed.png",
+    "zh-TW-on.png",
+    "zh-TW-asker.png"
+  ]
+}

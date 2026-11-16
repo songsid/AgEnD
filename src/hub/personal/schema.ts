@@ -50,3 +50,8 @@ CREATE TABLE hub_personal_mention_refusals(post_id TEXT PRIMARY KEY REFERENCES h
  source_exposure_id TEXT NOT NULL,id TEXT NOT NULL UNIQUE,content_ref TEXT NOT NULL,digest TEXT NOT NULL);
 `);
 } });
+
+/** Additive: existing personal publications retain their one-folder mode. */
+export const HUB_PERSONAL_ANSWER_ONLY_MIGRATION: HubHttpMigration = Object.freeze({component:"s3-personal-answer-only",version:1,up(db:Database.Database){
+  db.exec("ALTER TABLE hub_exposures ADD COLUMN answer_only INTEGER NOT NULL DEFAULT 0 CHECK(answer_only IN(0,1) AND (answer_only=0 OR source_kind='personal'))");
+}});

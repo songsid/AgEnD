@@ -1,7 +1,7 @@
 /** Hub-owned one-shot jobs. A Runtime command acknowledgement is never answer evidence. */
 import type Database from "better-sqlite3";
 import type { RuntimeCoordinator } from "../../runtime-coordinator.js";
-import { PERSONAL_AGENT_PROFILE } from "../../runtime-personal-protocol.js";
+import { PERSONAL_AGENT_PROFILE, PERSONAL_AGENT_ANSWER_ONLY_PROFILE } from "../../runtime-personal-protocol.js";
 import { exposureOf, readExposure } from "../catalog.js";
 import type { HubCore, HubOperationPermit } from "../http/core.js";
 import { personKeyString } from "../identity.js";
@@ -42,7 +42,7 @@ export class HubPersonalTurns implements HubPersonalPort {
       this.assertSource(db,e);const agent=this.owner.definition(db,e.personalAgentId)!,machine=this.runtime.machine(agent.machine_id);
       if(machine?.status!=="online")return "later";
       const cli=machine.inventory?.clis.find(c=>c.id===agent.cli);
-      if(cli?.personalStatus!=="ready"||cli.authenticated!==true||!cli.runnable)return "paused";
+      if(!this.owner.ready(machine,agent.cli,agent.answer_only===1))return "paused";
       return db.prepare("SELECT 1 FROM hub_personal_jobs WHERE machine_id=? AND state='working'").get(agent.machine_id)?"working":"idle";
     });}catch{return "paused";}
   }
@@ -123,12 +123,12 @@ export class HubPersonalTurns implements HubPersonalPort {
       this.core.atomic(db=>this.source(db,job));
       if(!machine||machine.status!=="online"||this.runtime.hasActiveTask(machineId))return;
       const agent=this.core.atomic(db=>this.owner.definition(db,job.personal_agent_id))!,cli=machine.inventory?.clis.find(c=>c.id===agent.cli);
-      if(!machine.inventory?.personalFolder||cli?.personalStatus!=="ready"||!cli.runnable||cli.authenticated!==true){this.finish(job,{reason:"authentication-unavailable"});return;}
+      if(!machine.inventory?.personalFolder||!this.owner.ready(machine,agent.cli,agent.answer_only===1)){this.finish(job,{reason:"authentication-unavailable"});return;}
       const prepared=await this.adapter(job).prepare(job);if(!this.live())return;
       const claimed=this.core.atomic(db=>{
         this.source(db,job);
         const current=this.runtime.machine(machineId);
-        if(current?.status!=="online"||current.generation!==machine.generation||this.runtime.hasActiveTask(machineId))return false;
+        if(current?.status!=="online"||current.generation!==machine.generation||!this.owner.ready(current,agent.cli,agent.answer_only===1)||this.runtime.hasActiveTask(machineId))return false;
         return db.prepare("UPDATE hub_personal_jobs SET state='working',machine_generation=?,started_at=? WHERE id=? AND state='queued'").run(machine.generation,this.core.now(),job.id).changes===1;
       },prepared.permit);
       if(!claimed)return;
@@ -136,7 +136,7 @@ export class HubPersonalTurns implements HubPersonalPort {
       this.adapter(job).changed(job);
       prepared.permit.assertCurrent();this.core.atomic(db=>this.source(db,job));
       // Write-ahead above: an exception or lost ACK here must never turn into a second run with a new id.
-      try{await this.runtime.call(machineId,"run",{profile:PERSONAL_AGENT_PROFILE,task:{requestId:job.id,cli:agent.cli,cwd:machine.inventory.personalFolder,
+      try{await this.runtime.call(machineId,"run",{profile:agent.answer_only===1?PERSONAL_AGENT_ANSWER_ONLY_PROFILE:PERSONAL_AGENT_PROFILE,task:{requestId:job.id,cli:agent.cli,cwd:machine.inventory.personalFolder,
         prompt:prepared.prompt,sandbox:"read-only",...(agent.model?{model:agent.model}:{})}});}
       catch{if(this.live()&&!this.runtime.task(job.id))this.finish(job,{reason:"interrupted"});}
     }catch(error){if(error instanceof HubProtocolError&&["denied","revoked","stale","expired","not-found"].includes(error.code))this.finish(job,{reason:"revoked"});}

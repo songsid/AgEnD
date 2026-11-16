@@ -1,0 +1,87 @@
+
+ RUN  v4.1.12 %REPO%
+
+ ❯ tests/runtime-personal-answer-only-m3257.test.ts (2 tests | 2 failed) 14ms
+   × gives an opted-in Answer only turn no shell, patch, goals or shared-folder capability 9ms
+   × refuses an action event even if the CLI later emits an otherwise successful final answer 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/runtime-personal-answer-only-m3257.test.ts > gives an opted-in Answer only turn no shell, patch, goals or shared-folder capability
+AssertionError: expected 'approval_policy = "never"\ndefault_pe…' to contain 'shell_tool = false'
+
+- Expected
++ Received
+
+- shell_tool = false
++ approval_policy = "never"
++ default_permissions = "hub-personal"
++ project_doc_max_bytes = 0
++ web_search = "disabled"
++ check_for_update_on_startup = false
++ [windows]
++ sandbox = "mxc"
++ [features]
++ apps = false
++ plugins = false
++ remote_plugin = false
++ hooks = false
++ skill_search = false
++ multi_agent = false
++ code_mode = false
++ view_image = false
++ image_generation = false
++ browser_use = false
++ browser_use_external = false
++ browser_use_full_cdp_access = false
++ in_app_browser = false
++ computer_use = false
++ shell_snapshot = false
++ skip_host_skill_discovery = true
++ [permissions.hub-personal.filesystem]
++ ":root" = "deny"
++ ":minimal" = "read"
++ "C:\\Private\\job\\work" = "read"
++ "C:\\Shared" = "read"
++ [permissions.hub-personal.network]
++ enabled = false
++
+
+ ❯ tests/runtime-personal-answer-only-m3257.test.ts:11:17
+      9| it("gives an opted-in Answer only turn no shell, patch, goals or share…
+     10|  const plan=personalAgentProfile({...input,answerOnly:true} as any),co…
+     11|  expect(config).toContain("shell_tool = false");expect(config).toConta…
+       |                 ^
+     12|  expect(config).toContain("[tools.update_plan]\nenabled = false");
+     13|  const catalog=JSON.parse(plan.files["answer-only-model.json"]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/runtime-personal-answer-only-m3257.test.ts > refuses an action event even if the CLI later emits an otherwise successful final answer
+AssertionError: expected { ok: true, answer: 'I read it' } to deeply equal { ok: false, reason: 'action-refused' }
+
+- Expected
++ Received
+
+  {
+-   "ok": false,
+-   "reason": "action-refused",
++   "answer": "I read it",
++   "ok": true,
+  }
+
+ ❯ tests/runtime-personal-answer-only-m3257.test.ts:23:27
+     21|  for(const event of [{type:"turn.started"},{type:"item.completed",item…
+     22|   {type:"item.completed",item:{type:"agent_message",text:"I read it"}}…
+     23|  expect(reader.finish(0)).toEqual({ok:false,reason:"action-refused"});
+       |                           ^
+     24| });
+     25|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  01:45:41
+   Duration  361ms (transform 143ms, setup 85ms, import 118ms, tests 14ms, environment 0ms)

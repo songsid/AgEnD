@@ -6,6 +6,7 @@ import { join, win32 } from "node:path";
 import { PERSONAL_AGENT_DEADLINE_MS, PERSONAL_AGENT_READ_CHECK_FILE, PERSONAL_AGENT_READ_CHECK_TEXT, personalAgentFolder, personalAgentProfile, type PersonalProfilePlan } from "./runtime-personal-profile.js";
 import { isPersonalAgentCli, type PersonalAgentCli } from "./runtime-personal-answer.js";
 import { protectRuntimeProfileDirectorySync } from "./runtime-pane-private.js";
+import {ANSWER_ONLY_CATALOG_FILE} from "./runtime-personal-answer-only.js";
 
 export class PersonalAgentStageError extends Error {
   constructor(readonly reason: "unsupported-platform" | "folder-invalid" | "authentication-unavailable" | "profile-unavailable" | "sandbox-unavailable") { super(`Personal agent: ${reason}`); }
@@ -50,7 +51,7 @@ function authentication(cli: PersonalAgentCli, text: string, now: number): strin
   const oauth = Object.fromEntries(["accessToken", "expiresAt", "scopes", "subscriptionType", "rateLimitTier"].filter(k => source[k] !== undefined).map(k => [k, source[k]]));
   return JSON.stringify({ claudeAiOauth: oauth });
 }
-export interface PersonalStageInput { cli: PersonalAgentCli; folder: string; question: string; model?: string; runtimeReads: readonly string[] }
+export interface PersonalStageInput { cli: PersonalAgentCli; folder: string; question: string; model?: string; runtimeReads: readonly string[]; answerOnly?: boolean }
 export interface PersonalStage { plan: PersonalProfilePlan; cleanup(): void }
 
 function stage(input: PersonalStageInput, host: PersonalStageHost, withAuthentication: boolean): PersonalStage {
@@ -80,11 +81,11 @@ function stage(input: PersonalStageInput, host: PersonalStageHost, withAuthentic
     const skills = ["imagegen", "openai-docs", "review-agent", "skill-creator", "skill-installer"].map(name => win32.join(stage.home, "skills", ".system", name, "SKILL.md"));
     const plan = personalAgentProfile({ ...input, canonicalFolder: folder, context, work: stage.work, home: stage.home, disabledSkills: skills });
     for (const [name, content] of Object.entries(plan.files)) {
-      if (name !== "config.toml") throw new PersonalAgentStageError("profile-unavailable");
+      if (name !== "config.toml" && !(input.answerOnly && name === ANSWER_ONLY_CATALOG_FILE)) throw new PersonalAgentStageError("profile-unavailable");
       host.writePrivate(win32.join(stage.home, name), content);
     }
     if (input.cli === "codex") {
-      host.writePrivate(win32.join(stage.work, PERSONAL_AGENT_READ_CHECK_FILE), PERSONAL_AGENT_READ_CHECK_TEXT);
+      if(!input.answerOnly)host.writePrivate(win32.join(stage.work, PERSONAL_AGENT_READ_CHECK_FILE), PERSONAL_AGENT_READ_CHECK_TEXT);
       plan.args.splice(1, 0, "--strict-config");
     }
     return { plan, cleanup: stage.cleanup };

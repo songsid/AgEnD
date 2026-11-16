@@ -8,7 +8,7 @@ import { HubProtocolError } from "../validation.js";
 export function directRoomView(room: HubRoomListItem, presence: "idle" | "working" | "paused" | "offline" | "later" = "offline", unread = 0) {
   return { ...room, kind: "direct" as const, name: room.exposureName, people: 1, agents: 1, online: presence === "idle" || presence === "working" ? 1 : 0, unread,
     lastText: "", lastAuthor: "", archived: room.state === "closed",
-    agent: { ...(room.agentKind?{agentKind:room.agentKind}:{}), exposureId: room.exposureId, owner: { name: room.ownerName }, presence } };
+    agent: { ...(room.answerOnly?{answerOnly:true}:{}), ...(room.agentKind?{agentKind:room.agentKind}:{}), exposureId: room.exposureId, owner: { name: room.ownerName }, presence } };
 }
 export function directMessages(room: HubRoomListItem, entries: readonly HubRoomEntryView[], askerName: string): RoomMessage[] {
   return entries.flatMap(entry => {

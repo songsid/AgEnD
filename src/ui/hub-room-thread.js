@@ -1,3 +1,4 @@
+import {hp} from "./hub-personal-agent-strings.js";
 // M-3092 PR 2 (Hub rooms, track U): one room of a Hub with rooms, on the Fleet chat's own thread (/assets/chat-thread.js
 // through panel-hub.js's HubThread). docs/design/hub-rooms-ux.md §3 says only where a room differs from the Fleet chat:
 // - every message says who wrote it — a person by name (mine: on the right, no name), an agent as 「name · owner 的 Agent」,
@@ -456,7 +457,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     openImage: (links, img) => openLightbox(links, img, annotateRef.current(img)),
   };
   const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
-    : room.assistant ? hroom("providedByHub") : String(room.agent?.owner?.name || "");
+    : room.assistant ? hroom("providedByHub") : room.agent?.answerOnly ? hp("answerOnlyAsker") : String(room.agent?.owner?.name || "");
   const showRail = wide && rail && Panel && group && detail;
   // The Fleet chat's working bar (Lumen): 「Notes 正在處理」, or 「2 個 Agent 正在處理」 — the answer row only when it arrives.
   // Who: this room's answers being worked on; the words: workingLine() (#3857), the one place that says it.
@@ -468,12 +469,12 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId}>
     <${LightboxHost} />
     <section class="hub-chat-main">
-      <header class="hub-chat-head" data-trust="panel-content">
+      <header class=${`hub-chat-head${room.agent?.answerOnly?" hub-answer-only-head":""}`} data-trust="panel-content">
         ${/* Lumen (spec §2): on a phone the header starts with the Fleet chat's back to the list. */ ""}
         <a class="icon-btn hub-back only-narrow" href="/ui/hub" aria-label=${t("hub.back")} title=${t("hub.back")}
           onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); goList(); }}><${Icon} name="back" /></a>
         <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
-        <span class="hub-chat-title"><strong>${title}</strong><span class="s">${line2}</span></span>
+        <span class="hub-chat-title"><strong>${title}</strong><span class=${`s${room.agent?.answerOnly?" hub-answer-only-note":""}`}>${line2}</span></span>
         <span class="hub-head-tools"><${TextSizeButton} /><${HubNotifyToggle} /></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}

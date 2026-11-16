@@ -39,6 +39,7 @@ export interface WindowsCliTask {
 }
 export interface WindowsRunOptions {
   personal?: true;
+  answerOnly?: true;
   resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; machineId?: string;
   /** A credential profile NAME for a paired Runtime computer. It is only a name: that computer's Runtime turns it into its own folder. */
   credentialProfile?: string;
@@ -96,7 +97,7 @@ export async function nativeWindowsTransport(): Promise<WindowsTransport> {
 }
 
 export class WindowsCliBridge {
-  private tasks = new Map<string, { input: NativeTaskInput; task: WindowsCliTask; personal: boolean }>();
+  private tasks = new Map<string, { input: NativeTaskInput; task: WindowsCliTask; personal: boolean; answerOnly: boolean }>();
   private submitted = new Set<string>();
   private child: ChildProcess | null = null;
   private active: string | null = null;
@@ -167,7 +168,7 @@ export class WindowsCliBridge {
   }
   private async doProbe(authorized: () => boolean): Promise<WindowsCliProbe> {
     if(this.personal&&!validWindowsDirectory(this.personalFolder))throw Error("Personal Runtime detection needs its local folder binding");
-    const value = await this.workerResult({ op: "probe", ...(this.personal ? { personal: true as const,folder:this.personalFolder } : {}) }, 60_000, authorized);
+    const value = await this.workerResult({ op: "probe", ...(this.personal ? { personal: true as const,folder:this.personalFolder } : {}) }, this.personal?120_000:60_000, authorized);
     if (value.type !== "probe" || !Array.isArray(value.clis) || typeof value.home !== "string") throw new Error(String(value.message || "Windows CLI probe failed"));
     return { clis: value.clis, home: value.home, probedAt: Date.now(), ...inventoryHostname(value.hostname) };
   }
@@ -208,13 +209,14 @@ export class WindowsCliBridge {
   start(value: unknown, authorized: () => boolean = () => true, options: WindowsRunOptions = {}): WindowsCliTask {
     const input = validateNativeTask(value);
     if (this.personal && options.personal !== true) throw Error("This Runtime accepts personal-agent tasks only");
+    if (options.answerOnly && !options.personal) throw Error("Answer only requires a personal Runtime");
     if (options.personal) assertPersonalTask(input, options as unknown as Record<string, unknown>);
     if (options.mcp) options = {...options,mcp:validateNativeMcpConnection(options.mcp)};
     if (options.context !== undefined && (typeof options.context !== "string" || options.context.length > 2000 || options.context.includes("\0"))) throw new Error("Invalid native task context");
     if (options.credentialHome !== undefined && (!isCredentialProfileCli(input.cli) || !validWindowsDirectory(options.credentialHome))) throw new Error("Invalid credential profile folder");
     const old = this.tasks.get(input.requestId);
     if (old) {
-      if (JSON.stringify(old.input) !== JSON.stringify(input) || old.personal !== !!options.personal) throw new Error("requestId already belongs to another task");
+      if (JSON.stringify(old.input) !== JSON.stringify(input) || old.personal !== !!options.personal || old.answerOnly !== !!options.answerOnly) throw new Error("requestId already belongs to another task");
       return visible(old.task);
     }
     if (this.submitted.has(input.requestId)) throw new Error("This requestId was already used; its task history has expired");
@@ -223,6 +225,7 @@ export class WindowsCliBridge {
     if (!detected) throw new Error("Detect the Windows CLIs first (Settings → Windows CLI → Detect again)");
     if (!detected.runnable) throw new Error(detected.reason || "This Windows CLI could not run at the last detection; detect again after fixing it");
     if (options.mcp && !detected.supports?.mcp) throw new Error("Update this Windows CLI and detect it again to use scoped AgEnD MCP tools");
+    if(options.answerOnly && (!["sandbox-unavailable","profile-unavailable"].includes(detected.personalStatus??"") || detected.answerOnlyStatus!=="ready"))throw Error("Answer only has not passed on this computer");
     if (input.sandbox === "read-only" && !detected.readOnlySupport) throw new Error("The installed Windows CLI cannot enforce the selected read-only policy");
     if (this.submitted.size >= 4096) throw new Error("Preview request limit reached; restart AgEnD before submitting new tasks");
     if (this.active) throw new Error("A Windows CLI task is already running");
@@ -230,7 +233,7 @@ export class WindowsCliBridge {
     // Reserve before any await: retries and competing requests cannot launch another process.
     this.active = task.id;
     this.submitted.add(task.id);
-    this.tasks.set(task.id, { input, task, personal: !!options.personal });
+    this.tasks.set(task.id, { input, task, personal: !!options.personal, answerOnly: !!options.answerOnly });
     if (this.tasks.size > MAX_TASKS) this.tasks.delete(this.tasks.keys().next().value!);
     void this.run(input, task, authorized, options);
     return visible(task);
@@ -337,7 +340,7 @@ export class WindowsCliBridge {
           if (finished) this.active = null;
           resolve();
         });
-        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.personal ? { personal: true } : {}), ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),...(options.credentialHome ? {credentialHome:options.credentialHome} : {}) })}\n`);
+        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.personal ? { personal: true, ...(options.answerOnly ? { answerOnly: true } : {}) } : {}), ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),...(options.credentialHome ? {credentialHome:options.credentialHome} : {}) })}\n`);
       });
     } catch (e) { task.error = e instanceof Error ? e.message : "Windows CLI launch failed"; task.status = "failed"; task.outcomeConfirmed = true; task.finishedAt = Date.now(); this.active = null; }
     finally { try { options.onSettled?.(visible(task)); } catch (e) { task.error = `Could not save Windows conversation: ${e instanceof Error ? e.message : e}`; task.status = "failed"; } }

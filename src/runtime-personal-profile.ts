@@ -2,6 +2,7 @@
 import { win32 } from "node:path";
 import { validateNativeModel } from "./windows-cli-providers.js";
 import { isPersonalAgentCli, type PersonalAgentCli } from "./runtime-personal-answer.js";
+import { answerOnlyFiles, answerOnlyPrompt, ANSWER_ONLY_CATALOG_FILE } from "./runtime-personal-answer-only.js";
 
 export const PERSONAL_AGENT_DEADLINE_MS = 300_000;
 export const PERSONAL_AGENT_READ_CHECK_FILE = ".personal-read-check";
@@ -37,6 +38,7 @@ const toml = (s: string) => JSON.stringify(s).replace(/\x7f/g, "\\u007f");
 const uniquePaths = (values: readonly string[]) => [...new Map(values.map(p => [p.toLowerCase(), p])).values()];
 export interface PersonalProfileInput {
   cli: PersonalAgentCli;
+  answerOnly?: boolean;
   question: string;
   folder: string;
   canonicalFolder: string;
@@ -57,6 +59,7 @@ export interface PersonalProfilePlan {
   environment: Record<string, string>;
   files: Readonly<Record<string, string>>;
   deadlineMs: number;
+  answerOnly?: true;
 }
 /** Does no I/O or execution. The worker must stage a fresh auth-only home and validate its final prompt before spawn. */
 export function personalAgentProfile(input: PersonalProfileInput): PersonalProfilePlan {
@@ -74,6 +77,13 @@ export function personalAgentProfile(input: PersonalProfileInput): PersonalProfi
     APPDATA: win32.join(home, "AppData", "Roaming"), LOCALAPPDATA: win32.join(home, "AppData", "Local"),
     XDG_CONFIG_HOME: win32.join(home, ".config"), XDG_DATA_HOME: win32.join(home, ".local", "share"), XDG_STATE_HOME: win32.join(home, ".local", "state"),
     DISABLE_AUTOUPDATER: "1" };
+  if (input.answerOnly) {
+    if (input.cli !== "codex" || !model) throw Error("Answer only needs Codex and a locally reported model");
+    return { ...base, answerOnly: true, stdin: answerOnlyPrompt(input.question),
+      args: ["exec", "--json", "--ephemeral", "--ignore-rules", "--skip-git-repo-check", "-C", work, ...withModel, "-"],
+      environment: { ...environment, CODEX_HOME: home },
+      files: answerOnlyFiles({ model, catalogFile: win32.join(home, ANSWER_ONLY_CATALOG_FILE), work, home, disabledSkills: skills }) };
+  }
   if (input.cli === "claude-code") return { ...base,
     args: ["--print", "--verbose", "--input-format", "text", "--output-format", "stream-json", "--safe-mode", "--restricted", "--disable-slash-commands",
       "--setting-sources", "", "--settings", JSON.stringify({ disableAllHooks: true, disableClaudeAiConnectors: true, disableBundledSkills: true,

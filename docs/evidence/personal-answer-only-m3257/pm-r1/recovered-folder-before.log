@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 %REPO%
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (24 tests | 1 failed | 23 skipped) 96ms
+   × lets the owner turn off a saved Answer only choice if the one-folder check later succeeds 46ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > lets the owner turn off a saved Answer only choice if the one-folder check later succeeds
+AssertionError: expected null to be truthy
+
+- Expected:
+true
+
++ Received:
+null
+
+ ❯ tests/hub-personal-ui-m3224.test.ts:147:17
+    145|  data.agent={id:"personal",exposureId:"exposure",revision:1,cli:"codex…
+    146|  const {p,client}=await fixture("en",data),toggle=p.root.querySelector…
+    147|  expect(toggle).toBeTruthy();expect(toggle.checked).toBe(true);toggle.…
+       |                 ^
+    148|  expect(p.root.querySelector('[data-answer-only-option]')).toBeNull();…
+    149|  fire(p.root.querySelector("form"),"submit");await settle(20);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 23 skipped (24)
+   Start at  02:51:12
+   Duration  464ms (transform 190ms, setup 91ms, import 126ms, tests 96ms, environment 0ms)

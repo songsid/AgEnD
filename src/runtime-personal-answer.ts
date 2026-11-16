@@ -4,7 +4,7 @@ import { StringDecoder } from "node:string_decoder";
 export type PersonalAgentCli = "codex" | "claude-code";
 export const isPersonalAgentCli = (value: unknown): value is PersonalAgentCli => value === "codex" || value === "claude-code";
 export type PersonalAnswer = { ok: true; answer: string }
-  | { ok: false; reason: "failed" | "interrupted" | "incomplete" | "empty" | "protocol" | "output-limit" };
+  | { ok: false; reason: "failed" | "interrupted" | "incomplete" | "empty" | "protocol" | "output-limit" | "action-refused" };
 const MAX_STREAM = 1024 * 1024;
 const MAX_ANSWER = 64 * 1024;
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -19,7 +19,7 @@ export class PersonalAgentAnswerReader {
   private answer = "";
   private failure: Extract<PersonalAnswer, { ok: false }>["reason"] | null = null;
   private settled: PersonalAnswer | null = null;
-  constructor(private readonly cli: PersonalAgentCli) {
+  constructor(private readonly cli: PersonalAgentCli, private readonly options: { answerOnly?: boolean } = {}) {
     if (!isPersonalAgentCli(cli)) throw Error("Unsupported personal agent CLI");
   }
   write(chunk: Uint8Array): void {
@@ -41,6 +41,10 @@ export class PersonalAgentAnswerReader {
     let event: unknown;
     try { event = JSON.parse(line); } catch { this.failure = "protocol"; return; }
     if (!object(event)) { this.failure = "protocol"; return; }
+    if (this.options.answerOnly && (event.type === "item.started" || event.type === "item.updated" || event.type === "item.completed")
+      && (!object(event.item) || !["agent_message", "reasoning"].includes(String(event.item.type)))) {
+      this.failure = "action-refused"; return;
+    }
     if (event.type === "error" || event.type === "turn.failed") { this.failure = "failed"; return; }
     if (this.cli === "codex") {
       if (event.type === "turn.started") {
@@ -66,11 +70,12 @@ export class PersonalAgentAnswerReader {
     this.pending += this.decoder.end(); this.lines();
     if (this.pending.trim()) this.line(this.pending.trim()); this.pending = "";
     const answer = this.answer.trim();
-    const reason = cancelled ? "interrupted" : exitCode !== 0 ? "failed" : this.failure
+    const reason = this.actionRefused ? "action-refused" : cancelled ? "interrupted" : exitCode !== 0 ? "failed" : this.failure
       ?? (!this.completed ? "incomplete" : !answer ? "empty" : Buffer.byteLength(answer) > MAX_ANSWER ? "output-limit"
         : answer.includes("\0") || Buffer.from(answer).toString("utf8") !== answer ? "protocol" : null);
     this.answer = "";
     this.settled = reason ? { ok: false, reason } : { ok: true, answer };
     return { ...this.settled };
   }
+  get actionRefused(): boolean { return this.failure === "action-refused"; }
 }

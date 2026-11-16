@@ -1,0 +1,22 @@
+[
+  {
+    "name": "nonempty-tools",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "action-event",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "readiness",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "name": "profile-forward",
+    "caught": true,
+    "exit": 1
+  }
+]

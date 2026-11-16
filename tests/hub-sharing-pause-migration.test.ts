@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { applyHubMigrations } from "../src/hub/db.js";
 import { HUB_HTTP_MIGRATIONS } from "../src/hub/http/schema.js";
 // Freeze the historical registry: the later personal migration depends on the sharing and room schemas.
-const prePersonal = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-personal-agents");
+const prePersonal = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-personal-agents" && m.component !== "s3-personal-answer-only");
 it("adds default-unpaused state without rewriting old exposures and refuses an older migration registry", () => {
   const db = new Database(":memory:"), older = prePersonal.filter(m => m.component !== "s3-sharing-pause");
   try {

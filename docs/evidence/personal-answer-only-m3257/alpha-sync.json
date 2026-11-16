@@ -1,0 +1,8 @@
+{
+  "productCommit": "cb4cdff62",
+  "oldBase": "2758cf074b0bf22c8a75a01efe1a83d8a0f2245d",
+  "incomingAlpha": "3656d89059e73bf12a0bdd902b4ef43ee1d2a784",
+  "merge": "94040eb4db7eb400b44c51f8d60eb48f71f2f221",
+  "resolution": "service.ts keeps incoming explicit fleet/personal agentKind, then adds answerOnly independently. Incoming via.kind attribution and all other source-badge hunks preserved.",
+  "affected": "source-badges + personal-runtime 8/8; source TypeScript 0; no native/model/browser rerun on sync"
+}

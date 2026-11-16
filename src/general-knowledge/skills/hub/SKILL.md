@@ -743,7 +743,8 @@ Say plainly that these are not in the product yet:
   put only material intended for sharing there. Choose the available CLI, name and description, save, then use
   **Choose who may ask**; until sharing is configured, nobody can ask it. Certificate/trust errors mean that the
   computer does not yet trust this Hub: ask the administrator and do not change security settings to get past it. After installing or signing in to a CLI, use **Refresh** to check it again.
-- A personal agent answers with its owner's Codex or Claude on their own computer. It is read-only in one folder on that computer; anything in that folder may be quoted to people allowed to ask. It has no AgEnD tools or connectors.
+- A personal agent answers with its owner's Codex or Claude on their own computer. In the one-folder mode it is read-only in that folder; anything there may be quoted to people allowed to ask. It has no AgEnD tools or connectors.
+- If Codex's one-folder check fails, the owner's card may offer **Use Codex to answer only** / **只讓 Codex 回答**. It stays off until the owner ticks **Turn on Answer only** / **開啟「只回答」** and saves. This separate check must prove the entire tool list empty. In this mode Codex answers only from the question and general knowledge: it cannot read files, run commands, change anything or go online, and says what it could not check. The owner still pays for answers. Asker views show **Answers from general knowledge only. It can't look at any files.** / **只根據一般知識回答，無法查看任何檔案。** Do not ask it to inspect the owner's work. Claude and the one-folder choice stay separate. Changing mode creates a new publication revision and requires sharing for that revision.
 - A direct question or an explicit person's @mention may ask it. A verified **person via agent** request also counts
   as a person. Personal agents are left out of @all; an autonomous agent's @mention is not delivered and the source
   receives “Not delivered: {name} is a personal agent and answers people only.” / 「沒有送出：{name} 是個人 Agent，只回答人的提問。」
@@ -764,7 +765,7 @@ Say plainly that these are not in the product yet:
   management or self-update; re-run its install command to update it. This option alone does not enable personal
   agents on a Hub. Personal agents are off until a Hub administrator enables them. Each CLI's availability comes
   from that computer's own check, not its Windows version; Claude may be usable while Codex is unavailable.
-  Codex is usable only after its isolated shell can read the profile's test file. A failed check leaves it
+  The one-folder Codex choice is usable only after its isolated shell can read the profile's test file. A failed check leaves that choice
   unavailable; do not loosen its folder restrictions or change Windows security settings to get past the check.
 
 - **Does a disconnected Hub hold up the Fleet?** Fleet startup and ordinary local message delivery do not wait for the Hub connection. Tool discovery stays local within configured permissions, including native agents; an unavailable Hub tool explains the refusal when called. Hub Settings can temporarily say unavailable while a mount changes—retry afterward. Individual Hub network operations have deadlines; this does not promise zero background CPU/I/O overhead.

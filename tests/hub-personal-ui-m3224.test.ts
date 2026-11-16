@@ -1,8 +1,8 @@
 import {afterEach,beforeAll,expect,it,vi} from "vitest";
 import {page,h,settle,type AppPage} from "./helpers/app-harness.js";
 import {fire} from "./helpers/mini-dom.js";
-let ui:any,words:any,clients:any,confirms:any,commands:any;const pages:AppPage[]=[];
-beforeAll(async()=>{const p=page();ui=await import("/ui/js/hub-personal-agent.js");words=await import("/assets/app-i18n.js");clients=await import("/ui/js/hub-client.js");confirms=await import("/assets/ui-confirm.js");commands=await import("/ui/js/runtime-commands.js");p.restore();});
+let ui:any,words:any,clients:any,confirms:any,commands:any,personalCopy:any;const pages:AppPage[]=[];
+beforeAll(async()=>{const p=page();ui=await import("/ui/js/hub-personal-agent.js");words=await import("/assets/app-i18n.js");personalCopy=await import("/ui/js/hub-personal-agent-strings.js");clients=await import("/ui/js/hub-client.js");confirms=await import("/assets/ui-confirm.js");commands=await import("/ui/js/runtime-commands.js");p.restore();});
 afterEach(async()=>{for(const p of pages.splice(0)){await p.unmount();p.restore();}vi.restoreAllMocks();});
 const view=()=>({ok:true,enabled:true,canAdd:true,agent:null,computer:{id:"computer",name:"Alex PC",connected:true,compatible:true,folder:"C:\\Shared",working:false,
  clis:[{id:"codex",path:"C:\\codex.exe",available:true,authenticated:true,personalStatus:"ready",models:[{id:"model-one",label:"Model One"}]},{id:"claude-code",path:null,available:false,authenticated:false,personalStatus:"unchecked",models:[]}]}});
@@ -103,4 +103,49 @@ it("keeps certificate help in a closed disclosure and personal terminal advice s
  expect(next.p.root.textContent).toContain("Don't change security settings to get past it.");expect(button(next.p,"Copy command")?.className).toContain("btn-primary");
  const ordinary=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64)),personal=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64),"personal");
  expect(ordinary).toContain("or use the ZIP");expect(personal).not.toContain("or use the ZIP");expect(personal).toContain("Don''t change security settings");expect(personal).toContain("if ($s -and $h -eq");
+});
+
+it.each(["en","zh-TW"])("requires the explicit Answer only tick and hides folder access claims (%s)",async language=>{
+ const data:any=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable",answerOnlyAvailable:true});
+ const {p,client}=await fixture(language,data);const toggle=p.root.querySelector('[data-answer-only-option] input');expect(toggle.checked).toBe(false);expect(p.root.querySelector("form")).toBeNull();
+ expect(p.root.textContent).toContain(language==="en"?"Use Codex to answer only":"只讓 Codex 回答");
+ toggle.checked=true;fire(toggle,"change");await settle();
+ expect(p.root.textContent).not.toContain("C:\\Shared");expect(p.root.textContent).toContain(language==="en"?"It cannot read your files, run anything or go online.":"它不能讀取你的檔案、執行任何東西或上網");
+ change(p.root.querySelector("form input"),"Knowledge");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);
+ expect(client.savePersonalAgent).toHaveBeenCalledWith("captured-signin",{name:"Knowledge",description:"",cli:"codex",ifRevision:0,answerOnly:true});
+});
+it("keeps a failed empty-tool check unavailable and never selects it automatically",async()=>{
+ const data:any=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable",answerOnlyAvailable:false});
+ const {p,client}=await fixture("en",data);expect(p.root.textContent).toContain("Codex can't be used here: this computer can't keep it inside one folder, and Answer only mode isn't available either. Claude can be used.");
+ expect(p.root.querySelector('[data-answer-only-option]')).toBeNull();expect(p.root.querySelector("form")).toBeNull();expect(client.savePersonalAgent).not.toHaveBeenCalled();
+});
+
+it("keeps a saved Answer only choice compact, with its tick and access restriction",async()=>{
+ const data:any=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable",answerOnlyAvailable:true});
+ data.agent={id:"personal",exposureId:"exposure",revision:1,cli:"codex",answerOnly:true,name:"Knowledge",shared:true};
+ const {p}=await fixture("en",data),option=p.root.querySelector("[data-answer-only-option]");
+ expect(option.querySelector('input[type="checkbox"]').checked).toBe(true);
+ expect(option.textContent).toContain("It cannot read your files, run anything or go online.");
+ expect(option.textContent).not.toContain("Codex can't be kept inside one folder on this computer.");
+});
+it.each([false,true])("uses the actual owner's independent-question explanation for personal mode=%s",async answerOnly=>{
+ await fixture("en");const room={name:"Wrong agent name",agent:{agentKind:"personal",answerOnly,owner:{name:"Alex"}}};
+ const text=personalCopy.personalAgentQuestionHint(room);expect(text).toContain("It runs on Alex's computer");expect(text).toContain("Each question is answered on its own");expect(text).not.toContain("Wrong agent name");
+ expect(personalCopy.personalAgentQuestionHint({agentKind:"personal",ownerName:"Sam"})).toContain("Sam's computer");
+ expect(personalCopy.personalAgentQuestionHint({agent:{agentKind:"fleet",owner:{name:"Alex"}}})).toBeNull();
+});
+
+it("keeps the sign-in action when only authentication withholds an otherwise checked Answer only choice",async()=>{
+ const data:any=view();Object.assign(data.computer.clis[0],{available:false,authenticated:false,personalStatus:"sandbox-unavailable",answerOnlyStatus:"ready",answerOnlyAvailable:false});
+ const {p}=await fixture("en",data);expect(p.root.textContent).toContain("Sign in on that computer, then refresh.");
+ expect(p.root.textContent).not.toContain("and Answer only mode isn't available either");expect(p.root.querySelector("[data-answer-only-option]")).toBeNull();
+});
+it("lets the owner turn off a saved Answer only choice if the one-folder check later succeeds",async()=>{
+ const data:any=view();Object.assign(data.computer.clis[0],{available:true,personalStatus:"ready",answerOnlyAvailable:false});
+ data.agent={id:"personal",exposureId:"exposure",revision:1,cli:"codex",answerOnly:true,name:"Knowledge",shared:true};
+ const {p,client}=await fixture("en",data),toggle=p.root.querySelector('[data-answer-only-option] input');
+ expect(toggle).toBeTruthy();expect(toggle.checked).toBe(true);toggle.checked=false;fire(toggle,"change");await settle();
+ expect(p.root.querySelector('[data-answer-only-option]')).toBeNull();expect(button(p,"Save personal agent")?.disabled).toBe(false);
+ fire(p.root.querySelector("form"),"submit");await settle(20);
+ expect(client.savePersonalAgent.mock.calls[0][1]).not.toHaveProperty("answerOnly");expect(client.savePersonalAgent.mock.calls[0][1].ifRevision).toBe(1);
 });

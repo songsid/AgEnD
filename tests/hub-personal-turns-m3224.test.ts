@@ -17,18 +17,18 @@ import { s3bRig } from "./helpers/hub-s3b-rig.js";
 const cleanups:(()=>Promise<void>)[]=[];
 afterEach(async()=>{for(const c of cleanups.splice(0))await c();vi.restoreAllMocks();});
 async function drain(){for(let n=0;n<30;n++)await Promise.resolve();}
-async function fixture(){
+async function fixture(answerOnly=false){
   let now=100_000;const r=await s3bRig({realAudit:true,now:()=>now});
   const home=mkdtempSync(join(tmpdir(),"personal-turns-")),runtime=new RuntimeCoordinator(home),core=new HubCore(r.httpDeps,r.sql),owner=new HubPersonalOwnerHost(core,runtime);
   const person=r.addPerson("alex"),ctx=(key:PersonKey):HubRequestContext=>({requestId:randomUUID(),isCurrent:()=>true,current:async()=>({kind:"directory",person:key,sessionId:"fixture"}),
     requirePerson:async()=>key,requireAdmin:async()=>({kind:"directory",person:r.admin,sessionId:"fixture"})});
   await owner.settings(ctx(r.admin),{enabled:true,people:[personKeyString(person)],teams:[]});
   const token=await owner.enrollment(ctx(person)),joined=runtime.enroll({token:token.token,fingerprint:runtime.serverFingerprint(),name:"Alex PC",platform:"win32"});
-  const machine={...runtime.machine(joined.machineId)!,status:"online" as "online"|"offline",runtimeInfo:{...readRuntimeInfo(),capabilities:["exec","personal-agent-v1"]},
+  const machine={...runtime.machine(joined.machineId)!,status:"online" as "online"|"offline",runtimeInfo:{...readRuntimeInfo(),capabilities:["exec","personal-agent-v1",...(answerOnly?["personal-agent-answer-only-v1"]:[])]},
     inventory:{home:"C:\\User",personalFolder:"C:\\Shared",probedAt:1,clis:[{id:"codex" as const,path:"C:\\codex.exe",version:"0.167.0",authenticated:true,runnable:true,
-      supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:[],personalStatus:"ready" as const}]}};
+      supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:answerOnly?[{id:"local-model"}]:[],personalStatus:answerOnly?"sandbox-unavailable" as const:"ready" as const,...(answerOnly?{answerOnlyStatus:"ready" as const}:{})}]}};
   vi.spyOn(runtime,"machine").mockImplementation(id=>id===machine.id?structuredClone(machine):null);
-  const e=await owner.publish(ctx(person),{name:"Notes",description:"",cli:"codex",ifRevision:0});
+  const e=await owner.publish(ctx(person),{name:"Notes",description:"",cli:"codex",ifRevision:0,...(answerOnly?{answerOnly:true}:{})});
   const grant=randomUUID(),room=randomUUID(),key=personKeyString(person);
   r.db.prepare("INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state) VALUES(?,1,?,?,1,?,0,?,'[\"ask\",\"read-own-room\"]',0,99999999,'active')").run(grant,key,e.id,key,key);
   r.db.prepare("INSERT INTO hub_rooms VALUES(?,?,?,?,?,'active',0)").run(room,key,e.id,key,grant);
@@ -91,4 +91,14 @@ describe("Hub personal one-shot ownership",()=>{
     expect(f.row(id)).toMatchObject({state:"failed",reason:"timeout"});expect(f.call.mock.calls.filter(([,op])=>op==="run")).toHaveLength(1);
     expect(f.call).toHaveBeenLastCalledWith(f.machine.id,"cancel",{runId:id});
   });
+  it("dispatches an opted-in question only with the no-tools profile and freezes the mode on its revision",async()=>{
+    const f=await fixture(true),id=f.enqueue();f.start();await drain();
+    expect(f.call).toHaveBeenCalledTimes(1);
+    expect(f.call.mock.calls[0][2]).toMatchObject({profile:"personal-agent-answer-only-v1",task:{model:"local-model",sandbox:"read-only"}});
+    f.r.db.prepare("UPDATE hub_exposures SET revision=revision+1,answer_only=0 WHERE id=?").run(f.e.id);
+    f.tasks.set(id,{...f.tasks.get(id)!,status:"completed",outcomeConfirmed:true,answer:"Old mode must not disclose"});await f.wake();
+    expect(f.row(id)).toMatchObject({state:"failed",reason:"revoked"});
+    expect(f.call.mock.calls.filter(([,op])=>op==="run")).toHaveLength(1);
+  });
+
 });

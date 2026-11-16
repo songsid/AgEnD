@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 %REPO%
+
+ ❯ tests/runtime-client.test.ts (32 tests | 1 failed | 31 skipped) 197ms
+     × negotiates Answer only separately and passes no tools or account authority to its worker 194ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/runtime-client.test.ts > a personal Runtime's connection boundary > negotiates Answer only separately and passes no tools or account authority to its worker
+AssertionError: expected { personal: true, …(1) } to match object { personal: true, answerOnly: true }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "answerOnly": true,
+    "personal": true,
+  }
+
+ ❯ tests/runtime-client.test.ts:93:50
+     91|     await expect(f.state.hub.call(f.machineId,"run",{profile:PERSONAL_…
+     92|     await f.state.hub.call(f.machineId,"run",{profile:PERSONAL_AGENT_A…
+     93|     expect(f.bridge.options.get(task.requestId)).toMatchObject({person…
+       |                                                  ^
+     94|     expect(f.bridge.options.get(task.requestId)?.mcp).toBeUndefined();
+     95|     f.bridge.complete(task.requestId,"","Text from the question only."…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 31 skipped (32)
+   Start at  02:18:30
+   Duration  1.16s (transform 582ms, setup 93ms, import 712ms, tests 197ms, environment 0ms)

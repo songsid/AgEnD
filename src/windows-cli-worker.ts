@@ -21,6 +21,7 @@ import { MANAGED_CLI_ROOT_ENV, managedCliExecutable } from "./runtime-cli-instal
 import { isPersonalAgentCli, PersonalAgentAnswerReader, type PersonalAnswer } from "./runtime-personal-answer.js";
 import { assertPersonalTask, type PersonalCliStatus } from "./runtime-personal-protocol.js";
 import { stagePersonalAgent, stagePersonalProbe, windowsPersonalStageHost, PersonalAgentStageError, type PersonalStage } from "./runtime-personal-stage.js";
+import { answerOnlyEnvironment } from "./runtime-personal-answer-only.js";
 import { checkPersonalCodexPrompt } from "./runtime-personal-preflight.js";
 
 const exec = promisify(execFile);
@@ -35,6 +36,7 @@ export interface NativeCliRow {
   modelsSource?: "cli-cache" | "official-catalog" | "cli-list" | "unavailable";
   /** The personal runner's own enforcement check, never inferred from a version number. */
   personalStatus?: PersonalCliStatus;
+  answerOnlyStatus?: "ready" | "profile-unavailable";
   /** Claude Code only: the masked e-mail and plan of the default sign-in, taken from the same `auth status` answer as `authenticated`. */
   identity?: AccountIdentity;
 }
@@ -414,6 +416,7 @@ const HELP_PROBES: Record<NativeCliId, { args: string[]; required: string[] }> =
 /** Explicit models-only discovery, on the execution computer. No launch/config writes or caller-supplied URL/argv. */
 export async function refreshNativeModels(options: {
   cli: string; directory?: string; home?: string; environment?: NodeJS.ProcessEnv; authorized?: () => boolean;
+  answerOnlyCheck?: (executable: NativeCliExecutable, folder: string, model: string) => Promise<"ready" | "profile-unavailable">;
   find?: (id: NativeCliId) => Promise<NativeCliExecutable | null>;
   run?: (entry: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput>;
   request?: typeof fetch;
@@ -488,6 +491,7 @@ export interface NativeProbeOptions {
   personalFolder?: string;
   /** Tests use inert checks; production resolves and checks only the locally bound profile. */
   personalCheck?: (cli: import("./runtime-personal-answer.js").PersonalAgentCli, executable: NativeCliExecutable, folder: string) => Promise<PersonalCliStatus>;
+  answerOnlyCheck?: (executable: NativeCliExecutable, folder: string, model: string) => Promise<"ready" | "profile-unavailable">;
   find?: (id: NativeCliId) => Promise<NativeCliExecutable | null>;
   run?: (executable: NativeCliExecutable, args: string[]) => Promise<NativeCommandOutput>;
   /** Tests can isolate account metadata without reading the user's real cache. */
@@ -587,6 +591,10 @@ export async function probeNativeClis(options: NativeProbeOptions = {}): Promise
   const results = await Promise.all((options.personal ? NATIVE_CLI_IDS.filter(isPersonalAgentCli) : NATIVE_CLI_IDS).map(id => probeNativeCli(id, options, true)));
   if(options.personal)for(const result of results)if(isPersonalAgentCli(result.row.id)&&result.executable){
     result.row.personalStatus=await (options.personalCheck??checkPersonalCli)(result.row.id,result.executable,options.personalFolder!);
+    if(result.row.id === "codex" && result.row.personalStatus !== "ready") {
+      const model = result.row.models[0]?.id;
+      result.row.answerOnlyStatus = model ? await (options.answerOnlyCheck ?? checkAnswerOnlyCli)(result.executable, options.personalFolder!, model) : "profile-unavailable";
+    }
   }
   return { clis: results.map(result => result.row), home: homedir(), hostname: hostname() };
 }
@@ -604,6 +612,16 @@ async function checkPersonalCli(cli:import("./runtime-personal-answer.js").Perso
   }catch(error){outcome=error instanceof PersonalAgentStageError&&error.reason==="sandbox-unavailable"?"sandbox-unavailable":"profile-unavailable";}
   finally{try{stage?.cleanup();}catch{outcome="profile-unavailable";}}
   return outcome;
+}
+
+async function checkAnswerOnlyCli(executable:NativeCliExecutable,folder:string,model:string):Promise<"ready"|"profile-unavailable"> {
+  let stage:PersonalStage|undefined, result:"ready"|"profile-unavailable"="profile-unavailable";
+  try {
+    stage=stagePersonalProbe({cli:"codex",folder,model,answerOnly:true,question:"Local profile check only",runtimeReads:[]},windowsPersonalStageHost(nativeCliEnvironment()));
+    await checkPersonalCodexPrompt(executable,stage.plan,{...nativeCliEnvironment(),...stage.plan.environment});
+    result="ready";
+  } catch {} finally {try{stage?.cleanup();}catch{result="profile-unavailable";}}
+  return result;
 }
 
 async function workerMain(): Promise<void> {
@@ -649,6 +667,8 @@ async function workerMain(): Promise<void> {
       const input = validateNativeTask(request.task);
       if (request.personal !== undefined && request.personal !== true) throw Error("Invalid personal profile");
       personal = request.personal === true;
+      if(request.answerOnly !== undefined && (request.answerOnly !== true || !personal)) throw Error("Invalid Answer only profile");
+      const answerOnly = request.answerOnly === true;
       if (personal) assertPersonalTask(input, request);
       const mcp = request.mcp === undefined ? undefined : validateNativeMcpConnection(request.mcp);
       // Set only by this computer's own Runtime after it turned a profile NAME into a folder under its profile root; AgEnD never sends it.
@@ -666,7 +686,7 @@ async function workerMain(): Promise<void> {
       if (!executable) throw new Error(`${nativeProvider(input.cli).name} CLI is not installed on Windows`);
       if (disconnected || stopping) { completed = true; finish({ type: "finished", code: null, cancelled: true }, 1); return; }
       let tempDirectory: string | undefined, promptFile: string | undefined, connectionFile: string | undefined, mcpConfigFile: string | undefined, personalStage: PersonalStage | undefined;
-      const personalReader = personal && isPersonalAgentCli(input.cli) ? new PersonalAgentAnswerReader(input.cli) : undefined;
+      const personalReader = personal && isPersonalAgentCli(input.cli) ? new PersonalAgentAnswerReader(input.cli, {answerOnly}) : undefined;
       const createdFiles:string[]=[];
       let code: number | null = null;
       const prompt = request.context ? `${input.prompt}\n\nAgEnD task context:\n${request.context}` : input.prompt;
@@ -687,13 +707,13 @@ async function workerMain(): Promise<void> {
           writeFileSync(mcpConfigFile,JSON.stringify(nativeMcpServerConfig(launch)),{encoding:"utf8",mode:0o600,flag:"wx"});
           createdFiles.push(mcpConfigFile);
         }
-        if (personal && isPersonalAgentCli(input.cli)) personalStage = stagePersonalAgent({ cli: input.cli, folder: input.cwd, question: prompt, model: input.model,
+        if (personal && isPersonalAgentCli(input.cli)) personalStage = stagePersonalAgent({ cli: input.cli, folder: input.cwd, question: prompt, model: input.model, answerOnly,
           runtimeReads: [dirname(executable.command), ...executable.args.filter(validWindowsDirectory).map(p => dirname(p)), dirname(process.execPath)] }, windowsPersonalStageHost(nativeCliEnvironment()));
         const ordinaryInvocation = personalStage ? undefined : buildNativeInvocation({...input,prompt}, { resumeSessionId: request.resumeSessionId, promptFile,mcp:launch });
         const invocation = personalStage?.plan ?? ordinaryInvocation!;
         // A named account's launch: its variable (Claude Code), or the pin and the folder argument that go right after the program (Antigravity).
         const profile = credentialHome ? credentialProfileLaunch(nativeCliEnvironment(), input.cli, credentialHome) : { env: nativeCliEnvironment(), args: [] as string[] };
-        const environment = { ...profile.env, ...(personalStage?.plan.environment ?? ordinaryInvocation?.env) };
+        const environment = answerOnly && personalStage ? answerOnlyEnvironment(profile.env,personalStage.plan.environment) : { ...profile.env, ...(personalStage?.plan.environment ?? ordinaryInvocation?.env) };
         if (personalStage && input.cli === "codex") await checkPersonalCodexPrompt(executable, personalStage.plan, environment);
         if (disconnected || stopping) throw Error("Personal task cancelled before launch");
         child = spawn(executable.command, [...executable.args, ...profile.args, ...invocation.args], { cwd: personalStage?.plan.cwd ?? input.cwd, env: environment, shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
@@ -703,7 +723,7 @@ async function workerMain(): Promise<void> {
         const bounded = (type: string, chunk: string): void => {
           bytes += Buffer.byteLength(chunk);
           if (bytes > 1024 * 1024) { outputLimit = true; if (!stopping) emit({ type: "error", message: "Task output exceeded the preview limit", ...(personal ? { reason: "output-limit" } : {}) }); stop(); }
-          else if (personalReader) { if (type === "stdout") personalReader.write(Buffer.from(chunk)); }
+          else if (personalReader) { if (type === "stdout") { personalReader.write(Buffer.from(chunk)); if(personalReader.actionRefused) stop(); } }
           else emit({ type, text: chunk });
         };
         child.stdout!.setEncoding("utf8").on("data", c => bounded("stdout", c));

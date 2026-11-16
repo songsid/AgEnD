@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import {rememberRoomPeople,type RoomPersonSelection} from "../rooms/directory.js";
 import { RuntimeCoordinator } from "../../runtime-coordinator.js";
-import { PERSONAL_AGENT_PROFILE } from "../../runtime-personal-protocol.js";
+import { PERSONAL_AGENT_PROFILE, PERSONAL_AGENT_ANSWER_ONLY_PROFILE } from "../../runtime-personal-protocol.js";
 import { isPersonalAgentCli } from "../../runtime-personal-answer.js";
 import { HubCore, personFromString, type HubOperationPermit } from "../http/core.js";
 import { personKeyString } from "../identity.js";
@@ -15,8 +15,8 @@ import type { HubPersonalExposure } from "../types.js";
 type DB=Database.Database;
 const policyInput=z.strictObject({enabled:z.boolean(),people:z.array(z.string().min(1).max(512)).max(200),teams:z.array(z.string().uuid()).max(200)});
 const agentInput=z.strictObject({name:z.string().trim().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/).refine(s=>Buffer.byteLength(s,"utf8")<=256),
-  description:z.string().trim().max(512),cli:z.string().refine(isPersonalAgentCli),model:z.string().min(1).max(128).optional(),ifRevision:z.number().int().min(0)});
-export interface PersonalDefinition {id:string;owner:string;machine_id:string;cli:import("../../runtime-personal-answer.js").PersonalAgentCli;model:string|null;description:string}
+  description:z.string().trim().max(512),cli:z.string().refine(isPersonalAgentCli),model:z.string().min(1).max(128).optional(),ifRevision:z.number().int().min(0),answerOnly:z.boolean().optional()});
+export interface PersonalDefinition {id:string;owner:string;machine_id:string;cli:import("../../runtime-personal-answer.js").PersonalAgentCli;model:string|null;description:string;answer_only:number}
 interface Enrollment { id:string;owner:string;created_at:number;expires_at:number;machine_id:string|null;revoked_at:number|null;retired_at:number|null }
 interface Computer { owner:string;machine_id:string;enrollment_id:string;bound_at:number }
 export class HubPersonalOwnerHost {
@@ -146,21 +146,29 @@ export class HubPersonalOwnerHost {
     return this.core.atomic(db=>{
       const policy=this.policy(db),binding=db.prepare("SELECT * FROM hub_personal_computers WHERE owner=?").get(owner) as Computer|undefined;
       const machine=binding&&this.runtime.machine(binding.machine_id);
-      const definition=db.prepare("SELECT a.*,e.id exposure_id,e.display_name,e.revision,e.state FROM hub_personal_agents a JOIN hub_exposures e ON e.personal_agent_id=a.id WHERE a.owner=?").get(owner) as (PersonalDefinition&{exposure_id:string;display_name:string;revision:number;state:string})|undefined;
+      const definition=db.prepare("SELECT a.*,e.answer_only,e.id exposure_id,e.display_name,e.revision,e.state FROM hub_personal_agents a JOIN hub_exposures e ON e.personal_agent_id=a.id WHERE a.owner=?").get(owner) as (PersonalDefinition&{exposure_id:string;display_name:string;revision:number;state:string})|undefined;
       const now=this.core.now(),shared=definition?.state==="published"&&(
         !!db.prepare("SELECT 1 FROM hub_grants WHERE exposure_id=? AND exposure_revision=? AND owner=? AND state='active' AND starts_at<=? AND expires_at>? AND EXISTS(SELECT 1 FROM json_each(permissions) WHERE value='ask') LIMIT 1").get(definition.exposure_id,definition.revision,owner,now,now)
         ||!!db.prepare("SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id WHERE m.kind='agent' AND m.subject=? AND r.archived=0 AND EXISTS(SELECT 1 FROM hub_room_members p WHERE p.room_id=r.id AND p.kind='person') LIMIT 1").get(definition.exposure_id));
-      return {agent:definition?{shared:shared===true,id:definition.id,exposureId:definition.exposure_id,name:definition.display_name,description:definition.description,cli:definition.cli,model:definition.model,revision:definition.revision,state:definition.state}:null,enabled:policy.enabled,canAdd:this.canAdd(db,owner),computer:machine?{
+      return {agent:definition?{shared:shared===true,id:definition.id,exposureId:definition.exposure_id,name:definition.display_name,description:definition.description,cli:definition.cli,model:definition.model,...(definition.answer_only===1?{answerOnly:true}:{}),revision:definition.revision,state:definition.state}:null,enabled:policy.enabled,canAdd:this.canAdd(db,owner),computer:machine?{
         id:machine.id,name:machine.name,connected:machine.status==="online",compatible:machine.platform==="win32"&&machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true,
         folder:machine.inventory?.personalFolder??null,working:!!db.prepare("SELECT 1 FROM hub_personal_jobs WHERE machine_id=? AND state='working'").get(machine.id),clis:(machine.inventory?.clis??[]).filter(cli=>isPersonalAgentCli(cli.id)).map(cli=>({...cli,
           available:machine.platform==="win32"&&machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true&&cli.personalStatus==="ready"&&cli.runnable&&cli.authenticated===true,
+          answerOnlyAvailable:this.ready(machine,cli.id,true),
           personalStatus:cli.personalStatus??"unchecked",
         })),
       }:null};
     },permit);
   }
+  ready(machine:ReturnType<RuntimeCoordinator["machine"]>, cliId:string, answerOnly:boolean):boolean {
+    const cli=machine?.inventory?.clis.find(c=>c.id===cliId);
+    return !!machine && machine.platform==="win32" && machine.runtimeInfo?.capabilities.includes(answerOnly?PERSONAL_AGENT_ANSWER_ONLY_PROFILE:PERSONAL_AGENT_PROFILE)===true
+      && cli?.runnable===true && cli.authenticated===true && (answerOnly
+        ? cli.id==="codex" && ["sandbox-unavailable","profile-unavailable"].includes(cli.personalStatus??"") && cli.answerOnlyStatus==="ready" && cli.models.length>0
+        : cli.personalStatus==="ready");
+  }
   definition(db:DB,id:string):PersonalDefinition|undefined {
-    return db.prepare("SELECT * FROM hub_personal_agents WHERE id=?").get(id) as PersonalDefinition|undefined;
+    return db.prepare("SELECT a.*,e.answer_only FROM hub_personal_agents a JOIN hub_exposures e ON e.personal_agent_id=a.id WHERE a.id=?").get(id) as PersonalDefinition|undefined;
   }
   assertSource(db:DB,exposure:HubPersonalExposure):void {
     this.core.check();if(this.closed)throw new HubProtocolError("unavailable");
@@ -169,14 +177,15 @@ export class HubPersonalOwnerHost {
     const binding=db.prepare("SELECT machine_id FROM hub_personal_computers WHERE owner=?").get(owner) as {machine_id:string}|undefined;
     const machine=agent&&this.runtime.machine(agent.machine_id);
     if(!agent||agent.owner!==owner||agent.machine_id!==binding?.machine_id||!machine||machine.status==="revoked"
-      ||machine.platform!=="win32"||!machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE))throw new HubProtocolError("revoked");
+      ||machine.platform!=="win32"||!machine.runtimeInfo?.capabilities.includes(exposure.answerOnly?PERSONAL_AGENT_ANSWER_ONLY_PROFILE:PERSONAL_AGENT_PROFILE))throw new HubProtocolError("revoked");
   }
   /** Exact non-secret source material for policy preview/resume fences; an offline computer remains the same source. */
   sourceMaterial(db:DB,exposure:HubPersonalExposure):unknown|null {
     try{this.assertSource(db,exposure);}catch(error){if(error instanceof HubProtocolError)return null;throw error;}
     const agent=this.definition(db,exposure.personalAgentId)!,machine=this.runtime.machine(agent.machine_id)!;
     const computer=db.prepare("SELECT * FROM hub_personal_computers WHERE owner=?").get(agent.owner);
-    return {exposure,agent,computer,machine:{id:machine.id,generation:machine.generation,enrollmentId:machine.enrollmentId,
+    const {answer_only,...existingAgent}=agent;
+    return {exposure,agent:{...existingAgent,...(answer_only===1?{answer_only:1}:{})},computer,machine:{id:machine.id,generation:machine.generation,enrollmentId:machine.enrollmentId,
       enrolledVia:machine.enrolledVia,personalFolder:machine.inventory?.personalFolder??null}};
   }
   async publish(ctx:HubRequestContext,input:unknown):Promise<HubPersonalExposure> {
@@ -187,12 +196,12 @@ export class HubPersonalOwnerHost {
       const binding=db.prepare("SELECT machine_id FROM hub_personal_computers WHERE owner=?").get(owner) as {machine_id:string}|undefined;
       const machine=binding&&this.runtime.machine(binding.machine_id),cli=machine?.inventory?.clis.find(c=>c.id===value.cli);
       if(!machine||machine.platform!=="win32"||machine.status!=="online"||!machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)
-        ||!cli?.runnable||cli.authenticated!==true||cli.personalStatus!=="ready"||!machine.inventory?.personalFolder)throw new HubProtocolError("unavailable");
-      if(value.model&&!cli.models.some(m=>m.id===value.model))throw new HubProtocolError("invalid");
+        ||!this.ready(machine,value.cli,value.answerOnly===true)||!machine.inventory?.personalFolder)throw new HubProtocolError("unavailable");
+      if(value.model&&!cli?.models.some(m=>m.id===value.model))throw new HubProtocolError("invalid");
       const agent=db.prepare("SELECT * FROM hub_personal_agents WHERE owner=?").get(owner) as PersonalDefinition|undefined;
       const row=agent&&db.prepare("SELECT * FROM hub_exposures WHERE personal_agent_id=?").get(agent.id) as ReturnType<typeof readExposure>;
       if((row?.revision??0)!==value.ifRevision)throw new HubProtocolError("conflict");
-      return {machine:machine.id,generation:machine.generation,agentId:agent?.id??randomUUID(),id:row?.id??randomUUID(),revision:value.ifRevision+1,image:JSON.stringify(row??null)};
+      return {model:value.model??(value.answerOnly?cli!.models[0].id:null),machine:machine.id,generation:machine.generation,agentId:agent?.id??randomUUID(),id:row?.id??randomUUID(),revision:value.ifRevision+1,image:JSON.stringify(row??null)};
     },request);
     const groups=this.core.deps.groups,context=this.core.groupContext(ctx);
     const enrollment=groups?await groups.prepareEnrollment({kind:"exposure",id:before.id,revision:before.revision,owner:key},context):undefined;
@@ -201,13 +210,13 @@ export class HubPersonalOwnerHost {
       if(!this.canAdd(db,owner))throw new HubProtocolError("denied");
       const machine=this.runtime.machine(before.machine),binding=db.prepare("SELECT machine_id FROM hub_personal_computers WHERE owner=?").get(owner) as {machine_id:string}|undefined;
       const cli=machine?.inventory?.clis.find(c=>c.id===value.cli);
-      if(binding?.machine_id!==before.machine||machine?.generation!==before.generation||machine.status!=="online"||cli?.personalStatus!=="ready"||cli.authenticated!==true||!cli.runnable)throw new HubProtocolError("stale");
+      if(binding?.machine_id!==before.machine||machine?.generation!==before.generation||machine.status!=="online"||!this.ready(machine,value.cli,value.answerOnly===true)||before.model!==null&&!cli?.models.some(m=>m.id===before.model))throw new HubProtocolError("stale");
       if(JSON.stringify(readExposure(db,before.id)??null)!==before.image)throw new HubProtocolError("conflict");
       const now=this.core.now();
       db.prepare("INSERT INTO hub_personal_agents(id,owner,machine_id,cli,model,description,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(owner) DO UPDATE SET machine_id=excluded.machine_id,cli=excluded.cli,model=excluded.model,description=excluded.description,updated_at=excluded.updated_at")
-        .run(before.agentId,owner,before.machine,value.cli,value.model??null,value.description,now,now);
-      db.prepare("INSERT INTO hub_exposures(id,owner,display_name,revision,state,updated_at,source_kind,personal_agent_id) VALUES(?,?,?,?,'published',?,'personal',?) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,revision=excluded.revision,state='published',updated_at=excluded.updated_at")
-        .run(before.id,owner,value.name,before.revision,now,before.agentId);
+        .run(before.agentId,owner,before.machine,value.cli,before.model,value.description,now,now);
+      db.prepare("INSERT INTO hub_exposures(id,owner,display_name,revision,state,updated_at,source_kind,personal_agent_id,answer_only) VALUES(?,?,?,?,'published',?,'personal',?,?) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,revision=excluded.revision,state='published',updated_at=excluded.updated_at,answer_only=excluded.answer_only")
+        .run(before.id,owner,value.name,before.revision,now,before.agentId,value.answerOnly?1:0);
       enrollment?.commit(db);
       this.core.audit(tx,{requestId:ctx.requestId,actor:{kind:"person",person:key},action:"personal.published",result:"completed",exposureId:before.id,ownerAtEvent:key});
       return exposureOf(readExposure(db,before.id)!) as HubPersonalExposure;
