@@ -1,27 +1,56 @@
-.hub-roles .btn, .hub-roles .field :is(input,select) { min-height: var(--tap); }
-.hub-role-head, .hub-role-actions, .hub-role-list > li { display:flex; gap:var(--s-3); align-items:center; flex-wrap:wrap; }
-.hub-role-head { justify-content:space-between; }
-.hub-role-actions { margin-top:var(--s-4); }
-.hub-role-list { list-style:none; padding:0; margin:0; }
-.hub-role-list > li { padding:var(--s-3) 0; border-bottom:1px solid var(--border); }
-.hub-role-list .grow { min-width:0; overflow-wrap:anywhere; }
-.hub-role-detail { display:block; }
-.hub-role-check { display:flex; align-items:center; gap:var(--s-3); min-height:var(--tap); padding:var(--s-2) 0; }
-.hub-role-check input { flex:none; }
-.hub-role-search { display:flex; gap:var(--s-3); flex-wrap:wrap; align-items:end; }
-.hub-role-search > .field { flex:1; min-width:10rem; }
-.hub-role-search > ul { width:100%; }
-.hub-roles :is(code,p,td,small) { overflow-wrap:anywhere; }
+/* Reuse the same Hub row, picker, metric and table styles as the other pages. */
+@import url("/assets/hub-owner.css");
+@import url("/assets/hub-groups.css");
+@import url("/assets/hub-teams.css");
+
+.hub-roles { padding-top:var(--s-2); }
+.hub-roles .hub-card-head { margin-bottom:var(--s-4); flex-wrap:wrap; }
+.hub-roles .hub-card-head > .btn,
+.hub-roles .s-actions > .btn,
+.hub-role-actions > .btn { width:auto; flex:none; }
+.hub-role-actions { display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; margin-top:var(--s-4); }
+.hub-roles .hub-rows .s-row.hub-row { flex-wrap:wrap; }
+.hub-role-list .hub-row-text,
+.hub-role-selected .hub-row-text { flex:1; min-width:0; }
+.hub-role-title-row { display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; }
+.hub-role-row-actions { flex-wrap:nowrap; margin-inline-start:auto; }
+.hub-role-detail { display:block; margin-top:var(--s-1); }
+.hub-role-list .chips { margin-top:var(--s-2); }
+.hub-roles .chips > .tag { white-space:normal; }
+.hub-roles :is(code,p,td,small,strong) { overflow-wrap:anywhere; }
 .hub-roles code { white-space:normal; }
-.hub-role-table-wrap { overflow-x:auto; }
-.hub-roles table { width:100%; border-collapse:collapse; }
-.hub-roles :is(th,td) { text-align:start; vertical-align:top; padding:var(--s-3); border-bottom:1px solid var(--border); }
+.hub-role-meta-grid { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--s-4); align-items:end; }
+.hub-roles .hub-group-fleets input { width:4.5em; min-height:var(--tap); }
+.hub-role-perm-groups { display:grid; gap:var(--s-4); margin-top:var(--s-4); }
+.hub-role-group { min-width:0; margin:0; padding:var(--s-4); border:1px solid var(--border); border-radius:var(--r-md); background:var(--surface-2); }
+.hub-role-group legend { padding:0 var(--s-2); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
+.hub-role-group legend .tag { margin-inline-start:var(--s-2); }
+.hub-role-group .s-checks { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--s-2) var(--s-4); }
+.hub-role-check { display:flex; align-items:center; gap:var(--s-2); min-height:var(--tap); margin:0; }
+.hub-role-check input { flex:none; }
+.hub-role-check > span { min-width:0; }
+.hub-role-check .tag { margin-inline-start:var(--s-2); }
+.hub-role-selected { margin:var(--s-3) 0; }
+.hub-role-selected .s-actions { flex-wrap:nowrap; }
+.hub-role-preview { border-inline-start:var(--s-1) solid var(--accent); }
+.hub-role-summary { margin:0; padding-inline-start:var(--s-4); }
+.hub-role-impact-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--s-3); margin-top:var(--s-4); }
+.hub-role-warning { color:var(--warn); }
+.hub-role-audit small { display:block; }
+.hub-role-audit-result { white-space:nowrap; }
 @media (max-width:899px), (pointer:coarse) {
- .hub-roles .field :is(input,select) { min-width:0; width:100%; font-size:var(--fs-md); }
- .hub-role-table-wrap { overflow:visible; }
- .hub-roles :is(table,tbody) { display:block; }
- .hub-roles thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
- .hub-roles tr { display:block; padding:var(--s-3) 0; border-bottom:1px solid var(--border); }
- .hub-roles td { display:block; border:0; padding:var(--s-1) 0; }
- .hub-roles td::before { content:attr(data-label); color:var(--text-2); margin-inline-end:var(--s-2); }
+ .hub-roles .btn,
+ .hub-roles .field :is(input,select) { min-height:var(--tap); }
+ .hub-roles .field :is(input,select) { min-width:0; font-size:var(--fs-md); }
+ .hub-role-meta-grid { grid-template-columns:minmax(0,1fr); }
+ .hub-role-group .s-checks { grid-template-columns:minmax(0,1fr); }
+ .hub-role-impact-grid { grid-template-columns:minmax(0,1fr); }
+ .hub-role-audit tr { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--s-2) var(--s-3); }
+ .hub-role-audit td[data-label]::before { content:none; }
+ .hub-role-audit-action { grid-column:1; grid-row:1; }
+ .hub-role-audit-result { grid-column:2; grid-row:1; }
+ .hub-role-audit-who { grid-column:1; grid-row:2; color:var(--text-2); font-size:var(--fs-sm); }
+ .hub-role-audit-when { grid-column:2; grid-row:2; color:var(--text-2); font-size:var(--fs-sm); text-align:end; }
 }
+
+.hub-role-list { list-style:none; padding:0; }

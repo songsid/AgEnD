@@ -47,3 +47,33 @@ it("edits an existing assignment atomically while preserving its identity and se
  const form=p.root.querySelector(".hub-role-assignment"),expiry=form.querySelectorAll('input[type="datetime-local"]')[1];expiry.value="2027-01-02T10:30";fire(expiry,"input");await settle(5);fire(form,"submit");await settle(10);
  expect(client.rolePreview).toHaveBeenCalledTimes(1);const proposed=client.rolePreview.mock.calls[0][0];expect(proposed.assignments).toHaveLength(1);expect(proposed.assignments[0]).toMatchObject({id:"existing",assignedBy:actor,assignedAt:42,maxFleets:2});expect(proposed.assignments[0].expiresAt).toBe(new Date("2027-01-02T10:30").getTime());expect(client.roleApply).not.toHaveBeenCalled();
 });
+
+it.each(["en","zh-TW"])("groups custom permissions without changing locked and forthcoming controls (%s)",async lang=>{
+ const {p}=await mount(lang);fire(button(p.root,lang==="en"?"New role":"新增角色"),"click");await settle(10);
+ const form=p.root.querySelector(".hub-role-editor"),groups=[...form.querySelectorAll("fieldset")];
+ expect(form.querySelector("h3").textContent).toBe(lang==="en"?"New role":"新增角色");
+ expect(groups.map((g:any)=>g.querySelectorAll('input[type="checkbox"]').length)).toEqual([3,4,5]);
+ expect([...groups[0].querySelectorAll("input")].every((el:any)=>!el.disabled)).toBe(true);
+ expect([...groups[1].querySelectorAll("input")].map((el:any)=>el.disabled)).toEqual([false,false,true,true]);
+ expect([...groups[2].querySelectorAll("input")].map((el:any)=>el.disabled)).toEqual([false,false,false,false,true]);
+});
+it("uses the shared person picker, hides it after selection, and previews beside the initiating form",async()=>{
+ const target={realm:"corp",objectId:"11111111-1111-4111-8111-111111111111"};
+ const {p,client}=await mount("en",{roleSearch:vi.fn(async()=>({ok:true,candidates:[{kind:"person",key:target,name:"Alex Chen",login:"alex"}]}))});
+ fire(button(p.root,"Assign role"),"click");await settle(10);const form=p.root.querySelector(".hub-role-assignment"),input=form.querySelector('input[type="search"]');input.value="Alex";fire(input,"input");
+ await vi.waitFor(()=>expect(button(form,"Choose")).toBeTruthy());
+ expect(client.roleSearch).toHaveBeenCalledWith("person","Alex");fire(button(form,"Choose"),"click");await settle(10);
+ expect(form.querySelector('input[type="search"]')).toBeNull();expect(form.querySelector(".hub-role-selected").textContent).toContain("Alex Chen");
+ fire(button(form,"Change"),"click");await settle(10);expect(form.querySelector('input[type="search"]')).toBeTruthy();
+ const next=form.querySelector('input[type="search"]');next.value="Alex";fire(next,"input");await vi.waitFor(()=>expect(button(form,"Choose")).toBeTruthy());fire(button(form,"Choose"),"click");await settle(10);
+ fire(form,"submit");await settle(10);
+ expect(client.rolePreview.mock.calls[0][0].assignments[0].subject).toEqual({kind:"person",person:target});
+ const siblings=[...form.parentNode.children];expect(siblings[siblings.indexOf(form)+1]?.className).toContain("hub-role-preview");expect(p.root.querySelectorAll(".hub-ov-card")).toHaveLength(3);expect(client.roleApply).not.toHaveBeenCalled();
+});
+it("keeps the original group key through the shared GroupSearch normalization",async()=>{
+ const group={kind:"group",key:{realm:"corp",objectId:"22222222-2222-4222-8222-222222222222"},name:"Support",dn:"cn=support,dc=example,dc=test"};
+ const {p,client}=await mount("en",{roleSearch:vi.fn(async()=>({ok:true,candidates:[group]}))});
+ fire(button(p.root,"Assign role"),"click");await settle(10);const form=p.root.querySelector(".hub-role-assignment"),selects=form.querySelectorAll("select");selects[0].value="builtin:member";fire(selects[0],"change");await settle(10);selects[1].value="group";fire(selects[1],"change");await settle(10);
+ const input=form.querySelector('input[type="search"]');input.value="Support";fire(input,"input");await vi.waitFor(()=>expect(button(form,"Add")).toBeTruthy());fire(button(form,"Add"),"click");await settle(10);fire(form,"submit");await settle(10);
+ expect(client.rolePreview.mock.calls[0][0].assignments[0].subject).toEqual({kind:"group",group:group.key,dn:group.dn});expect(form.querySelector('input[type="search"]')).toBeNull();
+});
