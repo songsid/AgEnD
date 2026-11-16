@@ -1,4 +1,4 @@
-/** Unmounted cutover preparation. Never registered or invoked by production startup in this slice. */
+/** Atomic role cutover, invoked by the role-capable server before admitting requests. */
 import type Database from "better-sqlite3";
 import {createHash,randomUUID} from "node:crypto";
 import {performance} from "node:perf_hooks";
@@ -9,11 +9,10 @@ import {epoch,parseStrictJson,person,uuid,validated} from "../validation.js";
 import {parseGroupPolicy} from "../group-policy/model.js";
 import {convertGroupPolicy} from "./convert.js";
 import {parseRolePolicy} from "./model.js";
-import {HUB_ROLE_WRITER_MIGRATION} from "./writer.js";
-import {HUB_ROLE_EXPIRY_MIGRATION} from "./expiry.js";
+import {HUB_ROLE_CUTOVER_MIGRATION,HUB_ROLE_MIGRATIONS} from "./migrations.js";
+export {HUB_ROLE_CUTOVER_MIGRATION} from "./migrations.js";
 import {captureRoleCutoverInventory} from "./cutover-inventory.js";
 import {hubRoleCutoverMarkerSchema as markerSchema,parseHubRoleCutoverMarker} from "./cutover-marker.js";
-export const HUB_ROLE_CUTOVER_MIGRATION:HubMigration={component:"roles-cutover",version:1,up(db){db.exec("CREATE TABLE IF NOT EXISTS hub_role_cutover(singleton INTEGER PRIMARY KEY CHECK(singleton=1),body TEXT NOT NULL)");}};
 export interface RoleCutoverOptions {db:Database.Database;hubId:string;realm:string;generation:string;root:PersonKey;
  transport:Pick<HubTransportStore,"read"|"mutate">;migrations:readonly HubMigration[];current():boolean;refreshAuthorization():void;now?:()=>number;elapsedNow?:()=>number;}
 export type RoleCutoverResult={ok:true;changed:boolean;revision:number;epoch:number}|{ok:false;code:"unavailable"|"conflict"|"expired"};
@@ -23,7 +22,7 @@ function sync(value:unknown){if(value&&typeof(value as{then?:unknown}).then==="f
 export function createHubRoleCutover(options:RoleCutoverOptions){
  const{db,transport,current,refreshAuthorization}=options,hubId=validated(uuid,options.hubId),root=validated(person,options.root),{realm,generation}=options;
  const readTransportMethod=transport.read,mutateMethod=transport.mutate,readTransport=readTransportMethod.bind(transport),mutate=mutateMethod.bind(transport);
- const base=options.migrations.map(m=>Object.freeze({...m,up:m.up.bind(m)})),roleMigrations=[HUB_ROLE_WRITER_MIGRATION,HUB_ROLE_EXPIRY_MIGRATION,HUB_ROLE_CUTOVER_MIGRATION];
+ const base=options.migrations.map(m=>Object.freeze({...m,up:m.up.bind(m)})),roleMigrations=HUB_ROLE_MIGRATIONS;
  if(base.some(m=>roleMigrations.some(r=>r.component===m.component)))throw new Refusal("unavailable");
  const full=[...base,...roleMigrations],clock=options.now??Date.now,elapsedClock=options.elapsedNow??(()=>performance.now());let closed=false,working=false,publishedEpoch:number|null=null;
  const now=()=>validated(epoch,clock());

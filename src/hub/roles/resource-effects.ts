@@ -11,16 +11,17 @@ import {createHubGroupResources} from "../group-policy/resources.js";
 import {readHubOperationalPolicy,type HubGroupPolicyStore} from "../group-policy/store.js";
 import {parseRolePolicy} from "./model.js";
 import type {RoleWriteEffects} from "./writer.js";
-export function createHubRoleResourceEffects(options:{
+export interface RoleResourceOptions {
  db:Database.Database;root:PersonKey;transport:Pick<HubTransportStore,"read">;policy:HubGroupPolicyStore;
  audit:Pick<HubAuditStore,"appendInTransaction">;current():boolean;now():number;
-}):RoleWriteEffects{
+}
+export function createHubRoleResourceEffects(options:RoleResourceOptions):RoleWriteEffects{
  const {db,root,transport,policy,audit,current,now}=options;
  const live=()=>{if(current()!==true)throw new HubProtocolError("unavailable");};
  const inventory=createHubGroupAdminInventory({db,transport,realm:root.realm});
  const observations=createHubGroupImpactInventory({db,transport,administrator:root,inventory,current,now});
  const read=()=>{live();return parseRolePolicy(readHubOperationalPolicy(policy));};
- const snapshot=()=>{const s=observations.snapshot([read()]);return{fingerprint:s.fingerprint,ordinaryFingerprint:s.ordinaryFingerprint,people:s.people.map(p=>p.key)};};
+ const snapshot=(policies?:readonly import("./model.js").HubRolePolicy[])=>{const currentPolicy=read(),s=observations.snapshot(policies??[currentPolicy]);return{fingerprint:s.fingerprint,ordinaryFingerprint:s.ordinaryFingerprint,people:s.people.map(p=>p.key)};};
  return{snapshot,async prepare(plan,facts,assertCurrent,context){
   assertCurrent();live();if(!context||context.actor.realm!==root.realm)throw new HubProtocolError("unavailable");
   const before=observations.snapshot([plan.before,plan.next]);

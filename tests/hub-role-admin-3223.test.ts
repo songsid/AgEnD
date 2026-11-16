@@ -51,6 +51,45 @@ it.each(["presentation","read"] as const)("%s rechecks real directory eligibilit
  await expect(w.control[method](w.ctx.ctx)).rejects.toMatchObject({code:"revoked"});expect(w.eligible).toHaveBeenCalledWith(w.admin);
 });
 
+it.each(["not json",JSON.stringify({kind:"person",person:{realm:"corp",objectId:"bad"}}),JSON.stringify({kind:"legacy",label:"PRIVATE-LEGACY-LABEL"})])("keeps an unreadable legacy audit actor from breaking the metadata page (%s)",async actor=>{
+ const w=await world(),id=randomUUID();w.db.transaction(()=>w.audit.appendInTransaction({id,sequence:0,at:100,requestId:randomUUID(),actor:{kind:"person",person:w.root},action:"fixture.legacy",result:"completed",policyVersion:1},w.db)).immediate();
+ // Deliberate legacy/corrupt input: it is never used as authority or a valid-chain claim.
+ w.db.prepare("UPDATE hub_audit SET actor=? WHERE id=?").run(actor,id);
+ const page=await w.control.audit(w.ctx.ctx,{});expect(page.rows.find(row=>row.id===id)?.actor).toEqual({id:"unknown",name:""});expect(JSON.stringify(page)).not.toContain("PRIVATE-LEGACY-LABEL");
+});
+it("normal retention prunes role audit-read events and preserves the audit checkpoint chain",async()=>{
+ const w=await world();await w.control.audit(w.ctx.ctx,{});const old=w.db.prepare("SELECT id FROM hub_audit WHERE action='role.audit-read'").get() as {id:string};expect(old).toBeTruthy();
+ w.time(2*86400000);expect(w.audit.purge({contentDays:1,eventDays:1}).events).toBeGreaterThan(0);expect(w.db.prepare("SELECT id FROM hub_audit WHERE id=?").get(old.id)).toBeUndefined();expect(w.audit.verifyChain().ok).toBe(true);
+});
+
+it("remembers searched directory labels for assignments without creating signed-in people or authority",async()=>{
+ const w=await world();
+ w.directory.searchGrantPeople=async()=>({ok:true,people:[{person:w.other,login:"alex",displayName:"Alex Chen"}],truncated:false});
+ const rows=await w.control.search(w.ctx.ctx,{kind:"person",q:"Al"});expect(rows[0]?.name).toBe("Alex Chen");
+ expect(w.db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(`${w.other.realm}/${w.other.objectId}`)).toBeUndefined();
+ w.policy.assignments.push({id:"display-only",roleId:"builtin:member",subject:{kind:"person",person:w.other},scope:{kind:"hub"},maxFleets:null,startsAt:0,expiresAt:null,assignedAt:0,assignedBy:w.root});w.save(w.policy);
+ expect((await w.control.read(w.ctx.ctx)).personLabels).toContainEqual({id:`${w.other.realm}/${w.other.objectId}`,name:"Alex Chen"});
+ expect((await w.control.presentation((await w.browser(w.other)).ctx)).management).toEqual([]);
+});
+
+it.each(["root","auxiliary"] as const)("keeps %s request identity current after six seconds, but not after authority/session revocation",async who=>{
+ const w=await world(),browser=who==="root"?await w.browser(w.root):w.ctx;
+ await browser.ctx.requireAdmin();w.time(6000);w.elapsed(6000);
+ expect(browser.ctx.isCurrent?.()).toBe(true);
+ if(who==="root")w.sessions.signOut(browser.token);else{w.policy.assignments=[];w.save(w.policy);}
+ expect(browser.ctx.isCurrent?.()).toBe(false);
+});
+it("keeps short effect permits at five seconds while separately re-proving long-operation authority",async()=>{
+ const w=await world(),permit=await w.authority.require(w.ctx.ctx,"hub.admin");w.time(6000);w.elapsed(6000);
+ expect(()=>permit.assertAuthority!()).not.toThrow();
+ expect(()=>permit.assertCurrent()).toThrow();
+});
+it("re-proved long-operation authority still ends at the assignment's own expiry",async()=>{
+ const w=await world();w.policy.assignments[0]!.expiresAt=1000;w.save(w.policy);
+ const permit=await w.authority.require(w.ctx.ctx,"hub.admin");w.time(1000);
+ expect(()=>permit.assertAuthority!()).toThrow();
+});
+
 it("keeps named historical assignment details after a later rename, and filters audit before pagination",async()=>{
  const w=await world();w.db.prepare("UPDATE hub_people SET display_name=? WHERE person=?").run("Alex Chen",`${w.admin.realm}/${w.admin.objectId}`);
  const p=structuredClone(w.policy);p.roles[1]!.name="Support leads";p.roles[1]!.description="Support colleagues";

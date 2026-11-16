@@ -1,0 +1,17 @@
+{
+  "head": "4b34dfac856fbe3dcdeb084ac8ac761d651e4f1c",
+  "note": "Recorded after the action run. Runtime source was unchanged between that run and this binding; the dirty role UI carries the tested selected-person label fix. Original eight overview after views were captured on clean source at 4b34dfac8. Baseline ran a separate server from clean 87caabf11. Editor screenshots correct viewport framing, not product styling.",
+  "files": {
+    "src/hub/runtime.ts": "232c94bb15334d2580a00f899583a70dacca5e9902cc7f136bc1993fb21ab614",
+    "src/hub/compose/server.ts": "8fcfaa445d94b055714f9dbfa617f7ddda10f06f256ffb393a013b313d80a8f2",
+    "src/hub/http/compose.ts": "2a2c19c9e18c6c3fd489fc4b718f493d7b66036b9cb1040dd45cc96f5acaec49",
+    "src/hub/roles/admin-control.ts": "211f5e4e92a927f04ae244518bd1aa76953df65126ca33f6b4bc91c14604e8a8",
+    "src/hub/roles/writer.ts": "9889cf8fc08a5e511424385daf44cad8ff5313768adb24caf6d57070d6e77805",
+    "src/hub/roles/authority.ts": "77a6d2f2c767381f8a445d68020b911a596cd77e765c8d3f21c7ffc558222b5e",
+    "src/ui/panel-hub.js": "adaeea34394ef1db4b0cfd73f36c343144b22831e81bcdac10613ff9a894578c",
+    "src/ui/hub-roles.js": "455f6d6c8161dbcc5ab0183318b5e7ac0403275000edb635cc85f66c8f38864e",
+    "src/ui/hub-roles-strings.js": "40ee8cb495c395c64bfaf2a02835b8603aeea5a42bf46703ce40dfd783f9e546",
+    "src/ui/shared/hub-roles.css": "e04c26d6288c9da154ceb6e0f06fc17e1728d60734668b23c57c43500972e90f",
+    "scripts/manual/hub-roles-m3223/browser.mts": "6e75ef1bb0f74d944665d3840af888d01d3ba60f90f0e526a625bd006b85bfb4"
+  }
+}
