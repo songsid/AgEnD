@@ -1,0 +1,17 @@
+[
+  {
+    "control": "exit-proof",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "claude-final",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "folder-system",
+    "caught": true,
+    "exit": 1
+  }
+]
