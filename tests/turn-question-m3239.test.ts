@@ -103,16 +103,31 @@ describe("M-3239 (1): the missed quiet notice — Claude compacting on its own i
     } finally { done(); }
   });
 
-  it("activity during the fleet's own start is still not progress", () => {
+  it("a fleet restart (Fable F1): transcript work at boot counts, and a resumed agent is not quiet from its card's claim", () => {
     vi.useFakeTimers();
     const { fm, done } = fleet();
     try {
-      vi.setSystemTime(at("2026-11-16T05:01:00Z"));
-      fm.noteTurnActivity("dev-b", at("2026-11-16T05:01:00Z"));
+      fm.startedAt = at("2026-11-16T10:00:00Z");
+      const c7 = { claimedAt: at("2026-11-16T07:00:00Z"), updatedAt: at("2026-11-16T07:00:00Z") };
+      const edge = (iso: string, state: string) => {
+        vi.setSystemTime(at(iso));
+        fm.cacheInstanceExecutionState("dev-b", { state, turnEvidence: true, turnActivityAt: at(iso) });
+      };
+      edge("2026-11-16T10:00:30Z", "working");               // resumed at once …
+      edge("2026-11-16T10:03:00Z", "idle");                  // … and now waits on CI
+      vi.setSystemTime(at("2026-11-16T10:06:00Z"));
+      expect(fm.lastWorkingAt.get("dev-b")).toBe(at("2026-11-16T10:03:00Z"));
+      expect(judgeAssignee(fm.livenessFacts("dev-b"), c7, S, Date.now())).toBeNull();
+      expect(judgeAssignee(fm.livenessFacts("dev-b"), c7, S, at("2026-11-16T11:03:00Z"))).toMatchObject({ kind: "quiet", since: at("2026-11-16T10:03:00Z") });
+      // Nothing in its transcript since the restart: quiet counts from the fleet's start, never from the claim.
+      fm.lastWorkingAt.delete("dev-b");
+      expect(judgeAssignee(fm.livenessFacts("dev-b"), c7, S, at("2026-11-16T10:59:59Z"))).toBeNull();
+      expect(judgeAssignee(fm.livenessFacts("dev-b"), c7, S, at("2026-11-16T11:00:00Z"))).toMatchObject({ kind: "quiet", since: at("2026-11-16T10:00:00Z") });
+      // Older than this fleet: not progress (a line from before the restart).
+      fm.noteTurnActivity("dev-b", at("2026-11-16T09:59:59Z"));
       expect(fm.lastWorkingAt.has("dev-b")).toBe(false);
-      vi.setSystemTime(at("2026-11-16T05:06:00Z"));
-      fm.noteTurnActivity("dev-b", at("2026-11-16T05:00:00Z") + LIVENESS_STARTUP_GRACE_MS);
-      expect(fm.lastWorkingAt.get("dev-b")).toBe(at("2026-11-16T05:00:00Z") + LIVENESS_STARTUP_GRACE_MS);
+      // The floor is no progress: an episode told before the restart is still stopped.
+      expect(stillStopped({ kind: "quiet", since: at("2026-11-16T08:00:00Z") }, fm.livenessFacts("dev-b"), c7)).toBe(true);
     } finally { done(); }
   });
 });

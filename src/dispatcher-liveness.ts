@@ -54,6 +54,11 @@ export interface AssigneeFacts {
    * itself — the CLI compacting its context on its own, while idle, shows the same spinner as a turn.
    */
   turnEvidence?: boolean;
+  /**
+   * With `turnEvidence`: the fleet's start. Progress is kept in memory, so after a restart quiet counts from the start at
+   * the earliest — as the boot's idle edge did before (Fable F1 on #4053). Not progress: an episode told before stays.
+   */
+  quietFloor?: number | null;
   /** A prompt or dialog waiting for a person at its terminal, and since when. */
   prompt?: { since: number } | null;
   /** The instances it asked something and still waits on (an open request with a correlation id). */
@@ -99,7 +104,8 @@ export function judgeAssignee(f: AssigneeFacts, card: CardTimes, s: LivenessSett
   if (!idle || f.execution?.state === "working" || (f.waitingOn?.length ?? 0) > 0) return null;
   // M-3239: with transcript evidence the idle edge is not progress either — it also ends a spinner that was no turn.
   const since = latest(card.claimedAt, card.updatedAt, f.lastMessageAt, f.lastWorkingAt,
-    f.execution?.state === "idle" && !f.turnEvidence ? f.execution.since : null, idlePaused ? f.paused?.at : null);
+    f.execution?.state === "idle" && !f.turnEvidence ? f.execution.since : null, idlePaused ? f.paused?.at : null,
+    f.turnEvidence ? f.quietFloor : null);
   if (!since || now - since < s.quietMs) return null;
   return { kind: "quiet", since, detail: "" };
 }

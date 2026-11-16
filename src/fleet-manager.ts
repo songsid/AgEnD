@@ -5429,9 +5429,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }));
   }
 
-  /** M-3239: a tool call or an answer in the agent's transcript (not the boot: see cacheInstanceExecutionState). */
+  /**
+   * M-3239: a tool call or an answer in the agent's transcript. Unlike the pane's spinner it counts from the fleet's start
+   * (the boot shows working; a transcript line is real work, and the monitor starts at the transcript's end).
+   */
   private noteTurnActivity(name: string, at: number): void {
-    if (!Number.isFinite(at) || at > Date.now() + 60_000 || at - this.startedAt < LIVENESS_STARTUP_GRACE_MS) return;
+    if (!Number.isFinite(at) || at > Date.now() + 60_000 || at < this.startedAt) return;
     if (at > (this.lastWorkingAt.get(name) ?? 0)) this.lastWorkingAt.set(name, at);
   }
 
@@ -5480,6 +5483,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       execution: exec ? { state: exec.state, since: exec.stateChangedAt } : null,
       lastWorkingAt: this.lastWorkingAt.get(name) ?? null,
       turnEvidence: this.livenessTurnEvidence.has(name),
+      // M-3239 (Fable F1): a restart forgets the transcript's progress; its quiet clock starts no earlier than the fleet.
+      quietFloor: this.livenessTurnEvidence.has(name) ? this.startedAt : null,
       prompt: p.state === "awaiting_input" && p.interaction?.since ? { since: p.interaction.since } : null,
       waitingOn,
       // Asked only when it could be quiet (one indexed read per idle assignee).
