@@ -20,6 +20,11 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
 .hub-fp-groups { font-family: var(--font-mono); font-size: var(--fs-md); letter-spacing: .04em; word-spacing: .3em; overflow-wrap: anywhere; }
 .hub-fp-full { font-family: var(--font-mono); font-size: var(--fs-xs); overflow-wrap: anywhere; color: var(--text-2); }
 .hub-security-notices { flex: none; max-height: 38vh; overflow: auto; }
+/* M-3217: a notice is a column with even gaps, its action (Revoke here, or the link to review it in the Hub) a row of its own. */
+[data-pairing-notice] { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+[data-pairing-notice] > p { margin: 0; }   /* the gap is the only spacing (a flex column never collapses margins) */
+[data-pairing-notice] > .tag { align-self: flex-start; }   /* a revoked notice's 已撤銷: its own size, not a full-width bar */
+[data-pairing-notice] > .hub-notice-actions { margin-top: var(--s-2); flex-wrap: wrap; }
 .hub-fp .btn-link { justify-self: start; }
 .hub-steps-lead { margin: var(--s-1) 0 0; }
 .hub-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-1); }

@@ -22,7 +22,7 @@ const READ = () => {
   const rows = [...sb.querySelectorAll(".v-inst")].filter(shown) as HTMLElement[];
   const name = rows[0]?.querySelector(".inst-name");
   return { w: Math.round(sb.getBoundingClientRect().width), vw: innerWidth, narrow: sb.classList.contains("drawer-narrow"),
-    icon: box(sb.querySelector(".v-filter .nav-sort-phone > .nav-sort-btn")), filter: box(sb.querySelector(".v-filter-box")), plus: box(sb.querySelector(".side-new")),
+    icon: box(sb.querySelector(".v-filter .nav-sort-phone > .nav-sort-btn")), filter: box(sb.querySelector(".v-filter-box")), plus: box([...sb.querySelectorAll(".v-filter-new, .side-new")].find((e) => shown(e)) ?? null),
     chip: shown(sb.querySelector(".inst-head .nav-sort-btn")), favEdit: shown(sb.querySelector(".fav-edit")),
     scrim: getComputedStyle(document.querySelector(".scrim") as HTMLElement).display !== "none",
     rowMin: rows.length ? Math.min(...rows.map((e) => Math.round(e.getBoundingClientRect().height))) : 0,

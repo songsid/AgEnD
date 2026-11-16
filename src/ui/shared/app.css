@@ -1645,6 +1645,7 @@ img.amb-p { object-fit: contain; }
 /* M-3212: 自訂 from an icon beside the phone drawer's filter (shown in that drawer only, below), and in its 顯示 the drawer's
    width (手機側欄), a phone's only. */
 .nav-sort-phone { display: none; }
+.v-filter-new { display: none; }   /* M-3217: the phone drawer's + (below) */
 .nav-sort-menu .nav-sort-sub { margin-top: var(--s-2); }
 @media (min-width: 900px) { .nav-sort-menu .nav-sort-drawer { display: none; } }
 .recent-head { cursor: default; }
@@ -4668,6 +4669,11 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side .v-filter-box { flex: 1; min-width: 0; }
   .sidebar.fleet-side .nav-sort-phone { display: block; flex: none; }
   .sidebar.fleet-side .nav-sort-phone > .icon-btn { min-width: var(--tap); min-height: var(--tap); }
+  /* M-3217: + is the filter row's last control (instance-nav.js); the old one, placed at a fixed height (it landed on the
+     Hub switch's row), goes — only when the new one is there (an older cached script keeps its own). */
+  .sidebar.fleet-side .v-filter-new { display: inline-flex; flex: none; min-width: var(--tap); min-height: var(--tap); }
+  .sidebar.fleet-side:has(.v-filter-new) .side-nav > .side-new { display: none !important; }
+  .sidebar.fleet-side:has(.v-filter-new) .v-filter { padding-right: var(--s-2); }
   .sidebar.fleet-side .side-nav > .side-row { order: 2; }
   .sidebar.fleet-side #instanceList { order: 3; flex: 1; min-height: 0; overflow-y: auto; }
   .sidebar.fleet-side .side-foot { order: 4; }

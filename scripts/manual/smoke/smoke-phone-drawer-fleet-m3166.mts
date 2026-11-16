@@ -73,7 +73,7 @@ try {
     const d = await page.evaluate(() => {
       const sb = document.querySelector("#sidebar") as HTMLElement, r = sb.getBoundingClientRect();
       const shown = (e: Element | null) => !!e && (e as HTMLElement).getBoundingClientRect().width > 0;
-      const filter = sb.querySelector(".v-filter") as HTMLElement, plus = sb.querySelector(".side-new") as HTMLElement, overview = sb.querySelector(".side-overview") as HTMLElement;
+      const filter = sb.querySelector(".v-filter") as HTMLElement, plus = ([...sb.querySelectorAll(".v-filter-new, .side-new")].find((e) => (e as HTMLElement).getBoundingClientRect().width > 0) ?? null) as HTMLElement   /* M-3217: the filter row's own + */, overview = sb.querySelector(".side-overview") as HTMLElement;
       const rows = [...sb.querySelectorAll(".v-inst")].filter(shown) as HTMLElement[];
       return { w: Math.round(r.width), filterTop: shown(filter) && shown(overview) && filter.getBoundingClientRect().top < overview.getBoundingClientRect().top,
         plusBeside: shown(plus) && Math.abs(plus.getBoundingClientRect().top - filter.getBoundingClientRect().top) < 24,

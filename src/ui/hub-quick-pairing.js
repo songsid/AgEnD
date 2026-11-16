@@ -3,10 +3,12 @@ import { he } from "./hub-enrolment-code-strings.js";
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
+import { Icon } from "/assets/ui-icons.js";
 import { lang } from "/assets/app-i18n.js";
 import { compareGroups, hubClient, safeWebOrigin } from "./hub-client.js";
 import { hq } from "./hub-quick-strings.js";
 import { hr } from "./hub-read-strings.js";
+import { linkHubCss } from "./hub-strings.js";
 import { linkHubOwnerCss } from "./hub-owner-strings.js";
 /** A member Settings reader opts into code rows only alongside this renderer. */
 export const pairingNoticesV3 = true;
@@ -108,8 +110,10 @@ function Notice({ notice, admin = false, memberOrigin = null, after = () => {} }
   return html`<div data-pairing-notice=${notice.id}><p><b>${hq("notice", notice.label)}</b></p><p class="note">${notice.source === "code" ? he("byCode") : notice.source === "manual" ? hj("manualApproved") : hq("approved")} ${time(notice.at)}</p>
     <p class="note">${hq("fleetId")} <code class="hub-fp-full">${notice.fleetId}</code></p>
     <p class="note">${hq("revokeHint")}</p>
-    ${notice.revoked ? html`<span class="tag">${hq("revoked")}</span>` : href ? html`<a class="btn" target="_blank" rel="noopener noreferrer" href=${href}>${hq("review")}</a>`
-      : html`<div class="field-row"><button type="button" class="btn btn-danger" disabled=${busy} onClick=${revoke}>${hq("revoke")}</button></div>`}
+    ${/* M-3217 (the user, beta.6): the link to the Hub is the notice's action button, in the same row as the in-place Revoke
+        (it was a bare link styled as a button, flush under the text); the notice is a column with even gaps (hub.css). */ ""}
+    ${notice.revoked ? html`<span class="tag">${hq("revoked")}</span>` : href ? html`<div class="field-row hub-notice-actions"><a class="btn btn-primary" target="_blank" rel="noopener noreferrer" href=${href}>${hq("review")}<${Icon} name="external" size=${14} /></a></div>`
+      : html`<div class="field-row hub-notice-actions"><button type="button" class="btn btn-danger" disabled=${busy} onClick=${revoke}>${hq("revoke")}</button></div>`}
     ${error ? html`<p class="err" role="alert">${hq("revokeFailed")}</p>` : null}</div>`;
 }
 
@@ -202,6 +206,7 @@ export function PairingNotices({ admin = false, memberNotices = null, memberOrig
 export function MemberPairingNotices() {
   const c = hubClient(), [pairing, setPairing] = useState(null), [rows, setRows] = useState([]);
   useEffect(() => {
+    linkHubCss();   // M-3217: the notice's layout is the Hub stylesheet's (the switcher links it too, but may not be there)
     if (!c.member || typeof c.pairingNotices !== "function") return;
     let live = true;
     const update = p => { if (live) { setPairing(p); setRows(c.pairingNotices()); } };
