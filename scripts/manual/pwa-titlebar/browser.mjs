@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {spawn,execFileSync} from 'node:child_process';
 import {join} from 'node:path';
+import {createInterface} from 'node:readline';
 const [root]=process.argv.slice(2), state=JSON.parse(await readFile(join(root,'private.json'),'utf8'));
 assert(await readFile(join(root,'.owned'),'utf8')===state.tag);
+let giveCode;const input=createInterface({input:process.stdin});input.on('line',line=>{const value=JSON.parse(line);assert(giveCode&&typeof value.code==='string');const done=giveCode;giveCode=null;done(value.code);});
+const freshCode=()=>new Promise(resolve=>{giveCode=resolve;console.log(JSON.stringify({kind:'code-request'}));});
 const profile=join(root,'edge-profile'); await mkdir(profile);
 const edge=spawn('C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',['--user-data-dir='+profile,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--ignore-certificate-errors','--host-resolver-rules=MAP agend-pwa.test 127.0.0.1','--remote-debugging-port=0','about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:false});
 let exited=false;edge.on('close',()=>{exited=true;});const sleep=ms=>new Promise(r=>setTimeout(r,ms));let ws,call,activeSid,phase='startup',seq=0;const pending=new Map(),installed=[];const result={cases:[]};
@@ -20,7 +23,7 @@ try{
   phase=entry.label+':sign-in';console.log(JSON.stringify({phase}));
   const manifestId=entry.base+'/';const target=await call('Target.createTarget',{url:entry.base+'/signin'});const sid=await attach(target.targetId);activeSid=sid;
   await call('Page.enable',{},sid);await call('Runtime.enable',{},sid);
-  if(entry.code){await until(()=>evaluate(sid,'Boolean(document.querySelector("#code")) && document.querySelector("#form")?.hidden === false'));await evaluate(sid,`(()=>{const i=document.querySelector('#code');i.value=${JSON.stringify(entry.code)};i.dispatchEvent(new Event('input',{bubbles:true}));i.closest('form').requestSubmit();return true})()`);await until(()=>evaluate(sid,'location.pathname.startsWith("/ui")'));}
+  if(entry.code){const loginCode=await freshCode();await until(()=>evaluate(sid,'Boolean(document.querySelector("#code")) && document.querySelector("#form")?.hidden === false'));await evaluate(sid,`(()=>{const i=document.querySelector('#code');i.value=${JSON.stringify(loginCode)};i.dispatchEvent(new Event('input',{bubbles:true}));i.closest('form').requestSubmit();return true})()`);await until(()=>evaluate(sid,'location.pathname.startsWith("/ui")'));}
   await call('Page.navigate',{url:entry.base+entry.path},sid);await until(()=>evaluate(sid,'Boolean(window.AgendTheme && document.querySelector(".panel-head, .p-hub-signin"))'));
   phase=entry.label+':manifest';console.log(JSON.stringify({phase}));
   const app=await call('Page.getAppManifest',{},sid);assert(!app.errors.length,JSON.stringify(app.errors));
@@ -59,6 +62,6 @@ try{
  throw error;
 }finally{
  if(ws?.readyState===1){for(const manifestId of [...installed]){await call('PWA.uninstall',{manifestId});installed.splice(installed.indexOf(manifestId),1);}await call('Browser.close').catch(()=>{});}
- ws?.close();const end=Date.now()+10000;while(!exited&&Date.now()<end)await sleep(100);
+ input.close();process.stdin.pause();ws?.close();const end=Date.now()+10000;while(!exited&&Date.now()<end)await sleep(100);
  if(!exited)throw Error('Owned Edge process remains; preserve scratch for cleanup');
 }
