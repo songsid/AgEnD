@@ -17,7 +17,7 @@ const policyInput=z.strictObject({enabled:z.boolean(),people:z.array(z.string().
 const agentInput=z.strictObject({name:z.string().trim().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/).refine(s=>Buffer.byteLength(s,"utf8")<=256),
   description:z.string().trim().max(512),cli:z.string().refine(isPersonalAgentCli),model:z.string().min(1).max(128).optional(),ifRevision:z.number().int().min(0)});
 export interface PersonalDefinition {id:string;owner:string;machine_id:string;cli:import("../../runtime-personal-answer.js").PersonalAgentCli;model:string|null;description:string}
-interface Enrollment { id:string;owner:string;created_at:number;expires_at:number;machine_id:string|null;revoked_at:number|null }
+interface Enrollment { id:string;owner:string;created_at:number;expires_at:number;machine_id:string|null;revoked_at:number|null;retired_at:number|null }
 interface Computer { owner:string;machine_id:string;enrollment_id:string;bound_at:number }
 export class HubPersonalOwnerHost {
   private closed=false;
@@ -102,12 +102,17 @@ export class HubPersonalOwnerHost {
       }
     });
     // SQL removes authority first. External credential cleanup is retryable after a crash or failed file save.
-    for(const enrollment of this.core.atomic(db=>db.prepare("SELECT * FROM hub_personal_enrollments WHERE revoked_at IS NOT NULL").all() as Enrollment[])){
+    const retiring=this.core.atomic(db=>db.prepare("SELECT * FROM hub_personal_enrollments WHERE revoked_at IS NOT NULL AND retired_at IS NULL").all() as Enrollment[]);
+    const runtimeTokens=retiring.length?this.runtime.listEnrollments():[];
+    for(const enrollment of retiring){
       try{
         const machine=machines.find(m=>m.enrollmentId===enrollment.id);
-        if(machine&&machine.status!=="revoked")this.runtime.revoke(machine.id);
-        const token=this.runtime.listEnrollments().find(e=>e.id===enrollment.id);
+        // Repeat the save when a prior attempt changed memory but its file commit was unconfirmed.
+        if(machine)this.runtime.revoke(machine.id);
+        const token=runtimeTokens.find(e=>e.id===enrollment.id);
         if(token?.status==="unused")this.runtime.revokeEnrollment(enrollment.id,createHash("sha256").update(enrollment.owner).digest("hex"));
+        // A token absent from the Runtime's bounded recent list is only proven ended after its recorded deadline.
+        if(token||enrollment.expires_at<=this.core.now())this.core.atomic(db=>db.prepare("UPDATE hub_personal_enrollments SET retired_at=? WHERE id=? AND revoked_at IS NOT NULL").run(this.core.now(),enrollment.id));
       }catch{this.core.deps.log?.("warn","Personal computer credential retirement is pending");}
     }
     }finally{this.refreshing=false;}
