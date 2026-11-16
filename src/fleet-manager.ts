@@ -390,7 +390,7 @@ import { TargetQueueWorker } from "./target-queue-worker.js";
 import { resolveDeliveryWorkerMode } from "./types.js";
 import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
-import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
+import { reapLeftoverTunnels } from "./tunnel/lease.js";
 import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
 import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-hub.js";
 import { SignInKeepAlive, isKeepAliveBackend, type KeepAliveView, type SetResult as KeepAliveSetResult } from "./signin-keepalive.js";
@@ -6075,14 +6075,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // #1723: the public link's preview tunnel keeps its own lease beside it; a leftover one is reaped the same way (and
     // #2636's Office share tunnel's).
-    for (const leaseDir of [this.dataDir, join(this.dataDir, PUBLIC_PREVIEW_TUNNEL_DIR), join(this.dataDir, OFFICE_SHARE_TUNNEL_DIR)]) {
-      void reapStaleTunnel(leaseDir)
-        .then(outcome => {
-          if (outcome.kind === "manual") this.logger.warn({ tunnel: outcome }, manualCleanupMessage(outcome));
-          else if (outcome.kind === "reaped") this.logger.info({ how: outcome.how, pid: outcome.pid }, "Reaped a leftover tunnel");
-        })
-        .catch(err => this.logger.warn({ err }, "Tunnel reaper failed"));
-    }
+    // M-3247: this runs after auto_open (and a /web click) may already have opened this run's own tunnels; the sweep
+    // spares leases this process wrote — it once killed the named link it had opened 10 s earlier.
+    void reapLeftoverTunnels([this.dataDir, join(this.dataDir, PUBLIC_PREVIEW_TUNNEL_DIR), join(this.dataDir, OFFICE_SHARE_TUNNEL_DIR)],
+      { log: (level, message, detail) => this.logger[level](detail, message) });
     // An existing installation has never written the setup marker — it predates
     // it — so `agend setup` would open a pre-fleet form for a fleet that plainly
     // exists. A fleet that just came up on a config with agents in it is proof
