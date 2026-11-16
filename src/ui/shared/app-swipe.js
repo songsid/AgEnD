@@ -18,7 +18,9 @@ function owns(el) {
   if (el.isContentEditable || (el.getAttribute && el.getAttribute("contenteditable") === "true")) return true;
   const cl = el.classList;
   return !!cl && (cl.contains("xterm") || cl.contains("composer") || cl.contains("composer-box") || cl.contains("pv-panel")
-    || cl.contains("lb") || cl.contains("csv-card") || cl.contains("codeblock"));
+    || cl.contains("lb") || cl.contains("csv-card") || cl.contains("codeblock")
+    // M-3253: the Office's and the org chart's stages pan themselves (with their canvas, controls and the Office's card inside).
+    || cl.contains("oo-stage") || cl.contains("oc-stage"));
 }
 /** Scrolls sideways (and has room to): the gesture is the content's. */
 function scrollsSideways(el, win) {

@@ -2493,10 +2493,15 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
 .oo-card.sheet { position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; transform: none; z-index: 40; border-radius: var(--r-lg) var(--r-lg) 0 0;
   padding-bottom: calc(var(--s-3) + env(safe-area-inset-bottom, 0px)); touch-action: none; }
-/* On a phone the tab bar is fixed at the window's foot (z 35): the sheet sits above it. */
-@media (max-width: 899px) {
-  .oo-card.sheet { bottom: calc(56px + env(safe-area-inset-bottom, 0px)); padding-bottom: var(--s-3); }
-  .kb-open .oo-card.sheet { bottom: 0; }
+/* M-3253: the sheet sits on the window's foot (M-3166 took the phone's tab bar away: the old 56 px lift left a gap), its
+   close and its two actions a fingertip's 44 px. */
+.oo-card.sheet { padding: var(--s-2) var(--s-4) max(var(--s-4), env(safe-area-inset-bottom, 0px)); }
+.oo-card.sheet .oo-card-close { width: var(--tap); height: var(--tap); margin: -6px -8px 0 0; }
+.oo-card.sheet .oo-card-actions .btn { flex: 1; min-height: var(--tap); justify-content: center; }
+/* A phone turned sideways keeps the desktop's sidebar beside the stage: the sheet is the stage's (its foot is the window's),
+   at most 560 px wide and centred, never under the sidebar. */
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 900px) {
+  .oo-card.sheet { position: absolute; max-width: 560px; margin: 0 auto; }
 }
 .oo-card-grip { width: 36px; height: 4px; margin: 0 auto var(--s-2); border-radius: var(--r-full); background: var(--surface-2); }
 .oo-card-head { display: flex; gap: var(--s-3); align-items: flex-start; }
@@ -2626,6 +2631,48 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oo:not(.fs) .oo-zoom-pct { display: flex; align-items: center; padding: 0 6px; border-bottom: 0; border-right: 1px solid var(--border); }
   .oo:not(.fs) .oo-zoom .icon-btn + .icon-btn { border-top: 0; border-left: 1px solid var(--border); }
 }
+/* M-3253 (Argon's phone review): the Office on a phone, held upright or turned sideways (a coarse pointer in a short window,
+   as fleet-office.js OFFICE_PHONE_Q). Above the office two rows only: Fleet's header, then Find, the view switch and one
+   44 px ⋯ (the Office's tools and Live in a sheet: .oo-sheet) — no wrapping bar. The stage takes the rest; its zoom pill is
+   −, the zoom, +, fullscreen (Fit and Fill are in the sheet), 44 px each; the zone pills along its foot. */
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) {
+  /* Sideways the header is a desktop's: without its tools (hidden on a phone held upright too) Fleet's tabs fit its row. */
+  .p-fleet > .panel-head .panel-actions { display: none; }
+  .oc-office:has(.oo-more-btn) > .oc-bar { flex-wrap: nowrap; padding: var(--s-1) var(--s-3); }
+  .oc-office:has(.oo-more-btn) > .oc-bar > span:first-child, .oc-office:has(.oo-more-btn) > .oc-bar .org-counts { display: none; }
+  .oc-office .oc-bar .oc-tools:has(.oo-more-btn) { flex-wrap: nowrap; overflow: visible; width: 100%; margin-left: 0; gap: var(--s-2); }
+  .oc-tools:has(.oo-more-btn) .oc-find { flex: 1 1 96px; min-width: 88px; }
+  .oc-tools:has(.oo-more-btn) .seg-inline { flex: none; }
+  .oc-tools .oo-more-btn { flex: none; width: var(--tap); height: var(--tap); }
+  .oo.phone > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
+  .oo.phone .oo-stage { min-height: 160px; }
+  .oo.phone .oo-mini { display: none; }
+  .oo.phone .oo-zoom .icon-btn { width: var(--tap); height: var(--tap); }
+  .oo.phone:not(.fs) .oo-zoom { flex-direction: row; top: var(--s-2); right: var(--s-2); border-radius: var(--r-full); }
+  .oo.phone:not(.fs) .oo-zoom-pct { display: flex; align-items: center; padding: 0 var(--s-2); border-bottom: 0; border-right: 1px solid var(--border); }
+  .oo.phone:not(.fs) .oo-zoom .icon-btn + .icon-btn { border-top: 0; border-left: 1px solid var(--border); }
+  .oo.phone:not(.fs) .oo-zoom :is(.oo-fit, .oo-fill) { display: none; }
+  .oo-zone-pills { position: absolute; z-index: 6; left: var(--s-2); bottom: max(var(--s-2), env(safe-area-inset-bottom, 0px)); display: flex; gap: var(--s-1);
+    max-width: calc(100% - 2 * var(--s-2)); overflow-x: auto; padding: var(--s-1); box-sizing: border-box;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-1); }
+  .oo-zone-pills .btn { flex: none; min-height: 36px; border-radius: var(--r-full); white-space: nowrap; }
+}
+/* M-3253: the Office's ⋯ sheet (a Dialog: a bottom sheet on a phone) — Fit, Fill and Fullscreen as tiles, then Live and
+   the Office bar's own controls, one per row, each at least 44 px; a select's text from --fs-md (16 px in a field on a phone: tokens.css). */
+.oo-sheet-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); margin-bottom: var(--s-2); }
+.oo-sheet-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-1); min-height: 64px; padding: var(--s-1); border: 0;
+  border-radius: var(--r-md); background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: center; cursor: pointer; }
+.oo-sheet-tile[aria-pressed="true"] { background: var(--accent-dim); }
+.oo-sheet .oo-sheet-bar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0; }
+.oo-sheet :is(.oo-sheet-bar > *, .oo-sheet-live) { min-height: var(--tap); }
+.oo-sheet :is(.oo-pick, .check) { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text); }
+.oo-sheet .oo-pick { justify-content: space-between; }
+.oo-sheet .oo-pick .tb-select { width: 62%; min-height: var(--tap); font-size: var(--fs-md); }
+.oo-sheet .dlg-x { width: var(--tap); height: var(--tap); }
+.oo-sheet .oo-sheet-bar :is(.btn, .oo-people > .btn) { min-height: var(--tap); }
+.oo-sheet .oo-sheet-bar > .btn, .oo-sheet .oo-people > .btn { width: 100%; justify-content: flex-start; }
+.oo-sheet .oo-sheet-bar > :is(.btn, .oo-people, .oo-carousel, .oo-note) { margin-top: var(--s-1); }
+.oo-sheet .oo-carousel { flex-wrap: wrap; }
 /* A phone: Fleet's five tabs fit when only the open one shows its label (the others keep theirs for screen readers). */
 @media (max-width: 479px) {
   .p-fleet .seg-item:not(.active) > span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
