@@ -71,6 +71,16 @@ try {
       need(plus && !overlap(plus, sw), `the + is off the Hub switch (${JSON.stringify({ plus, sw })})`);
       need(plus && f && Math.abs((plus.t + plus.b) / 2 - (f.t + f.b) / 2) <= 6 && plus.l >= f.r - 1, `the + is in the filter's row, right of it (${JSON.stringify({ plus, filter: f })})`);
       await page.screenshot({ path: shotPath(SMOKE, k.name, "2-drawer") });
+      // A revoked notice (Fable, #4036): its 已撤銷 tag keeps its own size in the column, not a full-width bar.
+      await page.unroute("**/api/hub/member/pairing**");
+      await page.route("**/api/hub/member/pairing**", (r: any) => r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify({ ...PAIRING, notices: PAIRING.notices.map((x) => ({ ...x, revoked: true })) }) }));
+      await page.reload(); await mounted(page, 30000);
+      await page.waitForSelector("[data-pairing-notice] .tag", { timeout: 15000 }); await page.waitForTimeout(300);
+      const tag = await page.evaluate(() => { const box = document.querySelector("[data-pairing-notice]") as HTMLElement, t = box.querySelector(":scope > .tag") as HTMLElement;
+        return { tag: Math.round(t.getBoundingClientRect().width), box: Math.round(box.getBoundingClientRect().width) }; });
+      need(tag.tag > 0 && tag.tag < tag.box / 2, `a revoked notice's tag keeps its own size (${JSON.stringify(tag)})`);
+      await page.screenshot({ path: shotPath(SMOKE, k.name, "3-revoked") });
       need(errs.length === 0, `page errors: ${errs.join(" | ")}`);
     } catch (err) {
       failed.push(`threw: ${String(err).slice(0, 300)}`);
