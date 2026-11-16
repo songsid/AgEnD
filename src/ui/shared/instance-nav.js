@@ -348,6 +348,21 @@ export function setSidebarDensity(value) {
 }
 onPrefsChanged((keys) => { if (keys.has("nav.density")) sidebarDensityStore.set({ value: readSidebarDensity() }); });
 
+// M-3212 (the user, 11-16): the phone's drawer — 滿版, the screen's width (the default since M-3211), or 窄版, 300 px with
+// the page beside it (as before). This browser's own choice (localStorage, not a synced pref: a phone and a tablet may
+// want different ones); a desk never shows the drawer, so it changes nothing there. Another tab's change follows.
+const PHONE_DRAWER_KEY = "agend_phone_drawer";
+const readPhoneDrawer = () => (stored(PHONE_DRAWER_KEY) === "narrow" ? "narrow" : "full");
+export const phoneDrawerStore = createStore({ value: readPhoneDrawer() });
+export function setPhoneDrawer(value) {
+  const v = value === "narrow" ? "narrow" : "full";
+  phoneDrawerStore.set({ value: v });
+  try { if (v === "narrow") localStorage.setItem(PHONE_DRAWER_KEY, v); else localStorage.removeItem(PHONE_DRAWER_KEY); } catch { /* storage off: this page only */ }
+}
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", (e) => { if (!e || e.key === PHONE_DRAWER_KEY || e.key === null) phoneDrawerStore.set({ value: readPhoneDrawer() }); });
+}
+
 // ── #1722: both names — which one leads is a synced preference (#1665 "names.primary", default the nickname) ──
 const NAMES_KEY = "agend_names_primary";
 function readNamesPrimary() {
@@ -478,7 +493,7 @@ function byRecentReply(age) {
 const RECENT_GROUP = "\u0000recent";
 
 /** #2179: the sort button and its menu — how the list sorts, said on the button. */
-function SortMenu({ sort }) {
+function SortMenu({ sort, phone = false }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
   useLayoutEffect(() => {
@@ -494,13 +509,19 @@ function SortMenu({ sort }) {
   const recent = sort.mode === "recent";
   // M-3164: the list's density, the same synced choice as Settings (nav.density, M-3129): either place changes it at once, for both.
   const density = useStore(sidebarDensityStore).value;
+  const drawer = useStore(phoneDrawerStore).value;   // M-3212
+  const drawerRadio = (value, label) => html`<label class="nav-sort-opt"><input type="radio" name="nav-sort-drawer" value=${value}
+      checked=${drawer === value} onChange=${() => setPhoneDrawer(value)} /><span>${label}</span></label>`;
   const densityRadio = (value, label) => html`<label class="nav-sort-opt"><input type="radio" name="nav-sort-density" value=${value}
       checked=${density === value} onChange=${() => setSidebarDensity(value)} /><span>${label}</span></label>`;
   const radio = (group, value, label, hint) => html`<label class="nav-sort-opt"><input type="radio" name=${`nav-sort-${group}`} value=${value}
       checked=${sort[group] === value} onChange=${() => setNavSort({ [group]: value })} /><span>${label}${hint ? html`<span class="nav-sort-hint">${hint}</span>` : null}</span></label>`;
-  return html`<div class="nav-sort" ref=${box}>
-    <button type="button" class=${`chip-btn nav-sort-btn${recent ? " on" : ""}`} aria-haspopup="dialog" aria-expanded=${open ? "true" : "false"}
-      title=${tn("sortTitle")} onClick=${() => setOpen(!open)}><${Icon} name="sort" size=${12} /><span>${tn(recent ? "sortRecent" : "sortCustom")}</span></button>
+  // M-3212: `phone` — the same menu from an icon beside the phone drawer's filter (its list header, with the chip, is hidden there).
+  return html`<div class=${`nav-sort${phone ? " nav-sort-phone" : ""}`} ref=${box}>
+    ${phone ? html`<button type="button" class=${`icon-btn nav-sort-btn${recent ? " on" : ""}`} aria-haspopup="dialog" aria-expanded=${open ? "true" : "false"}
+      aria-label=${`${tn("sortTitle")}: ${tn(recent ? "sortRecent" : "sortCustom")}`} title=${tn("sortTitle")} onClick=${() => setOpen(!open)}><${Icon} name="sort" /></button>`
+    : html`<button type="button" class=${`chip-btn nav-sort-btn${recent ? " on" : ""}`} aria-haspopup="dialog" aria-expanded=${open ? "true" : "false"}
+      title=${tn("sortTitle")} onClick=${() => setOpen(!open)}><${Icon} name="sort" size=${12} /><span>${tn(recent ? "sortRecent" : "sortCustom")}</span></button>`}
     ${open ? html`<div class="nav-sort-menu" role="dialog" aria-label=${tn("sortTitle")}>
       <fieldset><legend>${tn("sortTitle")}</legend>
         ${radio("mode", "custom", tn("sortCustom"), tn("sortCustomHint"))}
@@ -510,7 +531,11 @@ function SortMenu({ sort }) {
         ${radio("favs", "recent", tn("sortFavsRecent"), "")}</fieldset>
       <fieldset><legend>${tn("sortDisplay")}</legend>
         ${densityRadio("detailed", tn("sortDisplayDetailed"))}
-        ${densityRadio("compact", tn("sortDisplayCompact"))}</fieldset>
+        ${densityRadio("compact", tn("sortDisplayCompact"))}
+        ${/* M-3212: a phone's only (app.css hides it from 900 px): the drawer's width, this browser's own. */ ""}
+        <fieldset class="nav-sort-sub nav-sort-drawer"><legend>${tn("sortPhoneDrawer")}</legend>
+          ${drawerRadio("full", tn("sortPhoneDrawerFull"))}
+          ${drawerRadio("narrow", tn("sortPhoneDrawerNarrow"))}</fieldset></fieldset>
     </div>` : null}
   </div>`;
 }
@@ -763,6 +788,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
         ${f.q ? html`<button type="button" class="icon-btn v-filter-clear" aria-label=${tn("filterClear")} title=${tn("filterClear")}
           onClick=${() => { recordEdit(filterRef.current); setNavFilter({ q: "" }); filterRef.current && filterRef.current.focus(); }}><${Icon} name="close" size=${14} /></button>` : null}
       </label>
+      ${/* M-3212: 自訂 on a phone — beside the filter (app.css shows it in the phone drawer only). */ canStar && items.length ? html`<${SortMenu} sort=${nav.sort} phone=${true} />` : null}
       <div class=${`nav-facets${stacked ? "" : " compact"}`}>
         <div class="nav-facet-groups">
           ${viewOnly ? null : chips("status", STATUS_FACETS, tn("filterStatus"), statusText)}
