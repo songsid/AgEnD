@@ -9,7 +9,7 @@ import { RUNTIME_ENROLL_TOKEN_PATTERN, RUNTIME_SERVER_FINGERPRINT_PATTERN } from
 import { RuntimeClientStore, RuntimeProfileInUseError, validateRuntimeServer } from "./runtime-client-store.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { readPaneSystemBootId, reusedRuntimeLockPid } from "./runtime-pane-boot.js";
-import { chooseRuntimeProfile, readBundledRuntimeServer, resolveRuntimeServer, runtimeServerProfile } from "./runtime-connection.js";
+import { chooseRuntimeProfile, readBundledRuntimeServer, resolveRuntimeServer, runtimeServerProfile, runtimeProfileName } from "./runtime-connection.js";
 import { assertCredentialProfileCli, assertCredentialProfileName, credentialLoginRequired, credentialProfilesRoot, credentialProfileReport, listCredentialProfileNames,
   rememberCredentialStatus, requireCredentialProfile, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { findCli, nativeCliEnvironment, probeCredentialProfileStatus, type CredentialProfileAnswer, type NativeCliExecutable } from "./windows-cli-worker.js";
@@ -29,6 +29,7 @@ const HELP = `AgEnD native Windows runtime
   agend-runtime connect --server https://agend.example.com [--name NAME] [--profile DIRECTORY] [--credential-profile NAME] [--foreground]
   agend-runtime connect --connection-dir DIRECTORY [--name NAME] [--profile DIRECTORY] [--credential-profile NAME] [--foreground]
   <one-time token> | agend-runtime connect (--server URL | --connection-dir DIRECTORY) --enroll-stdin --server-fingerprint SHA256HEX [--name NAME] [--profile DIRECTORY] [--foreground]
+  agend-runtime connect --server URL --personal-folder DIRECTORY [--enroll-stdin --server-fingerprint SHA256HEX] [--foreground]
   agend-runtime start [--profile DIRECTORY]
   agend-runtime run [--profile DIRECTORY]
   agend-runtime status [--profile DIRECTORY|NAME] [--json]
@@ -54,6 +55,9 @@ Connection-ready downloads include the server address; double-click connect-agen
 The one-line installer leaves the same connect-agend.bat beside an agend-server.json under <install folder>\connect\<server>; it passes that
 folder as --connection-dir, which picks the profile exactly as the ZIP's connect-agend.bat does (--connection-dir and --server are exclusive).
 start launches the background Runtime of an already paired profile (this is what the sign-in task runs). run reconnects an existing profile and stays in this window; Ctrl+C stops it.
+--personal-folder is a connect-only choice for a Hub personal runner. It creates a separate per-Hub profile and binds it to that folder;
+an existing Fleet profile cannot be converted. Restart preserves the folder and the personal restrictions. Disconnect before changing it.
+This mode has no remote account management or self-update; update it by re-running its install command.
 status lists every profile on this computer (state, process, AgEnD address, autostart, log folder); --json prints the same for a program to read.
 stop ends a background Runtime the way Ctrl+C ends one in a window; with several running, name one (--profile takes a folder or a profile name that status shows) or use --all.
 restart stops it and starts it again with the installed version (use it after an update). logs prints the end of the profile's log, kept under
@@ -145,7 +149,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     if ((command === "stop" || command === "restart") && key === "--all" && flags[key] === undefined) { flags[key] = "true"; index++; continue; }
     if (takesNames && !key.startsWith("--") && positional.length < (command === "remote-setup" || command === "profile" || command === "login" ? 2 : 1)) { positional.push(key); index++; continue; }
     const value = args[index + 1];
-    if (!["--server", "--name", "--profile", "--credential-profile", "--connection-dir", "--server-fingerprint", ...(command === "remote-setup" ? ["--for"] : []), ...(command === "logs" ? ["--tail"] : [])].includes(key) || !value || value.startsWith("--") || flags[key] !== undefined) throw new Error("Invalid runtime arguments. Pairing codes must be entered interactively, never in command arguments.");
+    if (!["--server", "--name", "--profile", "--credential-profile", "--personal-folder", "--connection-dir", "--server-fingerprint", ...(command === "remote-setup" ? ["--for"] : []), ...(command === "logs" ? ["--tail"] : [])].includes(key) || !value || value.startsWith("--") || flags[key] !== undefined) throw new Error("Invalid runtime arguments. Pairing codes must be entered interactively, never in command arguments.");
     flags[key] = value; index += 2;
   }
   if (command !== "connect" && (flags["--server"] || flags["--name"])) throw new Error("--server and --name are used only by connect");
@@ -153,8 +157,9 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   if ((flags["--enroll-stdin"] !== undefined) !== (flags["--server-fingerprint"] !== undefined)) throw new Error("--enroll-stdin and --server-fingerprint go together: the one-time token comes on standard input and the server fingerprint names the AgEnD it may be sent to.");
   if (flags["--server-fingerprint"] !== undefined && !RUNTIME_SERVER_FINGERPRINT_PATTERN.test(flags["--server-fingerprint"])) throw new Error("--server-fingerprint is the AgEnD server fingerprint from the install command: 64 hexadecimal characters.");
   if (command !== "connect" && flags["--credential-profile"]) throw new Error("--credential-profile is used only by connect; use profile default NAME to change it later");
+  if (flags["--personal-folder"] && (command !== "connect" || flags["--credential-profile"])) throw Error("--personal-folder is a connect-only local choice and cannot use a named account");
   if (flags["--connection-dir"] !== undefined && flags["--server"] !== undefined) throw new Error("--connection-dir and --server cannot be used together: the folder's agend-server.json is the address.");
-  const explicitProfile = flags["--profile"] || env.AGEND_RUNTIME_HOME;
+  let explicitProfile = flags["--profile"] || env.AGEND_RUNTIME_HOME;
   const defaultProfile = resolve(join(home, ".agend-runtime"));
   let bundledServer: string | undefined;
   // Only connect needs a valid bundled address; run/status/rotate/disconnect just use it to find the same profile.
@@ -166,6 +171,11 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     } catch (error) { if (command === "connect" || flags["--connection-dir"] !== undefined) throw error; }
   }
   if (flags["--tail"] !== undefined && (!/^\d{1,5}$/.test(flags["--tail"]) || Number(flags["--tail"]) < 1)) throw new Error("--tail takes a number of lines, for example --tail 100");
+  if (flags["--personal-folder"] && !explicitProfile) {
+    const target = flags["--server"] ?? bundledServer;
+    if (!target) throw Error("A personal Runtime needs the Hub address from its install command");
+    explicitProfile = join(defaultProfile, "profiles", `personal-${runtimeProfileName(target)}`);
+  }
   const context: BackgroundContext = { env, home, cliPath: options.background?.cliPath ?? fileURLToPath(import.meta.url), execPath: process.execPath, seams: options.background ?? {}, write: text => { process.stdout.write(text); } };
   if (command === "status" || command === "stop" || command === "restart" || command === "logs" || command === "autostart") {
     const action = positional[0];
@@ -191,6 +201,13 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   // Without an explicit profile, a bundled server that differs from the default profile's pairing gets its own profile under it.
   const choice = explicitProfile ? undefined : chooseRuntimeProfile(defaultProfile, bundledServer, command === "connect");
   const store = new RuntimeClientStore(resolve(explicitProfile || choice!.directory));
+  if (flags["--personal-folder"]) {
+    if (process.platform !== "win32") throw Error("Personal agents require native Windows");
+    const unlock = await lockProfile(store, "configure-personal");
+    try { store.setPersonalAgent(flags["--personal-folder"]); } finally { unlock(); }
+  }
+  const personalAgent = command === "disconnect" ? undefined : store.personalAgent();
+  if (personalAgent && (["login", "profile", "remote-setup"].includes(command) || flags["--credential-profile"])) throw Error("Accounts and remote setup are unavailable on a personal Runtime");
   // A pairing's profiles live in that pairing's own folder: approving a pairing lets that fleet use the profiles signed in here, and no other fleet.
   const credentialRoot = credentialProfilesRoot(store.directory);
   // CLIs this Runtime installed from the dashboard live in this pairing's folder; `findCli` (here and in the helpers this starts) looks there first.
@@ -377,8 +394,8 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     return;
   }
   const runHere = async (report: (text: string) => void, control?: { onStopAttempt: (attempt: () => Promise<void>) => void }): Promise<void> => {
-    if (await runRuntimeWithUpdates({ store, report, ...(control ? { onStopAttempt: control.onStopAttempt } : {}) })) return;
-    const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, updateStatus: { state: "manual", reason: "unmanaged" }, report });
+    if (!personalAgent && await runRuntimeWithUpdates({ store, report, ...(control ? { onStopAttempt: control.onStopAttempt } : {}) })) return;
+    const client = new RuntimeClient({ store, ...(personalAgent ? { personalAgent } : { credentialProfilesRoot: credentialRoot, updateStatus: { state: "manual" as const, reason: "unmanaged" as const } }), report });
     // One attempt at a time: a signal or a stop request that arrives while one is in flight joins it. An account process that was not confirmed ended leaves the Runtime up
     // holding its lock, so the next Ctrl+C or `agend-runtime stop` tries again.
     let attempting: Promise<void> | undefined;

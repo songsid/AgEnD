@@ -59,11 +59,44 @@ export function cachedNativeModelCatalog(owner:object,input:ModelRefreshTarget):
 export async function refreshNativeModelCatalog(req:IncomingMessage,url:URL,ctx:WebApiContext,input:ModelRefreshTarget,bridge?:WindowsCliBridge):Promise<ModelReply|null> {
   const target=selection(ctx,input);if(!target)return null;
   const actor=remoteSetupActor(req,url,ctx);
+  const authorized=()=>nativeCliAuthorization(req,url,ctx) && (!target.machineId || actor!==null&&remoteSetupActor(req,url,ctx)===actor);
+  if(!authorized())throw Error("Model discovery requires an administrator on the local dashboard");
+  return refreshNative(ctx,input,target,actor,authorized,bridge);
+}
+/**
+ * The one `models.refresh` a paired computer's sign-in earns, made for the administrator who finished it (`actor`,
+ * `admin:<handle>` — the name that computer's audit log records) and only while `stillAdmin` holds. It refreshes what a page would
+ * read next: each Windows agent of that computer on that CLI and account, and the instance-less list a create dialog reads.
+ * Quiet by design: a Runtime without the capability, an account whose refresh is unavailable, a computer gone offline or any
+ * failure is skipped — the sign-in is already done and a failed refresh must not be reported as if it failed. Resolves to
+ * whether anything was refreshed. A GET still never reaches this.
+ */
+export async function refreshNativeModelCatalogAfterSignIn(ctx:WebApiContext,input:{backend:string;machineId:string;profile?:string;actor:string;stillAdmin:()=>boolean}):Promise<boolean> {
+  const wanted=input.profile??"";
+  const targets:ModelRefreshTarget[]=[];
+  for(const [name,config] of Object.entries(ctx.fleetConfig?.instances??{})){
+    if(!isWindowsInstance(config)||config.machine_id!==input.machineId||config.backend!==input.backend)continue;
+    const own=config.backend_options?.[input.backend]?.credential_profile;
+    if((typeof own==="string"?own:"")!==wanted)continue;
+    targets.push({backend:input.backend,instance:name,runtime:"windows",machineId:input.machineId});
+  }
+  targets.push({backend:input.backend,instance:null,runtime:"windows",machineId:input.machineId,...(input.profile?{profile:input.profile}:{})});
+  let any=false;
+  for(const target of targets){
+    try{
+      if(!input.stillAdmin())return any;
+      const picked=selection(ctx,target);if(!picked)continue;
+      const authorized=()=>input.stillAdmin()&&!!ctx.runtimeCoordinator;
+      if(await refreshNative(ctx,target,picked,input.actor,authorized))any=true;
+    }catch{ /* skipped: see above */ }
+  }
+  return any;
+}
+async function refreshNative(ctx:WebApiContext,input:ModelRefreshTarget,target:NonNullable<ReturnType<typeof selection>>,actor:string|null,authorized:()=>boolean,bridge?:WindowsCliBridge):Promise<ModelReply|null> {
   const current=()=>{
     const next=selection(ctx,input);
-    return nativeCliAuthorization(req,url,ctx) && (!target.machineId || actor!==null&&remoteSetupActor(req,url,ctx)===actor) && next?.key===target.key && next.config===target.config;
+    return authorized() && next?.key===target.key && next.config===target.config;
   };
-  if(!current())throw Error("Model discovery requires an administrator on the local dashboard");
   const active=flights.get(ctx)??new Map();flights.set(ctx,active);
   if(active.has(target.key))return active.get(target.key)!;
   if(active.size>=2)throw Error("Other model refreshes are running");

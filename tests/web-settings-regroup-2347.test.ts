@@ -193,19 +193,35 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
     const panel = () => p.root.querySelector(".p-settings");
     const atList = [panel().getAttribute("class"), panel().getAttribute("data-view"), p.root.querySelectorAll(".s-nav .seg-item").map((a: any) => a.getAttribute("href"))];
     nav.navigate("/settings/agent-defaults"); await open("agent-defaults");
-    const back = p.root.querySelector(".p-settings .panel-body .s-back");
-    expect([atList, panel().getAttribute("class"), panel().getAttribute("data-view"), back?.getAttribute("href"), back?.textContent.trim()]).toEqual([
+    const back = p.root.querySelector(".p-settings .panel-body .s-back");   // M-3245: no "‹ Settings" bar — the header's ← (phone)
+    expect([atList, panel().getAttribute("class"), panel().getAttribute("data-view"), back]).toEqual([
       // #1629: the root's class is the effects producer's, exactly — which view is shown is data-view.
       ["panel p-settings", "index", ["/settings/preferences", "/settings/look", "/settings/agents", "/settings/runtimes", "/settings/agent-defaults", "/settings/notifications", "/settings/chat", "/settings/web-dashboard", "/settings/access", "/settings/hub", "/settings/advanced"]],
-      "panel p-settings", "section", "/settings", "SettingsShared agent settings"]);
+      "panel p-settings", "section", null]);
     nav.navigate("/settings");
+  });
+  // M-3245 (the user, beta.7: 「設定頁左上的左箭頭和漢堡選單 icon 意義不明」): on a phone a section's top-left button is ←
+  // back to the list (it was ☰, with a "‹ Settings" bar under it); the list itself keeps ☰, which opens the agents.
+  it("M-3245: on a phone a section's top-left is ← to Settings; the list's is ☰", async () => {
+    const was = (globalThis as any).matchMedia;
+    (globalThis as any).matchMedia = (q: string) => ({ matches: /max-width:\s*899px/.test(q), addEventListener() {}, removeEventListener() {} });
+    try {
+      nav.navigate("/settings/agent-defaults"); await open("agent-defaults");
+      const up = p.root.querySelector("#sbOpen");
+      expect([up?.tagName, up?.getAttribute("href"), up?.getAttribute("class"), up?.getAttribute("aria-label"), !!up?.querySelector(".ic-back"), p.root.querySelectorAll(".s-back").length])
+        .toEqual(["A", "/settings", "icon-btn sb-open sb-back sb-up", "Back to Settings", true, 0]);
+      await p.unmount();
+      nav.navigate("/settings"); await open("agents");
+      const menu = p.root.querySelector("#sbOpen");
+      expect([menu?.tagName, menu?.getAttribute("class"), menu?.getAttribute("aria-controls")]).toEqual(["BUTTON", "icon-btn sb-open", "sidebar"]);
+    } finally { (globalThis as any).matchMedia = was; }
   });
   it("the CSS: on a phone the list is alone at /settings, a section alone with ‹ Settings; the list marks no section", async () => {
     const { readFileSync } = await import("node:fs");
     const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const phone = css.slice(css.indexOf(".p-settings .s-back { display: none; }"));
     for (const rule of [/\.p-settings\[data-view="index"\] > \.panel-body\s*\{\s*display:\s*none/, /\.p-settings\[data-view="section"\] > \.s-nav\s*\{\s*display:\s*none/,
-      /\.p-settings\[data-view="index"\] > \.s-nav \.seg-item\.active::before\s*\{\s*display:\s*none/, /\.p-settings > \.panel-body \.s-back\s*\{\s*display:\s*flex/,
+      /\.p-settings\[data-view="index"\] > \.s-nav \.seg-item\.active::before\s*\{\s*display:\s*none/,
       // #2501 review: on a short screen the list takes the room there is and scrolls (it fills a tall one).
       /\.p-settings\[data-view="index"\] > \.s-nav\s*\{\s*flex:\s*1 1 auto;\s*min-height:\s*0;\s*overflow-y:\s*auto/]) expect(phone).toMatch(rule);
     expect(css.slice(css.indexOf(".p-settings .s-back { display: none; }") - 40, css.indexOf(".p-settings .s-back { display: none; }") + 200)).toMatch(/@media \(max-width: 899px\)/);

@@ -18,7 +18,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   // In-app to a section (a reload would put a held choice back): on a phone (§7) a section is shown alone, so "‹ Settings"
   // goes back to the list of sections first.
   const section = async (href: string) => {
-    const back = p.page.locator(".p-settings .s-back");
+    const back = p.page.locator(".p-settings #sbOpen.sb-up");
     if (await back.isVisible().catch(() => false)) { await back.click(); await p.page.waitForTimeout(400); }
     await p.page.locator(`.s-nav a[href="${href}"]`).click();
   };

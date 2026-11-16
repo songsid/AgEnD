@@ -49,7 +49,8 @@ export class HubQuotaService {
       const setting = db.prepare("SELECT visible FROM hub_quota_preferences WHERE exposure_id=?").get(exposureId) as { visible: number } | undefined;
       if (setting?.visible === 0) return {};
       const e = readExposure(db, exposureId), value = this.values.get(exposureId);
-      const link = e ? this.links.get(e.fleet_id) : null;
+      if(e?.source_kind==="personal")return {};
+      const link = e?.fleet_id ? this.links.get(e.fleet_id) : null;
       if (!e || e.state === "withdrawn" || !link?.current() || value?.link !== link) return { quota: { band: "unknown" } };
       // A passed reset cannot still promise capacity. The next changed band from the member replaces this hint.
       if (value.quota.resetsAt !== undefined && value.quota.resetsAt <= this.core.now()) return { quota: { band: "unknown" } };

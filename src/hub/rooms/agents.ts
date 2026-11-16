@@ -65,7 +65,7 @@ export class HubRoomAgents {
     return this.core.atomic(db => {
       const row = readExposure(db, exposureId);
       if (!row) return { presence: "offline" as const };
-      const e = exposureOf(row), link = this.links.get(e.fleetId);
+      const e = exposureOf(row), link = e.fleetId?this.links.get(e.fleetId):undefined;
       if (e.state !== "published") return { presence: "paused" as const, presenceReason: "operator" as const };
       if (!link?.current()) return { presence: "offline" as const };
       if (!this.supports(link)) return { presence: "offline" as const, presenceReason: "update" as const };
@@ -158,6 +158,8 @@ export class HubRoomAgents {
     for (const m of selected) {
       const e = readExposure(db, m.subject);
       if (!e || e.owner !== m.owner_at_join) throw new HubProtocolError("revoked");
+      // Personal sources are handed to their own adapter, never the Fleet transport below.
+      if(e.fleet_id===null)throw new HubProtocolError("unavailable");
       if (this.automation.lineage(db, parent).audience_sequence < m.joined_sequence) continue;
       const link=this.links.get(e.fleet_id);
       const contextState=link?.current() && link.features.has(HUB_ROOM_CONTEXT_CAPABILITY)
@@ -175,7 +177,7 @@ export class HubRoomAgents {
         VALUES(?,?,?,'agent',?,?,?,?,?,'[]',?,?,?,'queued')`).run(replyId, parent.room_id, max + 1, e.id, e.owner, e.display_name,
           this.core.deps.content.put(tx, { question: "" }), "", now, parent.id, id);
       const payloadRef = this.core.deps.content.put(tx, { question: bytes });
-      this.core.audit(tx, { requestId: id, actor: { kind: "person", person: personFromString(as?.asker ?? parent.author_subject) }, action: "room.ask-queued", result: "completed", roomId: parent.room_id, messageId: parent.id, exposureId: e.id, fleetId: e.fleet_id, contentRef: payloadRef });
+      this.core.audit(tx, { requestId: id, actor: { kind: "person", person: personFromString(as?.asker ?? parent.author_subject) }, action: "room.ask-queued", result: "completed", roomId: parent.room_id, messageId: parent.id, exposureId: e.id, fleetId: e.fleet_id??undefined, contentRef: payloadRef });
       db.prepare(`INSERT INTO hub_room_deliveries(id,room_id,parent_id,reply_id,exposure_id,exposure_revision,fleet_id,owner,asker,asker_member,agent_member,payload_ref,payload_digest,state,created_at,expires_at,source_exposure_id,source_exposure_revision,source_fleet_id,on_behalf)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?)`).run(id, parent.room_id, parent.id, replyId, e.id, e.revision, e.fleet_id, e.owner, as?.asker ?? parent.author_subject, askerMember, m.id,
           payloadRef, digest(bytes), now, now + 24 * 60 * 60_000, source?.id ?? null, source?.revision ?? null, source?.fleet_id ?? null, operation?.receipt_id ? 1 : 0);

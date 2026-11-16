@@ -111,7 +111,7 @@ export class WindowsCliBridge {
    * coordinator's bridge passes this PC's switch (admitLocalWindowsCli), the standalone runner passes nothing.
    */
   constructor(private readonly launcher: WindowsLauncher = nativeWindowsTransport, private readonly inventoryFile?: string,
-    readonly admit?: () => void, private readonly personal = false) {
+    readonly admit?: () => void, private readonly personal = false, private readonly personalFolder?: string) {
     this.cachedProbe = inventoryFile ? readInventory(inventoryFile) : null;
   }
 
@@ -166,11 +166,12 @@ export class WindowsCliBridge {
     return {models:value.models as import("./windows-cli-providers.js").NativeModelOption[],source:String(value.source)};
   }
   private async doProbe(authorized: () => boolean): Promise<WindowsCliProbe> {
-    const value = await this.workerResult({ op: "probe", ...(this.personal ? { personal: true as const } : {}) }, 60_000, authorized);
+    if(this.personal&&!validWindowsDirectory(this.personalFolder))throw Error("Personal Runtime detection needs its local folder binding");
+    const value = await this.workerResult({ op: "probe", ...(this.personal ? { personal: true as const,folder:this.personalFolder } : {}) }, 60_000, authorized);
     if (value.type !== "probe" || !Array.isArray(value.clis) || typeof value.home !== "string") throw new Error(String(value.message || "Windows CLI probe failed"));
     return { clis: value.clis, home: value.home, probedAt: Date.now(), ...inventoryHostname(value.hostname) };
   }
-  private async workerResult(request: { op: "models"; cli: string } | { op: "probe"; personal?: true } | { op: "workspace"; agentId: string }, timeoutMs: number, authorized: () => boolean = () => true): Promise<Record<string, unknown>> {
+  private async workerResult(request: { op: "models"; cli: string } | { op: "probe"; personal?: true;folder?:string } | { op: "workspace"; agentId: string }, timeoutMs: number, authorized: () => boolean = () => true): Promise<Record<string, unknown>> {
     if (!authorized()) throw new Error("Authorization expired before the Windows operation started");
     const generation = this.workerGeneration;
     const transport = await this.launcher();

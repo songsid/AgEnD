@@ -90,6 +90,9 @@ describe("M-3115 PR 1: inside an agent's pages a phone has no bottom tabs", () =
       .toEqual([true, true, true, undefined, "Back to your agents"]);
     fire(back, "click"); await settle(4);
     expect(shell(pg).classList.contains("sb-open"), "‹ opens the agents (the drawer)").toBe(true);
+    // M-3245: the drawer is closed by ✕ (it was ←, read as "back"); ← only goes back a level.
+    const close = pg.root.querySelector("#sidebar .side-collapse") as any;
+    expect([!!close.querySelector(".ic-close"), !!close.querySelector(".ic-back"), close.getAttribute("aria-label")]).toEqual([true, false, "Close the sidebar"]);
     for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
     const fleet = await app("/ui/fleet");
     expect([shell(fleet.pg).classList.contains("in-agent"), fleet.pg.root.querySelector(".sb-back")]).toEqual([false, null]);
@@ -203,5 +206,8 @@ describe("M-3115 PR 1: inside an agent's pages a phone has no bottom tabs", () =
     for (const rule of [".in-agent .tabs { display: none; }", ".in-agent .main { padding-bottom: 0; }", ".sb-back .ic-menu { display: none; }",
       '.composer-row:has(.webauth-row[data-state="verified"]):not(:has(.webauth-notice, .guest-note)) { display: none; }']) expect(css).toContain(rule);
     expect(css).toContain(".sb-open .ic-back, .sb-open .sb-badge { display: none; }");
+    // M-3245: the full-width drawer's ✕ (the sidebar icon elsewhere)
+    expect(css).toContain(".side-collapse .ic-close { display: none; }");
+    expect(css).toMatch(/\.sidebar\.fleet-side:not\(\.drawer-narrow\) \.side-collapse \.ic-close \{ display: inline-block; \}/);
   });
 });

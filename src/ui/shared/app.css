@@ -292,7 +292,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 }
 .panel-head .sb-open { display: none; }
 .sb-open .ic-back, .sb-open .sb-badge { display: none; }   /* M-3115: the phone's ‹ (below); elsewhere ☰ only */
-.side-collapse .ic-back { display: none; }   /* M-3211: a phone's full-width drawer closes by ← (below); elsewhere the sidebar icon */
+.side-collapse .ic-close { display: none; }   /* M-3211, M-3245: a phone's full-width drawer closes by ✕ (below); elsewhere the sidebar icon */
 .sb-collapsed .panel-head .sb-open { display: inline-flex; }
 /* #2074: a collapsed sidebar's "New agent", beside its ☰ (a phone opens the drawer, which has the row). */
 .panel-head .sb-new { margin-left: calc(-1 * var(--s-1)); }
@@ -801,9 +801,6 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 @media (max-width: 899px) {
   .p-settings[data-view="index"] > .panel-body { display: none; }
   .p-settings[data-view="section"] > .s-nav { display: none; }
-  .p-settings > .panel-body .s-back { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); margin: 0 0 var(--s-2);
-    color: var(--accent); font-size: var(--fs-sm); text-decoration: none; }
-  .p-settings .s-back .s-back-here { margin-left: auto; color: var(--text); font-weight: var(--fw-semibold); }
   .p-settings[data-view="index"] > .s-nav { flex-direction: column; align-items: stretch; padding: 0 var(--s-4) var(--s-4); }
   .p-settings[data-view="index"] > .s-nav .s-nav-groups { flex-direction: column; align-items: stretch; flex-wrap: nowrap; overflow: visible; gap: var(--s-4); }
   .p-settings[data-view="index"] > .s-nav .s-nav-group { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0; }
@@ -1802,6 +1799,21 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
   letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
 .u-cg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .u-cg-count { flex: none; }
+/* M-3241 (the user): a group of two or more logins folds — −/+ on its header's right cycles every window → one line per
+   login (its binding window beside its name) → the header alone with the highest percent, in its warning colour. */
+.u-cg-tools { margin-left: auto; display: inline-flex; align-items: center; gap: var(--s-2); align-self: center; text-transform: none; letter-spacing: 0; }
+.u-cg-top { font-size: var(--fs-sm); }
+.u-cg-top.u-cm-pct.is-stale { color: var(--text-3); }   /* a stale login's cached number: muted, as its row (#4054 review) */
+.u-cg-toggle { width: 24px; height: 24px; margin: -4px calc(-1 * var(--s-1)) -4px 0; color: var(--text-3); }
+.u-cg-toggle:hover { color: var(--text); }
+.u-cgroup.is-collapsed > .u-cg-head { padding-bottom: 7px; }
+.u-crow.is-one { flex-direction: row; align-items: center; gap: var(--s-3); }
+.u-crow.is-one > .u-crow-head { flex: 0 0 32%; min-width: 0; }
+.u-crow.is-one > .u-crow-head .u-crow-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-crow.is-one .u-plan { display: none; }   /* one line: the name gets the room; the plan is in the full rows */
+.u-crow.is-one .u-cm { grid-template-columns: 3em minmax(0, 1fr) 2.9em 3.7em; }   /* 「5小時」 whole */
+.u-crow.is-one > .u-cm, .u-crow.is-one > .u-crow-note { flex: 1 1 0; min-width: 0; }
+@media (pointer: coarse) { .u-cg-toggle { width: var(--tap); height: var(--tap); margin-block: calc((24px - var(--tap)) / 2); } }
 .u-crow { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; padding: 6px var(--s-3); border: 0; border-top: 1px solid var(--border);
   background: transparent; color: inherit; font: inherit; line-height: 1.3; text-align: left; cursor: pointer; }
 .u-cg-head + .u-crow { border-top: 0; }
@@ -4618,10 +4630,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-settings > .s-nav .seg-item.active { background: none; color: var(--accent); border-bottom-color: var(--accent); }
   .p-settings > .s-nav .seg-item.active::before { display: none; }
 }
-/* S5. Phone: "‹ Settings" becomes a full-width bar under the header (tinted, bordered, 48px, the section's name at its right). */
+/* S5. Phone (M-3245: the section's way back is the header's ←; no "‹ Settings" bar). */
 @media (max-width: 899px) {
-  .p-settings > .panel-body .s-back { min-height: 48px; margin: calc(-1 * var(--s-4)) calc(-1 * var(--s-4)) var(--s-4); padding: 0 var(--s-4); background: var(--surface); border-bottom: 1px solid var(--border); font-weight: var(--fw-semibold); }
-  .p-settings .s-back .s-back-here { font-weight: var(--fw-semibold); }
   .p-settings[data-view="index"] > .s-nav .s-nav-group + .s-nav-group { border-top: 0; padding-top: 0; }
 }
 /* The agent page's cards: two columns on a wide page (`.ap-span2` across both), one column when it is narrow. */
@@ -4669,7 +4679,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side:not(.drawer-narrow) .side-head { padding-left: var(--s-1); }
   .sidebar.fleet-side:not(.drawer-narrow) .side-collapse { order: -1; min-width: var(--tap); min-height: var(--tap); }
   .sidebar.fleet-side:not(.drawer-narrow) .side-collapse .ic-sidebar { display: none; }
-  .sidebar.fleet-side:not(.drawer-narrow) .side-collapse .ic-back { display: inline-block; }
+  .sidebar.fleet-side:not(.drawer-narrow) .side-collapse .ic-close { display: inline-block; }
   .sidebar.fleet-side:not(.drawer-narrow) .v-inst { min-height: 72px; gap: var(--s-3); padding-block: var(--s-2); }
   .sidebar.fleet-side:not(.drawer-narrow) .v-inst .av { width: 54px; height: 54px; margin-top: 0; font-size: var(--fs-xl); }
   .sidebar.fleet-side:not(.drawer-narrow) .v-inst .av.av-emoji { font-size: calc(var(--fs-xl) * 1.4); }

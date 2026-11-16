@@ -29,6 +29,7 @@ export interface HubContentStore {
   get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
+  roleAdmin?: import("../roles/admin-types.js").RoleAdminControl;
   versionRegistry?: import("../published-version.js").PublishedVersionLookup;
   /** One mount-local Team service supplies routes, live permission reads and snapshot pickers. */
   teams?(core: import("./core.js").HubCore): import("../teams/types.js").HubTeams;

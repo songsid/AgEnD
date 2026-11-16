@@ -8,7 +8,7 @@ import { isPersonalAgentCli, type PersonalAgentCli } from "./runtime-personal-an
 import { protectRuntimeProfileDirectorySync } from "./runtime-pane-private.js";
 
 export class PersonalAgentStageError extends Error {
-  constructor(readonly reason: "unsupported-platform" | "folder-invalid" | "authentication-unavailable" | "profile-unavailable") { super(`Personal agent: ${reason}`); }
+  constructor(readonly reason: "unsupported-platform" | "folder-invalid" | "authentication-unavailable" | "profile-unavailable" | "sandbox-unavailable") { super(`Personal agent: ${reason}`); }
 }
 export interface PersonalStageHost {
   platform: string;
@@ -53,7 +53,7 @@ function authentication(cli: PersonalAgentCli, text: string, now: number): strin
 export interface PersonalStageInput { cli: PersonalAgentCli; folder: string; question: string; model?: string; runtimeReads: readonly string[] }
 export interface PersonalStage { plan: PersonalProfilePlan; cleanup(): void }
 
-export function stagePersonalAgent(input: PersonalStageInput, host: PersonalStageHost): PersonalStage {
+function stage(input: PersonalStageInput, host: PersonalStageHost, withAuthentication: boolean): PersonalStage {
   if (host.platform !== "win32") throw new PersonalAgentStageError("unsupported-platform");
   if (!isPersonalAgentCli(input.cli)) throw new PersonalAgentStageError("profile-unavailable");
   const ownHome = host.realDirectory(host.userHome), env = host.environment;
@@ -67,12 +67,14 @@ export function stagePersonalAgent(input: PersonalStageInput, host: PersonalStag
   catch { throw new PersonalAgentStageError("folder-invalid"); }
   const stage = host.create();
   try {
-    const sourceHome = input.cli === "codex" ? codexHome : claudeHome;
-    const filename = input.cli === "codex" ? "auth.json" : ".credentials.json";
-    let auth: string;
-    try { auth = authentication(input.cli, host.readPrivate(win32.join(sourceHome, filename)), host.now()); }
-    catch { throw new PersonalAgentStageError("authentication-unavailable"); }
-    host.writePrivate(win32.join(stage.home, filename), auth);
+    if(withAuthentication){
+      const sourceHome = input.cli === "codex" ? codexHome : claudeHome;
+      const filename = input.cli === "codex" ? "auth.json" : ".credentials.json";
+      let auth: string;
+      try { auth = authentication(input.cli, host.readPrivate(win32.join(sourceHome, filename)), host.now()); }
+      catch { throw new PersonalAgentStageError("authentication-unavailable"); }
+      host.writePrivate(win32.join(stage.home, filename), auth);
+    }
     // These are the bundled system skills observed in the approved step-0 CLI. The final prompt check still
     // refuses a newly introduced skill; a static list is never a substitute for that check.
     const skills = ["imagegen", "openai-docs", "review-agent", "skill-creator", "skill-installer"].map(name => win32.join(stage.home, "skills", ".system", name, "SKILL.md"));
@@ -85,6 +87,9 @@ export function stagePersonalAgent(input: PersonalStageInput, host: PersonalStag
     return { plan, cleanup: stage.cleanup };
   } catch (error) { stage.cleanup(); throw error instanceof PersonalAgentStageError ? error : new PersonalAgentStageError("profile-unavailable"); }
 }
+export function stagePersonalAgent(input: PersonalStageInput, host: PersonalStageHost): PersonalStage { return stage(input,host,true); }
+/** Readiness is checked without reading or copying a person's authentication. Never used to execute a turn. */
+export function stagePersonalProbe(input: PersonalStageInput, host: PersonalStageHost): PersonalStage { return stage(input,host,false); }
 
 /** Actual filesystem port. No source authentication/config file is changed or logged out. */
 export function windowsPersonalStageHost(environment: NodeJS.ProcessEnv): PersonalStageHost {

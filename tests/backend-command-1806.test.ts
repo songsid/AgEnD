@@ -456,11 +456,20 @@ describe("the web chat", () => {
       .toEqual({ status: 200, body: { text: t("backend.same", "worker", "claude-code") } });
   });
 
-  it("the web never probes for a model list", async () => {
+  it("the web reads the cached list, and discovers an empty one once, bounded — a probe that fails still leaves the default-only step", async () => {
     const f = fleet();
     rmSync(join(agendHome, "cli-env", "codex.json"));
     const r = await f.fm.webCommand({ instance: "worker", command: "backend", args: "codex" }, { publicLink: false });
     expect(r.body.choices!.options.map(o => o.id)).toEqual(["codex default"]);
+    expect(f.any.probeBackendBounded).toHaveBeenCalledTimes(1);
+    expect(f.any.probeBackendBounded).toHaveBeenCalledWith("codex", { profile: null });
+    // the attempt found nothing: the next step does not try again at once
+    await f.fm.webCommand({ instance: "worker", command: "backend", args: "codex" }, { publicLink: false });
+    expect(f.any.probeBackendBounded).toHaveBeenCalledTimes(1);
+  });
+  it("a cached list is read without any probe", async () => {
+    const f = fleet();
+    await f.fm.webCommand({ instance: "worker", command: "backend", args: "codex" }, { publicLink: false });
     expect(f.any.probeBackendBounded).not.toHaveBeenCalled();
   });
 

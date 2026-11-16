@@ -6,7 +6,7 @@ import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
 import { createHubGroupPolicyStore, groupPolicyMigration, inspectHubGroupPolicyBinding } from "../src/hub/group-policy/store.js";
 import { createHubGroupResources, HUB_GROUP_RESOURCES_MIGRATION } from "../src/hub/group-policy/resources.js";
 import { createHubGroupAuthorization } from "../src/hub/group-policy/authorization.js";
-import type { HubExposure, PersonKey } from "../src/hub/types.js";
+import type { HubFleetExposure as HubExposure, PersonKey } from "../src/hub/types.js";
 import type { PolicyGroupFacts } from "../src/hub/directory/groups.js";
 import { personKeyString } from "../src/hub/identity.js";
 type Rig = Awaited<ReturnType<typeof s3bRig>>;

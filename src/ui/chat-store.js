@@ -56,6 +56,9 @@ export function createChatStore(deps) {
     commands: {},
   };
   const subs = new Set();
+  const commandLeases = new Map();        // instance → the `alive` the card on screen was run under (its pane / page lease)
+  const instanceBackends = new Map();     // instance → the backend its status frame named
+  const modelRereads = new Map();         // instance → whether another `models` event came while its open /model menu was being read again
   const historyRequests = new Map();
   const visible = new Map();              // mount token → agent; cleanup never clears a successor's focus
   let focused = null;
@@ -111,6 +114,7 @@ export function createChatStore(deps) {
     if (!d || !Array.isArray(d.instances)) return;
     for (const i of d.instances) {
       s.instanceStatus[i.name] = i.status;
+      if (typeof i.backend === "string") instanceBackends.set(i.name, i.backend);
       noteExec(i.name, (i.execution_state !== undefined ? i.execution_state : i.state) ?? null);
       const waits = i.state === "awaiting_input" ? (typeof i.interaction_summary === "string" ? i.interaction_summary : "") : null;
       if (i.name === s.current && waits != null && s.awaiting[i.name] == null) deps.announce(tf("chat.awaiting", i.name));
@@ -600,6 +604,7 @@ export function createChatStore(deps) {
     // What it was run with (#4003 review): a list asked for ("/model") is a menu while it loads; a pick ("/model <id>") is not.
     const pending = { command, busy: true, ...(args ? { args } : {}), ...(opts.action && previous?.command === command ? { choices: previous.choices } : {}) };
     s.commands[target] = pending;
+    commandLeases.set(target, alive);
     changed(target);
     const post = async (extra) => {
       try { return await api("POST", "/ui/command", { instance: target, command, ...(args ? { args } : {}), ...(opts.action ? { action: opts.action } : {}), ...extra }); }
@@ -639,7 +644,38 @@ export function createChatStore(deps) {
     showCommand(name, { ...c, compact: view.state });
     changed(name);
   }
-  function dismissCommand(target) { delete s.commands[target]; changed(target); }
+  function dismissCommand(target) { delete s.commands[target]; commandLeases.delete(target); changed(target); }
+  /**
+   * The `models` stream event (a sign-in ended, or a discovery that outlasted the menu's wait finished): a /model menu still
+   * open on this card reads its list again, in place. It is the same plain `/model` read the menu opened with — it applies
+   * no model — and it lands only while the card is still the one on screen and the lease it was run under is alive: a pick,
+   * Refresh, another command, a dismissal or a page that moved on in the meantime all retire it. The "more" view (its own
+   * action) and /backend's steps are not re-read.
+   */
+  async function reloadModelMenu(event) {
+    const only = event && typeof event.backend === "string" ? event.backend : null;
+    for (const target of Object.keys(s.commands)) {
+      const card = s.commands[target], alive = commandLeases.get(target);
+      if (!card || card.command !== "model" || card.busy || card.error || !card.choices || card.choices.step === "backend") continue;
+      if ((card.choices.actions || []).includes("refreshAll") || !alive || !alive()) continue;
+      const backend = instanceBackends.get(target);
+      if (only && backend && backend !== only) continue;
+      if (modelRereads.has(target)) { modelRereads.set(target, true); continue; }   // read once more when this one is back
+      modelRereads.set(target, false);
+      try {
+        let shownCard = card;
+        do {
+          modelRereads.set(target, false);
+          let r;
+          try { r = await api("POST", "/ui/command", { instance: target, command: "model" }); } catch { break; }
+          if (!alive() || s.commands[target] !== shownCard || !r || r.error || !r.choices || r.choices.step === "backend") break;
+          shownCard = { command: "model", busy: false, choices: r.choices };
+          showCommand(target, shownCard);
+          changed(target);
+        } while (modelRereads.get(target));
+      } finally { modelRereads.delete(target); }
+    }
+  }
   /** Whether a command can start for `target` now (none is out): checked before a typed command line is consumed. */
   const commandFree = (target) => !(s.commands[target] && s.commands[target].busy);
 
@@ -666,6 +702,7 @@ export function createChatStore(deps) {
     stream.on("reply_buttons", applyReplyButtons);
     stream.on("reactions", applyReactions);                              // #2305
     stream.on("clock", noteServerClock);                                  // #1823
+    stream.on("models", reloadModelMenu);
   }
 
   return {
@@ -679,7 +716,7 @@ export function createChatStore(deps) {
     applyReplyButtons, clickReplyButton,
     uploadFile, send, retryOutgoing, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
     startReply, clearReply, findQuoted, addToDraft, captureDraft, draftCurrent, clearCapturedDraft, acceptDraft,
-    cancelReply, isUser, runCommand, dismissCommand, commandFree,
+    cancelReply, isUser, runCommand, dismissCommand, commandFree, reloadModelMenu,
     allHidden: (name) => s.allHidden.has(name),
   };
 }

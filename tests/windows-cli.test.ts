@@ -330,6 +330,12 @@ describe("one Windows task at a time", () => {
 });
 
 describe("personal-agent worker boundary", () => {
+  it("takes the readiness folder from the local binding rather than a server request",async()=>{
+    const service=new WindowsCliBridge(launcher,undefined,undefined,true,input.cwd),pending=service.probe({force:true});await launched();
+    expect(JSON.parse(child.stdin.read().toString())).toEqual({op:"probe",personal:true,folder:input.cwd});
+    child.send({type:"probe",clis:[],home:"C:\\User"});child.close();
+    expect((await pending).clis).toEqual([]);
+  });
   it("keeps preview output empty and waits for physical exit before publishing a final answer", async () => {
     const service = new WindowsCliBridge(launcher, DETECTED, undefined, true);
     service.start(input, () => true, { personal: true }); await launched();
