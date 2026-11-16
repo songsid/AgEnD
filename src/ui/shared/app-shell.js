@@ -458,7 +458,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   return html`<aside id="sidebar" class="sidebar fleet-side" aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
-      <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
+      <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" cls="ic-sidebar" /><${Icon} name="back" cls="ic-back" /></button>
     </div>
     ${/* AgEnD Hub P1: a member fleet's "My fleet ↔ Hub" (shown once paired; nothing loads when the switch is off) */ hubMarks().member ? html`<${HubSwitcherSlot} />` : null}
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
