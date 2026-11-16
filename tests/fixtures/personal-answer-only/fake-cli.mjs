@@ -3,6 +3,7 @@ import {readFileSync,existsSync} from "node:fs";
 import {join} from "node:path";
 import {WebSocket} from "ws";
 const mode=process.argv[2],args=process.argv.slice(3);
+if(process.env.HTTPS_PROXY||process.env.NODE_EXTRA_CA_CERTS)process.exit(13);
 if(process.env.OPENAI_API_KEY!=="agend-inert-answer-only-check"){
  const auth=JSON.parse(readFileSync(join(process.env.CODEX_HOME,"auth.json"),"utf8"));
  if(auth.auth_mode!=="chatgpt"||auth.tokens.account_id!=="agend-inert-answer-only-check"||auth.tokens.refresh_token!=="")process.exit(9);

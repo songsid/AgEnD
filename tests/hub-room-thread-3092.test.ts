@@ -28,15 +28,25 @@ beforeAll(async () => {
 const realES = g.EventSource;
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); i18n.setLang("en", { store: false }); g.EventSource = realES; });
 
-async function roomPage(roomId: string, lang = "en") {
+async function roomPage(roomId: string, lang = "en", personalAnswerOnly?: boolean) {
   const fx = createHubRoomsFixture(), realFetch = g.fetch;
+  if(personalAnswerOnly!==undefined){
+    fx.rooms.find(r=>r.id===roomId)!.messages=[];
+    const original=fx.fetch;
+    fx.fetch=async(...args:Parameters<typeof original>)=>{
+      const response=await original(...args),body:any=await response.json();
+      const mark=(r:any)=>{if(r?.id===roomId)r.agent={...r.agent,agentKind:"personal",answerOnly:personalAnswerOnly,owner:{name:"Alex"}};};
+      if(body.room)mark(body.room);if(Array.isArray(body.rooms))body.rooms.forEach(mark);
+      return {...response,json:async()=>body};
+    };
+  }
   g.fetch = (url: string, init?: any) => fx.fetch(url, init); g.EventSource = fx.EventSource;
   const pg = page({ url: `http://127.0.0.1:19280/ui/hub?room=${roomId}`, storage: { agend_tour_done: "1" } });
   pg.document.body.setAttribute("data-hub", "hub"); pg.document.body.setAttribute("data-hub-name", "Team Hub"); mounted.push(pg);
   i18n.setLang(lang, { store: false });
   client.setHubClient(client.createHubWebClient()); hubPanel.resetHubSession(); router.startRouter(pg.window); store.applyStatus({ instances: [] });
   await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel || (() => null) }]]), onNewInstance() {} }));
-  await until(() => roomId === "room-assistant" ? pg.root.querySelector(".hub-room-page") : pg.root.querySelectorAll(".hub-room-page .thread .msg").length > 5);
+  await until(() => personalAnswerOnly!==undefined ? pg.root.querySelector(".hub-room-empty .empty-hint") : roomId === "room-assistant" ? pg.root.querySelector(".hub-room-page") : pg.root.querySelectorAll(".hub-room-page .thread .msg").length > 5);
   return { pg, fx, restore: () => { g.fetch = realFetch; } };
 }
 const msgs = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-room-page .thread .msg")] as any[];
@@ -424,6 +434,14 @@ describe("a room on the page", () => {
     expect(box.value).toBe("Thanks @project-helper ");
     insert.current("@test-runner"); await settle(5);
     expect(box.value).toBe("Thanks @project-helper @test-runner ");
+  });
+  it.each([false,true])("personal questions use their owner's independent-run empty state (Answer only=%s)",async answerOnly=>{
+    const {pg,restore}=await roomPage("room-helper","en",answerOnly);
+    try{
+      const hint=pg.root.querySelector(".hub-room-empty .empty-hint")?.textContent??"";
+      expect(hint).toContain("It runs on Alex's computer");expect(hint).toContain("Each question is answered on its own");
+      expect(hint).not.toContain("project-helper");expect(hint).not.toContain("shares its one conversation");
+    }finally{restore();}
   });
   it("the Hub assistant's 1:1, first opened: what it is, in its own words (spec §10)", async () => {
     const { pg, restore } = await roomPage("room-assistant", "zh-TW");

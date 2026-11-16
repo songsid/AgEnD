@@ -1,6 +1,5 @@
 /** A local, inert Responses endpoint observes the effective catalog without using any account or model. */
 import {createServer} from "node:http";
-import {WebSocketServer} from "ws";
 import {mkdtempSync,writeFileSync,rmSync} from "node:fs";
 import {join} from "node:path";
 import {execFile} from "./child-process.js";
@@ -13,6 +12,8 @@ export async function checkAnswerOnlyCatalog(binary:NativeCliExecutable,plan:Per
   if(!plan.answerOnly||!plan.environment.CODEX_HOME)throw Error("Answer only profile missing");
   const model=JSON.parse(plan.files[ANSWER_ONLY_CATALOG_FILE]).models?.[0]?.slug;
   if(typeof model!=="string")throw Error("Answer only model missing");
+  // The portable builder imports Runtime metadata before installing external dependencies.
+  const {WebSocketServer}=await import("ws");
   const privateHome=mkdtempSync(join(plan.cwd,".answer-only-check-"));
   let observed=false,refused=false,requests=0;
   const events=()=>{
@@ -65,6 +66,8 @@ export async function checkAnswerOnlyCatalog(binary:NativeCliExecutable,plan:Per
         const token=`${Buffer.from('{"alg":"none"}').toString("base64url")}.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.inert`;
         writeFileSync(join(privateHome,"auth.json"),JSON.stringify({auth_mode:"chatgpt",tokens:{access_token:token,id_token:token,refresh_token:"",account_id:"agend-inert-answer-only-check"},last_refresh:new Date().toISOString()}),{mode:0o600,flag:"wx"});
       }
+      // The built-in endpoint keys are verified on rust-v0.167.0 (086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a).
+      // The local check intentionally inherits no proxy or custom CA: only the real inference turn needs those.
       const args=[...binary.args,...plan.args.slice(0,-1),
         "-c",`openai_base_url=${JSON.stringify(`http://127.0.0.1:${address.port}/v1`)}`,
         "-c",`chatgpt_base_url=${JSON.stringify(`http://127.0.0.1:${address.port}/v1`)}`,ANSWER_ONLY_PROBE_TEXT];

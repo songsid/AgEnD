@@ -6,7 +6,13 @@ import {hp} from "./hub-personal-agent-strings.js";
 const refused=()=>({ok:false});
 const fields=agent=>({name:agent?.name??"",description:agent?.description??"",cli:agent?.cli??"",model:agent?.model??"",ifRevision:agent?.revision??0,answerOnly:agent?.answerOnly===true});
 const policy=value=>({enabled:value.enabled===true,people:[...(value.people??[])],teams:[...(value.teams??[])]});
-export function personalCliReason(cli){return cli?.available?"canUse":cli?.id==="codex"&&cli.personalStatus==="sandbox-unavailable"?"codexSandbox":!cli?.path?"missing":cli.authenticated!==true?"signIn":"profile";}
+export function personalCliReason(cli){
+ if(cli?.available)return "canUse";
+ if(!cli?.path)return "missing";
+ if(cli.authenticated!==true)return "signIn";
+ if(cli.id==="codex"&&["sandbox-unavailable","profile-unavailable"].includes(cli.personalStatus)&&cli.answerOnlyAvailable===false)return "answerOnlyFailed";
+ return cli.id==="codex"&&cli.personalStatus==="sandbox-unavailable"?"codexSandbox":"profile";
+}
 function installCss(){if(typeof document==="undefined"||document.querySelector('link[data-personal-install="1"]'))return;const link=document.createElement("link");link.rel="stylesheet";link.href="/assets/runtime-install.css";link.setAttribute("data-personal-install","1");document.head.appendChild(link);}
 /** The captured sign-in is passed through every client call, including writes after an await. */
 export function HubPersonalAgent({client,scope,onSaved=()=>{}}){
@@ -33,20 +39,21 @@ export function HubPersonalAgent({client,scope,onSaved=()=>{}}){
  };
  const refresh=async()=>{if(busyRef.current)return;const mine=generation.current;markBusy(true);await load(true);if(mine===generation.current)markBusy(false);};
  const computer=view?.computer,selected=computer?.clis.find(row=>row.id===form?.cli),command=issued&&issued.expiresAt>clock?runtimeEnrollCommand(issued.server,issued.installer?.scriptSha256,issued.token,issued.fingerprint,"personal"):"";
- const canUse=cli=>cli?.available && !form?.answerOnly || cli?.id==="codex" && form?.answerOnly && cli.answerOnlyAvailable===true;
- return html`<section class="card hub-personal-agent" data-personal-agent><h3>${hp("title")}</h3><p class="note">${hp("lead")}</p><p class="note">${hp(form?.answerOnly?"answerOnlyDisclosure":"guard")}</p>
+ const canUse=cli=>cli?.available && (cli.id!=="codex"||!form?.answerOnly) || cli?.id==="codex" && form?.answerOnly && cli.answerOnlyAvailable===true;
+ return html`<section class="card hub-personal-agent" data-personal-agent><h3>${hp("title")}</h3><p class="note">${hp("lead")}</p>${!form?.answerOnly?html`<p class="note">${hp("guard")}</p>`:null}
   ${error?html`<${ErrorState} message=${error} onRetry=${()=>void load()} />`:null}
   ${!view&&!error?html`<${Skeleton} lines=${3} />`:null}
   ${view&&!view.enabled?html`<p class="note">${hp("off")}</p>`:view&&!view.canAdd?html`<p class="note">${hp("denied")}</p>`:view?html`
    <div class="field-row">${!computer||issued?html`<button type="button" class=${`btn btn-sm ${issued?"btn-ghost":"btn-primary"}`} disabled=${busy} onClick=${enroll}>${hp(issued?"newCommand":"add")}</button>`:null}<button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${refresh}>${hp("refresh")}</button></div>
    ${issued?command?html`<div class="runtime-command-card"><strong class="runtime-command-label">${hp("install")}</strong><p class="note">${hp("installHint")}</p><div class="runtime-command-row"><pre class="runtime-command-text"><code>${command}</code></pre><button type="button" class="btn btn-sm btn-primary" onClick=${async()=>{try{const mine=generation.current;await navigator.clipboard.writeText(command);if(mine===generation.current)setCopied(true);}catch{setCopied(false);}}}>${hp(copied?"copied":"copy")}</button></div><p class="note">${hp("folderHint")}</p><details class="s-ui-disclosure"><summary>${hp("commandFails")}</summary><div class="s-disclosure-body form"><p class="note">${hp("certificateFailure")}</p><p class="note">${hp("nodeFailure")}</p><p class="note">${hp("expiredHelp")}</p></div></details></div>`:html`<div class="form"><p class="note">${hp("expired")}</p></div>`:null}
    ${computer?html`<div class="s-row"><span class="hub-row-text"><strong>${computer.name}</strong><small class="note">${form?.answerOnly?hp("answerOnly"):computer.folder||hp("unchecked")}</small></span><span class="tag">${hp(!computer.connected?"later":computer.working?"working":computer.clis.some(canUse)?"ready":"unavailable")}</span></div>
-    ${computer.clis.map(cli=>html`<div key=${cli.id} class="s-row"><span class="hub-row-text"><strong>${cli.id==="codex"?"Codex":"Claude"}</strong><small class="note">${hp(form?.answerOnly&&cli.id==="codex"?"answerOnly":personalCliReason(cli))}</small>${cli.reason&&!cli.available?html`<small class="note">${cli.reason}</small>`:null}</span>
-      ${cli.id==="codex"&&(["sandbox-unavailable","profile-unavailable"].includes(cli.personalStatus)||form?.answerOnly)?html`<div class="form" data-answer-only-option>
-       <strong>${hp("answerOnlyOption")}</strong><p class="note">${hp("answerOnlyExplain")}</p><p class="note">${hp("answerOnlyDisclosure")}</p><p class="note">${hp("answerOnlyPays")}</p>
-       ${!cli.answerOnlyAvailable?html`<p class="note">${hp("answerOnlyFailed")}</p>`:null}
-       <label class="field-row"><input type="checkbox" disabled=${busy||!cli.answerOnlyAvailable&&!form?.answerOnly} checked=${form?.answerOnly===true} onChange=${e=>edit({answerOnly:e.target.checked,cli:e.target.checked?"codex":form.cli,model:""})} /><span>${hp("answerOnlyTick")}</span></label>
-      </div>`:null}</div>`)}
+    ${computer.clis.map(cli=>{const compact=view.agent?.answerOnly===true&&form?.answerOnly,reason=personalCliReason(cli);return html`<div key=${cli.id} class="hub-personal-cli">
+     <div class="s-row"><span class="hub-row-text"><strong>${cli.id==="codex"?"Codex":"Claude"}</strong><small class="note">${hp(form?.answerOnly&&cli.id==="codex"&&cli.answerOnlyAvailable?"answerOnly":reason)}</small>${cli.reason&&!cli.available&&reason!=="answerOnlyFailed"?html`<small class="note">${cli.reason}</small>`:null}</span></div>
+     ${cli.id==="codex"&&cli.answerOnlyAvailable===true?html`<div class="form" data-answer-only-option>
+      ${!compact?html`<strong>${hp("answerOnlyOption")}</strong><p class="note">${hp("answerOnlyExplain")}</p>`:null}
+      <p class="note">${hp("answerOnlyDisclosure")}</p>${!compact?html`<p class="note">${hp("answerOnlyPays")}</p>`:null}
+      <label class="check"><input type="checkbox" disabled=${busy} checked=${form?.answerOnly===true} onChange=${e=>edit({answerOnly:e.target.checked,cli:e.target.checked?"codex":form.cli,model:""})} /><span>${hp("answerOnlyTick")}</span></label>
+     </div>`:null}</div>`;})}
     ${computer.clis.some(canUse)?html`<form onSubmit=${save} class="form"><label class="field"><span>${hp("name")}</span><input required maxlength="256" disabled=${busy} value=${form?.name||""} onInput=${e=>edit({name:e.target.value})} /></label>
      <label class="field"><span>${hp("description")}</span><input maxlength="512" disabled=${busy} value=${form?.description||""} onInput=${e=>edit({description:e.target.value})} /></label>
      <label class="field"><span>${hp("cli")}</span><select required disabled=${busy} value=${form?.cli||""} onChange=${e=>edit({cli:e.target.value,model:"",answerOnly:e.target.value==="codex"&&form.answerOnly})}><option value=""></option>${computer.clis.filter(canUse).map(c=>html`<option value=${c.id}>${c.id==="codex"?"Codex":"Claude"}</option>`)}</select></label>

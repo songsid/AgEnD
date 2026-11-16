@@ -469,7 +469,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId}>
     <${LightboxHost} />
     <section class="hub-chat-main">
-      <header class="hub-chat-head" data-trust="panel-content">
+      <header class=${`hub-chat-head${room.agent?.answerOnly?" hub-answer-only-head":""}`} data-trust="panel-content">
         ${/* Lumen (spec §2): on a phone the header starts with the Fleet chat's back to the list. */ ""}
         <a class="icon-btn hub-back only-narrow" href="/ui/hub" aria-label=${t("hub.back")} title=${t("hub.back")}
           onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); goList(); }}><${Icon} name="back" /></a>

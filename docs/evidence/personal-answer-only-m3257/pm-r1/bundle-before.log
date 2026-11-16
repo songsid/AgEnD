@@ -1,0 +1,44 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+
+ ❯ tests/runtime-bundle-closed.test.ts (4 tests | 1 failed) 606ms
+     × carries every file its modules import or start (a missing one fails only on the computer) 597ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/runtime-bundle-closed.test.ts > the built bundle > carries every file its modules import or start (a missing one fails only on the computer)
+Error: Command failed: /home/han/.nvm/versions/node/v22.22.2/bin/node /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257/scripts/build-runtime.mjs /tmp/agend-bundle-closed-jSrPT2/bundle /tmp/agend-bundle-closed-jSrPT2/compiled
+node:internal/modules/package_json_reader:314
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'ws' imported from /tmp/agend-bundle-closed-jSrPT2/compiled/runtime-personal-answer-only-probe.js
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)
+    at packageResolve (node:internal/modules/esm/resolve:768:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:985:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:731:20)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:708:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:310:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v22.22.2
+
+ ❯ cp.<computed> tests/support/process-guard.cjs:326:79
+ ❯ tests/runtime-bundle-closed.test.ts:42:7
+     40|       compilePortableRuntime(compiled);
+     41|       cpSync(resolve("src/general-knowledge"), join(compiled, "general…
+     42|       execFileSync(process.execPath, [resolve("scripts/build-runtime.m…
+       |       ^
+     43|       const manifest = JSON.parse(readFileSync(join(bundle, "bundle-ma…
+     44|       expect(manifest.modules).toEqual([...RUNTIME_BUNDLE_MODULES]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  02:43:32
+   Duration  1.10s (transform 265ms, setup 91ms, import 251ms, tests 606ms, environment 0ms)

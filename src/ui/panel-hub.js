@@ -1,4 +1,4 @@
-import {hp} from "./hub-personal-agent-strings.js";
+import {hp,personalAgentQuestionHint} from "./hub-personal-agent-strings.js";
 import * as ownerEntryWords from "./hub-owner-strings.js";
 import * as companyViews from "./hub-company-join.js";
 import { hj, joinError } from "./hub-company-join-strings.js";
@@ -780,7 +780,7 @@ function HubRoomView({ room: given }) {
   const showRail = wide && rail && !panelOpen;
   return html`<div class=${`hub-chat${showRail ? " with-rail" : ""}`} ref=${split}>
     <section class="hub-chat-main" aria-label=${name}>
-      <header class="hub-chat-head" data-trust="panel-content">${back}<${Avatar} name=${name} size="sm" />
+      <header class=${`hub-chat-head${room.answerOnly?" hub-answer-only-head":""}`} data-trust="panel-content">${back}<${Avatar} name=${name} size="sm" />
         <span class="hub-chat-title"><strong>${name}</strong><span class=${`s${room.answerOnly?" hub-answer-only-note":""}`}>${room.answerOnly?hp("answerOnlyAsker"):room.ownerName ? hc("answersFor", room.ownerName) : ""}</span></span>
         ${tag}
         <button type="button" class="icon-btn" aria-pressed=${wide ? String(showRail) : undefined} aria-label=${hc("showInfo")} title=${hc("showInfo")} onClick=${toggleInfo}><${Icon} name="info" /></button>
@@ -893,7 +893,7 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
     ${store.error() === "backpressure" ? html`<p class="hub-banner warn" role="status">${hr("busy")}</p>`
       : !loaded && store.error() ? html`<${ErrorState} message=${errText({ code: store.error() })} onRetry=${() => store.refresh()} />` : null}
     ${empty && loaded && !store.closed() && emptyView ? html`<div class="center hub-room-empty">${emptyView}</div>` : null}
-    ${empty && loaded && !store.closed() && !emptyView ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
+    ${empty && loaded && !store.closed() && !emptyView ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${personalAgentQuestionHint(store.room())??`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
     <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
   </div>`;

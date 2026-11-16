@@ -1,0 +1,8 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+
+
+ Test Files  3 passed (3)
+      Tests  47 passed (47)
+   Start at  02:36:16
+   Duration  5.46s (transform 3.71s, setup 227ms, import 3.87s, tests 3.17s, environment 0ms)

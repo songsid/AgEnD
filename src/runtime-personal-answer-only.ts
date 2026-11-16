@@ -45,9 +45,9 @@ export function assertAnswerOnlyRequest(value: unknown, model: string): void {
     throw Error("Answer only requires an empty effective tool list");
 }
 
-/** The disposable home supplies the selected access credential; no ambient provider, proxy or plugin authority. */
+/** Keep ordinary inference transport configuration; account/provider/code overrides still come only from the isolated profile. */
 export function answerOnlyEnvironment(environment:NodeJS.ProcessEnv,profile:NodeJS.ProcessEnv):NodeJS.ProcessEnv {
   const value:NodeJS.ProcessEnv={};
-  for(const [key,entry] of Object.entries(environment))if(["PATH","SYSTEMROOT","WINDIR","TEMP","TMP","PATHEXT","COMSPEC"].includes(key.toUpperCase()))value[key]=entry;
+  for(const [key,entry] of Object.entries(environment))if(["PATH","SYSTEMROOT","WINDIR","TEMP","TMP","PATHEXT","COMSPEC","HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","NO_PROXY","NODE_EXTRA_CA_CERTS","SSL_CERT_FILE","SSL_CERT_DIR","CURL_CA_BUNDLE"].includes(key.toUpperCase()))value[key]=entry;
   return {...value,...profile};
 }

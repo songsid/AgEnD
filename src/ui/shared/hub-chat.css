@@ -170,3 +170,5 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
 .hub-chat-title .hub-answer-only-note { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; padding-block: var(--s-1); }
 
 .inst-alt.hub-answer-only-note, .cmd-desc.hub-answer-only-note { white-space: normal; overflow-wrap: anywhere; }
+
+.hub-chat-head.hub-answer-only-head { padding-block: var(--s-2); }
