@@ -742,7 +742,7 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
 
 /** Actual S3 HTTPS + the existing writer; driver is inert and never contacts a real directory. */
 async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => HubHttp = http => http,
-  options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean; now?: () => number;
+  options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean; roleSettings?: boolean; now?: () => number;
     beforeStart?: (hub: Awaited<ReturnType<typeof initializedHub>>, attempt: number) => Promise<void>;
     directorySettings?: () => Promise<HubDirectorySettingsControl> } = {}) {
   let hub = await initializedHub();
@@ -752,7 +752,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
   let creates = 0, eligibility = 0, signInGate: (() => Promise<void>) | undefined;
   let borrowed: HubDirectorySettingsDecision | null = null, refuseNextDirectory = false, refuseAllDirectories = false, coldBorrows = 0;
   const people = [ADMIN, ...options.people ?? []];
-  const entry: HubHttpEntry = { ...real, createHubHttp(deps) {
+  const entry: HubHttpEntry = { ...real, ...(options.roleSettings === false ? { roleSettingsV1: undefined } : {}), createHubHttp(deps) {
     lastDeps = { ...deps, ...(options.noGroupHttp ? { groupHttp: undefined } : {}), ...(options.noDirectoryNotices ? { directoryNotices: undefined } : {}) };
     lastHttp = wrap(real.createHubHttp(lastDeps), lastDeps); return lastHttp;
   } };
@@ -1084,7 +1084,7 @@ const NOTICE_OTHER: typeof ADMIN = { ...NOTICE_READER, key: { realm: "corp", obj
   login: "notice-other", displayName: "Fictional Other", dn: "uid=notice-other,dc=example,dc=test" };
 const NOTICE_PATH = "/hub/v1/security-notices/directory";
 
-/** Private fixture cutover only. Runtime still registers no role migration or activation operation. */
+/** Explicit legacy-entry fixture: exercise the independent management composition before UI activation. */
 function provisionMountedRoles(r: Awaited<ReturnType<typeof directoryRuntimeRig>>) {
   const plan = hubServerDatabasePlan(r.hub.config.hub, r.entry.migrations);
   let owning!: Database.Database;
@@ -1105,7 +1105,7 @@ function provisionMountedRoles(r: Awaited<ReturnType<typeof directoryRuntimeRig>
 
 describe.skipIf(process.platform === "win32")("S129 mounted management factory", () => {
   it("keeps legacy root access and applies a join-only assignment on the actual HTTPS routes", async () => {
-    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] });
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], roleSettings: false });
     try {
       const root = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
       const join = await directoryBrowser(r.hub, undefined, { login: NOTICE_READER.login, password: "Dummy-browser-only" });
@@ -1135,7 +1135,7 @@ describe.skipIf(process.platform === "win32")("S129 mounted management factory",
   });
 
   it("uses the same role issuer and clock in the actual manual-enrollment preparation", async () => {
-    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] });
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], roleSettings: false });
     try {
       provisionMountedRoles(r);
       const prepared = await r.deps.groups!.prepareManualEnrollment({ kind: "fleet", id: randomUUID(), revision: 1, owner: NOTICE_READER.key },
@@ -1155,7 +1155,7 @@ describe.skipIf(process.platform === "win32")("S129 mounted management factory",
 
   it.each(["rollback", "settled"])("refuses a persisted role clock %s on a mounted root route", async mode => {
     let at = Date.now();
-    const r = await directoryRuntimeRig(undefined, { now: () => at });
+    const r = await directoryRuntimeRig(undefined, { now: () => at, roleSettings: false });
     try {
       const root = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
       provisionMountedRoles(r);
@@ -1170,7 +1170,7 @@ describe.skipIf(process.platform === "win32")("S129 mounted management factory",
 
 
   it.each(["legacy", "roles"])("keeps the generation repair exception restricted to an intact %s image", async image => {
-    const r = await directoryRuntimeRig();
+    const r = await directoryRuntimeRig(undefined, { roleSettings: false });
     try {
       const root = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
       if (image === "roles") provisionMountedRoles(r);
@@ -1185,7 +1185,7 @@ describe.skipIf(process.platform === "win32")("S129 mounted management factory",
   });
 
   it("retires a mounted write when join authority changes during its owned directory read", async () => {
-    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] });
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], roleSettings: false });
     let release!: () => void, entered!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; }), pendingRead = new Promise<void>(resolve => { entered = resolve; });
     let write: ReturnType<typeof directoryBrowser> | undefined;
@@ -2199,7 +2199,7 @@ describe.skipIf(process.platform === "win32")("local directory settings while of
       if (first) { first = false;
         if (when === "constructor") refreshed = runtime.refresh(); else queueMicrotask(() => { refreshed = runtime.refresh(); });
         return { realm: ADMIN.key.realm, close: async () => { reached(); await held; } } as any; }
-      return { realm: ADMIN.key.realm, close: async () => {} } as any;
+      return { realm: ADMIN.key.realm, signIn: async () => ({ ok: false, reason: "invalid-credentials" }), checkEligibility: async () => ({ eligible: false, reason: "disabled" }), close: async () => {} } as any;
     });
     runtime = new HubRuntime({ home: r.hub.home, log: () => {}, readConfig: () => config, createDirectory, components: { http: async () => r.entry } });
     await runtime.apply(config);
@@ -2221,7 +2221,7 @@ describe.skipIf(process.platform === "win32")("local directory settings while of
     const close = vi.fn(async () => { if (++attempts === 1) throw Error("injected cleanup failure"); enter(); await held; });
     const createDirectory = vi.fn(() => {
       if (createDirectory.mock.calls.length === 1) { writeFileSync(secretPath, "changed during construction"); return { realm: ADMIN.key.realm, close } as any; }
-      return { realm: ADMIN.key.realm, close: async () => {} } as any;
+      return { realm: ADMIN.key.realm, signIn: async () => ({ ok: false, reason: "invalid-credentials" }), checkEligibility: async () => ({ eligible: false, reason: "disabled" }), close: async () => {} } as any;
     });
     const runtime = new HubRuntime({ home: r.hub.home, log: () => {}, readConfig: () => config, createDirectory, components: { http: async () => r.entry } });
     await runtime.apply(config);
@@ -2475,4 +2475,78 @@ describe.skipIf(process.platform!=="linux")("personal receiver registration seam
         deps!.uow.atomic(tx=>expect(hubTxDatabase(tx).prepare("SELECT enabled FROM hub_personal_settings").get()).toEqual({enabled:0}));}
     }finally{await service.close();}
   });
+});
+
+describe.skipIf(process.platform === "win32")("M3223 production role activation",()=>{
+ it.each(["root","auxiliary"] as const)("allows %s directory prepare/save across slow steps while keeping current authority",async who=>{
+  let at=1000,control:HubDirectorySettingsControl|undefined,r!:Awaited<ReturnType<typeof directoryRuntimeRig>>;
+  const create=async()=>control??=createHubDirectorySettingsControl({hubId:String(r.hub.config.hub.hubId),mounted:()=>r.runtime.directorySettings(),writer:()=>r.writer.directory!,current:()=>true,now:()=>at,
+   createDirectory:()=>({realm:"corp",checkEligibility:async()=>{at+=6000;return{eligible:true,person:ADMIN};},close:async()=>{}}) as any,
+   probeTls:async()=>{at+=6000;return"A".repeat(64);},withDecision:work=>r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId),work,()=>true),remount:()=>r.runtime.apply(r.hub.config)});
+  r=await directoryRuntimeRig(undefined,{people:[NOTICE_READER],now:()=>at,directorySettings:create});
+  try{
+   if(who==="auxiliary")r.deps.uow.atomic(tx=>{const db=hubTxDatabase(tx),policy=parseRolePolicy(JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as {body:string}).body));policy.revision++;policy.assignments.push({id:"slow-admin",roleId:"builtin:admin",subject:{kind:"person",person:NOTICE_READER.key},scope:{kind:"hub"},maxFleets:null,startsAt:0,expiresAt:null,assignedBy:ADMIN.key,assignedAt:0});db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));});
+   const signed=await noticeSignInForDirectory(r,who==="root"?ADMIN:NOTICE_READER),headers={"X-AgEnD-Hub-CSRF":signed.json.csrf};
+   const view=await directoryBrowser(r.hub,signed.cookie,undefined,DIRECTORY_SETTINGS_PATH);expect(view.status).toBe(200);
+   const {realm:_realm,profile:_profile,...directory}=view.json.directory;
+   const draft=await directoryBrowser(r.hub,signed.cookie,{directory:{...directory,baseDn:"ou=slow,dc=example,dc=test"}},DIRECTORY_SETTINGS_PATH+"/prepare",{headers});expect(draft.json).not.toHaveProperty("code");expect(draft.status).toBe(200);
+   const saved=await directoryBrowser(r.hub,signed.cookie,{ref:draft.json.ref},DIRECTORY_SETTINGS_PATH+"/save",{headers});expect(saved.status).toBe(200);expect(saved.json.state).toBe("ready");
+   expect(at).toBeGreaterThan(1000+12000);expect(r.runtime.directorySettings()!.source().config.baseDn).toBe("ou=slow,dc=example,dc=test");
+  }finally{await control?.close();await r.runtime.close();}
+ },60000);
+ it("lets a second administrator save directory settings, then requires fresh sign-in without a root successor cookie",async()=>{
+  let control:HubDirectorySettingsControl|undefined,r!:Awaited<ReturnType<typeof directoryRuntimeRig>>;
+  const create=async()=>control??=createHubDirectorySettingsControl({hubId:String(r.hub.config.hub.hubId),mounted:()=>r.runtime.directorySettings(),writer:()=>r.writer.directory!,current:()=>true,
+   createDirectory:()=>({realm:"corp",checkEligibility:async()=>({eligible:true,person:ADMIN}),close:async()=>{}}) as any,probeTls:async()=>"A".repeat(64),
+   withDecision:work=>r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId),work,()=>true),remount:()=>r.runtime.apply(r.hub.config)});
+  r=await directoryRuntimeRig(undefined,{people:[NOTICE_READER],directorySettings:create});
+  try{
+   r.deps.uow.atomic(tx=>{const db=hubTxDatabase(tx),policy=parseRolePolicy(JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as {body:string}).body));
+    policy.revision++;policy.assignments.push({id:"directory-admin",roleId:"builtin:admin",subject:{kind:"person",person:NOTICE_READER.key},scope:{kind:"hub"},maxFleets:null,startsAt:0,expiresAt:null,assignedBy:ADMIN.key,assignedAt:0});db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));});
+   const signed=await noticeSignInForDirectory(r,NOTICE_READER),headers={"X-AgEnD-Hub-CSRF":signed.json.csrf};
+   const view=await directoryBrowser(r.hub,signed.cookie,undefined,DIRECTORY_SETTINGS_PATH);expect(view.status).toBe(200);expect(view.json.reauthentication).toBe("recent");
+   const {realm:_realm,profile:_profile,...directory}=view.json.directory;
+   const draft=await directoryBrowser(r.hub,signed.cookie,{directory:{...directory,baseDn:"ou=people,dc=example,dc=test"}},DIRECTORY_SETTINGS_PATH+"/prepare",{headers});expect(draft.status).toBe(200);expect(draft.json.trust).toBeNull();
+   const saved=await directoryBrowser(r.hub,signed.cookie,{ref:draft.json.ref},DIRECTORY_SETTINGS_PATH+"/save",{headers});
+   expect(saved.status).toBe(200);expect(saved.json).toMatchObject({state:"ready",reauthenticationRequired:true});
+   expect(saved.cookie).toBe(`__Host-agend_hub_${r.hub.config.hub.hubId}=`); // Clear the retired cookie; no successor token.
+   expect((await directoryBrowser(r.hub,signed.cookie)).json.signedIn).toBe(false);
+   const next=await noticeSignInForDirectory(r,NOTICE_READER);expect(next.status).toBe(200);expect(next.json.admin).toBe(true);
+   expect(r.withDecision(d=>d.operation(saved.json.receiptId).actor)).toMatchObject({kind:"hub-administrator",person:NOTICE_READER.key});
+  }finally{await control?.close();await r.runtime.close();}
+ },60000);
+ it("migrates once, exposes checked roles and a second admin, and reopens the same graph",async()=>{
+  const r=await directoryRuntimeRig(undefined,{people:[NOTICE_READER,NOTICE_OTHER]});
+  try{
+   const root=await directoryBrowser(r.hub,undefined,{login:ADMIN.login,password:"Dummy-browser-only"});expect(root.status).toBe(200);expect(root.json.features).toContain("role-settings-v1");
+   const read=await directoryBrowser(r.hub,root.cookie,undefined,"/hub/v1/roles");expect(read.status).toBe(200);expect(read.json.view.policy).toMatchObject({rolesActive:true,state:"never-enabled",everEnabled:false,assignments:[]});
+   const proposal=structuredClone(read.json.view.policy);proposal.assignments.push({id:"second-admin",roleId:"builtin:admin",subject:{kind:"person",person:NOTICE_READER.key},scope:{kind:"hub"},maxFleets:null,startsAt:0,expiresAt:null,assignedBy:ADMIN.key,assignedAt:0});
+   const headers={"X-AgEnD-Hub-CSRF":root.json.csrf};
+   const preview=await directoryBrowser(r.hub,root.cookie,{policy:proposal},"/hub/v1/roles/preview",{headers});expect(preview.json).toMatchObject({ok:true});expect(preview.status).toBe(200);
+   const saved=await directoryBrowser(r.hub,root.cookie,{policy:proposal,previewDigest:preview.json.previewDigest},"/hub/v1/roles/apply",{headers});expect(saved.json).toMatchObject({ok:true,revision:2});
+   const second=await directoryBrowser(r.hub,undefined,{login:NOTICE_READER.login,password:"Dummy-browser-only"});expect(second.json.admin).toBe(true);expect(second.json.management).toContain("hub.admin");
+   const ordinary=await noticeSignInForDirectory(r,NOTICE_OTHER);
+   const adminReads=["/hub/v1/admin/hub","/hub/v1/admin/dashboard","/hub/v1/admin/overview","/hub/v1/admin/recommended-version","/hub/v1/admin/rooms","/hub/v1/admin/rooms/creators","/hub/v1/admin/company-join","/hub/v1/admin/enrolment-codes"];
+   let checked=0;
+   for(const path of adminReads){
+    expect((await directoryBrowser(r.hub,root.cookie,undefined,path)).status,path+" root").toBe(200);
+    expect((await directoryBrowser(r.hub,second.cookie,undefined,path)).status,path+" auxiliary").toBe(200);
+    expect((await directoryBrowser(r.hub,ordinary.cookie,undefined,path)).status,path+" ordinary").toBe(403);checked++;
+   }
+   expect(checked).toBe(adminReads.length);
+   for(const browser of [root,second])expect((await directoryBrowser(r.hub,browser.cookie,undefined,"/hub/v1/teams/settings")).json.settings.canConfigure).toBe(true);
+   expect((await directoryBrowser(r.hub,ordinary.cookie,undefined,"/hub/v1/teams/settings")).json.settings.canConfigure).toBe(false);
+   const audit=await directoryBrowser(r.hub,second.cookie,undefined,"/hub/v1/roles/audit");expect(audit.status).toBe(200);expect(JSON.stringify(audit.json)).not.toContain("contentRef");
+   await r.runtime.close();await r.build().apply(r.hub.config);expect(r.runtime.currentHolds()).toEqual([]);
+   const reopened=await directoryBrowser(r.hub,second.cookie,undefined,"/hub/v1/roles");expect(reopened.status).toBe(200);expect(reopened.json.view.policy.assignments).toMatchObject([{id:"second-admin"}]);
+   r.deps.uow.atomic(tx=>{const db=hubTxDatabase(tx);expect(db.prepare("SELECT COUNT(*) AS n FROM hub_audit WHERE action='role.migrated'").get()).toEqual({n:1});expect(db.prepare("SELECT COUNT(*) AS n FROM hub_role_cutover").get()).toEqual({n:1});});
+   const own=structuredClone(reopened.json.view.policy);own.assignments[0].maxFleets=1;
+   expect((await directoryBrowser(r.hub,second.cookie,{policy:own},"/hub/v1/roles/preview",{headers:{"X-AgEnD-Hub-CSRF":second.json.csrf}})).status).toBe(403);
+   r.deps.uow.atomic(tx=>{const db=hubTxDatabase(tx),policy=parseRolePolicy(JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as {body:string}).body));policy.rolesActive=false;policy.revision++;db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));});
+   for(const path of adminReads){
+    expect((await directoryBrowser(r.hub,second.cookie,undefined,path)).status,path+" roles off").toBe(403);
+    expect((await directoryBrowser(r.hub,root.cookie,undefined,path)).status,path+" root fallback").toBe(200);
+   }
+  }finally{await r.runtime.close();}
+ },60000);
 });

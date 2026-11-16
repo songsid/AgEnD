@@ -129,8 +129,14 @@ describe("the hub skill", () => {
     for (const key of ["hub.enabled", "hub_member.enabled"]) expect(SKILL).toContain(`\`${key}\``);
     expect(manager).toContain("raw?.hub?.enabled === true || raw?.hub_member?.enabled === true");
     const notYet = SKILL.slice(SKILL.indexOf("\n## Not available yet\n"), SKILL.indexOf("\n## Troubleshooting\n"));
-    for (const topic of ["Custom roles", "ClassicBot room", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
+    for (const topic of ["ClassicBot room", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
     expect(notYet).not.toContain("Pause and resume");
+    expect(notYet).not.toContain("Custom roles");
+    const roles = FLAT.slice(FLAT.indexOf("## Roles and permissions"), FLAT.indexOf("## Room assistant administration"));
+    expect(roles).toContain("On a Hub that offers **Administration → Roles and permissions**");
+    expect(roles).toContain("Older servers and clients keep their existing interface");
+    expect(roles).toContain("Nine permissions can be chosen");
+    expect(roles).toContain("the two approval permissions are not available");
     const sharing = FLAT.slice(FLAT.indexOf("## Sharing agents"), FLAT.indexOf("## Who may ask"));
     for (const text of ["**Pause sharing**", "**Resume sharing**", "Expiry time keeps running", "**Stop sharing…**", "Resume cannot undo Stop sharing or a Hub policy hold"])
       expect(sharing, text).toContain(text);

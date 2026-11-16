@@ -31,7 +31,7 @@ describe("M-3129 sidebar density", () => {
     for (const value of ["detailed", "compact", null]) expect(parseWebPrefsPatch({ "nav.density": value }).ok).toBe(true);
     for (const value of [true, "small", {}, ["compact"]]) expect(parseWebPrefsPatch({ "nav.density": value }).ok).toBe(false);
   });
-  it("defaults to detailed and switches the live list through the actual Settings control", async () => {
+  it("from detailed, switches the live list through the actual Settings control (M-3252: a desktop's default is compact)", async () => {
     await p.mount(h(Preview));
     const select = p.root.querySelector("#pref-density") as any;
     expect(select).not.toBeNull(); expect(select.value).toBe("detailed");
@@ -51,9 +51,10 @@ describe("M-3129 sidebar density", () => {
   it("uses the existing held Save/discard lifecycle and bilingual labels", async () => {
     const release = prefs.holdPrefs();
     try {
-      await p.mount(h(Preview)); nav.setSidebarDensity("compact"); await settle(3);
+      await p.mount(h(Preview)); nav.setSidebarDensity("detailed"); await settle(3);
       expect(prefs.heldPrefsCount()).toBeGreaterThan(0);
-      prefs.discardHeldPrefs(); await settle(3); expect(nav.sidebarDensityStore.get().value).toBe("detailed");
+      // M-3252: discarded, the desktop's default again — 精簡 (compact).
+      prefs.discardHeldPrefs(); await settle(3); expect(nav.sidebarDensityStore.get().value).toBe("compact");
       i18n.setLang("zh-TW", { store: false }); await p.mount(h(Preview));
       expect(p.root.querySelector("#pref-density").textContent).toBe("詳細精簡");
     } finally { release(); }

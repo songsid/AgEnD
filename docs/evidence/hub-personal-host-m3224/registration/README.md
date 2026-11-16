@@ -36,3 +36,12 @@ retained-byte and older-registry refusal assertions. The room fixture helper als
 and default-off settings; the exposure fixture verifies retained Fleet identity plus the new source fields.
 Both files plus the existing retained-row/FK personal upgrade suite pass 10/10. No product migration or runtime
 source was changed. [Before](ci-fixtures-before.log), [after](ci-fixtures-after.log).
+
+## Alpha sync after the green fixture repair
+
+The repair head `680ddaefda8f5d31805d9c674aeed685fe619217` completed all 23 exact checks, but alpha moved
+and made its adjacent import block conflict. The sync onto `47701428f95a15035d6e0ff567c57f6fb17dde56` keeps
+both the personal imports and incoming role-composition imports. All own added/removed lines in 53 non-evidence
+paths are identical to the cleared repair head, file by file; [alpha-sync.json](alpha-sync.json) records the
+comparison. Incoming role/MCP behavior is preserved. No local verification or new source campaign ran for this
+plain sync; the final exact head requires fresh CI and formal re-approval.

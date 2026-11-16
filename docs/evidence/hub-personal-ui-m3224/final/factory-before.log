@@ -35,4 +35,3 @@ AssertionError: expected { enabled: false, people: [], …(3) } to deeply equal 
       Tests  1 failed | 137 skipped (138)
    Start at  00:09:59
    Duration  5.54s (transform 3.72s, setup 96ms, import 2.77s, tests 2.53s, environment 0ms)
-

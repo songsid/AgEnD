@@ -1,0 +1,522 @@
+{
+  "status": "PASS",
+  "scope": "Initial complete8-combination run plus focused presentation retakes. Each file records its actual source head. No audit/CSV repeat in R1.",
+  "runs": [
+    "../first-after.json",
+    "../after-r1.json"
+  ],
+  "screens": [
+    {
+      "tag": "after-desk-dark-en-assign",
+      "file": "after-desk-dark-en-assign.png",
+      "sha256": "55dcf95a3935ea0bbed074bda6dc7fe4ff3cade772af7550bd9d51d3592c29ce",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-en-audit-2",
+      "file": "after-desk-dark-en-audit-2.png",
+      "sha256": "c81983d30053c27ad755ba91676002d4b775f06a7ca5e029e6d1aec635977229",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-dark-en-audit",
+      "file": "after-desk-dark-en-audit.png",
+      "sha256": "80e4b34071a7f4b027b045417b1ba37e4cbd199ca30d32df6c5236bde6efb8e4",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-dark-en-create-2",
+      "file": "after-desk-dark-en-create-2.png",
+      "sha256": "78b1013b5830fe42c92e2548bbf4d5dd10c2494b5316f4ec04829cb643f7f7ca",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-en-create",
+      "file": "after-desk-dark-en-create.png",
+      "sha256": "f76a8d8081ffcec56b28049b330ee38d13224c44d6d9f85e1c8baa66fe19a1bf",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-en-permissions-2",
+      "file": "after-desk-dark-en-permissions-2.png",
+      "sha256": "857e63ef8f2f2e44f6a2a87e4509e007fedfe4779e5b52f1a8e7b34600c7f05e",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-en-permissions",
+      "file": "after-desk-dark-en-permissions.png",
+      "sha256": "403bb56e304e90542dfacd8f28e47d2f9522eb1b7caf8622523eb95592792c79",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-en-review",
+      "file": "after-desk-dark-en-review.png",
+      "sha256": "8a1fe444713a8397cdf811227090f3554001f1df2e2710ea1049b40c2b576efe",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-dark-en-roles",
+      "file": "after-desk-dark-en-roles.png",
+      "sha256": "fd95f7ee12f56faa61e04cf2761db8e874473cce8d137d9dad5adb688e0e1b4a",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-assign",
+      "file": "after-desk-dark-zh-TW-assign.png",
+      "sha256": "4bc929c225472053d35531636bf7e4753f737fe231ee534198d6213d667748d5",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-audit-2",
+      "file": "after-desk-dark-zh-TW-audit-2.png",
+      "sha256": "9a294554b17230eef9081237401daa699233b26b80692a7d60519dc7b0af14cc",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-audit",
+      "file": "after-desk-dark-zh-TW-audit.png",
+      "sha256": "2858722863f22d48125c919de267496dabb56c6325fe035aa51286e4c416257b",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-create-2",
+      "file": "after-desk-dark-zh-TW-create-2.png",
+      "sha256": "ddba3f2d46df7dc3eddf2fd30f9dd28b829f30f3d9ee7a749e77451527119f81",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-create",
+      "file": "after-desk-dark-zh-TW-create.png",
+      "sha256": "d9f71cc20ff9f353d1b1454ca443f7babad24225086c45811fb8a06ada6eaac8",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-permissions-2",
+      "file": "after-desk-dark-zh-TW-permissions-2.png",
+      "sha256": "7a5c9891e3adc1a9b701ea0f6c9966df1079bb2e27b8d71a783c23541a9ad4c1",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-permissions",
+      "file": "after-desk-dark-zh-TW-permissions.png",
+      "sha256": "3148faa7e65c36401f2d83ef9d8b9846f2f94154b45df35f4d3b4f67e3672885",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-review",
+      "file": "after-desk-dark-zh-TW-review.png",
+      "sha256": "a35ad8f1ec83edc870f503e151d04f6ba0f78933834afd8592941e04b2ea1a4f",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-roles",
+      "file": "after-desk-dark-zh-TW-roles.png",
+      "sha256": "95bf5b4e147f3eb951052a7e93a4eb7ad3d7a005374ea06c0f41b4547c79dfd4",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-light-en-assign",
+      "file": "after-desk-light-en-assign.png",
+      "sha256": "322ccbe1f29ef0d65e2127fac60bb2cba02d5b314423cedf5c85733328f52ddd",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-en-audit-2",
+      "file": "after-desk-light-en-audit-2.png",
+      "sha256": "a786ef8b670c037246c91a42aa93f745d5a040febf2c75614d672b19a7c6a256",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-light-en-audit",
+      "file": "after-desk-light-en-audit.png",
+      "sha256": "a9bcc922fd7d2f5461e6ad5410a57990ca706c4215cbbcc999bd1561511867f7",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-light-en-create-2",
+      "file": "after-desk-light-en-create-2.png",
+      "sha256": "841aadefe6ac49edf969b217fb63a15c380bcec23327377a622c6db6d2e74907",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-en-create",
+      "file": "after-desk-light-en-create.png",
+      "sha256": "bab8dab653014bcca6038d00b880c22bca96f26da47ab0a51772374cb8fe3a4b",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-en-permissions-2",
+      "file": "after-desk-light-en-permissions-2.png",
+      "sha256": "a139232d5d1b920466dddfdd682cc4bad93344e0aed7a3e38c1406d13fde4319",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-en-permissions",
+      "file": "after-desk-light-en-permissions.png",
+      "sha256": "927aabe5bb3164c98104025dc5303de3f284d14ac7ffb20a6fe1769e45ac3c66",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-en-review",
+      "file": "after-desk-light-en-review.png",
+      "sha256": "33266a4244730f37959a8992eb8a2ddfe1f107906b00131eafb162fcbe4b64b7",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-light-en-roles",
+      "file": "after-desk-light-en-roles.png",
+      "sha256": "c73c2960b5d9e7e56ca1ad37dcc7a35669d682632e5929b50e864a6305021019",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-assign",
+      "file": "after-desk-light-zh-TW-assign.png",
+      "sha256": "811368c9bb97ca2966e3003637ad0c1ba7cb6ec0e49e847b8311d68ebef1ade1",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-audit-2",
+      "file": "after-desk-light-zh-TW-audit-2.png",
+      "sha256": "d1aee9541cbc1ed530f157f5e12ebbaa413404cd151d08038d8b997e93550842",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-audit",
+      "file": "after-desk-light-zh-TW-audit.png",
+      "sha256": "d5417eb5f33c4a17b07efa0d6c691951581b4bd73fee947af7cbc54e10f4f6fe",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-create-2",
+      "file": "after-desk-light-zh-TW-create-2.png",
+      "sha256": "fd0675d435f71e9a52775a1b2510f4b2df132b8562035285ae05f2f322ba5999",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-create",
+      "file": "after-desk-light-zh-TW-create.png",
+      "sha256": "d012811b64b6a6e9c660f1820c90cfba8252076cedbb5f78539112c41ad906de",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-permissions-2",
+      "file": "after-desk-light-zh-TW-permissions-2.png",
+      "sha256": "f817b862574867374daaf9e4fbd80b602721f676adc3a6eb13e7a29166bb1afb",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-permissions",
+      "file": "after-desk-light-zh-TW-permissions.png",
+      "sha256": "66196b6621ba9a30cb2ea6eff5f24d726e92c291d0c7311e755ce694fb471f7d",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-review",
+      "file": "after-desk-light-zh-TW-review.png",
+      "sha256": "be30e8ad24207b0ce02dfb7689d280ecdf7d8bfa51c98b5f50a034f447d0b8e4",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-roles",
+      "file": "after-desk-light-zh-TW-roles.png",
+      "sha256": "40738ecfdb39e390b0313f6a480cbac87cf120fc770d9c25314d0a68497ec4bd",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-en-assign",
+      "file": "after-phone-dark-en-assign.png",
+      "sha256": "8f5045eafa4d3985997fccdfe088005d1f57e8fbd6f9df28616143bd7d4dbbdc",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-en-audit-2",
+      "file": "after-phone-dark-en-audit-2.png",
+      "sha256": "1193e480c4f60097755a3624fefbd4ea917a27139616a85a2d1446d03be268de",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-en-audit",
+      "file": "after-phone-dark-en-audit.png",
+      "sha256": "b0a0007bfaf66daec6ec002fac576de62d3c6ce1763a44d93cd47772c0f122c8",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-en-create-2",
+      "file": "after-phone-dark-en-create-2.png",
+      "sha256": "082aec26355de4972b74387bfc3c5dfff811c7bb8ab20fdc2817eb593a88aeac",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-en-create-3",
+      "file": "after-phone-dark-en-create-3.png",
+      "sha256": "4fe8cee460fd2ef38135e34d99eea5f6a2559b0a4339cdd0a26848d4363f7044",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-en-create",
+      "file": "after-phone-dark-en-create.png",
+      "sha256": "eb77af35ae66dfddb48f4ed87d22aff439eac61d67d6a52cdb32a88daf7f2655",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-en-permissions-2",
+      "file": "after-phone-dark-en-permissions-2.png",
+      "sha256": "e7c8b212183d2c5f1d2b7734698b2ff61cd842adb407466e765d52ed5b99c796",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-en-permissions",
+      "file": "after-phone-dark-en-permissions.png",
+      "sha256": "5e31e44601c3d852652077874051a03c4551870f4699296b4be879c171baf649",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-en-review",
+      "file": "after-phone-dark-en-review.png",
+      "sha256": "649a250c3c8c9fb889eec517d9a6284ca91f0690d42bd5d8fc5755fa75fb0656",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-en-roles-2",
+      "file": "after-phone-dark-en-roles-2.png",
+      "sha256": "80a2325207d8d651c5e50342ff954fff3584d4bb4b7a192939f721e908c58861",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-en-roles-3",
+      "file": "after-phone-dark-en-roles-3.png",
+      "sha256": "4b3ca913856575fcce37affc17cc5643f8c7fade5a7b89d5c4abd3e794b7c3d1",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-en-roles",
+      "file": "after-phone-dark-en-roles.png",
+      "sha256": "f3302ee385deb176db3f3994f0412ff55e96dab24aaecf96ae7ded37362fb081",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-assign",
+      "file": "after-phone-dark-zh-TW-assign.png",
+      "sha256": "38a2ca9740b0ba3aea49e5707cd9442a32fdec43f001ee822a0cea15e22cd833",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-audit-2",
+      "file": "after-phone-dark-zh-TW-audit-2.png",
+      "sha256": "b95a0c65957821a9f832ae447f5366b7911e77dbbef47b00b0e04da1f6d2a604",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-audit",
+      "file": "after-phone-dark-zh-TW-audit.png",
+      "sha256": "2e359f9c75f3bba6fc56a301f9da81e0d66c8fd6de473b4cb792ac5631ad5ff2",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-create-2",
+      "file": "after-phone-dark-zh-TW-create-2.png",
+      "sha256": "e42245988d322d741068b2a5756c8b1a6535efd4ffaddc11e9902e9cbe7fe0d8",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-create-3",
+      "file": "after-phone-dark-zh-TW-create-3.png",
+      "sha256": "30505f9d261509fff7131be4fa497a00a92a3390684071db2f10452352dbea56",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-create",
+      "file": "after-phone-dark-zh-TW-create.png",
+      "sha256": "662fa4b7564e6300147231831e0454aee729083193356c414b7672a2e564e6f9",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-permissions-2",
+      "file": "after-phone-dark-zh-TW-permissions-2.png",
+      "sha256": "7218c28411e3534c7f3c7ae5893b297e3799986fc40bc835f4e3ac6e8d4eef27",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-permissions",
+      "file": "after-phone-dark-zh-TW-permissions.png",
+      "sha256": "d5027bd8830e7db8f50a7c63afdebd41a95bd40c252d3bc6d747254bc83eb4c3",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-review",
+      "file": "after-phone-dark-zh-TW-review.png",
+      "sha256": "c4b536303d62ac221453a0e64f057ae85ee3867ee0cf239462fb59cbe0916299",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-roles-2",
+      "file": "after-phone-dark-zh-TW-roles-2.png",
+      "sha256": "2ec692d1e2ab99af209356721f4703e9ba1f3df5a39a9a240eede32479636a25",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-roles-3",
+      "file": "after-phone-dark-zh-TW-roles-3.png",
+      "sha256": "acbc2bcf4a37bcd189c6bd9cf3c8ff8e44210cf48fb37dcb0cd85b32ebda7e6d",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-roles",
+      "file": "after-phone-dark-zh-TW-roles.png",
+      "sha256": "85ac110b697c8f122d6e5f01598fd808e1111233695833581840b50e29bafb31",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-en-assign",
+      "file": "after-phone-light-en-assign.png",
+      "sha256": "511b662daecc6316017e39ccab53d5d29fdef6d990a5f6285a1922128bcef4cb",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-en-audit-2",
+      "file": "after-phone-light-en-audit-2.png",
+      "sha256": "b19155209b0db98622a572b56b0096efde573ce7a1e89096289efe3b4a60a5d1",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-en-audit",
+      "file": "after-phone-light-en-audit.png",
+      "sha256": "95595b35b4cd595ef4504f10b189b1391ebdb4b760165e1660e2b3ebf0fb95aa",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-en-create-2",
+      "file": "after-phone-light-en-create-2.png",
+      "sha256": "4f4a6697be28c673ffbfcaf21ceed00e256bf7ad0a3f5f19de25afacd5a58601",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-en-create-3",
+      "file": "after-phone-light-en-create-3.png",
+      "sha256": "bc70c1a17454b9aea8e7c1843e11d9b57c0c07ed24650787f5fcb0db3cf5f1b8",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-en-create",
+      "file": "after-phone-light-en-create.png",
+      "sha256": "1e51555fb7c5d797bdfa528b652f08b2b01f82a879c492bc6e7a8d76a4211e99",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-en-permissions-2",
+      "file": "after-phone-light-en-permissions-2.png",
+      "sha256": "ed19b8af1db4ca5868d872ea68c74fa105e8e71d71207f0b6d9d0ab7a59a52b5",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-en-permissions",
+      "file": "after-phone-light-en-permissions.png",
+      "sha256": "fe605e1bc7c8e911ec47026fea6e8d85c31f4d5dcf72337ecea3d522a17b2daa",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-en-review",
+      "file": "after-phone-light-en-review.png",
+      "sha256": "20eecd2673bb04f5d6053d2d7a7e8370e8de071432e49b55c94683baf63d66ad",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-en-roles-2",
+      "file": "after-phone-light-en-roles-2.png",
+      "sha256": "8ed1206b26349fdec2c8a82ddb53bac930e15cbc4ede333b10448bea821f56f6",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-en-roles-3",
+      "file": "after-phone-light-en-roles-3.png",
+      "sha256": "e3910f1c953d1d2a4f8c56c8e036f6e6a3da092a6f33b06eaa5cea24835f0d3e",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-en-roles",
+      "file": "after-phone-light-en-roles.png",
+      "sha256": "2688fb91b9bf285f43dc7476605881cd09ae9192c808131800cc0db8fc9b1e81",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-assign",
+      "file": "after-phone-light-zh-TW-assign.png",
+      "sha256": "ce265b5c07e76c6926b557abda290e7f2f5e03a61ac21b370d0db2ce50de0559",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-audit-2",
+      "file": "after-phone-light-zh-TW-audit-2.png",
+      "sha256": "2e0267dc38ff2b078ac2e31510a8bce3e40ba0ff9eba5cb7daf5dd2b997f3d55",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-audit",
+      "file": "after-phone-light-zh-TW-audit.png",
+      "sha256": "3bb6a7f6167cb42467ff07297cab05433ee4e2ba3ab581e86d415bd6fefb9dbb",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-create-2",
+      "file": "after-phone-light-zh-TW-create-2.png",
+      "sha256": "796b4fc39b49344c867fcc9f5e3473b8a765db176d036005df337767f401ffa6",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-create-3",
+      "file": "after-phone-light-zh-TW-create-3.png",
+      "sha256": "ecc8eb8cc7cbb4cca3ee8b181e0cc9b6f4b6983fdf4b9805448b6e6c670f48f9",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-create",
+      "file": "after-phone-light-zh-TW-create.png",
+      "sha256": "60341d8916d30bfe5c01395c4264567c2b72fd6e940a0ddcffb6ffc145dd63de",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-permissions-2",
+      "file": "after-phone-light-zh-TW-permissions-2.png",
+      "sha256": "e2cf887f894be0faf394bbac26ea83149f6fd67c6c1984e7afdc0f3f492852c0",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-permissions",
+      "file": "after-phone-light-zh-TW-permissions.png",
+      "sha256": "5ea48cf5200d4af3dc9e271ad111be660c1026a5663b3428a8d1756a4e7a015f",
+      "sourceHead": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-review",
+      "file": "after-phone-light-zh-TW-review.png",
+      "sha256": "56b22036ec06f5b93e1ea6bc889c4fe76a61c7d298356b132cacb5b10cc2d642",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-roles-2",
+      "file": "after-phone-light-zh-TW-roles-2.png",
+      "sha256": "091547596eeb8e5e5199e3602f355b4f129d366d93705d1c858a8764c7102f37",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-roles-3",
+      "file": "after-phone-light-zh-TW-roles-3.png",
+      "sha256": "bcda4dbe6254eb21a68450f1ee37c6fa7a1ff595043010b4ded9191c40fb5257",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-roles",
+      "file": "after-phone-light-zh-TW-roles.png",
+      "sha256": "cc8bd93e4d267873c01c10ec7f053dd75cabfcf9edb369d4fcde365353b80e61",
+      "sourceHead": "d9ad6607eb58b80eecec3c7170c07c4a087240bf"
+    }
+  ],
+  "initialChecks": 101,
+  "focusedChecks": 48,
+  "csv": {
+    "bytes": 2856,
+    "sha256": "30f5633d8c6223415a6967472041c7fff0b0fb94e21cf132066a60751a2319a6"
+  },
+  "errors": [],
+  "cleaned": true
+}
