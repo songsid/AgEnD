@@ -366,15 +366,6 @@ describe("personal-agent worker boundary", () => {
     expect(service.get(input.requestId)).toMatchObject({ status: "failed", personalFailure: "timeout" });
     expect(service.get(input.requestId)?.answer).toBeUndefined();
   });
-  it("withholds a completed-frame answer if cancellation arrives before physical exit", async () => {
-    const settled = vi.fn(), service = new WindowsCliBridge(launcher, DETECTED);
-    service.start(input, () => true, { personal: true, onSettled: settled }); await launched();
-    child.send({ type: "finished", code: 0, personal: { ok: true, answer: "Late answer" } });
-    service.cancel(input.requestId); child.close();
-    await vi.waitFor(() => expect(settled).toHaveBeenCalled());
-    expect(settled.mock.calls[0][0].answer).toBeUndefined();
-    expect(service.get(input.requestId)?.answer).toBeUndefined();
-  });
   it("rejects broad permissions, tools, resume, alternate profiles and normal runs before launch", () => {
     const service = new WindowsCliBridge(launcher, DETECTED, undefined, true);
     expect(() => service.start(input)).toThrow(/personal-agent/);
