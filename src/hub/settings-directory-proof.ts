@@ -1,3 +1,4 @@
+import {assertHubManagementPermit,type HubManagementPermit} from "./roles/authority.js";
 /** #3425: internal preparation authority for the ONE settings writer. No HTTP route or production caller yet. */
 import { randomBytes, X509Certificate } from "node:crypto";
 import { isIP } from "node:net";
@@ -9,7 +10,7 @@ import type { HubDirectory, PersonKey } from "./directory/types.js";
 import { directoryCaInfo } from "./init/directory-certificate.js";
 import { pemCertificates } from "./init/browser-tls.js";
 import { BIND_PASSWORD_REF } from "./init/layout.js";
-import { scalarString, person, validated } from "./validation.js";
+import { HubProtocolError,scalarString, person, validated } from "./validation.js";
 import { MAX_POLICY_DIRECTORY_GROUPS } from "./roles/read.js";
 import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubDirectorySettingsCandidate, HubDirectorySettingsWriter } from "./settings-commit.js";
@@ -19,6 +20,8 @@ type Actor = HubDirectoryDecisionRequest["actor"];
 export interface HubDirectoryProofContext {
   /** Produced by the configured-admin route or the hostSessionHere/D3 adapter, NEVER decoded from the request body. */
   actor: Actor;
+  /** Actual in-process hub.admin permit from the role-aware HTTP adapter, never JSON. */
+  adminPermit?:HubManagementPermit;
   current(): boolean;
   signal?: AbortSignal;
 }
@@ -40,7 +43,7 @@ export interface HubDirectoryProofDeps {
   createDirectory(config: HubDirectoryConfig, secrets: { bindPassword: string }, options: { expectedServerFingerprint?: string }): HubDirectory;
   writer(): HubDirectorySettingsWriter;
   /** Optional SERVER attestation from the current HubSessions row's AD sign-in, not a client timestamp. */
-  recentAuthentication?(actor: Extract<Actor, { kind: "hub-administrator" }>): number | null;
+  recentAuthentication?(actor: Extract<Actor, { kind: "hub-administrator" }>,permit?:HubManagementPermit): number | null;
   now?(): number;
   /** Inert tests only; production uses the verified TLS probe below. */
   probeTls?(config: ResolvedDirectoryConfig): Promise<string>;
@@ -51,6 +54,16 @@ export class HubDirectoryProofError extends Error {
 }
 function refuse(code: HubDirectoryProofCode): never { throw new HubDirectoryProofError(code); }
 const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
+export function assertDirectoryAdministrator(ctx: HubDirectoryProofContext, root: PersonKey): void {
+  if (ctx.actor.kind !== "hub-administrator") return;
+  if (ctx.adminPermit !== undefined) {
+    try { assertHubManagementPermit(ctx.adminPermit, "hub.admin", ctx.actor); }
+    catch (error) { refuse(error instanceof HubProtocolError && error.code === "denied" ? "denied" : "unavailable"); }
+    return;
+  }
+  if (!same(ctx.actor.person, root)) refuse("denied");
+}
+
 /** Structurally identical plain data (the same keys, strictly equal leaves); anything it is unsure of is "not identical", and the caller asks `same`. */
 const identical = (a: unknown, b: unknown): boolean => {
   if (a === b) return true;
@@ -127,7 +140,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
   const context = (input: HubDirectoryProofContext) => {
     const actor = parseHubDirectoryDecisionMetadata({ actor: input.actor, changes: ["search"], recipients: [{ kind: "host", sink: "owner" }] }).actor;
     // Capture callback/signal and nested identity before any await; later input replacement cannot retarget a proof.
-    return { actor, current: input.current, signal: input.signal };
+    return { actor, current: input.current, signal: input.signal,adminPermit:input.adminPermit };
   };
   const capture = (): CapturedSource => {
     const s = deps.source(), config = structuredClone(s.config), administrator = validated(person, s.administrator);
@@ -149,6 +162,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
     canonicalGroups.add(kept); return true;
   };
   const current = (d: Pick<Draft, "source" | "actor" | "createdAt" | "expiresAt">, ctx: ReturnType<typeof context>) => {
+    assertDirectoryAdministrator(ctx,d.source.administrator);
     const t = time();
     if (stopped || ctx.signal?.aborted || actorKey(ctx.actor) !== actorKey(d.actor) || !boolean(ctx.current) || !boolean(d.source.current)) refuse("denied");
     const s = capture();
@@ -158,6 +172,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
     // The authority/material callbacks may move the clock too. Last sample follows ALL of them.
     const final = time();
     if (t < d.createdAt || t >= d.expiresAt || final < d.createdAt || final >= d.expiresAt) refuse("expired");
+    assertDirectoryAdministrator(ctx,d.source.administrator);
   };
   const admitted = async <T>(d: Draft, ctx: ReturnType<typeof context>, work: () => Promise<T>): Promise<T> => {
     current(d, ctx);
@@ -193,15 +208,16 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
   });
   const authenticate = async (d: Draft, ctx: ReturnType<typeof context>, credentials?: { login: string; password: string }) => {
     if (ctx.actor.kind === "host-owner") { if (credentials !== undefined) refuse("invalid"); return d.createdAt; }
+    const actorPerson=ctx.actor.person;
     const key = actorKey(ctx.actor), stored = recent.get(key);
-    const attested = stored?.image === d.source.image && stored.epoch === d.source.epoch ? stored.at : deps.recentAuthentication?.(ctx.actor);
+    const attested = stored?.image === d.source.image && stored.epoch === d.source.epoch ? stored.at : deps.recentAuthentication?.(ctx.actor,ctx.adminPermit);
     current(d, ctx);
     const t = time();
     if (credentials === undefined && attested !== undefined && attested !== null && Number.isSafeInteger(attested) && attested >= 0 && attested <= t && t - attested < TTL) {
       await admitted(d, ctx, async () => {
-        const answer = await d.source.directory.checkEligibility(Object.freeze({ ...d.source.administrator })); current(d, ctx);
+        const answer = await d.source.directory.checkEligibility(Object.freeze({ ...actorPerson })); current(d, ctx);
         if (!answer.eligible) refuse(answer.reason === "unavailable" ? "unavailable" : "denied");
-        if (!same(answer.person.key, d.source.administrator)) refuse("denied");
+        if (!same(answer.person.key, actorPerson)) refuse("denied");
       });
       return attested;
     }
@@ -222,7 +238,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
         // Personal password has exactly ONE destination: the already mounted, trusted OLD directory.
         const answer = await d.source.directory.signIn(credentials.login.trim(), credentials.password); current(d, ctx);
         if (!answer.ok) refuse(answer.reason === "unavailable" ? "unavailable" : "denied");
-        if (!same(answer.person.key, d.source.administrator)) refuse("denied");
+        if (!same(answer.person.key, actorPerson)) refuse("denied");
       });
     } catch (error) { failure = error instanceof HubDirectoryProofError && error.code === "denied"; throw error; }
     finally { if (!failure && attempts.get(key) === window && --window.count === 0) attempts.delete(key); }
@@ -237,7 +253,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       if (Object.keys(copy).some(key => !["directory", "bindPassword", "changes", "recipients"].includes(key))) refuse("invalid");
       const metadata = parseHubDirectoryDecisionMetadata({ actor: ctx.actor, changes: copy.changes, recipients: copy.recipients });
       const resolved = resolveDirectoryConfig(copy.directory);
-      if (ctx.actor.kind === "hub-administrator" && !same(ctx.actor.person, source.administrator)) refuse("denied");
+      assertDirectoryAdministrator(ctx,source.administrator);
       if (resolved.realm !== source.resolved.realm || resolved.profile !== source.resolved.profile
         || copy.directory.bindPasswordRef !== undefined && copy.directory.bindPasswordRef !== BIND_PASSWORD_REF) refuse("invalid");
       if (copy.bindPassword === undefined) {
@@ -269,7 +285,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       d.expiresAt = Math.min(d.expiresAt, at + TTL);
       await candidate(d, ctx); current(d, ctx);
       const writer = deps.writer(), proof = () => { current(d, ctx); return true; };
-      const prepared = writer.prepare(structuredClone(d.candidate), ctx.actor, proof);
+      const prepared = writer.prepare(structuredClone(d.candidate), ctx.actor, proof, ctx.adminPermit);
       const effect: unknown = beforeCommit?.();
       if (effect && (typeof effect === "object" || typeof effect === "function") && typeof (effect as { then?: unknown }).then === "function") {
         try { (effect as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused below */ }

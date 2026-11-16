@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { canonicalArguments } from "./identity.js";
 import { HubProtocolError, validated } from "./validation.js";
-import { createHubDirectorySettingsProof, type HubDirectoryProofContext, type HubDirectoryProofDeps } from "./settings-directory-proof.js";
+import { assertDirectoryAdministrator,createHubDirectorySettingsProof, type HubDirectoryProofContext, type HubDirectoryProofDeps } from "./settings-directory-proof.js";
 import { createHubDirectorySaveCoordinator, type HubDirectorySaveDeps, type HubDirectorySaveDelivery } from "./settings-directory-save.js";
 import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import { HUB_DIRECTORY_HOST_NOTICE_SINK } from "./settings-directory-notices.js";
@@ -34,18 +34,18 @@ export function createHubDirectorySettingsControl(options: HubDirectorySettingsC
     if (!owned() || !m?.current() || m.decision.hubId !== deps.hubId) throw new HubProtocolError("unavailable");
     return m;
   };
-  const context = (input: HubDirectoryProofContext): HubDirectoryProofContext => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal });
+  const context = (input: HubDirectoryProofContext): HubDirectoryProofContext => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal,adminPermit:input.adminPermit });
   const source = (ctx: HubDirectoryProofContext) => {
     if (ctx.signal?.aborted || ctx.current() !== true) throw new HubProtocolError("revoked");
     const m = mounted(), s = m.source();
     parseHubDirectoryDecisionMetadata({ actor: ctx.actor, changes: ["search"], recipients: [{ kind: "host", sink: HUB_DIRECTORY_HOST_NOTICE_SINK }] });
-    if (ctx.actor.kind === "hub-administrator" && !same(ctx.actor.person, s.administrator)) throw new HubProtocolError("denied");
+    assertDirectoryAdministrator(ctx,s.administrator);
     if (!s.current() || !m.current() || !owned() || ctx.current() !== true) throw new HubProtocolError("revoked");
-    return s;
+    assertDirectoryAdministrator(ctx,s.administrator);return s;
   };
   const proof = createHubDirectorySettingsProof({ source: () => mounted().source(), writer: deps.writer, now,
     withDirectoryRead: (person, work) => mounted().withDirectoryRead(person, work), createDirectory: deps.createDirectory,
-    recentAuthentication: actor => mounted().sessions().recentAuthentication(actor), ...(deps.probeTls ? { probeTls: deps.probeTls } : {}) });
+    recentAuthentication: (actor,permit) => mounted().sessions().recentAuthentication(actor,permit), ...(deps.probeTls ? { probeTls: deps.probeTls } : {}) });
   const save = createHubDirectorySaveCoordinator({ ...deps, proof });
   const ca = createHubDirectorySettingsCa({ source, now, withDirectoryRead: (person, work) => mounted().withDirectoryRead(person, work) });
   const track = <T>(work: () => Promise<T>): Promise<T> => {
@@ -64,7 +64,7 @@ export function createHubDirectorySettingsControl(options: HubDirectorySettingsC
       const ctx = context(input), s = source(ctx);
       // The secret and its filesystem reference are never returned, even to the administrator or host owner.
       const { bindPasswordRef: _ref, ...directory } = structuredClone(s.config);
-      const at = ctx.actor.kind === "hub-administrator" ? mounted().sessions().recentAuthentication(ctx.actor) : null, time = now();
+      const at = ctx.actor.kind === "hub-administrator" ? mounted().sessions().recentAuthentication(ctx.actor,ctx.adminPermit) : null, time = now();
       const reauthentication = ctx.actor.kind === "host-owner" ? "host" : at !== null && Number.isSafeInteger(time) && time >= at && time - at < 300_000 ? "recent" : "required";
       if (!s.current() || source(ctx).image !== s.image) throw new HubProtocolError("revoked");
       return { directory, bindPasswordSet: true, reauthentication, epoch: s.epoch };
@@ -92,7 +92,7 @@ export function createHubDirectorySettingsControl(options: HubDirectorySettingsC
       return track(async () => { source(ctx); await proof.test(request.ref, request.confirmation, ctx); source(ctx); return { ok: true }; });
     },
     apply(raw: unknown, input: HubDirectoryProofContext, delivery?: HubDirectorySaveDelivery) {
-      const request = validated(saveRequest, raw), ctx = context(input), captured = delivery && { capture: delivery.capture, rotation: delivery.rotation };
+      const request = validated(saveRequest, raw), ctx = context(input), captured = delivery && { capture: delivery.capture, rotation: delivery.rotation, reauthenticateAfterSave: delivery.reauthenticateAfterSave };
       return track(() => { source(ctx); return save.apply(request.ref, request, ctx, captured); });
     },
     cancel(raw: unknown, input: HubDirectoryProofContext) {

@@ -7,6 +7,7 @@ import type {HubDirectoryReads} from "../directory/admission.js";
 import type {HubAuditStore} from "../audit/index.js";
 import type {HubRequestContext,PersonKey} from "../types.js";
 import {personKeyString} from "../identity.js";
+import {rememberRoomPeople} from "../rooms/directory.js";
 import {HubProtocolError,person,uuid,identifier,plain,validated,parseStrictJson} from "../validation.js";
 import {evaluateRolePolicy} from "./evaluate.js";
 import {MANAGEMENT_PERMISSIONS,ROLE_PERMISSIONS,parseRolePolicy,type HubRolePolicy} from "./model.js";
@@ -38,6 +39,7 @@ export function createHubRoleAdminControl(options:RoleAdminOptions):RoleAdminCon
  const buckets=new Map<string,{at:number;count:number}>();let closed=false;
  const live=(ctx:HubRequestContext)=>{if(closed||options.current()!==true||ctx.isCurrent?.()!==true)throw new HubProtocolError("unavailable");};
  const currentPolicy=()=>parseRolePolicy(options.policy());
+ const personLabel=(id:string)=>(db.prepare("SELECT display_name FROM hub_people WHERE person=? UNION ALL SELECT display_name FROM hub_room_people WHERE person=? LIMIT 1").get(id,id) as {display_name:string}|undefined)?.display_name??id;
  const display=async(ctx:HubRequestContext)=>{
   // Production HubSessions.requirePerson performs a fresh directory eligibility read and
   // rechecks the owned session after that await. This snapshot drives presentation only;
@@ -53,7 +55,9 @@ export function createHubRoleAdminControl(options:RoleAdminOptions):RoleAdminCon
    const canAssign=selected.permissions.includes("roles.assign");
    const proof=canAssign?await management.require(ctx,"roles.assign"):null;selected.assert();proof?.assertCurrent();
    const rootSelfUsed=!!db.prepare("SELECT 1 FROM hub_role_root_self WHERE person=?").get(personKeyString(root));
-   const out={policy:canAssign?selected.policy:null,permissions:ROLE_PERMISSIONS,root,actor:selected.actor,management:selected.permissions,rootSelfUsed};selected.assert();proof?.assertCurrent();return out;
+   const ids=new Set([personKeyString(root),personKeyString(selected.actor),...(canAssign?selected.policy.assignments.flatMap(a=>a.subject.kind==="person"?[personKeyString(a.subject.person)]:[]):[])]);
+   const personLabels=[...ids].map(id=>({id,name:personLabel(id)}));
+   const out={personLabels,policy:canAssign?selected.policy:null,permissions:ROLE_PERMISSIONS,root,actor:selected.actor,management:selected.permissions,rootSelfUsed};selected.assert();proof?.assertCurrent();return out;
   },
   async search(ctx,input){
    const query=validated(searchInput,input),proof=await management.require(ctx,"roles.assign");live(ctx);proof.assertCurrent();
@@ -68,7 +72,9 @@ export function createHubRoleAdminControl(options:RoleAdminOptions):RoleAdminCon
     if(!groups||directory.groupPolicy!=="ad-direct-guid")throw new HubProtocolError("unavailable");const found=await reads.withDirectoryRead(proof.actor.person,()=>groups.call(directory,query.q));
     if(!found.ok)throw new HubProtocolError("unavailable");out=validated(z.array(groupHit).max(20),found.groups).map(row=>({kind:"group",key:{realm,objectId:row.objectId},name:row.cn,dn:row.dn}));
    }
-   live(ctx);proof.assertCurrent();if(directory.realm!==realm||directory.searchGrantPeople!==people||directory.searchPolicyGroups!==groups||out.some(row=>row.key.realm!==realm))throw new HubProtocolError("unavailable");return out;
+   live(ctx);proof.assertCurrent();if(directory.realm!==realm||directory.searchGrantPeople!==people||directory.searchPolicyGroups!==groups||out.some(row=>row.key.realm!==realm))throw new HubProtocolError("unavailable");
+   if(query.kind==="person")db.transaction(()=>{live(ctx);proof.assertCurrent();rememberRoomPeople(db,out.map(row=>({id:personKeyString(row.key),login:row.login!,displayName:row.name})),now());live(ctx);proof.assertCurrent();}).immediate();
+   return out;
   },
   preview:(ctx,input)=>writer.preview(input,ctx),
   apply(ctx,input){const body=validated(applyInput,input);return writer.apply(body.policy,body.previewDigest,ctx);},
@@ -84,7 +90,7 @@ export function createHubRoleAdminControl(options:RoleAdminOptions):RoleAdminCon
     const raw=db.prepare("SELECT id,sequence,at,actor,action,result FROM hub_audit WHERE sequence<? ORDER BY sequence DESC LIMIT 51").all(cursor) as {id:string;sequence:number;at:number;actor:string;action:string;result:string}[];
     const rows:RoleAuditRow[]=raw.slice(0,50).map(row=>{
      const id=actorId(row.actor);
-     const label=id==="unknown"?"":(db.prepare("SELECT display_name FROM hub_people WHERE person=?").get(id) as {display_name:string}|undefined)?.display_name??id;
+     const label=id==="unknown"?"":personLabel(id);
      const summary:string[]=[];
      if(["role.created","role.changed","role.deleted","role.assigned","role.unassigned"].includes(row.action)){
       const event=db.prepare("SELECT body FROM hub_role_events WHERE id=?").get(row.id) as {body:string}|undefined;

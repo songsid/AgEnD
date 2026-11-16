@@ -61,3 +61,13 @@ it("normal retention prunes role audit-read events and preserves the audit check
  const w=await world();await w.control.audit(w.ctx.ctx,{});const old=w.db.prepare("SELECT id FROM hub_audit WHERE action='role.audit-read'").get() as {id:string};expect(old).toBeTruthy();
  w.time(2*86400000);expect(w.audit.purge({contentDays:1,eventDays:1}).events).toBeGreaterThan(0);expect(w.db.prepare("SELECT id FROM hub_audit WHERE id=?").get(old.id)).toBeUndefined();expect(w.audit.verifyChain().ok).toBe(true);
 });
+
+it("remembers searched directory labels for assignments without creating signed-in people or authority",async()=>{
+ const w=await world();
+ w.directory.searchGrantPeople=async()=>({ok:true,people:[{person:w.other,login:"alex",displayName:"Alex Chen"}],truncated:false});
+ const rows=await w.control.search(w.ctx.ctx,{kind:"person",q:"Al"});expect(rows[0]?.name).toBe("Alex Chen");
+ expect(w.db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(`${w.other.realm}/${w.other.objectId}`)).toBeUndefined();
+ w.policy.assignments.push({id:"display-only",roleId:"builtin:member",subject:{kind:"person",person:w.other},scope:{kind:"hub"},maxFleets:null,startsAt:0,expiresAt:null,assignedAt:0,assignedBy:w.root});w.save(w.policy);
+ expect((await w.control.read(w.ctx.ctx)).personLabels).toContainEqual({id:`${w.other.realm}/${w.other.objectId}`,name:"Alex Chen"});
+ expect((await w.control.presentation((await w.browser(w.other)).ctx)).management).toEqual([]);
+});

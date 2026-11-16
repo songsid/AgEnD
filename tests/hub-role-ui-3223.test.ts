@@ -51,3 +51,11 @@ it.each(["en","zh-TW"])("labels an unknown legacy audit actor without exposing r
  const {p}=await mount(lang,{roleAudit:vi.fn(async()=>({ok:true,rows:[{id:"row",at:100,actor:{id:"unknown",name:""},action:"fixture.legacy",result:"completed",summary:[]}],nextCursor:null}))});
  expect(p.root.textContent).toContain(lang==="en"?"Unknown actor":"未知操作者");
 });
+
+it.each(["en","zh-TW"])("shows cached person names and localized change/audit copy (%s)",async lang=>{
+ const current={...view(),personLabels:[{id:`${actor.realm}/${actor.objectId}`,name:"Avery Chen"}]};
+ const {p}=await mount(lang,{roles:vi.fn(async()=>({ok:true,view:current})),roleAudit:vi.fn(async()=>({ok:true,rows:[{id:"created",at:100,actor:{id:"root",name:"Avery Chen"},action:"role.created",result:"completed",summary:["after: Helpers · ask_agents"]}],nextCursor:null}))});
+ expect(p.root.textContent).toContain("Avery Chen");expect(p.root.textContent).toContain(lang==="en"?"Role created":"新增角色");expect(p.root.textContent).toContain(lang==="en"?"After: Helpers · Chat with agents":"變更後: Helpers · 和 Agent 對話");
+ fire(button(p.root,lang==="en"?"Turn roles off":"關閉角色功能"),"click");await settle(10);
+ expect(p.root.querySelector(".hub-role-preview").textContent).toContain(lang==="en"?"Turn roles off":"關閉角色功能");
+});

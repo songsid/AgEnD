@@ -39,7 +39,8 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | `hub`, `hub_member` in fleet.yaml | [Config keys](#config-keys) |
 | how many, how long | [Limits](#limits) |
 | virtual teams, My teams, team lead, team grants | [Teams](#teams) |
-| custom roles, sharing a ClassicBot room | [Not available yet](#not-available-yet) |
+| Roles, second administrator, assignments, audit, migration, turn roles off | [Roles and permissions](#roles-and-permissions) |
+| manager team usage, sharing a ClassicBot room | [Not available yet](#not-available-yet) |
 | can't connect, certificate, different host names, old tab | [Troubleshooting](#troubleshooting) |
 
 ## What the Hub is
@@ -507,13 +508,11 @@ Administrators may also select named company people and AD groups; they retain t
 
 ## Group permissions
 
-Optional, for the Hub administrator; needs Active Directory over LDAPS (port 636). Step 2 of **Let colleagues join**
-covers the everyday case. The full editor (turn off, **Paused**, **People excluded**) is a separate page: on
-**Administration**, step 2 of **Let colleagues join** has **All group permissions** (所有群組權限), which opens it;
-from the dashboard of the Fleet that hosts the Hub, **Settings → Hub**, card **Group permissions** → **Open on the Hub**;
-or, signed in as the administrator, the address `https://<hub address>/ui/hub/admin?view=groups`. Until group permissions
-are turned on, the Hub behaves as before: everyone who signs in can chat, and connecting needs the administrator's
-approval or a join code.
+Optional, for Hub administrators; AD group rules need Active Directory over LDAPS (port 636).
+The old group-permissions link (`?view=groups`) now opens **Roles and permissions**. From there,
+**Open the allowed list** opens the existing AD group / Team / Person editor (`?view=allowed-list`).
+The **Let colleagues join** shortcut remains available. Until self-use permissions are explicitly
+turned on in the allowed list, the Hub retains its previous chat, sharing and connection behaviour.
 
 - The allowed list accepts **AD group · Team · Person** (AD 群組 · 團隊 · 人員), using the same picker as agent grants.
   Each row allows **Chat with agents**, **Share agents**, and **Connect a Fleet** with **Fleets** (0–8).
@@ -529,6 +528,33 @@ approval or a join code.
 - What a colleague sees on the Hub welcome page: cards **Chat with an agent** and **Connect your fleet**, on or off
   with the reason ("Connecting a fleet is not included in your access.", "Paused by your Hub admin.", "Your account
   can sign in, but no actions are allowed yet.").
+
+## Roles and permissions
+
+A role-capable Hub offers **Administration → Roles and permissions** (角色與權限).
+An older server or client keeps its existing interface. Roles do not grant access to conversations or spending.
+
+- The built-in roles are **Administrator**, **Manager**, and **Member**, with Fleet defaults 8, 2 and 1.
+  There are 12 fixed permissions. The two approval permissions are shown as coming later; the manager's team
+  roster and usage view is a separate phase. Only the built-in Administrator role can include **Edit roles and Hub settings**.
+- Hub administrators create or edit custom roles and assign roles to a person or an AD group. Roles containing any
+  Hub-management permission may go to people only. Group managers control who inherits a group assignment.
+  Assignments can have a start, expiry, scope and Fleet-limit override. Delegated assigners can grant only within
+  their own current permission, scope, quota and expiry. They cannot edit role definitions.
+- Use **Check changes**, inspect the preview, then **Save checked changes**. A stale preview must be checked again.
+  Another administrator must change your own assignments; the editor cannot increase your own authority or remove your own denial.
+- To add a second administrator, assign the built-in **Administrator** role to that person's company account.
+  The first administrator remains configured on the Hub host and cannot be removed here. A second administrator
+  can manage AD connection settings; after saving a changed connection they sign in again against it.
+- **Audit log** is a separate permission. It shows action metadata and changes, without conversation text or content references.
+  Administrator notices can be acknowledged once. The existing event-retention policy also covers audit-page reads.
+- On upgrade, migration preserves existing access, Fleet limits, denies and suspended resources. The first administrator
+  receives no automatic chat, sharing or Fleet grant. **Apply new defaults for myself** is an explicit once-only checked action.
+  If self-use permissions were never enabled, new assignments are stored but do not change that legacy behaviour until
+  the administrator enables them through the allowed list.
+- **Turn roles off** is a forward rollback of role-based management: the current self-use rules, denies and paused
+  resources remain, and only the first administrator manages the Hub. Turning roles on uses the current graph, not an old snapshot.
+  This does not downgrade the database or restore a backup. Damaged or incomplete migration state is held for repair.
 
 ## Room assistant administration
 
@@ -685,8 +711,7 @@ Two keys in `fleet.yaml`, both off unless something turned them on. Prefer the p
 
 Say plainly that these are not in the product yet:
 
-- **Custom roles and a manager's team view** (several administrators, roles assigned to people or AD groups, a team
-  list with usage counts). Designed and decided; not shipped. Today there is one Hub administrator.
+- **A manager's scoped team roster and usage view**, and the two approval workflows. The role editor and several administrators are available on role-capable Hubs; these later views are not.
 - **Sharing a ClassicBot room.** Only fleet agents can be shared.
 - **A second sign-in factor on the Hub.** It uses the company account and password only.
 - **Adding to People excluded from the editor.** The list is shown; it cannot be edited there in this release.

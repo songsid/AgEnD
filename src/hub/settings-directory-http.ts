@@ -1,3 +1,4 @@
+import {personKeyString} from "./identity.js";
 /** Configured-administrator Hub listener adapter. The fleet/D3 listener acquires its own authority separately. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { HubActor } from "./types.js";
@@ -27,7 +28,7 @@ export function directorySettingsRefusal(error: unknown) {
 }
 export interface HubDirectorySettingsHttpRequest {
   req: IncomingMessage; res: ServerResponse; path: string; method: string; query: URLSearchParams;
-  ctx: { token: string | null; requestId: string; current(): boolean; requireAdmin(): Promise<HubActor> };
+  ctx: { token: string | null; requestId: string; current(): boolean; requireAdmin(): Promise<HubActor>;authorizeAdmin?():Promise<import("./roles/authority.js").HubManagementPermit>;readonly configuredRoot?:import("./types.js").PersonKey };
   signedIn(): unknown; csrf(): unknown; body(): Promise<Record<string, unknown>>;
   send(status: number, value: unknown): void;
   sessions: HubDirectoryBrowserSessions;
@@ -43,11 +44,12 @@ export async function handleHubDirectorySettingsHttp(create: (() => Promise<HubD
   let disconnected = false;
   const closed = () => { if (!q.res.writableEnded) disconnected = true; };
   q.res.once("close", closed);
-  const current = () => !disconnected && q.ctx.current() === true;
+  let adminPermit:import("./roles/authority.js").HubManagementPermit|undefined;
+  const current = () => {try{adminPermit?.assertCurrent();return !disconnected&&q.ctx.current()===true;}catch{return false;}};
   try {
-    const actor = await q.ctx.requireAdmin();
+    adminPermit=await q.ctx.authorizeAdmin?.();const actor=adminPermit?.actor??await q.ctx.requireAdmin();
     if (actor.kind !== "directory" || !current()) throw new HubProtocolError("denied");
-    const context = { actor: { kind: "hub-administrator" as const, person: { ...actor.person }, sessionId: actor.sessionId, requestId: q.ctx.requestId }, current };
+    const context = { actor: { kind: "hub-administrator" as const, person: { ...actor.person }, sessionId: actor.sessionId, requestId: q.ctx.requestId }, current,...(adminPermit?{adminPermit}:{}) };
     const input = action ? await q.body() : undefined;
     q.signedIn(); if (!current()) throw new HubProtocolError("revoked");
     const control = await invoke(create);
@@ -61,9 +63,12 @@ export async function handleHubDirectorySettingsHttp(create: (() => Promise<HubD
     else if (action === "/ca/fetch") result = await invoke(() => control.fetchCa(input, context));
     else {
       if (!q.ctx.token || !q.capture) throw new HubProtocolError("unavailable");
-      const rotation = q.sessions.prepareDirectoryRotation(q.ctx.token, context.actor);
-      try { await invoke(() => control.apply(input, context, { capture: () => q.capture!(current), rotation })); }
-      finally { rotation.discard(); }
+      // Only the configured root is mapped into the candidate directory by this protocol.
+      // Auxiliary admins may save, but must authenticate afresh there; never mint an unproved successor cookie.
+      const auxiliary=adminPermit&&q.ctx.configuredRoot&&personKeyString(context.actor.person)!==personKeyString(q.ctx.configuredRoot);
+      const rotation = auxiliary?undefined:q.sessions.prepareDirectoryRotation(q.ctx.token, context.actor);
+      try { await invoke(() => control.apply(input, context, { capture: () => q.capture!(current), rotation, ...(auxiliary ? { reauthenticateAfterSave: true as const } : {}) })); }
+      finally { rotation?.discard(); }
       return true; // The Save owns its original response, including known pre-decision refusals. Never send twice.
     }
     q.signedIn(); if (!current()) throw new HubProtocolError("revoked");

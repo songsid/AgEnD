@@ -34,7 +34,7 @@ export function createHubDirectorySettingsCa(options: HubDirectorySettingsCaDeps
   const probes = new Map<string, Probe>();
   let stopped = false, preparing = 0;
   const time = () => { const t = now(); if (!Number.isSafeInteger(t) || t < 0) throw new HubProtocolError("revoked"); return t; };
-  const context = (input: HubDirectoryProofContext) => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal });
+  const context = (input: HubDirectoryProofContext) => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal,adminPermit:input.adminPermit });
   const check = (record: Pick<Probe, "actor" | "source" | "createdAt" | "expiresAt">, ctx: HubDirectoryProofContext) => {
     const before = time();
     if (stopped || ctx.signal?.aborted || ctx.current() !== true || actorKey(ctx.actor) !== record.actor || !record.source.current()) throw new HubProtocolError("revoked");

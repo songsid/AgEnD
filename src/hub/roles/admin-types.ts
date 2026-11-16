@@ -8,6 +8,8 @@ export interface RoleAdminView {
   root: PersonKey; actor: PersonKey;
   management: readonly string[];
   rootSelfUsed: boolean;
+  /** Cached directory labels for presentation only; never authorization facts. */
+  personLabels?: readonly {id:string;name:string}[];
 }
 export interface RoleDirectoryCandidate {kind:"person"|"group";key:PersonKey;name:string;login?:string;dn?:string}
 export interface RoleAuditRow {id:string;at:number;actor:{id:string;name:string};action:string;result:string;summary:readonly string[]}

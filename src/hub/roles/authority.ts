@@ -12,6 +12,17 @@ import type { HubCanonicalPolicy } from "./read.js";
 
 export type HubManagementPermission = typeof MANAGEMENT_PERMISSIONS[number];
 export const HUB_MANAGEMENT_PROOF_TTL = 5_000;
+const issuedManagementPermits = new WeakSet<object>();
+/** Private in-process adapter attestation; copied actors and shape-compatible objects confer no permission. */
+export function assertHubManagementPermit(permit: unknown, permission: HubManagementPermission,
+  actor: { person: PersonKey; sessionId: string }): asserts permit is HubManagementPermit {
+  if (!permit || typeof permit !== "object" || !issuedManagementPermits.has(permit)) throw new HubProtocolError("denied");
+  const proof = permit as HubManagementPermit;
+  if (proof.permission !== permission || personKeyString(proof.actor.person) !== personKeyString(actor.person)
+    || proof.actor.sessionId !== actor.sessionId) throw new HubProtocolError("denied");
+  proof.assertCurrent();
+}
+
 const PREPARATION_BUDGET = 20_000;
 type DirectoryActor = Extract<HubActor, { kind: "directory" }>;
 export interface HubManagementPermit {
@@ -166,7 +177,7 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
           } catch (error) { retired = true; throw error; }
         },
       });
-      permit.assertCurrent(); return permit;
+      permit.assertCurrent(); issuedManagementPermits.add(permit); return permit;
     },
     close() { closed = true; },
   };

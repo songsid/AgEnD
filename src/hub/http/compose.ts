@@ -793,7 +793,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (await handleHubDirectorySettingsHttp(deps.directorySettings, { req, res, path, method, query, signedIn, csrf, body,
       send: (status, value) => send(res, status, value), sessions,
       ...(deps.directoryResponse ? { capture: (proof: () => boolean) => deps.directoryResponse!.capture(req, res, proof) } : {}),
-      ctx: { token: ctx.token, requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() } })) return;
+      ctx: { token: ctx.token, requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(),...(deps.roleAdmin&&deps.management?{configuredRoot:deps.config.administrator,authorizeAdmin:()=>deps.management!.require(ctx,"hub.admin")}: {}) } })) return;
     if (await handleHubSettingsHttp(deps.hubSettings ? { ...deps.hubSettings, name: deps.config.name } : undefined, { path, method, signedIn, csrf, body,
       send: (status, value) => send(res, status, value),
       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() },
@@ -1021,7 +1021,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   rooms.buttons.start(); groupRooms.agents.wake(); groupRooms.assistant.start();
   return {
     directorySessions: Object.freeze({
-      recentAuthentication: actor => sessions.recentAuthentication(actor),
+      recentAuthentication: (actor, permit) => sessions.recentAuthentication(actor, permit),
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),

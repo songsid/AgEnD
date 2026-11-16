@@ -110,8 +110,8 @@ export class HubSessions {
   }
 
   /** Internal server adapters only; never mounted as token/ref lookup routes. */
-  recentAuthentication(actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>): number | null {
-    return recentHubDirectoryAuthentication(this.core, actor);
+  recentAuthentication(actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>,permit?:import("./roles/authority.js").HubManagementPermit): number | null {
+    return recentHubDirectoryAuthentication(this.core, actor,permit);
   }
   prepareDirectoryRotation(token: string, actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>): HubDirectorySessionRotation {
     return prepareHubDirectorySessionRotation(this.core, token, actor);

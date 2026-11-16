@@ -91,6 +91,7 @@ export function HubDirectoryEditor({ client, offered = false, host = false, logi
     if (!current(n)) return;
     setAuth(a => ({ ...a, password: "" })); setForm(f => ({ ...f, bindPassword: "" })); setDialog(null);
     if (result.state !== "ready" || !Number.isSafeInteger(result.directoryEpoch) || result.directoryEpoch <= view.epoch) { setUncertain(true); setFailureCode(result.state === "restored" ? "restored" : "uncertain"); return; }
+    if(result.reauthenticationRequired===true){saveSent.current=false;setNotice("savedSignIn");await afterSave();return;}
     if (await afterSave() !== true || !current(n)) { if (current(n)) { setUncertain(true); setFailureCode("uncertain"); } return; }
     const fresh = await read(signal); if (!current(n)) return;
     setView(fresh); setForm(formOf(fresh)); setRequireAuth(fresh.reauthentication === "required"); saveSent.current = false; setNotice("saved");

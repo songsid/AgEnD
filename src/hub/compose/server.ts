@@ -1,3 +1,13 @@
+import {hubRoleMigrationsForState} from "../roles/migrations.js";
+import {createHubRoleCutover} from "../roles/cutover.js";
+import {createHubRoleWriter} from "../roles/writer.js";
+import {createHubRoleResourceEffects} from "../roles/resource-effects.js";
+import {createHubRoleExpiryEffects} from "../roles/expiry-effects.js";
+import {createHubRoleExpirySettlement} from "../roles/expiry.js";
+import {createHubRoleAdminControl} from "../roles/admin-control.js";
+import {createHubRoleAllowedListControl} from "../roles/allowed-list-control.js";
+import {parseRolePolicy} from "../roles/model.js";
+import {readHubOperationalPolicy} from "../group-policy/store.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "../room-context-model.js";
 import { HUB_RECOMMENDATION_CAPABILITY } from "../recommendation-model.js";
 import { HUB_FLEET_INFO_CAPABILITY } from "../fleet-info.js";
@@ -77,6 +87,7 @@ export { SERVER_SET } from "./storage.js";
 
 /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
 export interface HubHttpDeps {
+  roleAdmin?:import("../roles/admin-types.js").RoleAdminControl;
   teams?: import("../http/deps.js").HubHttpDeps["teams"];
   log?: import("../http/deps.js").HubHttpDeps["log"];
   roomInvitations?: import("../http/deps.js").HubHttpDeps["roomInvitations"];
@@ -131,6 +142,8 @@ export interface HubHttp {
 }
 
 export interface HubHttpEntry {
+  /** This compiled entry owns the role settings routes and display projection. Older injected entries stay legacy. */
+  readonly roleSettingsV1?:true;
   createHubHttp(deps: HubHttpDeps): HubHttp;
   migrations: readonly HubMigration[];
 }
@@ -317,7 +330,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         floor.initialize();
         createKeyFile(options.home, SERVER_SET.keys[0]!);
       }
-      applyHubMigrations(db, migrations);
+      applyHubMigrations(db, hubRoleMigrationsForState(db,migrations));
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
@@ -370,14 +383,26 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const identity = readHubIdentity({ home: options.home, memberOrigin: settings.memberOrigin });
       if (identity.hubId !== settings.hubId) throw new HubStateError("hub-state-mismatch", "the Hub keys belong to another Hub");
       const issuerKey = createPrivateKey(readPrivateFile(options.home, "hub/keys/issuer-key.pem"));
-      // No cutover is registered here. Legacy images remain configured-root-only; a future
-      // committed role image must prove the real persisted clock before any named management use.
+      // A never-enabled directory binding awaiting repair keeps its existing root repair path.
+      const rolesMounted=httpEntry.roleSettingsV1===true&&inspectHubGroupPolicyBinding(db,settings.hubId,resolvedDirectory.realm,groupGeneration).kind==="ready";
+      if(rolesMounted){
+        const cutover=createHubRoleCutover({db,hubId:settings.hubId,realm:resolvedDirectory.realm,generation:groupGeneration,root:settings.administrator,transport:store,migrations,current:live,refreshAuthorization:()=>memberServer?.refreshAuthorization(),now});
+        teardown.add("role migration",()=>cutover.close());const result=cutover.migrate();
+        if(!result.ok)throw new HubStateError("hub-state-mismatch",`role migration is held (${result.code})`);
+      }
+      const readManagementPolicy = createHubManagementPolicyReader({ db, hubId: settings.hubId, realm: resolvedDirectory.realm, generation: groupGeneration, current: live });
+      // The directory participant alone exposes its exact before-image while checking its own SQL transition.
+      const managementPolicy = () => {
+        const basis = directoryDecision.proofBasis();
+        return basis ? parseCanonicalPolicy(JSON.stringify(basis.policy)) : readManagementPolicy();
+      };
+      const managementVersion = () => directoryDecision.proofBasis()?.expected.authorizationVersion ?? store.read().revocationVersion;
       const roleClock = createHubRoleAuthorizationClock({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
-        generation: groupGeneration, root: settings.administrator, transport: store, current: live, now });
+        generation: groupGeneration, root: settings.administrator, transport: store, current: live, policy: managementPolicy, now });
       teardown.add("role authorization clock", () => roleClock.close());
       const management = createHubManagementAuthority({ root: settings.administrator, directory, reads: directoryReads,
-        policy: createHubManagementPolicyReader({ db, hubId: settings.hubId, realm: resolvedDirectory.realm, generation: groupGeneration, current: live }),
-        current: live, version: () => store.read().revocationVersion, assertAuthorizationTime: roleClock.assertAuthorizationTime, now });
+        policy: managementPolicy,
+        current: live, version: managementVersion, assertAuthorizationTime: roleClock.assertAuthorizationTime, now });
       teardown.add("management authorization", () => management.close());
       let groupPolicy: HubGroupPolicyStore | undefined;
       const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
@@ -403,7 +428,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         withDirectoryRead: <T>(person: PersonKey, work: () => Promise<T>) => directoryReads.withDirectoryRead(person, work),
       });
       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
-      const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,
+      const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,roleAdministrators:rolesMounted,
         policy, binding, management,
         audit, current: live, now, version: () => store.read().revocationVersion,
         advanceAuthorization: (database, resource) => {
@@ -460,6 +485,31 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           });
         }, refreshAuthorization: () => memberServer?.refreshAuthorization() });
       teardown.add("group policy confirmation", () => groupControl.close());
+      let roleAdmin:ReturnType<typeof createHubRoleAdminControl>|undefined;
+      let effectiveGroupControl:import("../group-policy/admin-dto.js").HubGroupAdminControl=groupControl;
+      if(rolesMounted){
+        const advanceAuthorization=(database:Database.Database)=>{
+          if(database!==db||!db.inTransaction)throw new HubStateError("service-unavailable","the role policy transaction is unavailable");
+          const next=readHubOperationalPolicy(policy());companyJoin.policyUpdated(next);
+          store.mutate({at:now(),requestId:randomBytes(16).toString("hex"),actor:{kind:"local-host"},action:"role.authorization-changed",result:"completed"},state=>{
+            const denied=new Set(next.denies.filter(d=>d.deny.includes("pair_fleet")).map(d=>personKeyString(d.person)));
+            state.pairings=state.pairings.filter(p=>!p.automatic||!["offered","pending"].includes(p.state)||(next.state==="enabled"&&!denied.has(personKeyString(p.owner))));state.revocationVersion++;
+          });
+        };
+        const shared={db,root:settings.administrator,transport:store,policy:policy(),audit,current:live,now};
+        const writer=createHubRoleWriter({db,hubId:settings.hubId,realm:resolvedDirectory.realm,generation:groupGeneration,root:settings.administrator,audit,directory,reads:directoryReads,effects:createHubRoleResourceEffects(shared),current:live,version:()=>store.read().revocationVersion,advanceAuthorization,refreshAuthorization:()=>memberServer?.refreshAuthorization(),now});
+        teardown.add("role writer",()=>writer.close());
+        roleAdmin=createHubRoleAdminControl({db,root:settings.administrator,directory,reads:directoryReads,management,writer,audit,policy:()=>parseRolePolicy(readHubOperationalPolicy(policy())),current:live,now});
+        const admin=roleAdmin;teardown.add("role administration",()=>admin.close());
+        const shortcut=createHubRoleAllowedListControl({db,root:settings.administrator,directory,policy:policy(),legacy:groupControl,management,roleAdmin,writer,inventory:createHubGroupAdminInventory({db,transport:store,realm:resolvedDirectory.realm}),authorization:groups,current:live,now,version:()=>store.read().revocationVersion});
+        effectiveGroupControl=shortcut;teardown.add("role allowed-list shortcut",()=>shortcut.close());
+        const expiry=createHubRoleExpirySettlement({db,hubId:settings.hubId,realm:resolvedDirectory.realm,generation:groupGeneration,root:settings.administrator,audit,directory,reads:directoryReads,effects:createHubRoleExpiryEffects({...shared,directory,reads:directoryReads}),current:live,version:()=>store.read().revocationVersion,advanceAuthorization,refreshAuthorization:()=>memberServer?.refreshAuthorization(),now});
+        let settling:ReturnType<typeof expiry.settle>|null=null;
+        const settle=()=>{if(settling||!live())return;settling=expiry.settle();void settling.then(result=>{if(!result.ok&&live())options.log("warn","Hub role expiry is held",{code:result.code});},()=>{if(live())options.log("warn","Hub role expiry is held",{code:"unavailable"});}).finally(()=>{settling=null;});};
+        const timer=setInterval(settle,30_000);timer.unref();settle();
+        teardown.add("role expiry",async()=>{clearInterval(timer);expiry.close();await settling;});
+      }
+
       const groupWelcome = createHubGroupWelcome({ policy, readiness: () => {
         const state = binding();
         return state.kind === "ready" ? "ready" : state.legacy ? "never-enabled" : "unavailable";
@@ -483,7 +533,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         companyJoin,
         groups,
         management,
-        groupHttp: { control: groupControl, welcome: groupWelcome },
+        groupHttp: { control: effectiveGroupControl, welcome: groupWelcome },
+        ...(roleAdmin?{roleAdmin}:{}),
         grantDirectory: { policy, binding },
         pairingNotices,
         directoryNotices,

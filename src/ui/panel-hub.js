@@ -60,8 +60,8 @@ const ha = key => t(`hubAccess.${key}`);
 // Kept with the fresh renderer: retained owner dictionaries do not know this label.
 // M-3162: Administration's tabs (Lumen's names: "Manage" holds today's long page; "This Hub" its name already).
 register("hubAdminTabs", {
-  en: { label: "Administration", overview: "Overview", manage: "Manage", teams: "Teams", groups: "Groups", roles: "Roles and permissions", thisHub: "This Hub" },
-  "zh-TW": { label: "管理", overview: "總覽", manage: "管理項目", teams: "團隊", groups: "群組", roles: "角色與權限", thisHub: "這個 Hub" },
+  en: { label: "Administration", overview: "Overview", manage: "Manage", teams: "Teams", groups: "Groups", roles: "Roles and permissions",allowedList:"Allowed list", thisHub: "This Hub" },
+  "zh-TW": { label: "管理", overview: "總覽", manage: "管理項目", teams: "團隊", groups: "群組", roles: "角色與權限",allowedList:"允許清單", thisHub: "這個 Hub" },
 });
 const hat = (key) => t(`hubAdminTabs.${key}`);
 register("hubGrantStatus", {
@@ -177,9 +177,9 @@ export function HubPanel({ route }) {
     return stop;
   }, [s && s.login]);
   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
-  const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : hc("admin") : view === "notices" ? hc("noticesTitle")
+  const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : view==="allowed-list"?hat("allowedList") : (view==="roles"||view==="groups"&&rolesOn(s,hubClient()))?hat("roles"):hc("admin") : view === "notices" ? hc("noticesTitle")
     : view === "invitations" ? hroom("invitationsTitle") : view === "teams" ? ht("mine") : hc("chats");
-  useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && view === "groups")) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
+  useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && (view === "groups"&&!rolesOn(s,hubClient())||view==="allowed-list"))) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
     : html`<${Skeleton} variant="rows" lines=${4} />`;
@@ -1116,12 +1116,13 @@ function HubAdmin({ admin }) {
   const overview = !overviewGone && s?.features?.includes("admin-dashboard-v1") && typeof hubClient()?.adminDashboard === "function";
   const tabs = [admin && overview ? "overview" : null, canManage ? "manage" : null, admin && teams ? "teams" : null, roles && canRole ? "roles" : admin && groups ? "groups" : null, admin ? "this-hub" : null].filter(Boolean);
   const view = adminView();
-  const selected = roles && view === "groups" ? "roles" : ADMIN_TAB_VIEWS[view];
+  const selected = roles && ["groups","allowed-list"].includes(view) ? "roles" : ADMIN_TAB_VIEWS[view];
   const current = view === "" ? tabs[0] : tabs.includes(selected) ? selected : tabs[0];
   const bar = html`<${AdminTabs} tabs=${tabs} current=${current} />`;
   if (current === "overview") return html`${bar}<div class="col hub-owner hub-admin-ov-col"><${LazyRoomPart} load=${() => import("./hub-admin-overview.js")} name="HubAdminOverview"
     props=${{ client: hubClient(), onOpen: openAdminTab, onGone: () => { setOverviewGone(true); openAdminTab("manage"); } }} /></div>`;
   if (current === "this-hub") return html`${bar}${directory && view === "directory" ? html`<${LazyDirectory} session=${s} />` : html`<div class="col hub-owner"><${LazyThisHub} directory=${directory} /></div>`}`;
+  if(current==="roles"&&view==="allowed-list"&&admin&&groups)return html`${bar}<${LazyGroups} pick=${m=>m.HubGroupPolicyPage} props=${{roleShortcut:true}} />`;
   if (current === "roles") return html`${bar}<div class="col hub-owner"><${LazyRoomPart} load=${() => import("./hub-roles.js")} name="HubRoles" props=${{client:hubClient()}} /></div>`;
   if (current === "groups") return html`${bar}<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
   if (current === "teams") return html`${bar}<div class="col hub-owner"><h2 class="sr-only">${ht("title")}</h2><${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsPage" props=${{ client: hubClient(), mode: "admin", person: s?.person }} /></div>`;
