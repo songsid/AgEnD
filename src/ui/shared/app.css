@@ -985,8 +985,20 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 /* A chat image, full size, in the page (image-lightbox.js): the whole viewport, dark, the image fitted to it. */
 html.lb-open .scroller { overflow: hidden; }
 .lb { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
-  background: rgba(0, 0, 0, 0.95); color: #fff; overflow: hidden; overscroll-behavior: contain; }
+  background: var(--media-stage); background: color-mix(in srgb, var(--media-stage) calc(100% - 100% * var(--lb-pull, 0)), transparent);
+  color: #fff; overflow: hidden; overscroll-behavior: contain; }
 .lb::backdrop { background: rgba(0, 0, 0, 0.6); }
+/* M-3210: a phone's swipe (image-zoom.js): pulled up or down, the dark fades with --lb-pull (0…1, set on the dialog
+   through the CSSOM) and the bar and arrows go first; a swipe that springs back eases; the next picture slides in from
+   the side it came from. */
+.lb-bar, .lb-nav { opacity: calc(1 - 2 * var(--lb-pull, 0)); }
+.lb-img.lb-snap { transition: transform var(--t-med) var(--ease); }
+.lb-stage.lb-in-next { animation: lb-in-next var(--t-med) var(--ease); }
+.lb-stage.lb-in-prev { animation: lb-in-prev var(--t-med) var(--ease); }
+@keyframes lb-in-next { from { transform: translateX(28%); opacity: 0.3; } }
+@keyframes lb-in-prev { from { transform: translateX(-28%); opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .lb-img.lb-snap { transition: none; } .lb-stage.lb-in-next, .lb-stage.lb-in-prev { animation: none; } }
+.lb-nav:disabled { opacity: calc(0.35 * (1 - 2 * var(--lb-pull, 0))); }
 .lb-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 56px 16px 16px; box-sizing: border-box;
   overflow: hidden; touch-action: none; }
 /* #2333: the picture at its own size, placed and scaled by a CSSOM transform from its top-left corner (image-zoom.js);

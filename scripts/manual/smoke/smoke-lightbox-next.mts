@@ -1,4 +1,4 @@
-// The lightbox's previous / next across a message's images (the user's report on 2.3.0-beta.24: with 7 images, Next
+// The lightbox's previous / next across a message's images (M-3210: the chat's, in message order, no wrap) (the user's report on 2.3.0-beta.24: with 7 images, Next
 // "flashes once and then the next image is not visible", the level reads "…"), from defaults (fleet decision a78ebdc5):
 // a fresh profile driven through visible UI — sign in, open the agent from the sidebar (a phone: through the drawer),
 // click the first picture of a message with 7, then Next through all of them and back with Prev (the thumbnails in
@@ -93,10 +93,10 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
       if (i === 3) await shot("2-next-3of7");
       if (i === 2) res.trace = await page.evaluate("window.__lbTrace");
     }
-    if (c.device === "phone") await next.tap(); else await next.click();         // wraps to 1
-    const wrapped = await settled();
-    ok(res, "wrapsTo1", shown(wrapped) && wrapped.src === srcOf(0), wrapped);
-    for (const want of [7, 6]) {
+    // M-3210: the last picture is the last (no wrap): Next is disabled there.
+    const stays = await settled();
+    ok(res, "lastNextDisabled", await next.isDisabled() && stays.src === srcOf(6), stays);
+    for (const want of [6, 5]) {
       if (c.device === "phone") await prev.tap(); else await prev.click();
       const z = await settled();
       res.steps.push({ step: `prev→${want}`, ...z });
@@ -104,7 +104,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
     }
     await page.keyboard.press("ArrowRight");                                       // the arrow keys too
     const key = await settled();
-    ok(res, "arrowShown", shown(key) && key.src === srcOf(6), key);
+    ok(res, "arrowShown", shown(key) && key.src === srcOf(5), key);
     await shot("3-prev-and-keys");
     // Not cached: the cache off and each picture held 800 ms. A step is hidden while it loads ("…", never the previous
     // picture), then shown with its level.
@@ -115,9 +115,9 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
     if (c.device === "phone") await prev.tap(); else await prev.click();
     await page.waitForTimeout(200);
     const loading = await page.evaluate(READ) as any;
-    ok(res, "uncachedHiddenWhileLoading", !loading.ready && loading.visibility === "hidden" && loading.level === "…" && loading.src === srcOf(5), loading);
+    ok(res, "uncachedHiddenWhileLoading", !loading.ready && loading.visibility === "hidden" && loading.level === "…" && loading.src === srcOf(4), loading);
     const loaded = await settled().then(async (z) => (z.ready ? z : (await page.waitForTimeout(1500), page.evaluate(READ) as Promise<any>)));
-    ok(res, "uncachedShownOnceLoaded", shown(loaded) && loaded.src === srcOf(5), loaded);
+    ok(res, "uncachedShownOnceLoaded", shown(loaded) && loaded.src === srcOf(4), loaded);
     await page.unroute(/\/ui\/file\/[0-9a-f]{32}$/);
     ok(res, "noPageErrors", p.errors.length === 0);
     res.errors = p.errors;
