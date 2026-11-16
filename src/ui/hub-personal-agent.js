@@ -49,7 +49,7 @@ export function HubPersonalAgent({client,scope,onSaved=()=>{}}){
    ${computer?html`<div class="s-row"><span class="hub-row-text"><strong>${computer.name}</strong><small class="note">${form?.answerOnly?hp("answerOnly"):computer.folder||hp("unchecked")}</small></span><span class="tag">${hp(!computer.connected?"later":computer.working?"working":computer.clis.some(canUse)?"ready":"unavailable")}</span></div>
     ${computer.clis.map(cli=>{const compact=view.agent?.answerOnly===true&&form?.answerOnly,reason=personalCliReason(cli);return html`<div key=${cli.id} class="hub-personal-cli">
      <div class="s-row"><span class="hub-row-text"><strong>${cli.id==="codex"?"Codex":"Claude"}</strong><small class="note">${hp(form?.answerOnly&&cli.id==="codex"&&cli.answerOnlyAvailable?"answerOnly":reason)}</small>${cli.reason&&!cli.available&&reason!=="answerOnlyFailed"?html`<small class="note">${cli.reason}</small>`:null}</span></div>
-     ${cli.id==="codex"&&cli.answerOnlyAvailable===true?html`<div class="form" data-answer-only-option>
+     ${cli.id==="codex"&&(cli.answerOnlyAvailable===true||form?.answerOnly&&cli.available)?html`<div class="form" data-answer-only-option>
       ${!compact?html`<strong>${hp("answerOnlyOption")}</strong><p class="note">${hp("answerOnlyExplain")}</p>`:null}
       <p class="note">${hp("answerOnlyDisclosure")}</p>${!compact?html`<p class="note">${hp("answerOnlyPays")}</p>`:null}
       <label class="check"><input type="checkbox" disabled=${busy} checked=${form?.answerOnly===true} onChange=${e=>edit({answerOnly:e.target.checked,cli:e.target.checked?"codex":form.cli,model:""})} /><span>${hp("answerOnlyTick")}</span></label>

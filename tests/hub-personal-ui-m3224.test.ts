@@ -140,3 +140,12 @@ it("keeps the sign-in action when only authentication withholds an otherwise che
  const {p}=await fixture("en",data);expect(p.root.textContent).toContain("Sign in on that computer, then refresh.");
  expect(p.root.textContent).not.toContain("and Answer only mode isn't available either");expect(p.root.querySelector("[data-answer-only-option]")).toBeNull();
 });
+it("lets the owner turn off a saved Answer only choice if the one-folder check later succeeds",async()=>{
+ const data:any=view();Object.assign(data.computer.clis[0],{available:true,personalStatus:"ready",answerOnlyAvailable:false});
+ data.agent={id:"personal",exposureId:"exposure",revision:1,cli:"codex",answerOnly:true,name:"Knowledge",shared:true};
+ const {p,client}=await fixture("en",data),toggle=p.root.querySelector('[data-answer-only-option] input');
+ expect(toggle).toBeTruthy();expect(toggle.checked).toBe(true);toggle.checked=false;fire(toggle,"change");await settle();
+ expect(p.root.querySelector('[data-answer-only-option]')).toBeNull();expect(button(p,"Save personal agent")?.disabled).toBe(false);
+ fire(p.root.querySelector("form"),"submit");await settle(20);
+ expect(client.savePersonalAgent.mock.calls[0][1]).not.toHaveProperty("answerOnly");expect(client.savePersonalAgent.mock.calls[0][1].ifRevision).toBe(1);
+});
