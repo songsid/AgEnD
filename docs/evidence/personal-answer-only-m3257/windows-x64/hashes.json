@@ -1,0 +1,10 @@
+{
+  "source": "6a7aeaacbe913cd54b9d12b7ca874db92e7b6446",
+  "sha256": {
+    ".artifacts/m3257/windows-prep/proof.mjs": "f01a07fa6cc0b3d1fd447a8d2efba22712d078a32ccbbf83ee111bc82b7492fd",
+    ".artifacts/m3257/windows-prep/library.mjs": "6f8ab3c3bcce723956dc2a77c042d6f45452c5c4db4d37509b96caadb96a67b6",
+    ".artifacts/m3257/windows-prep/run-once.py": "4598151af7fee641914cb29223570871bc1b3d078b089055fa76f82d5d149065",
+    ".artifacts/m3257/windows-prep/runtime-pane-private.ps1": "48b654faf6b362f8fbcdd0e18794ec558a55d12906be522d5297189388b775b4",
+    ".artifacts/m3257/windows-prep/codex-win32-x64.tgz": "075304c882f6618eb73037bdd1164f942516f214108540bdbb9130eff4ab1e08"
+  }
+}
