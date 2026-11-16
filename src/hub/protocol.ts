@@ -13,6 +13,15 @@ import { recommendationSchema, recommendationAckSchema } from "./recommendation-
 import { fleetInfoSchema } from "./fleet-info.js";
 export const HUB_VERSION = 1;
 export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect: "/hub/v1/connect" } as const;
+/**
+ * M-3205: the member's durable revocation floor, sent on the connect upgrade (a header, so an older Hub ignores it and the
+ * strict hello is unchanged). A Hub restored from a backup has a lower authorization version than its Fleets have seen, and
+ * every Fleet refuses that welcome as stale for good. A current Hub that authenticates the credential first catches its
+ * own version up to the floor (never down): leases issued at any older version stay refused, so the floor keeps its meaning.
+ */
+export const HUB_REVOCATION_FLOOR_HEADER = "x-agend-revocation-floor";
+/** The largest step one authenticated member may move the Hub's version (a restore gap is a handful of changes). */
+export const HUB_REVOCATION_CATCH_UP_MAX = 1_000_000;
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
 /** Track C's injectable adapter uses these frames; advertised only when live dispatch is composed (R2). */
 export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";

@@ -708,6 +708,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY] : []),
           ...(options.representative.readState ? [HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])],
         memberOrigin: profile.hub.memberOrigin,
+        revocationFloor: () => journal.revocationVersion(),
         // #3429 B: a pending relocation's `to` first, then the anchor; a relocation state that does not verify: none.
         ...(profileDigest ? { dial: () => relocations.dialOrder(profile, profileDigest) } : {}),
         current: live,

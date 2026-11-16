@@ -10,6 +10,7 @@ import { HubGroupAuthorizationError, type HubGroupAuthorization, type HubGroupEn
 import { HubGroupPolicyError, HubGroupReadOverload } from "./group-policy/store.js";
 import { HubGroupEnrollmentRefusal } from "./group-policy/resources.js";
 import { automaticFleetSlots } from "./enrollment-budget.js";
+import { HUB_REVOCATION_CATCH_UP_MAX } from "./protocol.js";
 import type { HubManagementAuthority, HubManagementPermission } from "./roles/authority.js";
 const TTL = 10 * 60_000;
 const secret = () => randomBytes(32).toString("hex");
@@ -363,15 +364,32 @@ export class HubPairingService {
       return f?.status === "active" && f.generation === generation && (revocationVersion === undefined || state.revocationVersion === revocationVersion);
     } catch { return false; }
   }
-  async connect(credential: string): Promise<{ fleetId: string; owner: PersonKey; generation: number; linkEpoch: number; revocationVersion: number }> {
+  async connect(credential: string, revocationFloor?: number): Promise<{ fleetId: string; owner: PersonKey; generation: number; linkEpoch: number; revocationVersion: number; caughtUp?: { from: number; to: number } }> {
     let f = this.authenticate(credential);
     const eligible = await this.eligible(f.owner);
     if (!eligible.eligible || personKeyString(eligible.person.key) !== personKeyString(f.owner)) throw new HubProtocolError("denied");
-    f = this.authenticate(credential); this.options.fenceFleet(f.fleetId, "replaced");
+    f = this.authenticate(credential);
+    // M-3205: only after the credential and its owner check out, and only upward.
+    const caughtUp = revocationFloor === undefined ? undefined : this.catchUpRevocation(f.fleetId, revocationFloor);
+    this.options.fenceFleet(f.fleetId, "replaced");
     return this.options.store.mutate(this.audit({ kind: "member", fleetId: f.fleetId }, "member.connected", randomUUID()), state => {
       const current = state.fleets.find(x => x.id === f.fleetId);
       if (!current || current.generation !== f.generation || current.status !== "active") throw new HubProtocolError("stale");
-      state.nextLinkEpoch++; return { ...f, linkEpoch: state.nextLinkEpoch, revocationVersion: state.revocationVersion };
+      state.nextLinkEpoch++; return { ...f, linkEpoch: state.nextLinkEpoch, revocationVersion: state.revocationVersion, ...(caughtUp ? { caughtUp } : {}) };
+    });
+  }
+  /**
+   * M-3205: an authenticated member has seen a higher authorization version than this Hub holds — the Hub was restored from
+   * a backup (or its upgrade's own changes were rolled back with it). Raise the version to that floor in one audited change.
+   * Raising only invalidates older leases (every connected Fleet reconnects, as after any authorization change); it never
+   * restores anything a restore took away. Out-of-range floors are ignored, and the member then stays held as before.
+   */
+  private catchUpRevocation(fleetId: string, floor: number): { from: number; to: number } | undefined {
+    const from = this.options.store.read().revocationVersion;
+    if (!Number.isSafeInteger(floor) || floor <= from || floor - from > HUB_REVOCATION_CATCH_UP_MAX) return undefined;
+    return this.options.store.mutate({ ...this.audit({ kind: "member", fleetId }, "member.revocation-caught-up", randomUUID()), fleetId }, state => {
+      if (floor <= state.revocationVersion) return undefined;
+      const before = state.revocationVersion; state.revocationVersion = floor; return { from: before, to: floor };
     });
   }
   async revoke(ctx: HubRequestContext, fleetId: string): Promise<void> {
