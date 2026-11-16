@@ -23,3 +23,16 @@ Rollback: personal admission off with a schema-compatible binary. A hard downgra
 pre-registration Hub database/content/audit/Runtime-journal backup and its matching binary/keys. Merely withdrawing
 a personal publication cannot make retained NULL-Fleet messages safe for old readers. See the owner-model rollback
 section. No migration-record deletion or fictional Fleet metadata is an accepted rollback.
+
+## Existing migration fixture repair
+
+The first exact registration CI exposed three failures in two historical fixture files: positional exposure
+values encountered the newer personal columns, and a fixture omitting room-agent storage still included the
+personal migration that depends on its delivery index. The local pre-repair run reproduces all three.
+
+The fixtures now derive their historical starting registries from the pre-personal registry. Every upgrade
+still runs the full current HTTP registry twice, including the personal migration, then keeps the original
+retained-byte and older-registry refusal assertions. The room fixture helper also verifies personal schema v1
+and default-off settings; the exposure fixture verifies retained Fleet identity plus the new source fields.
+Both files plus the existing retained-row/FK personal upgrade suite pass 10/10. No product migration or runtime
+source was changed. [Before](ci-fixtures-before.log), [after](ci-fixtures-after.log).
