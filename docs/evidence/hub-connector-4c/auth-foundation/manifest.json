@@ -54,5 +54,6 @@
       }
     ]
   },
-  "scope": "Owned SQLite, Hub browser contexts and inert directory; real audit selected. No mounted OAuth/HTTP MCP, CLI, browser, live Hub, live AD or deployment claim."
+  "scope": "Owned SQLite, Hub browser contexts and inert directory; real audit selected. No mounted OAuth/HTTP MCP, CLI, browser, live Hub, live AD or deployment claim.",
+  "sourceHead": "582a00743cc0179ff821e15955f8cb2137b8d002"
 }

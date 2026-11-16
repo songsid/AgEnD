@@ -30,7 +30,7 @@ async function world(realAudit = false) {
     const pending = begin(); const url = new URL(await auth.approve(ctx ?? await browser(),pending.request,selection)); return {code:url.searchParams.get("code")!,url}; };
   const exchange = (code: string, extra: Record<string,unknown> = {}) => auth.exchangeCode({client_id:client.client_id,code,code_verifier:verifier,redirect_uri:uri,resource,...extra});
   const connected = async () => exchange((await approve()).code);
-  return {core,sessions,auth,client,browser,begin,approve,exchange,connected,policy,now:()=>now,advance:(ms:number)=>{now+=ms;},disable:()=>{allowed=false;revision++;}};
+  return {core,sessions,auth,client,browser,begin,approve,exchange,connected,policy,now:()=>now,advance:(ms:number)=>{now+=ms;},disable:()=>{allowed=false;revision++;},enable:()=>{allowed=true;revision++;}};
 }
 it("registers a bounded public MCP app without a secret or person supplied by the app", async () => {
   rig = await s3bRig(); HUB_MCP_AUTH_MIGRATION.up(rig.db);
@@ -79,7 +79,7 @@ it("refuses an expanded consent selection, cancellation replay and expired pendi
 });
 it("requires an enabled feature permit and a live directory browser, never local-host repair authority",async()=>{
   const w=await world(), ctx=await w.browser(), pending=w.begin();
-  const off=new HubMcpAuth(w.core); await expect(off.preview(ctx,pending.request)).rejects.toMatchObject({error:"access_denied"});
+  const off=new HubMcpAuth(w.core); await expect(off.preview(ctx,pending.request)).rejects.toMatchObject({error:"temporarily_unavailable"});
   const local={...ctx,current:async()=>({kind:"local-host" as const,sessionId:"host",directoryBinding:rig!.admin})};
   await expect(w.auth.approve(local,pending.request,["rooms:read"])).rejects.toMatchObject({error:"access_denied"});
   rig!.setEligible("member",false); await expect(w.auth.approve(ctx,pending.request,["rooms:read"])).rejects.toThrow();
@@ -177,4 +177,40 @@ it("does not consume an authorization code or leave a connected app on an audit 
   rig!.setAuditFails(true);await expect(w.auth.approve(ctx,pending.request,["rooms:read"])).rejects.toThrow();
   expect(rig!.db.prepare("SELECT * FROM hub_mcp_apps").all()).toHaveLength(0);
   rig!.setAuditFails(false);expect(await w.auth.approve(ctx,pending.request,["rooms:read"])).toContain("code=");
+});
+it.each(["preview","approve","list","disconnect"] as const)("refuses an app token context at the browser-only %s boundary",async method=>{
+  const w=await world(), tokens=await w.exchange((await w.approve(["rooms:read"])).code), identity=await w.auth.authenticate(tokens.access_token), pending=w.begin();
+  const action=method==="preview"?()=>w.auth.preview(identity.context,pending.request):method==="approve"?()=>w.auth.approve(identity.context,pending.request,[...HUB_MCP_SCOPES])
+    :method==="list"?()=>w.auth.list(identity.context):()=>w.auth.disconnect(identity.context,identity.appId);
+  await expect(action()).rejects.toMatchObject({error:"access_denied"});
+  expect(rig!.db.prepare("SELECT scopes,state FROM hub_mcp_apps").all()).toEqual([{scopes:JSON.stringify(["rooms:read"]),state:"active"}]);
+});
+it("an observed authoritative policy denial ends every app for that person before re-enable",async()=>{
+  const w=await world(), a=await w.connected(), b=await w.connected();w.disable();
+  await expect(w.auth.authenticate(a.access_token)).rejects.toThrow();w.enable();
+  await expect(w.auth.authenticate(a.access_token)).rejects.toThrow();
+  await expect(w.auth.authenticate(b.access_token)).rejects.toThrow();
+  expect(rig!.db.prepare("SELECT state FROM hub_mcp_apps").all()).toEqual([{state:"ended"},{state:"ended"}]);
+});
+it("missing policy wiring refuses temporarily without ending any grants",async()=>{
+  const w=await world(), tokens=await w.connected(), missing=new HubMcpAuth(w.core);
+  await expect(missing.authenticate(tokens.access_token)).rejects.toMatchObject({error:"temporarily_unavailable"});
+  expect((await w.auth.authenticate(tokens.access_token)).name).toBe("Example AI");
+  expect(rig!.audits.filter(a=>a.action==="mcp.ended")).toEqual([]);
+});
+it("the policy disable hook ends even unused grants atomically before a later re-enable",async()=>{
+  const w=await world(), a=await w.connected(), b=await w.exchange((await w.approve([...HUB_MCP_SCOPES],await w.browser("other"))).code);
+  w.core.atomic(()=>w.auth.revokePolicyGrants({kind:"all"},"feature-disabled"));w.disable();w.enable();
+  await expect(w.auth.authenticate(a.access_token)).rejects.toThrow();
+  await expect(w.auth.authenticate(b.access_token)).rejects.toThrow();
+  expect(rig!.audits.filter(a=>a.action==="mcp.ended")).toMatchObject([{reasonCode:"feature-disabled"},{reasonCode:"feature-disabled"}]);
+});
+it("rolls back the entire policy sweep if its second audit append fails",async()=>{
+  const w=await world(), a=await w.connected(), b=await w.connected(), append=rig!.httpDeps.audit.append.bind(rig!.httpDeps.audit);let ends=0;
+  const spy=vi.spyOn(rig!.httpDeps.audit,"append").mockImplementation((tx,event)=>{
+    if(event.action==="mcp.ended"&&++ends===2)throw new Error("Owned audit failure");return append(tx,event);
+  });
+  expect(()=>w.auth.revokePolicyGrants({kind:"all"},"feature-disabled")).toThrow("Owned audit failure");spy.mockRestore();
+  expect((await w.auth.authenticate(a.access_token)).name).toBe("Example AI");
+  expect((await w.auth.authenticate(b.access_token)).name).toBe("Example AI");
 });

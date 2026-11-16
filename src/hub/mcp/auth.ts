@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { z } from "zod";
 import { personKeyString } from "../identity.js";
 import { personFromString, type HubCore, type HubOperationPermit } from "../http/core.js";
-import { HubProtocolError, plain } from "../validation.js";
+import { HubProtocolError, plain, person as personSchema, validated } from "../validation.js";
 import type { HubRequestContext, PersonKey } from "../types.js";
 
 export const HUB_MCP_SCOPES = ["rooms:read", "rooms:post", "agents:ask"] as const;
@@ -107,11 +107,18 @@ export class HubMcpAuth {
   private async browser(ctx: HubRequestContext) {
     const person = await ctx.requirePerson(), actor = await ctx.current();
     const current = () => this.core.live() && ctx.isCurrent?.() === true;
-    if (actor.kind !== "directory" || personKeyString(actor.person) !== personKeyString(person) || !current()) throw new HubMcpOAuthError("access_denied");
+    if (actor.kind !== "directory" || actor.sessionId.startsWith("mcp:") || personKeyString(actor.person) !== personKeyString(person) || !current()) throw new HubMcpOAuthError("access_denied");
+    // A directory actor is not necessarily a browser: app contexts deliberately
+    // reuse that actor for existing person services, but have no cookie session row.
+    const session = this.core.atomic(db => db.prepare("SELECT person,state,directory_epoch,expires_at FROM hub_sessions WHERE id=?").get(actor.sessionId) as
+      {person:string;state:string;directory_epoch:number;expires_at:number}|undefined);
+    if(!session || session.person!==personKeyString(person) || session.state!=="active"
+      || session.directory_epoch!==this.core.directoryEpoch || session.expires_at<=this.now()) throw new HubMcpOAuthError("access_denied");
     return { person, current };
   }
   private async permit(person: PersonKey, current: () => boolean): Promise<HubOperationPermit> {
-    if (!current() || !this.policy) throw new HubMcpOAuthError("access_denied");
+    if (!this.policy) throw new HubMcpOAuthError("temporarily_unavailable");
+    if (!current()) throw new HubMcpOAuthError("access_denied");
     const permit = await this.policy.authorize(person, current);
     permit.assertCurrent(); if (!current()) throw new HubMcpOAuthError("access_denied"); return permit;
   }
@@ -148,7 +155,7 @@ export class HubMcpAuth {
     const facts = await this.core.current(person);
     if (!facts) {
       const status = this.core.atomic(db => db.prepare("SELECT status FROM hub_people WHERE person=?").get(row.person) as {status:string}|undefined);
-      if (status?.status === "disabled") this.end(row,"account-disabled");
+      if (status?.status === "disabled") this.revokePolicyGrants({kind:"person",person},"account-disabled");
       throw new HubMcpOAuthError("invalid_grant");
     }
     let permit: HubOperationPermit;
@@ -158,11 +165,22 @@ export class HubMcpAuth {
     try { permit = await this.permit(person,() => externalCurrent() && this.core.live()); }
     catch (error) {
       if (externalCurrent() && this.core.live() && (error instanceof HubMcpOAuthError && error.error === "access_denied"
-        || error instanceof HubProtocolError && error.code === "denied")) this.end(row,"not-allowed");
+        || error instanceof HubProtocolError && error.code === "denied")) this.revokePolicyGrants({kind:"person",person},"not-allowed");
       throw error;
     }
     permit.assertCurrent(); if(!current()) throw new HubMcpOAuthError("invalid_grant");
     return {row,person,permit,current};
+  }
+  /** Internal policy lifecycle port. The policy writer calls the global sweep in
+   * its disable transaction; an observed person denial ends that person's grants
+   * together. Never expose this method as an app or browser request dispatcher. */
+  revokePolicyGrants(scope:{kind:"all"}|{kind:"person";person:PersonKey},reason:"feature-disabled"|"not-allowed"|"account-disabled"="not-allowed"):void {
+    const selected=validated(z.discriminatedUnion("kind",[z.strictObject({kind:z.literal("all")}),z.strictObject({kind:z.literal("person"),person:personSchema})]),scope);
+    this.core.atomic(db=>{
+      const rows=(selected.kind==="person"?db.prepare("SELECT * FROM hub_mcp_apps WHERE person=? AND state='active'").all(personKeyString(selected.person))
+        :db.prepare("SELECT * FROM hub_mcp_apps WHERE state='active'").all()) as AppRow[];
+      for(const row of rows)this.end(row,reason);
+    });
   }
   private end(row: AppRow, reason: string): void {
     this.core.atomic((db,tx) => {
