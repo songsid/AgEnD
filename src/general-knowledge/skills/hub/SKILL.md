@@ -136,22 +136,25 @@ is never kept." Fields **Account** and **Password**, button **Sign in**.
 ## Connecting your own AI app
 
 When the Hub offers **My AI apps** (我的 AI App), open it from the person's menu. **Connect your app** shows the
-**Hub MCP address** and **Copy setup prompt** for Claude Code, Codex or another MCP app. The colleague adds only the
-Hub's HTTPS `/mcp` address in their app; they install no AgEnD command or local proxy. The prompt contains no secret.
+**Hub MCP address** with **Copy address** as the main action. For Claude Code or Codex, choose the app, use **Copy setup prompt** and
+paste it into that app. For another MCP app, add the address as a remote MCP server directly; no
+prompt button is offered. **Set it up by hand** opens the manual configuration. The colleague adds only the Hub's
+HTTPS `/mcp` address; they install no AgEnD command or local proxy. The prompt contains no secret.
 The Hub must have a certificate the app already trusts. If the app refuses its certificate, ask the administrator to
 fix that certificate; never suggest disabling certificate verification or trusting a self-signed Hub.
 
 The app opens the Hub's normal sign-in page. After company sign-in, the person chooses consent: read their shared
 rooms, post in those rooms, and ask agents they may ask. These three ticks start on; answering other people's
 questions is a disabled later permission. Explain that content read goes to the person's AI app and its provider.
-Posts display the person's name via the app. An app name is unverified display metadata, not proof of its vendor or
-an approval. There is no administrator operation, `@all`, Hub assistant/General or file content. Direct questions and
+Posts display the person's name via the app. The app supplies its own name; the Hub cannot check who made it.
+Consent shows where the person returns after allowing, or says the app runs on this computer with the exact
+loopback origin below it. Only allow if the person started from that app or site. Neither a name nor an address is an approval. There is no administrator operation, `@all`, Hub assistant/General or file content. Direct questions and
 their result IDs belong to that app; browser and other-app one-to-one history is not exposed.
 
 **Disconnect** (中斷連接) takes effect at once. A connection ends after 30 days without use or an authoritative
 account/access denial. An administrator's **Let people connect their own AI apps** starts off in Administration →
-This Hub, with the common AD group/team/person picker. Narrowing that allowance ends existing app connections;
-adding people or otherwise widening it keeps them. The room manager's **Allow AI apps to read and post** starts on in
+This Hub, with the common AD group/team/person picker. Narrowing that allowance ends every existing app connection; people still allowed reconnect in their apps.
+Adding people or otherwise widening it keeps connections. The room manager's **Allow AI apps to read and post** starts on in
 Room settings. Turning it off leaves the room listed with a reason but refuses app reads/posts; browser use remains.
 Limits are five posts per person per minute and thirty direct agent questions per person per hour across their apps.
 

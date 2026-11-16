@@ -26,7 +26,7 @@ function useRead(client,method,arg,scope){
 const errorText=r=>ha(r?.status===401?"signInAgain":r?.status===403?"denied":r?.status===400?"expired":"failed");
 function ReadError({value,retry}){return html`<p class="err" role="alert">${errorText(value)}</p><button class="btn hub-app-button" type="button" onClick=${retry}>${ha("retry")}</button>`;}
 export function appReturnUrl(value){try{const u=new URL(value);return !u.username&&!u.password&&!u.hash&&(u.protocol==="https:"||u.protocol==="http:"&&["127.0.0.1","[::1]","localhost"].includes(u.hostname))?u.href:null;}catch{return null;}}
-export function appDestination(origin){try{const u=new URL(origin);if(u.origin!==origin||!appReturnUrl(origin))return null;return u.protocol==="http:"?ha("localReturn",u.host):u.origin;}catch{return null;}}
+export function appDestination(origin){try{const u=new URL(origin);if(u.origin!==origin||!appReturnUrl(origin))return null;return u.origin;}catch{return null;}}
 export function AppConsentPage({client,request,person,returnTo=url=>location.assign(url)}){
  const scope=useMemo(()=>client.aiAppsScope?.(),[client]),[view,reload]=useRead(client,"appConsent",request,scope),[scopes,setScopes]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(""),life=useLife(client,request),[ready,retry]=useStyle();
  const destination=appDestination(view?.redirectOrigin);
@@ -37,7 +37,7 @@ export function AppConsentPage({client,request,person,returnTo=url=>location.ass
  return html`<div class="s-section-layout hub-ai-apps"><section class="card"><h2>${view?.ok?ha("consentTitle",view.name):ha("consentHeading")}</h2>
   ${!ready?html`<${StyleWait} ready=${ready} retry=${retry}/>`:view===null?html`<p role="status">${ha("loading")}</p>`:!view.ok?html`<${ReadError} value=${view} retry=${reload}/>`:html`
    <p>${ha("consentLead",view.name,person||"")}</p><p class="note">${ha("unverified")}</p>
-   <div class="hub-app-destination"><strong>${ha("returnLabel")}</strong><p>${destination||ha("invalidReturn")}</p><p class="note">${ha("returnWarning")}</p></div>
+   <div class="hub-app-destination"><strong>${ha(destination?.startsWith("http:")?"localReturn":"returnLabel")}</strong><p>${destination||ha("invalidReturn")}</p><p class="note">${ha("returnWarning")}</p></div>
    ${APP_SCOPES.filter(scope=>view.scopes.includes(scope)).map(scope=>html`<label class="check" key=${scope}><input type="checkbox" data-app-scope=${scope} checked=${scopes.includes(scope)} disabled=${busy} onChange=${e=>setScopes(old=>e.target.checked?[...old,scope]:old.filter(x=>x!==scope))}/><span>${ha(keys[scope])}</span></label>`)}
    <label class="check"><input type="checkbox" disabled=${true} checked=${false}/><span>${ha("inbox")} · ${ha("later")}</span></label>
    <p class="note">${ha("noAdmin")}</p><p class="note">${ha("privacy")}</p>${!scopes.length?html`<p class="note">${ha("chooseScope")}</p>`:null}

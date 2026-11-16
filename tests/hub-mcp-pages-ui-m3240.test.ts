@@ -28,10 +28,10 @@ it("sends only the chosen scopes and follows a validated callback, without a cal
 });
 it("discloses an HTTPS app's return origin independently of its unverified name",async()=>{
  const{p}=await mount("AppConsentPage","en",{appConsent:vi.fn(async()=>({ok:true,name:"Claude Code",scopes:[...ui.APP_SCOPES],redirectOrigin:"https://other-app.example"}))});
- expect(p.root.textContent).toContain("https://other-app.example");expect(p.root.textContent).toContain("recognize the app and this return address");expect(p.root.textContent).toContain("The Hub can't check who made it");
+ expect(p.root.textContent).toContain("https://other-app.example");expect(p.root.textContent).toContain("started from that app or site");expect(p.root.textContent).toContain("The Hub can't check who made it");
 });
 it("shows a local callback and refuses Allow with no selected scope or no disclosed destination",async()=>{
- const{p,client}=await mount();expect(p.root.textContent).toContain("An app on this computer (127.0.0.1:43123)");
+ const{p,client}=await mount();expect(p.root.textContent).toContain("This app is running on this computer.");expect(p.root.textContent).toContain("http://127.0.0.1:43123");
  for(const input of p.root.querySelectorAll("[data-app-scope]")){input.checked=false;fire(input,"change");await settle(1);}await settle(5);expect(button(p,"Allow").disabled).toBe(true);fire(button(p,"Allow"),"click");await settle(5);expect(client.saveAppConsent).not.toHaveBeenCalled();
 });
 it("keeps the manual disclosure closed and gives generic apps an address instead of a prompt button",async()=>{
