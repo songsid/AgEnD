@@ -21,6 +21,7 @@ import { join, dirname, basename, resolve } from "node:path";
 import { checkoutTarget, readCheckouts, releaseCandidate, reposRoot, verifyWorktree, writeCheckouts } from "./repo-worktree-guard.js";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { COMPACT_WATCH_TIMEOUT_MS, launchIdentity } from "./compact-watch.js";
+import { TurnWatch } from "./dispatcher-liveness.js";
 import { KIRO_COMPACT_PANE_LINES, KiroCompactPaneFollower } from "./kiro-compact-pane.js";
 import { clearKiroSessionProof, proveKiroSessionId, recordKiroSessionProof } from "./kiro-session-proof.js";
 import { fileURLToPath } from "node:url";
@@ -198,6 +199,10 @@ export const DEFAULT_STATE_IDLE_DEBOUNCE_MS = 2_000;
 export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 /** Coalesce one cosmetic-redraw burst before comparing the visible pane. */
 export const PERIODIC_REDRAW_PROBE_MS = 25;
+/** M-3239: a turn's progress reaches the fleet at most this often while it runs. */
+const TURN_ACTIVITY_REPORT_MS = 30_000;
+/** M-3239: after the idle edge, the transcript's last lines (the final answer) are read within this. */
+const TURN_END_SETTLE_MS = 5_000;
 /** Board 907c7899: how often a kiro /compact's pane is read (TUI V2's "too short" shows for about ten seconds). */
 const KIRO_COMPACT_PANE_POLL_MS = 1_000;
 /** Do not turn a streaming Codex turn into one capture-pane per burst. */
@@ -6678,7 +6683,9 @@ export class Daemon extends EventEmitter {
       this.logStateEdge(previous, snapshot);
       this.publishWorkingState("execution");
       this.emit("instance_state", { name: this.name, ...snapshot });
-      this.broadcastFleetMessage({ type: "instance_state", instanceName: this.name, ...snapshot });
+      this.broadcastFleetMessage({ type: "instance_state", instanceName: this.name, ...snapshot,
+        turnEvidence: this.turnEvidence(), turnActivityAt: this.turnWatch.activityAt });
+      this.noteTurnEdge(snapshot.state);
       if (snapshot.state === "stuck" && pane && this.instanceStateReadyPattern) {
         this.handleStuckTransition(pane, snapshot, this.instanceStateReadyPattern);
       }
@@ -7138,6 +7145,46 @@ export class Daemon extends EventEmitter {
    * This launch's transcript monitor. #1510: its turn boundaries feed the reply guard's ledger, which starts empty
    * with it — a new monitor re-baselines at the transcript's end, so nothing the old one read can be attributed.
    */
+  /** M-3239: this launch's turn as its transcript tells it (dispatcher-liveness.ts). */
+  private readonly turnWatch = new TurnWatch();
+  private turnActivitySentAt = 0;
+  private turnEndTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** M-3239: Claude's and Codex's transcripts tell each tool call and answer; their pane's spinner alone is not a turn. */
+  private turnEvidence(): boolean {
+    const bin = this.backend?.binaryName;
+    return (bin === "claude" || bin === "codex") && this.transcriptMonitor?.following() === true;
+  }
+
+  /** M-3239: progress for the board's quiet clock, at most every 30 s while a turn runs (the idle edge carries the last). */
+  private reportTurnActivity(): void {
+    const now = Date.now();
+    if (now - this.turnActivitySentAt < TURN_ACTIVITY_REPORT_MS) return;
+    this.turnActivitySentAt = now;
+    this.broadcastFleetMessage({ type: "turn_activity", instanceName: this.name, at: now });
+  }
+
+  /**
+   * M-3239: on the pane's idle edge, after a moment for the transcript's last lines: the turn's final text, when it
+   * messaged no one — the fleet tells the dispatcher of a claimed card if that text asks a question.
+   */
+  private noteTurnEdge(state: string): void {
+    if (state !== "idle") {
+      if (this.turnEndTimer) { clearTimeout(this.turnEndTimer); this.turnEndTimer = null; }
+      if (state === "working") this.turnWatch.begin(Date.now());
+      return;
+    }
+    if (this.turnEndTimer) return;
+    this.turnEndTimer = setTimeout(() => {
+      this.turnEndTimer = null;
+      if (this.instanceState !== "idle") return;                       // the turn went on
+      const turn = this.turnWatch.end();
+      if (!turn || turn.messaged || !turn.text.trim() || !this.turnEvidence()) return;
+      this.broadcastFleetMessage({ type: "turn_ended", instanceName: this.name, startedAt: turn.startedAt, text: turn.text.slice(-4000) });
+    }, TURN_END_SETTLE_MS);
+    this.turnEndTimer.unref?.();
+  }
+
   private buildTranscriptMonitor(source: TranscriptSource | null): TranscriptMonitor {
     this.followLog.reset();
     const modelLaunch = this.backend?.modelObservationLaunch?.();
@@ -7197,6 +7244,11 @@ export class Daemon extends EventEmitter {
       if (this.transcriptMonitor === monitor && owner === launchIdentity(this.interactionOwner())) this.resetInboundPresentation();
     });
     for (const event of ["tool_use", "tool_result", "assistant_text"] as const) monitor.on(event, touch);
+    // M-3239: the turn as the transcript tells it — progress for the board's quiet clock, and the question a turn ends on.
+    const mine = () => this.transcriptMonitor === monitor;
+    monitor.on("tool_use", (name: string, input: unknown) => { if (mine()) { this.turnWatch.tool(name, input, Date.now()); this.reportTurnActivity(); } });
+    monitor.on("tool_result", () => { if (mine()) { this.turnWatch.result(Date.now()); this.reportTurnActivity(); } });
+    monitor.on("assistant_text", (text: string) => { if (mine()) { this.turnWatch.text(text, Date.now()); this.reportTurnActivity(); } });
     return monitor;
   }
 

@@ -166,7 +166,7 @@ import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
 import { TaskBoardWaker, namesCard } from "./task-board-waker.js";
-import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
+import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, questionNotices, turnQuestion, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
 import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
@@ -3020,6 +3020,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly livenessGone = new Map<string, { kind: "crash_loop" | "supervision_ended"; reason: string; at: number }>();
   /** #3647: when each instance last showed working (after the startup grace): activity for "quiet". */
   private readonly lastWorkingAt = new Map<string, number>();
+  /** M-3239: the instances whose progress is read from their transcript (see cacheInstanceExecutionState). */
+  private readonly livenessTurnEvidence = new Set<string>();
   private dispatcherLiveness: DispatcherLiveness | null = null;
   /** Adapters whose last slash command registration failed and General was told (#1131). */
   private slashRegistrationFailed = new Set<string>();
@@ -5427,6 +5429,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }));
   }
 
+  /** M-3239: a tool call or an answer in the agent's transcript (not the boot: see cacheInstanceExecutionState). */
+  private noteTurnActivity(name: string, at: number): void {
+    if (!Number.isFinite(at) || at > Date.now() + 60_000 || at - this.startedAt < LIVENESS_STARTUP_GRACE_MS) return;
+    if (at > (this.lastWorkingAt.get(name) ?? 0)) this.lastWorkingAt.set(name, at);
+  }
+
+  /**
+   * M-3239: an agent ended a turn without messaging anyone. If its final text asks a question and it holds a card
+   * another agent handed it, that dispatcher is told, quoting the question — otherwise the question sits on the agent's
+   * own screen and the card stalls (a beta.7 rehearsal waited 1.5 h on one).
+   */
+  private onTurnEndedQuietly(name: string, startedAt: number, text: string): void {
+    if (this.shuttingDown || this.isPlannedRestart() || !livenessSettings(this.fleetConfig).enabled) return;
+    const question = turnQuestion(text);
+    if (!question) return;
+    const outbox = this.deliveryOutbox;
+    if (!outbox?.isOpen) return;
+    const sent = outbox.latestSentAt(name);
+    if (sent !== null && sent >= startedAt) return;                     // it did tell someone during the turn
+    const isAgent = (d: string) => (this.fleetConfig?.instances?.[d] != null || this.isClassicInstance(d)) && !taskBoardOffIn(this.fleetConfig, d);
+    for (const n of questionNotices(this.livenessCards(), name, question, startedAt, isAgent)) {
+      this.admitTaskBoardNotice(n.dispatcher, n.message, n.key);
+      this.logger.info({ assignee: name, dispatcher: n.dispatcher }, "Dispatcher told: assignee ended its turn on a question it sent no one");
+    }
+  }
+
   /** #3647: what the fleet knows about an assignee now; null when it is not an instance here. */
   private livenessFacts(name: string): AssigneeFacts | null {
     if (this.fleetConfig?.instances?.[name] == null) return null;
@@ -5451,6 +5479,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
       execution: exec ? { state: exec.state, since: exec.stateChangedAt } : null,
       lastWorkingAt: this.lastWorkingAt.get(name) ?? null,
+      turnEvidence: this.livenessTurnEvidence.has(name),
       prompt: p.state === "awaiting_input" && p.interaction?.since ? { since: p.interaction.since } : null,
       waitingOn,
       // Asked only when it could be quiet (one indexed read per idle assignee).
@@ -7092,8 +7121,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // asks "is anyone still reporting", which only the receiver can date.
       receivedAt: now,
     });
-    // #3647: activity, for "quiet" — not the boot itself (every agent shows working while it starts).
-    if (state === "working" && now - this.startedAt >= LIVENESS_STARTUP_GRACE_MS) this.lastWorkingAt.set(name, now);
+    // #3647: activity, for "quiet" — not the boot itself (every agent shows working while it starts). M-3239: an agent
+    // whose transcript tells its turns (Claude, Codex) shows progress by its tool calls and answers, not by its pane's
+    // spinner — Claude compacting its context on its own, idle, held off a stalled card's notice.
+    if (msg.turnEvidence === true) this.livenessTurnEvidence.add(name);
+    else if (msg.turnEvidence === false) this.livenessTurnEvidence.delete(name);
+    if (typeof msg.turnActivityAt === "number") this.noteTurnActivity(name, msg.turnActivityAt);
+    if (state === "working" && !this.livenessTurnEvidence.has(name) && now - this.startedAt >= LIVENESS_STARTUP_GRACE_MS) this.lastWorkingAt.set(name, now);
     // The dashboard's "working" line and its Stop button follow the edges, not the heartbeat.
     if (previous?.state !== state) this.emitSseEvent("activity", { instance: name, state: this.getInstanceExecutionState(name) });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
@@ -12803,6 +12837,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // #1690: what our own runtime /model came to (the daemon answered claude's "Switch model?" or saw the result).
           const waiter = typeof msg.id === "string" ? this.runtimeSwitchWaiters.get(msg.id) : undefined;
           if (waiter) { this.runtimeSwitchWaiters.delete(msg.id as string); waiter(msg as unknown as OwnSwitchOutcome); }
+        } else if (msg.type === "turn_activity") {
+          if (typeof msg.at === "number") this.noteTurnActivity(name, msg.at);
+        } else if (msg.type === "turn_ended") {
+          if (typeof msg.startedAt === "number" && typeof msg.text === "string") this.onTurnEndedQuietly(name, msg.startedAt, msg.text);
         } else if (msg.type === "instance_state" || msg.type === "instance_state_response") {
           this.cacheInstanceExecutionState(name, msg);
           if (msg.type === "instance_state_response") {

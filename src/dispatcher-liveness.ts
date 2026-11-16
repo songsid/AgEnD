@@ -44,8 +44,16 @@ export interface AssigneeFacts {
   usageHold?: { model: string; since: number } | null;
   /** Its pane's execution state and since when. */
   execution?: { state: "idle" | "working" | "stuck"; since: number } | null;
-  /** When it last showed working (tool calls, thinking): any working edge counts as activity. */
+  /**
+   * When it last showed progress. With `turnEvidence`, its own transcript's last tool call or answer text; otherwise its
+   * pane's last working edge.
+   */
   lastWorkingAt?: number | null;
+  /**
+   * M-3239: its progress is read from its transcript (Claude, Codex), so its pane showing working is not progress by
+   * itself — the CLI compacting its context on its own, while idle, shows the same spinner as a turn.
+   */
+  turnEvidence?: boolean;
   /** A prompt or dialog waiting for a person at its terminal, and since when. */
   prompt?: { since: number } | null;
   /** The instances it asked something and still waits on (an open request with a correlation id). */
@@ -89,8 +97,9 @@ export function judgeAssignee(f: AssigneeFacts, card: CardTimes, s: LivenessSett
   const idlePaused = reason === "idle" || reason === "warm_cap";
   const idle = f.execution?.state === "idle" || idlePaused;
   if (!idle || f.execution?.state === "working" || (f.waitingOn?.length ?? 0) > 0) return null;
+  // M-3239: with transcript evidence the idle edge is not progress either — it also ends a spinner that was no turn.
   const since = latest(card.claimedAt, card.updatedAt, f.lastMessageAt, f.lastWorkingAt,
-    f.execution?.state === "idle" ? f.execution.since : null, idlePaused ? f.paused?.at : null);
+    f.execution?.state === "idle" && !f.turnEvidence ? f.execution.since : null, idlePaused ? f.paused?.at : null);
   if (!since || now - since < s.quietMs) return null;
   return { kind: "quiet", since, detail: "" };
 }
@@ -110,7 +119,7 @@ export function stillStopped(ep: { kind: StopKind; since: number }, f: AssigneeF
     case "prompt": return !!f.prompt;
     case "quiet": {
       if (f.process !== "running" && f.paused?.reason !== "idle" && f.paused?.reason !== "warm_cap") return true;
-      if (f.execution?.state === "working") return false;
+      if (f.execution?.state === "working" && !f.turnEvidence) return false;
       return latest(card.updatedAt, f.lastMessageAt, f.lastWorkingAt) <= ep.since;
     }
   }
@@ -138,6 +147,89 @@ export function stoppedMessage(lines: string[], codes: string[]): string {
 
 export const backMessage = (card: { code: string; title: string }, assignee: string): string =>
   `[Task board] ${t("liveness.back", card.code, card.title.replace(/\s+/g, " ").trim().slice(0, 60), assignee)}`;
+
+/**
+ * M-3239: the question a turn's final text ends on, or null. An agent that asks in its own terminal — no reply, no
+ * send_to_instance — has asked no one: the question is only on its screen. A question is a sentence ending in "?" (or
+ * "？") that ends the final paragraph; code, inline code and links are not read, nor a table. Returned as said, at most 400 chars.
+ */
+export function turnQuestion(text: string): string | null {
+  const blocks = text.replace(/```[\s\S]*?(?:```|$)/g, "\n\n").split(/\n\s*\n/).map((b) => b.trim())
+    .filter((b) => b && !/^[.。…\s]+$/.test(b));
+  const last = blocks[blocks.length - 1];
+  if (!last) return null;
+  const lines = last.split("\n").filter((l) => !/^\s*\|/.test(l));
+  const plain = lines.join(" ").replace(/`[^`\n]*`/g, (m) => m.replace(/[?？]/g, "")).replace(/https?:\/\/\S+/g, (m) => m.replace(/[?？]/g, ""));
+  const sentences = plain.split(/(?<=[.!?。！？])\s+|(?<=[。！？])/).map((x) => x.trim()).filter(Boolean);
+  // The paragraph ends on the question (a question answered further on is not one), with any just before it.
+  const isQ = (x: string) => /[?？][*_"'”’)\]」』]*$/.test(x);
+  let first = sentences.length;
+  while (first > 0 && isQ(sentences[first - 1]!)) first--;
+  if (first === sentences.length) return null;
+  const q = sentences.slice(first).join(" ").replace(/\s+/g, " ");
+  return q.length > 400 ? `…${q.slice(q.length - 399)}` : q;
+}
+
+/** M-3239: the fleet's own message tools — a turn that called one of them told someone. */
+const FLEET_MESSAGE_TOOL = /(?:^|__)(?:reply|send_to_instance|report_result|delegate_task|request_information|broadcast|hub_room_post)$/;
+const CODE_MODE_FLEET_MESSAGE = /\btools\.mcp__agend\w*?__(?:reply|send_to_instance|report_result|delegate_task|request_information|broadcast|hub_room_post)\s*\(/;
+export function sendsFleetMessage(name: string, input: unknown): boolean {
+  if (/^mcp__agend/.test(name) && FLEET_MESSAGE_TOOL.test(name)) return true;
+  // Codex code mode: every tool is one `exec` script calling tools.*.
+  return typeof input === "string" && CODE_MODE_FLEET_MESSAGE.test(input);
+}
+
+/**
+ * M-3239: one agent's turn as its transcript tells it — when it began, its final text (the text after its last tool
+ * call), whether it messaged anyone, and when it last showed progress. The daemon keeps one per launch.
+ */
+export class TurnWatch {
+  private startedAt: number | null = null;
+  private finalText: string[] = [];
+  private messaged = false;
+  activityAt: number | null = null;
+
+  /** The pane started working: a turn begins, unless one is already open (a turn may show idle for a moment). */
+  begin(now: number): void {
+    if (this.startedAt !== null) return;
+    this.startedAt = now; this.finalText = []; this.messaged = false;
+  }
+  tool(name: string, input: unknown, now: number): void {
+    this.activityAt = now; this.finalText = [];
+    if (sendsFleetMessage(name, input)) this.messaged = true;
+  }
+  result(now: number): void { this.activityAt = now; }
+  text(text: string, now: number): void { this.activityAt = now; this.finalText.push(text); }
+  /** The turn is over: what it ended on, or null when no turn was open. */
+  end(): { startedAt: number; text: string; messaged: boolean } | null {
+    if (this.startedAt === null) return null;
+    const out = { startedAt: this.startedAt, text: this.finalText.join("\n\n"), messaged: this.messaged };
+    this.startedAt = null; this.finalText = []; this.messaged = false;
+    return out;
+  }
+}
+
+/**
+ * M-3239: the dispatchers to tell that `assignee` ended a turn on a question it sent no one — one notice per dispatcher
+ * that is another agent of this fleet, for every card it handed `assignee` that is still claimed.
+ */
+export function questionNotices(cards: LivenessCard[], assignee: string, question: string, startedAt: number,
+  isAgent: (name: string) => boolean): Array<{ dispatcher: string; message: string; key: string }> {
+  const by = new Map<string, LivenessCard[]>();
+  for (const c of cards) {
+    const d = c.dispatcher;
+    if (c.assignee !== assignee || !d || d.kind !== "instance" || d.name === assignee || !isAgent(d.name)) continue;
+    by.set(d.name, [...(by.get(d.name) ?? []), c]);
+  }
+  return [...by].map(([dispatcher, list]) => {
+    const named = list.map((c) => {
+      const title = c.title.replace(/\s+/g, " ").trim();
+      return `${c.code} "${title.length > 60 ? `${title.slice(0, 59)}…` : title}"`;
+    }).join(", ");
+    return { dispatcher, key: `task-question:${dispatcher}:${assignee}:${startedAt}`,
+      message: `[Task board] ${t("liveness.question", named, assignee, question)}${t("liveness.sep")}${t("liveness.read_one", list[0]!.code)}` };
+  });
+}
 
 /** The key of one card's notice in one episode: the same episode is admitted once, across restarts too. */
 export const LIVENESS_KEY = "task-liveness:";
