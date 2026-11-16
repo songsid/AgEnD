@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/hub-compose.test.ts (138 tests | 1 failed | 137 skipped) 2533ms
+     × registers personal agents once and mounts the default-off owner and private Runtime paths 2463ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-compose.test.ts > room consent factory composition > registers personal agents once and mounts the default-off owner and private Runtime paths
+AssertionError: expected { enabled: false, people: [], …(3) } to deeply equal { enabled: false, people: [], …(1) }
+
+- Expected
++ Received
+
+  {
+    "enabled": false,
+    "people": [],
++   "peopleInfo": [],
+    "teams": [],
++   "teamsInfo": [],
+  }
+
+ ❯ tests/hub-compose.test.ts:2324:111
+    2322|       const signed = await directoryBrowser(r.hub, undefined, { login:…
+    2323|       expect(signed.json.features).toContain("personal-agents-v1");
+    2324|       expect((await directoryBrowser(r.hub, signed.cookie, undefined, …
+       |                                                                                                               ^
+    2325|       expect((await directoryBrowser(r.hub, signed.cookie, undefined, …
+    2326|       const headers = { "X-AgEnD-Hub-CSRF": signed.json.csrf };
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 137 skipped (138)
+   Start at  00:09:59
+   Duration  5.54s (transform 3.72s, setup 96ms, import 2.77s, tests 2.53s, environment 0ms)
+

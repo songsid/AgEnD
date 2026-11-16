@@ -2321,7 +2321,7 @@ describe.skipIf(process.platform === "win32")("room consent factory composition"
       });
       const signed = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
       expect(signed.json.features).toContain("personal-agents-v1");
-      expect((await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/admin/personal-agents")).json).toEqual({ enabled: false, people: [], teams: [] });
+      expect((await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/admin/personal-agents")).json).toEqual({ enabled: false, people: [], teams: [], peopleInfo: [], teamsInfo: [] });
       expect((await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/me/personal-agent")).status).toBe(200);
       const headers = { "X-AgEnD-Hub-CSRF": signed.json.csrf };
       expect((await directoryBrowser(r.hub, signed.cookie, {}, "/hub/v1/me/personal-agent/enrollment", { headers })).status).toBe(403);

@@ -20,3 +20,11 @@ with the source account unchanged during that turn. It is not a combined browser
 version allowlist is used, and this UI makes no general Windows 11 support claim. Codex remains unavailable when the
 computer cannot enforce and read within the one-folder profile. Default-off admission and complete-backup downgrade
 requirements are unchanged.
+
+## Factory test DTO follow-up
+
+The inherited new registration test asserted the host-only settings response. This UI layer already enriches
+that DTO with `peopleInfo` and `teamsInfo` labels. CI and the selected local control fail on those two additional
+empty lists. The test now keeps exact equality and names both lists; no product source changes. The selected
+real default-factory registration/owner/Runtime control passes 1/1 (137 other tests deselected).
+[Before](factory-before.log), [after](factory-after.log). No additional browser, Windows or model run.
