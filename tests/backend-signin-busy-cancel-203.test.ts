@@ -1,5 +1,5 @@
 /**
- * AGEND-203 (dashboard side): connecting Grok said "Your claude-code account is already being connected. Use /login cancel first." — a chat command, on a web page,
+ * AGEND-203 (dashboard side): connecting Grok said "Your Claude Code account is already being connected. Use /login cancel first." — a chat command, on a web page,
  * for a sign-in an earlier dialog had left running.
  *   - A start refused because another sign-in runs shows the plain sentence and a button that ends THAT sign-in (by its backend) and asks again.
  *   - Closing the default account's dialog ends the run THAT dialog started (by its id), as a named account's always did — none is left holding the backend.
@@ -23,7 +23,7 @@ const CHECK = "/ui/backend-login/check", CANCEL = "/ui/backend-login/cancel", DE
 const AUTH_URL = "https://claude.com/cai/oauth/authorize?code=true&client_id=abc&state=xyz";
 const snapshot = (over: Record<string, unknown> = {}) => ({ selected: ["claude-code"], pending: ["claude-code"], skipped: [], states: { "claude-code": "invalid" }, login: null, ready: false, ...over });
 const waitingForCode = { id: "a".repeat(32), backend: "claude-code", revision: 3, phase: "code", mine: true, canAct: true, url: AUTH_URL };
-const BUSY = { message: "⚠️ Your claude-code account is already being connected. Cancel that connection first, then try again.", busy: { backend: "claude-code" } };
+const BUSY = { message: "⚠️ Your Claude Code account is already being connected. Cancel that connection first, then try again.", busy: { backend: "claude-code" } };
 const CONFIRM = { confirm: { id: "b".repeat(32), backend: "grok", tokenPresent: false, logoutFirst: null, publicLink: false, deviceAuth: true, expiresAt: 1 } };
 
 let p: AppPage;
@@ -58,7 +58,7 @@ describe("a start refused because another sign-in runs (SignInDialog)", () => {
       return {};
     };
     await p.mount(h(S.SignInDialog, { backend: "grok" })); await settle(8);
-    expect(text()).toContain("Your claude-code account is already being connected. Cancel that connection first");
+    expect(text()).toContain("Your Claude Code account is already being connected. Cancel that connection first");
     expect(text()).not.toContain("/login");
     expect(btn("Close")).toBeDefined(); expect(btn("Cancel that connection and continue")).toBeDefined();
     fire(btn("Cancel that connection and continue"), "click"); await settle(10);
@@ -73,7 +73,7 @@ describe("a start refused because another sign-in runs (SignInDialog)", () => {
     answer = r => r.url === CHECK ? BUSY : {};
     await p.mount(h(S.SignInDialog, { backend: "grok" })); await settle(8);
     expect(btn("取消那個連接並繼續")).toBeDefined();
-    expect(text()).toContain("正在連接 claude-code 帳號。請先取消那個連接，再重試。");
+    expect(text()).toContain("正在連接 Claude Code 帳號。請先取消那個連接，再重試。");
     expect(text()).not.toContain("already being connected");
     expect(text()).not.toContain("/login");
   });

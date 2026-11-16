@@ -2142,6 +2142,21 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .signin-browser input { width: 100%; min-width: 0; min-height: 40px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-md); }
 .signin-browser code { padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--bg); font-family: var(--font-mono); overflow-wrap: anywhere; user-select: all; }
 .signin-browser [role="alert"] { padding: var(--s-3); border: 1px solid var(--danger-line); border-radius: var(--r-sm); background: var(--danger-bg); color: var(--danger); }
+/* M-3238 (the user): the provider's page and its code as numbered steps — a big link that names where it goes, the code
+   large, each with Copy; both dialogs (the account dialog's cards, and the older sign-in dialog) and a phone. */
+.signin-steps { display: flex; flex-direction: column; gap: var(--s-3); margin: var(--s-2) 0 0; padding-left: 1.5em; color: var(--text); font-size: var(--fs-sm); line-height: var(--lh-md); }
+.signin-steps > li { padding-left: var(--s-1); list-style: decimal outside; }
+.signin-steps > li::marker { color: var(--text-2); font-weight: var(--fw-semibold); }
+.signin-steps > li > span { display: block; margin-bottom: var(--s-2); }
+.signin-linkrow, .signin-coderow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-width: 0; }
+.signin-open { display: inline-flex; align-items: center; gap: var(--s-2); min-height: var(--tap); max-width: 100%; padding: var(--s-2) var(--s-4); font-size: var(--fs-md); }
+.signin-browser .signin-open { min-height: var(--tap); font-size: var(--fs-md); background: var(--accent-fill); color: var(--on-accent); border-color: transparent; }
+.signin-open-url { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.signin-code { padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); font-family: var(--font-mono); font-size: var(--fs-xl); font-weight: var(--fw-semibold); letter-spacing: 0.12em; user-select: all; overflow-wrap: anywhere; }
+.signin-browser .signin-code { flex-basis: auto; }
+.signin-copy { min-height: var(--tap); }
+.signin-headline { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.signin-after { color: var(--text-2); }
 .signin-browser-actions { display: flex; flex: 1; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); min-width: 0; }
 .signin-browser-actions .btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 @media (pointer: coarse), (max-width: 899px) {

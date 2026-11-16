@@ -103,6 +103,10 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   .sub { color: #6b7280; font-size: 13px; }
   .step { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-top: 16px; }
   .step h2 { font-size: 14px; margin: 0 0 12px; }
+  .signin-steps { margin: 8px 0 0; padding-left: 1.5em; } .signin-steps > li { margin: 0 0 12px; list-style: decimal outside; } .signin-steps > li > span { display: block; margin-bottom: 6px; }
+  .signin-linkrow, .signin-coderow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .signin-open { display: inline-flex; gap: 6px; padding: 10px 16px; border-radius: 6px; background: #2563eb; color: #fff; font-size: 15px; text-decoration: none; max-width: 100%; overflow-wrap: anywhere; }
+  .signin-code { padding: 6px 10px; border-radius: 6px; background: #f3f4f6; font: 600 22px/1.3 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .12em; user-select: all; }
   label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
   input, select { width: 100%; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; }
   button { padding: 8px 14px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; font-size: 14px; cursor: pointer; }

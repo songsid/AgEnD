@@ -88,6 +88,12 @@ describe("#2233 the Sign in dialog", () => {
     await dialog({ backend: "codex", resume: true });
     expect(p.root.querySelectorAll("a").map((a: any) => a.getAttribute("href"))).toContain("https://auth.openai.com/codex/device");
     expect(text()).toContain("ABCD-1234");
+    // M-3238 (the user): numbered steps — the link a big button that names the page, the code large, each with Copy.
+    const steps = [...p.root.querySelectorAll(".signin-steps > li")].map((li: any) => li.querySelector("span")?.textContent);
+    expect(steps).toEqual(["Open the sign-in page", "Enter this code on that page", "Come back here when you're done. This page updates by itself."]);
+    const open = p.root.querySelector("a.signin-open") as any;
+    expect([open?.className.includes("btn-primary"), open?.querySelector(".signin-open-url")?.textContent]).toEqual([true, "auth.openai.com/codex/device"]);
+    expect([p.root.querySelector(".signin-code")?.textContent, [...p.root.querySelectorAll(".signin-copy")].map((b: any) => b.textContent)]).toEqual(["ABCD-1234", ["Copy link", "Copy"]]);
     await p.unmount();
     S.signInStore.set({ login: device("https://evil.example/device", false) });
     await dialog({ backend: "codex", resume: true });
@@ -111,18 +117,61 @@ describe("#2233 the Sign in dialog", () => {
     S.signInStore.set({ login: { id: "r1", backend: "claude-code", phase: "running", ok: null, startedOn: "Safari on iPhone", startedAt: 1, endedAt: null, mine: false } });
     answer = () => ({ message: "🛑 Login session for claude-code cancelled." });
     await dialog({ backend: "claude-code", resume: true });
-    expect(text()).toContain("Connecting your claude-code account (started on Safari on iPhone)");
+    expect(text()).toContain("Connecting your Claude Code account (started on Safari on iPhone)");
     expect(text()).not.toContain(CODE);
     fire(btn("Cancel connecting"), "click"); await settle(6);
     expect(reqs.find(r => r.url === "/ui/backend-login/cancel")).toEqual({ method: "POST", url: "/ui/backend-login/cancel", body: { backend: "claude-code" } });
   });
 
-  it("the end: signed in, with the recovery lines", async () => {
+  it("the end from an older server (no recovery as data): signed in, with its recovery lines", async () => {
     S.signInStore.set({ login: { ...TERMINAL, phase: "ended", ok: true, terminal: null, accessCode: null, lines: ["✅ claude-code login completed.", "Restarted: agent-a"] } });
     await dialog({ backend: "claude-code", resume: true });
-    expect(text()).toContain("Your claude-code account is connected.");
+    expect(text()).toContain("Your Claude Code account is connected.");
     expect(text()).toContain("Restarted: agent-a");
     expect(btn("Cancel connecting")).toBeUndefined();
+  });
+
+  // M-3238 (the user): the end was the chat's status lines — `backticks`, two ✅ lines saying the same, "instance",
+  // 「已喚醒：無。已重啟：無」. Now one headline and one plain line on which agents were reloaded (by the name people see).
+  it("the end: one headline and one plain line on the agents — reloading, reloaded (their names), none, still coming, or not done", async () => {
+    const { appStore } = await import("/assets/app-store.js");
+    appStore.set({ instances: [{ name: "agent-a", display_name: "Weaver" }, { name: "agent-b" }] });
+    const lines = ["✅ codex 的 profile `jefflin` 帳號已連接。正在把受影響的 instance 帶回來…", "✅ codex 的 profile `jefflin` 已就緒。已喚醒：無。已重啟：agent-a。"];
+    const end = (recovery: unknown, extra: Record<string, unknown> = {}) => ({ ...TERMINAL, backend: "codex", profile: "jefflin", phase: "ended", ok: true, terminal: null, accessCode: null, lines, recovery, ...extra });
+    const cases: Array<[unknown, string]> = [
+      [null, "Reloading the agents that use this account…"],
+      [{ woken: ["agent-b"], restarted: ["agent-a"], pending: [], failed: false }, "Reloaded to use it: agent-b, Weaver."],
+      [{ woken: [], restarted: [], pending: [], failed: false }, "No agent uses it yet, so nothing needed reloading."],
+      [{ woken: [], restarted: [], pending: ["agent-a"], failed: false }, "Still reloading: Weaver. They come back on their own."],
+      [{ woken: [], restarted: [], pending: [], failed: true }, "could not be reloaded automatically"],
+    ];
+    for (const [recovery, said] of cases) {
+      S.signInStore.set({ login: end(recovery) });
+      await dialog({ backend: "codex", profile: "jefflin", resume: true });
+      expect(text()).toContain("Your Codex · profile jefflin account is connected.");
+      expect(text()).toContain(said);
+      expect([p.root.querySelector(".signin-lines"), /`|instance|✅/.test(text())], "no status lines, backticks, jargon or ✅").toEqual([null, false]);
+      await p.unmount();
+    }
+    S.signInStore.set({ login: end({ woken: [], restarted: [], pending: [], failed: false }, { cleanupFailed: true }) });
+    await dialog({ backend: "codex", resume: true });
+    expect(text()).toContain("could not be confirmed closed");
+    await p.unmount();
+    S.signInStore.set({ login: { ...end(null), ok: false, lines: ["❌ codex login failed: time limit reached"] } });
+    await dialog({ backend: "codex", resume: true });
+    expect(text(), "a sign-in that did not succeed still says why").toContain("time limit reached");
+  });
+
+  it("the end in Chinese: 「Codex · 設定檔 jefflin 帳號已連接。」 and 「已重新載入，改用這個帳號：…。」", async () => {
+    const { appStore } = await import("/assets/app-store.js");
+    appStore.set({ instances: [{ name: "agent-a", display_name: "Weaver" }, { name: "agent-b", display_name: "砌光" }] });
+    const i18n = await import("/assets/app-i18n.js"); i18n.setLang("zh-TW", { store: false });
+    try {
+      S.signInStore.set({ login: { ...TERMINAL, backend: "codex", profile: "jefflin", phase: "ended", ok: true, terminal: null, accessCode: null, lines: [], recovery: { woken: ["agent-b"], restarted: ["agent-a"], pending: [], failed: false } } });
+      await dialog({ backend: "codex", profile: "jefflin", resume: true });
+      expect(text()).toContain("Codex · 設定檔 jefflin 帳號已連接。");
+      expect(text()).toContain("已重新載入，改用這個帳號：砌光、Weaver。");
+    } finally { i18n.setLang("en", { store: false }); }
   });
 });
 
@@ -173,7 +222,7 @@ describe("#2233 where Sign in is offered", () => {
     await p.mount(h(S.SignInLine, {})); await settle(4);
     expect(text()).toBe("");
     S.signInStore.set({ login: { ...TERMINAL, mine: false } }); await settle(4);
-    expect(text()).toContain("Connecting your claude-code account (started on Firefox on Linux)");
+    expect(text()).toContain("Connecting your Claude Code account (started on Firefox on Linux)");
     fire(btn("Open"), "click"); await settle(2);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", resume: true });
   });

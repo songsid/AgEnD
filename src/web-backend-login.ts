@@ -14,7 +14,7 @@
 import type { AccountIdentity } from "./claude-auth-status.js";
 import { randomBytes } from "node:crypto";
 import type { ChannelAdapter } from "./channel/types.js";
-import type { LoginChat, LoginStartOptions, WebLoginSink } from "./login-controller.js";
+import type { LoginChat, LoginStartOptions, WebLoginRecovery, WebLoginSink } from "./login-controller.js";
 import { LOGIN_BACKEND_ALIASES, LOGIN_FLOWS } from "./login-flows.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS } from "./backend/credential-profile.js";
 import type { AvailabilityState } from "./backend-availability.js";
@@ -118,6 +118,9 @@ interface Run {
   hint: { url: string; code: string | null; linkable: boolean } | null;
   terminal: { url: string; ttlMinutes: number; command: string; loopback: boolean; public: boolean } | null;
   lines: string[];
+  /** M-3238: what bringing the agents back did, once known (null: not yet, or a sign-in that did not succeed). */
+  recovery: WebLoginRecovery | null;
+  cleanupFailed: boolean;
   sink: WebLoginSink;
 }
 
@@ -148,6 +151,10 @@ export interface WebLoginView {
   terminal?: { url: string; ttlMinutes: number; command: string; loopback: boolean; public: boolean } | null;
   /** The browser terminal's one-time access code, while it is unredeemed. */
   accessCode?: string | null;
+  /** M-3238: after a good sign-in, what bringing its agents back did (null until known); the dialog says it in one plain line. */
+  recovery?: WebLoginRecovery | null;
+  /** The login process could not be confirmed closed. */
+  cleanupFailed?: boolean;
 }
 
 export class WebBackendLogins {
@@ -194,7 +201,7 @@ export class WebBackendLogins {
     const run: Run = {
       id: randomBytes(16).toString("hex"), seq: ++this.seq, backend: asked.backend, ...(asked.profile !== undefined ? { profile: asked.profile } : {}),
       handle: who.handle, label: who.label, startedAt: this.now(), phase: "running", ok: null, endedAt: null,
-      hint: null, terminal: null, lines: [], sink: null as unknown as WebLoginSink,
+      hint: null, terminal: null, lines: [], recovery: null, cleanupFailed: false, sink: null as unknown as WebLoginSink,
     };
     const busyFor: { backend: string | null } = { backend: null };
     run.sink = {
@@ -204,13 +211,17 @@ export class WebBackendLogins {
       hint: (url, code) => { run.hint = { url, code, linkable: linkableLoginUrl(run.backend, url) }; },
       terminal: info => { run.terminal = { ...info }; },
       ended: result => {
-        run.phase = "ended"; run.ok = result.ok; run.endedAt = this.now();
+        run.phase = "ended"; run.ok = result.ok; run.endedAt = this.now(); run.cleanupFailed = !!result.cleanupFailed;
         this.live.delete(run);
         if (!this.live.size) this.stopWatch();
         // Every end forgets the accounts, whichever sign-in it was: the account behind a login may have changed. Only the sign-in the pages are
         // showing tells them it ended; one that was replaced (or never published) must not make them show the current one as over.
         this.loginEnded();
         if (this.run === run) this.changed("ended");
+      },
+      recovered: outcome => {
+        run.recovery = { woken: [...outcome.woken], restarted: [...outcome.restarted], pending: [...outcome.pending], failed: !!outcome.failed };
+        if (this.run === run) this.changed();   // the pages read it again (no phase: the sign-in had already ended)
       },
     };
     // Watched from admission, not from publication: a session revoked while its listener, tunnel or cloudflared is
@@ -274,7 +285,7 @@ export class WebBackendLogins {
     const running = run.phase === "running" && this.deps.isActiveFor(run.sink);
     return {
       ...base, lines: [...run.lines], hint: running ? run.hint : null, terminal: running ? run.terminal : null,
-      accessCode: running && run.terminal ? this.deps.accessToken(run.sink) : null,
+      accessCode: running && run.terminal ? this.deps.accessToken(run.sink) : null, recovery: run.recovery, cleanupFailed: run.cleanupFailed,
     };
   }
 

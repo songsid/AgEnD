@@ -136,8 +136,11 @@ it("Sign in → the link opens the provider's page → the code is pasted back i
     await open({ backend: "claude-code", profile: "CHY" });
     await press("Connect account");
     expect(posts(ENDPOINT, "start")[0]!.body).toEqual({ operation: "start", backend: "claude-code", relogin: false });
-    const link = p.root.querySelectorAll("a").find((a: any) => a.textContent.includes("Finish on the provider's official website"));
-    expect([link.href, link.target, link.rel]).toEqual([AUTH_URL, "_blank", "noopener noreferrer"]);
+    // M-3238: the link is step 1, a big button that names the page (host and path); its title still says where it finishes.
+    const link = p.root.querySelector("a.signin-open") as any;
+    expect([link.href, link.target, link.rel, link.title]).toEqual([AUTH_URL, "_blank", "noopener noreferrer", "Finish on the provider's official website"]);
+    const u = new URL(AUTH_URL);
+    expect(link.querySelector(".signin-open-url").textContent).toBe((u.host + u.pathname).slice(0, 48).replace(/^(.{47}).+$/, "$1…"));
     const field = p.root.querySelectorAll("input").find((i: any) => i.type === "password") as any;
     expect(field, "a field for the code").toBeDefined(); field.value = "pasted#code";
     await press("Submit authorization code");

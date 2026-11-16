@@ -7,6 +7,9 @@ export const SIGNIN_STRINGS = {
     check: "Check connections", skipped: "Connect later · remains in Needs you", valid: "Connected ✓", notInstalled: "Not installed on this host",
     consoleOnly: "Use the explicit console fallback, or connect later.", needed: "Not connected", waiting: "Waiting for the CLI…", login: "Connecting: {0}",
     openProvider: "Finish on the provider's official website", deviceCode: "Authorization code:", answerSent: "Answer sent. Waiting for the next screen; it will not be sent twice.",
+    // M-3238: the provider's page and its code as numbered steps.
+    stepOpen: "Open the sign-in page", stepCode: "Enter this code on that page", stepBack: "Come back here when you're done. This page updates by itself.",
+    copy: "Copy", copyLink: "Copy link", copied: "Copied",
     cancel: "Cancel connecting", signIn: "Connect account", signInAgain: "Reconnect", later: "Connect later", submit: "Submit {0}",
     relogin: "Reconnect {0}? It disconnects its current account first.", reloginReplace: "Reconnect {0}? The new connection replaces the account it uses now.", ready: "You can continue setup.",
     field_code: "Paste the authorization code", field_start_url: "Organization Start URL", field_region: "AWS region",
@@ -47,6 +50,8 @@ export const SIGNIN_STRINGS = {
     check: "檢查連接狀態", skipped: "稍後連接 · 會留在「等你回應」", valid: "已連接 ✓", notInstalled: "這台主機上沒有安裝",
     consoleOnly: "請改用主控台備援，或稍後連接。", needed: "尚未連接", waiting: "等待 CLI 回應…", login: "連接中：{0}",
     openProvider: "前往官方網站完成授權", deviceCode: "授權碼：", answerSent: "已送出。等待下一個畫面；不會重複送出。",
+    stepOpen: "開啟登入頁面", stepCode: "在那個頁面輸入這組授權碼", stepBack: "完成後回到這裡，這個畫面會自動更新。",
+    copy: "複製", copyLink: "複製連結", copied: "已複製",
     cancel: "取消連接", signIn: "連接帳號", signInAgain: "重新連接", later: "稍後連接", submit: "送出{0}",
     relogin: "要重新連接 {0} 嗎？會先撤銷目前帳號的連接。", reloginReplace: "要重新連接 {0} 嗎？新的連接會取代目前使用的帳號。", ready: "可以繼續設定了。",
     field_code: "貼上取得的授權碼", field_start_url: "組織的 Start URL", field_region: "AWS 區域",
@@ -86,6 +91,8 @@ const NAMES = { "kiro-cli": "Kiro", "claude-code": "Claude Code", codex: "Codex"
 const CHOICES = { builder_id: "Builder ID", google: "Google", github: "GitHub", organization: null, subscription: null, console: "Anthropic Console" };
 /** The page's language, as its <html lang> says (the setup page and the dashboard both keep it current). */
 const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" : "en";
+/** M-3238: a sign-in page's address as a button names it — its host and path, no query (one line; long ones end in "…"). */
+export const shortUrl = url => { const text = url.host + (url.pathname && url.pathname !== "/" ? url.pathname : ""); return text.length > 48 ? text.slice(0, 47) + "…" : text; };
 
 /**
  * `machine` (#3190 Part 3c): these cards are for ONE credential profile on a paired computer (the endpoint carries `?machine=&profile=`). The dialog around them says
@@ -120,6 +127,12 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
   const choiceName = choice => CHOICES[choice] ?? tr("choice_" + choice);
   const phaseName = phase => SIGNIN_STRINGS.en["phase_" + phase] ? tr("phase_" + phase) : phase.replaceAll("_", " ");
   const button = (parent, label, action) => { const b = el("button", label, parent); b.type = "button"; b.disabled = busy; b.onclick = action; return b; };
+  // Copy a link or a code (for another device, or to paste): says Copied for a moment. Never disabled: it changes nothing.
+  const copyButton = (parent, value, label) => {
+    const b = el("button", label, parent); b.type = "button"; b.className = "signin-copy";
+    b.onclick = async () => { try { await globalThis.navigator?.clipboard?.writeText(value); b.textContent = tr("copied"); setTimeout(() => { b.textContent = label; }, 1500); } catch { /* the value stays selectable on the page */ } };
+    return b;
+  };
   const request = async data => {
     const response = await fetcher(endpoint, { method: data ? "POST" : "GET", cache: "no-store", headers: { "Content-Type": "application/json" }, ...(data ? { body: JSON.stringify(data) } : {}) });
     const body = await response.json().catch(() => null);
@@ -162,14 +175,28 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
         if (login.phase === "method" && login.canAct) for (const choice of login.choices || []) {
           if (Object.hasOwn(CHOICES, choice)) button(card, choiceName(choice), () => perform({ operation: "input", id: login.id, revision: login.revision, action: { kind: "method", choice } }));
         }
-        if (login.url) {
-          // The host already allowlists these; still never turn a non-HTTPS URL into a link.
-          let url; try { url = new URL(login.url); } catch {}
-          if (url?.protocol === "https:" && !url.username && !url.password) {
-            const link = el("a", tr("openProvider"), card); link.href = url.href; link.target = "_blank"; link.rel = "noopener noreferrer";
+        // M-3238 (the user): the provider's page and its code as numbered steps — a big link that names where it goes (with
+        // Copy link, for another device), the code large with Copy, then "come back here". The host already allowlists these
+        // URLs; still never turn a non-HTTPS one into a link.
+        let url = null;
+        if (login.url) { try { const u = new URL(login.url); if (u.protocol === "https:" && !u.username && !u.password) url = u; } catch {} }
+        if (url || login.code) {
+          const steps = el("ol", null, card); steps.className = "signin-steps";
+          if (url) {
+            const li = el("li", null, steps); el("span", tr("stepOpen"), li);
+            const row = el("div", null, li); row.className = "signin-linkrow";
+            const link = el("a", null, row); link.className = "signin-open"; link.href = url.href; link.target = "_blank"; link.rel = "noopener noreferrer";
+            link.title = tr("openProvider"); el("span", shortUrl(url), link).className = "signin-open-url"; el("span", "↗", link).setAttribute("aria-hidden", "true");
+            copyButton(row, url.href, tr("copyLink"));
           }
+          if (login.code) {
+            const li = el("li", null, steps); el("span", tr("stepCode"), li);
+            const row = el("div", null, li); row.className = "signin-coderow";
+            const code = el("code", login.code, row); code.className = "signin-code"; code.setAttribute("aria-label", tr("deviceCode") + " " + login.code);
+            copyButton(row, login.code, tr("copy"));
+          }
+          if (url && !(login.canAct && ["code", "start_url", "region"].includes(login.phase))) el("li", tr("stepBack"), steps);
         }
-        if (login.code) { el("p", tr("deviceCode"), card); el("code", login.code, card); }
         if (login.canAct && ["code", "start_url", "region"].includes(login.phase)) {
           const label = el("label", tr("field_" + login.phase), card);
           const input = el("input", null, label); input.type = login.phase === "code" ? "password" : "text"; input.autocomplete = "off"; input.spellcheck = false;

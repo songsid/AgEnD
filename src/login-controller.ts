@@ -115,6 +115,8 @@ export async function announcePostLoginRecovery(
   recover: () => Promise<PostLoginRecovery>,
   send: (text: string) => Promise<unknown>,
   deadlineMs = POST_LOGIN_RECOVERY_DEADLINE_MS,
+  /** M-3238: the same outcome as data, for a dashboard dialog that says it in one plain line (chat keeps the text). */
+  report?: (outcome: WebLoginRecovery) => void,
 ): Promise<void> {
   const none = t("login.none");
   let result: PostLoginRecovery;
@@ -126,7 +128,9 @@ export async function announcePostLoginRecovery(
     result = { woken: [], restarted: [], pending: [], failed: String((err as Error)?.message ?? err) };
   }
   const list = (names: string[]) => (names.length ? names.join(", ") : none);
+  const tell = (outcome: WebLoginRecovery) => { try { report?.(outcome); } catch { /* the dialog's line only */ } };
   if (result.failed) {
+    tell({ woken: [], restarted: [], pending: [], failed: true });
     await send(t("login.recover_failed", backend, result.failed));
     return;
   }
@@ -134,11 +138,17 @@ export async function announcePostLoginRecovery(
   // user hears an outcome, so it must not be the thing that throws.
   const pending = result.pending ?? [];
   if (pending.length) {
+    tell({ woken: result.woken ?? [], restarted: result.restarted ?? [], pending, failed: false });
     await send(t("login.recover_pending", backend, String(Math.round(deadlineMs / 1000)), pending.join(", ")));
     return;
   }
+  tell({ woken: result.woken ?? [], restarted: result.restarted ?? [], pending: [], failed: false });
   await send(t("login.recovered", backend, list(result.woken), list(result.restarted)));
 }
+
+/** M-3238: what the post-login recovery did, for the dashboard's dialog: the agents woken or restarted onto the new
+ * credentials, those still coming back, or that it could not be done (no error text: the dialog says it plainly). */
+export interface WebLoginRecovery { woken: string[]; restarted: string[]; pending: string[]; failed: boolean }
 
 export interface LoginChat {
   adapter: ChannelAdapter;
@@ -165,8 +175,10 @@ export interface WebLoginSink {
   hint(url: string, code: string | null): void;
   /** The browser terminal is listening (no secret in the URL; the token is read back with webAccessToken). */
   terminal(info: { url: string; ttlMinutes: number; command: string; loopback: boolean; public: boolean }): void;
-  /** The session ended (any way); its words still come through adapter.sendText. */
-  ended(result: { ok: boolean }): void;
+  /** The session ended (any way); its words still come through adapter.sendText. `cleanupFailed`: the login process could not be confirmed closed. */
+  ended(result: { ok: boolean; cleanupFailed?: boolean }): void;
+  /** M-3238: after a good sign-in, what bringing its agents back did (announcePostLoginRecovery's outcome, as data). */
+  recovered?(outcome: WebLoginRecovery): void;
   /** AGEND-203: the start was refused because a sign-in for `backend` is in progress — the dialog offers a button to end it (chat says `/login cancel`). */
   busy?(backend: string): void;
 }
@@ -594,7 +606,7 @@ export class LoginController {
         // is over must not leave its listener reachable while the fleet believes it is free.
         await this.closeTunnel(entry);
         this.releaseEntry(entry);
-        try { chat.web?.ended({ ok: result.ok }); } catch { /* the dialog's state only */ }
+        try { chat.web?.ended({ ok: result.ok, ...(result.cleanupFailed ? { cleanupFailed: true } : {}) }); } catch { /* the dialog's state only */ }
         if (!entry.silent) await this.reportDone(chat, entry, result);
       },
       onAudit: (event, fields) => this.audit(event.replace(/^web_terminal_/, ""), fields),
@@ -1109,7 +1121,8 @@ export class LoginController {
       await send(t("login.completed", backend));
       await announcePostLoginRecovery(backend, () => (entry.profile
         ? this.deps.recoverBackendInstances(entry.backend, entry.profile)
-        : this.deps.recoverBackendInstances(entry.backend)), send);
+        : this.deps.recoverBackendInstances(entry.backend)), send, POST_LOGIN_RECOVERY_DEADLINE_MS,
+        chat.web?.recovered ? (outcome) => chat.web?.recovered?.(outcome) : undefined);
       if (result.cleanupFailed) await send(t("login.web_cleanup_failed", backend));
       return;
     }
