@@ -6,7 +6,7 @@ import { HUB_HTTP_MIGRATIONS } from "../src/hub/http/schema.js";
 import { HUB_PERSONAL_AGENTS_MIGRATION } from "../src/hub/personal/schema.js";
 import { exposureOf, readExposure } from "../src/hub/catalog.js";
 import { exposureSchema } from "../src/hub/protocol.js";
-const legacyRegistry=HUB_HTTP_MIGRATIONS.filter(m=>m.component!==HUB_PERSONAL_AGENTS_MIGRATION.component);
+const legacyRegistry=HUB_HTTP_MIGRATIONS.filter(m=>m.component!==HUB_PERSONAL_AGENTS_MIGRATION.component&&m.component!=="s3-personal-answer-only");
 const registry=HUB_HTTP_MIGRATIONS;
 function fixture(){const db=new Database(":memory:");db.pragma("foreign_keys=ON");applyHubMigrations(db,legacyRegistry);return db;}
 describe("personal sources without fictional Fleet identities",()=>{
@@ -20,10 +20,11 @@ describe("personal sources without fictional Fleet identities",()=>{
       const before=db.prepare("SELECT * FROM hub_exposures").get() as object;
       const children=["hub_grants","hub_rooms","hub_quota_preferences"].map(table=>db.prepare(`SELECT * FROM ${table}`).all());
       applyHubMigrations(db,registry);applyHubMigrations(db,registry);
-      expect(db.prepare("SELECT * FROM hub_exposures").get()).toEqual({...before,source_kind:"fleet",personal_agent_id:null});
+      expect(db.prepare("SELECT * FROM hub_exposures").get()).toEqual({...before,source_kind:"fleet",personal_agent_id:null,answer_only:0});
       expect(["hub_grants","hub_rooms","hub_quota_preferences"].map(table=>db.prepare(`SELECT * FROM ${table}`).all())).toEqual(children);
       expect(db.pragma("foreign_key_check")).toEqual([]);
       expect(db.prepare("SELECT enabled FROM hub_personal_settings").get()).toEqual({enabled:0});
+      expect(()=>db.prepare("UPDATE hub_exposures SET answer_only=1 WHERE id=?").run(exposure)).toThrow();
       expect(()=>applyHubMigrations(db,legacyRegistry)).toThrow();
     }finally{db.close();}
   });

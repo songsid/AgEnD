@@ -1,0 +1,54 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+
+ ❯ tests/runtime-personal-answer-only-m3257.test.ts (10 tests | 2 failed) 1029ms
+   × refuses an action event even if the CLI later emits an otherwise successful final answer 6ms
+   × keeps Answer only unavailable for an unsafe setup response: action-event 169ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/runtime-personal-answer-only-m3257.test.ts > refuses an action event even if the CLI later emits an otherwise successful final answer
+AssertionError: expected { ok: true, answer: 'I read it' } to deeply equal { ok: false, reason: 'action-refused' }
+
+- Expected
++ Received
+
+  {
+-   "ok": false,
+-   "reason": "action-refused",
++   "answer": "I read it",
++   "ok": true,
+  }
+
+ ❯ tests/runtime-personal-answer-only-m3257.test.ts:31:27
+     29|  for(const event of [{type:"turn.started"},{type:"item.completed",item…
+     30|   {type:"item.completed",item:{type:"agent_message",text:"I read it"}}…
+     31|  expect(reader.finish(0)).toEqual({ok:false,reason:"action-refused"});
+       |                           ^
+     32| });
+     33|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/runtime-personal-answer-only-m3257.test.ts > keeps Answer only unavailable for an unsafe setup response: action-event
+AssertionError: promise resolved "undefined" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+undefined
+
+ ❯ tests/runtime-personal-answer-only-m3257.test.ts:45:213
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 8 passed (10)
+   Start at  02:18:23
+   Duration  1.38s (transform 137ms, setup 85ms, import 144ms, tests 1.03s, environment 0ms)
+

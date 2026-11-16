@@ -1,0 +1,6 @@
+{
+  "source": "tsc/npm build PASS",
+  "tests": "tsc --noEmit -p tsconfig.test.json PASS",
+  "windows": false,
+  "vendorModels": false
+}

@@ -1,0 +1,32 @@
+{
+  "scope": "Headless Linux only; product HTTP/SQL/audit, inert directory/Runtime; no Windows, credentials, installer, model or updater",
+  "checks": [
+    {
+      "name": "zh-TW/default-off",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/folder-hidden",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/saved-mode",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/opened",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/asker/fits",
+      "pass": true
+    },
+    {
+      "name": "zh-TW/no-page-errors",
+      "pass": true
+    }
+  ],
+  "pictures": [
+    "zh-TW-asker.png"
+  ]
+}

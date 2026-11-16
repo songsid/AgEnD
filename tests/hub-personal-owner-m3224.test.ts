@@ -97,6 +97,7 @@ describe("company-owned personal computer enrollment",()=>{
     const first=await f.host.publish(f.ctx(f.a),input);
     expect(first).toMatchObject({kind:"personal",owner:f.a,fleetId:null,revision:1});
     expect(f.r.store.read().fleets).toEqual([]);
+    expect((f.host.sourceMaterial(f.r.db,first) as any).agent).toEqual(f.r.db.prepare("SELECT * FROM hub_personal_agents WHERE id=?").get(first.personalAgentId));
     expect((await f.host.view(f.ctx(f.a))).agent?.shared).toBe(false);
     const grant=randomUUID(),now=f.core.now();
     f.r.db.prepare("INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state) VALUES(?,1,?,?,1,?,?,?,'[\"ask\"]',?,?,'active')").run(grant,personKeyString(f.a),first.id,personKeyString(f.a),now,personKeyString(f.b),now,now+60000);
@@ -138,4 +139,29 @@ describe("company-owned personal computer enrollment",()=>{
     await expect(pending).rejects.toMatchObject({code:"stale"});
     await expect(f.host.refreshComputer(f.ctx(f.a),{machineId:joined.machineId})).rejects.toMatchObject({code:"invalid"});
   });
+  it("requires explicit owner opt-in, a failed one-folder check and the separate empty-tool capability",async()=>{
+    const f=await fixture();await f.allow();const issued=await f.host.enrollment(f.ctx(f.a)),joined=f.enroll(issued.token);
+    const machine={...f.runtime.machine(joined.machineId)!,status:"online" as const,runtimeInfo:{...readRuntimeInfo(),capabilities:["exec","personal-agent-v1","personal-agent-answer-only-v1"]},
+      inventory:{home:"C:\\User",personalFolder:"C:\\Shared",probedAt:1,clis:[{id:"codex" as const,path:"C:\\codex.exe",version:"0.167.0",authenticated:true,runnable:true,
+        supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:[{id:"local-model"}],personalStatus:"sandbox-unavailable",answerOnlyStatus:"ready"}]}};
+    vi.spyOn(f.runtime,"machine").mockImplementation(id=>id===machine.id?structuredClone(machine) as any:null);
+    const input={name:"Knowledge",description:"",cli:"codex",ifRevision:0};
+    await expect(f.host.publish(f.ctx(f.a),input)).rejects.toMatchObject({code:"unavailable"});
+    await expect(f.host.publish(f.ctx(f.b),{...input,answerOnly:true})).rejects.toMatchObject({code:"unavailable"});
+    for(const change of [()=>{machine.inventory.clis[0].personalStatus="ready";},()=>{machine.inventory.clis[0].answerOnlyStatus="profile-unavailable";},()=>{machine.runtimeInfo.capabilities=["exec","personal-agent-v1"];},()=>{machine.inventory.clis[0].authenticated=false;}]){
+      machine.inventory.clis[0].personalStatus="sandbox-unavailable";machine.inventory.clis[0].answerOnlyStatus="ready";machine.runtimeInfo.capabilities=["exec","personal-agent-v1","personal-agent-answer-only-v1"];machine.inventory.clis[0].authenticated=true;
+      change();await expect(f.host.publish(f.ctx(f.a),{...input,answerOnly:true})).rejects.toMatchObject({code:"unavailable"});
+    }
+    machine.inventory.clis[0].authenticated=true;
+    const first=await f.host.publish(f.ctx(f.a),{...input,answerOnly:true});
+    expect(first).toMatchObject({kind:"personal",answerOnly:true,revision:1});
+    expect((f.host.sourceMaterial(f.r.db,first) as any).agent.answer_only).toBe(1);
+    expect((await f.host.view(f.ctx(f.a))).agent).toMatchObject({answerOnly:true,model:"local-model"});
+    expect(f.host.definition(f.r.db,first.personalAgentId)).toMatchObject({answer_only:1,model:"local-model"});
+    machine.inventory.clis[0].personalStatus="ready";
+    const second=await f.host.publish(f.ctx(f.a),{...input,ifRevision:1,answerOnly:false});
+    expect(second.revision).toBe(2);expect(second.answerOnly).toBeUndefined();
+    expect(f.host.definition(f.r.db,first.personalAgentId)).toMatchObject({answer_only:0,model:null});
+  });
+
 });

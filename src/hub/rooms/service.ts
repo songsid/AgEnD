@@ -536,7 +536,7 @@ export class HubGroupRooms {
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", role: m.role, presence: this.assistant.presence(id) };
         if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, role: m.role,
-          ...(e?.source_kind==="personal"?{agentKind:"personal" as const}:{}), owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
+          ...(e?.source_kind==="personal"?{agentKind:"personal" as const}:{}), ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
         return { id: m.id, kind: m.kind, name: this.name(db, m.subject), role: m.role,
           signedIn: !!db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(m.subject),
           presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };

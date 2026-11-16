@@ -5,7 +5,7 @@ import { applyHubMigrations } from "../src/hub/db.js";
 import { HUB_HTTP_MIGRATIONS } from "../src/hub/http/schema.js";
 
 // Historical room shapes omit the later personal migration, which requires their completed indexes.
-const prePersonal = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-personal-agents");
+const prePersonal = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-personal-agents" && m.component !== "s3-personal-answer-only");
 function upgradeToCurrent(db: Database.Database): void {
   applyHubMigrations(db, HUB_HTTP_MIGRATIONS); applyHubMigrations(db, HUB_HTTP_MIGRATIONS);
   expect(db.prepare("SELECT version FROM hub_schema WHERE component='s3-personal-agents'").get()).toEqual({ version: 1 });

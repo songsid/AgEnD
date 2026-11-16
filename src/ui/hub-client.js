@@ -120,7 +120,7 @@ export function legacyRoom(item) {
   if (!item || typeof item !== "object" || typeof item.id !== "string") return null;
   return { id: item.id, kind: "direct", name: String(item.exposureName || ""), people: 1, agents: 1, online: null, unread: 0,
     lastAt: Number.isFinite(item.lastAt) ? item.lastAt : 0, lastText: "", lastAuthor: "",
-    agent: { exposureId: String(item.exposureId || ""), owner: { name: String(item.ownerName || "") }, presence: null }, limited: true, legacy: item };
+    agent: { ...(item.answerOnly?{answerOnly:true}:{}), exposureId: String(item.exposureId || ""), owner: { name: String(item.ownerName || "") }, presence: null }, limited: true, legacy: item };
 }
 export const ADDRESS_HINT = /^https:\/\/[^\s/?#@]+\/?$/i;
 export const CODE_HINT = /^[A-Za-z0-9][A-Za-z0-9 -]{4,62}[A-Za-z0-9]$/;

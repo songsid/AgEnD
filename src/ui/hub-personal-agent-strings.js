@@ -1,6 +1,14 @@
 import {register,t} from "/assets/app-i18n.js";
 register("hubPersonal",{
   "en": {
+    "answerOnly": "Answer only",
+    "answerOnlyOption": "Use Codex to answer only",
+    "answerOnlyExplain": "Codex can't be kept inside one folder on this computer. In this mode it has no access to the computer at all: it answers from the question and what it already knows.",
+    "answerOnlyDisclosure": "It cannot read your files, run anything or go online. It also cannot look anything up for the asker.",
+    "answerOnlyPays": "Your own AI account pays for answers.",
+    "answerOnlyTick": "Turn on Answer only",
+    "answerOnlyFailed": "Codex can't be used here in Answer only mode either. Claude can be used.",
+    "answerOnlyAsker": "Answers from general knowledge only. It can't look at any files.",
     "title": "Personal agent",
     "lead": "Answer colleagues with Codex or Claude on your computer. No Fleet is needed. Windows only for now.",
     "guard": "Read-only, and only one folder: the Hub agent folder on your computer. People allowed to ask may receive anything in that folder. Your own AI account pays for answers.",
@@ -66,6 +74,14 @@ register("hubPersonal",{
     "onlyAdmin": "Only the Hub administrator can add one."
   },
   "zh-TW": {
+    "answerOnly": "只回答",
+    "answerOnlyOption": "只讓 Codex 回答",
+    "answerOnlyExplain": "這台電腦無法把 Codex 限制在單一資料夾內。這個模式下，它完全不能存取這台電腦，只會根據提問和它已經知道的內容回答。",
+    "answerOnlyDisclosure": "它不能讀取你的檔案、執行任何東西或上網，也無法替提問的人查資料。",
+    "answerOnlyPays": "回答使用你自己的 AI 帳號額度。",
+    "answerOnlyTick": "開啟「只回答」",
+    "answerOnlyFailed": "這裡也無法以「只回答」模式使用 Codex。可以使用 Claude。",
+    "answerOnlyAsker": "只根據一般知識回答，無法查看任何檔案。",
     "title": "個人 Agent",
     "lead": "用自己電腦上的 Codex 或 Claude 回答同仁，不需要 Fleet。目前只支援 Windows。",
     "guard": "只能讀取，而且只讀你電腦上的「Hub agent」資料夾。可以提問的人可能取得資料夾內的任何內容；回答使用你自己的 AI 帳號額度。",

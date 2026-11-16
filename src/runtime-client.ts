@@ -9,7 +9,7 @@ import { join, win32 } from "node:path";
 import { readFileSync } from "node:fs";
 import { WindowsCliBridge, nativeWindowsTransport, WINDOWS_CLI_INVENTORY_FILE, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
 import { refreshNativeModels, deleteWindowsCredential, probeCredentialIsolation, probeDefaultLogin, probeCredentialProfileStatus, validateNativeTask, validWindowsDirectory, validWindowsAgentId, type CredentialProfileAnswer, type NativeTaskInput } from "./windows-cli-worker.js";
-import { PERSONAL_AGENT_PROFILE, assertPersonalTask } from "./runtime-personal-protocol.js";
+import { PERSONAL_AGENT_PROFILE, PERSONAL_AGENT_ANSWER_ONLY_PROFILE, isPersonalProfile, type PersonalProfile, assertPersonalTask } from "./runtime-personal-protocol.js";
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
 import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfileReport, isCredentialProfileCli, listCredentialProfileNames, rememberCredentialStatus, requireCredentialProfile, credentialCacheStamp,
   assertCredentialProfileName, assertCredentialProfileCli, type CredentialProfileCli, type CredentialProfileReport } from "./runtime-credential-profiles.js";
@@ -117,11 +117,11 @@ const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function message(error: unknown): string { return error instanceof Error ? error.message.slice(0, 1000) : "Runtime operation failed"; }
-interface CheckedRun { task: NativeTaskInput; profile?: typeof PERSONAL_AGENT_PROFILE; resumeSessionId?: string; context?: string; mcp?: { tools: string[] }; credentialProfile?: string }
+interface CheckedRun { task: NativeTaskInput; profile?: PersonalProfile; resumeSessionId?: string; context?: string; mcp?: { tools: string[] }; credentialProfile?: string }
 function checkedRun(value: unknown): CheckedRun {
   if (!object(value) || Object.keys(value).some(key => !["task", "profile", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(key))) throw new Error("Invalid runtime run payload");
   const task = validateNativeTask(value.task);
-  if (value.profile !== undefined) { if (value.profile !== PERSONAL_AGENT_PROFILE) throw Error("Unsupported personal profile"); assertPersonalTask(task, value); }
+  if (value.profile !== undefined) { if (!isPersonalProfile(value.profile)) throw Error("Unsupported personal profile"); assertPersonalTask(task, value); }
   // A name and nothing else: a path, a drive letter or a control byte is not a profile name and is refused here, not "cleaned".
   if (value.credentialProfile !== undefined) { assertCredentialProfileName(value.credentialProfile); assertCredentialProfileCli(task.cli); }
   if (value.resumeSessionId !== undefined && !validNativeSessionId(task.cli, value.resumeSessionId)) throw new Error("Invalid native conversation ID");
@@ -130,7 +130,7 @@ function checkedRun(value: unknown): CheckedRun {
     || !Array.isArray(value.mcp.tools) || !value.mcp.tools.length || value.mcp.tools.length > 64
     || value.mcp.tools.some(tool => typeof tool !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(tool)))) throw new Error("Invalid scoped MCP request");
   return { task, resumeSessionId: value.resumeSessionId as string | undefined, context: value.context as string | undefined,
-    mcp: value.mcp as { tools: string[] } | undefined, ...(value.credentialProfile !== undefined ? { credentialProfile: value.credentialProfile as string } : {}), ...(value.profile ? { profile: PERSONAL_AGENT_PROFILE } : {}) };
+    mcp: value.mcp as { tools: string[] } | undefined, ...(value.credentialProfile !== undefined ? { credentialProfile: value.credentialProfile as string } : {}), ...(value.profile ? { profile: value.profile as PersonalProfile } : {}) };
 }
 function jsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((accept, reject) => {
@@ -241,7 +241,7 @@ export class RuntimeClient {
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
     this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => (name === REMOTE_SIGNIN_CAPABILITY || name === MODEL_REFRESH_CAPABILITY || runtimeSignInCapabilities().includes(name) || runtimeAccountsCapabilities().includes(name)) ? remote : (name === CLI_INSTALL_CAPABILITY || name === CLI_UPDATE_CAPABILITY) ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
-    if (options.personalAgent) this.runtimeInfo = { ...info, capabilities: ["exec", PERSONAL_AGENT_PROFILE] };
+    if (options.personalAgent) this.runtimeInfo = { ...info, capabilities: ["exec", PERSONAL_AGENT_PROFILE, PERSONAL_AGENT_ANSWER_ONLY_PROFILE] };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE), undefined, !!options.personalAgent, options.personalAgent?.folder);
   }
   private report(text: string): void { this.options.report?.(text); }
@@ -729,7 +729,7 @@ export class RuntimeClient {
     if (operation !== "run") throw new Error("Unknown runtime operation");
     const run = checkedRun(payload), task = run.task;
     if (this.options.personalAgent) {
-      if (run.profile !== PERSONAL_AGENT_PROFILE || win32.normalize(task.cwd).toLowerCase() !== win32.normalize(this.options.personalAgent.folder).toLowerCase()) throw Error("Personal task does not match the local folder binding");
+      if (!isPersonalProfile(run.profile) || win32.normalize(task.cwd).toLowerCase() !== win32.normalize(this.options.personalAgent.folder).toLowerCase()) throw Error("Personal task does not match the local folder binding");
     } else if (run.profile) throw Error("This Runtime has no personal-agent binding");
     const digest = runtimeJobDigest(run);
     const accepted = this.options.store.accept({ id: task.requestId, cli: task.cli, cwd: task.cwd, sandbox: task.sandbox,
@@ -753,7 +753,7 @@ export class RuntimeClient {
       if (this.stopped || !this.online()) throw new Error("Runtime disconnected before native execution started");
       this.active.add(task.requestId);
       const initial = this.bridge.start(task, () => !this.stopped && this.online(), {
-        ...(run.profile ? { personal: true as const } : {}),
+        ...(run.profile ? { personal: true as const, ...(run.profile === PERSONAL_AGENT_ANSWER_ONLY_PROFILE ? { answerOnly: true as const } : {}) } : {}),
         ...(payload.resumeSessionId ? { resumeSessionId: payload.resumeSessionId as string } : {}),
         ...(payload.context ? { context: payload.context as string } : {}), ...(mcp ? { mcp } : {}), ...(credentialHome ? { credentialHome } : {}),
         onSettled: settled => this.update(settled),

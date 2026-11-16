@@ -8,7 +8,7 @@ import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { readBoundedWebBody } from "./web-body.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { validateNativeTask, validWindowsDirectory, type NativeTaskInput } from "./windows-cli-worker.js";
-import { PERSONAL_AGENT_PROFILE, assertPersonalTask, personalTaskFailure } from "./runtime-personal-protocol.js";
+import { isPersonalProfile, assertPersonalTask, personalTaskFailure } from "./runtime-personal-protocol.js";
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
 import type { NativeCliRow } from "./windows-cli-worker.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
@@ -86,6 +86,10 @@ function inventory(value: unknown): WindowsCliProbe {
     if(row.personalStatus!==undefined){
       if(typeof row.personalStatus!=="string"||!["ready","sandbox-unavailable","profile-unavailable"].includes(row.personalStatus))throw new RuntimeProtocolError("Invalid personal profile status");
       entry.personalStatus=row.personalStatus as NativeCliRow["personalStatus"];
+    }
+    if (row.answerOnlyStatus !== undefined) {
+      if (row.id !== "codex" || !["ready", "profile-unavailable"].includes(String(row.answerOnlyStatus))) throw new RuntimeProtocolError("Invalid Answer only status");
+      entry.answerOnlyStatus = row.answerOnlyStatus as NativeCliRow["answerOnlyStatus"];
     }
     seen.add(row.id); clis.push(entry);
   }
@@ -650,7 +654,7 @@ export class RuntimeCoordinator {
       || value.threadId !== undefined && !text(value.threadId, 256)
       || value.threadId !== undefined && command.payload.resumeSessionId !== undefined && value.threadId !== command.payload.resumeSessionId
       || value.outcomeConfirmed !== undefined && typeof value.outcomeConfirmed !== "boolean") throw new RuntimeProtocolError("Invalid runtime task snapshot");
-    const personal = command.payload.profile === PERSONAL_AGENT_PROFILE;
+    const personal = isPersonalProfile(command.payload.profile);
     if (value.answer !== undefined && (!personal || typeof value.answer !== "string" || !value.answer.trim() || Buffer.byteLength(value.answer) > 64 * 1024
       || value.status !== "completed" || value.outcomeConfirmed !== true) || personal && (value.output !== "" || value.status === "completed" && value.answer === undefined)
       || value.personalFailure !== undefined && (!personal || !personalTaskFailure(value.personalFailure))) throw new RuntimeProtocolError("Invalid personal task result");
@@ -988,7 +992,7 @@ export class RuntimeCoordinator {
       if (!record(payload) || Object.keys(payload).some(k => !["task", "profile", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(k))) throw Error("Invalid runtime run payload");
       const task = validateNativeTask(payload.task);
       if (payload.profile !== undefined) {
-        if (payload.profile !== PERSONAL_AGENT_PROFILE || !machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)) throw Error("Personal-agent profile was not negotiated");
+        if (!isPersonalProfile(payload.profile) || !machine.runtimeInfo?.capabilities.includes(payload.profile)) throw Error("Personal-agent profile was not negotiated");
         assertPersonalTask(task, payload);
       }
       if (payload.credentialProfile !== undefined) { assertCredentialProfileName(payload.credentialProfile); assertCredentialProfileCli(task.cli); }

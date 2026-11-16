@@ -31,7 +31,7 @@ it("keeps personal installer profiles, PATH and restart scope separate from an o
  const service=new RuntimeInstallService({personal:true,bundle:()=>files,template:()=>template,enabled:()=>true});
  expect(service.installer().scriptSha256).not.toBe(new RuntimeInstallService({bundle:()=>files,template:()=>template}).installer().scriptSha256);
 });
-it("company sign-in → sealed enrollment → current WSS computer → one direct answer → owner disconnect",async()=>{
+it.each([false,true])("company sign-in → sealed enrollment → current WSS computer → one direct answer → owner disconnect (Answer only=%s)",async answerOnly=>{
  const r=await s3bRig({realAudit:true});
  const home=mkdtempSync(join(tmpdir(),"hub-personal-tls-"));let enabled=true;
  const host=new HubPersonalRuntimeHost({home,current:()=>true,enabled:()=>enabled,log:()=>{},installer:{bundle:()=>({version:"2.4.0-test",sha256:"a".repeat(64),bytes:Buffer.from("fixture"),filename:"fixture.zip"})}});
@@ -57,16 +57,16 @@ it("company sign-in → sealed enrollment → current WSS computer → one direc
  const requests:any[]=[];ws=new WebSocket(`wss://127.0.0.1:${port}/runtime/v1/connect`,{ca:tls.cert,headers:{Authorization:`Bearer ${grant.credential}`}});
  ws.on("message",bytes=>{const frame=JSON.parse(bytes.toString());requests.push(frame);});await once(ws,"open");
  const inventory={home:"C:\\User",personalFolder:"C:\\Shared",probedAt:Date.now(),clis:[{id:"codex",path:"C:\\codex.exe",version:"0.167.0",authenticated:true,runnable:true,
-  supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:[],personalStatus:"ready"}]};
- ws.send(JSON.stringify({v:1,type:"hello",bootId:randomUUID(),name:"Inert Windows computer",platform:"win32",runtimeInfo:{...readRuntimeInfo(),capabilities:["exec","personal-agent-v1"]},inventory}));
+  supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:answerOnly?[{id:"local-model"}]:[],personalStatus:answerOnly?"sandbox-unavailable":"ready",...(answerOnly?{answerOnlyStatus:"ready"}:{})}]};
+ ws.send(JSON.stringify({v:1,type:"hello",bootId:randomUUID(),name:"Inert Windows computer",platform:"win32",runtimeInfo:{...readRuntimeInfo(),capabilities:["exec","personal-agent-v1",...(answerOnly?["personal-agent-answer-only-v1"]:[])]},inventory}));
  await vi.waitFor(()=>expect(host.runtime.machine(grant.machineId)?.status).toBe("online"));
- const publication=await r.call(admin,"PUT","/hub/v1/me/personal-agent",{name:"Personal notes",description:"One folder",cli:"codex",ifRevision:0});expect(publication.status).toBe(200);
+ const publication=await r.call(admin,"PUT","/hub/v1/me/personal-agent",{name:"Personal notes",description:"One folder",cli:"codex",ifRevision:0,...(answerOnly?{answerOnly:true}:{})});expect(publication.status).toBe(200);
  const permission=await r.call(admin,"POST","/hub/v1/grants",{exposureId:publication.json.exposure.id,exposureRevision:1,login:"alex",days:2});expect(permission.status).toBe(200);
  const room=await r.call(alex,"POST","/hub/v1/rooms",{exposureId:publication.json.exposure.id,grantId:permission.json.grant.id});expect(room.status).toBe(200);
  const path=`/hub/v1/rooms/${room.json.room.id}/messages`,body={text:"Read the note",idempotencyKey:randomUUID()};expect((await r.call(alex,"POST",path,body)).status).toBe(200);
  await vi.waitFor(()=>expect(requests.filter(f=>f.type==="request"&&f.operation==="run")).toHaveLength(1));const command=requests.find(f=>f.type==="request"&&f.operation==="run");
- expect(command.payload).toMatchObject({profile:"personal-agent-v1",task:{cwd:"C:\\Shared",sandbox:"read-only"}});
- const task={id:command.payload.task.requestId,cli:"codex",cwd:"C:\\Shared",sandbox:"read-only",status:"completed",startedAt:Date.now(),finishedAt:Date.now(),output:"",answer:"One final inert answer",outcomeConfirmed:true};
+ expect(command.payload).toMatchObject({profile:answerOnly?"personal-agent-answer-only-v1":"personal-agent-v1",task:{cwd:"C:\\Shared",sandbox:"read-only"}});
+ const task={id:command.payload.task.requestId,cli:"codex",cwd:"C:\\Shared",sandbox:"read-only",...(answerOnly?{model:"local-model"}:{}),status:"completed",startedAt:Date.now(),finishedAt:Date.now(),output:"",answer:"One final inert answer",outcomeConfirmed:true};
  ws.send(JSON.stringify({v:1,type:"response",id:command.id,ok:true,result:task}));
  await vi.waitFor(()=>expect(r.db.prepare("SELECT state FROM hub_personal_jobs WHERE id=?").get(task.id)).toEqual({state:"answered"}),{timeout:3000});
  const read=await r.call(alex,"GET",path);expect(read.json.messages.some((m:any)=>m.text==="One final inert answer")).toBe(true);

@@ -236,6 +236,8 @@ export interface HubFleetExposure extends HubExposureCommon {
 }
 export interface HubPersonalExposure extends HubExposureCommon {
   kind:"personal";personalAgentId:string;
+  /** Owner opted in; part of this immutable exposure revision. */
+  answerOnly?:true;
   fleetId:null;dataViewId:null;allowedTools:readonly [];policyDigest:null;
 }
 export type HubExposure=HubFleetExposure|HubPersonalExposure;

@@ -16,4 +16,13 @@ describe("independent per-computer personal profile detection",()=>{
     const value=options(),find=vi.fn(value.find!);value.find=find;delete value.personalFolder;
     await expect(probeNativeClis(value)).rejects.toThrow(/locally bound folder/);expect(find).not.toHaveBeenCalled();
   });
+  it("checks Answer only only after a real one-folder failure, with a local model, without enabling it",async()=>{
+    const value=options(),words=vi.fn(async()=>"ready" as const);value.answerOnlyCheck=words;value.readModels=id=>id==="codex"?[{id:"local-model"}]:[];
+    const result=await probeNativeClis(value);
+    expect(words).toHaveBeenCalledTimes(1);expect(words.mock.calls[0]).toHaveLength(3);
+    expect(result.clis[0]).toMatchObject({personalStatus:"sandbox-unavailable",answerOnlyStatus:"ready"});
+    value.personalCheck=async()=>"ready";words.mockClear();const ordinary=await probeNativeClis(value);
+    expect(words).not.toHaveBeenCalled();expect(ordinary.clis[0].answerOnlyStatus).toBeUndefined();
+  });
+
 });

@@ -104,3 +104,18 @@ it("keeps certificate help in a closed disclosure and personal terminal advice s
  const ordinary=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64)),personal=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64),"personal");
  expect(ordinary).toContain("or use the ZIP");expect(personal).not.toContain("or use the ZIP");expect(personal).toContain("Don''t change security settings");expect(personal).toContain("if ($s -and $h -eq");
 });
+
+it.each(["en","zh-TW"])("requires the explicit Answer only tick and hides folder access claims (%s)",async language=>{
+ const data:any=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable",answerOnlyAvailable:true});
+ const {p,client}=await fixture(language,data);const toggle=p.root.querySelector('[data-answer-only-option] input');expect(toggle.checked).toBe(false);expect(p.root.querySelector("form")).toBeNull();
+ expect(p.root.textContent).toContain(language==="en"?"Use Codex to answer only":"只讓 Codex 回答");
+ toggle.checked=true;fire(toggle,"change");await settle();
+ expect(p.root.textContent).not.toContain("C:\\Shared");expect(p.root.textContent).toContain(language==="en"?"It cannot read your files, run anything or go online.":"它不能讀取你的檔案、執行任何東西或上網");
+ change(p.root.querySelector("form input"),"Knowledge");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);
+ expect(client.savePersonalAgent).toHaveBeenCalledWith("captured-signin",{name:"Knowledge",description:"",cli:"codex",ifRevision:0,answerOnly:true});
+});
+it("keeps a failed empty-tool check unavailable and never selects it automatically",async()=>{
+ const data:any=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable",answerOnlyAvailable:false});
+ const {p,client}=await fixture("en",data);expect(p.root.textContent).toContain("Codex can't be used here in Answer only mode either. Claude can be used.");
+ expect(p.root.querySelector('[data-answer-only-option] input').disabled).toBe(true);expect(p.root.querySelector("form")).toBeNull();expect(client.savePersonalAgent).not.toHaveBeenCalled();
+});

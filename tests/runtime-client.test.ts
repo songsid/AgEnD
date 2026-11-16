@@ -10,7 +10,7 @@ import { runtimeClaimFingerprint } from "../src/runtime-protocol.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { WindowsCliBridge, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "../src/windows-cli.js";
-import { PERSONAL_AGENT_PROFILE } from "../src/runtime-personal-protocol.js";
+import { PERSONAL_AGENT_PROFILE, PERSONAL_AGENT_ANSWER_ONLY_PROFILE } from "../src/runtime-personal-protocol.js";
 
 const directories: string[] = [], clients: RuntimeClient[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [];
 function home(): string { const path = mkdtempSync(join(tmpdir(), "agend-runtime-client-")); directories.push(path); return path; }
@@ -22,9 +22,9 @@ class FakeBridge implements RuntimeBridge {
   readonly probe = vi.fn(async (): Promise<WindowsCliProbe> => ({ home: "C:\\Users\\fixture", clis: [], probedAt: 1 }));
   readonly prepareWorkspace = vi.fn(async (agentId: string) => `C:\\Users\\fixture\\.agend\\workspaces\\${agentId}`);
   start(raw: unknown, _authorized?: () => boolean, options: WindowsRunOptions = {}): WindowsCliTask {
-    const task = raw as ReturnType<typeof input>;
+    const task = raw as ReturnType<typeof input> & {model?:string};
     this.launches++; this.options.set(task.requestId, options);
-    const snapshot: WindowsCliTask = { id: task.requestId, cli: task.cli, cwd: task.cwd, sandbox: task.sandbox, status: "running", startedAt: Date.now(), output: "" };
+    const snapshot: WindowsCliTask = { id: task.requestId, cli: task.cli,...(task.model?{model:task.model}:{}), cwd: task.cwd, sandbox: task.sandbox, status: "running", startedAt: Date.now(), output: "" };
     this.tasks.set(snapshot.id, snapshot); return { ...snapshot };
   }
   get(id: string): WindowsCliTask | null { const task = this.tasks.get(id); return task ? { ...task } : null; }
@@ -63,7 +63,7 @@ afterEach(async () => {
 describe("a personal Runtime's connection boundary", () => {
   it("offers only personal execution and reports its locally bound folder", async () => {
     const f = await fixture({}, { personalAgent: { folder: "C:\\workspace" } });
-    expect(f.state.hub.machine(f.machineId)?.runtimeInfo?.capabilities).toEqual(["exec", PERSONAL_AGENT_PROFILE]);
+    expect(f.state.hub.machine(f.machineId)?.runtimeInfo?.capabilities).toEqual(["exec", PERSONAL_AGENT_PROFILE, PERSONAL_AGENT_ANSWER_ONLY_PROFILE]);
     await vi.waitFor(() => expect(f.state.hub.machine(f.machineId)?.inventory?.personalFolder).toBe("C:\\workspace"));
     const task = input();
     await f.state.hub.call(f.machineId, "run", { task, profile: PERSONAL_AGENT_PROFILE });
@@ -79,6 +79,21 @@ describe("a personal Runtime's connection boundary", () => {
       supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:[],personalStatus:"sandbox-unavailable"}]});
     await f.state.hub.call(f.machineId,"probe",{force:true});
     await vi.waitFor(()=>expect(f.state.hub.machine(f.machineId)?.inventory?.clis[0].personalStatus).toBe("sandbox-unavailable"));
+  });
+
+  it("negotiates Answer only separately and passes no tools or account authority to its worker", async()=>{
+    const f=await fixture({}, {personalAgent:{folder:"C:\\workspace"}}),task={...input(),model:"local-model"};
+    f.bridge.probe.mockResolvedValue({home:"C:\\User",probedAt:2,clis:[{id:"codex",path:"C:\\codex.exe",version:"0.167.0",authenticated:true,runnable:true,
+      supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:[{id:"local-model"}],personalStatus:"sandbox-unavailable",answerOnlyStatus:"ready"}]});
+    await f.state.hub.call(f.machineId,"probe",{force:true});
+    expect(f.state.hub.machine(f.machineId)?.inventory?.clis[0].answerOnlyStatus).toBe("ready");
+    await expect(f.state.hub.call(f.machineId,"run",{profile:PERSONAL_AGENT_ANSWER_ONLY_PROFILE,task:input()})).rejects.toThrow(/explicit model/);
+    await expect(f.state.hub.call(f.machineId,"run",{profile:PERSONAL_AGENT_ANSWER_ONLY_PROFILE,task:{...task,cli:"claude-code"}})).rejects.toThrow(/Codex/);
+    await f.state.hub.call(f.machineId,"run",{profile:PERSONAL_AGENT_ANSWER_ONLY_PROFILE,task});
+    expect(f.bridge.options.get(task.requestId)).toMatchObject({personal:true,answerOnly:true});
+    expect(f.bridge.options.get(task.requestId)?.mcp).toBeUndefined();
+    f.bridge.complete(task.requestId,"","Text from the question only.");
+    await vi.waitFor(()=>expect(f.state.hub.task(task.requestId)?.answer).toBe("Text from the question only."));
   });
   it("rejects normal tasks, different folders and extra authority before local acceptance", async () => {
     const f = await fixture({}, { personalAgent: { folder: "C:\\workspace" } });

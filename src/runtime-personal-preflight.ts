@@ -6,6 +6,8 @@ import { execFile } from "./child-process.js";
 import { PersonalAgentStageError } from "./runtime-personal-stage.js";
 import type { NativeCliExecutable } from "./windows-cli-worker.js";
 import { PERSONAL_AGENT_READ_CHECK_FILE, PERSONAL_AGENT_READ_CHECK_TEXT, PERSONAL_CODEX_DISABLED_FEATURES, type PersonalProfilePlan } from "./runtime-personal-profile.js";
+import {ANSWER_ONLY_DISABLED_FEATURES} from "./runtime-personal-answer-only.js";
+import {checkAnswerOnlyCatalog} from "./runtime-personal-answer-only-probe.js";
 const exec = promisify(execFile);
 /** Codex's Windows discovery prefers pwsh, then Windows PowerShell. Store launchers cannot run under MXC.
  * Resolve outside the sandbox: a denied pwsh must not silently become a passing Windows PowerShell probe. */
@@ -26,12 +28,12 @@ export function resolvePersonalCodexShell(environment: NodeJS.ProcessEnv, file: 
   }
   return null;
 }
-export function validatePersonalFeaturesOutput(text: string): void {
+export function validatePersonalFeaturesOutput(text: string, answerOnly=false): void {
   const flags = new Map(text.split(/\r?\n/).flatMap(line => {
     const match = /^(\w+)\s+.+?\s+(true|false)\s*$/.exec(line);
     return match ? [[match[1], match[2]] as const] : [];
   }));
-  if (PERSONAL_CODEX_DISABLED_FEATURES.some(name => flags.get(name) !== "false") || flags.get("skip_host_skill_discovery") !== "true")
+  if ((answerOnly?ANSWER_ONLY_DISABLED_FEATURES:PERSONAL_CODEX_DISABLED_FEATURES).some(name => flags.get(name) !== "false") || flags.get("skip_host_skill_discovery") !== "true")
     throw new PersonalAgentStageError("profile-unavailable");
 }
 export function validatePersonalPromptOutput(text: string): void {
@@ -51,10 +53,11 @@ export async function checkPersonalCodexPrompt(binary: NativeCliExecutable, plan
   try {
     const flags = await exec(binary.command, [...binary.args, "-C", plan.cwd, "features", "list"],
       { cwd: plan.cwd, env: environment, encoding: "utf8", windowsHide: true, shell: false, timeout: 10_000, maxBuffer: 128 * 1024 });
-    validatePersonalFeaturesOutput(flags.stdout);
+    validatePersonalFeaturesOutput(flags.stdout,plan.answerOnly);
     const rendered = await exec(binary.command, [...binary.args, "-C", plan.cwd, "debug", "prompt-input", "Personal-agent setup verification."],
       { cwd: plan.cwd, env: environment, encoding: "utf8", windowsHide: true, shell: false, timeout: 10_000, maxBuffer: 512 * 1024 });
     validatePersonalPromptOutput(rendered.stdout);
+    if(plan.answerOnly){await checkAnswerOnlyCatalog(binary,plan,environment);return;}
     // Explicit MXC refuses an unsupported host instead of provisioning legacy sandbox users, ACLs or a UAC prompt.
     try {
       const sandbox = await exec(binary.command, [...binary.args, "-C", plan.cwd, "sandbox", "-P", "hub-personal", "--", process.execPath, "-e", 'process.stdout.write("PERSONAL_PROFILE_READY")'],

@@ -40,12 +40,12 @@ const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 interface RoomRow { id: string; asker: string; exposure_id: string; owner_at_creation: string; grant_id: string; state: HubRoom["state"]; created_at: number }
 /** A room as the conversation list shows it (#3226 B). */
 export interface HubRoomListItem extends HubRoom {
-  agentKind?: "personal"; exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
+  agentKind?: "personal"; answerOnly?:true; exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
   grantExpiresAt: number; lastAt: number; waiting: boolean; features: readonly string[];
 }
-type RoomViewRow = RoomRow & { fleet_id: string|null; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number; sharing_paused: number;
+type RoomViewRow = RoomRow & { fleet_id: string|null; answer_only:number; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number; sharing_paused: number;
   owner_name: string | null; grant_expires_at: number | null; last_at: number; waiting: number };
-const ROOM_VIEW_SQL = `SELECT r.*, e.fleet_id AS fleet_id, e.display_name AS exposure_name, e.state AS exposure_state, e.revision AS exposure_revision, e.frozen_through,e.sharing_paused,
+const ROOM_VIEW_SQL = `SELECT r.*, e.answer_only, e.fleet_id AS fleet_id, e.display_name AS exposure_name, e.state AS exposure_state, e.revision AS exposure_revision, e.frozen_through,e.sharing_paused,
   p.display_name AS owner_name, g.expires_at AS grant_expires_at,
   COALESCE((SELECT MAX(m.stage_at) FROM hub_messages m WHERE m.room_id = r.id), r.created_at) AS last_at,
   EXISTS (SELECT 1 FROM hub_messages m WHERE m.room_id = r.id AND m.stage IN ('queued','delivered','consumed')) AS waiting
@@ -53,9 +53,9 @@ const ROOM_VIEW_SQL = `SELECT r.*, e.fleet_id AS fleet_id, e.display_name AS exp
 function roomListItem(r: RoomViewRow, features: readonly string[]): HubRoomListItem {
   // A closed room says which chat it was (its agent, its owner) and when it last moved (the list's order) — nothing of
   // its grant, its link or whether a question waited (#3246 review).
-  if (r.state !== "active") return { ...roomOf(r), ...(r.fleet_id===null?{agentKind:"personal" as const}:{}), exposureName: r.exposure_name, ownerName: r.owner_name ?? "", exposureState: r.exposure_state,
+  if (r.state !== "active") return { ...roomOf(r), ...(r.answer_only===1?{answerOnly:true as const}:{}), ...(r.fleet_id===null?{agentKind:"personal" as const}:{}), exposureName: r.exposure_name, ownerName: r.owner_name ?? "", exposureState: r.exposure_state,
     grantExpiresAt: 0, lastAt: r.last_at, waiting: false, features: [] };
-  return { ...roomOf(r), ...(r.fleet_id===null?{agentKind:"personal" as const}:{}), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
+  return { ...roomOf(r), ...(r.answer_only===1?{answerOnly:true as const}:{}), ...(r.fleet_id===null?{agentKind:"personal" as const}:{}), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
     exposureState: r.exposure_state === "published" ? r.frozen_through >= r.exposure_revision ? "frozen" : r.sharing_paused ? "paused" : "published" : r.exposure_state,
     grantExpiresAt: r.grant_expires_at ?? 0, lastAt: r.last_at, waiting: !!r.waiting, features };
 }

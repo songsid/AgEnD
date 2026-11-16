@@ -1,0 +1,45 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+
+ ❯ tests/hub-personal-owner-m3224.test.ts (11 tests | 1 failed) 887ms
+     × requires explicit owner opt-in, a failed one-folder check and the separate empty-tool capability 81ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-owner-m3224.test.ts > company-owned personal computer enrollment > requires explicit owner opt-in, a failed one-folder check and the separate empty-tool capability
+AssertionError: promise resolved "{ …(12) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "allowedTools": [],
++   "answerOnly": true,
++   "dataViewId": null,
++   "displayName": "Knowledge",
++   "fleetId": null,
++   "id": "72ebd74d-e7b8-487d-8a60-5257a06c80e9",
++   "kind": "personal",
++   "owner": {
++     "objectId": "373180d6-02df-4265-9483-eaf30a335b3f",
++     "realm": "corp",
++   },
++   "personalAgentId": "2b1aa469-d259-4c48-b934-c32fe1e16770",
++   "policyDigest": null,
++   "revision": 1,
++   "state": "published",
+  }
+
+ ❯ tests/hub-personal-owner-m3224.test.ts:152:83
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 passed (11)
+   Start at  02:18:25
+   Duration  4.63s (transform 2.70s, setup 82ms, import 3.52s, tests 887ms, environment 0ms)
+

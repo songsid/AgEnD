@@ -697,7 +697,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         const room = await guard(() => rooms.view(ctx, roomId)); const person = personKeyString(room.asker), name = signedIn().displayName;
         return send(res, 200, { room: directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room)), me: { id: person, role: "member" },
           members: [{ id: person, kind: "person", name, role: "member", presence: "online" }, { id: room.exposureId, kind: "agent", name: room.exposureName,
-            owner: { name: room.ownerName }, role: "member", presence: rooms.presence(room.exposureId), canAsk: room.state === "active" }],
+            ...(room.answerOnly?{answerOnly:true}:{}), owner: { name: room.ownerName }, role: "member", presence: rooms.presence(room.exposureId), canAsk: room.state === "active" }],
           settings: { allMention: false, historyForNew: "all" }, invited: [] });
       }
       throw new HttpError(405, "method");
