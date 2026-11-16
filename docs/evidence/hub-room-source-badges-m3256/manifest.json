@@ -173,7 +173,7 @@
   "artifactFiles": [
     {
       "path": "README.md",
-      "sha256": "b364df81679b95452024065450b4ba5ed47788997fd6c2c1f89964ad113fa608"
+      "sha256": "3b83cc76dd54491960e9a8a02fe08dc7ced2250ae3bb388fae242b08e11a5955"
     },
     {
       "path": "after/desk-light-en-thread.png",
@@ -304,8 +304,13 @@
       "sha256": "8a01ef97343c73d625f5bb86ef8a402d7439df1a70ffc810c051e157b30becad"
     },
     {
+      "path": "sync-191c.json",
+      "sha256": "649f7e66df93e7b9cc06c459e42f0e9b1faf23975dff0b2d72573872d939f7a8"
+    },
+    {
       "path": "visual-review.md",
       "sha256": "740c2e5cc593d366358d8dec32a7518954ecb189e89d17e6868386f57141891e"
     }
-  ]
+  ],
+  "currentSync": "sync-191c.json"
 }

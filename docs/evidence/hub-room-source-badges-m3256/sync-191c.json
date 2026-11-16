@@ -1,0 +1,25 @@
+{
+  "reviewed": "a7cbd8f7de72fffd36a2ecd04d0b619429f72260",
+  "base": "47701428f95a15035d6e0ff567c57f6fb17dde56",
+  "alpha": "191c10ac529f1c186720877ea943a43dd2534413",
+  "ownPaths": 56,
+  "ownNonoverlapBlobsModesEqual": 53,
+  "incomingOnlyBlobsModesEqual": 65,
+  "overlap": [
+    "src/hub/http/compose.ts",
+    "src/hub/rooms/direct-view.ts",
+    "src/hub/rooms/service.ts"
+  ],
+  "resolved": [
+    "src/hub/rooms/service.ts"
+  ],
+  "resolution": "Retain the reviewed fleet/personal member agentKind expression; incoming personal-only case remains identical. The rest of service.ts is reconstructed exactly from incoming plus the two independent reviewed projection/via blocks.",
+  "isolatedPatchedTree": "a4be94dcac4e74b02f24ef256a7bb95d27b47ab4",
+  "actualIndexTree": "a4be94dcac4e74b02f24ef256a7bb95d27b47ab4",
+  "localReruns": false,
+  "merge": "d0756e567a721188f7b39d570e06626036d75151",
+  "parents": [
+    "a7cbd8f7de72fffd36a2ecd04d0b619429f72260",
+    "191c10ac529f1c186720877ea943a43dd2534413"
+  ]
+}
