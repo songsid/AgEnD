@@ -1,0 +1,210 @@
+{
+  "sourceCommit": "8665c6be7a96f3862c015036e149cae08f245237",
+  "scope": "Headless WSL; real product shell/HTTP/SQL/audit; inert directory and Runtime inventory/turn; no Windows process/auth/provider/installer execution. Command token masked only in screenshot.",
+  "checks": [
+    {
+      "name": "desktop-en-light/admin-empty/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/admin-empty/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/admin-allow",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/admin/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/admin/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/install/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/install/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/install-help/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/install-help/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/eligible-options",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/cli-options/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/cli-options/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/published",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/ready/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/ready/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/working/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/working/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/offline/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/offline/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/disconnect/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/disconnect/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/cancel-keeps-computer",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/no-page-errors",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/admin-empty/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/admin-empty/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/admin-allow",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/admin/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/admin/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/install/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/install/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/install-help/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/install-help/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/eligible-options",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/cli-options/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/cli-options/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/published",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/ready/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/ready/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/working/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/working/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/offline/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/offline/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/disconnect/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/disconnect/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/cancel-keeps-computer",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/no-page-errors",
+      "pass": true
+    }
+  ],
+  "pictures": [
+    "desktop-en-light-admin-empty.png",
+    "desktop-en-light-admin.png",
+    "desktop-en-light-install.png",
+    "desktop-en-light-install-help.png",
+    "desktop-en-light-cli-options.png",
+    "desktop-en-light-ready.png",
+    "desktop-en-light-working.png",
+    "desktop-en-light-offline.png",
+    "desktop-en-light-disconnect.png",
+    "phone-zh-TW-dark-admin-empty.png",
+    "phone-zh-TW-dark-admin.png",
+    "phone-zh-TW-dark-install.png",
+    "phone-zh-TW-dark-install-help.png",
+    "phone-zh-TW-dark-cli-options.png",
+    "phone-zh-TW-dark-ready.png",
+    "phone-zh-TW-dark-working.png",
+    "phone-zh-TW-dark-offline.png",
+    "phone-zh-TW-dark-disconnect.png"
+  ]
+}

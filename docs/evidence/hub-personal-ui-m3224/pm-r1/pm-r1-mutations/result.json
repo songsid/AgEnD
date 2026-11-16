@@ -1,0 +1,22 @@
+[
+  {
+    "name": "grant-expiry",
+    "exit": 1,
+    "caught": true
+  },
+  {
+    "name": "eligible-options",
+    "exit": 1,
+    "caught": true
+  },
+  {
+    "name": "sharing-step",
+    "exit": 1,
+    "caught": true
+  },
+  {
+    "name": "personal-command-advice",
+    "exit": 1,
+    "caught": true
+  }
+]

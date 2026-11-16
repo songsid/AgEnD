@@ -1,5 +1,7 @@
 # Personal-agent owner and administrator controls (M-3224)
 
+The current PM revision is [pm-r1](pm-r1/README.md); the initial packet below is retained for its original scope.
+
 This UI slice is stacked on the unregistered host slice, #4058. The standard migration registry still omits
 `s3-personal-agents`. Production activation and Windows x64 support claims remain held for the approved proof.
 No Windows process, user authentication, model, provider or installer was used by this packet.
