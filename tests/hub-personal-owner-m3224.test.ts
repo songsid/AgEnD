@@ -9,13 +9,12 @@ import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { HubCore } from "../src/hub/http/core.js";
 import { personKeyString } from "../src/hub/identity.js";
 import { HubPersonalOwnerHost } from "../src/hub/personal/owner-host.js";
-import { HUB_PERSONAL_AGENTS_MIGRATION } from "../src/hub/personal/schema.js";
 import { HubProtocolError } from "../src/hub/validation.js";
 import type { HubActor, HubRequestContext, PersonKey } from "../src/hub/types.js";
 const close:(()=>Promise<void>)[]=[];
 afterEach(async()=>{vi.restoreAllMocks();for(const finish of close.splice(0))await finish();});
 async function fixture(){
-  const r=await s3bRig({realAudit:true});HUB_PERSONAL_AGENTS_MIGRATION.up(r.db);
+  const r=await s3bRig({realAudit:true});
   const directory=mkdtempSync(join(tmpdir(),"hub-personal-owner-")),runtime=new RuntimeCoordinator(directory);
   const core=new HubCore(r.httpDeps,r.sql),host=new HubPersonalOwnerHost(core,runtime),a=r.addPerson("alex"),b=r.addPerson("sam");let current=true;
   const ctx=(key:PersonKey):HubRequestContext=>({requestId:randomUUID(),isCurrent:()=>current,

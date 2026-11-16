@@ -1,0 +1,35 @@
+{
+  "modelRequests": 0,
+  "powershell": "7.4.22",
+  "codex": "0.165.0",
+  "observedRootMetadata": "C:\\ stat/readdir/statfs EPERM; module directory and allowed file accessible",
+  "controls": [
+    {
+      "name": "baseline-root-denied",
+      "exit": 1,
+      "result": "PowerShell filesystem provider unavailable"
+    },
+    {
+      "name": "baseline-own-outside-denied",
+      "exit": 0,
+      "result": "DENIED"
+    },
+    {
+      "name": "diagnostic-only-drive-root-read",
+      "exit": 0,
+      "result": "shared marker"
+    },
+    {
+      "name": "diagnostic-only-own-outside-readable",
+      "exit": 0,
+      "result": "OWNED_OUTSIDE_CONTROL"
+    },
+    {
+      "name": "restored-root-denied",
+      "exit": 1,
+      "result": "PowerShell filesystem provider unavailable"
+    }
+  ],
+  "unsafeDiagnosticPolicyShipped": false,
+  "syntheticPoliciesRestoredAndRemoved": true
+}

@@ -8,7 +8,6 @@ import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { readRuntimeInfo } from "../src/runtime-build-info.js";
 import { HubPersonalOwnerHost } from "../src/hub/personal/owner-host.js";
 import { HubPersonalTurns } from "../src/hub/personal/turns.js";
-import { HUB_PERSONAL_AGENTS_MIGRATION } from "../src/hub/personal/schema.js";
 import { personKeyString } from "../src/hub/identity.js";
 import type { RuntimeMachine } from "../src/runtime-protocol.js";
 import type { WindowsCliTask } from "../src/windows-cli.js";
@@ -19,7 +18,7 @@ import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../src/hub/room-mention-feed
 const cleanups:(()=>Promise<void>)[]=[];
 afterEach(async()=>{for(const close of cleanups.splice(0))await close();vi.restoreAllMocks();});
 async function fixture(){
-  const r=await s3bRig({realAudit:true});HUB_PERSONAL_AGENTS_MIGRATION.up(r.db);
+  const r=await s3bRig({realAudit:true});
   const directory=mkdtempSync(join(tmpdir(),"personal-http-")),runtime=new RuntimeCoordinator(directory);
   const tasks=new Map<string,WindowsCliTask>();let reported:RuntimeMachine|null=null,turns!:HubPersonalTurns,owner!:HubPersonalOwnerHost;
   const actualMachine=runtime.machine.bind(runtime);

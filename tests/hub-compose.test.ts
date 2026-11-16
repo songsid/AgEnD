@@ -8,7 +8,7 @@ import { request, Server as HttpsServer } from "node:https";
 import { connect, createServer as createNetServer, type Socket } from "node:net";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { verify, createPublicKey, randomUUID, createHash } from "node:crypto";
+import { verify, createPublicKey, randomUUID, createHash, randomBytes } from "node:crypto";
 import yaml from "js-yaml";
 import Database from "better-sqlite3";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
@@ -41,6 +41,8 @@ import { parseRolePolicy } from "../src/hub/roles/model.js";
 import { RoomAssistantService } from "../src/hub/assistant/service.js";
 import { HUB_ROOM_INVITATIONS_MIGRATION } from "../src/hub/invitations.js";
 import { personKeyString } from "../src/hub/identity.js";
+import { RuntimeInstallService } from "../src/runtime-install.js";
+import { runtimeEnrollTokenId } from "../src/runtime-protocol.js";
 
 const roots: string[] = [];
 let sourceCerts: TestCerts;
@@ -2303,6 +2305,52 @@ describe.skipIf(process.platform === "win32")("directory Save decision borrowing
 
 /** Production factory wiring: no manual consent migration or dependency injection in this fixture. */
 describe.skipIf(process.platform === "win32")("room consent factory composition", () => {
+  it("registers personal agents once and mounts the default-off owner and private Runtime paths", async () => {
+    // Only archive packaging is substituted; schema, factory, HTTP, owner and Runtime are production objects.
+    const installer = vi.spyOn(RuntimeInstallService.prototype, "installer").mockReturnValue({ version: "2.4.0-test", scriptSha256: "a".repeat(64), scriptBytes: 10, bundleSha256: "b".repeat(64) });
+    const r = await directoryRuntimeRig();
+    try {
+      const plan = hubServerDatabasePlan(r.hub.config.hub, r.entry.migrations);
+      expect(plan.migrations.filter(m => m.component === "s3-personal-agents")).toHaveLength(1);
+      expect(Reflect.get(r.deps, "personalAgents")).toBeTypeOf("function");
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx);
+        expect(db.prepare("SELECT enabled FROM hub_personal_settings WHERE id=1").get()).toEqual({ enabled: 0 });
+        expect(db.prepare("SELECT version FROM hub_schema WHERE component='s3-personal-agents'").get()).toEqual({ version: 1 });
+        expect(db.prepare("SELECT COUNT(*) AS n FROM hub_personal_agents").get()).toEqual({ n: 0 });
+      });
+      const signed = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      expect(signed.json.features).toContain("personal-agents-v1");
+      expect((await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/admin/personal-agents")).json).toEqual({ enabled: false, people: [], teams: [] });
+      expect((await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/me/personal-agent")).status).toBe(200);
+      const headers = { "X-AgEnD-Hub-CSRF": signed.json.csrf };
+      expect((await directoryBrowser(r.hub, signed.cookie, {}, "/hub/v1/me/personal-agent/enrollment", { headers })).status).toBe(403);
+      const body = { nonce: randomBytes(24).toString("hex"), tid: "a".repeat(64) };
+      expect((await directoryBrowser(r.hub, undefined, body, "/runtime/v1/enroll-hello")).status).toBe(404);
+      const enabled = await directoryBrowser(r.hub, signed.cookie, { enabled: true, people: [], teams: [] }, "/hub/v1/admin/personal-agents", { method: "PUT", headers });
+      expect(enabled.status).toBe(200);
+      const issued = await directoryBrowser(r.hub, signed.cookie, {}, "/hub/v1/me/personal-agent/enrollment", { headers });
+      expect(issued.status).toBe(200);
+      const input = { nonce: randomBytes(24).toString("hex"), tid: runtimeEnrollTokenId(issued.json.token) };
+      // A browser Origin is refused even after enabling; the private Runtime uses a plain HTTPS request.
+      expect((await directoryBrowser(r.hub, undefined, input, "/runtime/v1/enroll-hello")).status).toBe(403);
+      const hello = await new Promise<{ status: number; json: any }>((resolve, reject) => {
+        const req = request({ host: "127.0.0.1", port: r.hub.webPort, path: "/runtime/v1/enroll-hello", servername: "hub.example.test", ca: r.hub.caPem,
+          agent: false, method: "POST", headers: { "Content-Type": "application/json" } }, res => {
+          let text = ""; res.setEncoding("utf8"); res.on("data", chunk => { text += chunk; });
+          res.on("end", () => { try { resolve({ status: res.statusCode!, json: JSON.parse(text) }); } catch (error) { reject(error); } });
+        });
+        req.on("error", reject); req.end(JSON.stringify(input));
+      });
+      expect(hello.status).toBe(200);
+      expect(hello.json.publicKey).toBeTypeOf("string");
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx);
+        expect(db.prepare("SELECT owner FROM hub_personal_enrollments").all()).toEqual([{ owner: personKeyString(ADMIN.key) }]);
+      });
+    } finally { try { await r.runtime.close(); } finally { installer.mockRestore(); } }
+  });
+
   it("registers Team migrations and mounts Team routes through the sealed Hub factory", async () => {
     const r = await directoryRuntimeRig();
     try {

@@ -1,8 +1,8 @@
 ## Scope
 
-M-3224 layer 3 supplies the owner/enrollment model and computer readiness facts. It does not mount a Hub route,
-register the migration, start a turn, advertise a browser feature or offer a personal agent in the UI. The host/UI
-mount remains held for the exact x64 Windows proof requested by the product owner.
+M-3224 layer 3 supplies the owner/enrollment model and computer readiness facts. It does not itself mount a Hub
+route, register a migration or start a turn. The later host layer composes these primitives after the owned x64
+proof; `hub-personal-host.md` describes that registration and its actual Windows/CLI coverage.
 
 ## Model API
 
@@ -17,7 +17,8 @@ mount remains held for the exact x64 Windows proof requested by the product owne
 - `publish(ctx, {name, description, cli, model?, ifRevision})`: one personal definition and exposure per owner. A
   changed definition advances the exposure revision, so existing revision-bound grants do not silently widen.
 
-`HUB_PERSONAL_AGENTS_MIGRATION` is deliberately unregistered. Its source discriminator leaves existing Fleet rows
+At the foundation checkpoint `HUB_PERSONAL_AGENTS_MIGRATION` was deliberately unregistered; the later host layer
+registers it after the owned proof. Its source discriminator leaves existing Fleet rows
 and incoming foreign keys intact. Personal exposures have no Fleet id, data view, policy digest or Fleet tool list.
 The member snapshot schema remains Fleet-only. Fleet execution paths refuse personal sources until a dedicated
 adapter is composed. The owner/catalog primitive alone cannot execute them.

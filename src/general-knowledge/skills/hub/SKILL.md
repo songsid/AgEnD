@@ -740,7 +740,8 @@ Say plainly that these are not in the product yet:
   uses a separate profile from a Fleet Runtime and keeps that folder across restarts. An existing Fleet profile cannot
   be converted; disconnect the personal profile before changing its folder. Personal mode has no remote account
   management or self-update; re-run its install command to update it. This option alone does not enable personal
-  agents on a Hub.
+  agents on a Hub. Personal agents are off until a Hub administrator enables them. Each CLI's availability comes
+  from that computer's own check, not its Windows version; Claude may be usable while Codex is unavailable.
   Codex is usable only after its isolated shell can read the profile's test file. A failed check leaves it
   unavailable; do not loosen its folder restrictions or change Windows security settings to get past the check.
 

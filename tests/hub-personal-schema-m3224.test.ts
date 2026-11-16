@@ -6,8 +6,9 @@ import { HUB_HTTP_MIGRATIONS } from "../src/hub/http/schema.js";
 import { HUB_PERSONAL_AGENTS_MIGRATION } from "../src/hub/personal/schema.js";
 import { exposureOf, readExposure } from "../src/hub/catalog.js";
 import { exposureSchema } from "../src/hub/protocol.js";
-const registry=[...HUB_HTTP_MIGRATIONS,HUB_PERSONAL_AGENTS_MIGRATION];
-function fixture(){const db=new Database(":memory:");db.pragma("foreign_keys=ON");applyHubMigrations(db,HUB_HTTP_MIGRATIONS);return db;}
+const legacyRegistry=HUB_HTTP_MIGRATIONS.filter(m=>m.component!==HUB_PERSONAL_AGENTS_MIGRATION.component);
+const registry=HUB_HTTP_MIGRATIONS;
+function fixture(){const db=new Database(":memory:");db.pragma("foreign_keys=ON");applyHubMigrations(db,legacyRegistry);return db;}
 describe("personal sources without fictional Fleet identities",()=>{
   it("preserves retained Fleet publications and all inbound grant/room/quota references",()=>{
     const db=fixture();try{
@@ -23,7 +24,7 @@ describe("personal sources without fictional Fleet identities",()=>{
       expect(["hub_grants","hub_rooms","hub_quota_preferences"].map(table=>db.prepare(`SELECT * FROM ${table}`).all())).toEqual(children);
       expect(db.pragma("foreign_key_check")).toEqual([]);
       expect(db.prepare("SELECT enabled FROM hub_personal_settings").get()).toEqual({enabled:0});
-      expect(()=>applyHubMigrations(db,HUB_HTTP_MIGRATIONS)).toThrow();
+      expect(()=>applyHubMigrations(db,legacyRegistry)).toThrow();
     }finally{db.close();}
   });
   it("enforces disjoint Fleet and personal publication shapes including NULL values",()=>{
