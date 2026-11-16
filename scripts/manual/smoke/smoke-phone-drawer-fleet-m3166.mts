@@ -5,7 +5,7 @@
 //             the page's tools one row under it; the org page opens on its list; no count anywhere; the row scrolls
 //             sideways when it does not fit, and the open last tab (用量) is in view
 //   3-memory  a host-memory warning (the header's subtitle) stays, on its own line under ☰ and the tabs
-//   2-drawer  ☰ opens the drawer: 300 px; the agent filter at the top with [+] beside it; Fleet 概覽 and 等你處理 (no count),
+//   2-drawer  ☰ opens the drawer: the screen's width (M-3211; it was 300 px); the agent filter at the top with [+] beside it; Fleet 概覽 and 等你處理 (no count),
 //             no 搜尋 / 通知 rows, no filter block at the bottom; agent rows ≥ 48 px with no CLI mark, % or ⋯ (their faces:
 //             smoke-phone-drawer-avatars-m3209)
 // The desk: the sidebar as before (its search row, its filters) and Fleet's title; no phone tabs. No horizontal overflow, no page error.
@@ -83,7 +83,7 @@ try {
         extra: [...sb.querySelectorAll(".av-cli, .inst-row-menu, .v-meta")].filter(shown).length };
     });
     const zh = c.lang === "zh-TW";
-    need(d.w === 300 && d.filterTop && d.plusBeside, `the drawer: 300 px, the filter at the top with [+] beside it (${JSON.stringify(d)})`);
+    need(d.w === 390 && d.filterTop && d.plusBeside, `the drawer: the screen's width (M-3211), the filter at the top with [+] beside it (${JSON.stringify(d)})`);
     need(JSON.stringify(d.links) === JSON.stringify(zh ? ["Fleet 概覽", "等你處理"] : ["Fleet", "Needs you"]) && d.counts === 0 && !d.facets, `two links, no count, no filter block (${JSON.stringify(d.links)}, ${d.counts}, ${d.facets})`);
     need(d.rowMin >= 47.5 && d.extra === 0, `agent rows ≥ 48 px, no CLI mark, % or ⋯ (${d.rowMin}, ${d.extra})`);
     await page.screenshot({ path: shotPath(SMOKE, caseName(c), "2-drawer") });
