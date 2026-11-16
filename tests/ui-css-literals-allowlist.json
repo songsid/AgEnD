@@ -69,14 +69,7 @@
     "colour mask-image: linear-gradient(to bottom, #000 70%, transparent)": 2,
     "colour mask-image: linear-gradient(to right, #000 calc(100% - var(--s-7)), transparent)": 1,
     "colour text-shadow: 0 1px 2px #000, 0 0 4px #000": 1,
-    "font-px font-size: 10.5px": 2,
     "font-px font-size: 100px": 1,
-    "font-px font-size: 10px": 13,
-    "font-px font-size: 11.5px": 1,
-    "font-px font-size: 11px": 45,
-    "font-px font-size: 12px": 35,
-    "font-px font-size: 13.5px": 1,
-    "font-px font-size: 13px": 23,
     "font-px font-size: 14px": 12,
     "font-px font-size: 15px": 5,
     "font-px font-size: 16px": 6,
@@ -88,13 +81,8 @@
     "font-px font-size: 24px": 3,
     "font-px font-size: 26px": 1,
     "font-px font-size: 30px": 1,
-    "font-px font-size: 9px": 4,
     "font-px font-size: max(16px, 1em)": 1,
-    "font-px font-size: max(16px, var(--fs-lg))": 2,
-    "font-px font: 11px/1.7 var(--font-mono)": 2,
-    "font-px font: 11px/1.8 var(--font-mono)": 1,
-    "font-px font: 13px/1.8 var(--font-mono)": 1,
-    "font-px font: var(--fw-semibold) 11px/1 var(--font-ui)": 1
+    "font-px font-size: max(16px, var(--fs-lg))": 2
   },
   "src/ui/shared/hub-chat.css": {
     "colour background: #2f8f83": 1,
@@ -104,13 +92,9 @@
     "colour background: #b4643a": 1,
     "colour background: #b8447a": 1,
     "colour color: #fff": 1,
-    "font-px font-size: 12px": 1,
     "font-px font-size: 14px": 1,
     "font-px font-size: 22px": 1,
     "font-px font-size: var(--fs-lg, 17px)": 1
-  },
-  "src/ui/shared/hub-owner.css": {
-    "font-px font-size: 12px": 1
   },
   "src/ui/shared/loading.css": {
     "colour background: var(--bg, #f6f6f8)": 1,
