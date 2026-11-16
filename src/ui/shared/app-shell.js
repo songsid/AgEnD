@@ -17,7 +17,7 @@ import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { StaleTabPrompt, isStaleModuleError } from "./stale-tab.js";
 import { Dialog } from "./ui-dialog.js";
-import { InstanceNav, RosterNav, namesStore, setNamesPrimary, sidebarDensityStore, setSidebarDensity } from "./instance-nav.js";
+import { InstanceNav, RosterNav, namesStore, phoneDrawerStore, setNamesPrimary, sidebarDensityStore, setSidebarDensity } from "./instance-nav.js";
 import { usageRailStore } from "./header-tools.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
@@ -405,6 +405,8 @@ function MemberPairingNoticesSlot() {
 
 function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
+  // M-3212: 窄版 — the phone's drawer as it was before M-3211 (app.css; a desk never shows the drawer).
+  const narrowDrawer = useStore(phoneDrawerStore).value === "narrow";
   const shell = useStore(shellStore);
   const canCreate = useCanCreate();
   const on = (panel) => !!route && route.panel === panel;
@@ -455,7 +457,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   const onFleet = !!route && route.panel === "fleet";
   const overview = html`<a class=${`side-row side-overview${onFleet ? " active" : ""}`} href=${fleetEntryPath(route)}
     aria-current=${onFleet ? "page" : undefined} onClick=${closeDrawer}><${Icon} name="org" /><span class="grow">${t("app.fleetOverview")}</span></a>`;
-  return html`<aside id="sidebar" class="sidebar fleet-side" aria-label=${t("app.menu")}>
+  return html`<aside id="sidebar" class=${`sidebar fleet-side${narrowDrawer ? " drawer-narrow" : ""}`} aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
       <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" cls="ic-sidebar" /><${Icon} name="back" cls="ic-back" /></button>

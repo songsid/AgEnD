@@ -278,6 +278,9 @@ register("view", {
   "sortDisplay": "Display",
   "sortDisplayDetailed": "Detailed",
   "sortDisplayCompact": "Compact",
+  "sortPhoneDrawer": "Phone sidebar",
+  "sortPhoneDrawerFull": "Full width",
+  "sortPhoneDrawerNarrow": "Narrow",
   "recentOthers": "Recent replies first",
   "pinnedCurrent": "Current",
   "pinnedLabel": "The instance you have open"
@@ -554,6 +557,9 @@ register("view", {
   "sortDisplay": "顯示",
   "sortDisplayDetailed": "詳細",
   "sortDisplayCompact": "精簡",
+  "sortPhoneDrawer": "手機側欄",
+  "sortPhoneDrawerFull": "滿版",
+  "sortPhoneDrawerNarrow": "窄版",
   "recentOthers": "最近回覆在上",
   "pinnedCurrent": "目前",
   "pinnedLabel": "你目前開著的 Agent"

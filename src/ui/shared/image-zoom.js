@@ -7,6 +7,12 @@
 // larger than the view a plain wheel scrolls it instead, so a tall sheet reads like a page. A mouse click on the image
 // toggles fit ↔ 100% at that point; a drag pans. Touch: two fingers pinch (and pan), one finger pans, a double tap
 // toggles fit ↔ 100%. A gesture that moved is never also a click (the lightbox closes on a click on the dark area).
+//
+// M-3210 (the user, phone): one finger on a picture that fits (not zoomed in) swipes, as a phone's photo viewer does —
+// sideways to the previous or next picture (`onSwipe(±1)`), up or down to close (`onDismiss`); the picture follows the
+// finger, and a pull reports how far it went (`onPull(0…1)`: the lightbox fades its backdrop). A short, slow one springs
+// back; past the first or the last picture (`canSwipe(±1)` false) it gives a little and springs back. A zoomed-in picture
+// pans as before, a second finger turns a swipe into a pinch, and a mouse or a pen never swipes (the desk has ← → Esc).
 
 /** The largest zoom: 8× the picture's own pixels. */
 export const MAX_SCALE = 8;
@@ -14,6 +20,9 @@ export const MAX_SCALE = 8;
 export const STEP = 1.25;
 /** A pointer that moved less than this (CSS px) clicked or tapped; more, it dragged. */
 export const SLOP = 4;
+/** A swipe: sideways past this share of the view's width, or up/down past this share of its height — or a flick (faster
+ * than FLICK px/ms over more than FLICK_PX) — steps or closes; less springs back. */
+export const SWIPE_X = 0.22, SWIPE_Y = 0.14, FLICK = 0.5, FLICK_PX = 30;
 /** Two taps within this long and this close are a double tap. */
 export const DOUBLE_TAP_MS = 300;
 export const DOUBLE_TAP_PX = 24;
@@ -61,6 +70,7 @@ export function overflows(z, view, img) {
   return img.w * z.s > view.w + 0.5 || img.h * z.s > view.h + 0.5;
 }
 
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 /** Wheel distance in CSS px (a line is 16, a page the view's height). */
 function wheelPx(e, view) {
   const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? view.h : 1;
@@ -71,12 +81,13 @@ function wheelPx(e, view) {
  * Drive one picture in one stage. `onChange({ scale, fit, mode })` after every change (mode: "fit" | "width" | "free").
  * Returns { reset, fit, fitWidth, actual, zoomBy, toggle, destroy }. Nothing happens until the picture has loaded.
  */
-export function createZoom({ stage, img, onChange }) {
+export function createZoom({ stage, img, onChange, onSwipe = null, canSwipe = null, onDismiss = null, onPull = null }) {
   let nat = null;            // { w, h } once loaded
   let z = { s: 1, tx: 0, ty: 0 };
   let mode = "fit";
   const pointers = new Map(); // pointerId → { x, y }
-  let gesture = null;        // { kind: "drag" | "pinch", ... }
+  let gesture = null;        // { kind: "drag" | "pinch" | "swipe" | "pull", ... }
+  let snapTimer = 0;         // a swipe springing back (the picture eases to where it is)
   let moved = false;         // the gesture now ending moved: its click is not a click
   let lastTap = null;        // { t, x, y } of the last touch tap
   let lastType = "mouse";    // the pointer type of the last press: a touch tap's click never toggles (double tap does);
@@ -96,6 +107,15 @@ export function createZoom({ stage, img, onChange }) {
     if (onChange) onChange({ scale: z.s, fit: nat ? fitScale(view(), nat) : 1, mode });
   };
   const set = (next, m = "free") => { if (!nat) return; z = next; mode = m; apply(); };
+  // A swipe in progress: the picture drawn dx/dy off where it is (z itself unchanged).
+  const drawOff = (dx, dy) => { img.style.transform = `translate(${z.tx + dx}px, ${z.ty + dy}px) scale(${z.s})`; };
+  const snapBack = () => {
+    img.classList.add("lb-snap");
+    apply();
+    if (onPull) onPull(0);
+    if (snapTimer && typeof clearTimeout === "function") clearTimeout(snapTimer);
+    snapTimer = typeof setTimeout === "function" ? setTimeout(() => { snapTimer = 0; img.classList.remove("lb-snap"); }, 220) : 0;
+  };
 
   const api = {
     /** A new picture (or the first): read its size and fit it. */
@@ -124,6 +144,7 @@ export function createZoom({ stage, img, onChange }) {
       if (mode === "fit" && Math.abs(z.s - 1) > 1e-6) api.actual(px, py); else api.fit();
     },
     destroy() {
+      if (snapTimer && typeof clearTimeout === "function") clearTimeout(snapTimer);
       stage.removeEventListener("wheel", onWheel);
       stage.removeEventListener("pointerdown", onDown);
       stage.removeEventListener("pointermove", onMove);
@@ -157,8 +178,10 @@ export function createZoom({ stage, img, onChange }) {
     pointers.set(e.pointerId, at(e));
     // No pointer capture yet: it would retarget the click to the stage, and a click on the picture is not one on the
     // dark area. Captured only once the pointer moves (capture()).
-    if (pointers.size === 1) { moved = false; gesture = { kind: "drag", from: at(e), z0: z }; }
+    if (pointers.size === 1) { moved = false; gesture = { kind: "drag", from: at(e), z0: z, t0: now(), swipes: e.pointerType === "touch" && !!(onSwipe || onDismiss) }; }
     else if (pointers.size === 2) {
+      // A swipe that gets a second finger: a pinch, from where the picture is.
+      if (gesture && (gesture.kind === "swipe" || gesture.kind === "pull")) { apply(); if (onPull) onPull(0); }
       const [a, b] = [...pointers.values()];
       gesture = { kind: "pinch", d0: Math.hypot(b.x - a.x, b.y - a.y) || 1, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, z0: z };
       moved = true;           // two fingers: never a tap
@@ -184,6 +207,19 @@ export function createZoom({ stage, img, onChange }) {
       if (!moved) capture(e.pointerId);
       moved = true;
       if (overflows(gesture.z0, v, nat)) set(clampPan({ s: gesture.z0.s, tx: gesture.z0.tx + dx, ty: gesture.z0.ty + dy }, v, nat), mode === "width" ? "width" : "free");
+      else if (gesture.swipes) {
+        // A picture that fits, under a finger: its first clear direction decides — sideways steps, up or down closes.
+        gesture = { ...gesture, kind: Math.abs(dx) > Math.abs(dy) ? "swipe" : "pull" };
+        onMove(e);
+      }
+    } else if (gesture.kind === "swipe") {
+      const dx = pointers.get(e.pointerId).x - gesture.from.x;
+      const dir = dx < 0 ? 1 : -1;                              // to the left: the next picture
+      drawOff(onSwipe && (!canSwipe || canSwipe(dir)) ? dx : dx * 0.3, 0);
+    } else if (gesture.kind === "pull") {
+      const dy = pointers.get(e.pointerId).y - gesture.from.y;
+      drawOff(0, dy);
+      if (onPull) onPull(Math.min(1, Math.abs(dy) / (v.h * 0.5)));
     }
   }
   function onUp(e) {
@@ -197,17 +233,29 @@ export function createZoom({ stage, img, onChange }) {
       return;
     }
     if (pointers.size > 0) return;
+    if (gesture && (gesture.kind === "swipe" || gesture.kind === "pull")) {
+      if (e.type === "pointercancel") { gesture = null; snapBack(); return; }   // the browser took the touch back
+      const g = gesture, v = view(), dt = Math.max(1, now() - g.t0);
+      const d = g.kind === "swipe" ? p.x - g.from.x : p.y - g.from.y, span = g.kind === "swipe" ? v.w * SWIPE_X : v.h * SWIPE_Y;
+      const far = Math.abs(d) > span || (Math.abs(d) > FLICK_PX && Math.abs(d) / dt > FLICK);
+      gesture = null;
+      const dir = d < 0 ? 1 : -1;
+      if (far && g.kind === "swipe" && onSwipe && (!canSwipe || canSwipe(dir))) { onSwipe(dir); return; }
+      if (far && g.kind === "pull" && onDismiss) { onDismiss(); return; }
+      snapBack();
+      return;
+    }
     const tapped = !moved && gesture && gesture.kind === "drag";
     gesture = null;
     // Only a finger double-taps: a mouse or a pen clicks (onClick toggles), so a pen tap must not also count here.
     if (!tapped || e.pointerType !== "touch") return;
     // A touch tap: a second one soon and near is a double tap — fit ↔ 100% there.
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < DOUBLE_TAP_PX) {
+    const t = now();
+    if (lastTap && t - lastTap.t < DOUBLE_TAP_MS && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < DOUBLE_TAP_PX) {
       lastTap = null;
       moved = true;           // its click neither closes nor toggles again
       api.toggle(p.x, p.y);
-    } else lastTap = { t: now, x: p.x, y: p.y };
+    } else lastTap = { t, x: p.x, y: p.y };
   }
   /** A drag or pinch keeps its pointers even off the stage. */
   function capture(id) {
