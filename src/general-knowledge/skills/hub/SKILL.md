@@ -23,6 +23,7 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | move the Hub to another address or port, Hub address (Hub 位址) on the Hub's computer | [Changing the Hub's address](#changing-the-hubs-address) |
 | Fleet connection address (Fleet 連接位址), the address Fleets connect to, Fleets that move | [Changing the Fleet connection address](#changing-the-fleet-connection-address) |
 | the Hub's sign-in page, which account, wrong password | [Signing in to the Hub](#signing-in-to-the-hub) |
+| My AI apps, 我的 AI App, Claude Code or Codex without AgEnD, remote MCP consent | [Connecting your own AI app](#connecting-your-own-ai-app) |
 | Let colleagues join, 讓同仁加入, which groups, the sentence to send | [Letting colleagues join](#letting-colleagues-join) |
 | join codes, 加入碼, create, end, used up, limits | [Join codes](#join-codes) |
 | Settings → Hub, Hub address, "address space code", Join code included | [Connecting a Fleet](#connecting-a-fleet) |
@@ -132,6 +133,31 @@ is never kept." Fields **Account** and **Password**, button **Sign in**.
   again later." → the Hub cannot reach the company directory; nothing the user typed is wrong.
 - When the page was opened from a Fleet that is connecting, the button reads **Sign in and connect Fleet**: that one
   press signs in and approves the connection.
+
+## Connecting your own AI app
+
+When the Hub offers **My AI apps** (我的 AI App), open it from the person's menu. **Connect your app** shows the
+**Hub MCP address** with **Copy address** as the main action. For Claude Code or Codex, choose the app, use **Copy setup prompt** and
+paste it into that app. For another MCP app, add the address as a remote MCP server directly; no
+prompt button is offered. **Set it up by hand** opens the manual configuration. The colleague adds only the Hub's
+HTTPS `/mcp` address; they install no AgEnD command or local proxy. The prompt contains no secret.
+The Hub must have a certificate the app already trusts. If the app refuses its certificate, ask the administrator to
+fix that certificate; never suggest disabling certificate verification or trusting a self-signed Hub.
+
+The app opens the Hub's normal sign-in page. After company sign-in, the person chooses consent: read their shared
+rooms, post in those rooms, and ask agents they may ask. These three ticks start on; answering other people's
+questions is a disabled later permission. Explain that content read goes to the person's AI app and its provider.
+Posts display the person's name via the app. The app supplies its own name; the Hub cannot check who made it.
+Consent shows where the person returns after allowing, or says the app runs on this computer with the exact
+loopback origin below it. Only allow if the person started from that app or site. Neither a name nor an address is an approval. There is no administrator operation, `@all`, Hub assistant/General or file content. Direct questions and
+their result IDs belong to that app; browser and other-app one-to-one history is not exposed.
+
+**Disconnect** (中斷連接) takes effect at once. A connection ends after 30 days without use or an authoritative
+account/access denial. An administrator's **Let people connect their own AI apps** starts off in Administration →
+This Hub, with the common AD group/team/person picker. Narrowing that allowance ends every existing app connection; people still allowed reconnect in their apps.
+Adding people or otherwise widening it keeps connections. The room manager's **Allow AI apps to read and post** starts on in
+Room settings. Turning it off leaves the room listed with a reason but refuses app reads/posts; browser use remains.
+Limits are five posts per person per minute and thirty direct agent questions per person per hour across their apps.
 
 ## Letting colleagues join
 
@@ -714,6 +740,8 @@ Say plainly that these are not in the product yet:
   be converted; disconnect the personal profile before changing its folder. Personal mode has no remote account
   management or self-update; re-run its install command to update it. This option alone does not enable personal
   agents on a Hub.
+  Codex is usable only after its isolated shell can read the profile's test file. A failed check leaves it
+  unavailable; do not loosen its folder restrictions or change Windows security settings to get past the check.
 
 - **Does a disconnected Hub hold up the Fleet?** Fleet startup and ordinary local message delivery do not wait for the Hub connection. Tool discovery stays local within configured permissions, including native agents; an unavailable Hub tool explains the refusal when called. Hub Settings can temporarily say unavailable while a mount changes—retry afterward. Individual Hub network operations have deadlines; this does not promise zero background CPU/I/O overhead.
 

@@ -44,6 +44,7 @@ import { HubRoomPage } from "./hub-room-thread.js";
 import { TextSizeButton } from "/assets/header-tools.js";
 import { HubNotifyToggle, clearHubMeId, noteHubMeId, rememberedMeId, startHubRoomNotifier } from "./hub-room-notify.js";
 import { hroom } from "./hub-room-strings.js";
+import { ha as hApps } from "./hub-ai-apps-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { ht } from "./hub-teams-strings.js";
 import { ho, linkHubOwnerCss } from "./hub-owner-strings.js";
@@ -178,7 +179,7 @@ export function HubPanel({ route }) {
     return stop;
   }, [s && s.login]);
   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
-  const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : hc("admin") : view === "notices" ? hc("noticesTitle")
+  const pageName = companyPage ? hj("title") : tab === "ask" && view === "ai-apps" ? hApps("title") : tab === "ask" && view === "app-consent" ? hApps("consentHeading") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : hc("admin") : view === "notices" ? hc("noticesTitle")
     : view === "invitations" ? hroom("invitationsTitle") : view === "teams" ? ht("mine") : hc("chats");
   useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && view === "groups")) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
@@ -190,6 +191,10 @@ export function HubPanel({ route }) {
   if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
   if (s && tab === "ask" && joinRequest()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-join">
     <${PanelHeader} title=${hj("title")} /><div data-trust="panel-content" class="panel-body hub-page-body"><${HubCompanyJoinPage} session=${s} /></div></div>`;
+  if (s && tab === "ask" && ["ai-apps", "app-consent"].includes(view) && s.features?.includes("mcp-apps-v1")) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ai-apps">
+    <${PanelHeader} title=${pageName}/><div data-trust="panel-content" class="panel-body hub-page-body"><div class="col hub-owner">
+      <${LazyRoomPart} load=${()=>import("./hub-ai-apps.js")} name=${view==="app-consent"?"AppConsentPage":"MyAiAppsPage"}
+        props=${{client:hubClient(),person:s.displayName,request:new URLSearchParams(location.search).get("request")||""}}/></div></div></div>`;
   // Security notices stay on their own page. The bound join branch above never renders the chat or notices page.
   if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
     <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
@@ -224,6 +229,7 @@ export function HubSessionMenu() {
   // #3226 B: My shared agents and Administration are secondary — in this menu, not the main surface.
   const items = [
     { key: "mine", label: hc("mine"), icon: "globe", onSelect: () => navigate("/ui/hub/exposures") },
+    ...(s.features?.includes("mcp-apps-v1") ? [{ key:"ai-apps",label:hApps("title"),icon:"globe",onSelect:()=>navigate("/ui/hub?view=ai-apps") }] : []),
     { key: "admin", label: hc("admin"), icon: "key", onSelect: () => navigate("/ui/hub/admin") },
     { key: "out", label: hw("signOut"), icon: "user", onSelect: out, disabled: busy },
   ];
@@ -1122,7 +1128,7 @@ function HubAdmin({ admin }) {
   const bar = html`<${AdminTabs} tabs=${tabs} current=${current} />`;
   if (current === "overview") return html`${bar}<div class="col hub-owner hub-admin-ov-col"><${LazyRoomPart} load=${() => import("./hub-admin-overview.js")} name="HubAdminOverview"
     props=${{ client: hubClient(), onOpen: openAdminTab, onGone: () => { setOverviewGone(true); openAdminTab("manage"); } }} /></div>`;
-  if (current === "this-hub") return html`${bar}${directory && view === "directory" ? html`<${LazyDirectory} session=${s} />` : html`<div class="col hub-owner"><${LazyThisHub} directory=${directory} /></div>`}`;
+  if (current === "this-hub") return html`${bar}${directory && view === "directory" ? html`<${LazyDirectory} session=${s} />` : html`<div class="col hub-owner"><div class="s-section-layout"><${LazyThisHub} directory=${directory} />${s?.features?.includes("mcp-apps-v1")?html`<${LazyRoomPart} load=${()=>import("./hub-ai-apps.js")} name="AiAppsAdminCard" props=${{client:hubClient()}}/>`:null}</div></div>`}`;
   if (current === "roles") return html`${bar}<div class="col hub-owner"><${LazyRoomPart} load=${() => import("./hub-roles.js")} name="HubRoles" props=${{client:hubClient()}} /></div>`;
   if (current === "groups") return html`${bar}<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
   if (current === "teams") return html`${bar}<div class="col hub-owner"><h2 class="sr-only">${ht("title")}</h2><${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsPage" props=${{ client: hubClient(), mode: "admin", person: s?.person }} /></div>`;

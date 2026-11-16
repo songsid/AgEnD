@@ -53,6 +53,7 @@ import { servePublicAsset } from "../../auth-api.js";
 import { handleCompanyJoin, companyFlowCookie } from "../join/http.js";
 import { CompanyJoinCodeRefusal, CompanyJoinLimit, CompanyJoinOfferPending } from "../join/service.js";
 import { HubMemberAddressError } from "../settings-member-address-policy.js";
+import { HubMcpDoor } from "../mcp/http.js";
 
 export { HUB_HTTP_MIGRATIONS };
 /** S5's lazy entry (HubHttpEntry): this module itself — `createHubHttp` and `migrations`. */
@@ -84,7 +85,7 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // M-3137: Fleet versions (Connected fleets' columns and summary, the older-Fleet banner) with its own words.
   "hub-fleet-versions.js",
   // M-3162: Administration → Overview (the counts dashboard), its own words.
-  "hub-admin-overview.js"]);
+  "hub-admin-overview.js", "hub-ai-apps.js", "hub-ai-apps-strings.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -168,6 +169,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const grantSearch = new HubGrantSearch(core);
   const rooms = new HubRoomsService(core, policy);
   const groupRooms = new HubGroupRooms(core);
+  const mcp = new HubMcpDoor(core,sessions,{groups:groupRooms,direct:rooms,catalog});
   const invitations = deps.roomInvitations?.(core, groupRooms.invitationHost());
   const roomAdmin = new HubRoomAdmin(core, event => groupRooms.publish(event), id => { groupRooms.assistant.forget(id); groupRooms.agents.sweep(id); });
   const quota = new HubQuotaService(core);
@@ -215,6 +217,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const offered = ["admin-dashboard-v1", "rooms-v1", "person-prefs-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
+    offered.push("mcp-apps-v1");
     const features = offered.length ? { features: offered } : {};
     let r: RegExpExecArray | null;
 
@@ -904,6 +907,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     let url: URL;
     try { url = new URL(req.url ?? "/", "http://hub.invalid"); } catch { return false; }
     const path = url.pathname, method = req.method ?? "GET";
+    if(mcp.handle(req,res,url))return true;
     if (deps.companyJoin && live() && handleCompanyJoin(req, res, deps.companyJoin)) return true;
     if (path.startsWith("/hub/v1/")) {
       void api(req, res, path, url.searchParams).catch((e) => fail(res, e, method, path));
@@ -1020,6 +1024,6 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     } satisfies HubDirectoryBrowserSessions),
     handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => fleetVersions.connected(link), memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, "person-prefs-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
-    async close() { closed = true; fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
+    async close() { closed = true; fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

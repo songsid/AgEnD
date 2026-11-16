@@ -52,7 +52,7 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
       "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js", "hub-roles.js", "hub-roles-strings.js", "hub-role-view.js", "hub-role-forms.js", "hub-role-audit.js", "hub-role-notices.js",   // S-148
       "hub-room-search.js",   // M-3127 C: Ctrl K's search dialog
       "hub-fleet-versions.js",   // M-3137: Fleet versions
-      "hub-admin-overview.js"]);   // M-3162: Administration → Overview
+      "hub-admin-overview.js", "hub-ai-apps.js", "hub-ai-apps-strings.js"]);   // M-3162: Administration → Overview; M3240 app pages
   });
 });
 

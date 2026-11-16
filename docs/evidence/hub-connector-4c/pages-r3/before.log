@@ -1,0 +1,32 @@
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3595934Z ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3596167Z 
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3597943Z  FAIL  tests/ui-zh-terms-815bfe4a.test.ts > zh-TW product terms: Agent and Fleet, never 代理 / 艦隊 (decision 815bfe4a) > no source file under src/ says 代理 or 艦隊 (a reverse proxy, 反向代理, is not the product term)
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3602515Z AssertionError: expected [ Array(1) ] to deeply equal []
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3602778Z 
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3603106Z - Expected
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3603519Z + Received
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3604052Z 
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3604165Z - []
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3604383Z + [
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3604915Z +   "src/ui/hub-ai-apps-strings.js:4: …與同意流程。不要安裝 AgEnD 套件或代理程式，也不能略過憑證驗證。不要把憑證或其…",
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3605245Z + ]
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3605330Z 
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3605576Z  ❯ tests/ui-zh-terms-815bfe4a.test.ts:86:30
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3638801Z      84|     const files = walk(SRC).map((p) => ({ path: relative(ROOT, p), tex…
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3639411Z      85|     expect(files.length).toBeGreaterThan(100);   // the walk reached t…
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3640068Z      86|     expect(offenders(files)).toEqual([]);
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3640609Z        |                              ^
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3640978Z      87|   });
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3641427Z      88|   it("the check itself: catches both terms, keeps 反向代理 and the English…
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3641792Z 
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3642043Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3642235Z 
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3645353Z 
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3670004Z  Test Files  1 failed | 570 passed (571)
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3732969Z       Tests  1 failed | 11218 passed | 3 skipped (11222)
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3733661Z    Start at  13:22:22
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3745234Z    Duration  367.80s (transform 22.80s, setup 17.45s, import 276.34s, tests 744.84s, environment 46ms)
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3745697Z 
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3800071Z 
+test-shard (1)	Run test shard 1/4	2026-11-16T13:28:30.3820280Z ##[error]AssertionError: expected [ Array(1) ] to deeply equal []
+test-shard (1)	Run test shard 1/4	

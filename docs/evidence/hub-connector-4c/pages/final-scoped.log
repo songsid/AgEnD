@@ -1,0 +1,12 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connector-4c-ui-m3240
+
+··············································································(node:2015246) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+··················
+
+ Test Files  7 passed (7)
+      Tests  96 passed (96)
+   Start at  20:27:33
+   Duration  12.26s (transform 8.13s, setup 358ms, import 13.61s, tests 9.16s, environment 1ms)
+

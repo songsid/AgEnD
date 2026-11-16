@@ -1,0 +1,24 @@
+{
+  "ownSource": "35f45d03d3d2c927f160a98ee10173baf6f9792c",
+  "baseParent": "9f332940d72d47fdaddec5843daf75a99d9ceb9e",
+  "incomingAlpha": "df3afc3697e5dcfb968a632bc3b699244bd2ba11",
+  "ownPaths": 72,
+  "allOwnBlobsAndModesIdentical": true,
+  "incomingOnlyPaths": 72,
+  "allIncomingOnlyBlobsAndModesEqualAlpha": true,
+  "conflicts": [
+    {
+      "path": "src/hub/mcp/http.ts",
+      "choice": "approved UI blob",
+      "incomingEqualsApprovedParent": true
+    },
+    {
+      "path": "src/hub/mcp/policy.ts",
+      "choice": "approved UI blob",
+      "incomingEqualsApprovedParent": true
+    }
+  ],
+  "mergedTree": "a3b57b18f9dc7cc4c3610c9a65d265a4d882a5c7",
+  "verification": "Source/blob comparison only. No local reruns for unchanged merge per5afe2996.",
+  "mergeCommit": "bb9114f178ef6ef472f27141d88bd6ad45da8c47"
+}

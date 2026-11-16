@@ -14,7 +14,7 @@ export function directMessages(room: HubRoomListItem, entries: readonly HubRoomE
   return entries.flatMap(entry => {
     const base = { roomId: room.id, mentions: [] as string[] };
     const question: RoomMessage = { ...base, id: entry.messageId, at: entry.askedAt ?? entry.receipt.at,
-      author: { kind: "person", id: personKeyString(room.asker), name: askerName }, text: entry.question ?? "",
+      author: { kind: "person", id: personKeyString(room.asker), name: askerName,...(entry.via?{via:entry.via}:{}) }, text: entry.question ?? "",
       stage: entry.receipt.stage === "answered" ? "answered" : ["queued", "delivered", "consumed"].includes(entry.receipt.stage) ? "working" : "not-answered",
       ...(entry.idempotencyKey ? { idempotencyKey: entry.idempotencyKey } : {}), ...(entry.questionFiles?.length ? { files: entry.questionFiles } : {}) };
     return [question, ...(entry.answer === undefined ? [] : [{ ...base, id: `${entry.messageId}:answer`, at: entry.receipt.at,

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { lstatSync, realpathSync, readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, win32 } from "node:path";
-import { PERSONAL_AGENT_DEADLINE_MS, personalAgentFolder, personalAgentProfile, type PersonalProfilePlan } from "./runtime-personal-profile.js";
+import { PERSONAL_AGENT_DEADLINE_MS, PERSONAL_AGENT_READ_CHECK_FILE, PERSONAL_AGENT_READ_CHECK_TEXT, personalAgentFolder, personalAgentProfile, type PersonalProfilePlan } from "./runtime-personal-profile.js";
 import { isPersonalAgentCli, type PersonalAgentCli } from "./runtime-personal-answer.js";
 import { protectRuntimeProfileDirectorySync } from "./runtime-pane-private.js";
 
@@ -83,7 +83,10 @@ function stage(input: PersonalStageInput, host: PersonalStageHost, withAuthentic
       if (name !== "config.toml") throw new PersonalAgentStageError("profile-unavailable");
       host.writePrivate(win32.join(stage.home, name), content);
     }
-    if (input.cli === "codex") plan.args.splice(1, 0, "--strict-config");
+    if (input.cli === "codex") {
+      host.writePrivate(win32.join(stage.work, PERSONAL_AGENT_READ_CHECK_FILE), PERSONAL_AGENT_READ_CHECK_TEXT);
+      plan.args.splice(1, 0, "--strict-config");
+    }
     return { plan, cleanup: stage.cleanup };
   } catch (error) { stage.cleanup(); throw error instanceof PersonalAgentStageError ? error : new PersonalAgentStageError("profile-unavailable"); }
 }

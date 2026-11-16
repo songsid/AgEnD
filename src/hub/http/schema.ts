@@ -1,4 +1,6 @@
 import { HUB_ROOM_CONTEXT_MIGRATION } from "../rooms/context-cursor.js";
+import { HUB_MCP_AUTH_MIGRATION } from "../mcp/auth-schema.js";
+import { HUB_MCP_DOOR_MIGRATION } from "../mcp/door-schema.js";
 /**
  * AgEnD Hub P1, slice 3: S3's own tables in the Hub server DB (`hub/hub.sqlite`), as S5 `HubMigration`s (component
  * "s3-http"). Nothing migrates on import; S5 runs `up` inside its immediate migration transaction.
@@ -123,4 +125,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_RECOMMENDATIONS_MIGRATION, HUB_FLEET_UPDATES_MIGRATION,
   HUB_ADMIN_DASHBOARD_MIGRATION,
   HUB_ROOM_CONTEXT_MIGRATION,
+  HUB_MCP_AUTH_MIGRATION, HUB_MCP_DOOR_MIGRATION,
 ]);

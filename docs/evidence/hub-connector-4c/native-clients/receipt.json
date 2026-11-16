@@ -1,0 +1,166 @@
+{
+  "parentSource": "992a542b20f4fb447b4aabae2f79b09899c66ddc",
+  "results": [
+    {
+      "cli": "codex",
+      "version": "codex-cli 0.167.0",
+      "oauth": {
+        "exit": 0,
+        "seconds": 0.718,
+        "clientName": "Codex"
+      },
+      "model": {
+        "exit": 0,
+        "seconds": 30.237,
+        "timedOut": false,
+        "tools": [
+          "hub_room_list",
+          "hub_room_members",
+          "hub_room_read",
+          "hub_room_post",
+          "hub_agent_list",
+          "hub_ask",
+          "hub_ask_result",
+          "hub_people_search"
+        ],
+        "answerSeen": true
+      },
+      "addressOnly": true,
+      "noAgendInstalled": true
+    },
+    {
+      "cli": "claude",
+      "version": "2.1.325 (Claude Code)",
+      "oauth": {
+        "exit": 0,
+        "seconds": 1.84,
+        "clientName": "Claude Code (agend_hub)"
+      },
+      "model": {
+        "exit": 0,
+        "seconds": 8.396,
+        "timedOut": false,
+        "tools": [
+          "hub_room_list",
+          "hub_room_members",
+          "hub_room_read",
+          "hub_room_post",
+          "hub_agent_list",
+          "hub_ask",
+          "hub_ask_result",
+          "hub_people_search"
+        ],
+        "answerSeen": true
+      },
+      "addressOnly": true,
+      "noAgendInstalled": true
+    }
+  ],
+  "toolProof": [
+    {
+      "client": "codex",
+      "successfulTools": [
+        {
+          "name": "hub_agent_list",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_ask",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_ask_result",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_people_search",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_room_list",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_room_members",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_room_post",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_room_read",
+          "completedCalls": 1
+        }
+      ],
+      "finalAnswer": {
+        "room": "Project",
+        "agent": "Project helper",
+        "trial_code": "LARCH-42",
+        "meeting": "Tuesday at 10:00",
+        "colleague": {
+          "name": "Riley",
+          "login": "riley"
+        }
+      }
+    },
+    {
+      "client": "claude",
+      "successfulTools": [
+        {
+          "name": "hub_agent_list",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_ask",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_ask_result",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_people_search",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_room_list",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_room_members",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_room_post",
+          "completedCalls": 1
+        },
+        {
+          "name": "hub_room_read",
+          "completedCalls": 1
+        }
+      ],
+      "finalAnswer": {
+        "room": "Project",
+        "agent": "Project helper",
+        "trial_code": "LARCH-42",
+        "meeting": "Tuesday at 10:00",
+        "colleague": "Riley (login: riley)"
+      }
+    }
+  ],
+  "consentPerson": "Casey",
+  "claudeFinalFixtureChecks": {
+    "companyPersonBound": true,
+    "inertDirectAnswers": 1
+  },
+  "authOriginalUnchanged": {
+    "codex": true,
+    "claude": true
+  },
+  "headlessLinux": true,
+  "rigOnlyTrustedCA": true,
+  "urlOnlyConfiguration": true,
+  "noAgendInClientContainers": true,
+  "noLiveHubFleetDirectoryOrDesktop": true
+}

@@ -4,6 +4,8 @@ import { validateNativeModel } from "./windows-cli-providers.js";
 import { isPersonalAgentCli, type PersonalAgentCli } from "./runtime-personal-answer.js";
 
 export const PERSONAL_AGENT_DEADLINE_MS = 300_000;
+export const PERSONAL_AGENT_READ_CHECK_FILE = ".personal-read-check";
+export const PERSONAL_AGENT_READ_CHECK_TEXT = "PERSONAL_PROFILE_READY";
 /** These tools can read outside a command sandbox or inherit personal setup. Verify the effective flags before each turn. */
 export const PERSONAL_CODEX_DISABLED_FEATURES = ["apps", "plugins", "remote_plugin", "hooks", "skill_search", "multi_agent", "code_mode",
   "view_image", "image_generation", "browser_use", "browser_use_external", "browser_use_full_cdp_access", "in_app_browser", "computer_use", "shell_snapshot"] as const;

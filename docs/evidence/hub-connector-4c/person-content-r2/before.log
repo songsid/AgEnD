@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connector-4c-tools-m3240
+
+ ❯ tests/hub-mcp-door-m3240.test.ts (28 tests | 1 failed | 27 skipped) 207ms
+   × keeps app posts and question handoff readable with the real encrypted store without audit content pointers 205ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-mcp-door-m3240.test.ts > keeps app posts and question handoff readable with the real encrypted store without audit content pointers
+AssertionError: expected '' to be 'Visible app post' // Object.is equality
+
+- Expected
++ Received
+
+- Visible app post
+
+ ❯ tests/hub-mcp-door-m3240.test.ts:226:80
+    224|  const post=await a.call("hub_room_post",{room:w.roomId,text:"Visible …
+    225|  const page=await rig!.call(w.browser,"GET",`/hub/v1/rooms/${w.roomId}…
+    226|  expect(page.json.messages.find((m:{id:string})=>m.id===post.messageId…
+       |                                                                                ^
+    227|  await rig!.http.receive(rig!.frame("reconcile",{afterReceiptSequence:…
+    228|  const asked=await a.call("hub_ask",{agent:e.id,text:"Real encrypted q…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 27 skipped (28)
+   Start at  20:39:17
+   Duration  4.57s (transform 3.26s, setup 94ms, import 4.12s, tests 207ms, environment 0ms)
+
