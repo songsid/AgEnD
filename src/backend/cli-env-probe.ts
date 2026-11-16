@@ -13,7 +13,7 @@ export type BackendProbeResult = Omit<CliEnv, "backend" | "probedAt"> | ModelOpt
 export async function runBackendProbe(input: BackendProbeInput): Promise<BackendProbeResult | null> {
   // These backends have no scoped discovery contract. Refuse rather than probing another account/provider.
   if (input.mode === "env" && input.refreshVendorCatalog && ((input.config.backendOptions?.provider && input.backend !== "codex")
-      || (input.config.credentialStoreHome && input.backend !== "claude-code" && input.backend !== "codex"))) return null;
+      || (input.config.credentialStoreHome && input.backend !== "claude-code" && input.backend !== "codex" && input.backend !== "antigravity"))) return null;
   const backend = createBackend(input.backend, input.instanceDir);
   if (input.mode === "models") return await backend.listModels?.(input.config) ?? [];
   if (!backend.probeCLIEnv) return null;

@@ -24988,13 +24988,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * A named agy account has no verified relocation/discovery contract. In particular, never publish the ambient account's
-   * models under that profile (#3526 / D7). (AGEND-119: agy now HAS named accounts, but `agy models` is not run with the
-   * account's folder, so its answer would still be the default account's: only a CLI whose profile is a variable the
-   * probe inherits is discovered under one.)
+   * Whether a named account's catalog can be discovered without publishing another account's models under its name
+   * (#3526 / D7). A CLI whose profile is a variable the probe inherits (codex, kiro, claude) is. A CLI told its account by an
+   * argument (agy, `launch-argument`) is too, since AGEND-278: the probe is run with the account's own folder
+   * (backend/antigravity.ts `listModels`), and it answers nothing for a folder with no sign-in. Never a profile on a
+   * backend that has no credential home at all.
    */
   private modelDiscoverable(backend: string, binding: { profile: string | null }): boolean {
-    return !binding.profile || (!!credentialHomeSpec(backend) && credentialHomeSpec(backend)!.kind !== "launch-argument");
+    return !binding.profile || !!credentialHomeSpec(backend);
   }
 
   /** One model discovery for a binding — the scoped (own config) or the shared per-backend/profile cache — or null when fenced. */
@@ -25049,7 +25050,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * A sign-in just ended, so the CLI can now answer `models` as this account — whatever started the sign-in
    * (Settings → Accounts, a named account, chat `/login`, the dashboard's terminal). The account's list is read again now,
    * not at the next startup or by hand. The default account: the backend's shared cache. A named account: its own store
-   * (claude's profile catalog), or each agent's scoped one (the other CLIs); never an agy account (see modelDiscoverable).
+   * (claude's profile catalog), or each agent's scoped one (the other CLIs, agy included: its probe runs with the account's folder).
    * A provider-bound agent does not depend on the sign-in. Background; each page is told when the list changed.
    */
   private modelsAfterSignIn(backend: string, profile: string | null): void {
