@@ -689,7 +689,7 @@ export function threadsToLetGo(kept, current, { keep, maxNodes, favorites, prote
   }
   return out;
 }
-const narrowScreen = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+const narrowScreen = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches;
 /**
  * M-3167: the composer's own model picker and context ring, below this width. The header's chips give way to them
  * there (chat-work-bar.css, the same width), so the model is always in one place and never under the agent's tabs.
@@ -944,7 +944,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
   const s = store.state;
   // M-3166 (Argon 0): a phone's one line above the box — model · effort · context, or what the agent is doing — instead of
   // the working bar; the line under the box goes with it (its Not verified is this line's right end).
-  const metaLine = useMedia("(max-width: 899px)") && !guestPage();
+  const metaLine = useMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)") && !guestPage();
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
@@ -997,7 +997,7 @@ function modelDescription(o, name) {
  * so in the menu and keeps the list (M-2731); a refused switch (no list with it) is the card's.
  */
 function ModelMenu({ name, c, lease }) {
-  const narrow = useMedia("(max-width: 899px)");
+  const narrow = useMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)");
   const close = () => store.dismissCommand(name);
   const alive = () => lease.current();
   const run = (args, action) => store.runCommand(name, "model", args, { alive, ...(action ? { action } : {}) });
@@ -1252,7 +1252,7 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
   // with nothing typed, Send is Stop (typed: Send again, and Stop is the status line's).
   // M-3167: both read live, so a window resized across them redraws (read once, a phone's ring and picker stayed on a
   // desk, unstyled). Between the phone's width and a wide desk the composer has the ring and a short model chip too.
-  const narrow = useMedia("(max-width: 899px)"), toolsHere = useMedia(COMPOSER_TOOLS_Q);
+  const narrow = useMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)"), toolsHere = useMedia(COMPOSER_TOOLS_Q);
   const phone = narrow && !guestPage();
   const stopNow = phone && busy && !content;
   // A file waiting: what goes is a message with its file, never a command (no palette, no command line). #2855: a guest's

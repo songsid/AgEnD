@@ -342,7 +342,7 @@ export function labelOf(it) {
 // starts at 詳細 until one is chosen there. The list's ⋯ (自訂) and Settings → This device show and change the one for the
 // layout in force.
 const DENSITY_KEY = "agend_nav_density", PHONE_DENSITY_KEY = "agend_nav_density_phone";
-const DRAWER_MEDIA = "(max-width: 899px)";
+const DRAWER_MEDIA = "(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)";
 const drawerLayout = () => { try { return typeof matchMedia === "function" && matchMedia(DRAWER_MEDIA).matches; } catch { return false; } };
 const chosen = (v) => (v === "compact" || v === "detailed" ? v : null);
 function choiceOf(key, ls) { const p = prefInForce(key); return chosen(p ? p.value : stored(ls)); }

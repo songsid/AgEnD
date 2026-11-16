@@ -149,7 +149,7 @@ export function shareBlock(open, deps = chat) {
   return { instance: open.instance, from, title, sender: msg.sender || open.sender || "", ts: msg.ts || open.ts || "" };
 }
 
-const narrow = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(max-width: 899px)").matches;
+const narrow = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches;
 
 /** The bar's actions for the open page. props: open, name, run, view (as the panel has them). */
 export function PanelActions({ open, run }) {

@@ -197,7 +197,7 @@ describe("the switch keeps the instance", () => {
   });
   it("Full width's CSS: only on a desk, the thread and the composer lose the column cap; a person's bubble keeps its own", async () => {
     const css = (await import("node:fs")).readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
-    expect(css).toContain('@media (min-width: 900px) { .p-chat[data-width="full"] .thread, .p-chat[data-width="full"] .dock-col { max-width: none; } }');
+    expect(css).toContain('@media (min-width: 900px) and (pointer: fine), (min-width: 900px) and (pointer: none), (min-width: 900px) and (min-height: 501px), (min-width: 1024px) { .p-chat[data-width="full"] .thread, .p-chat[data-width="full"] .dock-col { max-width: none; } }');
     expect(css).toContain(".msg.user { align-self: flex-end; max-width: min(80%, 620px); }");
     expect(css.match(/data-width="full"\][^{]*\.msg/g)).toBeNull();
   });

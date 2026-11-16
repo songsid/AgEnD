@@ -192,7 +192,7 @@
 /* M-3216: on the phone layout the two small sizes are a step larger (12 → 13px, 13 → 14px): on a phone most of the
    text (times, hints, labels, a card's lines) is set in them. The bases change, so every scope built on them (app.css's
    text-size scopes) follows. Text fields keep the 16px rule below. */
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   :root { --fs-3xs-base: 11px; --fs-2xs-base: 12px; --fs-xs-base: 13px; --lh-xs-base: 18px; --fs-sm-base: 14px; --lh-sm-base: 20px; }
 }
 @media (pointer: coarse), (max-width: 899px) {

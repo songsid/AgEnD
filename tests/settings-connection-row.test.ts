@@ -44,7 +44,7 @@ describe("Settings › Connections & Bots row layout", () => {
     expect(rule(".s-facts")).toContain("white-space: nowrap");
     expect(rule(".s-facts")).toContain("text-overflow: ellipsis");
     expect(rule(".s-conn .s-actions")).toContain("flex-wrap: nowrap");
-    const phone = css.slice(css.indexOf("@media (max-width: 899px) {\n  .s-row.s-conn"));
+    const phone = css.slice(css.indexOf("@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {\n  .s-row.s-conn"));
     expect(phone).toMatch(/\.s-conn \.s-facts \{ grid-column: 1 \/ -1; grid-row: 2; \}/);
   });
 

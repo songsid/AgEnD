@@ -33,5 +33,5 @@
 .sk-signin .sk-line:first-child { width: 70%; height: 26px; }
 .sk-signin .sk-line:nth-child(3) { width: 100%; height: 48px; }
 .sk-signin .sk-line:nth-child(4) { width: 100%; height: 42px; border-radius: 99px; }
-@media (max-width: 899px) { .sk-boot-side { display: none; } }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .sk-boot-side { display: none; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; opacity: 1; } }

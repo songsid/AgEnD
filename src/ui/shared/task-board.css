@@ -33,7 +33,7 @@
 .ts-seg.status-review, .ts-key.status-review, .ts-seg.priority-high, .ts-key.priority-high, .ts-seg.size-L, .ts-key.size-L { fill: var(--warn); background: var(--warn); }
 .ts-seg.status-done, .ts-key.status-done, .ts-seg.size-S, .ts-key.size-S { fill: var(--ok); background: var(--ok); }
 /* A phone keeps the bar and the total; the parts are in the legend's colours. */
-@media (max-width: 899px) { .ts-table .ts-part { display: none; } }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .ts-table .ts-part { display: none; } }
 
 /* A project's Filter and Display, its filters as chips, and the project as a list (fleet-task-view.js). */
 .menu-text { gap: var(--s-1); }
@@ -74,7 +74,7 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tb-row-who .tb-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-row-time { flex-shrink: 0; width: 7em; font-size: var(--fs-xs); text-align: right; white-space: nowrap; }
 .tb-row > .tb-subs { margin: 0 var(--s-2) var(--s-2) var(--s-6); }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   /* A phone's row: number and title on the first line, the rest under them. */
   .tb-row-line { flex-wrap: wrap; row-gap: var(--s-1); }
   .tb-row-text { flex: 1 1 calc(100% - 96px); }

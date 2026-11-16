@@ -463,7 +463,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
       <div class="pv-panel-head">
         <button type="button" class="icon-btn only-narrow pv-panel-close" title=${t("chat.pvBack")} aria-label=${t("chat.pvBack")} onClick=${closePanel}><${Icon} name="back" size=${18} /></button>
         <div class="pv-panel-title"><strong>${t("chat.pvPanel")}</strong>
-          <button type="button" class="pv-source" title=${source} onClick=${() => { if (window.matchMedia && window.matchMedia("(max-width: 899px)").matches) closePanel(); reveal(open.msgKey); }}>${source}</button></div>
+          <button type="button" class="pv-source" title=${source} onClick=${() => { if (window.matchMedia && window.matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches) closePanel(); reveal(open.msgKey); }}>${source}</button></div>
         ${pages.length > 1 ? html`<button type="button" class=${`btn btn-sm pv-pages-toggle${listing ? " on" : ""}`} aria-pressed=${listing ? "true" : "false"} title=${t("chat.pvPagesTitle")}
           onClick=${() => setListing(v => !v)}><${Icon} name="file" size=${14} />${t("chat.pvPagesCount", pages.length)}</button>` : null}
         <button type="button" class="icon-btn only-wide pv-panel-close" title=${t("chat.pvClose")} aria-label=${t("chat.pvClose")} onClick=${closePanel}><${Icon} name="close" size=${18} /></button>
@@ -520,7 +520,7 @@ function MarkdownPanel({ open, name, md, view, setView, plain, body, panel, fs, 
     <div class="pv-panel-head">
       <button type="button" class="icon-btn only-narrow pv-panel-close" title=${t("chat.pvBack")} aria-label=${t("chat.pvBack")} onClick=${closePanel}><${Icon} name="back" size=${18} /></button>
       <div class="pv-panel-title"><strong>${open.att ? open.att.name : t("chat.pvMdPanel")}</strong>
-        <button type="button" class="pv-source" title=${source} onClick=${() => { if (window.matchMedia && window.matchMedia("(max-width: 899px)").matches) closePanel(); reveal(open.msgKey); }}>${source}</button></div>
+        <button type="button" class="pv-source" title=${source} onClick=${() => { if (window.matchMedia && window.matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches) closePanel(); reveal(open.msgKey); }}>${source}</button></div>
       <button type="button" class="icon-btn only-wide pv-panel-close" title=${t("chat.pvClose")} aria-label=${t("chat.pvClose")} onClick=${closePanel}><${Icon} name="close" size=${18} /></button>
     </div>
     <div class="pv-panel-bar">

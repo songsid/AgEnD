@@ -407,7 +407,7 @@ describe("#3008 ② the card on a phone: tap targets (CSS, read as text like the
   it("a phone media query gives .s-outside buttons, fields and label.check min-height: var(--tap)", () => {
     // every top-level `@media (max-width: …) { … }` block (the phone ones), brace-balanced
     const phone: string[] = [];
-    for (const m of css.matchAll(/@media\s*\(max-width:\s*(\d+)px\)\s*\{/g)) {
+    for (const m of css.matchAll(/@media\s*\(max-width:\s*(\d+)px\)(?:, \(pointer: coarse\) and \(max-height: 500px\) and \(max-width: 1023px\))?\s*\{/g)) {   // M-3254: and a phone held sideways
       if (Number(m[1]) < 600) continue;                                                            // a phone is a width below the 900px desktop split
       let depth = 1, i = m.index! + m[0].length;
       for (; i < css.length && depth > 0; i++) { if (css[i] === "{") depth++; else if (css[i] === "}") depth--; }

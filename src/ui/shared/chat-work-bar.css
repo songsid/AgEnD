@@ -30,7 +30,7 @@
 /* M-3115 (phone v2): in a phone's chat the working bar is one thin status line ("● 調度中… 0:01"), and Stop is Send's
    while the box is empty (panel-chat.js). With something typed Send sends again, and Stop is this line's small 「停止」 —
    a 44 px tap target drawn as text. */
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .p-chat .work-bar { block-size: 22px; min-block-size: 22px; max-block-size: 22px; overflow: visible; }
   /* …only when nothing is waiting to go: with a file attached Send is Send (the file can go), so Stop stays here (M-3198). */
   .p-chat .dock:has(.composer-field textarea:placeholder-shown):not(:has(.pending-files)) .work-bar .btn-stop { display: none; }
@@ -60,8 +60,8 @@
 /* M-3167: between a phone and a wide desk the composer has the model (above), so the header's chips (backend, model,
    effort) give way: they drew under the agent's tabs at about 920 px. Wider, they stay. On every desk the header's status
    line may shrink and is cut instead of running under the tabs, and the name keeps a few characters. */
-@media (min-width: 900px) and (max-width: 1439px) { .p-chat .panel-head .panel-sub .hd-chip { display: none; } }
-@media (min-width: 900px) {
+@media (min-width: 900px) and (pointer: fine) and (max-width: 1439px), (min-width: 900px) and (pointer: none) and (max-width: 1439px), (min-width: 900px) and (min-height: 501px) and (max-width: 1439px), (min-width: 1024px) and (max-width: 1439px) { .p-chat .panel-head .panel-sub .hd-chip { display: none; } }
+@media (min-width: 900px) and (pointer: fine), (min-width: 900px) and (pointer: none), (min-width: 900px) and (min-height: 501px), (min-width: 1024px) {
   .p-chat .panel-head .panel-sub { min-width: 0; overflow: hidden; }
   .p-chat .panel-head .panel-title h1 { flex: 0 1000 auto; min-width: min(8ch, 40%); }   /* the name gives way before the status */
 }
@@ -69,7 +69,7 @@
    at least 32 px — in place of the working bar and of the line under the box (its Not verified is the meta line's right end,
    amber; ✓ Verified isn't drawn there). The box is 📎 · the text, the whole width · Send/Stop; files in a strip at the top;
    at most five lines, then it scrolls. */
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .chat-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); height: 26px; padding: 0 var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
   .chat-meta-left { display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 32px; margin: -3px 0; padding: 0 var(--s-2); border: 0; border-radius: var(--r-sm); background: none; color: inherit; font: inherit; white-space: nowrap; overflow: hidden; }
   .chat-meta-left > span:not(.chat-meta-dot):not(.chev) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -91,7 +91,7 @@
 }
 /* M-3166 (Argon 2–3, the user's OK of round 2): a phone's chat header is "← name ● ⋯" in 44 px — the status is its 6 px dot
    (its title still says it), and the search, card, text size and usage buttons and the tab row are the ⋯ sheet's. */
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .p-chat > .panel-head { min-height: 44px; padding-bottom: 0; }
   .p-chat > .panel-head .panel-title { min-height: 44px; gap: var(--s-2); }
   /* Only a header with the ⋯ sheet gives its controls up to it: a guest's has none, so it keeps its own (#4002 review). */

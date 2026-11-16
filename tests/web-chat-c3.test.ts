@@ -914,7 +914,7 @@ describe("the chat panel (the real page modules)", () => {
   it("#2184: a narrow screen keeps THREAD_KEEP_NARROW; a favourite outlives non-favourites shown after it", async () => {
     const c = await chatPage();
     const saved = (globalThis as any).matchMedia;
-    (globalThis as any).matchMedia = (q: string) => ({ matches: q === "(max-width: 899px)", addEventListener() {}, removeEventListener() {} });
+    (globalThis as any).matchMedia = (q: string) => ({ matches: q === "(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)", addEventListener() {}, removeEventListener() {} });
     try {
       const names = Array.from({ length: 9 }, (_, i) => `n${i}`);
       c.stream.emit("status", frame(...names.map((n) => inst(n))));

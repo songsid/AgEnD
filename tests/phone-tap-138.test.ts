@@ -16,7 +16,7 @@ const SESSION = readFileSync(join(__dirname, "..", "src", "ui", "shared", "app-s
 /** The text of every phone/touch `@media (max-width: 600px|899px) { … }` block (brace-matched). */
 function phoneBlocks(css: string): string[] {
   const out: string[] = [];
-  const re = /@media \(max-width: (?:600|899)px\)\s*\{/g;
+  const re = /@media \(max-width: (?:600|899)px\)(?:, \(pointer: coarse\) and \(max-height: 500px\) and \(max-width: 1023px\))?\s*\{/g;   // M-3254: a phone held sideways too
   for (let m = re.exec(css); m; m = re.exec(css)) {
     let depth = 1, i = re.lastIndex;
     while (i < css.length && depth > 0) { if (css[i] === "{") depth++; else if (css[i] === "}") depth--; i++; }

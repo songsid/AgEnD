@@ -124,7 +124,7 @@ const searchRow = () => html`<button type="button" class="side-row side-search" 
   aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${t("app.search")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>`;
 
 function readCollapsed() { try { return localStorage.getItem("agend_sidebar") === "hidden"; } catch { return false; } }
-const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches;
 
 // ── #1722: the sidebar's width — this device's (the #1665 split: a width depends on the screen), through the CSSOM ──
 export const SIDEBAR_W = { min: 200, max: 480, def: 260, step: 16, mainMin: 480 };

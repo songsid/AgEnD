@@ -42,7 +42,7 @@
 @media (max-width: 899px), (pointer: coarse) {
   .hub-versions-banner > .icon-btn, .hub-fleet-summary .hub-fleet-filter { min-width: var(--tap); min-height: var(--tap); }
 }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   /* A phone stacks the row as the Teams roster does: the name, then labelled lines, the tag first. */
   .hub-fleet-list .hub-fleet-version { flex: 1 1 100%; flex-direction: column; align-items: flex-start; gap: 2px; }
 }
@@ -73,14 +73,14 @@
 .hub-steps .hub-offer { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; margin: 0; padding: 0; }
 .hub-steps > li::before { align-self: flex-start; margin-top: 1px; }
 .hub-steps .hub-offer > * { text-align: start; align-self: flex-start; justify-self: start; margin-left: 0; }   /* hub.css's `.hub-steps small` auto margin would push a short line right */
-@media (max-width: 899px) { .hub-page-body { padding: var(--s-3) var(--s-4) var(--s-6); } }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .hub-page-body { padding: var(--s-3) var(--s-4) var(--s-6); } }
 /* M-2682: Administration → This Hub — the name form, then what identifies this Hub (labels left; stacked on a phone). */
 .hub-this-form .field { max-width: 32em; }
 .hub-this-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
 .hub-this-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-2) var(--s-4); margin: var(--s-4) 0 0; }
 .hub-this-facts dt { color: var(--text-2); }
 .hub-this-facts dd { margin: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--s-1); overflow-wrap: anywhere; }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .hub-this-facts { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
   .hub-this-facts dd { margin-bottom: var(--s-2); }
   /* A phone's Administration: every button and text field is a full touch target, so one class combination keeps one height. */
@@ -105,7 +105,7 @@
 .hub-admin-tab { flex: none; padding: var(--s-2) 0; color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
 .hub-admin-tab:hover { color: var(--text); }
 .hub-admin-tab.active { color: var(--text); font-weight: var(--fw-semibold); border-bottom-color: var(--text); }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .hub-admin-tabs-wrap { padding: var(--s-2) var(--s-4) 0; }
   .hub-admin-tab { min-height: var(--tap); min-width: var(--tap); display: inline-flex; align-items: center; justify-content: center; }
 }
@@ -161,7 +161,7 @@
 .hub-ov-legend dt i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .hub-ov-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); }
 .hub-ov-empty p { margin: 0; }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .hub-ov-grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hub-ov-split { grid-template-columns: minmax(0, 1fr); }
   .hub-ov-range-item { min-height: var(--tap); }

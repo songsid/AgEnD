@@ -145,7 +145,7 @@ function useLoad(lease, path, version) {
  * memory warning), all six tabs and the header's tools. Otherwise the tabs are the row under the header, as before —
  * never clipped, never squeezed. The natural widths are the same in either place, so the answer does not flip-flop.
  */
-const NARROW = "(max-width: 899px)";
+const NARROW = "(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)";
 export function tabsFit(m) { return m.title + m.tabs + m.tools + m.gaps <= m.room + 0.5; }
 export function measureTabsFit(root) {
   const head = root?.querySelector(".panel-head");
@@ -170,11 +170,11 @@ export function measureTabsFit(root) {
 }
 /** M-3166: whether this is a phone's width (under 900 px), kept current as the window is resized. */
 function usePhoneWidth() {
-  const read = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+  const read = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches;
   const [on, setOn] = useState(read);
   useEffect(() => {
     if (typeof matchMedia !== "function") return undefined;
-    const mq = matchMedia("(max-width: 899px)"), changed = () => setOn(mq.matches);
+    const mq = matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)"), changed = () => setOn(mq.matches);
     changed(); mq.addEventListener?.("change", changed);
     return () => mq.removeEventListener?.("change", changed);
   }, []);

@@ -53,7 +53,7 @@
   #reachHelp[open] summary::before { content: "▾"; }
   #reachHelp ul { padding-left: var(--s-5); margin: var(--s-2) 0; }
   #reachHelp li { margin: var(--s-2) 0; }
-  @media (max-width: 899px) { body { padding-top: var(--s-7); } }
+  @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { body { padding-top: var(--s-7); } }
   .hint code, .help code { white-space: nowrap; font-family: var(--font-mono); }
   /* #1854: the operator's way in (no chat bot) — closed until asked for. */
   .help { margin-top: 8px; font-size: var(--fs-xs); color: var(--text-3); }
