@@ -115,10 +115,11 @@ export async function announcePostLoginRecovery(
   recover: () => Promise<PostLoginRecovery>,
   send: (text: string) => Promise<unknown>,
   deadlineMs = POST_LOGIN_RECOVERY_DEADLINE_MS,
-  /** M-3238: the same outcome as data, for a dashboard dialog that says it in one plain line (chat keeps the text). */
+  /** M-3238: the same outcome as data, for a dashboard dialog that says it in one plain line. */
   report?: (outcome: WebLoginRecovery) => void,
+  /** M-3249: an agent by the name people see (its display name); the dialog's data keeps the instance names. */
+  label: (name: string) => string = (name) => name,
 ): Promise<void> {
-  const none = t("login.none");
   let result: PostLoginRecovery;
   try {
     result = await recover();
@@ -127,11 +128,11 @@ export async function announcePostLoginRecovery(
     // the user still needs to know where that leaves them.
     result = { woken: [], restarted: [], pending: [], failed: String((err as Error)?.message ?? err) };
   }
-  const list = (names: string[]) => (names.length ? names.join(", ") : none);
+  const named = (names: string[]) => names.map((n) => { try { return label(n) || n; } catch { return n; } }).join(", ");
   const tell = (outcome: WebLoginRecovery) => { try { report?.(outcome); } catch { /* the dialog's line only */ } };
   if (result.failed) {
     tell({ woken: [], restarted: [], pending: [], failed: true });
-    await send(t("login.recover_failed", backend, result.failed));
+    await send(t("login.recover_failed", result.failed));
     return;
   }
   // Defensive on shape, deliberately: this function exists to guarantee the
@@ -139,11 +140,14 @@ export async function announcePostLoginRecovery(
   const pending = result.pending ?? [];
   if (pending.length) {
     tell({ woken: result.woken ?? [], restarted: result.restarted ?? [], pending, failed: false });
-    await send(t("login.recover_pending", backend, String(Math.round(deadlineMs / 1000)), pending.join(", ")));
+    await send(t("login.recover_pending", String(Math.round(deadlineMs / 1000)), named(pending)));
     return;
   }
   tell({ woken: result.woken ?? [], restarted: result.restarted ?? [], pending: [], failed: false });
-  await send(t("login.recovered", backend, list(result.woken), list(result.restarted)));
+  // M-3249 (the leader, after #4051): one plain line, as the dialog says it — no "instance", no woke / restarted split
+  // (both are "reloaded" to the person), no ✅ repeating the headline above it.
+  const back = [...(result.woken ?? []), ...(result.restarted ?? [])];
+  await send(back.length ? t("login.recovered", named(back)) : t("login.recovered_none"));
 }
 
 /** M-3238: what the post-login recovery did, for the dashboard's dialog: the agents woken or restarted onto the new
@@ -236,6 +240,8 @@ export interface LoginControllerDeps {
   eventLog: () => { insert(instance: string, type: string, payload?: Record<string, unknown>): void } | null;
   /** Wake/restart the instances on the login just signed in (the backend's default one, or `profile`). */
   recoverBackendInstances(backend: string, profile?: string): Promise<PostLoginRecovery>;
+  /** M-3249: an agent by the name people see (its display name, else its instance name), for the outcome line. */
+  agentLabel?(name: string): string;
   /** Post nonce buttons (FleetManager.postNonceButtonPrompt). Rejects when the platform refused. */
   postButtons(opts: {
     prefix: string; instanceName: string; chat: LoginChat; message: string;
@@ -1122,7 +1128,8 @@ export class LoginController {
       await announcePostLoginRecovery(backend, () => (entry.profile
         ? this.deps.recoverBackendInstances(entry.backend, entry.profile)
         : this.deps.recoverBackendInstances(entry.backend)), send, POST_LOGIN_RECOVERY_DEADLINE_MS,
-        chat.web?.recovered ? (outcome) => chat.web?.recovered?.(outcome) : undefined);
+        chat.web?.recovered ? (outcome) => chat.web?.recovered?.(outcome) : undefined,
+        (name) => this.deps.agentLabel?.(name) ?? name);
       if (result.cleanupFailed) await send(t("login.web_cleanup_failed", backend));
       return;
     }
