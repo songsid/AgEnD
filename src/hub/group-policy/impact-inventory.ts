@@ -20,7 +20,7 @@ export function createHubGroupImpactInventory(options: {
   inventory: HubGroupAdminInventory; current(): boolean; now(): number;
 }) {
   const { db, transport, inventory, current, now } = options, administrator = validated(person, options.administrator);
-  return { snapshot(policies: readonly HubGroupPolicy[] = []) {
+  return { snapshot(policies: readonly Pick<HubGroupPolicy,"realm" | "teams" | "people">[] = []) {
     if (current() !== true) throw new HubGroupPolicyError("unavailable");
     const people = new Map<string, HubGroupImpactPerson>(), resources = new Map<string, HubGroupImpactResource>(), ordinary: unknown[] = [];
     const labels = new Map((db.prepare("SELECT person,display_name,login_label FROM hub_people").all() as { person: string; display_name: string; login_label: string }[])

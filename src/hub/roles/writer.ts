@@ -18,11 +18,13 @@ import type { HubRolePolicy } from "./model.js";
 import type { RoleChangePlan } from "./change.js";
 export interface RoleWriteEffects {
   /** Private server inventory/impact preparation; never a browser-supplied callback or effect. */
-  prepare(plan: RoleChangePlan, facts: ReadonlyMap<string, RolePersonFacts>, current: () => void): Promise<{
+  prepare(plan: RoleChangePlan, facts: ReadonlyMap<string, RolePersonFacts>, current: () => void, context?: {readonly actor:PersonKey;readonly requestId:string}): Promise<{
     fingerprint: string; changed: boolean; impact: unknown;
     assertCurrent(): void;
     /** Exact retained-resource consequences, synchronously in the policy transaction. */
     commit(database: Database.Database): void;
+    /** Optional synchronous consequences which require the new policy row already installed. */
+    afterPolicyWrite?(database: Database.Database): void;
     assertCommitted(): void;
   }>;
   /** Full inventory binds preview; ordinary excludes only this plan's exact lifecycle consequences. */
@@ -180,12 +182,12 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     plan = planRoleChange(before.policy, input, actor.person, now());
     const finalBundle = heldRoleBundle(before.policy, actor.person, facts.get(personKeyString(actor.person))!, now(), root);
     authorize(finalBundle);
-    const value = await effects.prepare(plan, new Map([...facts].map(([id, fact]) => [id, structuredClone(fact)])), assertBefore); assertBefore();
+    const value = await effects.prepare(plan, new Map([...facts].map(([id, fact]) => [id, structuredClone(fact)])), assertBefore, Object.freeze({actor:Object.freeze({...actor.person}),requestId:ctx.requestId})); assertBefore();
     if (typeof value.fingerprint !== "string" || value.fingerprint.length > 1024 || typeof value.changed !== "boolean") throw new Refusal("unknown");
     const impact = structuredClone(value.impact), serializedImpact = json(impact);
     if (typeof serializedImpact !== "string" || Buffer.byteLength(serializedImpact,"utf8") > 256 * 1024) throw new Refusal("unknown");
     const prepared = Object.freeze({ fingerprint: value.fingerprint, changed: value.changed, impact,
-      assertCurrent: value.assertCurrent.bind(value), commit: value.commit.bind(value), assertCommitted: value.assertCommitted.bind(value) });
+      assertCurrent: value.assertCurrent.bind(value), commit: value.commit.bind(value), ...(value.afterPolicyWrite ? {afterPolicyWrite:value.afterPolicyWrite.bind(value)} : {}), assertCommitted: value.assertCommitted.bind(value) });
     sync(prepared.assertCurrent());
     await authenticate(ctx, actor); assertBefore();
     plan = planRoleChange(before.policy, input, actor.person, now());
@@ -237,7 +239,12 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
           if (operation === "root-self" && rootMarker()) throw new Refusal("conflict");
           sync(p.prepared.commit(db));
           if (db.prepare("UPDATE hub_group_policy SET body=? WHERE singleton=1 AND hub_id=? AND body=?").run(serialized, hubId, p.before.raw).changes !== 1) throw new Refusal("conflict");
+          if (p.prepared.afterPolicyWrite) sync(p.prepared.afterPolicyWrite(db));
           const id = record(ctx!, actor!, operation === "root-self" ? "role.root-self-use-activated" : "role.policy-changed", "completed", next.revision, { policy: next, impact: p.prepared.impact });
+          // Metadata-only event rows give the administration audit a precise before/after change.
+          // They share the policy transaction: an append failure rolls the entire write back.
+          for (const delta of p.plan.roles) record(ctx!,actor!,delta.before === null ? "role.created" : delta.after === null ? "role.deleted" : "role.changed","completed",next.revision,delta);
+          for (const delta of p.plan.assignments) record(ctx!,actor!,delta.after === null ? "role.unassigned" : "role.assigned","completed",next.revision,delta);
           const management = (p: readonly string[]) => p.some(c => (MANAGEMENT_PERMISSIONS as readonly string[]).includes(c));
           const notify = operation === "root-self" || p.plan.before.rolesActive !== next.rolesActive || p.plan.roles.some(d => management(d.before?.permissions ?? []) || management(d.after?.permissions ?? []))
             || p.plan.assignments.some(d => [d.before, d.after].some(a => a && management((a === d.before ? p.plan.before : next).roles.find(r => r.id === a.roleId)!.permissions)));
