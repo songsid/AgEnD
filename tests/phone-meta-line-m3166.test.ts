@@ -77,7 +77,7 @@ describe("M-3166: the meta line (phone)", () => {
     const phone = css.slice(css.indexOf("@media (max-width: 899px) {", at), css.indexOf("\n}", at));
     for (const rule of [".chat-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); height: 26px; padding: 0 var(--s-1); font-size: var(--fs-xs);",
       "min-height: 32px; margin: -3px 0;", ".p-chat .dock:has(.chat-meta) .composer-row { display: none; }",
-      ".p-chat .composer textarea { max-height: calc(5 * var(--lh-md)); overflow-y: auto; }", ".p-chat .composer-box .pending-files { flex-wrap: nowrap; overflow-x: auto; }",
+      ".p-chat .composer textarea { max-height: calc(4 * var(--lh-md) + var(--tap)); overflow-y: auto; }", ".p-chat .composer-box .pending-files { flex-wrap: nowrap; overflow-x: auto; }",
       '.chat-meta-right .webauth-row[data-state="verified"] > :not(.webauth-notice) { display: none; }']) expect(phone).toContain(rule);
   });
 

@@ -54,3 +54,63 @@ describe("pure legacy-to-role conversion, with no storage cutover", () => {
     expect(() => convertGroupPolicy({ ...before, groups: [before.groups[0], before.groups[0]] }, options)).toThrow();
   });
 });
+
+describe("T1 compatibility required before production role cutover", () => {
+  it("keeps named-person allowed-list capabilities and exact Fleet quotas", () => {
+    const before=parseGroupPolicy({...old(),groups:[],people:[{person:user,name:"Named person",allow:[...GROUP_CAPABILITIES],maxFleets:6}]});
+    const after=convertGroupPolicy(before,options),facts={subject:{kind:"eligible" as const,person:user,observedAt:100}};
+    for (const cap of GROUP_CAPABILITIES) expect(evaluateRolePolicy(after,user,cap,null,facts,200,root))
+      .toMatchObject({outcome:evaluateGroupPolicy(before,user,cap,facts.subject).outcome,maxFleets:6});
+  });
+  it("keeps local-team allowed-list capabilities through role activation", () => {
+    const teamId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const before=parseGroupPolicy({...old(),groups:[],teams:[{teamId,name:"Selected team",allow:[...GROUP_CAPABILITIES],maxFleets:4}]});
+    const after=convertGroupPolicy(before,options),facts={subject:{kind:"eligible" as const,person:user,observedAt:100},teams:[teamId]};
+    for (const cap of GROUP_CAPABILITIES) expect(evaluateRolePolicy(after,user,cap,null,facts,200,root))
+      .toMatchObject({outcome:evaluateGroupPolicy(before,user,cap,facts.subject,facts.teams).outcome,maxFleets:4});
+  });
+});
+
+it("preserves T1 union/MAX/denies across activation and forward-only roles off", async () => {
+  const teamId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const {planRoleChange}=await import("../src/hub/roles/change.js");
+  for(const state of ["never-enabled","enabled","suspended"] as const) for(const rolesActive of [false,true]) for(const deny of [false,true]) {
+    const before=parseGroupPolicy({...old(state),groups:[],teams:[{teamId,name:"Team",allow:[...GROUP_CAPABILITIES],maxFleets:3}],
+      people:[{person:user,name:"Person",allow:[...GROUP_CAPABILITIES],maxFleets:7}],denies:deny ? [{person:user,deny:["pair_fleet"]}] : []});
+    const after=convertGroupPolicy(before,{...options,rolesActive}),facts={subject:{kind:"eligible" as const,person:user,observedAt:100},teams:[teamId]};
+    for(const cap of GROUP_CAPABILITIES) {
+      const expected=evaluateGroupPolicy(before,user,cap,facts.subject,facts.teams);
+      expect(evaluateRolePolicy(after,user,cap,null,facts,200,root)).toMatchObject({outcome:expected.outcome,maxFleets:expected.maxFleets,authoritative:expected.authoritative});
+    }
+    expect(after.people).toEqual(before.people);expect(after.teams).toEqual(before.teams);
+    expect(() => planRoleChange(after,{...after,people:[]},root,200)).toThrow();
+    expect(() => planRoleChange(after,{...after,teams:[]},root,200)).toThrow();
+  }
+});
+
+it("a carried person ask-only rule cannot grant publish or pair",()=>{
+ const before=parseGroupPolicy({...old(),groups:[],people:[{person:user,name:"Person",allow:["ask_agents"],maxFleets:7}]});
+ const after=convertGroupPolicy(before,options),facts={subject:{kind:"eligible" as const,person:user,observedAt:100}};
+ expect(evaluateRolePolicy(after,user,"ask_agents",null,facts,200,root).outcome).toBe("allow");
+ for(const cap of ["publish_agents","pair_fleet"] as const) expect(evaluateRolePolicy(after,user,cap,null,facts,200,root)).toMatchObject({outcome:"deny",maxFleets:0});
+});
+it("a carried team ask-only rule cannot grant publish or pair",()=>{
+ const teamId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+ const before=parseGroupPolicy({...old(),groups:[],teams:[
+  {teamId,name:"My ask-only team",allow:["ask_agents"],maxFleets:4},
+  // These unrelated teams keep the outer per-capability check active; I belong to neither.
+  {teamId:"cccccccc-cccc-4ccc-8ccc-cccccccccccc",name:"Other publishers",allow:["publish_agents"],maxFleets:2},
+  {teamId:"dddddddd-dddd-4ddd-8ddd-dddddddddddd",name:"Other connectors",allow:["pair_fleet"],maxFleets:2},
+ ]});
+ const after=convertGroupPolicy(before,options),facts={subject:{kind:"eligible" as const,person:user,observedAt:100},teams:[teamId]};
+ expect(evaluateRolePolicy(after,user,"ask_agents",null,facts,200,root).outcome).toBe("allow");
+ for(const cap of ["publish_agents","pair_fleet"] as const) expect(evaluateRolePolicy(after,user,cap,null,facts,200,root)).toMatchObject({outcome:"deny",maxFleets:0});
+});
+it("missing or invalid local team facts stay unknown on the role side",()=>{
+ const teamId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+ const before=parseGroupPolicy({...old(),groups:[],teams:[{teamId,name:"Team",allow:["ask_agents"],maxFleets:4}]});
+ const after=convertGroupPolicy(before,options),subject={kind:"eligible" as const,person:user,observedAt:100};
+ expect(evaluateRolePolicy(after,user,"ask_agents",null,{subject},200,root)).toMatchObject({outcome:"unknown",authoritative:false});
+ expect(evaluateRolePolicy(after,user,"ask_agents",null,{subject,teams:["invalid"]},200,root)).toMatchObject({outcome:"unknown",authoritative:false});
+ expect(evaluateRolePolicy(after,user,"ask_agents",null,{subject,teams:[]},200,root).outcome).toBe("deny");
+});

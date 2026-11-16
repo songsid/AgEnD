@@ -1,7 +1,7 @@
 /** Inactive roles foundation. Parsing supplies no identity, consent or operation permit. */
 import { z } from "zod";
 import { epoch, HubProtocolError, identifier, person, plain, validated } from "../validation.js";
-import { GROUP_CAPABILITIES } from "../group-policy/model.js";
+import { GROUP_CAPABILITIES, allowedTeamRule, allowedPersonRule } from "../group-policy/model.js";
 
 export const SELF_PERMISSIONS = Object.freeze([...GROUP_CAPABILITIES] as const);
 export const TEAM_PERMISSIONS = Object.freeze(["team.view", "team.usage", "team.approve_join", "team.approve_ask"] as const);
@@ -29,6 +29,8 @@ export type HubRoleAssignment = z.infer<typeof assignmentSchema>;
 const policySchema = z.strictObject({ realm: person.shape.realm, generation: identifier, revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   rolesActive: z.boolean(), state: z.enum(["never-enabled", "enabled", "suspended"]), everEnabled: z.boolean(),
   roles: z.array(roleSchema).min(3).max(32), assignments: z.array(assignmentSchema).max(ROLE_POLICY_MAX_ASSIGNMENTS),
+  /** T1 self-use rules carried losslessly; these are not scoped team-role grants. */
+  teams: z.array(allowedTeamRule).max(32).optional(), people: z.array(allowedPersonRule).max(256).optional(),
   denies: z.array(z.strictObject({ person, deny: z.array(z.enum(SELF_PERMISSIONS)).max(3).refine(a => new Set(a).size === a.length) })).max(256),
 });
 export type HubRolePolicy = z.infer<typeof policySchema>;
@@ -59,7 +61,10 @@ export function parseRolePolicy(input: unknown): HubRolePolicy {
     || p.roles.some(r => r.id !== BUILTIN_ROLE_IDS.admin && r.permissions.includes("hub.admin"))) invalid();
   if (new Set(p.assignments.map(a => a.id)).size !== p.assignments.length
     || new Set(p.denies.map(d => d.person.objectId)).size !== p.denies.length
-    || p.denies.some(d => d.person.realm !== p.realm)) invalid();
+    || p.denies.some(d => d.person.realm !== p.realm)
+    || new Set((p.teams ?? []).map(r => r.teamId)).size !== (p.teams?.length ?? 0)
+    || new Set((p.people ?? []).map(r => r.person.objectId)).size !== (p.people?.length ?? 0)
+    || (p.people ?? []).some(r => r.person.realm !== p.realm)) invalid();
   for (const a of p.assignments) {
     const role = roles.get(a.roleId), subject = a.subject.kind === "person" ? a.subject.person : a.subject.group;
     if (!role || subject.realm !== p.realm || a.assignedBy.realm !== p.realm || (a.scope.kind === "group" && a.scope.group.realm !== p.realm)) invalid();

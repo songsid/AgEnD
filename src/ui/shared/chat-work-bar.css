@@ -49,6 +49,12 @@
   /* Send is Stop while the box is empty and the agent works: one size in both, a full tap target (the box keeps one
      width). Here, not in app.css: a tab on an older app.css links this file fresh. */
   .p-chat .composer .btn-send { width: var(--tap); min-width: var(--tap); min-height: var(--tap); }
+  /* M-3222 (the user, iPhone): one line of text sat 3 px under the box's middle — the row aligns its items to the bottom, and
+     Send is a 44 px tap target while the one-line box was 38 px. The one-line box is as tall as Send now (more lines grow
+     it as before), its drawn placeholder on the same line, and 📎 a tap target of the same height. */
+  .p-chat .composer textarea { padding-block: calc((var(--tap) - var(--lh-md)) / 2); }
+  .p-chat .composer-ph { top: calc((var(--tap) - var(--lh-md)) / 2); }
+  .p-chat .composer > .icon-btn { width: var(--tap); height: var(--tap); }
   .p-chat .work-bar .btn-stop .stop-label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: nowrap; }
 }
 /* M-3167: between a phone and a wide desk the composer has the model (above), so the header's chips (backend, model,
@@ -78,7 +84,9 @@
   .p-chat .dock:has(.composer-field textarea:placeholder-shown):not(:has(.pending-files)) .chat-meta-stop { display: none; }   /* M-3198: files-only, Stop stays */
   .p-chat .dock:has(.chat-meta.busy) .qa-line { display: none; }
   .p-chat .dock:has(.chat-meta) .composer-row { display: none; }
-  .p-chat .composer textarea { max-height: calc(5 * var(--lh-md)); overflow-y: auto; }
+  /* Five lines, then it scrolls: the box's padding is in its height (border-box), and since M-3222 one line with its padding is
+     a tap target tall — so the cap is four more lines on top of that (Fable, #4038). */
+  .p-chat .composer textarea { max-height: calc(4 * var(--lh-md) + var(--tap)); overflow-y: auto; }
   .p-chat .composer-box .pending-files { flex-wrap: nowrap; overflow-x: auto; }
 }
 /* M-3166 (Argon 2–3, the user's OK of round 2): a phone's chat header is "← name ● ⋯" in 44 px — the status is its 6 px dot
