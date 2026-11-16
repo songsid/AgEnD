@@ -59,7 +59,10 @@ One-shot mode is unattended by design. Proposed rules, all of which exist as CLI
 - **No enforced sandbox, no Codex (M-3224).** On a Windows computer where Codex's sandbox cannot enforce the
   one-folder rule, Codex is shown as unavailable for a personal agent, with the reason; nothing is installed or
   changed on the computer to make it work. Claude stays eligible there, because its configuration has no shell.
-  Which Windows versions qualify comes from the builder's proof, not from this note.
+  Proven so far (hosted runner, 2026-11-16, #4046): Windows 11 Enterprise 10.0.26200 on **ARM64**, Codex 0.167.0,
+  Claude Code 2.1.325; the shared folder reads, and reads outside it, writes and network from commands are
+  refused. **Not yet proven: x64**, which is what colleagues' computers are, and a real model turn with a real
+  sign-in. The install page states a version only after it is proven.
 - **Read-only.** Codex runs in its read-only sandbox. Claude runs with read tools only and permission prompts off.
   Anything that would need approval is refused, not queued.
 - **One folder.** The agent sees one folder the person chooses. The installer creates an empty default
