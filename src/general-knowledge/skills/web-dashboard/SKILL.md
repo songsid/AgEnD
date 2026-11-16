@@ -657,7 +657,10 @@ before), from Settings → Agents → AI accounts and API keys → Accounts, loc
 card offers, and what it means:
 - **Connect / Reconnect** on the **Default connection** and on each named account: the dashboard runs `agy acp --login`
   in its own login window (never in an agent's pane; needs agy 1.5.0 or newer, otherwise the card keeps the command to
-  run on the host with a note to update), shows Google's link and takes the **authorization code** you paste back. It
+  run on the host with a note to update). Where agy's version cannot be read (a host that cannot make a network
+  namespace: Docker with the default seccomp profile, some WSL, macOS), Connect is offered when agy's own file holds the
+  `acp --login` help line, read from the file without starting agy; an agy without it keeps the command to run on the
+  host. The window shows Google's link and takes the **authorization code** you paste back. It
   counts as connected only when the command ended with exit 0 **and** `agy models` works; a failed or cancelled run is
   never "connected" because an older login is still there. Only a Google-account (subscription) connection.
 - **Default connection vs named account.** The **default connection** is the computer's own agy login (on the AgEnD

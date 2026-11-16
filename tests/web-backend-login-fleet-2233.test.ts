@@ -111,6 +111,32 @@ describe("#2233 part 2: what the dashboard offers to sign in", () => {
     expect(dashboardSignInSupported("antigravity")).toBe(false);
   });
 
+  it("AGEND-274: a host that cannot read agy's version (no network namespace: Docker, some WSL, macOS) signs it in when the file itself has `acp --login`; a known old version still cannot, and neither can an agy that was not checked", () => {
+    const { fm } = makeFleet([]);
+    const rows = (over: object) => {
+      vi.spyOn(fm, "backendAvailabilityRows").mockReturnValue([{ backend: "antigravity", state: "not_signed_in", version: null, ...over }] as never);
+      return fm.backendSignInTargets()[0];
+    };
+    expect(rows({ structuredLogin: true })).toEqual({ backend: "antigravity", state: "not_signed_in", signIn: true });
+    expect(rows({ structuredLogin: false })).toEqual({ backend: "antigravity", state: "not_signed_in", signIn: false, hostCommand: "agy" });
+    expect(rows({ structuredLogin: null })).toMatchObject({ signIn: false, hostCommand: "agy" });
+    expect(rows({})).toMatchObject({ signIn: false, hostCommand: "agy" });
+    expect(rows({ version: "1.4.9", structuredLogin: true })).toMatchObject({ signIn: false, hostCommand: "agy", update: BACKEND_INSTALLATION_INFO.antigravity!.install });
+  });
+
+  it("AGEND-274: a named Antigravity account is signed in from the dashboard on the same host (version unknown, the file has the command)", () => {
+    const { fm } = makeFleet([]);
+    fm.fleetConfig = { defaults: {}, instances: { g: { working_directory: "/w", backend: "antigravity", backend_options: { antigravity: { credential_profile: "work" } } } } };
+    const named = (row: object) => {
+      vi.spyOn(fm, "backendAvailabilityRows").mockReturnValue([{ backend: "antigravity", state: "not_signed_in", version: null, ...row }] as never);
+      return fm.backendSignInTargets().find((t: { profile?: string }) => t.profile === "work")!.signIn;
+    };
+    expect(named({ structuredLogin: true })).toBe(true);
+    expect(named({ structuredLogin: false })).toBe(false);
+    expect(named({})).toBe(false);
+    expect(named({ state: "not_installed", structuredLogin: true })).toBe(false);
+  });
+
 
   it("a paused-for-sign-in agent's item names its login when the dashboard can sign it in (claude and, #3212 PR 4, kiro profiles included), else nothing", () => {
     const { fm } = makeFleet([]);

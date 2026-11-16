@@ -99,7 +99,20 @@ describe("contrast (WCAG AA)", () => {
     const m = /@media \(max-width: 899px\) \{\s*:root \{([^}]*)\}\s*\}/.exec(CSS);
     expect(m, "the phone :root block").toBeTruthy();
     const phone = Object.fromEntries([...m![1]!.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(x => [x[1]!, x[2]!.trim()]));
-    expect(phone).toEqual({ "fs-xs-base": "13px", "lh-xs-base": "18px", "fs-sm-base": "14px", "lh-sm-base": "20px" });
+    expect(phone).toEqual({ "fs-3xs-base": "11px", "fs-2xs-base": "12px", "fs-xs-base": "13px", "lh-xs-base": "18px", "fs-sm-base": "14px", "lh-sm-base": "20px" });
+    // M-3226: the two smallest steps, on the same base system.
+    expect([DARK["fs-3xs-base"], DARK["fs-2xs-base"], DARK["fs-3xs"], DARK["fs-2xs"]]).toEqual(["10px", "11px", "var(--fs-3xs-base)", "var(--fs-2xs-base)"]);
+  });
+  // M-3226: the small type is all tokens, so the phone step, 文字大小 and a later style refresh reach every place. A hard rule
+  // on top of tests/ui-css-literals-ratchet.test.ts (whose list no longer holds any of these): no font size under 14px is
+  // written as a number in a shared stylesheet, as a font-size or in a font shorthand.
+  it("no shared stylesheet writes a font size under 14px as a literal", () => {
+    const small = /font(?:-size)?\s*:[^;{}]*?(?<![\w.-])(\d+(?:\.\d+)?)px/g;
+    for (const f of readdirSync(SHARED).filter((n: string) => n.endsWith(".css") && n !== "tokens.css")) {
+      const css = readFileSync(join(SHARED, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      const found = [...css.matchAll(small)].filter(m => Number(m[1]) < 14).map(m => m[0].slice(0, 60));
+      expect(found, f).toEqual([]);
+    }
   });
   // Fable #4035: the text-size scopes (the chat, Details, Fleet, Log, the drawer's agents) redefine the small sizes; built on
   // fixed 12/13px they kept most phone text where it was. Every redefinition outside tokens.css must scale the base.
@@ -107,12 +120,12 @@ describe("contrast (WCAG AA)", () => {
     let seen = 0;
     for (const f of readdirSync(SHARED).filter((n: string) => n.endsWith(".css") && n !== "tokens.css")) {
       const css = readFileSync(join(SHARED, f), "utf8");
-      for (const d of css.matchAll(/--(fs|lh)-(xs|sm):\s*([^;]+);/g)) {
+      for (const d of css.matchAll(/--(fs|lh)-(3xs|2xs|xs|sm):\s*([^;]+);/g)) {
         seen++;
         expect(d[3], `${f}: --${d[1]}-${d[2]}`).toContain(`var(--${d[1]}-${d[2]}-base)`);
       }
     }
-    expect(seen).toBeGreaterThanOrEqual(8);   // app.css: the text-size scope and the drawer's, 4 each
+    expect(seen).toBeGreaterThanOrEqual(12);   // app.css: the text-size scope and the drawer's, 6 each
   });
 
   for (const [name, theme] of [["dark", DARK], ["light", LIGHT]] as const) {

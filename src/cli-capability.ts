@@ -101,12 +101,14 @@ export interface HostCapabilities {
    * `ends`: how the driver knows it is over: `success-line` (the CLI prints one, or the process ends and the auth check passes) or `exit-code` (the CLI prints no success line:
    * signed in only when the command ended with exit 0 AND the auth check passes; a failed command is never "signed in" because an older login is still there).
    * `screen`: its prompts are read by the `login-flow` patterns, or by its `own` closed table (structured-signin.ts SCREEN_READERS). `minVersion`: the oldest CLI that has the command.
+   * `marker` (AGEND-274): text the CLI's own file holds when it has the command (the command's help line), for a host where the version cannot be read: a CLI whose file names no version and that may
+   * not be started to ask (no network namespace, #2078). Looked up in the file's bytes, starting nothing (backend-availability.ts `fileHasMarker`); it stands in for `minVersion` ONLY when the version is unknown.
    * `answer`: what the CLI's own prompt accepts: the `code`, or the code or the page's address (`code-or-address`). AgEnD's box takes the code only (a pasted address is refused), so a
    * CLI that also accepts an address gets a line under the box saying to paste the code alone.
    * `named`: a NAMED account is signed in with these controls too (the login was checked to land in the account's own folder, which `host.namedAccounts` names). It is not implied by having named accounts:
    * what these controls launch for an account is only what was checked.
    */
-  readonly structuredSignIn: Cap<{ argv: readonly string[]; rank: number; ends: "success-line" | "exit-code"; screen: "login-flow" | "own"; answer: "code" | "code-or-address"; minVersion?: string; named: boolean }>;
+  readonly structuredSignIn: Cap<{ argv: readonly string[]; rank: number; ends: "success-line" | "exit-code"; screen: "login-flow" | "own"; answer: "code" | "code-or-address"; minVersion?: string; marker?: string; named: boolean }>;
   /** The first-run page offers it: as browser controls, or only as the console command. */
   readonly firstRunSignIn: Cap<{ mode: "browser" | "console"; rank: number }>;
   /** A cheap, token-free probe of whether the sign-in works (the command, run with a 5 s timeout). */

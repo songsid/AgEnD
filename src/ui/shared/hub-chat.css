@@ -52,7 +52,7 @@
 
 /* a name's letter on a tone (the same tones in both themes) */
 .hub-av { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 600; font-size: 14px; color: #fff; flex: none; }
-.hub-av.sm { width: 28px; height: 28px; font-size: 12px; border-radius: 8px; }
+.hub-av.sm { width: 28px; height: 28px; font-size: var(--fs-xs); border-radius: 8px; }
 .hub-av.lg { width: 56px; height: 56px; font-size: 22px; border-radius: 16px; }
 .hub-av.t0 { background: #4f6bd8; } .hub-av.t1 { background: #2f8f83; } .hub-av.t2 { background: #b4643a; }
 .hub-av.t3 { background: #7b5bc4; } .hub-av.t4 { background: #6b7280; } .hub-av.t5 { background: #b8447a; }

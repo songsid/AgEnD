@@ -28,7 +28,8 @@ function rig(o: { ends?: boolean } = {}) {
     x.classList = { set: new Set<string>(), toggle(c: string, on: boolean) { on ? this.set.add(c) : this.set.delete(c); }, add(c: string) { this.set.add(c); }, remove(c: string) { this.set.delete(c); }, contains(c: string) { return this.set.has(c); } };
     return x;
   };
-  const stage = listeners({ getBoundingClientRect: () => ({ left: 0, top: 0, width: 390, height: 844 }), setPointerCapture() {} });
+  const box = { left: 0 };   // the stage's place on the screen (it moves while the next picture slides in)
+  const stage = listeners({ getBoundingClientRect: () => ({ left: box.left, top: 0, width: 390, height: 844 }), setPointerCapture() {} });
   const img = listeners({ naturalWidth: PHOTO.w, naturalHeight: PHOTO.h, complete: false, style: { transform: "" } });
   const g = globalThis as any;
   const savedCS = g.getComputedStyle, savedNow = performance.now;
@@ -47,7 +48,7 @@ function rig(o: { ends?: boolean } = {}) {
     for (let i = 1; i <= 4; i++) { clock += ms / 4; ptr("pointermove", 1, x0 + ((x1 - x0) * i) / 4, y0 + ((y1 - y0) * i) / 4, kind); }
     if (lift) ptr("pointerup", 1, x1, y1, kind);
   };
-  return { stage, img, zoom, z, ptr, drag, seen, tick: (ms: number) => { clock += ms; },
+  return { stage, img, zoom, z, ptr, drag, seen, box, tick: (ms: number) => { clock += ms; },
     restore: () => { g.getComputedStyle = savedCS; (performance as any).now = savedNow; zoom.destroy(); } };
 }
 
@@ -124,6 +125,18 @@ describe("M-3210: a picture that fits swipes under a finger", () => {
     r.ptr("pointermove", 1, 140, 400); r.ptr("pointermove", 2, 320, 400);
     r.ptr("pointerup", 2, 320, 400); r.ptr("pointerup", 1, 140, 400);
     expect([r.seen.dismissed, r.seen.swipes, r.z().s > f.s]).toEqual([0, [], true]);
+  });
+
+  // CI flake on #4037 (traced): a slow 35 px swipe stepped — it began 30 ms after the last step, while the stage slid in from
+  // 28% to the left; measured in the stage, the start was 100 px off. A swipe is measured on the screen.
+  it("a swipe that starts while the stage slides in is measured on the screen: a slow, short one still springs back", () => {
+    r = rig();
+    r.box.left = -100;                                        // mid slide-in at pointerdown
+    r.ptr("pointerdown", 1, 250, 400);
+    r.box.left = 0;                                           // settled by the first move
+    for (const x of [243, 236, 229, 222, 215]) { r.tick(90); r.ptr("pointermove", 1, x, 401); }
+    r.ptr("pointerup", 1, 215, 401);
+    expect(r.seen.swipes).toEqual([]);
   });
 
   it("a touch the browser takes back (pointercancel) springs back and steps nothing", () => {

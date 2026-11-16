@@ -48,7 +48,8 @@ const READ = `(() => { const d = document.querySelector("dialog.lb"); if (!d) re
   const img = d.querySelector(".lb-img"), rc = img.getBoundingClientRect(), bg = getComputedStyle(d).backgroundColor;
   return { count: (d.querySelector(".lb-count") || {}).textContent || "", src: img.getAttribute("src"), ready: img.classList.contains("lb-ready"),
     left: Math.round(rc.left), top: Math.round(rc.top), w: Math.round(rc.width), pull: d.style.getPropertyValue("--lb-pull") || "", bg,
-    prevOff: !!d.querySelector(".lb-prev")?.disabled, nextOff: !!d.querySelector(".lb-next")?.disabled }; })()`;
+    prevOff: !!d.querySelector(".lb-prev")?.disabled, nextOff: !!d.querySelector(".lb-next")?.disabled,
+    level: (d.querySelector(".lb-level")?.textContent || "").trim() }; })()`;
 const results: Array<{ name: string; ok: boolean; failed: string[] }> = [];
 // The chat: two messages of two pictures each (once: every case reads the same history).
 fm.emitSseEvent("message", { instance: name, sender: name, role: "agent", text: "Two pictures", ts: new Date().toISOString(), attachments: att.slice(0, 2) });
@@ -64,11 +65,38 @@ for (const c of matrix(process.env.MATRIX ?? "phone-light-en,phone-dark-zh-TW"))
   const touch = async (type: string, x?: number, y?: number) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: x == null ? [] : [{ x, y }] });
   /** One finger from (x0,y0) to (x1,y1) in `n` moves ~16 ms apart; `lift` false leaves it down (for a picture). */
   const swipe = async (x0: number, y0: number, x1: number, y1: number, n = 8, lift = true) => {
+    await settled();                         // never on a picture still loading, springing back or sliding in
     await touch("touchStart", x0, y0);
     for (let i = 1; i <= n; i++) { await touch("touchMove", x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n); await page.waitForTimeout(16); }
     if (lift) await touch("touchEnd");
   };
-  const read = async () => { await page.waitForTimeout(450); return page.evaluate(READ) as Promise<any>; };
+  /**
+   * The viewer at rest, read (CI flakes after #4034, Fable: a gesture that met a picture not yet loaded or fitted, or still
+   * springing back or sliding in, did nothing or the wrong thing): its picture loaded and fitted (lb-ready, a level that is
+   * a percentage), no spring-back or slide-in running, and its box still for three frames. No viewer: null at once.
+   */
+  const settled = async () => {
+    // Synchronous conditions first (waitForFunction does not await an async predicate: a promise is truthy), then the box
+    // still for three frames, measured by evaluate (which does await); again if it moved meanwhile.
+    for (let round = 0; round < 20; round++) {
+      await page.waitForFunction(() => {
+        const d = document.querySelector("dialog.lb");
+        if (!d) return true;
+        const img = d.querySelector(".lb-img") as HTMLImageElement, stage = d.querySelector(".lb-stage") as HTMLElement;
+        const level = (d.querySelector(".lb-level")?.textContent || "").trim();
+        return !!img && img.complete && img.classList.contains("lb-ready") && !img.classList.contains("lb-snap") && /%$/.test(level)
+          && !stage.classList.contains("lb-in-next") && !stage.classList.contains("lb-in-prev") && getComputedStyle(stage).animationName === "none";
+      }, null, { timeout: 8000, polling: 50 });
+      const still = await page.evaluate(`(async () => { var d = document.querySelector("dialog.lb"); if (!d) return true;
+        var img = d.querySelector(".lb-img"), last = "", same = 0;
+        for (var k = 0; k < 30 && same < 3; k++) { await new Promise(function (r) { requestAnimationFrame(r); });
+          var b = img.getBoundingClientRect(), key = Math.round(b.left) + "," + Math.round(b.top) + "," + Math.round(b.width); same = key === last ? same + 1 : 0; last = key; }
+        return same >= 3; })()`);
+      if (still) return page.evaluate(READ) as Promise<any>;
+    }
+    throw new Error("the viewer never came to rest");
+  };
+  const read = settled;
   const shot = (label: string) => page.screenshot({ path: shotPath(SMOKE, caseName(c), label), caret: "initial" });
   try {
     need(await mounted(page), "the app mounted");
@@ -99,14 +127,16 @@ for (const c of matrix(process.env.MATRIX ?? "phone-light-en,phone-dark-zh-TW"))
         return { still: same >= 3, hit: !!at && el.contains(at), what: at ? `${at.tagName}.${(at as HTMLElement).className}` : null, box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)] };
       }, i);
       if (!ready.still || !ready.hit) throw new Error(`picture ${i} is not ready for a tap: ${JSON.stringify(ready)}`);
-      await thumbs.nth(i).tap();
+      // A click, not a tap: what opens the viewer is the thumbnail's click. A tap's click is the browser's to make, and on a
+      // loaded runner it made none twice (a slow touch is a long press). The swipes below are real touches.
+      await thumbs.nth(i).click();
       await page.locator("dialog.lb").waitFor({ timeout: 5000 }).catch(async () => {
         const at = await page.evaluate(() => ({ scrollTop: (document.querySelector(".p-chat .scroller") as HTMLElement)?.scrollTop, active: `${document.activeElement?.tagName}.${(document.activeElement as HTMLElement)?.className}` }));
         throw new Error(`a tap on picture ${i} opened nothing (${JSON.stringify({ ready, ...at })})`);
       });
     };
     await openViewer(n - 4);
-    const open = await read();
+    const open = await settled();
     need(open?.src === srcOf(0) && open.count === "1 / 4" && open.prevOff && !open.nextOff, `opens on the first of the chat's four (${JSON.stringify(open)})`);
     await shot("1-open");
     // Sideways: the picture follows the finger (pictured with the finger down), then the next; across messages; back.
@@ -125,17 +155,24 @@ for (const c of matrix(process.env.MATRIX ?? "phone-light-en,phone-dark-zh-TW"))
     // Short and slow springs back; the last picture stays the last.
     await swipe(250, 420, 215, 420, 10);
     const sprung = await read();
-    need(sprung?.src === srcOf(1) && Math.abs(sprung.left - back.left) <= 1, `a short, slow swipe springs back (${JSON.stringify(sprung)})`);
+    need(sprung?.src === srcOf(1) && Math.abs(sprung.left - back.left) <= 1, `a short, slow swipe springs back (${JSON.stringify({ sprung: sprung && [sprung.count, sprung.left, sprung.top, sprung.w], back: back && [back.count, back.left, back.top, back.w] })})`);
+    // (A swipe started while a picture slides in is measured on the screen: tests/image-swipe-3210 pins it — a browser can't
+    // be made to start a touch inside the 200 ms slide-in reliably.)
     await swipe(320, 420, 120, 420); await swipe(320, 420, 120, 420); await swipe(320, 420, 120, 420);
     const last = await read();
     need(last?.src === srcOf(3) && last.nextOff && last.count === "4 / 4", `the last picture stays the last (${JSON.stringify(last)})`);
     // Zoomed in (a double tap), a finger pans: the same picture.
-    await page.touchscreen.tap(195, 420); await page.waitForTimeout(80); await page.touchscreen.tap(195, 420); await page.waitForTimeout(400);
+    // Zoomed in by its key (1: 100%), not a double tap: two taps timed by a loaded runner are not a double tap for sure.
+    await page.keyboard.press("1");
+    const z100 = await settled();
+    need(z100?.level === "100%", `zoomed in to 100% (${JSON.stringify(z100?.level)})`);
     await swipe(300, 420, 200, 420, 4);
     await swipe(100, 420, 200, 420, 4);
     const zoomed = await read();
     need(zoomed?.src === srcOf(3), `zoomed in, a swipe pans and does not switch (${zoomed?.src === srcOf(3)})`);
-    await page.locator("dialog.lb .lb-level").tap(); await page.waitForTimeout(300);   // back to fit
+    await page.keyboard.press("0");                     // back to fit, by its key (the level button toggles: not for sure)
+    const fit = await settled();
+    need(fit && fit.level === last.level && Math.abs(fit.top - last.top) <= 1, `back to fit (${JSON.stringify({ fit: fit && [fit.level, fit.top], was: [last?.level, last?.top] })})`);
     // Down: the picture follows, the dark fades (pictured), and it closes.
     const before = await page.evaluate(READ) as any;
     await swipe(195, 300, 199, 520, 8, false);
