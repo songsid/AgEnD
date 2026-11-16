@@ -42,4 +42,3 @@ AssertionError: promise resolved "{ …(12) }" instead of rejecting
       Tests  1 failed | 10 passed (11)
    Start at  02:18:25
    Duration  4.63s (transform 2.70s, setup 82ms, import 3.52s, tests 887ms, environment 0ms)
-

@@ -33,4 +33,3 @@ AssertionError: expected { personal: true, …(1) } to match object { personal: 
       Tests  1 failed | 31 skipped (32)
    Start at  02:18:30
    Duration  1.16s (transform 582ms, setup 93ms, import 712ms, tests 197ms, environment 0ms)
-
