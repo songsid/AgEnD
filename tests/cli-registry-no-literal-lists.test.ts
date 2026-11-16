@@ -22,6 +22,9 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
     "src/runtime-pane-protocol.ts": 3, "src/runtime-pane-transcript-protocol.ts": 2, "src/runtime-pane-transcript.ts": 1, "src/runtime-general-protocol.ts": 3, "src/general-binding.ts": 5,
     "src/windows-agents.ts": 2, "src/windows-cli-worker.ts": 2, "src/backend/native-pane.ts": 1, "src/ui/general-location.js": 1, "src/ui/agent-runtime-settings.js": 1, "src/ui/panel-windows-cli.js": 1,
   } },
+  { why: "M-3224 personal agents: the approved phase-1 profile and terminal-answer formats support Codex/Claude only; this is a narrower product/execution boundary, not the registry's account or general Runtime capability list", files: {
+    "src/runtime-personal-answer.ts": 3, "src/runtime-personal-profile.ts": 1,
+  } },
   { why: "delivery, turn resume, transcripts and usage reports: which CLIs write which kind of transcript or report", files: {
     // #3810 also nests the existing Claude/Codex transcript family under the Grok-owned idle alternative.
     "src/daemon.ts": 9, "src/delivery-reconciliation.ts": 2, "src/turn-resume.ts": 2, "src/backend/session-signals.ts": 1, "src/cache-ledger.ts": 1, "src/cache-service.ts": 5,
