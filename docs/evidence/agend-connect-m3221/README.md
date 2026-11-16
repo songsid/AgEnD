@@ -2,6 +2,8 @@
 
 Tested product source: `25996d78e4bd7b20a1b2f776761f990209fdca10`. Plain alpha sync `bff998a0a62d1c276f1ae4c6f168ebf7d51e9eed` contains incoming `4ca66795`; applying the original own patch to that base yields the exact merged tree. The incoming FleetManager change is only the approved tool-trace title translation. No unchanged-source sync rerun was performed (decision 5afe2996).
 
+**Review repair:** [origin-r2](origin-r2/summary.json) binds `6418735c5` and the distinct unverified `@app` origin. The earlier real-client inputs with `source:web` are historical, not a claim about the repaired delivery. One selected warning control is red before the fix; the scoped six-file run is 89/91, then only the affected 25-case instructions suite is rerun after correcting its compact byte budget. All 91 distinct controls pass across those stages, with source/test TypeScript 0/0. No browser, real model, live Fleet or Windows program is run again. The [changelog-only correction](changelog-r1.json) fixes the first head's two fragment headers.
+
 ## Results
 
 - **Fail first:** the previous per-agent MCP server fails the new exact four-operation catalog assertion (one selected assertion red, four unselected). Its full/admin surface is not the person's connector.

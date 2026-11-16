@@ -1,0 +1,98 @@
+{
+  "source": "6418735c5ffd3661eb2efe63fee012f4ee244cae",
+  "reviewed_from": "b8867aa85fbdbe0149b6cb6987a9941231c1ed7f",
+  "runtime_fix": "source app; explicit compact receiptless app envelope plus same-UID/process warning; no web suffix/human proof; existing conversations get inline warning; native one-shot prompt wrapped; no fake platform reaction; ordinary reply completion kept.",
+  "tests": {
+    "before": "one selected origin-warning assertion red, four unselected excluded",
+    "first_after": "89/91; two Classic compact-instruction byte-budget failures",
+    "affected_final": "25/25 instructions after shortening the core hint; other 66 controls unchanged and green from first run",
+    "distinct_final": 91,
+    "new_pins": "five origin cases +one inert native wrapping case; existing FM mapping assertion now pins source app",
+    "types": {
+      "source": 0,
+      "tests": 0
+    }
+  },
+  "stages": "Prior real CLI journey, browser/gate and PNGs remain tested25996 stage. They were not repeated. Earlier summary inputs source:web is historical; current app delivery identity/framing is proved by this scoped Fleet/daemon/native fixture coverage.",
+  "limits": "Private socket remains same-UID access, including agent shells. It does not prove a signed-in person, peer or human go-ahead, and is not OS-process isolation. Existing roles/tool ceilings and WEB_RECEIPT_RULE stay unchanged.",
+  "bindings": [
+    {
+      "path": "docs/design/agend-connect-4a.md",
+      "sha256": "8b74b1117db0076d0bc188d549ec04cdc4830dd48a9bf0345b6e35c8f84f1c3b"
+    },
+    {
+      "path": "src/agent-cli-instructions.md",
+      "sha256": "ee6d44bd9e688852029eac77971453e0c7eaec9f42f803ddc76d24c1bc8a13cd"
+    },
+    {
+      "path": "src/app-message-origin.ts",
+      "sha256": "ab990f4930c4f214c8cd3389efa61dd8e30297c0e27fc890982c2308fff85e0d"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "f024283df70168efcf92c5754c7d6eb48aac271cf6468aa5cf72b655db2fcdff"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "2289adff9119ae592050d1169650ed70d3153b472118647c359c066d3625463b"
+    },
+    {
+      "path": "src/fleet-windows-runtime.ts",
+      "sha256": "f0b27016bcc2070107243c52eb38d9448a052a1cca9ee95535c831bcf3dd95d1"
+    },
+    {
+      "path": "src/general-knowledge/skills/cross-instance-messaging/SKILL.md",
+      "sha256": "287be2f10295335b45419929e831e684a0ede478cfff5eab8a214f6a1515c046"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "8832b9ecb83fdc8bc848f47ce5f3bb8f9e38d6109dac360fc967ef46c756ddb0"
+    },
+    {
+      "path": "src/general-knowledge/skills/worker-collaboration/SKILL.md",
+      "sha256": "595c5e418cba56f5bbc6bf9683c53a3f3bbc0194892d72e1931f72eb18a1b320"
+    },
+    {
+      "path": "src/human-delivery-receipts.ts",
+      "sha256": "d1c369676550964504808ad0beb17a9372db3ff10572719a5d6fdabfc4e3e95f"
+    },
+    {
+      "path": "src/instructions.ts",
+      "sha256": "3343e11d942d1f8ce894f61eb9578dc5102b4938e515f3bad3c007d065806c15"
+    },
+    {
+      "path": "src/turn-reply-guard.ts",
+      "sha256": "148c1731b6dd22f51bd288a3ba1539a9e7540582083e80343ceccb5fe9bdb9ac"
+    },
+    {
+      "path": "tests/fleet-windows-runtime.test.ts",
+      "sha256": "54cd38585a3b40a208ccd6cda4e5954c73d2060fdf56b7ce27bbb6cd92131c1c"
+    },
+    {
+      "path": "tests/owner-app-fleet-m3221.test.ts",
+      "sha256": "437b23482eb33f2d4fbcde754abc4a650a56871a1b63005ae7bb531f0d2d13e1"
+    },
+    {
+      "path": "tests/owner-app-origin-m3221.test.ts",
+      "sha256": "c8e0a09c180f404f78e7f8e632c1688425b80d1c96edb17a2bd6698752d7d598"
+    }
+  ],
+  "terminal_log_normalization": [
+    {
+      "path": "origin-before.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "origin-after.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "origin-instructions-final.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "origin-types.json",
+      "terminal_newlines_removed": -1
+    }
+  ]
+}
