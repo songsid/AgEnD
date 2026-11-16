@@ -396,6 +396,8 @@ export interface WebApiContext {
   modelCatalogForWeb?(backend: string, instance: string | null, selection?:{profile?:string}): import("./web-model-groups.js").WebModelOption[];
   /** Async, account-safe fallback from existing CLI metadata; never launch a CLI or refresh a vendor catalog. */
   cliModelCatalogFor?(backend: string, instance: string | null): Promise<Array<{ id: string; label: string; description?: string }>>;
+  /** Discover an empty (or refresh a stale) model list once, bounded, before GET /ui/models answers; never throws. */
+  ensureModelCatalog?(backend: string, instance: string | null, selection?:{profile?:string}): Promise<void>;
   refreshModelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Promise<{ models: Array<{ id: string; label: string; description?: string }>; refreshed: boolean }>;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
@@ -680,6 +682,27 @@ function webCatalog(ctx: WebApiContext, backend: string, instance: string | null
   if (ctx.modelCatalogForWeb) return profile !== null ? ctx.modelCatalogForWeb(backend, instance, { profile }) : ctx.modelCatalogForWeb(backend, instance);
   const flat = plain ?? (profile !== null ? ctx.modelCatalogFor?.(backend, instance, { profile }) : ctx.modelCatalogFor?.(backend, instance)) ?? [];
   return shapeWebModelCatalog(backend, flat);
+}
+
+/** GET /ui/models' answer: the cached catalog of this instance/account, else the CLI's own cache, else (claude) the documented ids. */
+function answerModelCatalog(res: ServerResponse, ctx: WebApiContext, backend: string, instance: string | null, profile: string | null, canAnswer: () => boolean): void {
+  const models = webCatalog(ctx, backend, instance, profile);
+  // claude with no account list — with or without a credential profile — is answered with the documentation's ids.
+  const answerCatalog = (): void => {
+    if (backend === "claude-code" && !models.length) json(res, 200, { backend, models: documentedClaudeCatalog(ctx), source: "official-catalog" });
+    else json(res, 200, { backend, models });
+  };
+  // The existing catalog belongs to this instance/account and always wins.
+  if (models.length || !ctx.cliModelCatalogFor || profile !== null) { answerCatalog(); return; }
+  void (async () => {
+    const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
+    if (!canAnswer()) return;
+    const shaped = shapeWebModelCatalog(backend, cliModels);
+    if (shaped.length) json(res, 200, { backend, models: shaped, source: "cli-cache" });
+    else answerCatalog();
+  })().catch(() => {
+    if (canAnswer()) json(res, 503, { error: "CLI model cache unavailable" });
+  });
 }
 
 /** claude's fallback when no account list is readable: the documentation's `claude-*` ids for the host's CLI version, unverified. */
@@ -2253,24 +2276,15 @@ export function handleWebRequest(
     const profile=url.searchParams.get("profile");
     if(profile!==null && profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile)){json(res,400,{error:"Invalid model account"});return true;}
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
-    const models = webCatalog(ctx, backend, instance, profile);
-    // claude with no account list — with or without a credential profile — is answered with the documentation's ids.
-    const answerCatalog = (): void => {
-      if (backend === "claude-code" && !models.length) json(res, 200, { backend, models: documentedClaudeCatalog(ctx), source: "official-catalog" });
-      else json(res, 200, { backend, models });
-    };
-    // The existing catalog belongs to this instance/account and always wins.
-    if (models.length || !ctx.cliModelCatalogFor || profile!==null) { answerCatalog(); return true; }
     const canAnswer = (): boolean => !res.headersSent && !res.destroyed && !res.writableEnded && stillAuthorized(req, res, url, ctx);
+    const answer = (): void => answerModelCatalog(res, ctx, backend, instance, profile, canAnswer);
+    // An empty (or stale) list is discovered once, bounded, before the answer — the page shows its loading state
+    // meanwhile — rather than answered as "no models" until someone presses Refresh. A cached fresh list is answered at once.
+    if (!ctx.ensureModelCatalog) { answer(); return true; }
     void (async () => {
-      const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
-      if (!canAnswer()) return;
-      const shaped = shapeWebModelCatalog(backend, cliModels);
-      if (shaped.length) json(res, 200, { backend, models: shaped, source: "cli-cache" });
-      else answerCatalog();
-    })().catch(() => {
-      if (canAnswer()) json(res, 503, { error: "CLI model cache unavailable" });
-    });
+      await ctx.ensureModelCatalog?.(backend, instance, profile !== null ? { profile } : undefined);
+      if (canAnswer()) answer();
+    })().catch(() => { if (canAnswer()) json(res, 503, { error: "model catalog unavailable" }); });
     return true;
   }
 

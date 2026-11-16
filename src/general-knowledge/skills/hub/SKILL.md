@@ -694,6 +694,12 @@ Say plainly that these are not in the product yet:
 
 ## Troubleshooting
 
+- **A personal Runtime command uses `--personal-folder`.** Keep the folder supplied by the Hub's setup command. It
+  uses a separate profile from a Fleet Runtime and keeps that folder across restarts. An existing Fleet profile cannot
+  be converted; disconnect the personal profile before changing its folder. Personal mode has no remote account
+  management or self-update; re-run its install command to update it. This option alone does not enable personal
+  agents on a Hub.
+
 - **Does a disconnected Hub hold up the Fleet?** Fleet startup and ordinary local message delivery do not wait for the Hub connection. Tool discovery stays local within configured permissions, including native agents; an unavailable Hub tool explains the refusal when called. Hub Settings can temporarily say unavailable while a mount changes—retry afterward. Individual Hub network operations have deadlines; this does not promise zero background CPU/I/O overhead.
 
 - **"That is not a Hub address."** Enter just the address (`hub.example.com`), or the address, a space and the join

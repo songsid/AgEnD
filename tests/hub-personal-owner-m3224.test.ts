@@ -28,6 +28,12 @@ async function fixture(){
   return {r,runtime,core,host,a,b,ctx,allow,enroll,stale:()=>{current=false;}};
 }
 describe("company-owned personal computer enrollment",()=>{
+  it("refuses a session that expires while its person lookup completes, before issuing a token",async()=>{
+    const f=await fixture();await f.allow();const ctx=f.ctx(f.a);
+    ctx.requirePerson=async()=>{f.stale();return f.a;};
+    await expect(f.host.enrollment(ctx)).rejects.toMatchObject({code:"revoked"});
+    expect(f.runtime.listEnrollments()).toEqual([]);
+  });
   it("is off by default, admin-controlled, and refuses caller-chosen identity fields",async()=>{
     const f=await fixture();await expect(f.host.enrollment(f.ctx(f.a))).rejects.toMatchObject({code:"denied"});
     await expect(f.host.settings(f.ctx(f.a),{enabled:true,people:[],teams:[]})).rejects.toMatchObject({code:"denied"});

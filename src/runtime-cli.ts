@@ -29,6 +29,7 @@ const HELP = `AgEnD native Windows runtime
   agend-runtime connect --server https://agend.example.com [--name NAME] [--profile DIRECTORY] [--credential-profile NAME] [--foreground]
   agend-runtime connect --connection-dir DIRECTORY [--name NAME] [--profile DIRECTORY] [--credential-profile NAME] [--foreground]
   <one-time token> | agend-runtime connect (--server URL | --connection-dir DIRECTORY) --enroll-stdin --server-fingerprint SHA256HEX [--name NAME] [--profile DIRECTORY] [--foreground]
+  agend-runtime connect --server URL --personal-folder DIRECTORY [--enroll-stdin --server-fingerprint SHA256HEX] [--foreground]
   agend-runtime start [--profile DIRECTORY]
   agend-runtime run [--profile DIRECTORY]
   agend-runtime status [--profile DIRECTORY|NAME] [--json]
@@ -54,6 +55,9 @@ Connection-ready downloads include the server address; double-click connect-agen
 The one-line installer leaves the same connect-agend.bat beside an agend-server.json under <install folder>\connect\<server>; it passes that
 folder as --connection-dir, which picks the profile exactly as the ZIP's connect-agend.bat does (--connection-dir and --server are exclusive).
 start launches the background Runtime of an already paired profile (this is what the sign-in task runs). run reconnects an existing profile and stays in this window; Ctrl+C stops it.
+--personal-folder is a connect-only choice for a Hub personal runner. It creates a separate per-Hub profile and binds it to that folder;
+an existing Fleet profile cannot be converted. Restart preserves the folder and the personal restrictions. Disconnect before changing it.
+This mode has no remote account management or self-update; update it by re-running its install command.
 status lists every profile on this computer (state, process, AgEnD address, autostart, log folder); --json prints the same for a program to read.
 stop ends a background Runtime the way Ctrl+C ends one in a window; with several running, name one (--profile takes a folder or a profile name that status shows) or use --all.
 restart stops it and starts it again with the installed version (use it after an update). logs prints the end of the profile's log, kept under
