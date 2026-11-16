@@ -134,6 +134,8 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     if (db.inTransaction) throw new Refusal("invalid");
     const before = read(), authEpoch = version(), started = now(), elapsedStart = elapsed();
     const policyImages=[before.policy,input];
+    // Preserve the configured root’s pre-roles Group permissions behaviour, not ordinary role edits.
+    const rootAllowedList=operation==="allowed-list"&&same(actor.person,root);
     let inventory: ReturnType<typeof snapshot> | null = null;
     const assertBudget = () => { const at = elapsed(); if (now() < started || at < elapsedStart || at >= elapsedStart + 20_000) throw new Refusal("expired"); };
     const assertBefore = () => {
@@ -155,12 +157,12 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
           const increases=(before:{allow:readonly string[];maxFleets:number}|undefined,after:{allow:readonly string[];maxFleets:number})=>after.allow.some(c=>!before?.allow.includes(c))||after.allow.includes("pair_fleet")&&after.maxFleets>(before?.maxFleets??0);
           const teams=readAllowedListTeams(db,plan.next);
           if(teams.snapshots.some(r=>!r.team))throw new Refusal("invalid");
-          for(const row of plan.next.teams??[])if(increases(plan.before.teams?.find(r=>r.teamId===row.teamId),row)&&teams.memberships(actor.person).includes(row.teamId))throw new Refusal("self-target");
+          for(const row of plan.next.teams??[])if(!rootAllowedList&&increases(plan.before.teams?.find(r=>r.teamId===row.teamId),row)&&teams.memberships(actor.person).includes(row.teamId))throw new Refusal("self-target");
           for(const row of plan.next.people??[])if(increases(plan.before.people?.find(r=>same(r.person,row.person)),row)){
             const fact=facts.get(personKeyString(row.person));if(fact?.kind==="ineligible")throw new Refusal("denied");if(fact?.kind==="unknown")throw new Refusal("unknown");
           }
         }
-        const answer = checkRoleChange(plan, bundle); if (answer !== "allow") throw new Refusal(answer);
+        const answer = checkRoleChange(plan, bundle, {allowOwnGroupIncrease:rootAllowedList}); if (answer !== "allow") throw new Refusal(answer);
       }
     };
     const facts = new Map<string, RolePersonFacts>();
@@ -216,7 +218,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
       const bundle = heldRoleBundle(before.policy, actor.person, facts.get(personKeyString(actor.person))!, now(), root);
       if (operation === "root-self") {
         if (!same(actor.person, root) || bundle.kind !== "known" || !bundle.administrator) throw new Refusal("denied");
-      } else { const answer = checkRoleChange(plan, bundle); if (answer !== "allow") throw new Refusal(answer); }
+      } else { const answer = checkRoleChange(plan, bundle, {allowOwnGroupIncrease:rootAllowedList}); if (answer !== "allow") throw new Refusal(answer); }
     };
     assertAuthority();
     const review=roleReview(plan,people.values(),facts,root,now());

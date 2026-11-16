@@ -53,7 +53,8 @@ function contained(plan: RoleChangePlan, before: HubRoleAssignment | null, after
   return old.permissions.includes(permission) && (!team(permission) || scopeCovers(before.scope, after.scope))
     && (permission !== "pair_fleet" || (before.maxFleets ?? old.defaultMaxFleets) >= (after.maxFleets ?? next.defaultMaxFleets));
 }
-export function checkRoleChange(plan: RoleChangePlan, bundle: HeldRoleBundle): "allow" | "denied" | "unknown" | "self-target" {
+/** The sealed configured-root allowed-list operation alone selects own-group compatibility. */
+export function checkRoleChange(plan: RoleChangePlan, bundle: HeldRoleBundle, options: {allowOwnGroupIncrease?:boolean} = {}): "allow" | "denied" | "unknown" | "self-target" {
   if (bundle.kind !== "known") return bundle.kind === "unknown" ? "unknown" : "denied";
   if (!bundle.administrator) {
     if (!bundle.rolesActive) return "denied";
@@ -83,7 +84,7 @@ export function checkRoleChange(plan: RoleChangePlan, bundle: HeldRoleBundle): "
     if (a.subject.kind === "person") { if (same(a.subject.person, bundle.actor)) return "self-target"; }
     else {
       if (bundle.groups === null) return "unknown";
-      if (bundle.groups.includes(a.subject.group.objectId)) return "self-target";
+      if (bundle.groups.includes(a.subject.group.objectId) && !(bundle.administrator && options.allowOwnGroupIncrease)) return "self-target";
     }
     if (bundle.administrator) continue;
     for (const permission of increases) {

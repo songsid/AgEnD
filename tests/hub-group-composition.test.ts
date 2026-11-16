@@ -23,7 +23,7 @@ import { HubServer } from "../src/hub/server.js";
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); vi.restoreAllMocks(); });
 function gate<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-async function rig(supported = true) {
+async function rig(supported = true, roles = false) {
   const home = mkdtempSync(join(tmpdir(), "agend-group-composition-")), certs = makeTestCerts(); chmodSync(home, 0o700);
   let service: Awaited<ReturnType<ReturnType<typeof createHubServerFactory>>> | undefined, db: Database.Database | undefined;
   cleanups.push(async () => { db?.close(); await service?.close(); rmSync(home, { recursive: true, force: true }); rmSync(certs.dir, { recursive: true, force: true }); });
@@ -53,7 +53,7 @@ async function rig(supported = true) {
   const confirmation = await initializer.prepareConfirmation(plan, { bindPassword: "test-bind-not-an-account" }); await initializer.commit(plan, confirmation.reference);
   const cfg = (yaml.load(readFileSync(join(home, "fleet.yaml"), "utf8")) as { hub: Record<string, unknown> }).hub;
   let deps!: HubHttpDeps, http!: ReturnType<typeof entry.createHubHttp>; const marks = vi.fn(() => vi.fn());
-  const create = createHubServerFactory({ home, components: { http: async () => ({ migrations: entry.migrations, createHubHttp(value) {
+  const create = createHubServerFactory({ home, components: { http: async () => ({ ...(roles?{roleSettingsV1:true as const}:{}), migrations: entry.migrations, createHubHttp(value) {
     deps = value; http = entry.createHubHttp(value, hubTxDatabase); return http;
   } }) }, createDirectory: () => directory, report: () => {}, log: () => {}, groupPermissionsReady: marks });
   service = await create(cfg, () => live); await service.start(); db = new Database(join(home, "hub/hub.sqlite"));
@@ -304,4 +304,23 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     await expect(r.deps.groupHttp!.control.read({ requestId: randomUUID(), current: () => true,
       requireAdmin: async () => ({ kind: "directory", person: ADMIN.key, sessionId: "admin" }) })).rejects.toThrow("unavailable");
   });
+});
+
+it.each(["group","team"] as const)("M3259 fresh role Hub root enables own %s over HTTPS and the member can join and quick-pair",async kind=>{
+ const r=await rig(true,true);expect(r.admin.view.features).toContain("role-settings-v1");
+ r.read.mockImplementation(async person=>({kind:"complete",person,groups:[r.group],observedAt:Date.now()}));
+ const next=await r.proposal();
+ if(kind==="team"){
+  const id=randomUUID(),root=`${ADMIN.key.realm}/${ADMIN.key.objectId}`,member=`${r.colleague.key.realm}/${r.colleague.key.objectId}`;
+  r.db!.prepare("INSERT INTO hub_teams VALUES(?,1,'Fixture','corp','','',?,0,0,0)").run(id,root);
+  for(const person of [root,member])r.db!.prepare("INSERT INTO hub_team_members VALUES(?,?,'Person','person','')").run(id,person);
+  next.groups=[];next.teams=[{teamId:id,name:"Fixture",allow:["pair_fleet"],maxFleets:2}];
+ }
+ await r.save(next); // Both preview and save must return 200, with fresh root-owned writer proofs.
+ const browser=await r.signIn(r.colleague.login),welcome=await r.call(browser,"GET","/hub/v1/me/welcome");
+ expect(welcome.status).toBe(200);expect(welcome.json).toMatchObject({mode:"enabled",connect:{state:"allow",maxFleets:2}});
+ // This is the same admission operation used by company joining, not a fabricated welcome label.
+ const permit=await r.deps.groups!.prepareEnrollment({kind:"fleet",id:randomUUID(),revision:1,owner:r.colleague.key},{requestId:randomUUID(),current:()=>true});
+ expect(permit.maxFleets).toBe(2);expect(()=>permit.assertCurrent()).not.toThrow();
+ expect((await r.call(browser,"POST","/hub/v1/quick-pairing",{label:"Synthetic laptop"})).status).toBe(200);
 });
