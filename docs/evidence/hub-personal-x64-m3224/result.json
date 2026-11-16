@@ -1,0 +1,90 @@
+{
+  "source": "3137a53c35df8d52e28fb43e822ab269477a9c63",
+  "versions": {
+    "windows": "10.0.26100.9711",
+    "description": "Windows 11 Enterprise",
+    "architecture": "x64",
+    "node": "v26.13.1",
+    "codex": "codex-cli 0.165.0",
+    "claude": "2.1.323 (Claude Code)"
+  },
+  "checks": [
+    {
+      "name": "effective tool flags and no inherited skills/instructions",
+      "status": "passed",
+      "driver": "isolated CLI local preflight"
+    },
+    {
+      "name": "access-only OAuth parses without changing source or copying refresh authority",
+      "status": "passed",
+      "driver": "synthetic staged OAuth and CLI status; no provider call"
+    },
+    {
+      "name": "shared folder can be read",
+      "status": "passed",
+      "driver": "sandboxed Node command"
+    },
+    {
+      "name": "outside read denied with positive unsandboxed control",
+      "status": "passed",
+      "driver": "sandboxed Node command"
+    },
+    {
+      "name": "staged authentication is not readable by command tools",
+      "status": "passed",
+      "driver": "sandboxed Node command"
+    },
+    {
+      "name": "junction cannot escape shared folder",
+      "status": "passed",
+      "driver": "sandboxed Node command"
+    },
+    {
+      "name": "writes denied",
+      "status": "passed",
+      "driver": "sandboxed Node command"
+    },
+    {
+      "name": "command network denied with reachable local control",
+      "status": "passed",
+      "driver": "sandboxed Node command"
+    },
+    {
+      "name": "Claude shipped help and safety argv accepted",
+      "status": "passed",
+      "driver": "CLI help; no model turn"
+    }
+  ],
+  "realTurn": {
+    "attempts": 1,
+    "cli": "codex",
+    "protocolFinalReturned": true,
+    "sharedFileMarkerMatched": false,
+    "finalAnswer": "I couldn’t read `allowed.txt`: the shell failed to access the shared folder.",
+    "sourceAuthenticationUnchanged": true
+  },
+  "interop": {
+    "before": {
+      "command": "cmd.exe /c ver",
+      "launch": "absolute path (WSL PATH has no cmd.exe)",
+      "exit": 0,
+      "stdout": "Microsoft Windows [版本 10.0.26100.9711]",
+      "stderr": ""
+    },
+    "after": {
+      "exitCode": 0,
+      "stdout": "Microsoft Windows [版本 10.0.26100.9711]",
+      "stderr": ""
+    }
+  },
+  "cleanup": {
+    "ownedProcessesBeforeDeletion": 0,
+    "scratchRemoved": true,
+    "scratchExistsAfter": false,
+    "stagesRemainingBeforeRootDeletion": 0,
+    "visibleWindows": false,
+    "runtimePairingServiceScheduledTasksChanged": false,
+    "wslInteropBinfmtRelayChanged": false,
+    "userPathProfileChanged": false
+  }
+}

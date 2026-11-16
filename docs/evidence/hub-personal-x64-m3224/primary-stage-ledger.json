@@ -1,0 +1,56 @@
+[
+  {
+    "created": "shared",
+    "removed": null,
+    "kind": "directory",
+    "existsAfter": null
+  },
+  {
+    "created": "outside",
+    "removed": null,
+    "kind": "directory",
+    "existsAfter": null
+  },
+  {
+    "created": "source-auth",
+    "removed": null,
+    "kind": "directory",
+    "existsAfter": null
+  },
+  {
+    "created": "temp\\agend-personal-B4pofM",
+    "removed": null,
+    "kind": "private-stage",
+    "existsAfter": null
+  },
+  {
+    "created": "temp\\agend-personal-6jKZyL",
+    "removed": null,
+    "kind": "private-stage",
+    "existsAfter": null
+  },
+  {
+    "created": null,
+    "removed": "temp\\agend-personal-6jKZyL",
+    "kind": null,
+    "existsAfter": false
+  },
+  {
+    "created": null,
+    "removed": "temp\\agend-personal-B4pofM",
+    "kind": null,
+    "existsAfter": false
+  },
+  {
+    "created": "temp\\agend-personal-pY0gmk",
+    "removed": null,
+    "kind": "private-stage",
+    "existsAfter": null
+  },
+  {
+    "created": null,
+    "removed": "temp\\agend-personal-pY0gmk",
+    "kind": null,
+    "existsAfter": false
+  }
+]

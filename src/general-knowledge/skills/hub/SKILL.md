@@ -725,6 +725,8 @@ Say plainly that these are not in the product yet:
   be converted; disconnect the personal profile before changing its folder. Personal mode has no remote account
   management or self-update; re-run its install command to update it. This option alone does not enable personal
   agents on a Hub.
+  Codex is usable only after its isolated shell can read the profile's test file. A failed check leaves it
+  unavailable; do not loosen its folder restrictions or change Windows security settings to get past the check.
 
 - **Does a disconnected Hub hold up the Fleet?** Fleet startup and ordinary local message delivery do not wait for the Hub connection. Tool discovery stays local within configured permissions, including native agents; an unavailable Hub tool explains the refusal when called. Hub Settings can temporarily say unavailable while a mount changes—retry afterward. Individual Hub network operations have deadlines; this does not promise zero background CPU/I/O overhead.
 
