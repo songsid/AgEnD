@@ -31,7 +31,7 @@
 .inst-line2 > .nav-count { flex: none; height: 18px; min-width: 18px; line-height: 18px; }
 .hub-room-archived .inst-name { color: var(--text-3); }
 /* M-3117: on a phone the Fleet chat's box has a hairline (model-picker.css, which the Hub does not load): the Hub's too. */
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .hub-dock .composer-box { border: 1px solid var(--border); }
   /* …and its Send is a full tap target (chat-work-bar.css, linked by the Fleet chat only). */
   .hub-dock .composer .btn-send { width: var(--tap); min-width: var(--tap); min-height: var(--tap); }
@@ -89,7 +89,7 @@
 a.hub-launch-pill { border: 1px solid var(--border); background: transparent; color: var(--text); }
 @media (hover: none) { .hub-launch-go { opacity: 1; } }
 @media (max-width: 899px), (pointer: coarse) { .hub-launch-pill { min-height: var(--tap); } }   /* a fingertip on a phone */
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .hub-home-list { display: block; flex: 1; overflow-y: auto; padding-top: var(--s-2); }
   .hub-home-pick { display: none; }
   .hub-home.is-launch .hub-home-list { display: none; }

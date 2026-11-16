@@ -133,7 +133,7 @@ describe("resizing the sidebar", () => {
   it("a phone (the drawer): no kept width applies", async () => {
     const pg = await app("/ui", { storage: { agend_sidebar_w: "400" }, narrow: true });
     expect(width(pg) || null).toBe(null);
-    expect(appCss).toMatch(/@media \(max-width: 899px\) \{ \.side-resize \{ display: none; \} \}/);
+    expect(appCss).toMatch(/@media \(max-width: 899px\), \(pointer: coarse\) and \(max-height: 500px\) and \(max-width: 1023px\) \{ \.side-resize \{ display: none; \} \}/);
   });
 });
 

@@ -229,7 +229,7 @@ const SHEET_W = 560;
  * coarse pointer in a short window: an iPhone's 956 × 440 is wider than 899 px). There the Office's tools are one ⋯ sheet,
  * zone pills jump to a readable zoom, a tap near a person picks them, and their card is a bottom sheet.
  */
-export const OFFICE_PHONE_Q = "(max-width: 899px), (pointer: coarse) and (max-height: 500px)";
+export const OFFICE_PHONE_Q = "(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)";
 export function useOfficePhone() {
   const read = () => { try { return typeof matchMedia === "function" && matchMedia(OFFICE_PHONE_Q).matches; } catch { return false; } };
   const [on, setOn] = useState(read);

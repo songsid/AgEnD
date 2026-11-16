@@ -74,7 +74,7 @@ const MODE_KEY = "agend_org_mode", FOLD_KEY = "agend_org_folded", LIVE_KEY = "ag
 const MODES = ["canvas", "list", "office"];
 /** The org page's view: this device's choice, else the canvas — on a phone the list (M-3166, Argon 5: a phone opens on it). */
 function readMode() {
-  const phone = typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches, fallback = phone ? "list" : "canvas";
+  const phone = typeof matchMedia === "function" && matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches, fallback = phone ? "list" : "canvas";
   try { const m = localStorage.getItem(MODE_KEY); return MODES.includes(m) ? m : fallback; } catch { return fallback; }
 }
 function readLive() { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch { return true; } }

@@ -10,7 +10,7 @@
 .hub-switch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-switch-item > .icon { flex: none; }
 .hub-switch-item.is-current { flex-shrink: 0; }
-@media (max-width: 899px) { .sidebar.fleet-side .hub-switch { margin: 0 var(--s-2) var(--s-2) var(--s-3); } }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .sidebar.fleet-side .hub-switch { margin: 0 var(--s-2) var(--s-2) var(--s-3); } }
 .hub-switch-item.is-current { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); font-weight: var(--fw-medium); }
 a.hub-switch-item:hover { color: var(--text); }
 a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
@@ -20,7 +20,7 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
 .hub-state { display: grid; gap: var(--s-2); margin-top: var(--s-3); }
 .hub-state h4 { margin: 0; display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
 .hub-origin code { overflow-wrap: anywhere; }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .p-hub .hub-company-join > .check, .p-hub .hub-company-join > details > summary { min-height: var(--tap); }
 }
 .hub-fp { display: grid; gap: var(--s-1); }
@@ -60,7 +60,7 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
    Settings layout's), the whole height of the page — no 38vh box scrolling inside it there. */
 .hub-notices-col > .hub-security-notices { margin: 0; padding: 20px; border: 1px solid var(--border); border-radius: 10px; box-shadow: none; max-height: none; overflow: visible; }
 @media (max-width: 600px) { .hub-notices-col > .hub-security-notices { padding: 16px; } }
-@media (max-width: 899px) { .hub-body { padding: var(--s-3) var(--s-4) var(--s-6); } }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .hub-body { padding: var(--s-3) var(--s-4) var(--s-6); } }
 .hub-signin { max-width: 420px; }
 .hub-signin h2 { margin: 0 0 var(--s-1); }
 .hub-list { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: grid; gap: var(--s-2); }

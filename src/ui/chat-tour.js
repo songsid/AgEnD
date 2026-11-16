@@ -15,7 +15,7 @@ const TOUR_KEY = "agend_tour_done";
 const byId = (id) => document.getElementById(id) || document.querySelector(`.ws-focused [id$="-${id}"]`);
 // On a phone the instance list is in the closed drawer: the tour outlines what opens it (☰), and for "needs you" the
 // bottom tab's badge (#1408 step 5: retargeted to the app's shell).
-const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches;
 const STEPS = [
   { text: "chat.tour1", spot: () => (narrow() ? byId("sbOpen") : byId("instanceList")) },
   { text: "chat.tour2", spot: () => byId("main") },

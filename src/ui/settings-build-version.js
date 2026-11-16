@@ -8,9 +8,9 @@ register("installedBuild", {
 const copy = (key, ...args) => t(`installedBuild.${key}`, ...args);
 const releases = "https://github.com/songsid/AgEnD/releases";
 export function SettingsBuildVersion({ version, build }) {
-  const [narrow, setNarrow] = useState(() => globalThis.matchMedia?.("(max-width: 899px)").matches ?? false);
+  const [narrow, setNarrow] = useState(() => globalThis.matchMedia?.("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches ?? false);
   useEffect(() => {
-    const media = globalThis.matchMedia?.("(max-width: 899px)"); if (!media) return;
+    const media = globalThis.matchMedia?.("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)"); if (!media) return;
     const sync = () => setNarrow(media.matches); media.addEventListener("change", sync); sync();
     return () => media.removeEventListener("change", sync);
   }, []);

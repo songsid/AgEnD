@@ -74,7 +74,7 @@ describe("M-3166: the meta line (phone)", () => {
   it("the CSS: 26 px, the small type, hit targets ≥ 32 px; the line under the box goes; five lines at most; files in one strip", () => {
     const css = readFileSync(join(process.cwd(), "src/ui/shared/chat-work-bar.css"), "utf8");
     const at = css.indexOf("M-3166 (Argon 0 and 1");                       // the meta line's own phone block (the sheet's has another)
-    const phone = css.slice(css.indexOf("@media (max-width: 899px) {", at), css.indexOf("\n}", at));
+    const phone = css.slice(css.indexOf("@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {", at), css.indexOf("\n}", at));
     for (const rule of [".chat-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); height: 26px; padding: 0 var(--s-1); font-size: var(--fs-xs);",
       "min-height: 32px; margin: -3px 0;", ".p-chat .dock:has(.chat-meta) .composer-row { display: none; }",
       ".p-chat .composer textarea { max-height: calc(4 * var(--lh-md) + var(--tap)); overflow-y: auto; }", ".p-chat .composer-box .pending-files { flex-wrap: nowrap; overflow-x: auto; }",

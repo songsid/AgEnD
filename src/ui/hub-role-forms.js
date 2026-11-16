@@ -18,8 +18,8 @@ export function RoleSearch({client,kind,onPick,disabled,id}){
  return kind==="person"?html`<${PeopleSearch} key=${revision} search=${search} disabled=${disabled} id=${id} onPick=${row=>{onPick({kind:"person",key:row.person,name:row.displayName,login:row.login});setRevision(n=>n+1);}}/>`:html`<${GroupSearch} key=${revision} client=${groups} disabled=${disabled} id=${id} onPick=${row=>{const original=candidates.current.get(row.objectId);if(original){onPick(original);setRevision(n=>n+1);}}}/>`;
 }
 export function PermissionSections({permissions,onChange,disabled=false,readOnly=false,administrator=false}){
- const [small,setSmall]=useState(()=>typeof window!=="undefined"&&window.matchMedia?.("(max-width: 899px)").matches);
- useEffect(()=>{const media=window.matchMedia?.("(max-width: 899px)");if(!media)return;const update=()=>setSmall(media.matches);media.addEventListener?.("change",update);return()=>media.removeEventListener?.("change",update);},[]);
+ const [small,setSmall]=useState(()=>typeof window!=="undefined"&&window.matchMedia?.("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches);
+ useEffect(()=>{const media=window.matchMedia?.("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)");if(!media)return;const update=()=>setSmall(media.matches);media.addEventListener?.("change",update);return()=>media.removeEventListener?.("change",update);},[]);
  const groups=permissionGroups.map(group=>group.key==="runningHub"&&administrator?{...group,permissions:[...group.permissions,"hub.admin"]}:group);
  const pick=(permission,checked)=>onChange(checked?[...new Set([...permissions,permission])]:permissions.filter(p=>p!==permission));
  return html`<div class="hub-role-permissions">${groups.map(group=>html`<details class="hub-role-permission-section" key=${group.key} open=${!readOnly||!small||group.key==="usingHub"}>

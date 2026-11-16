@@ -28,7 +28,7 @@ describe("#2478: the chat composer (the real page modules)", () => {
     const p = harness.page({ storage: { agend_tour_done: "1", ...(o.lang ? { agend_lang: o.lang } : {}) } });
     pages.push(p);
     // A phone's pointer is coarse; a desk's is fine. Set before the page renders (the hint and enterkeyhint read it).
-    (globalThis as any).matchMedia = (q: string) => ({ matches: !!o.touch && /pointer:\s*coarse/.test(q), addEventListener() {}, removeEventListener() {} });
+    (globalThis as any).matchMedia = (q: string) => ({ matches: !!o.touch && /pointer:\s*coarse/.test(q) && !/max-height/.test(q) /* a touch screen taller than a phone held sideways (M-3254) */, addEventListener() {}, removeEventListener() {} });
     if (o.lang) (await import("/assets/app-i18n.js" as string)).setLang(o.lang);
     const app = await import("/assets/app-store.js" as string);
     const panel = await import("/ui/js/panel-chat.js" as string);

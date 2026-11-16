@@ -43,11 +43,11 @@ register("agentSheet", {
 
 /** A phone's width (the shell's own: max-width 899 px), kept current as the window is resized. */
 export function usePhone() {
-  const read = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+  const read = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches;
   const [on, setOn] = useState(read);
   useEffect(() => {
     if (typeof matchMedia !== "function") return undefined;
-    const mq = matchMedia("(max-width: 899px)"), changed = () => setOn(mq.matches);
+    const mq = matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)"), changed = () => setOn(mq.matches);
     changed(); mq.addEventListener?.("change", changed);
     return () => mq.removeEventListener?.("change", changed);
   }, []);

@@ -91,7 +91,7 @@ describe("M-3167: one composer between a phone and a wide desk", () => {
     let depth = 0; const topLevel: string[] = [];
     for (const line of css.split("\n")) { if (depth === 0) topLevel.push(line); depth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length; }
     expect([".ctx-ring {", ".ctx-dial {", ".composer-pick {"].map((r) => topLevel.some((l) => l.startsWith(r)))).toEqual([true, true, true]);
-    const jsWidth = /COMPOSER_TOOLS_Q = "\(max-width: (\d+)px\)"/.exec(js)![1], cssWidth = /@media \(min-width: 900px\) and \(max-width: (\d+)px\) \{ \.p-chat \.panel-head \.panel-sub \.hd-chip \{ display: none; \} \}/.exec(css)![1];
+    const jsWidth = /COMPOSER_TOOLS_Q = "\(max-width: (\d+)px\)"/.exec(js)![1], cssWidth = /@media \(min-width: 900px\) and \(pointer: fine\) and \(max-width: (\d+)px\), [^{]*\{ \.p-chat \.panel-head \.panel-sub \.hd-chip \{ display: none; \} \}/.exec(css)![1];
     expect(cssWidth).toBe(jsWidth);
   });
 });

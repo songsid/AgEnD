@@ -11,7 +11,7 @@
 /* A /model option with an effort: on a phone its row shows the effort and a "›" to the effort list (below); elsewhere only the model button. */
 .cmd-choice { display: contents; }
 .cmd-effort-go { display: none; }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .model-refresh .btn, .cmd-card .btn, .cmd-card .icon-btn { min-height: var(--tap); min-width: var(--tap); }
   .chat-model-entry { display: none; }
   .model-entry-row { display: flex; flex-wrap: wrap; padding: var(--s-1) var(--s-2); border-bottom: 1px solid var(--border); }
@@ -52,7 +52,7 @@
 .model-menu-signin { display: flex; flex-wrap: wrap; gap: var(--s-2); padding: var(--s-2) var(--s-3); }
 .model-menu-scrim { position: fixed; inset: 0; z-index: 90; }
 .model-menu-pop { position: fixed; z-index: 91; width: 320px; max-height: calc(100vh - 16px); overflow-y: auto; padding: var(--s-1); border-radius: var(--r-lg); background: var(--bg); box-shadow: var(--shadow-2), 0 0 0 1px var(--border); }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .model-menu-row { min-height: 56px; }
   .model-menu-more { min-height: var(--tap); }
   .model-menu-seg { margin: 0 0 var(--s-2); }

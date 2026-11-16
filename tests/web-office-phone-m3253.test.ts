@@ -102,12 +102,12 @@ describe("M-3253: the Office's tools in one ⋯ sheet on a phone", () => {
     expect([!!$(".oo.phone"), !!$(".oo-more-btn"), !!$(".oo > .oo-bar"), !!$(".oc-tools .oc-live"), !!$(".oo-zone-pills")]).toEqual([false, false, true, true, false]);
   });
   it("the media query is one string: the module's, the stylesheet's phone block", () => {
-    expect(FO.OFFICE_PHONE_Q).toBe("(max-width: 899px), (pointer: coarse) and (max-height: 500px)");
-    const at = css.indexOf(`@media ${FO.OFFICE_PHONE_Q} {`);
-    expect(at).toBeGreaterThan(0);
-    const block = css.slice(at, css.indexOf("\n}\n", at));
+    expect(FO.OFFICE_PHONE_Q).toBe("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)");
+    // M-3254: every phone block now has this query; the Office's is the one holding the ⋯.
+    const blocks = css.split(`@media ${FO.OFFICE_PHONE_Q} {`).slice(1).map((b) => b.slice(0, b.indexOf("\n}\n")));
+    const block = blocks.find((b) => b.includes(".oo-more-btn"))!;
+    expect(block).toBeTruthy();
     expect(block).toContain(".oc-tools .oo-more-btn { flex: none; width: var(--tap); height: var(--tap); }");
-    expect(block).toContain(".p-fleet > .panel-head .panel-actions { display: none; }");   // sideways: the tabs fit the header's row
     expect(block).toContain(".oo.phone .oo-zoom .icon-btn { width: var(--tap); height: var(--tap); }");
     expect(block).toMatch(/\.oo\.phone:not\(\.fs\) \.oo-zoom :is\(\.oo-fit, \.oo-fill\) \{ display: none; \}/);
   });
@@ -170,7 +170,5 @@ describe("M-3253: the card's sheet", () => {
     expect(css).toContain(".oo-card.sheet .oo-card-actions .btn { flex: 1; min-height: var(--tap);");
     const base = css.match(/\.oo-card\.sheet \{ position: fixed;[^}]*\}/)![0];
     expect(base).toContain("bottom: 0;");
-    // Sideways (the sidebar stays): the stage's, so the sidebar never covers it.
-    expect(css).toMatch(/@media \(pointer: coarse\) and \(max-height: 500px\) and \(min-width: 900px\) \{\n  \.oo-card\.sheet \{ position: absolute; max-width: 560px; margin: 0 auto; \}/);
   });
 });

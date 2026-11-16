@@ -81,7 +81,7 @@ describe("M-3212: 手機側欄 — 滿版 or 窄版, this browser's own", () => 
     expect(css).not.toMatch(/\n {2}\.sidebar\.fleet-side \.v-inst \.av \{ width: 54px/);   // no 滿版 size left unscoped
     expect(css).toContain(".nav-sort-phone { display: none; }");
     expect(css).toContain("  .sidebar.fleet-side .nav-sort-phone { display: block; flex: none; }");
-    expect(css).toContain("@media (min-width: 900px) { .nav-sort-menu .nav-sort-drawer { display: none; } }");
+    expect(css).toContain("@media (min-width: 900px) and (pointer: fine), (min-width: 900px) and (pointer: none), (min-width: 900px) and (min-height: 501px), (min-width: 1024px) { .nav-sort-menu .nav-sort-drawer { display: none; } }");
     expect(css).toContain("  .sidebar.fleet-side .inst-nav {\n    --fs-xs: calc(var(--fs-xs-base) * var(--text-scale));");   // M-3216: the base the phone raises
   });
 });

@@ -96,7 +96,7 @@ describe("contrast (WCAG AA)", () => {
     expect(DARK["lh-xs-base"]).toBe("16px"); expect(DARK["lh-sm-base"]).toBe("18px");
     expect(DARK["fs-xs"]).toBe("var(--fs-xs-base)"); expect(DARK["fs-sm"]).toBe("var(--fs-sm-base)");
     expect(DARK["lh-xs"]).toBe("var(--lh-xs-base)"); expect(DARK["lh-sm"]).toBe("var(--lh-sm-base)");
-    const m = /@media \(max-width: 899px\) \{\s*:root \{([^}]*)\}\s*\}/.exec(CSS);
+    const m = /@media \(max-width: 899px\), \(pointer: coarse\) and \(max-height: 500px\) and \(max-width: 1023px\) \{\s*:root \{([^}]*)\}\s*\}/.exec(CSS);
     expect(m, "the phone :root block").toBeTruthy();
     const phone = Object.fromEntries([...m![1]!.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(x => [x[1]!, x[2]!.trim()]));
     expect(phone).toEqual({ "fs-3xs-base": "11px", "fs-2xs-base": "12px", "fs-xs-base": "13px", "lh-xs-base": "18px", "fs-sm-base": "14px", "lh-sm-base": "20px" });

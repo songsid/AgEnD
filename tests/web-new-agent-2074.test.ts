@@ -94,7 +94,7 @@ describe("New agent in the sidebar", () => {
   });
   it("a phone hides the header + (its drawer has the row); the row is a .side-row like the others", () => {
     const css = readFileSync("src/ui/shared/app.css", "utf8");
-    const blocks = css.split("@media (max-width: 899px) {").slice(1).map((b) => b.slice(0, b.indexOf("\n}")));
+    const blocks = css.split("@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {").slice(1).map((b) => b.slice(0, b.indexOf("\n}")));
     expect(blocks.some((b) => b.includes(".panel-head .sb-new { display: none; }")), "inside a phone block").toBe(true);
   });
 });

@@ -20,4 +20,4 @@ body { display: flex; flex-direction: column; }
 #keys button { background: #222; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 6px 10px; font: 14px ui-monospace, monospace, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji; cursor: pointer; }
 #done { padding: 10px; background: #1c1c1c; border-top: 1px solid #333; }
 #done.ok { color: #8d8; } #done.bad { color: #f88; }
-@media (min-width: 900px) { #keys { display: none; } }
+@media (min-width: 900px) and (pointer: fine), (min-width: 900px) and (pointer: none), (min-width: 900px) and (min-height: 501px), (min-width: 1024px) { #keys { display: none; } }

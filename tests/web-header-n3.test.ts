@@ -215,7 +215,7 @@ describe("one header row: the brand row and every page's header share a height a
   });
   it("the header's controls are one height: small buttons always; the instance tabs where they share the row", () => {
     expect(rule(".panel-head .btn-sm")).toBe("min-height: 36px;");
-    expect(css).toMatch(/@media \(min-width: 900px\) \{ \.panel-head \.inst-switch \.seg-item \{ min-height: 36px; \} \}/);
+    expect(css).toMatch(/@media \(min-width: 900px\) and \(pointer: fine\), \(min-width: 900px\) and \(pointer: none\), \(min-width: 900px\) and \(min-height: 501px\), \(min-width: 1024px\) \{ \.panel-head \.inst-switch \.seg-item \{ min-height: 36px; \} \}/);
     expect(rule(".icon-btn")).toContain("height: 36px;");
   });
 });

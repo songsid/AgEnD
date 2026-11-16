@@ -191,7 +191,7 @@ installTextUndo({ mac: isMacLike() });
 // open/close as ☰ and the scrim. Nothing that owns a sideways drag (code, tables, the terminal, inputs, dialogs) and
 // never the left edge (iOS: "back").
 installSwipe({
-  isDrawer: () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches,
+  isDrawer: () => typeof matchMedia === "function" && matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches,
   isOpen: () => shellStore.get().drawer, open: openDrawer, close: closeDrawer,
 });
 
