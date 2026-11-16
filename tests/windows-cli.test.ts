@@ -329,6 +329,59 @@ describe("one Windows task at a time", () => {
   });
 });
 
+describe("personal-agent worker boundary", () => {
+  it("keeps preview output empty and waits for physical exit before publishing a final answer", async () => {
+    const service = new WindowsCliBridge(launcher, DETECTED, undefined, true);
+    service.start(input, () => true, { personal: true }); await launched();
+    expect(JSON.parse(child.stdin.read().toString())).toEqual({ op: "run", task: input, personal: true });
+    child.send({ type: "stdout", text: "private tool output must not be retained" });
+    child.send({ type: "stderr", text: "private diagnostic must not be retained" });
+    child.send({ type: "finished", code: 0, personal: { ok: true, answer: "Final answer." } });
+    expect(service.get(input.requestId)).toMatchObject({ status: "running", output: "" });
+    expect(service.get(input.requestId)?.answer).toBeUndefined();
+    child.close();
+    expect(service.get(input.requestId)).toMatchObject({ status: "completed", output: "", answer: "Final answer.", outcomeConfirmed: true });
+    expect(JSON.stringify(service.list())).not.toContain("private");
+  });
+  it("does not promote the ordinary provider stream or exit code into a personal answer", async () => {
+    const service = new WindowsCliBridge(launcher, DETECTED);
+    service.start(input, () => true, { personal: true }); await launched();
+    child.send({ type: "stdout", text: JSON.stringify({ type: "turn.completed" }) + "\n" });
+    child.send({ type: "finished", code: 0 }); child.close();
+    expect(service.get(input.requestId)).toMatchObject({ status: "failed", personalFailure: "protocol", output: "" });
+    expect(service.get(input.requestId)?.answer).toBeUndefined();
+  });
+  it("preserves a bounded personal failure without raw diagnostics", async () => {
+    const service = new WindowsCliBridge(launcher, DETECTED);
+    service.start(input, () => true, { personal: true }); await launched();
+    child.send({ type: "error", terminal: true, reason: "authentication-unavailable", message: "private auth details" }); child.close();
+    expect(service.get(input.requestId)).toMatchObject({ status: "failed", personalFailure: "authentication-unavailable", error: "Personal agent: authentication-unavailable" });
+    expect(JSON.stringify(service.list())).not.toContain("private auth");
+  });
+  it("does not publish an answer after the personal worker has failed", async () => {
+    const service = new WindowsCliBridge(launcher, DETECTED);
+    service.start(input, () => true, { personal: true }); await launched();
+    child.send({ type: "error", reason: "timeout", message: "Timed out" });
+    child.send({ type: "finished", code: 0, personal: { ok: true, answer: "A late result" } }); child.close();
+    expect(service.get(input.requestId)).toMatchObject({ status: "failed", personalFailure: "timeout" });
+    expect(service.get(input.requestId)?.answer).toBeUndefined();
+  });
+  it("rejects broad permissions, tools, resume, alternate profiles and normal runs before launch", () => {
+    const service = new WindowsCliBridge(launcher, DETECTED, undefined, true);
+    expect(() => service.start(input)).toThrow(/personal-agent/);
+    expect(() => service.start({ ...input, sandbox: "workspace-write" }, () => true, { personal: true })).toThrow();
+    expect(() => service.start(input, () => true, { personal: true, resumeSessionId: conversationId })).toThrow();
+    expect(() => service.start(input, () => true, { personal: true, credentialHome: "C:\\Other" })).toThrow();
+    expect(() => service.start(input, () => true, { personal: true, context: "extra instructions" })).toThrow();
+    expect(spawn).not.toHaveBeenCalled();
+  });
+  it("binds an idempotent job id to its launch profile", async () => {
+    const service = new WindowsCliBridge(launcher, DETECTED); service.start(input, () => true, { personal: true });
+    expect(() => service.start(input)).toThrow(/another task/); await launched();
+    child.send({ type: "finished", code: 1, personal: { ok: false, reason: "failed" } }); child.close();
+  });
+});
+
 describe.each(providerCases)("$cli task orchestration", ({ cli, model, output, success, failure }) => {
   const nativeInput = { ...input, cli, model, sandbox: "workspace-write" } as const;
   const stdout = (events: unknown[], trailingNewline = true): void => {

@@ -7,7 +7,8 @@ import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { readBoundedWebBody } from "./web-body.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
-import { validateNativeTask, type NativeTaskInput } from "./windows-cli-worker.js";
+import { validateNativeTask, validWindowsDirectory, type NativeTaskInput } from "./windows-cli-worker.js";
+import { PERSONAL_AGENT_PROFILE, assertPersonalTask, personalTaskFailure } from "./runtime-personal-protocol.js";
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
 import type { NativeCliRow } from "./windows-cli-worker.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
@@ -88,6 +89,10 @@ function inventory(value: unknown): WindowsCliProbe {
   if (value.probedAt !== undefined && value.probedAt !== null && (typeof value.probedAt !== "number" || !Number.isFinite(value.probedAt))) throw new RuntimeProtocolError("Invalid runtime inventory");
   const probe: WindowsCliProbe = { clis, home: value.home, ...(value.probedAt !== undefined ? { probedAt: value.probedAt as number | null } : {} as { probedAt: null }),
     ...(typeof value.hostname === "string" && value.hostname.trim() && value.hostname.length <= 255 && !/[\x00-\x1f\x7f]/.test(value.hostname) ? { hostname: value.hostname.trim() } : {}) };
+  if (value.personalFolder !== undefined) {
+    if (!validWindowsDirectory(value.personalFolder)) throw new RuntimeProtocolError("Invalid personal folder report");
+    probe.personalFolder = value.personalFolder;
+  }
   const field = (error: unknown): string => /^Invalid (?:credential profile report|account identity): [A-Za-z ,.]{1,48}$/.test(String((error as Error)?.message)) ? String((error as Error).message).replace(/^Invalid (?:credential profile report|account identity): /, "") : "invalid";
   if (value.credentialProfiles !== undefined) {
     try { probe.credentialProfiles = parseCredentialProfileReport(value.credentialProfiles); } catch (error) { throw new RuntimeProtocolError(`Invalid runtime credential profiles (${field(error)})`); }
@@ -641,9 +646,14 @@ export class RuntimeCoordinator {
       || value.threadId !== undefined && !text(value.threadId, 256)
       || value.threadId !== undefined && command.payload.resumeSessionId !== undefined && value.threadId !== command.payload.resumeSessionId
       || value.outcomeConfirmed !== undefined && typeof value.outcomeConfirmed !== "boolean") throw new RuntimeProtocolError("Invalid runtime task snapshot");
+    const personal = command.payload.profile === PERSONAL_AGENT_PROFILE;
+    if (value.answer !== undefined && (!personal || typeof value.answer !== "string" || !value.answer.trim() || Buffer.byteLength(value.answer) > 64 * 1024
+      || value.status !== "completed" || value.outcomeConfirmed !== true) || personal && (value.output !== "" || value.status === "completed" && value.answer === undefined)
+      || value.personalFailure !== undefined && (!personal || !personalTaskFailure(value.personalFailure))) throw new RuntimeProtocolError("Invalid personal task result");
     return { id: value.id as string, cli: value.cli as WindowsCliTask["cli"], cwd: value.cwd as string, sandbox: value.sandbox as WindowsCliTask["sandbox"], ...(value.model ? { model: value.model as string } : {}),
       status: value.status as WindowsCliTask["status"], startedAt: value.startedAt, output: value.output,
-      ...(value.finishedAt !== undefined ? { finishedAt: value.finishedAt as number } : {}), ...(value.error ? { error: value.error as string } : {}), ...(value.threadId ? { threadId: value.threadId as string } : {}), ...(value.outcomeConfirmed !== undefined ? { outcomeConfirmed: value.outcomeConfirmed as boolean } : {}) };
+      ...(value.finishedAt !== undefined ? { finishedAt: value.finishedAt as number } : {}), ...(value.error ? { error: value.error as string } : {}), ...(value.threadId ? { threadId: value.threadId as string } : {}), ...(value.outcomeConfirmed !== undefined ? { outcomeConfirmed: value.outcomeConfirmed as boolean } : {}),
+      ...(typeof value.answer === "string" ? { answer: value.answer } : {}), ...(personalTaskFailure(value.personalFailure) ? { personalFailure: value.personalFailure } : {}) };
   }
   private admitting(connection: Connection): boolean {
     return connection.ready && !connection.update && connection.activity.accepting && this.current(connection)
@@ -971,8 +981,12 @@ export class RuntimeCoordinator {
     if (machine.status !== "online" || !connection || !this.admitting(connection)) throw Error("Runtime machine is offline or updating");
     let id = randomUUID(), normalized = payload;
     if (operation === "run") {
-      if (!record(payload) || Object.keys(payload).some(k => !["task", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(k))) throw Error("Invalid runtime run payload");
+      if (!record(payload) || Object.keys(payload).some(k => !["task", "profile", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(k))) throw Error("Invalid runtime run payload");
       const task = validateNativeTask(payload.task);
+      if (payload.profile !== undefined) {
+        if (payload.profile !== PERSONAL_AGENT_PROFILE || !machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)) throw Error("Personal-agent profile was not negotiated");
+        assertPersonalTask(task, payload);
+      }
       if (payload.credentialProfile !== undefined) { assertCredentialProfileName(payload.credentialProfile); assertCredentialProfileCli(task.cli); }
       if (payload.resumeSessionId !== undefined && !text(payload.resumeSessionId, 256) || payload.context !== undefined && (typeof payload.context !== "string" || payload.context.length > 2000 || payload.context.includes("\0"))) throw Error("Invalid runtime turn context");
       if (payload.mcp !== undefined && (!record(payload.mcp) || Object.keys(payload.mcp).some(k => k !== "tools") || !Array.isArray(payload.mcp.tools) || !payload.mcp.tools.length || payload.mcp.tools.length > 128 || payload.mcp.tools.some(v => typeof v !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(v)))) throw Error("Invalid runtime tool scope");
