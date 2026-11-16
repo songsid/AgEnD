@@ -11,6 +11,27 @@
 import { html, useLayoutEffect, useRef } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 
+/**
+ * Grow the box with its text, up to 240px; empty, it is one line. M-3206 (the user, iPhone, beta.5: typing flickered):
+ * the box was collapsed ("auto") and measured again on every key, two writes to the focused field's own style per
+ * keystroke even when its height stayed — on iOS a change to the focused field redraws the keyboard's bars, and the
+ * page followed them. Now a key that only adds text writes nothing unless the text no longer fits (a new line); only a
+ * deletion, a replaced draft, or a box with no height of its own yet collapses and measures it.
+ */
+export function fitComposerHeight(el, value, before) {
+  if (!el?.style) return;
+  const cap = 240;
+  const set = (px) => { const next = px == null ? "auto" : `${px}px`; if (el.style.height !== next) el.style.height = next; };
+  if (!value) { set(null); return; }
+  const grew = typeof before === "string" && value.length > before.length && el.style.height !== "";
+  if (grew) {
+    if (el.scrollHeight > el.clientHeight) set(Math.min(el.scrollHeight, cap));
+    return;
+  }
+  el.style.height = "auto";
+  set(Math.min(el.scrollHeight, cap));
+}
+
 /** A coarse pointer (a phone, a tablet): Enter makes a new line there and the box says "enter" to the keyboard. */
 export const touchScreen = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
@@ -27,10 +48,10 @@ export function ComposerInput({ inputRef, value, placeholder, onValue, onKeyDown
   // A render while composing (another part of the page changed) gives the box what it holds, so it never writes it.
   const boxValue = composing.current && input.current ? input.current.value : value;
   // Grow with the text, up to a limit. Empty, it is one line (#2478 — a long name's placeholder made the box two lines).
+  const fitted = useRef(null);
   useLayoutEffect(() => {
     const el = input.current; if (!el || composing.current) return;
-    el.style.height = "auto";
-    if (value) el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    fitComposerHeight(el, value, fitted.current); fitted.current = value;
   }, [value]);
   const onInput = (e) => { if (composing.current || e.isComposing) return; onValue(e.target.value); };
   const onCompositionStart = () => { composing.current = true; };

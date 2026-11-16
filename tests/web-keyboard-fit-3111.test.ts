@@ -80,7 +80,41 @@ describe("M-3111: with the keyboard up the shell is the visible view", () => {
       vv.offsetTop = top; vv.emit("scroll"); await settle();
       seen.push(vars());
     }
-    expect(seen).toEqual([["480px", "translateY(132px)"], ["480px", "translateY(120px)"], ["480px", "translateY(140px)"], ["480px", "translateY(120px)"]]);
+    // M-3206: a pan that comes and goes with a keystroke no longer moves the shell (it stays as the view, at its place).
+    expect(seen).toEqual([["480px", "translateY(120px)"], ["480px", "translateY(120px)"], ["480px", "translateY(120px)"], ["480px", "translateY(120px)"]]);
+  });
+
+  // M-3206 (the user, iPhone, beta.5): typing still flickered. Per key, iOS reported the view a little differently — the
+  // suggestion bar (44 px) on and off, a few px of pan — and the shell followed every reading, so the box moved on every key
+  // and back. Settled, a reading must hold before the shell takes it; a lasting one is taken then; a new width at once.
+  it("typing, settled: per-key readings (the suggestion bar on and off, a pan) move nothing; one that holds is taken", async () => {
+    const { vv, vars, kb, focus } = await phone();
+    await focus();
+    vv.height = 480; vv.offsetTop = 0; vv.emit("resize"); await settle();
+    await new Promise((r) => setTimeout(r, 900));                         // past the focus follow window
+    const seen: Array<Array<string | boolean | null>> = [];
+    for (const [hh, top] of [[436, 0], [480, 0], [480, 12], [480, 0], [436, 0], [480, 0]]) {
+      vv.height = hh; vv.offsetTop = top; vv.emit("resize"); vv.emit("scroll"); await settle();
+      await new Promise((r) => setTimeout(r, 60));                         // the next key comes ~60 ms later
+      seen.push([kb(), ...vars()]);
+    }
+    expect(seen.every((s) => JSON.stringify(s) === JSON.stringify([true, "480px", null])), JSON.stringify(seen)).toBe(true);
+    vv.height = 436; vv.offsetTop = 0; vv.emit("resize"); await settle();  // the bar stays: taken once it has held
+    expect(vars(), "not yet").toEqual(["480px", null]);
+    await new Promise((r) => setTimeout(r, 400));
+    expect([kb(), ...vars()]).toEqual([true, "436px", null]);
+    vv.offsetTop = 30; vv.emit("scroll"); await new Promise((r) => setTimeout(r, 400));   // a pan that stays: taken too
+    expect(vars()).toEqual(["436px", "translateY(30px)"]);
+    vv.width = 844; vv.height = 300; vv.offsetTop = 0; vv.emit("resize"); await settle();   // turned: at once
+    expect(vars()).toEqual(["300px", null]);
+  });
+  it("typing, settled with no keyboard (the field kept its focus): the keyboard coming up is followed at once", async () => {
+    const { vv, vars, kb, focus } = await phone();
+    await focus();
+    await new Promise((r) => setTimeout(r, 900));                         // focused, no keyboard yet, past the follow window
+    expect(vars()).toEqual(["844px", null]);
+    vv.height = 480; vv.offsetTop = 0; vv.emit("resize"); await settle();
+    expect([kb(), ...vars()]).toEqual([true, "480px", null]);
   });
 
   // #4011 review: one reading as tall as no keyboard, while the field keeps focus, is on hold — the shell keeps the height it

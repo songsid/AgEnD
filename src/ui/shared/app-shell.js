@@ -1253,7 +1253,13 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // The keyboard rises and falls over a few hundred ms, and the view's resize comes when it has settled (iOS): for that
     // long after a field gains or loses focus the shell follows the view every frame — both ways — instead of jumping.
     const FOLLOW_MS = 800;
-    let raf = 0, followUntil = 0, fitH = 0;
+    // M-3206 (the user, iPhone, beta.5): with "down" on hold, typing still flickered. While typing, iOS reports the view a
+    // little differently from key to key (the suggestion bar, a few px of pan) and the shell followed each reading — its
+    // height and its place — so the box (and what is above it) moved on every key and back. Once the keyboard has settled
+    // (past the follow window, the field still focused, the same width), the shell's height and place change only when a
+    // new reading has held for DOWN_HOLD_MS; one that comes and goes with a keystroke moves nothing. The keyboard coming up
+    // (the view a keyboard shorter) and a turn (a new width) are followed at once.
+    let raf = 0, followUntil = 0, fitH = 0, fitTop = 0, fitW = -1, moveSince = 0, moveTimer = 0;
     const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
     const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : null;
     const unfit = (el) => { if (el?.style) { el.style.removeProperty("height"); el.style.removeProperty("transform"); } };
@@ -1264,13 +1270,24 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       // says for the moment: a reading that dips must not hand the height back to the stylesheet for one frame.
       const typingNow = coarse() && isTextEntry(document.activeElement);
       const on = coarse() && (shellStore.get().keyboard || typingNow || now() < followUntil) && Math.abs((Number(vv.scale) || 1) - 1) < 0.01;
-      if (!on) { unfit(el); fitH = 0; return; }
+      if (!on) { unfit(el); fitH = 0; fitTop = 0; fitW = -1; moveSince = 0; return; }
+      const h = Math.round(vv.height), top = Math.max(0, Math.round(Number(vv.offsetTop) || 0)), w = Math.round(vv.width);
+      const settled = fitH && typingNow && w === fitW && now() >= followUntil;
+      if (settled && (h !== fitH || top !== fitTop) && !(fitH - h > KEYBOARD_MIN_PX)) {
+        if (!moveSince) moveSince = now();
+        const left = DOWN_HOLD_MS - (now() - moveSince);
+        if (left > 0) {                                                // not held yet: the shell stays as it is
+          if (!moveTimer && typeof setTimeout === "function") moveTimer = setTimeout(() => { moveTimer = 0; fit(); }, left + 20);
+          return;
+        }
+      }
+      moveSince = 0;
       // A reading that says "down" while the field keeps focus is on hold (below): until it holds, the shell keeps the height
       // it had, so the box does not drop under a keyboard that is still there.
       const pending = downSince && now() - downSince < DOWN_HOLD_MS && fitH;
-      fitH = pending ? fitH : Math.round(vv.height);
+      fitH = pending ? fitH : h;
+      fitTop = top; fitW = w;
       el.style.setProperty("height", `${fitH}px`);
-      const top = Math.max(0, Math.round(Number(vv.offsetTop) || 0));
       if (top) el.style.setProperty("transform", `translateY(${top}px)`); else el.style.removeProperty("transform");
     };
     const follow = () => {
@@ -1322,6 +1339,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       vv.removeEventListener("resize", check); vv.removeEventListener("scroll", fit); document.removeEventListener("focusin", focusChanged); document.removeEventListener("focusout", focusChanged);
       if (raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf);
       if (downTimer && typeof clearTimeout === "function") clearTimeout(downTimer);
+      if (moveTimer && typeof clearTimeout === "function") clearTimeout(moveTimer);
       unfit(root.current);
       document.removeEventListener("compositionstart", start, true); document.removeEventListener("compositionend", end, true);
     };

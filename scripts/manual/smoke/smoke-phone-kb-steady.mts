@@ -11,12 +11,25 @@
 //              (bar 44 px on/off, a pan, one full-height reading): the box's place, the dock's padding, the shell's height
 //              and kb-open never change
 //   2-rest   — the box left and the view back to full height: kb-open goes, the dock keeps the inset (#3972 still holds)
-// Run it on the base too (REPO=<base checkout> SMOKE_NAME=…-before): "typing" FAILs there (beta.4: the box jumps).
-//   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-phone-kb-steady.mts
+// M-3206 (the user, iPhone, beta.5: typing still flickered): the shell still followed every smaller per-key reading (the
+// suggestion bar's 44 px, a few px of pan), and the box's own height was collapsed and set again on every key. Now, typing,
+// nothing moves on a reading that comes and goes with a key, and a key that fits on the line writes no style at all (the
+// box, the shell): "typing" counts those writes.
+// Run it on the base too (REPO=<base checkout> SMOKE_NAME=…-before): "typing" FAILs there (beta.4 and beta.5: the box moves).
+// PW_ENGINE=webkit runs it in WebKit (Safari's engine; no CDP there, so no safe-area inset: the rest case checks the 8 px floor).
+//   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] [PW_ENGINE=webkit] scripts/manual/smoke/run.sh smoke-phone-kb-steady.mts
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-kb-steady";
 const INSET = { top: 47, bottom: 34, left: 0, right: 0 };
+const WEBKIT = process.env.PW_ENGINE === "webkit";
+// Every style write on the box and the shell (a MutationObserver from the start): window.__writes().
+const WRITES = `(() => {
+  const seen = []; window.__writes = () => seen.splice(0);
+  const watch = () => new MutationObserver((ms) => { for (const m of ms) { const t = m.target; if (t.id === "msgIn" || t.classList?.contains("shell")) seen.push((t.id || "shell") + ": " + t.getAttribute("style")); } })
+    .observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["style"] });
+  if (document.documentElement) watch(); else document.addEventListener("DOMContentLoaded", watch);
+})();`;
 // The stand-in visual viewport: the page's own size until told otherwise; window.__vv(height, offsetTop) moves it and fires
 // what Safari fires (resize for a new height, scroll for a pan).
 const FAKE_VV = `(() => {
@@ -42,14 +55,17 @@ try {
     const failed: string[] = [];
     const need = (ok: boolean, what: string) => { if (!ok) failed.push(what); };
     const p = await freshPage(fx, c, { account: "operator", path: `/ui/chat/${encodeURIComponent(name)}`, beforeNavigate: async (ctx: any, page: any) => {
-      await ctx.addInitScript({ content: "window.__name = (f) => f;" + FAKE_VV });
-      const s = await ctx.newCDPSession(page);
-      await s.send("Emulation.setSafeAreaInsetsOverride", { insets: INSET });
+      await ctx.addInitScript({ content: "window.__name = (f) => f;" + FAKE_VV + WRITES });
+      if (!WEBKIT) {
+        const s = await ctx.newCDPSession(page);
+        await s.send("Emulation.setSafeAreaInsetsOverride", { insets: INSET });
+      }
       await ctx.route("**/ui/authorization", (r: any) => r.request().method() === "GET"
         ? r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state: "verified", until: Date.now() + 3_600_000 }) }) : r.continue());
     } });
     const page = p.page;
-    const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
+    // WebKit reports a ResizeObserver loop it settled itself as a page error (on the base too): not the page's.
+    const errs: string[] = []; page.on("pageerror", (e: any) => { const m = String(e); if (!(WEBKIT && /ResizeObserver loop completed/.test(m))) errs.push(m.slice(0, 200)); });
     need(await mounted(page, 30000), "the app mounted");
     await page.waitForSelector("#msgIn", { timeout: 20000 }); await page.waitForTimeout(800);
     const read = () => page.evaluate(() => {
@@ -63,30 +79,27 @@ try {
     const first = await read();
     need(first.kb && first.shellH === "480px" && first.pad === "8px", `the keyboard up: kb-open, the shell the view's 480 px, the dock 8 px (${JSON.stringify(first)})`);
     const seen: any[] = [];
-    // An iOS-like keystroke sequence: the predictive bar off/on (±44), a pan, a one-off full-height reading.
-    const readings: Array<[number, number]> = [[436, 0], [480, 0], [480, 12], [844, 0], [480, 0], [436, 0], [844, 0], [480, 0]];
+    await page.evaluate(() => (window as any).__writes());
+    // An iOS-like keystroke sequence: each key comes with a reading that goes with the next one — the suggestion bar on
+    // (436), a pan (12 px), a one-off full-height reading — and the view back at 480 between them.
+    const readings: Array<[number, number]> = [[436, 0], [480, 0], [480, 12], [480, 0], [844, 0], [480, 0], [436, 0], [480, 0]];
     for (const [i, [h, top]] of readings.entries()) {
       await vv(h, top);
       await page.keyboard.type("hello 你好"[i] || "x"); await page.waitForTimeout(60);
       seen.push({ at: [h, top], ...(await read()) });
     }
+    const writes: string[] = await page.evaluate(() => (window as any).__writes());
     await page.waitForTimeout(500); seen.push({ at: "settled", ...(await read()) });
-    // The box sits on the keyboard: at the 480 px view, or held there through a one-off full-height reading; it may follow the
-    // predictive bar (436) or a pan, as the keyboard's own edge does; a one-off full-height reading leaves it where it was.
-    const moved = seen.filter((m, i) => {
-      if (!m.kb || m.pad !== first.pad) return true;
-      if (m.at[0] === 844) {                                     // held where it was (less the pan before it: this reading is not panned)
-        const was = seen[i - 1] ?? first, pan = Array.isArray(was.at) ? was.at[1] : 0;
-        return m.shellH !== was.shellH || m.bottom !== was.bottom - pan;
-      }
-      return m.at[0] === 480 && m.at[1] === 0 && (m.bottom !== first.bottom || m.shellH !== first.shellH);
-    });
-    need(moved.length === 0, `typing: kb-open, the dock's padding and the box's place never change (${JSON.stringify(moved.slice(0, 2))})`);
+    // The box sits on the keyboard at the 480 px view through all of it: no reading that came and went moved anything.
+    const moved = seen.filter((m) => !m.kb || m.pad !== first.pad || m.shellH !== first.shellH || m.bottom !== first.bottom);
+    need(moved.length === 0, `typing: kb-open, the dock's padding, the shell's height and the box's place never change (${JSON.stringify(moved.slice(0, 2))})`);
+    need(writes.length === 0, `typing: keys that fit on the line write no style on the box or the shell (${writes.length}: ${JSON.stringify(writes.slice(0, 4))})`);
     await page.screenshot({ path: shotPath(SMOKE, caseName(c), "1-typing") });
     // Left the box, the keyboard down: kb-open goes and the dock keeps the inset (#3972).
     await page.evaluate(() => (document.activeElement as HTMLElement)?.blur()); await vv(844); await page.waitForTimeout(1000);
     const rest = await read();
-    need(!rest.kb && rest.pad === `${INSET.bottom}px`, `rest: no kb-open, the dock keeps the home-indicator inset (${JSON.stringify(rest)})`);
+    // WebKit: no inset to emulate, so the dock's 8 px floor.
+    need(!rest.kb && rest.pad === (WEBKIT ? "8px" : `${INSET.bottom}px`), `rest: no kb-open, the dock keeps the home-indicator inset (${JSON.stringify(rest)})`);
     await page.screenshot({ path: shotPath(SMOKE, caseName(c), "2-rest") });
     need(errs.length === 0, `page errors: ${errs.join(" | ")}`);
     results.push({ name: caseName(c), ok: failed.length === 0, failed });
