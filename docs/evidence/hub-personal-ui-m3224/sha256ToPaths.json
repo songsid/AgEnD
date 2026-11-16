@@ -35,6 +35,9 @@
   "f3e7daf4e6644832dcf0d6039fac9097bc4c33fde341eda3cc34110ea0809391": [
     "capture-repair-unit.log"
   ],
+  "2ecf40a457f62f38e5ceb5c64c3b348407d5fb4c2e31e3e48f42089b51973391": [
+    "click-retry-unit.log"
+  ],
   "c82b8dd0578364db0e724d006ccb0dbea9103b8ff9e053aa4486107ba8fe2f30": [
     "factory-registration.log"
   ],
@@ -44,14 +47,23 @@
   "268047cdfafefb21203b68c342858b2e2f12897f6c3f90b05e0214bf7015016c": [
     "integration.log"
   ],
+  "97052df870e3ee8aa28786e566ed47c83ad977240786b136c672c83f888ebee4": [
+    "mutations/admin-retry.log"
+  ],
   "b232b53817865f9113d013c5ea8a6a49ab9040139fcea719197fa686ed6c3cc6": [
     "mutations/captured-signin.log"
   ],
   "ecf0b697a30e7c9cd460ba5e4b02d5da5e7731931192d24dd049c5b0f06ef5f6": [
     "mutations/refresh-binding.log"
   ],
-  "b8a042062b077746e22b8491e8b7da4432eb6b6b1cbe435a54679798cbee940b": [
+  "8909782df1f7edd26e24b7670e9449fd3252e1ba9e9157c8262d251b9c6b3e5d": [
     "mutations/result.json"
+  ],
+  "58eb5124b22f998d47931dc87d20550e60540151ebcbab1f52f76db895eecc11": [
+    "mutations/retry-intent.log"
+  ],
+  "325e436925fc568accfe41cc12a6eb97c173a186450f3533a5b92c0720dad964": [
+    "mutations/same-turn-claim.log"
   ],
   "8104f49ac7a454d67a1d51a252d723bd757aea216464cadc1a453b21a98b061f": [
     "mutations/stale-owner-read.log"

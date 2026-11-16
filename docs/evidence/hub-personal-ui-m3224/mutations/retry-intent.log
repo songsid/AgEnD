@@ -1,0 +1,21 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (12 tests | 1 failed | 11 skipped) 150ms
+   × retries a failed person search without saving the administrator's unsaved policy 100ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 11 skipped (12)
+   Start at  19:13:33
+   Duration  528ms (transform 182ms, setup 96ms, import 121ms, tests 150ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > retries a failed person search without saving the administrator's unsaved policy
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ tests/hub-personal-ui-m3224.test.ts:79:108
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

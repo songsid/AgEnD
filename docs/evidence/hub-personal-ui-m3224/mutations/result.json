@@ -13,5 +13,20 @@
     "name": "refresh-binding",
     "exit": 1,
     "caught": true
+  },
+  {
+    "name": "same-turn-claim",
+    "exit": 1,
+    "caught": true
+  },
+  {
+    "name": "admin-retry",
+    "exit": 1,
+    "caught": true
+  },
+  {
+    "name": "retry-intent",
+    "exit": 1,
+    "caught": true
   }
 ]

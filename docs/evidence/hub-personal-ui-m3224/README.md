@@ -33,20 +33,21 @@ the entire card. A one-time command token is replaced in the DOM for each screen
 
 All 10 final originals were opened for visual inspection. No clipping, large blank bands, horizontal overflow or
 visible enrollment token remained. This proves rendering and the inert Hub journey, not Windows enforcement or
-real authentication/model execution. The browser receipt and SHA-to-path map bind the original files.
+real authentication/model execution. The browser receipt and SHA-to-path map bind the original files. The later handler-only delta at `88a592853`
+adds synchronous click claims and shared error Retry; normal card markup is unchanged, so these originals carry.
 
 ## Focused validation
 
 - `vitest run tests/hub-personal-ui-m3224.test.ts tests/hub-personal-owner-m3224.test.ts --maxWorkers=2`:
-  19/19 before the unchanged parent merge. The latest UI-only command-removal follow-up passes 10/10.
+  19/19 before the unchanged parent merge. The command-removal follow-up passes 10/10; final synchronous click claims and matching Retry actions pass 12/12.
 - `vitest run tests/hub-compose.test.ts -t 'personal receiver registration seam' --maxWorkers=2`:
   2/2, 135 deselected. The unstarted real factory mounts no personal receiver/feature without an explicit
   migration plan; an injected plan keeps defaults off and creates only the private receiver directory.
 - The earlier UI/owner/HTTP/shared-serving packet passes 36/36 in four files. These scopes overlap; they are not
   added together. Parent #4058's owner/turns/member tests retain their separate review evidence.
 - Both TypeScript programs (`tsc -p tsconfig.json --noEmit` and `tsc -p tsconfig.test.json --noEmit`) exit 0 on the combined final source.
-- Three selected reversals are semantic assertion failures: captured-sign-in write, stale-owner response and
-  refresh binding/generation fence. Original files were restored byte-for-byte; logs are under `mutations/`.
+- Six selected reversals are semantic assertion failures: captured-sign-in write, stale-owner response,
+  refresh binding/generation fence, same-turn click claim, administrator Retry and search Retry intent. Original files were restored byte-for-byte; logs are under `mutations/`.
 
 ## Risk and rollback
 
