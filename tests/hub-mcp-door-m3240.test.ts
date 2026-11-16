@@ -237,6 +237,15 @@ it("keeps app posts and question handoff readable with the real encrypted store 
  expect(rig!.db.prepare("SELECT content_ref FROM hub_audit WHERE message_id=? AND action='question.accepted'").get(messageId)).toEqual({content_ref:null});
  expect(rig!.db.prepare("SELECT record_id FROM hub_audit_content WHERE ref=(SELECT question_ref FROM hub_messages WHERE id=?)").get(messageId)).toEqual({record_id:`message:${messageId}`});
 });
+it("refuses app writes when the content binding provider is missing without affecting browser posts",async()=>{
+ const w=await world(true,false,true),{e}=await w.exposure(),a=await w.app();rig!.httpDeps.content.bindMessage=undefined;
+ const before=(rig!.db.prepare("SELECT count(*) AS n FROM hub_audit_content").get() as {n:number}).n;
+ expect(await a.call("hub_room_post",{room:w.roomId,text:"Missing provider"})).toMatchObject({ok:false,code:"unavailable"});
+ expect(await a.call("hub_ask",{agent:e.id,text:"Missing provider"})).toMatchObject({ok:false,code:"unavailable"});
+ expect(rig!.db.prepare("SELECT count(*) AS n FROM hub_messages").get()).toEqual({n:0});
+ expect((rig!.db.prepare("SELECT count(*) AS n FROM hub_audit_content").get() as {n:number}).n).toBe(before);
+ expect((await rig!.call(w.browser,"POST",`/hub/v1/rooms/${w.roomId}/messages`,{text:"Browser works",idempotencyKey:randomUUID()})).status).toBe(200);
+});
 it("preserves the original post and person budget when an exact request is retried after a mount restart",async()=>{
   const w=await world(),a=await w.app(),input={room:w.roomId,text:"A retained post",operationId:randomUUID()},first=await a.call("hub_room_post",input);
   await rig!.restartHttp();expect(await a.call("hub_room_post",input)).toEqual(first);
