@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (11 tests | 1 failed | 10 skipped) 110ms
+   × retries an unavailable administrator read with the shared error state 68ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  19:11:27
+   Duration  441ms (transform 166ms, setup 84ms, import 111ms, tests 110ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > retries an unavailable administrator read with the shared error state
+AssertionError: expected null to be truthy
+
+- Expected:
+true
+
++ Received:
+null
+
+ ❯ tests/hub-personal-ui-m3224.test.ts:72:114
+     70|  const client={personalAgentSettings:vi.fn().mockResolvedValueOnce({ok…
+     71|  await p.mount(h(ui.HubPersonalAgentAdmin,{client,scope:"admin"}));awa…
+     72|  fire(p.root.querySelector(".error-state button"),"click");await settl…
+       |                                                                                                                  ^
+     73| });
+     74|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

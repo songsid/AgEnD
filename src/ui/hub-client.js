@@ -585,6 +585,13 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     },
     welcome() { return call("GET", "/hub/v1/me/welcome"); },
     // M-3137 / M-3136 (versions spec §2.3): the signed-in person's own active Fleets with their version state (the banner).
+    personalAgent(scope) { return scope && scope === csrf ? call("GET", "/hub/v1/me/personal-agent") : Promise.resolve(retired()); },
+    refreshPersonalAgent(scope) { return scope && scope === csrf ? call("POST", "/hub/v1/me/personal-agent/refresh", {}) : Promise.resolve(retired()); },
+    savePersonalAgent(scope, input) { return scope && scope === csrf ? call("PUT", "/hub/v1/me/personal-agent", input) : Promise.resolve(retired()); },
+    personalEnrollment(scope) { return scope && scope === csrf ? call("POST", "/hub/v1/me/personal-agent/enrollment", {}) : Promise.resolve(retired()); },
+    disconnectPersonalAgent(scope) { return scope && scope === csrf ? call("DELETE", "/hub/v1/me/personal-agent", {}) : Promise.resolve(retired()); },
+    personalAgentSettings(scope) { return scope && scope === csrf ? call("GET", "/hub/v1/admin/personal-agents") : Promise.resolve(retired()); },
+    savePersonalAgentSettings(scope, input) { return scope && scope === csrf ? call("PUT", "/hub/v1/admin/personal-agents", input) : Promise.resolve(retired()); },
     myFleets() { return call("GET", "/hub/v1/me/fleets"); },
     // M-3162 / M-3161: Administration → Overview's counts for Today or 7 days, in the viewer's time zone (counts only).
     adminDashboard({ range = "7d", timeZone = "UTC" } = {}) { return call("GET", `/hub/v1/admin/dashboard?range=${encodeURIComponent(range)}&timeZone=${encodeURIComponent(timeZone)}`); },

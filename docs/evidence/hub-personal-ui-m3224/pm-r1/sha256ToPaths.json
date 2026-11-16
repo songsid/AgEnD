@@ -1,0 +1,86 @@
+{
+  "6e7fdbcfde29f78a5c0d1ab5da1e7af8e791be51d2a2f7728cebe1f9b788511c": [
+    "browser-r1/desktop-en-light-admin-empty.png"
+  ],
+  "e83197365252b71b0d5121a55edde2e7e38756c8cc2686a41694a009f1aa4c8b": [
+    "browser-r1/desktop-en-light-admin.png"
+  ],
+  "5ba64e97d64ae21228cc3b2c6a65d81000809e600b58146a436b1723c568f846": [
+    "browser-r1/desktop-en-light-cli-options.png"
+  ],
+  "41ade8139446fdb83b54f22eabc0fa07152f146271e95f77be8620f1cf077af9": [
+    "browser-r1/desktop-en-light-disconnect.png"
+  ],
+  "57b043465e1ed46ea9cdc16c366cb557e9ea7e8762da618d36ad784deb2656c9": [
+    "browser-r1/desktop-en-light-install-help.png"
+  ],
+  "037fad32c9a979c03cc1f562616a01889a3fd6ebfb9261353b86e1c78bfe4a9e": [
+    "browser-r1/desktop-en-light-install.png"
+  ],
+  "a77a55b39afdbc1c7552d8fb9dc10d4f3277cae672ce8ce6d4005bdc0ca4a106": [
+    "browser-r1/desktop-en-light-offline.png"
+  ],
+  "184bafbccf88b89c21ad8c7ddbebffc3985afc6fdb4068c17c60dbf4a81023ad": [
+    "browser-r1/desktop-en-light-ready.png"
+  ],
+  "cbb9c82e71c92014c728f867f79b712679da8631a322d7d78708082f96592910": [
+    "browser-r1/desktop-en-light-working.png"
+  ],
+  "4f8ca46f2180f48812faa193741909f945ff8b880028c53f49318520b5297fa3": [
+    "browser-r1/phone-zh-TW-dark-admin-empty.png"
+  ],
+  "f29283ff78fb4dfcc737623bc9369eef4d82ef6722b53d88d103e7c676b00343": [
+    "browser-r1/phone-zh-TW-dark-admin.png"
+  ],
+  "74d0ef69adfeb1e004f432671f010ca4aae45e2038440380ec590318563fa8d8": [
+    "browser-r1/phone-zh-TW-dark-cli-options.png"
+  ],
+  "0aa41b2dafb751b467749120d0f30abe2393b3c814753e289e9a30572d8f3761": [
+    "browser-r1/phone-zh-TW-dark-disconnect.png"
+  ],
+  "16d3ebf5776c765697ffe259a7dae7477b842f0be893982d35ae282e0652d0c1": [
+    "browser-r1/phone-zh-TW-dark-install-help.png"
+  ],
+  "4c314d38beb109ee82aa814df84301b2e75fcb64a5a8d71d50b0c8597e552f5e": [
+    "browser-r1/phone-zh-TW-dark-install.png"
+  ],
+  "dbe83596c1a3e451074b723bf0a956fbe3d7ae9b5baf15f643a2db35a2091562": [
+    "browser-r1/phone-zh-TW-dark-offline.png"
+  ],
+  "e6506d278a719a58c084f2bb0f31b107cbddd0638d02534b983afd2ef4fcd4cb": [
+    "browser-r1/phone-zh-TW-dark-ready.png"
+  ],
+  "df5e00f5aed7136aff188336a0fe7aaa1bca200e6ee3da93f21151a364ff39bd": [
+    "browser-r1/phone-zh-TW-dark-working.png"
+  ],
+  "575a08ba0c8b101e25081fa9f5bb5a8b675b90b369b3b4f28e0f15ee574e121a": [
+    "browser-r1/receipt.json"
+  ],
+  "458cd194f0f8ed05f619213bac612bed2f967adb8699878d607c56647a297922": [
+    "pm-r1-legacy-command.json"
+  ],
+  "e0dcffec4e79fc615c694258503d1ecc834c5196c7ac022e4960c36929401075": [
+    "pm-r1-mutations/eligible-options.log"
+  ],
+  "60a17094264aa4bf649d4eeb8cd9892c2005dc18456e9e3ade91dd90a4eeb2e3": [
+    "pm-r1-mutations/grant-expiry.log"
+  ],
+  "c17d295788051bdc2b32f295c770335213fe3f24af834a1cf2debcf405524173": [
+    "pm-r1-mutations/personal-command-advice.log"
+  ],
+  "9a263cae00d8fe0b05cf61f7d7956b28b98dac987c0975dd445278cfef0cfa18": [
+    "pm-r1-mutations/result.json"
+  ],
+  "7cd2dd224697aa80d69dfa70f9d580fc69a2d84d8dceccb66c3a45038119a646": [
+    "pm-r1-mutations/sharing-step.log"
+  ],
+  "29026fd63b496b016ab74c110db1d8af64bb5f1bd2561417bcde0253a25a4b24": [
+    "pm-r1-script.log"
+  ],
+  "437f83c64db5e470ecb2ac383b97b246e6de1fa167c22b686defd5efef5b62a9": [
+    "pm-r1-terminal.log"
+  ],
+  "bc304eb1590e6704bd6db4e5fc47fe04446e9a551dce13444ddc520425817c84": [
+    "pm-r1-unit.log"
+  ]
+}

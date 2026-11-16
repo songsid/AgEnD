@@ -1,0 +1,29 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (11 tests | 2 failed | 9 skipped) 178ms
+   × saves only the named fields and revision under its captured sign-in 74ms
+   × keeps the enrollment command private until the owner requests one 58ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 9 skipped (11)
+   Start at  19:11:26
+   Duration  556ms (transform 190ms, setup 105ms, import 126ms, tests 178ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > saves only the named fields and revision under its captured sign-in
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ ❯ tests/hub-personal-ui-m3224.test.ts:34:140
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > keeps the enrollment command private until the owner requests one
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ ❯ tests/hub-personal-ui-m3224.test.ts:38:304
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+

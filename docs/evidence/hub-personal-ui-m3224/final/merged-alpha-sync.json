@@ -1,0 +1,80 @@
+{
+  "reviewedParent": "680ddaefda8f5d31805d9c674aeed685fe619217",
+  "testRepair": "f0f580a93657e4ca1b2e4c046b8f927b47fc7f89",
+  "mergedAlpha": "191c10ac529f1c186720877ea943a43dd2534413",
+  "syncHead": "82bd319cf6ff74547448d546613c37f930709484",
+  "paths": [
+    {
+      "path": "docs/design/hub-personal-host.md",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "scripts/manual/hub-personal/browser.mts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/personal/owner-host.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/hub-personal-agent-strings.js",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/hub-personal-agent.js",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "ownLinesUnchanged": false
+    },
+    {
+      "path": "src/ui/runtime-commands.d.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/runtime-commands.js",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "templates/runtime-install/install.ps1",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "ownLinesUnchanged": false
+    },
+    {
+      "path": "tests/hub-personal-owner-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-personal-ui-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-shared-modules-a.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/runtime-install-pwsh.test.ts",
+      "ownLinesUnchanged": true
+    }
+  ],
+  "compatibilityDelta": "Personal admin card additionally follows incoming fullAdmin display gate; server authority unchanged",
+  "testRepairDelta": "Strict factory settings DTO includes empty peopleInfo/teamsInfo arrays",
+  "testPatchMismatch": "Only an added blank line differs; retained personal registration test body is unchanged",
+  "additionalControl": "Mounted Administration: Fleet manager has no personal card/API request; Hub administrator has both"
+}

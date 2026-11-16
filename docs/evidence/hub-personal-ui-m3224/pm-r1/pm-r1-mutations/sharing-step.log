@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (16 tests | 1 failed | 15 skipped) 102ms
+   × keeps sharing primary until configured, and replacement/disconnect quiet at the bottom 51ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 skipped (16)
+   Start at  19:39:30
+   Duration  504ms (transform 216ms, setup 85ms, import 167ms, tests 102ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > keeps sharing primary until configured, and replacement/disconnect quiet at the bottom
+AssertionError: expected 'Personal agentAnswer colleagues with …' to contain 'Not shared yet. Nobody can ask this a…'
+
+Expected: "Not shared yet. Nobody can ask this agent."
+Received: "Personal agentAnswer colleagues with Codex or Claude on your computer. No Fleet is needed. Windows only for now.Read-only, and only one folder: the Hub agent folder on your computer. People allowed to ask may receive anything in that folder. Your own AI account pays for answers.RefreshAlex PCC:\SharedReadyCodexCan be usedClaudeInstall it on that computer, then refresh.Agent nameOne-line descriptionAnswer withCodexModelDefault modelModel OneSave personal agentChoose who may askUse a different computerDisconnect computer"
+
+ ❯ tests/hub-personal-ui-m3224.test.ts:84:71
+     82| it("keeps sharing primary until configured, and replacement/disconnect…
+     83|  const data:any=view();data.agent={id:"personal",exposureId:"exposure"…
+     84|  const {p,client}=await fixture("en",data);expect(p.root.textContent).…
+       |                                                                       ^
+     85|  expect(p.root.querySelector('a.btn-primary')?.getAttribute("href")).t…
+     86|  expect(button(p,"Use a different computer")?.className).toContain("bt…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

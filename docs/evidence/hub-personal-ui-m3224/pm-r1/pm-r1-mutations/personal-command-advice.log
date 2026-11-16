@@ -1,0 +1,25 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (16 tests | 1 failed | 15 skipped) 129ms
+   × keeps certificate help in a closed disclosure and personal terminal advice safe 75ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 skipped (16)
+   Start at  19:39:31
+   Duration  488ms (transform 188ms, setup 96ms, import 116ms, tests 129ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > keeps certificate help in a closed disclosure and personal terminal advice safe
+AssertionError: expected '[Net.ServicePointManager]::SecurityPr…' not to contain 'or use the ZIP'
+
+Expected: "or use the ZIP"
+Received: "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; $agend = 'https://hub.example.test'; $s = $null; $h = $null; $s = (iwr "$agend/runtime/install.ps1" -UseBasicParsing).Content; $h = (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })); if ($s -and $h -eq 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') { iex $s } else { Write-Host 'install.ps1 could not be verified against the hash on the AgEnD page (a certificate or download error above is the usual cause: trust this AgEnD certificate, or use the ZIP; otherwise reload the page and copy the command again)' -ForegroundColor Red; throw 'install.ps1 was not run' }"
+
+ ❯ tests/hub-personal-ui-m3224.test.ts:105:68
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

@@ -49,15 +49,18 @@ export function runtimeConnectCommand(server) {
  * window; anywhere else (a redirected stdin or stdout, -NonInteractive, an AI agent, CI) it only installs and prints the connect command.
  * Nothing about that decision is in this command, so the hash pin covers all of it. The pairing code is never part of a command.
  */
-export function runtimeInstallCommand(server, scriptSha256) {
+export function runtimeInstallCommand(server, scriptSha256, mode = "") {
   const origin = safeRuntimeOrigin(server);
   if (!origin || typeof scriptSha256 !== "string" || !/^[a-f0-9]{64}$/.test(scriptSha256)) return "";
+  const failed = mode === "personal"
+    ? "An error about a certificate or trust means this computer doesn't trust this Hub yet. Ask your Hub administrator. Don't change security settings to get past it. If this was not a certificate error, get a new command and try again."
+    : "install.ps1 could not be verified against the hash on the AgEnD page (a certificate or download error above is the usual cause: trust this AgEnD certificate, or use the ZIP; otherwise reload the page and copy the command again)";
   return `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; `
     + `$agend = '${origin}'; $s = $null; $h = $null; `
     + `$s = (iwr "$agend/runtime/install.ps1" -UseBasicParsing).Content; `
     + `$h = (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })); `
     + `if ($s -and $h -eq '${scriptSha256}') { iex $s } `
-    + `else { Write-Host 'install.ps1 could not be verified against the hash on the AgEnD page (a certificate or download error above is the usual cause: trust this AgEnD certificate, or use the ZIP; otherwise reload the page and copy the command again)' -ForegroundColor Red; throw 'install.ps1 was not run' }`;
+    + `else { Write-Host '${failed.replaceAll("'", "''")}' -ForegroundColor Red; throw 'install.ps1 was not run' }`;
 }
 /**
  * The install command with a ONE-TIME enrollment token inside: pasted on ANY computer, or handed to an AI agent running there, it installs the
@@ -67,8 +70,8 @@ export function runtimeInstallCommand(server, scriptSha256) {
  * its standard input; it is never a command-line argument. The token works once, for 15 minutes, and is revoked from this page; anyone who gets this text
  * while it is valid can connect THEIR computer as your Runtime, so treat it like a password: do not paste it into chats or tickets.
  */
-export function runtimeEnrollCommand(server, scriptSha256, token, fingerprint) {
-  const body = runtimeInstallCommand(server, scriptSha256);
+export function runtimeEnrollCommand(server, scriptSha256, token, fingerprint, mode = "") {
+  const body = runtimeInstallCommand(server, scriptSha256, mode);
   if (!body || typeof token !== "string" || !ENROLL_TOKEN.test(token) || typeof fingerprint !== "string" || !SERVER_FINGERPRINT.test(fingerprint)) return "";
   // `$LASTEXITCODE` is reset first (a stale value from an earlier command must not look like a failure) and checked last: `powershell -Command` returns 1 only when
   // its last statement failed, so an AI agent or CI step sees a non-zero exit status when the install or the connection did not succeed. Silent and harmless at a prompt.

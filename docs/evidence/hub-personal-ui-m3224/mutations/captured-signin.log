@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (10 tests | 1 failed | 9 skipped) 76ms
+   × refuses late personal writes after another person signs in 26ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 skipped (10)
+   Start at  19:03:29
+   Duration  412ms (transform 176ms, setup 88ms, import 112ms, tests 76ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > refuses late personal writes after another person signs in
+AssertionError: expected { ok: true } to match object { ok: false }
+
+- Expected
++ Received
+
+  {
+-   "ok": false,
++   "ok": true,
+  }
+
+ ❯ tests/hub-personal-ui-m3224.test.ts:56:64
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

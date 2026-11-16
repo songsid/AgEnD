@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 135 skipped (137)
+   Start at  18:53:20
+   Duration  5.34s (transform 3.51s, setup 91ms, import 2.54s, tests 2.58s, environment 0ms)
+
