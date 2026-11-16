@@ -24998,10 +24998,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** One model discovery for a binding — the scoped (own config) or the shared per-backend/profile cache — or null when fenced. */
-  private discoverModels(backend: string, name: string | null, binding = this.webModelBinding(backend, name), opts: { refreshVendorCatalog?: boolean } = {}): Promise<unknown> | null {
+  private discoverModels(backend: string, name: string | null, binding = this.webModelBinding(backend, name), opts: { refreshVendorCatalog?: boolean; selection?: { profile?: string }; afterSignIn?: boolean } = {}): Promise<unknown> | null {
     if (!binding || !this.modelDiscoverable(backend, binding)) return null;
+    // A scoped read resolves its binding again (publication and current checks included), so it is handed the selection the
+    // binding came from: without it the agent's saved/default account would be probed and populated instead.
     return binding.scoped
-      ? this.refreshModelCatalogFor(backend, name)
+      ? this.refreshModelCatalogFor(backend, name, opts.selection, opts.afterSignIn ? { afterSignIn: true } : {})
       : this.probeBackendBounded(backend, { profile: binding.profile, ...(opts.refreshVendorCatalog ? { refreshVendorCatalog: true } : {}) });
   }
 
@@ -25029,7 +25031,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.modelOpenProbes ??= new Map();
       const last = this.modelOpenProbes.get(binding.key);
       if (last !== undefined && Date.now() - last < MODEL_OPEN_PROBE_COOLDOWN_MS) return;
-      const work = this.discoverModels(backend, instance, binding);
+      const work = this.discoverModels(backend, instance, binding, { selection });
       if (!work) return;
       const done = work.catch(err => { this.logger.debug({ backend, instance, err }, "Model discovery on open failed"); }).then(() => {
         const after = this.webModelEnv(backend, instance, selection);
@@ -25061,7 +25063,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const name of this.configuredBackendInstanceNames()) {
       if (this.backendNameOf(name) !== backend || this.credentialProfileOf(name, backend) !== profile) continue;
       const binding = this.webModelBinding(backend, name);
-      if (binding?.scoped) settle(this.discoverModels(backend, name, binding));
+      if (binding?.scoped) settle(this.discoverModels(backend, name, binding, { afterSignIn: true }));
     }
   }
 
@@ -26300,10 +26302,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Explicit, bounded vendor rediscovery. Never publish an answer under a different account/config/instance. */
-  async refreshModelCatalogFor(backend: string, instance: string | null, selection?: {profile?:string}): Promise<{ models: import("./backend/types.js").ModelOption[]; refreshed: boolean }> {
+  async refreshModelCatalogFor(backend: string, instance: string | null, selection?: {profile?:string}, opts: { afterSignIn?: boolean } = {}): Promise<{ models: import("./backend/types.js").ModelOption[]; refreshed: boolean }> {
     const binding = this.webModelBinding(backend, instance, selection);
     if (!binding || this.shuttingDown) return { models: [], refreshed: false };
     const pending = this.webModelRefreshes.get(binding.key);
+    if (pending && opts.afterSignIn) {
+      // A sign-in changes the credentials, not the binding key, so a flight started before it is answering as the signed-out
+      // account. Join it for admission (the worker limit), then read once more as the signed-in one; sign-ins that land on the
+      // same flight meet in that one read (the second finds the first's flight).
+      return pending.catch(() => null).then(() => {
+        const next = this.webModelBinding(backend, instance, selection);
+        if (next?.key !== binding.key) return { models: [], refreshed: false };
+        return this.refreshModelCatalogFor(backend, instance, selection);
+      });
+    }
     if (pending) return pending;
     const epoch = this.cliEnvProbeEpoch;
     const current = () => {

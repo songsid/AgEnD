@@ -169,6 +169,98 @@ describe("a sign-in re-reads the CLI's models", () => {
   });
 });
 
+describe("a menu opened for a chosen account discovers that account", () => {
+  const selected = (backend: string, instance: string | null, profile: string) => fm.modelCatalogFor(backend, instance, { profile }).map((m: any) => m.id);
+
+  it("a profile picked in the field that is not the agent's saved one (the default account) is probed and filled; the default and other profiles are untouched", async () => {
+    fleet("codex");
+    FakeProbeWorker.answer = found("work-model");
+    await fm.ensureModelCatalog("codex", "w", { profile: "work" });
+    expect(FakeProbeWorker.workers).toHaveLength(1);
+    expect(FakeProbeWorker.workers[0].input.config.credentialStoreHome).toBe(join(dir, "credential-profiles", "codex", "work"));
+    expect(selected("codex", "w", "work")).toEqual(["codex-work-model"]);
+    expect(ids("codex")).toEqual([]);                                  // the agent's own (default) account
+    expect(selected("codex", "w", "home")).toEqual([]);                // another profile
+    expect(ids("codex", null)).toEqual([]);
+  });
+
+  it("from one named account to another: the chosen one is probed, the saved one keeps what it had", async () => {
+    fleet("codex", { credential_profile: "home" });
+    FakeProbeWorker.answer = found("home-model");
+    await fm.ensureModelCatalog("codex", "w");
+    expect(ids("codex")).toEqual(["codex-home-model"]);
+    FakeProbeWorker.answer = found("work-model");
+    await fm.ensureModelCatalog("codex", "w", { profile: "work" });
+    expect(FakeProbeWorker.workers.map(w => w.input.config.credentialStoreHome)).toEqual([
+      join(dir, "credential-profiles", "codex", "home"), join(dir, "credential-profiles", "codex", "work")]);
+    expect(selected("codex", "w", "work")).toEqual(["codex-work-model"]);
+    expect(ids("codex")).toEqual(["codex-home-model"]);
+  });
+});
+
+describe("a sign-in that lands on a discovery already in flight", () => {
+  it("the old worker answers signed out; a fresh worker then reads the signed-in account and fills it", async () => {
+    fleet("codex", { credential_profile: "work" });
+    FakeProbeWorker.answer = undefined;                                 // every worker is held until the test answers it
+    const events = stream();
+    const open = fm.ensureModelCatalog("codex", "w");                   // the menu's / startup's read, still running
+    await vi.waitFor(() => expect(FakeProbeWorker.workers).toHaveLength(1));
+    fm.profileSignIns.deps.changed({ backend: "codex", profile: "work", phase: "done" }, {}, false);
+    await new Promise(r => setImmediate(r));
+    expect(FakeProbeWorker.workers).toHaveLength(1);                    // the worker limit holds: no second one beside the old
+    FakeProbeWorker.workers[0].reply({ models: [] });                   // the old, signed-out answer
+    await vi.waitFor(() => expect(FakeProbeWorker.workers).toHaveLength(2));
+    expect(ids("codex")).toEqual([]);
+    FakeProbeWorker.workers[1].reply({ models: [{ id: "codex-after", label: "After" }] });
+    await open;
+    await settled();
+    expect(FakeProbeWorker.workers[1].input.config.credentialStoreHome).toBe(join(dir, "credential-profiles", "codex", "work"));
+    expect(ids("codex")).toEqual(["codex-after"]);
+    expect(events.models()).toEqual([{ backend: "codex" }]);
+  });
+
+  it("two sign-ins on the same old flight share the one fresh read", async () => {
+    fleet("codex", { credential_profile: "work" });
+    FakeProbeWorker.answer = undefined;
+    void fm.ensureModelCatalog("codex", "w");
+    await vi.waitFor(() => expect(FakeProbeWorker.workers).toHaveLength(1));
+    for (let i = 0; i < 2; i++) fm.profileSignIns.deps.changed({ backend: "codex", profile: "work", phase: "done" }, {}, false);
+    FakeProbeWorker.workers[0].reply({ models: [] });
+    await vi.waitFor(() => expect(FakeProbeWorker.workers).toHaveLength(2));
+    await new Promise(r => setImmediate(r));
+    expect(FakeProbeWorker.workers).toHaveLength(2);
+    FakeProbeWorker.workers[1].reply({ models: [{ id: "codex-after", label: "After" }] });
+    await settled();
+    expect(ids("codex")).toEqual(["codex-after"]);
+  });
+
+  it("a flight that failed outright still gets the fresh read", async () => {
+    fleet("codex", { credential_profile: "work" });
+    FakeProbeWorker.answer = undefined;
+    void fm.ensureModelCatalog("codex", "w");
+    await vi.waitFor(() => expect(FakeProbeWorker.workers).toHaveLength(1));
+    fm.profileSignIns.deps.changed({ backend: "codex", profile: "work", phase: "done" }, {}, false);
+    FakeProbeWorker.workers[0].reply(null);
+    await vi.waitFor(() => expect(FakeProbeWorker.workers).toHaveLength(2));
+    FakeProbeWorker.workers[1].reply({ models: [{ id: "codex-after", label: "After" }] });
+    await settled();
+    expect(ids("codex")).toEqual(["codex-after"]);
+  });
+
+  it("an account changed while the old flight ran is not probed under the old binding", async () => {
+    fleet("codex", { credential_profile: "work" });
+    FakeProbeWorker.answer = undefined;
+    void fm.ensureModelCatalog("codex", "w");
+    await vi.waitFor(() => expect(FakeProbeWorker.workers).toHaveLength(1));
+    fm.profileSignIns.deps.changed({ backend: "codex", profile: "work", phase: "done" }, {}, false);
+    fm.fleetConfig.instances.w.backend_options.codex.credential_profile = "other";
+    FakeProbeWorker.workers[0].reply({ models: [] });
+    await settled();
+    await new Promise(r => setImmediate(r));
+    expect(FakeProbeWorker.workers).toHaveLength(1);
+  });
+});
+
 describe("a menu opened on an empty list discovers it once", () => {
   it("web /model: the cache is empty, so the list is read first (bounded) and the menu has models, not 'not in this CLI's list'", async () => {
     fleet("antigravity");
