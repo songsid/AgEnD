@@ -1,8 +1,8 @@
 /**
  * A chat image opens full size in the page (a dark lightbox), not in a new tab — for a plain left click only. The
  * thumbnail's link is unchanged (chat-render.js, pinned by web-chat-c2): with ctrl/meta/shift/alt it does what the
- * browser does. ✕, a click on the dark area and Esc close it and focus goes back to the thumbnail; several images in a
- * message step with previous / next and the arrow keys; only a chat file URL is ever shown; no style attribute (#1300).
+ * browser does. ✕, a click on the dark area and Esc close it and focus goes back to the thumbnail; the chat's images
+ * step with previous / next and the arrow keys (M-3210: every one in the chat, in message order, no wrap); only a chat file URL is ever shown; no style attribute (#1300).
  * The real modules (panel-chat mounts the thread and the lightbox) in the mini DOM; what a browser does is the PR's smoke.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -121,18 +121,24 @@ describe("closing", () => {
   });
 });
 
-describe("several images in a message", () => {
-  it("starts at the one clicked; previous / next and the arrow keys wrap; the count says where; another message's images are not in it", async () => {
+describe("several images in a chat", () => {
+  // M-3210 (the user, phone): the set is every picture in this chat, in message order (it was the clicked message's
+  // alone), from the first to the last — no wrap; previous / next are disabled at the ends.
+  it("starts at the one clicked; previous / next and the arrow keys go through every picture in the chat, in message order, and stop at the ends", async () => {
     const doc = await chat([msg(1, [photo(A, "a.png"), photo(B, "b.png"), { id: "d".repeat(32), kind: "document", name: "r.pdf", size: 1 }]), msg(2, [photo(C, "c.png")])]);
     await clickThumb(doc, 1);
     const count = () => box(doc)?.querySelector(".lb-count")?.textContent ?? null;
-    expect([shown(doc), count()]).toEqual([`/ui/file/${B}`, "2 / 2"]);
+    const ends = () => [box(doc).querySelector(".lb-prev").disabled, box(doc).querySelector(".lb-next").disabled];
+    expect([shown(doc), count(), ...ends()]).toEqual([`/ui/file/${B}`, "2 / 3", false, false]);
     box(doc).querySelector(".lb-next").click(); await settle();
-    expect([shown(doc), count()]).toEqual([`/ui/file/${A}`, "1 / 2"]);
-    fire(box(doc), "keydown", { key: "ArrowLeft" }); await settle();
-    expect(shown(doc)).toBe(`/ui/file/${B}`);
+    expect([shown(doc), count(), ...ends()], "the next message's picture").toEqual([`/ui/file/${C}`, "3 / 3", false, true]);
     fire(box(doc), "keydown", { key: "ArrowRight" }); await settle();
-    expect([shown(doc), box(doc).querySelector(".lb-prev")?.getAttribute("aria-label") ?? null]).toEqual([`/ui/file/${A}`, "Previous image"]);
+    expect(shown(doc), "the last: no wrap").toBe(`/ui/file/${C}`);
+    fire(box(doc), "keydown", { key: "ArrowLeft" }); await settle();
+    fire(box(doc), "keydown", { key: "ArrowLeft" }); await settle();
+    expect([shown(doc), count(), ...ends()]).toEqual([`/ui/file/${A}`, "1 / 3", true, false]);
+    box(doc).querySelector(".lb-prev").click(); await settle();
+    expect([shown(doc), box(doc).querySelector(".lb-prev")?.getAttribute("aria-label") ?? null], "the first: no wrap").toEqual([`/ui/file/${A}`, "Previous image"]);
   });
   it("one image: no previous / next, no count", async () => {
     const doc = await chat([msg(1, [photo(A, "a.png")])]);

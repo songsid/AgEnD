@@ -384,6 +384,15 @@ jobs:
           HP: '19661'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-kb-steady.mts
+      # M-3210 (the user, phone): the image viewer swipes — sideways through the chat's pictures (message order, no wrap), up
+      # or down to close with the dark fading; a short one springs back; a zoomed-in picture pans. Real touch input.
+      - name: Phone image viewer swipes
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19664'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-lightbox-swipe-m3210.mts
       # M-3209 (the user, iPhone, beta.6: 「大頭被改壞了」): the phone's ☰ drawer keeps each agent's whole avatar with its dot on
       # its corner (Detailed) or the dot alone (Compact) — never a squashed avatar beside its dot.
       - name: Phone drawer avatars (Detailed and Compact)

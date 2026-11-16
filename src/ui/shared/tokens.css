@@ -161,6 +161,7 @@
    canvas, image-annotate.js COLOURS). */
 :root {
   --media-ink: #ffffff;
+  --media-stage: rgba(0, 0, 0, 0.95);   /* M-3210: the viewer's own dark, faded by a phone's pull-to-close (app.css .lb) */
   --media-bar: rgba(0, 0, 0, 0.75);
   --media-panel: rgba(0, 0, 0, 0.6);
   --media-btn: rgba(255, 255, 255, 0.12);
