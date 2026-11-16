@@ -34,7 +34,7 @@ let seq = 0;
  * is left out (and nothing opens if the clicked one is not).
  */
 export function openLightbox(links, clicked, annotate = null) {
-  const items = [];
+  const items = [], thumbs = [];   // thumbs[i]: items[i]'s thumbnail (focus goes back to the one last shown)
   let index = -1;
   for (const a of links) {
     const src = a.getAttribute("href") || "";
@@ -42,10 +42,11 @@ export function openLightbox(links, clicked, annotate = null) {
     if (a === clicked) index = items.length;
     const img = a.querySelector("img");
     items.push({ src, name: (img && img.getAttribute("alt")) || "" });
+    thumbs.push(a);
   }
   if (index < 0) return false;
   // #3727: `annotate` — { targets: [{ key, label, quote(file) }], notice(text) } — only from a chat that can quote.
-  lightboxStore.set({ open: { items, index, opener: clicked, seq: ++seq, annotate: annotate && annotate.targets?.length ? annotate : null } });
+  lightboxStore.set({ open: { items, thumbs, index, opener: clicked, seq: ++seq, annotate: annotate && annotate.targets?.length ? annotate : null } });
   return true;
 }
 /**
@@ -68,10 +69,10 @@ export function LightboxHost({ owner } = {}) {
     if (!owner) closeLightbox();
     else if (owned.current !== null) closeLightbox(owned.current);
   }, []);
-  return open && mine ? html`<${ImageLightbox} key=${open.seq} items=${open.items} index=${open.index} opener=${open.opener} annotate=${open.annotate} onClose=${() => closeLightbox(open.seq)} />` : null;
+  return open && mine ? html`<${ImageLightbox} key=${open.seq} items=${open.items} thumbs=${open.thumbs || []} index=${open.index} opener=${open.opener} annotate=${open.annotate} onClose=${() => closeLightbox(open.seq)} />` : null;
 }
 
-function ImageLightbox({ items, index, opener, annotate = null, onClose }) {
+function ImageLightbox({ items, thumbs = [], index, opener, annotate = null, onClose }) {
   const [at, setAt] = useState(index);
   const ref = useRef(null);
   const close = useRef(null);
@@ -106,7 +107,10 @@ function ImageLightbox({ items, index, opener, annotate = null, onClose }) {
     return () => {
       if (root) root.classList.remove("lb-open");
       if (d && d.open && typeof d.close === "function") d.close();
-      if (opener && typeof opener.focus === "function" && document.contains?.(opener)) opener.focus();
+      // M-3210: back on the picture last shown — a swipe through the chat may end far from the one opened — else the opener.
+      const shown = thumbs[atRef.current];
+      const back = shown && typeof shown.focus === "function" && document.contains?.(shown) ? shown : opener;
+      if (back && typeof back.focus === "function" && document.contains?.(back)) back.focus();
     };
   }, []);
   useEffect(() => {

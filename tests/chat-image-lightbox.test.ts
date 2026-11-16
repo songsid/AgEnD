@@ -140,6 +140,19 @@ describe("several images in a chat", () => {
     box(doc).querySelector(".lb-prev").click(); await settle();
     expect([shown(doc), box(doc).querySelector(".lb-prev")?.getAttribute("aria-label") ?? null], "the first: no wrap").toEqual([`/ui/file/${A}`, "Previous image"]);
   });
+  // M-3210 follow-up: closed after stepping through the chat, focus (and the scroll) goes to the picture last shown — not
+  // back to the one opened, which may be messages away.
+  it("closed on another picture, focus goes to that picture's thumbnail; on the one opened, to it", async () => {
+    const doc = await chat([msg(1, [photo(A, "a.png"), photo(B, "b.png")]), msg(2, [photo(C, "c.png")])]);
+    await clickThumb(doc, 0);
+    box(doc).querySelector(".lb-next").click(); await settle();
+    box(doc).querySelector(".lb-next").click(); await settle();
+    box(doc).querySelector(".lb-close").click(); await settle();
+    expect([isOpen(doc), doc.activeElement === thumbs(doc)[2]]).toEqual([null, true]);
+    await clickThumb(doc, 1);
+    box(doc).querySelector(".lb-close").click(); await settle();
+    expect(doc.activeElement === thumbs(doc)[1]).toBe(true);
+  });
   it("one image: no previous / next, no count", async () => {
     const doc = await chat([msg(1, [photo(A, "a.png")])]);
     await clickThumb(doc, 0);
