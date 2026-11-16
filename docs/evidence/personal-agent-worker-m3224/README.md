@@ -10,7 +10,9 @@ The Windows profile workflow runs the real pinned Codex/Claude binaries on a dis
 
 Review repair: access-only OAuth staging refuses credentials with less than six minutes remaining. The seven staging cases pass; four targeted reversals are caught (Codex refresh copy, Claude refresh copy, and each expiry guard). Codex 0.167's local parser was checked with synthetic OAuth data: omitting the required refresh-token field is refused; an empty string parses as ChatGPT auth without passing refresh authority.
 
-Platform discovery: the hosted Windows Server default refuses restricted reads without its elevated sandbox. The profile now explicitly selects MXC and a pre-turn sandbox startup check; it never requests legacy provisioning. The Windows 11 hosted proof is pending. Unsupported MXC hosts fail closed, and the phase-1 support wording is with the product owner. No Windows enforcement success is claimed yet.
+Platform discovery: the hosted Windows Server default refuses restricted reads without its elevated sandbox. The profile now explicitly selects MXC and a pre-turn sandbox startup check; it never requests legacy provisioning. The product owner accepted unsupported Codex hosts failing closed, with Claude evaluated separately, and the leader confirmed Windows 11 as the primary target.
+
+The [Windows 11 proof run](https://github.com/songsid/AgEnD/actions/runs/43825192077) passes all eight controls at runtime source `7b8966a7a3f09c03ef499cf3e8ce2ca85bb08d1a`. It ran on Windows 11 Enterprise ARM64, base build `10.0.26200`, image `windows-11-vs2026-arm64/20261112.217.1`, with Codex package `0.167.0` and Claude package `2.1.325`. Its checks cover effective flags/prompt, access-only OAuth parsing, shared read, outside and junction read denial, write denial, network denial with a reachable positive control, and Claude help/safety arguments. The final proof script additionally records actual binary versions and the full Windows update revision and checks command denial of staged auth. No x64 Windows enforcement, real login refresh, model answer, full Hub setup or user desktop claim is made by this layer.
 
 ## Boundaries and rollback
 
