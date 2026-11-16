@@ -78,7 +78,7 @@ it("posts once as the company person via the app and replays an exact operation 
   const first=await a.call("hub_room_post",input);expect(first).toMatchObject({ok:true,operationId,roomId:w.roomId});
   expect(await a.call("hub_room_post",input)).toEqual(first);
   const page=await rig!.call(w.browser,"GET",`/hub/v1/rooms/${w.roomId}/messages`),messages=page.json.messages.filter((m:{text:string})=>m.text===input.text);
-  expect(messages).toHaveLength(1);expect(messages[0].author).toMatchObject({kind:"person",name:"Example Person",via:{name:"Example AI"}});
+  expect(messages).toHaveLength(1);expect(messages[0].author).toMatchObject({kind:"person",name:"Example Person",via:{kind:"app",name:"Example AI"}});
   expect(rig!.db.prepare("SELECT used FROM hub_mcp_budgets WHERE kind='post'").get()).toEqual({used:1});
   expect(await a.call("hub_room_post",{...input,text:"Changed"})).toMatchObject({ok:false,code:"conflict"});
 });
@@ -124,7 +124,7 @@ it("uses only current grants for direct asks and keeps ask-result IDs private to
   expect(rig!.db.prepare("SELECT COUNT(*) AS n FROM hub_messages").get()).toEqual({n:1});
   const direct=rig!.db.prepare("SELECT room_id FROM hub_mcp_calls WHERE operation_id=?").get(operationId) as {room_id:string};
   const page=await rig!.call(w.browser,"GET",`/hub/v1/rooms/${direct.room_id}/messages`);
-  expect(page.json.messages[0].author).toMatchObject({kind:"person",name:"Example Person",via:{name:"Example AI"}});
+  expect(page.json.messages[0].author).toMatchObject({kind:"person",name:"Example Person",via:{kind:"app",name:"Example AI"}});
   expect(await b.call("hub_ask_result",{id:operationId})).toMatchObject({ok:false,code:"not-found"});
   expect((await rig!.call(w.admin,"DELETE",`/hub/v1/grants/${grant.id}?revision=${grant.revision}`)).status).toBe(200);
   expect(await a.call("hub_ask_result",{id:operationId})).toMatchObject({ok:false,code:"revoked"});

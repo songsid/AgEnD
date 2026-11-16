@@ -5,7 +5,7 @@ export interface RoomMessage {
   id: string; roomId: string; at: number;
   /** Committed group-room order; an answer receives its final position when it arrives. Older/direct rows may omit it. */
   sequence?: number;
-  author: { kind: "person" | "agent" | "assistant" | "system"; id: string; name: string; owner?: { name: string }; via?: { id: string; name: string } };
+  author: { kind: "person" | "agent" | "assistant" | "system"; id: string; name: string; owner?: { name: string }; agentKind?: "fleet" | "personal"; via?: { id: string; name: string; kind?: "app" | "agent" } };
   /** Structured viewer-localized system sentence; text remains a cached-client fallback. */
   system?: RoomSystemEvent;
   proactive?: true;

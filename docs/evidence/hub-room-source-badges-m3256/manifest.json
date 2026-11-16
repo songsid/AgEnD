@@ -1,0 +1,316 @@
+{
+  "source": "b03b0c72ac58c20f91a5b6fd3ba57d5ee9c18c04",
+  "base": "be7ae0f10a3ade672ac0c88a41365132f2900c2e",
+  "inputs": [
+    {
+      "path": "changes/3256-hub-room-source-badges.md",
+      "sha256": "97615f303ffeee5719372d126e360a01c4ad767fafcf3579b6bf550921b5dd54"
+    },
+    {
+      "path": "changes/3256-hub-room-source-badges.zh-TW.md",
+      "sha256": "cf225482e179567884cdd001ea9481604eddb8e8d9d8b79035a844cbd00a9b51"
+    },
+    {
+      "path": "docs/design/hub-room-source-badges.md",
+      "sha256": "134eb34f811552fc78959308136615fb14582d1b3690d60bffdd07395b267810"
+    },
+    {
+      "path": "scripts/manual/hub-room-source-badges/browser.mts",
+      "sha256": "3e1af40c759edf50093e7ee8bac2e3e8ee132afa8cc527ccc4e9212d8c59cd1d"
+    },
+    {
+      "path": "src/auth-api.ts",
+      "sha256": "80e8d2c76584dc552bcf8be4a75411948667240768ceee41ccff16faac989f44"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "10d7d0e0f989b203b405e055ea942928f46c38f7662cb5083a564058d8dec83f"
+    },
+    {
+      "path": "src/hub/rooms/direct-view.ts",
+      "sha256": "f2416cad82e6e0d23bf4617d1617bb0a293bb1831e950825284ddfd4145d9b54"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "8de536b7bfb92d2d0ff99b22fb12ba8c582a928aeb68a4f525d036da5ab01de8"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "b8984c7d798ce6adc3c3577cae36c6c54aea452cab77e20f6a77cecc05f62104"
+    },
+    {
+      "path": "src/ui/hub-room-members.js",
+      "sha256": "c493b403d1659d71fced39f8092cfef3a574265054d1fe1f134c03d18b7df72a"
+    },
+    {
+      "path": "src/ui/hub-room-source-strings.js",
+      "sha256": "ce9835cbe83444d00c8dc6645f040fd43d2a8cafac050291f64bd119ed864902"
+    },
+    {
+      "path": "src/ui/hub-room-source.js",
+      "sha256": "43b7e2510203ef96b82d2ee6918bdd776efe1f372bacf2e3e791b6d47dee3bd3"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "924cd81b86dec87baa8ab8c32457993c06157427ddc0f8de9d21cb1238f8d43d"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "sha256": "a3741ae0459181b2ba63a5405389f435a4079ce5c7784d9060f78f47ae5ef0e2"
+    },
+    {
+      "path": "src/ui/shared/hub-rooms-u2.css",
+      "sha256": "d597471db1303cc94503c209dd9ee067f631040c021abda31710e88572cae0ab"
+    },
+    {
+      "path": "src/ui/shared/ui-toast.js",
+      "sha256": "993b0c3b9e1b21d5f3ec419a23f6e0b1c95df61d16d81cffd30578587143e964"
+    },
+    {
+      "path": "tests/hub-mcp-door-m3240.test.ts",
+      "sha256": "95d0c04c873eb8a094f24f41acc7cd35e7a97e0021cde2b6f0f9051a082b6264"
+    },
+    {
+      "path": "tests/hub-room-agent-mentions-3118.test.ts",
+      "sha256": "66fec0246710cc1ebd917242d63534a00331dab830c703ff83f820dbbdde275d"
+    },
+    {
+      "path": "tests/hub-room-members.test.ts",
+      "sha256": "65fc49ad34ab9d978884e89bd27f09f406f1fe36ac94cd0b16dcadef53c309f4"
+    },
+    {
+      "path": "tests/hub-room-source-badges-m3256.test.ts",
+      "sha256": "74ffa6f9fcb72f98f1028af2635e80c6eca1d2b8e4259593319dd445f11b5212"
+    },
+    {
+      "path": "tests/hub-shared-modules-a.test.ts",
+      "sha256": "41c4a1af787d09f2b3fc90c4ae7fb2c7419cabbd22a83b25dfb37c5b06ec45a9"
+    }
+  ],
+  "finalPhoneBindings": [
+    {
+      "path": "src/ui/hub-room-members.js",
+      "servedPath": "/ui/js/hub-room-members.js",
+      "sha256": "c493b403d1659d71fced39f8092cfef3a574265054d1fe1f134c03d18b7df72a"
+    },
+    {
+      "path": "src/ui/hub-room-source-strings.js",
+      "servedPath": "/ui/js/hub-room-source-strings.js",
+      "sha256": "ce9835cbe83444d00c8dc6645f040fd43d2a8cafac050291f64bd119ed864902"
+    },
+    {
+      "path": "src/ui/hub-room-source.js",
+      "servedPath": "/ui/js/hub-room-source.js",
+      "sha256": "43b7e2510203ef96b82d2ee6918bdd776efe1f372bacf2e3e791b6d47dee3bd3"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "servedPath": "/ui/js/hub-room-thread.js",
+      "sha256": "924cd81b86dec87baa8ab8c32457993c06157427ddc0f8de9d21cb1238f8d43d"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "servedPath": "/assets/chat-thread.js",
+      "sha256": "a3741ae0459181b2ba63a5405389f435a4079ce5c7784d9060f78f47ae5ef0e2"
+    },
+    {
+      "path": "src/ui/shared/hub-rooms-u2.css",
+      "servedPath": "/assets/hub-rooms-u2.css",
+      "sha256": "d597471db1303cc94503c209dd9ee067f631040c021abda31710e88572cae0ab"
+    },
+    {
+      "path": "src/ui/shared/ui-toast.js",
+      "servedPath": "/assets/ui-toast.js",
+      "sha256": "993b0c3b9e1b21d5f3ec419a23f6e0b1c95df61d16d81cffd30578587143e964"
+    },
+    {
+      "path": "src/ui/icons/favicon.svg",
+      "servedPath": "/assets/agend-mark.svg",
+      "sha256": "ed1ba986d23556584918930e39892683c3e24eff6d0959c8b60ce702d0df7b6e"
+    }
+  ],
+  "images": [
+    {
+      "path": "after/desk-light-en-thread.png",
+      "sha256": "a2cffbc72d264f05d6a8d622ecc8dcd0d1c42399d145ee727bbdaca218963713"
+    },
+    {
+      "path": "after/phone-dark-zh-TW-members.png",
+      "sha256": "92b65c72d20e8d638236f4becec6ca1e72dea3fbecd9712267a319ae0daed07a"
+    },
+    {
+      "path": "after/phone-dark-zh-TW-tap.png",
+      "sha256": "f149183768852aabd4fa7d324d69dfe8bc38e247b97a45adbc8a16a0061fd274"
+    },
+    {
+      "path": "after/phone-dark-zh-TW-thread.png",
+      "sha256": "30bb4f98cfd51be28c289400762f4c2a2cda6e8a77552da32e989b489eadda65"
+    },
+    {
+      "path": "before/desk-light-en-thread.png",
+      "sha256": "8c0ec37268ad2c1b67c4c4242e4b72a69a7088468d356aae9758aee560325d28"
+    },
+    {
+      "path": "before/phone-dark-zh-TW-members.png",
+      "sha256": "ec6a619e5249276dd3bf02f904dfaf05dce013e008aeba5a1bec93edbac3c0b3"
+    },
+    {
+      "path": "before/phone-dark-zh-TW-thread.png",
+      "sha256": "2e5c53e7f3b796583289198502a3e1c28bd68de932c66ac91b801bfdfe01a54f"
+    },
+    {
+      "path": "historical/phone-duplicate-header.png",
+      "sha256": "30ceb7e2e922ed2cc015298b18a38ad9e88750cec882216181bd2780f12a039f"
+    },
+    {
+      "path": "historical/phone-truncated-detail.png",
+      "sha256": "8a01ef97343c73d625f5bb86ef8a402d7439df1a70ffc810c051e157b30becad"
+    }
+  ],
+  "preferredImages": 7,
+  "historicalImages": 2,
+  "scope": "Actual owned Hub HTTP/SQLite/audit and OAuth MCP app posts; headless Linux Chromium, rig-only CA, inert AD/member. Personal-source UI is unit-tested; no personal host, live Fleet/AD, model or desktop window.",
+  "artifactFiles": [
+    {
+      "path": "README.md",
+      "sha256": "3b83cc76dd54491960e9a8a02fe08dc7ced2250ae3bb388fae242b08e11a5955"
+    },
+    {
+      "path": "after/desk-light-en-thread.png",
+      "sha256": "a2cffbc72d264f05d6a8d622ecc8dcd0d1c42399d145ee727bbdaca218963713"
+    },
+    {
+      "path": "after/phone-dark-zh-TW-members.png",
+      "sha256": "92b65c72d20e8d638236f4becec6ca1e72dea3fbecd9712267a319ae0daed07a"
+    },
+    {
+      "path": "after/phone-dark-zh-TW-tap.png",
+      "sha256": "f149183768852aabd4fa7d324d69dfe8bc38e247b97a45adbc8a16a0061fd274"
+    },
+    {
+      "path": "after/phone-dark-zh-TW-thread.png",
+      "sha256": "30bb4f98cfd51be28c289400762f4c2a2cda6e8a77552da32e989b489eadda65"
+    },
+    {
+      "path": "alpha-sync.json",
+      "sha256": "456a4d187774add7f3c03430f04b6c63e8e5f505070544982cf2e24e0bc90580"
+    },
+    {
+      "path": "before/desk-light-en-thread.png",
+      "sha256": "8c0ec37268ad2c1b67c4c4242e4b72a69a7088468d356aae9758aee560325d28"
+    },
+    {
+      "path": "before/phone-dark-zh-TW-members.png",
+      "sha256": "ec6a619e5249276dd3bf02f904dfaf05dce013e008aeba5a1bec93edbac3c0b3"
+    },
+    {
+      "path": "before/phone-dark-zh-TW-thread.png",
+      "sha256": "2e5c53e7f3b796583289198502a3e1c28bd68de932c66ac91b801bfdfe01a54f"
+    },
+    {
+      "path": "checks/after-browser-final.log.gz",
+      "sha256": "639b632d89029813ef0f029a480d76637f413d4d5e830675095f9e19a3162408"
+    },
+    {
+      "path": "checks/after-browser.log.gz",
+      "sha256": "75a574ee4dafed9c7c3c1e6a3b10ff441329187ad49a4000629ed0034b0fcf89"
+    },
+    {
+      "path": "checks/after-phone-detail.log.gz",
+      "sha256": "57507ae69d74b41b6dc0ce9077ecdcf6bd124f7a4e042e0f68533bc42d70ef80"
+    },
+    {
+      "path": "checks/baseline-tests.log.gz",
+      "sha256": "f967573c2368d24c904e6d83726c0282199282d9ba2f994f526f7657c4a76037"
+    },
+    {
+      "path": "checks/before-browser.log.gz",
+      "sha256": "d352538da0beafab61f626da32a439ccfb6c7562bc5d8930c96f70f3a3f81d21"
+    },
+    {
+      "path": "checks/before-phone.json",
+      "sha256": "a92384dec84c8f6d74d3ab1198373be9c0ae94fc768c4302b7d2317dd26f79a1"
+    },
+    {
+      "path": "checks/before-phone.log.gz",
+      "sha256": "571e91807daa661099e385f0eb3ef8dfe47369533b9eb1168fe70c04b214f14b"
+    },
+    {
+      "path": "checks/detail-final-tests.log.gz",
+      "sha256": "68fb07601a9148e63007cfdf184379cf58418c3e2345157ab72880ee7d0689a3"
+    },
+    {
+      "path": "checks/duplicate-after.log.gz",
+      "sha256": "a3ab103b06f98eb08846c1e1964b96ada3d4df842113a68197f656796a768d4f"
+    },
+    {
+      "path": "checks/duplicate-before.log.gz",
+      "sha256": "2fce2ed53a9929218faf7faf3acb3cfdc605bb5c6ef0121b5eec7fb3c3bb3a73"
+    },
+    {
+      "path": "checks/final-phone.json",
+      "sha256": "106888745c73660b6e6ad166d934f8deb060f36958f5b4f627c83e521e421303"
+    },
+    {
+      "path": "checks/focused.log.gz",
+      "sha256": "f0b64ba27b8944b03416a5dadf121b4a9c82f865a65a7a00abf3ff714d57ff6a"
+    },
+    {
+      "path": "checks/header-fixed-combined.json",
+      "sha256": "60ee6cf815f67d0d9afc5d1fb99d8a2867ebd9e580c9cf969ed2ccf85ae033ba"
+    },
+    {
+      "path": "checks/initial-after.json",
+      "sha256": "76e5ae651c0c24a49b420bc2130eb645982e4b6d5cbcfa9511ad792495a22781"
+    },
+    {
+      "path": "checks/smoke-hub-shell-gate.json",
+      "sha256": "da1cc4f56e1c88881445048f825acc05637a469f5150cf22e03cea2f2e6aaf32"
+    },
+    {
+      "path": "checks/smoke-hub-shell-gate.log.gz",
+      "sha256": "4465c341bbc905790b18db85a9c63a1a9ee82dc3ffd03ff1238a538215d0f5b5"
+    },
+    {
+      "path": "checks/smoke-hub-ui-gate.json",
+      "sha256": "944e9f877d18c09b6c4e558318f0c609f6bc57cb551d16197c28a68e9713856d"
+    },
+    {
+      "path": "checks/smoke-hub-ui-gate.log.gz",
+      "sha256": "4ef93d860b88a6aceaabd2e13368504ef085edfde0230dfcfa671d1aa534924a"
+    },
+    {
+      "path": "checks/source-ui-final.log.gz",
+      "sha256": "65f2ead3941957fcf4dcd0d6e0549526424ce522763b6cf510bad20a04ffedb6"
+    },
+    {
+      "path": "checks/test-types-final.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "checks/tsconfig.json.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "checks/tsconfig.test.json.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "historical/phone-duplicate-header.png",
+      "sha256": "30ceb7e2e922ed2cc015298b18a38ad9e88750cec882216181bd2780f12a039f"
+    },
+    {
+      "path": "historical/phone-truncated-detail.png",
+      "sha256": "8a01ef97343c73d625f5bb86ef8a402d7439df1a70ffc810c051e157b30becad"
+    },
+    {
+      "path": "sync-191c.json",
+      "sha256": "649f7e66df93e7b9cc06c459e42f0e9b1faf23975dff0b2d72573872d939f7a8"
+    },
+    {
+      "path": "visual-review.md",
+      "sha256": "740c2e5cc593d366358d8dec32a7518954ecb189e89d17e6868386f57141891e"
+    }
+  ],
+  "currentSync": "sync-191c.json"
+}

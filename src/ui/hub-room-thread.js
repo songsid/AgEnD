@@ -28,6 +28,7 @@ import { HubNotifyToggle } from "./hub-room-notify.js";
 import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { workingLine } from "./hub-room-working.js";
+import { roomSource, mountSourceAuthor } from "./hub-room-source.js";
 import { countsLine } from "./hub-room-list.js";
 import { PendingFiles, hf, hubFileAttachment, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
 import { LightboxHost, openLightbox } from "/assets/image-lightbox.js";
@@ -161,8 +162,9 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     // The quote chip keeps a stable key even when that original is not in this page (scroll-up / findQuoted loads it).
     const quotedId = m.replyTo || m.answerTo || "";
     const quoted = quotedId ? byId.get(quotedId) : null;
-    const state = askState(askOf(m, messages));
+    const state = askState(askOf(m, messages)), sourceBadge = roomSource(author);
     out.push({ boot: BOOT, id, role: kind === "person" && !author.via ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
+      ...(sourceBadge ? { sourceBadge } : {}),
       ...(kind === "person" && !mine && !author.via ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
       roomMessage: m.id, ...(mine && state?.delivery ? { delivery: state.delivery } : {}),
       // M-3125: a post's files, as the 1:1 chat maps them (images inline through the Hub's own route; HTML gets its preview card).
@@ -437,6 +439,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const labels = () => [hroom("mentionAll"), hroom("mentionAssistant"), ...(store.detail()?.members || []).filter((m) => m.kind !== "assistant").map((m) => `@${m.name}`)];
   const extra = {
     isUser: (x) => x.mine === true, canReply: () => !store.closed(),
+    senderBadge: mountSourceAuthor,
     mentionLabels: labels,
     // A line's one action: 「展開其餘 N 則」, or 「請房間助理整理」 (spec §10: the same as sending 「@房間助理 整理上面的回答」).
     statusAction: (arg) => { if (String(arg).startsWith("summarise:")) { if (!store.closed()) void store.send(hroom("summarisePrompt"), { mentions: ["assistant"] }); } else store.expand(arg); },

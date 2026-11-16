@@ -179,8 +179,9 @@ export class HubGroupRooms {
     const system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined", "poll-closed", "app-rate-limited"].includes(row.author_id)
       ? { kind: row.author_id as "room-created" | "member-joined" | "admin-joined" | "poll-closed" | "app-rate-limited", name: row.author_name } : undefined;
     // Agent rows retain their owner-at-message in author_subject; a later exposure transfer must not relabel history.
-    const owner = row.author_kind === "agent" ? this.core.atomic(db => ({ name: this.name(db, row.author_subject) })) : undefined;
-    return { id: row.id, roomId: row.room_id, at: row.created_at, sequence: row.sequence, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...(owner ? { owner } : {}), ...this.viaAuthor(row) },
+    const agent = row.author_kind === "agent" ? this.core.atomic(db => { const e = readExposure(db, row.author_id);
+      return { owner: { name: this.name(db, row.author_subject) }, ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}) }; }) : undefined;
+    return { id: row.id, roomId: row.room_id, at: row.created_at, sequence: row.sequence, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...agent, ...this.viaAuthor(row) },
       ...(system ? { system } : {}), ...this.agentMetadata(row), text: this.core.deps.content.get(row.content_ref)?.question ?? "", mentions: JSON.parse(row.mentions) as string[],
       ...(row.reply_to ? { replyTo: row.reply_to } : {}), ...(row.idempotency_key ? { idempotencyKey: row.idempotency_key } : {}),
       ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}), ...this.filesOf(row),
@@ -213,12 +214,12 @@ export class HubGroupRooms {
     const refs = this.core.atomic(db => [...store.forMessage(db, row.id, "question"), ...store.forMessage(db, row.id, "answer")]);
     return refs.length ? { files: refs.map(r => groupFileView(row.room_id, r)) } : {};
   }
-  private viaAuthor(row: PostRow): { name?: string; via?: { id: string; name: string } } {
+  private viaAuthor(row: PostRow): { name?: string; via?: { id: string; name: string; kind: "app" | "agent" } } {
     return this.core.atomic(db => {
       const app = this.appPosts ? db.prepare("SELECT app_id,app_name FROM hub_mcp_room_posts WHERE post_id=?").get(row.id) as { app_id: string; app_name: string } | undefined : undefined;
-      if(app)return {via:{id:app.app_id,name:app.app_name}};
+      if(app)return {via:{id:app.app_id,name:app.app_name,kind:"app" as const}};
       const op = db.prepare("SELECT exposure_id,person_name,via_name FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NOT NULL").get(row.id) as { exposure_id: string; person_name: string; via_name: string } | undefined;
-      return op ? { name: op.person_name, via: { id: op.exposure_id, name: op.via_name } } : {}; });
+      return op ? { name: op.person_name, via: { id: op.exposure_id, name: op.via_name,kind:"agent" as const } } : {}; });
   }
   private agentMetadata(row: PostRow): { proactive?: true; system?: RoomSystemEvent } {
     return this.core.atomic(db => {
@@ -536,7 +537,8 @@ export class HubGroupRooms {
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", role: m.role, presence: this.assistant.presence(id) };
         if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, role: m.role,
-          ...(e?.source_kind==="personal"?{agentKind:"personal" as const}:{}), ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
+          ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}),
+          ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
         return { id: m.id, kind: m.kind, name: this.name(db, m.subject), role: m.role,
           signedIn: !!db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(m.subject),
           presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };

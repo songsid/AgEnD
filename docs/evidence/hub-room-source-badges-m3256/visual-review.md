@@ -1,0 +1,3 @@
+Image inspection only; no source/security verdict.
+
+Inspected all preferred before/after images (the duplicate wide thread/member frames are stored once). Initial captures exposed duplicated author text and a clipped phone notice; those two defects were repaired and only affected views were retaken. The preferred after images show author text once, no additional permanent explanation line, fixed silver AgEnD and generic app marks, unchanged people rows, and a fully visible two-line phone explanation. No remaining clipping, overflow or broken glyph/image was observed. Historical images are retained separately.

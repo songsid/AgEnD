@@ -39,7 +39,9 @@ async function hub(o: { admin?: boolean; management?: string[]; features?: strin
     const key = `${init.method || "GET"} ${path.split("?")[0]}`;
     calls.push(key);
     const json = key === "GET /hub/v1/session" ? session : key === "GET /hub/v1/rooms" ? { rooms: o.rooms ?? [] } : key === "GET /hub/v1/notices" ? { notices: o.notices ?? [] }
-      : key === "GET /hub/v1/exposures" ? { mine: [], askable: [] } : key === "GET /hub/v1/security-notices/directory" ? { items: [], nextBefore: null } : {};
+      : key === "GET /hub/v1/exposures" ? { mine: [], askable: [] }
+      : key === "GET /hub/v1/admin/overview" ? { fleets: [], pairings: [], permissions: o.management ?? (o.admin ? ["fleets.manage", "join.manage"] : []) }
+      : key === "GET /hub/v1/security-notices/directory" ? { items: [], nextBefore: null } : {};
     return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
   } });
   if (o.features?.includes("quick-pairing-v1")) c.quickPairingV1 = true;
@@ -62,13 +64,18 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
   it("keeps personal-agent administration out of a Fleet manager's page while mounting it for administrators", async () => {
     const options = { path: "/ui/hub/admin", features: ["personal-agents-v1", "role-settings-v1"] };
     const limited = await hub({ ...options, management: ["fleets.manage"] });
-    await settle(30);
+    await until(() => calls.includes("GET /hub/v1/admin/overview") && limited.root.querySelector("#hub-admin-fleets"));
+    expect(limited.root.querySelector("#hub-admin-fleets")).toBeTruthy();
+    // The page can render before LazyRoomPart resolves; flush only after its module has evaluated.
+    await import("/ui/js/hub-personal-agent.js");
+    await settle();
     expect(limited.root.querySelector("[data-personal-admin]")).toBeNull();
     expect(calls).not.toContain("GET /hub/v1/admin/personal-agents");
     await limited.unmount(); mounted.splice(mounted.indexOf(limited), 1); limited.restore();
     const administrator = await hub({ ...options, admin: true });
     await until(() => administrator.root.querySelector("[data-personal-admin]"));
     expect(administrator.root.querySelector("[data-personal-admin]")).toBeTruthy();
+    await until(() => calls.includes("GET /hub/v1/admin/personal-agents"));
     expect(calls).toContain("GET /hub/v1/admin/personal-agents");
   });
   it("M-3190 (Argon): the brand, AgEnD Hub, with the Hub's name on a small line under it — and plain AgEnD Hub when the Hub has no name (#3426)", async () => {

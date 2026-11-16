@@ -170,6 +170,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "host-install.css": { file: join("shared", "host-install.css"), type: "text/css; charset=utf-8" },
   "subagent-row.css": { file: join("shared", "subagent-row.css"), type: "text/css; charset=utf-8" },
   "tokens.css": { file: join("shared", "tokens.css"), type: "text/css; charset=utf-8" },
+  // Fixed AgEnD identity, unlike the owner-customizable /favicon.svg.
+  "agend-mark.svg": { file: join("icons", "favicon.svg"), type: "image/svg+xml" },
   "inter.woff2": { file: join("shared", "fonts", "inter.woff2"), type: "font/woff2" },
   // #2631: the Office's built-in Cozy style is drawn on this picture (static, no data, like the font).
   "office-cozy.png": { file: join("shared", "office", "cozy.png"), type: "image/png" },
