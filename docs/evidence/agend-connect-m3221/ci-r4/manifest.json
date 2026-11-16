@@ -1,0 +1,21 @@
+{
+  "source": "0ea17624a119eecb1627b3a07c606b7346109d8b",
+  "artifacts": [
+    {
+      "path": "ci-repair-r4-after.log",
+      "sha256": "750b1793773b857c9e40157a36d187e67dc2cdefe800fc8c06f9fc84e3c695c1"
+    },
+    {
+      "path": "labels-r4-proof.json",
+      "sha256": "2f4a8206718b8eaba4e63e5f1c2c8d5e9d789431241ac160d0412e1c74508f02"
+    },
+    {
+      "path": "matrix-r4-proof.json",
+      "sha256": "f89d5a91fc78128ea46747addc504a30baeee9ede92d6b76112b1107ae63dff0"
+    },
+    {
+      "path": "summary.json",
+      "sha256": "618a0d932dba18a6a49c220fc5ad627d1cce313ad926601a3be5ae23e87f355e"
+    }
+  ]
+}
