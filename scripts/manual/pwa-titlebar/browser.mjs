@@ -8,7 +8,7 @@ assert(await readFile(join(root,'.owned'),'utf8')===state.tag);
 let giveCode;const input=createInterface({input:process.stdin});input.on('line',line=>{const value=JSON.parse(line);assert(giveCode&&typeof value.code==='string');const done=giveCode;giveCode=null;done(value.code);});
 const freshCode=()=>new Promise(resolve=>{giveCode=resolve;console.log(JSON.stringify({kind:'code-request'}));});
 const profile=join(root,'edge-profile'); await mkdir(profile);
-const edge=spawn(state.browserExecutable,['--user-data-dir='+profile,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--ignore-certificate-errors','--host-resolver-rules=MAP agend-pwa.test 127.0.0.1','--remote-debugging-port=0','about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:false});
+const edge=spawn(state.browserExecutable,['--user-data-dir='+profile,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--force-renderer-accessibility','--ignore-certificate-errors','--host-resolver-rules=MAP agend-pwa.test 127.0.0.1','--remote-debugging-port=0','about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:false});
 let exited=false;edge.on('close',()=>{exited=true;});const sleep=ms=>new Promise(r=>setTimeout(r,ms));let ws,call,activeSid,phase='startup',seq=0;const pending=new Map(),installed=[];const result={cases:[]};
 try{
  const endpoint=await new Promise((resolve,reject)=>{let s='';const timer=setTimeout(()=>reject(Error('Edge startup timeout')),20000);edge.stderr.on('data',b=>{s=(s+b).slice(-8000);const m=/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/.exec(s);if(m){clearTimeout(timer);resolve(m[1]);}});});
@@ -30,7 +30,7 @@ try{
   assert.equal(JSON.parse(app.data).display,'standalone');
   const ps=process.env.SystemRoot+'\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
   const nativeMenu=action=>JSON.parse(execFileSync(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(root,'app-menu.ps1'),'-Tag',state.tag,'-BrowserProcess',state.browserProcess,'-Action',action],{encoding:'utf8',windowsHide:true}));
-  installed.push({manifestId,nativeMenu});await writeFile(join(root,'install-intents.json'),JSON.stringify(installed.map(a=>a.manifestId)));const installation=nativeMenu('Install');phase=entry.label+':installed';console.log(JSON.stringify({phase}));
+  await call('Page.bringToFront',{},sid);installed.push({manifestId,nativeMenu});await writeFile(join(root,'install-intents.json'),JSON.stringify(installed.map(a=>a.manifestId)));const installation=nativeMenu('Install');phase=entry.label+':installed';console.log(JSON.stringify({phase}));
   const appTarget=await until(async()=>{for(const t of (await call('Target.getTargets')).targetInfos){if(t.type!=='page'||!t.url.startsWith(entry.base))continue;const s=await attach(t.targetId);if(await evaluate(s,'matchMedia("(display-mode: standalone)").matches'))return {targetId:t.targetId,sid:s};}});
   const appSid=appTarget.sid;activeSid=appSid;result.cases.push({label:entry.label+'-install',installation,standalone:true});
   await call('Page.enable',{},appSid);await call('Runtime.enable',{},appSid);
@@ -41,7 +41,7 @@ try{
    await evaluate(appSid,`AgendTheme.set(${JSON.stringify(theme)})`);
    const color=await until(()=>evaluate(appSid,`document.querySelector('meta[name="theme-color"]').content===${JSON.stringify(theme==='dark'?'rgb(33, 33, 33)':'rgb(255, 255, 255)')} && document.querySelector('meta[name="theme-color"]').content`));
    await sleep(800);const label=entry.label+'-'+theme;phase=label;console.log(JSON.stringify({phase}));
-   const p=join(root,label+'.png'),ps=process.env.SystemRoot+'\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+   await call('Page.bringToFront',{},appSid);const p=join(root,label+'.png'),ps=process.env.SystemRoot+'\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
    const screen=JSON.parse(execFileSync(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(root,'window.ps1'),'-Tag',state.tag,'-BrowserProcess',state.browserProcess,'-Out',p],{encoding:'utf8',windowsHide:true}));
    const channels=screen.captionColor.slice(1).match(/../g).map(v=>parseInt(v,16));
    assert(theme==='dark'?channels.every(v=>v<100):channels.every(v=>v>200),'Native caption did not follow '+theme+': '+screen.captionColor);
@@ -51,7 +51,7 @@ try{
   await evaluate(appSid,`(()=>{const el=document.querySelector('.panel-head')||document.body;el.style.backgroundColor='#17313f';return true})()`);
   const custom=await until(()=>evaluate(appSid,`document.querySelector('meta[name="theme-color"]').content==='rgb(23, 49, 63)'`));assert(custom);
   result.cases.push({label:entry.label+'-custom',color:'rgb(23, 49, 63)',live:true});
-  result.cases.push({label:entry.label+'-uninstall',uninstallation:nativeMenu('Uninstall')});await until(async()=>!(await call('Target.getTargets')).targetInfos.some(t=>t.targetId===appTarget.targetId));installed.pop();
+  await call('Page.bringToFront',{},appSid);result.cases.push({label:entry.label+'-uninstall',uninstallation:nativeMenu('Uninstall')});await until(async()=>!(await call('Target.getTargets')).targetInfos.some(t=>t.targetId===appTarget.targetId));installed.pop();
   await call('Target.closeTarget',{targetId:target.targetId});
  }
  result.passed=true;

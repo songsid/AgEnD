@@ -20,8 +20,9 @@ public class MenuWindow {
 '@
 $owned=@(Get-CimInstance Win32_Process -Filter "Name='$BrowserProcess'" | Where-Object {$_.CommandLine -like "*$Tag*"} | ForEach-Object {$_.ProcessId})
 if(!$owned.Count){throw 'No owned browser process'}
-$script:chosen=[IntPtr]::Zero
-[MenuWindow]::EnumWindows({param($h,$p) [uint32]$owner=0;[void][MenuWindow]::GetWindowThreadProcessId($h,[ref]$owner);$title=New-Object Text.StringBuilder 512;[void][MenuWindow]::GetWindowText($h,$title,512);if($owned -contains $owner -and [MenuWindow]::IsWindowVisible($h) -and ($title.ToString() -match 'AgEnD' -and (($Action -eq 'Install' -and $title.ToString() -match 'Google Chrome|Microsoft Edge') -or ($Action -eq 'Uninstall' -and $title.ToString() -notmatch 'Google Chrome|Microsoft Edge')))){$script:chosen=$h};return $true},[IntPtr]::Zero)|Out-Null
+$chosen=[MenuWindow]::GetForegroundWindow();[uint32]$owner=0;[void][MenuWindow]::GetWindowThreadProcessId($chosen,[ref]$owner)
+$title=New-Object Text.StringBuilder 512;[void][MenuWindow]::GetWindowText($chosen,$title,512)
+if($owned -notcontains $owner -or $title.ToString() -notmatch 'AgEnD'){throw 'Foreground window is not the selected owned AgEnD target'}
 if($chosen -eq [IntPtr]::Zero){throw 'No owned AgEnD browser window'}
 [void][MenuWindow]::SetForegroundWindow($chosen)
 function Find-Control($pattern,$type){
@@ -47,7 +48,7 @@ function Invoke-Control($c){
 }
 $button=[Windows.Automation.ControlType]::Button;$item=[Windows.Automation.ControlType]::MenuItem
 ${initial}=[Windows.Automation.AutomationElement]::FromHandle($chosen)
-$menu=$initial.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,$button))|Where-Object {!$_.Current.IsOffscreen -and $_.Current.Name -match '自訂.*(管理|控管)|Customize and control|設定及其他|Settings and more'}|Select-Object -First 1
+$menu=$initial.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,$button))|Where-Object {!$_.Current.IsOffscreen -and $_.Current.Name -match '^Chrome$|^AgEnD$|自訂.*(管理|控管|控制)|Customize and control|設定及其他|Settings and more'}|Select-Object -First 1
 if(!$menu){throw 'No menu on the selected owned window'}
 Invoke-Control $menu
 if($Action -eq 'Install'){
