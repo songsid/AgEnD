@@ -67,8 +67,7 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
     expect(calls).not.toContain("GET /hub/v1/admin/personal-agents");
     await limited.unmount(); mounted.splice(mounted.indexOf(limited), 1); limited.restore();
     const administrator = await hub({ ...options, admin: true });
-    // The section can draw a moment before its list is asked for: wait for both (a busy run raced them).
-    await until(() => administrator.root.querySelector("[data-personal-admin]") && calls.includes("GET /hub/v1/admin/personal-agents"));
+    await until(() => administrator.root.querySelector("[data-personal-admin]"));
     expect(administrator.root.querySelector("[data-personal-admin]")).toBeTruthy();
     expect(calls).toContain("GET /hub/v1/admin/personal-agents");
   });
