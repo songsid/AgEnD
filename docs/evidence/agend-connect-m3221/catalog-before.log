@@ -1,0 +1,120 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agend-connect-m3221
+
+ ❯ tests/owner-app-connect-m3221.test.ts (5 tests | 1 failed | 4 skipped) 674ms
+     × lists only the fixed person surface immediately without any Fleet socket 673ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/owner-app-connect-m3221.test.ts > local owner's four-operation connector > lists only the fixed person surface immediately without any Fleet socket
+AssertionError: expected [ 'hub_room_list', …(82) ] to deeply equal [ 'list_agents', 'send_message', …(2) ]
+
+- Expected
++ Received
+
+  [
+-   "list_agents",
+-   "send_message",
+-   "read_answer",
+-   "task_board",
++   "hub_room_list",
++   "hub_room_post",
++   "hub_room_members",
++   "hub_people_search",
++   "reply",
++   "react",
++   "edit_message",
++   "download_attachment",
++   "validate_config",
++   "create_schedule",
++   "list_schedules",
++   "update_schedule",
++   "delete_schedule",
++   "task",
++   "post_decision",
++   "close_poll",
++   "list_decisions",
++   "update_decision",
++   "broadcast",
++   "send_to_instance",
++   "request_information",
++   "delegate_task",
++   "report_result",
++   "delivery_status",
++   "create_team",
++   "delete_team",
++   "list_teams",
++   "update_team",
++   "describe_instance",
++   "list_instances",
++   "start_instance",
++   "restart_instance",
++   "pause_instance",
++   "wake_instance",
++   "stop_instance",
++   "get_fleet_status",
++   "get_effort",
++   "kiro_engine_status",
++   "migrate_kiro_instance",
++   "reconcile_kiro_instance",
++   "get_usage",
++   "get_cache_report",
++   "get_usage_report",
++   "list_models",
++   "get_instance_logs",
++   "get_fleet_config",
++   "update_instance_config",
++   "update_fleet_defaults",
++   "create_instance",
++   "delete_instance",
++   "replace_instance",
++   "set_display_name",
++   "list_emojis",
++   "preview_emojis",
++   "list_stickers",
++   "preview_stickers",
++   "set_persona_emoji",
++   "get_web_settings",
++   "set_web_settings",
++   "get_web_theme",
++   "set_web_theme",
++   "set_web_theme_asset",
++   "get_web_appearance",
++   "preview_web_appearance",
++   "set_web_widget",
++   "remove_web_widget",
++   "set_web_ambient",
++   "clear_web_ambient",
++   "office_view",
++   "office_set",
++   "office_pack_check",
++   "office_pack_upload",
++   "office_pack_delete",
++   "office_pack_restore",
++   "office_pack_list",
++   "office_set_style",
++   "reset_web_theme",
++   "set_description",
++   "checkout_repo",
++   "release_repo",
++   "deploy_template",
++   "teardown_deployment",
++   "list_deployments",
+  ]
+
+ ❯ tests/owner-app-connect-m3221.test.ts:36:42
+     34|     const w = await world(false), start = performance.now();
+     35|     const tools = await w.client.listTools({}, { timeout: 900 });
+     36|     expect(tools.tools.map(t => t.name)).toEqual(["list_agents", "send…
+       |                                          ^
+     37|     expect(performance.now() - start).toBeLessThan(1000);
+     38|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  13:58:36
+   Duration  1.22s (transform 104ms, setup 101ms, import 291ms, tests 674ms, environment 0ms)
+

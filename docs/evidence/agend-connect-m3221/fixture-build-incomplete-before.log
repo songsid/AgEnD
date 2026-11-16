@@ -1,0 +1,20 @@
+
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agend-connect-m3221/dist/ui/fleet-office-pack.js' imported from /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agend-connect-m3221/dist/web-office-pack-tools.js
+    at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+    at moduleResolve (node:internal/modules/esm/resolve:861:10)
+    at defaultResolve (node:internal/modules/esm/resolve:985:11)
+    at nextResolve (node:internal/modules/esm/hooks:748:28)
+    at resolveBase (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/tsx/dist/register-nyXW-TH3.mjs:2:10494)
+    at resolveDirectory (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/tsx/dist/register-nyXW-TH3.mjs:2:11581)
+    at resolveTsPaths (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/tsx/dist/register-nyXW-TH3.mjs:2:13222)
+    at resolve (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/tsx/dist/register-nyXW-TH3.mjs:2:15453)
+    at nextResolve (node:internal/modules/esm/hooks:748:28)
+    at Hooks.resolve (node:internal/modules/esm/hooks:240:30) {
+  code: 'ERR_MODULE_NOT_FOUND',
+  url: 'file:///home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agend-connect-m3221/dist/ui/fleet-office-pack.js'
+}
+
+Node.js v22.22.2
