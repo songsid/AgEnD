@@ -28,7 +28,7 @@ const SHOWN = `(() => { const vw = innerWidth, seen = (e) => !!e && getComputedS
     marked: a.classList.contains("active") && getComputedStyle(a, "::before").display !== "none" }));
   return { path: location.pathname, vw, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     list: seen(document.querySelector(".p-settings > .s-nav")), body: seen(document.querySelector(".p-settings > .panel-body")),
-    search: box(document.querySelector("#settingsSearch")), rows, back: seen(document.querySelector(".p-settings .s-back")) ? document.querySelector(".p-settings .s-back").textContent.trim() : null,
+    search: box(document.querySelector("#settingsSearch")), rows, back: seen(document.querySelector(".p-settings #sbOpen.sb-up")) ? document.querySelector(".p-settings #sbOpen.sb-up").getAttribute("aria-label") : null,
     bar: seen(document.querySelector(".s-pending")) ? box(document.querySelector(".s-pending")) : null,
     barButtons: [...document.querySelectorAll(".s-pending .btn")].filter(seen).map((b) => Math.round(b.getBoundingClientRect().height)),
     rowColors: [...new Set([...document.querySelectorAll(".p-settings > .s-nav .seg-item")].filter(seen).map((a) => getComputedStyle(a).color))], tabs: seen(document.querySelector(".tabs")) ? box(document.querySelector(".tabs")) : null }; })()`;
@@ -74,7 +74,7 @@ for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "pho
       await page.locator(".p-settings > .s-nav .seg-item[href='/settings/agent-defaults']").tap();
       await page.waitForSelector("#g-tp", { timeout: 15000 }); await page.waitForTimeout(500);
       await page.selectOption("#g-tp", { index: 1 }); await page.waitForTimeout(600);
-      await page.locator(".p-settings .s-back").tap(); await page.waitForTimeout(600);
+      await page.locator(".p-settings #sbOpen.sb-up").tap(); await page.waitForTimeout(600);
       const unsaved = await reachLast(page);
       await shot("3-unsaved-scrolled");
       res.measured.unsaved = unsaved;
@@ -112,7 +112,7 @@ for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "pho
       ok(res, "bar:tapTargets", edited.barButtons.length >= 2 && edited.barButtons.every((h: number) => h >= 44), edited.barButtons);
       ok(res, "bar:gutter", !!edited.bar && edited.bar.l >= 0, edited.bar);
       // Back to the list: the change is still unsaved.
-      await page.locator(".p-settings .s-back").tap(); await page.waitForTimeout(600);
+      await page.locator(".p-settings #sbOpen.sb-up").tap(); await page.waitForTimeout(600);
       const back = await page.evaluate(SHOWN) as any;
       await shot("3-back-to-list");
       ok(res, "back:list", back.path === "/settings" && back.list && !back.body && !!back.bar, [back.path, back.list, back.body, !!back.bar]);
@@ -123,7 +123,7 @@ for (const c of [{ device: "phone", theme: "light", lang: "en" }, { device: "pho
       const agents = await page.evaluate(SHOWN) as any;
       ok(res, "agents:opens", agents.path === "/settings/agents" && agents.body && !agents.list, [agents.path, agents.body, agents.list]);
       // A search result opens its section at the field.
-      await page.locator(".p-settings .s-back").tap(); await page.waitForTimeout(500);
+      await page.locator(".p-settings #sbOpen.sb-up").tap(); await page.waitForTimeout(500);
       await page.locator("#settingsSearch").fill(c.lang === "en" ? "log level" : "日誌");
       await page.waitForTimeout(500);
       await shot("4-search");

@@ -403,6 +403,21 @@ describe("the chat's commands (the real page modules)", () => {
       expect(c.menu(), "Escape closed it").toBeNull();
       expect(c.p.window.document.activeElement, "focus is back on the chip").toBe(chip);
     });
+    // M-3202 (Fable on #4024): focus goes back to the opener only from inside the menu. One the person already moved (a click
+    // in the box, another field) is theirs: closing the menu leaves it there.
+    it("closed after the person moved focus elsewhere (the box): focus stays there, not pulled back to the chip", async () => {
+      const c = await chatPage({ model: "claude-opus-5-5" });
+      c.fx.respond = (path: string, body: any) => (path === "/ui/command" && !body.args ? LIST : {});
+      const chip = c.p.root.querySelectorAll(".hd-chip")[1];
+      fire(chip, "click"); await settle(); await settle();
+      expect(focused(c), "the menu took focus").toBe("Beta");
+      const box = c.p.root.querySelector("#msgIn") as any;
+      box.focus(); fire(box, "focusin"); await settle();
+      expect(c.p.window.document.activeElement).toBe(box);
+      fire(c.p.root.querySelector(".model-menu-scrim"), "click"); await settle();
+      expect(c.menu(), "closed").toBeNull();
+      expect(c.p.window.document.activeElement, "focus left where the person put it").toBe(box);
+    });
     it("a later typed /model is placed by the box, not by the chip clicked before (the anchor goes with the menu)", async () => {
       const c = await chatPage({ model: "claude-opus-5-5" });
       c.fx.respond = (path: string, body: any) => (path === "/ui/command" && !body.args ? LIST : {});
