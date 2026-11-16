@@ -1,9 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
 import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
+import { getLocale, setLocale } from "../src/locale.js";
+
+// The bubble's labels follow the fleet's language (M-3219); these assert the zh-TW ones.
+const priorLocale = getLocale();
+beforeAll(() => setLocale("zh-TW"));
+afterAll(() => setLocale(priorLocale));
 
 // #410: the cancel button was retired whenever the agent called `reply`, on the
 // assumption that a reply ends the turn. On multi-step work an agent replies
