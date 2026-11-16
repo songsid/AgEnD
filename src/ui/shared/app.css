@@ -292,7 +292,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 }
 .panel-head .sb-open { display: none; }
 .sb-open .ic-back, .sb-open .sb-badge { display: none; }   /* M-3115: the phone's ‹ (below); elsewhere ☰ only */
-.side-collapse .ic-back { display: none; }   /* M-3211: a phone's full-width drawer closes by ← (below); elsewhere the sidebar icon */
+.side-collapse .ic-close { display: none; }   /* M-3211, M-3245: a phone's full-width drawer closes by ✕ (below); elsewhere the sidebar icon */
 .sb-collapsed .panel-head .sb-open { display: inline-flex; }
 /* #2074: a collapsed sidebar's "New agent", beside its ☰ (a phone opens the drawer, which has the row). */
 .panel-head .sb-new { margin-left: calc(-1 * var(--s-1)); }
@@ -801,9 +801,6 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 @media (max-width: 899px) {
   .p-settings[data-view="index"] > .panel-body { display: none; }
   .p-settings[data-view="section"] > .s-nav { display: none; }
-  .p-settings > .panel-body .s-back { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); margin: 0 0 var(--s-2);
-    color: var(--accent); font-size: var(--fs-sm); text-decoration: none; }
-  .p-settings .s-back .s-back-here { margin-left: auto; color: var(--text); font-weight: var(--fw-semibold); }
   .p-settings[data-view="index"] > .s-nav { flex-direction: column; align-items: stretch; padding: 0 var(--s-4) var(--s-4); }
   .p-settings[data-view="index"] > .s-nav .s-nav-groups { flex-direction: column; align-items: stretch; flex-wrap: nowrap; overflow: visible; gap: var(--s-4); }
   .p-settings[data-view="index"] > .s-nav .s-nav-group { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0; }
@@ -4601,10 +4598,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-settings > .s-nav .seg-item.active { background: none; color: var(--accent); border-bottom-color: var(--accent); }
   .p-settings > .s-nav .seg-item.active::before { display: none; }
 }
-/* S5. Phone: "‹ Settings" becomes a full-width bar under the header (tinted, bordered, 48px, the section's name at its right). */
+/* S5. Phone (M-3245: the section's way back is the header's ←; no "‹ Settings" bar). */
 @media (max-width: 899px) {
-  .p-settings > .panel-body .s-back { min-height: 48px; margin: calc(-1 * var(--s-4)) calc(-1 * var(--s-4)) var(--s-4); padding: 0 var(--s-4); background: var(--surface); border-bottom: 1px solid var(--border); font-weight: var(--fw-semibold); }
-  .p-settings .s-back .s-back-here { font-weight: var(--fw-semibold); }
   .p-settings[data-view="index"] > .s-nav .s-nav-group + .s-nav-group { border-top: 0; padding-top: 0; }
 }
 /* The agent page's cards: two columns on a wide page (`.ap-span2` across both), one column when it is narrow. */
@@ -4652,7 +4647,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side:not(.drawer-narrow) .side-head { padding-left: var(--s-1); }
   .sidebar.fleet-side:not(.drawer-narrow) .side-collapse { order: -1; min-width: var(--tap); min-height: var(--tap); }
   .sidebar.fleet-side:not(.drawer-narrow) .side-collapse .ic-sidebar { display: none; }
-  .sidebar.fleet-side:not(.drawer-narrow) .side-collapse .ic-back { display: inline-block; }
+  .sidebar.fleet-side:not(.drawer-narrow) .side-collapse .ic-close { display: inline-block; }
   .sidebar.fleet-side:not(.drawer-narrow) .v-inst { min-height: 72px; gap: var(--s-3); padding-block: var(--s-2); }
   .sidebar.fleet-side:not(.drawer-narrow) .v-inst .av { width: 54px; height: 54px; margin-top: 0; font-size: var(--fs-xl); }
   .sidebar.fleet-side:not(.drawer-narrow) .v-inst .av.av-emoji { font-size: calc(var(--fs-xl) * 1.4); }

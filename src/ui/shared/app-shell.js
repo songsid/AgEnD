@@ -460,7 +460,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   return html`<aside id="sidebar" class=${`sidebar fleet-side${narrowDrawer ? " drawer-narrow" : ""}`} aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
-      <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" cls="ic-sidebar" /><${Icon} name="back" cls="ic-back" /></button>
+      <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" cls="ic-sidebar" /><${Icon} name="close" cls="ic-close" /></button>
     </div>
     ${/* AgEnD Hub P1: a member fleet's "My fleet ↔ Hub" (shown once paired; nothing loads when the switch is off) */ hubMarks().member ? html`<${HubSwitcherSlot} />` : null}
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
@@ -547,6 +547,9 @@ function PrefsPopover() {
  */
 // M-3115 (phone v2): inside an agent's pages a phone has no bottom tabs; the header's first button goes back to the
 // agents (the drawer) — with no count since M-3166. Kept beside its caller: a retained dictionary has no such word.
+// M-3245 (the user, beta.7: 「左箭頭和漢堡選單 icon 意義不明」): one rule for a phone's top-left button. ☰ opens the agents
+// (the drawer) on a page with nothing above it; ← goes back one level (an agent's pages → the agents; a Settings section →
+// Settings); ✕ closes the drawer. A page with a level above passes `back` ({ href, label }) to PanelHeader.
 register("phoneNav", {
   en: { back: "Back to your agents" },
   "zh-TW": { back: "回到 Agent 清單" },
@@ -554,7 +557,7 @@ register("phoneNav", {
 /** What Needs you counts: its items and the agents' proposals (the tab's badge, the sidebar's). */
 export function needsCount(app) { return (app.needs || []).length + (app.proposals || []).length; }
 
-export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions }) {
+export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions, back = null }) {
   const shell = useStore(shellStore);
   const { route } = useStore(navStore);
   // M-3166 (the user, round 2): no counts or badges on the Fleet side — ← goes back to the agents without a number.
@@ -567,10 +570,12 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice, pag
   if (pane?.Header) return html`<${pane.Header} title=${title} sub=${sub} headingRef=${headingRef} nav=${nav} notice=${notice}
     pageControls=${pageControls} pageActions=${pageActions} />`;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
-    <button type="button" id="sbOpen" class=${`icon-btn sb-open${agent ? " sb-back" : ""}`} onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
+    ${back && narrow() && !agent ? html`<a id="sbOpen" class="icon-btn sb-open sb-back sb-up" href=${back.href} aria-label=${back.label} title=${back.label}
+      ><${Icon} name="menu" cls="ic-menu" /><${Icon} name="back" cls="ic-back" /></a>`
+    : html`<button type="button" id="sbOpen" class=${`icon-btn sb-open${agent ? " sb-back" : ""}`} onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? agent ? t("phoneNav.back") : t("app.openMenu") : t("app.expand")}
       title=${narrow() ? agent ? t("phoneNav.back") : t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" cls="ic-menu" />${agent
-        ? html`<${Icon} name="back" cls="ic-back" />` : null}</button>
+        ? html`<${Icon} name="back" cls="ic-back" />` : null}</button>`}
     ${canCreate && shell.collapsed ? html`<button type="button" class="icon-btn sb-new" onClick=${requestNewInstance} aria-label=${t("app.newAgent")} title=${t("app.newAgent")}><${Icon} name="plus" /></button>` : null}
     ${searchOffered(admin) ? html`<button type="button" class="icon-btn sb-search" onClick=${() => openSearch()} aria-label=${t("app.search")} title=${t("app.searchTitle", searchShortcut())}><${Icon} name="search" /></button>` : null}
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
