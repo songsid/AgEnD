@@ -1242,7 +1242,8 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // Once up, the keyboard stays up while the field keeps focus: an IME's candidate bar (or the predictive row) coming and
     // going moves the view by tens of px on every keystroke, and must never take the tabs out and back. Only leaving the
     // field, or the view growing from its lowest by more than a keyboard (put away), takes it down. While an IME composes
-    // nothing changes at all; what the view says then is applied at compositionend — or as soon as the field it composes
+    // the keyboard's state does not change (the shell's height still follows a view that got shorter: M-3244, in fit);
+    // what the view says then is applied at compositionend — or as soon as the field it composes
     // in has lost focus or left the page (a composition can end without its compositionend: #2517 review).
     let width = -1, tallest = 0, held = false, lowest = 0, upLowest = 0, composing = null, downSince = 0, downTimer = 0;
     // beta.4 (the user, iPhone): a keystroke can move the view (the predictive or candidate bar, the caret panned into view)
@@ -1278,7 +1279,13 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       const typingNow = coarse() && isTextEntry(document.activeElement);
       const on = coarse() && (shellStore.get().keyboard || typingNow || now() < followUntil) && Math.abs((Number(vv.scale) || 1) - 1) < 0.01;
       if (!on) { unfit(el); fitH = 0; fitTop = 0; fitW = -1; moveSince = 0; return; }
-      const h = Math.round(vv.height), top = Math.max(0, Math.round(Number(vv.offsetTop) || 0)), w = Math.round(vv.width);
+      // M-3244 (the user, iPhone, Zhuyin): while an IME composes, the keyboard's state waits for compositionend (check) — the
+      // shell's height does not. The keyboard coming up, or its candidate bar, mid-composition made the view shorter while the
+      // shell kept the height it had (the whole screen, or the view before the bar), and the box sat under the keyboard for
+      // the whole composition. Composing, the shell follows a view that got shorter; it grows back only once the IME is done.
+      const composingNow = !!composing && composing.isConnected !== false && document.activeElement === composing;
+      const seen = Math.round(vv.height), top = Math.max(0, Math.round(Number(vv.offsetTop) || 0)), w = Math.round(vv.width);
+      const h = composingNow && fitH && w === fitW && seen > fitH ? fitH : seen;
       const settled = fitH && typingNow && w === fitW && now() >= followUntil;
       if (settled && (h !== fitH || top !== fitTop) && !(fitH - h > KEYBOARD_MIN_PX)) {
         if (!moveSince) moveSince = now();
@@ -1305,7 +1312,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       raf = frame(step);
     };
     const check = () => {
-      if (composing && composing.isConnected !== false && document.activeElement === composing) return;
+      if (composing && composing.isConnected !== false && document.activeElement === composing) { fit(); return; }
       composing = null;
       const w = Math.round(vv.width), h = vv.height;
       const typing = coarse() && isTextEntry(document.activeElement);
