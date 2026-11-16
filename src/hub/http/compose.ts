@@ -158,14 +158,17 @@ const int = (v: unknown): number => { const n = typeof v === "string" && /^\d{1,
 export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   let closed = false;
   const teamFactory = deps.teams;
+  const personalFactory=deps.personalAgents;
   // Keep the caller's other dependency reads live, without installing Team state on its shared object.
-  const mountedDeps: HubHttpDeps = teamFactory ? Object.create(deps) : deps;
+  const mountedDeps: HubHttpDeps = teamFactory||personalFactory ? Object.create(deps) : deps;
   const core = new HubCore(mountedDeps, sql, () => !closed);
   const teams = teamFactory?.(core);
   if (teams) Object.defineProperties(mountedDeps, {
     roomTeams: { value: teams }, roomTeamCandidates: { value: teams.candidates.bind(teams) },
   });
   const sharing = new HubSharingService(core);
+  const personal=personalFactory?.(core);
+  if(personal)Object.defineProperty(mountedDeps,"personal",{value:personal.turns});
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
   const grantSearch = new HubGrantSearch(core);
   const rooms = new HubRoomsService(core, policy);
@@ -202,6 +205,29 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       try { return await work(); } catch (e) { if (e instanceof HubProtocolError && e.code === "revoked" && !sessions.session(ctx.token)) throw new SignedOut(); throw e; }
     };
     const m = (re: RegExp) => re.exec(path);
+    if(path==="/hub/v1/admin/personal-agents"){
+      if(!personal)throw new HttpError(404,"not-found");
+      if(query.size)throw new HubProtocolError("invalid");
+      if(method!=="GET"&&method!=="PUT")throw new HttpError(405,"method");
+      if(method==="PUT")csrf();else signedIn();
+      const input=method==="PUT"?await body():undefined;
+      return send(res,200,await guard(()=>personal.owner.settings(ctx,input)));
+    }
+    if(path==="/hub/v1/me/personal-agent"||path==="/hub/v1/me/personal-agent/enrollment"){
+      if(!personal)throw new HttpError(404,"not-found");
+      if(query.size)throw new HubProtocolError("invalid");
+      if(path.endsWith("/enrollment")){
+        if(method!=="POST")throw new HttpError(405,"method");csrf();const input=await body();
+        const installer=deps.personalInstaller?.();
+        const enrollment=await guard(()=>personal.owner.enrollment(ctx,input));
+        return send(res,200,{...enrollment,...(installer?{installer,server:deps.config.webOrigin}:{} )});
+      }
+      if(method==="GET"){signedIn();return send(res,200,await guard(()=>personal.owner.view(ctx)));}
+      if(method==="DELETE"){csrf();const input=await body();const result=await guard(()=>personal.owner.disconnect(ctx,input));personal.turns.wake();return send(res,200,result);}
+      if(method!=="PUT")throw new HttpError(405,"method");csrf();const input=await body();
+      const exposure=await guard(()=>personal.owner.publish(ctx,input));groupRooms.agents.publicationChanged(undefined,exposure.id);
+      personal.turns.wake();return send(res,200,{exposure});
+    }
     if (path === "/hub/v1/me/fleets") {
       if (method !== "GET") throw new HttpError(405, "method");
       if (query.size) throw new HubProtocolError("invalid");
@@ -215,7 +241,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       });
     }
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = ["admin-dashboard-v1", "rooms-v1", "person-prefs-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    const offered = ["admin-dashboard-v1", "rooms-v1", "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     offered.push("mcp-apps-v1");
@@ -1023,6 +1049,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     t.unref?.();
   }
 
+  personal?.turns.start({direct:rooms.personalQuestions(id=>directChanged(id,true)),room:groupRooms.agents.personalQuestions()});
   rooms.buttons.start(); groupRooms.agents.wake(); groupRooms.assistant.start();
   return {
     directorySessions: Object.freeze({
@@ -1030,8 +1057,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => fleetVersions.connected(link), memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, "person-prefs-v1", ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => fleetVersions.connected(link), memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
-    async close() { closed = true; fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
+    async close() { closed = true; personal?.owner.close(); await personal?.turns.close(); fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

@@ -1,0 +1,222 @@
+{
+  "reviewedBase": "2119f5cda8394395a8aa6bddb5f88104e2e352ad",
+  "reviewedHead": "680ddaefda8f5d31805d9c674aeed685fe619217",
+  "newBase": "47701428f95a15035d6e0ff567c57f6fb17dde56",
+  "syncHead": "da410bac843c7b0aefa5e55395c6aa23742586bb",
+  "conflict": "Adjacent import blocks in compose/server.ts; both retained",
+  "localRerun": false,
+  "paths": [
+    {
+      "path": "docs/design/hub-personal-host.md",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "docs/design/hub-personal-owner-model.md",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/admin-dashboard.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/buttons.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/client.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/group-policy/admin-inventory.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/member/room-mention-feedback.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/member/room-notification.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/member/room-post-answers.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/member/room-post.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/personal/owner-host.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/personal/refusals.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/personal/runtime-host.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/personal/schema.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/personal/turns.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/personal/types.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/policy.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/roles/cutover-inventory.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/room-mention-feedback-model.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/rooms.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/rooms/agents.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/rooms/direct-view.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/server.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/types.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/runtime-install.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "templates/runtime-install/install.ps1",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-compose-member.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-personal-http-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-personal-owner-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-personal-runtime-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-personal-schema-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-personal-turns-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-roles-cutover-m3010.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-room-ask-track-c.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-room-feedback-protocol-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-room-mention-feedback-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-room-post-fleet.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-rooms-migration-r1.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-sharing-pause-migration.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/runtime-install-script.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/support/hub-role-cutover-plan.ts",
+      "ownLinesUnchanged": true
+    }
+  ]
+}

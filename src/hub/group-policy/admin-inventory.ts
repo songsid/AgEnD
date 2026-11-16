@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { exposureOf, readExposure } from "../catalog.js";
 import { personKeyString } from "../identity.js";
 import type { HubTransportStore } from "../store.js";
-import type { PersonKey } from "../types.js";
+import type { HubPersonalExposure,PersonKey } from "../types.js";
 import { parseStrictJson } from "../validation.js";
 import { parseHubGroupResource, parseStoredHubGroupResource, type HubGroupResource, type HubGroupResourceView } from "./resources.js";
 import { HubGroupPolicyError } from "./store.js";
@@ -16,7 +16,8 @@ export interface HubGroupInventoryItem {
   readonly fingerprint: string;
   readonly display: GroupImpactResource;
 }
-export function createHubGroupAdminInventory(options: { db: Database.Database; transport: Pick<HubTransportStore, "read">; realm: string }) {
+export function createHubGroupAdminInventory(options: { db: Database.Database; transport: Pick<HubTransportStore, "read">; realm: string;
+  personalSource?(exposure:HubPersonalExposure):unknown|null }) {
   const { db, transport, realm } = options;
   const ledger = (input: GroupResumeRequest["resource"]): HubGroupResourceView | null => {
     const raw = db.prepare("SELECT body,source,state,revision FROM hub_group_resources WHERE resource_key=?")
@@ -38,10 +39,16 @@ export function createHubGroupAdminInventory(options: { db: Database.Database; t
       resource = parseHubGroupResource({ ...input, owner: fleet.owner }); material = fleet;
     } else if (input.kind === "exposure") {
       const raw = readExposure(db, input.id); if (!raw) return null;
-      const exposure = exposureOf(raw), fleet = transport.read().fleets.find(f => f.id === exposure.fleetId);
-      if (!["published", "paused"].includes(exposure.state) || exposure.revision !== input.revision || !fleet || fleet.status !== "active" || !fleet.credentialHash
-        || personKeyString(fleet.owner) !== personKeyString(exposure.owner)) return null;
-      resource = parseHubGroupResource({ ...input, owner: exposure.owner }); material = { exposure, fleet }; label = exposure.displayName;
+      const exposure = exposureOf(raw);
+      if (!["published", "paused"].includes(exposure.state) || exposure.revision !== input.revision)return null;
+      if(exposure.kind==="personal"){
+        material=options.personalSource?.(exposure);if(!material)return null;
+      }else{
+        const fleet=transport.read().fleets.find(f => f.id === exposure.fleetId);
+        if(!fleet||fleet.status!=="active"||!fleet.credentialHash||personKeyString(fleet.owner)!==personKeyString(exposure.owner))return null;
+        material={exposure,fleet};
+      }
+      resource = parseHubGroupResource({ ...input, owner: exposure.owner }); label = exposure.displayName;
     } else {
       // Asker provenance can only have been registered for this canonical immutable person.
       const row = ledger(input); if (!row || input.revision !== 1 || row.resource.owner.objectId !== input.id) return null;

@@ -1,5 +1,6 @@
 /** Strict P1 frame schemas; importing this file creates no state, sockets or timers. */
 import { z } from "zod";
+import {roomMentionFeedbackSchema} from "./room-mention-feedback-model.js";
 import { roomContextStateSchema, roomContextRequestSchema, roomContextInputSchema, roomContextResultSchema, roomContextInputResultSchema } from "./room-context-model.js";
 export { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 import { fleetUpdateRequestSchema, fleetUpdateCancelSchema, fleetUpdateStatusSchema, fleetUpdateStatusAckSchema } from "./fleet-update-model.js";
@@ -91,8 +92,8 @@ export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roo
   asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), contextState: roomContextStateSchema.optional(), context: z.array(roomContextSchema).max(31)
     .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1), attachments: attachmentList.optional() });
 export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
-  buttons: answerButtonsSchema.optional(), attachments: attachmentList.optional() });
-export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
+  buttons: answerButtonsSchema.optional(), attachments: attachmentList.optional(),mentionFeedback:z.literal(true).optional() });
+export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid,mentionRefusals:roomMentionFeedbackSchema.optional() });
 /** M-3127 (room-answer-buttons-v1): `messageId` is the delivery (the question as the agent got it); "" takes the agent's reaction back. */
 export const roomReactSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, emoji: z.string().max(16) });
 export const roomReactResultSchema = z.strictObject({ messageId: uuid, ok: z.boolean(), code: z.enum(["invalid", "denied", "not-found", "archived", "revoked"]).optional() });
@@ -104,9 +105,9 @@ export const roomListResultSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(false), exposureId: uuid, code: roomPostRefusalCode, retryAt: epoch.optional() }),
 ]);
 export const roomPostSchema = z.strictObject({ exposureId: uuid, room: plain(128).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s)),
-  text: plain(HUB_LIMITS.question).refine(s => s.trim().length > 0), idempotencyKey: uuid, onBehalfOf: z.strictObject({ receiptId: z.string().regex(/^hmsg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).transform(s => s.toLowerCase()) }).optional() });
+  text: plain(HUB_LIMITS.question).refine(s => s.trim().length > 0), idempotencyKey: uuid, onBehalfOf: z.strictObject({ receiptId: z.string().regex(/^hmsg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).transform(s => s.toLowerCase()) }).optional(),mentionFeedback:z.literal(true).optional() });
 export const roomPostResultSchema = z.discriminatedUnion("ok", [
-  z.strictObject({ ok: z.literal(true), roomId: uuid, messageId: uuid, at: epoch }),
+  z.strictObject({ ok: z.literal(true), roomId: uuid, messageId: uuid, at: epoch,mentionRefusals:roomMentionFeedbackSchema.optional() }),
   z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),
 ]);
 

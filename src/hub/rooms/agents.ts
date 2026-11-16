@@ -14,6 +14,9 @@ import { RoomContextCursor } from "./context-cursor.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY, roomContextRequestSchema, roomContextInputSchema,
   type HubRoomContextRequest, type HubRoomContextInput, type HubRoomContextResult, type HubRoomContextInputResult } from "../room-context-model.js";
 import type { RoomEvent, RoomMessage } from "./types.js";
+import type { PersonalQuestionAdapter } from "../personal/types.js";
+import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-model.js";
+import {personalMentionRefusals} from "../personal/refusals.js";
 
 type DB = Database.Database;
 export interface RoomPostRow {
@@ -22,7 +25,7 @@ export interface RoomPostRow {
   answer_to?: string | null; delivery_id?: string | null; stage?: RoomMessage["stage"] | null;
 }
 interface Delivery {
-  id: string; room_id: string; parent_id: string; reply_id: string; exposure_id: string; exposure_revision: number; fleet_id: string; owner: string;
+  id: string; room_id: string; parent_id: string; reply_id: string; exposure_id: string; exposure_revision: number; fleet_id: string|null; owner: string;
   asker: string; asker_member: string; agent_member: string; payload_ref: string; payload_digest: string;
   state: "queued" | "sent" | "answered" | "retired" | "expired"; sent_epoch: number; last_sent_at: number; created_at: number; expires_at: number;
   answer_id: string | null; answer_digest: string | null;
@@ -67,6 +70,7 @@ export class HubRoomAgents {
       if (!row) return { presence: "offline" as const };
       const e = exposureOf(row), link = e.fleetId?this.links.get(e.fleetId):undefined;
       if (e.state !== "published") return { presence: "paused" as const, presenceReason: "operator" as const };
+      if(e.kind==="personal")return {presence:this.core.deps.personal?.presence(exposureId)??"offline" as const};
       if (!link?.current()) return { presence: "offline" as const };
       if (!this.supports(link)) return { presence: "offline" as const, presenceReason: "update" as const };
       const state = this.states.get(exposureId);
@@ -129,7 +133,9 @@ export class HubRoomAgents {
     return {...body,ok,...(!ok ? {code:"stale" as const} : {})};
   }
   progress(db: DB, parentId: string): RoomMessage["ask"] {
-    const rows = db.prepare("SELECT state,COUNT(*) AS n FROM hub_room_deliveries WHERE parent_id=? GROUP BY state").all(parentId) as { state: Delivery["state"]; n: number }[];
+    const rows = (this.core.deps.personal
+      ? db.prepare("SELECT CASE WHEN d.state='queued' AND j.state='working' THEN 'sent' ELSE d.state END state,COUNT(*) n FROM hub_room_deliveries d LEFT JOIN hub_personal_jobs j ON j.room_delivery_id=d.id WHERE d.parent_id=? GROUP BY 1").all(parentId)
+      : db.prepare("SELECT state,COUNT(*) AS n FROM hub_room_deliveries WHERE parent_id=? GROUP BY state").all(parentId)) as { state: Delivery["state"]; n: number }[];
     if (!rows.length) return undefined;
     const n = (state: Delivery["state"]) => rows.find(r => r.state === state)?.n ?? 0;
     const total = rows.reduce((v, r) => v + r.n, 0), failed = n("expired"), blocked = n("retired");
@@ -147,9 +153,14 @@ export class HubRoomAgents {
     if (!mentions.length) return;
     const room = db.prepare("SELECT name FROM hub_group_rooms WHERE id=?").get(parent.room_id) as { name: string };
     const agents = db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent'").all(parent.room_id) as Member[];
-    const selected = agents.filter(m => mentions.includes("all") || mentions.includes(m.subject));
     const operation = db.prepare("SELECT exposure_id,receipt_id FROM hub_room_agent_operations WHERE post_id=?").get(parent.id) as { exposure_id: string; receipt_id: string | null } | undefined;
     const source = parent.author_kind === "agent" || operation ? readExposure(db, operation?.exposure_id ?? parent.author_id) : undefined;
+    const selected = agents.filter(m => {
+      const e=readExposure(db,m.subject);
+      // Refusals have no target delivery, placeholder or question statistic.
+      if(e?.source_kind==="personal")return mentions.includes(m.subject)&&(!source||!!operation?.receipt_id);
+      return mentions.includes("all")||mentions.includes(m.subject);
+    });
     const people = db.prepare("SELECT id,subject FROM hub_room_members WHERE room_id=? AND kind='person'").all(parent.room_id) as { id: string; subject: string }[];
     if (mentions.some(m => m !== "all" && !agents.some(a => a.subject === m) && !people.some(p => p.id === m || p.subject === m))) throw new HubProtocolError("invalid");
     if ((db.prepare("SELECT COUNT(*) AS n FROM hub_room_deliveries WHERE state IN ('queued','sent')").get() as { n: number }).n + selected.length > 4096) throw new HubProtocolError("backpressure");
@@ -158,10 +169,8 @@ export class HubRoomAgents {
     for (const m of selected) {
       const e = readExposure(db, m.subject);
       if (!e || e.owner !== m.owner_at_join) throw new HubProtocolError("revoked");
-      // Personal sources are handed to their own adapter, never the Fleet transport below.
-      if(e.fleet_id===null)throw new HubProtocolError("unavailable");
       if (this.automation.lineage(db, parent).audience_sequence < m.joined_sequence) continue;
-      const link=this.links.get(e.fleet_id);
+      const link=e.fleet_id?this.links.get(e.fleet_id):undefined;
       const contextState=link?.current() && link.features.has(HUB_ROOM_CONTEXT_CAPABILITY)
         ? new RoomContextCursor(db).snapshot(parent.room_id,e.id,JSON.stringify([e.fleet_id,e.owner]),parent.sequence,link.linkEpoch) : null;
       const context = roomContext(this.core, db, parent, Math.max(m.joined_sequence, sourceMember.joined_sequence),contextState?.after);
@@ -183,6 +192,10 @@ export class HubRoomAgents {
           payloadRef, digest(bytes), now, now + 24 * 60 * 60_000, source?.id ?? null, source?.revision ?? null, source?.fleet_id ?? null, operation?.receipt_id ? 1 : 0);
       if (contextState) db.prepare("UPDATE hub_room_deliveries SET context_generation=? WHERE id=?").run(contextState.generation,id);
       this.automation.child(db, parent, replyId, e.id);
+      const projected=exposureOf(e);
+      if(projected.kind==="personal"){
+        const port=this.core.deps.personal;if(!port)throw new HubProtocolError("unavailable");port.enqueue(db,projected,{room:id});
+      }
     }
   }
   publishQueued(parentId: string): void {
@@ -272,9 +285,10 @@ export class HubRoomAgents {
   }
   wake(): void {
     if (!this.live()) return;
+    this.core.deps.personal?.wake();
     this.sweep();
     const targets = this.core.atomic(db => ({
-      fleets: db.prepare("SELECT DISTINCT fleet_id FROM hub_room_deliveries WHERE state IN ('queued','sent')").all() as { fleet_id: string }[],
+      fleets: db.prepare("SELECT DISTINCT fleet_id FROM hub_room_deliveries WHERE fleet_id IS NOT NULL AND state IN ('queued','sent')").all() as { fleet_id: string }[],
       deadline: (db.prepare("SELECT MIN(expires_at) at FROM hub_room_deliveries WHERE state IN ('queued','sent')").get() as { at: number | null }).at,
     }));
     let retry = false;
@@ -346,13 +360,18 @@ export class HubRoomAgents {
     return true;
   }
   async answer(input: HubRoomAnswer, link: HubLinkContext): Promise<HubRoomAnswerAck> {
-    const body = validated(roomAnswerSchema, input), hash = digest(JSON.stringify(body));
+    const body = validated(roomAnswerSchema, input),{mentionFeedback:_feedback,...answer}=body,hash = digest(JSON.stringify(answer));
     if (!this.supports(link) || body.buttons && !link.features.has(HUB_ROOM_BUTTONS_CAPABILITY) || body.attachments && !roomFilesNegotiated(link.features)) throw new HubProtocolError("incompatible");
+    if(body.mentionFeedback&&!link.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))throw new HubProtocolError("incompatible");
     const d = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(body.messageId) as Delivery | undefined);
     if (!d || d.fleet_id !== link.fleetId || d.owner !== personKeyString(link.owner) || body.roomId !== d.room_id || body.exposureId !== d.exposure_id || !d.sent_epoch) throw new HubProtocolError("denied");
+    const ack=():HubRoomAnswerAck=>{
+      const value=body.mentionFeedback&&link.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)?personalMentionRefusals(this.core,d.reply_id,d.exposure_id):undefined;
+      return {messageId:d.id,answerId:body.answerId,...(value?{mentionRefusals:value}:{})};
+    };
     if (d.answer_id) {
       if (d.answer_id !== body.answerId || d.answer_digest !== hash) throw new HubProtocolError("conflict");
-      return { messageId: d.id, answerId: body.answerId };
+      return ack();
     }
     const terminal = this.core.atomic(db => !pending(d) || !this.valid(db, d) || this.core.now() >= d.expires_at);
     if (terminal) {
@@ -363,7 +382,7 @@ export class HubRoomAgents {
         db.prepare("UPDATE hub_room_deliveries SET state='retired',answer_id=?,answer_digest=? WHERE id=?").run(body.answerId, hash, d.id);
         db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id);
       });
-      this.update(d); return { messageId: d.id, answerId: body.answerId };
+      this.update(d); return ack();
     }
     const permit = await this.permission(d, link);
     if (!await this.core.eligible(personFromString(d.asker)) || !await this.core.eligible(personFromString(d.owner))) throw new HubProtocolError("unavailable");
@@ -382,12 +401,56 @@ export class HubRoomAgents {
         // M-3125: the answer's staged files bind to its post in this same audited transaction (a refusal undoes the answer).
         if (body.attachments) { const store = this.core.deps.attachments; if (!store) throw new HubProtocolError("incompatible");
           store.bindAnswer(db, body.attachments, d.reply_id, d.room_id, link.fleetId); }
-        this.core.audit(tx, { requestId: d.id, actor: { kind: "person", person: link.owner }, action: "room.answer", result: "completed", roomId: d.room_id, messageId: d.reply_id, exposureId: d.exposure_id, fleetId: d.fleet_id, contentRef: answerRef });
+        this.core.audit(tx, { requestId: d.id, actor: { kind: "person", person: link.owner }, action: "room.answer", result: "completed", roomId: d.room_id, messageId: d.reply_id, exposureId: d.exposure_id, fleetId: link.fleetId, contentRef: answerRef });
         if (body.buttons) this.onAnswerButtons?.(db, tx, current, body.buttons);
         this.onAgentMessage(db, tx, db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(d.reply_id) as RoomPostRow);
       } else db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id);
     }, permit);
-    this.update(d); this.committed(d.reply_id); this.wake(); return { messageId: d.id, answerId: body.answerId };
+    this.update(d); this.committed(d.reply_id); this.wake(); return ack();
+  }
+  personalQuestions():PersonalQuestionAdapter {
+    return {
+      prepare:async job=>{
+        const d=this.core.atomic(db=>db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(job.room_delivery_id!) as Delivery|undefined);
+        if(!d||d.id!==job.id||d.fleet_id!==null)throw new HubProtocolError("not-found");
+        if(!await this.core.eligible(personFromString(d.asker))||!await this.core.eligible(personFromString(d.owner)))throw new HubProtocolError("revoked");
+        const ctx={requestId:d.id,current:()=>this.live()};
+        const target=await this.core.groupExposure(d.exposure_id,personFromString(d.asker),ctx);
+        const source=d.source_exposure_id?await this.core.groupExposure(d.source_exposure_id,null,ctx):undefined;
+        const permit={assertCurrent:()=>{target.assertCurrent();source?.assertCurrent();}};
+        return this.core.atomic(db=>{
+          const current=db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(d.id) as Delivery|undefined;
+          if(!current||!pending(current)||!this.valid(db,current)||!this.sourcePublished(db,current)||this.core.now()>=current.expires_at)throw new HubProtocolError("revoked");
+          if(current.source_exposure_id&&!current.on_behalf)throw new HubProtocolError("denied");
+          const e=readExposure(db,current.exposure_id);
+          if(e?.personal_agent_id!==job.personal_agent_id)throw new HubProtocolError("revoked");
+          const bytes=this.core.deps.content.get(current.payload_ref)?.question;
+          if(!bytes||digest(bytes)!==current.payload_digest)throw new HubProtocolError("expired");
+          const ask=validated(roomAskSchema,JSON.parse(bytes));
+          const prompt=trim(JSON.stringify({room:ask.roomName,question:ask.text,context:ask.context}),48*1024);
+          return {prompt,permit};
+        },permit);
+      },
+      settle:(db,tx,job,outcome)=>{
+        const d=db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(job.room_delivery_id!) as Delivery|undefined;
+        if(!d||d.id!==job.id||d.fleet_id!==null)throw new HubProtocolError("not-found");
+        if(!pending(d)){if("text" in outcome)throw new HubProtocolError("revoked");return;}
+        const success="text" in outcome,now=this.core.now();
+        if(success&&(!this.valid(db,d)||!this.sourcePublished(db,d)||now>=d.expires_at))throw new HubProtocolError("revoked");
+        db.prepare("UPDATE hub_room_deliveries SET state=?,answer_id=?,answered_at=CASE WHEN ? THEN COALESCE(answered_at,?) ELSE answered_at END WHERE id=?")
+          .run(success?"answered":"expired",success?job.id:null,success?1:0,now,d.id);
+        let ref:string|undefined;
+        if(success){
+          ref=this.core.deps.content.put(tx,{question:outcome.text});
+          const seq=(db.prepare("SELECT COALESCE(MAX(sequence),0)+1 n FROM hub_room_posts WHERE room_id=?").get(d.room_id) as {n:number}).n;
+          db.prepare("UPDATE hub_room_posts SET content_ref=?,stage='answered',sequence=?,created_at=? WHERE id=?").run(ref,seq,now,d.reply_id);
+        }else db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id);
+        this.core.audit(tx,{requestId:job.id,actor:{kind:"person",person:personFromString(job.owner)},action:"personal.room-answer",result:success?"completed":"held",
+          roomId:d.room_id,messageId:d.reply_id,exposureId:d.exposure_id,...(ref?{contentRef:ref}:{}),...(success?{}:{reasonCode:outcome.reason})});
+        // Personal answers deliberately never enter onAgentMessage: they cannot start another agent ask.
+      },
+      changed:job=>{const d=this.core.atomic(db=>db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(job.room_delivery_id!) as Delivery|undefined);if(d)this.update(d);},
+    };
   }
   async close(): Promise<void> {
     this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = null;

@@ -51,10 +51,11 @@ function defaultTemplate(): string {
   return bytes.toString("utf8");
 }
 /** Stamps the validated version and bundle hash into the template; an unvalidated value never reaches the script. */
-export function renderRuntimeInstallScript(template: string, bundle: Pick<RuntimeBundle, "version" | "sha256">): string {
+export function renderRuntimeInstallScript(template: string, bundle: Pick<RuntimeBundle, "version" | "sha256">, personal = false): string {
   if (!VERSION.test(bundle.version) || !SHA256.test(bundle.sha256)) throw new Error("Invalid runtime bundle identity");
   if (!template.includes(RUNTIME_INSTALL_VERSION_TOKEN) || !template.includes(RUNTIME_INSTALL_SHA256_TOKEN)) throw new Error("Runtime installer template has no placeholders");
-  const script = template.replaceAll(RUNTIME_INSTALL_VERSION_TOKEN, bundle.version).replaceAll(RUNTIME_INSTALL_SHA256_TOKEN, bundle.sha256);
+  if(personal&&!template.includes("@@AGEND_RUNTIME_PERSONAL@@"))throw new Error("Personal Runtime installer template has no mode placeholder");
+  const script = template.replaceAll(RUNTIME_INSTALL_VERSION_TOKEN, bundle.version).replaceAll(RUNTIME_INSTALL_SHA256_TOKEN, bundle.sha256).replaceAll("@@AGEND_RUNTIME_PERSONAL@@", personal ? "$true" : "$false");
   if (/@@AGEND_RUNTIME_/.test(script) || Buffer.byteLength(script) > RUNTIME_INSTALL_MAX_SCRIPT_BYTES) throw new Error("Runtime installer script is invalid");
   return script;
 }
@@ -71,6 +72,8 @@ function answer(res: ServerResponse, status: number, body: unknown, headers: Rec
 export interface RuntimeInstallOptions {
   /** A separate Hub mount owns its opt-in; omitted preserves the Fleet's existing remote Runtime switch. */
   enabled?: () => boolean;
+  /** Static dedicated Hub installer; never inferred from caller input. */
+  personal?: boolean;
   /** Tests substitute fixtures; production builds the real bundle from this installation's compiled modules. */
   bundle?: () => RuntimeBundle;
   template?: () => string;
@@ -119,7 +122,7 @@ export class RuntimeInstallService {
     if (this.files) return this.files;
     const bundle = (this.options.bundle ?? createRuntimeBundle)();
     if (!bundle.bytes.length || bundle.bytes.length > RUNTIME_MAX_ARCHIVE_BYTES) throw new Error("Runtime bundle exceeded its archive size limit");
-    const script = Buffer.from(renderRuntimeInstallScript((this.options.template ?? defaultTemplate)(), bundle), "utf8");
+    const script = Buffer.from(renderRuntimeInstallScript((this.options.template ?? defaultTemplate)(), bundle, this.options.personal), "utf8");
     const metadata = Buffer.from(JSON.stringify({ version: bundle.version, sha256: bundle.sha256, bytes: bundle.bytes.length }) + "\n");
     return this.files = { bundle, metadata, script, scriptSha256: sha256(script), etag: `"${bundle.version}-${bundle.sha256}"` };
   }

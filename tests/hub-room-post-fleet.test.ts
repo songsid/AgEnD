@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { HubRoomPostAdapter, type RoomIdentity, type RoomPostLink } from "../src/hub/member/room-post.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
 import { TOOLS } from "../src/channel/mcp-tools.js";
+import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../src/hub/room-mention-feedback-model.js";
 
 const dbs: Database.Database[] = [];
 afterEach(() => { for (const db of dbs.splice(0)) db.close(); });
@@ -24,6 +25,15 @@ function fixture() {
     replace: () => { local = { ...local!, token: "replacement-token" }; }, withdraw: () => { local = null; },
     stop: () => { current = false; }, retireCaller: () => { callerCurrent = false; } };
 }
+it("recovers a cached post result's exact feedback without sending a new operation",async()=>{
+  const h=fixture(),value={id:randomUUID(),refusals:[{code:"personal-people-only" as const,name:"Private notes"}]},feedback=vi.fn(()=>false);
+  const adapter=new HubRoomPostAdapter({...h.options,feedback}),link={...h.link,features:new Set([...h.link.features,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY]),
+    post:vi.fn(async()=>({ok:true as const,roomId:h.roomId,messageId:h.messageId,at:1000,mentionRefusals:value}))};adapter.connected(link);
+  const input={room:h.roomId,text:"Ask @Private notes",operationId:randomUUID()};
+  expect(await adapter.post(h.caller,input)).toMatchObject({ok:false,code:"uncertain"});feedback.mockReturnValue(true);
+  expect(await adapter.post(h.caller,input)).toMatchObject({ok:true,messageId:h.messageId});expect(link.post).toHaveBeenCalledTimes(1);
+  expect(feedback).toHaveBeenLastCalledWith(value,expect.objectContaining({agent:"agent-A",exposureId:expect.any(String),token:"owned-token"}),`post:${input.operationId}:${h.messageId}`);adapter.close();
+});
 it("offers the two MCP schemas and actual outbound handlers without caller identity arguments", () => {
   for (const name of ["hub_room_list", "hub_room_post"]) {
     const tool = TOOLS.find(t => t.name === name); expect(tool).toBeDefined();

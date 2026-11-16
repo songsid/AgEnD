@@ -24,7 +24,7 @@ export const TERMINAL = new Set(["rejected", "cancelled", "failed"]);
 const POSITIVE = ["delivered", "consumed", "answered"];
 
 export interface MessageRow {
-  id: string; room_id: string; idempotency_key: string; sequence: number; fleet_id: string; exposure_id: string; exposure_revision: number;
+  id: string; room_id: string; idempotency_key: string; sequence: number; fleet_id: string|null; exposure_id: string; exposure_revision: number;
   grant_id: string; grant_revision: number; asker: string; owner: string; content_digest: string; question_ref: string;
   stage: string; member_sequence: number; reason_code: string | null; stage_at: number; sent_epoch: number;
   answer_id: string | null; answer_digest: string | null; answer_ref: string | null; created_at: number; expires_at: number;

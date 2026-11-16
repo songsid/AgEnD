@@ -60,6 +60,8 @@
     # Pinned by the AgEnD server that serves this file: the version and the SHA-256 of the one archive it serves.
     $pinnedVersion = '@@AGEND_RUNTIME_VERSION@@'
     $pinnedSha256 = '@@AGEND_RUNTIME_SHA256@@'
+    $personalMode = @@AGEND_RUNTIME_PERSONAL@@
+    $personalFolder = $null; $personalProfile = $null
     $maxArchiveBytes = 16MB
 
     function Write-Step([string]$text) { Write-Host ('AgEnD Runtime: ' + $text) }
@@ -371,6 +373,9 @@
         'if not "%AGEND_EXIT%"=="0" (', '  echo AgEnD Runtime stopped or could not connect. Read the message above for what to do next.', ') else (', '  echo Done. Read the message above: a Runtime that was started keeps running in the background after this window closes.', ')',
         'pause', '') -join "`r`n"
 
+    if ($personalMode) {
+        $connectBatText = $connectBatText.Replace(' connect --connection-dir "%~dp0."', ' connect --connection-dir "%~dp0." --profile "%~dp0profile" --personal-folder "%USERPROFILE%\Hub agent"')
+    }
     $tmp = $null; $installLock = $null
     $doConnect = $false; $connectDir = $null; $cliJs = $null; $restartCli = $null
     # Tracked apart: the restart below runs only after an installation that finished (the end of the try block was reached) and whose lock was released and confirmed.
@@ -427,6 +432,12 @@
         }
 
         $root = [string]$env:AGEND_RUNTIME_INSTALL_DIR
+        if ($personalMode) {
+            if (-not $env:LOCALAPPDATA -or -not $env:USERPROFILE) { throw 'LOCALAPPDATA and USERPROFILE are required for a personal Runtime.' }
+            $root = Join-Path $env:LOCALAPPDATA 'agend-personal-runtime'
+            $personalFolder = Join-Path $env:USERPROFILE 'Hub agent'
+            $null = New-Item -ItemType Directory -Path $personalFolder -Force; Assert-AgendDirectory $personalFolder
+        }
         if ($root -ne '') {
             # A folder you chose: it must be a full path on a drive, never a relative, UNC or control-character path.
             if ($root -notmatch '\A[A-Za-z]:[\\/]' -or $root -match '[\x00-\x1f\x7f]') { throw 'AGEND_RUNTIME_INSTALL_DIR must be a full path on a drive, for example D:\agend.' }
@@ -502,7 +513,7 @@
         if ($others.Count -gt 0) { Write-Step ('earlier versions are kept where they are (' + ($others -join ', ') + '). This installer never removes a version; clearing old ones comes later, with the update and uninstall commands.') }
 
         $onPath = $false
-        if ([string]$env:AGEND_RUNTIME_NO_PATH -eq '1' -or [string]$env:AGEND_RUNTIME_REPAIR -eq '1') {
+        if ($personalMode -or [string]$env:AGEND_RUNTIME_NO_PATH -eq '1' -or [string]$env:AGEND_RUNTIME_REPAIR -eq '1') {
             Write-Step 'your PATH was not changed.'
         } else {
             if (Add-UserPathEntry $bin) { Write-Step ('added ' + $bin + ' to your user PATH.') } else { Write-Step ($bin + ' is already on your user PATH.') }
@@ -520,7 +531,7 @@
             catch { Write-Host ('AgEnD Runtime: warning: the reconnect entry was not written (' + $_.Exception.Message + '). The Runtime is installed; connect with the command shown below.') -ForegroundColor Yellow }
         }
         $connectBat = $null
-        if ($connectDir) { $connectBat = Join-Path $connectDir 'connect-agend.bat' }
+        if ($connectDir) { $connectBat = Join-Path $connectDir 'connect-agend.bat'; if ($personalMode) { $personalProfile = Join-Path $connectDir 'profile' } }
         $noConnect = Test-AgendSwitch $agendNoConnect
         $mode = Get-AgendConnectMode $repair $noConnect (Test-AgendInteractive) ([bool]$connectDir) ([bool]$enrollToken)
 
@@ -573,7 +584,11 @@
         try {
             $ErrorActionPreference = 'Continue'
             Write-Step 'restarting any Runtime that runs in the background so it uses this version.'
-            & $nodeExe $restartCli restart --all
+            if ($personalMode) {
+                if ($personalProfile) { & $nodeExe $restartCli restart --profile $personalProfile }
+            } else {
+                & $nodeExe $restartCli restart --all
+            }
             if ($LASTEXITCODE -ne 0) { Write-Host 'AgEnD Runtime: warning: a background Runtime could not be restarted (see above). Run agend-runtime restart --all, or agend-runtime stop and agend-runtime start, when it is idle.' -ForegroundColor Yellow }
         } catch {
             Write-Host ('AgEnD Runtime: warning: could not restart a background Runtime: ' + $_.Exception.Message) -ForegroundColor Yellow
@@ -591,6 +606,10 @@
             $ErrorActionPreference = 'Continue'
             $foreground = Test-AgendSwitch $agendForeground
             $connectExtra = @(); if ($foreground) { $connectExtra = @('--foreground') }
+            if ($personalMode) {
+                if (-not $personalProfile -or -not $personalFolder) { throw 'Personal Runtime profile or shared folder is missing.' }
+                $connectExtra += @('--profile', $personalProfile, '--personal-folder', $personalFolder)
+            }
             Write-Host ''
             if ($enrollToken) {
                 if ($foreground) { $stays = 'The Runtime stays running in this window until you press Ctrl+C ($agendForeground is set; an AI agent or script that must not wait for it should start this command as its own background process).' }

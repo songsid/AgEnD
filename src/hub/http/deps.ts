@@ -32,6 +32,15 @@ export interface HubContentStore {
 }
 export interface HubHttpDeps {
   roleAdmin?: import("../roles/admin-types.js").RoleAdminControl;
+  /** Mount-local personal execution adapter; absent leaves personal sources unusable. */
+  personal?: import("../personal/types.js").HubPersonalPort;
+  /** The immutable personal-mode installer advertised by the mounted Hub. */
+  personalInstaller?(): import("../../runtime-install.js").RuntimeInstallerInfo;
+  /** One Hub-owned coordinator supplies the owner model and turn adapter. Never set by a browser request. */
+  personalAgents?(core: import("./core.js").HubCore): {
+    owner: import("../personal/owner-host.js").HubPersonalOwnerHost;
+    turns: import("../personal/turns.js").HubPersonalTurns;
+  };
   versionRegistry?: import("../published-version.js").PublishedVersionLookup;
   /** One mount-local Team service supplies routes, live permission reads and snapshot pickers. */
   teams?(core: import("./core.js").HubCore): import("../teams/types.js").HubTeams;

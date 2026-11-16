@@ -31,10 +31,10 @@ describe("install.ps1 template", () => {
     expect(code.trimEnd().endsWith("}")).toBe(true);
     expect(Buffer.byteLength(template)).toBeLessThan(RUNTIME_INSTALL_MAX_SCRIPT_BYTES);
   });
-  it("has exactly one placeholder each for the pinned version and the pinned checksum, and nothing else the server fills in", () => {
+  it("has only validated build placeholders and the static personal-mode choice", () => {
     expect(template.split(RUNTIME_INSTALL_VERSION_TOKEN)).toHaveLength(2);
     expect(template.split(RUNTIME_INSTALL_SHA256_TOKEN)).toHaveLength(2);
-    expect(template.match(/@@[A-Z0-9_]+@@/g)!.sort()).toEqual([RUNTIME_INSTALL_SHA256_TOKEN, RUNTIME_INSTALL_VERSION_TOKEN].sort());
+    expect(template.match(/@@[A-Z0-9_]+@@/g)!.sort()).toEqual([RUNTIME_INSTALL_SHA256_TOKEN, RUNTIME_INSTALL_VERSION_TOKEN,"@@AGEND_RUNTIME_PERSONAL@@"].sort());
     const script = renderRuntimeInstallScript(template, bundle);
     expect(script).toContain(`$pinnedVersion = '${bundle.version}'`); expect(script).toContain(`$pinnedSha256 = '${bundle.sha256}'`);
     expect(script).not.toMatch(/@@/);

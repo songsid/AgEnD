@@ -1,3 +1,4 @@
+import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
 import { WebSocket } from "ws";
@@ -34,6 +35,7 @@ export interface HubClientOptions {
   receiveRecommendations?: boolean;
   /** Explicit opt-in without another hello capability name. */
   roomContext?: boolean;
+  roomMentionFeedback?: boolean;
   fleetInfo?: import("./types.js").HubFleetInfo;
   home: string; hubId: string; memberOrigin: string; current(): boolean;
   /** Must durably reconcile the current revocation version and journal BEFORE returning. No input here. */
@@ -175,12 +177,14 @@ export class HubMemberClient implements HubMemberTransport {
       const canReceiveRecommendation = canReportInfo && !!this.options.fleetInfo && this.options.receiveRecommendations === true && frame.payload.capabilities?.includes(HUB_RECOMMENDATION_CAPABILITY) === true;
       const features = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
       if (this.options.roomContext && features.has(HUB_ROOM_ASK_CAPABILITY) && frame.payload.capabilities?.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
+      if(this.options.roomMentionFeedback&&features.has(HUB_ROOM_ASK_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))features.add(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY);
       if (canReceiveRecommendation) (features as Set<string>).add(HUB_RECOMMENDATION_CAPABILITY);
       const view: HubMemberLink = { profile: structuredClone(profile), linkEpoch: epoch, endpoint, features, get revocationVersion() { return self.revocation; },
         current: () => this.current() && this.link === link && this.view === view && this.epoch === epoch && link.current(),
         send: value => {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
           if ((value.type === "room.context-state" || value.type === "room.context-input") && !features.has(HUB_ROOM_CONTEXT_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
+          if((value.type==="room.answer"||value.type==="room.post")&&value.payload.mentionFeedback&&!features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "fleet.recommendation-ack" && !canReceiveRecommendation) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "fleet.update-status" && !features.has(HUB_FLEET_UPDATE_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "fleet.info" && value.payload.updatesAllowed !== undefined && !features.has(HUB_FLEET_UPDATE_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));

@@ -9,13 +9,12 @@ import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { HubCore } from "../src/hub/http/core.js";
 import { personKeyString } from "../src/hub/identity.js";
 import { HubPersonalOwnerHost } from "../src/hub/personal/owner-host.js";
-import { HUB_PERSONAL_AGENTS_MIGRATION } from "../src/hub/personal/schema.js";
 import { HubProtocolError } from "../src/hub/validation.js";
 import type { HubActor, HubRequestContext, PersonKey } from "../src/hub/types.js";
 const close:(()=>Promise<void>)[]=[];
 afterEach(async()=>{vi.restoreAllMocks();for(const finish of close.splice(0))await finish();});
 async function fixture(){
-  const r=await s3bRig({realAudit:true});HUB_PERSONAL_AGENTS_MIGRATION.up(r.db);
+  const r=await s3bRig({realAudit:true});
   const directory=mkdtempSync(join(tmpdir(),"hub-personal-owner-")),runtime=new RuntimeCoordinator(directory);
   const core=new HubCore(r.httpDeps,r.sql),host=new HubPersonalOwnerHost(core,runtime),a=r.addPerson("alex"),b=r.addPerson("sam");let current=true;
   const ctx=(key:PersonKey):HubRequestContext=>({requestId:randomUUID(),isCurrent:()=>current,
@@ -55,7 +54,19 @@ describe("company-owned personal computer enrollment",()=>{
     const next=await f.host.enrollment(f.ctx(f.a));const latest=f.enroll(next.token,"New computer");
     f.host.close();const recovered=new HubPersonalOwnerHost(f.core,f.runtime);
     expect((await recovered.view(f.ctx(f.a))).computer?.id).toBe(latest.machineId);
-    expect((await recovered.view(f.ctx(f.a))).computer?.id).not.toBe(old.machineId);recovered.close();
+    expect((await recovered.view(f.ctx(f.a))).computer?.id).not.toBe(old.machineId);
+    expect(f.runtime.machine(old.machineId)?.status).toBe("revoked");
+    const lookups=vi.spyOn(f.runtime,"listEnrollments");await recovered.view(f.ctx(f.a));expect(lookups).not.toHaveBeenCalled();recovered.close();
+  });
+  it("retries an unconfirmed retirement even when the in-memory machine is already revoked",async()=>{
+    const f=await fixture();await f.allow();const first=await f.host.enrollment(f.ctx(f.a)),old=f.enroll(first.token);
+    const next=await f.host.enrollment(f.ctx(f.a));f.enroll(next.token);f.host.close();
+    const revoke=f.runtime.revoke.bind(f.runtime);let unconfirmed=true;
+    const calls=vi.spyOn(f.runtime,"revoke").mockImplementation(id=>{const value=revoke(id);if(unconfirmed){unconfirmed=false;throw Error("Retirement save outcome unconfirmed");}return value;});
+    const recovered=new HubPersonalOwnerHost(f.core,f.runtime);await recovered.view(f.ctx(f.a));
+    expect(f.runtime.machine(old.machineId)?.status).toBe("revoked");
+    expect(f.r.db.prepare("SELECT retired_at FROM hub_personal_enrollments WHERE id=?").get(first.id)).toEqual({retired_at:null});
+    await recovered.view(f.ctx(f.a));expect(calls).toHaveBeenCalledTimes(2);recovered.close();
   });
   it("requires the computer's actual check rather than inferring readiness from a version",async()=>{
     const f=await fixture();await f.allow();const issued=await f.host.enrollment(f.ctx(f.a)),joined=f.enroll(issued.token);
