@@ -46,6 +46,8 @@ export interface HubGroupAuthorizationOptions {
   directory?: Pick<HubDirectory, "checkEligibility">;
   /** Current issuer permission before first issuance; exact committed redelivery is checked by its owning service first. */
   management?: Pick<HubManagementAuthority, "requireJoinIssuer">;
+  /** The mounted role shortcut supplies a fresh hub.admin callback; legacy callers remain root-only. */
+  roleAdministrators?:boolean;
 }
 function synchronous(result: unknown): void {
   if (result && typeof (result as { then?: unknown }).then === "function") {
@@ -53,6 +55,7 @@ function synchronous(result: unknown): void {
   }
 }
 export function createHubGroupAuthorization(options: HubGroupAuthorizationOptions) {
+  const roleAdministrators=options.roleAdministrators===true;
   const { db, policy: policyOf, binding: bindingOf, audit, current, version: versionOf,
     advanceAuthorization, refreshAuthorization, now } = options;
   const administrator = validated(person, options.administrator);
@@ -126,8 +129,10 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
       if (!requireAdmin) throw new HubGroupPolicyError("invalid");
       const authenticated = await requireAdmin();
       policyCurrent();
-      if (authenticated.kind !== "directory" || personKeyString(validated(person, authenticated.person)) !== personKeyString(administrator)) throw new HubGroupAuthorizationError("denied");
-      actor = { ...administrator };
+      if (authenticated.kind !== "directory")throw new HubGroupAuthorizationError("denied");
+      const who=validated(person,authenticated.person);
+      if(who.realm!==administrator.realm||personKeyString(who)!==personKeyString(administrator)&&!(roleAdministrators&&"rolesActive" in readHubOperationalPolicy(policy)))throw new HubGroupAuthorizationError("denied");
+      actor = { ...who };
       if (version() !== epoch) throw new HubGroupPolicyError("conflict");
     }
     let invalidated = false;

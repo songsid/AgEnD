@@ -12,7 +12,7 @@ export interface GroupHttpDeps { readonly control: HubGroupAdminControl; readonl
 /** What this layer needs of the request: the session's own fresh checks, and the compose helpers. */
 export interface GroupHttpRequest {
   readonly path: string; readonly method: string;
-  readonly ctx: { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor>; requirePerson(): Promise<PersonKey> };
+  readonly ctx: { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor>; requirePerson(): Promise<PersonKey>; readonly roleContext?:import("../types.js").HubRequestContext };
   signedIn(): unknown; csrf(): unknown; body(): Promise<Record<string, unknown>>;
   send(status: number, body: unknown, headers?: Record<string, string>): void;
 }
@@ -25,7 +25,7 @@ export async function handleGroupHttp(deps: GroupHttpDeps | undefined, q: GroupH
   if (!admin && path !== "/hub/v1/me/welcome") return false;
   if (!deps) { q.send(404, { code: "not-found" }); return true; }
   // Bound to the session's own context: a value passed in never stands for who is asking.
-  const adminCtx: GroupAdminContext = { requestId: q.ctx.requestId, current: () => q.ctx.current(), requireAdmin: () => q.ctx.requireAdmin() };
+  const adminCtx: GroupAdminContext = { requestId: q.ctx.requestId, current: () => q.ctx.current(), requireAdmin: () => q.ctx.requireAdmin(),...(q.ctx.roleContext?{roleContext:q.ctx.roleContext}:{}) };
   const answer = (a: { ok: boolean; code?: string }) => q.send(a.ok ? 200 : STATUS[a.code ?? "unknown"] ?? 409, a);
   const parsed = <T>(schema: { safeParse(v: unknown): { success: true; data: T } | { success: false } }, raw: unknown): T | null => { const r = schema.safeParse(raw); return r.success ? r.data : null; };
   const bad = () => q.send(400, { code: "invalid" });
