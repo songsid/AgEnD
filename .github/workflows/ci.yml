@@ -384,6 +384,15 @@ jobs:
           HP: '19661'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-kb-steady.mts
+      # M-3209 (the user, iPhone, beta.6: 「大頭被改壞了」): the phone's ☰ drawer keeps each agent's whole avatar with its dot on
+      # its corner (Detailed) or the dot alone (Compact) — never a squashed avatar beside its dot.
+      - name: Phone drawer avatars (Detailed and Compact)
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19662'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-drawer-avatars-m3209.mts
       - name: Save verified CJK archive (best effort, after the gate)
         if: always() && needs.detect-changes.outputs.text-only != 'true' && steps.cjk-fonts.outcome == 'success' && steps.cjk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
