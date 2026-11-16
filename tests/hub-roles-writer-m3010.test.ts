@@ -315,3 +315,10 @@ it("rechecks last-administrator continuity after preview before committing a tur
  w.read.mockImplementation(async who=>who.objectId===w.root.objectId?{kind:"ineligible",person:copy(who),reason:"disabled",observedAt:100}:{kind:"complete",person:copy(who),groups:[],observedAt:100});
  expect(await w.writer.apply(next,preview.previewDigest,w.browser.ctx)).toEqual({ok:false,code:"last-administrator"});expect(w.saved().rolesActive).toBe(true);expect(w.commit).not.toHaveBeenCalled();
 });
+
+it("does not turn a root directory blip into a last-admin refusal for an unrelated delegated Member assignment",async()=>{
+ const w=await fixture(),before=w.saved();before.roles.push({id:"delegate",name:"Delegated assigner",kind:"custom",permissions:["roles.assign","ask_agents","publish_agents","pair_fleet"],defaultMaxFleets:8});before.assignments[0]!.roleId="delegate";w.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(before));
+ w.read.mockImplementation(async who=>who.objectId===w.root.objectId?{kind:"unknown"}:{kind:"complete",person:copy(who),groups:[],observedAt:100});
+ const next=w.proposal(),preview=await w.writer.preview(next,w.browser.ctx);if(!preview.ok)throw Error(preview.code);
+ expect(await w.writer.apply(next,preview.previewDigest,w.browser.ctx)).toMatchObject({ok:true});expect(w.saved().assignments.some(a=>a.id==="member1")).toBe(true);
+});

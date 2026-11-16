@@ -9,6 +9,12 @@ export interface RoleReview {
  losingPermissions: {person:PersonKey;permissions:RolePermission[]}[];
  unverified:PersonKey[];
 }
+/** Only a plan that can remove administrator authority needs the continuity proof. */
+export function mayReduceAdministrators(plan:RoleChangePlan):boolean {
+ if(plan.before.rolesActive&&!plan.next.rolesActive)return true;
+ if(plan.roles.some(delta=>delta.before?.permissions.includes("hub.admin")&&!delta.after?.permissions.includes("hub.admin")))return true;
+ return plan.assignments.some(delta=>delta.before&&plan.before.roles.find(r=>r.id===delta.before!.roleId)?.permissions.includes("hub.admin"));
+}
 /** Configured root counts only with current eligibility; future/expired assignments never count. */
 export function hasCurrentAdministrator(policy:HubRolePolicy,people:Iterable<PersonKey>,facts:ReadonlyMap<string,RolePersonFacts>,root:PersonKey,at:number):boolean {
  return [...people].some(who=>heldRoleBundle(policy,who,facts.get(personKeyString(who))??{kind:"unknown"},at,root).administrator);

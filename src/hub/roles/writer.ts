@@ -8,7 +8,7 @@ import { parseRolePolicy, SELF_PERMISSIONS, MANAGEMENT_PERMISSIONS } from "./mod
 import { planRoleChange } from "./change.js";
 import { heldRoleBundle, checkRoleChange } from "./delegation.js";
 import { roleAuditValue, assignmentAuditValue, rolePersonLabel } from "./audit-details.js";
-import { hasCurrentAdministrator, roleReview, type RoleReview } from "./review.js";
+import { hasCurrentAdministrator, mayReduceAdministrators, roleReview, type RoleReview } from "./review.js";
 import { snapshotRolePersonFacts } from "./evaluate.js";
 import type { HubAuditStore } from "../audit/index.js";
 import type { HubDirectory } from "../directory/types.js";
@@ -196,7 +196,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     const semanticFacts = json([...facts].map(([id, f]) => [id, f.kind === "complete" ? { kind: f.kind, person: f.person, groups: [...f.groups].sort() } : f.kind === "unknown" ? { kind: f.kind } : { kind: f.kind, person: f.person }]));
     const recipients = [...people].filter(([id, who]) => [before.policy, plan.next].some(p => heldRoleBundle(p, who, facts.get(id)!, now(), root).administrator && facts.get(id)!.kind !== "ineligible" && facts.get(id)!.kind !== "unknown")).map(([id]) => id).sort();
     const assertAuthority = () => {
-      if (!hasCurrentAdministrator(plan.next, people.values(), facts, root, now())) throw new Refusal("last-administrator");
+      if (mayReduceAdministrators(plan) && !hasCurrentAdministrator(plan.next, people.values(), facts, root, now())) throw new Refusal("last-administrator");
       const bundle = heldRoleBundle(before.policy, actor.person, facts.get(personKeyString(actor.person))!, now(), root);
       if (operation === "root-self") {
         if (!same(actor.person, root) || bundle.kind !== "known" || !bundle.administrator) throw new Refusal("denied");
