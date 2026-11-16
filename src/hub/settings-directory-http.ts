@@ -45,7 +45,12 @@ export async function handleHubDirectorySettingsHttp(create: (() => Promise<HubD
   const closed = () => { if (!q.res.writableEnded) disconnected = true; };
   q.res.once("close", closed);
   let adminPermit:import("./roles/authority.js").HubManagementPermit|undefined;
-  const current = () => {try{adminPermit?.assertCurrent();return !disconnected&&q.ctx.current()===true;}catch{return false;}};
+  const current = () => {
+    try {
+      if (adminPermit) adminPermit.assertAuthority ? adminPermit.assertAuthority() : adminPermit.assertCurrent();
+      return !disconnected && q.ctx.current() === true;
+    } catch { return false; }
+  };
   try {
     adminPermit=await q.ctx.authorizeAdmin?.();const actor=adminPermit?.actor??await q.ctx.requireAdmin();
     if (actor.kind !== "directory" || !current()) throw new HubProtocolError("denied");

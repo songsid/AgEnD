@@ -71,3 +71,21 @@ it("remembers searched directory labels for assignments without creating signed-
  expect((await w.control.read(w.ctx.ctx)).personLabels).toContainEqual({id:`${w.other.realm}/${w.other.objectId}`,name:"Alex Chen"});
  expect((await w.control.presentation((await w.browser(w.other)).ctx)).management).toEqual([]);
 });
+
+it.each(["root","auxiliary"] as const)("keeps %s request identity current after six seconds, but not after authority/session revocation",async who=>{
+ const w=await world(),browser=who==="root"?await w.browser(w.root):w.ctx;
+ await browser.ctx.requireAdmin();w.time(6000);w.elapsed(6000);
+ expect(browser.ctx.isCurrent?.()).toBe(true);
+ if(who==="root")w.sessions.signOut(browser.token);else{w.policy.assignments=[];w.save(w.policy);}
+ expect(browser.ctx.isCurrent?.()).toBe(false);
+});
+it("keeps short effect permits at five seconds while separately re-proving long-operation authority",async()=>{
+ const w=await world(),permit=await w.authority.require(w.ctx.ctx,"hub.admin");w.time(6000);w.elapsed(6000);
+ expect(()=>permit.assertAuthority!()).not.toThrow();
+ expect(()=>permit.assertCurrent()).toThrow();
+});
+it("re-proved long-operation authority still ends at the assignment's own expiry",async()=>{
+ const w=await world();w.policy.assignments[0]!.expiresAt=1000;w.save(w.policy);
+ const permit=await w.authority.require(w.ctx.ctx,"hub.admin");w.time(1000);
+ expect(()=>permit.assertAuthority!()).toThrow();
+});

@@ -203,7 +203,13 @@ export class HubSessions {
       administrative = await this.core.deps.management.require(base,"hub.admin");
       administrative.assertCurrent(); return administrative.actor;
     };
-    const isCurrent = () => { if (!identityCurrent()) return false; try { administrative?.assertCurrent(); return true; } catch { return false; } };
+    const isCurrent = () => {
+      if (!identityCurrent()) return false;
+      try {
+        if (administrative) administrative.assertAuthority ? administrative.assertAuthority() : administrative.assertCurrent();
+        return true;
+      } catch { return false; }
+    };
     return {requestId,token,current,isCurrent,isIdentityCurrent,requirePerson,requireAdmin};
   }
 }

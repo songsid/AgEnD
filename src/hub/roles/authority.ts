@@ -14,13 +14,24 @@ export type HubManagementPermission = typeof MANAGEMENT_PERMISSIONS[number];
 export const HUB_MANAGEMENT_PROOF_TTL = 5_000;
 const issuedManagementPermits = new WeakSet<object>();
 /** Private in-process adapter attestation; copied actors and shape-compatible objects confer no permission. */
-export function assertHubManagementPermit(permit: unknown, permission: HubManagementPermission,
-  actor: { person: PersonKey; sessionId: string }): asserts permit is HubManagementPermit {
+function issuedPermit(permit: unknown, permission: HubManagementPermission,
+  actor: { person: PersonKey; sessionId: string }): HubManagementPermit {
   if (!permit || typeof permit !== "object" || !issuedManagementPermits.has(permit)) throw new HubProtocolError("denied");
   const proof = permit as HubManagementPermit;
   if (proof.permission !== permission || personKeyString(proof.actor.person) !== personKeyString(actor.person)
     || proof.actor.sessionId !== actor.sessionId) throw new HubProtocolError("denied");
-  proof.assertCurrent();
+  return proof;
+}
+export function assertHubManagementPermit(permit: unknown, permission: HubManagementPermission,
+  actor: { person: PersonKey; sessionId: string }): asserts permit is HubManagementPermit {
+  issuedPermit(permit, permission, actor).assertCurrent();
+}
+/** For a separately bounded operation: re-prove current graph/session/expiry, never extend an effect permit. */
+export function assertHubManagementAttestation(permit: unknown, permission: HubManagementPermission,
+  actor: { person: PersonKey; sessionId: string }): asserts permit is HubManagementPermit {
+  const proof = issuedPermit(permit, permission, actor);
+  if (!proof.assertAuthority) throw new HubProtocolError("denied");
+  proof.assertAuthority();
 }
 
 const PREPARATION_BUDGET = 20_000;
@@ -32,6 +43,9 @@ export interface HubManagementPermit {
   readonly expiresAt: number;
   /** Mandatory before each effect/disclosure, including after any await or reentrant callback. */
   assertCurrent(): void;
+  /** Re-prove authority at a long operation's checkpoints. Its own lifetime/authentication budgets still apply.
+   * This is NOT a replacement for assertCurrent on a short-lived effect permit. */
+  assertAuthority?(): void;
 }
 /** First issuance only: the issuer identity comes from the server's retained approval, never browser input. */
 export interface HubJoinIssuerPermit {
@@ -128,12 +142,12 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
         || typeof incoming.isIdentityCurrent !== "function") throw new HubProtocolError("unavailable");
       const authenticate = incoming.current.bind(incoming), sessionCurrent = incoming.isCurrent.bind(incoming);
       const identityCurrent = incoming.isIdentityCurrent.bind(incoming), started = time(), before = read(), authEpoch = version();
-      let retired = false, actor: DirectoryActor | null = null;
+      let retired = false, issued = false, actor: DirectoryActor | null = null;
       const common = () => {
         try {
           if (retired || sessionCurrent() !== true) throw new HubProtocolError("unavailable");
           const at = time();
-          if (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET
+          if ((!issued && (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET))
             || read().raw !== before.raw || version() !== authEpoch) throw new HubProtocolError("unavailable");
           if (actor && identityCurrent(actor.person, actor.sessionId) !== true) throw new HubProtocolError("unavailable");
           return at;
@@ -167,11 +181,17 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
       const allowed = (at: number) => before.kind === "group" ? personKeyString(who) === personKeyString(root)
         : evaluateRolePolicy(before.policy, who, cap, null, { subject: facts }, at, root).outcome === "allow";
       if (!allowed(proved.wall)) throw new HubProtocolError("denied");
+      const authority = () => {
+        try { const at = common(); if (!allowed(at.wall)) throw new HubProtocolError("denied"); return at; }
+        catch (error) { retired = true; throw error; }
+      };
+      issued = true;
       const permit: HubManagementPermit = Object.freeze({ actor: actor!, permission: cap, source: before.kind === "group" ? "legacy" : "roles",
         expiresAt: observed.wall + HUB_MANAGEMENT_PROOF_TTL,
+        assertAuthority() { authority(); },
         assertCurrent() {
           try {
-            const at = common();
+            const at = authority();
             if (at.wall >= observed.wall + HUB_MANAGEMENT_PROOF_TTL || at.elapsed >= observed.elapsed + HUB_MANAGEMENT_PROOF_TTL
               || !allowed(at.wall)) throw new HubProtocolError("unavailable");
           } catch (error) { retired = true; throw error; }

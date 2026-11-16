@@ -1,4 +1,4 @@
-import {assertHubManagementPermit,type HubManagementPermit} from "./roles/authority.js";
+import {assertHubManagementAttestation,type HubManagementPermit} from "./roles/authority.js";
 /** #3425: internal preparation authority for the ONE settings writer. No HTTP route or production caller yet. */
 import { randomBytes, X509Certificate } from "node:crypto";
 import { isIP } from "node:net";
@@ -57,7 +57,7 @@ const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArgu
 export function assertDirectoryAdministrator(ctx: HubDirectoryProofContext, root: PersonKey): void {
   if (ctx.actor.kind !== "hub-administrator") return;
   if (ctx.adminPermit !== undefined) {
-    try { assertHubManagementPermit(ctx.adminPermit, "hub.admin", ctx.actor); }
+    try { assertHubManagementAttestation(ctx.adminPermit, "hub.admin", ctx.actor); }
     catch (error) { refuse(error instanceof HubProtocolError && error.code === "denied" ? "denied" : "unavailable"); }
     return;
   }

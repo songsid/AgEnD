@@ -28,7 +28,7 @@
  * - Directory-v2 preserves rename v1. Its ONLY decision is settings-directory-decision.ts's root SQL COMMIT (including
  *   floor/version, binding, sessions, audit and complete security notices). Its file phase is recovery progress only.
  */
-import { assertHubManagementPermit, type HubManagementPermit } from "./roles/authority.js";
+import { assertHubManagementAttestation, type HubManagementPermit } from "./roles/authority.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -293,7 +293,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     };
     const check = () => {
       checkTime();
-      if (p.adminPermit && p.actor.kind === "hub-administrator") assertHubManagementPermit(p.adminPermit, "hub.admin", p.actor);
+      if (p.adminPermit && p.actor.kind === "hub-administrator") assertHubManagementAttestation(p.adminPermit, "hub.admin", p.actor);
       if (!currentProof(current)) throw new HubSettingsError("denied");
       image(true);
       if (!same(directoryImage(), p.before)) throw new HubSettingsError("stale");
@@ -339,7 +339,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       const cfg = structuredClone(candidate.directory), nextDirectory = resolveDirectoryConfig(cfg), old = image(true), oldCfg = obj(old.hub.directory);
       const oldSecret = readSecret(), before = directoryImage(old.hub, old.manifest, oldSecret);
       if (metadata.actor.kind === "hub-administrator") {
-        if (adminPermit) assertHubManagementPermit(adminPermit, "hub.admin", metadata.actor);
+        if (adminPermit) assertHubManagementAttestation(adminPermit, "hub.admin", metadata.actor);
         else if (!same(metadata.actor.person, old.hub.administrator)) throw new HubSettingsError("denied");
       }
       if (oldCfg.bindPasswordRef !== BIND_PASSWORD_REF || cfg.bindPasswordRef !== undefined && cfg.bindPasswordRef !== BIND_PASSWORD_REF

@@ -131,6 +131,7 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
       policyCurrent();
       if (authenticated.kind !== "directory")throw new HubGroupAuthorizationError("denied");
       const who=validated(person,authenticated.person);
+      // Role mode is composed only with hub.admin-backed callers: the role shortcut and session-owned admin-read.
       if(who.realm!==administrator.realm||personKeyString(who)!==personKeyString(administrator)&&!(roleAdministrators&&"rolesActive" in readHubOperationalPolicy(policy)))throw new HubGroupAuthorizationError("denied");
       actor = { ...who };
       if (version() !== epoch) throw new HubGroupPolicyError("conflict");

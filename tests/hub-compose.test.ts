@@ -2412,6 +2412,22 @@ describe.skipIf(process.platform === "win32")("M-3118 member capability composit
 
 
 describe.skipIf(process.platform === "win32")("M3223 production role activation",()=>{
+ it.each(["root","auxiliary"] as const)("allows %s directory prepare/save across slow steps while keeping current authority",async who=>{
+  let at=1000,control:HubDirectorySettingsControl|undefined,r!:Awaited<ReturnType<typeof directoryRuntimeRig>>;
+  const create=async()=>control??=createHubDirectorySettingsControl({hubId:String(r.hub.config.hub.hubId),mounted:()=>r.runtime.directorySettings(),writer:()=>r.writer.directory!,current:()=>true,now:()=>at,
+   createDirectory:()=>({realm:"corp",checkEligibility:async()=>{at+=6000;return{eligible:true,person:ADMIN};},close:async()=>{}}) as any,
+   probeTls:async()=>{at+=6000;return"A".repeat(64);},withDecision:work=>r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId),work,()=>true),remount:()=>r.runtime.apply(r.hub.config)});
+  r=await directoryRuntimeRig(undefined,{people:[NOTICE_READER],now:()=>at,directorySettings:create});
+  try{
+   if(who==="auxiliary")r.deps.uow.atomic(tx=>{const db=hubTxDatabase(tx),policy=parseRolePolicy(JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as {body:string}).body));policy.revision++;policy.assignments.push({id:"slow-admin",roleId:"builtin:admin",subject:{kind:"person",person:NOTICE_READER.key},scope:{kind:"hub"},maxFleets:null,startsAt:0,expiresAt:null,assignedBy:ADMIN.key,assignedAt:0});db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));});
+   const signed=await noticeSignInForDirectory(r,who==="root"?ADMIN:NOTICE_READER),headers={"X-AgEnD-Hub-CSRF":signed.json.csrf};
+   const view=await directoryBrowser(r.hub,signed.cookie,undefined,DIRECTORY_SETTINGS_PATH);expect(view.status).toBe(200);
+   const {realm:_realm,profile:_profile,...directory}=view.json.directory;
+   const draft=await directoryBrowser(r.hub,signed.cookie,{directory:{...directory,baseDn:"ou=slow,dc=example,dc=test"}},DIRECTORY_SETTINGS_PATH+"/prepare",{headers});expect(draft.json).not.toHaveProperty("code");expect(draft.status).toBe(200);
+   const saved=await directoryBrowser(r.hub,signed.cookie,{ref:draft.json.ref},DIRECTORY_SETTINGS_PATH+"/save",{headers});expect(saved.status).toBe(200);expect(saved.json.state).toBe("ready");
+   expect(at).toBeGreaterThan(1000+12000);expect(r.runtime.directorySettings()!.source().config.baseDn).toBe("ou=slow,dc=example,dc=test");
+  }finally{await control?.close();await r.runtime.close();}
+ },60000);
  it("lets a second administrator save directory settings, then requires fresh sign-in without a root successor cookie",async()=>{
   let control:HubDirectorySettingsControl|undefined,r!:Awaited<ReturnType<typeof directoryRuntimeRig>>;
   const create=async()=>control??=createHubDirectorySettingsControl({hubId:String(r.hub.config.hub.hubId),mounted:()=>r.runtime.directorySettings(),writer:()=>r.writer.directory!,current:()=>true,

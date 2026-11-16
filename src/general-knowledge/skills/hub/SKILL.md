@@ -511,7 +511,8 @@ Administrators may also select named company people and AD groups; they retain t
 Optional, for Hub administrators; AD group rules need Active Directory over LDAPS (port 636).
 The old group-permissions link (`?view=groups`) now opens **Roles and permissions**. From there,
 **Open the allowed list** opens the existing AD group / Team / Person editor (`?view=allowed-list`).
-The **Let colleagues join** shortcut remains available. Until self-use permissions are explicitly
+The **Let colleagues join** shortcut **All group permissions** (所有群組權限) remains available.
+On the hosting Fleet, **Settings → Hub → Group permissions → Open on the Hub** opens the same page. Until self-use permissions are explicitly
 turned on in the allowed list, the Hub retains its previous chat, sharing and connection behaviour.
 
 - The allowed list accepts **AD group · Team · Person** (AD 群組 · 團隊 · 人員), using the same picker as agent grants.
