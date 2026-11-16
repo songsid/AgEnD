@@ -78,8 +78,34 @@ for (const c of matrix(process.env.MATRIX ?? "phone-light-en,phone-dark-zh-TW"))
     await thumbs.nth(3).waitFor();
     await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>(".msg.agent .att-img img")].slice(-4).every((i) => i.complete && i.naturalWidth > 0), null, { timeout: 10000 });
     const n = await thumbs.count();
-    await thumbs.nth(n - 4).tap();
-    await page.locator("dialog.lb").waitFor();
+    /**
+     * Open the viewer on the i-th thumbnail, deterministically (the post-merge of #4032 timed out once on a reopen tap that
+     * opened nothing): no viewer up and the page unlocked, the thumbnail in view and still for three frames, and it is what
+     * the tap lands on — then the tap, and the viewer within 5 s. Anything else fails with what was there instead.
+     */
+    const openViewer = async (i: number) => {
+      await page.waitForFunction(() => !document.querySelector("dialog.lb") && !document.documentElement.classList.contains("lb-open"), null, { timeout: 5000 });
+      await thumbs.nth(i).scrollIntoViewIfNeeded();
+      const ready = await page.evaluate(async (idx: number) => {
+        const el = document.querySelectorAll(".msg.agent .att-img")[idx] as HTMLElement | undefined;
+        if (!el) return { still: false, hit: false, what: "no thumbnail" };
+        let last = "", same = 0;
+        for (let k = 0; k < 90 && same < 3; k++) {
+          await new Promise((r) => requestAnimationFrame(r));
+          const b = el.getBoundingClientRect(), key = `${Math.round(b.left)},${Math.round(b.top)}`;
+          same = key === last ? same + 1 : 0; last = key;
+        }
+        const b = el.getBoundingClientRect(), at = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        return { still: same >= 3, hit: !!at && el.contains(at), what: at ? `${at.tagName}.${(at as HTMLElement).className}` : null, box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)] };
+      }, i);
+      if (!ready.still || !ready.hit) throw new Error(`picture ${i} is not ready for a tap: ${JSON.stringify(ready)}`);
+      await thumbs.nth(i).tap();
+      await page.locator("dialog.lb").waitFor({ timeout: 5000 }).catch(async () => {
+        const at = await page.evaluate(() => ({ scrollTop: (document.querySelector(".p-chat .scroller") as HTMLElement)?.scrollTop, active: `${document.activeElement?.tagName}.${(document.activeElement as HTMLElement)?.className}` }));
+        throw new Error(`a tap on picture ${i} opened nothing (${JSON.stringify({ ready, ...at })})`);
+      });
+    };
+    await openViewer(n - 4);
     const open = await read();
     need(open?.src === srcOf(0) && open.count === "1 / 4" && open.prevOff && !open.nextOff, `opens on the first of the chat's four (${JSON.stringify(open)})`);
     await shot("1-open");
@@ -120,8 +146,11 @@ for (const c of matrix(process.env.MATRIX ?? "phone-light-en,phone-dark-zh-TW"))
     await shot("3-mid-pull");
     await touch("touchEnd"); await page.waitForTimeout(400);
     need(!(await page.locator("dialog.lb").count()), "pulled down far enough, it closed");
+    // Closed on the last picture: focus (and the thread) on its thumbnail, not back on the first one opened.
+    const focusAt = await page.evaluate(() => { const all = [...document.querySelectorAll(".msg.agent .att-img")]; return all.indexOf(document.activeElement as Element) - all.length; });
+    need(focusAt === -1, `closed on the last picture, its thumbnail has the focus (${focusAt})`);
     // A short pull springs back and stays open; up closes too.
-    await thumbs.nth(n - 3).tap(); await page.locator("dialog.lb").waitFor(); await page.waitForTimeout(400);
+    await openViewer(n - 3); await page.waitForTimeout(400);
     await swipe(195, 400, 195, 440, 10);
     const stays = await read();
     need(stays && (stays.pull === "" || Number(stays.pull) === 0), `a short pull springs back, open (${JSON.stringify(stays)})`);
