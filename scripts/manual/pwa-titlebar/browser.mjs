@@ -30,7 +30,7 @@ try{
   assert.equal(JSON.parse(app.data).display,'standalone');assert.equal(JSON.parse(app.data).name,state.testName);
   const ps=process.env.SystemRoot+'\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
   const nativeMenu=action=>JSON.parse(execFileSync(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(root,'app-menu.ps1'),'-Tag',state.tag,'-BrowserProcess',state.browserProcess,'-Action',action],{encoding:'utf8',windowsHide:true}));
-  await call('Page.bringToFront',{},sid);installed.push({manifestId,nativeMenu});await writeFile(join(root,'install-intents.json'),JSON.stringify(installed.map(a=>a.manifestId)));const installation=nativeMenu('Install');phase=entry.label+':installed';console.log(JSON.stringify({phase}));
+  await evaluate(sid,`document.title=${JSON.stringify(state.testName)}`);await call('Page.bringToFront',{},sid);installed.push({manifestId,nativeMenu});await writeFile(join(root,'install-intents.json'),JSON.stringify(installed.map(a=>a.manifestId)));const installation=nativeMenu('Install');phase=entry.label+':installed';console.log(JSON.stringify({phase}));
   const appTarget=await until(async()=>{for(const t of (await call('Target.getTargets')).targetInfos){if(t.type!=='page'||!t.url.startsWith(entry.base))continue;const s=await attach(t.targetId);if(await evaluate(s,'matchMedia("(display-mode: standalone)").matches'))return {targetId:t.targetId,sid:s};}});
   const appSid=appTarget.sid;activeSid=appSid;result.cases.push({label:entry.label+'-install',installation,standalone:true});
   await call('Page.enable',{},appSid);await call('Runtime.enable',{},appSid);
