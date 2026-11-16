@@ -43,9 +43,13 @@ export class HubMcpPolicy implements HubMcpAppPolicy {
       db.prepare("UPDATE hub_mcp_settings SET revision=revision+1,enabled=?,everyone=?,subjects=? WHERE singleton=1")
         .run(Number(value.enabled),Number(value.everyone),JSON.stringify(value.subjects));
       const auditActor=actor.kind==="directory"?{kind:"person" as const,person:actor.person}:{kind:"local-host" as const};
-      // End every grant on a policy change, including unused apps. A remove/re-add
-      // must not revive a connection merely because it made no call while denied.
-      if(before.enabled!==Number(value.enabled)||before.everyone!==Number(value.everyone)||before.subjects!==JSON.stringify(value.subjects))this.endAll(value.enabled?"not-allowed":"feature-disabled");
+      // A possible narrowing ends all grants, including unused apps, so remove/re-add
+      // cannot revive one. Additions, display edits and everyone-on keep credentials.
+      const previous=JSON.parse(before.subjects) as z.infer<typeof subject>[], kept=new Set(value.subjects.map(s=>`${s.kind}:${s.id}`));
+      const narrows=before.enabled===1&&(
+        !value.enabled||(!value.everyone&&(before.everyone===1||previous.some(s=>!kept.has(`${s.kind}:${s.id}`))))
+      );
+      if(narrows)this.endAll(value.enabled?"not-allowed":"feature-disabled");
       this.core.audit(tx,{requestId:ctx.requestId,actor:auditActor,action:"mcp.settings-changed",result:"completed"});
     });
     return this.read();

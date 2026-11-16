@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connector-4c-tools-m3240
+
+ ❯ tests/hub-mcp-door-m3240.test.ts (27 tests | 1 failed | 26 skipped) 167ms
+   × keeps a current app token through subject additions, label edits and everyone-on widening 166ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-mcp-door-m3240.test.ts > keeps a current app token through subject additions, label edits and everyone-on widening
+AssertionError: expected 401 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 401
+
+ ❯ live tests/hub-mcp-door-m3240.test.ts:148:299
+
+ ❯ tests/hub-mcp-door-m3240.test.ts:149:74
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 26 skipped (27)
+   Start at  19:19:14
+   Duration  4.49s (transform 3.15s, setup 90ms, import 4.09s, tests 167ms, environment 0ms)

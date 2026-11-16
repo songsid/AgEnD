@@ -135,10 +135,26 @@ it("ends unused tokens on a real feature disable/re-enable transaction",async()=
   for(const app of[a,b]){const r=await fetch(rig!.base+"/mcp",{method:"POST",headers:{Authorization:`Bearer ${app.credentials.access_token}`,"Content-Type":"application/json"},body:"{}"});expect(r.status).toBe(401);}
 });
 it("ends unused grants when an allowed-list edit removes and then re-adds their person",async()=>{
-  const w=await world(),a=await w.app(),b=await w.app();
+  const w=await world(),subjects=[{kind:"person",id:personKeyString(w.member),name:"Example Person"},{kind:"person",id:personKeyString(w.other),name:"Other Person"}];
+  expect((await w.settings({everyone:false,subjects})).status).toBe(200);
+  const a=await w.app(),b=await w.app();
   expect((await w.settings({everyone:false,subjects:[{kind:"person",id:personKeyString(w.other),name:"Other Person"}]})).status).toBe(200);
-  expect((await w.settings({everyone:true,subjects:[]})).status).toBe(200);
+  expect((await w.settings({subjects})).status).toBe(200);
   for(const app of[a,b]){const r=await fetch(rig!.base+"/mcp",{method:"POST",headers:{Authorization:`Bearer ${app.credentials.access_token}`,"Content-Type":"application/json"},body:"{}"});expect(r.status).toBe(401);}
+});
+it("keeps a current app token through subject additions, label edits and everyone-on widening",async()=>{
+  const w=await world(),member={kind:"person",id:personKeyString(w.member),name:"Example Person"},other={kind:"person",id:personKeyString(w.other),name:"Other Person"};
+  expect((await w.settings({everyone:false,subjects:[member]})).status).toBe(200);const a=await w.app();
+  const live=async()=>{const r=await fetch(rig!.base+"/mcp",{method:"POST",headers:{Authorization:`Bearer ${a.credentials.access_token}`,"Content-Type":"application/json",Accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list"})});expect(r.status).toBe(200);expect((await r.json() as {result:{tools:unknown[]}}).result.tools).toHaveLength(8);};
+  expect((await w.settings({subjects:[member,other]})).status).toBe(200);await live();
+  expect((await w.settings({subjects:[other,{...member,name:"Updated display label"}]})).status).toBe(200);await live();
+  expect((await w.settings({everyone:true,subjects:[]})).status).toBe(200);await live();
+  expect(rig!.db.prepare("SELECT state FROM hub_mcp_apps").all()).toEqual([{state:"active"}]);
+});
+it("ends an unused token when everyone-on is narrowed to selected subjects",async()=>{
+  const w=await world(),a=await w.app();
+  expect((await w.settings({everyone:false,subjects:[{kind:"person",id:personKeyString(w.member),name:"Example Person"}]})).status).toBe(200);
+  const r=await fetch(rig!.base+"/mcp",{method:"POST",headers:{Authorization:`Bearer ${a.credentials.access_token}`,"Content-Type":"application/json"},body:"{}"});expect(r.status).toBe(401);
 });
 it("keeps the Hub assistant out of app lists and prevents the read tool from creating its conversation",async()=>{
   const w=await world();
