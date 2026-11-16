@@ -424,7 +424,8 @@
         if (-not (Test-NodeVersion $nodeText)) {
             if ($nodeText) { Write-Problem ('Node.js ' + $nodeText + ' is too old. The AgEnD Runtime needs Node.js 22.14 or newer (22.14+, 23.6+ or 24+).') }
             else { Write-Problem 'Node.js was not found. The AgEnD Runtime needs Node.js 22.14 or newer (22.14+, 23.6+ or 24+).' }
-            Write-Host 'This installer does not install software for you. Install Node.js yourself, open a new PowerShell window, set $agend and run the command again:'
+            if ($personalMode) { Write-Host '"Node.js is required": install Node.js, then get a new command.' }
+            else { Write-Host 'This installer does not install software for you. Install Node.js yourself, open a new PowerShell window, set $agend and run the command again:' }
             Write-Host '  winget install OpenJS.NodeJS.LTS'
             Write-Host 'or download it from https://nodejs.org/'
             $global:LASTEXITCODE = 1

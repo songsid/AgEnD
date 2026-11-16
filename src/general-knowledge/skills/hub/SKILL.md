@@ -698,11 +698,11 @@ Say plainly that these are not in the product yet:
   selects the people or teams allowed to add one. It starts off. The administrator is included while it is on.
 - The owner opens **My agents → Personal agent**, reads the folder/account disclosure and chooses **Add a personal
   agent**. Keep the 15-minute install command private and run it on the intended Windows computer. Node.js, a
-  signed-in Codex or Claude and trust in the Hub's certificate are required. The installer makes an empty folder;
+  signed-in Codex or Claude are required. The installer makes an empty folder;
   put only material intended for sharing there. Choose the available CLI, name and description, save, then use
-  **Choose who may ask**. After installing or signing in to a CLI, use **Refresh** to check it again.
-- A personal agent answers with its owner's Codex or Claude on their own computer. It is read-only in one shared
-  folder; anything in that folder may be quoted to people allowed to ask. It has no AgEnD tools or connectors.
+  **Choose who may ask**; until sharing is configured, nobody can ask it. Certificate/trust errors mean that the
+  computer does not yet trust this Hub: ask the administrator and do not change security settings to get past it. After installing or signing in to a CLI, use **Refresh** to check it again.
+- A personal agent answers with its owner's Codex or Claude on their own computer. It is read-only in one folder on that computer; anything in that folder may be quoted to people allowed to ask. It has no AgEnD tools or connectors.
 - A direct question or an explicit person's @mention may ask it. A verified **person via agent** request also counts
   as a person. Personal agents are left out of @all; an autonomous agent's @mention is not delivered and the source
   receives “Not delivered: {name} is a personal agent and answers people only.” / 「沒有送出：{name} 是個人 Agent，只回答人的提問。」

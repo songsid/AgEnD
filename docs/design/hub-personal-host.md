@@ -23,7 +23,7 @@ signed-in company session. Administrator operations use the mounted `hub.admin` 
 | POST `/hub/v1/me/personal-agent/enrollment` | `{}` → one-time token/fingerprint/expiry, plus installer hashes and `server` when the production installer is composed |
 | POST `/hub/v1/me/personal-agent/refresh` | `{}` → owner view after probing the owner's currently connected computer; the owner/binding/generation is rechecked after the probe |
 
-`agent` is null or `{id,exposureId,name,description,cli,model,revision,state}`. `computer` is null or
+`agent` is null or `{id,exposureId,name,description,cli,model,revision,state,shared}`. `computer` is null or
 `{id,name,connected,compatible,folder,working,clis}`. Each CLI keeps its existing bounded inventory fields plus `available`
 and `personalStatus`. Availability comes from that computer's actual local enforcement check and sign-in, never
 from a Windows version allowlist. The personal source requires a Windows computer. `agentKind: "personal"` is
@@ -40,7 +40,11 @@ install command. The installer creates an empty folder. The computer reports act
 checks; an unavailable Codex does not hide Claude's separate status. Explicit Refresh re-probes that computer,
 while ordinary polling only reads its state. The card preserves typed changes during polling and shows unsaved
 changes. Save uses the captured revision, and every client request uses the captured sign-in CSRF scope. Disconnect
-asks first and retains conversation history. The sharing link selects who may ask the published personal agent.
+asks first and retains conversation history. The sharing button is the next step until sharing is configured. `shared` is presentation only: a current,
+time-valid ask grant or a non-archived room membership with a person; it never authorizes a question. With neither,
+the card says nobody can ask yet. Replacement is quiet at the bottom beside the confirmed danger action.
+A closed command-failure disclosure explains certificate trust, Node and expiry; the personal command prints the
+same certificate guidance without offering a trust bypass. The fingerprint does not replace OS certificate trust.
 
 The headless gallery uses the product HTTPS shell and real Hub HTTP/SQLite/audit, with an inert directory and
 Runtime inventory/turn. It is not a Windows sandbox, installer, authentication or model-execution proof.

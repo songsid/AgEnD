@@ -1,8 +1,8 @@
 import {afterEach,beforeAll,expect,it,vi} from "vitest";
 import {page,h,settle,type AppPage} from "./helpers/app-harness.js";
 import {fire} from "./helpers/mini-dom.js";
-let ui:any,words:any,clients:any;const pages:AppPage[]=[];
-beforeAll(async()=>{const p=page();ui=await import("/ui/js/hub-personal-agent.js");words=await import("/assets/app-i18n.js");clients=await import("/ui/js/hub-client.js");p.restore();});
+let ui:any,words:any,clients:any,confirms:any,commands:any;const pages:AppPage[]=[];
+beforeAll(async()=>{const p=page();ui=await import("/ui/js/hub-personal-agent.js");words=await import("/assets/app-i18n.js");clients=await import("/ui/js/hub-client.js");confirms=await import("/assets/ui-confirm.js");commands=await import("/ui/js/runtime-commands.js");p.restore();});
 afterEach(async()=>{for(const p of pages.splice(0)){await p.unmount();p.restore();}vi.restoreAllMocks();});
 const view=()=>({ok:true,enabled:true,canAdd:true,agent:null,computer:{id:"computer",name:"Alex PC",connected:true,compatible:true,folder:"C:\\Shared",working:false,
  clis:[{id:"codex",path:"C:\\codex.exe",available:true,authenticated:true,personalStatus:"ready",models:[{id:"model-one",label:"Model One"}]},{id:"claude-code",path:null,available:false,authenticated:false,personalStatus:"unchecked",models:[]}]}});
@@ -11,7 +11,7 @@ const change=(el:any,value:string,event="input")=>{expect(el).toBeTruthy();el.va
 async function fixture(language="en",value:any=view(),overrides:any={}){
  const p=page({url:"http://127.0.0.1/ui/hub/exposures",storage:{agend_lang:language}});pages.push(p);words.setLang(language,{store:false});
  const client={personalAgent:vi.fn(async()=>value),refreshPersonalAgent:vi.fn(async()=>value),personalEnrollment:vi.fn(async()=>({ok:true,server:"https://hub.example.test",token:"agend_enroll_"+"a".repeat(43),fingerprint:"b".repeat(64),expiresAt:Date.now()+900000,installer:{scriptSha256:"c".repeat(64)}})),
-  savePersonalAgent:vi.fn(async()=>({ok:true,exposure:{id:"exposure"}})),disconnectPersonalAgent:vi.fn(async()=>({ok:true})),...overrides};
+  savePersonalAgent:vi.fn(async(_scope,input)=>{value.agent={id:"personal",exposureId:"exposure",revision:1,shared:false,...input};return {ok:true,exposure:{id:"exposure"}};}),disconnectPersonalAgent:vi.fn(async()=>({ok:true})),...overrides};
  await p.mount(h(ui.HubPersonalAgent,{client,scope:"captured-signin"}));await settle(20);return {p,client};
 }
 it.each(["en","zh-TW"])("uses the personal read-only disclosure and normal controls (%s)",async language=>{
@@ -21,7 +21,7 @@ it.each(["en","zh-TW"])("uses the personal read-only disclosure and normal contr
 });
 it("uses actual CLI eligibility and keeps Claude's sign-in action beside a refused Codex",async()=>{
  const data=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable"});Object.assign(data.computer.clis[1],{path:"C:\\claude.exe"});
- const {p}=await fixture("en",data);expect(p.root.textContent).toContain("this version of Windows can't keep it inside one folder");expect(p.root.textContent).toContain("Sign in to this CLI on that computer");expect(p.root.querySelector("form")).toBeNull();
+ const {p}=await fixture("en",data);expect(p.root.textContent).toContain("this version of Windows can't keep it inside one folder");expect(p.root.textContent).toContain("Sign in on that computer");expect(p.root.querySelector("form")).toBeNull();
 });
 it("shows answers-when-connected and preserves typed fields across a refresh",async()=>{
  const data=view(),{p,client}=await fixture("en",data);const inputs=p.root.querySelectorAll("form input"),select=p.root.querySelector("form select");
@@ -35,12 +35,12 @@ it("saves only the named fields and revision under its captured sign-in",async()
  expect(p.root.textContent).toContain("Choose who may ask");expect(client.savePersonalAgent.mock.calls[0][1]).not.toHaveProperty("owner");
 });
 it("keeps the enrollment command private until the owner requests one",async()=>{
- const {p,client}=await fixture();expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();fire(button(p,"Connect a replacement computer"),"click");fire(button(p,"Connect a replacement computer"),"click");await settle(20);expect(client.personalEnrollment).toHaveBeenCalledTimes(1);
+ const {p,client}=await fixture();expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();fire(button(p,"Use a different computer"),"click");fire(button(p,"Use a different computer"),"click");await settle(20);expect(client.personalEnrollment).toHaveBeenCalledTimes(1);
  expect(client.personalEnrollment).toHaveBeenCalledWith("captured-signin");expect(p.root.querySelector("pre")?.textContent).toContain("agend_enroll_");expect(p.root.textContent).toContain("15 minutes");
  change(p.root.querySelector("form input"),"Notes");change(p.root.querySelector("form select"),"codex","change");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);expect(p.root.querySelector("pre")).toBeNull();
 });
 it("does not call enrollment while disabled or while the owner lacks permission",async()=>{
- const value=view();value.enabled=false;const f=await fixture("en",value);expect(button(f.p,"Connect a replacement computer")).toBeUndefined();expect(f.client.personalEnrollment).not.toHaveBeenCalled();
+ const value=view();value.enabled=false;const f=await fixture("en",value);expect(button(f.p,"Use a different computer")).toBeUndefined();expect(f.client.personalEnrollment).not.toHaveBeenCalled();
 });
 it("edits named people and teams while keeping settings writes explicit and scoped",async()=>{
  const p=page({url:"http://127.0.0.1/ui/hub/admin"});pages.push(p);words.setLang("en",{store:false});
@@ -77,4 +77,30 @@ it("retries a failed person search without saving the administrator's unsaved po
  const client={personalAgentSettings:async()=>({ok:true,enabled:false,people:[],teams:[]}),teams:async()=>({ok:true,teams:[]}),teamSuggestions:vi.fn().mockResolvedValueOnce({ok:false}).mockResolvedValue({ok:true,candidates:[]}),savePersonalAgentSettings:vi.fn()};
  await p.mount(h(ui.HubPersonalAgentAdmin,{client,scope:"admin"}));await settle(20);change(p.root.querySelector('input[type="search"]'),"Alex");await settle();fire(button(p,"Search"),"click");await settle(20);
  fire(p.root.querySelector(".error-state button"),"click");await settle(20);expect(client.teamSuggestions).toHaveBeenCalledTimes(2);expect(client.savePersonalAgentSettings).not.toHaveBeenCalled();expect(p.root.querySelector(".error-state")).toBeNull();
+});
+
+it("keeps sharing primary until configured, and replacement/disconnect quiet at the bottom",async()=>{
+ const data:any=view();data.agent={id:"personal",exposureId:"exposure",revision:1,name:"Notes",cli:"codex",shared:false};
+ const {p,client}=await fixture("en",data);expect(p.root.textContent).toContain("Not shared yet. Nobody can ask this agent.");
+ expect(p.root.querySelector('a.btn-primary')?.getAttribute("href")).toBe("/ui/hub/exposures?agent=exposure");
+ expect(button(p,"Use a different computer")?.className).toContain("btn-ghost");expect(button(p,"Disconnect computer")?.className).toContain("btn-danger");
+ (globalThis as any).confirm=undefined;fire(button(p,"Disconnect computer"),"click");fire(button(p,"Disconnect computer"),"click");await settle();const q=confirms.confirmStore.get().queue;
+ expect(q).toHaveLength(1);expect(q[0]).toMatchObject({danger:true,confirmLabel:"Disconnect",message:"Disconnect this computer? The agent stops answering. Nothing on the computer is deleted or uninstalled."});
+ confirms.answerConfirm(q[0].id,false);await settle();expect(client.disconnectPersonalAgent).not.toHaveBeenCalled();
+ data.agent.shared=true;fire(button(p,"Refresh"),"click");await settle(20);expect(p.root.textContent).not.toContain("Not shared yet.");expect(p.root.querySelector('a.btn-primary')).toBeNull();
+});
+it("leaves an unavailable CLI out of the selector while explaining it separately",async()=>{
+ const data=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable"});Object.assign(data.computer.clis[1],{available:true,authenticated:true,path:"C:/claude"});
+ const {p}=await fixture("en",data);expect([...p.root.querySelector("form select").querySelectorAll("option")].map((o:any)=>o.value)).toEqual(["","claude-code"]);
+ expect(p.root.textContent).toContain("Can be used");expect(p.root.textContent).toContain("this version of Windows can't keep it inside one folder");
+});
+it("offers a new command after expiry",async()=>{
+ const data:any=view();data.computer=null;const {p}=await fixture("en",data,{personalEnrollment:async()=>({ok:true,expiresAt:Date.now()-1})});
+ fire(button(p,"Add a personal agent"),"click");await settle(20);expect(p.root.querySelector("pre")).toBeNull();expect(p.root.textContent).toContain("This command has expired.");expect(button(p,"New command")).toBeTruthy();
+});
+it("keeps certificate help in a closed disclosure and personal terminal advice safe",async()=>{
+ const data:any=view();data.computer=null;const next=await fixture("en",data);fire(button(next.p,"Add a personal agent"),"click");await settle(20);expect(next.p.root.querySelector("details")?.getAttribute("open")).toBeNull();
+ expect(next.p.root.textContent).toContain("Don't change security settings to get past it.");expect(button(next.p,"Copy command")?.className).toContain("btn-primary");
+ const ordinary=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64)),personal=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64),"personal");
+ expect(ordinary).toContain("or use the ZIP");expect(personal).not.toContain("or use the ZIP");expect(personal).toContain("Don''t change security settings");expect(personal).toContain("if ($s -and $h -eq");
 });
