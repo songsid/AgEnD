@@ -13,6 +13,24 @@ import { t } from "../src/locale.js";
  * had already worked.
  */
 describe("post-login recovery always reports an outcome", () => {
+  // M-3238: the dashboard's dialog gets the same outcome as data (it says it in one plain line); a broken reader never
+  // stops the chat's report.
+  it("hands the outcome to a reader too: what came back, what is still coming, or that it could not be done", async () => {
+    const seen: unknown[] = [], sent: string[] = [];
+    await announcePostLoginRecovery("codex", async () => ({ woken: ["a"], restarted: ["b"], pending: [] }), async (x) => { sent.push(x); }, 90_000, (o) => seen.push(o));
+    await announcePostLoginRecovery("codex", async () => ({ woken: [], restarted: [], pending: ["slow"] }), async (x) => { sent.push(x); }, 90_000, (o) => seen.push(o));
+    await announcePostLoginRecovery("codex", async () => { throw new Error("busy"); }, async (x) => { sent.push(x); }, 90_000, (o) => seen.push(o));
+    expect(seen).toEqual([
+      { woken: ["a"], restarted: ["b"], pending: [], failed: false },
+      { woken: [], restarted: [], pending: ["slow"], failed: false },
+      { woken: [], restarted: [], pending: [], failed: true },
+    ]);
+    expect(sent).toHaveLength(3);
+    const quiet: string[] = [];
+    await announcePostLoginRecovery("codex", async () => ({ woken: [], restarted: [], pending: [] }), async (x) => { quiet.push(x); }, 90_000, () => { throw new Error("reader broke"); });
+    expect(quiet).toEqual([t("login.recovered", "codex", t("login.none"), t("login.none"))]);
+  });
+
   it("reports what came back", async () => {
     const sent: string[] = [];
     await announcePostLoginRecovery(

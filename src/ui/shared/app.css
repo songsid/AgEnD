@@ -2144,8 +2144,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .signin-browser > section { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); min-width: 0; padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .signin-browser > section > :is(h3, p, label, code) { flex-basis: 100%; min-width: 0; }
 .signin-browser h3 { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
-.signin-browser :is(button, a) { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; max-width: 100%; padding: var(--s-2) var(--s-4); border: 1px solid var(--border-strong); border-radius: var(--r-full); background: var(--bg); color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: var(--lh-md); text-align: center; overflow-wrap: anywhere; cursor: pointer; }
-.signin-browser :is(button, a):hover:not(:disabled) { background: var(--surface-2); }
+.signin-browser :is(button, a):not(.btn) { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; max-width: 100%; padding: var(--s-2) var(--s-4); border: 1px solid var(--border-strong); border-radius: var(--r-full); background: var(--bg); color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: var(--lh-md); text-align: center; overflow-wrap: anywhere; cursor: pointer; }
+.signin-browser :is(button, a):not(.btn):hover:not(:disabled) { background: var(--surface-2); }
 .signin-browser button:disabled { opacity: 0.45; cursor: default; }
 .signin-browser > button { align-self: flex-start; }
 .signin-browser section > a { background: var(--accent-fill); color: var(--on-accent); border-color: transparent; }
@@ -2154,8 +2154,40 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .signin-browser input { width: 100%; min-width: 0; min-height: 40px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-md); }
 .signin-browser code { padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--bg); font-family: var(--font-mono); overflow-wrap: anywhere; user-select: all; }
 .signin-browser [role="alert"] { padding: var(--s-3); border: 1px solid var(--danger-line); border-radius: var(--r-sm); background: var(--danger-bg); color: var(--danger); }
+/* M-3238 (the user; Argon's component review): the connect dialogs' steps — the step circles of .hub-steps (24 px, the Hub's
+   stylesheet: not loaded here), a short primary button 「開啟登入頁面」 beside Copy link with the address a quiet mono note
+   under them, the code with Copy in one bordered box (.runtime-command-card + .hub-code), the auto-update hint a quiet
+   .s-info; the end a check banner on --ok-bg and the reloaded agents as .chips > .tag. The same in both dialogs. */
+.signin-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-4); counter-reset: signin-step; }
+.signin-steps > li { display: flex; align-items: flex-start; gap: var(--s-3); counter-increment: signin-step; }
+.signin-steps > li::before { content: counter(signin-step); flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: var(--r-full); display: grid; place-items: center;
+  background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+.signin-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
+.signin-step-title { color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-medium); line-height: var(--lh-sm); }
+.signin-linkrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); width: 100%; }
+.signin-url { overflow-wrap: anywhere; }
+.signin-code-box { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); width: 100%; box-sizing: border-box;
+  padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.signin-code, .signin-browser code.signin-code { padding: 0; border-radius: 0; background: transparent; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold); letter-spacing: 0.12em; user-select: all; overflow-wrap: anywhere; }
+.signin-back { margin-top: var(--s-1); }
+.signin-done-banner { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--ok-bg); color: var(--ok); }
+.signin-done-banner .signin-headline { color: var(--text); font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.signin-recovery-box { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); padding: var(--s-3) var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.signin-recovery-box > .note { color: var(--text-2); }
+.signin-recovery-box .chips { gap: var(--s-2); }
+.signin-recovery-box .tag { font-size: var(--fs-xs); padding: 2px var(--s-3); color: var(--text); white-space: normal; overflow-wrap: anywhere; }
+.signin-after { margin-top: var(--s-3); }
+/* The account dialog for one account: its title names the CLI — the card is the dialog's body, no second surface. */
+.signin-browser.is-single > section { padding: 0; border: 0; background: none; }
+@media (pointer: coarse), (max-width: 899px) {
+  .signin-linkrow > .btn { flex: 1 1 auto; justify-content: center; min-height: var(--tap); padding-inline: var(--s-3); white-space: nowrap; }
+  .signin-code-box { min-height: calc(var(--tap) + var(--s-2)); }
+  .signin-code-box > .btn { min-height: var(--tap); }
+}
 .signin-browser-actions { display: flex; flex: 1; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); min-width: 0; }
 .signin-browser-actions .btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.signin-browser-actions .btn.danger { white-space: nowrap; }   /* M-3238: Cancel connecting, one line on the footer's left */
 @media (pointer: coarse), (max-width: 899px) {
   .signin-browser :is(button, a), .signin-browser-actions .btn, .signin-browser ~ .note .btn { min-height: var(--tap); }
 }

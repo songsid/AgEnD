@@ -341,9 +341,11 @@ describe("#2233 a terminal sign-in (claude-code) from the dashboard", () => {
     const v = (await f.view(a)).body.login;
     expect(v).toMatchObject({ phase: "ended", ok: true, accessCode: null, terminal: null });
     expect(v.lines[0]).toBe(t("login.completed", "claude-code"));
-    expect(f.changes.n, "started, then ended").toBe(2);
+    expect(f.changes.n, "started, ended, then what the recovery did (M-3238)").toBe(3);
     expect(v.lines.join("\n")).toContain("agent-a");
     expect(f.recover).toHaveBeenCalledWith("claude-code");
+    // M-3238: the same outcome as data, for the dialog's one plain line (chat keeps its text, above).
+    expect([v.recovery, v.cleanupFailed]).toEqual([{ woken: [], restarted: ["agent-a"], pending: [], failed: false }, false]);
   });
 
   it("busy: a sign-in already running (from chat or another session) refuses the start with the window's message; nothing is replaced", async () => {

@@ -30,7 +30,6 @@ const ALLOWED = new Map<string, string>([
   ["panel-settings.js\tplaceholder\tagend.example.com", "an example hostname"],
   ["settings-hub-web-address.js\tplaceholder\thub.example.com", "an example hostname (Settings → Hub → Hub address, M-2901)"],
   ["settings-shared.js\tplaceholder\t/path/to/projects", "an example path (Shared agent settings → Project folders, moved from Fleet → Config by #2347 §10)"],
-  ["backend-signin.js\tlabel\tURL", "an acronym, the same in both languages"],
   ["settings-outside.js\ttext\tGoogle Authenticator", "an authenticator app's product name"],
   ["settings-outside.js\ttext\tMicrosoft Authenticator", "an authenticator app's product name"],
   ["settings-devices.js\tplaceholder\tXXXX-XXXX", "the shape of a device code (an example, the same in both languages)"],

@@ -456,6 +456,15 @@ jobs:
           HP: '19668'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-hub-switch-names-m3235.mts
+      # M-3238 (the user): Connect an AI account — numbered steps with a big link naming the provider's page and the code large
+      # (each with Copy), and the end as one headline and one plain line on which agents were reloaded.
+      - name: Connect dialogs (device steps and the end)
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19669'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-connect-dialogs-m3238.mts
       # M-3222 (the user, iPhone): one line of text in the middle of the composer with Send and 📎; in the drawer a fresh reply is a
       # quiet marker at the row's height (its time in the accent), never a tinted block, a pulse or a left-over hover.
       - name: Phone composer line and drawer reminders
