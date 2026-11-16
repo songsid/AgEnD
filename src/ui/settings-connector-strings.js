@@ -3,7 +3,7 @@ register("connector", {
   en: {
     title: "Connect your app", hint: "Use Claude Code, Codex or another MCP app to talk to your agents and read their answers and task board.",
     scope: "This connection offers chat and reads only. It cannot create or delete agents, change settings, or approve actions.",
-    app: "App", generic: "Other MCP app", location: "Where the app runs", windows: "Windows", local: "This AgEnD computer", wsl: "Inside WSL",
+    app: "App", claude: "Claude Code", codex: "Codex", generic: "Other MCP app", location: "Where the app runs", windows: "Windows", local: "This AgEnD computer", wsl: "Inside WSL",
     copy: "Copy setup prompt", copied: "Setup prompt copied", failed: "Could not copy. Select and copy the prompt below.",
     loading: "Loading this computer's command…", retry: "Try again", unsupported: "Run AgEnD in WSL to connect a Windows app.",
     distro: "WSL distribution name", distroHint: "AgEnD could not read the distribution name. Enter its exact name from wsl --list on Windows; no Windows program is opened here.",
@@ -13,7 +13,7 @@ register("connector", {
   "zh-TW": {
     title: "連接你的 App", hint: "用 Claude Code、Codex 或其他 MCP App 與你的 Agent 對話，讀取回答與任務板。",
     scope: "此連線只提供對話與讀取，不能建立或刪除 Agent、變更設定或核准操作。",
-    app: "App", generic: "其他 MCP App", location: "App 執行位置", windows: "Windows", local: "這台 AgEnD 電腦", wsl: "WSL 裡面",
+    app: "App", claude: "Claude Code", codex: "Codex", generic: "其他 MCP App", location: "App 執行位置", windows: "Windows", local: "這台 AgEnD 電腦", wsl: "WSL 裡面",
     copy: "複製設定提示詞", copied: "已複製設定提示詞", failed: "無法複製，請選取下方提示詞自行複製。",
     loading: "正在讀取這台電腦的指令…", retry: "重試", unsupported: "請在 WSL 執行 AgEnD，再連接 Windows App。",
     distro: "WSL 發行版本名稱", distroHint: "AgEnD 無法讀取發行版本名稱。請填入 Windows 上 wsl --list 顯示的完整名稱；這裡不會開啟 Windows 程式。",

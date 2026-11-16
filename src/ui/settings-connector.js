@@ -29,7 +29,7 @@ export function SettingsConnector() {
       : !info ? html`<p role="status">${tr("loading")}</p>`
       : !info.supported ? html`<p role="status">${tr("unsupported")}</p>`
       : html`<div class="grid2"><label class="field"><span>${tr("app")}</span><select value=${app} onChange=${event => { setApp(event.target.value); setNotice(""); }}>
-        <option value="claude">Claude Code</option><option value="codex">Codex</option><option value="generic">${tr("generic")}</option></select></label>
+        <option value="claude">${tr("claude")}</option><option value="codex">${tr("codex")}</option><option value="generic">${tr("generic")}</option></select></label>
         ${info.wsl ? html`<label class="field"><span>${tr("location")}</span><select value=${where} onChange=${event => { setWhere(event.target.value); setNotice(""); }}><option value="windows">${tr("windows")}</option><option value="local">${tr("wsl")}</option></select></label>` : null}</div>
         ${info.wsl && where === "windows" && !info.wslDistro ? html`<label class="field"><span>${tr("distro")}</span><input value=${distro} maxLength=${128} onInput=${event => { setDistro(event.target.value); setNotice(""); }} /><small>${tr("distroHint")}</small></label>` : null}
         <p class="note">${tr("noSecrets")}</p><button class="btn s-connector-action" type="button" disabled=${!prompt} onClick=${copy}>${tr("copy")}</button>
