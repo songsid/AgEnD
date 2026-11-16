@@ -22401,7 +22401,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // whether it is over, and then it is not signed in (never the other way: the file can't vouch for a login).
       const ended = row.state === "usable" && this.claudeSignInEnded(row.backend, null);
       // A CLI the dashboard drives with the structured sign-in (registry: `host.structuredSignIn`) although chat's /login and the browser terminal decline it (Antigravity: `agy acp --login`, agy
-      // >= its `minVersion`) is signed in from Settings → Accounts. A CLI that is older, or whose version is not known, keeps "Sign in on the host" and is told to update.
+      // >= its `minVersion`, or — AGEND-274, only while the version is unknown — its file holds the command's `marker`) is signed in from Settings → Accounts. A CLI that is older, or whose version is not
+      // known and whose file was not seen to hold the marker, keeps "Sign in on the host" (told to update only when the version is known to be older).
       const structured = hostFacts(row.backend, "structuredSignIn");
       const viaStructured = !!structured && flow?.remoteLogin === "unsupported" && row.state !== "not_installed";
       const structuredSignIn = viaStructured && structuredSignInReady(row, structured!.minVersion);

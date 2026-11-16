@@ -281,10 +281,10 @@ describe("#2078 review: the version is read from disk first, starting nothing", 
 describe("AGEND-274: a CLI that names no version and may not be started to ask (no network namespace, #2078): its file says whether it has the sign-in command", () => {
   const LINE = "Log in with Google interactively, then exit";
   const scratch = () => mkdtempSync(join(tmpdir(), "avail-marker-"));
-  /** An "agy": a script that would leave `ran` behind if it were ever started, padded so the line sits past a chunk boundary. */
-  const agy = (dir: string, body: string, pad = 0) => {
-    const f = join(dir, "agy");
-    writeFileSync(f, `#!/bin/sh\ntouch ${JSON.stringify(join(dir, "ran"))}\n# ${"x".repeat(pad)}${body}\n`, { mode: 0o755 });
+  /** An "agy": a script that would leave `ran` behind if it were ever started; `at`: the byte offset where `body` starts (padded to it), so a test can place the line across a chunk boundary whatever the scratch path's length. */
+  const agy = (dir: string, body: string, at = 0) => {
+    const f = join(dir, "agy"), head = `#!/bin/sh\ntouch ${JSON.stringify(join(dir, "ran"))}\n# `;
+    writeFileSync(f, `${head}${"x".repeat(Math.max(0, at - Buffer.byteLength(head)))}${body}\n`, { mode: 0o755 });
     return f;
   };
   it("finds the registry's marker in the bytes (also across a chunk boundary and through a link), says no when it is absent, and starts nothing", async () => {
@@ -295,9 +295,10 @@ describe("AGEND-274: a CLI that names no version and may not be started to ask (
     const dir = scratch();
     const old = agy(dir, "Usage of agy: --add-dir  Add a directory to the workspace");
     expect(await structuredLoginMarker("antigravity", old)).toBe(false);
-    for (const pad of [0, 4 * 1024 * 1024 - 60, 4 * 1024 * 1024 - 20]) {      // the line starts before the end of the first 4 MiB chunk and ends after it
-      const dir2 = scratch(), f = agy(dir2, `${LINE} (ACP terminal auth)`, pad);
-      expect(await structuredLoginMarker("antigravity", f), String(pad)).toBe(true);
+    const CHUNK = 4 * 1024 * 1024;
+    for (const at of [0, CHUNK - 1, CHUNK - 20, CHUNK - (LINE.length - 1), CHUNK + 10]) {   // in the first chunk; split across the 4 MiB boundary (1, 20 and all but 1 byte before it); wholly in the second
+      const dir2 = scratch(), f = agy(dir2, `${LINE} (ACP terminal auth)`, at);
+      expect(await structuredLoginMarker("antigravity", f), String(at)).toBe(true);
       expect(existsSync(join(dir2, "ran"))).toBe(false);
     }
     const dir3 = scratch(); symlinkSync(agy(scratch(), LINE), join(dir3, "agy"));
