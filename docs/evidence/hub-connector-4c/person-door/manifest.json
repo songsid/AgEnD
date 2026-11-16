@@ -1,0 +1,158 @@
+{
+  "baseCommit": "d47fa59ad04b3fab5b05f5624e32b7453b22e93d",
+  "inputs": [
+    {
+      "path": "changes/4006-hub-connector-door.md",
+      "sha256": "dbaaeebee26b989a2efcba0586c52466641a948c233192747cdf031f2b6ee27d"
+    },
+    {
+      "path": "changes/4006-hub-connector-door.zh-TW.md",
+      "sha256": "ad70c9407dba1ff5c0ab5df5aff46236f6dd86e4cbb0840561b38e66505e1f2c"
+    },
+    {
+      "path": "docs/design/hub-connector-4c.md",
+      "sha256": "36da14b271053d92a455c65d8f4c98d940f93716761b5506df96f0f7e4225970"
+    },
+    {
+      "path": "src/connect/mcp.ts",
+      "sha256": "cb25940740ea8abfd7c4fcff7fa838bb493abc75c952da9ece4ed2198d6963b9"
+    },
+    {
+      "path": "src/connect/stdio.ts",
+      "sha256": "7096b197a73108617349de8e61d1732050e4aad60653ed8f7341324cea113456"
+    },
+    {
+      "path": "src/hub/catalog.ts",
+      "sha256": "e71ab6d88e0a3e7d73e22a3a6b39ddcc7b93e6b69536a07ed7bbc6a27950617e"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "5bc95897c3a64f402fee7e6f989eb7edb343a549c8e8f8223e55e6ffd9bf3398"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "d0321e1d84f72eee327b27b64a09f3455184199ae3bcd40478e8203fe967fc80"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "d15853a134aac722be65a3258fa21eee7f0fc47eab537a4e9fe387eee055d134"
+    },
+    {
+      "path": "src/hub/mcp/auth-schema.ts",
+      "sha256": "cb21753f040c715fe0d7b7f43084bf0da5fda51cb64a1ee5f1aee7b47aa435ae"
+    },
+    {
+      "path": "src/hub/mcp/auth.ts",
+      "sha256": "c7d4a81843c24135ea74e0086ee888a0d055c3545588a94c881c0a847a0bd8c7"
+    },
+    {
+      "path": "src/hub/mcp/catalog.ts",
+      "sha256": "50d3b289f1341292d33c816b01a29819e46e6d99e2f151740514e3a74fbfd0cf"
+    },
+    {
+      "path": "src/hub/mcp/door-schema.ts",
+      "sha256": "b153b623a81f03f6e62e045ef1853aab773e1dafa83ade466c1db34666f96e17"
+    },
+    {
+      "path": "src/hub/mcp/http.ts",
+      "sha256": "4db93a1f03375773b39dd0df2dcd7f4446a610ea598a929e610bb75c6073b0e5"
+    },
+    {
+      "path": "src/hub/mcp/policy.ts",
+      "sha256": "8d64694897c567322cccc819f6dff0d0b360a205b9dbedbecddb36fa418fe75b"
+    },
+    {
+      "path": "src/hub/mcp/server.ts",
+      "sha256": "2289ee867b5a97a32ac9fa06bc2e75c29ef4531c78e965476e2fe41ad3c69648"
+    },
+    {
+      "path": "src/hub/mcp/tools.ts",
+      "sha256": "f64c1b5c7615fe50c13e9e5507b828d070edb4ef5d9e6ac91342b444ef883b4f"
+    },
+    {
+      "path": "src/hub/rooms.ts",
+      "sha256": "d4b377d9ae01acbce19cc618fa7629c26319dde7f25b907712c2d4ef2d439449"
+    },
+    {
+      "path": "src/hub/rooms/agents.ts",
+      "sha256": "deb6bf02d6a981df5c8ec9ea888c09fbfb6860bf96ceceff6ef17be75b01cbdd"
+    },
+    {
+      "path": "src/hub/rooms/direct-view.ts",
+      "sha256": "d51f35b6ed422090baeb43c7f2da9fdb1d8821ac9953445c639e7a6bf2d72c6c"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "932c0293d414216365e920e7f3319da785db2d8d2c3602d6327d1bc2faaa66ff"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "d9b9f5fd4c5bc3f21d8a227bfe0aadc73cdeabcec5ae05559330711c44e4d3a2"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "f49bfa0fc057206da9e33e785c9c95c8e29f6345b7aaa1077e1919ecb4934b0f"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "sha256": "5f4f7dbf7927f72e58d3743771ef11b62abe7e877da1535a3606812c4aa1179e"
+    },
+    {
+      "path": "tests/helpers/hub-s3b-rig.ts",
+      "sha256": "58ea8404a643e594522aa1c3aefb7a2624a9a34ce0c8cc463461474633a79f92"
+    },
+    {
+      "path": "tests/hub-mcp-auth-m3240.test.ts",
+      "sha256": "80a5cf5572437fc76c1e26c46204099d20a910f90a0f7510cfaef36e64554495"
+    },
+    {
+      "path": "tests/hub-mcp-door-m3240.test.ts",
+      "sha256": "04d5894c39b21ee14150f81b4c9422f6be33591d7b02c2af0d3f981bb3b18a16"
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "sha256": "90002d42f2cc67b298a16f0e511e6aa8000cc86070dfe27e5f566f68247a47d3"
+    }
+  ],
+  "final": {
+    "passed": 114,
+    "files": 8,
+    "newDoorControls": 25,
+    "authControls": 25,
+    "sourceTypeScript": 0,
+    "testTypeScript": 0
+  },
+  "baseline": {
+    "policyRemoveReadd": {
+      "selected": 1,
+      "assertionFailures": 1,
+      "unselected": 22
+    }
+  },
+  "reversals": {
+    "sourceSha256": "f64c1b5c7615fe50c13e9e5507b828d070edb4ef5d9e6ac91342b444ef883b4f",
+    "restored": true,
+    "programTypechecks": "final restored programs only; each reversal runtime-transformed",
+    "cases": [
+      {
+        "guard": "scope",
+        "result": "caught by assertion",
+        "selected": 1,
+        "unselected": 24
+      },
+      {
+        "guard": "app-result",
+        "result": "caught by assertion",
+        "selected": 1,
+        "unselected": 24
+      },
+      {
+        "guard": "post-cap",
+        "result": "caught by assertion",
+        "selected": 1,
+        "unselected": 24
+      }
+    ]
+  },
+  "scope": "Actual loopback HTTP + SDK MCP client, owned SQLite and inert directory/member links, existing release-answer lease path; not browser, trusted TLS, real CLI, live Hub/AD/Fleet or package acceptance."
+}

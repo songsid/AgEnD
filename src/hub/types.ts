@@ -265,6 +265,8 @@ export type HubActor =
   | { kind: "local-host"; sessionId: string; directoryBinding: PersonKey | null };
 export interface HubRequestContext {
   readonly requestId: string;
+  /** Verified company-person app grant, constructed by the Hub OAuth door, never from request JSON. */
+  readonly application?: { readonly id: string; readonly name: string };
   /** Synchronous session/lifetime fence for a permit immediately before its effect; never directory authority. */
   isCurrent?(): boolean;
   /** Exact synchronous identity/session fence, not a directory or permission proof. */

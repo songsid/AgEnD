@@ -269,4 +269,11 @@ export class HubMcpAuth {
       }
     });
   }
+  /** RFC 7009: possession of the token and its bound public-client id ends that app, never a web session. */
+  revoke(input:unknown):void {
+    const value=parse(z.strictObject({client_id:opaque,token:plain(512),token_type_hint:z.enum(["access_token","refresh_token"]).optional()}),input);
+    const token=this.core.atomic(db=>db.prepare("SELECT app_id FROM hub_mcp_tokens WHERE token_hash=?").get(digest(value.token)) as {app_id:string}|undefined);
+    if(!token)return;const row=this.app(token.app_id);
+    if(row?.client_id===value.client_id)this.end(row,"client-disconnected");
+  }
 }
