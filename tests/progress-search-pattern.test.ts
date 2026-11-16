@@ -1,10 +1,16 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Daemon } from "../src/daemon.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { summarizeProgress } from "../src/tool-progress.js";
+import { getLocale, setLocale } from "../src/locale.js";
+
+// The bubble's labels follow the fleet's language (M-3219); these assert the zh-TW ones.
+const priorLocale = getLocale();
+beforeAll(() => setLocale("zh-TW"));
+afterAll(() => setLocale(priorLocale));
 
 /**
  * The channel's progress line never carries a search pattern, and the line's sink masks secrets BEFORE it caps the

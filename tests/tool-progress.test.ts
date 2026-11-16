@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ProgressAccumulator, redactSecrets, summarizeProgress } from "../src/tool-progress.js";
+import { getLocale, setLocale } from "../src/locale.js";
+
+// The bubble's labels follow the fleet's language (M-3219); these assert the zh-TW ones.
+const priorLocale = getLocale();
+beforeAll(() => setLocale("zh-TW"));
+afterAll(() => setLocale(priorLocale));
 
 describe("redactSecrets", () => {
   it.each([
@@ -97,11 +103,11 @@ describe("summarizeProgress — claude-code shapes", () => {
 
   it("suppresses agend tools but keeps others inside a codex exec batch", () => {
     const js = "await tools.mcp__agend_codex_t152__list_instances({}); await tools.web__run({q:1});";
-    expect(summarizeProgress("exec", js)).toBe("🔌 web__run");
+    expect(summarizeProgress("exec", js)).toBe("🌐 網路搜尋");
   });
 
-  it("labels other MCP tools by server:tool", () => {
-    expect(summarizeProgress("mcp__github__create_pr", {})).toBe("🔌 github:create_pr");
+  it("labels other MCP tools as server · tool", () => {
+    expect(summarizeProgress("mcp__github__create_pr", {})).toBe("🔌 github · create_pr");
   });
 
   it("labels subagent work", () => {
@@ -125,7 +131,7 @@ describe("summarizeProgress — codex shapes", () => {
 
   it("surfaces tools.* calls from custom_tool_call exec input", () => {
     const js = 'const r = await tools.view_image({path:"/x.png"}); image(r.image_url);\n';
-    expect(summarizeProgress("exec", js)).toBe("🔌 view_image");
+    expect(summarizeProgress("exec", js)).toBe("🖼️ 查看圖片：/x.png");
   });
 });
 

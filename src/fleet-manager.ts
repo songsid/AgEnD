@@ -21189,7 +21189,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const elapsed = FleetManager.formatProgressElapsed(
       Date.now() - (entry.startedAt ?? Date.now()),
     );
-    return `🧾 工具歷程 (記錄至 ${elapsed})\n${entry.toolProgress}`;
+    return `${t("progress.trace_title", elapsed)}\n${entry.toolProgress}`;
   }
 
   /**
