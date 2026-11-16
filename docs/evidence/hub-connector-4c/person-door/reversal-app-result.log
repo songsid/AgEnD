@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connector-4c-tools-m3240
+
+ ❯ tests/hub-mcp-door-m3240.test.ts (25 tests | 1 failed | 24 skipped) 478ms
+   × uses only current grants for direct asks and keeps ask-result IDs private to the app 474ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-mcp-door-m3240.test.ts > uses only current grants for direct asks and keeps ask-result IDs private to the app
+AssertionError: expected { ok: true, …(4) } to match object { ok: false, code: 'not-found' }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "code": "not-found",
+-   "ok": false,
++   "ok": true,
+  }
+
+ ❯ tests/hub-mcp-door-m3240.test.ts:128:59
+    126|   const page=await rig!.call(w.browser,"GET",`/hub/v1/rooms/${direct.r…
+    127|   expect(page.json.messages[0].author).toMatchObject({kind:"person",na…
+    128|   expect(await b.call("hub_ask_result",{id:operationId})).toMatchObjec…
+       |                                                           ^
+    129|   expect((await rig!.call(w.admin,"DELETE",`/hub/v1/grants/${grant.id}…
+    130|   expect(await a.call("hub_ask_result",{id:operationId})).toMatchObjec…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 skipped (25)
+   Start at  19:09:12
+   Duration  4.17s (transform 2.65s, setup 75ms, import 3.48s, tests 478ms, environment 0ms)

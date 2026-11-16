@@ -1,0 +1,9 @@
+{
+  "baseSource": "4aaef06524d1f312cf88a99683451fe2ec8ddc46",
+  "inputs": [
+    {
+      "path": "src/ui/hub-ai-apps-strings.js",
+      "sha256": "e07ebf330c2eedcd2c237f1a81c36fb762ee355bc171e21fd2f9926b8cf71ae2"
+    }
+  ]
+}

@@ -13,7 +13,8 @@ it.each([["en", false], ["en", true], ["zh-TW", false], ["zh-TW", true]])("web u
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ fetchedAt: new Date().toISOString(), providers: [{ id: "codex:full", name: "Codex (full)", profile: "full", noAgents: true, status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 100 }, { label: "Rate limit resets", type: "count", value: 3, unit: "available" }] }] }) })));
   await p.mount(h(usage.UsageBody, { owner: "" })); await settle(20);
   expect(p.root.textContent).toContain("full");
-  expect(p.root.textContent).toContain(language === "en" ? "No agents on this profile" : "此帳號目前沒有 Agent");
+  // M-3248: a quiet ⓘ beside the name, named by the words (they show on a hover, a focus or a tap).
+  expect(p.root.querySelector(".u-na")?.getAttribute("aria-label")).toBe(language === "en" ? "No agents on this profile" : "此帳號目前沒有 Agent");
   expect(p.root.textContent).toContain("100%");
   if (!compact) { expect(p.root.textContent).toContain("Rate limit resets"); expect(p.root.textContent).toContain("3"); }
 });

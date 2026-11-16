@@ -69,6 +69,7 @@ export async function s3bRig(opts: { directory?: HubDirectory; now?: () => numbe
   const content = {
     put(tx: HubTx, payload: { question?: string; answer?: string }) { if (realAudit) return realAudit.content.put(tx, payload); sql(tx); const ref = randomBytes(16).toString("hex"); contents.set(ref, { ...payload }); return ref; },
     get(ref: string) { if (realAudit) return realAudit.content.get(ref); const v = contents.get(ref); return v ? { ...v } : undefined; },
+    bindMessage(tx: HubTx, ref: string, messageId: string) { realAudit?.content.bindMessage(tx,ref,messageId); },
   };
   let floor = 0;
   const store = new HubTransportStore(db, { floor: { read: () => floor, raise: (n) => { floor = n; } },

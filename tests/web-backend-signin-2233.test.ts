@@ -88,6 +88,16 @@ describe("#2233 the Sign in dialog", () => {
     await dialog({ backend: "codex", resume: true });
     expect(p.root.querySelectorAll("a").map((a: any) => a.getAttribute("href"))).toContain("https://auth.openai.com/codex/device");
     expect(text()).toContain("ABCD-1234");
+    // M-3238 (the user; Argon's review): step circles; a short primary 「Open the sign-in page」 beside Copy link, the address a
+    // quiet note under them; the code with Copy in one box; "come back here" a quiet status line; Cancel a quiet danger
+    // button on the footer's left.
+    const steps = [...p.root.querySelectorAll(".signin-steps > li")].map((li: any) => li.querySelector(".signin-step-title")?.textContent);
+    expect(steps).toEqual(["Finish on the provider's official website", "Enter this code on that page"]);
+    const open = p.root.querySelector("a.signin-open") as any;
+    expect([open?.className, open?.textContent.trim(), p.root.querySelector(".signin-url")?.textContent]).toEqual(["btn btn-primary signin-open", "Open sign-in page", "auth.openai.com/codex/device"]);
+    expect([p.root.querySelector(".signin-code-box .signin-code")?.textContent, [...p.root.querySelectorAll(".signin-copy")].map((b: any) => b.textContent.trim())]).toEqual(["ABCD-1234", ["Copy link", "Copy"]]);
+    expect(p.root.querySelector(".s-info.signin-back")?.textContent).toBe("Come back here when you're done. This page updates by itself.");
+    expect([...p.root.querySelectorAll(".dlg-actions button")].map((b: any) => [b.className, b.textContent.trim()])).toEqual([["btn danger", "Cancel connecting"], ["btn", "Close"]]);
     await p.unmount();
     S.signInStore.set({ login: device("https://evil.example/device", false) });
     await dialog({ backend: "codex", resume: true });
@@ -111,18 +121,65 @@ describe("#2233 the Sign in dialog", () => {
     S.signInStore.set({ login: { id: "r1", backend: "claude-code", phase: "running", ok: null, startedOn: "Safari on iPhone", startedAt: 1, endedAt: null, mine: false } });
     answer = () => ({ message: "🛑 Login session for claude-code cancelled." });
     await dialog({ backend: "claude-code", resume: true });
-    expect(text()).toContain("Connecting your claude-code account (started on Safari on iPhone)");
+    expect(text()).toContain("Connecting your Claude Code account (started on Safari on iPhone)");
     expect(text()).not.toContain(CODE);
     fire(btn("Cancel connecting"), "click"); await settle(6);
     expect(reqs.find(r => r.url === "/ui/backend-login/cancel")).toEqual({ method: "POST", url: "/ui/backend-login/cancel", body: { backend: "claude-code" } });
   });
 
-  it("the end: signed in, with the recovery lines", async () => {
+  it("the end from an older server (no recovery as data): signed in, with its recovery lines", async () => {
     S.signInStore.set({ login: { ...TERMINAL, phase: "ended", ok: true, terminal: null, accessCode: null, lines: ["✅ claude-code login completed.", "Restarted: agent-a"] } });
     await dialog({ backend: "claude-code", resume: true });
-    expect(text()).toContain("Your claude-code account is connected.");
+    expect(text()).toContain("Your Claude Code account is connected.");
     expect(text()).toContain("Restarted: agent-a");
     expect(btn("Cancel connecting")).toBeUndefined();
+  });
+
+  // M-3238 (the user): the end was the chat's status lines — `backticks`, two ✅ lines saying the same, "instance",
+  // 「已喚醒：無。已重啟：無」. Now one headline and one plain line on which agents were reloaded (by the name people see).
+  it("the end: a check banner with the headline, then the agents as tags — reloaded or still coming — or one quiet line", async () => {
+    const { appStore } = await import("/assets/app-store.js");
+    appStore.set({ instances: [{ name: "agent-a", display_name: "Weaver" }, { name: "agent-b" }] });
+    const lines = ["✅ codex 的 profile `jefflin` 帳號已連接。正在把受影響的 instance 帶回來…", "✅ codex 的 profile `jefflin` 已就緒。已喚醒：無。已重啟：agent-a。"];
+    const end = (recovery: unknown, extra: Record<string, unknown> = {}) => ({ ...TERMINAL, backend: "codex", profile: "jefflin", phase: "ended", ok: true, terminal: null, accessCode: null, lines, recovery, ...extra });
+    const tags = () => [...p.root.querySelectorAll(".signin-recovery-box .tag")].map((t: any) => t.textContent);
+    const cases: Array<[unknown, string, string[]]> = [
+      [null, "Reloading the agents that use this account…", []],
+      [{ woken: ["agent-b"], restarted: ["agent-a"], pending: [], failed: false }, "Reloaded to use this account:", ["agent-b", "Weaver"]],
+      [{ woken: [], restarted: [], pending: [], failed: false }, "No agent uses it yet, so nothing needed reloading.", []],
+      [{ woken: [], restarted: [], pending: ["agent-a"], failed: false }, "Still reloading (they come back on their own):", ["Weaver"]],
+      [{ woken: [], restarted: [], pending: [], failed: true }, "could not be reloaded automatically", []],
+    ];
+    for (const [recovery, said, agents] of cases) {
+      S.signInStore.set({ login: end(recovery) });
+      await dialog({ backend: "codex", profile: "jefflin", resume: true });
+      expect(p.root.querySelector(".signin-done-banner .signin-headline")?.textContent).toBe("Your Codex · profile jefflin account is connected.");
+      expect(text()).toContain(said);
+      expect(tags()).toEqual(agents);
+      expect([p.root.querySelector(".signin-lines"), /`|instance|✅/.test(text())], "no status lines, backticks, jargon or ✅").toEqual([null, false]);
+      expect([...p.root.querySelectorAll(".dlg-actions button")].map((b: any) => [b.className, b.textContent.trim()])).toEqual([["btn btn-primary", "Close"]]);
+      await p.unmount();
+    }
+    S.signInStore.set({ login: end({ woken: [], restarted: [], pending: [], failed: false }, { cleanupFailed: true }) });
+    await dialog({ backend: "codex", resume: true });
+    expect(text()).toContain("could not be confirmed closed");
+    await p.unmount();
+    S.signInStore.set({ login: { ...end(null), ok: false, lines: ["❌ codex login failed: time limit reached"] } });
+    await dialog({ backend: "codex", resume: true });
+    expect(text(), "a sign-in that did not succeed still says why").toContain("time limit reached");
+  });
+
+  it("the end in Chinese: 「Codex · 設定檔 jefflin 帳號已連接。」 and the agents reloaded, as tags", async () => {
+    const { appStore } = await import("/assets/app-store.js");
+    appStore.set({ instances: [{ name: "agent-a", display_name: "Weaver" }, { name: "agent-b", display_name: "砌光" }] });
+    const i18n = await import("/assets/app-i18n.js"); i18n.setLang("zh-TW", { store: false });
+    try {
+      S.signInStore.set({ login: { ...TERMINAL, backend: "codex", profile: "jefflin", phase: "ended", ok: true, terminal: null, accessCode: null, lines: [], recovery: { woken: ["agent-b"], restarted: ["agent-a"], pending: [], failed: false } } });
+      await dialog({ backend: "codex", profile: "jefflin", resume: true });
+      expect(text()).toContain("Codex · 設定檔 jefflin 帳號已連接。");
+      expect(text()).toContain("已重新載入並改用這個帳號的 Agent：");
+      expect([...p.root.querySelectorAll(".signin-recovery-box .tag")].map((t: any) => t.textContent)).toEqual(["砌光", "Weaver"]);
+    } finally { i18n.setLang("en", { store: false }); }
   });
 });
 
@@ -173,7 +230,7 @@ describe("#2233 where Sign in is offered", () => {
     await p.mount(h(S.SignInLine, {})); await settle(4);
     expect(text()).toBe("");
     S.signInStore.set({ login: { ...TERMINAL, mine: false } }); await settle(4);
-    expect(text()).toContain("Connecting your claude-code account (started on Firefox on Linux)");
+    expect(text()).toContain("Connecting your Claude Code account (started on Firefox on Linux)");
     fire(btn("Open"), "click"); await settle(2);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", resume: true });
   });

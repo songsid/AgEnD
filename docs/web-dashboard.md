@@ -20,7 +20,7 @@ The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It 
 
 Open the AgEnD address on the new device and enter the **6-digit code currently shown in your authenticator app**. The same box also accepts an **8-character device sign-in code** (`ABCD-EFGH`, with or without the dash, in any case). A complete pasted code signs in immediately; a typed six-digit value made only of 2–7 waits 800 ms so you can finish an eight-character code. Continuing to type cancels that wait. A longer pause can spend one wrong authenticator attempt before you finish the device code. The visible **Sign in** button also submits or retries explicitly.
 
-A wrong value is not automatically retried. A server pause says how long to wait, and ending the pause does not submit again. The help under the box explains reaching AgEnD over the same Wi-Fi, a shared private network or an outside address supplied by your admin; it opens no public link. Authenticator setup, sign-in eligibility and limits remain the server’s policy.
+A wrong value is not automatically retried. A server pause says how long to wait, and ending the pause does not submit again. The help under the box, **How do I open AgEnD on my phone?**, lists the ways in, easiest first: the temporary link (`/web` in General → **🌐 Other device**), a fixed link (a fixed public hostname in **Settings → Access & security**, so `/web` opens the same address every time), then a private network such as Tailscale, with a code from `/web`. A fleet with no chat connection gets its own list: **Allow connections from outside** (Settings → Access & security → Owner verification, signing in with the authenticator app), the fixed link, then a private network with a code from `agend web --code`. It does not suggest the computer's local network address: the dashboard answers on 127.0.0.1 only. The help opens no link itself. Authenticator setup, sign-in eligibility and limits remain the server’s policy.
 
 To get the eight-character fallback code:
 
@@ -700,7 +700,7 @@ Show the live Office to people outside the fleet for a while: a link they open i
 
 ## The three ways in, compared
 
-**A** is the dashboard reached directly: this machine, the LAN, a tailnet or your own proxy. **B** is the temporary public link (a Cloudflare quick tunnel). **C** is a fixed address of your own (a named tunnel, see [Named tunnel](named-tunnel.md)). B and C go through the same public gateway and behave the same except where a row says otherwise.
+**A** is the dashboard reached directly: this machine, or a way in you set up (SSH forwarding, a tailnet, your own proxy; the dashboard itself answers on 127.0.0.1 only). **B** is the temporary public link (a Cloudflare quick tunnel). **C** is a fixed address of your own (a named tunnel, see [Named tunnel](named-tunnel.md)). B and C go through the same public gateway and behave the same except where a row says otherwise.
 
 | | A. Direct | B. Temporary public link | C. Fixed address |
 |---|---|---|---|

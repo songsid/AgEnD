@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connector-4c-tools-m3240
+
+ ❯ tests/hub-mcp-door-m3240.test.ts (25 tests | 1 failed | 24 skipped) 154ms
+   × separates consent browser/CSRF authority from a read-only app token 152ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-mcp-door-m3240.test.ts > separates consent browser/CSRF authority from a read-only app token
+AssertionError: expected { ok: true, …(4) } to match object { ok: false, code: 'denied' }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "code": "denied",
+-   "ok": false,
++   "ok": true,
+  }
+
+ ❯ tests/hub-mcp-door-m3240.test.ts:73:73
+     71|   expect((await rig!.call(null,"POST","/hub/v1/mcp/consent",{request,s…
+     72|   expect((await rig!.call(w.browser,"POST","/hub/v1/mcp/consent",{requ…
+     73|   expect(await a.call("hub_room_post",{room:w.roomId,text:"No scope"})…
+       |                                                                         ^
+     74|   expect((await rig!.call(null,"GET","/hub/v1/me/ai-apps",undefined,be…
+     75| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 skipped (25)
+   Start at  19:09:07
+   Duration  3.67s (transform 2.51s, setup 87ms, import 3.30s, tests 154ms, environment 0ms)

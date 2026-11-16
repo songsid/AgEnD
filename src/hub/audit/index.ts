@@ -147,6 +147,8 @@ export interface HubContentPayload {
 export interface HubContentStore {
   /** Encrypt and store inside `tx`; returns the S5-generated ref to use as the record's contentRef. */
   put(tx: HubTx, payload: HubContentPayload): string;
+  /** Internal message storage, not an audit disclosure. The caller appends its metadata-only event in this same transaction. */
+  bindMessage(tx: HubTx, ref: string, messageId: string): void;
   /** For S3's own room projection after its audience check. undefined once retention removed it. */
   get(ref: string): HubContentPayload | undefined;
 }
@@ -279,6 +281,13 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
       const { nonce, body } = encrypt(ref, null, clean);
       db.prepare("INSERT INTO hub_audit_content(ref, record_id, nonce, ciphertext, created_at) VALUES(?, NULL, ?, ?, ?)").run(ref, nonce, body, now());
       return ref;
+    },
+    bindMessage(tx, ref, messageId) {
+      sameDb(tx);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(messageId)) throw new Error("Hub content: invalid message binding");
+      // Domain-separated from immutable audit-record UUIDs; still authenticated
+      // under both the generated ref and its one immutable owner. Never serve loose rows.
+      bindContent(ref, `message:${messageId}`);
     },
     get(ref) {
       if (typeof ref !== "string" || !/^[0-9a-f]{32}$/.test(ref)) return undefined;

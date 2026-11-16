@@ -12,7 +12,8 @@ import { closeDialog, shellStore, showDialog } from "/assets/app-shell.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { toast } from "/assets/ui-toast.js";
-import { mountStructuredSignIns } from "./structured-signin.js";
+import { mountStructuredSignIns, shortUrl } from "./structured-signin.js";
+import { Icon } from "/assets/ui-icons.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
 import { FIRST_RUN_BACKENDS, capsOf } from "./cli-caps.js";
@@ -129,8 +130,53 @@ register("signin", {
     profile: "{0} · 設定檔 {1}",
   },
 });
+// M-3238 (the user): the device step as numbered steps with a big link and a big code, and the end as one headline and one
+// plain line on which agents were reloaded (it was the chat's status lines, with their `backticks` and "instance").
+register("signin", {
+  en: {
+    stepOpen: "Open sign-in page", deviceStepTitle: "Finish on the provider's official website", stepCode: "Enter this code on that page", stepPaste: "If the page gives you a code, paste it into the authorization terminal.",
+    stepTerminal: "Open the authorization terminal", stepAccess: "Enter this access code there. It works once, for {0} minutes.",
+    stepBack: "Come back here when you're done. This page updates by itself.", copyLink: "Copy link",
+    doneReloading: "Reloading the agents that use this account…",
+    doneReloaded: "Reloaded to use it: {0}.",
+    doneReloadedCaption: "Reloaded to use this account:",
+    donePendingCaption: "Still reloading (they come back on their own):",
+    doneNone: "No agent uses it yet, so nothing needed reloading.",
+    donePending: "Still reloading: {0}. They come back on their own.",
+    doneFailed: "The agents that use it could not be reloaded automatically. If one does not answer, restart it from Fleet.",
+    doneCleanup: "The sign-in program on this computer could not be confirmed closed.",
+  },
+  "zh-TW": {
+    stepOpen: "開啟登入頁面", deviceStepTitle: "前往官方網站完成授權", stepCode: "在那個頁面輸入這組授權碼", stepPaste: "如果頁面給你一組授權碼，請貼到授權終端機。",
+    stepTerminal: "開啟授權終端機", stepAccess: "在那裡輸入這個存取碼。只能用一次，{0} 分鐘內有效。",
+    stepBack: "完成後回到這裡，這個畫面會自動更新。", copyLink: "複製連結",
+    doneReloading: "正在重新載入使用這個帳號的 Agent…",
+    doneReloaded: "已重新載入，改用這個帳號：{0}。",
+    doneReloadedCaption: "已重新載入並改用這個帳號的 Agent：",
+    donePendingCaption: "還在重新載入（會自己恢復）：",
+    doneNone: "目前沒有 Agent 使用它，不需要重新載入。",
+    donePending: "還在重新載入：{0}。它們會自己恢復。",
+    doneFailed: "無法自動重新載入使用它的 Agent。如果有 Agent 沒有回應，請到 Fleet 重新啟動它。",
+    doneCleanup: "無法確認這台電腦上的登入程式已關閉。",
+  },
+});
 const tn = (k, ...v) => t(`signin.${k}`, ...v);
-const shownOf = (backend, profile) => (profile ? tn("profile", backend, profile) : backend);
+const shownOf = (backend, profile) => (profile ? tn("profile", cliLabel(backend), profile) : cliLabel(backend));
+/** An agent by the name the person sees (its display name). */
+const agentLabel = (n) => { const it = (appStore.get().instances || []).find((i) => i && i.name === n); return (it && typeof it.display_name === "string" && it.display_name.trim()) || n; };
+/**
+ * M-3238 (the user; Argon's review): after a good sign-in — a check banner with the headline, then what bringing its agents
+ * back did: the agents reloaded (or still reloading) as tags in one box, or one quiet line (reloading…, none, could not).
+ */
+function SignedIn({ login }) {
+  const r = login.recovery, back = r ? [...(r.woken || []), ...(r.restarted || [])] : [], pending = r ? r.pending || [] : [];
+  const list = !r || r.failed ? null : pending.length ? ["donePendingCaption", pending] : back.length ? ["doneReloadedCaption", back] : null;
+  return html`<div class="signin-done-banner" role="status"><${Icon} name="check" size=${18} /><span class="signin-headline">${tn("signedIn", shownOf(login.backend, login.profile))}</span></div>
+    ${list ? html`<div class="signin-recovery-box" data-recovery="known"><span class="note">${tn(list[0])}</span>
+        <div class="chips">${list[1].map((n) => html`<span key=${n} class="tag" title=${n}>${agentLabel(n)}</span>`)}</div></div>`
+      : html`<p class=${r && r.failed ? "s-info signin-after" : "note signin-after"} data-recovery=${r ? "known" : "pending"}>${!r ? tn("doneReloading") : r.failed ? tn("doneFailed") : tn("doneNone")}</p>`}
+    ${login.cleanupFailed ? html`<p class="s-info signin-after">${tn("doneCleanup")}</p>` : null}`;
+}
 
 /** What this page knows: the current sign-in as this session may see it, and Settings' list. */
 export const signInStore = createStore({ loaded: false, login: null, targets: [], structured: null });
@@ -208,25 +254,35 @@ const errorText = (code) => (code === "confirm_expired" ? tn("expired") : code =
 export const signInOffered = () => !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
 const loopbackHost = (h) => h === "localhost" || h === "::1" || h === "[::1]" || /^127\./.test(h);
 
-function CopyField({ label, value }) {
+function CopyButton({ value, label, small = false }) {
   const [copied, setCopied] = useState(false);
-  const copy = async () => { try { await navigator.clipboard.writeText(value); setCopied(true); } catch { toast(value); } };
-  return html`<div class="signin-field"><span class="signin-label">${label}</span><code class="signin-value">${value}</code>
-    <button type="button" class="btn btn-sm" onClick=${copy}>${copied ? tn("copied") : tn("copy")}</button></div>`;
+  const copy = async () => { try { await navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { toast(value); } };
+  return html`<button type="button" class=${`btn${small ? " btn-sm" : ""} signin-copy`} onClick=${copy}><${Icon} name="copy" size=${14} /><span>${copied ? tn("copied") : label}</span></button>`;
 }
+
 
 /** The starter's view of a running sign-in: the device link and code, or the terminal and its access code. */
 function Running({ login }) {
   const { hint, terminal, accessCode } = login;
   const away = terminal && terminal.loopback && typeof location !== "undefined" && !loopbackHost(location.hostname);
+  // M-3238 (the user; Argon's review): the step circles; a short primary 「開啟登入頁面」 beside Copy link, the page's address
+  // a quiet note under them; the code with Copy in one box; "come back here" a quiet status line — as the account dialog's
+  // cards draw it. The terminal the same way.
+  let url = null;
+  if (hint) { try { url = new URL(hint.url); } catch { url = null; } }
+  const step = (title, body) => html`<li><div class="signin-step-body"><span class="signin-step-title">${title}</span>${body}</div></li>`;
+  const codeBox = (label, value) => html`<div class="signin-code-box"><code class="signin-code" aria-label=${`${label} ${value}`}>${value}</code><${CopyButton} value=${value} label=${tn("copy")} small=${true} /></div>`;
   return html`<div class="signin-run">
-    ${hint ? html`<p>${hint.code ? tn("deviceStep") : tn("linkStep")}</p>
-      ${hint.linkable ? html`<p><a data-trust="navigation" class="btn btn-primary" href=${hint.url} target="_blank" rel="noopener noreferrer">${tn("open")}</a> <span class="signin-url">${hint.url}</span></p>`
-        : html`<${CopyField} label="URL" value=${hint.url} />`}
-      ${hint.code ? html`<${CopyField} label=${tn("code")} value=${hint.code} />` : null}` : null}
-    ${terminal ? html`<p>${tn("terminalStep", terminal.ttlMinutes)}</p>
-      <p><a data-trust="navigation" class="btn btn-primary" href=${terminal.url} target="_blank" rel="noopener noreferrer">${tn("openTerminal")}</a></p>
-      ${accessCode ? html`<${CopyField} label=${tn("accessCode")} value=${accessCode} />` : null}
+    ${hint ? html`<ol class="signin-steps">
+      ${step(tn("deviceStepTitle"), hint.linkable && url ? html`<div class="signin-linkrow"><a data-trust="navigation" class="btn btn-primary signin-open" href=${hint.url} target="_blank" rel="noopener noreferrer">${tn("stepOpen")}<${Icon} name="external" size=${14} /></a><${CopyButton} value=${hint.url} label=${tn("copyLink")} /></div>
+          <span class="note mono signin-url">${url ? shortUrl(url) : hint.url}</span>`
+        : html`<div class="signin-code-box"><code class="signin-value">${hint.url}</code><${CopyButton} value=${hint.url} label=${tn("copyLink")} small=${true} /></div>`)}
+      ${hint.code ? step(tn("stepCode"), codeBox(tn("code"), hint.code)) : step(tn("stepPaste"), null)}</ol>
+      ${terminal ? null : html`<p class="s-info signin-back" role="status">${tn("stepBack")}</p>`}` : null}
+    ${terminal ? html`<ol class="signin-steps">
+      ${step(tn("stepTerminal"), html`<div class="signin-linkrow"><a data-trust="navigation" class="btn btn-primary signin-open" href=${terminal.url} target="_blank" rel="noopener noreferrer">${tn("openTerminal")}<${Icon} name="external" size=${14} /></a></div>`)}
+      ${accessCode ? step(tn("stepAccess", terminal.ttlMinutes), codeBox(tn("accessCode"), accessCode)) : null}</ol>
+      <p class="s-info signin-back" role="status">${tn("stepBack")}</p>
       ${terminal.public ? html`<p class="signin-note">${tn("publicLink")}</p>` : null}
       ${away ? html`<p class="signin-note">${tn("loopback")}</p>` : null}` : null}
     ${!hint && !terminal ? html`<p class="signin-note">${tn("waitingHint")}</p>` : null}
@@ -243,7 +299,8 @@ function Running({ login }) {
  * Shared pieces only: Dialog, `.btn`, `.note`, the in-app confirmation (ui-confirm.js).
  */
 export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
-  const root = useRef(null), close = onClose || closeDialog;
+  const root = useRef(null), close = onClose || closeDialog, cardsRef = useRef(null);
+  const [running, setRunning] = useState(false);   // M-3238: a sign-in of this account runs: its Cancel is in the footer
   // The id of the run THIS dialog started (a named account's): closing the dialog ends exactly that run — never one another session or another tab started.
   const run = useRef(null);
   const endpoint = profile ? profileSignInEndpoint(backend, profile) : "/ui/browser-backend-signins";
@@ -252,16 +309,18 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     let cards, last = "";
     // Ridge #3321 S01: "Sign in again" asks in the dashboard's own confirmation (its title names the CLI), not the browser's.
     const ask = (message, cli) => confirmDialog({ title: t("signin.reloginTitle", cli), message, confirmLabel: t("signin.reloginGo") });
-    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, codeHint: b => !!capsOf(b)?.codeHint, ...(single ? { dialog: true, focus: backend } : {}), started: id => { run.current = id; },
+    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, codeHint: b => !!capsOf(b)?.codeHint, ...(single ? { dialog: true, focus: backend, footerCancel: true } : {}), started: id => { run.current = id; },
       // The dialog was closed while its start was still in flight and the server made the run after all: nobody sees it, so it is ended here — by its id, so no other run is touched.
       abandoned: id => { if (profile || single) void post(endpoint, { operation: "cancel", id }).then(() => refreshSignIn()); }, changed: next => {
       if (!profile) {
         if (backends) { if (backends.some(b => !next.selected.includes(b))) void cards.addBackends(backends); }
         else if (!next.selected.includes(backend)) void cards.addBackend(backend);
       }
+      if (single) { const l = next.login && next.login.backend === backend ? next.login : null; setRunning(!!l && l.phase !== "done" && !(l.phase === "failed" && l.reason)); }
       const signature = JSON.stringify([next.login, next.pending]);
       if (signature !== last) { last = signature; void refreshSignIn(); }
     } });
+    cardsRef.current = cards;
     const unlisten = onLang(() => cards.relabel());
     return () => {
       unlisten(); cards.dispose();
@@ -283,11 +342,12 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     showDialog(SignInDialog, { backend: chosen, ...(profile && chosen === backend ? { profile } : {}) });
   };
   const actions = html`<div class="signin-browser-actions">
+    ${single && running ? html`<button type="button" class="btn danger" onClick=${() => cardsRef.current && cardsRef.current.cancel()}>${tn("cancelSignIn")}</button><span class="dlg-spacer"></span>` : null}
     ${backends ? backends.filter(b => capsOf(b)?.chatSignIn).map(b => html`<button type="button" class="btn" onClick=${() => fallback(b)}>${b} · ${tn("consoleFallback")}</button>`) : null}
     <button type="button" class="btn" onClick=${close}>${tn("close")}</button></div>`;
   const account = backend ? `${cliLabel(backend)} · ${profile || tn("defaultAccount")}` : "";
   return html`<${Dialog} title=${backends ? tn("listTitle") : tn("title", account)} onClose=${close} actions=${actions}>
-    <div class="signin-browser" ref=${root}></div>
+    <div class=${`signin-browser${single ? " is-single" : ""}`} ref=${root}></div>
     ${single && capsOf(backend)?.chatSignIn ? html`<p class="note"><button type="button" class="btn btn-sm btn-ghost" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button></p>` : null}
     ${single && capsOf(backend)?.chatSignIn ? html`<p class="note" data-signin-console-note>${tn("consoleFallbackNote")}</p>` : null}
   </${Dialog}>`;
@@ -386,11 +446,17 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
       ${login.phase === "running" ? html`<button type="button" class="btn btn-danger" disabled=${busy} onClick=${cancelRun}>${tn("cancelSignIn")}</button>` : null}`;
   } else {
     const lines = Array.isArray(login.lines) ? login.lines : [];
+    // M-3238: a good sign-in is one headline and one plain line on its agents (`recovery`); the chat's status lines are shown
+    // only for one that did not succeed (they say why), or from an older server that sends no `recovery`.
+    const structuredEnd = login.ok && Object.hasOwn(login, "recovery");
     body = html`${login.phase === "running" ? html`<${Running} login=${login} />`
+        : structuredEnd ? html`<${SignedIn} login=${login} />`
         : html`<p role="status" class=${login.ok ? "signin-ok" : "signin-message"}>${login.ok ? tn("signedIn", shownOf(login.backend, login.profile)) : tn("ended")}</p>`}
-      ${lines.length ? html`<ul class="signin-lines">${lines.map((l, i) => html`<li key=${i}>${l}</li>`)}</ul>` : null}`;
-    actions = html`<button type="button" class="btn" onClick=${close}>${tn("close")}</button>
-      ${login.phase === "running" ? html`<button type="button" class="btn btn-danger" disabled=${busy} onClick=${cancelRun}>${tn("cancelSignIn")}</button>` : null}`;
+      ${lines.length && !structuredEnd ? html`<ul class="signin-lines">${lines.map((l, i) => html`<li key=${i}>${l}</li>`)}</ul>` : null}`;
+    // M-3238 (Argon): Cancel connecting a quiet danger button on the footer's left, Close on its right; at the end, Close alone.
+    actions = login.phase === "running"
+      ? html`<button type="button" class="btn danger" disabled=${busy} onClick=${cancelRun}>${tn("cancelSignIn")}</button><span class="dlg-spacer"></span><button type="button" class="btn" onClick=${close}>${tn("close")}</button>`
+      : html`<button type="button" class=${structuredEnd ? "btn btn-primary" : "btn"} onClick=${close}>${tn("close")}</button>`;
   }
   return html`<${Dialog} title=${tn("title", shown)} onClose=${close} busy=${busy} actions=${actions}>${body}</${Dialog}>`;
 }
@@ -400,7 +466,7 @@ export function SignInLine() {
   const { login, structured } = useStore(signInStore);
   const active = structured?.login;
   if ((!login || login.phase !== "running") && active && active.phase !== "done" && !(active.phase === "failed" && active.reason)) {
-    return html`<div data-trust="status" class="conn op-line signin-line" role="status"><span>${tn("browserRunning", active.backend)}</span>
+    return html`<div data-trust="status" class="conn op-line signin-line" role="status"><span>${tn("browserRunning", cliLabel(active.backend))}</span>
       <button type="button" class="btn btn-sm" onClick=${() => openSignIn({ backend: active.backend })}>${tn("open")}</button></div>`;
   }
   if (!login || login.phase !== "running") return null;

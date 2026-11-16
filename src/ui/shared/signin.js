@@ -47,9 +47,15 @@
       unavailable: "Authenticator sign-in is not available here. Paste an 8-character device sign-in code, or use a device you have signed in from before.",
       invalid: "Enter a 6-digit authenticator code or an 8-character device sign-in code.",
       pause_for: "Sign-in is paused. Please wait {duration}, then try again.", pause_button: "Sign-in paused", ready_again: "You can try signing in again.",
-      reach_title: "How does my phone reach AgEnD?", reach_lead: "Open the AgEnD address in your phone’s browser:",
-      reach_wifi: "Same Wi-Fi: use the computer’s local network address.", reach_private: "Private network, such as Tailscale: connect both devices to that network first.",
-      reach_outside: "Outside connection: use the address your admin provides.",
+      // M-3251 (the user): easiest first — the link /web opens, a fixed one, a private network last. Never "the computer's
+      // local network address": the dashboard answers on 127.0.0.1 only. A fleet with no chat (`_web`): its own ways.
+      reach_title: "How do I open AgEnD on my phone?", reach_lead: "Easiest first:",
+      reach_temp: "Temporary link: send /web in General and choose 🌐 Other device. The link and a sign-in code come to you privately.",
+      reach_fixed: "Fixed link: set a fixed public hostname in Settings → Access & security. /web then opens the same address every time, so it can stay on your home screen.",
+      reach_private: "Private network, such as Tailscale: share the dashboard on it from the AgEnD computer, open that address on your phone, and sign in with a code from /web. On its own, the dashboard answers only on the AgEnD computer.",
+      reach_temp_web: "From outside: on the AgEnD computer, open Settings → Access & security → Owner verification, set up an authenticator app and turn on Allow connections from outside. Sign in on your phone with the app's 6-digit code.",
+      reach_fixed_web: "Fixed link: set a fixed public hostname in Settings → Access & security, so that link keeps the same address.",
+      reach_private_web: "Private network, such as Tailscale: share the dashboard on it from the AgEnD computer, open that address on your phone, and sign in with a code from agend web --code on the AgEnD computer.",
       minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
       // #3061: sign in with another device — an 8-character code shown here, approved on a device that is already signed in.
       another: "Sign in with another device", dev_title: "Sign in with another device",
@@ -93,9 +99,13 @@
       unavailable: "這裡無法使用驗證器 App 登入。請貼上 8 字元裝置登入碼，或使用先前登入過的裝置。",
       invalid: "請輸入 6 位數驗證碼或 8 字元裝置登入碼。",
       pause_for: "登入已暫停，請等 {duration}後再試。", pause_button: "暫時無法登入", ready_again: "可以再次嘗試登入。",
-      reach_title: "如何在手機開啟 AgEnD？", reach_lead: "在手機瀏覽器開啟 AgEnD 網址：",
-      reach_wifi: "同一個 Wi-Fi：使用電腦的區網網址。", reach_private: "私人網路（如 Tailscale）：兩台裝置先連上同一個網路。",
-      reach_outside: "外部連線：使用管理員提供的網址。",
+      reach_title: "如何在手機開啟 AgEnD？", reach_lead: "由簡單到進階：",
+      reach_temp: "臨時連結：在 General 傳 /web，選「🌐 其他裝置登入」。連結和裝置登入碼會私訊給你。",
+      reach_fixed: "固定連結：在「設定 → 存取與安全」填好固定公開網域。之後 /web 每次都開同一個網址，可以加到手機主畫面。",
+      reach_private: "私人網路（如 Tailscale）：在 AgEnD 電腦上把儀表板分享到這個網路，手機開啟那個網址，再用 /web 取得的裝置登入碼登入。儀表板本身只在 AgEnD 電腦上回應。",
+      reach_temp_web: "從外面連線：在 AgEnD 電腦開啟「設定 → 存取與安全 → 擁有者驗證」，設定驗證器 App 並開啟「允許從外面連線」。手機上用 App 的 6 位數驗證碼登入。",
+      reach_fixed_web: "固定連結：在「設定 → 存取與安全」填好固定公開網域，那個連結的網址就不會變。",
+      reach_private_web: "私人網路（如 Tailscale）：在 AgEnD 電腦上把儀表板分享到這個網路，手機開啟那個網址，再用在 AgEnD 電腦執行 agend web --code 取得的裝置登入碼登入。",
       minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
       another: "使用其他裝置登入", dev_title: "使用其他裝置登入",
       dev_lead: "在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全」，在「裝置與登入」選「新增裝置」，輸入這組裝置登入碼。",
@@ -194,18 +204,23 @@
   // The command in the "No chat bot?" help is a <code> that never breaks across lines (a break inside "--code" reads as
   // two dashes and a word, alpha.2 sweep); the text around it is text.
   const CMD = /agend web(?: --code)?/;
-  document.querySelectorAll("[data-i18n]").forEach((el) => {
-    const text = t(el.getAttribute("data-i18n"));
+  const paintCmd = (el, text) => {
+    if (!el) return;
     const m = CMD.exec(text);
-    if (!m) { paint(el, text); return; }
+    if (!m || typeof el.replaceChildren !== "function") { paint(el, text); return; }
     const code = document.createElement("code");
     code.textContent = m[0];
     el.replaceChildren(text.slice(0, m.index), code, text.slice(m.index + m[0].length));
-  });
+  };
+  document.querySelectorAll("[data-i18n]").forEach((el) => paintCmd(el, t(el.getAttribute("data-i18n"))));
 
-  // New help is optional: new JS still works with cached HTML, and old JS leaves it hidden.
+  // How a phone gets here (M-3251: the link /web opens, a fixed one, a private network last; a fleet with no chat, its own).
+  // New help is optional: new JS still works with cached HTML (an older page's three items: Wi-Fi, private, outside), and
+  // old JS leaves it hidden.
   if ($("reachHelp")) {
-    for (const [id, key] of [["reachTitle", "reach_title"], ["reachLead", "reach_lead"], ["reachWifi", "reach_wifi"], ["reachPrivate", "reach_private"], ["reachOutside", "reach_outside"]]) paint($(id), t(key));
+    const items = $("reachTemp") ? [["reachTemp", "reach_temp"], ["reachFixed", "reach_fixed"], ["reachPrivate", "reach_private"]]
+      : [["reachWifi", "reach_temp"], ["reachPrivate", "reach_fixed"], ["reachOutside", "reach_private"]];
+    for (const [id, key] of [["reachTitle", "reach_title"], ["reachLead", "reach_lead"], ...items]) paintCmd($(id), t(key));
     $("reachHelp").hidden = false;
   }
 

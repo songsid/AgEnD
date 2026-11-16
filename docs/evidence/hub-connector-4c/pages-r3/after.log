@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connector-4c-ui-m3240
+
+
+ Test Files  2 passed (2)
+      Tests  28 passed (28)
+   Start at  21:36:50
+   Duration  3.00s (transform 1.08s, setup 255ms, import 273ms, tests 2.77s, environment 0ms)
+

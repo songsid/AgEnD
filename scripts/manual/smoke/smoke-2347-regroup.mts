@@ -19,7 +19,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   p.page.on("pageerror", (e: any) => errors.push(String(e).slice(0, 160)));
   await mounted(p.page, 30000);
   const go = async (path: string) => { await p.page.goto(new URL(path, p.page.url()).href); await p.page.locator(".p-settings .panel-body .col").waitFor({ state: "attached", timeout: 15000 }); await p.page.waitForTimeout(500); };
-  const view = () => p.page.evaluate(`(() => ({ view: document.querySelector(".p-settings").getAttribute("data-view"), back: (() => { const b = document.querySelector(".p-settings .s-back"); return !!b && getComputedStyle(b).display !== "none"; })() }))()`) as Promise<any>;
+  const view = () => p.page.evaluate(`(() => ({ view: document.querySelector(".p-settings").getAttribute("data-view"), back: (() => { const b = document.querySelector(".p-settings #sbOpen.sb-up"); return !!b && getComputedStyle(b).display !== "none"; })() }))()`) as Promise<any>;
   await go("/settings");
   const nav = await p.page.evaluate(`(() => { const n = document.querySelector(".s-nav"), b = document.querySelector(".p-settings > .panel-body");
     const nr = n.getBoundingClientRect(), br = b.getBoundingClientRect();

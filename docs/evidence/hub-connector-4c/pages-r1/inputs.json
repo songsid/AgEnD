@@ -1,0 +1,50 @@
+{
+  "baseOwnSource": "f3f7c70ed221af13eafa5e47f67dac7eaf35fea2",
+  "parentSource": "9f332940d72d47fdaddec5843daf75a99d9ceb9e",
+  "inputs": [
+    {
+      "path": "scripts/manual/hub-connector-4c/apps-retake.mts",
+      "sha256": "39c199a306ca7c9343ae8243ed506fc7d522aa24b400833dd7d7857f93cec0f6"
+    },
+    {
+      "path": "scripts/manual/hub-connector-4c/browser.mts",
+      "sha256": "b516d4b919caa49577bab1c3fb40edddce37b3db752fdf5fdcd06c0e37fbd0b4"
+    },
+    {
+      "path": "src/hub/mcp/auth.ts",
+      "sha256": "6da88ca33e76358ce111ed595b93b563f217e19596e5e8f58f1a58be32773dbe"
+    },
+    {
+      "path": "src/ui/hub-ai-apps-strings.js",
+      "sha256": "aaa6da759d803ed8d23f5acdcf154f1b196c5d25ff213d24879bc271c7a4d502"
+    },
+    {
+      "path": "src/ui/hub-ai-apps.js",
+      "sha256": "ec167e9659a1bd01b812f2f2a5b5721c75495499a7834ba02a6e870e53e5cc7c"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "193ede61ddf3222888ef72e2d8dea3897fae9a4c5cf7f5d1f92069f72d925b83"
+    },
+    {
+      "path": "src/ui/hub-room-settings.js",
+      "sha256": "d5fa3a09814626a4dde7788920f3d437d74ee3fd401ba29a88f4502ef0d363d9"
+    },
+    {
+      "path": "src/ui/shared/hub-ai-apps.css",
+      "sha256": "dfce176d1fba7a8d3416cd4edf4986b76e3a64ce67fd9c480c43d1ca8799acb9"
+    },
+    {
+      "path": "tests/hub-mcp-auth-m3240.test.ts",
+      "sha256": "6a4067df520f948c51a572d0db0243fe0468305000b037307fe433d4db274c2a"
+    },
+    {
+      "path": "tests/hub-mcp-pages-api-m3240.test.ts",
+      "sha256": "36263afb4138e4e5f28878737064e660d95bd6149e226d75386d2320a727c385"
+    },
+    {
+      "path": "tests/hub-mcp-pages-ui-m3240.test.ts",
+      "sha256": "cbac883a1a9333b1345d8fb1dac472e4283c09c596bea4e4430b5153d5a7c276"
+    }
+  ]
+}
