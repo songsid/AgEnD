@@ -3,7 +3,7 @@ import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { HUB_FLEET_UPDATE_CAPABILITY, HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
+import { HUB_FLEET_UPDATE_CAPABILITY, HUB_CAPABILITIES, HUB_LIMITS, HUB_REVOCATION_FLOOR_HEADER, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
 import { HubSocket } from "./socket.js";
 import { HUB_RECOMMENDATION_CAPABILITY } from "./recommendation-model.js";
 import { HUB_FLEET_INFO_CAPABILITY } from "./fleet-info.js";
@@ -38,6 +38,8 @@ export interface HubClientOptions {
   roomMentionFeedback?: boolean;
   fleetInfo?: import("./types.js").HubFleetInfo;
   home: string; hubId: string; memberOrigin: string; current(): boolean;
+  /** M-3205: the member's durable revocation floor (its journal's), sent on each connect so a restored Hub can catch up. */
+  revocationFloor?(): number;
   /** Must durably reconcile the current revocation version and journal BEFORE returning. No input here. */
   reconcile(link: HubMemberLink): Promise<void>;
   receive(frame: Exclude<HubServerFrame, { type: "welcome" }>, link: HubMemberLink): Promise<void>;
@@ -109,7 +111,10 @@ export class HubMemberClient implements HubMemberTransport {
     const index = Math.min(this.dialIndex, origins.length - 1), origin = origins[index]!, last = index === origins.length - 1;
     const endpoint = new URL(HUB_PATHS.connect, origin); endpoint.protocol = "wss:";
     const agent = pinnedHubAgent({ memberOrigin: origin, spkiSha256: profile.hub.spkiSha256 }, () => this.current());
-    const ws = new WebSocket(endpoint, { headers: { Authorization: `Bearer ${profile.credential}` }, agent,
+    // M-3205: the durable floor rides on the upgrade so a restored Hub can catch up; an older Hub ignores the header.
+    let floor = this.revocation; try { floor = Math.max(floor, this.options.revocationFloor?.() ?? 0); } catch { /* the journal answers on the next attempt */ }
+    const headers: Record<string, string> = { Authorization: `Bearer ${profile.credential}`, ...(Number.isSafeInteger(floor) && floor > 0 ? { [HUB_REVOCATION_FLOOR_HEADER]: String(floor) } : {}) };
+    const ws = new WebSocket(endpoint, { headers, agent,
       followRedirects: false, handshakeTimeout: HUB_LIMITS.rpcTimeout, maxPayload: HUB_LIMITS.frame, perMessageDeflate: false });
     this.opening = ws;
     let connected = false, finished = false;

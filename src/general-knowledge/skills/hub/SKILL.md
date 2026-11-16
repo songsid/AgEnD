@@ -787,5 +787,11 @@ Say plainly that these are not in the product yet:
   whether their AgEnD is running and connected.
 - **The Set up a Hub card has no button.** Only this computer's own sign-in can set up a Hub: run `agend web` on the
   computer running AgEnD.
+- **After the Hub was restored from a backup, Fleets show "Connection needs attention" / On hold.** The backup is
+  older than what those Fleets already saw (an upgrade's own changes or a later permission change). From this version a
+  Fleet and its Hub settle it themselves: the Fleet reconnects within about a minute with its shares and grants. With an
+  older Hub or Fleet: the Hub administrator changes something under **Administration → Group permissions** and saves,
+  then changes it back and saves again; the Fleets then reconnect by themselves. **Reconnect** or **Remove this
+  connection** on the Fleet also works, but the Fleet joins as a new one and every shared agent must be shared again.
 - **Pages look half old after an upgrade.** A tab opened before the upgrade can mix old and new pages. Reload it once.
 - **"Only the Hub administrator can see this"** on Administration: you are signed in, but not as the administrator.

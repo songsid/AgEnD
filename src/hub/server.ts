@@ -9,7 +9,7 @@ import type { AddressInfo, Socket } from "node:net";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { HubMemberFrame, HubServerFrame, PersonKey } from "./types.js";
-import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, parseMemberFrame, encodeServerFrame } from "./protocol.js";
+import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, HUB_REVOCATION_FLOOR_HEADER, parseMemberFrame, encodeServerFrame } from "./protocol.js";
 import { HubSocket, type HubLinkCloseCode } from "./socket.js";
 import { HUB_RECOMMENDATION_CAPABILITY } from "./recommendation-model.js";
 import { HUB_DISPLAY_NAME_PATH, hubDisplayNameSchema } from "./display-name.js";
@@ -122,7 +122,13 @@ export class HubServer {
     if (!this.machine(req) || req.method !== "GET" || req.url !== HUB_PATHS.connect || !/^Bearer [a-f0-9]{64}$/.test(req.headers.authorization ?? "")) { socket.destroy(); return; }
     if (++this.handshakes > HUB_LIMITS.pending) { this.handshakes--; socket.destroy(); return; }
     try {
-      const binding = await this.options.pairing.connect(req.headers.authorization!.slice(7));
+      const floorHeader = req.headers[HUB_REVOCATION_FLOOR_HEADER];
+      const floor = typeof floorHeader === "string" && /^[0-9]{1,15}$/.test(floorHeader) ? Number(floorHeader) : undefined;
+      const binding = await this.options.pairing.connect(req.headers.authorization!.slice(7), floor);
+      if (binding.caughtUp) {
+        try { this.options.log?.("warn", "A Fleet had seen a newer authorization version than this Hub (restored from a backup?): caught up", { fleetId: binding.fleetId, ...binding.caughtUp }); } catch { /* diagnostics only */ }
+        this.refreshAuthorization();
+      }
       if (!this.current() || socket.destroyed || !this.options.pairing.bindingCurrent(binding.fleetId, binding.generation, binding.revocationVersion)) { socket.destroy(); return; }
       // The pairing service fences any old connection before committing the new epoch.
       this.fenceFleet(binding.fleetId);
