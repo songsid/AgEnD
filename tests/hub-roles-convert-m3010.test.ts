@@ -96,7 +96,12 @@ it("a carried person ask-only rule cannot grant publish or pair",()=>{
 });
 it("a carried team ask-only rule cannot grant publish or pair",()=>{
  const teamId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
- const before=parseGroupPolicy({...old(),groups:[],teams:[{teamId,name:"Team",allow:["ask_agents"],maxFleets:4}]});
+ const before=parseGroupPolicy({...old(),groups:[],teams:[
+  {teamId,name:"My ask-only team",allow:["ask_agents"],maxFleets:4},
+  // These unrelated teams keep the outer per-capability check active; I belong to neither.
+  {teamId:"cccccccc-cccc-4ccc-8ccc-cccccccccccc",name:"Other publishers",allow:["publish_agents"],maxFleets:2},
+  {teamId:"dddddddd-dddd-4ddd-8ddd-dddddddddddd",name:"Other connectors",allow:["pair_fleet"],maxFleets:2},
+ ]});
  const after=convertGroupPolicy(before,options),facts={subject:{kind:"eligible" as const,person:user,observedAt:100},teams:[teamId]};
  expect(evaluateRolePolicy(after,user,"ask_agents",null,facts,200,root).outcome).toBe("allow");
  for(const cap of ["publish_agents","pair_fleet"] as const) expect(evaluateRolePolicy(after,user,cap,null,facts,200,root)).toMatchObject({outcome:"deny",maxFleets:0});

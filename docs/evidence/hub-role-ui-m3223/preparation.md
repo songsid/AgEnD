@@ -16,3 +16,5 @@ No role startup cutover, new HTTP route, UI, timer or migration registration is 
 Rollback before activation: revert this unmounted compatibility preparation. After production cutover lands, use the new build's forward-only roles-off operation; never restore the old policy/floor as a permissions rollback. Binary downgrade is a separate database/schema backup procedure.
 
 Review pins: ask-only carried person and team rules are now checked independently on the role side (ask allowed, publish/pair denied), and absent/invalid local team facts stay unknown rather than deny or allow. Focused conversion file9/9; this follow-up changes tests/evidence only.
+
+The team filter pin now includes unrelated publish/pair-enabled teams while the actor belongs only to an ask-only team. This keeps the outer capability-exists check active and independently exercises the inner matching-row filter. Baseline9/9; removing just that inner filter makes the team case fail on publish permission. The exact source was restored. The original one-row case was masked by the outer gate, rather than by a zero quota (its quota was4).
