@@ -18,7 +18,7 @@ public class OwnWindow {
 '@
 $owned=@(Get-CimInstance Win32_Process -Filter "Name='$BrowserProcess'" | Where-Object {$_.CommandLine -like "*$Tag*"} | ForEach-Object {$_.ProcessId})
 $script:chosen=[IntPtr]::Zero
-[OwnWindow]::EnumWindows({param($h,$p) [uint32]$owner=0;[void][OwnWindow]::GetWindowThreadProcessId($h,[ref]$owner);$title=New-Object Text.StringBuilder 512;[void][OwnWindow]::GetWindowText($h,$title,512);if($owned -contains $owner -and [OwnWindow]::IsWindowVisible($h) -and $title.ToString() -eq 'AgEnD'){$script:chosen=$h};return $true},[IntPtr]::Zero)|Out-Null
+[OwnWindow]::EnumWindows({param($h,$p) [uint32]$owner=0;[void][OwnWindow]::GetWindowThreadProcessId($h,[ref]$owner);$title=New-Object Text.StringBuilder 512;[void][OwnWindow]::GetWindowText($h,$title,512);if($owned -contains $owner -and [OwnWindow]::IsWindowVisible($h) -and ($title.ToString() -match 'AgEnD' -and $title.ToString() -notmatch 'Google Chrome|Microsoft Edge')){$script:chosen=$h};return $true},[IntPtr]::Zero)|Out-Null
 if($chosen -eq [IntPtr]::Zero){throw 'No owned installed AgEnD window'}
 [void][OwnWindow]::SetWindowPos($chosen,[IntPtr]::Zero,30,30,1120,820,0x0040)
 [void][OwnWindow]::SetForegroundWindow($chosen)
