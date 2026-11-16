@@ -21,3 +21,9 @@ Three guard removals were run separately in one campaign: consent-scope checking
 This packet uses owned SQLite, inert directory/member links and owned loopback listeners. It does **not** claim browser consent, real Claude Code/Codex, certificate trust, a live Hub/AD/Fleet, personal account configuration or packaged installation. Those remain the third slice. Existing first-slice evidence stays historical and is not relabelled as HTTP or CLI proof.
 
 Rollback disables apps and ends grants, then uses a compatible fix retaining the two new schemas and frozen attribution/history. Do not drop history or run an older binary against a newer schema registry. The direct Hub URL remains the intended no-local-install path; there is no proxy, trust bypass or Fleet credential conversion.
+
+## Released-alpha sync
+
+The test/type/reversal stage above is source commit `1f21d5eda`. Plain merge `04c640c4d` consumes actual alpha `8e79297c`, which includes the auth foundation squash `5472a746`. The three auth/design add-adds retain our extensions over byte-identical released foundation inputs. The two `rooms.ts` overlap hunks keep both app attribution/content-audit changes and alpha's nullable Fleet audit-ID spelling. All 32 own path diffs have identical added/removed lines except those two incoming `??undefined` normalizations. `alpha-sync.json` binds this comparison and the current inputs.
+
+No local re-verification ran for the plain sync, per decision 5afe2996. Exact-head CI must validate the published synced head. The own diff against alpha passes whitespace checks; the merge retains an already-present trailing blank line in alpha's unrelated `tests/turn-question-m3239.test.ts` without editing it.
