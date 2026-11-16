@@ -472,7 +472,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       ${canCreate && onNewInstance ? html`<button type="button" class="side-row side-new" onClick=${onNewInstance}><${Icon} name="plus" /><span class="grow">${t("app.newAgent")}</span></button>` : null}
     </nav>
     ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}
-        exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} />`}
+        exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} onNew=${canCreate && onNewInstance ? onNewInstance : null} />`}
     <${SidebarWidget} app=${app} />
     <div class="side-foot" data-trust="navigation">
       ${navLink("settings", settingsPath(), "settings", t("app.settings"))}

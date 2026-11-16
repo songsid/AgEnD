@@ -546,7 +546,7 @@ function SortMenu({ sort, phone = false }) {
  * `exec` / `awaiting`: live state by name (empty for the anonymous reader). `onPick`: a row was clicked (the drawer
  * closes).
  */
-export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting = {}, viewOnly = false, onPick }) {
+export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting = {}, viewOnly = false, onPick, onNew = null }) {
   const nav = useStore(navStore);
   const workspace = useStore(appStore).chatWorkspace;
   const styledMenus = typeof getComputedStyle === "function" && getComputedStyle(document.documentElement).getPropertyValue?.("--agent-menu-version")?.trim() === "1";
@@ -789,6 +789,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           onClick=${() => { recordEdit(filterRef.current); setNavFilter({ q: "" }); filterRef.current && filterRef.current.focus(); }}><${Icon} name="close" size=${14} /></button>` : null}
       </label>
       ${/* M-3212: 自訂 on a phone — beside the filter (app.css shows it in the phone drawer only). */ canStar && items.length ? html`<${SortMenu} sort=${nav.sort} phone=${true} />` : null}
+      ${/* M-3217 (the user, beta.6, a Fleet in a Hub): + on a phone is in the filter's own row (app.css shows it in the phone
+          drawer only). It was placed at a fixed height under the brand, so the Hub switch's row put it on top of the switch. */
+        onNew ? html`<button type="button" class="icon-btn v-filter-new" aria-label=${t("app.newAgent")} title=${t("app.newAgent")} onClick=${onNew}><${Icon} name="plus" /></button>` : null}
       <div class=${`nav-facets${stacked ? "" : " compact"}`}>
         <div class="nav-facet-groups">
           ${viewOnly ? null : chips("status", STATUS_FACETS, tn("filterStatus"), statusText)}
