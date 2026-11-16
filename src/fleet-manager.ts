@@ -4817,7 +4817,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const adapter = this.getAdapterForInstance(name);
         const result = await this.deliverHumanToInstance(name, { type: "fleet_inbound", targetSession: name, content: text,
           meta: { chat_id: String(this.getGroupIdForInstance(name) ?? ""), thread_id: String(config.topic_id ?? ""),
-            message_id: messageId, user: "Local app", user_id: "local-connector", source: "web", adapter_id: adapter?.id,
+            message_id: messageId, user: "Local app", user_id: "local-connector", source: "app", adapter_id: adapter?.id,
             ts: new Date().toISOString() } }, undefined, text, { stillCurrent: current, authorityCurrent: () => !this.shuttingDown && this.fleetConfig?.instances[name] === config });
         // No web-verified origin or human receipt authority is manufactured for an external app.
         if (result !== false) this.emitSseEvent("message", { instance: name, sender: "Local app", role: "user", text, messageId, ts: new Date().toISOString() });

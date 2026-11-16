@@ -592,8 +592,9 @@ screen** (「顯示當時的畫面」, #2966).
 
 **Chat & connections → Connect your app** copies a setup prompt for the person's Claude Code, Codex or another MCP app.
 `agend connect` is a local stdio server with only list agents, send ordinary messages, read answers and read the task board.
-It has no administrative or approval tools. Caller names from the app grant nothing; app-originated messages labelled
-“Local app” are not verified human approval. Keep the Fleet running. For a Windows app with a WSL Fleet, the prompt uses
+It has no administrative or approval tools. Messages have the separate `@app` origin with an inline warning. Same-OS-user
+processes, including Fleet agents, can send them; they supply no signed-in person, peer identity or approval and cannot
+authorize bypassing sender/profile restrictions. Keep the Fleet running. For a Windows app with a WSL Fleet, the prompt uses
 `wsl.exe -d <distribution> -- agend connect`; if the service cannot read the distribution name, the card asks for it explicitly.
 The prompt contains command metadata only, no token. After sending, use the returned cursor to read answers; an uncertain
 send is never retried automatically, and an operation ID no longer retained after a Fleet restart cannot resend old input.

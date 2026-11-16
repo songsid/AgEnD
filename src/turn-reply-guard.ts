@@ -12,16 +12,16 @@ export interface TurnReplyTarget {
 }
 
 /**
- * #2544: only a person waiting on a channel answer arms the reply-completion
+ * #2544: only chat waiting on an answer arms the reply-completion
  * guard. Schedules (silent or not), cross-instance traffic, and AgEnD system
- * notices must not expect a reply to a person.
+ * notices must not expect a reply. App chat shares completion bookkeeping without acquiring person authority.
  */
 export function turnExpectsPersonReply(meta: Record<string, string>): boolean {
   if (meta.from_instance) return false;
   const source = meta.source ?? "";
   if (source === "agend-system" || source === "schedule") return false;
   if (meta.user === "scheduler") return false;
-  if (!meta.chat_id && source !== "web") return false;
+  if (!meta.chat_id && source !== "web" && source !== "app") return false;
   return true;
 }
 

@@ -40,7 +40,7 @@ describe.skipIf(process.platform === "win32")("owner connector Fleet boundary", 
     expect(deliver).toHaveBeenCalledOnce();
     const args = deliver.mock.calls[0]!;
     expect(args[0]).toBe("helper"); expect(args[2]).toBeUndefined();
-    expect(args[1]).toMatchObject({ type: "fleet_inbound", content: "Question", meta: { source: "web", user: "Local app", user_id: "local-connector" } });
+    expect(args[1]).toMatchObject({ type: "fleet_inbound", content: "Question", meta: { source: "app", user: "Local app", user_id: "local-connector" } });
     expect((args[1].meta as any).web_verified).toBeUndefined();
     expect(await requestOwnerApp(dir, "read_answer", { agent: "helper", after: sent.after })).toMatchObject({ answers: [{ text: "Owned answer" }] });
     expect(await requestOwnerApp(dir, "task_board", { card: card.code })).toMatchObject({ card: { id: card.code, title: "Read this task" } });
