@@ -4,6 +4,7 @@ Add-Type -AssemblyName System.Drawing
 Add-Type @'
 using System; using System.Text; using System.Runtime.InteropServices;
 public class OwnWindow {
+ [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
  public delegate bool Visitor(IntPtr h,IntPtr p);
  [DllImport("user32.dll")] public static extern bool EnumWindows(Visitor f,IntPtr p);
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
@@ -17,6 +18,7 @@ public class OwnWindow {
  [StructLayout(LayoutKind.Sequential)] public struct Rect {public int Left,Top,Right,Bottom;}
 }
 '@
+[void][OwnWindow]::SetProcessDPIAware()
 $owned=@(Get-CimInstance Win32_Process -Filter "Name='$BrowserProcess'" | Where-Object {$_.CommandLine -like "*$Tag*"} | ForEach-Object {$_.ProcessId})
 $script:chosen=[IntPtr]::Zero
 [OwnWindow]::EnumWindows({param($h,$p) [uint32]$owner=0;[void][OwnWindow]::GetWindowThreadProcessId($h,[ref]$owner);$title=New-Object Text.StringBuilder 512;[void][OwnWindow]::GetWindowText($h,$title,512);if($owned -contains $owner -and [OwnWindow]::IsWindowVisible($h) -and $title.ToString() -match 'AgEnD' -and $title.ToString() -notmatch 'Google Chrome|Microsoft Edge'){$script:chosen=$h};return $true},[IntPtr]::Zero)|Out-Null
