@@ -27,7 +27,7 @@ try{
   await call('Page.navigate',{url:entry.base+entry.path},sid);await until(()=>evaluate(sid,'Boolean(window.AgendTheme && document.querySelector(".panel-head, .p-hub-signin"))'));
   phase=entry.label+':manifest';console.log(JSON.stringify({phase}));
   const app=await call('Page.getAppManifest',{},sid);assert(!app.errors.length,JSON.stringify(app.errors));
-  assert.equal(JSON.parse(app.data).display,'standalone');
+  assert.equal(JSON.parse(app.data).display,'standalone');assert.equal(JSON.parse(app.data).name,state.testName);
   const ps=process.env.SystemRoot+'\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
   const nativeMenu=action=>JSON.parse(execFileSync(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(root,'app-menu.ps1'),'-Tag',state.tag,'-BrowserProcess',state.browserProcess,'-Action',action],{encoding:'utf8',windowsHide:true}));
   await call('Page.bringToFront',{},sid);installed.push({manifestId,nativeMenu});await writeFile(join(root,'install-intents.json'),JSON.stringify(installed.map(a=>a.manifestId)));const installation=nativeMenu('Install');phase=entry.label+':installed';console.log(JSON.stringify({phase}));

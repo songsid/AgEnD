@@ -16,6 +16,14 @@ const powershell=(s:string)=>execFileSync(ps,['-NoProfile','-NonInteractive','-E
 const paths=JSON.parse(powershell("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); @{profile=$env:USERPROFILE;node=(Get-Command node.exe).Source}|ConvertTo-Json -Compress"));
 const nativeRoot=win32.join(paths.profile,'agend-adapter-proto',tag),root=execFileSync('wslpath',['-u',nativeRoot],{encoding:'utf8'}).trim();mkdirSync(root);writeFileSync(join(root,'.owned'),tag);
 writeFileSync(join(out,'scope-private.json'),JSON.stringify({tag,root,nativeRoot,node:paths.node,browserProcess}));
+const testName='AgEnD M3214 '+tag.slice(-8);
+// Cosmetic fixture label only, so OS shortcuts cannot collide with a user's AgEnD app.
+function brandManifest(req:any,res:any){
+ if(req.method!=='GET'||new URL(req.url,'http://fixture').pathname!=='/manifest.webmanifest')return;
+ const writeHead=res.writeHead.bind(res),end=res.end.bind(res);let status=200,headers:any={};
+ res.writeHead=(s:number,h:any={})=>{status=s;headers=h;return res;};
+ res.end=(body:any)=>{if(status===200){const m=JSON.parse(String(body));m.name=testName;m.short_name=testName;body=JSON.stringify(m);headers['Content-Length']=String(Buffer.byteLength(body));}writeHead(status,headers);return end(body);};
+}
 let fm:any,hub:any,named:any;
 try{
  const {FleetManager}=await import('../../../src/fleet-manager.ts');const {tokenEpoch}=await import('../../../src/web-session.ts');
@@ -24,14 +32,15 @@ try{
  for(const key of ['startInstance','stopInstance','reconcile','handleUpdateCommand'])fm[key]=()=>{throw Error('Forbidden live lifecycle: '+key);};
  fm.startPreviewListener=()=>{};fm.initializeWebAuthTokens();await fm.startHealthServer(0);
  while(!fm.healthServerListening)await new Promise(r=>setTimeout(r,50));
+ fm.healthServer.prependListener('request',brandManifest);
  const base='http://127.0.0.1:'+fm.healthServer.address().port;
  const key=join(home,'key.pem'),cert=join(home,'cert.pem');execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-keyout',key,'-out',cert,'-subj','/CN=agend-pwa.test','-addext','subjectAltName=DNS:agend-pwa.test'],{stdio:'ignore'});
- named=createServer({key:readFileSync(key),cert:readFileSync(cert)},(req,res)=>fm.dispatchWebHttp(req,res,named.address().port));
+ named=createServer({key:readFileSync(key),cert:readFileSync(cert)},(req,res)=>{brandManifest(req,res);fm.dispatchWebHttp(req,res,named.address().port);});
  await new Promise<void>(r=>named.listen(0,'127.0.0.1',r));
  const namedBase='https://agend-pwa.test:'+named.address().port;
- const {s3bRig}=await import('../../../tests/helpers/hub-s3b-rig.ts');hub=await s3bRig();
+ const {s3bRig}=await import('../../../tests/helpers/hub-s3b-rig.ts');hub=await s3bRig();const hubHandle=hub.http.handle.bind(hub.http);hub.http.handle=(req:any,res:any)=>{brandManifest(req,res);return hubHandle(req,res);};
  const code=()=>{fm.initializeWebSessions();return fm.webLoginCodes.issue({tier:'admin',epoch:tokenEpoch(fm.webToken)}).display;};
- writeFileSync(join(root,'private.json'),JSON.stringify({tag,browserExecutable,browserProcess,entries:[{label:'fleet-local',base,path:'/ui',code:true},{label:'fleet-named',base:namedBase,path:'/ui',code:true},{label:'hub-local',base:hub.base,path:'/ui/hub'}]}));
+ writeFileSync(join(root,'private.json'),JSON.stringify({tag,testName,browserExecutable,browserProcess,entries:[{label:'fleet-local',base,path:'/ui',code:true},{label:'fleet-named',base:namedBase,path:'/ui',code:true},{label:'hub-local',base:hub.base,path:'/ui/hub'}]}));
  for(const f of ['browser.mjs','window.ps1','app-menu.ps1'])copyFileSync(new URL(f,import.meta.url),join(root,f));
  const node=execFileSync('wslpath',['-u',paths.node],{encoding:'utf8'}).trim();
  const child=spawn(node,[win32.join(nativeRoot,'browser.mjs'),nativeRoot],{stdio:['pipe','pipe','inherit']});

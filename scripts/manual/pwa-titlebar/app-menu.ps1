@@ -49,28 +49,26 @@ function Invoke-Control($c){
 }
 $button=[Windows.Automation.ControlType]::Button;$item=[Windows.Automation.ControlType]::MenuItem
 ${initial}=[Windows.Automation.AutomationElement]::FromHandle($chosen)
-$menu=$initial.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,$button))|Where-Object {!$_.Current.IsOffscreen -and $_.Current.Name -match '^Chrome$|^AgEnD$|自訂.*(管理|控管|控制)|Customize and control|設定及其他|Settings and more'}|Select-Object -First 1
+$menu=$initial.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,$button))|Where-Object {!$_.Current.IsOffscreen -and $_.Current.Name -match '^Chrome$|^AgEnD( M3214 .*)?$|自訂.*(管理|控管|控制)|Customize and control|設定及其他|Settings and more'}|Select-Object -First 1
 if(!$menu){throw 'No menu on the selected owned window'}
 Invoke-Control $menu
 if($Action -eq 'Install'){
  Invoke-Control (Find-Control '投放.*儲存|Cast.*save|儲存.*分享|Save.*share' $item)
  Invoke-Control (Find-Control '安裝.*(網頁|AgEnD|應用)|Install.*(app|page|AgEnD)|將網頁.*應用' $item)
- $renamed=$false;$editor=$null
- $editorDeadline=[DateTime]::UtcNow.AddSeconds(10)
- do {
- $windows=[Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children,[Windows.Automation.Condition]::TrueCondition)
- foreach($w in $windows){if($owned -notcontains $w.Current.ProcessId){continue};foreach($c in $w.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Edit))){$p=$null;if(!$c.Current.IsOffscreen -and $c.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern,[ref]$p) -and $p.Current.Value -match '(^|[ ·])AgEnD($|[ ·])'){$p.SetValue('AgEnD M3214 '+$Tag.Substring($Tag.Length-8));$renamed=$true;$editor=$c}}}
- if(!$renamed){Start-Sleep -Milliseconds 100}
- }while(!$renamed -and [DateTime]::UtcNow -lt $editorDeadline)
- if(!$renamed){Find-Control 'THIS-DIAGNOSTIC-MUST-NOT-MATCH' $button|Out-Null;throw 'No app-name field; refusing a non-unique test install'}
- $confirm=$null;$node=$editor
- for($i=0;$i -lt 5 -and $node -and !$confirm;$i++){
-  $node=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($node)
-  if(!$node -or $node.Current.Name -match 'Google Chrome|Microsoft Edge'){break}
-  $confirm=$node.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,$button))|Where-Object {!$_.Current.IsOffscreen -and $_.Current.IsEnabled -and $_.Current.Name -match '^(安裝|Install|建立|Create)'}|Select-Object -First 1
- }
- if(!$confirm){Find-Control 'MISSING-INSTALL-CONFIRM-DIAGNOSTIC' $button|Out-Null;throw 'No confirmation in the owned install dialog'}
- Invoke-Control $confirm
+ $deadline=[DateTime]::UtcNow.AddSeconds(15);$pressed=New-Object 'Collections.Generic.HashSet[string]';$confirmed=$false
+ do{
+  $windows=[Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children,[Windows.Automation.Condition]::TrueCondition)
+  $dialog=$null
+  foreach($w in $windows){if($owned -contains $w.Current.ProcessId -and $w.Current.Name -match '安裝應用程式|Install app'){$dialog=$w;break}}
+  if(!$dialog){if($confirmed){break};Start-Sleep -Milliseconds 100;continue}
+  $labels=$dialog.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
+  $testName='AgEnD M3214 '+$Tag.Substring($Tag.Length-8)
+  if(!($labels|Where-Object {$_.Current.Name -eq $testName})){throw 'Install dialog does not name this isolated test app'}
+  $confirm=$labels|Where-Object {$_.Current.ControlType -eq $button -and !$_.Current.IsOffscreen -and $_.Current.IsEnabled -and $_.Current.Name -match '^(繼續|Continue|安裝|Install|建立|Create)$'}|Select-Object -First 1
+  if($confirm){$id=$confirm.GetRuntimeId() -join '-';if($pressed.Add($id)){Invoke-Control $confirm;$confirmed=$true}}
+  Start-Sleep -Milliseconds 100
+ }while([DateTime]::UtcNow -lt $deadline)
+ if(!$confirmed){throw 'No confirmation in the owned install dialog'}
 }else{
  Invoke-Control (Find-Control '解除安裝.*AgEnD|Uninstall.*AgEnD|移除.*AgEnD' $item)
  Invoke-Control (Find-Control '^(解除安裝|移除|Uninstall|Remove)$' $button)
