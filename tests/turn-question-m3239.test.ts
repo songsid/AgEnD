@@ -187,7 +187,7 @@ describe("M-3239 (2): who is told", () => {
   it("each agent dispatcher once, naming its cards and quoting the question; a person, itself or a non-agent is not", () => {
     setLocale("en");
     const cards = [card("M-1", "dev-b", lead), card("M-2", "dev-b", lead), card("M-3", "dev-b", { kind: "instance", name: "other-lead" }),
-      card("M-4", "dev-b", { kind: "person", name: "Ann" }), card("M-5", "dev-b", { kind: "instance", name: "dev-b" }),
+      card("M-4", "dev-b", { kind: "person", name: "lead" }), card("M-5", "dev-b", { kind: "instance", name: "dev-b" }),
       card("M-6", "dev-b", { kind: "instance", name: "gone" }), card("M-7", "dev-c", lead), card("M-8", "dev-b", null)];
     const got = questionNotices(cards, "dev-b", "Send now, or re-run first?", 42, isAgent);
     expect(got.map((n) => [n.dispatcher, n.key])).toEqual([["lead", "task-question:lead:dev-b:42"], ["other-lead", "task-question:other-lead:dev-b:42"]]);

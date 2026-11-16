@@ -151,15 +151,14 @@ export const backMessage = (card: { code: string; title: string }, assignee: str
 /**
  * M-3239: the question a turn's final text ends on, or null. An agent that asks in its own terminal — no reply, no
  * send_to_instance — has asked no one: the question is only on its screen. A question is a sentence ending in "?" (or
- * "？") that ends the final paragraph; code, inline code and links are not read, nor a table. Returned as said, at most 400 chars.
+ * "？") that ends the final paragraph; code, inline code and links are not read. Returned as said, at most 400 chars.
  */
 export function turnQuestion(text: string): string | null {
   const blocks = text.replace(/```[\s\S]*?(?:```|$)/g, "\n\n").split(/\n\s*\n/).map((b) => b.trim())
     .filter((b) => b && !/^[.。…\s]+$/.test(b));
   const last = blocks[blocks.length - 1];
   if (!last) return null;
-  const lines = last.split("\n").filter((l) => !/^\s*\|/.test(l));
-  const plain = lines.join(" ").replace(/`[^`\n]*`/g, (m) => m.replace(/[?？]/g, "")).replace(/https?:\/\/\S+/g, (m) => m.replace(/[?？]/g, ""));
+  const plain = last.split("\n").join(" ").replace(/`[^`\n]*`/g, (m) => m.replace(/[?？]/g, "")).replace(/https?:\/\/\S+/g, (m) => m.replace(/[?？]/g, ""));
   const sentences = plain.split(/(?<=[.!?。！？])\s+|(?<=[。！？])/).map((x) => x.trim()).filter(Boolean);
   // The paragraph ends on the question (a question answered further on is not one), with any just before it.
   const isQ = (x: string) => /[?？][*_"'”’)\]」』]*$/.test(x);

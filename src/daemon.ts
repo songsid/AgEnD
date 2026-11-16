@@ -7176,8 +7176,7 @@ export class Daemon extends EventEmitter {
     }
     if (this.turnEndTimer) return;
     this.turnEndTimer = setTimeout(() => {
-      this.turnEndTimer = null;
-      if (this.instanceState !== "idle") return;                       // the turn went on
+      this.turnEndTimer = null;                                        // a working edge before this cancels it: the turn went on
       const turn = this.turnWatch.end();
       if (!turn || turn.messaged || !turn.text.trim() || !this.turnEvidence()) return;
       this.broadcastFleetMessage({ type: "turn_ended", instanceName: this.name, startedAt: turn.startedAt, text: turn.text.slice(-4000) });
