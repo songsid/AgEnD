@@ -1,0 +1,344 @@
+{
+  "login": {
+    "root": "%USERPROFILE%\\agend-personal-login-ff1ffb75-c759-4adc-b09b-baa36f7815f0",
+    "cleanup": {
+      "removed": true,
+      "absent": true,
+      "ownLiveProcessesBeforeCleanup": 0,
+      "codeFileAbsentBeforeCleanup": true,
+      "entriesRemoved": 13
+    },
+    "entries": [
+      {
+        "path": "payload",
+        "kind": "directory"
+      },
+      {
+        "path": "temp",
+        "kind": "directory"
+      },
+      {
+        "path": ".owned",
+        "kind": "file"
+      },
+      {
+        "path": "controller.pid",
+        "kind": "file"
+      },
+      {
+        "path": "host.pid",
+        "kind": "file"
+      },
+      {
+        "path": "host.stderr",
+        "kind": "file"
+      },
+      {
+        "path": "host.stdout",
+        "kind": "file"
+      },
+      {
+        "path": "login-result.json",
+        "kind": "file"
+      },
+      {
+        "path": "status.json",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\claude-login-bundle.mjs",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\package.json",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\runtime-pane-private.ps1",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\windows-cli-worker.js",
+        "kind": "file"
+      }
+    ]
+  },
+  "proofAndLocalDiagnosis": {
+    "root": "%USERPROFILE%\\agend-personal-claude-proof-f881c4af-3c04-49be-b759-9c6492c14f97",
+    "cleanup": {
+      "removed": true,
+      "absent": true,
+      "emptyCliTempDirectories": [
+        "claude"
+      ],
+      "ownLiveProcessesBeforeRemoval": 0,
+      "privateStagesRemainingBeforeRemoval": 0,
+      "entriesRemoved": 38
+    },
+    "entries": [
+      {
+        "path": "payload",
+        "kind": "directory"
+      },
+      {
+        "path": "shared",
+        "kind": "directory"
+      },
+      {
+        "path": "synthetic-codex",
+        "kind": "directory"
+      },
+      {
+        "path": "synthetic-codex-default-root",
+        "kind": "directory"
+      },
+      {
+        "path": "synthetic-codex-root",
+        "kind": "directory"
+      },
+      {
+        "path": "temp",
+        "kind": "directory"
+      },
+      {
+        "path": ".attempt-started",
+        "kind": "file"
+      },
+      {
+        "path": ".owned",
+        "kind": "file"
+      },
+      {
+        "path": "host.pid",
+        "kind": "file"
+      },
+      {
+        "path": "host.stderr",
+        "kind": "file"
+      },
+      {
+        "path": "host.stdout",
+        "kind": "file"
+      },
+      {
+        "path": "outside-control.txt",
+        "kind": "file"
+      },
+      {
+        "path": "progress.json",
+        "kind": "file"
+      },
+      {
+        "path": "ps7-default-root-result.json",
+        "kind": "file"
+      },
+      {
+        "path": "ps7-default-root.pid",
+        "kind": "file"
+      },
+      {
+        "path": "ps7-default-root.stderr",
+        "kind": "file"
+      },
+      {
+        "path": "ps7-default-root.stdout",
+        "kind": "file"
+      },
+      {
+        "path": "ps7-local-result.json",
+        "kind": "file"
+      },
+      {
+        "path": "ps7-root-result.json",
+        "kind": "file"
+      },
+      {
+        "path": "ps7-root.pid",
+        "kind": "file"
+      },
+      {
+        "path": "ps7-root.stderr",
+        "kind": "file"
+      },
+      {
+        "path": "ps7-root.stdout",
+        "kind": "file"
+      },
+      {
+        "path": "ps7.pid",
+        "kind": "file"
+      },
+      {
+        "path": "ps7.stderr",
+        "kind": "file"
+      },
+      {
+        "path": "ps7.stdout",
+        "kind": "file"
+      },
+      {
+        "path": "result.json",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\claude-one-bundle.mjs",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\package.json",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\ps7-default-root-bundle.mjs",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\ps7-local-bundle.mjs",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\ps7-root-bundle.mjs",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\runtime-pane-private.ps1",
+        "kind": "file"
+      },
+      {
+        "path": "payload\\windows-cli-worker.js",
+        "kind": "file"
+      },
+      {
+        "path": "shared\\allowed.txt",
+        "kind": "file"
+      },
+      {
+        "path": "synthetic-codex\\auth.json",
+        "kind": "file"
+      },
+      {
+        "path": "synthetic-codex-default-root\\auth.json",
+        "kind": "file"
+      },
+      {
+        "path": "synthetic-codex-root\\auth.json",
+        "kind": "file"
+      },
+      {
+        "path": "temp\\claude",
+        "kind": "directory"
+      }
+    ],
+    "stages": [
+      {
+        "created": "shared/allowed.txt",
+        "synthetic": true
+      },
+      {
+        "created": "temp\\agend-personal-Huzp02",
+        "kind": "private-stage"
+      },
+      {
+        "removed": "temp\\agend-personal-Huzp02",
+        "entries": [
+          {
+            "path": "temp\\agend-personal-Huzp02\\.owned",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth",
+            "kind": "directory"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\.claude.json",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\.credentials.json",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\backups",
+            "kind": "directory"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\backups\\.claude.json.backup.1794841146242",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\plugins",
+            "kind": "directory"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\plugins\\store",
+            "kind": "directory"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\plugins\\store\\cc-plugin-agents-md_builtin-b049b47b3618.json",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\policy-limits.json",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\policy-limits.json.signature.json",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\policy-limits.json.stamp.json",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\remote-settings.json",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\remote-settings.json.signature.json",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\remote-settings.json.synced-at",
+            "kind": "file"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\auth\\sessions",
+            "kind": "directory"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\work",
+            "kind": "directory"
+          },
+          {
+            "path": "temp\\agend-personal-Huzp02\\work\\.git",
+            "kind": "directory"
+          }
+        ],
+        "existsAfter": false
+      }
+    ],
+    "diagnosticStages": [
+      {
+        "created": "%PROOF%\\temp\\agend-personal-MwOsHT"
+      },
+      {
+        "removed": "%PROOF%\\temp\\agend-personal-MwOsHT",
+        "existsAfter": false
+      },
+      {
+        "created": "%PROOF%\\temp\\agend-personal-JEMn0i"
+      },
+      {
+        "removed": "%PROOF%\\temp\\agend-personal-JEMn0i",
+        "existsAfter": false
+      },
+      {
+        "created": "%PROOF%\\temp\\agend-personal-swb20w"
+      },
+      {
+        "removed": "%PROOF%\\temp\\agend-personal-swb20w",
+        "existsAfter": false
+      }
+    ]
+  }
+}

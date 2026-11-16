@@ -2,6 +2,8 @@ import type Database from "better-sqlite3";
 import { HUB_ROOM_POST_CAPABILITY, roomPostSchema, roomPostResultSchema, roomListResultSchema,
   roomMembersSchema, roomMembersResultSchema, peopleSearchSchema, peopleSearchResultSchema } from "../protocol.js";
 import type { HubRoomListResult, HubRoomPostResult, HubRoomMembersResult, HubPeopleSearchResult, HubRoomPostAnswer } from "../types.js";
+import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,type HubRoomMentionFeedback} from "../room-mention-feedback-model.js";
+import type {RoomFeedbackSource} from "./room-mention-feedback.js";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { ROOM_HUMAN_RECEIPT, type RoomReceiptProof } from "./room-post-receipt.js";
 import { HubRoomPostAnswers, verifyRoomPostAnswers, type RoomPostAnswerLink, type RoomPostNotification, type RoomPostSource } from "./room-post-answers.js";
@@ -32,6 +34,7 @@ export interface RoomPostOptions {
   notify?(input: RoomPostNotification): Promise<boolean>;
   held?(id: string): void;
   changed?(): void;
+  feedback?(value:HubRoomMentionFeedback,source:RoomFeedbackSource,operation:string):boolean;
 }
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -154,7 +157,10 @@ export class HubRoomPostAdapter implements AgentRoomPort {
       const saved: Saved = row ? read(this.options, id, row.value) : { agent: caller.agent, local, room: input.room, text: input.text, ...(input.receiptId ? {receiptId:input.receiptId} : {}) };
       if (saved.agent !== caller.agent || saved.room !== input.room || saved.text !== input.text || saved.receiptId !== input.receiptId) return { ok: false, code: "conflict" };
       if (!same(saved.local, local)) return { ok: false, code: "stale" };
-      if (saved.result) return saved.result;
+      if (saved.result) {
+        if(saved.result.ok&&saved.result.mentionRefusals&&(!this.options.feedback||!this.options.feedback(saved.result.mentionRefusals,{...saved.local,agent:saved.agent},`post:${id}:${saved.result.messageId}`)))return {ok:false,code:"uncertain"};
+        return saved.result;
+      }
       const expired = (): RoomPostResult => ({ok:false,code:"denied",reason:"This instruction is over 24 hours old. Ask your owner again."});
       if (!row && proof && !proof.fresh()) return expired();
       if (!row) this.write(id, saved); // Intent is durable before any bytes can reach the Hub.
@@ -166,6 +172,7 @@ export class HubRoomPostAdapter implements AgentRoomPort {
             if (!row && proof && !proof.fresh()) return expired();
             const result = roomPostResultSchema.parse(await link.post({ exposureId: local.exposureId, room: saved.room, text: saved.text, idempotencyKey: id,
               ...(saved.receiptId ? {onBehalfOf:{receiptId:saved.receiptId}} : {}) }));
+            if(result.ok&&result.mentionRefusals&&!link.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))throw Error("Unnegotiated mention feedback");
             // A lost owner/link can hide a committed result; never claim that the post failed or retry with a new key.
             if (!authorized()) return { ok: false, code: "uncertain" };
             if (result.ok) {
@@ -173,6 +180,7 @@ export class HubRoomPostAdapter implements AgentRoomPort {
               const frozen=read(this.options,id,latest.value);
               if(frozen.accepted && (frozen.accepted.postId!==result.messageId || frozen.accepted.roomId!==result.roomId))return {ok:false,code:"uncertain"};
               this.write(id, { ...frozen, result });
+              if(result.mentionRefusals&&(!this.options.feedback||!this.options.feedback(result.mentionRefusals,{...frozen.local,agent:frozen.agent},`post:${id}:${result.messageId}`)))return {ok:false,code:"uncertain"};
             }
             return result;
           } catch { return { ok: false, code: "uncertain" }; }

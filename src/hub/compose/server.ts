@@ -1,3 +1,8 @@
+import {HubPersonalRuntimeHost} from "../personal/runtime-host.js";
+import {HubPersonalOwnerHost} from "../personal/owner-host.js";
+import {HubPersonalTurns} from "../personal/turns.js";
+import {HUB_PERSONAL_AGENTS_MIGRATION} from "../personal/schema.js";
+import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "../room-mention-feedback-model.js";
 import {hubRoleMigrationsForState} from "../roles/migrations.js";
 import {createHubRoleCutover} from "../roles/cutover.js";
 import {createHubRoleWriter} from "../roles/writer.js";
@@ -89,6 +94,8 @@ export { SERVER_SET } from "./storage.js";
 export interface HubHttpDeps {
   roleAdmin?:import("../roles/admin-types.js").RoleAdminControl;
   teams?: import("../http/deps.js").HubHttpDeps["teams"];
+  personalAgents?: import("../http/deps.js").HubHttpDeps["personalAgents"];
+  personalInstaller?: import("../http/deps.js").HubHttpDeps["personalInstaller"];
   log?: import("../http/deps.js").HubHttpDeps["log"];
   roomInvitations?: import("../http/deps.js").HubHttpDeps["roomInvitations"];
   roomAssistant?: import("../assistant/types.js").RoomAssistant;
@@ -427,6 +434,11 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         },
         withDirectoryRead: <T>(person: PersonKey, work: () => Promise<T>) => directoryReads.withDirectoryRead(person, work),
       });
+      // The composing layer stays absent until its migration is explicitly registered.
+      let personalOwner:HubPersonalOwnerHost|undefined;
+      const personalHost=migrations.some(m=>m.component===HUB_PERSONAL_AGENTS_MIGRATION.component)?new HubPersonalRuntimeHost({home:options.home,current:live,
+        enabled:()=>((db.prepare("SELECT enabled FROM hub_personal_settings WHERE id=1").get() as {enabled:number}|undefined)?.enabled===1),now,log:options.log}):undefined;
+      if(personalHost)teardown.add("the personal Runtime receiver",()=>personalHost.close());
       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
       const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,roleAdministrators:rolesMounted,
         policy, binding, management,
@@ -469,7 +481,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       });
       const groupControl = createHubGroupAdminControl({ db, audit, directory, administrator: settings.administrator,
         directoryReads,
-        transport: store, inventory: createHubGroupAdminInventory({ db, transport: store, realm: resolvedDirectory.realm }),
+        transport: store, inventory: createHubGroupAdminInventory({ db, transport: store, realm: resolvedDirectory.realm,personalSource:e=>personalOwner?.sourceMaterial(db,e)??null }),
         authorization: groups, policy, binding, current: live, version: () => store.read().revocationVersion, now,
         advanceAuthorization: database => {
           if (database !== db || !db.inTransaction) throw new HubStateError("service-unavailable", "the group policy transaction is unavailable");
@@ -519,6 +531,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const roomAssistant = options.roomAssistant?.();
       if (roomAssistant) teardown.add("the room assistant", () => roomAssistant.close());
       const http = httpEntry.createHubHttp({
+        ...(personalHost?{personalAgents:(core:import("../http/core.js").HubCore)=>{
+          const owner=new HubPersonalOwnerHost(core,personalHost.runtime);personalOwner=owner;
+          return {owner,turns:new HubPersonalTurns(core,personalHost.runtime,owner)};
+        },personalInstaller:()=>personalHost.install.installer()}:{}),
         ...(migrations.some(m => m.component === HUB_TEAMS_MIGRATION.component) ? { teams: core => createHubTeams(core, { allowedListUsesTeam: hubAllowedListUsesTeam }) } : {}),
         log: (level, message, meta) => options.log(level, message, meta),
         roomInvitations: createHubRoomInvitations,
@@ -604,6 +620,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           res.writeHead(503, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end('{"code":"unavailable"}');
           return;
         }
+        if(personalHost?.handle(req,res,new URL(req.url??"/",settings.webOrigin)))return;
         if (http.handle(req, res)) return;
         res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }).end("Not found");
       };
@@ -632,6 +649,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
               { ...browserCertificate.material(), minVersion: "TLSv1.2" },
               serveWeb,
             );
+            if(personalHost)server.on("upgrade",(req,socket,head)=>personalHost.upgrade(req,socket,head));
             const responses = options.directoryResponses?.listener(server);
             responseListener = responses ?? null;
             teardown.add("the Hub web listener", () => {
@@ -686,6 +704,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         fence() {
           if (roomAssistant) void roomAssistant.close().catch(() => {}); // fence asks now; teardown retains any failed drain
           fenced = true;
+          personalHost?.close();
           directoryReads.fence();
           generation += 1;
           memberServer?.fence();
@@ -693,6 +712,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         async close() {
           if (roomAssistant) void roomAssistant.close().catch(() => {});
           fenced = true;
+          personalHost?.close();
           directoryReads.fence();
           // Rejects while any step is unconfirmed; S1 keeps ownership and retries this close before any replacement.
           await teardown.run();
@@ -726,5 +746,5 @@ export type { HubPerson };
 
 /** The member-link features this Hub offers (exported so M-3125's negotiation test uses the real list, Fable #3925). */
 export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; features?: readonly string[] }): string[] {
-  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
+  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
 }

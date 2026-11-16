@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-compose.test.ts (136 tests | 1 failed | 135 skipped) 3018ms
+     × registers personal agents once and mounts the default-off owner and private Runtime paths 2946ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-compose.test.ts > room consent factory composition > registers personal agents once and mounts the default-off owner and private Runtime paths
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/hub-compose.test.ts:2314:81
+    2312|     try {
+    2313|       const plan = hubServerDatabasePlan(r.hub.config.hub, r.entry.mig…
+    2314|       expect(plan.migrations.filter(m => m.component === "s3-personal-…
+       |                                                                                 ^
+    2315|       expect(Reflect.get(r.deps, "personalAgents")).toBeTypeOf("functi…
+    2316|       r.deps.uow.atomic(tx => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 135 skipped (136)
+   Start at  23:16:03
+   Duration  6.55s (transform 4.58s, setup 113ms, import 3.25s, tests 3.02s, environment 0ms)

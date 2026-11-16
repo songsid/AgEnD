@@ -1,3 +1,4 @@
+import { HUB_PERSONAL_AGENTS_MIGRATION } from "../personal/schema.js";
 import { HUB_ROOM_CONTEXT_MIGRATION } from "../rooms/context-cursor.js";
 import { HUB_MCP_AUTH_MIGRATION } from "../mcp/auth-schema.js";
 import { HUB_MCP_DOOR_MIGRATION } from "../mcp/door-schema.js";
@@ -126,4 +127,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_ADMIN_DASHBOARD_MIGRATION,
   HUB_ROOM_CONTEXT_MIGRATION,
   HUB_MCP_AUTH_MIGRATION, HUB_MCP_DOOR_MIGRATION,
+  HUB_PERSONAL_AGENTS_MIGRATION,
 ]);

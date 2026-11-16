@@ -7,6 +7,8 @@ import { answerButtonsSchema, HUB_LIMITS, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_
 import { prepareHubAnswerButtons } from "../buttons-model.js";
 import { HubFileRefusal, type HubMemberFiles } from "./attachments.js";
 import type { HubAnswerButtons, HubAttachmentChunk, HubAttachmentRef } from "../types.js";
+import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,type HubRoomMentionFeedback} from "../room-mention-feedback-model.js";
+import type {RoomFeedbackSource} from "./room-mention-feedback.js";
 import type { HubRepresentativeDelivery } from "../representative.js";
 import type { HubReportExtras, HubReportOutcome } from "../../hub-report-target.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY, roomContextStateSchema, type HubRoomContextState, type HubRoomContextRequest,
@@ -20,7 +22,7 @@ export interface RoomAsk {
   contextState?: HubRoomContextState;
 }
 export interface RoomAnswer { messageId: string; roomId: string; exposureId: string; answerId: string; text: string; buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[] }
-export interface RoomAnswerAck { messageId: string; answerId: string }
+export type RoomAnswerAck=import("../types.js").HubRoomAnswerAck;
 /** Track R projects reason as presenceReason; the room viewer, not the Fleet, chooses its language. */
 export type RoomPresenceReason = "quota" | "auth" | "approval" | "update" | "operator" | "idle" | "capacity" | "error" | "stopped" | "crashed" | "stuck" | "unknown";
 export interface AgentPresence { state: "idle" | "working" | "paused"; reason?: RoomPresenceReason; note?: string }
@@ -58,6 +60,7 @@ export interface RoomAskOptions {
   /** M-3125: the Fleet's Hub file handling (the 1:1 representative's): the inbox for an ask's files, the reply rule for an answer's. */
   files?: HubMemberFiles;
   generation?(agent: string): string | null;
+  feedback?(value:HubRoomMentionFeedback,source:RoomFeedbackSource,operation:string):boolean;
 }
 export function migrateRoomAsks(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS hub_room_asks(message_id TEXT PRIMARY KEY,binding TEXT NOT NULL,state TEXT NOT NULL,cid TEXT NOT NULL UNIQUE,value TEXT NOT NULL);
@@ -413,6 +416,11 @@ export class HubRoomAskAdapter {
     if (!row || !["answered", "acked"].includes(row.state)) return false;
     const saved = this.read(row);
     if (!this.current(saved, false) || saved.answer?.answerId !== ack.answerId) return false;
+    if(ack.mentionRefusals){
+      if(!source.features?.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)||!this.options.feedback)return false;
+      try{if(!this.options.feedback(ack.mentionRefusals,{...saved.local,exposureId:saved.ask.exposureId},`answer:${saved.ask.messageId}:${saved.answer.answerId}`))return false;}
+      catch{return false;}
+    }
     if (row.state !== "acked") this.save(row.message_id, "acked", saved);
     return true;
   }

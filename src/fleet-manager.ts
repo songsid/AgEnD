@@ -2510,7 +2510,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           roomToolsChanged: () => this.notifyHubRoomTools(),
           roomConversationGeneration: agent => this.daemons.get(agent)?.roomConversationGeneration() ?? null,
           attachRoomInputs: handler => { this.hubRoomInput = handler; },
-          roomNotify: input => this.deliverHubRoomPostAnswer(input),
+          roomNotify: input => this.deliverHubRoomNotification(input),
           roomReceipt: (caller, receiptId) => verifyRoomReceipt({
             lookup: (agent, id) => {
               const item = this.queryDurableDeliveryStatus(agent, {messageId:id}).items[0];
@@ -2797,13 +2797,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } });
     return result !== false;
   }
-  private async deliverHubRoomPostAnswer(input: import("./hub/member/room-post-answers.js").RoomPostNotification): Promise<boolean> {
+  private async deliverHubRoomNotification(input: import("./hub/member/room-post-answers.js").RoomPostNotification): Promise<boolean> {
     const { HUB_REPORT_TARGET } = await import("./hub/representative.js");
     if (this.shuttingDown || !this.fleetConfig?.instances[input.agent] || isNativeExecInstance(this.fleetConfig.instances[input.agent])) return false;
+    const prefix=input.kind==="mention-feedback"?"hub-room-mention-feedback":"hub-room-post-answer";
     const result=await this.deliverToInstance(input.agent,{type:"fleet_inbound",targetSession:input.agent,content:input.text,
-      meta:{chat_id:"",message_id:`hub-room-post-answer-${input.id}`,user:`instance:${HUB_REPORT_TARGET}`,user_id:`instance:${HUB_REPORT_TARGET}`,
-        ts:new Date().toISOString(),thread_id:"",from_instance:HUB_REPORT_TARGET,from_display:"Hub",correlation_id:`hub-room-post-answer-${input.id}`,
-        request_kind:"notification",requires_reply:"false",task_summary:"A reply to your Hub room post"}},
+      meta:{chat_id:"",message_id:`${prefix}-${input.id}`,user:`instance:${HUB_REPORT_TARGET}`,user_id:`instance:${HUB_REPORT_TARGET}`,
+        ts:new Date().toISOString(),thread_id:"",from_instance:HUB_REPORT_TARGET,from_display:"Hub",correlation_id:`${prefix}-${input.id}`,
+        request_kind:"notification",requires_reply:"false",task_summary:input.kind==="mention-feedback"?"Hub mention delivery feedback":"A reply to your Hub room post"}},
       {isCrossInstance:true,stillCurrent:input.stillCurrent,beforeInput:input.beforeInput});
     return result!==false;
   }

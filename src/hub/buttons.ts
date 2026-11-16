@@ -64,6 +64,7 @@ export class HubButtonsService {
   /** Called with the accepted answer's own transaction. Metadata has already been bound by its exact release lease. */
   record(db: Database.Database, tx: HubTx, msg: MessageRow, answer: HubAnswer, now: number): void {
     if (!answer.buttons) return;
+    if(msg.fleet_id===null)throw new HubProtocolError("incompatible");
     if (!validHubAnswerButtons(answer.buttons)) throw new HubProtocolError("invalid");
     const b = answer.buttons;
     db.prepare(`INSERT INTO hub_answer_buttons(id,room_id,message_id,answer_id,digest,created_at,expires_at,state,result_state,result_key)
@@ -103,7 +104,7 @@ export class HubButtonsService {
   }
   private audit(tx: HubTx, msg: MessageRow, action: string, result: HubAuditRecord["result"], requestId: string,
     actor: HubAuditRecord["actor"], contentRef?: string): void {
-    this.core.audit(tx, { requestId, actor, action, result, messageId: msg.id, roomId: msg.room_id, fleetId: msg.fleet_id,
+    this.core.audit(tx, { requestId, actor, action, result, messageId: msg.id, roomId: msg.room_id, fleetId: msg.fleet_id??undefined,
       exposureId: msg.exposure_id, ownerAtEvent: personFromString(msg.owner), grantId: msg.grant_id, grantRevision: msg.grant_revision,
       ...(contentRef ? { contentRef } : {}) });
   }
