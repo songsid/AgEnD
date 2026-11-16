@@ -2653,12 +2653,12 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oo.phone:not(.fs) .oo-zoom .icon-btn + .icon-btn { border-top: 0; border-left: 1px solid var(--border); }
   .oo.phone:not(.fs) .oo-zoom :is(.oo-fit, .oo-fill) { display: none; }
   .oo-zone-pills { position: absolute; z-index: 6; left: var(--s-2); bottom: max(var(--s-2), env(safe-area-inset-bottom, 0px)); display: flex; gap: var(--s-1);
-    max-width: calc(100% - 2 * var(--s-2)); overflow-x: auto; scrollbar-width: none; padding: var(--s-1); box-sizing: border-box;
+    max-width: calc(100% - 2 * var(--s-2)); overflow-x: auto; padding: var(--s-1); box-sizing: border-box;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-1); }
   .oo-zone-pills .btn { flex: none; min-height: 36px; border-radius: var(--r-full); white-space: nowrap; }
 }
 /* M-3253: the Office's ⋯ sheet (a Dialog: a bottom sheet on a phone) — Fit, Fill and Fullscreen as tiles, then Live and
-   the Office bar's own controls, one per row, each at least 44 px; a select's text at 16 px (iOS zooms into smaller). */
+   the Office bar's own controls, one per row, each at least 44 px; a select's text from --fs-md (16 px in a field on a phone: tokens.css). */
 .oo-sheet-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); margin-bottom: var(--s-2); }
 .oo-sheet-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-1); min-height: 64px; padding: var(--s-1); border: 0;
   border-radius: var(--r-md); background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: center; cursor: pointer; }
@@ -2667,7 +2667,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .oo-sheet :is(.oo-sheet-bar > *, .oo-sheet-live) { min-height: var(--tap); }
 .oo-sheet :is(.oo-pick, .check) { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text); }
 .oo-sheet .oo-pick { justify-content: space-between; }
-.oo-sheet .oo-pick .tb-select { width: 62%; min-height: var(--tap); font-size: 16px; }
+.oo-sheet .oo-pick .tb-select { width: 62%; min-height: var(--tap); font-size: var(--fs-md); }
 .oo-sheet .dlg-x { width: var(--tap); height: var(--tap); }
 .oo-sheet .oo-sheet-bar :is(.btn, .oo-people > .btn) { min-height: var(--tap); }
 .oo-sheet .oo-sheet-bar > .btn, .oo-sheet .oo-people > .btn { width: 100%; justify-content: flex-start; }
