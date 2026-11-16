@@ -34,7 +34,7 @@ function deltas<T extends { id: string }>(before: readonly T[], after: readonly 
     const a = old.get(id) ?? null, b = next.get(id) ?? null; return equal(a, b) ? [] : [{ before: a, after: b }];
   });
 }
-export function planRoleChange(before: unknown, next: unknown, actor: PersonKey, at: number): RoleChangePlan {
+export function planRoleChange(before: unknown, next: unknown, actor: PersonKey, at: number, options: {allowCarriedSelfUse?:boolean} = {}): RoleChangePlan {
   const old = canonical(before), proposed = canonical(next), who = validated(person, actor), time = validated(epoch, at);
   if (proposed.roles.some(r => r.permissions.some(c => (ROLE_APPROVAL_PERMISSIONS as readonly string[]).includes(c)))) throw new HubProtocolError("incompatible");
   if (who.realm !== old.realm || proposed.realm !== old.realm || proposed.generation !== old.generation) throw new HubProtocolError();
@@ -63,8 +63,9 @@ export function planRoleChange(before: unknown, next: unknown, actor: PersonKey,
   });
   // Carried T1 rules are not role assignments. A role write must never edit them as a
   // side channel around the assignment/self-target checks. The allowed-list adapter owns edits.
-  if (!equal(old.teams,proposed.teams) || !equal(old.people,proposed.people)) throw new HubProtocolError("invalid");
-  const controls = old.rolesActive !== proposed.rolesActive || old.state !== proposed.state || !equal(old.denies, proposed.denies);
+  const carriersChanged=!equal(old.teams,proposed.teams)||!equal(old.people,proposed.people);
+  if (carriersChanged&&!options.allowCarriedSelfUse) throw new HubProtocolError("invalid");
+  const controls = old.rolesActive !== proposed.rolesActive || old.state !== proposed.state || !equal(old.denies, proposed.denies)||carriersChanged;
   const changed = roles.length > 0 || assignments.length > 0 || controls;
   const required: ("hub.admin" | "roles.assign")[] = [];
   if (roles.length || controls) required.push("hub.admin");

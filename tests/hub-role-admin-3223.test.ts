@@ -50,3 +50,14 @@ it.each(["presentation","read"] as const)("%s rechecks real directory eligibilit
  const w=await world();w.eligible.mockClear();w.eligible.mockResolvedValue({eligible:false,reason:"disabled"});
  await expect(w.control[method](w.ctx.ctx)).rejects.toMatchObject({code:"revoked"});expect(w.eligible).toHaveBeenCalledWith(w.admin);
 });
+
+it.each(["not json",JSON.stringify({kind:"person",person:{realm:"corp",objectId:"bad"}}),JSON.stringify({kind:"legacy",label:"PRIVATE-LEGACY-LABEL"})])("keeps an unreadable legacy audit actor from breaking the metadata page (%s)",async actor=>{
+ const w=await world(),id=randomUUID();w.db.transaction(()=>w.audit.appendInTransaction({id,sequence:0,at:100,requestId:randomUUID(),actor:{kind:"person",person:w.root},action:"fixture.legacy",result:"completed",policyVersion:1},w.db)).immediate();
+ // Deliberate legacy/corrupt input: it is never used as authority or a valid-chain claim.
+ w.db.prepare("UPDATE hub_audit SET actor=? WHERE id=?").run(actor,id);
+ const page=await w.control.audit(w.ctx.ctx,{});expect(page.rows.find(row=>row.id===id)?.actor).toEqual({id:"unknown",name:""});expect(JSON.stringify(page)).not.toContain("PRIVATE-LEGACY-LABEL");
+});
+it("normal retention prunes role audit-read events and preserves the audit checkpoint chain",async()=>{
+ const w=await world();await w.control.audit(w.ctx.ctx,{});const old=w.db.prepare("SELECT id FROM hub_audit WHERE action='role.audit-read'").get() as {id:string};expect(old).toBeTruthy();
+ w.time(2*86400000);expect(w.audit.purge({contentDays:1,eventDays:1}).events).toBeGreaterThan(0);expect(w.db.prepare("SELECT id FROM hub_audit WHERE id=?").get(old.id)).toBeUndefined();expect(w.audit.verifyChain().ok).toBe(true);
+});

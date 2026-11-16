@@ -47,3 +47,7 @@ it("edits an existing assignment atomically while preserving its identity and se
  const form=p.root.querySelector(".hub-role-assignment"),expiry=form.querySelectorAll('input[type="datetime-local"]')[1];expiry.value="2027-01-02T10:30";fire(expiry,"input");await settle(5);fire(form,"submit");await settle(10);
  expect(client.rolePreview).toHaveBeenCalledTimes(1);const proposed=client.rolePreview.mock.calls[0][0];expect(proposed.assignments).toHaveLength(1);expect(proposed.assignments[0]).toMatchObject({id:"existing",assignedBy:actor,assignedAt:42,maxFleets:2});expect(proposed.assignments[0].expiresAt).toBe(new Date("2027-01-02T10:30").getTime());expect(client.roleApply).not.toHaveBeenCalled();
 });
+it.each(["en","zh-TW"])("labels an unknown legacy audit actor without exposing raw actor JSON (%s)",async lang=>{
+ const {p}=await mount(lang,{roleAudit:vi.fn(async()=>({ok:true,rows:[{id:"row",at:100,actor:{id:"unknown",name:""},action:"fixture.legacy",result:"completed",summary:[]}],nextCursor:null}))});
+ expect(p.root.textContent).toContain(lang==="en"?"Unknown actor":"未知操作者");
+});

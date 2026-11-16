@@ -425,8 +425,9 @@ export class HubCatalogService {
    * the current one; the member re-consenting a newer revision lifts it.
    */
   async freeze(ctx: HubRequestContext, id: string, revision: number, admin: boolean): Promise<void> {
-    const actor = admin ? await ctx.requireAdmin() : null;
-    const person = actor?.kind === "directory" ? actor.person : await ctx.requirePerson();
+    const permit = admin ? await this.core.management(ctx,"hub.admin") : null;
+    const person = permit?.actor.kind === "directory" ? permit.actor.person : await ctx.requirePerson();
+    const proof={assertCurrent(){permit?.assertCurrent();if(ctx.isCurrent&&ctx.isCurrent()!==true)throw new HubProtocolError("revoked");}};
     this.core.atomic((db, tx) => {
       const row = readExposure(db, id);
       if (!row || (!admin && row.owner !== personKeyString(person))) throw new HubProtocolError("not-found");
@@ -434,6 +435,6 @@ export class HubCatalogService {
       db.prepare("UPDATE hub_exposures SET frozen_through=MAX(frozen_through, ?), sharing_paused=0, sharing_epoch=sharing_epoch+1, updated_at=? WHERE id=?").run(row.revision, this.core.now(), id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person }, action: "exposure.frozen", result: "completed",
         fleetId: row.fleet_id, exposureId: id, ownerAtEvent: personFromString(row.owner) });
-    });
+    },proof);
   }
 }

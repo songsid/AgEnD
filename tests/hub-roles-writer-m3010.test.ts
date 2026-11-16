@@ -1,5 +1,6 @@
 /** Actual SQL/audit, session contexts and shared directory admission; synthetic directory and resource effects only. */
 import Database from "better-sqlite3";
+import {personKeyString} from "../src/hub/identity.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -291,4 +292,27 @@ it("audits assignment metadata in the owning policy transaction",async()=>{
 it("rolls back policy and metadata together when a detailed role event cannot append",async()=>{
  const w=await fixture(),before=w.saved();w.append.mockImplementation((event,db)=>{if(event.action==="role.assigned")throw Error("audit unavailable");return w.audit.appendInTransaction(event,db);});
  expect(await w.apply()).toMatchObject({ok:false});expect(w.saved()).toEqual(before);expect(w.db.prepare("SELECT id FROM hub_audit WHERE action='role.assigned'").all()).toEqual([]);
+});
+
+it("seals carried-person edits only through the internal allowed-list operation",async()=>{
+ const w=await fixture(),next=w.saved();next.people=[{person:w.target,name:"Target",allow:["ask_agents"],maxFleets:0}];
+ expect(await w.writer.preview(next,w.browser.ctx)).toMatchObject({ok:false,code:"invalid"});
+ const checked=await w.writer.previewAllowedList(next,w.browser.ctx);if(!checked.ok)throw Error(checked.code);
+ expect(await w.writer.apply(next,checked.previewDigest,w.browser.ctx)).toMatchObject({ok:false,code:"stale-preview"});
+ const fresh=await w.writer.previewAllowedList(next,w.browser.ctx);if(!fresh.ok)throw Error(fresh.code);
+ expect(await w.writer.applyAllowedList(next,fresh.previewDigest,w.browser.ctx)).toMatchObject({ok:true});expect(w.saved().people).toEqual(next.people);
+});
+it("the allowed-list operation cannot add the caller's own person permission",async()=>{
+ const w=await fixture(),next=w.saved();next.people=[{person:w.actor,name:"Self",allow:["ask_agents"],maxFleets:0}];
+ expect(await w.writer.previewAllowedList(next,w.browser.ctx)).toMatchObject({ok:false,code:"self-target"});expect(w.saved().people).toBeUndefined();
+});
+it("the allowed-list operation cannot widen a team containing its own caller or use a missing team",async()=>{
+ const w=await fixture(),{HUB_TEAMS_MIGRATION,HUB_TEAM_MANAGEMENT_MIGRATION}=await import("../src/hub/teams/store.js");HUB_TEAMS_MIGRATION.up(w.db);HUB_TEAM_MANAGEMENT_MIGRATION.up(w.db);
+ const id=randomUUID(),member=personKeyString(w.actor);w.db.prepare("INSERT INTO hub_teams VALUES(?,1,'Fixture','corp','','',?,0,0,0)").run(id,member);w.db.prepare("INSERT INTO hub_team_members VALUES(?,?,'Actor','actor','')").run(id,member);
+ const next=w.saved();next.teams=[{teamId:id,name:"Fixture",allow:["ask_agents"],maxFleets:0}];expect(await w.writer.previewAllowedList(next,w.browser.ctx)).toMatchObject({ok:false,code:"self-target"});
+ next.teams[0]!.teamId=randomUUID();expect(await w.writer.previewAllowedList(next,w.browser.ctx)).toMatchObject({ok:false,code:"invalid"});
+});
+it("a role assigner without hub.admin cannot use the internal allowed-list operation",async()=>{
+ const w=await fixture(),before=w.saved();before.roles.push({id:"assigner",name:"Assigner",kind:"custom",permissions:["roles.assign"],defaultMaxFleets:0});before.assignments=[{id:"assigner",roleId:"assigner",subject:{kind:"person",person:w.actor},scope:{kind:"hub"},maxFleets:null,startsAt:0,expiresAt:null,assignedBy:w.root,assignedAt:0}];w.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(before));
+ const next=copy(before);next.people=[{person:w.target,name:"Target",allow:["ask_agents"],maxFleets:0}];expect(await w.writer.previewAllowedList(next,w.browser.ctx)).toMatchObject({ok:false,code:"denied"});expect(w.saved().people).toBeUndefined();
 });

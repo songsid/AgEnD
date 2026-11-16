@@ -1,3 +1,5 @@
+import {createHubRoleExpiryEffects} from "../src/hub/roles/expiry-effects.js";
+import {createHubRoleExpirySettlement} from "../src/hub/roles/expiry.js";
 /** Real SQL, role writer, resource ledger and audit; inert eligible directory, no network. */
 import {expect,it} from "vitest";
 import {randomUUID} from "node:crypto";
@@ -28,4 +30,14 @@ it("a retained-resource drift between preview and apply cannot suspend a differe
  const w=await fixture(),next=structuredClone(w.policy);next.assignments=next.assignments.filter(a=>a.id!=="owner");const preview=await w.writer.preview(next,w.ctx.ctx);if(!preview.ok)throw Error(preview.code);
  w.store.mutate({at:100,requestId:randomUUID(),actor:{kind:"local-host"},action:"fixture.replaced",result:"completed"},s=>{s.fleets[0]!.generation=2;});
  expect(await w.writer.apply(next,preview.previewDigest,w.ctx.ctx)).toMatchObject({ok:false,code:"conflict"});expect(w.resources.read(w.resource)).toMatchObject({state:"active",revision:1});
+});
+
+it("settles an expired assignment once, suspends its exact resource and audits the local host",async()=>{
+ const w=await fixture();w.policy.assignments.find(a=>a.id==="owner")!.expiresAt=200;w.save(w.policy);w.time(100);
+ const effects=createHubRoleExpiryEffects({db:w.db,root:w.root,transport:w.store,policy:w.pool,audit:w.audit,directory:w.directory,reads:w.pool,current:w.options.current,now:w.options.now});
+ const settlement=createHubRoleExpirySettlement({db:w.db,hubId:w.hubId,realm:"corp",generation:"g1",root:w.root,directory:w.directory,audit:w.audit,reads:w.pool,effects,current:w.options.current,version:w.options.version,advanceAuthorization:w.advance,refreshAuthorization(){},now:w.options.now});
+ const epoch=w.options.version();expect(await settlement.settle()).toEqual({ok:true,settled:1});expect(w.options.version()).toBe(epoch+1);expect(w.resources.read(w.resource)).toMatchObject({state:"suspended",source:"group",revision:2});
+ const actor=w.db.prepare("SELECT actor FROM hub_audit WHERE action='group-resource.suspended'").get() as {actor:string};expect(JSON.parse(actor.actor)).toEqual({kind:"local-host"});
+ expect(await settlement.settle()).toEqual({ok:true,settled:0});expect(w.options.version()).toBe(epoch+1);expect(w.audit.verifyChain().ok).toBe(true);
+ w.time(-1);expect(()=>settlement.assertAuthorizationTime()).toThrow();settlement.close();
 });

@@ -1165,7 +1165,10 @@ function GroupPermissionsEntry() {
 }
 function HubAdminPage({ groups = false, companyJoin = false, directory = false } = {}) {
   const assistantSession = useSession();
+  const fullAdmin=assistantSession?.admin===true;
   const [view, reload] = useRead(() => hubClient().adminOverview());
+  const canFleets=Array.isArray(view?.permissions)?view.permissions.includes("fleets.manage"):fullAdmin;
+  const canJoin=Array.isArray(view?.permissions)?view.permissions.includes("join.manage"):fullAdmin;
   const [needsOnly, setNeedsOnly] = useState(false);   // M-3137: Connected fleets' "Needs update" filter
   const [canRecommend, setCanRecommend] = useState(false);   // M-3141: this Hub serves the recommended-version setting
   const [login, setLogin] = useState("");
@@ -1211,17 +1214,17 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
   const ManualFrame = accessEntry ? "details" : "div";
   return html`<div class="col hub-owner hub-admin">${lead}
     <div class="s-section-layout">
-      ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
-      ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
+      ${fullAdmin && groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
+      ${canJoin && companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
       ${/* Lumen's order: Let colleagues join → Teams → Rooms → Room assistant → Connected fleets → pairing. */ ""}
-      ${teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
-      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
-      ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
+      ${fullAdmin && teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
+      ${fullAdmin && roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
+      ${fullAdmin && assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${/* M-3141 (versions spec §3.1): the recommended version, a small card above the list. */ ""}
-      ${hasVersions(fleets) ? html`<${RecommendedVersionCard} client=${hubClient()} onSaved=${reload} onAvailable=${setCanRecommend} />` : null}
-      <section class="card hub-fleet-list" id="hub-admin-fleets"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
+      ${fullAdmin && hasVersions(fleets) ? html`<${RecommendedVersionCard} client=${hubClient()} onSaved=${reload} onAvailable=${setCanRecommend} />` : null}
+      ${canFleets?html`<section class="card hub-fleet-list" id="hub-admin-fleets"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
         ${/* M-3137 (versions spec §2.2): the summary line and its filter, when this Hub reports versions. */ ""}
         ${hasVersions(fleets) ? html`<${FleetVersionsSummary} fleets=${fleets} recommended=${view.recommendedVersion ?? null} canRecommend=${canRecommend} filtered=${needsOnly} onFilter=${setNeedsOnly} />` : null}
         ${/* M-3145 (§4.2): "Update {n} Fleets that allow it", while at least one qualifies. */ ""}
@@ -1241,8 +1244,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
           return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
             ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;
         })() : html`<p class="note">${ho("noFleets")}</p>`}
-      </section>
-      <${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
+      </section>`:null}
+      ${canJoin?html`<${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
         <ol class="hub-steps">
           <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
             <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${ho("ownerLogin")}</span><input id="hubOwnerLogin" placeholder=${ho("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
@@ -1262,8 +1265,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
             : p.ownerConfirmed ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!p.fingerprint} onClick=${() => approve(p)}>${ho("approveGo")}</button>`
             : html`<span class="tag warn">${ho("waitingOwner")}</span>`}
         </div>`)}</div>` : null}
-      </section></${ManualFrame}>
-      <${LazyThisHub} directory=${directory} />
+      </section></${ManualFrame}>`:null}
+      ${fullAdmin?html`<${LazyThisHub} directory=${directory} />`:null}
     </div></div>`;
 }
 

@@ -1,3 +1,4 @@
+import {hubAdminOverviewPermit} from "../roles/overview.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "../room-context-model.js";
 /**
  * AgEnD Hub P1, slice 3 (server side): S3's composition entry (docs/design/hub-composition.md §5 step 5, §6).
@@ -835,21 +836,28 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if (path === "/hub/v1/admin/overview") {
       if (method !== "GET") throw new HttpError(405, "method");
-      signedIn(); await guard(() => ctx.requireAdmin());
-      const state = deps.store.read(), now = core.now(), recommendation = recommendations.settings();
-      fleetUpdates.reconcile();
+      signedIn();
+      const scoped=deps.roleAdmin&&deps.management?await guard(()=>hubAdminOverviewPermit(ctx,deps.management!)):null;
+      if(!scoped)await guard(()=>ctx.requireAdmin());
+      const canFleets=scoped?.fleets??true,canJoin=scoped?.joining??true;
+      const state = deps.store.read(), now = core.now(), recommendation = canFleets?recommendations.settings():null;
+      if(canFleets)fleetUpdates.reconcile();
       const name = (key: { realm: string; objectId: string }) => {
         const id = personKeyString(key);
         const row = core.atomic((db) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined);
         return row ? { name: row.display_name, login: row.login_label } : null;
       };
-      return send(res, 200, {
-        recommendedVersion: recommendation.recommendedVersion, recommendationRevision: recommendation.revision,
-        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendation.recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id, recommendation), updatesAllowed: fleetUpdates.allowed(f.id), updateRequest: fleetUpdates.view(f.id),
+      scoped?.assertCurrent();
+      const overview={
+        permissions:[...(canFleets?["fleets.manage"]:[]),...(canJoin?["join.manage"]:[])],
+        ...(recommendation?{recommendedVersion:recommendation.recommendedVersion,recommendationRevision:recommendation.revision}:{}),
+        fleets: !canFleets?[]:state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendation!.recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id, recommendation!), updatesAllowed: fleetUpdates.allowed(f.id), updateRequest: fleetUpdates.view(f.id),
           ...(deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
-        pairings: state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
+        pairings: !canJoin?[]:state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
           .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),
-      });
+      };
+      scoped?.assertCurrent();if(ctx.isCurrent?.()!==true)throw new HubProtocolError("unavailable");
+      return send(res,200,overview);
     }
     if (path === "/hub/v1/admin/pairings") {
       if (method !== "POST") throw new HttpError(405, "method");

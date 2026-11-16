@@ -7,7 +7,7 @@ import type {HubDirectoryReads} from "../directory/admission.js";
 import type {HubAuditStore} from "../audit/index.js";
 import type {HubRequestContext,PersonKey} from "../types.js";
 import {personKeyString} from "../identity.js";
-import {HubProtocolError,person,uuid,plain,validated,parseStrictJson} from "../validation.js";
+import {HubProtocolError,person,uuid,identifier,plain,validated,parseStrictJson} from "../validation.js";
 import {evaluateRolePolicy} from "./evaluate.js";
 import {MANAGEMENT_PERMISSIONS,ROLE_PERMISSIONS,parseRolePolicy,type HubRolePolicy} from "./model.js";
 import type {HubManagementAuthority} from "./authority.js";
@@ -21,6 +21,13 @@ const searchInput=z.strictObject({kind:z.enum(["person","group"]),q:plain(64).tr
 const auditInput=z.strictObject({cursor:z.string().regex(/^[1-9][0-9]{0,15}$/).optional()});
 const personHit=z.strictObject({person,displayName:plain(256),login:plain(256)});
 const groupHit=z.strictObject({objectId:uuid,cn:plain(256),dn:plain(4096)});
+const auditActor=z.discriminatedUnion("kind",[
+ z.object({kind:z.literal("person"),person}),z.object({kind:z.literal("local-host")}),z.object({kind:z.literal("member"),fleetId:identifier}),
+]);
+function actorId(raw:string){
+ try{const actor=auditActor.parse(parseStrictJson(raw,4096));return actor.kind==="person"?personKeyString(actor.person):actor.kind==="local-host"?"local-host":`fleet:${actor.fleetId}`;}catch{return "unknown";}
+}
+
 export interface RoleAdminOptions {
  db:Database.Database;root:PersonKey;directory:HubDirectory;reads:Pick<HubDirectoryReads,"withDirectoryRead">;
  management:Pick<HubManagementAuthority,"require">;writer:ReturnType<typeof createHubRoleWriter>;
@@ -76,9 +83,8 @@ export function createHubRoleAdminControl(options:RoleAdminOptions):RoleAdminCon
     // Deliberately select metadata only; never content_ref, content keys, questions or answers.
     const raw=db.prepare("SELECT id,sequence,at,actor,action,result FROM hub_audit WHERE sequence<? ORDER BY sequence DESC LIMIT 51").all(cursor) as {id:string;sequence:number;at:number;actor:string;action:string;result:string}[];
     const rows:RoleAuditRow[]=raw.slice(0,50).map(row=>{
-     const actor=parseStrictJson(row.actor,4096) as {kind:string;person?:PersonKey;fleetId?:string};
-     const id=actor.kind==="person"&&actor.person?personKeyString(validated(person,actor.person)):actor.kind==="local-host"?"local-host":`fleet:${actor.fleetId??"unknown"}`;
-     const label=(db.prepare("SELECT display_name FROM hub_people WHERE person=?").get(id) as {display_name:string}|undefined)?.display_name??id;
+     const id=actorId(row.actor);
+     const label=id==="unknown"?"":(db.prepare("SELECT display_name FROM hub_people WHERE person=?").get(id) as {display_name:string}|undefined)?.display_name??id;
      const summary:string[]=[];
      if(["role.created","role.changed","role.deleted","role.assigned","role.unassigned"].includes(row.action)){
       const event=db.prepare("SELECT body FROM hub_role_events WHERE id=?").get(row.id) as {body:string}|undefined;
