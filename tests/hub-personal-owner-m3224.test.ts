@@ -97,6 +97,17 @@ describe("company-owned personal computer enrollment",()=>{
     const first=await f.host.publish(f.ctx(f.a),input);
     expect(first).toMatchObject({kind:"personal",owner:f.a,fleetId:null,revision:1});
     expect(f.r.store.read().fleets).toEqual([]);
+    expect((await f.host.view(f.ctx(f.a))).agent?.shared).toBe(false);
+    const grant=randomUUID(),now=f.core.now();
+    f.r.db.prepare("INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state) VALUES(?,1,?,?,1,?,?,?,'[\"ask\"]',?,?,'active')").run(grant,personKeyString(f.a),first.id,personKeyString(f.a),now,personKeyString(f.b),now,now+60000);
+    expect((await f.host.view(f.ctx(f.a))).agent?.shared).toBe(true);
+    f.r.db.prepare("UPDATE hub_grants SET expires_at=? WHERE id=?").run(now-1,grant);
+    expect((await f.host.view(f.ctx(f.a))).agent?.shared).toBe(false);
+    const room=randomUUID();f.r.db.prepare("INSERT INTO hub_group_rooms(id,name,created_by,created_at,archived,all_mention,history_for_new) VALUES(?,?,?, ?,0,1,'since-join')").run(room,"Room",personKeyString(f.a),now);
+    for(const [kind,subject] of [["agent",first.id],["person",personKeyString(f.b)]])f.r.db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence,read_sequence) VALUES(?,?,?,?,'member',0,0)").run(randomUUID(),room,kind,subject);
+    expect((await f.host.view(f.ctx(f.a))).agent?.shared).toBe(true);
+    f.r.db.prepare("UPDATE hub_group_rooms SET archived=1 WHERE id=?").run(room);
+    expect((await f.host.view(f.ctx(f.a))).agent?.shared).toBe(false);
     const second=await f.host.publish(f.ctx(f.a),{...input,name:"New name",ifRevision:1});
     expect(second).toMatchObject({id:first.id,personalAgentId:first.personalAgentId,revision:2,displayName:"New name"});
     await expect(f.host.publish(f.ctx(f.a),input)).rejects.toMatchObject({code:"conflict"});
@@ -114,5 +125,17 @@ describe("company-owned personal computer enrollment",()=>{
     await expect(f.host.publish(f.ctx(f.a),{name:"Notes",description:"",cli:"codex",ifRevision:0})).rejects.toThrow();
     expect(f.r.db.prepare("SELECT COUNT(*) n FROM hub_personal_agents").get()).toEqual({n:0});
     expect(f.r.db.prepare("SELECT COUNT(*) n FROM hub_exposures").get()).toEqual({n:0});
+  });
+  it("refreshes only the current owner's computer and refuses a replaced binding after the probe",async()=>{
+    const f=await fixture();await f.allow();const token=await f.host.enrollment(f.ctx(f.a)),joined=f.enroll(token.token);
+    const original=f.runtime.machine.bind(f.runtime);
+    vi.spyOn(f.runtime,"machine").mockImplementation(id=>{const value=original(id);return value?{...value,status:"online"}:null;});
+    let finish!:()=>void;const waiting=new Promise<void>(resolve=>{finish=resolve;});
+    const probe=vi.spyOn(f.runtime,"call").mockImplementation(async()=>{await waiting;return {};});
+    expect((await f.host.refreshComputer(f.ctx(f.b))).computer).toBeNull();expect(probe).not.toHaveBeenCalled();
+    const pending=f.host.refreshComputer(f.ctx(f.a));await vi.waitFor(()=>expect(probe).toHaveBeenCalledWith(joined.machineId,"probe",{force:true}));
+    f.r.db.prepare("DELETE FROM hub_personal_computers WHERE owner=?").run(personKeyString(f.a));finish();
+    await expect(pending).rejects.toMatchObject({code:"stale"});
+    await expect(f.host.refreshComputer(f.ctx(f.a),{machineId:joined.machineId})).rejects.toMatchObject({code:"invalid"});
   });
 });

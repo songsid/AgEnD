@@ -62,7 +62,7 @@ export const migrations = HUB_HTTP_MIGRATIONS;
 export type { HubHttpDeps, HubTxDatabase };
 
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
-export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
+export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-personal-agent.js", "hub-personal-agent-strings.js", "runtime-commands.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
   // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
   "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",
   // Hub UX U2 (M-2932): the group-search picker (its own words inside), shared with B2's join-code scope.
@@ -213,9 +213,13 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const input=method==="PUT"?await body():undefined;
       return send(res,200,await guard(()=>personal.owner.settings(ctx,input)));
     }
-    if(path==="/hub/v1/me/personal-agent"||path==="/hub/v1/me/personal-agent/enrollment"){
+    if(path==="/hub/v1/me/personal-agent"||path==="/hub/v1/me/personal-agent/enrollment"||path==="/hub/v1/me/personal-agent/refresh"){
       if(!personal)throw new HttpError(404,"not-found");
       if(query.size)throw new HubProtocolError("invalid");
+      if(path.endsWith("/refresh")){
+        if(method!=="POST")throw new HttpError(405,"method");csrf();const input=await body();
+        return send(res,200,await guard(()=>personal.owner.refreshComputer(ctx,input)));
+      }
       if(path.endsWith("/enrollment")){
         if(method!=="POST")throw new HttpError(405,"method");csrf();const input=await body();
         const installer=deps.personalInstaller?.();

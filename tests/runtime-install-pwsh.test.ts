@@ -843,3 +843,18 @@ process.stdout.write("RECORDER-CONNECT-RAN\\n");process.exitCode=Number(process.
     });
   });
 });
+
+describe.skipIf(!pwsh)("personal failure advice",()=>{
+  it("refuses a failed download without running it and names the administrator next step",async()=>{
+    const s=scratch();behaviour=(req,res)=>{if(req.url!==RUNTIME_INSTALL_SCRIPT_PATH)return false;res.writeHead(503);res.end("unavailable");return true;};
+    const result=await run(s,{T_COMMAND:runtimeInstallCommand(origin(),active.installer().scriptSha256,"personal")},"paste");
+    expect(result.out).toContain("Ask your Hub administrator. Don't change security settings to get past it.");
+    expect(result.out).not.toContain("or use the ZIP");expect(existsSync(s.install)).toBe(false);expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]);
+  });
+  it("says to install Node and get a new personal command before any install",async()=>{
+    active=new RuntimeInstallService({bundle:()=>bundleA,template:()=>TEMPLATE,personal:true});const s=scratch();
+    const result=await run(s,{PATH:join(s.root,"empty"),T_COMMAND:runtimeInstallCommand(origin(),active.installer().scriptSha256,"personal")});
+    expect(result.code).toBe(1);expect(result.out).toContain('"Node.js is required": install Node.js, then get a new command.');
+    expect(existsSync(s.install)).toBe(false);expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]);
+  });
+});

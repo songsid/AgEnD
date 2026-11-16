@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { z } from "zod";
+import {rememberRoomPeople,type RoomPersonSelection} from "../rooms/directory.js";
 import { RuntimeCoordinator } from "../../runtime-coordinator.js";
 import { PERSONAL_AGENT_PROFILE } from "../../runtime-personal-protocol.js";
 import { isPersonalAgentCli } from "../../runtime-personal-answer.js";
@@ -40,9 +41,10 @@ export class HubPersonalOwnerHost {
   async settings(ctx:HubRequestContext,input?:unknown) {
     const authority=await this.core.management(ctx,"hub.admin"),request=this.fence(ctx);
     const permit={actor:authority.actor,assertCurrent(){request.assertCurrent();authority.assertCurrent();}};
-    if(input===undefined)return this.core.atomic(db=>this.policy(db),permit);
+    if(input===undefined)return this.core.atomic(db=>this.settingsView(db),permit);
     const value=validated(policyInput,input);
-    for(const id of new Set(value.people)){permit.assertCurrent();if(!await this.core.eligible(personFromString(id)))throw new HubProtocolError("invalid");}
+    const people:RoomPersonSelection[]=[];
+    for(const id of new Set(value.people)){permit.assertCurrent();const found=await this.core.current(personFromString(id));if(!found)throw new HubProtocolError("invalid");people.push({id,...found});}
     return this.core.atomic((db,tx)=>{
       for(const id of value.teams)if(!this.core.deps.roomTeams?.read(db,id))throw new HubProtocolError("invalid");
       db.prepare("UPDATE hub_personal_settings SET enabled=? WHERE id=1").run(value.enabled?1:0);
@@ -50,8 +52,14 @@ export class HubPersonalOwnerHost {
       for(const id of new Set(value.people))db.prepare("INSERT INTO hub_personal_creators VALUES('person',?)").run(id);
       for(const id of new Set(value.teams))db.prepare("INSERT INTO hub_personal_creators VALUES('team',?)").run(id);
       this.core.audit(tx,{requestId:ctx.requestId,actor:permit.actor.kind==="directory"?{kind:"person",person:permit.actor.person}:{kind:"local-host"},action:"personal.settings",result:"completed"});
-      return this.policy(db);
+      rememberRoomPeople(db,people,this.core.now());
+      return this.settingsView(db);
     },permit);
+  }
+  private settingsView(db:DB){
+    const policy=this.policy(db);
+    return {...policy,peopleInfo:policy.people.map(id=>{const row=db.prepare("SELECT display_name name,login_label login FROM hub_people WHERE person=? UNION ALL SELECT display_name name,login_label login FROM hub_room_people WHERE person=? LIMIT 1").get(id,id) as {name:string;login:string}|undefined;return {id,name:row?.name??null,login:row?.login??null};}),
+      teamsInfo:policy.teams.map(id=>({id,name:this.core.deps.roomTeams?.read(db,id)?.name??null}))};
   }
   async enrollment(ctx:HubRequestContext,input:unknown={}) {
     validated(z.strictObject({}),input);
@@ -120,6 +128,18 @@ export class HubPersonalOwnerHost {
     },permit);
     this.refresh();return {disconnected:true};
   }
+  async refreshComputer(ctx:HubRequestContext,input:unknown={}) {
+    validated(z.strictObject({}),input);
+    const key=await ctx.requirePerson(),owner=personKeyString(key),permit=this.fence(ctx);
+    const id=this.core.atomic(db=>(db.prepare("SELECT machine_id FROM hub_personal_computers WHERE owner=?").get(owner) as Computer|undefined)?.machine_id,permit);
+    const machine=id?this.runtime.machine(id):null;
+    if(id&&machine?.status==="online"){
+      await this.runtime.call(id,"probe",{force:true});permit.assertCurrent();
+      this.core.atomic(db=>{const binding=db.prepare("SELECT machine_id FROM hub_personal_computers WHERE owner=?").get(owner) as Computer|undefined;
+        if(binding?.machine_id!==id||this.runtime.machine(id)?.generation!==machine.generation)throw new HubProtocolError("stale");},permit);
+    }
+    return this.view(ctx);
+  }
   async view(ctx:HubRequestContext) {
     const key=await ctx.requirePerson(),owner=personKeyString(key),permit=this.fence(ctx);
     this.refresh();
@@ -127,9 +147,12 @@ export class HubPersonalOwnerHost {
       const policy=this.policy(db),binding=db.prepare("SELECT * FROM hub_personal_computers WHERE owner=?").get(owner) as Computer|undefined;
       const machine=binding&&this.runtime.machine(binding.machine_id);
       const definition=db.prepare("SELECT a.*,e.id exposure_id,e.display_name,e.revision,e.state FROM hub_personal_agents a JOIN hub_exposures e ON e.personal_agent_id=a.id WHERE a.owner=?").get(owner) as (PersonalDefinition&{exposure_id:string;display_name:string;revision:number;state:string})|undefined;
-      return {agent:definition?{id:definition.id,exposureId:definition.exposure_id,name:definition.display_name,description:definition.description,cli:definition.cli,model:definition.model,revision:definition.revision,state:definition.state}:null,enabled:policy.enabled,canAdd:this.canAdd(db,owner),computer:machine?{
+      const now=this.core.now(),shared=definition?.state==="published"&&(
+        !!db.prepare("SELECT 1 FROM hub_grants WHERE exposure_id=? AND exposure_revision=? AND owner=? AND state='active' AND starts_at<=? AND expires_at>? AND EXISTS(SELECT 1 FROM json_each(permissions) WHERE value='ask') LIMIT 1").get(definition.exposure_id,definition.revision,owner,now,now)
+        ||!!db.prepare("SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id WHERE m.kind='agent' AND m.subject=? AND r.archived=0 AND EXISTS(SELECT 1 FROM hub_room_members p WHERE p.room_id=r.id AND p.kind='person') LIMIT 1").get(definition.exposure_id));
+      return {agent:definition?{shared:shared===true,id:definition.id,exposureId:definition.exposure_id,name:definition.display_name,description:definition.description,cli:definition.cli,model:definition.model,revision:definition.revision,state:definition.state}:null,enabled:policy.enabled,canAdd:this.canAdd(db,owner),computer:machine?{
         id:machine.id,name:machine.name,connected:machine.status==="online",compatible:machine.platform==="win32"&&machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true,
-        folder:machine.inventory?.personalFolder??null,clis:(machine.inventory?.clis??[]).filter(cli=>isPersonalAgentCli(cli.id)).map(cli=>({...cli,
+        folder:machine.inventory?.personalFolder??null,working:!!db.prepare("SELECT 1 FROM hub_personal_jobs WHERE machine_id=? AND state='working'").get(machine.id),clis:(machine.inventory?.clis??[]).filter(cli=>isPersonalAgentCli(cli.id)).map(cli=>({...cli,
           available:machine.platform==="win32"&&machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true&&cli.personalStatus==="ready"&&cli.runnable&&cli.authenticated===true,
           personalStatus:cli.personalStatus??"unchecked",
         })),

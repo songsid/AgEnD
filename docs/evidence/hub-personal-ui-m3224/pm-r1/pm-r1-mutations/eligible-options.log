@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (16 tests | 1 failed | 15 skipped) 96ms
+   × leaves an unavailable CLI out of the selector while explaining it separately 48ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 skipped (16)
+   Start at  19:39:29
+   Duration  478ms (transform 197ms, setup 100ms, import 128ms, tests 96ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > leaves an unavailable CLI out of the selector while explaining it separately
+AssertionError: expected [ '', 'codex', 'claude-code' ] to deeply equal [ '', 'claude-code' ]
+
+- Expected
++ Received
+
+  [
+    "",
++   "codex",
+    "claude-code",
+  ]
+
+ ❯ tests/hub-personal-ui-m3224.test.ts:94:135
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

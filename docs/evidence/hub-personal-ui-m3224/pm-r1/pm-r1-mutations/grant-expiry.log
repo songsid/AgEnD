@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-owner-m3224.test.ts (10 tests | 1 failed | 9 skipped) 106ms
+     × publishes only the signed-in owner's checked computer, retaining one source across revisions 104ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 skipped (10)
+   Start at  19:39:25
+   Duration  4.12s (transform 2.93s, setup 88ms, import 3.78s, tests 106ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-owner-m3224.test.ts > company-owned personal computer enrollment > publishes only the signed-in owner's checked computer, retaining one source across revisions
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-personal-owner-m3224.test.ts:106:59
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
