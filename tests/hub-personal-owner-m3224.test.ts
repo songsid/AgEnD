@@ -55,7 +55,8 @@ describe("company-owned personal computer enrollment",()=>{
     const next=await f.host.enrollment(f.ctx(f.a));const latest=f.enroll(next.token,"New computer");
     f.host.close();const recovered=new HubPersonalOwnerHost(f.core,f.runtime);
     expect((await recovered.view(f.ctx(f.a))).computer?.id).toBe(latest.machineId);
-    expect((await recovered.view(f.ctx(f.a))).computer?.id).not.toBe(old.machineId);recovered.close();
+    expect((await recovered.view(f.ctx(f.a))).computer?.id).not.toBe(old.machineId);
+    expect(f.runtime.machine(old.machineId)?.status).toBe("revoked");recovered.close();
   });
   it("requires the computer's actual check rather than inferring readiness from a version",async()=>{
     const f=await fixture();await f.allow();const issued=await f.host.enrollment(f.ctx(f.a)),joined=f.enroll(issued.token);

@@ -18,6 +18,6 @@ export interface PersonalQuestionAdapter {
 export interface HubPersonalPort {
   assertSource(db: Database.Database, exposure: HubPersonalExposure): void;
   enqueue(db: Database.Database, exposure: HubPersonalExposure, source: { direct: string }|{ room: string }): void;
-  presence(exposureId: string): "idle"|"working"|"paused"|"offline";
+  presence(exposureId: string): "idle"|"working"|"paused"|"offline"|"later";
   wake(): void;
 }

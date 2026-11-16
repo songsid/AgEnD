@@ -52,6 +52,15 @@ async function fixture(){
   return {r,runtime,admin,alex,a,exposure,tasks,calls,finish,group,turns,owner:()=>owner,machine:()=>reported!};
 }
 describe("personal source through composed Hub HTTP",()=>{
+  it("disconnects only the owner's computer and keeps it disconnected after refresh",async()=>{
+    const f=await fixture(),id=f.machine().id;
+    expect((await f.r.call(f.a,"DELETE","/hub/v1/me/personal-agent",{})).status).toBe(200);
+    expect(f.runtime.listMachines().find(m=>m.id===id)?.status).not.toBe("revoked");
+    expect((await f.r.call(f.admin,"DELETE","/hub/v1/me/personal-agent",{})).status).toBe(200);
+    expect(f.runtime.listMachines().find(m=>m.id===id)?.status).toBe("revoked");
+    expect((await f.r.call(f.admin,"GET","/hub/v1/me/personal-agent")).json.computer).toBeNull();
+    expect(f.r.db.prepare("SELECT state FROM hub_exposures WHERE id=?").get(f.exposure.id)).toEqual({state:"frozen"});
+  });
   it("keeps ordinary catalog reads usable when personal admission is disabled",async()=>{
     const f=await fixture(),grant=await f.r.call(f.admin,"POST","/hub/v1/grants",{exposureId:f.exposure.id,exposureRevision:1,login:"alex",days:2});expect(grant.status).toBe(200);
     expect((await f.r.call(f.admin,"PUT","/hub/v1/admin/personal-agents",{enabled:false,people:[],teams:[]})).status).toBe(200);
@@ -81,6 +90,7 @@ describe("personal source through composed Hub HTTP",()=>{
   it("answers a granted direct question once and binds final text to the real content store",async()=>{
     const f=await fixture(),g=await f.r.call(f.admin,"POST","/hub/v1/grants",{exposureId:f.exposure.id,exposureRevision:1,login:"alex",days:2});expect(g.status).toBe(200);
     const room=await f.r.call(f.a,"POST","/hub/v1/rooms",{exposureId:f.exposure.id,grantId:g.json.grant.id});expect(room.status).toBe(200);
+    expect((await f.r.call(f.a,"GET",`/hub/v1/rooms/${room.json.room.id}`)).json.room.agentKind).toBe("personal");
     const path=`/hub/v1/rooms/${room.json.room.id}/messages`,body={text:"What is in the shared notes?",idempotencyKey:randomUUID()};
     const first=await f.r.call(f.a,"POST",path,body),again=await f.r.call(f.a,"POST",path,body);expect(first.status).toBe(200);expect(again.json.id).toBe(first.json.id);
     await vi.waitFor(()=>expect(f.calls).toHaveBeenCalledTimes(1));expect(first.json.receipt.stage).toBe("queued");
@@ -91,6 +101,7 @@ describe("personal source through composed Hub HTTP",()=>{
   });
   it("excludes personal sources from @all, then answers an explicit person mention without forwarding answer mentions",async()=>{
     const f=await fixture(),id=await f.group();
+    const detail=await f.r.call(f.a,"GET",`/hub/v1/rooms/${id}`);expect(detail.json.members.find((m:any)=>m.id===f.exposure.id).agentKind).toBe("personal");
     const all=await f.r.call(f.a,"POST",`/hub/v1/rooms/${id}/messages`,{text:"Everyone?",mentions:["all"],idempotencyKey:randomUUID()});expect(all.status).toBe(200);expect(all.json.ask).toBeUndefined();
     expect(f.r.db.prepare("SELECT COUNT(*) n FROM hub_personal_jobs").get()).toEqual({n:0});
     const ask=await f.r.call(f.a,"POST",`/hub/v1/rooms/${id}/messages`,{text:"@PersonalNotes please read",mentions:[f.exposure.id],idempotencyKey:randomUUID()});expect(ask.status).toBe(200);

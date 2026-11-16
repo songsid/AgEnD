@@ -36,7 +36,9 @@ describe("exact-operation mention refusal notifications",()=>{
   let done!:(value:boolean)=>void;const held=new Promise<boolean>(resolve=>{done=resolve;});
   const f=fixture(async value=>{expect(await value.beforeInput()).toBe(true);return held;});f.queue.receive(f.value,f.source,"answer:question:answer");
   for(let n=0;n<8;n++)await Promise.resolve();expect(f.db.prepare("SELECT state FROM hub_room_mention_feedback").get()).toEqual({state:"input"});
-  f.queue.close();const next=new HubRoomMentionFeedback(f.options);close.push(()=>next.close());next.flush();await next.settled();
+  f.queue.close();const next=new HubRoomMentionFeedback(f.options);close.push(()=>next.close());
+  expect(f.db.prepare("SELECT state FROM hub_room_mention_feedback").get()).toEqual({state:"held"});
+  next.flush();await next.settled();
   expect(f.db.prepare("SELECT state FROM hub_room_mention_feedback").get()).toEqual({state:"held"});expect(f.sent).toHaveBeenCalledTimes(1);done(false);await f.queue.settled();
  });
  it("refuses a different pairing and tampered feedback before recovery",async()=>{

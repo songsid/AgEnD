@@ -31,6 +31,8 @@ export interface HubContentStore {
 export interface HubHttpDeps {
   /** Mount-local personal execution adapter; absent leaves personal sources unusable. */
   personal?: import("../personal/types.js").HubPersonalPort;
+  /** The immutable personal-mode installer advertised by the mounted Hub. */
+  personalInstaller?(): import("../../runtime-install.js").RuntimeInstallerInfo;
   /** One Hub-owned coordinator supplies the owner model and turn adapter. Never set by a browser request. */
   personalAgents?(core: import("./core.js").HubCore): {
     owner: import("../personal/owner-host.js").HubPersonalOwnerHost;

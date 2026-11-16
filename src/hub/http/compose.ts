@@ -215,9 +215,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if(query.size)throw new HubProtocolError("invalid");
       if(path.endsWith("/enrollment")){
         if(method!=="POST")throw new HttpError(405,"method");csrf();const input=await body();
-        return send(res,200,await guard(()=>personal.owner.enrollment(ctx,input)));
+        const installer=deps.personalInstaller?.();
+        const enrollment=await guard(()=>personal.owner.enrollment(ctx,input));
+        return send(res,200,{...enrollment,...(installer?{installer,server:deps.config.webOrigin}:{} )});
       }
       if(method==="GET"){signedIn();return send(res,200,await guard(()=>personal.owner.view(ctx)));}
+      if(method==="DELETE"){csrf();const input=await body();const result=await guard(()=>personal.owner.disconnect(ctx,input));personal.turns.wake();return send(res,200,result);}
       if(method!=="PUT")throw new HttpError(405,"method");csrf();const input=await body();
       const exposure=await guard(()=>personal.owner.publish(ctx,input));groupRooms.agents.publicationChanged(undefined,exposure.id);
       personal.turns.wake();return send(res,200,{exposure});

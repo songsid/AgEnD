@@ -61,6 +61,12 @@ describe("Hub personal one-shot ownership",()=>{
     const f=await fixture();f.machine.status="offline";const id=f.enqueue();f.start();await drain();f.advance(24*60*60_000);await f.wake();
     expect(f.row(id)).toMatchObject({state:"failed",reason:"expired"});expect(f.call).not.toHaveBeenCalled();
   });
+  it("cancels an already running turn when the owner disables personal agents",async()=>{
+    const f=await fixture(),id=f.enqueue();f.start();await drain();
+    f.r.db.prepare("UPDATE hub_personal_settings SET enabled=0").run();await f.wake();
+    expect(f.row(id)).toMatchObject({state:"failed",reason:"revoked"});
+    expect(f.call).toHaveBeenLastCalledWith(f.machine.id,"cancel",{runId:id});
+  });
   it("claims durably, treats the ACK as running, and runs one job per computer",async()=>{
     const f=await fixture(),a=f.enqueue(),b=f.enqueue();f.start();await drain();
     expect(f.call).toHaveBeenCalledTimes(1);expect(f.row(a)).toMatchObject({state:"working"});expect(f.row(b)).toMatchObject({state:"queued"});

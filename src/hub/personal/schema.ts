@@ -7,7 +7,7 @@ export const HUB_PERSONAL_AGENTS_MIGRATION: HubHttpMigration = Object.freeze({ c
 CREATE TABLE hub_personal_settings(id INTEGER PRIMARY KEY CHECK(id=1),enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN(0,1)));
 INSERT INTO hub_personal_settings(id) VALUES(1);
 CREATE TABLE hub_personal_creators(kind TEXT NOT NULL CHECK(kind IN('person','team')),subject TEXT NOT NULL,PRIMARY KEY(kind,subject));
-CREATE TABLE hub_personal_enrollments(ordinal INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,owner TEXT NOT NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,machine_id TEXT UNIQUE);
+CREATE TABLE hub_personal_enrollments(ordinal INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,owner TEXT NOT NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,machine_id TEXT UNIQUE,revoked_at INTEGER);
 CREATE INDEX hub_personal_enrollment_owner ON hub_personal_enrollments(owner,created_at);
 CREATE TABLE hub_personal_computers(owner TEXT PRIMARY KEY,machine_id TEXT NOT NULL UNIQUE,enrollment_id TEXT NOT NULL UNIQUE REFERENCES hub_personal_enrollments(id),bound_at INTEGER NOT NULL);
 CREATE TABLE hub_personal_agents(

@@ -40,7 +40,7 @@ const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 interface RoomRow { id: string; asker: string; exposure_id: string; owner_at_creation: string; grant_id: string; state: HubRoom["state"]; created_at: number }
 /** A room as the conversation list shows it (#3226 B). */
 export interface HubRoomListItem extends HubRoom {
-  exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
+  agentKind?: "personal"; exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
   grantExpiresAt: number; lastAt: number; waiting: boolean; features: readonly string[];
 }
 type RoomViewRow = RoomRow & { fleet_id: string|null; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number; sharing_paused: number;
@@ -53,9 +53,9 @@ const ROOM_VIEW_SQL = `SELECT r.*, e.fleet_id AS fleet_id, e.display_name AS exp
 function roomListItem(r: RoomViewRow, features: readonly string[]): HubRoomListItem {
   // A closed room says which chat it was (its agent, its owner) and when it last moved (the list's order) — nothing of
   // its grant, its link or whether a question waited (#3246 review).
-  if (r.state !== "active") return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "", exposureState: r.exposure_state,
+  if (r.state !== "active") return { ...roomOf(r), ...(r.fleet_id===null?{agentKind:"personal" as const}:{}), exposureName: r.exposure_name, ownerName: r.owner_name ?? "", exposureState: r.exposure_state,
     grantExpiresAt: 0, lastAt: r.last_at, waiting: false, features: [] };
-  return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
+  return { ...roomOf(r), ...(r.fleet_id===null?{agentKind:"personal" as const}:{}), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
     exposureState: r.exposure_state === "published" ? r.frozen_through >= r.exposure_revision ? "frozen" : r.sharing_paused ? "paused" : "published" : r.exposure_state,
     grantExpiresAt: r.grant_expires_at ?? 0, lastAt: r.last_at, waiting: !!r.waiting, features };
 }
@@ -88,7 +88,7 @@ export class HubRoomsService {
     if (!old || old.linkEpoch <= link.linkEpoch) this.links.set(link.fleetId, link);
   }
   forget(): void { this.links.clear(); this.polls.clear(); }
-  presence(exposureId: string): "idle" | "working" | "paused" | "offline" {
+  presence(exposureId: string): "idle" | "working" | "paused" | "offline" | "later" {
     const exposure = this.core.atomic(db => readExposure(db, exposureId));
     if (!exposure || exposure.state !== "published" || exposure.frozen_through >= exposure.revision) return "offline";
     if (exposure.sharing_paused) return "paused";

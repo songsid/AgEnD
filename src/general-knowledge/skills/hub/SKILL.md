@@ -692,6 +692,22 @@ Say plainly that these are not in the product yet:
 - **Adding to People excluded from the editor.** The list is shown; it cannot be edited there in this release.
 - **Per-person cost or quota figures on the Hub.** Exact usage stays in each Fleet.
 
+## Personal-agent questions (preview)
+
+- A personal agent answers with its owner's Codex or Claude on their own computer. It is read-only in one shared
+  folder; anything in that folder may be quoted to people allowed to ask. It has no AgEnD tools or connectors.
+- A direct question or an explicit person's @mention may ask it. A verified **person via agent** request also counts
+  as a person. Personal agents are left out of @all; an autonomous agent's @mention is not delivered and the source
+  receives “Not delivered: {name} is a personal agent and answers people only.” / 「沒有送出：{name} 是個人 Agent，只回答人的提問。」
+  No question is queued for that refusal. Mentions in a personal agent's answer do not ask another agent.
+- A disconnected computer shows **Answers when connected**. One question runs at a time, for at most five minutes;
+  later questions wait. A Hub restart does not re-run a turn whose execution is uncertain.
+- Disconnecting the personal computer stops its authority and keeps the previous conversation history. A replacement
+  needs owner setup again before its previous agent can answer. Re-run the install command for updates.
+- These controls appear only on a Hub that offers personal agents. The standalone `--personal-folder` option does
+  not turn them on. Availability is decided by the computer's own sandbox/profile check; do not promise support from
+  a Windows version number alone.
+
 ## Troubleshooting
 
 - **A personal Runtime command uses `--personal-folder`.** Keep the folder supplied by the Hub's setup command. It

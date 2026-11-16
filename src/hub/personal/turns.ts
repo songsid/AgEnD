@@ -18,6 +18,7 @@ export class HubPersonalTurns implements HubPersonalPort {
   private adapters: {direct:PersonalQuestionAdapter;room:PersonalQuestionAdapter}|null=null;
   private readonly flights=new Map<string,Promise<void>>();
   private timer:NodeJS.Timeout|null=null;
+  private readonly permits=new Map<string,HubOperationPermit>();
   private readonly unsubscribe:()=>void;
   constructor(private readonly core:HubCore,private readonly runtime:RuntimeCoordinator,private readonly owner:HubPersonalOwnerHost){
     this.unsubscribe=runtime.subscribe(event=>{if(event.type==="machine")this.owner.refresh();this.wake();});
@@ -33,13 +34,13 @@ export class HubPersonalTurns implements HubPersonalPort {
     db.prepare("INSERT INTO hub_personal_jobs(id,personal_agent_id,direct_message_id,room_delivery_id,machine_id,owner,exposure_revision,state,created_at) VALUES(?,?,?,?,?,?,?,'queued',?)")
       .run(id,e.personalAgentId,"direct" in source?source.direct:null,"room" in source?source.room:null,agent.machine_id,personKeyString(e.owner),e.revision,this.core.now());
   }
-  presence(exposureId:string):"idle"|"working"|"paused"|"offline" {
+  presence(exposureId:string):"idle"|"working"|"paused"|"offline"|"later" {
     try{return this.core.atomic(db=>{
       const row=readExposure(db,exposureId),e=row&&exposureOf(row);
       if(!e||e.kind!=="personal")return "offline";
       if(e.state!=="published")return "paused";
       this.assertSource(db,e);const agent=this.owner.definition(db,e.personalAgentId)!,machine=this.runtime.machine(agent.machine_id);
-      if(machine?.status!=="online")return "offline";
+      if(machine?.status!=="online")return "later";
       const cli=machine.inventory?.clis.find(c=>c.id===agent.cli);
       if(cli?.personalStatus!=="ready"||cli.authenticated!==true||!cli.runnable)return "paused";
       return db.prepare("SELECT 1 FROM hub_personal_jobs WHERE machine_id=? AND state='working'").get(agent.machine_id)?"working":"idle";
@@ -85,7 +86,7 @@ export class HubPersonalTurns implements HubPersonalPort {
         .run("text" in outcome?"answered":"failed","reason" in outcome?outcome.reason:null,this.core.now(),job.id);
       return true;
     },permit);
-    if(changed)this.adapter(job).changed(job);
+    if(changed){this.permits.delete(job.id);this.adapter(job).changed(job);}
   }
   private async step(machineId:string):Promise<void> {
     if(!this.live())return;
@@ -94,6 +95,13 @@ export class HubPersonalTurns implements HubPersonalPort {
     if(job.state==="queued"&&this.core.now()>=job.created_at+24*60*60_000){this.finish(job,{reason:"expired"});return;}
     const machine=this.runtime.machine(machineId);
     if(job.state==="working"){
+      try{this.core.atomic(db=>this.source(db,job));this.permits.get(job.id)?.assertCurrent();}
+      catch(error){
+        if(error instanceof HubProtocolError&&["denied","revoked","stale","expired","not-found"].includes(error.code)){
+          this.finish(job,{reason:"revoked"});void this.runtime.call(machineId,"cancel",{runId:job.id}).catch(()=>{});
+        }
+        return;
+      }
       const task=this.runtime.task(job.id);
       if(this.core.now()>=(job.started_at??0)+DEADLINE){
         this.finish(job,{reason:"timeout"});void this.runtime.call(machineId,"cancel",{runId:job.id}).catch(()=>{});return;
@@ -122,6 +130,7 @@ export class HubPersonalTurns implements HubPersonalPort {
         return db.prepare("UPDATE hub_personal_jobs SET state='working',machine_generation=?,started_at=? WHERE id=? AND state='queued'").run(machine.generation,this.core.now(),job.id).changes===1;
       },prepared.permit);
       if(!claimed)return;
+      this.permits.set(job.id,prepared.permit);
       this.adapter(job).changed(job);
       prepared.permit.assertCurrent();this.core.atomic(db=>this.source(db,job));
       // Write-ahead above: an exception or lost ACK here must never turn into a second run with a new id.

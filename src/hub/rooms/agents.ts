@@ -169,8 +169,6 @@ export class HubRoomAgents {
     for (const m of selected) {
       const e = readExposure(db, m.subject);
       if (!e || e.owner !== m.owner_at_join) throw new HubProtocolError("revoked");
-      // Personal sources are handed to their own adapter, never the Fleet transport below.
-      if(e.fleet_id===null)throw new HubProtocolError("unavailable");
       if (this.automation.lineage(db, parent).audience_sequence < m.joined_sequence) continue;
       const link=e.fleet_id?this.links.get(e.fleet_id):undefined;
       const contextState=link?.current() && link.features.has(HUB_ROOM_CONTEXT_CAPABILITY)

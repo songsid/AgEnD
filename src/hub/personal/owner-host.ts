@@ -16,10 +16,11 @@ const policyInput=z.strictObject({enabled:z.boolean(),people:z.array(z.string().
 const agentInput=z.strictObject({name:z.string().trim().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/).refine(s=>Buffer.byteLength(s,"utf8")<=256),
   description:z.string().trim().max(512),cli:z.string().refine(isPersonalAgentCli),model:z.string().min(1).max(128).optional(),ifRevision:z.number().int().min(0)});
 export interface PersonalDefinition {id:string;owner:string;machine_id:string;cli:import("../../runtime-personal-answer.js").PersonalAgentCli;model:string|null;description:string}
-interface Enrollment { id:string;owner:string;created_at:number;expires_at:number;machine_id:string|null }
+interface Enrollment { id:string;owner:string;created_at:number;expires_at:number;machine_id:string|null;revoked_at:number|null }
 interface Computer { owner:string;machine_id:string;enrollment_id:string;bound_at:number }
 export class HubPersonalOwnerHost {
   private closed=false;
+  private refreshing=false;
   constructor(private readonly core:HubCore, private readonly runtime:RuntimeCoordinator) {}
   close():void { this.closed=true; }
   private fence(ctx:HubRequestContext):HubOperationPermit { return {assertCurrent:()=>{
@@ -72,11 +73,13 @@ export class HubPersonalOwnerHost {
   }
   /** Idempotent recovery of the durable enrollment→machine fact, including a restart between Runtime/SQL saves. */
   refresh():void {
-    if(this.closed||!this.core.live())return;
+    if(this.closed||this.refreshing||!this.core.live())return;
+    this.refreshing=true;try{
     const machines=this.runtime.listMachines();
     this.core.atomic((db,tx)=>{
       const enrollments=db.prepare("SELECT rowid AS ordinal,* FROM hub_personal_enrollments ORDER BY rowid").all() as (Enrollment&{ordinal:number})[];
       for(const enrollment of enrollments){
+        if(enrollment.revoked_at!==null)continue;
         const machine=machines.find(m=>m.enrollmentId===enrollment.id&&m.enrolledVia==="install-command"&&m.status!=="revoked");
         if(!machine)continue;
         if(enrollment.machine_id&&enrollment.machine_id!==machine.id)throw new HubProtocolError("unavailable");
@@ -86,9 +89,31 @@ export class HubPersonalOwnerHost {
         db.prepare("INSERT INTO hub_personal_computers(owner,machine_id,enrollment_id,bound_at) VALUES(?,?,?,?) ON CONFLICT(owner) DO UPDATE SET machine_id=excluded.machine_id,enrollment_id=excluded.enrollment_id,bound_at=excluded.bound_at").run(enrollment.owner,machine.id,enrollment.id,this.core.now());
         // Replacing a computer requires a new owner setup before its old publication can answer again.
         db.prepare("UPDATE hub_exposures SET state='frozen',frozen_through=MAX(frozen_through,revision),updated_at=? WHERE personal_agent_id IN(SELECT id FROM hub_personal_agents WHERE owner=?)").run(this.core.now(),enrollment.owner);
+        db.prepare("UPDATE hub_personal_enrollments SET revoked_at=? WHERE owner=? AND ordinal<? AND revoked_at IS NULL").run(this.core.now(),enrollment.owner,enrollment.ordinal);
         this.core.audit(tx,{requestId:randomUUID(),actor:{kind:"person",person:personFromString(enrollment.owner)},action:"personal.computer",result:"completed",ownerAtEvent:personFromString(enrollment.owner)});
       }
     });
+    // SQL removes authority first. External credential cleanup is retryable after a crash or failed file save.
+    for(const enrollment of this.core.atomic(db=>db.prepare("SELECT * FROM hub_personal_enrollments WHERE revoked_at IS NOT NULL").all() as Enrollment[])){
+      try{
+        const machine=machines.find(m=>m.enrollmentId===enrollment.id);
+        if(machine&&machine.status!=="revoked")this.runtime.revoke(machine.id);
+        const token=this.runtime.listEnrollments().find(e=>e.id===enrollment.id);
+        if(token?.status==="unused")this.runtime.revokeEnrollment(enrollment.id,createHash("sha256").update(enrollment.owner).digest("hex"));
+      }catch{this.core.deps.log?.("warn","Personal computer credential retirement is pending");}
+    }
+    }finally{this.refreshing=false;}
+  }
+  async disconnect(ctx:HubRequestContext,input:unknown={}) {
+    validated(z.strictObject({}),input);
+    const key=await ctx.requirePerson(),owner=personKeyString(key),permit=this.fence(ctx);
+    this.core.atomic((db,tx)=>{
+      db.prepare("UPDATE hub_personal_enrollments SET revoked_at=? WHERE owner=? AND revoked_at IS NULL").run(this.core.now(),owner);
+      db.prepare("DELETE FROM hub_personal_computers WHERE owner=?").run(owner);
+      db.prepare("UPDATE hub_exposures SET state='frozen',frozen_through=MAX(frozen_through,revision),updated_at=? WHERE personal_agent_id IN(SELECT id FROM hub_personal_agents WHERE owner=?)").run(this.core.now(),owner);
+      this.core.audit(tx,{requestId:ctx.requestId,actor:{kind:"person",person:key},action:"personal.disconnect",result:"completed",ownerAtEvent:key});
+    },permit);
+    this.refresh();return {disconnected:true};
   }
   async view(ctx:HubRequestContext) {
     const key=await ctx.requirePerson(),owner=personKeyString(key),permit=this.fence(ctx);
@@ -96,10 +121,11 @@ export class HubPersonalOwnerHost {
     return this.core.atomic(db=>{
       const policy=this.policy(db),binding=db.prepare("SELECT * FROM hub_personal_computers WHERE owner=?").get(owner) as Computer|undefined;
       const machine=binding&&this.runtime.machine(binding.machine_id);
-      return {enabled:policy.enabled,canAdd:this.canAdd(db,owner),computer:machine?{
-        id:machine.id,name:machine.name,connected:machine.status==="online",compatible:machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true,
+      const definition=db.prepare("SELECT a.*,e.id exposure_id,e.display_name,e.revision,e.state FROM hub_personal_agents a JOIN hub_exposures e ON e.personal_agent_id=a.id WHERE a.owner=?").get(owner) as (PersonalDefinition&{exposure_id:string;display_name:string;revision:number;state:string})|undefined;
+      return {agent:definition?{id:definition.id,exposureId:definition.exposure_id,name:definition.display_name,description:definition.description,cli:definition.cli,model:definition.model,revision:definition.revision,state:definition.state}:null,enabled:policy.enabled,canAdd:this.canAdd(db,owner),computer:machine?{
+        id:machine.id,name:machine.name,connected:machine.status==="online",compatible:machine.platform==="win32"&&machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true,
         folder:machine.inventory?.personalFolder??null,clis:(machine.inventory?.clis??[]).filter(cli=>isPersonalAgentCli(cli.id)).map(cli=>({...cli,
-          available:machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true&&cli.personalStatus==="ready"&&cli.runnable&&cli.authenticated===true,
+          available:machine.platform==="win32"&&machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true&&cli.personalStatus==="ready"&&cli.runnable&&cli.authenticated===true,
           personalStatus:cli.personalStatus??"unchecked",
         })),
       }:null};
@@ -115,7 +141,7 @@ export class HubPersonalOwnerHost {
     const binding=db.prepare("SELECT machine_id FROM hub_personal_computers WHERE owner=?").get(owner) as {machine_id:string}|undefined;
     const machine=agent&&this.runtime.machine(agent.machine_id);
     if(!agent||agent.owner!==owner||agent.machine_id!==binding?.machine_id||!machine||machine.status==="revoked"
-      ||!machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE))throw new HubProtocolError("revoked");
+      ||machine.platform!=="win32"||!machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE))throw new HubProtocolError("revoked");
   }
   /** Exact non-secret source material for policy preview/resume fences; an offline computer remains the same source. */
   sourceMaterial(db:DB,exposure:HubPersonalExposure):unknown|null {
@@ -132,7 +158,7 @@ export class HubPersonalOwnerHost {
       if(!this.canAdd(db,owner))throw new HubProtocolError("denied");
       const binding=db.prepare("SELECT machine_id FROM hub_personal_computers WHERE owner=?").get(owner) as {machine_id:string}|undefined;
       const machine=binding&&this.runtime.machine(binding.machine_id),cli=machine?.inventory?.clis.find(c=>c.id===value.cli);
-      if(!machine||machine.status!=="online"||!machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)
+      if(!machine||machine.platform!=="win32"||machine.status!=="online"||!machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)
         ||!cli?.runnable||cli.authenticated!==true||cli.personalStatus!=="ready"||!machine.inventory?.personalFolder)throw new HubProtocolError("unavailable");
       if(value.model&&!cli.models.some(m=>m.id===value.model))throw new HubProtocolError("invalid");
       const agent=db.prepare("SELECT * FROM hub_personal_agents WHERE owner=?").get(owner) as PersonalDefinition|undefined;
