@@ -69,6 +69,12 @@ try {
       const three = await centres();
       need(three.h >= one.h + 2 * three.lh - 1, `three lines: the box grows (${one.h} → ${three.h})`);
       await page.screenshot({ path: shotPath(SMOKE, caseName(c), "3-composer-lines") });
+      // Five lines show whole; a sixth scrolls (#4001's cap, with the one-line box a tap target tall: Fable, #4038).
+      const fits = async (n: number) => { await page.locator("#msgIn").fill(Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n")); await page.waitForTimeout(250);
+        return page.evaluate(() => { const ta = document.querySelector("#msgIn") as HTMLTextAreaElement, cs = getComputedStyle(ta);
+          return { scroll: ta.scrollHeight - ta.clientHeight, shown: Math.round((ta.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) / parseFloat(cs.lineHeight) * 10) / 10 }; }); };
+      const five = await fits(5), six = await fits(6);
+      need(five.scroll <= 1 && six.scroll > 1 && six.shown >= 4.9 && six.shown <= 5.1, `five lines show whole, a sixth scrolls (${JSON.stringify({ five, six })})`);
       await page.locator("#msgIn").fill("");
       // ── 2. the drawer: a reminder is a quiet marker at the row's own height ──
       await fresh(page); await page.waitForTimeout(400);

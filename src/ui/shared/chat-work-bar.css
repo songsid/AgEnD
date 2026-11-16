@@ -84,7 +84,9 @@
   .p-chat .dock:has(.composer-field textarea:placeholder-shown):not(:has(.pending-files)) .chat-meta-stop { display: none; }   /* M-3198: files-only, Stop stays */
   .p-chat .dock:has(.chat-meta.busy) .qa-line { display: none; }
   .p-chat .dock:has(.chat-meta) .composer-row { display: none; }
-  .p-chat .composer textarea { max-height: calc(5 * var(--lh-md)); overflow-y: auto; }
+  /* Five lines, then it scrolls: the box's padding is in its height (border-box), and since M-3222 one line with its padding is
+     a tap target tall — so the cap is four more lines on top of that (Fable, #4038). */
+  .p-chat .composer textarea { max-height: calc(4 * var(--lh-md) + var(--tap)); overflow-y: auto; }
   .p-chat .composer-box .pending-files { flex-wrap: nowrap; overflow-x: auto; }
 }
 /* M-3166 (Argon 2–3, the user's OK of round 2): a phone's chat header is "← name ● ⋯" in 44 px — the status is its 6 px dot
