@@ -22,6 +22,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { PairingNotices } from "./hub-quick-pairing.js";
 import { dn } from "./hub-directory-notice-strings.js";
+import { RoleNotices, roleNoticesOffered, roleNoticeLead } from "./hub-role-notices.js";
 import { DirectoryNotices, directoryNoticesOffered } from "./hub-directory-notices.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
@@ -43,6 +44,7 @@ import { HubRoomPage } from "./hub-room-thread.js";
 import { TextSizeButton } from "/assets/header-tools.js";
 import { HubNotifyToggle, clearHubMeId, noteHubMeId, rememberedMeId, startHubRoomNotifier } from "./hub-room-notify.js";
 import { hroom } from "./hub-room-strings.js";
+import { ha as hApps } from "./hub-ai-apps-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { ht } from "./hub-teams-strings.js";
 import { ho, linkHubOwnerCss } from "./hub-owner-strings.js";
@@ -177,7 +179,7 @@ export function HubPanel({ route }) {
     return stop;
   }, [s && s.login]);
   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
-  const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : view==="allowed-list"?hat("allowedList") : (view==="roles"||view==="groups"&&rolesOn(s,hubClient()))?hat("roles"):hc("admin") : view === "notices" ? hc("noticesTitle")
+  const pageName = companyPage ? hj("title") : tab === "ask" && view === "ai-apps" ? hApps("title") : tab === "ask" && view === "app-consent" ? hApps("consentHeading") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : view==="allowed-list"?hat("allowedList") : (view==="roles"||view==="groups"&&rolesOn(s,hubClient()))?hat("roles"):hc("admin") : view === "notices" ? hc("noticesTitle")
     : view === "invitations" ? hroom("invitationsTitle") : view === "teams" ? ht("mine") : hc("chats");
   useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && (view === "groups"&&!rolesOn(s,hubClient())||view==="allowed-list"))) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
@@ -189,12 +191,16 @@ export function HubPanel({ route }) {
   if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
   if (s && tab === "ask" && joinRequest()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-join">
     <${PanelHeader} title=${hj("title")} /><div data-trust="panel-content" class="panel-body hub-page-body"><${HubCompanyJoinPage} session=${s} /></div></div>`;
+  if (s && tab === "ask" && ["ai-apps", "app-consent"].includes(view) && s.features?.includes("mcp-apps-v1")) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ai-apps">
+    <${PanelHeader} title=${pageName}/><div data-trust="panel-content" class="panel-body hub-page-body"><div class="col hub-owner">
+      <${LazyRoomPart} load=${()=>import("./hub-ai-apps.js")} name=${view==="app-consent"?"AppConsentPage":"MyAiAppsPage"}
+        props=${{client:hubClient(),person:s.displayName,request:new URLSearchParams(location.search).get("request")||""}}/></div></div></div>`;
   // Security notices stay on their own page. The bound join branch above never renders the chat or notices page.
   if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
     <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
-      <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
-        ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
-        ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}</div></div></div>`;
+      <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${roleNoticesOffered(s, hubClient()) ? roleNoticeLead() : directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
+        ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
+        ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}${roleNoticesOffered(s, hubClient()) ? html`<${RoleNotices} client=${hubClient()} />` : null}</div></div></div>`;
   // M-3092: the owner's invitations (spec §8), a page of the chats like Notices.
   if (s && tab === "ask" && view === "invitations" && roomsLive()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-invitations">
     <${PanelHeader} title=${hroom("invitationsTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body"><div class="col hub-owner">
@@ -223,6 +229,7 @@ export function HubSessionMenu() {
   // #3226 B: My shared agents and Administration are secondary — in this menu, not the main surface.
   const items = [
     { key: "mine", label: hc("mine"), icon: "globe", onSelect: () => navigate("/ui/hub/exposures") },
+    ...(s.features?.includes("mcp-apps-v1") ? [{ key:"ai-apps",label:hApps("title"),icon:"globe",onSelect:()=>navigate("/ui/hub?view=ai-apps") }] : []),
     { key: "admin", label: hc("admin"), icon: "key", onSelect: () => navigate("/ui/hub/admin") },
     { key: "out", label: hw("signOut"), icon: "user", onSelect: out, disabled: busy },
   ];
@@ -360,7 +367,7 @@ export const NOTICES_PATH = "/ui/hub?view=notices";
 export const INVITATIONS_PATH = "/ui/hub?view=invitations";
 export const MY_TEAMS_PATH = "/ui/hub?view=teams";
 const pairingNoticesOffered = (s) => !!s && Array.isArray(s.features) && s.features.includes("quick-pairing-v1") && !!hubClient().quickPairingV1;
-const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient());
+const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient());
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 const AV_TONES = 6;
 const tone = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % AV_TONES; };
@@ -1121,7 +1128,7 @@ function HubAdmin({ admin }) {
   const bar = html`<${AdminTabs} tabs=${tabs} current=${current} />`;
   if (current === "overview") return html`${bar}<div class="col hub-owner hub-admin-ov-col"><${LazyRoomPart} load=${() => import("./hub-admin-overview.js")} name="HubAdminOverview"
     props=${{ client: hubClient(), onOpen: openAdminTab, onGone: () => { setOverviewGone(true); openAdminTab("manage"); } }} /></div>`;
-  if (current === "this-hub") return html`${bar}${directory && view === "directory" ? html`<${LazyDirectory} session=${s} />` : html`<div class="col hub-owner"><${LazyThisHub} directory=${directory} /></div>`}`;
+  if (current === "this-hub") return html`${bar}${directory && view === "directory" ? html`<${LazyDirectory} session=${s} />` : html`<div class="col hub-owner"><div class="s-section-layout"><${LazyThisHub} directory=${directory} />${s?.features?.includes("mcp-apps-v1")?html`<${LazyRoomPart} load=${()=>import("./hub-ai-apps.js")} name="AiAppsAdminCard" props=${{client:hubClient()}}/>`:null}</div></div>`}`;
   if(current==="roles"&&view==="allowed-list"&&admin&&groups)return html`${bar}<${LazyGroups} pick=${m=>m.HubGroupPolicyPage} props=${{roleShortcut:true}} />`;
   if (current === "roles") return html`${bar}<div class="col hub-owner"><${LazyRoomPart} load=${() => import("./hub-roles.js")} name="HubRoles" props=${{client:hubClient()}} /></div>`;
   if (current === "groups") return html`${bar}<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;

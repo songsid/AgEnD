@@ -45,6 +45,7 @@ beforeAll(async () => {
   view = await import("/assets/panel-view.js");
   shell = await import("/assets/app-shell.js");
   nav = await import("/assets/instance-nav.js");
+  nav.sidebarDensityStore.set({ value: "detailed", layout: "desk" });   // M-3252: these rows are the detailed ones (a desktop now defaults to compact)
   i18n = await import("/assets/app-i18n.js");
   useStore = (await import("/assets/app-store.js")).useStore;
 });

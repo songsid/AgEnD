@@ -135,6 +135,12 @@ export interface ReapOptions {
   /** Injected so the grace periods do not make tests slow. */
   wait?: (ms: number) => Promise<void>;
   graceMs?: number;
+  /**
+   * M-3247: a lease THIS process wrote (its pid, and its fingerprint when both are known) is held, not a leftover.
+   * Only for the fleet's startup sweep, which runs while this run's own tunnels may already be up (auto_open, /web).
+   * ManagedTunnel's own reap leaves it off: it reaps only when it holds no tunnel, so its own lease is then a leftover.
+   */
+  spareThisProcess?: boolean;
 }
 
 /**
@@ -182,6 +188,13 @@ export async function reapStaleTunnel(dataDir: string, opts: ReapOptions = {}): 
     if (sameOwner) return { kind: "held", ownerPid: lease.ownerPid };
   }
   void now;
+  if (opts.spareThisProcess && lease.ownerPid === process.pid) {
+    // Same pid as ours: ours unless the fingerprint proves it was a previous run's (a reused pid). Unknown counts as ours —
+    // the one mistake a reaper must not make is killing a live tunnel; a real leftover is reaped by the next start.
+    const self = probe(process.pid);
+    const ours = self.kind === "identified" && lease.ownerIdentity ? self.identity === lease.ownerIdentity : true;
+    if (ours) return { kind: "held", ownerPid: lease.ownerPid };
+  }
 
   if (lease.providerPid === null) {
     // Reserved but never recorded: either nothing was ever spawned, or the
@@ -247,4 +260,22 @@ export function manualCleanupMessage(outcome: Extract<ReapOutcome, { kind: "manu
   return `A tunnel could not be confirmed closed: ${outcome.reason}. `
     + `No new tunnel will be opened until this is resolved. Check ${target}, kill it if it is still running, `
     + `then delete ${outcome.leasePath}.`;
+}
+
+export interface LeftoverSweepOptions extends ReapOptions {
+  log: (level: "info" | "warn", message: string, detail: Record<string, unknown>) => void;
+}
+
+/**
+ * The fleet's startup sweep: resolve what a previous run, or a setup host that crashed, left behind in each lease directory.
+ * Never throws. A lease that cannot be resolved blocks the next tunnel and says so; it does not block the fleet.
+ */
+export async function reapLeftoverTunnels(dirs: readonly string[], opts: LeftoverSweepOptions): Promise<void> {
+  const { log, ...reap } = opts;
+  await Promise.all(dirs.map(dir => reapStaleTunnel(dir, { ...reap, spareThisProcess: true })
+    .then(outcome => {
+      if (outcome.kind === "manual") log("warn", manualCleanupMessage(outcome), { tunnel: outcome });
+      else if (outcome.kind === "reaped") log("info", "Reaped a leftover tunnel", { how: outcome.how, tunnelPid: outcome.pid });
+    })
+    .catch(err => log("warn", "Tunnel reaper failed", { err }))));
 }

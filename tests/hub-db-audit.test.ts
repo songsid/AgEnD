@@ -356,6 +356,20 @@ describe("review #3113 regressions", () => {
     expect(audit.content.get(loose)).toBeUndefined();
   });
 
+  it("seals message-private content once without making it available through an audit record", async () => {
+    const {audit,uow,db}=openAudited(),messageId=randomUUID(),event=record({ownerAtEvent:PERSON(1)});
+    const ref=uow.atomic(tx=>{const r=audit.content.put(tx,{question:"App message"});audit.content.bindMessage(tx,r,messageId);audit.append(tx,event);return r;});
+    expect(audit.content.get(ref)).toEqual({question:"App message"});
+    expect(db.prepare("SELECT content_ref FROM hub_audit WHERE id=?").get(event.id)).toEqual({content_ref:null});
+    expect(await audit.readContent(ctx(PERSON(1)),event.id)).not.toHaveProperty("question");
+    expect(()=>uow.atomic(tx=>audit.content.bindMessage(tx,ref,randomUUID()))).toThrow(/another record/);
+    expect(()=>uow.atomic(tx=>audit.append(tx,record({contentRef:ref})))).toThrow(/another record/);
+    db.prepare("UPDATE hub_audit_content SET record_id=? WHERE ref=?").run(`message:${randomUUID()}`,ref);
+    expect(()=>audit.content.get(ref)).toThrow();
+    const count=(db.prepare("SELECT count(*) AS n FROM hub_audit_content").get() as {n:number}).n;
+    expect(()=>uow.atomic(tx=>{const r=audit.content.put(tx,{question:"Rolled back"});audit.content.bindMessage(tx,r,randomUUID());throw new Error("audit failed");})).toThrow("audit failed");
+    expect((db.prepare("SELECT count(*) AS n FROM hub_audit_content").get() as {n:number}).n).toBe(count);
+  });
   it("P2: the head must match even when no rows are left — an erased table or suffix fails verification", () => {
     expect(openAudited().audit.verifyChain()).toEqual({ ok: true, checked: 0 }); // genesis
     const { audit, uow, db } = openAudited();

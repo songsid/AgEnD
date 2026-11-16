@@ -125,7 +125,7 @@ export class HubMcpAuth {
   async preview(ctx: HubRequestContext, id: string) {
     const row = this.request(id), actor = await this.browser(ctx), permit = await this.permit(actor.person, actor.current);
     this.request(id); permit.assertCurrent();
-    return { name: this.client(row.client_id).name, scopes: JSON.parse(row.scopes) as HubMcpScope[] };
+    return { name: this.client(row.client_id).name, scopes: JSON.parse(row.scopes) as HubMcpScope[], redirectOrigin:new URL(row.redirect_uri).origin };
   }
   async approve(ctx: HubRequestContext, id: string, input: unknown): Promise<string> {
     const selected = parse(scopesSchema, input, "invalid_scope"), row = this.request(id), actor = await this.browser(ctx);
@@ -268,5 +268,12 @@ export class HubMcpAuth {
         this.core.audit(tx,{requestId:ctx.requestId,actor:{kind:"person",person:actor.person},action:"mcp.disconnected",result:"completed",codeId:id});
       }
     });
+  }
+  /** RFC 7009: possession of the token and its bound public-client id ends that app, never a web session. */
+  revoke(input:unknown):void {
+    const value=parse(z.strictObject({client_id:opaque,token:plain(512),token_type_hint:z.enum(["access_token","refresh_token"]).optional()}),input);
+    const token=this.core.atomic(db=>db.prepare("SELECT app_id FROM hub_mcp_tokens WHERE token_hash=?").get(digest(value.token)) as {app_id:string}|undefined);
+    if(!token)return;const row=this.app(token.app_id);
+    if(row?.client_id===value.client_id)this.end(row,"client-disconnected");
   }
 }

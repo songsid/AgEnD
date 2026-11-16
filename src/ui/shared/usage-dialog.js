@@ -202,6 +202,46 @@ function rowNote(p) {
   return "";
 }
 /**
+ * M-3248 (the user): a login no agent uses said 「此帳號目前沒有 Agent」 as a line of text beside its name. It is a quiet ⓘ
+ * there now (the muted text colour, never a warning's), its words on a hover, a focus or a tap, in the settings pages' tip
+ * bubble (.s-tipbody). The bubble is fixed to the window, so the group's rounded clip (.u-cgroup, overflow: hidden) never
+ * cuts it, and is only in the page while shown. In a compact row (itself a button that opens the login's card) the mark
+ * is not a second button: an image named by the words — the row reads "wii, No agents on this profile" — and a tap on it
+ * shows them without opening the row. In the full card it is a button, reached with Tab.
+ */
+function NoAgentsMark({ inRow = false }) {
+  const words = tn("usage.no_agents");
+  const [at, setAt] = useState(null);
+  const [pinned, setPinned] = useState(false);
+  const mark = useRef(null), bubble = useRef(null);
+  const show = () => {
+    const r = mark.current && mark.current.getBoundingClientRect ? mark.current.getBoundingClientRect() : null;
+    const w = window.innerWidth || 0, hgt = window.innerHeight || 0;
+    if (!r || !w) { setAt({ x: 8, y: 8, above: false }); return; }
+    const above = r.bottom + 72 > hgt;
+    // Pushed sideways to stay inside the window (a custom property: the page allows no style attribute).
+    setAt({ x: Math.round(Math.max(8, Math.min(r.left - 8, w - Math.min(260, w - 16) - 8))), y: Math.round(above ? hgt - r.top + 6 : r.bottom + 6), above });
+  };
+  const hide = () => { setAt(null); setPinned(false); };
+  useLayoutEffect(() => {
+    const b = bubble.current;
+    if (b && b.style && at) { b.style.setProperty("--tip-x", `${at.x}px`); b.style.setProperty("--tip-y", `${at.y}px`); }
+  }, [at]);
+  useEffect(() => {
+    if (!at) return undefined;
+    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); hide(); } };
+    const away = (e) => { if (mark.current && !mark.current.contains(e.target)) hide(); };
+    document.addEventListener("keydown", esc, true); document.addEventListener("click", away); window.addEventListener("scroll", hide, true);
+    return () => { document.removeEventListener("keydown", esc, true); document.removeEventListener("click", away); window.removeEventListener("scroll", hide, true); };
+  }, [!!at]);
+  const tap = (e) => { e.stopPropagation(); e.preventDefault(); if (pinned) hide(); else { show(); setPinned(true); } };
+  const leave = () => { if (!pinned) hide(); };
+  const tip = at ? html`<span ref=${bubble} class=${`s-tipbody u-na-tip${at.above ? " above" : ""}`} aria-hidden="true">${words}</span>` : null;
+  return inRow
+    ? html`<span ref=${mark} class="u-na" role="img" aria-label=${words} onMouseEnter=${show} onMouseLeave=${leave} onClick=${tap}><${Icon} name="info" size=${14} />${tip}</span>`
+    : html`<button ref=${mark} type="button" class="u-na" aria-label=${words} onMouseEnter=${show} onMouseLeave=${leave} onFocus=${show} onBlur=${hide} onClick=${tap}><${Icon} name="info" size=${14} />${tip}</button>`;
+}
+/**
  * A login in three short lines, under its provider's name (the user's pick, 2026-10-22): its name and plan; then its
  * short window and its long one, each a labelled full-width bar, the percent and that window's own reset.
  * Numbers not current, a failed read or no login: one muted line in place of the bars, what is wrong as its tooltip.
@@ -221,7 +261,7 @@ export function CompactRow({ p, onExpand, one = false }) {
   const name = title.profile || title.base;
   const models = !pools && metrics.some((m) => m.scope === "model");
   return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}${pools ? " is-pooled" : ""}${models ? " has-models" : ""}${one ? " is-one" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
-    <span class="u-crow-head"><span class="u-crow-name">${name}</span>${p.noAgents ? html`<span class="note">${tn("usage.no_agents")}</span>` : null}
+    <span class="u-crow-head"><span class="u-crow-name">${name}</span>${p.noAgents ? html`<${NoAgentsMark} inRow=${true} />` : null}
       ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
       ${stale && metrics.length ? html`<span class="u-crow-stale" title=${detail}>${p.cachedAt ? tn("usageCachedAt", { at: usageClock(p.cachedAt) }) : stale.mark}<span class="sr-only"> (${detail})</span></span>` : null}</span>
     ${pools ? pools.map((x) => html`<${CompactMeter} key=${x.pool.label} m=${x.worst} tag=${usageText(x.pool.label, x.pool.labelI18n)}
@@ -356,14 +396,13 @@ export function UsageBody({ owner }) {
   else {
     const providers = ordered(data.providers);
     const card = (p, i) => html`<section key=${key(p)} class=${p.stale ? "u-provider is-stale" : "u-provider"}>
-        <div class="u-head"><strong title=${p.name}>${providerTitle(p).base}</strong>${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
+        <div class="u-head"><strong title=${p.name}>${providerTitle(p).base}</strong>${p.noAgents && !providerTitle(p).profile ? html`<${NoAgentsMark} />` : null}${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
           <span class="u-order">${compact ? html`<button type="button" class="icon-btn u-collapse" aria-expanded="true" aria-label=${tn("usageCollapse")} title=${tn("usageCollapse")}
               onClick=${() => toggleOne(key(p))}><${Icon} name="minus" size=${14} /></button>` : null}
             <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${tn("usageMoveUp")} title=${tn("usageMoveUp")} onClick=${() => move(key(p), -1, data.providers)}><${Icon} name="up" size=${14} /></button>
             <button type="button" class="icon-btn" disabled=${i === providers.length - 1} aria-label=${tn("usageMoveDown")} title=${tn("usageMoveDown")} onClick=${() => move(key(p), 1, data.providers)}><${Icon} name="down" size=${14} /></button>
           </span></div>
-        ${providerTitle(p).profile ? html`<div class="u-profile" title=${p.name}>${providerTitle(p).profile}</div>` : null}
-        ${p.noAgents ? html`<p class="note">${tn("usage.no_agents")}</p>` : null}
+        ${providerTitle(p).profile ? html`<div class=${`u-profile${p.noAgents ? " has-na" : ""}`} title=${p.name}>${p.noAgents ? html`<span class="u-profile-name">${providerTitle(p).profile}</span><${NoAgentsMark} />` : providerTitle(p).profile}</div>` : null}
         ${p.stale ? html`<p class="note u-stale" title=${staleNote(p).detail || null}>${staleNote(p).mark}</p>${staleNote(p).detail ? html`<p class="note u-stale-detail">${staleNote(p).detail}</p>` : null}` : null}
         ${p.status === "error" && !p.transient ? html`<p class="u-err">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
           : p.status === "error" && p.transient ? html`<p class="note">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`

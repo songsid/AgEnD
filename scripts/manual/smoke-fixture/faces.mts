@@ -3,7 +3,8 @@
 //   withFaces(ctx, names)  before navigating: serves /ui/img/avatar/<name> as a round coloured face (SVG)
 //   faces(page, names)     after mounting: names 0–5 a picture, 6 an emoji, 7 on a letter — as the status frame
 //                          would carry them; it stays so across later status frames
-//   density(page, value)   the agent list's density ("detailed" | "compact"), a synced pref: clear it with clearDensity
+//   density(page, value)   the agent list's density ("detailed" | "compact") for the page's layout (M-3252: a phone's drawer
+//                          and a desk's sidebar keep their own), a synced pref: clear both with clearDensity
 //   clearDensity(fx)       put the pref back unset, so the next freshPage starts from the defaults
 
 const FACE = (hue: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="hsl(${hue} 60% 55%)"/>`
@@ -43,5 +44,6 @@ export function density(page: any, value: "detailed" | "compact"): Promise<void>
 }
 
 export function clearDensity(fx: any): void {
-  fx.fm.webPrefs.writeForViewer("operator", new Map<string, unknown>([["nav.density", null]]));
+  // M-3252: the desktop sidebar's and the phone drawer's (setSidebarDensity writes the one for the page's layout).
+  fx.fm.webPrefs.writeForViewer("operator", new Map<string, unknown>([["nav.density", null], ["nav.densityPhone", null]]));
 }

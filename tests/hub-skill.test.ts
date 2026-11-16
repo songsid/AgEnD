@@ -113,7 +113,7 @@ describe("the hub skill", () => {
       "This Hub uses a self-signed test certificate", "Certificate fingerprint", "Show the full fingerprint", "Trust this Hub and continue", "Trust again and continue",
       "Allow trusting a Hub with a self-signed certificate (for testing)", "信任這個 Hub 並繼續", "重新信任並繼續", "允許信任自簽憑證的 Hub（測試用）",
       // #3776: the colleague-join card's link to the full group editor, and the uncertain card's Check again (zh).
-      "All group permissions", "所有群組權限", "再次檢查"];
+      "All group permissions", "所有群組權限", "再次檢查", "My AI apps", "Connect your app", "Hub MCP address", "Copy setup prompt", "Disconnect", "Let people connect their own AI apps", "Allow AI apps to read and post"];
     const notQuoted = labels.filter(l => !FLAT.includes(l)), notInUi = labels.filter(l => !SOURCES.includes(l));
     expect(notQuoted, "listed here but not in the skill").toEqual([]);
     expect(notInUi, "quoted by the skill but not a UI string").toEqual([]);
@@ -129,11 +129,14 @@ describe("the hub skill", () => {
     for (const key of ["hub.enabled", "hub_member.enabled"]) expect(SKILL).toContain(`\`${key}\``);
     expect(manager).toContain("raw?.hub?.enabled === true || raw?.hub_member?.enabled === true");
     const notYet = SKILL.slice(SKILL.indexOf("\n## Not available yet\n"), SKILL.indexOf("\n## Troubleshooting\n"));
-    for (const topic of ["manager's scoped team roster", "ClassicBot room", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
+    for (const topic of ["ClassicBot room", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
     expect(notYet).not.toContain("Pause and resume");
-    const roles = SKILL.slice(SKILL.indexOf("\n## Roles and permissions\n"), SKILL.indexOf("\n## Room assistant administration\n"));
-    for (const text of ["12 fixed permissions", "To add a second administrator", "people only", "Turn roles off"]) expect(roles, text).toContain(text);
-    expect(notYet).not.toContain("Today there is one Hub administrator");
+    expect(notYet).not.toContain("Custom roles");
+    const roles = FLAT.slice(FLAT.indexOf("## Roles and permissions"), FLAT.indexOf("## Room assistant administration"));
+    expect(roles).toContain("On a Hub that offers **Administration → Roles and permissions**");
+    expect(roles).toContain("Older servers and clients keep their existing interface");
+    expect(roles).toContain("Nine permissions can be chosen");
+    expect(roles).toContain("the two approval permissions are not available");
     const sharing = FLAT.slice(FLAT.indexOf("## Sharing agents"), FLAT.indexOf("## Who may ask"));
     for (const text of ["**Pause sharing**", "**Resume sharing**", "Expiry time keeps running", "**Stop sharing…**", "Resume cannot undo Stop sharing or a Hub policy hold"])
       expect(sharing, text).toContain(text);

@@ -55,6 +55,12 @@ codes — sign-in is paused for a few minutes."). The sign-in page is **Sign in 
 (localhost), it says how to sign in again there — the desktop shortcut **AgEnD 儀表板** on Windows, `agend web` in a
 terminal otherwise; from another device it says `/web` only while a chat is connected (a fleet whose chat is not
 connected yet, or a web-only one, points at `agend web --code` on the AgEnD computer).
+Under the box, **How do I open AgEnD on my phone?** (如何在手機開啟 AgEnD？, M-3251) lists the ways in, easiest first:
+the temporary link (`/web` → **🌐 Other device**), a fixed link (a fixed public hostname in Settings → Access & security:
+`/web` then opens the same address), then a private network such as Tailscale with a code from `/web`. A fleet with no
+chat: **Allow connections from outside** (Owner verification, the authenticator app), the fixed link, then a private
+network with `agend web --code`. Never "the computer's LAN address": the dashboard answers on 127.0.0.1 only, so a phone
+on the same Wi-Fi needs one of those ways in too.
 
 **Send me a new code.** On the sign-in page, for a browser that signed in before with a `/web` code or with a chat
 admin's own authenticator code (remembered 90 days). The code arrives by DM. Not on a web-only fleet (no chat to send it to). Limits: one a minute and five an hour per browser; fleet-wide one per 20 s, 20 an hour.
@@ -472,8 +478,10 @@ every 5 s.
 
 **The sidebar list.** Grouped by team (an instance in `teams.<name>.members` under its first team, whatever its tags), else by
 its first tag ("#" before the heading), ClassicBot rooms under Classic, the rest under Other; Settings → Agents the same (#2172).
-Settings → Preferences → **Sidebar agent list** chooses **Detailed** (default) or **Compact** (`nav.density`, synced;
-Save/Discard like the other preferences). Compact uses a status dot (working pulses), name and muted last-reply time,
+Settings → Preferences → **Sidebar agent list** chooses **Detailed** or **Compact**, one for a phone's drawer and one for a
+desktop's sidebar (M-3252; `nav.densityPhone` / `nav.density`, both synced; Save/Discard like the other preferences): the
+one shown, there and in the list's **Custom** menu, is the screen's own. Defaults: desktop Compact, phone Detailed; a choice
+made before the split stays the desktop's. Compact uses a status dot (working pulses), name and muted last-reply time,
 without an avatar: 30 px on desktop, 40 px on phones. Hover shows the existing details tooltip. Filters, favorites,
 groups, sorting and keyboard links are the same. Detailed keeps the current presentation.
 Each detailed row (#2179): name and context % on the first line, the time of the agent's last reply to a person at the end of the

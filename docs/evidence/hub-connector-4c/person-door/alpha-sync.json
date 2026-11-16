@@ -1,0 +1,288 @@
+{
+  "sourceCommit": "1f21d5edac8f165679803c1e9679c75b1f8a9d3e",
+  "incomingAlpha": "8e79297c9814bb3e3a97ccbd0184c9efc07f0e28",
+  "paths": [
+    {
+      "path": "changes/4006-hub-connector-door.md",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "changes/4006-hub-connector-door.zh-TW.md",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/design/hub-connector-4c.md",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/README.md",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/final.log",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/manifest.json",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/policy-before.log",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/reversal-app-result.log",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/reversal-post-cap.log",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/reversal-scope.log",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/reversals.json",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/source-types.log",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "docs/evidence/hub-connector-4c/person-door/test-types.log",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/connect/mcp.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/connect/stdio.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/mcp/auth.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/mcp/catalog.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/mcp/door-schema.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/mcp/http.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/mcp/policy.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/mcp/server.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/mcp/tools.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/rooms.ts",
+      "ownChangedLinesIdentical": false,
+      "normalization": "retain incoming nullable Fleet audit-ID normalization"
+    },
+    {
+      "path": "src/hub/rooms/direct-view.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "src/hub/types.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "tests/hub-mcp-auth-m3240.test.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "tests/hub-mcp-door-m3240.test.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "ownChangedLinesIdentical": true,
+      "normalization": null
+    }
+  ],
+  "mergeCommit": "04c640c4d0786f9b918d64f61dd9376261586e3a",
+  "noLocalRerun": "decision5afe2996: plain sync; own changed lines match except retaining the two incoming nullable Fleet audit-ID spellings",
+  "resolved": [
+    "docs/design/hub-connector-4c.md",
+    "src/hub/mcp/auth.ts",
+    "tests/hub-mcp-auth-m3240.test.ts",
+    "src/hub/rooms.ts"
+  ],
+  "currentInputs": [
+    {
+      "path": "changes/4006-hub-connector-door.md",
+      "sha256": "dbaaeebee26b989a2efcba0586c52466641a948c233192747cdf031f2b6ee27d"
+    },
+    {
+      "path": "changes/4006-hub-connector-door.zh-TW.md",
+      "sha256": "ad70c9407dba1ff5c0ab5df5aff46236f6dd86e4cbb0840561b38e66505e1f2c"
+    },
+    {
+      "path": "docs/design/hub-connector-4c.md",
+      "sha256": "36da14b271053d92a455c65d8f4c98d940f93716761b5506df96f0f7e4225970"
+    },
+    {
+      "path": "src/connect/mcp.ts",
+      "sha256": "cb25940740ea8abfd7c4fcff7fa838bb493abc75c952da9ece4ed2198d6963b9"
+    },
+    {
+      "path": "src/connect/stdio.ts",
+      "sha256": "7096b197a73108617349de8e61d1732050e4aad60653ed8f7341324cea113456"
+    },
+    {
+      "path": "src/hub/catalog.ts",
+      "sha256": "7261425faeb2980fa9df0d4c505ffeec53ad5dfbe93ed90e65e495905f6de5da"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "ce4ee3455e5ed84a0006b4ce039dff79ae207311d75871a24c7bc9973aeac47b"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "dc22e7dcb884ab53d11a45db4d6075a6eef004e28a102197884748fe5454624f"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "d15853a134aac722be65a3258fa21eee7f0fc47eab537a4e9fe387eee055d134"
+    },
+    {
+      "path": "src/hub/mcp/auth-schema.ts",
+      "sha256": "cb21753f040c715fe0d7b7f43084bf0da5fda51cb64a1ee5f1aee7b47aa435ae"
+    },
+    {
+      "path": "src/hub/mcp/auth.ts",
+      "sha256": "c7d4a81843c24135ea74e0086ee888a0d055c3545588a94c881c0a847a0bd8c7"
+    },
+    {
+      "path": "src/hub/mcp/catalog.ts",
+      "sha256": "50d3b289f1341292d33c816b01a29819e46e6d99e2f151740514e3a74fbfd0cf"
+    },
+    {
+      "path": "src/hub/mcp/door-schema.ts",
+      "sha256": "b153b623a81f03f6e62e045ef1853aab773e1dafa83ade466c1db34666f96e17"
+    },
+    {
+      "path": "src/hub/mcp/http.ts",
+      "sha256": "4db93a1f03375773b39dd0df2dcd7f4446a610ea598a929e610bb75c6073b0e5"
+    },
+    {
+      "path": "src/hub/mcp/policy.ts",
+      "sha256": "8d64694897c567322cccc819f6dff0d0b360a205b9dbedbecddb36fa418fe75b"
+    },
+    {
+      "path": "src/hub/mcp/server.ts",
+      "sha256": "2289ee867b5a97a32ac9fa06bc2e75c29ef4531c78e965476e2fe41ad3c69648"
+    },
+    {
+      "path": "src/hub/mcp/tools.ts",
+      "sha256": "f64c1b5c7615fe50c13e9e5507b828d070edb4ef5d9e6ac91342b444ef883b4f"
+    },
+    {
+      "path": "src/hub/rooms.ts",
+      "sha256": "fde21aa9e7144f4cdcaaf66e1e4f56753f809722e4c42479c56597394e3a4376"
+    },
+    {
+      "path": "src/hub/rooms/agents.ts",
+      "sha256": "96aa7f9b522689c349faa7479dafdb198375a32e6f312429bc3710a19513936a"
+    },
+    {
+      "path": "src/hub/rooms/direct-view.ts",
+      "sha256": "d51f35b6ed422090baeb43c7f2da9fdb1d8821ac9953445c639e7a6bf2d72c6c"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "932c0293d414216365e920e7f3319da785db2d8d2c3602d6327d1bc2faaa66ff"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "d9b9f5fd4c5bc3f21d8a227bfe0aadc73cdeabcec5ae05559330711c44e4d3a2"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "4ba6e5dccd5a031a07640b0a534bc3c998f7862c3bed82514a8a7b9aa51fc0a4"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "sha256": "eb18be41131d4ec02c80bac8273b35beed21f0dae03dd57d6856221f51e349a1"
+    },
+    {
+      "path": "tests/helpers/hub-s3b-rig.ts",
+      "sha256": "58ea8404a643e594522aa1c3aefb7a2624a9a34ce0c8cc463461474633a79f92"
+    },
+    {
+      "path": "tests/hub-mcp-auth-m3240.test.ts",
+      "sha256": "80a5cf5572437fc76c1e26c46204099d20a910f90a0f7510cfaef36e64554495"
+    },
+    {
+      "path": "tests/hub-mcp-door-m3240.test.ts",
+      "sha256": "04d5894c39b21ee14150f81b4c9422f6be33591d7b02c2af0d3f981bb3b18a16"
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "sha256": "90002d42f2cc67b298a16f0e511e6aa8000cc86070dfe27e5f566f68247a47d3"
+    }
+  ]
+}

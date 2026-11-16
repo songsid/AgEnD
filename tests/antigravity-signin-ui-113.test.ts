@@ -84,7 +84,7 @@ describe("this host's Antigravity row", () => {
   it("the dialog offers Sign in for Antigravity (the first-run list keeps it on the console fallback) and posts a start for it", async () => {
     await p.mount(h(S.BrowserSignInDialog, { backend: "antigravity", onClose: () => {} })); await settle(12);
     const d = dialog() ?? p.root;
-    expect(text(d)).toContain("Not connected"); expect(text(d)).not.toContain("console fallback, or connect later"); expect(text(d.querySelector("section h3"))).toBe("Antigravity");
+    expect(text(d)).toContain("Not connected"); expect(text(d)).not.toContain("console fallback, or connect later"); expect([d.querySelector("section h3"), text(d.querySelector(".dlg-title")).includes("Antigravity")], "M-3238: the dialog's title names the CLI; no second heading").toEqual([null, true]);
     expect(text(d)).not.toContain("Use console fallback");      // chat's /login agy is declined, so there is no console fallback to offer for it
     await btn(d, "Connect account").onclick(); await settle(8);
     const start = calls.find(c => c.method === "POST" && c.url.startsWith("/ui/browser-backend-signins"))!;

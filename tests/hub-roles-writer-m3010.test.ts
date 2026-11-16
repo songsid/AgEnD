@@ -316,3 +316,33 @@ it("a role assigner without hub.admin cannot use the internal allowed-list opera
  const w=await fixture(),before=w.saved();before.roles.push({id:"assigner",name:"Assigner",kind:"custom",permissions:["roles.assign"],defaultMaxFleets:0});before.assignments=[{id:"assigner",roleId:"assigner",subject:{kind:"person",person:w.actor},scope:{kind:"hub"},maxFleets:null,startsAt:0,expiresAt:null,assignedBy:w.root,assignedAt:0}];w.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(before));
  const next=copy(before);next.people=[{person:w.target,name:"Target",allow:["ask_agents"],maxFleets:0}];expect(await w.writer.previewAllowedList(next,w.browser.ctx)).toMatchObject({ok:false,code:"denied"});expect(w.saved().people).toBeUndefined();
 });
+
+it("a checked role description cannot be changed at apply and is retained in historical audit metadata",async()=>{
+ const w=await fixture(),next=w.saved();next.roles[1]!.description="Help colleagues connect";
+ const preview=await w.writer.preview(next,w.browser.ctx);if(!preview.ok)throw Error(preview.code);
+ const altered=copy(next);altered.roles[1]!.description="Different unchecked purpose";
+ expect(await w.writer.apply(altered,preview.previewDigest,w.browser.ctx)).toEqual({ok:false,code:"stale-preview"});expect(w.saved().roles[1]!.description).toBeUndefined();
+ const fresh=await w.writer.preview(next,w.browser.ctx);if(!fresh.ok)throw Error(fresh.code);
+ expect(await w.writer.apply(next,fresh.previewDigest,w.browser.ctx)).toMatchObject({ok:true});expect(w.saved().roles[1]!.description).toBe("Help colleagues connect");
+ const events=w.db.prepare("SELECT body FROM hub_role_events e JOIN hub_audit a ON a.id=e.id WHERE a.action='role.changed'").all() as {body:string}[];
+ expect(events.map(e=>JSON.parse(e.body).details.after.description)).toContain("Help colleagues connect");expect(w.audit.verifyChain()).toMatchObject({ok:true});
+});
+
+it.each(["ineligible","unknown"] as const)("cannot turn roles off when the configured root is %s and the acting admin would be the last",async kind=>{
+ const w=await fixture();w.read.mockImplementation(async who=>who.objectId===w.root.objectId?(kind==="unknown"?{kind:"unknown"}:{kind:"ineligible",person:copy(who),reason:"disabled",observedAt:100}):{kind:"complete",person:copy(who),groups:[],observedAt:100});
+ const next=w.saved();next.rolesActive=false;
+ expect(await w.writer.preview(next,w.browser.ctx)).toEqual({ok:false,code:"last-administrator"});expect(w.saved().rolesActive).toBe(true);expect(w.commit).not.toHaveBeenCalled();
+});
+it("rechecks last-administrator continuity after preview before committing a turn-off",async()=>{
+ const w=await fixture(),next=w.saved();next.rolesActive=false;
+ const preview=await w.writer.preview(next,w.browser.ctx);if(!preview.ok)throw Error(preview.code);
+ w.read.mockImplementation(async who=>who.objectId===w.root.objectId?{kind:"ineligible",person:copy(who),reason:"disabled",observedAt:100}:{kind:"complete",person:copy(who),groups:[],observedAt:100});
+ expect(await w.writer.apply(next,preview.previewDigest,w.browser.ctx)).toEqual({ok:false,code:"last-administrator"});expect(w.saved().rolesActive).toBe(true);expect(w.commit).not.toHaveBeenCalled();
+});
+
+it("does not turn a root directory blip into a last-admin refusal for an unrelated delegated Member assignment",async()=>{
+ const w=await fixture(),before=w.saved();before.roles.push({id:"delegate",name:"Delegated assigner",kind:"custom",permissions:["roles.assign","ask_agents","publish_agents","pair_fleet"],defaultMaxFleets:8});before.assignments[0]!.roleId="delegate";w.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(before));
+ w.read.mockImplementation(async who=>who.objectId===w.root.objectId?{kind:"unknown"}:{kind:"complete",person:copy(who),groups:[],observedAt:100});
+ const next=w.proposal(),preview=await w.writer.preview(next,w.browser.ctx);if(!preview.ok)throw Error(preview.code);
+ expect(await w.writer.apply(next,preview.previewDigest,w.browser.ctx)).toMatchObject({ok:true});expect(w.saved().assignments.some(a=>a.id==="member1")).toBe(true);
+});

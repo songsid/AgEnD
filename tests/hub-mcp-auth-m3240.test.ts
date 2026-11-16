@@ -5,7 +5,6 @@ import type { IncomingMessage } from "node:http";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { HubCore } from "../src/hub/http/core.js";
 import { HubMcpAuth, HUB_MCP_APP_IDLE, HUB_MCP_ACCESS_TTL, HUB_MCP_SCOPES } from "../src/hub/mcp/auth.js";
-import { HUB_MCP_AUTH_MIGRATION } from "../src/hub/mcp/auth-schema.js";
 import { HubSessions } from "../src/hub/sessions.js";
 import { HubProtocolError } from "../src/hub/validation.js";
 import { advanceHubSessionEpoch } from "../src/hub/session-epoch.js";
@@ -16,7 +15,7 @@ const verifier = "v".repeat(43), resource = "https://hub.example.test/mcp", uri 
 const registration = {client_name:"Example AI",redirect_uris:[uri],grant_types:["authorization_code","refresh_token"],response_types:["code"],token_endpoint_auth_method:"none"};
 async function world(realAudit = false) {
   let now = 1_800_000_000_000, allowed = true, revision = 1;
-  rig = await s3bRig({now:()=>now,realAudit}); HUB_MCP_AUTH_MIGRATION.up(rig.db); rig.addPerson("member","Example Person"); rig.addPerson("other","Other Person");
+  rig = await s3bRig({now:()=>now,realAudit}); rig.addPerson("member","Example Person"); rig.addPerson("other","Other Person");
   const core = new HubCore(rig.httpDeps,rig.sql), sessions = new HubSessions(core);
   const browser = async (login = "member") => { const b = await rig!.signIn(login); return sessions.context({headers:{cookie:b.cookie}} as IncomingMessage); };
   const policy = {authorize:async (_person:unknown,current:()=>boolean) => {
@@ -33,7 +32,7 @@ async function world(realAudit = false) {
   return {core,sessions,auth,client,browser,begin,approve,exchange,connected,policy,now:()=>now,advance:(ms:number)=>{now+=ms;},disable:()=>{allowed=false;revision++;},enable:()=>{allowed=true;revision++;}};
 }
 it("registers a bounded public MCP app without a secret or person supplied by the app", async () => {
-  rig = await s3bRig(); HUB_MCP_AUTH_MIGRATION.up(rig.db);
+  rig = await s3bRig();
   const auth = new HubMcpAuth(new HubCore(rig.httpDeps, rig.sql), { authorize: async () => ({ assertCurrent() {} }) });
   expect(auth.register({ client_name: "Example AI", redirect_uris: ["http://127.0.0.1:43123/callback"],
     grant_types: ["authorization_code","refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none" }))
@@ -49,7 +48,7 @@ it("validates public registration and prevents external/injected redirect scheme
 });
 it("binds consent, code and tokens to the company person, client, resource, redirect and S256 verifier",async()=>{
   const w=await world(), ctx=await w.browser(), request=w.begin();
-  expect(await w.auth.preview(ctx,request.request)).toEqual({name:"Example AI",scopes:[...HUB_MCP_SCOPES]});
+  expect(await w.auth.preview(ctx,request.request)).toEqual({name:"Example AI",scopes:[...HUB_MCP_SCOPES],redirectOrigin:new URL(uri).origin});
   const target=new URL(await w.auth.approve(ctx,request.request,["rooms:read"])), code=target.searchParams.get("code")!;
   expect(target.searchParams.get("state")).toBe("app-state");
   for(const extra of [{client_id:"a".repeat(43)},{redirect_uri:"http://127.0.0.1:43124/callback"},{resource:"https://other.test/mcp"},{code_verifier:"x".repeat(43)}])

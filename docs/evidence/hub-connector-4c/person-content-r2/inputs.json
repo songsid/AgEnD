@@ -1,0 +1,30 @@
+[
+  {
+    "path": "src/hub/audit/index.ts",
+    "sha256": "5c113a03ae8f6124bcc69dcbdd1b38c7ccdb8329be410bc8416aa4b695a9678d"
+  },
+  {
+    "path": "src/hub/http/deps.ts",
+    "sha256": "3b7817991b6b916e00f8a050e242ca1424da62711039557cedb873dfe2a40c23"
+  },
+  {
+    "path": "src/hub/rooms.ts",
+    "sha256": "e08e1980b3a7074b08bc01f7f8b0a012298b67a12abf9d22fc0f9f66500c3d88"
+  },
+  {
+    "path": "src/hub/rooms/service.ts",
+    "sha256": "5540c533063b6006c1e5fc4455ee5b82ddeeddacbb1e1d4d5b0ff448a9a09fe7"
+  },
+  {
+    "path": "tests/helpers/hub-s3b-rig.ts",
+    "sha256": "05502c6483beee6cbb972e5c31235b809b40a789b1977b5be0818cb3f43e5dbe"
+  },
+  {
+    "path": "tests/hub-db-audit.test.ts",
+    "sha256": "df8c7f38430032b05ba9ddfe81f966b40e3b6e436c2fae1da92755a04ead7e79"
+  },
+  {
+    "path": "tests/hub-mcp-door-m3240.test.ts",
+    "sha256": "08d4c8d515e737ca5b91eecbe698554dce091c30fce668a3ac7fbd0e7834b228"
+  }
+]
