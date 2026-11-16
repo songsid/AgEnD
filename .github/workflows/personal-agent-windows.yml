@@ -33,9 +33,9 @@ jobs:
         shell: pwsh
         run: |
           $toolRoot = Join-Path $env:RUNNER_TEMP 'personal-agent-proof-tools'
-          npm install --prefix $toolRoot --ignore-scripts --no-audit --no-fund @openai/codex@0.167.0 @anthropic-ai/claude-code@2.1.325
+          npm install --global --prefix $toolRoot --ignore-scripts --no-audit --no-fund @openai/codex@0.167.0 @anthropic-ai/claude-code@2.1.325
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          (Join-Path $toolRoot 'node_modules/.bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $toolRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Real native sandbox and argument controls, synthetic auth only
         shell: pwsh
         env:
