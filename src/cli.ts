@@ -144,6 +144,14 @@ setLocale(detectLocale(configForLocale));
 
 const program = new Command();
 
+program.command("connect")
+  .description("Connect a local personal app to your Fleet over stdio MCP (chat and reads only)")
+  .option("--home <directory>", "AgEnD data directory", DATA_DIR)
+  .action(async (options: { home: string }) => {
+    const [{ serveOwnerApp }, { requestOwnerApp }] = await Promise.all([import("./connect/stdio.js"), import("./connect/control.js")]);
+    await serveOwnerApp((operation, input) => requestOwnerApp(options.home, operation, input));
+  });
+
 // These read-only entry points need an existing fleet. Check once before any
 // token lookup, YAML read or status probe; setup/help/version remain available.
 program.hook("preAction", (_hooked, action) => {
@@ -362,6 +370,7 @@ fleet
 
     await fm.startCpuProfileControl().catch(err => console.warn(`Local profile control unavailable: ${String(err)}`));
     await fm.startSettingsConfirmationControl().catch(err => console.warn(`Local Settings confirmation unavailable: ${String(err)}`));
+    await fm.startOwnerAppControl().catch(err => console.warn(`Local app connector unavailable: ${String(err)}`));
     if (handlers.stopping) return;
     cpuProfile = await fm.startEnvironmentCpuProfile();
     if (handlers.stopping) { await cpuProfile?.stop("startup superseded by shutdown"); return; }

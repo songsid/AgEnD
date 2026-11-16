@@ -3717,6 +3717,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private settingsRuntimeRevision = 0;
   private settingsConfirmation: SettingsHttpConfirmation | null = null;
   private settingsControl: SettingsControlServer | null = null;
+  private ownerAppControl: import("./connect/control.js").OwnerAppControl | null = null;
   private settingsJobSettlements = new Map<string, Promise<void>>();
   private classicSettingsOwners = new WeakMap<SettingsExecution, { instanceName: string; epoch: number; daemon: object | undefined }>();
 
@@ -4796,6 +4797,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       () => !this.shuttingDown && this.settingsGeneration === generation);
     this.settingsControl = control;
     try { await control.listen(); } catch (err) { if (this.settingsControl === control) this.settingsControl = null; throw err; }
+  }
+
+  /** A person's local app gets a private, read/chat-only surface, never an instance's tool permissions. */
+  async startOwnerAppControl(): Promise<void> {
+    if (this.shuttingDown || this.ownerAppControl) return;
+    const [{ OwnerAppControl }, { createOwnerAppService }] = await Promise.all([import("./connect/control.js"), import("./connect/service.js")]);
+    if (this.shuttingDown || this.ownerAppControl) return;
+    const service = createOwnerAppService({
+      current: () => !this.shuttingDown && !!this.fleetConfig,
+      agents: () => Object.entries(this.fleetConfig?.instances ?? {}).map(([name, config]) => ({ name,
+        display_name: config.display_name, backend: config.backend ?? "claude-code", status: this.getInstanceStatus(name) })),
+      identity: name => this.fleetConfig?.instances[name],
+      history: this.webChatHistory,
+      board: () => this.scheduler?.db.board ?? null,
+      deliver: async (name, text, messageId, current) => {
+        if (!current()) return false;
+        const config = this.fleetConfig!.instances[name]!;
+        const adapter = this.getAdapterForInstance(name);
+        const result = await this.deliverHumanToInstance(name, { type: "fleet_inbound", targetSession: name, content: text,
+          meta: { chat_id: String(this.getGroupIdForInstance(name) ?? ""), thread_id: String(config.topic_id ?? ""),
+            message_id: messageId, user: "Local app", user_id: "local-connector", source: "web", adapter_id: adapter?.id,
+            ts: new Date().toISOString() } }, undefined, text, { stillCurrent: current, authorityCurrent: () => !this.shuttingDown && this.fleetConfig?.instances[name] === config });
+        // No web-verified origin or human receipt authority is manufactured for an external app.
+        if (result !== false) this.emitSseEvent("message", { instance: name, sender: "Local app", role: "user", text, messageId, ts: new Date().toISOString() });
+        return result;
+      },
+    });
+    const control = this.ownerAppControl = new OwnerAppControl(this.dataDir, service);
+    try { await control.listen(); }
+    catch (error) { if (this.ownerAppControl === control) this.ownerAppControl = null; throw error; }
   }
 
   private get webToken(): string | null { return readWebToken(this.dataDir); }
@@ -26937,6 +26968,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
     const settingsControl = this.settingsControl; this.settingsControl = null;
     const settingsControlStopped = settingsControl?.close();
+    const ownerAppControl = this.ownerAppControl; this.ownerAppControl = null;
+    const ownerAppStopped = ownerAppControl?.close();
     this.publicLinkAutoOpen?.stop();
     const publicStopped = this.publicWebLink?.close("fleet shutdown");
     this.webRemoteAccessState?.close();                                // #3008: an unsaved switch gets its last write
@@ -26996,6 +27029,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await hubStopped;
     await needsStopped;
     await settingsControlStopped;
+    await ownerAppStopped;
     await cacheStopped;
     await quotaNoticesStopped;
     this.quotaNotices = null;

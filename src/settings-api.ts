@@ -1,4 +1,5 @@
 import { handleHubWebInitHttp } from "./hub/init/web-http.js";
+import { connectInstallInfo } from "./connect/install.js";
 import { handleHubWebAddressHttp } from "./hub/settings-web-address-http.js";
 import { handleHubMemberAddressHttp } from "./hub/settings-member-address-http.js";
 import { handleHubDirectoryHostNoticeHttp } from "./hub/settings-directory-host-notice-http.js";
@@ -597,6 +598,10 @@ export function handleSettingsRequest(
   }
 
   // ── Reads ──
+  if (method === "GET" && path === "/api/settings/connector") {
+    json(res, 200, connectInstallInfo(ctx.dataDir), true);
+    return true;
+  }
   // What each field costs to change, derived from HOT_INSTANCE_CONFIG_KEYS.
   // The page used to carry its own copy of the hot set plus one hand-written
   // badge per field, which could disagree with what the fleet actually does.
