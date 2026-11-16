@@ -1,0 +1,58 @@
+{
+  "sourceBase": "1c1c8b2325e2c067b5f664829315d0daa789a99b",
+  "inputs": [
+    {
+      "path": "src/hub/mcp/auth.ts",
+      "sha256": "d211150b32201382d376aef2f14a50d0ceefeb0ea1f306d3b934a3b7ae266de8"
+    },
+    {
+      "path": "src/hub/mcp/auth-schema.ts",
+      "sha256": "cb21753f040c715fe0d7b7f43084bf0da5fda51cb64a1ee5f1aee7b47aa435ae"
+    },
+    {
+      "path": "tests/hub-mcp-auth-m3240.test.ts",
+      "sha256": "9e8145b6aa6340347eb3777a80ec20e33ac1e9f84f43c5e4df5ee53a99d140e8"
+    },
+    {
+      "path": "docs/design/hub-connector-4c.md",
+      "sha256": "95ad3003c8b5c306c7e2da8083b4a63d9169e24a376a6b9982d4d57410772e0d"
+    }
+  ],
+  "checks": {
+    "focusedTests": {
+      "files": 1,
+      "passed": 17
+    },
+    "sourceTypeScript": 0,
+    "testTypeScript": 0,
+    "changelogFragments": 568
+  },
+  "reversals": {
+    "originalSha256": "d211150b32201382d376aef2f14a50d0ceefeb0ea1f306d3b934a3b7ae266de8",
+    "restored": true,
+    "results": [
+      {
+        "guard": "pkce",
+        "exitCode": 1,
+        "caughtByAssertion": true,
+        "selected": 1,
+        "unselected": 16
+      },
+      {
+        "guard": "owner",
+        "exitCode": 1,
+        "caughtByAssertion": true,
+        "selected": 1,
+        "unselected": 16
+      },
+      {
+        "guard": "scope",
+        "exitCode": 1,
+        "caughtByAssertion": true,
+        "selected": 1,
+        "unselected": 16
+      }
+    ]
+  },
+  "scope": "Owned SQLite, Hub browser contexts and inert directory; real audit selected. No mounted OAuth/HTTP MCP, CLI, browser, live Hub, live AD or deployment claim."
+}
