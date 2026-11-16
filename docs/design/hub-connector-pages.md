@@ -21,3 +21,11 @@ The actual-page fixture serves the real Hub HTTP services, SQLite and audit over
 Native app interoperability is a separate leg: the installed Linux Claude Code and Codex binaries run in disposable client containers with URL-only remote MCP configuration, native no-browser OAuth and a few short real calls on our own accounts. Only account authentication files are copied into isolated homes; personal MCP/configuration/skills are not inherited. The test authority and DNS alias exist only inside the owned rig. The server fixture uses an owned Docker network because Docker Desktop host networking is separate from the WSL loopback namespace.
 
 The public evidence records each stage rather than claiming a packaged systemd Fleet, desktop-app UI, real directory or full production listener factory test. Rollback removes the page feature/mounts and serving entries; the compatible parent auth/door schema and retained connection history remain. Disabling the administrator switch first ends app access. A user-facing Hub requires a certificate already trusted by the app; no self-signed trust shortcut is offered.
+
+## Consent destination and retired sessions
+
+Browser preview returns only the selected redirect origin (no path, query or OAuth secrets), derived from the retained authorization request. Consent prominently shows the HTTPS origin, or an app on this computer with its loopback host/port. The app-provided name is never treated as a vendor proof; the person must recognize the app and return address. No vendor-name heuristic grants trust.
+
+Every new app browser read/write captures the page's session CSRF scope. The client refuses a retired scope before dispatch, while component lifetime fences still retire late results. The room toggle uses the same captured scope. No bearer/native MCP token is accepted at these browser methods.
+
+My AI apps uses an explicit paste hint for Claude Code/Codex, an address-only instruction for other apps, primary Copy address and the shared manual-setup disclosure. A right-aligned Disconnect and compact permission/date summary fit the app row on phones. All administrator choices are disabled with the switch off; the policy warning explicitly says narrowing ends every existing app connection.

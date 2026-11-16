@@ -125,7 +125,7 @@ export class HubMcpAuth {
   async preview(ctx: HubRequestContext, id: string) {
     const row = this.request(id), actor = await this.browser(ctx), permit = await this.permit(actor.person, actor.current);
     this.request(id); permit.assertCurrent();
-    return { name: this.client(row.client_id).name, scopes: JSON.parse(row.scopes) as HubMcpScope[] };
+    return { name: this.client(row.client_id).name, scopes: JSON.parse(row.scopes) as HubMcpScope[], redirectOrigin:new URL(row.redirect_uri).origin };
   }
   async approve(ctx: HubRequestContext, id: string, input: unknown): Promise<string> {
     const selected = parse(scopesSchema, input, "invalid_scope"), row = this.request(id), actor = await this.browser(ctx);

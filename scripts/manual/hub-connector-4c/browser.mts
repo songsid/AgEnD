@@ -6,6 +6,7 @@ import {request} from "node:https";
 import {createHash} from "node:crypto";
 import {createOwnedPki,trustOwnedBrowserCa,startOwnedHub} from "./rig.mjs";
 if(process.platform!=="linux")throw new Error("This campaign requires headless Linux inside WSL.");
+const launchLoad=Number(readFileSync("/proc/loadavg","utf8").split(/\s+/)[0]);if(!Number.isFinite(launchLoad)||launchLoad>10)throw new Error("Host load exceeds the owned browser limit");
 const out=resolve(process.env.OUT||".artifacts/hub-connector-4c/ui/browser");mkdirSync(out,{recursive:true});
 const scratch=mkdtempSync(join(out,"owned-")),browserHome=join(scratch,"browser-home");mkdirSync(browserHome,{mode:0o700});
 process.env.PLAYWRIGHT_BROWSERS_PATH=resolve(process.env.PW_BROWSERS||".artifacts/hub-connector-4c/ui/pw/browsers");
@@ -45,7 +46,7 @@ try{
    const scopes=r.hub.db.prepare("SELECT scopes,person FROM hub_mcp_apps WHERE state='active' ORDER BY created_at DESC LIMIT 1").get() as {scopes:string;person:string};check(c.tag+": exact selected scopes committed",scopes.scopes==='["rooms:read","agents:ask"]');check(c.tag+": colleague identity committed",scopes.person===r.personKey);
    await person.goto(r.origin+"/ui/hub?view=ai-apps");await person.getByRole("button",{name:zh?"中斷連接":"Disconnect",exact:true}).waitFor();
    const apps=person.locator(".hub-ai-apps");check(c.tag+": listed actual grant",(await apps.innerText()).includes("Example AI"));
-   for(const app of["claude","codex","generic"]){await apps.locator("select").selectOption(app);await apps.getByRole("button",{name:zh?"複製設定提示":"Copy setup prompt",exact:true}).click();const copied=await person.evaluate(()=>navigator.clipboard.readText());check(c.tag+":"+app+": address-only setup",copied.includes(r.origin+"/mcp")&&!/access_token|refresh_token|client_secret|wsl\.exe|\"command\"/.test(copied));}
+   for(const app of["claude","codex","generic"]){await apps.locator("select").selectOption(app);await apps.getByRole("button",{name:app==="generic"?(zh?"複製位址":"Copy address"):(zh?"複製設定提示":"Copy setup prompt"),exact:true}).click();const copied=await person.evaluate(()=>navigator.clipboard.readText());check(c.tag+":"+app+": address-only setup",copied.includes(r.origin+"/mcp")&&!/access_token|refresh_token|client_secret|wsl\.exe|\"command\"/.test(copied));}
    const metrics=await apps.evaluate((el:HTMLElement)=>({width:el.clientWidth,scroll:el.scrollWidth,controls:[...el.querySelectorAll("button,select,summary")].map(n=>({h:n.getBoundingClientRect().height,w:n.getBoundingClientRect().width}))}));
    check(c.tag+": no horizontal overflow",metrics.scroll<=metrics.width+1,metrics);check(c.tag+": touch sizes",metrics.controls.every((m:any)=>m.h>=44&&m.w>=44),metrics.controls);
    await apps.screenshot({path:join(out,c.tag+"-apps.png")});await apps.getByRole("button",{name:zh?"中斷連接":"Disconnect",exact:true}).click();await apps.getByText(zh?"尚未連接任何 AI App。":"No AI apps are connected.",{exact:true}).waitFor();

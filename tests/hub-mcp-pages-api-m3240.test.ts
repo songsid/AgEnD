@@ -1,5 +1,6 @@
 import {afterEach,expect,it,vi} from "vitest";
 import {randomUUID} from "node:crypto";
+import {createHash} from "node:crypto";
 import {s3bRig} from "./helpers/hub-s3b-rig.js";
 let rig:Awaited<ReturnType<typeof s3bRig>>|undefined;
 afterEach(async()=>{await rig?.close();rig=undefined;vi.restoreAllMocks();});
@@ -34,4 +35,11 @@ it("does not reveal a held directory search after its administrator session ends
 it("refuses oversized directory results rather than returning a partial unvalidated suggestion",async()=>{
  const w=await world();rig!.directory.searchGrantPeople=async()=>({ok:true,truncated:false,people:Array.from({length:21},()=>({person:rig!.admin,login:"admin",displayName:"Not returned"}))});
  const out=await rig!.call(w.admin,"GET","/hub/v1/admin/ai-apps/search?kind=person&q=Ex");expect(out.status).toBe(400);expect(JSON.stringify(out.json)).not.toContain("Not returned");
+});
+it.each(["http://127.0.0.1:43123/callback","https://other-app.example/receive?client=owned"])("shows the selected return origin on browser consent without echoing redirect path or query (%s)",async redirect=>{
+ const w=await world(),policy=await rig!.call(w.admin,"GET","/hub/v1/admin/ai-apps");await rig!.call(w.admin,"PATCH","/hub/v1/admin/ai-apps",{...policy.json,enabled:true});
+ const client=await rig!.call(null,"POST","/mcp/oauth/register",{client_name:"Claude Code",redirect_uris:[redirect]});
+ const query=new URLSearchParams({client_id:client.json.client_id,redirect_uri:redirect,response_type:"code",resource:"https://hub.example.test/mcp",code_challenge_method:"S256",code_challenge:createHash("sha256").update("v".repeat(43)).digest("base64url")});
+ const response=await fetch(rig!.base+"/mcp/oauth/authorize?"+query,{redirect:"manual"}),request=new URL(response.headers.get("location")!,rig!.base).searchParams.get("request");
+ const view=await rig!.call(w.member,"GET","/hub/v1/mcp/consent?request="+request);expect(view.status).toBe(200);expect(view.json).toMatchObject({name:"Claude Code",redirectOrigin:new URL(redirect).origin});expect(view.json.redirectOrigin).not.toContain("receive");
 });

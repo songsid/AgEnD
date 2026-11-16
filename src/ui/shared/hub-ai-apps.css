@@ -6,4 +6,7 @@
 .hub-ai-apps .hub-app-list { padding: 0; list-style: none; }
 .hub-ai-apps .hub-app-row { display: grid; gap: var(--s-2); min-width: 0; overflow-wrap: anywhere; }
 .hub-ai-apps textarea { width: 100%; resize: vertical; }
-.hub-ai-apps summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; }
+.hub-ai-apps summary { min-height: var(--tap); cursor: pointer; }
+.hub-ai-apps .s-disclosure-body { padding: var(--s-3); }
+.hub-ai-apps .hub-app-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+.hub-ai-apps .hub-app-disconnect { justify-self: end; }

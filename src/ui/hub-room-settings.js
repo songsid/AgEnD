@@ -44,6 +44,7 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
   const [name, setName] = useState(room.name ?? ""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [allMention, setAllMention] = useState(settings.allMention !== false), [history, setHistory] = useState(settings.historyForNew === "all" ? "all" : "since-join");
   const [aiApps,setAiApps]=useState(settings.aiApps!==false);
+  const [aiAppsScope]=useState(()=>client.aiAppsScope?.());
   const [offered, setOffered] = useState(assistant === true), [addPeople, setAddPeople] = useState([]), [addAgents, setAddAgents] = useState([]), [peopleNote, setPeopleNote] = useState("");
   const live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
@@ -112,7 +113,7 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
       <label class="check"><input id="hubRoomAllMention" class="s-ui-toggle" type="checkbox" role="switch" checked=${allMention} disabled=${busy}
         onChange=${(e) => { const v = e.target.checked; setAllMention(v); void act(() => client.updateRoom(roomId, { allMention: v }), () => setAllMention(!v)); }} /><span>${hroom("membersCanAll")}</span></label>
       ${typeof settings.aiApps==="boolean"&&typeof client.setRoomAiApps==="function"?html`<label class="check"><input id="hubRoomAiApps" class="s-ui-toggle" type="checkbox" role="switch" checked=${aiApps} disabled=${busy}
-        onChange=${e=>{const value=e.target.checked;setAiApps(value);void act(()=>client.setRoomAiApps(roomId,value),()=>setAiApps(!value));}}/><span>${ha("roomSwitch")}</span></label>`:null}
+        onChange=${e=>{const value=e.target.checked;setAiApps(value);void act(()=>client.setRoomAiApps(aiAppsScope,roomId,value),()=>setAiApps(!value));}}/><span>${ha("roomSwitch")}</span></label>`:null}
       <fieldset class="field"><legend>${hroom("newMembersSee")}</legend>
         ${[["since-join", hroom("historyAfter")], ["all", hroom("historyAll")]].map(([value, label]) => html`<label class="check" key=${value}><input type="radio" name="hubRoomHistory" value=${value} checked=${history === value} disabled=${busy}
           onChange=${() => { const old = history; setHistory(value); void act(() => client.updateRoom(roomId, { historyForNew: value }), () => setHistory(old)); }} /><span>${label}</span></label>`)}

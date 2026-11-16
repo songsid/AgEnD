@@ -9,7 +9,7 @@ afterEach(async()=>{for(const p of pages.splice(0)){await p.unmount();p.restore(
 const button=(p:AppPage,label:string)=>[...p.root.querySelectorAll("button")].find((b:any)=>b.textContent===label);
 async function mount(name="AppConsentPage",language="en",overrides:any={},props:any={}){
  const p=page({url:"https://hub.example.com/ui/hub?view=app-consent&request=owned",storage:{agend_lang:language}});pages.push(p);words.setLang(language,{store:false});const ended=new Set<()=>void>();
- const client={appConsent:vi.fn(async()=>({ok:true,name:"Example AI",scopes:[...ui.APP_SCOPES]})),saveAppConsent:vi.fn(async()=>({ok:true,location:"http://127.0.0.1:43123/callback?code=owned"})),
+ const client={aiAppsScope:()=>"owned-scope",appConsent:vi.fn(async()=>({ok:true,name:"Example AI",scopes:[...ui.APP_SCOPES],redirectOrigin:"http://127.0.0.1:43123"})),saveAppConsent:vi.fn(async()=>({ok:true,location:"http://127.0.0.1:43123/callback?code=owned"})),
   aiApps:vi.fn(async()=>({ok:true,address:"https://hub.example.com/mcp",available:true,apps:[{id:"app-one",name:"Example AI",scopes:[...ui.APP_SCOPES],connectedAt:1800000000000,lastUsedAt:1800000001000}]})),disconnectAiApp:vi.fn(async()=>({ok:true})),
   aiAppsSettings:vi.fn(async()=>({ok:true,revision:1,enabled:false,everyone:true,subjects:[]})),saveAiAppsSettings:vi.fn(async()=>({ok:true,revision:2,enabled:true,everyone:true,subjects:[]})),
   teams:vi.fn(async()=>({ok:true,teams:[]})),teamsLive:()=>true,searchAiAppSubjects:vi.fn(async()=>({ok:true,people:[],groups:[]})),
@@ -24,11 +24,35 @@ it.each(["en","zh-TW"])("draws three selected consent scopes and the disabled la
 });
 it("sends only the chosen scopes and follows a validated callback, without a caller identity",async()=>{
  const{p,client,returnTo}=await mount();const read=p.root.querySelector('[data-app-scope="rooms:read"]');read.checked=false;fire(read,"change");await settle(5);fire(button(p,"Allow"),"click");await settle(15);
- expect(client.saveAppConsent).toHaveBeenCalledExactlyOnceWith("owned",{scopes:["rooms:post","agents:ask"]});expect(returnTo).toHaveBeenCalledExactlyOnceWith("http://127.0.0.1:43123/callback?code=owned");
+ expect(client.saveAppConsent).toHaveBeenCalledExactlyOnceWith("owned-scope","owned",{scopes:["rooms:post","agents:ask"]});expect(returnTo).toHaveBeenCalledExactlyOnceWith("http://127.0.0.1:43123/callback?code=owned");
+});
+it("discloses an HTTPS app's return origin independently of its unverified name",async()=>{
+ const{p}=await mount("AppConsentPage","en",{appConsent:vi.fn(async()=>({ok:true,name:"Claude Code",scopes:[...ui.APP_SCOPES],redirectOrigin:"https://other-app.example"}))});
+ expect(p.root.textContent).toContain("https://other-app.example");expect(p.root.textContent).toContain("recognize the app and this return address");expect(p.root.textContent).toContain("The Hub can't check who made it");
+});
+it("shows a local callback and refuses Allow with no selected scope or no disclosed destination",async()=>{
+ const{p,client}=await mount();expect(p.root.textContent).toContain("An app on this computer (127.0.0.1:43123)");
+ for(const input of p.root.querySelectorAll("[data-app-scope]")){input.checked=false;fire(input,"change");await settle(1);}await settle(5);expect(button(p,"Allow").disabled).toBe(true);fire(button(p,"Allow"),"click");await settle(5);expect(client.saveAppConsent).not.toHaveBeenCalled();
+});
+it("keeps the manual disclosure closed and gives generic apps an address instead of a prompt button",async()=>{
+ const{p}=await mount("MyAiAppsPage");expect(p.root.querySelector("details.s-ui-disclosure").open).not.toBe(true);expect(p.root.textContent).toContain("Set it up by hand");expect(p.root.textContent).toContain("Paste this into Claude Code");expect(button(p,"Copy address").className).toContain("btn-primary");
+ const select=p.root.querySelector("select");select.value="generic";fire(select,"change");await settle(5);expect(button(p,"Copy setup prompt")).toBeUndefined();expect(p.root.textContent).toContain("Add the address above as a remote MCP server");expect(p.root.textContent).toContain("May:");
+});
+it("uses short connected dates, relative last use and disabled choices while app access is off",async()=>{
+ const{p}=await mount("AiAppsAdminCard");expect([...p.root.querySelectorAll('input[type="radio"]')].every(input=>input.disabled)).toBe(true);
+ const now=Date.UTC(2026,10,16,12),dates=ui.appConnectionDates(now,now-120000,now);expect(dates).toContain("16 Nov");expect(dates).toContain("2 minutes ago");
+});
+it("retires queued app reads and writes after another sign-in instead of using the new person's cookie",async()=>{
+ const{createHubWebClient}=await import("/ui/js/hub-client.js");let csrf="first";const calls:any[]=[];
+ const client=createHubWebClient({fetchImpl:async(path:any,init:any)=>{calls.push([path,init]);return{ok:true,status:200,headers:{get:()=>null},json:async()=>({signedIn:true,csrf})};}});
+ await client.session();const old=client.aiAppsScope();csrf="second";await client.signIn("another","owned");const count=calls.length;
+ for(const read of[()=>client.aiApps(old),()=>client.appConsent(old,"old-request"),()=>client.aiAppsSettings(old),()=>client.searchAiAppSubjects(old,"person","Casey")])expect((await read()).ok).toBe(false);
+ for(const write of[()=>client.saveAppConsent(old,"old-request",{cancel:true}),()=>client.disconnectAiApp(old,"app-one"),()=>client.saveAiAppsSettings(old,{}),()=>client.setRoomAiApps(old,"room-one",false)])expect((await write()).ok).toBe(false);
+ expect(calls).toHaveLength(count);
 });
 it("cancels explicitly and never treats a script return address as a callback",async()=>{
  const{p,client,returnTo}=await mount("AppConsentPage","en",{saveAppConsent:vi.fn(async()=>({ok:true,location:"javascript:alert(1)"}))});fire(button(p,"Cancel"),"click");await settle(15);
- expect(client.saveAppConsent).toHaveBeenCalledExactlyOnceWith("owned",{cancel:true});expect(returnTo).not.toHaveBeenCalled();expect(p.root.textContent).toContain("return address");
+ expect(client.saveAppConsent).toHaveBeenCalledExactlyOnceWith("owned-scope","owned",{cancel:true});expect(returnTo).not.toHaveBeenCalled();expect(p.root.textContent).toContain("return address");
 });
 it("retires a held consent result after sign-out",async()=>{
  let finish!:(value:any)=>void;const{p,returnTo,end}=await mount("AppConsentPage","en",{saveAppConsent:vi.fn(()=>new Promise(r=>{finish=r;}))});fire(button(p,"Allow"),"click");await settle(5);end();await settle(5);finish({ok:true,location:"http://127.0.0.1:43123/callback?code=owned"});await settle(15);
@@ -45,13 +69,13 @@ it("hides the previous consent identity synchronously when a new request starts 
 });
 it.each(["en","zh-TW"])("shows connections and disconnects only the selected app (%s)",async language=>{
  const{p,client}=await mount("MyAiAppsPage",language);expect(p.root.textContent).toContain("Example AI");expect(p.root.querySelector('input[type="url"]').value).toBe("https://hub.example.com/mcp");
- client.aiApps.mockResolvedValue({ok:true,address:"https://hub.example.com/mcp",available:true,apps:[]});fire(button(p,language==="en"?"Disconnect":"中斷連接"),"click");await settle(20);expect(client.disconnectAiApp).toHaveBeenCalledExactlyOnceWith("app-one");expect(p.root.textContent).not.toContain("Example AI");
+ client.aiApps.mockResolvedValue({ok:true,address:"https://hub.example.com/mcp",available:true,apps:[]});fire(button(p,language==="en"?"Disconnect":"中斷連接"),"click");await settle(20);expect(client.disconnectAiApp).toHaveBeenCalledExactlyOnceWith("owned-scope","app-one");expect(p.root.textContent).not.toContain("Example AI");
 });
 it("saves the administrator's default-off policy and exact selected-person subject",async()=>{
  const{p,client}=await mount("AiAppsAdminCard","en",{searchAiAppSubjects:vi.fn(async()=>({ok:true,people:[{person:{realm:"corp",objectId:"person-a"},login:"casey",displayName:"Casey"}]}))});
  const enabled=p.root.querySelector('[role="switch"]');expect(enabled.checked).toBe(false);enabled.checked=true;fire(enabled,"change");const radio=p.root.querySelectorAll('input[type="radio"]')[1];fire(radio,"change");await settle(10);
  const kind=p.root.querySelector("[data-subject-kind]");kind.value="person";fire(kind,"change");await settle(10);const input=p.root.querySelector('input[type="search"]');input.value="Ca";fire(input,"input");await settle(330);fire(button(p,"Choose"),"click");await settle(10);fire(button(p,"Save"),"click");await settle(15);
- expect(client.saveAiAppsSettings).toHaveBeenCalledExactlyOnceWith({revision:1,enabled:true,everyone:false,subjects:[{kind:"person",id:"corp/person-a",name:"Casey"}]});
+ expect(client.saveAiAppsSettings).toHaveBeenCalledExactlyOnceWith("owned-scope",{revision:1,enabled:true,everyone:false,subjects:[{kind:"person",id:"corp/person-a",name:"Casey"}]});
 });
 it("renders app labels as text and refuses all controls on a denied consent",async()=>{
  const{p,client}=await mount("AppConsentPage","en",{appConsent:vi.fn(async()=>({ok:false,status:403}))});expect(p.root.textContent).toContain("administrator");expect(button(p,"Allow")).toBeUndefined();expect(client.saveAppConsent).not.toHaveBeenCalled();
@@ -59,7 +83,7 @@ it("renders app labels as text and refuses all controls on a denied consent",asy
 it("sends browser-only URLs and CSRF through the existing Hub client",async()=>{
  const{createHubWebClient}=await import("/ui/js/hub-client.js");const calls:any[]=[];
  const client=createHubWebClient({fetchImpl:async(path:any,init:any)=>{calls.push([path,init]);return{ok:true,status:200,headers:{get:()=>null},json:async()=>path==="/hub/v1/session"?{signedIn:true,csrf:"owned-csrf",features:["mcp-apps-v1"]}:{}};}});
- await client.session();await client.appConsent("opaque&other=x");await client.saveAppConsent("opaque",{scopes:["rooms:read"]});await client.disconnectAiApp("app-one");await client.searchAiAppSubjects("person","Casey & Riley");await client.setRoomAiApps("room-one",false);
+ await client.session();const scope=client.aiAppsScope();await client.appConsent(scope,"opaque&other=x");await client.saveAppConsent(scope,"opaque",{scopes:["rooms:read"]});await client.disconnectAiApp(scope,"app-one");await client.searchAiAppSubjects(scope,"person","Casey & Riley");await client.setRoomAiApps(scope,"room-one",false);
  expect(calls[1][0]).toBe("/hub/v1/mcp/consent?request=opaque%26other%3Dx");expect(calls[2][1].headers["X-AgEnD-Hub-CSRF"]).toBe("owned-csrf");expect(JSON.parse(calls[2][1].body)).toEqual({request:"opaque",scopes:["rooms:read"]});
  expect(calls[3][1].method).toBe("DELETE");expect(calls[4][0]).toBe("/hub/v1/admin/ai-apps/search?kind=person&q=Casey+%26+Riley");expect(JSON.parse(calls[5][1].body)).toEqual({enabled:false});expect(calls.every(([,init])=>init.credentials==="same-origin"&&!init.headers.Authorization)).toBe(true);
 });
@@ -75,8 +99,8 @@ it("links the whole Hub panel and keeps an app request on the signed-out sign-in
 });
 it("mounts the actual app consent query view in the signed-in Hub panel",async()=>{
  const p=page({url:"https://hub.example.com/ui/hub?view=app-consent&request=owned"});pages.push(p);words.setLang("en",{store:false});
- const panel=await import("/ui/js/panel-hub.js"),clients=await import("/ui/js/hub-client.js");const consent=vi.fn(async()=>({ok:true,name:"Example AI",scopes:[...ui.APP_SCOPES]}));panel.resetHubSession();clients.setHubClient({session:async()=>({ok:true,signedIn:true,displayName:"Casey",features:["mcp-apps-v1"]}),roomList:async()=>({ok:true,rooms:[]}),appConsent:consent,onSignedOut:()=>()=>{}});
- try{await p.mount(h(panel.HubPanel,{route:{panel:"hub",tab:"ask"}}));await settle(25);const link=p.document.querySelector('link[data-hub-apps-css="1"]');expect(link).toBeTruthy();fire(link!,"load");await settle(20);expect(consent).toHaveBeenCalledWith("owned");expect(p.root.textContent).toContain("Let Example AI use this Hub as you?");}
+ const panel=await import("/ui/js/panel-hub.js"),clients=await import("/ui/js/hub-client.js");const consent=vi.fn(async()=>({ok:true,name:"Example AI",scopes:[...ui.APP_SCOPES],redirectOrigin:"http://127.0.0.1:43123"}));panel.resetHubSession();clients.setHubClient({session:async()=>({ok:true,signedIn:true,displayName:"Casey",features:["mcp-apps-v1"]}),roomList:async()=>({ok:true,rooms:[]}),appConsent:consent,onSignedOut:()=>()=>{}});
+ try{await p.mount(h(panel.HubPanel,{route:{panel:"hub",tab:"ask"}}));await settle(25);const link=p.document.querySelector('link[data-hub-apps-css="1"]');expect(link).toBeTruthy();fire(link!,"load");await settle(20);expect(consent).toHaveBeenCalledWith(undefined,"owned");expect(p.root.textContent).toContain("Let Example AI use this Hub as you?");}
  finally{await p.unmount();panel.resetHubSession();clients.setHubClient(null);}
 });
 it.each(["claude","codex","generic"])("builds a remote-only setup prompt for %s and rejects secret-bearing addresses",app=>{
