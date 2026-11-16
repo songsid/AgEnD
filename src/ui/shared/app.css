@@ -4658,7 +4658,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
     --fs-sm: calc(13px * var(--text-scale)); --lh-sm: calc(18px * var(--text-scale));
     --fs-md: calc(15px * var(--text-scale)); --lh-md: calc(24px * var(--text-scale));
     --fs-lg: calc(17px * var(--text-scale)); --lh-lg: calc(24px * var(--text-scale));
-    --fs-xl: calc(22px * var(--text-scale));
+    --fs-xl: calc(22px * var(--text-scale)); --lh-xl: calc(28px * var(--text-scale));
   }
   .sidebar.fleet-side .side-nav, .sidebar.fleet-side .view-roster { display: contents; }
   .sidebar.fleet-side .side-head { order: 0; }
