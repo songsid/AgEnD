@@ -117,4 +117,3 @@ AssertionError: expected [ 'hub_room_list', …(82) ] to deeply equal [ 'list_ag
       Tests  1 failed | 4 skipped (5)
    Start at  13:58:36
    Duration  1.22s (transform 104ms, setup 101ms, import 291ms, tests 674ms, environment 0ms)
-

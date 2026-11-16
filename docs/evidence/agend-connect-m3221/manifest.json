@@ -114,11 +114,11 @@
     },
     {
       "path": "catalog-before.log",
-      "sha256": "7a1a4958bbf7640f39426fa38cb0a1e4fb6a619d5b1b201641632d035fa6379d"
+      "sha256": "70121540d5f898e6731d2402049dba66de0ed5590cfc333a961779554b856a48"
     },
     {
       "path": "connector-final.log",
-      "sha256": "8c6573ebf8b1246b21f320dcce63609551a22cc6c64e1afebc38cbb4268b22e2"
+      "sha256": "8564fdac78e93f1c6d33bdcc4b9041188ce0ea30128e0168750eb53bfe98f931"
     },
     {
       "path": "fixture-build-incomplete-before.log",
@@ -126,11 +126,11 @@
     },
     {
       "path": "focused-final.log",
-      "sha256": "eacf204d0a6e828fa775e6edea6dd9c9b49263be4c71d32e2cb02aa5ffae9759"
+      "sha256": "09d0081901a36d85eceffafea9602329ee6f9e18bf0e83334716a5ae503a3c51"
     },
     {
       "path": "hub-hooks-isolated.log",
-      "sha256": "5eb35195281cc0223a783c2e3500b1fa3996685c82c9eb753dd65e77372f24b8"
+      "sha256": "186949d2d5a4430ceb66c02f391a9fd355801e4502fa1e82bed34346a01fc83d"
     },
     {
       "path": "images/desk-dark-zh-TW-card.png",
@@ -166,7 +166,7 @@
     },
     {
       "path": "install-after.log",
-      "sha256": "95d8b85c9736f809cfa64602218e77bf798b2f2bcc98b0b23ad2446c65ab31fa"
+      "sha256": "1b869df3367f4dac17f26c79b63b4f9df858570233aec614cbec1b5606ac1dd0"
     },
     {
       "path": "phone-retake-receipt.json",
@@ -187,6 +187,28 @@
     {
       "path": "test-types-acceptance.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "terminal_log_normalization": [
+    {
+      "path": "focused-final.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "connector-final.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "hub-hooks-isolated.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "install-after.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "catalog-before.log",
+      "terminal_newlines_removed": 1
     }
   ]
 }
