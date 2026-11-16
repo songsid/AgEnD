@@ -14,3 +14,5 @@ Validation:
 No role startup cutover, new HTTP route, UI, timer or migration registration is enabled by this slice. The UI and complete production activation stay on M-3223; their real-Hub before/after PNGs come with the mounted feature. Skill update N/A for this preparatory inactive model change, following the original inactive series; the visible UI slice updates the Hub skill.
 
 Rollback before activation: revert this unmounted compatibility preparation. After production cutover lands, use the new build's forward-only roles-off operation; never restore the old policy/floor as a permissions rollback. Binary downgrade is a separate database/schema backup procedure.
+
+Review pins: ask-only carried person and team rules are now checked independently on the role side (ask allowed, publish/pair denied), and absent/invalid local team facts stay unknown rather than deny or allow. Focused conversion file9/9; this follow-up changes tests/evidence only.
