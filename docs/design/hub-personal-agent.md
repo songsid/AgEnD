@@ -61,8 +61,9 @@ One-shot mode is unattended by design. Proposed rules, all of which exist as CLI
   changed on the computer to make it work. Claude stays eligible there, because its configuration has no shell.
   Proven so far (hosted runner, 2026-11-16, #4046): Windows 11 Enterprise 10.0.26200 on **ARM64**, Codex 0.167.0,
   Claude Code 2.1.325; the shared folder reads, and reads outside it, writes and network from commands are
-  refused. **Not yet proven: x64**, which is what colleagues' computers are, and a real model turn with a real
-  sign-in. The install page states a version only after it is proven.
+  refused. On **x64** (2026-11-16, #4061): one real Claude Code 2.1.323 answer passed on Windows 11 Enterprise
+  10.0.26100; **Codex was unavailable on that computer**, so on the one x64 setup tested a personal agent is
+  Claude only. Each computer's own check decides; no page names a Windows version as supported.
 - **Read-only.** Codex runs in its read-only sandbox. Claude runs with read tools only and permission prompts off.
   Anything that would need approval is refused, not queued.
 - **One folder.** The agent sees one folder the person chooses. The installer creates an empty default
