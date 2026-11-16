@@ -4,6 +4,8 @@ import { register, t } from "/assets/app-i18n.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api } from "./settings-confirm.js";
 import { hs, setupError } from "./settings-hub-setup-strings.js";
+/** M-3235: the most a Hub's name can be — what the brand shows (src/hub-mode.ts HUB_NAME_MAX), so none typed is cut. */
+const HUB_NAME_MAX = 60;
 // These words travel with the new renderer, even when the tab retains the setup dictionary.
 register("hubSetupReady", {
   en: {
@@ -195,7 +197,7 @@ export function HubSetupSettings() {
       <p class="note" role="status">${step} / 4 · ${hs(titles[step])}</p>
       <form class="form" onSubmit=${step === 3 ? prepare : step === 4 ? e => e.preventDefault() : next}>
       <fieldset class="form" disabled=${busy}>
-      ${step === 1 ? html`${field("name", { required: false, max: 64, hint: "nameHint" })}<div class="grid2">${field("webOrigin", { type: "url" })}${field("memberOrigin", { type: "url" })}</div><p class="note">${hs("addressHint")}</p>
+      ${step === 1 ? html`${field("name", { required: false, max: HUB_NAME_MAX, hint: "nameHint" })}<div class="grid2">${field("webOrigin", { type: "url" })}${field("memberOrigin", { type: "url" })}</div><p class="note">${hs("addressHint")}</p>
         <div class="grid2">${field("webHost")}${field("webPort", { type: "number", min: 1, maxNumber: 65535 })}${field("memberHost")}${field("memberPort", { type: "number", min: 1, maxNumber: 65535 })}</div><p class="note">${hs("listenHint")}</p>
         ${select("coexistence", [["", "choose"], ["dedicated", "dedicated"], ["same-user-pilot", "shared"]], "coexistenceHint")}
         ${select("certificate", [["generate", "generate"], ["import", "import"]], "certificateHint")}

@@ -33,6 +33,13 @@ describe("host-only browser Hub setup",()=>{
   it.each([{marked:false},{publicLink:true}])("does no reads or effects without the local page capability %j",async opts=>{
     fetcher(()=>{throw Error("unexpected");});const p=await mount(opts);expect(calls).toEqual([]);expect(p.root.querySelector("form")).toBeNull();
   });
+  // M-3235: the name field takes no more than the brand shows (HUB_NAME_MAX), so a typed name is never cut afterwards.
+  it("the Hub's name field takes at most HUB_NAME_MAX (60) characters, what the brand shows",async()=>{
+    const { HUB_NAME_MAX } = await import("../src/hub-mode.ts");
+    fetcher(defaults);const p=await mount();await click(p,"Set up on this computer");
+    const e=p.root.querySelector("#hubSetup-name") as any;
+    expect([HUB_NAME_MAX, Number(e?.maxLength || e?.getAttribute("maxLength") || e?.getAttribute("maxlength"))]).toEqual([60, 60]);
+  });
   it("a remote/retained Settings shell does not import or mount setup",async()=>{
     fetcher(defaults);const p=await mount({marked:false,component:section.HubSection,props:{hubHost:false,overPublicLink:false}});
     expect(calls.some(c=>c.path.startsWith("/api/settings/hub/setup"))).toBe(false);expect(p.root.querySelector("#hub-setup")).toBeNull();
