@@ -25,10 +25,13 @@ export interface HubIssuer {
 /** Encrypted question/answer payloads (S5, under content.key). One payload per record; S5 chooses the ref. */
 export interface HubContentStore {
   put(tx: HubTx, payload: { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot }): string;
+  /** Stores with audit-bound ciphertext seal app content to its immutable message instead of exposing an audit pointer. */
+  bindMessage?(tx: HubTx, ref: string, messageId: string): void;
   /** S3's own room projection only, after its audience check. Undefined: retention removed it (shown as expired). */
   get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
+  roleAdmin?: import("../roles/admin-types.js").RoleAdminControl;
   /** Mount-local personal execution adapter; absent leaves personal sources unusable. */
   personal?: import("../personal/types.js").HubPersonalPort;
   /** The immutable personal-mode installer advertised by the mounted Hub. */

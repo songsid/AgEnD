@@ -5,6 +5,8 @@ import { person, validated } from "../validation.js";
 import { evaluateGroupPolicy, GROUP_CAPABILITIES, parseGroupPolicy, type GroupPersonFacts, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
 import { parseHubGroupResource, type HubGroupResource, type HubGroupResourceView } from "./resources.js";
 import { HubGroupPolicyError } from "./store.js";
+import { parseRolePolicy, type HubRolePolicy } from "../roles/model.js";
+import { evaluateRolePolicy, type RoleDecision } from "../roles/evaluate.js";
 import type { GroupImpact, GroupImpactPerson, GroupImpactResource } from "./admin-dto.js";
 
 export interface HubGroupImpactPerson {
@@ -18,23 +20,35 @@ export interface HubGroupImpactResource {
 }
 export interface HubGroupHeldImpact extends GroupImpactPerson { readonly reason: "membership-unknown"; readonly capabilities: readonly GroupCapability[] }
 const capability = (r: HubGroupResource): GroupCapability => r.kind === "fleet" ? "pair_fleet" : r.kind === "exposure" ? "publish_agents" : "ask_agents";
-const denied = (p: HubGroupPolicy, key: PersonKey, cap: GroupCapability) => p.state !== "never-enabled"
+const denied = (p: Pick<HubGroupPolicy,"state" | "denies">, key: PersonKey, cap: GroupCapability) => p.state !== "never-enabled"
   && p.denies.some(d => personKeyString(d.person) === personKeyString(key) && d.deny.includes(cap));
 /** Explicit narrowing is confirmed independently of an uncertain directory observation. */
 function decision(p: HubGroupPolicy, key: PersonKey, cap: GroupCapability, facts: GroupPersonFacts, teams: readonly string[] = []): HubGroupDecision {
   if (denied(p, key, cap)) return { outcome: "deny", reason: "person-denied", authoritative: true, groups: [], maxFleets: 0 };
   return evaluateGroupPolicy(p, key, cap, facts, teams);
 }
-export function buildHubGroupImpact(input: {
-  before: HubGroupPolicy; next: HubGroupPolicy; administrator: PersonKey;
+interface ImpactInput<P> {
+  before: P; next: P; administrator: PersonKey;
   people: readonly HubGroupImpactPerson[]; resources: readonly HubGroupImpactResource[];
   facts: ReadonlyMap<string, GroupPersonFacts>;
   teamMemberships?: ReadonlyMap<string, readonly string[]>;
   teamMembers?: number;
-}) {
-  const before = parseGroupPolicy(input.before), next = parseGroupPolicy(input.next), administrator = validated(person, input.administrator);
-  const decide = (p: HubGroupPolicy, key: PersonKey, cap: GroupCapability, facts: GroupPersonFacts) =>
-    decision(p, key, cap, facts, input.teamMemberships?.get(personKeyString(key)));
+}
+type ImpactPolicy = HubGroupPolicy | HubRolePolicy;
+type Decide = (policy: ImpactPolicy, key: PersonKey, cap: GroupCapability, facts: GroupPersonFacts) => HubGroupDecision | RoleDecision;
+export function buildHubGroupImpact(input: ImpactInput<HubGroupPolicy>) {
+  return buildImpact({...input,before:parseGroupPolicy(input.before),next:parseGroupPolicy(input.next)},
+    (p,key,cap,facts) => decision(p as HubGroupPolicy,key,cap,facts,input.teamMemberships?.get(personKeyString(key))));
+}
+/** Same resource/provenance rules, evaluated on the complete role graph without flattening scopes or per-cap quotas. */
+export function buildHubRoleImpact(input: ImpactInput<HubRolePolicy> & { at: number }) {
+  return buildImpact({...input,before:parseRolePolicy(input.before),next:parseRolePolicy(input.next)}, (p,key,cap,facts) => {
+    if (denied(p,key,cap)) return {outcome:"deny",reason:"person-denied",authoritative:true,via:[],maxFleets:0,nextExpiry:null};
+    return evaluateRolePolicy(p,key,cap,null,{subject:facts,teams:input.teamMemberships?.get(personKeyString(key))},input.at,input.administrator);
+  });
+}
+function buildImpact(input: ImpactInput<ImpactPolicy>, decide: Decide) {
+  const {before,next} = input, administrator = validated(person,input.administrator);
   if (next.realm !== before.realm || next.generation !== before.generation || next.revision !== before.revision || administrator.realm !== before.realm) throw new HubGroupPolicyError("invalid");
   if ((before.state !== "never-enabled" && next.state === "never-enabled") || (before.state === "never-enabled" && next.state === "suspended")) throw new HubGroupPolicyError("invalid");
   const people = new Map<string, HubGroupImpactPerson>(), owners = new Set<string>();

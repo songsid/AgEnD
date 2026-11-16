@@ -166,7 +166,7 @@ import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
 import { TaskBoardWaker, namesCard } from "./task-board-waker.js";
-import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
+import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, questionNotices, turnQuestion, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
 import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
@@ -390,7 +390,7 @@ import { TargetQueueWorker } from "./target-queue-worker.js";
 import { resolveDeliveryWorkerMode } from "./types.js";
 import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
-import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
+import { reapLeftoverTunnels } from "./tunnel/lease.js";
 import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
 import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-hub.js";
 import { SignInKeepAlive, isKeepAliveBackend, type KeepAliveView, type SetResult as KeepAliveSetResult } from "./signin-keepalive.js";
@@ -3021,6 +3021,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly livenessGone = new Map<string, { kind: "crash_loop" | "supervision_ended"; reason: string; at: number }>();
   /** #3647: when each instance last showed working (after the startup grace): activity for "quiet". */
   private readonly lastWorkingAt = new Map<string, number>();
+  /** M-3239: the instances whose progress is read from their transcript (see cacheInstanceExecutionState). */
+  private readonly livenessTurnEvidence = new Set<string>();
   private dispatcherLiveness: DispatcherLiveness | null = null;
   /** Adapters whose last slash command registration failed and General was told (#1131). */
   private slashRegistrationFailed = new Set<string>();
@@ -5428,6 +5430,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }));
   }
 
+  /**
+   * M-3239: a tool call or an answer in the agent's transcript. Unlike the pane's spinner it counts from the fleet's start
+   * (the boot shows working; a transcript line is real work, and the monitor starts at the transcript's end).
+   */
+  private noteTurnActivity(name: string, at: number): void {
+    if (!Number.isFinite(at) || at > Date.now() + 60_000 || at < this.startedAt) return;
+    if (at > (this.lastWorkingAt.get(name) ?? 0)) this.lastWorkingAt.set(name, at);
+  }
+
+  /**
+   * M-3239: an agent ended a turn without messaging anyone. If its final text asks a question and it holds a card
+   * another agent handed it, that dispatcher is told, quoting the question — otherwise the question sits on the agent's
+   * own screen and the card stalls (a beta.7 rehearsal waited 1.5 h on one).
+   */
+  private onTurnEndedQuietly(name: string, startedAt: number, text: string): void {
+    if (this.shuttingDown || this.isPlannedRestart() || !livenessSettings(this.fleetConfig).enabled) return;
+    const question = turnQuestion(text);
+    if (!question) return;
+    const outbox = this.deliveryOutbox;
+    if (!outbox?.isOpen) return;
+    const sent = outbox.latestSentAt(name);
+    if (sent !== null && sent >= startedAt) return;                     // it did tell someone during the turn
+    const isAgent = (d: string) => (this.fleetConfig?.instances?.[d] != null || this.isClassicInstance(d)) && !taskBoardOffIn(this.fleetConfig, d);
+    for (const n of questionNotices(this.livenessCards(), name, question, startedAt, isAgent)) {
+      this.admitTaskBoardNotice(n.dispatcher, n.message, n.key);
+      this.logger.info({ assignee: name, dispatcher: n.dispatcher }, "Dispatcher told: assignee ended its turn on a question it sent no one");
+    }
+  }
+
   /** #3647: what the fleet knows about an assignee now; null when it is not an instance here. */
   private livenessFacts(name: string): AssigneeFacts | null {
     if (this.fleetConfig?.instances?.[name] == null) return null;
@@ -5452,6 +5483,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
       execution: exec ? { state: exec.state, since: exec.stateChangedAt } : null,
       lastWorkingAt: this.lastWorkingAt.get(name) ?? null,
+      turnEvidence: this.livenessTurnEvidence.has(name),
+      // M-3239 (Fable F1): a restart forgets the transcript's progress; its quiet clock starts no earlier than the fleet.
+      quietFloor: this.livenessTurnEvidence.has(name) ? this.startedAt : null,
       prompt: p.state === "awaiting_input" && p.interaction?.since ? { since: p.interaction.since } : null,
       waitingOn,
       // Asked only when it could be quiet (one indexed read per idle assignee).
@@ -6042,14 +6076,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // #1723: the public link's preview tunnel keeps its own lease beside it; a leftover one is reaped the same way (and
     // #2636's Office share tunnel's).
-    for (const leaseDir of [this.dataDir, join(this.dataDir, PUBLIC_PREVIEW_TUNNEL_DIR), join(this.dataDir, OFFICE_SHARE_TUNNEL_DIR)]) {
-      void reapStaleTunnel(leaseDir)
-        .then(outcome => {
-          if (outcome.kind === "manual") this.logger.warn({ tunnel: outcome }, manualCleanupMessage(outcome));
-          else if (outcome.kind === "reaped") this.logger.info({ how: outcome.how, pid: outcome.pid }, "Reaped a leftover tunnel");
-        })
-        .catch(err => this.logger.warn({ err }, "Tunnel reaper failed"));
-    }
+    // M-3247: this runs after auto_open (and a /web click) may already have opened this run's own tunnels; the sweep
+    // spares leases this process wrote — it once killed the named link it had opened 10 s earlier.
+    void reapLeftoverTunnels([this.dataDir, join(this.dataDir, PUBLIC_PREVIEW_TUNNEL_DIR), join(this.dataDir, OFFICE_SHARE_TUNNEL_DIR)],
+      { log: (level, message, detail) => this.logger[level](detail, message) });
     // An existing installation has never written the setup marker — it predates
     // it — so `agend setup` would open a pre-fleet form for a fleet that plainly
     // exists. A fleet that just came up on a config with agents in it is proof
@@ -7093,8 +7123,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // asks "is anyone still reporting", which only the receiver can date.
       receivedAt: now,
     });
-    // #3647: activity, for "quiet" — not the boot itself (every agent shows working while it starts).
-    if (state === "working" && now - this.startedAt >= LIVENESS_STARTUP_GRACE_MS) this.lastWorkingAt.set(name, now);
+    // #3647: activity, for "quiet" — not the boot itself (every agent shows working while it starts). M-3239: an agent
+    // whose transcript tells its turns (Claude, Codex) shows progress by its tool calls and answers, not by its pane's
+    // spinner — Claude compacting its context on its own, idle, held off a stalled card's notice.
+    if (msg.turnEvidence === true) this.livenessTurnEvidence.add(name);
+    else if (msg.turnEvidence === false) this.livenessTurnEvidence.delete(name);
+    if (typeof msg.turnActivityAt === "number") this.noteTurnActivity(name, msg.turnActivityAt);
+    if (state === "working" && !this.livenessTurnEvidence.has(name) && now - this.startedAt >= LIVENESS_STARTUP_GRACE_MS) this.lastWorkingAt.set(name, now);
     // The dashboard's "working" line and its Stop button follow the edges, not the heartbeat.
     if (previous?.state !== state) this.emitSseEvent("activity", { instance: name, state: this.getInstanceExecutionState(name) });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
@@ -12804,6 +12839,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // #1690: what our own runtime /model came to (the daemon answered claude's "Switch model?" or saw the result).
           const waiter = typeof msg.id === "string" ? this.runtimeSwitchWaiters.get(msg.id) : undefined;
           if (waiter) { this.runtimeSwitchWaiters.delete(msg.id as string); waiter(msg as unknown as OwnSwitchOutcome); }
+        } else if (msg.type === "turn_activity") {
+          if (typeof msg.at === "number") this.noteTurnActivity(name, msg.at);
+        } else if (msg.type === "turn_ended") {
+          if (typeof msg.startedAt === "number" && typeof msg.text === "string") this.onTurnEndedQuietly(name, msg.startedAt, msg.text);
         } else if (msg.type === "instance_state" || msg.type === "instance_state_response") {
           this.cacheInstanceExecutionState(name, msg);
           if (msg.type === "instance_state_response") {
@@ -21707,6 +21746,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.modelsAfterSignIn(backend, profile ?? null);   // Chat /login and the dashboard's terminal sign-in
           return this.recoverBackendInstances(backend, undefined, profile ?? null);
         },
+        agentLabel: name => this.fleetConfig?.instances[name]?.display_name?.trim() || name,   // M-3249: the outcome line names agents as people see them
         claimWindow: backend => this.loginWindow.tryClaim("web", backend),
         releaseWindow: claim => { this.loginWindow.release(claim); },
         isClaimCurrent: claim => this.loginWindow.isCurrent(claim),

@@ -1,8 +1,15 @@
 # Personal question host (M-3224)
 
-This composing layer requires `s3-personal-agents` in the mounted migration plan. Registration remains held for the
-Windows x64 proof; the standard migration registry does not contain it yet. No production personal route, listener
-or session feature is offered until that registration. Tests explicitly install the schema and inject the factory.
+The standard HTTP migration registry now includes `s3-personal-agents`, after the retained HTTP/room schemas.
+The sealed factory mounts one private Runtime coordinator and the owner/turn adapters only when that component is
+in its actual plan; injected older HTTP entries still omit them. Personal admission remains off by default. The
+registration test uses the real factory, HTTP, SQLite and Runtime; only installer archive metadata is substituted.
+
+The authorized x64 packet in `docs/evidence/hub-personal-host-m3224/windows-x64/` proves one real Claude Code answer
+on Windows 11 Enterprise x64 10.0.26100.9711. Codex on that host remains unavailable because its PowerShell 7.4.22
+cannot initialize filesystem commands with root denied. A root-read diagnostic also read an owned outside-folder
+canary, so it is not a permitted repair. #4071's shell-read check remains in force. Availability is always local
+and per CLI, never inferred from an OS version. No further model turn was run after the one authorized answer.
 
 The Hub owns a separate Runtime coordinator under `hub/personal-runtime`. The Hub HTTPS listener serves only
 Runtime enrollment hello/enroll, credential rotation, the authenticated WSS connect path, and the immutable installer

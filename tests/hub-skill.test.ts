@@ -113,7 +113,7 @@ describe("the hub skill", () => {
       "This Hub uses a self-signed test certificate", "Certificate fingerprint", "Show the full fingerprint", "Trust this Hub and continue", "Trust again and continue",
       "Allow trusting a Hub with a self-signed certificate (for testing)", "信任這個 Hub 並繼續", "重新信任並繼續", "允許信任自簽憑證的 Hub（測試用）",
       // #3776: the colleague-join card's link to the full group editor, and the uncertain card's Check again (zh).
-      "All group permissions", "所有群組權限", "再次檢查"];
+      "All group permissions", "所有群組權限", "再次檢查", "My AI apps", "Connect your app", "Hub MCP address", "Copy setup prompt", "Disconnect", "Let people connect their own AI apps", "Allow AI apps to read and post"];
     const notQuoted = labels.filter(l => !FLAT.includes(l)), notInUi = labels.filter(l => !SOURCES.includes(l));
     expect(notQuoted, "listed here but not in the skill").toEqual([]);
     expect(notInUi, "quoted by the skill but not a UI string").toEqual([]);

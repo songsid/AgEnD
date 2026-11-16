@@ -1,0 +1,96 @@
+{
+  "profileSource": "3137a53c35df8d52e28fb43e822ab269477a9c63",
+  "platform": {
+    "edition": "Windows 11 Enterprise",
+    "architecture": "x64",
+    "build": "10.0.26100.9711",
+    "node": "v26.13.1",
+    "claude": "2.1.323 (Claude Code)",
+    "powershell": "7.4.22"
+  },
+  "priorNineSyntheticControls": [
+    {
+      "name": "effective tool flags and no inherited skills/instructions",
+      "status": "passed"
+    },
+    {
+      "name": "access-only OAuth parses without changing source or copying refresh authority",
+      "status": "passed"
+    },
+    {
+      "name": "shared folder can be read",
+      "status": "passed"
+    },
+    {
+      "name": "outside read denied with positive unsandboxed control",
+      "status": "passed"
+    },
+    {
+      "name": "staged authentication is not readable by command tools",
+      "status": "passed"
+    },
+    {
+      "name": "junction cannot escape shared folder",
+      "status": "passed"
+    },
+    {
+      "name": "writes denied",
+      "status": "passed"
+    },
+    {
+      "name": "command network denied with reachable local control",
+      "status": "passed"
+    },
+    {
+      "name": "Claude shipped help and safety argv accepted",
+      "status": "passed"
+    }
+  ],
+  "priorControlScope": "Codex named-MXC commands and local CLI flags, before this authorized login. They do not prove PowerShell usable.",
+  "login": {
+    "success": true,
+    "codeRetained": false,
+    "tokensPublished": false,
+    "newExpiryVerified": true
+  },
+  "oneClaudeAnswer": {
+    "attempts": 1,
+    "ok": true,
+    "exit": 0,
+    "exactMarkerMatched": true,
+    "accessOnly": true,
+    "originalFilesByteIdenticalDuringProof": true,
+    "originalFileCount": 2,
+    "stageRemoved": true
+  },
+  "interop": {
+    "loginBefore": {
+      "command": "cmd.exe /c ver",
+      "exit": 0,
+      "stdout": "Microsoft Windows [版本 10.0.26100.9711]",
+      "stderr": ""
+    },
+    "loginAfter": {
+      "command": "cmd.exe /c ver",
+      "exit": 0,
+      "stdout": "Microsoft Windows [版本 10.0.26100.9711]",
+      "stderr": ""
+    },
+    "proofBefore": {
+      "command": "cmd.exe /c ver",
+      "exit": 0,
+      "stdout": "Microsoft Windows [版本 10.0.26100.9711]",
+      "stderr": ""
+    },
+    "proofAfter": {
+      "command": "cmd.exe /c ver",
+      "exit": 0,
+      "stdout": "Microsoft Windows [版本 10.0.26100.9711]",
+      "stderr": ""
+    }
+  },
+  "noVisibleWindows": true,
+  "runtimePairingServiceTasksChanged": false,
+  "wslInteropBinfmtRelayChanged": false,
+  "windowsPathOrShellProfileChanged": false
+}

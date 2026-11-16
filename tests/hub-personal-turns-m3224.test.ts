@@ -8,7 +8,6 @@ import { readRuntimeInfo } from "../src/runtime-build-info.js";
 import { HubCore } from "../src/hub/http/core.js";
 import { HubPersonalOwnerHost } from "../src/hub/personal/owner-host.js";
 import { HubPersonalTurns } from "../src/hub/personal/turns.js";
-import { HUB_PERSONAL_AGENTS_MIGRATION } from "../src/hub/personal/schema.js";
 import { personKeyString } from "../src/hub/identity.js";
 import { HubProtocolError } from "../src/hub/validation.js";
 import type { PersonalQuestionAdapter } from "../src/hub/personal/types.js";
@@ -19,7 +18,7 @@ const cleanups:(()=>Promise<void>)[]=[];
 afterEach(async()=>{for(const c of cleanups.splice(0))await c();vi.restoreAllMocks();});
 async function drain(){for(let n=0;n<30;n++)await Promise.resolve();}
 async function fixture(){
-  let now=100_000;const r=await s3bRig({realAudit:true,now:()=>now});HUB_PERSONAL_AGENTS_MIGRATION.up(r.db);
+  let now=100_000;const r=await s3bRig({realAudit:true,now:()=>now});
   const home=mkdtempSync(join(tmpdir(),"personal-turns-")),runtime=new RuntimeCoordinator(home),core=new HubCore(r.httpDeps,r.sql),owner=new HubPersonalOwnerHost(core,runtime);
   const person=r.addPerson("alex"),ctx=(key:PersonKey):HubRequestContext=>({requestId:randomUUID(),isCurrent:()=>true,current:async()=>({kind:"directory",person:key,sessionId:"fixture"}),
     requirePerson:async()=>key,requireAdmin:async()=>({kind:"directory",person:r.admin,sessionId:"fixture"})});

@@ -11,7 +11,7 @@ import { Dialog } from "./ui-dialog.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { Icon } from "./ui-icons.js";
 import "./view-strings.js";
-import { CompactMeter, resetClock, resetText, tn, usageClock, usageDuration, usageText } from "./usage-meter.js";
+import { CompactMeter, level, resetClock, resetText, tn, usageClock, usageDuration, usageText, windowTag } from "./usage-meter.js";
 // What this file exported before the meter moved out of it (#3321), for what imports it from here.
 export { usageClock, windowTag, soonestReset } from "./usage-meter.js";
 
@@ -202,24 +202,66 @@ function rowNote(p) {
   return "";
 }
 /**
+ * M-3248 (the user): a login no agent uses said 「此帳號目前沒有 Agent」 as a line of text beside its name. It is a quiet ⓘ
+ * there now (the muted text colour, never a warning's), its words on a hover, a focus or a tap, in the settings pages' tip
+ * bubble (.s-tipbody). The bubble is fixed to the window, so the group's rounded clip (.u-cgroup, overflow: hidden) never
+ * cuts it, and is only in the page while shown. In a compact row (itself a button that opens the login's card) the mark
+ * is not a second button: an image named by the words — the row reads "wii, No agents on this profile" — and a tap on it
+ * shows them without opening the row. In the full card it is a button, reached with Tab.
+ */
+function NoAgentsMark({ inRow = false }) {
+  const words = tn("usage.no_agents");
+  const [at, setAt] = useState(null);
+  const [pinned, setPinned] = useState(false);
+  const mark = useRef(null), bubble = useRef(null);
+  const show = () => {
+    const r = mark.current && mark.current.getBoundingClientRect ? mark.current.getBoundingClientRect() : null;
+    const w = window.innerWidth || 0, hgt = window.innerHeight || 0;
+    if (!r || !w) { setAt({ x: 8, y: 8, above: false }); return; }
+    const above = r.bottom + 72 > hgt;
+    // Pushed sideways to stay inside the window (a custom property: the page allows no style attribute).
+    setAt({ x: Math.round(Math.max(8, Math.min(r.left - 8, w - Math.min(260, w - 16) - 8))), y: Math.round(above ? hgt - r.top + 6 : r.bottom + 6), above });
+  };
+  const hide = () => { setAt(null); setPinned(false); };
+  useLayoutEffect(() => {
+    const b = bubble.current;
+    if (b && b.style && at) { b.style.setProperty("--tip-x", `${at.x}px`); b.style.setProperty("--tip-y", `${at.y}px`); }
+  }, [at]);
+  useEffect(() => {
+    if (!at) return undefined;
+    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); hide(); } };
+    const away = (e) => { if (mark.current && !mark.current.contains(e.target)) hide(); };
+    document.addEventListener("keydown", esc, true); document.addEventListener("click", away); window.addEventListener("scroll", hide, true);
+    return () => { document.removeEventListener("keydown", esc, true); document.removeEventListener("click", away); window.removeEventListener("scroll", hide, true); };
+  }, [!!at]);
+  const tap = (e) => { e.stopPropagation(); e.preventDefault(); if (pinned) hide(); else { show(); setPinned(true); } };
+  const leave = () => { if (!pinned) hide(); };
+  const tip = at ? html`<span ref=${bubble} class=${`s-tipbody u-na-tip${at.above ? " above" : ""}`} aria-hidden="true">${words}</span>` : null;
+  return inRow
+    ? html`<span ref=${mark} class="u-na" role="img" aria-label=${words} onMouseEnter=${show} onMouseLeave=${leave} onClick=${tap}><${Icon} name="info" size=${14} />${tip}</span>`
+    : html`<button ref=${mark} type="button" class="u-na" aria-label=${words} onMouseEnter=${show} onMouseLeave=${leave} onFocus=${show} onBlur=${hide} onClick=${tap}><${Icon} name="info" size=${14} />${tip}</button>`;
+}
+/**
  * A login in three short lines, under its provider's name (the user's pick, 2026-10-22): its name and plan; then its
  * short window and its long one, each a labelled full-width bar, the percent and that window's own reset.
  * Numbers not current, a failed read or no login: one muted line in place of the bars, what is wrong as its tooltip.
  * Pressed, it opens its full card.
  */
-export function CompactRow({ p, onExpand }) {
+export function CompactRow({ p, onExpand, one = false }) {
   const title = providerTitle(p), failed = p.status === "error" || p.status === "no-credentials";
   // Last known numbers (stale, e.g. an expired token) show as the others do (the user, 2026-10-23; the full card has since
   // #2386), with a small "cached at 07:47" on the name line; a window that reset since is left out (compactSlots).
-  const pools = failed ? null : compactPools(p);
-  const metrics = failed ? [] : pools ? pools.flatMap((x) => x.metrics) : compactMetrics(p);
+  // M-3241: `one` — its group shows one line per login: the binding window (the most used) beside the name.
+  const binding = one && !failed ? bindingMetric(p) : null;
+  const pools = failed || one ? null : compactPools(p);
+  const metrics = failed ? [] : one ? (binding ? [binding] : []) : pools ? pools.flatMap((x) => x.metrics) : compactMetrics(p);
   const note = rowNote(p), stale = p.stale ? staleNote(p) : null;
   const say = stale ? stale.mark : note || tn("usage.no_data");
   const detail = stale ? [stale.mark, stale.detail].filter(Boolean).join(" — ") : say;
   const name = title.profile || title.base;
   const models = !pools && metrics.some((m) => m.scope === "model");
-  return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}${pools ? " is-pooled" : ""}${models ? " has-models" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
-    <span class="u-crow-head"><span class="u-crow-name">${name}</span>${p.noAgents ? html`<span class="note">${tn("usage.no_agents")}</span>` : null}
+  return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}${pools ? " is-pooled" : ""}${models ? " has-models" : ""}${one ? " is-one" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
+    <span class="u-crow-head"><span class="u-crow-name">${name}</span>${p.noAgents ? html`<${NoAgentsMark} inRow=${true} />` : null}
       ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
       ${stale && metrics.length ? html`<span class="u-crow-stale" title=${detail}>${p.cachedAt ? tn("usageCachedAt", { at: usageClock(p.cachedAt) }) : stale.mark}<span class="sr-only"> (${detail})</span></span>` : null}</span>
     ${pools ? pools.map((x) => html`<${CompactMeter} key=${x.pool.label} m=${x.worst} tag=${usageText(x.pool.label, x.pool.labelI18n)}
@@ -228,11 +270,63 @@ export function CompactRow({ p, onExpand }) {
       : html`<span class=${`u-crow-note${(stale || (p.status === "error" && !p.transient)) ? " is-alert" : ""}`} title=${detail}>${say}</span>`}
   </button>`;
 }
-/** A provider's logins: its name once (×N), in small capitals, then each login (or the full card of one opened). */
-export function CompactGroup({ group, line }) {
-  return html`<section class="u-cgroup">
-    <div class="u-cg-head"><span class="u-cg-name" title=${group.base}>${group.base}</span>${group.items.length > 1 ? html`<span class="u-cg-count">×${group.items.length}</span>` : null}</div>
-    ${group.items.map(line)}
+// ── M-3241 (the user): a provider of two or more logins folds — −/+ on its header cycles every window of each login →
+// one line per login (its binding window: the most used) → the header alone, with the highest percent. Warning colours
+// stay in each. This browser's choice (localStorage), per provider; another tab's follows. ──
+const GROUP_MODE_KEY = "agend_usage_group_modes";
+const GROUP_MODES = ["expanded", "compact", "collapsed"];
+function readGroupModes() {
+  try { const o = JSON.parse(stored(GROUP_MODE_KEY) || "{}"); return o && typeof o === "object" && !Array.isArray(o) ? Object.fromEntries(Object.entries(o).filter(([, v]) => GROUP_MODES.includes(v))) : {}; }
+  catch { return {}; }
+}
+export const usageGroupStore = createStore({ modes: readGroupModes() });
+export const groupMode = (base) => usageGroupStore.get().modes[base] || "expanded";
+export function setGroupMode(base, mode) {
+  const modes = { ...usageGroupStore.get().modes };
+  if (mode === "expanded") delete modes[base]; else modes[base] = mode;
+  usageGroupStore.set({ modes });
+  store(GROUP_MODE_KEY, JSON.stringify(modes));
+}
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", (e) => { if (!e || e.key === GROUP_MODE_KEY || e.key === null) usageGroupStore.set({ modes: readGroupModes() }); });
+}
+/** The window that binds a login: its most used percent window (any pool, any model), or null. */
+export function bindingMetric(p) {
+  const pct = ((p && p.metrics) || []).filter((m) => m && m.type === "percent" && !m.resetPassed);
+  return pct.length ? pct.reduce((a, b) => ((b.used ?? 0) > (a.used ?? 0) ? b : a)) : null;
+}
+/**
+ * A group's most used window, and whose: the collapsed header's number. A failed login has none. A stale login's cached
+ * number (#4054 review) counts only when no current login has one, and is then muted and marked cached, as its row is.
+ */
+function groupTop(group) {
+  let top = null, cached = null;
+  for (const { p } of group.items) {
+    const m = p.status === "error" || p.status === "no-credentials" ? null : bindingMetric(p);
+    if (!m) continue;
+    if (p.stale) { if (!cached || (m.used ?? 0) > (cached.m.used ?? 0)) cached = { m, p }; }
+    else if (!top || (m.used ?? 0) > (top.m.used ?? 0)) top = { m, p };
+  }
+  return top || cached;
+}
+/**
+ * A provider's logins: its name once (×N), in small capitals, then each login (or the full card of one opened). Two or
+ * more (M-3241): −/+ on the right cycles `mode` — every window, one line each, the header alone with the highest percent.
+ */
+export function CompactGroup({ group, line, mode = "expanded", onCycle }) {
+  const many = group.items.length > 1 && typeof onCycle === "function";
+  const shown = many ? mode : "expanded";
+  const top = many && shown === "collapsed" ? groupTop(group) : null;
+  const pct = top ? Math.min(100, Math.max(0, top.m.used ?? 0)) : null;
+  const next = shown === "expanded" ? "usageGroupToOne" : shown === "compact" ? "usageGroupToHeader" : "usageGroupToAll";
+  const who = top ? `${providerTitle(top.p).profile || providerTitle(top.p).base} · ${top.m.scope === "model" ? modelTag(top.m) : windowTag(top.m)}` : "";
+  return html`<section class=${`u-cgroup${many ? ` is-${shown}` : ""}`} data-group=${group.base}>
+    <div class="u-cg-head"><span class="u-cg-name" title=${group.base}>${group.base}</span>${group.items.length > 1 ? html`<span class="u-cg-count">×${group.items.length}</span>` : null}
+      ${many ? html`<span class="u-cg-tools">
+        ${top ? html`<span class=${`u-cg-top u-cm-pct ${level(pct)}${top.p.stale ? " is-stale" : ""}`} title=${tn("usageGroupTop", { pct: pct.toFixed(0), who }) + (top.p.stale && top.p.cachedAt ? ` · ${tn("usageCachedAt", { at: usageClock(top.p.cachedAt) })}` : "")}>${pct.toFixed(0)}%<span class="sr-only"> (${who})</span></span>` : null}
+        <button type="button" class="icon-btn u-cg-toggle" aria-expanded=${shown === "collapsed" ? "false" : "true"} aria-label=${`${group.base}: ${tn(next)}`} title=${tn(next)}
+          onClick=${() => onCycle(GROUP_MODES[(GROUP_MODES.indexOf(shown) + 1) % GROUP_MODES.length])}><${Icon} name=${shown === "collapsed" ? "plus" : "minus"} size=${14} /></button></span>` : null}</div>
+    ${shown === "collapsed" ? null : group.items.map(line)}
   </section>`;
 }
 
@@ -250,6 +344,7 @@ export function UsageBody({ owner }) {
   const reads = useMemo(() => readStream(lease), [lease]);
   // Compact (one line per login): a line pressed opens its full card here, until folded or the mode changes.
   const { compact } = useStore(usageViewStore);
+  const { modes } = useStore(usageGroupStore);   // M-3241
   const [expanded, setExpanded] = useState(() => new Set());
   useEffect(() => { setExpanded(new Set()); }, [compact]);
   const toggleOne = (id) => setExpanded((was) => { const next = new Set(was); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -301,14 +396,13 @@ export function UsageBody({ owner }) {
   else {
     const providers = ordered(data.providers);
     const card = (p, i) => html`<section key=${key(p)} class=${p.stale ? "u-provider is-stale" : "u-provider"}>
-        <div class="u-head"><strong title=${p.name}>${providerTitle(p).base}</strong>${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
+        <div class="u-head"><strong title=${p.name}>${providerTitle(p).base}</strong>${p.noAgents && !providerTitle(p).profile ? html`<${NoAgentsMark} />` : null}${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
           <span class="u-order">${compact ? html`<button type="button" class="icon-btn u-collapse" aria-expanded="true" aria-label=${tn("usageCollapse")} title=${tn("usageCollapse")}
               onClick=${() => toggleOne(key(p))}><${Icon} name="minus" size=${14} /></button>` : null}
             <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${tn("usageMoveUp")} title=${tn("usageMoveUp")} onClick=${() => move(key(p), -1, data.providers)}><${Icon} name="up" size=${14} /></button>
             <button type="button" class="icon-btn" disabled=${i === providers.length - 1} aria-label=${tn("usageMoveDown")} title=${tn("usageMoveDown")} onClick=${() => move(key(p), 1, data.providers)}><${Icon} name="down" size=${14} /></button>
           </span></div>
-        ${providerTitle(p).profile ? html`<div class="u-profile" title=${p.name}>${providerTitle(p).profile}</div>` : null}
-        ${p.noAgents ? html`<p class="note">${tn("usage.no_agents")}</p>` : null}
+        ${providerTitle(p).profile ? html`<div class=${`u-profile${p.noAgents ? " has-na" : ""}`} title=${p.name}>${p.noAgents ? html`<span class="u-profile-name">${providerTitle(p).profile}</span><${NoAgentsMark} />` : providerTitle(p).profile}</div>` : null}
         ${p.stale ? html`<p class="note u-stale" title=${staleNote(p).detail || null}>${staleNote(p).mark}</p>${staleNote(p).detail ? html`<p class="note u-stale-detail">${staleNote(p).detail}</p>` : null}` : null}
         ${p.status === "error" && !p.transient ? html`<p class="u-err">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
           : p.status === "error" && p.transient ? html`<p class="note">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
@@ -317,8 +411,8 @@ export function UsageBody({ owner }) {
             ${!p.stale && p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
       </section>`;
     content = html`${!providers.length ? html`<p class="note">${tn("usage.empty_active")}</p>` : null}
-      ${compact ? compactGroups(providers).map((g) => html`<${CompactGroup} key=${g.base} group=${g}
-          line=${({ p, i }) => (expanded.has(key(p)) ? card(p, i) : html`<${CompactRow} key=${key(p)} p=${p} onExpand=${() => toggleOne(key(p))} />`)} />`)
+      ${compact ? compactGroups(providers).map((g) => html`<${CompactGroup} key=${g.base} group=${g} mode=${modes[g.base] || "expanded"} onCycle=${(m) => setGroupMode(g.base, m)}
+          line=${({ p, i }) => (expanded.has(key(p)) ? card(p, i) : html`<${CompactRow} key=${key(p)} p=${p} one=${(modes[g.base] || "expanded") === "compact" && g.items.length > 1} onExpand=${() => toggleOne(key(p))} />`)} />`)
         : providers.map((p, i) => card(p, i))}
       <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${failed ? html`${updatedAgo(data.fetchedAt)} · <span class="u-refresh-failed" role="status">${tn("usageRefreshFailed")}</span>` : data.refreshing ? html`<span class="u-refreshing">${tn("usageRefreshing")}</span>` : updatedAgo(data.fetchedAt)}</span>
         ${byAgent() ? html`<a class="btn btn-ghost btn-sm u-by-agent" href="/ui/fleet/usage" title=${tn("usageByAgentTitle")}>${tn("usageByAgent")}</a>` : null}

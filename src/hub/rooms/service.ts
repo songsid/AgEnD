@@ -84,6 +84,7 @@ export class HubRoomRefusal extends Error {
 }
 /** People chat first; direct agent conversations remain in HubRoomsService. No timers or I/O on import. */
 export class HubGroupRooms {
+  private readonly appPosts: boolean;
   private listeners = new Set<(event: RoomEvent) => void>();
   readonly agents: HubRoomAgents;
   readonly assistant: HubRoomAssistant;
@@ -98,7 +99,7 @@ export class HubGroupRooms {
   private readonly searches = new Map<string, number[]>();
   private readonly agentSearch: HubGrantSearch;
   private readonly agentReadBuckets = new Map<string, { at: number; count: number }>();
-  constructor(private readonly core: HubCore) { this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
+  constructor(private readonly core: HubCore) { this.appPosts=core.atomic(db=>!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hub_mcp_room_posts'").get()); this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
     this.agents = new HubRoomAgents(core, event => this.emit(event), post => this.projection(post), this.automation,
       (db, tx, post) => { this.agentMentions(db, tx, post); this.postReplies.enqueue(db, tx, post); }, id => { this.agentEffects(id); this.postReplies.wake(); });
     this.assistant = new HubRoomAssistant(core, event => this.emit(event), post => this.projection(post)); this.directory = new RoomDirectoryCandidates(core);
@@ -175,8 +176,8 @@ export class HubGroupRooms {
   }
   private maximum(db: DB, id: string): number { return (db.prepare("SELECT COALESCE(MAX(sequence),0) AS n FROM hub_room_posts WHERE room_id=?").get(id) as { n: number }).n; }
   private projection(row: PostRow): RoomMessage {
-    const system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined", "poll-closed"].includes(row.author_id)
-      ? { kind: row.author_id as "room-created" | "member-joined" | "admin-joined" | "poll-closed", name: row.author_name } : undefined;
+    const system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined", "poll-closed", "app-rate-limited"].includes(row.author_id)
+      ? { kind: row.author_id as "room-created" | "member-joined" | "admin-joined" | "poll-closed" | "app-rate-limited", name: row.author_name } : undefined;
     // Agent rows retain their owner-at-message in author_subject; a later exposure transfer must not relabel history.
     const owner = row.author_kind === "agent" ? this.core.atomic(db => ({ name: this.name(db, row.author_subject) })) : undefined;
     return { id: row.id, roomId: row.room_id, at: row.created_at, sequence: row.sequence, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...(owner ? { owner } : {}), ...this.viaAuthor(row) },
@@ -213,7 +214,10 @@ export class HubGroupRooms {
     return refs.length ? { files: refs.map(r => groupFileView(row.room_id, r)) } : {};
   }
   private viaAuthor(row: PostRow): { name?: string; via?: { id: string; name: string } } {
-    return this.core.atomic(db => { const op = db.prepare("SELECT exposure_id,person_name,via_name FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NOT NULL").get(row.id) as { exposure_id: string; person_name: string; via_name: string } | undefined;
+    return this.core.atomic(db => {
+      const app = this.appPosts ? db.prepare("SELECT app_id,app_name FROM hub_mcp_room_posts WHERE post_id=?").get(row.id) as { app_id: string; app_name: string } | undefined : undefined;
+      if(app)return {via:{id:app.app_id,name:app.app_name}};
+      const op = db.prepare("SELECT exposure_id,person_name,via_name FROM hub_room_agent_operations WHERE post_id=? AND receipt_id IS NOT NULL").get(row.id) as { exposure_id: string; person_name: string; via_name: string } | undefined;
       return op ? { name: op.person_name, via: { id: op.exposure_id, name: op.via_name } } : {}; });
   }
   private agentMetadata(row: PostRow): { proactive?: true; system?: RoomSystemEvent } {
@@ -427,7 +431,7 @@ export class HubGroupRooms {
   async list(ctx: HubRequestContext) {
     const me = await this.who(ctx); this.agents.sweep();
     return this.core.atomic(db => {
-      this.assistantRoom(db, me);
+      if(!ctx.application)this.assistantRoom(db, me);
       return { rooms: (db.prepare("SELECT * FROM hub_room_members WHERE kind='person' AND subject=?").all(me) as MemberRow[])
         .map(m => this.summary(db, this.room(db, m.room_id), m)).sort((a, b) => b.lastAt - a.lastAt),
         me: { canCreateRooms: canCreateRoom(this.core, db, me), assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
@@ -539,7 +543,9 @@ export class HubGroupRooms {
       });
       // M-3125: the room takes people's files when this Hub stores files (the 1:1 chat's own attachments-v1 mark).
       return { room: { ...this.summary(db, room, own), ...(this.filesStore() ? { features: ["attachments-v1"] } : {}) }, me: { id: own.id, role: own.role }, members,
-        settings: { allMention: room.all_mention === 1, historyForNew: room.history_for_new, ...(members.some(m => m.kind === "assistant") ? { assistant: true } : {}) }, invited: [] };
+        settings: { allMention: room.all_mention === 1, historyForNew: room.history_for_new,
+          ...(this.appPosts?{aiApps:(db.prepare("SELECT enabled FROM hub_mcp_room_policy WHERE room_id=?").get(id) as {enabled:number}|undefined)?.enabled!==0}:{}),
+          ...(members.some(m => m.kind === "assistant") ? { assistant: true } : {}) }, invited: [] };
     }, { assertCurrent: () => { this.fence(ctx).assertCurrent(); for (const proof of directProofs) proof.assertCurrent(); } });
   }
   async patch(ctx: HubRequestContext, id: string, input: unknown) {
@@ -658,23 +664,44 @@ export class HubGroupRooms {
     const row = this.core.atomic((db, tx) => {
       const member = this.member(db, id, me), room = this.room(db, id);
       if (room.archived) throw new HubRoomRefusal(409, "archived");
+      if(ctx.application && ((db.prepare("SELECT enabled FROM hub_mcp_room_policy WHERE room_id=?").get(id) as {enabled:number}|undefined)?.enabled===0
+        || room.assistant_for || body.mentions.includes("all") || body.mentions.includes("assistant") || /@all\b/iu.test(body.text))) throw new HubRoomRefusal(403,"denied");
       if (body.mentions.includes("all") && !room.all_mention && member.role !== "manager") throw new HubRoomRefusal(403, "all-mention-off");
       const old = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND author_subject=? AND idempotency_key=?").get(id, me, body.idempotencyKey) as PostRow | undefined;
       if (old) { if (old.digest !== digest || old.sequence < member.joined_sequence) throw new HubRoomRefusal(409, "conflict"); return old; }
       if (body.replyTo && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(body.replyTo, id, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
       const refs = files.length ? this.store().pending(db, id, me, files) : [];
       const post = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name: this.name(db, me) }, body.text, body.mentions, body.idempotencyKey, digest, body.replyTo ?? null);
+      if(ctx.application)db.prepare("INSERT INTO hub_mcp_room_posts VALUES(?,?,?)").run(post.id,ctx.application.id,ctx.application.name);
       if (refs.length) this.store().bindPost(db, refs, post.id);
-      this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.message", result: "completed", roomId: id, messageId: post.id, contentRef: post.content_ref });
+      if(ctx.application){if(!this.core.deps.content.bindMessage)throw new HubProtocolError("unavailable");this.core.deps.content.bindMessage(tx,post.content_ref,post.id);}
+      this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.message", result: "completed", roomId: id, messageId: post.id, ...(ctx.application?{}:{contentRef: post.content_ref}) });
       this.automation.human(db, post);
-      this.agents.enqueue(db, tx, { ...post, mentions: JSON.stringify(body.mentions.filter(m => m !== "assistant")) }, member.id);
-      this.assistant.enqueue(db, tx, post, member.id, room.assistant_for !== null);
+      this.agents.enqueue(db, tx, { ...post, mentions: JSON.stringify(body.mentions.filter(m => m !== "assistant")) }, member.id,
+        ctx.application?{asker:me,name:`${post.author_name} via ${ctx.application.name}`,text:body.text}:undefined);
+      if(!ctx.application)this.assistant.enqueue(db, tx, post, member.id, room.assistant_for !== null);
       added = true; return post;
     }, this.fence(ctx));
     const message = this.projection(row);
     if (added) { this.emit({ type: "message.added", roomId: id, data: { roomId: id, message }, sequence: row.sequence }); this.emit({ type: "unread.changed", roomId: id, data: { roomId: id } }); }
     if (added) { this.agents.publishQueued(row.id); this.assistant.publishQueued(row.id); }
     this.agents.wake(); this.assistant.wake(); return message;
+  }
+  /** A quiet, coalesced line after the third rejected app post; no question or agent delivery. */
+  async appRateLimited(ctx:HubRequestContext,id:string):Promise<void> {
+    if(!ctx.application)throw new HubProtocolError("denied");
+    const me=await this.who(ctx);
+    const post=this.core.atomic((db,tx)=>{
+      this.member(db,id,me);if(this.room(db,id).archived)return null;
+      const now=this.core.now(),window=Math.floor(now/60_000)*60_000;
+      db.prepare("DELETE FROM hub_mcp_rate_notices WHERE person=? AND window<?").run(me,now-60*60_000);
+      db.prepare("INSERT INTO hub_mcp_rate_notices VALUES(?,?,?,1,NULL) ON CONFLICT(person,room_id,window) DO UPDATE SET refused=refused+1").run(me,id,window);
+      const notice=db.prepare("SELECT refused,post_id FROM hub_mcp_rate_notices WHERE person=? AND room_id=? AND window=?").get(me,id,window) as {refused:number;post_id:string|null};
+      if(notice.refused!==3||notice.post_id)return null;
+      const name=this.name(db,me),row=this.insert(db,tx,id,{kind:"system",id:"app-rate-limited",subject:me,name},`${name}'s AI app was slowed down.`);
+      db.prepare("UPDATE hub_mcp_rate_notices SET post_id=? WHERE person=? AND room_id=? AND window=?").run(row.id,me,id,window);return row;
+    },this.fence(ctx));
+    if(post)this.emit({type:"message.added",roomId:id,data:{roomId:id,message:this.projection(post)},sequence:post.sequence});
   }
   /**
    * M-3127: add or take back my reaction on a post I can see (since my joined_sequence; not a room line, not an answer

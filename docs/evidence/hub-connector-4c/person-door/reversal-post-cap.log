@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connector-4c-tools-m3240
+
+ ❯ tests/hub-mcp-door-m3240.test.ts (25 tests | 1 failed | 24 skipped) 253ms
+   × applies the five-post person ceiling across separate app grants 251ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-mcp-door-m3240.test.ts > applies the five-post person ceiling across separate app grants
+AssertionError: expected { ok: true, …(4) } to match object { ok: false, code: 'backpressure' }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "code": "backpressure",
+-   "ok": false,
++   "ok": true,
+  }
+
+ ❯ tests/hub-mcp-door-m3240.test.ts:105:75
+    103|   const w=await world(),a=await w.app(),b=await w.app();
+    104|   for(let i=0;i<5;i++)expect(await(i%2?a:b).call("hub_room_post",{room…
+    105|   expect(await a.call("hub_room_post",{room:w.roomId,text:"Over limit"…
+       |                                                                           ^
+    106|   expect(rig!.db.prepare("SELECT COUNT(*) AS n FROM hub_mcp_room_posts…
+    107|   for(let i=0;i<3;i++)await a.call("hub_room_post",{room:w.roomId,text…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 skipped (25)
+   Start at  19:09:17
+   Duration  3.86s (transform 2.57s, setup 83ms, import 3.38s, tests 253ms, environment 0ms)

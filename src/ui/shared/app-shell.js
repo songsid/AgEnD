@@ -460,7 +460,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   return html`<aside id="sidebar" class=${`sidebar fleet-side${narrowDrawer ? " drawer-narrow" : ""}`} aria-label=${t("app.menu")}>
     <div class="side-head" data-trust="navigation">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
-      <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" cls="ic-sidebar" /><${Icon} name="back" cls="ic-back" /></button>
+      <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" cls="ic-sidebar" /><${Icon} name="close" cls="ic-close" /></button>
     </div>
     ${/* AgEnD Hub P1: a member fleet's "My fleet ↔ Hub" (shown once paired; nothing loads when the switch is off) */ hubMarks().member ? html`<${HubSwitcherSlot} />` : null}
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
@@ -547,6 +547,9 @@ function PrefsPopover() {
  */
 // M-3115 (phone v2): inside an agent's pages a phone has no bottom tabs; the header's first button goes back to the
 // agents (the drawer) — with no count since M-3166. Kept beside its caller: a retained dictionary has no such word.
+// M-3245 (the user, beta.7: 「左箭頭和漢堡選單 icon 意義不明」): one rule for a phone's top-left button. ☰ opens the agents
+// (the drawer) on a page with nothing above it; ← goes back one level (an agent's pages → the agents; a Settings section →
+// Settings); ✕ closes the drawer. A page with a level above passes `back` ({ href, label }) to PanelHeader.
 register("phoneNav", {
   en: { back: "Back to your agents" },
   "zh-TW": { back: "回到 Agent 清單" },
@@ -554,7 +557,7 @@ register("phoneNav", {
 /** What Needs you counts: its items and the agents' proposals (the tab's badge, the sidebar's). */
 export function needsCount(app) { return (app.needs || []).length + (app.proposals || []).length; }
 
-export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions }) {
+export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions, back = null }) {
   const shell = useStore(shellStore);
   const { route } = useStore(navStore);
   // M-3166 (the user, round 2): no counts or badges on the Fleet side — ← goes back to the agents without a number.
@@ -567,10 +570,12 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice, pag
   if (pane?.Header) return html`<${pane.Header} title=${title} sub=${sub} headingRef=${headingRef} nav=${nav} notice=${notice}
     pageControls=${pageControls} pageActions=${pageActions} />`;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
-    <button type="button" id="sbOpen" class=${`icon-btn sb-open${agent ? " sb-back" : ""}`} onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
+    ${back && narrow() && !agent ? html`<a id="sbOpen" class="icon-btn sb-open sb-back sb-up" href=${back.href} aria-label=${back.label} title=${back.label}
+      ><${Icon} name="menu" cls="ic-menu" /><${Icon} name="back" cls="ic-back" /></a>`
+    : html`<button type="button" id="sbOpen" class=${`icon-btn sb-open${agent ? " sb-back" : ""}`} onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? agent ? t("phoneNav.back") : t("app.openMenu") : t("app.expand")}
       title=${narrow() ? agent ? t("phoneNav.back") : t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" cls="ic-menu" />${agent
-        ? html`<${Icon} name="back" cls="ic-back" />` : null}</button>
+        ? html`<${Icon} name="back" cls="ic-back" />` : null}</button>`}
     ${canCreate && shell.collapsed ? html`<button type="button" class="icon-btn sb-new" onClick=${requestNewInstance} aria-label=${t("app.newAgent")} title=${t("app.newAgent")}><${Icon} name="plus" /></button>` : null}
     ${searchOffered(admin) ? html`<button type="button" class="icon-btn sb-search" onClick=${() => openSearch()} aria-label=${t("app.search")} title=${t("app.searchTitle", searchShortcut())}><${Icon} name="search" /></button>` : null}
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
@@ -1237,7 +1242,8 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // Once up, the keyboard stays up while the field keeps focus: an IME's candidate bar (or the predictive row) coming and
     // going moves the view by tens of px on every keystroke, and must never take the tabs out and back. Only leaving the
     // field, or the view growing from its lowest by more than a keyboard (put away), takes it down. While an IME composes
-    // nothing changes at all; what the view says then is applied at compositionend — or as soon as the field it composes
+    // the keyboard's state does not change (the shell's height still follows a view that got shorter: M-3244, in fit);
+    // what the view says then is applied at compositionend — or as soon as the field it composes
     // in has lost focus or left the page (a composition can end without its compositionend: #2517 review).
     let width = -1, tallest = 0, held = false, lowest = 0, upLowest = 0, composing = null, downSince = 0, downTimer = 0;
     // beta.4 (the user, iPhone): a keystroke can move the view (the predictive or candidate bar, the caret panned into view)
@@ -1273,7 +1279,13 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       const typingNow = coarse() && isTextEntry(document.activeElement);
       const on = coarse() && (shellStore.get().keyboard || typingNow || now() < followUntil) && Math.abs((Number(vv.scale) || 1) - 1) < 0.01;
       if (!on) { unfit(el); fitH = 0; fitTop = 0; fitW = -1; moveSince = 0; return; }
-      const h = Math.round(vv.height), top = Math.max(0, Math.round(Number(vv.offsetTop) || 0)), w = Math.round(vv.width);
+      // M-3244 (the user, iPhone, Zhuyin): while an IME composes, the keyboard's state waits for compositionend (check) — the
+      // shell's height does not. The keyboard coming up, or its candidate bar, mid-composition made the view shorter while the
+      // shell kept the height it had (the whole screen, or the view before the bar), and the box sat under the keyboard for
+      // the whole composition. Composing, the shell follows a view that got shorter; it grows back only once the IME is done.
+      const composingNow = !!composing && composing.isConnected !== false && document.activeElement === composing;
+      const seen = Math.round(vv.height), top = Math.max(0, Math.round(Number(vv.offsetTop) || 0)), w = Math.round(vv.width);
+      const h = composingNow && fitH && w === fitW && seen > fitH ? fitH : seen;
       const settled = fitH && typingNow && w === fitW && now() >= followUntil;
       if (settled && (h !== fitH || top !== fitTop) && !(fitH - h > KEYBOARD_MIN_PX)) {
         if (!moveSince) moveSince = now();
@@ -1300,7 +1312,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       raf = frame(step);
     };
     const check = () => {
-      if (composing && composing.isConnected !== false && document.activeElement === composing) return;
+      if (composing && composing.isConnected !== false && document.activeElement === composing) { fit(); return; }
       composing = null;
       const w = Math.round(vv.width), h = vv.height;
       const typing = coarse() && isTextEntry(document.activeElement);

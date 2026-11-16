@@ -1,0 +1,27 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connector-4c-tools-m3240
+
+ ❯ tests/hub-mcp-door-m3240.test.ts (23 tests | 1 failed | 22 skipped) 187ms
+   × ends unused grants when an allowed-list edit removes and then re-adds their person 185ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-mcp-door-m3240.test.ts > ends unused grants when an allowed-list edit removes and then re-adds their person
+AssertionError: expected 406 to be 401 // Object.is equality
+
+- Expected
++ Received
+
+- 401
++ 406
+
+ ❯ tests/hub-mcp-door-m3240.test.ts:139:206
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 22 skipped (23)
+   Start at  19:04:31
+   Duration  3.98s (transform 2.71s, setup 83ms, import 3.57s, tests 187ms, environment 0ms)

@@ -1,0 +1,21 @@
+{
+  "baseSource": "070efe6c8d2e94bd5f4f5ca94a0526f162a9b3cb",
+  "inputs": [
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "5992ab9237ab96b6c7c961cd6702664e4c943b19e689e54dac669ac5c3fcf64c"
+    },
+    {
+      "path": "src/ui/hub-ai-apps-strings.js",
+      "sha256": "41518a8159f817398e025af819521736dfd5ed2a60039b7f1bba207be17f5d3b"
+    },
+    {
+      "path": "src/ui/hub-ai-apps.js",
+      "sha256": "fa0e6d671c2d40830e2103bb72043725dbbdfcf67a9a11a386f581be93318bd2"
+    },
+    {
+      "path": "tests/hub-mcp-pages-ui-m3240.test.ts",
+      "sha256": "740eacfc474116c3794da3359b5acf838a240f9af37d3b318e15204786764487"
+    }
+  ]
+}

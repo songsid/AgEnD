@@ -364,6 +364,15 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; roomsLive = r.signedIn === true && r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.signedIn === true && r.features?.includes(TEAMS_FEATURE) === true; } return r; },
     async signIn(login, password) { retireReads(); teamsLive = false; const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; roomsLive = r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.features?.includes(TEAMS_FEATURE) === true; } return r; },
     async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; roomsLive = false; teamsLive = false; return r; },
+    aiAppsScope() { return csrf; },
+    aiApps(scope) { return scope && scope === csrf ? call("GET", "/hub/v1/me/ai-apps") : Promise.resolve(retired()); },
+    disconnectAiApp(scope, appId) { return scope && scope === csrf ? call("DELETE", `/hub/v1/me/ai-apps/${id(appId)}`) : Promise.resolve(retired()); },
+    appConsent(scope, request) { return scope && scope === csrf ? call("GET", `/hub/v1/mcp/consent?${new URLSearchParams({request})}`) : Promise.resolve(retired()); },
+    saveAppConsent(scope, request, value) { return scope && scope === csrf ? call("POST", "/hub/v1/mcp/consent", {request,...value}) : Promise.resolve(retired()); },
+    aiAppsSettings(scope) { return scope && scope === csrf ? call("GET", "/hub/v1/admin/ai-apps") : Promise.resolve(retired()); },
+    saveAiAppsSettings(scope, value) { return scope && scope === csrf ? call("PATCH", "/hub/v1/admin/ai-apps", value) : Promise.resolve(retired()); },
+    searchAiAppSubjects(scope, kind, q, signal) { return scope && scope === csrf ? call("GET", `/hub/v1/admin/ai-apps/search?${new URLSearchParams({kind,q})}`, undefined, signal) : Promise.resolve(retired()); },
+    setRoomAiApps(scope, roomId, enabled) { return scope && scope === csrf ? call("PATCH", `/hub/v1/rooms/${id(roomId)}/ai-apps`, {enabled}) : Promise.resolve(retired()); },
     // A source captures the session CSRF: a queued write from a previous sign-in cannot use the new person's cookie.
     personPrefs(sessionCsrf) { return sessionCsrf && sessionCsrf === csrf ? call("GET", "/hub/v1/me/prefs") : Promise.resolve(retired()); },
     savePersonPrefs(sessionCsrf, favorites, onlyIfUnset = false) {
@@ -473,6 +482,17 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     acceptInvitation(invitationId) { return call("POST", `/hub/v1/invitations/${id(invitationId)}/accept`, {}); },
     declineInvitation(invitationId) { return call("POST", `/hub/v1/invitations/${id(invitationId)}/decline`, {}); },
     // Seam 5: teams, who may open rooms, and the administrator's list of rooms (names and members, no content).
+    // Role settings: calls remain authoritative on the Hub, never in these display flags.
+    roleSettingsV1: true,
+    roles() { return call("GET", "/hub/v1/roles"); },
+    roleSearch(kind,q) { return call("GET", `/hub/v1/roles/search?${new URLSearchParams({kind,q})}`); },
+    rolePreview(policy) { return call("POST", "/hub/v1/roles/preview", {policy}); },
+    roleApply(policy,previewDigest) { return call("POST", "/hub/v1/roles/apply", {policy,previewDigest}); },
+    roleRootPreview() { return call("POST", "/hub/v1/roles/root-self/preview", {}); },
+    roleRootApply(previewDigest) { return call("POST", "/hub/v1/roles/root-self/apply", {previewDigest}); },
+    roleAudit(cursor) { return call("GET", `/hub/v1/roles/audit${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
+    roleNotices() { return call("GET", "/hub/v1/roles/notices"); },
+    acknowledgeRoleNotice(noticeId) { return call("POST", `/hub/v1/roles/notices/${id(noticeId)}/ack`, {}); },
     teamSettings() { return call("GET", "/hub/v1/teams/settings"); },
     saveTeamSettings(input) { return call("PUT", "/hub/v1/teams/settings", input); },
     teams() { return call("GET", "/hub/v1/teams"); },

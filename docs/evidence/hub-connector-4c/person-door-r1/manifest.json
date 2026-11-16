@@ -1,0 +1,40 @@
+{
+  "reviewedHead": "8e236ee6b35f710b33df5f53cd8ce65255a65b5e",
+  "finding": "F1: pure policy widening disconnected all existing apps",
+  "question": "Q1: deliberate omission of app content audit pointers explained; existing runtime retained",
+  "baseline": {
+    "selected": 1,
+    "assertionFailures": 1,
+    "unselected": 26
+  },
+  "final": {
+    "files": 1,
+    "passed": 27,
+    "sourceTypeScript": 0,
+    "testTypeScript": 0
+  },
+  "onlyRuntimeChanged": "src/hub/mcp/policy.ts",
+  "inputs": [
+    {
+      "path": "src/hub/mcp/policy.ts",
+      "sha256": "939299050aa6742b5488d71bfb1ba7e5656657c7d9fd03cf9d5263e9f1c652c2"
+    },
+    {
+      "path": "tests/hub-mcp-door-m3240.test.ts",
+      "sha256": "79a960a415f1974ecaaca7d2f71c254b843d13c6228bb53adb8dcd3257643476"
+    },
+    {
+      "path": "docs/design/hub-connector-4c.md",
+      "sha256": "c1d52a5ecfb06298f159974eecc21e9ae22dd6a57e5959b31a7b887ff25eac5d"
+    },
+    {
+      "path": "src/hub/rooms.ts",
+      "sha256": "fde21aa9e7144f4cdcaaf66e1e4f56753f809722e4c42479c56597394e3a4376"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "932c0293d414216365e920e7f3319da785db2d8d2c3602d6327d1bc2faaa66ff"
+    }
+  ],
+  "scope": "Focused policy-widening/narrowing correction only. Earlier 114/8 and three guard-removal campaign remain historical; no additional browser, model, TLS, native or mutation campaign."
+}

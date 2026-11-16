@@ -7,6 +7,9 @@ export const SIGNIN_STRINGS = {
     check: "Check connections", skipped: "Connect later · remains in Needs you", valid: "Connected ✓", notInstalled: "Not installed on this host",
     consoleOnly: "Use the explicit console fallback, or connect later.", needed: "Not connected", waiting: "Waiting for the CLI…", login: "Connecting: {0}",
     openProvider: "Finish on the provider's official website", deviceCode: "Authorization code:", answerSent: "Answer sent. Waiting for the next screen; it will not be sent twice.",
+    // M-3238: the provider's page and its code as numbered steps.
+    stepOpen: "Open sign-in page", stepCode: "Enter this code on that page", stepBack: "Come back here when you're done. This page updates by itself.",
+    copy: "Copy", copyLink: "Copy link", copied: "Copied",
     cancel: "Cancel connecting", signIn: "Connect account", signInAgain: "Reconnect", later: "Connect later", submit: "Submit {0}",
     relogin: "Reconnect {0}? It disconnects its current account first.", reloginReplace: "Reconnect {0}? The new connection replaces the account it uses now.", ready: "You can continue setup.",
     field_code: "Paste the authorization code", field_start_url: "Organization Start URL", field_region: "AWS region",
@@ -47,6 +50,8 @@ export const SIGNIN_STRINGS = {
     check: "檢查連接狀態", skipped: "稍後連接 · 會留在「等你回應」", valid: "已連接 ✓", notInstalled: "這台主機上沒有安裝",
     consoleOnly: "請改用主控台備援，或稍後連接。", needed: "尚未連接", waiting: "等待 CLI 回應…", login: "連接中：{0}",
     openProvider: "前往官方網站完成授權", deviceCode: "授權碼：", answerSent: "已送出。等待下一個畫面；不會重複送出。",
+    stepOpen: "開啟登入頁面", stepCode: "在那個頁面輸入這組授權碼", stepBack: "完成後回到這裡，這個畫面會自動更新。",
+    copy: "複製", copyLink: "複製連結", copied: "已複製",
     cancel: "取消連接", signIn: "連接帳號", signInAgain: "重新連接", later: "稍後連接", submit: "送出{0}",
     relogin: "要重新連接 {0} 嗎？會先撤銷目前帳號的連接。", reloginReplace: "要重新連接 {0} 嗎？新的連接會取代目前使用的帳號。", ready: "可以繼續設定了。",
     field_code: "貼上取得的授權碼", field_start_url: "組織的 Start URL", field_region: "AWS 區域",
@@ -82,10 +87,18 @@ export const SIGNIN_STRINGS = {
     error_machine_transport_failed: "那台電腦沒有完成這次登入。請檢查它的 Runtime 視窗，再試一次。",
   },
 };
+const SVG = "http://www.w3.org/2000/svg";
+/** ui-icons.js's external and copy, as paths (this module cannot import the dashboard's icons on the setup page). */
+const ICON_PATHS = {
+  external: ["M14 4h6v6M20 4l-9 9", "M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"],
+  copy: ["M11 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z", "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"],
+};
 const NAMES = { "kiro-cli": "Kiro", "claude-code": "Claude Code", codex: "Codex", antigravity: "Antigravity" };
 const CHOICES = { builder_id: "Builder ID", google: "Google", github: "GitHub", organization: null, subscription: null, console: "Anthropic Console" };
 /** The page's language, as its <html lang> says (the setup page and the dashboard both keep it current). */
 const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" : "en";
+/** M-3238: a sign-in page's address as a button names it — its host and path, no query (one line; long ones end in "…"). */
+export const shortUrl = url => { const text = url.host + (url.pathname && url.pathname !== "/" ? url.pathname : ""); return text.length > 48 ? text.slice(0, 47) + "…" : text; };
 
 /**
  * `machine` (#3190 Part 3c): these cards are for ONE credential profile on a paired computer (the endpoint carries `?machine=&profile=`). The dialog around them says
@@ -105,7 +118,7 @@ const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" 
  * `abandoned` (run id → void): the same id, when the cards were disposed (the dialog closed) while that request was still in flight: nobody is left to show or keep the run, so
  * whoever mounted the cards ends it by this id. Nothing is drawn, and no other run is touched.
  */
-export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false, dialog = false, focus, started = () => {}, abandoned = () => {}, codeHint = () => false } = {}) {
+export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false, dialog = false, focus, started = () => {}, abandoned = () => {}, codeHint = () => false, footerCancel = false } = {}) {
   const doc = root.ownerDocument;
   let view = null, busy = false, disposed = false, timer = null, generation = 0, message = "", rendered = "";
   const language = () => (lang ? lang() : pageLang(doc)) === "zh-TW" ? "zh-TW" : "en";
@@ -120,6 +133,22 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
   const choiceName = choice => CHOICES[choice] ?? tr("choice_" + choice);
   const phaseName = phase => SIGNIN_STRINGS.en["phase_" + phase] ? tr("phase_" + phase) : phase.replaceAll("_", " ");
   const button = (parent, label, action) => { const b = el("button", label, parent); b.type = "button"; b.disabled = busy; b.onclick = action; return b; };
+  // M-3238: the app's icons (ui-icons.js paths), drawn here as SVG: this module is served alone to the setup page too.
+  const icon = (parent, name, size = 14) => {
+    if (typeof doc.createElementNS !== "function") return null;
+    const svg = doc.createElementNS(SVG, "svg");
+    for (const [k, v] of [["class", "icon"], ["width", size], ["height", size], ["viewBox", "0 0 24 24"], ["fill", "none"], ["stroke", "currentColor"], ["stroke-width", 2],
+      ["stroke-linecap", "round"], ["stroke-linejoin", "round"], ["aria-hidden", "true"], ["focusable", "false"]]) svg.setAttribute(k, String(v));
+    for (const d of ICON_PATHS[name] || []) { const path = doc.createElementNS(SVG, "path"); path.setAttribute("d", d); svg.append(path); }
+    parent.append(svg); return svg;
+  };
+  // Copy a link or a code (for another device, or to paste): says Copied for a moment. Never disabled: it changes nothing.
+  const copyButton = (parent, value, label, cls) => {
+    const b = el("button", null, parent); b.type = "button"; b.className = `${cls} signin-copy`;
+    icon(b, "copy"); const text = el("span", label, b);
+    b.onclick = async () => { try { await globalThis.navigator?.clipboard?.writeText(value); text.textContent = tr("copied"); setTimeout(() => { text.textContent = label; }, 1500); } catch { /* the value stays selectable on the page */ } };
+    return b;
+  };
   const request = async data => {
     const response = await fetcher(endpoint, { method: data ? "POST" : "GET", cache: "no-store", headers: { "Content-Type": "application/json" }, ...(data ? { body: JSON.stringify(data) } : {}) });
     const body = await response.json().catch(() => null);
@@ -151,25 +180,46 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
     if (!view) { if (!dialog || message) button(root, tr("check"), () => perform({ operation: "refresh" })); return; }
     for (const backend of dialog && focus ? view.selected.filter(b => b === focus) : view.selected) {
       const card = el("section"); card.dataset.backend = backend;
-      el("h3", name(backend), card);
+      // M-3238 (Argon): the account dialog for ONE account names the CLI in its title — no second heading here.
+      const single = dialog && !!focus;
+      if (!single) el("h3", name(backend), card);
       const state = view.states[backend], pending = view.pending.includes(backend), skipped = view.skipped.includes(backend);
-      // "Console only" is the first-run list's word for a CLI it does not sign in; Settings → Accounts (`dialog`, or a computer's own sign-in) does, so there it is a sign-in that is needed.
-      el("p", tr(skipped ? "skipped" : state === "valid" ? "valid" : state === "not_installed" ? "notInstalled" : state === "console_only" && !(dialog || machine) ? "consoleOnly" : "needed"), card);
       const login = view.login?.backend === backend ? view.login : null;
       const active = login && login.phase !== "done" && !(login.phase === "failed" && login.reason);
+      let url = null;
+      if (active && login.url) { try { const u = new URL(login.url); if (u.protocol === "https:" && !u.username && !u.password) url = u; } catch {} }
+      const stepped = active && (url || login.code);
+      // "Console only" is the first-run list's word for a CLI it does not sign in; Settings → Accounts (`dialog`, or a computer's own sign-in) does, so there it is a sign-in that is needed.
+      // While the steps show, the one-account dialog does not repeat "Not connected" above them.
+      if (!(single && active)) el("p", tr(skipped ? "skipped" : state === "valid" ? "valid" : state === "not_installed" ? "notInstalled" : state === "console_only" && !(dialog || machine) ? "consoleOnly" : "needed"), card);
       if (active) {
-        el("p", login.phase === "waiting" || login.phase === "starting" ? tr("waiting") : tr("login", phaseName(login.phase)), card);
+        if (!(single && stepped)) el("p", login.phase === "waiting" || login.phase === "starting" ? tr("waiting") : tr("login", phaseName(login.phase)), card);
         if (login.phase === "method" && login.canAct) for (const choice of login.choices || []) {
           if (Object.hasOwn(CHOICES, choice)) button(card, choiceName(choice), () => perform({ operation: "input", id: login.id, revision: login.revision, action: { kind: "method", choice } }));
         }
-        if (login.url) {
-          // The host already allowlists these; still never turn a non-HTTPS URL into a link.
-          let url; try { url = new URL(login.url); } catch {}
-          if (url?.protocol === "https:" && !url.username && !url.password) {
-            const link = el("a", tr("openProvider"), card); link.href = url.href; link.target = "_blank"; link.rel = "noopener noreferrer";
+        // M-3238 (the user; Argon's review): the provider's page and its code as numbered steps (the step circles) — a short
+        // primary 「開啟登入頁面」 beside Copy link, the page's address a quiet note under them; the code with Copy in one box;
+        // "come back here" a quiet status line, not a step. The host already allowlists these URLs; still never turn a
+        // non-HTTPS one into a link.
+        if (stepped) {
+          const steps = el("ol", null, card); steps.className = "signin-steps";
+          const step = title => { const li = el("li", null, steps), body = el("div", null, li); body.className = "signin-step-body"; el("span", title, body).className = "signin-step-title"; return body; };
+          if (url) {
+            const body = step(tr("openProvider")), row = el("div", null, body); row.className = "signin-linkrow";
+            const link = el("a", null, row); link.className = "btn btn-primary signin-open"; link.href = url.href; link.target = "_blank"; link.rel = "noopener noreferrer";
+            el("span", tr("stepOpen"), link); icon(link, "external");
+            copyButton(row, url.href, tr("copyLink"), "btn");
+            el("span", shortUrl(url), body).className = "note mono signin-url";
+          }
+          if (login.code) {
+            const body = step(tr("stepCode")), box = el("div", null, body); box.className = "signin-code-box";
+            const code = el("code", login.code, box); code.className = "signin-code"; code.setAttribute("aria-label", tr("deviceCode") + " " + login.code);
+            copyButton(box, login.code, tr("copy"), "btn btn-sm");
+          }
+          if (url && !(login.canAct && ["code", "start_url", "region"].includes(login.phase))) {
+            const back = el("p", tr("stepBack"), card); back.className = "s-info signin-back"; back.setAttribute("role", "status");
           }
         }
-        if (login.code) { el("p", tr("deviceCode"), card); el("code", login.code, card); }
         if (login.canAct && ["code", "start_url", "region"].includes(login.phase)) {
           const label = el("label", tr("field_" + login.phase), card);
           const input = el("input", null, label); input.type = login.phase === "code" ? "password" : "text"; input.autocomplete = "off"; input.spellcheck = false;
@@ -178,7 +228,7 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
           button(card, tr("submit", phaseName(login.phase)), () => { const value = input.value; input.value = ""; void perform({ operation: "input", id: login.id, revision: login.revision, action: { kind: login.phase, value } }); });
         }
         if (["method", "code", "start_url", "region"].includes(login.phase) && !login.canAct) el("p", tr("answerSent"), card);
-        button(card, tr("cancel"), () => perform({ operation: "cancel" }));
+        if (!(footerCancel && single)) button(card, tr("cancel"), () => perform({ operation: "cancel" }));   // the one-account dialog has it in its footer
       } else {
         if (login?.reason && login.reason !== "cancelled") el("p", errorText(login.reason), card);
         // A CLI the first-run list only names the console command for (`view.console`, from the registry's `host.firstRunSignIn`) has no button there; in Settings → Accounts (a dialog, or a
@@ -217,6 +267,8 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
     addBackend(backend) { if (view && NAMES[backend] && !view.selected.includes(backend)) return perform({ operation: "select", backends: [...view.selected, backend] }); },
     /** Draw it again in the page's language now (it also follows on its next poll). */
     relabel() { render(); },
+    /** M-3238: the dialog's own "Cancel connecting" (its footer), for the sign-in these cards show. */
+    cancel() { return perform({ operation: "cancel" }); },
     dispose() { disposed = true; generation++; clearTimeout(timer); root.replaceChildren(); },
   };
 }

@@ -233,23 +233,9 @@ export async function cliRunningVersion(panePid: number, spec: { backend: string
   deps: RunningVersionDeps = {}): Promise<string | null> {
   const proc = deps.procRoot ?? "/proc";
   const probe = deps.probe ?? probeBackendVersion;
-  let entries: string[] = [];
-  try { entries = await readdir(proc); } catch { return null; }
-  const children = new Map<number, number[]>();
-  for (const e of entries.slice(0, 65536)) {
-    if (!/^\d+$/.test(e)) continue;
-    let ppid: number | null = null;
-    try { ppid = Number(/^PPid:\s+(\d+)$/m.exec(await readFile(`${proc}/${e}/status`, "utf8"))?.[1] ?? NaN) || null; } catch { /* gone */ }
-    if (ppid !== null) children.set(ppid, [...(children.get(ppid) ?? []), Number(e)]);
-  }
   const exes = new Set<string>();
   const matched: Array<{ pid: number; exe: string; ino: number; dev: number }> = [];
-  const queue = [panePid], seen = new Set<number>();
-  while (queue.length && seen.size < 512) {
-    const pid = queue.shift()!;
-    if (seen.has(pid)) continue;
-    seen.add(pid);
-    queue.push(...(children.get(pid) ?? []));
+  for (const pid of await paneProcesses(panePid, proc)) {
     // The pane's own process too: tmux (or its `sh -c`) may exec the CLI itself, which is then the pane pid (a shell never matches).
     let exe: string;
     try { exe = await readlink(`${proc}/${pid}/exe`); } catch { continue; }

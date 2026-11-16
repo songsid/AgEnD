@@ -1,0 +1,54 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/runtime-personal-shell-m3224.test.ts (5 tests | 2 failed | 3 skipped) 10ms
+     × does not call a Node-only sandbox success ready when the chosen PowerShell cannot read 7ms
+     × stages the read canary without reading authentication and removes it with the private stage 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/runtime-personal-shell-m3224.test.ts > personal Codex shell readiness > does not call a Node-only sandbox success ready when the chosen PowerShell cannot read
+AssertionError: promise resolved "undefined" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+undefined
+
+ ❯ tests/runtime-personal-shell-m3224.test.ts:28:110
+     26|       throw Error("Get-Content is unavailable: drive C does not exist"…
+     27|     });
+     28|     await expect(checkPersonalCodexPrompt({ path: "codex.exe", command…
+       |                                                                                                              ^
+     29|   });
+     30|   it("requires the shell to read a staged canary with the same isolate…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/runtime-personal-shell-m3224.test.ts > personal Codex shell readiness > stages the read canary without reading authentication and removes it with the private stage
+AssertionError: expected undefined to be 'PERSONAL_PROFILE_READY' // Object.is equality
+
+- Expected:
+"PERSONAL_PROFILE_READY"
+
++ Received:
+undefined
+
+ ❯ tests/runtime-personal-shell-m3224.test.ts:50:64
+     48|       create: () => ({ work: cwd, home, cleanup: () => { cleaned = tru…
+     49|     const stage = stagePersonalProbe({ cli: "codex", folder: "C:\\Shar…
+     50|     expect(files.get(win32.join(cwd, ".personal-read-check"))).toBe("P…
+       |                                                                ^
+     51|     expect(files.has(win32.join(home, "auth.json"))).toBe(false);
+     52|     stage.cleanup(); expect(cleaned).toBe(true); expect(files.size).to…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 skipped (5)
+   Start at  21:59:21
+   Duration  454ms (transform 234ms, setup 89ms, import 228ms, tests 10ms, environment 0ms)

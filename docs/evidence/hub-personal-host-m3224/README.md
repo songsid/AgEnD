@@ -1,8 +1,9 @@
 # Personal question host evidence
 
-M-3224 composing checkpoint. No production migration registration or UI mount yet. Windows x64 enforcement and one
-real signed-in answer remain held for the leader's direct authorization and agreed time slot. No Windows process,
-real auth, model turn, browser window, AD or vendor service was used for this layer.
+Historical composing checkpoint at e63206c0: the source review and tests below preceded registration. They used no
+Windows process, real auth, model turn, browser window, AD or vendor service. The later registration delta now has
+its own [authorized Windows x64 proof](windows-x64/README.md) and default-factory checks; the original test scopes
+below are retained and are not described as a combined real-vendor end-to-end run.
 
 The actual local HTTPS/WSS journey uses an inert Windows-shaped protocol peer with a private fixture CA. Company
 sign-in and owner HTTP routes, SQLite, encrypted content, audit, sealed enrollment and the Runtime coordinator are

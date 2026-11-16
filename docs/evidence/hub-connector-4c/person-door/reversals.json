@@ -1,0 +1,25 @@
+{
+  "sourceSha256": "f64c1b5c7615fe50c13e9e5507b828d070edb4ef5d9e6ac91342b444ef883b4f",
+  "restored": true,
+  "programTypechecks": "final restored programs only; each reversal runtime-transformed",
+  "cases": [
+    {
+      "guard": "scope",
+      "result": "caught by assertion",
+      "selected": 1,
+      "unselected": 24
+    },
+    {
+      "guard": "app-result",
+      "result": "caught by assertion",
+      "selected": 1,
+      "unselected": 24
+    },
+    {
+      "guard": "post-cap",
+      "result": "caught by assertion",
+      "selected": 1,
+      "unselected": 24
+    }
+  ]
+}

@@ -8,7 +8,7 @@ export const ROLE_CUTOVER_TABLES=Object.freeze([
  "hub_company_join_control","hub_company_join_requests","hub_company_join_invites","hub_company_join_nonces","hub_company_join_cipher_nonces",
  "hub_enrolment_codes","hub_enrolment_code_uses","hub_enrolment_code_key","hub_pairing_notices","hub_pairing_notice_targets",
 ]as const);
-/** The unregistered personal schema is optional; a half-present authority model is never a valid proof. */
+/** Older HTTP entries may omit the personal schema; a half-present authority model is never a valid proof. */
 export const PERSONAL_ROLE_AUTHORITY_TABLES=Object.freeze([
  "hub_personal_settings","hub_personal_creators","hub_personal_enrollments","hub_personal_computers","hub_personal_agents",
 ]as const);

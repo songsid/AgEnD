@@ -10,7 +10,6 @@ import {afterEach,expect,it,vi} from "vitest";
 import {HubPersonalRuntimeHost} from "../src/hub/personal/runtime-host.js";
 import {HubPersonalOwnerHost} from "../src/hub/personal/owner-host.js";
 import {HubPersonalTurns} from "../src/hub/personal/turns.js";
-import {HUB_PERSONAL_AGENTS_MIGRATION} from "../src/hub/personal/schema.js";
 import {RuntimeInstallService,renderRuntimeInstallScript} from "../src/runtime-install.js";
 import {readRuntimeInfo} from "../src/runtime-build-info.js";
 import {runtimeEnrollTokenId,newRuntimeEnrollEphemeral,runtimeEnrollChannel,sealRuntimeEnroll,openRuntimeEnroll,verifyRuntimeServerProof,runtimeEnrollHelloMessage} from "../src/runtime-protocol.js";
@@ -33,7 +32,7 @@ it("keeps personal installer profiles, PATH and restart scope separate from an o
  expect(service.installer().scriptSha256).not.toBe(new RuntimeInstallService({bundle:()=>files,template:()=>template}).installer().scriptSha256);
 });
 it("company sign-in → sealed enrollment → current WSS computer → one direct answer → owner disconnect",async()=>{
- const r=await s3bRig({realAudit:true});HUB_PERSONAL_AGENTS_MIGRATION.up(r.db);
+ const r=await s3bRig({realAudit:true});
  const home=mkdtempSync(join(tmpdir(),"hub-personal-tls-"));let enabled=true;
  const host=new HubPersonalRuntimeHost({home,current:()=>true,enabled:()=>enabled,log:()=>{},installer:{bundle:()=>({version:"2.4.0-test",sha256:"a".repeat(64),bytes:Buffer.from("fixture"),filename:"fixture.zip"})}});
  r.httpDeps.personalAgents=core=>{const owner=new HubPersonalOwnerHost(core,host.runtime);return {owner,turns:new HubPersonalTurns(core,host.runtime,owner)};};await r.restartHttp();

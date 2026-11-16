@@ -1,0 +1,56 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-connector-4c-ui-m3240
+
+ ❯ tests/hub-mcp-pages-api-m3240.test.ts (3 tests | 2 failed | 1 skipped) 103ms
+   × reports the person's default-off app allowance beside the public setup address 74ms
+   × uses bounded administrator directory suggestions even before app access is enabled 28ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-mcp-pages-api-m3240.test.ts > reports the person's default-off app allowance beside the public setup address
+AssertionError: expected { apps: [], …(1) } to match object { apps: [], …(2) }
+
+- Expected
++ Received
+
+  {
+    "address": "https://hub.example.test/mcp",
+    "apps": [],
+-   "available": false,
+  }
+
+ ❯ tests/hub-mcp-pages-api-m3240.test.ts:12:93
+     10| });
+     11| it("reports the person's default-off app allowance beside the public s…
+     12|   const w=await world();expect((await rig!.call(w.member,"GET","/hub/v…
+       |                                                                                             ^
+     13|   const policy=await rig!.call(w.admin,"GET","/hub/v1/admin/ai-apps");…
+     14|   expect((await rig!.call(w.member,"GET","/hub/v1/me/ai-apps")).json.a…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-mcp-pages-api-m3240.test.ts > uses bounded administrator directory suggestions even before app access is enabled
+AssertionError: expected 404 to be 403 // Object.is equality
+
+- Expected
++ Received
+
+- 403
++ 404
+
+ ❯ tests/hub-mcp-pages-api-m3240.test.ts:21:100
+     19|   rig!.directory.searchPolicyGroups=vi.fn(async()=>({ok:true as const,…
+     20|   Object.defineProperty(rig!.directory,"groupPolicy",{value:"ad-direct…
+     21|   expect((await rig!.call(w.member,"GET","/hub/v1/admin/ai-apps/search…
+       |                                                                                                    ^
+     22|   expect((await rig!.call(w.admin,"GET","/hub/v1/admin/ai-apps/search?…
+     23|   expect((await rig!.call(w.admin,"GET","/hub/v1/admin/ai-apps/search?…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 skipped (3)
+   Start at  19:29:01
+   Duration  4.47s (transform 3.21s, setup 124ms, import 4.08s, tests 103ms, environment 0ms)
+

@@ -103,6 +103,16 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   .sub { color: #6b7280; font-size: 13px; }
   .step { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-top: 16px; }
   .step h2 { font-size: 14px; margin: 0 0 12px; }
+  .signin-steps { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; counter-reset: signin-step; }
+  .signin-steps > li { display: flex; align-items: flex-start; gap: 10px; counter-increment: signin-step; }
+  .signin-steps > li::before { content: counter(signin-step); flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: #f3f4f6; color: #4b5563; font-size: 12px; font-weight: 600; }
+  .signin-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; } .signin-step-title { font-size: 14px; font-weight: 500; }
+  .signin-linkrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  a.signin-open { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 6px; background: #2563eb; color: #fff; font-size: 14px; text-decoration: none; }
+  .signin-copy { display: inline-flex; align-items: center; gap: 6px; } .signin-url { font: 12px ui-monospace, Menlo, Consolas, monospace; color: #6b7280; overflow-wrap: anywhere; }
+  .signin-code-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; box-sizing: border-box; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; }
+  .signin-code { font: 600 18px/1.3 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .12em; user-select: all; }
+  .s-info { padding: 6px 12px; border-radius: 6px; background: #f3f4f6; color: #4b5563; font-size: 12px; }
   label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
   input, select { width: 100%; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 14px; }
   button { padding: 8px 14px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; font-size: 14px; cursor: pointer; }
