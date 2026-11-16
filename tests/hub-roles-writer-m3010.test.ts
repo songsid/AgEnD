@@ -1,5 +1,6 @@
 /** Actual SQL/audit, session contexts and shared directory admission; synthetic directory and resource effects only. */
 import Database from "better-sqlite3";
+import {mergeRoleAllowedList,projectRoleAllowedList} from "../src/hub/roles/allowed-list.js";
 import {personKeyString} from "../src/hub/identity.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
@@ -345,4 +346,42 @@ it("does not turn a root directory blip into a last-admin refusal for an unrelat
  w.read.mockImplementation(async who=>who.objectId===w.root.objectId?{kind:"unknown"}:{kind:"complete",person:copy(who),groups:[],observedAt:100});
  const next=w.proposal(),preview=await w.writer.preview(next,w.browser.ctx);if(!preview.ok)throw Error(preview.code);
  expect(await w.writer.apply(next,preview.previewDigest,w.browser.ctx)).toMatchObject({ok:true});expect(w.saved().assignments.some(a=>a.id==="member1")).toBe(true);
+});
+
+// M-3259: only the configured root's carried Group permissions operation keeps beta.8 behaviour.
+it.each(["root","auxiliary"] as const)("M3259 %s own-group raise is scoped to the allowed-list operation",async who=>{
+ const w=await fixture(),actor=who==="root"?w.root:w.actor,ctx=(await w.context(actor)).ctx;
+ w.memberships.set(actor.objectId,[w.group.objectId]);
+ const shortcut=projectRoleAllowedList(w.saved());shortcut.groups=[{group:w.group,dn:"CN=Members",allow:["pair_fleet"],maxFleets:2}];
+ const next=mergeRoleAllowedList(w.saved(),shortcut,w.root),preview=await w.writer.previewAllowedList(next,ctx);
+ if(who==="root"){
+  expect(preview).toMatchObject({ok:true});if(!preview.ok)throw Error(preview.code);
+  expect(await w.writer.applyAllowedList(next,preview.previewDigest,ctx)).toMatchObject({ok:true});
+  expect(projectRoleAllowedList(w.saved()).groups[0]).toMatchObject({allow:["pair_fleet"],maxFleets:2});
+ }else expect(preview).toMatchObject({ok:false,code:"self-target"});
+});
+it.each(["root","auxiliary"] as const)("M3259 %s own-team raise is scoped to the allowed-list operation",async who=>{
+ const w=await fixture(),actor=who==="root"?w.root:w.actor,ctx=(await w.context(actor)).ctx;
+ const {HUB_TEAMS_MIGRATION,HUB_TEAM_MANAGEMENT_MIGRATION}=await import("../src/hub/teams/store.js");HUB_TEAMS_MIGRATION.up(w.db);HUB_TEAM_MANAGEMENT_MIGRATION.up(w.db);
+ const id=randomUUID(),member=personKeyString(actor);w.db.prepare("INSERT INTO hub_teams VALUES(?,1,'Fixture','corp','','',?,0,0,0)").run(id,member);w.db.prepare("INSERT INTO hub_team_members VALUES(?,?,'Actor','actor','')").run(id,member);
+ const shortcut=projectRoleAllowedList(w.saved());shortcut.teams=[{teamId:id,name:"Fixture",allow:["pair_fleet"],maxFleets:2}];
+ const next=mergeRoleAllowedList(w.saved(),shortcut,w.root),preview=await w.writer.previewAllowedList(next,ctx);
+ if(who==="root"){
+  expect(preview).toMatchObject({ok:true});if(!preview.ok)throw Error(preview.code);
+  expect(await w.writer.applyAllowedList(next,preview.previewDigest,ctx)).toMatchObject({ok:true});
+  expect(w.saved().teams?.[0]).toMatchObject({allow:["pair_fleet"],maxFleets:2});
+ }else expect(preview).toMatchObject({ok:false,code:"self-target"});
+});
+it.each(["root","auxiliary"] as const)("M3259 %s cannot raise their own group through the roles editor",async who=>{
+ const w=await fixture(),actor=who==="root"?w.root:w.actor,ctx=(await w.context(actor)).ctx;w.memberships.set(actor.objectId,[w.group.objectId]);
+ const next=w.saved();next.assignments.push({id:"strict-group",roleId:BUILTIN_ROLE_IDS.member,subject:{kind:"group",group:w.group,dn:"CN=Members"},scope:{kind:"hub"},maxFleets:2,startsAt:0,expiresAt:null,assignedBy:actor,assignedAt:0});
+ expect(await w.writer.preview(next,ctx)).toMatchObject({ok:false,code:"self-target"});
+});
+it("M3259 configured root can raise an upgraded own-group Fleet limit from1to2",async()=>{
+ const w=await fixture(),ctx=(await w.context(w.root)).ctx;w.memberships.set(w.root.objectId,[w.group.objectId]);
+ const before=projectRoleAllowedList(w.saved());before.groups=[{group:w.group,dn:"CN=Members",allow:["pair_fleet"],maxFleets:1}];
+ w.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(mergeRoleAllowedList(w.saved(),before,w.root)));
+ const shortcut=projectRoleAllowedList(w.saved());shortcut.groups[0]!.maxFleets=2;
+ const next=mergeRoleAllowedList(w.saved(),shortcut,w.root),preview=await w.writer.previewAllowedList(next,ctx);expect(preview).toMatchObject({ok:true});if(!preview.ok)throw Error(preview.code);
+ expect(await w.writer.applyAllowedList(next,preview.previewDigest,ctx)).toMatchObject({ok:true});expect(projectRoleAllowedList(w.saved()).groups[0]!.maxFleets).toBe(2);
 });
