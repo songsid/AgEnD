@@ -166,7 +166,7 @@ Claude path do not change.
 
 Proposed name: **Ask first** / 「先問我」.
 
-### 10.2 Three facts that shape the design
+### 10.2 Five facts that shape the design
 
 1. **Today's one-shot run cannot be asked anything.** It runs Codex with approvals off, and Codex rejects every
    approval request in that mode. Approvals need a different way of running Codex (its app-server interface over
@@ -179,6 +179,19 @@ Proposed name: **Ask first** / 「先問我」.
 3. **The colleague's normal Codex setup would undo the gate.** Their own allow rules skip the question for
    matching commands, and their connectors, web search and other tools are not commands at all. So "every action
    asks" is only true if this mode runs with the colleague's **sign-in** but **not their settings**.
+
+4. **The strict setting this depends on may be going away.** Ridge's reading of the 0.167 source is that the
+   strictest approval setting (`untrusted`) asks before every command. OpenAI's current documentation, read on
+   2026-11-16, says that setting is no longer supported and can stop Codex from starting, and it documents no
+   other setting that makes every command ask; under the remaining setting, commands the sandbox allows run
+   without asking. The two have not been reconciled and nothing was run. **If a current Codex cannot be made to
+   ask before every command, this mode cannot be built as described**, and the words-only fallback in 10.9 is
+   what remains. E0 must settle this first, on the Codex version colleagues actually have.
+5. **There is another way to get one folder, which needs IT.** Codex's documentation describes a Windows sandbox
+   that does support denied folders, set up once with administrator rights (separate low-privilege accounts and
+   firewall rules). Phase 1 rules that out ("nothing is installed or changed on the computer"). If IT is willing
+   to install it on colleagues' computers, the existing one-folder mode would work for Codex and this mode would
+   not be needed. Not verified by us.
 
 One correction to the comparison: ClassicBot users are not specially framed today; their messages arrive like any
 other user's. The closest existing wording is what a shared Fleet agent is told about a Hub question ("not a
@@ -349,7 +362,7 @@ In full:
 
 | Phase | What | Size |
 |---|---|---|
-| E0 | Trial on a test computer: run Codex through its app-server with this run's settings; show that every command produces a request, a refusal lets it continue, nothing else can act, and the final answer is clean. No Hub changes | Small to medium |
+| E0 | Trial on a test computer, on the Codex version colleagues have: first, is there a supported setting under which every command asks (fact 4)? Then run Codex through its app-server with this run's settings; show that every command produces a request, a refusal lets it continue, nothing else can act, and the final answer is clean. No Hub changes | Small to medium |
 | E1 | The approval path: request from the runner to the Hub, the owner's "Needs you" block and notice, the decision back to the same run, timers, limits, the record | Large |
 | E2 | The option on the card, the administrator switch, the check's second result, the asker's states | Medium |
 | E3 | Requests in the owner's Discord or Telegram, once notification forwarding exists | Small |
@@ -368,3 +381,4 @@ words only, every request refused automatically. It needs no approval path and m
 | E5 | How long to wait for the owner | **10 minutes per request, 30 minutes per question**, separate from Codex's 5 minutes of work. |
 | E6 | Who can switch it on | **Hub administrator switch, off by default, then each owner's own tick.** |
 | E7 | Ship the words-only fallback first? | **Decide after E0.** It is much smaller and has no approval to get wrong, but it cannot look anything up. |
+| E8 | Ask IT about installing Codex's administrator-level Windows sandbox instead? | **Worth one question to IT before E1 is built.** If they can, one-folder mode covers Codex and the approval path is not needed. |
