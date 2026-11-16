@@ -429,6 +429,15 @@ jobs:
           HP: '19666'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-hub-member-drawer-m3217.mts
+      # M-3235 (the user, beta.6): the 「我的 Fleet | Hub ↗」 switch on the sidebar's gutters (desk nav rows, phone filter row),
+      # the same padding in both halves; a Hub name of 8–60 characters (en, zh) ends in "…" before ↗, the whole name in title/aria.
+      - name: Hub switch alignment and long Hub names
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19668'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-hub-switch-names-m3235.mts
       # M-3222 (the user, iPhone): one line of text in the middle of the composer with Send and 📎; in the drawer a fresh reply is a
       # quiet marker at the row's height (its time in the accent), never a tinted block, a pulse or a left-over hover.
       - name: Phone composer line and drawer reminders
