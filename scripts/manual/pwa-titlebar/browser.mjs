@@ -8,7 +8,7 @@ assert(await readFile(join(root,'.owned'),'utf8')===state.tag);
 let giveCode;const input=createInterface({input:process.stdin});input.on('line',line=>{const value=JSON.parse(line);assert(giveCode&&typeof value.code==='string');const done=giveCode;giveCode=null;done(value.code);});
 const freshCode=()=>new Promise(resolve=>{giveCode=resolve;console.log(JSON.stringify({kind:'code-request'}));});
 const profile=join(root,'edge-profile'); await mkdir(profile);
-const edge=spawn('C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',['--user-data-dir='+profile,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--ignore-certificate-errors','--host-resolver-rules=MAP agend-pwa.test 127.0.0.1','--remote-debugging-port=0','about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:false});
+const edge=spawn(state.browserExecutable,['--user-data-dir='+profile,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--ignore-certificate-errors','--host-resolver-rules=MAP agend-pwa.test 127.0.0.1','--remote-debugging-port=0','about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:false});
 let exited=false;edge.on('close',()=>{exited=true;});const sleep=ms=>new Promise(r=>setTimeout(r,ms));let ws,call,activeSid,phase='startup',seq=0;const pending=new Map(),installed=[];const result={cases:[]};
 try{
  const endpoint=await new Promise((resolve,reject)=>{let s='';const timer=setTimeout(()=>reject(Error('Edge startup timeout')),20000);edge.stderr.on('data',b=>{s=(s+b).slice(-8000);const m=/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/.exec(s);if(m){clearTimeout(timer);resolve(m[1]);}});});
@@ -39,7 +39,7 @@ try{
    const color=await until(()=>evaluate(appSid,`document.querySelector('meta[name="theme-color"]').content===${JSON.stringify(theme==='dark'?'rgb(33, 33, 33)':'rgb(255, 255, 255)')} && document.querySelector('meta[name="theme-color"]').content`));
    await sleep(800);const label=entry.label+'-'+theme;phase=label;console.log(JSON.stringify({phase}));
    const p=join(root,label+'.png'),ps=process.env.SystemRoot+'\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
-   const screen=JSON.parse(execFileSync(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(root,'window.ps1'),'-Tag',state.tag,'-Out',p],{encoding:'utf8',windowsHide:true}));
+   const screen=JSON.parse(execFileSync(ps,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(root,'window.ps1'),'-Tag',state.tag,'-BrowserProcess',state.browserProcess,'-Out',p],{encoding:'utf8',windowsHide:true}));
    const channels=screen.captionColor.slice(1).match(/../g).map(v=>parseInt(v,16));
    assert(theme==='dark'?channels.every(v=>v<100):channels.every(v=>v>200),'Native caption did not follow '+theme+': '+screen.captionColor);
    result.cases.push({label,color,standalone:true,screen});
