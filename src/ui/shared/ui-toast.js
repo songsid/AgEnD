@@ -6,10 +6,10 @@ import { createStore } from "./app-store.js";
 const toasts = createStore([]);
 let seq = 0;
 
-export function toast(text, ok = true) {
+export function toast(text, ok = true, { detail = false } = {}) {
   const id = ++seq;
-  toasts.set(list => [...list, { id, text: String(text), ok }]);
-  setTimeout(() => toasts.set(list => list.filter(x => x.id !== id)), 4000);
+  toasts.set(list => [...list, { id, text: String(text), ok, ...(detail ? { detail: true } : {}) }]);
+  setTimeout(() => toasts.set(list => list.filter(x => x.id !== id)), detail ? 12000 : 4000);
 }
 
 export function Toasts() {
@@ -27,5 +27,5 @@ export function Toasts() {
       if (list.length) el.showPopover();
     } catch { /* a popover that cannot be shown stays where it is */ }
   }, [list]);
-  return html`<div ref=${box} popover="manual" data-trust="toast" class="toasts" role="status" aria-live="polite">${list.map(x => html`<div key=${x.id} class=${`toast ${x.ok ? "ok" : "err"}`} onClick=${() => toasts.set((l) => l.filter((y) => y.id !== x.id))}>${x.text}</div>`)}</div>`;
+  return html`<div ref=${box} popover="manual" data-trust="toast" class="toasts" role="status" aria-live="polite">${list.map(x => html`<div key=${x.id} class=${`toast ${x.ok ? "ok" : "err"}${x.detail ? " toast-detail" : ""}`} onClick=${() => toasts.set((l) => l.filter((y) => y.id !== x.id))}>${x.text}</div>`)}</div>`;
 }

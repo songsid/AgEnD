@@ -60,3 +60,17 @@
 .msg.user .react-pick { margin-left: auto; }
 .react-pick .react-opt { width: 36px; height: 36px; padding: 0; justify-content: center; font-family: var(--font-emoji); font-size: var(--fs-xl); line-height: 1; }
 @media (pointer: coarse) { .react-pick .react-opt { width: 44px; height: 44px; } }
+
+/* M3256: source is part of the author, never a second line or a presence dot. */
+.hub-source-mark { display: inline-flex; flex: 0 0 16px; width: 16px; height: 16px; vertical-align: middle; align-items: center; justify-content: center; }
+.hub-source-mark img { width: 16px; height: 16px; }
+.hub-member-name .hub-source-mark { margin-inline-end: 4px; }
+.hub-source-trigger { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.hub-source-trigger > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.hub-source-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Source details must remain readable in the phone's otherwise single-line toast pills. */
+.toasts .toast.toast-detail { white-space: normal; overflow: visible; text-overflow: clip; border-radius: var(--r-md); }
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-source-trigger { min-height: var(--tap); min-width: var(--tap); }
+  .hub-room-page .msg .meta { align-items: center; }
+}
