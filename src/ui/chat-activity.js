@@ -245,7 +245,9 @@ export function composeActivity(name, rows, now = Date.now(), opts = {}) {
 function statusRows(rows, since, statusOnly, phase) {
   let from = Number.isFinite(since) ? since : 0;
   if (!from) { for (let i = rows.length - 1; i >= 0; i--) if (rows[i].role === "user") { const t = Date.parse(rows[i].ts); if (Number.isFinite(t)) from = t; break; } }
-  const live = { key: "act:status", turn: "status", n: 0, level: "live", rowKey: null, items: [], trailing: [], ts: from, from, to: 0, ended: false, turnEnded: false, busy: true, ...(statusOnly ? { statusOnly: true } : {}), ...(phase ? { phase } : {}) };
+  // atEnd: the "Working…" line stays under the newest row (#3756 moves a turn's live group above a reply that came
+  // before its steps; this line never becomes a reply's block, and the agent may still be working after a reply)
+  const live = { key: "act:status", turn: "status", n: 0, level: "live", rowKey: null, items: [], trailing: [], ts: from, from, to: 0, ended: false, turnEnded: false, busy: true, atEnd: true, ...(statusOnly ? { statusOnly: true } : {}), ...(phase ? { phase } : {}) };
   return composeRows(rows, { groups: [], live });
 }
 

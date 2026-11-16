@@ -237,13 +237,17 @@ describe("live before the reply — the feed", () => {
     await answered(() => tick!({ instance: "w" }));
     expect(shape(feed.compose(user1))).toBe("user act:live:2");
     expect(feed.compose(user1)[1].group.key).toBe(key);
+    // #3756: the reply's row comes over the message stream before the steps read that names it — the block is drawn
+    // above it at once (it used to sit under the reply for one read, then jump above it)
+    const rowsDone = rows(true).map((r) => (r.role === "agent" ? { ...r, ts: stamp(6.6) } : { ...r, ts: stamp(-1) }));
+    expect(shape(feed.compose(rowsDone))).toBe("user act:live:2 agent");
+    expect(feed.compose(rowsDone)[1].group.key).toBe(key);
     // the reply: its row arrives (by anchor), the same key above it
     appendFileSync(f, rec({ type: "assistant", timestamp: stamp(6), message: { role: "assistant", content: [{ type: "tool_use", id: "t3", name: "mcp__agend__reply", input: { text: "hi" } }] } })
       + rec({ type: "user", promptId: "p1", timestamp: stamp(6.5), message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t3", content: "{\"chatId\":\"web\",\"messageId\":\"w-r1\"}" }] } })
       + rec({ type: "assistant", timestamp: stamp(7), message: { role: "assistant", content: [{ type: "text", text: "." }] } })
       + rec({ type: "system", subtype: "turn_duration", durationMs: 7000, timestamp: stamp(7.5) }));
     await answered(() => tick!({ instance: "w" }));
-    const rowsDone = rows(true).map((r) => (r.role === "agent" ? { ...r, ts: stamp(6.6) } : { ...r, ts: stamp(-1) }));
     expect(shape(feed.compose(rowsDone))).toBe("user act:id:2 agent");        // the `.` is not a step: two tools, one block, above the reply
     expect(feed.compose(rowsDone)[1].group.key).toBe(key);                      // the same group the live block was
     feed.stop();

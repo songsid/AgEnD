@@ -27,7 +27,11 @@
 // step has no group at all. Text after the last reply with substance stays in that reply's group (the same block as the
 // turn's other steps), and only until its reply row arrives is it ever the live group.
 // A page labels `text`, `time`, `turn` and `none` as inferred. A reply call seen a moment before its row arrives is
-// `live` (placed at the end) so the group does not jump when the row comes.
+// `live` so the group does not jump when the row comes.
+// Where the live group sits (#3756): before the first agent row newer than its start (`from`) that no group claims — the
+// reply row of this very turn can arrive (SSE) before the steps read that names it, and the block must not be drawn
+// under it for one read and then jump above it. At the end when there is none, when a person's message newer than the
+// start comes first (it may start another turn: the work is never hung on a later reply), and for rows with no time.
 //
 // Keys: `act:<turn>:<n>` (n: the segment's number in its turn) — the same key while a segment is live and after its
 // reply arrives, so the page keeps the node (no remount, no scroll jump). A turn the transcript gave no id for is named
@@ -73,8 +77,12 @@ function turnsOf(steps) {
  * @returns { groups: Group[], live: Group|null }
  *   Group = { key, turn, n, level, rowKey: string|null, items: Step[], trailing: Step[], ts: number, from, to (ms: when the
  *   work for the reply began — the turn's start, or the previous reply's call — and when it ended; `to` 0 while live), partial?: true,
- *   ended: the segment is complete (false: live), turnEnded: the turn is over — only then are `trailing` steps "never sent" }
- *   `groups` are in thread order; `rowKey` is the row a group sits above (null: between rows by `ts`, or live at the end).
+ *   ended: the segment is complete (false: live), turnEnded: the turn is over — only then are `trailing` steps "never sent",
+ *   promptKey?: the live group's own prompt row (the key of its turn's user row, when the ledger has it), waitsFor?: the
+ *   live group's reply call's id, when its result named one (its row is the only one it may go before); atEnd?: true —
+ *   a live group composeRows always puts last (chat-activity.js' status-only "Working…" line) }
+ *   `groups` are in thread order; `rowKey` is the row a group sits above (null: between rows by `ts`; the live group by
+ *   composeRows' rule).
  */
 export function groupSteps(rows, steps, opts = {}) {
   const now = opts.now ?? Date.now();
@@ -85,6 +93,7 @@ export function groupSteps(rows, steps, opts = {}) {
   const turns = turnsOf(steps);
   const groups = [];
   let live = null;
+  let livePrompt = null;                                 // the newest turn's own prompt row (only it has a live group): composeRows, #3756
   // Prism #3709 R4: the rows some reply call names by its explicit id. A call that names none yet (its result not seen) may
   // still be matched by its words or its time — but never onto a row another call has proved to be its own.
   const named = new Set();
@@ -127,6 +136,7 @@ export function groupSteps(rows, steps, opts = {}) {
     const userRow = first && first.anchor && first.anchor.messageId
       ? users.find((r) => r.x.anchor === first.anchor.messageId) || null : null;
     const tkey = turn.turn || `~${(first || turn.steps[0]).id}`;
+    if (lastTurn && userRow) livePrompt = rowKeyOf(userRow.x);
     // Which agent rows can belong to this turn's replies by time: between its user row and the next user row; with no
     // user row to go by, between the turn's first step and the next turn's first (rows keep their own clock).
     const next = userRow ? users.find((r) => r.i > userRow.i) : null;
@@ -164,7 +174,7 @@ export function groupSteps(rows, steps, opts = {}) {
       const awaiting = lastTurn && (sg.reply.status === "running" || (sg.reply.ts && now - sg.reply.ts < AWAIT_ROW_MS));
       if (!awaiting) { groups.push({ ...base, level: "none", rowKey: null }); return; }
       if (live) groups.push({ ...live, level: "none", ended: true });
-      live = { ...base, level: "live", rowKey: null, ended: false };
+      live = { ...base, level: "live", rowKey: null, ended: false, ...(sg.reply.anchor && sg.reply.anchor.messageId ? { waitsFor: sg.reply.anchor.messageId } : {}) };
     });
     if (!tail.length) {
       // nothing shown yet, but the agent is working on this turn (the page says so: `busy`). Some CLIs write a
@@ -196,13 +206,15 @@ export function groupSteps(rows, steps, opts = {}) {
     if (lastPlaced) { lastPlaced.trailing = tail; lastPlaced.to = tail[tail.length - 1].ts || lastPlaced.to; return; }
     groups.push({ key: `act:${tkey}:${n}`, turn: turn.turn, n, level: "none", rowKey: null, items: tail, trailing: [], ts: tail[0].ts || 0, from, to: tail[tail.length - 1].ts || 0, ended: true, turnEnded: ended, ...(partial && !segs.length ? { partial: true } : {}) });
   });
+  if (live && livePrompt) live.promptKey = livePrompt;
   if (live && opts.busy) { live.busy = true; if (opts.phase) live.phase = opts.phase; }   // the page knows the agent is working: this live group is shown even when it holds nothing to show yet; grok's phase (reasoning, a tool…) is what the live line says
   return { groups, live };
 }
 
 /**
  * The ledger rows with each group as a synthetic `{ role: "activity" }` row before the reply it belongs to; a group
- * with no row (`none`, by its time) between the rows; the live group last. The rows themselves are never changed.
+ * with no row (`none`, by its time) between the rows; the live group before the reply row it is waiting for (see the
+ * top: `liveRowIndex`), else last. The rows themselves are never changed.
  */
 export function composeRows(rows, { groups, live }) {
   const before = new Map();
@@ -213,13 +225,34 @@ export function composeRows(rows, { groups, live }) {
   const act = (g) => ({ role: "activity", boot: "act", id: g.key, group: g, ts: g.ts ? new Date(g.ts).toISOString() : "" });
   const out = [];
   const looseLeft = loose.slice().sort((a, b) => a.ts - b.ts);
-  for (const x of rows) {
+  const liveAt = live ? liveRowIndex(rows, live, before) : -1;
+  rows.forEach((x, i) => {
     const t = rowTs(x);
     while (looseLeft.length && t && looseLeft[0].ts && looseLeft[0].ts < t) out.push(act(looseLeft.shift()));
     for (const g of before.get(rowKeyOf(x)) || []) out.push(act(g));
+    if (i === liveAt) out.push(act(live));
     out.push(x);
-  }
+  });
   for (const g of looseLeft) out.push(act(g));
-  if (live) out.push(act(live));
+  if (live && liveAt < 0) out.push(act(live));
   return out;
+}
+
+/**
+ * #3756: the row the live group goes before — the first agent row newer than the group's start that no group claims
+ * (a reply of this turn whose row came before the steps read that names it). -1 (the end): a person's message newer
+ * than the start comes first (other than the turn's own prompt), there is no such row, or the group has no start.
+ * Rows with no time are passed over. A reply call whose result named its row's id waits for that row only (R4: never a
+ * guess); while it is missing, the end. A group marked `atEnd` (the status-only "Working…" line) is always last.
+ */
+function liveRowIndex(rows, live, claimed) {
+  const from = live.from || live.ts || 0;
+  if (!from || live.atEnd) return -1;
+  for (let i = 0; i < rows.length; i++) {
+    const x = rows[i], t = rowTs(x);
+    if (t <= from) continue;                             // older, or no time (0)
+    if (x.role === "user" && rowKeyOf(x) !== live.promptKey) return -1;
+    if (x.role === "agent" && !claimed.has(rowKeyOf(x)) && (!live.waitsFor || x.anchor === live.waitsFor)) return i;
+  }
+  return -1;
 }

@@ -52,10 +52,10 @@ function steps(next: () => Record<string, unknown>) {
   }) as any;
 }
 const answer = (n: number, o: Record<string, unknown> = {}) => ({ enabled: true, instance: "w", backend: "claude-code", supported: true, thinking: true, cwd: "/srv/w", home: "/home/me", key: "1-1", steps: stepsOf(n), events: [], before: null, after: n * 1000, ev: 0, ...o });
-async function open(body: Record<string, string> = { chatActivity: "1", logThinking: "1" }) {
+async function open(body: Record<string, string> = { chatActivity: "1", logThinking: "1" }, rows = ledger) {
   current = page({ url: `${ORIGIN}/ui/chat/w`, storage: { agend_tour_done: "1" } });
   for (const [k, v] of Object.entries(body)) (current.document as any).body.dataset[k] = v;
-  panel.store.state.msgs.w = ledger.map((r) => ({ ...r }));
+  panel.store.state.msgs.w = rows.map((r) => ({ ...r }));
   panel.store.state.msgs.x = [];
   await current.mount(h(panel.ChatPanel, { route: { instance: "w" }, navKey: "one" }));
   await settle(); await settle();
@@ -73,12 +73,17 @@ describe("the chat for an admin session", () => {
   it("a turn in progress grows at the end on steps_tick and becomes its reply's block, in the same node", async () => {
     let n = replyAt - 3;
     steps(() => answer(n, { steps: stepsOf(n) }));
-    const doc = await open();
+    const doc = await open(undefined, ledger.slice(0, -1));                // the reply's row is not here yet
     const live = doc.querySelector(".thread").lastChild;
     expect(live.classList.contains("activity-row")).toBe(true);
     const before = live.querySelectorAll(".log-item").length;
+    // #3756: the reply's row comes over the message stream before the steps read that names it — it lands under the
+    // live block (the block does not sit under the reply for one read and then jump above it)
+    panel.store.ingest({ ...ledger[ledger.length - 1], instance: "w" });
+    await settle(); await settle();
+    expect(rowsOf(doc)).toEqual(["user", "activity", "agent", "user", "activity", "agent"]);
+    expect(doc.querySelectorAll(".activity-row")[1]).toBe(live);
     n = replyAt + 1;                                                       // the rest of the turn is written
-    panel.store.state.msgs.w = ledger.map((r) => ({ ...r }));
     for (const fn of [...ticks]) fn({ instance: "w" });
     await settle(); await settle();
     expect(asked[1]).toContain("after=");
