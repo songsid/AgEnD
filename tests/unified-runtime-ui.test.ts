@@ -25,6 +25,7 @@ beforeAll(async()=>{
   globalThis.fetch=fetchFake as any;
   const {setLang}=await import("/assets/app-i18n.js");setLang("en",{store:false});
   app=await import("/assets/app-store.js");nav=await import("/assets/app-nav.js");shell=await import("/assets/app-shell.js");
+  (await import("/assets/instance-nav.js")).sidebarDensityStore.set({ value: "detailed", layout: "desk" });   // M-3252: these rows are the detailed ones (a desktop now defaults to compact)
   chat=await import("/ui/js/panel-chat.js");catalog=await import("/ui/js/windows-cli-catalog.js");
   NativeSettings=(await import("/ui/js/native-instance-settings.js")).NativeInstanceSettings;
   chat.boot({stream:{on(event:string,listener:(value:any)=>void){const rows=listeners.get(event)||[];rows.push(listener);listeners.set(event,rows);return()=>{};}},boot:null,deps:{fetch:fetchFake}});
