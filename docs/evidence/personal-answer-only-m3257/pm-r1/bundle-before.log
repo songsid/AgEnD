@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+ RUN  v4.1.12 %REPO%
 
  ❯ tests/runtime-bundle-closed.test.ts (4 tests | 1 failed) 606ms
      × carries every file its modules import or start (a missing one fails only on the computer) 597ms
@@ -7,7 +7,7 @@
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
 
  FAIL  tests/runtime-bundle-closed.test.ts > the built bundle > carries every file its modules import or start (a missing one fails only on the computer)
-Error: Command failed: /home/han/.nvm/versions/node/v22.22.2/bin/node /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257/scripts/build-runtime.mjs /tmp/agend-bundle-closed-jSrPT2/bundle /tmp/agend-bundle-closed-jSrPT2/compiled
+Error: Command failed: %HOME%/.nvm/versions/node/v22.22.2/bin/node %REPO%/scripts/build-runtime.mjs /tmp/agend-bundle-closed-jSrPT2/bundle /tmp/agend-bundle-closed-jSrPT2/compiled
 node:internal/modules/package_json_reader:314
   throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
         ^

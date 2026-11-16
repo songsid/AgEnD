@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+ RUN  v4.1.12 %REPO%
 
  ❯ tests/runtime-personal-answer-only-m3257.test.ts (11 tests | 1 failed | 10 skipped) 13ms
    × keeps corporate inference transport settings without inheriting provider or code injection authority 11ms

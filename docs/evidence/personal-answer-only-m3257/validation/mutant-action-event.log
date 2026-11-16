@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+ RUN  v4.1.12 %REPO%
 
  ❯ tests/runtime-personal-answer-only-m3257.test.ts (10 tests | 2 failed) 1029ms
    × refuses an action event even if the CLI later emits an otherwise successful final answer 6ms

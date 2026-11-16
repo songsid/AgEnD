@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+ RUN  v4.1.12 %REPO%
 
  ❯ tests/hub-personal-owner-m3224.test.ts (11 tests | 1 failed) 887ms
      × requires explicit owner opt-in, a failed one-folder check and the separate empty-tool capability 81ms

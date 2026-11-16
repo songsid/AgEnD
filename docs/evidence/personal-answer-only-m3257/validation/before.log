@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+ RUN  v4.1.12 %REPO%
 
  ❯ tests/runtime-personal-answer-only-m3257.test.ts (2 tests | 2 failed) 14ms
    × gives an opted-in Answer only turn no shell, patch, goals or shared-folder capability 9ms

@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+ RUN  v4.1.12 %REPO%
 
  ❯ tests/hub-personal-ui-m3224.test.ts (22 tests | 4 failed | 18 skipped) 217ms
    × keeps a failed empty-tool check unavailable and never selects it automatically 55ms

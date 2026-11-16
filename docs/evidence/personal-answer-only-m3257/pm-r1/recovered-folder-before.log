@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+ RUN  v4.1.12 %REPO%
 
  ❯ tests/hub-personal-ui-m3224.test.ts (24 tests | 1 failed | 23 skipped) 96ms
    × lets the owner turn off a saved Answer only choice if the one-folder check later succeeds 46ms

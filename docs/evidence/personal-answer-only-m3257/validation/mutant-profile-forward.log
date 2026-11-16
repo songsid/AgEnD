@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-words-m3257
+ RUN  v4.1.12 %REPO%
 
  ❯ tests/runtime-client.test.ts (32 tests | 1 failed | 31 skipped) 197ms
      × negotiates Answer only separately and passes no tools or account authority to its worker 194ms

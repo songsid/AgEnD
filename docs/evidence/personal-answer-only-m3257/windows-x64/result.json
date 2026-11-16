@@ -140,7 +140,7 @@
     }
   ],
   "desktopWindows": false,
-  "interopBefore": "Microsoft Windows [\ufffd\ufffd\ufffd\ufffd 10.0.26100.9711]",
+  "interopBefore": "Microsoft Windows [���� 10.0.26100.9711]",
   "model": "gpt-5.6-terra",
   "modelSource": "existing-default-local-cache",
   "authExpiry": "2026-11-17T02:54:52.000Z",
@@ -157,7 +157,7 @@
   "trapHits": 0,
   "sourceFileCount": 2,
   "remainingOwnedAsyncPids": [],
-  "interopAfter": "Microsoft Windows [\ufffd\ufffd\ufffd\ufffd 10.0.26100.9711]",
+  "interopAfter": "Microsoft Windows [���� 10.0.26100.9711]",
   "finishedAt": "2026-11-16T22:56:17.932Z",
   "elapsedMs": 20715,
   "entriesBeforeRootCleanup": [

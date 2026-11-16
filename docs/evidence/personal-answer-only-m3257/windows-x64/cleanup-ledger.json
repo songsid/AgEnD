@@ -1,24 +1,24 @@
 {
   "source": "6a7aeaacbe913cd54b9d12b7ca874db92e7b6446",
   "runId": "d2f3f1b8-c1c4-401b-a4f5-15062ec7507c",
-  "root": "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c",
+  "root": "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c",
   "startedAt": "2026-11-16T22:55:52Z",
   "created": [
-    "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c",
-    "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\.owned",
-    "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\temp",
-    "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\portable (verified @openai/codex 0.167.0-win32-x64)",
-    "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\proof.mjs",
-    "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\library.mjs",
-    "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\runtime-pane-private.ps1",
-    "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\node_modules\\ws"
+    "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c",
+    "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\.owned",
+    "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\temp",
+    "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\portable (verified @openai/codex 0.167.0-win32-x64)",
+    "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\proof.mjs",
+    "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\library.mjs",
+    "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\runtime-pane-private.ps1",
+    "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c\\node_modules\\ws"
   ],
   "removed": [
-    "C:\\Users\\changhansung\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c"
+    "%USERPROFILE%\\agend-answer-only-proof-M3257-d2f3f1b8-c1c4-401b-a4f5-15062ec7507c"
   ],
   "windowsHide": true,
   "modelRetry": false,
-  "interopBefore": "Microsoft Windows [\ufffd\ufffd\ufffd\ufffd 10.0.26100.9711]",
+  "interopBefore": "Microsoft Windows [���� 10.0.26100.9711]",
   "hostExit": 0,
   "ownedProcesses": {
     "before": [],
@@ -118,7 +118,7 @@
     "portable/vendor/x86_64-pc-windows-msvc/codex-resources/voice/licenses/zlib.txt"
   ],
   "rootGone": true,
-  "interopAfter": "Microsoft Windows [\ufffd\ufffd\ufffd\ufffd 10.0.26100.9711]",
+  "interopAfter": "Microsoft Windows [���� 10.0.26100.9711]",
   "interopEqual": true,
   "finishedAt": "2026-11-16T22:56:21Z",
   "elapsedSeconds": 29.19
