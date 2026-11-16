@@ -2,6 +2,7 @@
 import { StringDecoder } from "node:string_decoder";
 
 export type PersonalAgentCli = "codex" | "claude-code";
+export const isPersonalAgentCli = (value: unknown): value is PersonalAgentCli => value === "codex" || value === "claude-code";
 export type PersonalAnswer = { ok: true; answer: string }
   | { ok: false; reason: "failed" | "interrupted" | "incomplete" | "empty" | "protocol" | "output-limit" };
 const MAX_STREAM = 1024 * 1024;
@@ -19,7 +20,7 @@ export class PersonalAgentAnswerReader {
   private failure: Extract<PersonalAnswer, { ok: false }>["reason"] | null = null;
   private settled: PersonalAnswer | null = null;
   constructor(private readonly cli: PersonalAgentCli) {
-    if (cli !== "codex" && cli !== "claude-code") throw Error("Unsupported personal agent CLI");
+    if (!isPersonalAgentCli(cli)) throw Error("Unsupported personal agent CLI");
   }
   write(chunk: Uint8Array): void {
     if (this.settled || this.failure) return;

@@ -22,6 +22,7 @@ export function useRefreshableModels(backend, instance, context = {}) {
   const key = JSON.stringify(target);
   const [state, set] = useState({ key, models: [], phase: "loading" });
   const generation = useRef(0);
+  const [reads, setReads] = useState(0);
   const current = useRef(key), flight = useRef(null), mounted = useRef(true);
   current.current = key;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -38,7 +39,9 @@ export function useRefreshableModels(backend, instance, context = {}) {
     promise.finally(() => { if (answers.get(key)?.promise === promise) answers.delete(key); }).catch(() => {});
     promise.then(data => { if (live && gen === generation.current) set({ key, models: data.models, source: data.source, phase: "idle" }); }, () => { if (answers.get(key)?.promise === promise) answers.delete(key); if (live && gen === generation.current) set({ key, models: [], phase: "load_error" }); });
     return () => { live = false; };
-  }, [key]);
+  }, [key, reads]);
+  // The list changed on the server (a sign-in ended, a discovery finished): read it again, never touching the selection.
+  catalogStore.useModelsEvent?.(backend, () => { answers.clear(); setReads(n => n + 1); });
   const shown = state.key === key ? state : { key, models: [], phase: "loading" };
   async function refresh() {
     if (flight.current || !backend) return;

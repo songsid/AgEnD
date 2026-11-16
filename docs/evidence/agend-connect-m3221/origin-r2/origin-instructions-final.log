@@ -1,0 +1,8 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agend-connect-m3221
+
+
+ Test Files  1 passed (1)
+      Tests  25 passed (25)
+   Start at  14:45:59
+   Duration  324ms (transform 113ms, setup 96ms, import 70ms, tests 19ms, environment 0ms)

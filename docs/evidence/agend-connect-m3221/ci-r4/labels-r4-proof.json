@@ -1,0 +1,14 @@
+{
+  "prompt_variants_byte_equal": 12,
+  "option_labels": {
+    "en": [
+      "Claude Code",
+      "Codex"
+    ],
+    "zh-TW": [
+      "Claude Code",
+      "Codex"
+    ]
+  },
+  "no_locale_allowlist_added": true
+}

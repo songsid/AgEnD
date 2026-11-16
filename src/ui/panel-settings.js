@@ -77,6 +77,7 @@ import { AgentFilters, agentFilterText, agentRuntime, agentRuntimeOffline, agent
 import { useRuntimeCatalog } from "./runtime-catalog.js";
 import { ShortcutsHelpRow } from "./settings-shortcuts.js";
 import { GeneralLocation } from "./general-location.js";
+import { SettingsConnector } from "./settings-connector.js";
 
 const tn = (k, ...v) => k === "sec_notifications" ? quotaNoticeText().title : t(`settings.${k}`, ...v);
 /**
@@ -430,7 +431,7 @@ export function SettingsPanel({ route, navKey }) {
       </div></details>`
     : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" />${!SETTINGS_SECTIONS.includes("notifications") ? html`<${QuotaNoticeSettings} key=${`quota:${formKey}`} ctx=${ctx} />` : null}</${YamlLock}>`
     : section === "notifications" ? html`<${YamlLock} staged=${staged}><${QuotaNoticeSettings} key=${formKey} ctx=${ctx} /></${YamlLock}>`
-    : section === "chat" ? html`<${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
+    : section === "chat" ? html`<${SettingsConnector} /><${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
         <${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="chat" />
         <div id="classicbot" class="s-anchor s-classic-area"><section class="card s-chat-classic"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} /></section>
           <details class="s-ui-disclosure s-classic-defaults"><summary>${layoutText("classicDefaults")}</summary><div class="s-disclosure-body"><${General} key=${formKey} ctx=${ctx} part="classic" /></div></details></div>`
@@ -512,11 +513,11 @@ export function SettingsPanel({ route, navKey }) {
   const close = () => setDialog(null);
   const searchable = section === "agents" || section === "chat";
   // #2347 §7: on a phone, Settings itself (/settings) is the list of sections with search on top; a section opens on its
-  // own with "‹ Settings" back to it. A wider screen always shows the list beside the section (the CSS decides).
+  // own, the header's ← back to it (M-3245: was a "‹ Settings" bar under a ☰). A wider screen always shows the list beside the section (the CSS decides).
   // Which one is shown is the root's data-view: its class stays exactly the effects producer's ("panel p-settings", #1629).
   const atList = typeof location !== "undefined" && location.pathname === "/settings";
   return html`<div data-effect-panel="settings" class="panel p-settings" data-view=${atList ? "index" : "section"}>
-    <${PanelHeader} title=${tn("title")} sub=${data ? html`<${SettingsBuildVersion} version=${data.version} build=${data.build} /><${UpdatePillMark} />` : null}>
+    <${PanelHeader} title=${tn("title")} back=${atList ? null : { href: settingsPath(), label: tn("backToSettings") }} sub=${data ? html`<${SettingsBuildVersion} version=${data.version} build=${data.build} /><${UpdatePillMark} />` : null}>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx || yamlStaged(staged)} title=${ctx && yamlStaged(staged) ? tn("yamlUnsaved") : undefined} onClick=${openWizard}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
@@ -525,7 +526,6 @@ export function SettingsPanel({ route, navKey }) {
       ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`} title=${tn(`sec_${k}`)}
         aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</div></nav>
     <div data-trust="panel-content" class="panel-body"><div class="col" data-settings-section=${section}>
-      <a class="s-back" href=${settingsPath()}><${Icon} name="back" size=${16} /><span>${tn("title")}</span><span class="s-back-here">${tn(`sec_${section}`)}</span></a>
       ${section !== "runtimes" ? html`<${SettingsPageHead} section=${section}>${section === "agents" && ctx ? html`<button type="button" id="newAgentBtn" class="btn btn-primary" disabled=${yamlStaged(staged)} onClick=${() => toDialog({ kind: "create" })}><${Icon} name="plus" size=${16} />${tn("newAgent")}</button>` : null}</${SettingsPageHead}>` : null}
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}

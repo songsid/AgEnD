@@ -1,0 +1,88 @@
+{
+  "tested_source": "25996d78e4bd7b20a1b2f776761f990209fdca10",
+  "sync_head": "bff998a0a62d1c276f1ae4c6f168ebf7d51e9eed",
+  "base": "4ca66795c88d07f71f98cd169aaeefb26901d16d",
+  "own_patch_applied_tree": "1b6476850345201e19c93adb42ee8b51fb14cb64",
+  "actual_tree": "1b6476850345201e19c93adb42ee8b51fb14cb64",
+  "clients": {
+    "claude": {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 8.528,
+      "answer_seen": true,
+      "bytes": 13814,
+      "tools": [
+        {
+          "name": "mcp__agend__list_agents"
+        },
+        {
+          "name": "mcp__agend__send_message"
+        },
+        {
+          "name": "mcp__agend__task_board"
+        },
+        {
+          "name": "mcp__agend__read_answer"
+        }
+      ],
+      "final": "{\"agent\":\"helper\",\"code\":\"LARCH-42\",\"meeting\":\"Tuesday at 10:00\",\"task_title\":\"Connector trial ready\"}"
+    },
+    "codex": {
+      "exit": 0,
+      "timeout": false,
+      "seconds": 18.711,
+      "answer_seen": true,
+      "bytes": 3580,
+      "tools": [
+        {
+          "name": "list_agents",
+          "status": "completed"
+        },
+        {
+          "name": "send_message",
+          "status": "completed"
+        },
+        {
+          "name": "read_answer",
+          "status": "completed"
+        },
+        {
+          "name": "task_board",
+          "status": "completed"
+        }
+      ],
+      "final": "{\"agent\":\"helper\",\"code\":\"LARCH-42\",\"meeting\":\"Tuesday at 10:00\",\"task_title\":\"Connector trial ready\"}"
+    }
+  },
+  "auth_originals_unchanged": {
+    "codex": true,
+    "claude": true
+  },
+  "inputs": [
+    {
+      "target": "helper",
+      "text": "What is the trial code and meeting?",
+      "source": "web",
+      "user": "Local app",
+      "hasVerifiedAuthority": false
+    },
+    {
+      "target": "helper",
+      "text": "What is the trial code and meeting?",
+      "source": "web",
+      "user": "Local app",
+      "hasVerifiedAuthority": false
+    }
+  ],
+  "scope": "Real Linux/WSL Claude Code and Codex on own accounts, auth-only isolated homes; compiled agend CLI → actual FleetManager owner port/chat delivery/reply history/SQLite, inert IPC fixture agent. No live Fleet, pane, AD, Windows app or Hermes.",
+  "initial_codex": "Connected but approval_policy=never refused tools. Retried Codex only with default_tools_approval_mode=approve for the owned four-tool fixture server; no global approval bypass. Product prompt keeps the app user approval policy.",
+  "build_limit": "tsc source emit passed; local full postbuild failed because shared dependency @xterm/headless is absent. CLI-required UI/plugin/knowledge assets were copied with the normal postbuild copy steps; no npm package/pane assets claim.",
+  "tests": {
+    "new_suites": "13/3 pass",
+    "existing_css_and_stdio": "21/2 pass (25/3 includes four install tests)",
+    "mcp_startup_dashboard_hooks": "27 existing distinct tests: startup/dashboard passed in grouped run; Hub hooks one first grouped timeout then isolated11/11. No assertion or runtime change for that timing failure.",
+    "settings_gate": "GATE=ci 114 checks pass; began load6.16, transient load rose late; run finished before pause could take effect."
+  },
+  "screenshots": "4 cards +2 desktop prompts from browser;2 phone prompts from targeted capture-height retake. Initial two incomplete phone prompt captures retained privately; textarea-scroll checks pass. Eight preferred images visually clear.",
+  "cleanup": "Owned browser/19679+19680 listeners closed; browser slot released. Fixture processes ended; scratch homes and copied auth removed by finally. No logout or original config write."
+}

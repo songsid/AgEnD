@@ -1,0 +1,7 @@
+.s-connector { display: flex; flex-direction: column; gap: var(--s-3); }
+.s-connector .grid2 { align-items: end; }
+.s-connector :is(input, select, .btn, summary) { min-height: var(--tap); min-width: var(--tap); }
+.s-connector select, .s-connector textarea { width: 100%; min-width: 0; max-width: 100%; }
+.s-connector .btn { align-self: flex-start; }
+.s-connector summary { display: flex; align-items: center; cursor: pointer; }
+@media (max-width: 599px) { .s-connector .grid2 { grid-template-columns: minmax(0, 1fr); } }

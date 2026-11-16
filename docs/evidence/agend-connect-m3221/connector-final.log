@@ -1,0 +1,10 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agend-connect-m3221
+
+(node:1351415) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  3 passed (3)
+      Tests  13 passed (13)
+   Start at  14:22:52
+   Duration  7.83s (transform 7.92s, setup 256ms, import 10.94s, tests 2.50s, environment 0ms)

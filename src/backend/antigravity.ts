@@ -1,7 +1,8 @@
 import { agyOnboardingDialogs } from "./agy-onboarding.js";
 import { ensureAgendHome } from "../agend-home.js";
 import { seedFirstRun } from "../antigravity-first-run.js";
-import { credentialHomeSpec, credentialProfileHome, credentialProfileLaunch, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
+import { credentialHomeSpec, credentialProfileHome, credentialProfileLaunch, credentialProfileLaunchAt, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
+import { antigravityStoreHasLogin } from "../antigravity-store.js";
 import { CANONICAL_EFFORT, EFFORT_CAPABILITIES, agyEffortLevels, readAgyCliEnv } from "./effort-metadata.js";
 import { flagEffort, readHelpText, resolveAgyLaunch } from "./launch-effort.js";
 import { dirname, join } from "node:path";
@@ -602,29 +603,45 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
   // Fleet first attempts the version-gated verified inline path (M-3180); restart remains the conservative fallback.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 
-  async listModels(): Promise<import("./types.js").ModelOption[]> {
+  /**
+   * `agy models`. For a NAMED account (`config.credentialStoreHome`: its folder) the same command is run the way the account's
+   * agent is launched — the pin as the environment, `--app_data_dir <folder>` right after the binary — so it answers as that
+   * account (measured on 1.5.9: an empty folder answers "Please sign in", the default sign-in answers its list). Fail closed:
+   * a folder without a sign-in, or a launch that cannot be built, gives none — never the default account's list under the
+   * account's name (#3526 / D7). The default account (no folder) runs exactly as before.
+   */
+  async listModels(config?: CliBackendConfig): Promise<import("./types.js").ModelOption[]> {
     // agy 1.1.24 emits `slug<TAB>Display Name`; older releases emitted one slug
     // or human-readable name per line. stderr carries the fetching spinner and
     // is intentionally ignored.
     try {
-      const out = execFileSync(this.binaryPath, ["models"],
-        { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      const folder = config?.credentialStoreHome;
+      let args = ["models"], env: NodeJS.ProcessEnv | undefined;
+      if (folder) {
+        const launch = credentialProfileLaunchAt("antigravity", folder);
+        if (!launch || antigravityStoreHasLogin(folder) !== true) return [];
+        args = [...launch.args, "models"];
+        env = { ...process.env, ...launch.env };
+      }
+      const out = execFileSync(this.binaryPath, args,
+        { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"], ...(env ? { env } : {}) });
       const models = parseAntigravityModelsOutput(out);
       if (models.length) return models;
     } catch { /* unknown format — fall back to free-text */ }
     return [];
   }
 
-  async probeCLIEnv() {
+  async probeCLIEnv(config?: CliBackendConfig) {
     const { probeCliVersion } = await import("./types.js");
     // agy stores the selected model in its own settings.json (the same file the
     // statusline hook lives in), e.g. "model": "Gemini 3.5 Flash (Medium)".
     let currentModel: string | undefined;
     try {
-      const s = JSON.parse(readFileSync(join(this.userHome, ".gemini", "antigravity-cli", "settings.json"), "utf-8"));
+      // A named account keeps its selected model in its own folder, not the default sign-in's.
+      const s = JSON.parse(readFileSync(join(config?.credentialStoreHome ?? join(this.userHome, ".gemini", "antigravity-cli"), "settings.json"), "utf-8"));
       if (typeof s?.model === "string" && s.model.trim()) currentModel = s.model.trim();
     } catch { /* no settings / unreadable */ }
-    const models = await this.listModels();
+    const models = await this.listModels(config);
     if (currentModel) {
       // settings.json stores the display name, while `agy --model` and the
       // Settings picker use the TSV slug. Keep an already-slug value unchanged.

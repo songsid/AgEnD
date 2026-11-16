@@ -1,0 +1,44 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agend-connect-m3221
+
+ ❯ tests/instructions.test.ts (25 tests | 2 failed) 131ms
+     × #2785 (a): both layers name the reply-required marker; the delivery-id rule is said once, in the system prompt 35ms
+     × lets ClassicBot complete delegated human work and explicitly requested channel work 2ms
+(node:1415627) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:1415892) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:1419561) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/instructions.test.ts > buildFleetInstructions > #2785 (a): both layers name the reply-required marker; the delivery-id rule is said once, in the system prompt
+AssertionError: classic: expected 2126 to be less than 2048
+ ❯ tests/instructions.test.ts:101:53
+     99|       expect(full.split(rule).length - 1, kind).toBe(1);
+    100|       expect(core, kind).not.toContain(rule);
+    101|       expect(Buffer.byteLength(core, "utf8"), kind).toBeLessThan(2048);
+       |                                                     ^
+    102|     }
+    103|     expect(readFileSync(new URL("../src/agent-cli-instructions.md", im…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/instructions.test.ts > buildFleetInstructions > lets ClassicBot complete delegated human work and explicitly requested channel work
+AssertionError: expected 2126 to be less than 2048
+ ❯ tests/instructions.test.ts:125:45
+    123|     // send_to_instance and delegate_task can assign the same channel …
+    124|     expect(core).toContain("`delegate_task` → work silently → `report_…
+    125|     expect(Buffer.byteLength(core, "utf8")).toBeLessThan(2048);
+       |                                             ^
+    126|     expect(full).not.toContain("NOT the `reply` tool");
+    127|     expect(core).not.toContain("Never `reply`");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 5 passed (6)
+      Tests  2 failed | 89 passed (91)
+   Start at  14:42:03
+   Duration  41.34s (transform 49.42s, setup 1.53s, import 72.94s, tests 925ms, environment 1ms)

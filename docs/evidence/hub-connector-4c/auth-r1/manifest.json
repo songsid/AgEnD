@@ -1,0 +1,33 @@
+{
+  "reviewedParent": "582a00743cc0179ff821e15955f8cb2137b8d002",
+  "inputs": [
+    {
+      "path": "src/hub/mcp/auth.ts",
+      "sha256": "da2317d314111a16cd60074637b3a4cf81e00ee11f98340f1c37556f444cc7f5"
+    },
+    {
+      "path": "src/hub/mcp/auth-schema.ts",
+      "sha256": "cb21753f040c715fe0d7b7f43084bf0da5fda51cb64a1ee5f1aee7b47aa435ae"
+    },
+    {
+      "path": "tests/hub-mcp-auth-m3240.test.ts",
+      "sha256": "cba04113d11960c8403b7167c912e668b230ede2d2a8d09827cd659eeb52201a"
+    },
+    {
+      "path": "docs/design/hub-connector-4c.md",
+      "sha256": "8ca59058a08d8ed7d82125c2f0f38832e7c0994baa1b25edaf90ef073b460f3b"
+    }
+  ],
+  "baseline": {
+    "selected": 6,
+    "assertionFailures": 6,
+    "unselected": 17
+  },
+  "final": {
+    "files": 1,
+    "passed": 25,
+    "sourceTypeScript": 0,
+    "testTypeScript": 0
+  },
+  "scope": "R1 browser-context boundary, authoritative person-wide/global policy lifecycle, and missing-policy temporary refusal only; no mounted endpoints or production migration."
+}

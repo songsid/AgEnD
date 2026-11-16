@@ -1,0 +1,214 @@
+{
+  "format": 1,
+  "source": "bff998a0a62d1c276f1ae4c6f168ebf7d51e9eed",
+  "bindings": [
+    {
+      "path": "changes/4006-local-connector.md",
+      "sha256": "5f5df7db571ef78846cf475ed28741c6172bdb44a0ab71ab2651be95ab57de02"
+    },
+    {
+      "path": "changes/4006-local-connector.zh-TW.md",
+      "sha256": "34179233b3758aa93b132f3ddfe09c314248ef24370cd8307923046f477a5958"
+    },
+    {
+      "path": "docs/design/agend-connect-4a.md",
+      "sha256": "2738389a8e079cb399b54388cdce1ac6f8e5c0af1e4e6208d849297908441126"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-connector-m3221.mts",
+      "sha256": "1a2bb27b64226057f3c7bb74e090d5c2a907100810d11ef59e798701c040e623"
+    },
+    {
+      "path": "src/auth-api.ts",
+      "sha256": "b1984b56fda580c9e82a353174374d7c72ba56804da1ce075e6957cb89140cb8"
+    },
+    {
+      "path": "src/cli.ts",
+      "sha256": "8fdc2f0cec2984b83be784fb8a6c27ea41f24b0222b06828de492a391e879b02"
+    },
+    {
+      "path": "src/connect/control.ts",
+      "sha256": "a0c0b693a731cb3b2099de414c174b08ed9c2b77559d83462ead04d48cbe8869"
+    },
+    {
+      "path": "src/connect/install.ts",
+      "sha256": "b410ffdd7d8bd95e672f8194edddece477a84ead8fe03556d78a7bed2045569a"
+    },
+    {
+      "path": "src/connect/protocol.ts",
+      "sha256": "9fb9937da858a1fed057b3cff04abc6ff1f93ea28fa3b66d7c3df06d69090676"
+    },
+    {
+      "path": "src/connect/service.ts",
+      "sha256": "fb2e7383d8afe231caae08fa63f22776f7035f9c28f60b6ecba3ca6aafdbc8b0"
+    },
+    {
+      "path": "src/connect/stdio-entry.ts",
+      "sha256": "8634c7cb7adf76ed80b87e6d106256a4596c89d181f2c7e196345353d6ca5fa2"
+    },
+    {
+      "path": "src/connect/stdio.ts",
+      "sha256": "5a2d587acd08da7c08b2a23e08061025e2ceb2fcdbf429a59b78e92b88ff1bd7"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "a9ea84f01705220d0140e28a6019478a9f6ab02b84138b6616ceb09c9ba7b9cc"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "8419819445adebcd3d0ddb4550a347a21dfa5ecd30fc48812f61378b410e4cb8"
+    },
+    {
+      "path": "src/settings-api.ts",
+      "sha256": "54d125525b55dd8b2360256fd376fc4d64ae1262762092f576a52ddbb9e9f48f"
+    },
+    {
+      "path": "src/ui/panel-settings.js",
+      "sha256": "7da05cc2f3aa12566f90e816fb012ea9fface2cedbd1dcdb84d696d644376791"
+    },
+    {
+      "path": "src/ui/settings-connector-strings.js",
+      "sha256": "b6ed2ee13ebc74db3fc010e8521d714f5492b855993b81b0f372cc6fae801417"
+    },
+    {
+      "path": "src/ui/settings-connector.js",
+      "sha256": "681f63a6ae35652179980ce4389786b997b4ab8e8afe73a57ce1cd92cf3e358e"
+    },
+    {
+      "path": "src/ui/shared/connector-prompt.d.ts",
+      "sha256": "05171c615ac26b64170534077b3b5bb19c06db22d70235f5baa757195a976525"
+    },
+    {
+      "path": "src/ui/shared/connector-prompt.js",
+      "sha256": "dc7fb9792d553e541126af18e1e4f355a169629de83928f7769ce3fe5de36d16"
+    },
+    {
+      "path": "src/ui/shared/settings-connector.css",
+      "sha256": "1b968a9b648a03992610cecc7f00f96ec045bf8eeaa9576cec228f23e5f69904"
+    },
+    {
+      "path": "tests/owner-app-connect-m3221.test.ts",
+      "sha256": "02039e2f0d35d797cc37b48e5a598c6ae70d8a2737e0edb931e78dbf01e775ea"
+    },
+    {
+      "path": "tests/owner-app-fleet-m3221.test.ts",
+      "sha256": "07ca9a4e1f43a3e52e4269808ca009cbbcc0548429d7ad5e4bccfee18f463a65"
+    },
+    {
+      "path": "tests/owner-app-install-m3221.test.ts",
+      "sha256": "7a75641ae49cc3be6aa0646b1285a6dcf89d9f4fbf7a36a36a6f8582f3cecff7"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "1fe028aa466d162d047b809b25dacb2496f14eae1041b3c007479ee6cb9b7163"
+    },
+    {
+      "path": "browser-receipt.json",
+      "sha256": "69ea9a3b5b3d87439b2a2b8e6cec0ea6d38adc19209907427d5f7a3bf6292ee8"
+    },
+    {
+      "path": "build-ready.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "catalog-before.log",
+      "sha256": "70121540d5f898e6731d2402049dba66de0ed5590cfc333a961779554b856a48"
+    },
+    {
+      "path": "connector-final.log",
+      "sha256": "8564fdac78e93f1c6d33bdcc4b9041188ce0ea30128e0168750eb53bfe98f931"
+    },
+    {
+      "path": "fixture-build-incomplete-before.log",
+      "sha256": "2b0e9e5b9e0a24e9bb70de656732be5a1abaa2e02d4e90e72dbdf3914320d60e"
+    },
+    {
+      "path": "focused-final.log",
+      "sha256": "09d0081901a36d85eceffafea9602329ee6f9e18bf0e83334716a5ae503a3c51"
+    },
+    {
+      "path": "hub-hooks-isolated.log",
+      "sha256": "186949d2d5a4430ceb66c02f391a9fd355801e4502fa1e82bed34346a01fc83d"
+    },
+    {
+      "path": "images/desk-dark-zh-TW-card.png",
+      "sha256": "340e072079daa9b9038f8f1a023b906bab27069c3d24128d3b527031d349d05b"
+    },
+    {
+      "path": "images/desk-dark-zh-TW-prompt.png",
+      "sha256": "9426b54fdaafc5712f97846c9071524ef348cb3d40f53a44a9f1836567fc5244"
+    },
+    {
+      "path": "images/desk-light-en-card.png",
+      "sha256": "cc1c2ecdb812bf31899fff1eba16b399ca88083b958bfb52aec1ac4c04bf4d29"
+    },
+    {
+      "path": "images/desk-light-en-prompt.png",
+      "sha256": "a2a9905dd82455ddce9df3c0b6635b8ac793b09b017d7516b42ed5eb502aa2a2"
+    },
+    {
+      "path": "images/phone-dark-zh-TW-card.png",
+      "sha256": "a50a515d803581df31194a0eb0a53a736793699f9a230b8132238ad03562440d"
+    },
+    {
+      "path": "images/phone-dark-zh-TW-prompt.png",
+      "sha256": "0e3b5ab3b07fabda9bfcddb9d6f1f97bb76b9f6862a690dc9c2502a3e64a7291"
+    },
+    {
+      "path": "images/phone-light-en-card.png",
+      "sha256": "04bff461b520a427ba86e7d1972280b3200c67deb51b6c00b81355b7707e0639"
+    },
+    {
+      "path": "images/phone-light-en-prompt.png",
+      "sha256": "2ceb84fdd30eaa7a9181080db5bb78bed4ebea8e073c5928fac76a78b507a2e9"
+    },
+    {
+      "path": "install-after.log",
+      "sha256": "1b869df3367f4dac17f26c79b63b4f9df858570233aec614cbec1b5606ac1dd0"
+    },
+    {
+      "path": "phone-retake-receipt.json",
+      "sha256": "3ce8d1b2f57a564d0e632794872477c5b868063d16da37df6fbd22b5faa6c32f"
+    },
+    {
+      "path": "settings-gate.json",
+      "sha256": "25baf5b8339b2417a5e08da3e85a82e8a78819324cb87b4d7235d71d1f7b63e4"
+    },
+    {
+      "path": "source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "summary.json",
+      "sha256": "c2c6f346b9198ecb98d57f619866b9533ebb703453351354c3a9eaefdfbdbf82"
+    },
+    {
+      "path": "test-types-acceptance.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "terminal_log_normalization": [
+    {
+      "path": "focused-final.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "connector-final.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "hub-hooks-isolated.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "install-after.log",
+      "terminal_newlines_removed": 1
+    },
+    {
+      "path": "catalog-before.log",
+      "terminal_newlines_removed": 1
+    }
+  ]
+}

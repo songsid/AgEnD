@@ -1,0 +1,174 @@
+{
+  "checks": [
+    {
+      "key": "phone-light-en:claude:copy",
+      "ok": true
+    },
+    {
+      "key": "phone-light-en:codex:copy",
+      "ok": true
+    },
+    {
+      "key": "phone-light-en:generic:copy",
+      "ok": true
+    },
+    {
+      "key": "phone-light-en:no-overflow",
+      "ok": true,
+      "detail": {
+        "width": 356,
+        "frame": 356,
+        "controls": [
+          {
+            "tag": "SELECT",
+            "h": 44,
+            "w": 324
+          },
+          {
+            "tag": "SELECT",
+            "h": 44,
+            "w": 324
+          },
+          {
+            "tag": "BUTTON",
+            "h": 44,
+            "w": 163.640625
+          },
+          {
+            "tag": "SUMMARY",
+            "h": 44,
+            "w": 324
+          }
+        ]
+      }
+    },
+    {
+      "key": "phone-light-en:tap",
+      "ok": true,
+      "detail": {
+        "width": 356,
+        "frame": 356,
+        "controls": [
+          {
+            "tag": "SELECT",
+            "h": 44,
+            "w": 324
+          },
+          {
+            "tag": "SELECT",
+            "h": 44,
+            "w": 324
+          },
+          {
+            "tag": "BUTTON",
+            "h": 44,
+            "w": 163.640625
+          },
+          {
+            "tag": "SUMMARY",
+            "h": 44,
+            "w": 324
+          }
+        ]
+      }
+    },
+    {
+      "key": "phone-light-en:prompt",
+      "ok": true
+    },
+    {
+      "key": "phone-light-en:prompt-scroll",
+      "ok": true
+    },
+    {
+      "key": "phone-light-en:errors",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "key": "phone-dark-zh-TW:claude:copy",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW:codex:copy",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW:generic:copy",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW:no-overflow",
+      "ok": true,
+      "detail": {
+        "width": 356,
+        "frame": 356,
+        "controls": [
+          {
+            "tag": "SELECT",
+            "h": 44,
+            "w": 324
+          },
+          {
+            "tag": "SELECT",
+            "h": 44,
+            "w": 324
+          },
+          {
+            "tag": "BUTTON",
+            "h": 44,
+            "w": 132
+          },
+          {
+            "tag": "SUMMARY",
+            "h": 44,
+            "w": 324
+          }
+        ]
+      }
+    },
+    {
+      "key": "phone-dark-zh-TW:tap",
+      "ok": true,
+      "detail": {
+        "width": 356,
+        "frame": 356,
+        "controls": [
+          {
+            "tag": "SELECT",
+            "h": 44,
+            "w": 324
+          },
+          {
+            "tag": "SELECT",
+            "h": 44,
+            "w": 324
+          },
+          {
+            "tag": "BUTTON",
+            "h": 44,
+            "w": 132
+          },
+          {
+            "tag": "SUMMARY",
+            "h": 44,
+            "w": 324
+          }
+        ]
+      }
+    },
+    {
+      "key": "phone-dark-zh-TW:prompt",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW:prompt-scroll",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW:errors",
+      "ok": true,
+      "detail": []
+    }
+  ]
+}

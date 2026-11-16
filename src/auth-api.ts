@@ -155,6 +155,7 @@ export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask f
 
 /** The only files `/assets/` will serve. A map, not a directory: nothing else can be named into it. */
 const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
+  "settings-connector.css": { file: "shared/settings-connector.css", type: "text/css; charset=utf-8" },
   "loading.css": { file: join("shared", "loading.css"), type: "text/css; charset=utf-8" },
   // #3822: the stale-tab prompt's own stylesheet (linked by stale-tab.js; a tab with an older app.css has no rule for it).
   "stale-tab.css": { file: join("shared", "stale-tab.css"), type: "text/css; charset=utf-8" },
@@ -218,6 +219,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "identity-color.js",
     // #2936 / #2978 merge: Settings' content width (this device's), shared by the shell and the lazy Settings panel.
     "settings-width.js",
+    "connector-prompt.js",
     // The computer's display name, in a module of its own so a tab opened before an upgrade loads it fresh (Chat imports it).
     "machine-name.js",
     // Hub PR A (#3226): the chat's drawing, shared by the fleet's chat and the Hub's (static code; messages are read

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { APP_MESSAGE_RULE } from "./app-message-origin.js";
 import { escapeInboundBody, escapeInboundField, humanReceiptMarker, type HumanPresentation } from "./inbound-presentation.js";
 import type Database from "better-sqlite3";
 import type { DeliveryStatusItem, DeliveryStatusSelector, DeliveryStatusPage } from "./delivery-outbox.js";
@@ -281,6 +282,12 @@ export const BTW_INBOUND_PREFIX = "[BTW — side question from the user. Answer 
 
 /** One formatter for human wire bytes and their immutable evidence snapshot. */
 export function formatHumanInboundMessage(content: string, meta: Record<string, string>, mode: AgentMode, presentation: HumanPresentation = {}): string {
+  // Receiptless app traffic gets a self-contained compact origin even on an older daemon conversation. Never
+  // accept human/peer authority markers, a claimed caller name, or a web-verified suffix from this origin.
+  if (meta.source === "app") return "[user:Local app@app#local-connector]\n[App origin: " + APP_MESSAGE_RULE + "]\n"
+    + escapeInboundBody(content) + renderCrossInstanceHandoffMetadata({ message_id: meta.message_id ?? "" }, "")
+    + (mode === "cli" ? '\n(Answer with agend-agent reply "…"; terminal text does not reach them.)'
+      : "\n(Answer with the reply tool; terminal text does not reach them.)");
   const compact = presentation.dialect !== "legacy";
   const safe = compact || presentation.escape === true;
   // #1920: a guest's web message says so — recognition only (authority none). #1939 S3: "(verified)" when its receipt

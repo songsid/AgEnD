@@ -10,6 +10,7 @@ import { runtimeClaimFingerprint } from "../src/runtime-protocol.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { WindowsCliBridge, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "../src/windows-cli.js";
+import { PERSONAL_AGENT_PROFILE } from "../src/runtime-personal-protocol.js";
 
 const directories: string[] = [], clients: RuntimeClient[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [];
 function home(): string { const path = mkdtempSync(join(tmpdir(), "agend-runtime-client-")); directories.push(path); return path; }
@@ -27,8 +28,8 @@ class FakeBridge implements RuntimeBridge {
     this.tasks.set(snapshot.id, snapshot); return { ...snapshot };
   }
   get(id: string): WindowsCliTask | null { const task = this.tasks.get(id); return task ? { ...task } : null; }
-  complete(id: string, output = "fixture result"): void {
-    const task = this.tasks.get(id)!; Object.assign(task, { status: "completed", finishedAt: Date.now(), outcomeConfirmed: true, output });
+  complete(id: string, output = "fixture result", answer?: string): void {
+    const task = this.tasks.get(id)!; Object.assign(task, { status: "completed", finishedAt: Date.now(), outcomeConfirmed: true, output, ...(answer !== undefined ? { answer } : {}) });
     this.options.get(id)?.onSettled?.({ ...task });
   }
   cancel(id: string): WindowsCliTask {
@@ -57,6 +58,52 @@ afterEach(async () => {
   for (const hub of hubs.splice(0)) hub.close();
   for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
   for (const path of directories.splice(0)) { if (!resolve(path).startsWith(resolve(tmpdir()) + sep)) throw Error("Unexpected fixture path"); rmSync(path, { recursive: true, force: true }); }
+});
+
+describe("a personal Runtime's connection boundary", () => {
+  it("offers only personal execution and reports its locally bound folder", async () => {
+    const f = await fixture({}, { personalAgent: { folder: "C:\\workspace" } });
+    expect(f.state.hub.machine(f.machineId)?.runtimeInfo?.capabilities).toEqual(["exec", PERSONAL_AGENT_PROFILE]);
+    await vi.waitFor(() => expect(f.state.hub.machine(f.machineId)?.inventory?.personalFolder).toBe("C:\\workspace"));
+    const task = input();
+    await f.state.hub.call(f.machineId, "run", { task, profile: PERSONAL_AGENT_PROFILE });
+    expect(f.bridge.options.get(task.requestId)?.personal).toBe(true);
+    f.bridge.complete(task.requestId, "", "Only the final answer.");
+    await vi.waitFor(() => expect(f.state.hub.task(task.requestId)?.answer).toBe("Only the final answer."));
+    expect(f.state.hub.task(task.requestId)?.output).toBe("");
+    expect(new RuntimeClientStore(f.store.directory).get(task.requestId)?.task.answer).toBe("Only the final answer.");
+  });
+  it("keeps the local enforcement result through the actual coordinator inventory parser",async()=>{
+    const f=await fixture({}, {personalAgent:{folder:"C:\\workspace"}});
+    f.bridge.probe.mockResolvedValue({home:"C:\\User",probedAt:2,clis:[{id:"codex",path:"C:\\codex.exe",version:"0.167.0",authenticated:true,runnable:true,
+      supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:[],personalStatus:"sandbox-unavailable"}]});
+    await f.state.hub.call(f.machineId,"probe",{force:true});
+    await vi.waitFor(()=>expect(f.state.hub.machine(f.machineId)?.inventory?.clis[0].personalStatus).toBe("sandbox-unavailable"));
+  });
+  it("rejects normal tasks, different folders and extra authority before local acceptance", async () => {
+    const f = await fixture({}, { personalAgent: { folder: "C:\\workspace" } });
+    const task = input();
+    await expect(f.client.operation("run", { task })).rejects.toThrow(/local folder binding/);
+    await expect(f.client.operation("run", { task: { ...task, cwd: "C:\\Different" }, profile: PERSONAL_AGENT_PROFILE })).rejects.toThrow(/local folder binding/);
+    for (const extra of [{ context: "extra instructions" }, { credentialProfile: "another-account" }, { resumeSessionId: randomUUID() }, { mcp: { tools: ["query_task"] } }]) {
+      await expect(f.state.hub.call(f.machineId, "run", { task, profile: PERSONAL_AGENT_PROFILE, ...extra })).rejects.toThrow(/isolated read-only/);
+    }
+    expect(f.bridge.launches).toBe(0); expect(f.store.get(task.requestId)).toBeNull();
+    await expect(f.client.operation("workspace", { agentId: randomUUID() })).rejects.toThrow(/locally selected folder/);
+    expect(f.bridge.prepareWorkspace).not.toHaveBeenCalled();
+  });
+  it("does not let an ordinary Runtime opt in through a run frame", async () => {
+    const f = await fixture(), task = input();
+    await expect(f.state.hub.call(f.machineId, "run", { task, profile: PERSONAL_AGENT_PROFILE })).rejects.toThrow(/not negotiated/);
+    await expect(f.client.operation("run", { task, profile: PERSONAL_AGENT_PROFILE })).rejects.toThrow(/no personal-agent binding/);
+    expect(f.bridge.launches).toBe(0);
+  });
+  it("rejects account, pane and update controls without invoking their handlers", async () => {
+    const f = await fixture({}, { personalAgent: { folder: "C:\\workspace" } });
+    for (const type of ["account.request", "pane.request", "update.control", "tool.result"])
+      await expect((f.client as unknown as { receive(s: string): Promise<void> }).receive(JSON.stringify({ v: 1, type, id: randomUUID() }))).rejects.toThrow(/unavailable on a personal Runtime/);
+    expect(f.bridge.launches).toBe(0);
+  });
 });
 
 describe("outbound runtime with the real coordinator protocol", () => {

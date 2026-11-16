@@ -45,7 +45,7 @@ const grantInput = z.strictObject({ exposureId: uuid, exposureRevision: epoch, d
   login: z.string().trim().min(1).max(256).optional(), subject: selectedSubject.optional(),
 }).refine(v => v.subject?.kind === "group" || v.subject?.kind === "team" || !!v.login);
 
-interface ExposureRow { id: string; fleet_id: string; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string; allowed_tools: string; policy_digest: string; frozen_through: number; sharing_paused?: number; sharing_epoch?: number }
+interface ExposureRow { id: string; fleet_id: string|null; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string|null; allowed_tools: string|null; policy_digest: string|null; frozen_through: number; sharing_paused?: number; sharing_epoch?: number;source_kind?:"fleet"|"personal";personal_agent_id?:string|null }
 interface GrantRow { id: string; revision: number; owner: string; exposure_id: string; exposure_revision: number; approved_by: string; approved_at: number; subject: string; subject_kind?: "person" | "group" | "team"; subject_label?: string; permissions: string; starts_at: number; expires_at: number; state: HubGrant["state"] }
 
 /** Presentation only: AD group DNs normally start with CN. Never use this label as identity or rewrite it.
@@ -63,10 +63,15 @@ function groupGrantName(label: string): string {
 }
 
 export function exposureOf(row: ExposureRow): HubExposure {
-  return { id: row.id, fleetId: row.fleet_id, owner: personFromString(row.owner), displayName: row.display_name, revision: row.revision,
-    state: row.state === "published" ? row.frozen_through >= row.revision ? "frozen" : row.sharing_paused ? "paused" : "published" : row.state,
-    ...(row.sharing_epoch ? { sharingEpoch: row.sharing_epoch } : {}),
-    dataViewId: row.data_view_id, allowedTools: JSON.parse(row.allowed_tools) as string[], policyDigest: row.policy_digest };
+  const common={ id: row.id, owner: personFromString(row.owner), displayName: row.display_name, revision: row.revision,
+    state: (row.state === "published" ? row.frozen_through >= row.revision ? "frozen" : row.sharing_paused ? "paused" : "published" : row.state) as HubExposure["state"],
+    ...(row.sharing_epoch ? { sharingEpoch: row.sharing_epoch } : {}) };
+  if(row.source_kind==="personal"){
+    if(!row.personal_agent_id||row.fleet_id!==null||row.data_view_id!==null||row.allowed_tools!==null||row.policy_digest!==null)throw new HubProtocolError("unavailable");
+    return {...common,kind:"personal",personalAgentId:row.personal_agent_id,fleetId:null,dataViewId:null,allowedTools:[],policyDigest:null};
+  }
+  if(row.source_kind!==undefined&&row.source_kind!=="fleet"||row.fleet_id===null||row.data_view_id===null||row.allowed_tools===null||row.policy_digest===null)throw new HubProtocolError("unavailable");
+  return {...common,fleetId:row.fleet_id,dataViewId:row.data_view_id,allowedTools:JSON.parse(row.allowed_tools) as string[],policyDigest:row.policy_digest};
 }
 export function grantOf(row: GrantRow): HubGrant {
   if (row.subject_kind !== undefined && !["person", "group", "team"].includes(row.subject_kind)) throw new HubProtocolError("unavailable");
@@ -260,7 +265,7 @@ export class HubCatalogService {
       const names = (id: string) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
       const retired = new Set(this.core.deps.store.read().fleets.filter(f => f.status === "revoked").map(f => f.id));
       const mine = (db.prepare("SELECT * FROM hub_exposures WHERE owner=? AND state<>'withdrawn' ORDER BY display_name").all(me) as ExposureRow[])
-        .filter(row => !retired.has(row.fleet_id)).map((row) => {
+        .filter(row => row.fleet_id===null||!retired.has(row.fleet_id)).map((row) => {
         const grants = (db.prepare("SELECT * FROM hub_grants WHERE exposure_id=? AND state='active' AND expires_at>? ORDER BY approved_at").all(row.id, now) as GrantRow[])
           .map((g) => { const n = g.subject_kind === "group" || g.subject_kind === "team" ? null : names(g.subject);
             return { ...grantOf(g), subjectName: g.subject_kind === "team" ? this.core.deps.roomTeams?.read(db, g.subject)?.name ?? g.subject_label ?? ""
@@ -400,7 +405,7 @@ export class HubCatalogService {
       db.prepare(`INSERT INTO hub_grants(id, revision, owner, exposure_id, exposure_revision, approved_by, approved_at, subject, permissions, starts_at, expires_at, state, subject_kind, subject_label)
         VALUES(?,?,?,?,?,?,?,?,?,?,?, 'active',?,?)`).run(grant.id, 1, me, exposure.id, exposure.revision, me, now, subjectId, JSON.stringify(grant.permissions), grant.startsAt, grant.expiresAt, subject.kind, selected.label ?? "");
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: owner }, action: "grant.created", result: "completed",
-        fleetId: exposure.fleetId, exposureId: exposure.id, ownerAtEvent: owner, grantId: grant.id, grantRevision: 1 });
+        fleetId: exposure.fleetId??undefined, exposureId: exposure.id, ownerAtEvent: owner, grantId: grant.id, grantRevision: 1 });
       return grant;
     }, directoryPermit);
   }
@@ -434,7 +439,7 @@ export class HubCatalogService {
       if (row.revision !== revision) throw new HubProtocolError("conflict");
       db.prepare("UPDATE hub_exposures SET frozen_through=MAX(frozen_through, ?), sharing_paused=0, sharing_epoch=sharing_epoch+1, updated_at=? WHERE id=?").run(row.revision, this.core.now(), id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person }, action: "exposure.frozen", result: "completed",
-        fleetId: row.fleet_id, exposureId: id, ownerAtEvent: personFromString(row.owner) });
+        fleetId: row.fleet_id??undefined, exposureId: id, ownerAtEvent: personFromString(row.owner) });
     },proof);
   }
 }

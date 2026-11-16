@@ -41,7 +41,7 @@ try {
         const shown = (e: Element | null) => !!e && (e as HTMLElement).getBoundingClientRect().width > 0;
         const px = (e: Element | null, k: string) => e ? parseFloat(getComputedStyle(e)[k as any]) : 0;
         const head = sb.querySelector(".side-head") as HTMLElement, close = head?.querySelector(".side-collapse") as HTMLElement, brand = head?.querySelector(".brand") as HTMLElement;
-        const back = close?.querySelector(".ic-back");
+        const back = close?.querySelector(".ic-close");
         return { w: Math.round(sr.width), left: Math.round(sr.left), vw: innerWidth, wide: document.documentElement.scrollWidth > document.documentElement.clientWidth,
           close: close && shown(close) ? { first: !!brand && close.getBoundingClientRect().right <= brand.getBoundingClientRect().left + 0.5,
             back: shown(back), w: Math.round(close.getBoundingClientRect().width), h: Math.round(close.getBoundingClientRect().height) } : null,
@@ -54,7 +54,7 @@ try {
           }) };
       });
       need(r.w === r.vw && r.left === 0 && !r.wide, `the drawer is the screen's width (${r.w} of ${r.vw}, left ${r.left}, overflow ${r.wide})`);
-      need(r.close && r.close.first && r.close.back && r.close.w >= 44 && r.close.h >= 44, `← closes it: the head's first control, a back arrow, a full tap target (${JSON.stringify(r.close)})`);
+      need(r.close && r.close.first && r.close.back && r.close.w >= 44 && r.close.h >= 44, `✕ closes it (M-3245; was ←): the head's first control, a full tap target (${JSON.stringify(r.close)})`);
       need(r.rows.length >= 8, `the agents are listed (${r.rows.length})`);
       const text = r.rows.filter((x) => x.name !== 17 || x.weight < 600 || (x.two != null && x.two !== 15));
       need(!text.length, `names 17 px semibold, the second line 15 px (${JSON.stringify(text.slice(0, 2))})`);
@@ -82,7 +82,7 @@ try {
         await openDrawer(page);
         await page.locator("#sidebar .v-inst").nth(1).tap(); await page.waitForTimeout(800);
         ways.row = !(await isOpen(page)) && /\/ui\/chat\//.test(page.url());
-        need(ways.back && ways.swipe !== false && ways.row, `closes by ←, a swipe left and a tap on an agent (${JSON.stringify(ways)})`);
+        need(ways.back && ways.swipe !== false && ways.row, `closes by ✕, a swipe left and a tap on an agent (${JSON.stringify(ways)})`);
         await page.goto(`${(fx as any).base}/ui/fleet/org`); await mounted(page, 30000); await faces(page, names); await page.waitForTimeout(600);
         await openDrawer(page);
       }

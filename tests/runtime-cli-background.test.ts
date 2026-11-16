@@ -7,14 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeClientStore as Store } from "../src/runtime-client-store.js";
 import type { BackgroundLaunchOptions, BackgroundLaunchResult } from "../src/runtime-background.js";
 
-const world = vi.hoisted(() => ({ pair: vi.fn(), enroll: vi.fn(), started: vi.fn(), startError: undefined as unknown, stopReason: undefined as unknown, endAtOnce: false, stopFailures: 0, stopCalls: 0, clients: [] as { stop(): Promise<void> }[], boot: "b".repeat(64) }));
+const world = vi.hoisted(() => ({ pair: vi.fn(), enroll: vi.fn(), started: vi.fn(), constructed: vi.fn(), startError: undefined as unknown, stopReason: undefined as unknown, endAtOnce: false, stopFailures: 0, stopCalls: 0, clients: [] as { stop(): Promise<void> }[], boot: "b".repeat(64) }));
 vi.mock("../src/runtime-pane-boot.js", async importOriginal => ({ ...await importOriginal<typeof import("../src/runtime-pane-boot.js")>(), readPaneSystemBootId: async () => world.boot }));
 vi.mock("../src/runtime-client.js", async importOriginal => ({
   ...await importOriginal<typeof import("../src/runtime-client.js")>(),
   pairRuntime: world.pair, enrollRuntime: world.enroll, rotateRuntimeCredentials: vi.fn(),
   RuntimeClient: class {
     stopReason: unknown; private done: (() => void) | undefined;
-    constructor(private readonly options: { store: Store; report?: (text: string) => void }) { world.clients.push(this); }
+    constructor(private readonly options: { store: Store; report?: (text: string) => void }) { world.clients.push(this); world.constructed(options); }
     async start() { world.started(this.options.store.directory); if (world.startError) throw world.startError; this.options.report?.("Connected to AgEnD."); this.stopReason = world.stopReason; }
     async stop() { world.stopCalls++; if (world.stopFailures > 0) { world.stopFailures--; throw new Error("An account process was not confirmed ended"); } this.done?.(); }
     waitUntilStopped() { return world.endAtOnce ? Promise.resolve() : new Promise<void>(resolve => { this.done = resolve; }); }
@@ -29,6 +29,7 @@ import { runtimeCommandName } from "../src/runtime-cli-background.js";
 import { RUNTIME_SERVER_FILE } from "../src/runtime-connection.js";
 import { autostartTaskName, type AutostartService } from "../src/runtime-autostart.js";
 import { generateEnrollToken } from "../src/runtime-enrollment.js";
+import * as updateController from "../src/runtime-update-controller.js";
 
 /**
  * `connect` and `start` move the Runtime to the background and end; `--foreground` and `run` keep it in the window; one Runtime runs per profile
@@ -60,6 +61,7 @@ const call = (argv: string[], f: ReturnType<typeof fixture>, extra: Record<strin
 function setTty(value: boolean): void { Object.defineProperty(process.stdin, "isTTY", { value, configurable: true }); Object.defineProperty(process.stdout, "isTTY", { value, configurable: true }); }
 beforeEach(() => {
   world.pair.mockReset(); world.enroll.mockReset(); world.started.mockReset(); world.startError = undefined; world.stopReason = undefined; world.endAtOnce = true; world.clients.length = 0;
+  world.constructed.mockReset();
   output = ""; launches = []; autostartCalls = []; autostartFails = false; taskExists = true; launchResult = { kind: "started", pid: 777, connected: true };
   world.enroll.mockImplementation(async (options: { server: string; store: Store; name: string }) => { options.store.saveCredentials({ server: options.server, machineId: "99999999-2222-4333-8444-555555555555", credential: "b".repeat(64), name: options.name }); });
   world.pair.mockImplementation(async (options: { server: string; store: Store; name: string }) => { options.store.saveCredentials({ server: options.server, machineId: "88888888-2222-4333-8444-555555555555", credential: "c".repeat(64), name: options.name }); });
@@ -73,6 +75,27 @@ afterEach(() => {
 });
 
 describe("connect and start: background by default, in the window only on request", () => {
+  it("reconstructs a personal binding on restart without starting the managed updater or account host", async () => {
+    const f=fixture(), store=new RuntimeClientStore(f.base);store.setPersonalAgent("C:\\Shared");pairTo(f.base);
+    const updater=vi.spyOn(updateController,"runRuntimeWithUpdates");
+    await call(["run"],f);
+    expect(world.constructed).toHaveBeenCalledWith(expect.objectContaining({personalAgent:{folder:"C:\\Shared"}}));
+    expect(world.constructed.mock.calls[0][0]).not.toHaveProperty("credentialProfilesRoot");
+    expect(updater).not.toHaveBeenCalled();
+  });
+  it("uses a separate per-Hub profile for personal enrollment and leaves the ordinary pairing intact", async () => {
+    const f=fixture(), ordinary=pairTo(f.base);setTty(true);
+    await call(["connect","--server",A,"--personal-folder","C:\\Shared"],f);
+    expect(launches).toHaveLength(1);expect(launches[0].store.directory).not.toBe(ordinary.directory);
+    expect(launches[0].store.personalAgent()).toEqual({folder:"C:\\Shared"});
+    expect(ordinary.credentials()?.machineId).toBe("11111111-2222-4333-8444-555555555555");
+  });
+  it("refuses a malformed personal binding before any ordinary client or updater starts", async () => {
+    const f=fixture();pairTo(f.base);writeFileSync(join(f.base,"personal-agent.json"),'{"version":2}',{mode:0o600});
+    const updater=vi.spyOn(updateController,"runRuntimeWithUpdates");
+    await expect(call(["run"],f)).rejects.toThrow(/Invalid local personal/);
+    expect(world.constructed).not.toHaveBeenCalled();expect(updater).not.toHaveBeenCalled();
+  });
   it("connect launches the background Runtime for a paired profile and ends: no client runs in this process", async () => {
     const f = fixture(); pairTo(f.base);
     await call(["connect", "--server", A], f);

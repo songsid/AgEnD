@@ -1,0 +1,53 @@
+{
+  "source": "0ea17624a119eecb1627b3a07c606b7346109d8b",
+  "from": "85dc69c806b447547356b845b61283b47c8e38ea",
+  "cause": "Fable CI feedback on5dc: reviewed instruction hashes not refreshed, FleetManager CLI stub missing startOwnerAppControl, two UI product-name literals.",
+  "changes": [
+    "All1728 reviewed instruction cases retain axes and old hashes when only APP_MESSAGE_RULE section is removed; refresh hashes with that sole addition.",
+    "Add required owner control startup method to test stub, leaving real callback unchanged.",
+    "Route Claude Code/Codex option labels and prompt app names through existing locale dictionaries. No allowlist exception."
+  ],
+  "focused": {
+    "command": "npx vitest run tests/agent-instructions.test.ts tests/cpu-profile-cli-1338.test.ts tests/i18n-ui-literals-2390.test.ts tests/owner-app-install-m3221.test.ts --maxWorkers=2",
+    "tests": 40,
+    "files": 4,
+    "exit_code": 0,
+    "load_before": 3.10302734375
+  },
+  "rendering": "All12 EN/zh app/location prompt variants are byte-identical to85dc. The two option labels retain exact text. No layout, CSS or setup command change; prior PNG scopes retained.",
+  "unchanged": "Core connector/authority/envelope/native implementation unchanged. No browser, real model, native or mutation campaign repeated. Prior TypeScript0/0 remains its641 stage; current CI must be green.",
+  "base": "87caabf11b1458a3e2f514b40ca8a38e3fe4c5a2",
+  "contains_lightbox_fix": "263ae3fb061f5525797f2a476da37ad86ec32c54",
+  "bindings": [
+    {
+      "path": "src/ui/settings-connector-strings.js",
+      "sha256": "b3d982934c7b40905b32b823c254a6cf53c929980850fe96c011f9192a15abaa"
+    },
+    {
+      "path": "src/ui/settings-connector.js",
+      "sha256": "a0e838201496019a2a81d17d4ab1504c374283b6036ad6d177603c3c0ddaf6dd"
+    },
+    {
+      "path": "src/ui/shared/connector-prompt.js",
+      "sha256": "16263616483597d2e2f25cc917e347ffe5538fe65830a9e10bcbd2bb4ca4cdb8"
+    },
+    {
+      "path": "tests/cpu-profile-cli-1338.test.ts",
+      "sha256": "9e1f9bb1f7e2d2ec359c8b02631b53f5a62f707f0f92e85cf53af3a1a3c6c0d7"
+    },
+    {
+      "path": "tests/fixtures/instructions-matrix.json",
+      "sha256": "bebc9cdc561fa44972782559e76a9cdc4662d782ab4449d79db2f30ee917cd0d"
+    },
+    {
+      "path": "tests/helpers/instructions-matrix-record.ts",
+      "sha256": "4e06294dd333dff8e6772fb8ad926b46fc30a367a4e8f2ceec36eec7745e2d25"
+    }
+  ],
+  "terminal_log_normalization": [
+    {
+      "path": "ci-repair-r4-after.log",
+      "terminal_newlines_removed": 1
+    }
+  ]
+}

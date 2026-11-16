@@ -102,6 +102,7 @@ export class HubPolicyService {
         if (!facts.ok) throw new HubProtocolError(facts.reason);
         if (request.phase === "admit" && msg.stage !== "queued") throw new HubProtocolError("conflict");
         if ((request.phase === "begin" || request.phase === "tool") && (msg.stage === "answered" || msg.answer_id)) throw new HubProtocolError("conflict");
+        if (facts.exposure.kind==="personal")throw new HubProtocolError("denied");
         if (request.phase === "tool" && !facts.exposure.allowedTools.includes(request.tool.name)) throw new HubProtocolError("denied");
         if (request.phase === "release-answer" && msg.answer_id
           && (msg.answer_id !== request.answer.answerId || msg.answer_digest !== request.answer.contentDigest)) throw new HubProtocolError("conflict");

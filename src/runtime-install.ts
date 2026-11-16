@@ -69,6 +69,8 @@ function answer(res: ServerResponse, status: number, body: unknown, headers: Rec
 }
 
 export interface RuntimeInstallOptions {
+  /** A separate Hub mount owns its opt-in; omitted preserves the Fleet's existing remote Runtime switch. */
+  enabled?: () => boolean;
   /** Tests substitute fixtures; production builds the real bundle from this installation's compiled modules. */
   bundle?: () => RuntimeBundle;
   template?: () => string;
@@ -83,6 +85,7 @@ export class RuntimeInstallService {
   private readonly buckets = new Map<string, { tokens: number; at: number; burst: number; perMs: number }>();
   private files: RuntimeInstallFiles | undefined;
   constructor(private readonly options: RuntimeInstallOptions = {}) {}
+  private enabled(): boolean { try { return this.options.enabled ? this.options.enabled() === true : remoteRuntimeEnabled(); } catch { return false; } }
   /** Tokens a bucket holds right now. One nobody has used holds its whole burst, and holds no table row. */
   private tokens(key: string, limit: { burst: number }, now: number): number {
     const row = this.buckets.get(key);
@@ -132,7 +135,7 @@ export class RuntimeInstallService {
     if (!isScript && !isMetadata && url.pathname !== RUNTIME_BUNDLE_PATH) return false;
     // Off, or reached through a public gateway link: these routes do not exist there. 404 is the same answer as any
     // unknown route, and it does not reveal whether remote runtimes are configured. No bundle is built for it.
-    if (!remoteRuntimeEnabled() || gatewayRequestContext(req)) { answer(res, 404, { error: "Not found" }); return true; }
+    if (!this.enabled() || gatewayRequestContext(req)) { answer(res, 404, { error: "Not found" }); return true; }
     const method = req.method ?? "GET";
     if (method !== "GET" && method !== "HEAD") { answer(res, 405, { error: "Runtime installer files are read-only" }, { Allow: "GET, HEAD" }); return true; }
     if (url.search) { answer(res, 400, { error: "Runtime installer files do not accept options" }); return true; }

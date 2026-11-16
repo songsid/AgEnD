@@ -117,6 +117,35 @@ describe("M-3111: with the keyboard up the shell is the visible view", () => {
     expect([kb(), ...vars()]).toEqual([true, "480px", null]);
   });
 
+  // M-3244 (the user, iPhone, beta.7, Zhuyin): while an IME composes the keyboard's state waits for compositionend — the
+  // shell's height must not. A view that got shorter mid-composition (the keyboard coming up as the first key is typed, or the
+  // candidate bar) is followed; the view growing back waits for compositionend.
+  it("composing: the keyboard coming up mid-composition — the shell is the view at once, not the whole screen", async () => {
+    const { pg, vv, vars, kb, focus } = await phone();
+    await focus();
+    const box = pg.root.querySelector("#box") as any;
+    fire(box, "compositionstart", { data: "" });
+    vv.height = 436; vv.emit("resize"); await settle();
+    expect(vars(), "the box would sit under the keyboard at 844px").toEqual(["436px", null]);
+    expect(kb(), "the keyboard's state still waits for compositionend").toBe(false);
+    fire(box, "compositionend", { data: "你" }); await settle();
+    expect([kb(), ...vars()]).toEqual([true, "436px", null]);
+  });
+  it("composing, settled: the candidate bar shortens the view — followed after the hold; it going away grows nothing until compositionend", async () => {
+    const { pg, vv, vars, kb, focus } = await phone();
+    await focus();
+    vv.height = 480; vv.emit("resize"); await settle();
+    await new Promise((r) => setTimeout(r, 900));                         // past the focus follow window
+    const box = pg.root.querySelector("#box") as any;
+    fire(box, "compositionstart", { data: "" });
+    vv.height = 436; vv.emit("resize"); await new Promise((r) => setTimeout(r, 400));   // past the 300 ms hold
+    expect([kb(), ...vars()]).toEqual([true, "436px", null]);
+    vv.height = 480; vv.emit("resize"); await new Promise((r) => setTimeout(r, 400));
+    expect(vars(), "growing waits for the IME").toEqual(["436px", null]);
+    fire(box, "compositionend", { data: "你" }); await new Promise((r) => setTimeout(r, 400));
+    expect([kb(), ...vars()]).toEqual([true, "480px", null]);
+  });
+
   // #4011 review: one reading as tall as no keyboard, while the field keeps focus, is on hold — the shell keeps the height it
   // had until the hold says the keyboard really went (else the box drops under a keyboard that is still there).
   it("typing: a one-off full-height reading keeps the shell's height until the hold ends", async () => {

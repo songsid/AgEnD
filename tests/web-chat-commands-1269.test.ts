@@ -244,6 +244,61 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.card().className).toContain("bad");
   });
 
+  // A discovery that outlasts the menu's wait ends behind the open menu; the `models` event is the menu's cue to read again.
+  describe("the open /model menu and a late `models` event", () => {
+    const rows = (c: any) => c.menu().querySelectorAll(".model-menu-row").map((b: any) => b.querySelector("b").textContent);
+    async function open(c: any, first: unknown) {
+      let list: any = first; const reads: any[] = [];
+      c.fx.respond = (path: string, body: any) => { if (path === "/ui/command") reads.push(body); return path !== "/ui/command" ? {} : body.args ? { text: `Model set to ${body.args}` } : { choices: list }; };
+      await c.type("/model"); await c.key("Enter");
+      return { reads, later(next: unknown) { list = next; } };
+    }
+    it("an empty menu fills when discovery ends — without closing it or pressing Refresh", async () => {
+      const c = await chatPage();
+      const m = await open(c, { current: "a", options: [], actions: ["refresh"] });
+      expect(rows(c)).toEqual([]);
+      m.later({ current: "a", options: [{ id: "a", label: "✓ Alpha" }, { id: "b", label: "Beta" }], actions: ["refresh"] });
+      c.stream.emit("models", { backend: "claude-code" }); await settle(8);
+      expect(rows(c)).toEqual(["Alpha", "Beta"]);
+      expect(c.p.root.querySelector(".model-menu")).not.toBeNull();
+      expect(m.reads.every((b: any) => !b.action && !b.args)).toBe(true);           // the plain read: no Refresh, nothing applied
+    });
+    it("a stale list is replaced; another backend's event reads nothing", async () => {
+      const c = await chatPage();
+      const m = await open(c, { current: "a", options: [{ id: "a", label: "✓ Alpha" }], actions: ["refresh"] });
+      c.stream.emit("status", { uptime: 1, instances: [inst("w")] });
+      m.later({ current: "a", options: [{ id: "a", label: "✓ Alpha" }, { id: "c", label: "Gamma" }], actions: ["refresh"] });
+      c.stream.emit("models", { backend: "codex" }); await settle(8);
+      expect(rows(c)).toEqual(["Alpha"]); expect(m.reads).toHaveLength(1);
+      c.stream.emit("models", { backend: "claude-code" }); await settle(8);
+      expect(rows(c)).toEqual(["Alpha", "Gamma"]);
+    });
+    it("a read that comes back after the person picked a model, or closed the menu, changes nothing", async () => {
+      const c = await chatPage();
+      let release: (v: unknown) => void = () => {}; let held = false;
+      c.fx.respond = (path: string, body: any) => path !== "/ui/command" ? {} : body.args ? { text: `Model set to ${body.args}` }
+        : held ? new Promise((r) => { release = r; }) : { choices: { current: "a", options: [{ id: "a", label: "✓ Alpha" }, { id: "b", label: "Beta" }], actions: ["refresh"] } };
+      await c.type("/model"); await c.key("Enter");
+      held = true; c.stream.emit("models", { backend: "claude-code" }); await settle(8);
+      held = false; fire(c.menu().querySelectorAll(".model-menu-row")[1], "click"); await settle(8);
+      release({ choices: { current: "a", options: [{ id: "x", label: "Stale" }], actions: ["refresh"] } }); await settle(8);
+      expect(c.p.root.querySelector(".model-menu"), "the pick's card is not replaced by the late list").toBeNull();
+      expect(c.card().querySelector(".cmd-text").textContent).toBe("Model set to b");
+      // …and a menu dismissed while its read is out stays dismissed
+      await c.type("/model"); await c.key("Enter");
+      held = true; c.stream.emit("models", { backend: "claude-code" }); await settle(8);
+      fire(c.p.root.querySelector(".model-menu-scrim"), "click"); await settle(8);
+      release({ choices: { current: "a", options: [{ id: "x", label: "Stale" }] } }); await settle(8);
+      expect(c.p.root.querySelector(".model-menu")).toBeNull();
+    });
+    it("the 'more' view and /backend's steps are not read again", async () => {
+      const c = await chatPage();
+      const m = await open(c, { current: "a", options: [{ id: "a", label: "✓ Alpha" }], actions: ["refreshAll"] });
+      c.stream.emit("models", { backend: "claude-code" }); await settle(8);
+      expect(m.reads).toHaveLength(1);
+    });
+  });
+
   // #4003 review: the menu is /model's list. A model being switched to — a pick from the menu, or a typed "/model <id>" — is
   // the card while it runs, never an empty "Loading models…" menu placed by the last control clicked.
   it("a pick in flight, or a typed /model <id>: the card while it runs, not the menu", async () => {

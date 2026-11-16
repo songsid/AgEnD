@@ -384,6 +384,15 @@ jobs:
           HP: '19661'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-kb-steady.mts
+      # M-3244 (the user, iPhone, beta.7, Zhuyin): typing with an IME, the box sat under the keyboard. Mid-composition, a view
+      # that got shorter (the keyboard coming up, its candidate bar) is followed; also after a density change in Settings.
+      - name: Phone box on screen while an IME composes
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19671'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-ime-keyboard-m3244.mts
       # M-3210 (the user, phone): the image viewer swipes — sideways through the chat's pictures (message order, no wrap), up
       # or down to close with the dark fading; a short one springs back; a zoomed-in picture pans. Real touch input.
       - name: Phone image viewer swipes
@@ -411,6 +420,15 @@ jobs:
           HP: '19663'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-drawer-telegram-m3211.mts
+      # M-3245 (the user, beta.7): one rule for a phone's top-left button — ☰ opens the drawer, ← goes back one level (an
+      # agent's pages, a Settings section), ✕ closes the drawer.
+      - name: Phone top-left ☰ / ← / ✕
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19672'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-nav-icons-m3245.mts
       # M-3212 (the user, 11-16): 自訂 → 顯示 → 手機側欄: 滿版 (default) or 窄版 (300 px), this browser's own; 自訂 is an icon
       # beside the phone drawer's filter; the drawer's agents follow 文字大小.
       - name: Phone drawer width choice (滿版 / 窄版)
@@ -429,6 +447,15 @@ jobs:
           HP: '19666'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-hub-member-drawer-m3217.mts
+      # M-3235 (the user, beta.6): the 「我的 Fleet | Hub ↗」 switch on the sidebar's gutters (desk nav rows, phone filter row),
+      # the same padding in both halves; a Hub name of 8–60 characters (en, zh) ends in "…" before ↗, the whole name in title/aria.
+      - name: Hub switch alignment and long Hub names
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19668'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-hub-switch-names-m3235.mts
       # M-3222 (the user, iPhone): one line of text in the middle of the composer with Send and 📎; in the drawer a fresh reply is a
       # quiet marker at the row's height (its time in the accent), never a tinted block, a pulse or a left-over hover.
       - name: Phone composer line and drawer reminders
@@ -438,6 +465,15 @@ jobs:
           HP: '19667'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-composer-drawer-m3222.mts
+      # M-3241 (the user): a provider of two or more logins folds — −/+ cycles every window → one line per login (its binding
+      # window) → the header with the highest %, warning colours kept; remembered in this browser. The rail and the dialog.
+      - name: Usage groups fold (expanded, one line, header)
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19670'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-usage-group-modes-m3241.mts
       - name: Save verified CJK archive (best effort, after the gate)
         if: always() && needs.detect-changes.outputs.text-only != 'true' && steps.cjk-fonts.outcome == 'success' && steps.cjk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5

@@ -1,0 +1,15 @@
+{
+  "from": "5dc13217c5ca9dec2377936e4d9762a2a2a5dc2d",
+  "previous_base": "4ca66795c88d07f71f98cd169aaeefb26901d16d",
+  "base": "87caabf11b1458a3e2f514b40ca8a38e3fe4c5a2",
+  "merge": "0e62cdb94a3ed69a11a6b98422edf4b918debce1",
+  "contains_fix": "263ae3fb061f5525797f2a476da37ad86ec32c54",
+  "own_paths_identical_blob_mode": 67,
+  "incoming_only_paths_equal_base": 55,
+  "overlap": 0,
+  "own_patch_sha256": "3268df15f5d407b8d7c1951f5aceee544756f0b26743706c216622a21459a3be",
+  "isolated_patch_tree": "2560bc3370148fa52f19cdc8c6497389f151ac00",
+  "actual_merge_tree": "2560bc3370148fa52f19cdc8c6497389f151ac00",
+  "validation": "No local tests, browser, model, native or mutation rerun; unchanged own source/tests per decision5afe2996. Fresh exact-head CI and formal re-APPROVE required.",
+  "superseded_attempt": "Old5dc ui-gate known M3210 failure; own Settings gate114passed. CLI/directAPI failed-job retry rejected while workflow active; no actual retry was launched."
+}

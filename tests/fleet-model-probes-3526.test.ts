@@ -124,17 +124,20 @@ describe("#3526 background model discovery", () => {
     expect(ids("antigravity")).toEqual(["antigravity-found"]);
   });
 
-  it("a named Antigravity profile never borrows the default account's catalog", async () => {
+  it("a named Antigravity profile is discovered with its own folder, never as the default account (AGEND-278: the fence moved into the probe)", async () => {
     fm.loadConfig(config());
     await fm.probeBackendBounded("antigravity");
     expect(ids("antigravity", null)).toEqual(["antigravity-found"]);
     FakeProbeWorker.reset();
-    FakeProbeWorker.answer = () => ({ models: [{ id: "ambient-account-only", label: "Wrong account" }] });
+    // A probe that is not given the account's folder would answer with the ambient (default) account's list.
+    FakeProbeWorker.answer = (input: any) => ({ models: input.config.credentialStoreHome ? [] : [{ id: "ambient-account-only", label: "Wrong account" }] });
     fm.fleetConfig.instances.w.backend = "antigravity";
     fm.fleetConfig.instances.w.backend_options = { antigravity: { credential_profile: "work" } };
     fm.saveFleetConfig(); await settled();
+    expect(FakeProbeWorker.workers.length).toBeGreaterThan(0);
+    for (const w of FakeProbeWorker.workers) expect(w.input.config.credentialStoreHome).toMatch(/credential-profiles[\\/]antigravity[\\/]work$/);
     expect(ids("antigravity")).toEqual([]);
-    expect(FakeProbeWorker.workers).toHaveLength(0);
+    expect(ids("antigravity", null)).toEqual(["antigravity-found"]);
   });
 
   it("keeps native Windows agents outside host background discovery", async () => {
