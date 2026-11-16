@@ -411,6 +411,15 @@ jobs:
           HP: '19663'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-drawer-telegram-m3211.mts
+      # M-3245 (the user, beta.7): one rule for a phone's top-left button — ☰ opens the drawer, ← goes back one level (an
+      # agent's pages, a Settings section), ✕ closes the drawer.
+      - name: Phone top-left ☰ / ← / ✕
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19672'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-nav-icons-m3245.mts
       # M-3212 (the user, 11-16): 自訂 → 顯示 → 手機側欄: 滿版 (default) or 窄版 (300 px), this browser's own; 自訂 is an icon
       # beside the phone drawer's filter; the drawer's agents follow 文字大小.
       - name: Phone drawer width choice (滿版 / 窄版)

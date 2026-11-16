@@ -36,7 +36,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk
   // Through the nav (a reload would drop what is staged). On a phone a section is shown on its own (§7): "‹ Settings"
   // goes back to the list of sections first.
   const go = async (section: string) => {
-    const back = page.locator(".p-settings .s-back");
+    const back = page.locator(".p-settings #sbOpen.sb-up");
     if (await back.isVisible().catch(() => false)) { await back.click(); await page.waitForTimeout(500); }
     const sel = section === "agents" ? ".seg-item[href='/settings'], .seg-item[href='/settings/agents']" : `.seg-item[href='/settings/${section}']`;
     await page.locator(".p-settings > .s-nav").locator(sel).first().click();
