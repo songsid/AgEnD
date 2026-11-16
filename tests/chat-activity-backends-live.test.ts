@@ -108,6 +108,11 @@ describe("the line", () => {
     expect(compose("w", true, NOW - 7_000)[1].group).toMatchObject({ from: NOW - 7_000, statusOnly: true, busy: true, ended: false, items: [] });
     expect(compose("w", true)[1].group.from).toBe(Date.parse(rows[0]!.ts));
   });
+  it("#3756: it stays under the newest row — also under a reply that came while the agent still works (it never becomes the reply's block)", async () => {
+    await feedFor({ backend: "muse", path: null, format: null, reason: "unsupported" });
+    const withReply = [...rows, { boot: "b", id: 2, role: "agent", sender: "w", text: "first part", anchor: "w-r1", ts: new Date(NOW - 5_000).toISOString() }];
+    expect(shape(act.composeActivity("w", withReply, NOW, { busy: true }))).toBe("user agent act:live:status:0");
+  });
   it("it is not hidden as empty, and says the steps are not shown here", async () => {
     await feedFor({ backend: "muse", path: null, format: null, reason: "unsupported" });
     expect(act.isEmptyGroup(compose("w", true)[1].group, { thinking: false })).toBe(false);
