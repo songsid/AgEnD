@@ -1,0 +1,651 @@
+{
+  "mode": "before",
+  "head": "5c164b91f4526a4657454daab1579d0d2a0da1f3",
+  "tree": "fd00a4017c853869d1911b4676f63f3ae8ea72bb",
+  "dirty": "",
+  "checks": [
+    {
+      "label": "production Hub ready",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW real role capability",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW real role capability",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW real role capability",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW real role capability",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "all 8 combinations and 6 views captured",
+      "pass": true
+    },
+    {
+      "label": "no browser errors",
+      "pass": true
+    }
+  ],
+  "screens": [
+    {
+      "tag": "before-desk-light-en-overview",
+      "file": "before-desk-light-en-overview.png",
+      "sha256": "6e4496e13d464f3aa93f7a3a2d2ececd41389a5b391fdd990a39ef0b959db263"
+    },
+    {
+      "tag": "before-desk-light-en-editor",
+      "file": "before-desk-light-en-editor.png",
+      "sha256": "8566a6a9222159f8101f3047b57a5cf2ce78674569875277d87485eb90f072bd"
+    },
+    {
+      "tag": "before-desk-light-en-assignment",
+      "file": "before-desk-light-en-assignment.png",
+      "sha256": "2f5a663f766602101e7a36612eac4d43ebd86585ce840fa8074c36aeb0205df9"
+    },
+    {
+      "tag": "before-desk-light-en-preview",
+      "file": "before-desk-light-en-preview.png",
+      "sha256": "597bfc0ba11625cd28495906ab0a7bfb626c3f3394b0551bf326df758a71b16e"
+    },
+    {
+      "tag": "before-desk-light-en-saved",
+      "file": "before-desk-light-en-saved.png",
+      "sha256": "ee3f55bb7b4c6f785ca95c44f95d8a4a5edc1340606cb8d65ac85aada685645c"
+    },
+    {
+      "tag": "before-desk-light-en-audit",
+      "file": "before-desk-light-en-audit.png",
+      "sha256": "ee3f55bb7b4c6f785ca95c44f95d8a4a5edc1340606cb8d65ac85aada685645c"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-overview",
+      "file": "before-desk-light-zh-TW-overview.png",
+      "sha256": "dcf677ad70a5459ef0d79f5d85d72bd0aa39db225cec0a63941e68f3691e336e"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-editor",
+      "file": "before-desk-light-zh-TW-editor.png",
+      "sha256": "a830285592a0a500965d9389a6ef23492f5152d1bcfae53fbf4a50cef73e8006"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-assignment",
+      "file": "before-desk-light-zh-TW-assignment.png",
+      "sha256": "2a45fa7ac22bcbaa41a64fddd92fc886d79624734c15743a1b186ea759102018"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-preview",
+      "file": "before-desk-light-zh-TW-preview.png",
+      "sha256": "6075a5b0c3c2bcfe88543744ec4b94440d1a07fce57fcc52fc827a025842765f"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-saved",
+      "file": "before-desk-light-zh-TW-saved.png",
+      "sha256": "387234c3f633e2bd6f5cbaca0e176f638ec7191a68a4e05c2b2d293acb252710"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-audit",
+      "file": "before-desk-light-zh-TW-audit.png",
+      "sha256": "6820d94dba8c7665129c6281cd4e25b74a789e56a57a34234b35f9c5a62f5e96"
+    },
+    {
+      "tag": "before-desk-dark-en-overview",
+      "file": "before-desk-dark-en-overview.png",
+      "sha256": "9d7c0406a30f2cd9885a7133d0ce4e54b9de7b03284d0325438a7085e19c72f7"
+    },
+    {
+      "tag": "before-desk-dark-en-editor",
+      "file": "before-desk-dark-en-editor.png",
+      "sha256": "309463b4788b6eebc464f11882f2041d3e2038ff5dac1e4a82305b0b2cfeb22a"
+    },
+    {
+      "tag": "before-desk-dark-en-assignment",
+      "file": "before-desk-dark-en-assignment.png",
+      "sha256": "f2e92dd233185bd9096aa9fd43302e447a200b53fad0834bf433a4b44e565f4c"
+    },
+    {
+      "tag": "before-desk-dark-en-preview",
+      "file": "before-desk-dark-en-preview.png",
+      "sha256": "637e459b120738fae5fd2fc5cad5f6020636b43cd9bd30b3c1bafc7929fc80c0"
+    },
+    {
+      "tag": "before-desk-dark-en-saved",
+      "file": "before-desk-dark-en-saved.png",
+      "sha256": "cc4198090c95d9720c1070507c6d976be9fd606627687acf61433678b09fe942"
+    },
+    {
+      "tag": "before-desk-dark-en-audit",
+      "file": "before-desk-dark-en-audit.png",
+      "sha256": "8f552126e97530e9f8b3f6cbb69c2519e67256f7602df194ade2a5a1c0917973"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-overview",
+      "file": "before-desk-dark-zh-TW-overview.png",
+      "sha256": "05ce12a5ed16e10ff9798e3fd1dba36fc882210d48ed7a4fc240013458c4eaa3"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-editor",
+      "file": "before-desk-dark-zh-TW-editor.png",
+      "sha256": "18133169d320e37942d75e86c6e32f205c5f3a7de38c106ec1948fe91f990f59"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-assignment",
+      "file": "before-desk-dark-zh-TW-assignment.png",
+      "sha256": "5535db16f0544aa8f07ab33646c6001d7d8f5c25a1d62927c5aed505bbef1b98"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-preview",
+      "file": "before-desk-dark-zh-TW-preview.png",
+      "sha256": "50316ee0249bd93be9bcec064a536556602183130534d4b490440bd788c95df3"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-saved",
+      "file": "before-desk-dark-zh-TW-saved.png",
+      "sha256": "3532e6fb8432d3b9ee6f295a3559f938d31c46a21a9c982b19ef9ec0efd44ef1"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-audit",
+      "file": "before-desk-dark-zh-TW-audit.png",
+      "sha256": "5a727d5c94a47efabab4e1e0e930e0460fc5cc78408fea0db4eac000429641c7"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-audit-2",
+      "file": "before-desk-dark-zh-TW-audit-2.png",
+      "sha256": "6798f71f5ee1ad9c7a065e916093a35f1979959ed196643f5480fd83232418a4"
+    },
+    {
+      "tag": "before-phone-light-en-overview",
+      "file": "before-phone-light-en-overview.png",
+      "sha256": "7984072b6620f678b7d0905b7f21bdba92d3f9964c990157fc23716ba7e61391"
+    },
+    {
+      "tag": "before-phone-light-en-editor",
+      "file": "before-phone-light-en-editor.png",
+      "sha256": "e5bed7fbed3f02e23ad4af2d4ee767bba2c240491ffbf4ecbf5347614c681989"
+    },
+    {
+      "tag": "before-phone-light-en-editor-2",
+      "file": "before-phone-light-en-editor-2.png",
+      "sha256": "e261fc695b13a574b5087d5713449e8bd033178cbac24d6d1cbf9a8fc3f871c2"
+    },
+    {
+      "tag": "before-phone-light-en-assignment",
+      "file": "before-phone-light-en-assignment.png",
+      "sha256": "64135cd4f21a2cf1c2c61ecf107c1b5ab1db2ae3635015123ccd95edcc596328"
+    },
+    {
+      "tag": "before-phone-light-en-preview",
+      "file": "before-phone-light-en-preview.png",
+      "sha256": "21f98ce9b472dbfc5ecd9d819c3b990039ce774170f748b1ea1c6103bd27f377"
+    },
+    {
+      "tag": "before-phone-light-en-saved",
+      "file": "before-phone-light-en-saved.png",
+      "sha256": "e80517edc229eb906b4f42b1f142be523082f5519d4cbcfda4e34175511440b6"
+    },
+    {
+      "tag": "before-phone-light-en-audit",
+      "file": "before-phone-light-en-audit.png",
+      "sha256": "e82d0b8a400cf75226fe6be70b81fe7928067c6945db3b3dde5076a51b7ccae4"
+    },
+    {
+      "tag": "before-phone-light-en-audit-2",
+      "file": "before-phone-light-en-audit-2.png",
+      "sha256": "5c534febd2420cf2c9967748220ed7003d249d6e14455286941da3ac797e160d"
+    },
+    {
+      "tag": "before-phone-light-en-audit-3",
+      "file": "before-phone-light-en-audit-3.png",
+      "sha256": "2d3d9789fb6299866e52903fd4e7854ab185077b9b560b4f78ebdcc47d5db4c0"
+    },
+    {
+      "tag": "before-phone-light-en-audit-4",
+      "file": "before-phone-light-en-audit-4.png",
+      "sha256": "a266f53fe84c3256632031c310a13d2f188baf2113f871b20b726a7778ac0bec"
+    },
+    {
+      "tag": "before-phone-light-en-audit-5",
+      "file": "before-phone-light-en-audit-5.png",
+      "sha256": "656c0e18b0a4b64be9ee59a0ed9bd844dd6eb86b341cc17a8c67279caf71da3a"
+    },
+    {
+      "tag": "before-phone-light-en-audit-6",
+      "file": "before-phone-light-en-audit-6.png",
+      "sha256": "9c54b4b5ef655f6c3270baa0c0118fa607937fa4fb1b5bbe742830c1390bc06b"
+    },
+    {
+      "tag": "before-phone-light-en-audit-7",
+      "file": "before-phone-light-en-audit-7.png",
+      "sha256": "909ce7d893bdb4a3cbe7ca72c551cd158b6efd0bb4ac52c936108cf62032908b"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-overview",
+      "file": "before-phone-light-zh-TW-overview.png",
+      "sha256": "c4cb4e953997a289fe49783a9e27daff6c2014366f6303b0c3418eecf0486ff6"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-editor",
+      "file": "before-phone-light-zh-TW-editor.png",
+      "sha256": "af07af74ccf7b19c524235eaf3141014428aa890dd0ad7b4da64bafe46428c40"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-editor-2",
+      "file": "before-phone-light-zh-TW-editor-2.png",
+      "sha256": "24c60dadd9ab755015e30aab28f374207a12cd0a27c9b20e98e5193a49360bee"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-assignment",
+      "file": "before-phone-light-zh-TW-assignment.png",
+      "sha256": "e656e50d4a1ed65f1b4ec89e95e71ac9f5d2c7a647134215050d12381dc77b5a"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-preview",
+      "file": "before-phone-light-zh-TW-preview.png",
+      "sha256": "8f9cdd508004a46cacc6c29678d8fc5e3e984cd17a7edc8c9c369360b87f0719"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-saved",
+      "file": "before-phone-light-zh-TW-saved.png",
+      "sha256": "fae8d5ea9a3719078e8625f1af7847d2e2f219028df82e51eb0f18dbae8f9569"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit",
+      "file": "before-phone-light-zh-TW-audit.png",
+      "sha256": "87d52e34165d5f40a7ad47f9168e706825c839638cf8f409194c23a6b30a87a9"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit-2",
+      "file": "before-phone-light-zh-TW-audit-2.png",
+      "sha256": "90887a0353bb13232848058043688f5a94ed7dfb7837a3ef42128cab831e0634"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit-3",
+      "file": "before-phone-light-zh-TW-audit-3.png",
+      "sha256": "d7db6bc0cf37083e616a72fa3c128c05667a796f7b9ed72e8d61bac1b15b22e3"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit-4",
+      "file": "before-phone-light-zh-TW-audit-4.png",
+      "sha256": "0de00758f8424e284d8d3b2d94d26fa71fb363cccb47f10484e4d1dec00f20e6"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit-5",
+      "file": "before-phone-light-zh-TW-audit-5.png",
+      "sha256": "4ce5d79525380715faa090a2355e5ae458b1378bed9d5e472cb3d8d61dba17bc"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit-6",
+      "file": "before-phone-light-zh-TW-audit-6.png",
+      "sha256": "05bac42762fb6593629b8926d1b2422221bc3f03177d62d8c55d0ffc57aa96ee"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit-7",
+      "file": "before-phone-light-zh-TW-audit-7.png",
+      "sha256": "77bd00b0ad1c72d47e9f52306f0a49018285c6616bc2d1670210917b33e63d86"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit-8",
+      "file": "before-phone-light-zh-TW-audit-8.png",
+      "sha256": "f8b728f55d77a2fe33ad6635bacae8dd08f735c19855b73cb030069bcff5059b"
+    },
+    {
+      "tag": "before-phone-dark-en-overview",
+      "file": "before-phone-dark-en-overview.png",
+      "sha256": "f6c5be7b398111956b3b84ba08b7862bb44dde4200a8a47be3efc24a641beb11"
+    },
+    {
+      "tag": "before-phone-dark-en-editor",
+      "file": "before-phone-dark-en-editor.png",
+      "sha256": "617ebbb65ebbbeeeff279bbec05fb4174c38dbacabf4bc8e09058452257a2ce4"
+    },
+    {
+      "tag": "before-phone-dark-en-editor-2",
+      "file": "before-phone-dark-en-editor-2.png",
+      "sha256": "21cfda4c25712da604997322f31db30591302f862d8cee6e374f8869ffe403f1"
+    },
+    {
+      "tag": "before-phone-dark-en-assignment",
+      "file": "before-phone-dark-en-assignment.png",
+      "sha256": "9c60e0b397e50071a7d4cc9e0801e55559e7e31afb9b32e3e23fe7705a9ca7ec"
+    },
+    {
+      "tag": "before-phone-dark-en-preview",
+      "file": "before-phone-dark-en-preview.png",
+      "sha256": "da0b4b3d31f29112ace4c2877da09c8e71451f28bb3e3c9b56c15fc6c104b649"
+    },
+    {
+      "tag": "before-phone-dark-en-saved",
+      "file": "before-phone-dark-en-saved.png",
+      "sha256": "8a19cbf2f5ac701d9990cb12a187a1fd41de95fe0d1a12156dca1c729d7cc6e0"
+    },
+    {
+      "tag": "before-phone-dark-en-audit",
+      "file": "before-phone-dark-en-audit.png",
+      "sha256": "8e613b9798a5de788ea3c0ce501b98a1d864d36c8ab03232ceeaacd29636007a"
+    },
+    {
+      "tag": "before-phone-dark-en-audit-2",
+      "file": "before-phone-dark-en-audit-2.png",
+      "sha256": "d44078505eb328807859ecb9ae12fd8291d4e3617591675e0183863a7d319688"
+    },
+    {
+      "tag": "before-phone-dark-en-audit-3",
+      "file": "before-phone-dark-en-audit-3.png",
+      "sha256": "6aaf147039f1d5ebc3be90094b48c80e650a71458f28600a0fd0f84710f4f647"
+    },
+    {
+      "tag": "before-phone-dark-en-audit-4",
+      "file": "before-phone-dark-en-audit-4.png",
+      "sha256": "90810b5d3c16a5949693ea2bee3306edcb76ae4420800a13d6647addc405ee5e"
+    },
+    {
+      "tag": "before-phone-dark-en-audit-5",
+      "file": "before-phone-dark-en-audit-5.png",
+      "sha256": "6f9d240b3ffa25d1cce72ac2b05e2ab8c1d44bb88acb665c5dc6fdd57bd85f79"
+    },
+    {
+      "tag": "before-phone-dark-en-audit-6",
+      "file": "before-phone-dark-en-audit-6.png",
+      "sha256": "e247d449a8debc5f9736164e389aa2c0d84e09a48ab9939f51a2d554932d7e2a"
+    },
+    {
+      "tag": "before-phone-dark-en-audit-7",
+      "file": "before-phone-dark-en-audit-7.png",
+      "sha256": "82c6381be6348edbb185544409c3b7124d007f4d06d6a945395e0e85bb404604"
+    },
+    {
+      "tag": "before-phone-dark-en-audit-8",
+      "file": "before-phone-dark-en-audit-8.png",
+      "sha256": "17bce70a3f1efc3373d8287fcfa9de361790e6c2cae507547527ad875c47ec56"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-overview",
+      "file": "before-phone-dark-zh-TW-overview.png",
+      "sha256": "13984ce52fd7d7425faef338d530d1b46c34adf59ecf4bac812643bd1e2d3459"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-editor",
+      "file": "before-phone-dark-zh-TW-editor.png",
+      "sha256": "d955231ebf368f56f644ca254568fd6ba9b504054da2fbf7459e85c7dcf05edc"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-editor-2",
+      "file": "before-phone-dark-zh-TW-editor-2.png",
+      "sha256": "f66fa384492f40002a7a50cdf644cdd5a1e81ab247d47e344047010bdfffc971"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-assignment",
+      "file": "before-phone-dark-zh-TW-assignment.png",
+      "sha256": "6c5bc57171e47a26cac3c7bd5ff703219755ad4b1f70a7eb3bea9de0744cf0a1"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-preview",
+      "file": "before-phone-dark-zh-TW-preview.png",
+      "sha256": "ba921ffc5902091fb5a0677c32a58d93df9ccae7ccaff09cdf030c5de0590fbc"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-saved",
+      "file": "before-phone-dark-zh-TW-saved.png",
+      "sha256": "191d752146b9215cf6990a7e5ba85379fea61a0f47363913b39dd7a3bb26162a"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit",
+      "file": "before-phone-dark-zh-TW-audit.png",
+      "sha256": "7700982c5b85ccf28fb782babf9fe9444319e08775650f5b944ae65bb351cad5"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit-2",
+      "file": "before-phone-dark-zh-TW-audit-2.png",
+      "sha256": "72ba0f31638c94834824a27eb9f7c7c01de2cc97304acc97c189ac23ccda6d57"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit-3",
+      "file": "before-phone-dark-zh-TW-audit-3.png",
+      "sha256": "8fdcdadb0b5d14f3cc3594318f81b6dfcb8c782346a1eee75a09de7d6dc84270"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit-4",
+      "file": "before-phone-dark-zh-TW-audit-4.png",
+      "sha256": "9283d2aee62ed53a06de01a1590961aff05be983f296cdca1429f5c0f19ca2f1"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit-5",
+      "file": "before-phone-dark-zh-TW-audit-5.png",
+      "sha256": "7b065c89e783cff8b4f3533a59d456dd4f59b209fa2f72dbbe974ae7e5e161af"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit-6",
+      "file": "before-phone-dark-zh-TW-audit-6.png",
+      "sha256": "af66182cfc108187f54d5b127f380ebd4b2437bb2ef35aaa1928edee3cd335b1"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit-7",
+      "file": "before-phone-dark-zh-TW-audit-7.png",
+      "sha256": "b66276b624a9aaab262ed7b0229ee1c54ad066425f62cf0e0fb9dd8e19f3e873"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit-8",
+      "file": "before-phone-dark-zh-TW-audit-8.png",
+      "sha256": "a51cc143cf7fc373b9dfe4f0ae4af5a28800db38e5121465dbe9813f75512a5d"
+    }
+  ],
+  "errors": [],
+  "scope": "Separate initialized production Hub runtime/HTTPS/SQLite and assets from REPO. Synthetic AD people/groups; no real credentials, Fleet or model process. Headless Chromium inside WSL.",
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}

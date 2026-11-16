@@ -1,0 +1,51 @@
+{
+  "styleSource": "85bbf501c5cf9c4c02d9e91cbf79f89d8a2c5913",
+  "base": "1a1db55923420f08b90adb147cd31dab07b17de4",
+  "before": "5c164b91f4526a4657454daab1579d0d2a0da1f3",
+  "after": "147d41f68a5f168f613531452072b90bd6d0a96e",
+  "integrationDelta": [
+    "src/ui/hub-roles-strings.js",
+    "src/ui/hub-roles.js",
+    "src/ui/shared/hub-roles.css"
+  ],
+  "sameServerSource": true,
+  "presentationBlobs": [
+    {
+      "path": "src/ui/hub-roles.js",
+      "style": "10f1eba7543a61e2de840e23984bdb08dcd47cd7",
+      "after": "10f1eba7543a61e2de840e23984bdb08dcd47cd7"
+    },
+    {
+      "path": "src/ui/hub-roles-strings.js",
+      "style": "32bc43ed15002ce778618da878e09fa6f6efed1a",
+      "after": "32bc43ed15002ce778618da878e09fa6f6efed1a"
+    },
+    {
+      "path": "src/ui/shared/hub-roles.css",
+      "style": "31e37e921f31e303a38ece2c0c0cd9257191857c",
+      "after": "31e37e921f31e303a38ece2c0c0cd9257191857c"
+    }
+  ],
+  "unitTests": {
+    "command": "npx vitest run tests/hub-role-ui-3223.test.ts --maxWorkers=2",
+    "passed": 15
+  },
+  "testTypecheck": {
+    "command": "npm run typecheck:tests",
+    "exit": 0
+  },
+  "imageReview": {
+    "scope": "Scoped read-only image inspection; corrections confirmed, no remaining visible defects",
+    "files": [
+      "after-phone-light-zh-TW-overview.png",
+      "after-phone-light-zh-TW-editor.png",
+      "after-phone-light-zh-TW-editor-2.png",
+      "after-phone-dark-en-editor.png",
+      "after-phone-dark-en-editor-2.png",
+      "after-desk-light-en-editor.png",
+      "after-phone-dark-en-audit.png",
+      "after-phone-dark-en-audit-3.png",
+      "after-phone-dark-en-audit-6.png"
+    ]
+  }
+}

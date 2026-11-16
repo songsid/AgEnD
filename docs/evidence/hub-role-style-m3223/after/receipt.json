@@ -1,0 +1,766 @@
+{
+  "mode": "after",
+  "head": "147d41f68a5f168f613531452072b90bd6d0a96e",
+  "tree": "6748e7adfd9e6c93a4002fb1f22b5f3702fc4b4a",
+  "dirty": "",
+  "checks": [
+    {
+      "label": "production Hub ready",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-en grouped row actions",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW real role capability",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-light-zh-TW grouped row actions",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-en grouped row actions",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW real role capability",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-desk-dark-zh-TW grouped row actions",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en overview touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en overview checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en editor touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en editor checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en assignment touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en assignment checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en saved touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en saved checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-en grouped row actions",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW real role capability",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW overview touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW overview checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW editor touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW editor checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW assignment touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW assignment checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW saved touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW saved checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-light-zh-TW grouped row actions",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en overview touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en overview checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en editor touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en editor checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en assignment touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en assignment checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en saved touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en saved checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-en grouped row actions",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW real role capability",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW overview no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW overview touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW overview checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW twelve permission controls",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW editor no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW editor touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW editor checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW assignment no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW assignment touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW assignment checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW assignment stored via actual HTTP",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW saved no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW saved touch controls44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW saved checkbox labels44px",
+      "pass": true
+    },
+    {
+      "label": "after-phone-dark-zh-TW grouped row actions",
+      "pass": true
+    },
+    {
+      "label": "all 8 combinations and 6 views captured",
+      "pass": true
+    },
+    {
+      "label": "no browser errors",
+      "pass": true
+    }
+  ],
+  "screens": [
+    {
+      "tag": "after-desk-light-en-overview",
+      "file": "after-desk-light-en-overview.png",
+      "sha256": "4bb5741aa9cd0eb56a776f0c8fe4f858277ab60b1cebed47249e5bbcc37f80de"
+    },
+    {
+      "tag": "after-desk-light-en-editor",
+      "file": "after-desk-light-en-editor.png",
+      "sha256": "9d370938914cac1af994f020a82459fa610dadf83bb434322eafdbc9758daf05"
+    },
+    {
+      "tag": "after-desk-light-en-assignment",
+      "file": "after-desk-light-en-assignment.png",
+      "sha256": "951ecb7c73bc68eee362aad39d0ec6db605794f08becf2716545ada592a5f6be"
+    },
+    {
+      "tag": "after-desk-light-en-preview",
+      "file": "after-desk-light-en-preview.png",
+      "sha256": "eeb500c63d5f20afc0283bd53e999adb7a0576aa4ce3f4a87996ee4599ae8eff"
+    },
+    {
+      "tag": "after-desk-light-en-saved",
+      "file": "after-desk-light-en-saved.png",
+      "sha256": "bb34919dd8522dd205a26b61c6343409b9a37f9fa5191484adaf76d91e762212"
+    },
+    {
+      "tag": "after-desk-light-en-audit",
+      "file": "after-desk-light-en-audit.png",
+      "sha256": "bb34919dd8522dd205a26b61c6343409b9a37f9fa5191484adaf76d91e762212"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-overview",
+      "file": "after-desk-light-zh-TW-overview.png",
+      "sha256": "9d8a3a392e83d9a225b5d286d8746a2e72de0a066867a5d1717b1669701288c4"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-editor",
+      "file": "after-desk-light-zh-TW-editor.png",
+      "sha256": "354aedda5394ec0553109ab911801a0fce56e9f3f51dc69417e95550a77c5c30"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-assignment",
+      "file": "after-desk-light-zh-TW-assignment.png",
+      "sha256": "156738c591b362f9cc20b876d1fe76443e9af6f6b558d9c505a35852613153ff"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-preview",
+      "file": "after-desk-light-zh-TW-preview.png",
+      "sha256": "296f6a16ed896c4a9e030f213adf433cd2becc595a9fddb2864d211281570ebb"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-saved",
+      "file": "after-desk-light-zh-TW-saved.png",
+      "sha256": "bdbdad98469fe848a9ea9dc9cbd73615cda7a1197392790f892b5e9be2fdc038"
+    },
+    {
+      "tag": "after-desk-light-zh-TW-audit",
+      "file": "after-desk-light-zh-TW-audit.png",
+      "sha256": "92d383abf059c25785df9e04a6e392ea588eebcea642e1b33056ab5aa791ba44"
+    },
+    {
+      "tag": "after-desk-dark-en-overview",
+      "file": "after-desk-dark-en-overview.png",
+      "sha256": "9ebb71f4de4698b472b1aa4f56b84c813c76e961a1e3435baaabacb876802f07"
+    },
+    {
+      "tag": "after-desk-dark-en-editor",
+      "file": "after-desk-dark-en-editor.png",
+      "sha256": "8d9727845235f0bb33dca2cc03f1223442ee7399e14c3a278d384be9de1c8940"
+    },
+    {
+      "tag": "after-desk-dark-en-assignment",
+      "file": "after-desk-dark-en-assignment.png",
+      "sha256": "7991aa99d4121660cc79aa8317a2800722a6fa6d53eefdcdfc0ab3c83918576e"
+    },
+    {
+      "tag": "after-desk-dark-en-preview",
+      "file": "after-desk-dark-en-preview.png",
+      "sha256": "a683add9d4e844da0216f7a077e864221001c78c671d1846433f325408e0b540"
+    },
+    {
+      "tag": "after-desk-dark-en-saved",
+      "file": "after-desk-dark-en-saved.png",
+      "sha256": "1357915d9b08a0bd022a741c1b3e0cc86eb3e556894cfca9386305fc2433e355"
+    },
+    {
+      "tag": "after-desk-dark-en-audit",
+      "file": "after-desk-dark-en-audit.png",
+      "sha256": "2ef666f842b0fb9f800edf507bbbdaa3458f96d413569d12d4827bb28f1be788"
+    },
+    {
+      "tag": "after-desk-dark-en-audit-2",
+      "file": "after-desk-dark-en-audit-2.png",
+      "sha256": "2d4641a5c9e0c601920a07372f52dc5c25fdc664dfe02d8007757e0bbc7966dc"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-overview",
+      "file": "after-desk-dark-zh-TW-overview.png",
+      "sha256": "90d4f71443a52f9266ae2e8604b5000982e8bff976c35c0756507b3fab7097d9"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-editor",
+      "file": "after-desk-dark-zh-TW-editor.png",
+      "sha256": "7e0781dd848799ac60dda9453ae42a5ce2307814708d7541e01d439d3970d864"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-assignment",
+      "file": "after-desk-dark-zh-TW-assignment.png",
+      "sha256": "03fe302233b77778a1cb06b58a926a90c81dbeae9e5eed4dbab8dedc1398bde7"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-preview",
+      "file": "after-desk-dark-zh-TW-preview.png",
+      "sha256": "b5b7b688b11ac9a70d49a19754f6d943cf1b0f2da2c91e78510c79905ed37f5c"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-saved",
+      "file": "after-desk-dark-zh-TW-saved.png",
+      "sha256": "df88162d9733d432b298f4a47d3fe3f7a1de7b1a194f175205873e1ecc693843"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-audit",
+      "file": "after-desk-dark-zh-TW-audit.png",
+      "sha256": "cbfdade1389d35aeb1ee9b5d3175f58ebb6b87550e04ef0ae6eba4c0ee44abc4"
+    },
+    {
+      "tag": "after-desk-dark-zh-TW-audit-2",
+      "file": "after-desk-dark-zh-TW-audit-2.png",
+      "sha256": "69c37722b88b6b79a081df6088a53a6e7d92c100477b6fdd5ddf4cb66edb8c9c"
+    },
+    {
+      "tag": "after-phone-light-en-overview",
+      "file": "after-phone-light-en-overview.png",
+      "sha256": "821dfe8da23f6a9d1a582c12b9e80deae6d4515f75506488bd3a9d9899e68d70"
+    },
+    {
+      "tag": "after-phone-light-en-editor",
+      "file": "after-phone-light-en-editor.png",
+      "sha256": "91270cf67a4daba88649568ba775626e6d4308b14f1827e4763fd34cd1ead6de"
+    },
+    {
+      "tag": "after-phone-light-en-editor-2",
+      "file": "after-phone-light-en-editor-2.png",
+      "sha256": "361c513e2a8b11e6ced9d91f3b898a2693f11495f0240104eaa6ba8addfbe6a7"
+    },
+    {
+      "tag": "after-phone-light-en-assignment",
+      "file": "after-phone-light-en-assignment.png",
+      "sha256": "0ff1e5d08bc4a67ddb86497401460ea30b123181e08150962b2dd090101fe788"
+    },
+    {
+      "tag": "after-phone-light-en-preview",
+      "file": "after-phone-light-en-preview.png",
+      "sha256": "44b06329d8acad2f46cf809cfea71bd4b2cc4c1052922d8a55f91c189b284bb4"
+    },
+    {
+      "tag": "after-phone-light-en-saved",
+      "file": "after-phone-light-en-saved.png",
+      "sha256": "966fd2fcab7886024061b963eee34cb80797e6c82f8722cf76bec4ed190eb174"
+    },
+    {
+      "tag": "after-phone-light-en-audit",
+      "file": "after-phone-light-en-audit.png",
+      "sha256": "8ceb46f2208db9dd070f4cb08fb1ba5dd77b07d89171a4b571cf557d4e820212"
+    },
+    {
+      "tag": "after-phone-light-en-audit-2",
+      "file": "after-phone-light-en-audit-2.png",
+      "sha256": "d156441fefdb4f33e2ad48df28d262b1af321b3ecf5d8f6c58b4a57384232cf2"
+    },
+    {
+      "tag": "after-phone-light-en-audit-3",
+      "file": "after-phone-light-en-audit-3.png",
+      "sha256": "a8d153ca55d4ec9b94e4e08b5fa261e417673c9a4698f0d1fa03057c6837aab8"
+    },
+    {
+      "tag": "after-phone-light-en-audit-4",
+      "file": "after-phone-light-en-audit-4.png",
+      "sha256": "e77ff003f1b8ae41c0387dc216ec6cf441107fba30f6ac3f7131f8e886d11afc"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-overview",
+      "file": "after-phone-light-zh-TW-overview.png",
+      "sha256": "09f4c4574ab506732a2c2c1166236af91e5fe0d810a6f47072eaaa30c29fb02a"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-editor",
+      "file": "after-phone-light-zh-TW-editor.png",
+      "sha256": "56a62481ff8a5737bbcdc902886349507fc8b94857d47751e013fb125e7bd2d4"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-editor-2",
+      "file": "after-phone-light-zh-TW-editor-2.png",
+      "sha256": "cef5a90b0842fb2a0ebcb822fb936a517f0732e605f089b434307b14f0a6de24"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-assignment",
+      "file": "after-phone-light-zh-TW-assignment.png",
+      "sha256": "438787336a376a0ccf7d06efd557b4ca0a0be517d9b9dd014c17b9207f52b11a"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-preview",
+      "file": "after-phone-light-zh-TW-preview.png",
+      "sha256": "6920e551ac8e63ef79d5ff7d8bb24d14dc00e02a1687e750764c9aa27ab32ea4"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-saved",
+      "file": "after-phone-light-zh-TW-saved.png",
+      "sha256": "22e85acebeebfc261698f5657f191d9939029c1471700f856b89c619b97a1d39"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-audit",
+      "file": "after-phone-light-zh-TW-audit.png",
+      "sha256": "273d5628de2572a2042db869b1a156e92060133815fe56b1c6a514d5cf693a0c"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-audit-2",
+      "file": "after-phone-light-zh-TW-audit-2.png",
+      "sha256": "3b5aaf2af056bbe4538cc7e8f741dd93dc1a5d0778148d49f26a3b7428493a2f"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-audit-3",
+      "file": "after-phone-light-zh-TW-audit-3.png",
+      "sha256": "e37f01fa49d06160f5bb0f0aa4caf9822dc16d7459942a306d3211aa9abdae86"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-audit-4",
+      "file": "after-phone-light-zh-TW-audit-4.png",
+      "sha256": "a90459acfd5218cb3a211d179244a16d77205110b01ed48473dc377a01e3e302"
+    },
+    {
+      "tag": "after-phone-light-zh-TW-audit-5",
+      "file": "after-phone-light-zh-TW-audit-5.png",
+      "sha256": "5c496c7dc3529f7974b86fff94531751a0cf794319b0968e00bd77aba1c1f374"
+    },
+    {
+      "tag": "after-phone-dark-en-overview",
+      "file": "after-phone-dark-en-overview.png",
+      "sha256": "f48e44f6fa3b98e5073d0be39726420df90ffae1dea0c4ca4e48addf5005374c"
+    },
+    {
+      "tag": "after-phone-dark-en-editor",
+      "file": "after-phone-dark-en-editor.png",
+      "sha256": "8d15afce6a26427e55340b2b87a35b386c91cf696f15b6848937eb6384d7ad51"
+    },
+    {
+      "tag": "after-phone-dark-en-editor-2",
+      "file": "after-phone-dark-en-editor-2.png",
+      "sha256": "2e45f1bf8eb5341def5473a1ca5953ab80f06f38c096c6222bc7d3879b3bf3ff"
+    },
+    {
+      "tag": "after-phone-dark-en-assignment",
+      "file": "after-phone-dark-en-assignment.png",
+      "sha256": "e2a30c0e6e7ed15e271a8e8ff5063cdf28dba6853904f0c1f9430f1cc8e6f7ce"
+    },
+    {
+      "tag": "after-phone-dark-en-preview",
+      "file": "after-phone-dark-en-preview.png",
+      "sha256": "43f410ad13d24a494d827f8d2ce2cffeeae71ebe1a1e88d19e03ec4a181ace70"
+    },
+    {
+      "tag": "after-phone-dark-en-saved",
+      "file": "after-phone-dark-en-saved.png",
+      "sha256": "059540ac58866976f22183bb9a3a836a1194ff10e53da780172a0d0c210614ff"
+    },
+    {
+      "tag": "after-phone-dark-en-audit",
+      "file": "after-phone-dark-en-audit.png",
+      "sha256": "fdc6b91beda62842e0aefdff0da2f6243b576ff217f2a8f32792eb9d4af6af8f"
+    },
+    {
+      "tag": "after-phone-dark-en-audit-2",
+      "file": "after-phone-dark-en-audit-2.png",
+      "sha256": "e4ba98c989f8935040feaff88dc1a35410b55dbb06925b032f2d159bed2a438e"
+    },
+    {
+      "tag": "after-phone-dark-en-audit-3",
+      "file": "after-phone-dark-en-audit-3.png",
+      "sha256": "4e48fdc94af7a08ebc87d892e87e1ff3586ea7a8b3dd7a2fe83938ac676c0a6d"
+    },
+    {
+      "tag": "after-phone-dark-en-audit-4",
+      "file": "after-phone-dark-en-audit-4.png",
+      "sha256": "b4946a904973a6bfb3040fbbb53654ef18bde89c3e4e7649f5ba6a5ae9ca1bd1"
+    },
+    {
+      "tag": "after-phone-dark-en-audit-5",
+      "file": "after-phone-dark-en-audit-5.png",
+      "sha256": "3df2edfd8d893a0baeb255dce5e8dea309b13acafb7198d0644af3eead77b88f"
+    },
+    {
+      "tag": "after-phone-dark-en-audit-6",
+      "file": "after-phone-dark-en-audit-6.png",
+      "sha256": "b5af8989c40f0f9cfd22815376b13a729ab37d80c19995fe7f108c94fc69c7dc"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-overview",
+      "file": "after-phone-dark-zh-TW-overview.png",
+      "sha256": "12161da3c9941c8d5a8abaa285b03c2ab532739b9f1d46d7d4452b37af8480ce"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-editor",
+      "file": "after-phone-dark-zh-TW-editor.png",
+      "sha256": "865357699142767dc3ef2ab8d5790faeda761fb893a8b1a598b2f0e12cf244e0"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-editor-2",
+      "file": "after-phone-dark-zh-TW-editor-2.png",
+      "sha256": "1238860c38e3bdc20827d600df87d96b086b9d7235e878c95fb1222fde98b497"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-assignment",
+      "file": "after-phone-dark-zh-TW-assignment.png",
+      "sha256": "27370f933ea8d3a7762476c7dd2fde73eb9d3b8befaf6c2671f2831ad9588e1d"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-preview",
+      "file": "after-phone-dark-zh-TW-preview.png",
+      "sha256": "e9e9a11f56c61b921b6fb89421b4115f1ab3aabd08a8fe9dbd83e5f2171a3949"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-saved",
+      "file": "after-phone-dark-zh-TW-saved.png",
+      "sha256": "473822042a7426afefa9d22b2826fdd8729a3e221fa1e0483b03aff8f77fde37"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-audit",
+      "file": "after-phone-dark-zh-TW-audit.png",
+      "sha256": "37413288b47c8bef9f43e7ce03a1456cced55aa8332fd2475be594b1acc2a6d9"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-audit-2",
+      "file": "after-phone-dark-zh-TW-audit-2.png",
+      "sha256": "61fb2e0d8e4f89521906226380e972f57b525a75e453642545b03bc0c725be51"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-audit-3",
+      "file": "after-phone-dark-zh-TW-audit-3.png",
+      "sha256": "9ff6613f87b56ae085168ca36b2ecfb1173b7bcfada64fb5b0f117fc44b713a5"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-audit-4",
+      "file": "after-phone-dark-zh-TW-audit-4.png",
+      "sha256": "71124b5065ba6b23249c4e9acc2624d44b28a3df8f01d94686ea54922a64ad63"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-audit-5",
+      "file": "after-phone-dark-zh-TW-audit-5.png",
+      "sha256": "fef0ab5a88e96a7554a9c6f7e70576d6883aed4b314dd79da43863db73da8df1"
+    },
+    {
+      "tag": "after-phone-dark-zh-TW-audit-6",
+      "file": "after-phone-dark-zh-TW-audit-6.png",
+      "sha256": "9c21e58187b6a32faf73d2af5391c315000c6ed637ccc2b38ac891a136b49c8d"
+    }
+  ],
+  "errors": [],
+  "scope": "Separate initialized production Hub runtime/HTTPS/SQLite and assets from REPO. Synthetic AD people/groups; no real credentials, Fleet or model process. Headless Chromium inside WSL.",
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}
