@@ -1,0 +1,18 @@
+{
+  "from": "b8867aa85fbdbe0149b6cb6987a9941231c1ed7f",
+  "cause": "CI changelog requires section front matter and a list item; original two fragments lacked them.",
+  "runtime_ui_tests_unchanged": true,
+  "check": "node scripts/changelog-assemble.mjs --check",
+  "exit_code": 0,
+  "bindings": [
+    {
+      "path": "changes/4006-local-connector.md",
+      "sha256": "f75827ceefb707b973747666934f8e51c088f9d0cf120b397f1671f33e6691ea"
+    },
+    {
+      "path": "changes/4006-local-connector.zh-TW.md",
+      "sha256": "3b8d37bb25ac16ac52c6768ef55371b1394585bfab0d63f81601ac7679eb2266"
+    }
+  ],
+  "prior_packet": "manifest.json remains bound to its original tested/sync stage; only these two metadata paths changed."
+}
