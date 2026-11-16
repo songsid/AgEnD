@@ -292,3 +292,26 @@ it("rolls back policy and metadata together when a detailed role event cannot ap
  const w=await fixture(),before=w.saved();w.append.mockImplementation((event,db)=>{if(event.action==="role.assigned")throw Error("audit unavailable");return w.audit.appendInTransaction(event,db);});
  expect(await w.apply()).toMatchObject({ok:false});expect(w.saved()).toEqual(before);expect(w.db.prepare("SELECT id FROM hub_audit WHERE action='role.assigned'").all()).toEqual([]);
 });
+
+it("a checked role description cannot be changed at apply and is retained in historical audit metadata",async()=>{
+ const w=await fixture(),next=w.saved();next.roles[1]!.description="Help colleagues connect";
+ const preview=await w.writer.preview(next,w.browser.ctx);if(!preview.ok)throw Error(preview.code);
+ const altered=copy(next);altered.roles[1]!.description="Different unchecked purpose";
+ expect(await w.writer.apply(altered,preview.previewDigest,w.browser.ctx)).toEqual({ok:false,code:"stale-preview"});expect(w.saved().roles[1]!.description).toBeUndefined();
+ const fresh=await w.writer.preview(next,w.browser.ctx);if(!fresh.ok)throw Error(fresh.code);
+ expect(await w.writer.apply(next,fresh.previewDigest,w.browser.ctx)).toMatchObject({ok:true});expect(w.saved().roles[1]!.description).toBe("Help colleagues connect");
+ const events=w.db.prepare("SELECT body FROM hub_role_events e JOIN hub_audit a ON a.id=e.id WHERE a.action='role.changed'").all() as {body:string}[];
+ expect(events.map(e=>JSON.parse(e.body).details.after.description)).toContain("Help colleagues connect");expect(w.audit.verifyChain()).toMatchObject({ok:true});
+});
+
+it.each(["ineligible","unknown"] as const)("cannot turn roles off when the configured root is %s and the acting admin would be the last",async kind=>{
+ const w=await fixture();w.read.mockImplementation(async who=>who.objectId===w.root.objectId?(kind==="unknown"?{kind:"unknown"}:{kind:"ineligible",person:copy(who),reason:"disabled",observedAt:100}):{kind:"complete",person:copy(who),groups:[],observedAt:100});
+ const next=w.saved();next.rolesActive=false;
+ expect(await w.writer.preview(next,w.browser.ctx)).toEqual({ok:false,code:"last-administrator"});expect(w.saved().rolesActive).toBe(true);expect(w.commit).not.toHaveBeenCalled();
+});
+it("rechecks last-administrator continuity after preview before committing a turn-off",async()=>{
+ const w=await fixture(),next=w.saved();next.rolesActive=false;
+ const preview=await w.writer.preview(next,w.browser.ctx);if(!preview.ok)throw Error(preview.code);
+ w.read.mockImplementation(async who=>who.objectId===w.root.objectId?{kind:"ineligible",person:copy(who),reason:"disabled",observedAt:100}:{kind:"complete",person:copy(who),groups:[],observedAt:100});
+ expect(await w.writer.apply(next,preview.previewDigest,w.browser.ctx)).toEqual({ok:false,code:"last-administrator"});expect(w.saved().rolesActive).toBe(true);expect(w.commit).not.toHaveBeenCalled();
+});

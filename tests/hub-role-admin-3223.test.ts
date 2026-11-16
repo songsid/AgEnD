@@ -50,3 +50,23 @@ it.each(["presentation","read"] as const)("%s rechecks real directory eligibilit
  const w=await world();w.eligible.mockClear();w.eligible.mockResolvedValue({eligible:false,reason:"disabled"});
  await expect(w.control[method](w.ctx.ctx)).rejects.toMatchObject({code:"revoked"});expect(w.eligible).toHaveBeenCalledWith(w.admin);
 });
+
+it("keeps named historical assignment details after a later rename, and filters audit before pagination",async()=>{
+ const w=await world();w.db.prepare("UPDATE hub_people SET display_name=? WHERE person=?").run("Alex Chen",`${w.admin.realm}/${w.admin.objectId}`);
+ const p=structuredClone(w.policy);p.roles[1]!.name="Support leads";p.roles[1]!.description="Support colleagues";
+ const preview=await w.control.preview(w.ctx.ctx,p);if(!preview.ok)throw Error(preview.code);
+ expect(await w.control.apply(w.ctx.ctx,{policy:p,previewDigest:preview.previewDigest})).toMatchObject({ok:true});
+ const fresh=await w.browser(w.root);
+ const page=await w.control.audit(fresh.ctx,{action:"role.changed",from:100,to:100});expect(page.rows).toHaveLength(1);
+ expect(page.rows[0]?.details).toMatchObject({kind:"role",before:{roleName:"Manager"},after:{roleName:"Support leads",description:"Support colleagues"}});
+ expect(JSON.stringify(page)).not.toContain("builtin:manager");
+ expect((await w.control.audit(fresh.ctx,{action:"role.changed",from:101})).rows).toEqual([]);
+ expect((await w.control.audit(fresh.ctx,{action:"role.changed",person:`${w.other.realm}/${w.other.objectId}`})).rows).toEqual([]);
+ expect((await w.control.audit(fresh.ctx,{action:"role.changed",person:`${w.admin.realm}/${w.admin.objectId}`})).rows).toHaveLength(1);
+});
+it("a malformed legacy actor or role event remains an unknown safe row rather than breaking audit",async()=>{
+ const w=await world(),id=randomUUID();w.core.deps.uow.atomic(()=>w.audit.appendInTransaction({id,sequence:0,at:100,requestId:randomUUID(),actor:{kind:"local-host"},action:"role.changed",result:"completed",policyVersion:1},w.db));
+ w.db.prepare("UPDATE hub_audit SET actor=? WHERE id=?").run("not-json",id);w.db.prepare("INSERT INTO hub_role_events VALUES(?,?,?)").run(id,'{"before":{"name":"secret raw legacy"}}',100);
+ const page=await w.control.audit(w.ctx.ctx,{}),row=page.rows.find(row=>row.id===id);expect(row).toMatchObject({actor:{id:"unknown",name:""},summary:[]});expect(row?.details).toBeUndefined();expect((await w.control.audit(w.ctx.ctx,{person:"unknown"})).rows.some(row=>row.id===id)).toBe(true);expect(JSON.stringify(page)).not.toContain("secret raw legacy");
+ await expect(w.control.audit(w.ctx.ctx,{from:200,to:100})).rejects.toMatchObject({code:"invalid"});
+});

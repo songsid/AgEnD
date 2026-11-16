@@ -452,8 +452,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           return answer({candidates:await guard(() => roles.search(ctx,{kind:query.get("kind"),q:query.get("q")}))});
         }
         if (path === "/hub/v1/roles/audit") {
-          if ([...query.keys()].some(k => k !== "cursor") || query.getAll("cursor").length > 1) throw new HubProtocolError("invalid");
-          return answer(await guard(() => roles.audit(ctx,{...(query.has("cursor") ? {cursor:query.get("cursor")} : {})})));
+          const fields=["cursor","from","to","person","action"];
+          if ([...query.keys()].some(k => !fields.includes(k)) || fields.some(k=>query.getAll(k).length>1) || ["from","to"].some(k=>query.has(k)&&!/^\d{1,16}$/.test(query.get(k)!))) throw new HubProtocolError("invalid");
+          return answer(await guard(() => roles.audit(ctx,Object.fromEntries([...query].map(([key,value])=>[key,key==="from"||key==="to"?Number(value):value])))));
         }
         if (path === "/hub/v1/roles/notices") { if(query.size)throw new HubProtocolError("invalid");return answer(await guard(() => roles.notices(ctx))); }
       } else if (method === "POST") {
