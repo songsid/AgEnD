@@ -10,7 +10,7 @@ import { s3bRig, WEB_ORIGIN } from "./helpers/hub-s3b-rig.js";
 import { readHubCookie, hubCookieName } from "../src/hub/sessions.js";
 import { HUB_SHELL_DROPS } from "../src/web-api.js";
 import { verifyAsker, operationDigest } from "../src/hub/identity.js";
-import type { HubExposure, HubServerFrame, PersonKey } from "../src/hub/types.js";
+import type { HubFleetExposure as HubExposure, HubServerFrame, PersonKey } from "../src/hub/types.js";
 
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 type Rig = Awaited<ReturnType<typeof s3bRig>>;

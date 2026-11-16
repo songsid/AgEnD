@@ -19,8 +19,8 @@ import { credentialProfileLaunch, credentialProfileStore, isCredentialProfileCli
 import { readAntigravityIdentityIn } from "./antigravity-identity.js";
 import { MANAGED_CLI_ROOT_ENV, managedCliExecutable } from "./runtime-cli-install.js";
 import { isPersonalAgentCli, PersonalAgentAnswerReader, type PersonalAnswer } from "./runtime-personal-answer.js";
-import { assertPersonalTask } from "./runtime-personal-protocol.js";
-import { stagePersonalAgent, windowsPersonalStageHost, PersonalAgentStageError, type PersonalStage } from "./runtime-personal-stage.js";
+import { assertPersonalTask, type PersonalCliStatus } from "./runtime-personal-protocol.js";
+import { stagePersonalAgent, stagePersonalProbe, windowsPersonalStageHost, PersonalAgentStageError, type PersonalStage } from "./runtime-personal-stage.js";
 import { checkPersonalCodexPrompt } from "./runtime-personal-preflight.js";
 
 const exec = promisify(execFile);
@@ -33,6 +33,8 @@ export interface NativeCliRow {
   /** Coordinator-derived (cc3ce4fe), never trusted from a runner: whether this persistent-pane CLI's version is audited. */
   paneVerification?: "verified" | "unverified" | "denied" | "invalid";
   modelsSource?: "cli-cache" | "official-catalog" | "cli-list" | "unavailable";
+  /** The personal runner's own enforcement check, never inferred from a version number. */
+  personalStatus?: PersonalCliStatus;
   /** Claude Code only: the masked e-mail and plan of the default sign-in, taken from the same `auth status` answer as `authenticated`. */
   identity?: AccountIdentity;
 }
@@ -483,6 +485,9 @@ export async function refreshNativeModels(options: {
 
 export interface NativeProbeOptions {
   personal?: boolean;
+  personalFolder?: string;
+  /** Tests use inert checks; production resolves and checks only the locally bound profile. */
+  personalCheck?: (cli: import("./runtime-personal-answer.js").PersonalAgentCli, executable: NativeCliExecutable, folder: string) => Promise<PersonalCliStatus>;
   find?: (id: NativeCliId) => Promise<NativeCliExecutable | null>;
   run?: (executable: NativeCliExecutable, args: string[]) => Promise<NativeCommandOutput>;
   /** Tests can isolate account metadata without reading the user's real cache. */
@@ -578,8 +583,27 @@ async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, incl
   return { row, executable };
 }
 export async function probeNativeClis(options: NativeProbeOptions = {}): Promise<{ clis: NativeCliRow[]; home: string; hostname: string }> {
+  if(options.personal&&!validWindowsDirectory(options.personalFolder))throw Error("Personal detection requires the locally bound folder");
   const results = await Promise.all((options.personal ? NATIVE_CLI_IDS.filter(isPersonalAgentCli) : NATIVE_CLI_IDS).map(id => probeNativeCli(id, options, true)));
+  if(options.personal)for(const result of results)if(isPersonalAgentCli(result.row.id)&&result.executable){
+    result.row.personalStatus=await (options.personalCheck??checkPersonalCli)(result.row.id,result.executable,options.personalFolder!);
+  }
   return { clis: results.map(result => result.row), home: homedir(), hostname: hostname() };
+}
+async function checkPersonalCli(cli:import("./runtime-personal-answer.js").PersonalAgentCli,executable:NativeCliExecutable,folder:string):Promise<PersonalCliStatus>{
+  let stage:PersonalStage|undefined,outcome:PersonalCliStatus="profile-unavailable";
+  try{
+    stage=stagePersonalProbe({cli,folder,question:"Local profile check only",runtimeReads:[dirname(executable.command),...executable.args.filter(validWindowsDirectory).map(p=>dirname(p)),dirname(process.execPath)]},windowsPersonalStageHost(nativeCliEnvironment()));
+    const environment={...nativeCliEnvironment(),...stage.plan.environment};
+    if(cli==="codex")await checkPersonalCodexPrompt(executable,stage.plan,environment);
+    else {
+      const help=await exec(executable.command,[...executable.args,...stage.plan.args,"--help"],{cwd:stage.plan.cwd,env:environment,shell:false,windowsHide:true,timeout:10_000,maxBuffer:128*1024});
+      if(!help.stdout.includes("--permission-mode")||!help.stdout.includes("--strict-mcp-config"))throw new PersonalAgentStageError("profile-unavailable");
+    }
+    outcome="ready";
+  }catch(error){outcome=error instanceof PersonalAgentStageError&&error.reason==="sandbox-unavailable"?"sandbox-unavailable":"profile-unavailable";}
+  finally{try{stage?.cleanup();}catch{outcome="profile-unavailable";}}
+  return outcome;
 }
 
 async function workerMain(): Promise<void> {
@@ -612,7 +636,8 @@ async function workerMain(): Promise<void> {
       }
       if (request.op === "probe") {
         if (request.personal !== undefined && request.personal !== true) throw Error("Invalid personal probe");
-        const result = await probeNativeClis({ ...(request.personal ? { personal: true } : {}) }); completed = true; finish({ type: "probe", ...result }, 0); return;
+        if(request.personal&&!validWindowsDirectory(request.folder))throw Error("Invalid local personal folder");
+        const result = await probeNativeClis({ ...(request.personal ? { personal: true,personalFolder:request.folder } : {}) }); completed = true; finish({ type: "probe", ...result }, 0); return;
       }
       if (request.op === "workspace") {
         if (Object.keys(request).some(key => !["op", "agentId"].includes(key)) || !validWindowsAgentId(request.agentId)) throw new Error("Invalid Windows workspace request");

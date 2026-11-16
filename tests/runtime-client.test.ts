@@ -73,6 +73,13 @@ describe("a personal Runtime's connection boundary", () => {
     expect(f.state.hub.task(task.requestId)?.output).toBe("");
     expect(new RuntimeClientStore(f.store.directory).get(task.requestId)?.task.answer).toBe("Only the final answer.");
   });
+  it("keeps the local enforcement result through the actual coordinator inventory parser",async()=>{
+    const f=await fixture({}, {personalAgent:{folder:"C:\\workspace"}});
+    f.bridge.probe.mockResolvedValue({home:"C:\\User",probedAt:2,clis:[{id:"codex",path:"C:\\codex.exe",version:"0.167.0",authenticated:true,runnable:true,
+      supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:[],personalStatus:"sandbox-unavailable"}]});
+    await f.state.hub.call(f.machineId,"probe",{force:true});
+    await vi.waitFor(()=>expect(f.state.hub.machine(f.machineId)?.inventory?.clis[0].personalStatus).toBe("sandbox-unavailable"));
+  });
   it("rejects normal tasks, different folders and extra authority before local acceptance", async () => {
     const f = await fixture({}, { personalAgent: { folder: "C:\\workspace" } });
     const task = input();

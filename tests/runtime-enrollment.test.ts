@@ -100,6 +100,15 @@ describe("the token and the server identity", () => {
 });
 
 describe("issuing, using, expiring and revoking a token", () => {
+  it("does not retire another person's unused token when a Hub owner issues a command", () => {
+    const h = hub(), a = h.createEnrollment("person-a", { supersede: "actor" });
+    const b = h.createEnrollment("person-b", { supersede: "actor" });
+    expect(h.listEnrollments().find(row => row.id === a.id)?.status).toBe("unused");
+    const next = h.createEnrollment("person-a", { supersede: "actor" });
+    expect(h.listEnrollments().find(row => row.id === a.id)?.status).toBe("revoked");
+    expect(h.enroll(enrollInput(h, b.token)).status).toBe("enrolled");
+    expect(h.enroll(enrollInput(h, next.token)).status).toBe("enrolled");
+  });
   it("keeps only the token's hash: not the token, not on disk, not in the list the page reads", () => {
     const h = hub(), issued = h.createEnrollment(ACTOR);
     expect(issued.token).toMatch(RUNTIME_ENROLL_TOKEN_PATTERN); expect(issued.fingerprint).toBe(h.serverFingerprint()); expect(issued.expiresAt - issued.createdAt).toBe(ENROLL_TTL_MS);

@@ -6,6 +6,7 @@ import type { WindowsCliTask } from "./windows-cli.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { protectRuntimeProfileDirectorySync } from "./runtime-pane-private.js";
 import { assertCredentialProfileName, validCredentialProfileName } from "./runtime-credential-profiles.js";
+import { validWindowsDirectory } from "./windows-cli-worker.js";
 
 const MAX_JOBS = 128;
 /**
@@ -241,10 +242,29 @@ export class RuntimeClientStore {
     if (name === undefined) { if (existsSync(file)) unlinkSync(file); return; }
     atomic(file, { version: 1, profile: assertCredentialProfileName(name) });
   }
+  /** Local installation choice only. Malformed state must never fall back to an ordinary Runtime. */
+  personalAgent(): { folder: string } | undefined {
+    const file = join(this.directory, "personal-agent.json"); if (!existsSync(file)) return undefined;
+    const raw = readPrivate(file);
+    if (!object(raw) || raw.version !== 1 || Object.keys(raw).some(key => key !== "version" && key !== "folder") || !validWindowsDirectory(raw.folder)) throw Error("Invalid local personal-agent binding; reconnect this personal profile");
+    return { folder: raw.folder };
+  }
+  setPersonalAgent(folder: string | undefined): void {
+    const file = join(this.directory, "personal-agent.json");
+    if (folder === undefined) {
+      if (this.credentials()) throw Error("Disconnect the personal Runtime before removing its binding");
+      if (existsSync(file)) unlinkSync(file); return;
+    }
+    if (!validWindowsDirectory(folder)) throw Error("Choose an absolute Windows folder for the personal agent");
+    const old = this.personalAgent();
+    if (this.credentialDefault() || this.credentials() && (!old || old.folder.toLowerCase() !== folder.toLowerCase())) throw Error("Use a separate personal Runtime profile; disconnect before changing its folder");
+    atomic(file, { version: 1, folder });
+  }
   /** Forgets the pairing and, with it, this pairing's default credential profile name (the profile folders and their sign-ins stay). */
   forgetCredentials(): void {
     const file = join(this.directory, "connection.json"); if (existsSync(file)) unlinkSync(file);
     this.setCredentialDefault(undefined);
+    this.setPersonalAgent(undefined);
   }
   /** PID recorded in the profile lock, if any; the lock is neither created nor removed. */
   lockHolder(): number | undefined { return this.lockInfo()?.pid; }
