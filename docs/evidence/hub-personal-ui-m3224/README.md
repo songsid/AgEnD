@@ -1,10 +1,11 @@
 # Personal-agent owner and administrator controls (M-3224)
 
-The current PM revision is [pm-r1](pm-r1/README.md); the initial packet below is retained for its original scope.
+The accepted PM revision is [pm-r1](pm-r1/README.md). The [registration follow-up](final/README.md) consumes the registered host and folds in the three remaining small PM suggestions; the initial packet below retains its original scope.
 
-This UI slice is stacked on the unregistered host slice, #4058. The standard migration registry still omits
-`s3-personal-agents`. Production activation and Windows x64 support claims remain held for the approved proof.
-No Windows process, user authentication, model, provider or installer was used by this packet.
+This UI slice is stacked on the registered, default-off host in #4058. Its separate Windows x64 packet proves one
+Claude profile turn on the exact recorded machine; each computer still decides CLI availability locally, and Codex
+remains unavailable on that tested setup. No Windows process, user authentication, model, provider or installer
+was used by this browser packet.
 
 ## Behavior
 
@@ -53,7 +54,7 @@ adds synchronous click claims and shared error Retry; normal card markup is unch
 
 ## Risk and rollback
 
-The principal remaining dependency is the Windows x64 one-folder/authentication proof and explicit activation.
+The host registration and exact-build proof are documented in the parent packet.
 The UI is invisible without `personal-agents-v1`. Roll back the UI slice to hide the cards while retaining the
 source layer and journals; do not hard-downgrade a populated personal schema. The host/model rollback prerequisites
 in `docs/design/hub-personal-owner-model.md` continue to apply.

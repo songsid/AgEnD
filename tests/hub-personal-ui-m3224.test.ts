@@ -36,7 +36,7 @@ it("saves only the named fields and revision under its captured sign-in",async()
 });
 it("keeps the enrollment command private until the owner requests one",async()=>{
  const {p,client}=await fixture();expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();fire(button(p,"Use a different computer"),"click");fire(button(p,"Use a different computer"),"click");await settle(20);expect(client.personalEnrollment).toHaveBeenCalledTimes(1);
- expect(client.personalEnrollment).toHaveBeenCalledWith("captured-signin");expect(p.root.querySelector("pre")?.textContent).toContain("agend_enroll_");expect(p.root.textContent).toContain("15 minutes");
+ expect(client.personalEnrollment).toHaveBeenCalledWith("captured-signin");expect(p.root.querySelector("pre")?.textContent).toContain("agend_enroll_");expect(p.root.textContent).toContain("15 minutes");expect(p.root.querySelectorAll("button").filter((b:any)=>b.textContent==="New command")).toHaveLength(1);expect(button(p,"New command")?.className).toContain("btn-ghost");
  change(p.root.querySelector("form input"),"Notes");change(p.root.querySelector("form select"),"codex","change");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);expect(p.root.querySelector("pre")).toBeNull();
 });
 it("does not call enrollment while disabled or while the owner lacks permission",async()=>{
@@ -48,7 +48,7 @@ it("edits named people and teams while keeping settings writes explicit and scop
   teams:async()=>({ok:true,teams:[{id:"team-one",name:"Launch"}]}),savePersonalAgentSettings:vi.fn(async v=>({ok:true,...v}))};
  await p.mount(h(ui.HubPersonalAgentAdmin,{client,scope:"admin-signin"}));await settle(20);expect(p.root.textContent).toContain("Alex");expect(p.root.textContent).toContain("Launch");expect(p.root.textContent).not.toContain("corp/person");
  const toggle=p.root.querySelector('input[type="checkbox"]');toggle.checked=true;fire(toggle,"change");await settle();expect(p.root.textContent).toContain("Unsaved changes");fire(p.root.querySelector("form"),"submit");await settle(20);
- expect(client.savePersonalAgentSettings).toHaveBeenCalledWith("admin-signin",{enabled:true,people:["corp/person"],teams:["team-one"]});
+ expect(p.root.querySelector("select option")?.textContent).toBe("Choose a team");expect(client.savePersonalAgentSettings).toHaveBeenCalledWith("admin-signin",{enabled:true,people:["corp/person"],teams:["team-one"]});
 });
 
 it("refuses late personal writes after another person signs in",async()=>{
@@ -87,7 +87,7 @@ it("keeps sharing primary until configured, and replacement/disconnect quiet at 
  (globalThis as any).confirm=undefined;fire(button(p,"Disconnect computer"),"click");fire(button(p,"Disconnect computer"),"click");await settle();const q=confirms.confirmStore.get().queue;
  expect(q).toHaveLength(1);expect(q[0]).toMatchObject({danger:true,confirmLabel:"Disconnect",message:"Disconnect this computer? The agent stops answering. Nothing on the computer is deleted or uninstalled."});
  confirms.answerConfirm(q[0].id,false);await settle();expect(client.disconnectPersonalAgent).not.toHaveBeenCalled();
- data.agent.shared=true;fire(button(p,"Refresh"),"click");await settle(20);expect(p.root.textContent).not.toContain("Not shared yet.");expect(p.root.querySelector('a.btn-primary')).toBeNull();
+ data.agent.shared=true;fire(button(p,"Refresh"),"click");await settle(20);expect(p.root.textContent).not.toContain("Not shared yet.");expect(p.root.querySelector('a.btn-primary')).toBeNull();expect(p.root.querySelector("a")?.textContent).toBe("Change who may ask");expect(p.root.querySelector("a")?.parentElement?.className).toBe("field-row");
 });
 it("leaves an unavailable CLI out of the selector while explaining it separately",async()=>{
  const data=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable"});Object.assign(data.computer.clis[1],{available:true,authenticated:true,path:"C:/claude"});

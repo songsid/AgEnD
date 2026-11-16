@@ -1,0 +1,83 @@
+{
+  "oldBase": "e63206c01e9f29bc2c544cb06fbf738869706e40",
+  "reviewedUI": "3137a53c35df8d52e28fb43e822ab269477a9c63",
+  "newHost": "aa0bcf3b45448f81a487f97ff92fba7620cea28d",
+  "syncedUI": "0016f9d4b01b0e91256d112607c097289ebef8fd",
+  "paths": [
+    {
+      "path": "docs/design/hub-personal-host.md",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "scripts/manual/hub-personal/browser.mts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/hub/personal/owner-host.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/hub-personal-agent-strings.js",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/hub-personal-agent.js",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/runtime-commands.d.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "src/ui/runtime-commands.js",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "templates/runtime-install/install.ps1",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-personal-owner-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-personal-ui-m3224.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/hub-shared-modules-a.test.ts",
+      "ownLinesUnchanged": true
+    },
+    {
+      "path": "tests/runtime-install-pwsh.test.ts",
+      "ownLinesUnchanged": true
+    }
+  ],
+  "localVerificationOnPlainSync": false,
+  "finalPolish": [
+    "shared-link wording and alignment",
+    "one quiet New command position",
+    "Team empty option",
+    "manual gallery uses the registered migration"
+  ]
+}
