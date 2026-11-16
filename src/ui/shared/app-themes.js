@@ -101,8 +101,8 @@ export function themeFor(name) {
 
 /** The token defaults (tokens.css; web-theme.ts THEME_DEFAULTS, pinned by a test) a theme's palette goes over. */
 const PAGE_DEFAULTS = {
-  dark: { bg: "#212121", surface: "#2f2f2f", text: "#ececec", text2: "#b4b4b4", accent: "#7ab7ff" },
-  light: { bg: "#ffffff", surface: "#f4f4f4", text: "#0d0d0d", text2: "#5d5d5d", accent: "#0a62c2" },
+  dark: { bg: "#212121", surface: "#2f2f2f", text: "#ececec", text2: "#cfcfcf", accent: "#7ab7ff" },
+  light: { bg: "#ffffff", surface: "#f4f4f4", text: "#0d0d0d", text2: "#4d4d4d", accent: "#0a62c2" },
 };
 /** AgEnD's status colours (tokens.css; web-theme.ts STATUS_COLORS, pinned by a test): never themed, always readable. */
 export const STATUS_COLORS = {

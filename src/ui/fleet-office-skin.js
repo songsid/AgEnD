@@ -54,7 +54,7 @@ export { nameHash };
 
 /** @typedef {{ bg, surface, surface2, border, text, text2, text3, ok, warn, danger, focus, accent, accentDim, okBg, warnBg, dangerBg, fx: { task, send, report, broadcast } }} OfficePalette */
 export const DEFAULT_PAL = {
-  bg: "#212121", surface: "#2f2f2f", surface2: "#3a3a3a", border: "#3d3d3d", text: "#ececec", text2: "#b4b4b4", text3: "#a3a3a3",
+  bg: "#212121", surface: "#2f2f2f", surface2: "#3a3a3a", border: "#3d3d3d", text: "#ececec", text2: "#cfcfcf", text3: "#bbbbbb",
   ok: "#4cc38a", warn: "#e3b341", danger: "#ff8a80", focus: "#7ab7ff", fx: { task: "#b794f6", send: "#2dd4bf", report: "#f472b6", broadcast: "#fb923c" },
   // #2661: the level badges' tiers (the status tokens and their tints).
   accent: "#7ab7ff", accentDim: "rgba(122, 183, 255, 0.14)", okBg: "rgba(76, 195, 138, 0.14)", warnBg: "rgba(227, 179, 65, 0.14)", dangerBg: "rgba(255, 138, 128, 0.14)",

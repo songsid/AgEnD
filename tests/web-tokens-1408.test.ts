@@ -2,6 +2,8 @@
  * #1408 §2: the design tokens every panel shares, and the bundled Inter.
  * - Every theme block names the same tokens, and the two light blocks carry the same values.
  * - Text meets WCAG AA (4.5:1) on the surfaces it is used on; focus rings and strong borders meet 3:1.
+ * - M-3216 (the user's phone contrast audit): on the dark page the secondary and tertiary greys reach APCA Lc 60 on the
+ *   page, the sidebar and a card; the phone layout's two small sizes are 13px and 14px.
  * - The font is local (font-src 'self'), swaps, covers only Latin, and Chinese falls back to the system CJK fonts in order.
  * - Both files are served to anyone (static, no data) and listed on the public link; the licence ships beside the font.
  */
@@ -34,6 +36,14 @@ function luminance(hex: string): number {
   return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
 }
 const contrast = (a: string, b: string) => { const [x, y] = [luminance(a), luminance(b)]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+/** APCA Lc (APCA-W3 0.0.98G-4g, the WCAG 3 draft's contrast): signed, |Lc| 60 is the floor for readable small content text. */
+function apca(text: string, bg: string): number {
+  const y = (hex: string) => { const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255); const v = 0.2126729 * c[0]! ** 2.4 + 0.7151522 * c[1]! ** 2.4 + 0.072175 * c[2]! ** 2.4; return v < 0.022 ? v + (0.022 - v) ** 1.414 : v; };
+  const t = y(text), b = y(bg);
+  if (Math.abs(b - t) < 0.0005) return 0;
+  if (b > t) { const s = (b ** 0.56 - t ** 0.57) * 1.14; return s < 0.1 ? 0 : (s - 0.027) * 100; }
+  const s = (b ** 0.65 - t ** 0.62) * 1.14; return s > -0.1 ? 0 : (s + 0.027) * 100;
+}
 
 describe("the theme blocks", () => {
   it("dark and both light blocks name the same colour tokens; the two light blocks are identical", () => {
@@ -60,12 +70,34 @@ describe("the theme blocks", () => {
 describe("contrast (WCAG AA)", () => {
   const TEXT_ON: Array<[string, string]> = [
     ...["text", "text-2", "text-3", "accent", "ok", "warn", "danger"].flatMap(t => ["bg", "bg-sidebar", "surface"].map(b => [t, b] as [string, string])),
-    ["text", "surface-2"], ["text-2", "surface-2"], ["text", "user-bubble"],
+    ["text", "surface-2"], ["text-2", "surface-2"], ["text-3", "surface-2"], ["text", "user-bubble"],
     ["on-accent", "accent-fill"], ["on-danger", "danger-fill"],
     ...["text", "tk-k", "tk-s", "tk-n", "tk-c"].map(t => [t, "code-bg"] as [string, string]),
     ["text", "code-head"], ["text-2", "code-head"], ["text", "inline-code"],
   ];
   const UI_ON: Array<[string, string]> = ["focus", "border-strong"].flatMap(t => ["bg", "bg-sidebar", "surface"].map(b => [t, b] as [string, string]));
+
+  it("APCA itself: known values (APCA-W3 0.0.98G-4g reference)", () => {
+    expect(apca("#000000", "#ffffff")).toBeCloseTo(106.04, 1);
+    expect(apca("#ffffff", "#000000")).toBeCloseTo(-107.88, 1);
+    expect(apca("#888888", "#ffffff")).toBeCloseTo(63.06, 1);
+    expect(apca("#a3a3a3", "#3a3a3a")).toBeCloseTo(-44.56, 1);   // the old dark --text-3 on --surface-2: the audit's dim grey
+  });
+  // M-3216: WCAG passed the old dark greys (#b4b4b4 / #a3a3a3, Lc 45–57) while the user found 12–13px grey text tiring on a
+  // phone; the dark page is where WCAG 2 overrates light-on-dark small text.
+  it("dark: the secondary and tertiary greys reach APCA Lc 60 on the page, the sidebar and a card", () => {
+    for (const t of ["text-2", "text-3"]) for (const b of ["bg", "bg-sidebar", "surface"]) expect(Math.abs(apca(DARK[t]!, DARK[b]!)), `${t} on ${b}`).toBeGreaterThanOrEqual(60);
+  });
+  it("both themes: --text-2 is stronger than --text-3 on every background (the hierarchy stays)", () => {
+    for (const theme of [DARK, LIGHT]) for (const b of ["bg", "bg-sidebar", "surface", "surface-2"]) expect(contrast(theme["text-2"]!, theme[b]!), b).toBeGreaterThan(contrast(theme["text-3"]!, theme[b]!));
+  });
+  it("the phone layout: the two small sizes are 13px and 14px, the desk keeps 12px and 13px", () => {
+    expect(DARK["fs-xs"]).toBe("12px"); expect(DARK["fs-sm"]).toBe("13px");
+    const m = /@media \(max-width: 899px\) \{\s*:root \{([^}]*)\}\s*\}/.exec(CSS);
+    expect(m, "the phone :root block").toBeTruthy();
+    const phone = Object.fromEntries([...m![1]!.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(x => [x[1]!, x[2]!.trim()]));
+    expect(phone).toEqual({ "fs-xs": "13px", "lh-xs": "18px", "fs-sm": "14px", "lh-sm": "20px" });
+  });
 
   for (const [name, theme] of [["dark", DARK], ["light", LIGHT]] as const) {
     it(`${name}: every text pair is 4.5:1 or better`, () => {

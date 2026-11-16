@@ -6,7 +6,9 @@
  * Themes follow /assets/theme.js: dark under :root; light under @media (prefers-color-scheme: light) for
  * :root:not([data-theme="dark"]), and again under :root[data-theme="light"] for a browser that chose light. The two
  * light blocks carry the same values (a test compares them). Every text colour meets WCAG AA (4.5:1) on the
- * surfaces it is used on, and focus rings and strong borders meet 3:1 (tests/web-tokens-1408.test.ts).
+ * surfaces it is used on, and focus rings and strong borders meet 3:1 (tests/web-tokens-1408.test.ts). M-3216 (the user's phone
+ * contrast audit): on the dark page the secondary and tertiary greys also reach APCA Lc 60 on the page, the sidebar and a
+ * card, the floor for readable small text; WCAG alone passed them while 12–13px grey text still read dim on a phone.
  *
  * Inter is bundled (/assets/inter.woff2, SIL OFL 1.1 — see fonts/README.md): the CSP allows fonts from 'self' only,
  * and nothing is loaded from another site. Chinese falls back to the system's CJK fonts, in the order below.
@@ -60,8 +62,8 @@
   --border: #3d3d3d;       /* used rarely: tone separates areas */
   --border-strong: #7a7a7a;
   --text: #ececec;
-  --text-2: #b4b4b4;       /* secondary: senders, labels */
-  --text-3: #a3a3a3;       /* tertiary: times, hints, metadata */
+  --text-2: #cfcfcf;       /* secondary: senders, labels */
+  --text-3: #bbbbbb;       /* tertiary: times, hints, metadata */
   --accent: #7ab7ff;       /* links and selected text */
   --accent-fill: #ececec;  /* the primary button (Send) */
   --on-accent: #0d0d0d;
@@ -95,8 +97,8 @@
     --border: #e5e5e5;
     --border-strong: #858585;
     --text: #0d0d0d;
-    --text-2: #5d5d5d;
-    --text-3: #696969;
+    --text-2: #4d4d4d;
+    --text-3: #5d5d5d;
     --accent: #0a62c2;
     --accent-fill: #0d0d0d;
     --on-accent: #ffffff;
@@ -130,8 +132,8 @@
   --border: #e5e5e5;
   --border-strong: #858585;
   --text: #0d0d0d;
-  --text-2: #5d5d5d;
-  --text-3: #696969;
+  --text-2: #4d4d4d;
+  --text-3: #5d5d5d;
   --accent: #0a62c2;
   --accent-fill: #0d0d0d;
   --on-accent: #ffffff;
@@ -179,6 +181,11 @@
    the small type sizes are 16px ON the controls themselves, so every control sized from them (the filter, search,
    settings fields, selects, the composer) computes to 16px, and a larger one (the sign-in code, 22px) stays as it is.
    Pinch zoom is left alone (no maximum-scale / user-scalable in the viewport); the desktop look does not change. */
+/* M-3216: on the phone layout the two small sizes are a step larger (12 → 13px, 13 → 14px): on a phone most of the
+   text (times, hints, labels, a card's lines) is set in them. Text fields keep the 16px rule below. */
+@media (max-width: 899px) {
+  :root { --fs-xs: 13px; --lh-xs: 18px; --fs-sm: 14px; --lh-sm: 20px; }
+}
 @media (pointer: coarse), (max-width: 899px) {
   input, select, textarea { --fs-xs: 16px; --fs-sm: 16px; --fs-md: 16px; }
 }
