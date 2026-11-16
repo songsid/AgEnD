@@ -277,3 +277,63 @@ describe("#2078 review: the version is read from disk first, starting nothing", 
     expect(existsSync(marker)).toBe(false);
   });
 });
+
+describe("AGEND-274: a CLI that names no version and may not be started to ask (no network namespace, #2078): its file says whether it has the sign-in command", () => {
+  const LINE = "Log in with Google interactively, then exit";
+  const scratch = () => mkdtempSync(join(tmpdir(), "avail-marker-"));
+  /** An "agy": a script that would leave `ran` behind if it were ever started; `at`: the byte offset where `body` starts (padded to it), so a test can place the line across a chunk boundary whatever the scratch path's length. */
+  const agy = (dir: string, body: string, at = 0) => {
+    const f = join(dir, "agy"), head = `#!/bin/sh\ntouch ${JSON.stringify(join(dir, "ran"))}\n# `;
+    writeFileSync(f, `${head}${"x".repeat(Math.max(0, at - Buffer.byteLength(head)))}${body}\n`, { mode: 0o755 });
+    return f;
+  };
+  it("finds the registry's marker in the bytes (also across a chunk boundary and through a link), says no when it is absent, and starts nothing", async () => {
+    const { fileHasMarker, structuredLoginMarker } = await import("../src/backend-availability.js");
+    const { hostFacts } = await import("../src/cli-registry.js");
+    const { symlinkSync } = await import("node:fs");
+    expect(hostFacts("antigravity", "structuredSignIn")!.marker).toBe(LINE);
+    const dir = scratch();
+    const old = agy(dir, "Usage of agy: --add-dir  Add a directory to the workspace");
+    expect(await structuredLoginMarker("antigravity", old)).toBe(false);
+    const CHUNK = 4 * 1024 * 1024;
+    for (const at of [0, CHUNK - 1, CHUNK - 20, CHUNK - (LINE.length - 1), CHUNK + 10]) {   // in the first chunk; split across the 4 MiB boundary (1, 20 and all but 1 byte before it); wholly in the second
+      const dir2 = scratch(), f = agy(dir2, `${LINE} (ACP terminal auth)`, at);
+      expect(await structuredLoginMarker("antigravity", f), String(at)).toBe(true);
+      expect(existsSync(join(dir2, "ran"))).toBe(false);
+    }
+    const dir3 = scratch(); symlinkSync(agy(scratch(), LINE), join(dir3, "agy"));
+    expect(await structuredLoginMarker("antigravity", join(dir3, "agy"))).toBe(true);
+    expect(await fileHasMarker(join(dir, "nope"), LINE)).toBeNull();            // unreadable: no answer, never "no"
+    expect(await structuredLoginMarker("claude-code", old)).toBeNull();        // a CLI with no marker in the registry is not asked
+    expect(existsSync(join(dir, "ran"))).toBe(false);
+  });
+  it("is read again when the file changes, not before", async () => {
+    const { fileHasMarker } = await import("../src/backend-availability.js");
+    const { utimesSync } = await import("node:fs");
+    const dir = scratch(), f = agy(dir, "nothing here");
+    expect(await fileHasMarker(f, LINE)).toBe(false);
+    writeFileSync(f, `#!/bin/sh\n# ${LINE}\n`, { mode: 0o755 });              // replaced by a newer agy
+    utimesSync(f, new Date(), new Date(Date.now() + 5000));
+    expect(await fileHasMarker(f, LINE)).toBe(true);
+  });
+  it("the store asks only while the version is unknown, publishes the answer, and keeps nothing for a CLI whose version is known", async () => {
+    const asked: string[] = [];
+    const { probes } = fakes({ version: vi.fn(async (b: string) => (b === "codex" ? "0.162.1" : null)), loginMarker: vi.fn(async (b: string) => { asked.push(b); return b === "antigravity"; }) });
+    const store = new BackendAvailabilityStore(["antigravity", "codex", "opencode"], probes);
+    await store.refresh();
+    expect(store.get("antigravity")).toMatchObject({ version: null, structuredLogin: true });
+    expect(store.get("opencode")).toMatchObject({ version: null, structuredLogin: false });
+    expect("structuredLogin" in store.get("codex")!).toBe(false);
+    expect(asked.sort()).toEqual(["antigravity", "opencode"]);
+  });
+  it("structuredSignInReady: a known version decides; the marker only stands in for an unknown one", async () => {
+    const { structuredSignInReady } = await import("../src/backend-availability.js");
+    expect(structuredSignInReady({ version: "1.5.3" }, "1.5.0")).toBe(true);
+    expect(structuredSignInReady({ version: "1.4.9", structuredLogin: true }, "1.5.0")).toBe(false);   // known to be older: the version wins
+    expect(structuredSignInReady({ version: null, structuredLogin: true }, "1.5.0")).toBe(true);
+    expect(structuredSignInReady({ version: null, structuredLogin: false }, "1.5.0")).toBe(false);
+    expect(structuredSignInReady({ version: null, structuredLogin: null }, "1.5.0")).toBe(false);
+    expect(structuredSignInReady({ version: null }, "1.5.0")).toBe(false);
+    expect(structuredSignInReady({ version: null }, undefined)).toBe(true);
+  });
+});

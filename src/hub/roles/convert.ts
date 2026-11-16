@@ -11,7 +11,7 @@ export function convertGroupPolicy(input: unknown, options: { root: PersonKey; n
   const old = parseGroupPolicy(input), root = validated(person, options.root), now = validated(epoch, options.now);
   if (root.realm !== old.realm) throw new HubProtocolError();
   const converted = parseRolePolicy({ realm: old.realm, generation: old.generation, revision: old.revision,
-    rolesActive: options.rolesActive, state: old.state, everEnabled: old.state !== "never-enabled", roles: builtinRoles(), assignments: [], denies: old.denies });
+    rolesActive: options.rolesActive, state: old.state, everEnabled: old.state !== "never-enabled", roles: builtinRoles(), assignments: [], denies: old.denies, ...(old.teams ? {teams:old.teams} : {}), ...(old.people ? {people:old.people} : {}) });
   for (const rule of [...old.groups].sort((a, b) => a.group.objectId.localeCompare(b.group.objectId))) {
     const mask = GROUP_CAPABILITIES.reduce((bits, c, i) => bits | (rule.allow.includes(c) ? 1 << i : 0), 0);
     const roleId = mask === 7 ? BUILTIN_ROLE_IDS.member : `carried:${mask}`;

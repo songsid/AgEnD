@@ -40,7 +40,7 @@ const FACTS: Readonly<Record<CapabilityPath, Readonly<Record<string, Check>>>> =
   "host.update": { binary: text, command: text, "release?": oneOf("latest-unaudited") },
   "host.chatLogin": { aliases: words(0), mode: oneOf("device-code", "paste-code", "menu", "declined", "install-only") },
   "host.dashboardSignIn": { named: bool },
-  "host.structuredSignIn": { argv: words(1), rank: int, ends: oneOf("success-line", "exit-code"), screen: oneOf("login-flow", "own"), answer: oneOf("code", "code-or-address"), "minVersion?": version, named: bool },
+  "host.structuredSignIn": { argv: words(1), rank: int, ends: oneOf("success-line", "exit-code"), screen: oneOf("login-flow", "own"), answer: oneOf("code", "code-or-address"), "minVersion?": version, "marker?": text, named: bool },
   "host.firstRunSignIn": { mode: oneOf("browser", "console"), rank: int },
   "host.authCheck": { argv: words(1) },
   "host.identity": { source: oneOf("status-command", "token-file"), "field?": text },

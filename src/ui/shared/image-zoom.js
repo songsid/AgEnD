@@ -101,6 +101,10 @@ export function createZoom({ stage, img, onChange, onSwipe = null, canSwipe = nu
     return { x, y, w: Math.max(1, r.width - x - px("paddingRight")), h: Math.max(1, r.height - y - px("paddingBottom")) };
   };
   const at = (e) => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  // A pointer: where it is in the stage (zoom and pinch points) and on the screen (cx, cy: how far a finger went). M-3210:
+  // a drag, swipe or pull is measured on the screen — the stage itself moves while the next picture slides in (200 ms),
+  // and a second swipe started then was measured against the moving stage: a slow 35 px swipe read as 135 px and stepped.
+  const pt = (e) => ({ ...at(e), cx: e.clientX, cy: e.clientY });
   const apply = () => {
     img.style.transform = `translate(${z.tx}px, ${z.ty}px) scale(${z.s})`;
     stage.classList.toggle("lb-zoomed", !!nat && overflows(z, view(), nat));
@@ -175,10 +179,10 @@ export function createZoom({ stage, img, onChange, onSwipe = null, canSwipe = nu
   function onDown(e) {
     if (!nat || (e.pointerType === "mouse" && e.button !== 0)) return;
     lastType = e.pointerType || "mouse";
-    pointers.set(e.pointerId, at(e));
+    pointers.set(e.pointerId, pt(e));
     // No pointer capture yet: it would retarget the click to the stage, and a click on the picture is not one on the
     // dark area. Captured only once the pointer moves (capture()).
-    if (pointers.size === 1) { moved = false; gesture = { kind: "drag", from: at(e), z0: z, t0: now(), swipes: e.pointerType === "touch" && !!(onSwipe || onDismiss) }; }
+    if (pointers.size === 1) { moved = false; gesture = { kind: "drag", from: pt(e), z0: z, t0: now(), swipes: e.pointerType === "touch" && !!(onSwipe || onDismiss) }; }
     else if (pointers.size === 2) {
       // A swipe that gets a second finger: a pinch, from where the picture is.
       if (gesture && (gesture.kind === "swipe" || gesture.kind === "pull")) { apply(); if (onPull) onPull(0); }
@@ -190,7 +194,7 @@ export function createZoom({ stage, img, onChange, onSwipe = null, canSwipe = nu
   }
   function onMove(e) {
     if (!gesture || !pointers.has(e.pointerId)) return;
-    pointers.set(e.pointerId, at(e));
+    pointers.set(e.pointerId, pt(e));
     const v = view();
     if (gesture.kind === "pinch" && pointers.size >= 2) {
       const [a, b] = [...pointers.values()];
@@ -202,7 +206,7 @@ export function createZoom({ stage, img, onChange, onSwipe = null, canSwipe = nu
       set(clampPan({ s: zoomed.s, tx: zoomed.tx + (m.x - m0.x), ty: zoomed.ty + (m.y - m0.y) }, v, nat));
     } else if (gesture.kind === "drag") {
       const p = pointers.get(e.pointerId);
-      const dx = p.x - gesture.from.x, dy = p.y - gesture.from.y;
+      const dx = p.cx - gesture.from.cx, dy = p.cy - gesture.from.cy;
       if (!moved && Math.hypot(dx, dy) < SLOP) return;
       if (!moved) capture(e.pointerId);
       moved = true;
@@ -213,11 +217,11 @@ export function createZoom({ stage, img, onChange, onSwipe = null, canSwipe = nu
         onMove(e);
       }
     } else if (gesture.kind === "swipe") {
-      const dx = pointers.get(e.pointerId).x - gesture.from.x;
+      const dx = pointers.get(e.pointerId).cx - gesture.from.cx;
       const dir = dx < 0 ? 1 : -1;                              // to the left: the next picture
       drawOff(onSwipe && (!canSwipe || canSwipe(dir)) ? dx : dx * 0.3, 0);
     } else if (gesture.kind === "pull") {
-      const dy = pointers.get(e.pointerId).y - gesture.from.y;
+      const dy = pointers.get(e.pointerId).cy - gesture.from.cy;
       drawOff(0, dy);
       if (onPull) onPull(Math.min(1, Math.abs(dy) / (v.h * 0.5)));
     }
@@ -236,7 +240,7 @@ export function createZoom({ stage, img, onChange, onSwipe = null, canSwipe = nu
     if (gesture && (gesture.kind === "swipe" || gesture.kind === "pull")) {
       if (e.type === "pointercancel") { gesture = null; snapBack(); return; }   // the browser took the touch back
       const g = gesture, v = view(), dt = Math.max(1, now() - g.t0);
-      const d = g.kind === "swipe" ? p.x - g.from.x : p.y - g.from.y, span = g.kind === "swipe" ? v.w * SWIPE_X : v.h * SWIPE_Y;
+      const d = g.kind === "swipe" ? p.cx - g.from.cx : p.cy - g.from.cy, span = g.kind === "swipe" ? v.w * SWIPE_X : v.h * SWIPE_Y;
       const far = Math.abs(d) > span || (Math.abs(d) > FLICK_PX && Math.abs(d) / dt > FLICK);
       gesture = null;
       const dir = d < 0 ? 1 : -1;

@@ -7,7 +7,7 @@ import { parseCanonicalPolicy } from "../roles/read.js";
 import type { HubGroupPolicy } from "./model.js";
 import { HubGroupPolicyError } from "./errors.js";
 
-export function readAllowedListTeams(db: Database.Database, policy: HubGroupPolicy) {
+export function readAllowedListTeams(db: Database.Database, policy: Pick<HubGroupPolicy,"realm" | "teams">) {
   const snapshots = (policy.teams ?? []).map(rule => {
     const row = hubTeamReader.read(db, rule.teamId);
     if (row && (row.id !== rule.teamId || !Number.isSafeInteger(row.revision) || row.revision < 1
@@ -27,5 +27,5 @@ export function hubAllowedListUsesTeam(db: Database.Database, teamId: string): b
   const row = db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string } | undefined;
   if (!row) throw new HubGroupPolicyError("unavailable");
   const selected = parseCanonicalPolicy(row.body);
-  return selected.kind === "group" && (selected.policy.teams ?? []).some(rule => rule.teamId === teamId);
+  return (selected.policy.teams ?? []).some(rule => rule.teamId === teamId);
 }
