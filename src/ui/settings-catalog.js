@@ -3,6 +3,7 @@
 // Both answers are the server's cached ones; nothing here makes the server probe. A page asks once and reuses the answer
 // for a short while, so opening several dialogs costs one request each.
 import { useEffect, useRef, useState } from "/assets/app-html.js";
+import { appStore } from "/assets/app-store.js";
 
 const TTL_MS = 30_000;
 const cache = new Map();   // url → { at, value, pending }
@@ -31,6 +32,26 @@ function cached(url, force = false) {
  * cached catalog shows within that time, or at once on the next page load.
  */
 export function forgetCatalogs() { cache.clear(); }
+
+/**
+ * The server says a backend's model list changed (`models`: a sign-in ended, a discovery finished). Calls `onChange`
+ * for the backend asked about (or for any, when the event names none), with the shared answers dropped so the read is fresh.
+ * Nothing is listened to without a stream (a poll page, a test); the page then shows the list at its next read, as before.
+ */
+export function useModelsEvent(backend, onChange) {
+  const latest = useRef(onChange);
+  latest.current = onChange;
+  useEffect(() => {
+    const on = appStore.get().streamOn;
+    if (!backend || typeof on !== "function") return undefined;
+    const off = on("models", (event) => {
+      if (event && typeof event.backend === "string" && event.backend !== backend) return;
+      cache.clear();
+      latest.current?.();
+    });
+    return typeof off === "function" ? off : undefined;
+  }, [backend]);
+}
 
 function useAnswer(url) {
   const [value, setValue] = useState(undefined);   // undefined: loading; null: unavailable
@@ -68,6 +89,7 @@ export function useModelCatalogState(backend, instance, runtime, machineId) {
     if (url) load();
     return () => { generation.current++; };
   }, [url]);
+  useModelsEvent(backend, () => load(true));
   const current = state.url === url ? state : { answer:null, loading:!!url };
   const valid = current.answer && Array.isArray(current.answer.models);
   return {
