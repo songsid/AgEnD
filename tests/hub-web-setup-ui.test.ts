@@ -35,7 +35,7 @@ describe("host-only browser Hub setup",()=>{
   });
   // M-3235: the name field takes no more than the brand shows (HUB_NAME_MAX), so a typed name is never cut afterwards.
   it("the Hub's name field takes at most HUB_NAME_MAX (60) characters, what the brand shows",async()=>{
-    const { HUB_NAME_MAX } = await import("../src/hub-mode.ts");
+    const { HUB_NAME_MAX } = await import("../src/hub-mode.js");
     const shared = await import("/ui/js/hub-client.js") as any;
     expect(shared.HUB_NAME_MAX, "the editors' one maximum is the server's").toBe(HUB_NAME_MAX);
     fetcher(defaults);const p=await mount();await click(p,"Set up on this computer");
@@ -43,7 +43,7 @@ describe("host-only browser Hub setup",()=>{
     expect([HUB_NAME_MAX, Number(e?.maxLength || e?.getAttribute("maxLength") || e?.getAttribute("maxlength"))]).toEqual([60, 60]);
   });
   it("This Hub's rename field takes the same maximum (Fable, #4049)",async()=>{
-    const { HUB_NAME_MAX } = await import("../src/hub-mode.ts");
+    const { HUB_NAME_MAX } = await import("../src/hub-mode.js");
     const hc = await import("/ui/js/hub-client.js") as any, card = await import("/ui/js/hub-this-hub.js") as any;
     hc.setHubClient({ thisHubV1: true, thisHub: async () => ({ ok: true, name: "Team Hub", rename: true }) });
     try {
