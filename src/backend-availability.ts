@@ -27,10 +27,12 @@
  */
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
+import { createReadStream } from "node:fs";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { binaryProbe, spawnProbeCommand, PROBE_DEADLINE_MS, type ProbeChild } from "./binary-probe.js";
 import { BACKEND_INSTALLATION_INFO } from "./instance-lifecycle.js";
 import { KIRO_SUPPORTED_MIN } from "./backend/kiro.js";
+import { hostFacts } from "./cli-registry.js";
 
 export type AvailabilityState = "usable" | "not_installed" | "not_signed_in" | "too_old" | "unknown";
 /** A login's state: `not_required` — the CLI talks to a provider of its own (codex's custom provider), no login of ours. */
@@ -42,6 +44,11 @@ export interface BackendAvailability {
   /** The executable the launch would run (null: not found or not probed). */
   path: string | null;
   version: string | null;
+  /**
+   * AGEND-274: only for a CLI whose version is unknown and whose registry fact `host.structuredSignIn.marker` is set: whether the executable's own bytes hold that text (true), were read and do not
+   * (false), or could not be read (null). Absent: not asked (the version is known, or the CLI has no marker). It stands in for `minVersion` of the sign-in command only; nothing was started to learn it.
+   */
+  structuredLogin?: boolean | null;
   auth: AuthState;
   /** The oldest version AgEnD supports, when the state is too_old. */
   minVersion: string | null;
@@ -93,6 +100,15 @@ export function versionAtLeast(version: string | null | undefined, min: string |
   return !!found && !versionBelow(found[1]!, min);
 }
 
+/**
+ * AGEND-274: whether the CLI in this row has the structured sign-in command: its version is at least `min`, or — only when no version could be had — its file holds the command's own help line
+ * (`structuredLogin`). A version that IS known and too old is never rescued by the marker: the version says so. Neither (unknown version, no marker found or not looked for): not offered.
+ */
+export function structuredSignInReady(row: { version: string | null | undefined; structuredLogin?: boolean | null }, min: string | undefined): boolean {
+  if (versionAtLeast(row.version, min)) return true;
+  return row.structuredLogin === true && !(typeof row.version === "string" && /\d/.test(row.version));
+}
+
 /** The state for what the probes answered. Pure. */
 export function availabilityState(a: { installed: boolean | null; version: string | null; auth: AuthState; minVersion: string | null }): AvailabilityState {
   if (a.installed === false) return "not_installed";
@@ -108,6 +124,8 @@ export interface AvailabilityProbes {
   resolve(backend: string): Promise<string | null | undefined>;
   /** `<path> --version`, parsed; null when there is no answer. */
   version(backend: string, path: string): Promise<string | null>;
+  /** AGEND-274: whether the file at `path` holds the CLI's sign-in command marker (null: no marker for this CLI, or unreadable). Reads bytes only. */
+  loginMarker?(backend: string, path: string): Promise<boolean | null>;
   /** The backend's default login, read offline (credential files, API-key variables). */
   auth(backend: string): Promise<AuthState>;
   /** What changes when the binary or its login changes (mtimes and sizes); null when it cannot be read. */
@@ -205,11 +223,13 @@ export class BackendAvailabilityStore {
     }
     // A version probe that failed keeps the version we knew for the same binary.
     if (path && version === null && previous.path === path) version = previous.version;
+    // AGEND-274: no version to be had (not on disk, and no network namespace to ask in): look for the sign-in command in the file's bytes — starts nothing, so it is allowed where the version probe is not.
+    const structuredLogin = path && version === null ? await this.probes.loginMarker?.(backend, path).catch(() => null) : undefined;
     const minVersion = MIN_SUPPORTED_VERSION[backend] ?? null;
     const state = availabilityState({ installed: path !== null, version, auth, minVersion });
-    const row = { backend, state, path, version, auth, minVersion: state === "too_old" ? minVersion : null, checkedAt: this.now(), signature };
+    const row = { backend, state, path, version, ...(structuredLogin === undefined ? {} : { structuredLogin }), auth, minVersion: state === "too_old" ? minVersion : null, checkedAt: this.now(), signature };
     this.rows.set(backend, row);
-    if (previous.state !== row.state || previous.path !== row.path || previous.version !== row.version || previous.auth !== row.auth) this.onChange();
+    if (previous.state !== row.state || previous.path !== row.path || previous.version !== row.version || previous.auth !== row.auth || previous.structuredLogin !== row.structuredLogin) this.onChange();
   }
 }
 
@@ -436,10 +456,47 @@ export async function availabilitySignature(backend: string, path: string, env: 
   return parts.join("|");
 }
 
+/** What a file's marker lookup answered, per file and the file's mtime and size: a 260 MB executable is read once per change, not once per probe. */
+const markerAnswers = new Map<string, boolean>();
+
+/**
+ * AGEND-274: whether the file holds `marker` as plain bytes, read in chunks (a chunk and the tail of the one before it, so a hit across the boundary counts). Nothing is started, nothing is asked of the
+ * network: the only way to learn anything from an executable that names no version, on a host where it may not be run (no network namespace, #2078). Null: the file could not be read.
+ */
+export async function fileHasMarker(path: string, marker: string): Promise<boolean | null> {
+  let key: string;
+  try { const st = await stat(path); if (!st.isFile()) return null; key = `${path}\0${st.mtimeMs}\0${st.size}\0${marker}`; } catch { return null; }
+  const known = markerAnswers.get(key);
+  if (known !== undefined) return known;
+  const needle = Buffer.from(marker, "utf8");
+  let found = false;
+  try {
+    let tail: Buffer = Buffer.alloc(0);
+    for await (const chunk of createReadStream(path, { highWaterMark: 4 * 1024 * 1024 })) {
+      const data = tail.length ? Buffer.concat([tail, chunk as Buffer]) : chunk as Buffer;
+      if (data.includes(needle)) { found = true; break; }
+      tail = Buffer.from(data.subarray(Math.max(0, data.length - (needle.length - 1))));
+    }
+  } catch { return null; }
+  if (markerAnswers.size > 32) markerAnswers.clear();
+  markerAnswers.set(key, found);
+  return found;
+}
+
+/** The marker the registry gives a CLI's sign-in command, looked up in the file the launch would run (symlinks followed). Null: this CLI has none, or the file cannot be read. */
+export async function structuredLoginMarker(backend: string, path: string): Promise<boolean | null> {
+  const marker = hostFacts(backend, "structuredSignIn")?.marker;
+  if (!marker) return null;
+  let real: string;
+  try { real = await realpath(path); } catch { return null; }
+  return fileHasMarker(real, marker);
+}
+
 /** The host's probes. */
 export const hostAvailabilityProbes: AvailabilityProbes = {
   resolve: resolveBackendBinary,
   version: probeBackendVersion,
+  loginMarker: structuredLoginMarker,
   auth: (backend) => probeOfflineAuth(backend),
   signature: (backend, path) => availabilitySignature(backend, path),
 };
