@@ -45,7 +45,18 @@ try{
   await ctx.route("**/*",(route:any)=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
   const p=await ctx.newPage(),errors:string[]=[];p.on("pageerror",(error:Error)=>errors.push(error.message));
   const sign=async(cookie:string)=>{const i=cookie.indexOf("=");await ctx.clearCookies();await ctx.addCookies([{name:cookie.slice(0,i),value:cookie.slice(i+1),url:origin,httpOnly:true,secure:true,sameSite:"Strict"}]);};
-  const shot=async(name:string,selector:string)=>{const card=p.locator(selector);await card.scrollIntoViewIfNeeded();check(`${tag}/${name}/fits`,await card.evaluate((el:HTMLElement)=>el.scrollWidth<=el.clientWidth+1));const file=`${tag}-${name}.png`;await card.screenshot({path:join(out,file)});receipt.pictures.push(file);};
+  const shot=async(name:string,selector:string)=>{
+   const card=p.locator(selector),viewport=p.viewportSize();
+   // Preserve responsive width; expand height only to capture the full card inside the shell's scroll container.
+   const bounds=await card.boundingBox();await p.setViewportSize({...viewport,height:Math.max(viewport.height,Math.ceil(bounds.height)+180)});
+   await card.scrollIntoViewIfNeeded();check(`${tag}/${name}/fits`,await card.evaluate((el:HTMLElement)=>el.scrollWidth<=el.clientWidth+1));
+   const codes=card.locator("pre code"),originals=await codes.allTextContents();
+   for(let n=0;n<originals.length;n++)await codes.nth(n).evaluate((el:HTMLElement)=>{el.textContent=el.textContent!.replace(/agend_enroll_[A-Za-z0-9_-]+/g,"[private one-time token]");});
+   check(`${tag}/${name}/no-token`,!(/agend_enroll_[A-Za-z0-9_-]{43}/.test(await card.textContent())));
+   const file=`${tag}-${name}.png`;await card.screenshot({path:join(out,file)});receipt.pictures.push(file);
+   for(let n=0;n<originals.length;n++)await codes.nth(n).evaluate((el:HTMLElement,text:string)=>{el.textContent=text;},originals[n]);
+   await p.setViewportSize(viewport);
+  };
   await sign(admin.cookie);await p.goto(origin+"/ui/hub/admin?view=manage");await p.locator('[data-personal-admin] input[role="switch"]').waitFor();
   const adminCard=p.locator("[data-personal-admin]");await adminCard.locator('input[role="switch"]').check();await adminCard.locator('input[type="search"]').fill(index?"王經":"Al");
   await adminCard.getByRole("button",{name:index?"搜尋":"Search",exact:true}).click();await adminCard.getByRole("button",{name:index?"新增":"Add",exact:true}).click();await adminCard.locator('button[type="submit"],button:not([type])').click();
@@ -54,7 +65,7 @@ try{
   await sign(cookieOwner.cookie);await p.goto(origin+"/ui/hub/exposures");const ownerCard=p.locator("[data-personal-agent]");await ownerCard.getByRole("button",{name:index?"新增個人 Agent":"Add a personal agent",exact:true}).waitFor();
   const issuedResponse=p.waitForResponse((res:any)=>res.url().endsWith("/hub/v1/me/personal-agent/enrollment")&&res.request().method()==="POST");
   await ownerCard.getByRole("button",{name:index?"新增個人 Agent":"Add a personal agent",exact:true}).click();const issued=await (await issuedResponse).json();await ownerCard.locator("pre code").waitFor();
-  const unmasked=await ownerCard.locator("pre code").textContent();await ownerCard.locator("pre code").evaluate((el:HTMLElement)=>{el.textContent=el.textContent!.replace(/agend_enroll_[A-Za-z0-9_-]+/g,"[private one-time token]");});await shot("install","[data-personal-agent]");await ownerCard.locator("pre code").evaluate((el:HTMLElement,text:string)=>{el.textContent=text;},unmasked);
+  await shot("install","[data-personal-agent]");
   const joined=runtime.enroll({token:issued.token,fingerprint:issued.fingerprint,name:index?"王經理的電腦":"Alex's computer",platform:"win32"});
   reported={...machine(joined.machineId),status:"online",runtimeInfo:{...readRuntimeInfo(),capabilities:["exec","personal-agent-v1"]},inventory:{home:"C:\\Users\\colleague",personalFolder:"C:\\Users\\colleague\\Hub agent",probedAt:Date.now(),clis:[
    {id:"codex",path:"C:\\codex.exe",version:"fixture",runnable:true,authenticated:true,personalStatus:"sandbox-unavailable",supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:false,permissionNote:"",models:[]},

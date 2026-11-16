@@ -25,7 +25,7 @@ export function HubPersonalAgent({client,scope,onSaved=()=>{}}){
  };
  const save=async event=>{event.preventDefault();if(busy||!form?.name.trim())return;markBusy(true);setError("");const mine=generation.current;
   let result;try{const {model,...input}=form;result=await client.savePersonalAgent(scope,{...input,...(model?{model}:{})});}catch{result=refused();}
-  if(mine!==generation.current)return;markBusy(false);if(!result?.ok){setError(hp("saveFailed"));return;}dirty.current=false;setSaved(true);await load(false,true);if(mine===generation.current)onSaved();
+  if(mine!==generation.current)return;markBusy(false);if(!result?.ok){setError(hp("saveFailed"));return;}dirty.current=false;setIssued(null);setSaved(true);await load(false,true);if(mine===generation.current)onSaved();
  };
  const disconnect=async()=>{const mine=generation.current;if(busy||!await confirmDialog({message:hp("disconnectAsk"),confirmLabel:hp("disconnect"),danger:true})||mine!==generation.current)return;
   markBusy(true);let result;try{result=await client.disconnectPersonalAgent(scope);}catch{result=refused();}if(mine!==generation.current)return;markBusy(false);

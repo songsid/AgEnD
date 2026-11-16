@@ -37,6 +37,7 @@ it("saves only the named fields and revision under its captured sign-in",async()
 it("keeps the enrollment command private until the owner requests one",async()=>{
  const {p,client}=await fixture();expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();fire(button(p,"Connect a replacement computer"),"click");await settle(20);
  expect(client.personalEnrollment).toHaveBeenCalledWith("captured-signin");expect(p.root.querySelector("pre")?.textContent).toContain("agend_enroll_");expect(p.root.textContent).toContain("15 minutes");
+ change(p.root.querySelector("form input"),"Notes");change(p.root.querySelector("form select"),"codex","change");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);expect(p.root.querySelector("pre")).toBeNull();
 });
 it("does not call enrollment while disabled or while the owner lacks permission",async()=>{
  const value=view();value.enabled=false;const f=await fixture("en",value);expect(button(f.p,"Connect a replacement computer")).toBeUndefined();expect(f.client.personalEnrollment).not.toHaveBeenCalled();
