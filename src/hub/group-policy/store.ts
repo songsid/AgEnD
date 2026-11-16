@@ -129,8 +129,9 @@ export function createHubGroupPolicyStore(options: {
   };
   const operational = () => authorizationPolicy().policy;
   const evaluate = (p: HubOperationalPolicy, who: PersonKey, cap: GroupCapability, facts: RolePersonFacts): HubSelfUseDecision => {
-    if ("rolesActive" in p) return evaluateRolePolicy(p, who, cap, null, { subject: facts }, now(), root!);
-    const teams = readAllowedListTeams(db, p), result = evaluateGroupPolicy(p, who, cap, facts, teams.memberships(who));
+    const teams = readAllowedListTeams(db, p), memberships = teams.memberships(who);
+    const result = "rolesActive" in p ? evaluateRolePolicy(p,who,cap,null,{subject:facts,teams:memberships},now(),root!)
+      : evaluateGroupPolicy(p,who,cap,facts,memberships);
     if (p.teams?.length) teamDecisionFences.set(result, () => {
       assert(); if (readAllowedListTeams(db, p).image !== teams.image) throw new HubGroupPolicyError("conflict");
     });

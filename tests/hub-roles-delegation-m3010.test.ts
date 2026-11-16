@@ -89,3 +89,13 @@ describe("inactive writer delegation", () => {
   });
 
 });
+
+it("does not let an administrator remove its own effective self-use denial",()=>{
+ for(const who of [root,actor]) {
+  const p=policy();p.assignments.push(a("admin",BUILTIN_ROLE_IDS.admin));
+  p.denies=[{person:who,deny:["ask_agents","pair_fleet"]}];
+  const cleared=copy(p);cleared.denies=[];expect(check(p,cleared,who,facts(who))).toBe("self-target");
+  const reduced=copy(p);reduced.denies[0]!.deny=["ask_agents"];expect(check(p,reduced,who,facts(who))).toBe("self-target");
+  const narrowed=copy(p);narrowed.denies[0]!.deny.push("publish_agents");expect(check(p,narrowed,who,facts(who))).toBe("allow");
+ }
+});
