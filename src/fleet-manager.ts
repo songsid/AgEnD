@@ -13277,7 +13277,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
-  /** File a Telegram update that was too old to inject; Needs you lists it until Acknowledge. */
+  /**
+   * Who a Telegram update that was too old to inject would have gone to live (handleInboundMessageCore), or null when live
+   * delivery would not have taken it — then it is not "missed". A topic of the fleet group: its instance (an unbound topic
+   * only gets the bind prompt live, so nobody). The fleet group's root: general ("" when none is configured). Any other chat
+   * is a ClassicBot candidate: its registered room — in a group only when the message @mentions the bot — and otherwise
+   * nobody (live, an unregistered chat is ignored, and an @mention there only gets the no-agent reply).
+   */
+  private missedOfflineInstance(ev: MissedOfflineInbound, stub: InboundMessage): string | null {
+    const threadId = this.inboundRouteThreadId(stub);
+    if (threadId) return this.resolveInboundTarget(stub, threadId)?.name ?? null;
+    if (ev.chatId !== String(this.getChannelConfig(ev.adapterId)?.group_id ?? "")) {
+      const room = this.classicChannels?.getInstanceByChannel(ev.chatId, ev.adapterId);
+      if (!room) return null;
+      const isPrivateChat = !ev.chatId.startsWith("-");
+      return isPrivateChat || ev.mentionsBot ? room : null;
+    }
+    return Object.entries(this.fleetConfig?.instances ?? {}).find(([name, cfg]) =>
+      cfg.general_topic && this.getInstanceAdapterId(name) === ev.adapterId)?.[0] ?? "";
+  }
+
+  /** File a Telegram update that was too old to inject, where live delivery would have taken it; Needs you lists it until Acknowledge. */
   private recordMissedOffline(ev: MissedOfflineInbound): void {
     if (!this.missedOfflineStore) this.missedOfflineStore = new MissedOfflineStore(this.dataDir);
     const stub: InboundMessage = {
@@ -13285,12 +13305,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       messageId: ev.messageId, userId: ev.userId, username: ev.username, text: ev.preview,
       timestamp: ev.timestamp, isBotMessage: false,
     };
-    const threadId = this.inboundRouteThreadId(stub);
-    const target = threadId ? this.resolveInboundTarget(stub, threadId) : undefined;
-    let instance = target?.name ?? "";
-    if (!instance) {
-      instance = Object.entries(this.fleetConfig?.instances ?? {}).find(([name, cfg]) =>
-        cfg.general_topic && this.getInstanceAdapterId(name) === ev.adapterId)?.[0] ?? "";
+    const instance = this.missedOfflineInstance(ev, stub);
+    if (instance === null) {
+      this.logger.debug({ adapterId: ev.adapterId, updateId: ev.updateId, chatId: ev.chatId, threadId: ev.threadId },
+        "Telegram message from while AgEnD was offline is not for this fleet — not filed");
+      return;
     }
     const place = [ev.chatTitle, ev.threadId ? `#${ev.threadId}` : ""].filter(Boolean).join(" · ") || ev.chatId;
     this.missedOfflineStore.add({
