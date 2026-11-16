@@ -34,6 +34,8 @@ function Find-Control($pattern,$type){
   }
   Start-Sleep -Milliseconds 100
  }while([DateTime]::UtcNow -lt $end)
+ $rows=@();foreach($w in $windows){if($owned -notcontains $w.Current.ProcessId){continue};foreach($c in $w.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)){if($c.Current.Name){$rows+=@{name=$c.Current.Name;type=$c.Current.ControlType.ProgrammaticName;offscreen=$c.Current.IsOffscreen}}}}
+ $rows|ConvertTo-Json -Depth 4|Set-Content -Encoding UTF8 (Join-Path $PSScriptRoot 'controls-private.json')
  throw "Owned browser control missing: $pattern"
 }
 $clicked=New-Object Collections.Generic.List[string]
@@ -53,7 +55,22 @@ Invoke-Control $menu
 if($Action -eq 'Install'){
  Invoke-Control (Find-Control '投放.*儲存|Cast.*save|儲存.*分享|Save.*share' $item)
  Invoke-Control (Find-Control '安裝.*(網頁|AgEnD|應用)|Install.*(app|page|AgEnD)|將網頁.*應用' $item)
- Invoke-Control (Find-Control '^(安裝|Install)$' $button)
+ $renamed=$false;$editor=$null
+ $editorDeadline=[DateTime]::UtcNow.AddSeconds(10)
+ do {
+ $windows=[Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children,[Windows.Automation.Condition]::TrueCondition)
+ foreach($w in $windows){if($owned -notcontains $w.Current.ProcessId){continue};foreach($c in $w.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Edit))){$p=$null;if(!$c.Current.IsOffscreen -and $c.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern,[ref]$p) -and $p.Current.Value -match '(^|[ ·])AgEnD($|[ ·])'){$p.SetValue('AgEnD M3214 '+$Tag.Substring($Tag.Length-8));$renamed=$true;$editor=$c}}}
+ if(!$renamed){Start-Sleep -Milliseconds 100}
+ }while(!$renamed -and [DateTime]::UtcNow -lt $editorDeadline)
+ if(!$renamed){Find-Control 'THIS-DIAGNOSTIC-MUST-NOT-MATCH' $button|Out-Null;throw 'No app-name field; refusing a non-unique test install'}
+ $confirm=$null;$node=$editor
+ for($i=0;$i -lt 5 -and $node -and !$confirm;$i++){
+  $node=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($node)
+  if(!$node -or $node.Current.Name -match 'Google Chrome|Microsoft Edge'){break}
+  $confirm=$node.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,$button))|Where-Object {!$_.Current.IsOffscreen -and $_.Current.IsEnabled -and $_.Current.Name -match '^(安裝|Install|建立|Create)'}|Select-Object -First 1
+ }
+ if(!$confirm){Find-Control 'MISSING-INSTALL-CONFIRM-DIAGNOSTIC' $button|Out-Null;throw 'No confirmation in the owned install dialog'}
+ Invoke-Control $confirm
 }else{
  Invoke-Control (Find-Control '解除安裝.*AgEnD|Uninstall.*AgEnD|移除.*AgEnD' $item)
  Invoke-Control (Find-Control '^(解除安裝|移除|Uninstall|Remove)$' $button)
