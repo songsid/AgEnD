@@ -13,7 +13,7 @@ import { request } from "node:https";
 import { hubRig } from "./helpers/hub-rig.js";
 import { createHubMemberFactory } from "../src/hub/compose/member.js";
 import { MEMBER_COMPONENTS } from "../src/hub/runtime.js";
-import { HUB_PATHS, HUB_REVOCATION_CATCH_UP_MAX, HUB_REVOCATION_FLOOR_HEADER } from "../src/hub/protocol.js";
+import { HUB_PATHS, HUB_REVOCATION_CATCH_UP_INTERVAL_MS, HUB_REVOCATION_CATCH_UP_MAX, HUB_REVOCATION_FLOOR_HEADER } from "../src/hub/protocol.js";
 import { HubMemberProfileStore } from "../src/hub/profile.js";
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -114,4 +114,23 @@ it("the composed member (journal floor) reconnects to a restored Hub by itself â
   state = "offline"; await second.start();
   await vi.waitFor(() => expect(state).toBe("online"), { timeout: 15_000 });
   expect(r.store.read().revocationVersion).toBe(1);
+});
+
+it("Fable #4081 F1: one member cannot churn the Hub â€” at most one catch-up (and one global refresh) per interval", async () => {
+  const r = await hubRig(); cleanup.push(r.close);
+  const profile = await r.pair(); setVersion(r, 4);
+  let clock = 1_000; (r.pairing as any).options.monotonic = () => clock;
+  const refresh = vi.spyOn(r.server, "refreshAuthorization");
+  const auth = { Authorization: `Bearer ${profile.credential}` };
+  await upgrade(r, { ...auth, [HUB_REVOCATION_FLOOR_HEADER]: "5" });
+  await upgrade(r, { ...auth, [HUB_REVOCATION_FLOOR_HEADER]: "6" });
+  await upgrade(r, { ...auth, [HUB_REVOCATION_FLOOR_HEADER]: "7" });
+  expect(r.store.read().revocationVersion).toBe(5);
+  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(audits(r).filter(a => a.action === "member.revocation-caught-up")).toHaveLength(1);
+  // Still inside the interval: refused; after it: one more.
+  clock += HUB_REVOCATION_CATCH_UP_INTERVAL_MS - 1; await upgrade(r, { ...auth, [HUB_REVOCATION_FLOOR_HEADER]: "8" });
+  expect(r.store.read().revocationVersion).toBe(5);
+  clock += 1; await upgrade(r, { ...auth, [HUB_REVOCATION_FLOOR_HEADER]: "8" });
+  expect(r.store.read().revocationVersion).toBe(8); expect(refresh).toHaveBeenCalledTimes(2);
 });

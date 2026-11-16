@@ -10,7 +10,7 @@ import { HubGroupAuthorizationError, type HubGroupAuthorization, type HubGroupEn
 import { HubGroupPolicyError, HubGroupReadOverload } from "./group-policy/store.js";
 import { HubGroupEnrollmentRefusal } from "./group-policy/resources.js";
 import { automaticFleetSlots } from "./enrollment-budget.js";
-import { HUB_REVOCATION_CATCH_UP_MAX } from "./protocol.js";
+import { HUB_REVOCATION_CATCH_UP_INTERVAL_MS, HUB_REVOCATION_CATCH_UP_MAX } from "./protocol.js";
 import type { HubManagementAuthority, HubManagementPermission } from "./roles/authority.js";
 const TTL = 10 * 60_000;
 const secret = () => randomBytes(32).toString("hex");
@@ -34,6 +34,8 @@ const quickBody = z.strictObject({ label: plain(120).refine(s => s.trim().length
 export class HubPairingService {
   constructor(private readonly options: { store: HubTransportStore; identity: HubPairingIdentity; directory: HubDirectory;
     enabled(): boolean; now?: () => number; fenceFleet(fleetId: string, reason: "replaced" | "revoked"): void;
+    /** M-3205 (Fable #4081 F1): a monotonic clock for the Hub-wide catch-up limit; tests inject one. */
+    monotonic?: () => number;
     /** Required when composed with a live member server; reconnect other links after a global version commit. */
     refreshAuthorization?(): void;
     management?: Pick<HubManagementAuthority, "require">;
@@ -384,13 +386,21 @@ export class HubPairingService {
    * Raising only invalidates older leases (every connected Fleet reconnects, as after any authorization change); it never
    * restores anything a restore took away. Out-of-range floors are ignored, and the member then stays held as before.
    */
+  private lastCatchUp: number | null = null;
   private catchUpRevocation(fleetId: string, floor: number): { from: number; to: number } | undefined {
     const from = this.options.store.read().revocationVersion;
     if (!Number.isSafeInteger(floor) || floor <= from || floor - from > HUB_REVOCATION_CATCH_UP_MAX) return undefined;
-    return this.options.store.mutate({ ...this.audit({ kind: "member", fleetId }, "member.revocation-caught-up", randomUUID()), fleetId }, state => {
+    // Fable #4081 F1: each catch-up reconnects every Fleet, so one member must not be able to churn the Hub on demand.
+    // At most one catch-up per interval, Hub-wide (a restored Hub catches up once); a member refused here stays held as
+    // before this change and catches the Hub up on a retry after the interval.
+    const at = (this.options.monotonic ?? performance.now.bind(performance))();
+    if (this.lastCatchUp !== null && at - this.lastCatchUp < HUB_REVOCATION_CATCH_UP_INTERVAL_MS) return undefined;
+    const result = this.options.store.mutate({ ...this.audit({ kind: "member", fleetId }, "member.revocation-caught-up", randomUUID()), fleetId }, state => {
       if (floor <= state.revocationVersion) return undefined;
       const before = state.revocationVersion; state.revocationVersion = floor; return { from: before, to: floor };
     });
+    if (result) this.lastCatchUp = at;
+    return result;
   }
   async revoke(ctx: HubRequestContext, fleetId: string): Promise<void> {
     validated(uuid, fleetId); const permit = await this.manage(ctx, "fleets.manage"); permit.assertCurrent(); this.check(); this.options.fenceFleet(fleetId, "revoked");

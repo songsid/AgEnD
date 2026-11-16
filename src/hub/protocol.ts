@@ -22,6 +22,8 @@ export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect
 export const HUB_REVOCATION_FLOOR_HEADER = "x-agend-revocation-floor";
 /** The largest step one authenticated member may move the Hub's version (a restore gap is a handful of changes). */
 export const HUB_REVOCATION_CATCH_UP_MAX = 1_000_000;
+/** At most one catch-up per this interval, Hub-wide: each one reconnects every Fleet (Fable #4081 F1). */
+export const HUB_REVOCATION_CATCH_UP_INTERVAL_MS = 5 * 60_000;
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
 /** Track C's injectable adapter uses these frames; advertised only when live dispatch is composed (R2). */
 export const HUB_ROOM_ASK_CAPABILITY = "room-ask-v1";
