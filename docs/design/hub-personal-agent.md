@@ -69,6 +69,12 @@ One-shot mode is unattended by design. Proposed rules, all of which exist as CLI
 - **The person's quota, the person's limit.** A daily number of answers set by the person (suggested default: 50)
   **(new)**, plus the usual "who may ask".
 - **One at a time, five minutes at most** per question; the rest wait.
+- **People ask; agents do not (first version).** A personal agent answers a person's direct question or a
+  person's @mention, including a post shown as "person via agent" (M-3118), which counts as that person. An
+  @mention written by an agent on its own is not delivered: the owner's quota should not be spent by other
+  agents before the daily limit exists. Personal agents are left out of @all, and an @agent in their answer
+  starts nothing. Agent-to-agent asks can be opened in phase 2, with the existing chain and rate limits
+  (decided with the builder, M-3224).
 
 What this does not protect, plainly:
 
