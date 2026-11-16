@@ -20,9 +20,8 @@ public class MenuWindow {
 '@
 $owned=@(Get-CimInstance Win32_Process -Filter "Name='$BrowserProcess'" | Where-Object {$_.CommandLine -like "*$Tag*"} | ForEach-Object {$_.ProcessId})
 if(!$owned.Count){throw 'No owned browser process'}
-$chosen=[MenuWindow]::GetForegroundWindow();[uint32]$owner=0;[void][MenuWindow]::GetWindowThreadProcessId($chosen,[ref]$owner)
-$title=New-Object Text.StringBuilder 512;[void][MenuWindow]::GetWindowText($chosen,$title,512)
-if($owned -notcontains $owner -or $title.ToString() -notmatch 'AgEnD'){throw 'Foreground window is not the selected owned AgEnD target'}
+$script:chosen=[IntPtr]::Zero
+[MenuWindow]::EnumWindows({param($h,$p) [uint32]$owner=0;[void][MenuWindow]::GetWindowThreadProcessId($h,[ref]$owner);$title=New-Object Text.StringBuilder 512;[void][MenuWindow]::GetWindowText($h,$title,512);if($owned -contains $owner -and [MenuWindow]::IsWindowVisible($h) -and ($title.ToString() -match 'AgEnD' -and (($Action -eq 'Install' -and $title.ToString() -match 'Google Chrome|Microsoft Edge') -or ($Action -eq 'Uninstall' -and $title.ToString() -notmatch 'Google Chrome|Microsoft Edge')))){$script:chosen=$h};return $true},[IntPtr]::Zero)|Out-Null
 if($chosen -eq [IntPtr]::Zero){throw 'No owned AgEnD browser window'}
 [void][MenuWindow]::SetForegroundWindow($chosen)
 function Find-Control($pattern,$type){

@@ -8,7 +8,7 @@ assert(await readFile(join(root,'.owned'),'utf8')===state.tag);
 let giveCode;const input=createInterface({input:process.stdin});input.on('line',line=>{const value=JSON.parse(line);assert(giveCode&&typeof value.code==='string');const done=giveCode;giveCode=null;done(value.code);});
 const freshCode=()=>new Promise(resolve=>{giveCode=resolve;console.log(JSON.stringify({kind:'code-request'}));});
 const profile=join(root,'edge-profile'); await mkdir(profile);
-const edge=spawn(state.browserExecutable,['--user-data-dir='+profile,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--force-renderer-accessibility','--ignore-certificate-errors','--host-resolver-rules=MAP agend-pwa.test 127.0.0.1','--remote-debugging-port=0','about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:false});
+const edge=spawn(state.browserExecutable,['--user-data-dir='+profile,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--disable-gpu','--force-renderer-accessibility','--ignore-certificate-errors','--host-resolver-rules=MAP agend-pwa.test 127.0.0.1','--remote-debugging-port=0','about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:false});
 let exited=false;edge.on('close',()=>{exited=true;});const sleep=ms=>new Promise(r=>setTimeout(r,ms));let ws,call,activeSid,phase='startup',seq=0;const pending=new Map(),installed=[];const result={cases:[]};
 try{
  const endpoint=await new Promise((resolve,reject)=>{let s='';const timer=setTimeout(()=>reject(Error('Edge startup timeout')),20000);edge.stderr.on('data',b=>{s=(s+b).slice(-8000);const m=/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/.exec(s);if(m){clearTimeout(timer);resolve(m[1]);}});});
