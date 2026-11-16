@@ -20,18 +20,18 @@ export function HubPersonalAgent({client,scope,onSaved=()=>{}}){
  useEffect(()=>{generation.current++;dirty.current=false;markBusy(false);setView(null);setForm(null);setIssued(null);setSaved(false);setError("");installCss();void load();
   const timer=setInterval(()=>{setClock(Date.now());if(!busyRef.current)void load();},5000);return()=>{generation.current++;clearInterval(timer);};},[client,scope]);
  const edit=patch=>{dirty.current=true;setSaved(false);setForm(value=>({...value,...patch}));};
- const enroll=async()=>{if(busy)return;markBusy(true);setError("");const mine=generation.current;let result;try{result=await client.personalEnrollment(scope);}catch{result=refused();}
+ const enroll=async()=>{if(busyRef.current)return;markBusy(true);setError("");const mine=generation.current;let result;try{result=await client.personalEnrollment(scope);}catch{result=refused();}
   if(mine!==generation.current)return;markBusy(false);if(!result?.ok){setError(hp("saveFailed"));return;}setIssued(result);setClock(Date.now());setCopied(false);
  };
- const save=async event=>{event.preventDefault();if(busy||!form?.name.trim())return;markBusy(true);setError("");const mine=generation.current;
+ const save=async event=>{event.preventDefault();if(busyRef.current||!form?.name.trim())return;markBusy(true);setError("");const mine=generation.current;
   let result;try{const {model,...input}=form;result=await client.savePersonalAgent(scope,{...input,...(model?{model}:{})});}catch{result=refused();}
   if(mine!==generation.current)return;markBusy(false);if(!result?.ok){setError(hp("saveFailed"));return;}dirty.current=false;setIssued(null);setSaved(true);await load(false,true);if(mine===generation.current)onSaved();
  };
- const disconnect=async()=>{const mine=generation.current;if(busy||!await confirmDialog({message:hp("disconnectAsk"),confirmLabel:hp("disconnect"),danger:true})||mine!==generation.current)return;
-  markBusy(true);let result;try{result=await client.disconnectPersonalAgent(scope);}catch{result=refused();}if(mine!==generation.current)return;markBusy(false);
+ const disconnect=async()=>{if(busyRef.current)return;const mine=generation.current;markBusy(true);const confirmed=await confirmDialog({message:hp("disconnectAsk"),confirmLabel:hp("disconnect"),danger:true});if(mine!==generation.current)return;if(!confirmed){markBusy(false);return;}
+  let result;try{result=await client.disconnectPersonalAgent(scope);}catch{result=refused();}if(mine!==generation.current)return;markBusy(false);
   if(!result?.ok){setError(hp("saveFailed"));return;}dirty.current=false;setIssued(null);await load(false,true);if(mine===generation.current)onSaved();
  };
- const refresh=async()=>{if(busy)return;const mine=generation.current;markBusy(true);await load(true);if(mine===generation.current)markBusy(false);};
+ const refresh=async()=>{if(busyRef.current)return;const mine=generation.current;markBusy(true);await load(true);if(mine===generation.current)markBusy(false);};
  const computer=view?.computer,selected=computer?.clis.find(row=>row.id===form?.cli),command=issued&&issued.expiresAt>clock?runtimeEnrollCommand(issued.server,issued.installer?.scriptSha256,issued.token,issued.fingerprint):"";
  return html`<section class="card hub-personal-agent" data-personal-agent><h3>${hp("title")}</h3><p class="note">${hp("lead")}</p><p class="note">${hp("guard")}</p>
   ${error?html`<${ErrorState} message=${error} onRetry=${()=>void load()} />`:null}
@@ -51,22 +51,23 @@ export function HubPersonalAgent({client,scope,onSaved=()=>{}}){
  </section>`;
 }
 export function HubPersonalAgentAdmin({client,scope}){
- const [view,setView]=useState(null),[form,setForm]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[saved,setSaved]=useState(false),[query,setQuery]=useState(""),[hits,setHits]=useState([]),[teams,setTeams]=useState([]);
- const generation=useRef(0),searchSequence=useRef(0);
- useEffect(()=>{const mine=++generation.current;setBusy(false);setView(null);setForm(null);setError("");setSaved(false);setHits([]);
-  Promise.allSettled([client.personalAgentSettings(scope),client.teams()]).then(([settings,teamRows])=>{if(mine!==generation.current)return;
-   const data=settings.status==="fulfilled"?settings.value:refused();if(!data?.ok){setError(hp("loadFailed"));return;}setView(data);setForm(policy(data));setTeams(teamRows.status==="fulfilled"&&teamRows.value.ok?teamRows.value.teams??[]:[]);
-  });return()=>{generation.current++;};},[client,scope]);
+ const [view,setView]=useState(null),[form,setForm]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[errorKind,setErrorKind]=useState("load"),[saved,setSaved]=useState(false),[query,setQuery]=useState(""),[hits,setHits]=useState([]),[teams,setTeams]=useState([]);
+ const generation=useRef(0),searchSequence=useRef(0),reads=useRef(0),busyRef=useRef(false);
+ const markBusy=value=>{busyRef.current=value;if(value)reads.current++;setBusy(value);};
+ const load=async()=>{const mine=generation.current,read=++reads.current;const [settings,teamRows]=await Promise.allSettled([client.personalAgentSettings(scope),client.teams()]);if(mine!==generation.current||read!==reads.current)return;
+  const data=settings.status==="fulfilled"?settings.value:refused();if(!data?.ok){setErrorKind("load");setError(hp("loadFailed"));return;}setError("");setView(data);setForm(policy(data));setTeams(teamRows.status==="fulfilled"&&teamRows.value.ok?teamRows.value.teams??[]:[]);
+ };
+ useEffect(()=>{generation.current++;markBusy(false);setView(null);setForm(null);setError("");setSaved(false);setHits([]);void load();return()=>{generation.current++;};},[client,scope]);
  const edit=patch=>{setSaved(false);setForm(value=>({...value,...patch}));};
  const search=async()=>{if(query.trim().length<2||busy)return;const mine=generation.current,search=++searchSequence.current;let result;try{result=await client.teamSuggestions("person",query.trim());}catch{result=refused();}
-  if(mine!==generation.current||search!==searchSequence.current)return;if(!result?.ok){setError(hp("loadFailed"));return;}setHits(result.candidates??[]);
+  if(mine!==generation.current||search!==searchSequence.current)return;if(!result?.ok){setErrorKind("search");setError(hp("loadFailed"));return;}setError("");setHits(result.candidates??[]);
  };
  const pickPerson=row=>{if(!form.people.includes(row.id))edit({people:[...form.people,row.id]});setView(value=>({...value,peopleInfo:[...(value.peopleInfo??[]).filter(p=>p.id!==row.id),row]}));setHits([]);setQuery("");};
- const save=async event=>{event.preventDefault();if(busy)return;setBusy(true);setError("");const mine=generation.current;let result;try{result=await client.savePersonalAgentSettings(scope,policy(form));}catch{result=refused();}
-  if(mine!==generation.current)return;setBusy(false);if(!result?.ok){setError(hp("saveFailed"));return;}setView(result);setForm(policy(result));setSaved(true);
+ const save=async event=>{event?.preventDefault();if(busyRef.current)return;markBusy(true);setError("");const mine=generation.current;let result;try{result=await client.savePersonalAgentSettings(scope,policy(form));}catch{result=refused();}
+  if(mine!==generation.current)return;markBusy(false);if(!result?.ok){setErrorKind("save");setError(hp("saveFailed"));return;}setView(result);setForm(policy(result));setSaved(true);
  };
  const changed=!!form&&JSON.stringify(policy(view))!==JSON.stringify(form);
- return html`<section class="card" data-personal-admin><h3>${hp("adminTitle")}</h3><p class="note">${hp("adminLead")}</p>${error?html`<p class="err" role="alert">${error}</p>`:null}
+ return html`<section class="card" data-personal-admin><h3>${hp("adminTitle")}</h3><p class="note">${hp("adminLead")}</p>${error?html`<${ErrorState} message=${error} onRetry=${()=>void (errorKind==="save"?save():errorKind==="search"?search():load())} />`:null}
   ${!form&&!error?html`<${Skeleton} lines=${3} />`:form?html`<form onSubmit=${save}><label class="s-row"><span class="hub-row-text">${hp("enabled")}</span><input class="s-ui-toggle" role="switch" aria-label=${hp("enabled")} type="checkbox" disabled=${busy} checked=${form.enabled} onChange=${e=>edit({enabled:e.target.checked})} /></label>
    <p class="note">${hp("adminAlways")}</p><h4>${hp("allowed")}</h4>
    ${form.people.map(id=>{const p=view.peopleInfo?.find(p=>p.id===id);return html`<div key=${id} class="s-row"><span class="hub-row-text"><strong>${p?.name||hp("unknownPerson")}</strong><small class="note">${p?.login||""}</small></span><button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${()=>edit({people:form.people.filter(p=>p!==id)})}>${hp("remove")}</button></div>`;})}

@@ -31,11 +31,11 @@ it("shows answers-when-connected and preserves typed fields across a refresh",as
 });
 it("saves only the named fields and revision under its captured sign-in",async()=>{
  const {p,client}=await fixture();const inputs=p.root.querySelectorAll("form input");change(inputs[0],"Notes");change(inputs[1],"Project notes");change(p.root.querySelector("form select"),"codex","change");await settle();
- fire(p.root.querySelector("form"),"submit");await settle(20);expect(client.savePersonalAgent).toHaveBeenCalledWith("captured-signin",{name:"Notes",description:"Project notes",cli:"codex",ifRevision:0});
+ fire(p.root.querySelector("form"),"submit");fire(p.root.querySelector("form"),"submit");await settle(20);expect(client.savePersonalAgent).toHaveBeenCalledTimes(1);expect(client.savePersonalAgent).toHaveBeenCalledWith("captured-signin",{name:"Notes",description:"Project notes",cli:"codex",ifRevision:0});
  expect(p.root.textContent).toContain("Choose who may ask");expect(client.savePersonalAgent.mock.calls[0][1]).not.toHaveProperty("owner");
 });
 it("keeps the enrollment command private until the owner requests one",async()=>{
- const {p,client}=await fixture();expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();fire(button(p,"Connect a replacement computer"),"click");await settle(20);
+ const {p,client}=await fixture();expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();fire(button(p,"Connect a replacement computer"),"click");fire(button(p,"Connect a replacement computer"),"click");await settle(20);expect(client.personalEnrollment).toHaveBeenCalledTimes(1);
  expect(client.personalEnrollment).toHaveBeenCalledWith("captured-signin");expect(p.root.querySelector("pre")?.textContent).toContain("agend_enroll_");expect(p.root.textContent).toContain("15 minutes");
  change(p.root.querySelector("form input"),"Notes");change(p.root.querySelector("form select"),"codex","change");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);expect(p.root.querySelector("pre")).toBeNull();
 });
@@ -63,4 +63,18 @@ it("drops a previous sign-in's late owner read",async()=>{
  await p.mount(h(ui.HubPersonalAgent,{client,scope:"old"}));await settle();await p.mount(h(ui.HubPersonalAgent,{client,scope:"new"}));await settle(20);
  release({...view(),computer:{...view().computer,name:"Previous person's computer"}});await settle(20);
  expect(p.root.textContent).toContain("Current computer");expect(p.root.textContent).not.toContain("Previous person's computer");
+});
+
+it("retries an unavailable administrator read with the shared error state",async()=>{
+ const p=page();pages.push(p);words.setLang("en",{store:false});
+ const client={personalAgentSettings:vi.fn().mockResolvedValueOnce({ok:false}).mockResolvedValue({ok:true,enabled:false,people:[],teams:[]}),teams:async()=>({ok:true,teams:[]})};
+ await p.mount(h(ui.HubPersonalAgentAdmin,{client,scope:"admin"}));await settle(20);expect(p.root.querySelector("form")).toBeNull();expect(p.root.querySelector('[role="alert"]')).toBeTruthy();
+ fire(p.root.querySelector(".error-state button"),"click");await settle(20);expect(p.root.querySelector("form")).toBeTruthy();expect(client.personalAgentSettings).toHaveBeenCalledTimes(2);
+});
+
+it("retries a failed person search without saving the administrator's unsaved policy",async()=>{
+ const p=page();pages.push(p);words.setLang("en",{store:false});
+ const client={personalAgentSettings:async()=>({ok:true,enabled:false,people:[],teams:[]}),teams:async()=>({ok:true,teams:[]}),teamSuggestions:vi.fn().mockResolvedValueOnce({ok:false}).mockResolvedValue({ok:true,candidates:[]}),savePersonalAgentSettings:vi.fn()};
+ await p.mount(h(ui.HubPersonalAgentAdmin,{client,scope:"admin"}));await settle(20);change(p.root.querySelector('input[type="search"]'),"Alex");await settle();fire(button(p,"Search"),"click");await settle(20);
+ fire(p.root.querySelector(".error-state button"),"click");await settle(20);expect(client.teamSuggestions).toHaveBeenCalledTimes(2);expect(client.savePersonalAgentSettings).not.toHaveBeenCalled();expect(p.root.querySelector(".error-state")).toBeNull();
 });
