@@ -32,6 +32,9 @@ export function createHubRoleAdminControl(options:RoleAdminOptions):RoleAdminCon
  const live=(ctx:HubRequestContext)=>{if(closed||options.current()!==true||ctx.isCurrent?.()!==true)throw new HubProtocolError("unavailable");};
  const currentPolicy=()=>parseRolePolicy(options.policy());
  const display=async(ctx:HubRequestContext)=>{
+  // Production HubSessions.requirePerson performs a fresh directory eligibility read and
+  // rechecks the owned session after that await. This snapshot drives presentation only;
+  // read/search/audit/apply still acquire their separate operation-owned proofs.
   live(ctx);const actor=await ctx.requirePerson();live(ctx);const policy=currentPolicy(),raw=JSON.stringify(policy),at=now();
   const permissions=MANAGEMENT_PERMISSIONS.filter(cap=>evaluateRolePolicy(policy,actor,cap,null,{subject:{kind:"eligible",person:actor,observedAt:at}},at,root).outcome==="allow");
   const assert=()=>{live(ctx);if(JSON.stringify(currentPolicy())!==raw)throw new HubProtocolError("conflict");};assert();return{actor,policy,permissions,assert};

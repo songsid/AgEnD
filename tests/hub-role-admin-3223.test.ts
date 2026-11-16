@@ -45,3 +45,8 @@ it("accepts the actual writer UUID preview and applies only its checked document
  const result=await w.control.apply(w.ctx.ctx,{policy:next,previewDigest:preview.previewDigest});expect(result).toMatchObject({ok:true,revision:2});
  expect(JSON.parse((w.db.prepare("SELECT body FROM hub_group_policy").get() as {body:string}).body).rolesActive).toBe(false);
 });
+
+it.each(["presentation","read"] as const)("%s rechecks real directory eligibility before returning role visibility",async method=>{
+ const w=await world();w.eligible.mockClear();w.eligible.mockResolvedValue({eligible:false,reason:"disabled"});
+ await expect(w.control[method](w.ctx.ctx)).rejects.toMatchObject({code:"revoked"});expect(w.eligible).toHaveBeenCalledWith(w.admin);
+});
