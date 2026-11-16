@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-const repo=process.env.REPO??process.cwd(),out=process.env.OUT!,mode=process.env.MODE??"after";
+const repo=process.env.REPO??process.cwd(),out=process.env.OUT!,mode=process.env.MODE??"after",current=mode!=="before";
 if(!out)throw Error("OUT is required");
 if(!readFileSync("/proc/version","utf8").toLowerCase().includes("microsoft"))throw Error("Run headless inside WSL only");
 mkdirSync(out,{recursive:true});mkdirSync(join(repo,".artifacts"),{recursive:true});
@@ -30,30 +30,44 @@ try{
  await runtime.apply(config);check("production Hub ready",runtime.serverHealth(config.hub)==="ready");
  const pw=createRequire(join(process.cwd(),"package.json"))("playwright-core");
  browser=await pw.chromium.launch({headless:true,args:["--no-sandbox","--host-resolver-rules=MAP hub.example.test 127.0.0.1"]});receipt.browser=browser.version();
- for(const device of ["desk","phone"])for(const theme of ["light","dark"])for(const lang of ["en","zh-TW"]){
+ for(const device of (mode==="actions"?["phone"]:mode==="editors"?["desk"]:["desk","phone"]))for(const theme of (["actions","editors"].includes(mode)?["light"]:["light","dark"]))for(const lang of (mode==="actions"?["en"]:["en","zh-TW"])){
   const tag=`${mode}-${device}-${theme}-${lang}`,ctx=await browser.newContext({ignoreHTTPSErrors:true,viewport:device==="phone"?{width:390,height:844}:{width:1440,height:1000},isMobile:device==="phone",hasTouch:device==="phone",locale:lang});
   try{
    await ctx.addInitScript("window.__name=fn=>fn;");await ctx.addInitScript(({theme,lang}:any)=>{localStorage.setItem("agend_theme",theme);localStorage.setItem("agend_lang",lang);localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");},{theme,lang});
    const page=await ctx.newPage();page.on("pageerror",(e:any)=>receipt.errors.push({tag,error:e.message}));
    await page.goto(origin+"/ui/hub/admin?view=groups");await page.locator("#hubLogin").fill(ADMIN.login);await page.locator("#hubPassword").fill("Synthetic-browser-only");await page.locator("#hubPassword").press("Enter");
-   await page.locator(mode==="after"?".hub-roles":".hub-groups").waitFor();
-   await page.locator(mode==="after"?".hub-roles .hub-role-list":".hub-groups .hub-groups-state").first().waitFor();
+   await page.locator(current?".hub-roles":".hub-groups").waitFor();
+   await page.locator(current?".hub-roles .hub-role-list":".hub-groups .hub-groups-state").first().waitFor();
    await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:join(out,tag+".png"),fullPage:true});receipt.screens.push({tag,file:tag+".png",sha256:hash(readFileSync(join(out,tag+".png")))});
    const geometry=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,buttons:[...document.querySelectorAll(".hub-roles button,.hub-roles input,.hub-roles select")].map(el=>({text:el.textContent,box:el.getBoundingClientRect().toJSON()}))}));
    check(tag+" no horizontal overflow",geometry.overflow<=1);
-   if(device==="phone"&&mode==="after")check(tag+" tap controls44px",geometry.buttons.every((b:any)=>b.box.width>=44&&b.box.height>=44));
-   if(mode==="after"){
+   if(device==="phone"&&current)check(tag+" tap controls44px",geometry.buttons.every((b:any)=>b.box.width>=44&&b.box.height>=44));
+   if(current){
     check(tag+" real role capability",await page.evaluate(async()=>{const r=await fetch("/hub/v1/session");return(await r.json()).features.includes("role-settings-v1");}));
     if(device==="desk"&&theme==="light"){
      await page.getByRole("button",{name:lang==="en"?"New role":"新增角色",exact:true}).click();await page.locator(".hub-role-editor").waitFor();
-     await page.screenshot({path:join(out,tag+"-editor.png"),fullPage:true});receipt.screens.push({tag:tag+"-editor",file:tag+"-editor.png",sha256:hash(readFileSync(join(out,tag+"-editor.png")))});
+     await page.locator(".hub-role-editor").screenshot({path:join(out,tag+"-editor.png")});receipt.screens.push({tag:tag+"-editor",file:tag+"-editor.png",sha256:hash(readFileSync(join(out,tag+"-editor.png")))});
      check(tag+" twelve permissions",await page.locator('.hub-role-editor input[type="checkbox"]').count()===12);
     }
+   }
+   if(mode==="actions"){
+    const capture=async(stage:string)=>{const file=tag+"-"+stage+".png";if(stage==="assignment"||stage==="preview")await page.locator(stage==="assignment"?".hub-role-assignment":".hub-role-preview").screenshot({path:join(out,file)});else await page.screenshot({path:join(out,file),fullPage:true});receipt.screens.push({tag:tag+"-"+stage,file,sha256:hash(readFileSync(join(out,file)))});};
+    await page.getByRole("button",{name:"Assign role",exact:true}).click();
+    await page.locator(".hub-role-assignment .hub-role-search input").fill("Al");
+    await page.locator(".hub-role-assignment").getByRole("button",{name:"Search",exact:true}).click();
+    await page.locator(".hub-role-assignment").getByRole("button",{name:"Choose",exact:true}).click();
+    await capture("assignment");
+    await page.locator(".hub-role-assignment").getByRole("button",{name:"Check changes",exact:true}).click();
+    await page.locator(".hub-role-preview").waitFor();await capture("preview");
+    check("actual preview names Alex",(await page.locator(".hub-role-preview").textContent()).includes("Alex Chen"));
+    await page.getByRole("button",{name:"Save checked changes",exact:true}).click();await page.locator(".hub-role-preview").waitFor({state:"detached"});
+    await page.locator(".hub-roles").getByText("Alex Chen",{exact:false}).first().waitFor();await capture("assigned-audit");
+    check("stored assignment is real",await page.evaluate(async()=>{const body=await(await fetch("/hub/v1/roles")).json();return body.view.policy.assignments.some((a:any)=>a.subject.kind==="person"&&a.subject.person.objectId==="11111111-1111-4111-8111-111111111111"&&a.roleId==="builtin:admin");}));
    }
    await page.close();
   }finally{await ctx.close();}
  }
- check("all eight theme/device/locale cases captured",receipt.screens.filter((s:any)=>!s.tag.endsWith("-editor")).length===8);check("no browser errors",receipt.errors.length===0);receipt.status="PASS";
+ check("all intended screenshots captured",mode==="actions"?receipt.screens.length===4:mode==="editors"?receipt.screens.length===4:receipt.screens.filter((s:any)=>!s.tag.endsWith("-editor")).length===8);check("no browser errors",receipt.errors.length===0);receipt.status="PASS";
 }catch(error:any){receipt.status="FAIL";receipt.error=error.stack;throw error;}
 finally{await browser?.close();await runtime?.close();rmSync(home,{recursive:true,force:true});if(certs)rmSync(certs.dir,{recursive:true,force:true});receipt.cleaned=true;writeFileSync(join(out,"receipt.json"),JSON.stringify(receipt,null,2));}
 console.log(JSON.stringify({status:receipt.status,mode,checks:receipt.checks.length,screens:receipt.screens.length,out}));

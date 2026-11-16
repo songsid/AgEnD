@@ -1,0 +1,99 @@
+{
+  "mode": "before",
+  "head": "87caabf11b1458a3e2f514b40ca8a38e3fe4c5a2",
+  "tree": "461f92d760f8cc8e70aa19f7f64996d2cf88c289",
+  "dirty": "",
+  "checks": [
+    {
+      "label": "production Hub ready",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "all eight theme/device/locale cases captured",
+      "pass": true
+    },
+    {
+      "label": "no browser errors",
+      "pass": true
+    }
+  ],
+  "screens": [
+    {
+      "tag": "before-desk-light-en",
+      "file": "before-desk-light-en.png",
+      "sha256": "d30151cd059125ed1099757f254b89e4da27859d37e6da8cf16e8d5572f962a0"
+    },
+    {
+      "tag": "before-desk-light-zh-TW",
+      "file": "before-desk-light-zh-TW.png",
+      "sha256": "a52161f4fb30f97eb0697a1478b2b3b33be492fb323d79a28d93f45765135a46"
+    },
+    {
+      "tag": "before-desk-dark-en",
+      "file": "before-desk-dark-en.png",
+      "sha256": "756bda05ce6cf19e458cd3c007947f107d9ba6a312c1fe22a9cc90b40fd3b212"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW",
+      "file": "before-desk-dark-zh-TW.png",
+      "sha256": "0221c630a5a833bbafcc818d082b6648af941c072618aad5c77ec4ea475c1c76"
+    },
+    {
+      "tag": "before-phone-light-en",
+      "file": "before-phone-light-en.png",
+      "sha256": "a5fdae9eb01d8cab659c46d74ece53a5c1a71f058fa21827d62ceefad8d20b1c"
+    },
+    {
+      "tag": "before-phone-light-zh-TW",
+      "file": "before-phone-light-zh-TW.png",
+      "sha256": "b27e71897861660ceff465c15637fa14d928ad81b41b9c88ae020065e3026321"
+    },
+    {
+      "tag": "before-phone-dark-en",
+      "file": "before-phone-dark-en.png",
+      "sha256": "e36bf5ae8bed47963a1568b2ec470e1cddc2ca7e6710e7768f4a66e52b79d098"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW",
+      "file": "before-phone-dark-zh-TW.png",
+      "sha256": "06c2443a7cbf0a1c713c7a63ae8f9e73b7cc70d3735ab7cfe925bd3b499ba398"
+    }
+  ],
+  "errors": [],
+  "scope": "Separate initialized production Hub runtime/HTTPS/SQLite and assets from REPO. Synthetic AD people/groups; no real credentials, Fleet or model process. Headless Chromium inside WSL.",
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}

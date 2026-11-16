@@ -59,3 +59,11 @@ it.each(["en","zh-TW"])("shows cached person names and localized change/audit co
  fire(button(p.root,lang==="en"?"Turn roles off":"關閉角色功能"),"click");await settle(10);
  expect(p.root.querySelector(".hub-role-preview").textContent).toContain(lang==="en"?"Turn roles off":"關閉角色功能");
 });
+
+it("carries a newly selected person's display name into the checked change summary",async()=>{
+ const target={realm:"corp",objectId:"11111111-1111-4111-8111-111111111111"};
+ const {p}=await mount("en",{roleSearch:vi.fn(async()=>({ok:true,candidates:[{kind:"person",key:target,name:"Alex Chen",login:"alex"}]}))});
+ fire(button(p.root,"Assign role"),"click");await settle(5);const form=p.root.querySelector(".hub-role-assignment"),input=form.querySelector(".hub-role-search input");input.value="Al";fire(input,"input");await settle(5);
+ fire(button(form,"Search"),"click");await settle(5);fire(button(form,"Choose"),"click");await settle(5);fire(form,"submit");await settle(10);
+ expect(p.root.querySelector(".hub-role-preview").textContent).toContain("Assign Administrator to Alex Chen");
+});
