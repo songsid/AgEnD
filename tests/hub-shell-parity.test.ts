@@ -32,8 +32,8 @@ afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); 
 /** A Hub workspace page signed in as `who`, its client answering the session, the rooms and the notices. */
 const calls: string[] = [];
 const NOTICE = { id: "n1", label: "Olivia's laptop", at: Date.UTC(2026, 10, 8, 6, 0), fleetId: "f1", generation: 1, revoked: false };
-async function hub(o: { admin?: boolean; features?: string[]; rooms?: unknown[]; name?: string | null; path?: string; lang?: string; notices?: unknown[] } = {}) {
-  const session = { signedIn: true, displayName: "Alex", login: "alex", admin: !!o.admin, csrf: "c".repeat(64), features: o.features ?? [] };
+async function hub(o: { admin?: boolean; management?: string[]; features?: string[]; rooms?: unknown[]; name?: string | null; path?: string; lang?: string; notices?: unknown[] } = {}) {
+  const session = { signedIn: true, displayName: "Alex", login: "alex", admin: !!o.admin, ...(o.management ? { management: o.management } : {}), csrf: "c".repeat(64), features: o.features ?? [] };
   calls.length = 0;
   const c = client.createHubWebClient({ fetchImpl: async (path: string, init: any = {}) => {
     const key = `${init.method || "GET"} ${path.split("?")[0]}`;
@@ -59,6 +59,18 @@ async function hub(o: { admin?: boolean; features?: string[]; rooms?: unknown[];
 const rows = (pg: AppPage) => [...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent);
 
 describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
+  it("keeps personal-agent administration out of a Fleet manager's page while mounting it for administrators", async () => {
+    const options = { path: "/ui/hub/admin", features: ["personal-agents-v1", "role-settings-v1"] };
+    const limited = await hub({ ...options, management: ["fleets.manage"] });
+    await settle(30);
+    expect(limited.root.querySelector("[data-personal-admin]")).toBeNull();
+    expect(calls).not.toContain("GET /hub/v1/admin/personal-agents");
+    await limited.unmount(); mounted.splice(mounted.indexOf(limited), 1); limited.restore();
+    const administrator = await hub({ ...options, admin: true });
+    await until(() => administrator.root.querySelector("[data-personal-admin]"));
+    expect(administrator.root.querySelector("[data-personal-admin]")).toBeTruthy();
+    expect(calls).toContain("GET /hub/v1/admin/personal-agents");
+  });
   it("M-3190 (Argon): the brand, AgEnD Hub, with the Hub's name on a small line under it — and plain AgEnD Hub when the Hub has no name (#3426)", async () => {
     const named = await hub();
     const brand = named.root.querySelector(".side-head .brand")!;

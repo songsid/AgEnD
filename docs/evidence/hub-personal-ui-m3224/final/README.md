@@ -28,3 +28,20 @@ that DTO with `peopleInfo` and `teamsInfo` labels. CI and the selected local con
 empty lists. The test now keeps exact equality and names both lists; no product source changes. The selected
 real default-factory registration/owner/Runtime control passes 1/1 (137 other tests deselected).
 [Before](factory-before.log), [after](factory-after.log). No additional browser, Windows or model run.
+
+## Sync to the merged parent
+
+#4058 merged at `191c10ac529f1c186720877ea943a43dd2534413`; this branch merges that actual alpha tip without
+rebasing or force-pushing. Squashed-parent conflicts keep alpha's host composition/registration evidence and
+role activation, plus the reviewed UI refresh/sharing/metadata additions. Both sets of factory tests remain.
+The incoming Team/Room/assistant administration guards are preserved, and the personal administrator card now
+uses that same `fullAdmin` display gate. Server authority is unchanged.
+
+Own patch lines in 15 of the 17 previous non-evidence paths match the reviewed UI repair exactly. The panel
+difference is the stated display gate; the factory-test patch comparison differs only by a blank line.
+[merged-alpha-sync.json](merged-alpha-sync.json) records the comparison. The new mounted-page control checks
+both the missing card/API request for a Fleet manager and their presence for an administrator.
+
+Affected personal/role UI controls pass 41/41; the selected default-factory registration control passes 1/1,
+and the new mounted-role control passes 1/1. Test TypeScript exits 0. Previous gallery/native/model/mutation
+scopes carry; no new campaign. Fresh exact CI and Fable re-review on the published final head are required.
