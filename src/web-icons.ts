@@ -29,12 +29,13 @@ export function appIconVersion(): string {
 }
 
 /** The page colour a browser paints around the app (tokens.css --bg, dark and light). */
-const THEME = { dark: "#212121", light: "#ffffff" };
+const THEME = { dark: "#212121" };
 
 /** The web app manifest: the fixed name, `/`, standalone, and the 192/512 icons of the version in force. */
 export function appManifest(): string {
   const v = encodeURIComponent(appIconVersion());
   return JSON.stringify({
+    id: "/",
     name: "AgEnD",
     short_name: "AgEnD",
     start_url: "/",
@@ -62,8 +63,7 @@ export function withAppIconLinks(html: string): string {
     ...(custom ? [] : [`<link rel="icon" href="/favicon.svg?v=${v}" type="image/svg+xml" sizes="any">`]),
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=${v}" sizes="180x180">`,
     `<link rel="manifest" href="/manifest.webmanifest?v=${v}">`,
-    `<meta name="theme-color" content="${THEME.light}" media="(prefers-color-scheme: light)">`,
-    `<meta name="theme-color" content="${THEME.dark}" media="(prefers-color-scheme: dark)">`,
+    `<meta name="theme-color" content="${THEME.dark}">`,
   ].join("\n");
   return html.replace(/<!--app-icon-->[\s\S]*?<!--\/app-icon-->\n?/, `${links}\n`);
 }

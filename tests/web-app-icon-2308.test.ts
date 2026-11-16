@@ -153,7 +153,7 @@ describe("the icon and manifest routes", () => {
     useAppIconStore(store);
     const m = await icon("/manifest.webmanifest");
     expect([m.status, m.headers["Content-Type"]]).toEqual([200, "application/manifest+json"]);
-    expect(JSON.parse(m.body.toString())).toEqual({ name: "AgEnD", short_name: "AgEnD", start_url: "/", scope: "/", display: "standalone", background_color: "#212121", theme_color: "#212121",
+    expect(JSON.parse(m.body.toString())).toEqual({ id: "/", name: "AgEnD", short_name: "AgEnD", start_url: "/", scope: "/", display: "standalone", background_color: "#212121", theme_color: "#212121",
       icons: [{ src: "/icon-192.png?v=default", sizes: "192x192", type: "image/png" }, { src: "/icon-512.png?v=default", sizes: "512x512", type: "image/png" }] });
     const r = await store.set(sourcePng(), "p");
     if (!r.ok) throw new Error("set failed");
@@ -187,7 +187,7 @@ describe("the pages' icon links", () => {
       expect(html).toContain('<link rel="icon" href="/favicon.svg?v=default" type="image/svg+xml" sizes="any">');
       expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=default" sizes="180x180">');
       expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest?v=default">');
-      expect(html).toContain('<meta name="theme-color" content="#212121" media="(prefers-color-scheme: dark)">');
+      expect(html).toContain('<meta name="theme-color" content="#212121">');
       expect(html.match(/rel="icon"/g)).toHaveLength(2);
     }
   });
