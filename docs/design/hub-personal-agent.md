@@ -180,16 +180,15 @@ Proposed name: **Ask first** / 「先問我」.
    matching commands, and their connectors, web search and other tools are not commands at all. So "every action
    asks" is only true if this mode runs with the colleague's **sign-in** but **not their settings**.
 
-4. **The strict setting this depends on may be going away.** Ridge's reading of the 0.167 source is that the
-   strictest approval setting (`untrusted`) asks before every command. OpenAI's current documentation, read on
-   2026-11-16, says that setting is no longer supported and can stop Codex from starting, and it documents no
-   other setting that makes every command ask; under the remaining setting, commands the sandbox allows run
-   without asking. The two have not been reconciled and nothing was run. **If a current Codex cannot be made to
-   ask before every command, this mode cannot be built as described**, and the words-only fallback in 10.9 is
-   what remains. E0 must settle this first, on the Codex version colleagues actually have. One lead from Ridge
-   for that trial: in 0.167, with the remaining setting (`on-request`), a run whose settings declare filesystem
-   restrictions while the Windows sandbox itself is off also asks before each unmatched command. That would be a
-   route that does not depend on the retired setting. It is a policy asking, not an enforced folder limit.
+4. **No supported setting is known that makes Codex ask before every command.** The direct strict setting
+   (`approval_policy = "untrusted"`) is retired: OpenAI's documentation says so, and Ridge confirmed that Codex
+   0.167 itself refuses it when loading settings (his earlier reading of an internal branch was corrected).
+   Two leads remain, neither proven: marking the working folder as an untrusted project, which gives a stricter
+   policy that still depends on other settings and existing allow rules; and, under the remaining setting
+   (`on-request`), declaring filesystem restrictions while the Windows sandbox is off, which in 0.167 asks before
+   each unmatched command. Both are policy, not an enforced folder limit. **Until the E0 trial proves a supported
+   route on the Codex version colleagues actually have, this mode cannot be promised**, and the words-only
+   fallback in 10.9 is the only version that can be.
 5. **There is another way to get one folder, which needs IT.** Codex's documentation describes a Windows sandbox
    that does support denied folders, set up once with administrator rights (separate low-privilege accounts and
    firewall rules). Phase 1 rules that out ("nothing is installed or changed on the computer"). If IT is willing
@@ -383,5 +382,5 @@ words only, every request refused automatically. It needs no approval path and m
 | E4 | File changes | **Refused automatically** in the first version. |
 | E5 | How long to wait for the owner | **10 minutes per request, 30 minutes per question**, separate from Codex's 5 minutes of work. |
 | E6 | Who can switch it on | **Hub administrator switch, off by default, then each owner's own tick.** |
-| E7 | Ship the words-only fallback first? | **Decide after E0.** It is much smaller and has no approval to get wrong, but it cannot look anything up. |
+| E7 | Ship the words-only fallback first? | **It is the only version that can be promised today** (fact 4). Decide after E0 whether Ask first replaces it. It is much smaller and has no approval to get wrong, but it cannot look anything up. |
 | E8 | Ask IT about installing Codex's administrator-level Windows sandbox instead? | **Worth one question to IT before E1 is built.** If they can, one-folder mode covers Codex and the approval path is not needed. |
