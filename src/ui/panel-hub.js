@@ -22,6 +22,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { PairingNotices } from "./hub-quick-pairing.js";
 import { dn } from "./hub-directory-notice-strings.js";
+import { RoleNotices, roleNoticesOffered, roleNoticeLead } from "./hub-role-notices.js";
 import { DirectoryNotices, directoryNoticesOffered } from "./hub-directory-notices.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
@@ -197,9 +198,9 @@ export function HubPanel({ route }) {
   // Security notices stay on their own page. The bound join branch above never renders the chat or notices page.
   if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
     <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
-      <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
-        ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
-        ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}</div></div></div>`;
+      <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${roleNoticesOffered(s, hubClient()) ? roleNoticeLead() : directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
+        ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
+        ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}${roleNoticesOffered(s, hubClient()) ? html`<${RoleNotices} client=${hubClient()} />` : null}</div></div></div>`;
   // M-3092: the owner's invitations (spec §8), a page of the chats like Notices.
   if (s && tab === "ask" && view === "invitations" && roomsLive()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-invitations">
     <${PanelHeader} title=${hroom("invitationsTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body"><div class="col hub-owner">
@@ -366,7 +367,7 @@ export const NOTICES_PATH = "/ui/hub?view=notices";
 export const INVITATIONS_PATH = "/ui/hub?view=invitations";
 export const MY_TEAMS_PATH = "/ui/hub?view=teams";
 const pairingNoticesOffered = (s) => !!s && Array.isArray(s.features) && s.features.includes("quick-pairing-v1") && !!hubClient().quickPairingV1;
-const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient());
+const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient());
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 const AV_TONES = 6;
 const tone = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % AV_TONES; };

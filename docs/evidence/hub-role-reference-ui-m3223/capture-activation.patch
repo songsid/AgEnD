@@ -1,0 +1,1466 @@
+diff --git a/src/hub/catalog.ts b/src/hub/catalog.ts
+index 3b1f98fc1..1ed5717c6 100644
+--- a/src/hub/catalog.ts
++++ b/src/hub/catalog.ts
+@@ -430,8 +430,9 @@ export class HubCatalogService {
+    * the current one; the member re-consenting a newer revision lifts it.
+    */
+   async freeze(ctx: HubRequestContext, id: string, revision: number, admin: boolean): Promise<void> {
+-    const actor = admin ? await ctx.requireAdmin() : null;
+-    const person = actor?.kind === "directory" ? actor.person : await ctx.requirePerson();
++    const permit = admin ? await this.core.management(ctx,"hub.admin") : null;
++    const person = permit?.actor.kind === "directory" ? permit.actor.person : await ctx.requirePerson();
++    const proof={assertCurrent(){permit?.assertCurrent();if(ctx.isCurrent&&ctx.isCurrent()!==true)throw new HubProtocolError("revoked");}};
+     this.core.atomic((db, tx) => {
+       const row = readExposure(db, id);
+       if (!row || (!admin && row.owner !== personKeyString(person))) throw new HubProtocolError("not-found");
+@@ -439,6 +440,6 @@ export class HubCatalogService {
+       db.prepare("UPDATE hub_exposures SET frozen_through=MAX(frozen_through, ?), sharing_paused=0, sharing_epoch=sharing_epoch+1, updated_at=? WHERE id=?").run(row.revision, this.core.now(), id);
+       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person }, action: "exposure.frozen", result: "completed",
+         fleetId: row.fleet_id??undefined, exposureId: id, ownerAtEvent: personFromString(row.owner) });
+-    });
++    },proof);
+   }
+ }
+diff --git a/src/hub/compose/server.ts b/src/hub/compose/server.ts
+index 69c876a85..a6c3fa6ff 100644
+--- a/src/hub/compose/server.ts
++++ b/src/hub/compose/server.ts
+@@ -1,3 +1,13 @@
++import {hubRoleMigrationsForState} from "../roles/migrations.js";
++import {createHubRoleCutover} from "../roles/cutover.js";
++import {createHubRoleWriter} from "../roles/writer.js";
++import {createHubRoleResourceEffects} from "../roles/resource-effects.js";
++import {createHubRoleExpiryEffects} from "../roles/expiry-effects.js";
++import {createHubRoleExpirySettlement} from "../roles/expiry.js";
++import {createHubRoleAdminControl} from "../roles/admin-control.js";
++import {createHubRoleAllowedListControl} from "../roles/allowed-list-control.js";
++import {parseRolePolicy} from "../roles/model.js";
++import {readHubOperationalPolicy} from "../group-policy/store.js";
+ import { HUB_ROOM_CONTEXT_CAPABILITY } from "../room-context-model.js";
+ import { HUB_RECOMMENDATION_CAPABILITY } from "../recommendation-model.js";
+ import { HUB_FLEET_INFO_CAPABILITY } from "../fleet-info.js";
+@@ -77,6 +87,7 @@ export { SERVER_SET } from "./storage.js";
+ 
+ /** What S3b's createHubHttp receives (agreed in cid-hub-s3b-deps). */
+ export interface HubHttpDeps {
++  roleAdmin?:import("../roles/admin-types.js").RoleAdminControl;
+   teams?: import("../http/deps.js").HubHttpDeps["teams"];
+   log?: import("../http/deps.js").HubHttpDeps["log"];
+   roomInvitations?: import("../http/deps.js").HubHttpDeps["roomInvitations"];
+@@ -131,6 +142,8 @@ export interface HubHttp {
+ }
+ 
+ export interface HubHttpEntry {
++  /** This compiled entry owns the role settings routes and display projection. Older injected entries stay legacy. */
++  readonly roleSettingsV1?:true;
+   createHubHttp(deps: HubHttpDeps): HubHttp;
+   migrations: readonly HubMigration[];
+ }
+@@ -317,7 +330,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
+         floor.initialize();
+         createKeyFile(options.home, SERVER_SET.keys[0]!);
+       }
+-      applyHubMigrations(db, migrations);
++      applyHubMigrations(db, hubRoleMigrationsForState(db,migrations));
+       bindHubInstance(db, settings.hubId, state, now());
+ 
+       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
+@@ -370,14 +383,26 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
+       const identity = readHubIdentity({ home: options.home, memberOrigin: settings.memberOrigin });
+       if (identity.hubId !== settings.hubId) throw new HubStateError("hub-state-mismatch", "the Hub keys belong to another Hub");
+       const issuerKey = createPrivateKey(readPrivateFile(options.home, "hub/keys/issuer-key.pem"));
+-      // No cutover is registered here. Legacy images remain configured-root-only; a future
+-      // committed role image must prove the real persisted clock before any named management use.
++      // A never-enabled directory binding awaiting repair keeps its existing root repair path.
++      const rolesMounted=httpEntry.roleSettingsV1===true&&inspectHubGroupPolicyBinding(db,settings.hubId,resolvedDirectory.realm,groupGeneration).kind==="ready";
++      if(rolesMounted){
++        const cutover=createHubRoleCutover({db,hubId:settings.hubId,realm:resolvedDirectory.realm,generation:groupGeneration,root:settings.administrator,transport:store,migrations,current:live,refreshAuthorization:()=>memberServer?.refreshAuthorization(),now});
++        teardown.add("role migration",()=>cutover.close());const result=cutover.migrate();
++        if(!result.ok)throw new HubStateError("hub-state-mismatch",`role migration is held (${result.code})`);
++      }
++      const readManagementPolicy = createHubManagementPolicyReader({ db, hubId: settings.hubId, realm: resolvedDirectory.realm, generation: groupGeneration, current: live });
++      // The directory participant alone exposes its exact before-image while checking its own SQL transition.
++      const managementPolicy = () => {
++        const basis = directoryDecision.proofBasis();
++        return basis ? parseCanonicalPolicy(JSON.stringify(basis.policy)) : readManagementPolicy();
++      };
++      const managementVersion = () => directoryDecision.proofBasis()?.expected.authorizationVersion ?? store.read().revocationVersion;
+       const roleClock = createHubRoleAuthorizationClock({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
+-        generation: groupGeneration, root: settings.administrator, transport: store, current: live, now });
++        generation: groupGeneration, root: settings.administrator, transport: store, current: live, policy: managementPolicy, now });
+       teardown.add("role authorization clock", () => roleClock.close());
+       const management = createHubManagementAuthority({ root: settings.administrator, directory, reads: directoryReads,
+-        policy: createHubManagementPolicyReader({ db, hubId: settings.hubId, realm: resolvedDirectory.realm, generation: groupGeneration, current: live }),
+-        current: live, version: () => store.read().revocationVersion, assertAuthorizationTime: roleClock.assertAuthorizationTime, now });
++        policy: managementPolicy,
++        current: live, version: managementVersion, assertAuthorizationTime: roleClock.assertAuthorizationTime, now });
+       teardown.add("management authorization", () => management.close());
+       let groupPolicy: HubGroupPolicyStore | undefined;
+       const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
+@@ -403,7 +428,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
+         withDirectoryRead: <T>(person: PersonKey, work: () => Promise<T>) => directoryReads.withDirectoryRead(person, work),
+       });
+       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
+-      const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,
++      const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,roleAdministrators:rolesMounted,
+         policy, binding, management,
+         audit, current: live, now, version: () => store.read().revocationVersion,
+         advanceAuthorization: (database, resource) => {
+@@ -460,6 +485,31 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
+           });
+         }, refreshAuthorization: () => memberServer?.refreshAuthorization() });
+       teardown.add("group policy confirmation", () => groupControl.close());
++      let roleAdmin:ReturnType<typeof createHubRoleAdminControl>|undefined;
++      let effectiveGroupControl:import("../group-policy/admin-dto.js").HubGroupAdminControl=groupControl;
++      if(rolesMounted){
++        const advanceAuthorization=(database:Database.Database)=>{
++          if(database!==db||!db.inTransaction)throw new HubStateError("service-unavailable","the role policy transaction is unavailable");
++          const next=readHubOperationalPolicy(policy());companyJoin.policyUpdated(next);
++          store.mutate({at:now(),requestId:randomBytes(16).toString("hex"),actor:{kind:"local-host"},action:"role.authorization-changed",result:"completed"},state=>{
++            const denied=new Set(next.denies.filter(d=>d.deny.includes("pair_fleet")).map(d=>personKeyString(d.person)));
++            state.pairings=state.pairings.filter(p=>!p.automatic||!["offered","pending"].includes(p.state)||(next.state==="enabled"&&!denied.has(personKeyString(p.owner))));state.revocationVersion++;
++          });
++        };
++        const shared={db,root:settings.administrator,transport:store,policy:policy(),audit,current:live,now};
++        const writer=createHubRoleWriter({db,hubId:settings.hubId,realm:resolvedDirectory.realm,generation:groupGeneration,root:settings.administrator,audit,directory,reads:directoryReads,effects:createHubRoleResourceEffects(shared),current:live,version:()=>store.read().revocationVersion,advanceAuthorization,refreshAuthorization:()=>memberServer?.refreshAuthorization(),now});
++        teardown.add("role writer",()=>writer.close());
++        roleAdmin=createHubRoleAdminControl({db,root:settings.administrator,directory,reads:directoryReads,management,writer,audit,policy:()=>parseRolePolicy(readHubOperationalPolicy(policy())),current:live,now});
++        const admin=roleAdmin;teardown.add("role administration",()=>admin.close());
++        const shortcut=createHubRoleAllowedListControl({db,root:settings.administrator,directory,policy:policy(),legacy:groupControl,management,roleAdmin,writer,inventory:createHubGroupAdminInventory({db,transport:store,realm:resolvedDirectory.realm}),authorization:groups,current:live,now,version:()=>store.read().revocationVersion});
++        effectiveGroupControl=shortcut;teardown.add("role allowed-list shortcut",()=>shortcut.close());
++        const expiry=createHubRoleExpirySettlement({db,hubId:settings.hubId,realm:resolvedDirectory.realm,generation:groupGeneration,root:settings.administrator,audit,directory,reads:directoryReads,effects:createHubRoleExpiryEffects({...shared,directory,reads:directoryReads}),current:live,version:()=>store.read().revocationVersion,advanceAuthorization,refreshAuthorization:()=>memberServer?.refreshAuthorization(),now});
++        let settling:ReturnType<typeof expiry.settle>|null=null;
++        const settle=()=>{if(settling||!live())return;settling=expiry.settle();void settling.then(result=>{if(!result.ok&&live())options.log("warn","Hub role expiry is held",{code:result.code});},()=>{if(live())options.log("warn","Hub role expiry is held",{code:"unavailable"});}).finally(()=>{settling=null;});};
++        const timer=setInterval(settle,30_000);timer.unref();settle();
++        teardown.add("role expiry",async()=>{clearInterval(timer);expiry.close();await settling;});
++      }
++
+       const groupWelcome = createHubGroupWelcome({ policy, readiness: () => {
+         const state = binding();
+         return state.kind === "ready" ? "ready" : state.legacy ? "never-enabled" : "unavailable";
+@@ -483,7 +533,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
+         companyJoin,
+         groups,
+         management,
+-        groupHttp: { control: groupControl, welcome: groupWelcome },
++        groupHttp: { control: effectiveGroupControl, welcome: groupWelcome },
++        ...(roleAdmin?{roleAdmin}:{}),
+         grantDirectory: { policy, binding },
+         pairingNotices,
+         directoryNotices,
+diff --git a/src/hub/group-policy/admin-api.ts b/src/hub/group-policy/admin-api.ts
+index 89dec7652..035259359 100644
+--- a/src/hub/group-policy/admin-api.ts
++++ b/src/hub/group-policy/admin-api.ts
+@@ -12,7 +12,7 @@ export interface GroupHttpDeps { readonly control: HubGroupAdminControl; readonl
+ /** What this layer needs of the request: the session's own fresh checks, and the compose helpers. */
+ export interface GroupHttpRequest {
+   readonly path: string; readonly method: string;
+-  readonly ctx: { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor>; requirePerson(): Promise<PersonKey> };
++  readonly ctx: { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor>; requirePerson(): Promise<PersonKey>; readonly roleContext?:import("../types.js").HubRequestContext };
+   signedIn(): unknown; csrf(): unknown; body(): Promise<Record<string, unknown>>;
+   send(status: number, body: unknown, headers?: Record<string, string>): void;
+ }
+@@ -25,7 +25,7 @@ export async function handleGroupHttp(deps: GroupHttpDeps | undefined, q: GroupH
+   if (!admin && path !== "/hub/v1/me/welcome") return false;
+   if (!deps) { q.send(404, { code: "not-found" }); return true; }
+   // Bound to the session's own context: a value passed in never stands for who is asking.
+-  const adminCtx: GroupAdminContext = { requestId: q.ctx.requestId, current: () => q.ctx.current(), requireAdmin: () => q.ctx.requireAdmin() };
++  const adminCtx: GroupAdminContext = { requestId: q.ctx.requestId, current: () => q.ctx.current(), requireAdmin: () => q.ctx.requireAdmin(),...(q.ctx.roleContext?{roleContext:q.ctx.roleContext}:{}) };
+   const answer = (a: { ok: boolean; code?: string }) => q.send(a.ok ? 200 : STATUS[a.code ?? "unknown"] ?? 409, a);
+   const parsed = <T>(schema: { safeParse(v: unknown): { success: true; data: T } | { success: false } }, raw: unknown): T | null => { const r = schema.safeParse(raw); return r.success ? r.data : null; };
+   const bad = () => q.send(400, { code: "invalid" });
+diff --git a/src/hub/group-policy/admin-dto.ts b/src/hub/group-policy/admin-dto.ts
+index f21c256ef..d85f23be3 100644
+--- a/src/hub/group-policy/admin-dto.ts
++++ b/src/hub/group-policy/admin-dto.ts
+@@ -120,7 +120,7 @@ export type GroupWelcomeResponse = {
+ };
+ 
+ /** Server-bound context of an admin call: the control itself calls `requireAdmin` (a supplied actor alone cannot re-authenticate). */
+-export interface GroupAdminContext { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor> }
++export interface GroupAdminContext { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor>; /** Private HTTP-owned identity context, never request-body data. */ readonly roleContext?:import("../types.js").HubRequestContext }
+ /**
+  * Context of a welcome read (S-89): the welcome reveals one person's allow/deny per capability, so its subject is never a value
+  * passed in. The projection calls `requirePerson()` itself: the request's own current session's person, fresh (Fable #3356 N1).
+diff --git a/src/hub/group-policy/authorization.ts b/src/hub/group-policy/authorization.ts
+index e9e38dccd..eb48ddbc9 100644
+--- a/src/hub/group-policy/authorization.ts
++++ b/src/hub/group-policy/authorization.ts
+@@ -46,6 +46,8 @@ export interface HubGroupAuthorizationOptions {
+   directory?: Pick<HubDirectory, "checkEligibility">;
+   /** Current issuer permission before first issuance; exact committed redelivery is checked by its owning service first. */
+   management?: Pick<HubManagementAuthority, "requireJoinIssuer">;
++  /** The mounted role shortcut supplies a fresh hub.admin callback; legacy callers remain root-only. */
++  roleAdministrators?:boolean;
+ }
+ function synchronous(result: unknown): void {
+   if (result && typeof (result as { then?: unknown }).then === "function") {
+@@ -53,6 +55,7 @@ function synchronous(result: unknown): void {
+   }
+ }
+ export function createHubGroupAuthorization(options: HubGroupAuthorizationOptions) {
++  const roleAdministrators=options.roleAdministrators===true;
+   const { db, policy: policyOf, binding: bindingOf, audit, current, version: versionOf,
+     advanceAuthorization, refreshAuthorization, now } = options;
+   const administrator = validated(person, options.administrator);
+@@ -126,8 +129,11 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
+       if (!requireAdmin) throw new HubGroupPolicyError("invalid");
+       const authenticated = await requireAdmin();
+       policyCurrent();
+-      if (authenticated.kind !== "directory" || personKeyString(validated(person, authenticated.person)) !== personKeyString(administrator)) throw new HubGroupAuthorizationError("denied");
+-      actor = { ...administrator };
++      if (authenticated.kind !== "directory")throw new HubGroupAuthorizationError("denied");
++      const who=validated(person,authenticated.person);
++      // Role mode is composed only with hub.admin-backed callers: the role shortcut and session-owned admin-read.
++      if(who.realm!==administrator.realm||personKeyString(who)!==personKeyString(administrator)&&!(roleAdministrators&&"rolesActive" in readHubOperationalPolicy(policy)))throw new HubGroupAuthorizationError("denied");
++      actor = { ...who };
+       if (version() !== epoch) throw new HubGroupPolicyError("conflict");
+     }
+     let invalidated = false;
+diff --git a/src/hub/group-policy/resources.ts b/src/hub/group-policy/resources.ts
+index 182ef1f51..abf16de79 100644
+--- a/src/hub/group-policy/resources.ts
++++ b/src/hub/group-policy/resources.ts
+@@ -68,9 +68,9 @@ export function createHubGroupResources(options: {
+       || !["active", "suspended"].includes(raw.state) || !Number.isSafeInteger(raw.revision) || raw.revision < 1) throw new HubGroupPolicyError("unavailable");
+     return { resource, ...(code ? { code } : {}), source: raw.source, state: raw.state, revision: raw.revision };
+   };
+-  const record = (r: HubGroupResource, actor: PersonKey, action: string, ctx: ReturnType<typeof snapshotContext>, payload: unknown) => {
++  const record = (r: HubGroupResource, actor: PersonKey | {kind:"local-host"}, action: string, ctx: ReturnType<typeof snapshotContext>, payload: unknown) => {
+     const p = readHubOperationalPolicy(policy), id = randomUUID(), body = JSON.stringify({ resource: r, generation: p.generation, policyRevision: p.revision, payload });
+-    const result: unknown = audit.appendInTransaction({ id, sequence: 0, at: now(), requestId: ctx.requestId, actor: { kind: "person", person: actor },
++    const result: unknown = audit.appendInTransaction({ id, sequence: 0, at: now(), requestId: ctx.requestId, actor: "kind" in actor ? actor : { kind: "person", person: actor },
+       action, result: "completed", policyVersion: p.revision, reasonCode: createHash("sha256").update(body).digest("hex") }, db);
+     if (result && (typeof result === "object" || typeof result === "function") && typeof (result as { then?: unknown }).then === "function") {
+       try { (result as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refuse */ }
+@@ -80,7 +80,7 @@ export function createHubGroupResources(options: {
+     if (readHubOperationalPolicy(policy).revision !== p.revision) throw new HubGroupPolicyError("conflict");
+     db.prepare("INSERT INTO hub_group_resource_events VALUES(?,?)").run(id, body);
+   };
+-  const update = (before: HubGroupResourceView, state: "active" | "suspended", actor: PersonKey, ctx: ReturnType<typeof snapshotContext>) => {
++  const update = (before: HubGroupResourceView, state: "active" | "suspended", actor: PersonKey | {kind:"local-host"}, ctx: ReturnType<typeof snapshotContext>) => {
+     if (before.state === state) return;
+     if (before.revision === Number.MAX_SAFE_INTEGER) throw new HubGroupPolicyError("conflict");
+     const policyRevision = readHubOperationalPolicy(policy).revision;
+@@ -239,6 +239,14 @@ export function createHubGroupResources(options: {
+         && (before.source !== "code" || !p.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes(capability(r))))) throw new HubGroupPolicyError("invalid");
+       update(before, "suspended", who, ctx);
+     },
++    /** Owned expiry settlement only; never attributes an automatic suspension to a person. */
++    suspendExpired(input:HubGroupResource,incoming:GroupCheckContext):void{
++      const r=capture(input),ctx=snapshotContext(incoming);
++      if(!db.inTransaction)throw new HubGroupPolicyError("invalid");assert(ctx);
++      const p=readHubOperationalPolicy(policy),before=row(r);
++      if(!("rolesActive" in p)||!before||before.source!=="group"||r.owner.realm!==p.realm||p.state==="never-enabled")throw new HubGroupPolicyError("invalid");
++      update(before,"suspended",{kind:"local-host"},ctx);
++    },
+     /** Same outer transaction as a confirmed switch-off: policy off/on never silently resumes group resources. */
+     suspendAll(incoming: GroupCheckContext): number {
+       const ctx = snapshotContext(incoming);
+diff --git a/src/hub/http/compose.ts b/src/hub/http/compose.ts
+index 074b84e25..726d56779 100644
+--- a/src/hub/http/compose.ts
++++ b/src/hub/http/compose.ts
+@@ -1,3 +1,4 @@
++import {hubAdminOverviewPermit} from "../roles/overview.js";
+ import { HUB_ROOM_CONTEXT_CAPABILITY } from "../room-context-model.js";
+ /**
+  * AgEnD Hub P1, slice 3 (server side): S3's composition entry (docs/design/hub-composition.md §5 step 5, §6).
+@@ -791,12 +792,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
+     // #3298 S-89: the group routes (404 until S-88's control is composed), ahead of the other admin routes.
+     if (await handleGroupHttp(deps.groupHttp, { path, method, signedIn, csrf, body, send: (status, value, headers) => send(res, status, value, headers),
+       // The synchronous fence is this server's lifetime and the session row; who is asking is only ever the session's own require*.
+-      ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(), requirePerson: () => ctx.requirePerson() } })) return;
++      ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(), requirePerson: () => ctx.requirePerson(),roleContext:ctx } })) return;
+     // M-2682: Administration → This Hub (what it is; its rename through the host's writer for sealed settings).
+     if (await handleHubDirectorySettingsHttp(deps.directorySettings, { req, res, path, method, query, signedIn, csrf, body,
+       send: (status, value) => send(res, status, value), sessions,
+       ...(deps.directoryResponse ? { capture: (proof: () => boolean) => deps.directoryResponse!.capture(req, res, proof) } : {}),
+-      ctx: { token: ctx.token, requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() } })) return;
++      ctx: { token: ctx.token, requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(),...(deps.roleAdmin&&deps.management?{configuredRoot:deps.config.administrator,authorizeAdmin:()=>deps.management!.require(ctx,"hub.admin")}: {}) } })) return;
+     if (await handleHubSettingsHttp(deps.hubSettings ? { ...deps.hubSettings, name: deps.config.name } : undefined, { path, method, signedIn, csrf, body,
+       send: (status, value) => send(res, status, value),
+       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() },
+@@ -839,21 +840,28 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
+     }
+     if (path === "/hub/v1/admin/overview") {
+       if (method !== "GET") throw new HttpError(405, "method");
+-      signedIn(); await guard(() => ctx.requireAdmin());
+-      const state = deps.store.read(), now = core.now(), recommendation = recommendations.settings();
+-      fleetUpdates.reconcile();
++      signedIn();
++      const scoped=deps.roleAdmin&&deps.management?await guard(()=>hubAdminOverviewPermit(ctx,deps.management!)):null;
++      if(!scoped)await guard(()=>ctx.requireAdmin());
++      const canFleets=scoped?.fleets??true,canJoin=scoped?.joining??true;
++      const state = deps.store.read(), now = core.now(), recommendation = canFleets?recommendations.settings():null;
++      if(canFleets)fleetUpdates.reconcile();
+       const name = (key: { realm: string; objectId: string }) => {
+         const id = personKeyString(key);
+         const row = core.atomic((db) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined);
+         return row ? { name: row.display_name, login: row.login_label } : null;
+       };
+-      return send(res, 200, {
+-        recommendedVersion: recommendation.recommendedVersion, recommendationRevision: recommendation.revision,
+-        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendation.recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id, recommendation), updatesAllowed: fleetUpdates.allowed(f.id), updateRequest: fleetUpdates.view(f.id),
++      scoped?.assertCurrent();
++      const overview={
++        permissions:[...(canFleets?["fleets.manage"]:[]),...(canJoin?["join.manage"]:[])],
++        ...(recommendation?{recommendedVersion:recommendation.recommendedVersion,recommendationRevision:recommendation.revision}:{}),
++        fleets: !canFleets?[]:state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendation!.recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id, recommendation!), updatesAllowed: fleetUpdates.allowed(f.id), updateRequest: fleetUpdates.view(f.id),
+           ...(deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
+-        pairings: state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
++        pairings: !canJoin?[]:state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
+           .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),
+-      });
++      };
++      scoped?.assertCurrent();if(ctx.isCurrent?.()!==true)throw new HubProtocolError("unavailable");
++      return send(res,200,overview);
+     }
+     if (path === "/hub/v1/admin/pairings") {
+       if (method !== "POST") throw new HttpError(405, "method");
+@@ -1018,7 +1026,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
+   rooms.buttons.start(); groupRooms.agents.wake(); groupRooms.assistant.start();
+   return {
+     directorySessions: Object.freeze({
+-      recentAuthentication: actor => sessions.recentAuthentication(actor),
++      recentAuthentication: (actor, permit) => sessions.recentAuthentication(actor, permit),
+       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
+       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
+     } satisfies HubDirectoryBrowserSessions),
+diff --git a/src/hub/roles/allowed-list-control.ts b/src/hub/roles/allowed-list-control.ts
+new file mode 100644
+index 000000000..c3b9145a4
+--- /dev/null
++++ b/src/hub/roles/allowed-list-control.ts
+@@ -0,0 +1,91 @@
++/** Existing allowed-list HTTP contract over the current role graph; all commits still use the sealed role writer. */
++import {randomBytes} from "node:crypto";
++import {z} from "zod";
++import type Database from "better-sqlite3";
++import type {HubDirectory} from "../directory/types.js";
++import type {HubRequestContext,PersonKey} from "../types.js";
++import {personKeyString} from "../identity.js";
++import {HubProtocolError,identifier,plain,person,validated} from "../validation.js";
++import {readHubOperationalPolicy,type HubGroupPolicyStore} from "../group-policy/store.js";
++import {readAllowedListTeams} from "../group-policy/team-subjects.js";
++import type {HubGroupAdminInventory} from "../group-policy/admin-inventory.js";
++import type {HubGroupAuthorization} from "../group-policy/authorization.js";
++import type {GroupAdminContext,HubGroupAdminControl,GroupImpact} from "../group-policy/admin-dto.js";
++import {resolveRequest} from "../group-policy/admin-dto.js";
++import {GROUP_CAPABILITIES,parseGroupPolicy,type HubGroupPolicy} from "../group-policy/model.js";
++import {parseRolePolicy} from "./model.js";
++import {mergeRoleAllowedList,projectRoleAllowedList} from "./allowed-list.js";
++import type {HubManagementAuthority} from "./authority.js";
++import type {RoleAdminControl} from "./admin-types.js";
++import type {createHubRoleWriter,RoleWriteCode} from "./writer.js";
++const text=plain(1024),rev=z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
++const impactPerson=z.object({personId:text,name:text.nullable(),login:text.nullable(),capabilities:z.array(z.enum(GROUP_CAPABILITIES)).optional()});
++const resource=z.object({kind:z.enum(["fleet","exposure","asker"]),id:identifier,revision:rev,label:text.nullable(),owner:z.object({name:text.nullable()}).nullable()});
++const impactShape=z.object({losingActions:z.array(impactPerson),losingPublication:z.array(impactPerson),grandfathered:z.array(resource),suspendedOnSave:z.array(resource),adminLosesChat:z.boolean(),held:z.array(impactPerson.extend({reason:z.literal("membership-unknown")})),teamMembers:z.number().int().min(0).optional()});
++export function createHubRoleAllowedListControl(options:{
++ db:Database.Database;root:PersonKey;directory:HubDirectory;policy:HubGroupPolicyStore;legacy:HubGroupAdminControl;
++ management:Pick<HubManagementAuthority,"require">;roleAdmin:RoleAdminControl;writer:ReturnType<typeof createHubRoleWriter>;
++ inventory:HubGroupAdminInventory;authorization:Pick<HubGroupAuthorization,"resume">;current():boolean;now():number;version():number;
++}){
++ const {db,directory,policy,legacy,management,roleAdmin,writer,inventory,authorization,current,now,version}=options;
++ const root=Object.freeze(validated(person,options.root));
++ const aliases=new Map<string,{digest:string;raw:string;created:number;expires:number}>();let closed=false;
++ const read=()=>{if(closed||current()!==true)throw new HubProtocolError("unavailable");return readHubOperationalPolicy(policy);};
++ const roleMode=()=>"rolesActive" in read();
++ const context=(incoming:GroupAdminContext):HubRequestContext=>{
++  const c=incoming.roleContext;if(!c||c.requestId!==incoming.requestId||incoming.current()!==true||c.isCurrent?.()!==true)throw new HubProtocolError("unavailable");
++  return Object.freeze({requestId:c.requestId,current:c.current.bind(c),isCurrent:c.isCurrent.bind(c),requirePerson:c.requirePerson.bind(c),requireAdmin:c.requireAdmin.bind(c),...(c.isIdentityCurrent?{isIdentityCurrent:c.isIdentityCurrent.bind(c)}:{})});
++ };
++ const admin=async(c:HubRequestContext)=>{const p=await management.require(c,"hub.admin");p.assertCurrent();read();return p;};
++ const fail=(code:RoleWriteCode):{ok:false;code:"conflict"|"unknown"}=>{if(code==="denied"||code==="self-target")throw new HubProtocolError("denied");if(code==="invalid")throw new HubProtocolError("invalid");return{ok:false,code:code==="conflict"||code==="expired"||code==="stale-preview"?"conflict":"unknown"};};
++ const callerCurrent=(c:HubRequestContext)=>{read();if(c.isCurrent?.()!==true)throw new HubProtocolError("unavailable");};
++ const canonical=async(input:HubGroupPolicy,c:HubRequestContext)=>{
++  let proof=await admin(c);const before=parseRolePolicy(read()),image=JSON.stringify(before),next=parseGroupPolicy(input),resolve=directory.resolvePolicyGroup;
++  if(next.revision!==before.revision)throw new HubProtocolError("conflict");
++  const guard=()=>{if(JSON.stringify(read())!==image||directory.resolvePolicyGroup!==resolve||c.isCurrent?.()!==true)throw new HubProtocolError("conflict");};
++  for(const row of next.groups){
++   if(!resolve||directory.groupPolicy!=="ad-direct-guid")throw new HubProtocolError("incompatible");
++   const found=await policy.withDirectoryRead(proof.actor.person,()=>resolve.call(directory,row.dn));guard();proof=await admin(c);
++   if(!found.ok||personKeyString(validated(person,found.group.key))!==personKeyString(row.group))throw new HubProtocolError("conflict");row.dn=validated(resolveRequest,{dn:found.group.dn}).dn;
++  }
++  for(const row of readAllowedListTeams(db,next).snapshots){if(!row.team)throw new HubProtocolError("invalid");next.teams!.find(r=>r.teamId===row.id)!.name=row.team.name;}
++  guard();proof.assertCurrent();return mergeRoleAllowedList(before,next,root);
++ };
++ const prune=()=>{const at=now();for(const[id,a]of aliases)if(at<a.created||at>=a.expires)aliases.delete(id);};
++ const control:HubGroupAdminControl={
++  async read(incoming){if(!roleMode())return legacy.read(incoming);const c=context(incoming),proof=await admin(c),p=parseRolePolicy(read());
++   const paused=inventory.paused().map(({item,lifecycleRevision})=>({resource:{kind:item.resource.kind,id:item.resource.id,revision:item.resource.revision},label:item.display.label,owner:item.display.owner,lifecycleRevision}));proof.assertCurrent();
++   return{ok:true,groupPolicyV1:true,supported:directory.groupPolicy==="ad-direct-guid",binding:"ready",policy:projectRoleAllowedList(p),paused};
++  },
++  async resolve(input,incoming){if(!roleMode())return legacy.resolve(input,incoming);const c=context(incoming),proof=await admin(c),resolve=directory.resolvePolicyGroup;
++   if(!resolve||directory.groupPolicy!=="ad-direct-guid")return{ok:false,reason:"unsupported"};
++   const found=await policy.withDirectoryRead(proof.actor.person,()=>resolve.call(directory,input.dn));const fresh=await admin(c);fresh.assertCurrent();
++   if(directory.resolvePolicyGroup!==resolve)throw new HubProtocolError("unavailable");
++   if(!found.ok)return{ok:false,reason:found.reason==="unsupported"?"unsupported":"unknown"};const key=validated(person,found.group.key);
++   if(key.realm!==root.realm)throw new HubProtocolError("unavailable");return{ok:true,realm:key.realm,objectId:key.objectId,dn:validated(resolveRequest,{dn:found.group.dn}).dn};
++  },
++  async search(input,incoming){if(!roleMode())return legacy.search?legacy.search(input,incoming):{ok:false,reason:"unsupported"};const c=context(incoming);await admin(c);
++   try{const rows=await roleAdmin.search(c,{kind:"group",q:input.q});const proof=await admin(c);proof.assertCurrent();return{ok:true,groups:rows.map(r=>({objectId:r.key.objectId,cn:r.name,dn:r.dn!})),truncated:rows.length>=20};}catch(error){if(error instanceof HubProtocolError&&error.code==="backpressure")return{ok:false,reason:"limited"};throw error;}
++  },
++  async searchPeople(input,incoming){if(!roleMode())return legacy.searchPeople?legacy.searchPeople(input,incoming):{ok:false,reason:"unsupported"};const c=context(incoming);await admin(c);
++   try{const rows=await roleAdmin.search(c,{kind:"person",q:input.q});const proof=await admin(c);proof.assertCurrent();return{ok:true,people:rows.map(r=>({person:r.key,displayName:r.name,login:r.login??r.name})),truncated:rows.length>=20};}catch(error){if(error instanceof HubProtocolError&&error.code==="backpressure")return{ok:false,reason:"limited"};throw error;}
++  },
++  async preview(input,incoming){if(!roleMode())return legacy.preview(input,incoming);const c=context(incoming);prune();if(aliases.size>=16)throw new HubProtocolError("backpressure");
++   const next=await canonical(input.policy,c),result=await writer.previewAllowedList(next,c);if(!result.ok)return fail(result.code);
++   callerCurrent(c);const token=randomBytes(32).toString("hex"),impact:GroupImpact=validated(impactShape,result.impact);aliases.set(token,{digest:result.previewDigest,raw:JSON.stringify(input.policy),created:now(),expires:result.expiresAt});
++   return{ok:true,previewDigest:token,expiresAt:result.expiresAt,policyRevision:result.revision,authorizationVersion:version(),impact};
++  },
++  async apply(input,incoming){if(!roleMode())return legacy.apply(input,incoming);const c=context(incoming);prune();const checked=aliases.get(input.previewDigest);aliases.delete(input.previewDigest);
++   if(!checked||checked.raw!==JSON.stringify(input.policy))return{ok:false,code:"conflict"};const next=await canonical(input.policy,c),result=await writer.applyAllowedList(next,checked.digest,c);if(!result.ok)return fail(result.code);
++   callerCurrent(c);return{ok:true,policyRevision:result.revision,state:next.state};
++  },
++  async resume(input,incoming){if(!roleMode())return legacy.resume(input,incoming);const c=context(incoming),proof=await admin(c),p=parseRolePolicy(read()),image=JSON.stringify(p),item=inventory.current(input.resource),before=inventory.ledger(input.resource);
++   if(p.revision!==input.expectedPolicyRevision||!item||!before||before.state!=="suspended"||before.revision!==input.expectedLifecycleRevision||JSON.stringify(item.resource)!==JSON.stringify(before.resource))return{ok:false,code:"conflict"};
++   const valid=()=>{try{return !closed&&current()&&c.isCurrent?.()===true&&now()<proof.expiresAt&&JSON.stringify(read())===image&&inventory.current(input.resource)?.fingerprint===item.fingerprint;}catch{return false;}};
++   proof.assertCurrent();const permit=await authorization.resume(item.resource,{requestId:c.requestId,current:valid,requireAdmin:async()=>{const fresh=await admin(c);return fresh.actor;}});permit.assertCurrent();
++   const after=inventory.ledger(item.resource);if(!valid()||!after||after.state!=="active"||after.revision!==before.revision+1)throw new HubProtocolError("unavailable");
++   return{ok:true,resource:input.resource,state:"active",policyRevision:p.revision,lifecycleRevision:after.revision};
++  },
++ };
++ return{...control,close(){closed=true;aliases.clear();}};
++}
+diff --git a/src/hub/roles/allowed-list.ts b/src/hub/roles/allowed-list.ts
+new file mode 100644
+index 000000000..9b010b372
+--- /dev/null
++++ b/src/hub/roles/allowed-list.ts
+@@ -0,0 +1,40 @@
++/** Pure compatibility projection; it grants nothing and is never a policy writer or an operation permit. */
++import type {PersonKey} from "../types.js";
++import {person,validated,HubProtocolError} from "../validation.js";
++import {GROUP_CAPABILITIES,parseGroupPolicy,type HubGroupPolicy} from "../group-policy/model.js";
++import {parseRolePolicy,type HubRolePolicy,SELF_PERMISSIONS} from "./model.js";
++function carried(policy:HubRolePolicy){
++ return policy.assignments.filter(a=>a.subject.kind==="group"&&a.id===`legacy:group:${a.subject.group.objectId}`&&a.scope.kind==="hub"&&a.startsAt===0&&a.expiresAt===null
++  &&policy.roles.find(r=>r.id===a.roleId)!.permissions.every(c=>(SELF_PERMISSIONS as readonly string[]).includes(c)));
++}
++/** The shortcut edits only timeless carried groups. Other role grants keep their own scopes, expiries and quotas. */
++export function projectRoleAllowedList(input:unknown):HubGroupPolicy{
++ const p=parseRolePolicy(input);
++ return parseGroupPolicy({realm:p.realm,generation:p.generation,revision:p.revision,state:p.state,denies:p.denies,
++  ...(p.people?{people:p.people}:{}),...(p.teams?{teams:p.teams}:{}),
++  groups:carried(p).map(a=>{if(a.subject.kind!=="group")throw new HubProtocolError("invalid");const role=p.roles.find(r=>r.id===a.roleId)!;
++   return{group:a.subject.group,dn:a.subject.dn,allow:GROUP_CAPABILITIES.filter(c=>role.permissions.includes(c)),maxFleets:a.maxFleets??role.defaultMaxFleets};}),
++ });
++}
++/** Server adapter input only; the role writer must separately authorize the actor and seal/recheck the proposal. */
++export function mergeRoleAllowedList(input:unknown,shortcut:unknown,rootInput:PersonKey):HubRolePolicy{
++ const p=parseRolePolicy(input),next=parseGroupPolicy(shortcut),root=validated(person,rootInput);
++ if(root.realm!==p.realm||next.realm!==p.realm||next.generation!==p.generation||next.revision!==p.revision)throw new HubProtocolError("conflict");
++ const old=carried(p),owned=new Set(old.map(a=>a.id)),kept=p.assignments.filter(a=>!owned.has(a.id));
++ for(const rule of next.groups){
++  const id=`legacy:group:${rule.group.objectId}`,original=old.find(a=>a.id===id),role=original?p.roles.find(r=>r.id===original.roleId):undefined;
++  if(kept.some(a=>a.id===id))throw new HubProtocolError("conflict");
++  const same=role&&role.permissions.length===rule.allow.length&&rule.allow.every(c=>role.permissions.includes(c));let roleId=original?.roleId;
++  if(!same){
++   const mask=GROUP_CAPABILITIES.reduce((bits,c,i)=>bits|(rule.allow.includes(c)?1<<i:0),0);roleId=`allowed-list:self:${mask}`;
++   const existing=p.roles.find(r=>r.id===roleId);
++   if(existing&&(existing.kind!=="custom"||existing.permissions.length!==rule.allow.length||!rule.allow.every(c=>existing.permissions.includes(c))))throw new HubProtocolError("conflict");
++   if(!existing)p.roles.push({id:roleId,name:mask?`Allowed list: ${["Chat","Sharing","Fleet connections"].filter((_,i)=>mask&(1<<i)).join(" + ")}`:"Allowed list (no access)",kind:"custom",permissions:[...rule.allow],defaultMaxFleets:0});
++  }
++  kept.push({id,roleId:roleId!,subject:{kind:"group",group:rule.group,dn:rule.dn},scope:{kind:"hub"},startsAt:0,expiresAt:null,
++   maxFleets:same&&original&&(original.maxFleets??role!.defaultMaxFleets)===rule.maxFleets?original.maxFleets:rule.maxFleets,
++   assignedBy:original?.assignedBy??root,assignedAt:original?.assignedAt??0});
++ }
++ return parseRolePolicy({...p,assignments:kept,state:next.state,everEnabled:p.everEnabled||next.state!=="never-enabled",denies:next.denies,
++  teams:next.teams,people:next.people});
++}
+diff --git a/src/hub/roles/authority.ts b/src/hub/roles/authority.ts
+index 67e386976..27995d511 100644
+--- a/src/hub/roles/authority.ts
++++ b/src/hub/roles/authority.ts
+@@ -12,6 +12,28 @@ import type { HubCanonicalPolicy } from "./read.js";
+ 
+ export type HubManagementPermission = typeof MANAGEMENT_PERMISSIONS[number];
+ export const HUB_MANAGEMENT_PROOF_TTL = 5_000;
++const issuedManagementPermits = new WeakSet<object>();
++/** Private in-process adapter attestation; copied actors and shape-compatible objects confer no permission. */
++function issuedPermit(permit: unknown, permission: HubManagementPermission,
++  actor: { person: PersonKey; sessionId: string }): HubManagementPermit {
++  if (!permit || typeof permit !== "object" || !issuedManagementPermits.has(permit)) throw new HubProtocolError("denied");
++  const proof = permit as HubManagementPermit;
++  if (proof.permission !== permission || personKeyString(proof.actor.person) !== personKeyString(actor.person)
++    || proof.actor.sessionId !== actor.sessionId) throw new HubProtocolError("denied");
++  return proof;
++}
++export function assertHubManagementPermit(permit: unknown, permission: HubManagementPermission,
++  actor: { person: PersonKey; sessionId: string }): asserts permit is HubManagementPermit {
++  issuedPermit(permit, permission, actor).assertCurrent();
++}
++/** For a separately bounded operation: re-prove current graph/session/expiry, never extend an effect permit. */
++export function assertHubManagementAttestation(permit: unknown, permission: HubManagementPermission,
++  actor: { person: PersonKey; sessionId: string }): asserts permit is HubManagementPermit {
++  const proof = issuedPermit(permit, permission, actor);
++  if (!proof.assertAuthority) throw new HubProtocolError("denied");
++  proof.assertAuthority();
++}
++
+ const PREPARATION_BUDGET = 20_000;
+ type DirectoryActor = Extract<HubActor, { kind: "directory" }>;
+ export interface HubManagementPermit {
+@@ -21,6 +43,9 @@ export interface HubManagementPermit {
+   readonly expiresAt: number;
+   /** Mandatory before each effect/disclosure, including after any await or reentrant callback. */
+   assertCurrent(): void;
++  /** Re-prove authority at a long operation's checkpoints. Its own lifetime/authentication budgets still apply.
++   * This is NOT a replacement for assertCurrent on a short-lived effect permit. */
++  assertAuthority?(): void;
+ }
+ /** First issuance only: the issuer identity comes from the server's retained approval, never browser input. */
+ export interface HubJoinIssuerPermit {
+@@ -117,12 +142,12 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
+         || typeof incoming.isIdentityCurrent !== "function") throw new HubProtocolError("unavailable");
+       const authenticate = incoming.current.bind(incoming), sessionCurrent = incoming.isCurrent.bind(incoming);
+       const identityCurrent = incoming.isIdentityCurrent.bind(incoming), started = time(), before = read(), authEpoch = version();
+-      let retired = false, actor: DirectoryActor | null = null;
++      let retired = false, issued = false, actor: DirectoryActor | null = null;
+       const common = () => {
+         try {
+           if (retired || sessionCurrent() !== true) throw new HubProtocolError("unavailable");
+           const at = time();
+-          if (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET
++          if ((!issued && (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET))
+             || read().raw !== before.raw || version() !== authEpoch) throw new HubProtocolError("unavailable");
+           if (actor && identityCurrent(actor.person, actor.sessionId) !== true) throw new HubProtocolError("unavailable");
+           return at;
+@@ -156,17 +181,23 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
+       const allowed = (at: number) => before.kind === "group" ? personKeyString(who) === personKeyString(root)
+         : evaluateRolePolicy(before.policy, who, cap, null, { subject: facts }, at, root).outcome === "allow";
+       if (!allowed(proved.wall)) throw new HubProtocolError("denied");
++      const authority = () => {
++        try { const at = common(); if (!allowed(at.wall)) throw new HubProtocolError("denied"); return at; }
++        catch (error) { retired = true; throw error; }
++      };
++      issued = true;
+       const permit: HubManagementPermit = Object.freeze({ actor: actor!, permission: cap, source: before.kind === "group" ? "legacy" : "roles",
+         expiresAt: observed.wall + HUB_MANAGEMENT_PROOF_TTL,
++        assertAuthority() { authority(); },
+         assertCurrent() {
+           try {
+-            const at = common();
++            const at = authority();
+             if (at.wall >= observed.wall + HUB_MANAGEMENT_PROOF_TTL || at.elapsed >= observed.elapsed + HUB_MANAGEMENT_PROOF_TTL
+               || !allowed(at.wall)) throw new HubProtocolError("unavailable");
+           } catch (error) { retired = true; throw error; }
+         },
+       });
+-      permit.assertCurrent(); return permit;
++      permit.assertCurrent(); issuedManagementPermits.add(permit); return permit;
+     },
+     close() { closed = true; },
+   };
+diff --git a/src/hub/roles/change.ts b/src/hub/roles/change.ts
+index 1e598c621..8880b53bb 100644
+--- a/src/hub/roles/change.ts
++++ b/src/hub/roles/change.ts
+@@ -34,7 +34,7 @@ function deltas<T extends { id: string }>(before: readonly T[], after: readonly
+     const a = old.get(id) ?? null, b = next.get(id) ?? null; return equal(a, b) ? [] : [{ before: a, after: b }];
+   });
+ }
+-export function planRoleChange(before: unknown, next: unknown, actor: PersonKey, at: number): RoleChangePlan {
++export function planRoleChange(before: unknown, next: unknown, actor: PersonKey, at: number, options: {allowCarriedSelfUse?:boolean} = {}): RoleChangePlan {
+   const old = canonical(before), proposed = canonical(next), who = validated(person, actor), time = validated(epoch, at);
+   if (proposed.roles.some(r => r.permissions.some(c => (ROLE_APPROVAL_PERMISSIONS as readonly string[]).includes(c)))) throw new HubProtocolError("incompatible");
+   if (who.realm !== old.realm || proposed.realm !== old.realm || proposed.generation !== old.generation) throw new HubProtocolError();
+@@ -63,8 +63,9 @@ export function planRoleChange(before: unknown, next: unknown, actor: PersonKey,
+   });
+   // Carried T1 rules are not role assignments. A role write must never edit them as a
+   // side channel around the assignment/self-target checks. The allowed-list adapter owns edits.
+-  if (!equal(old.teams,proposed.teams) || !equal(old.people,proposed.people)) throw new HubProtocolError("invalid");
+-  const controls = old.rolesActive !== proposed.rolesActive || old.state !== proposed.state || !equal(old.denies, proposed.denies);
++  const carriersChanged=!equal(old.teams,proposed.teams)||!equal(old.people,proposed.people);
++  if (carriersChanged&&!options.allowCarriedSelfUse) throw new HubProtocolError("invalid");
++  const controls = old.rolesActive !== proposed.rolesActive || old.state !== proposed.state || !equal(old.denies, proposed.denies)||carriersChanged;
+   const changed = roles.length > 0 || assignments.length > 0 || controls;
+   const required: ("hub.admin" | "roles.assign")[] = [];
+   if (roles.length || controls) required.push("hub.admin");
+diff --git a/src/hub/roles/clock.ts b/src/hub/roles/clock.ts
+index bc712ffb0..e69233f54 100644
+--- a/src/hub/roles/clock.ts
++++ b/src/hub/roles/clock.ts
+@@ -4,18 +4,21 @@ import type { HubTransportStore } from "../store.js";
+ import type { PersonKey } from "../types.js";
+ import { epoch, HubProtocolError, person, uuid, validated } from "../validation.js";
+ import { personKeyString } from "../identity.js";
++import type { HubCanonicalPolicy } from "./read.js";
+ import { createHubCanonicalPolicyReader } from "./read.js";
+ import { parseHubRoleCutoverMarker } from "./cutover-marker.js";
+ export interface HubRoleClockOptions {
+   db: Database.Database; hubId: string; realm: string; generation: string; root: PersonKey;
+   transport: Pick<HubTransportStore, "read">; current(): boolean; now?: () => number;
++  /** Internal composition: the exact old policy only during its synchronous owned directory decision. */
++  policy?(): HubCanonicalPolicy;
+ }
+ export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
+   const { db, transport, current, realm } = options, hubId = validated(uuid, options.hubId), root = validated(person, options.root);
+   const readTransport = transport.read, readState = readTransport.bind(transport), now = options.now ?? Date.now;
+   let closed = false;
+   const live = () => !closed && current() === true && root.realm === realm && transport.read === readTransport;
+-  const read = createHubCanonicalPolicyReader({ ...options, current: live });
++  const read = options.policy ?? createHubCanonicalPolicyReader({ ...options, current: live });
+   const rawMarker = () => {
+     const rows = db.prepare("SELECT singleton,body FROM hub_role_cutover").all() as { singleton: number; body: string }[];
+     if (rows.length !== 1 || rows[0]!.singleton !== 1) throw new HubProtocolError("unavailable");
+diff --git a/src/hub/roles/cutover.ts b/src/hub/roles/cutover.ts
+index c99279254..9a16b2e77 100644
+--- a/src/hub/roles/cutover.ts
++++ b/src/hub/roles/cutover.ts
+@@ -1,4 +1,4 @@
+-/** Unmounted cutover preparation. Never registered or invoked by production startup in this slice. */
++/** Atomic role cutover, invoked by the role-capable server before admitting requests. */
+ import type Database from "better-sqlite3";
+ import {createHash,randomUUID} from "node:crypto";
+ import {performance} from "node:perf_hooks";
+@@ -9,11 +9,10 @@ import {epoch,parseStrictJson,person,uuid,validated} from "../validation.js";
+ import {parseGroupPolicy} from "../group-policy/model.js";
+ import {convertGroupPolicy} from "./convert.js";
+ import {parseRolePolicy} from "./model.js";
+-import {HUB_ROLE_WRITER_MIGRATION} from "./writer.js";
+-import {HUB_ROLE_EXPIRY_MIGRATION} from "./expiry.js";
++import {HUB_ROLE_CUTOVER_MIGRATION,HUB_ROLE_MIGRATIONS} from "./migrations.js";
++export {HUB_ROLE_CUTOVER_MIGRATION} from "./migrations.js";
+ import {captureRoleCutoverInventory} from "./cutover-inventory.js";
+ import {hubRoleCutoverMarkerSchema as markerSchema,parseHubRoleCutoverMarker} from "./cutover-marker.js";
+-export const HUB_ROLE_CUTOVER_MIGRATION:HubMigration={component:"roles-cutover",version:1,up(db){db.exec("CREATE TABLE IF NOT EXISTS hub_role_cutover(singleton INTEGER PRIMARY KEY CHECK(singleton=1),body TEXT NOT NULL)");}};
+ export interface RoleCutoverOptions {db:Database.Database;hubId:string;realm:string;generation:string;root:PersonKey;
+  transport:Pick<HubTransportStore,"read"|"mutate">;migrations:readonly HubMigration[];current():boolean;refreshAuthorization():void;now?:()=>number;elapsedNow?:()=>number;}
+ export type RoleCutoverResult={ok:true;changed:boolean;revision:number;epoch:number}|{ok:false;code:"unavailable"|"conflict"|"expired"};
+@@ -23,7 +22,7 @@ function sync(value:unknown){if(value&&typeof(value as{then?:unknown}).then==="f
+ export function createHubRoleCutover(options:RoleCutoverOptions){
+  const{db,transport,current,refreshAuthorization}=options,hubId=validated(uuid,options.hubId),root=validated(person,options.root),{realm,generation}=options;
+  const readTransportMethod=transport.read,mutateMethod=transport.mutate,readTransport=readTransportMethod.bind(transport),mutate=mutateMethod.bind(transport);
+- const base=options.migrations.map(m=>Object.freeze({...m,up:m.up.bind(m)})),roleMigrations=[HUB_ROLE_WRITER_MIGRATION,HUB_ROLE_EXPIRY_MIGRATION,HUB_ROLE_CUTOVER_MIGRATION];
++ const base=options.migrations.map(m=>Object.freeze({...m,up:m.up.bind(m)})),roleMigrations=HUB_ROLE_MIGRATIONS;
+  if(base.some(m=>roleMigrations.some(r=>r.component===m.component)))throw new Refusal("unavailable");
+  const full=[...base,...roleMigrations],clock=options.now??Date.now,elapsedClock=options.elapsedNow??(()=>performance.now());let closed=false,working=false,publishedEpoch:number|null=null;
+  const now=()=>validated(epoch,clock());
+diff --git a/src/hub/roles/expiry-effects.ts b/src/hub/roles/expiry-effects.ts
+new file mode 100644
+index 000000000..065a4bcc3
+--- /dev/null
++++ b/src/hub/roles/expiry-effects.ts
+@@ -0,0 +1,41 @@
++/** Fresh, bounded expiry consequences over known local people; manual/code provenance is never revoked by expiry. */
++import {randomUUID} from "node:crypto";
++import {HubProtocolError} from "../validation.js";
++import {createHubGroupAdminInventory} from "../group-policy/admin-inventory.js";
++import {createHubGroupImpactInventory} from "../group-policy/impact-inventory.js";
++import {readHubGroupImpactFacts} from "../group-policy/admin-facts.js";
++import {buildHubRoleImpact} from "../group-policy/admin-impact.js";
++import {createHubGroupResources} from "../group-policy/resources.js";
++import {readHubOperationalPolicy} from "../group-policy/store.js";
++import {parseRolePolicy} from "./model.js";
++import type {RoleResourceOptions} from "./resource-effects.js";
++import type {RoleExpiryOptions} from "./expiry.js";
++import type {HubDirectory} from "../directory/types.js";
++import type {HubDirectoryReads} from "../directory/admission.js";
++export function createHubRoleExpiryEffects(options:RoleResourceOptions & {directory:HubDirectory;reads:Pick<HubDirectoryReads,"withDirectoryRead">}):RoleExpiryOptions["effects"]{
++ const {db,root,transport,policy,audit,current,now,directory,reads}=options;
++ const live=()=>{if(current()!==true)throw new HubProtocolError("unavailable");};
++ const inventory=createHubGroupAdminInventory({db,transport,realm:root.realm});
++ const observations=createHubGroupImpactInventory({db,transport,administrator:root,inventory,current,now});
++ const snapshot=()=>{live();const policyNow=parseRolePolicy(readHubOperationalPolicy(policy)),s=observations.snapshot([policyNow]);return{fingerprint:s.fingerprint,ordinaryFingerprint:s.ordinaryFingerprint,people:s.people.map(p=>p.key)};};
++ return{snapshot,async prepare(input,assertCurrent){
++  assertCurrent();live();const before=observations.snapshot([input.policy]);
++  const observed=await readHubGroupImpactFacts({directory,people:before.people,now,deadline:input.at+20000,assertCurrent,
++   preferEligibility:!input.policy.assignments.some(a=>a.subject.kind==="group"&&input.policy.roles.find(r=>r.id===a.roleId)!.permissions.some(c=>["ask_agents","publish_agents","pair_fleet"].includes(c)))&&before.people.every(p=>!p.askGroups?.length),
++   withDirectoryRead:work=>reads.withDirectoryRead(root,work),
++  });assertCurrent();
++  const impact=buildHubRoleImpact({before:input.policy,next:input.policy,administrator:root,...before,facts:observed.facts,at:now()});
++  const selected=impact.suspend.filter(r=>inventory.ledger(r)?.source==="group"),selectedIds=new Set(selected.map(r=>JSON.stringify(r)));
++  const ctx={requestId:randomUUID(),current},resources=createHubGroupResources({db,policy,audit,current,now});
++  const row=(resource:Parameters<typeof inventory.ledger>[0])=>{const r=inventory.ledger(resource);return r?{source:r.source,state:r.state,revision:r.revision}:null;};
++  const prove=()=>{assertCurrent();if(observations.snapshot([input.policy]).fingerprint!==before.fingerprint)throw new HubProtocolError("conflict");};
++  prove();return{fingerprint:before.fingerprint,changed:selected.length>0,impact:{...impact.impact,suspendedOnSave:impact.impact.suspendedOnSave.filter(r=>selected.some(s=>s.kind===r.kind&&s.id===r.id&&s.revision===r.revision))},assertCurrent:prove,
++   commit(tx){if(tx!==db||!db.inTransaction)throw new HubProtocolError("unavailable");prove();for(const r of selected)resources.suspendExpired(r,ctx);},
++   assertCommitted(){live();if(observations.snapshot([input.policy]).ordinaryFingerprint!==before.ordinaryFingerprint)throw new HubProtocolError("conflict");
++    for(const old of before.resources){const expected=old.lifecycle&&selectedIds.has(JSON.stringify(old.resource))?{...old.lifecycle,state:"suspended",revision:old.lifecycle.revision+1}:old.lifecycle;
++     if(JSON.stringify(row(old.resource))!==JSON.stringify(expected))throw new HubProtocolError("conflict");
++    }
++   },
++  };
++ }};
++}
+diff --git a/src/hub/roles/migrations.ts b/src/hub/roles/migrations.ts
+new file mode 100644
+index 000000000..634c289f9
+--- /dev/null
++++ b/src/hub/roles/migrations.ts
+@@ -0,0 +1,43 @@
++/** Server-only registry selection. Cold recovery never migrates or repairs authority state. */
++import type Database from "better-sqlite3";
++import { HubStateError, type HubMigration } from "../db.js";
++import { HUB_ROLE_WRITER_MIGRATION } from "./writer.js";
++import { HUB_ROLE_EXPIRY_MIGRATION } from "./expiry.js";
++
++export const HUB_ROLE_CUTOVER_MIGRATION: HubMigration = {
++  component: "roles-cutover", version: 1,
++  up(db) { db.exec("CREATE TABLE IF NOT EXISTS hub_role_cutover(singleton INTEGER PRIMARY KEY CHECK(singleton=1),body TEXT NOT NULL)"); },
++};
++export const HUB_ROLE_MIGRATIONS: readonly HubMigration[] = Object.freeze([
++  HUB_ROLE_WRITER_MIGRATION, HUB_ROLE_EXPIRY_MIGRATION, HUB_ROLE_CUTOVER_MIGRATION,
++]);
++
++/** Legacy images retain the base registry; converted images require the complete known role registry. */
++export function hubRoleMigrationsForState(db: Database.Database, migrations: readonly HubMigration[]): readonly HubMigration[] {
++  const names = new Set(HUB_ROLE_MIGRATIONS.map(m => m.component));
++  const provided = migrations.filter(m => names.has(m.component));
++  if (provided.length && (provided.length !== HUB_ROLE_MIGRATIONS.length
++    || provided.some(m => HUB_ROLE_MIGRATIONS.find(r => r.component === m.component)?.version !== m.version))) {
++    throw new HubStateError("hub-state-mismatch", "the role migration registry is incomplete");
++  }
++  const base = migrations.filter(m => !names.has(m.component));
++  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hub_schema'").get()) return base;
++  const stored = db.prepare("SELECT component,version FROM hub_schema WHERE component IN ('roles-writer','roles-expiry','roles-cutover') ORDER BY component")
++    .all() as { component: string; version: number }[];
++  if (!stored.length) return base;
++  const expected = HUB_ROLE_MIGRATIONS.map(m => ({ component: m.component, version: m.version }))
++    .sort((a, b) => a.component.localeCompare(b.component));
++  if (stored.some(m => m.version > (expected.find(r => r.component === m.component)?.version ?? 0))) {
++    throw new HubStateError("hub-state-newer", "the stored role migration registry is newer");
++  }
++  if (JSON.stringify(stored) !== JSON.stringify(expected)) throw new HubStateError("hub-state-mismatch", "the stored role migration registry is incomplete");
++  // A current registry must not recreate lost authority tables on mount or during cold recovery.
++  for (const sql of [
++    "SELECT id,body,at FROM hub_role_events LIMIT 0",
++    "SELECT id,person,acknowledged_at FROM hub_role_notices LIMIT 0",
++    "SELECT person,role_id,assignment_id,audit_id FROM hub_role_root_self LIMIT 0",
++    "SELECT term,assignment_id,expires_at,audit_id,settled_at FROM hub_role_expiry_terms LIMIT 0",
++    "SELECT singleton,body FROM hub_role_cutover LIMIT 0",
++  ]) db.prepare(sql).all();
++  return [...base, ...HUB_ROLE_MIGRATIONS];
++}
+diff --git a/src/hub/roles/overview.ts b/src/hub/roles/overview.ts
+new file mode 100644
+index 000000000..7e352a637
+--- /dev/null
++++ b/src/hub/roles/overview.ts
+@@ -0,0 +1,15 @@
++/** A partial overview is disclosed only under its own operation permits, never a session display flag. */
++import type {HubRequestContext} from "../types.js";
++import {HubProtocolError} from "../validation.js";
++import type {HubManagementAuthority,HubManagementPermit} from "./authority.js";
++export async function hubAdminOverviewPermit(ctx:HubRequestContext,authority:Pick<HubManagementAuthority,"require">){
++ const kinds=["fleets.manage","join.manage"] as const;
++ const attempts=await Promise.allSettled(kinds.map(cap=>authority.require(ctx,cap)));
++ const permits:HubManagementPermit[]=attempts.flatMap(result=>result.status==="fulfilled"?[result.value]:[]);
++ if(!permits.length){
++  const unavailable=attempts.some(result=>result.status==="rejected"&&(!(result.reason instanceof HubProtocolError)||result.reason.code!=="denied"));
++  throw new HubProtocolError(unavailable?"unavailable":"denied");
++ }
++ const assertCurrent=()=>{for(const permit of permits)permit.assertCurrent();};assertCurrent();
++ return{fleets:permits.some(p=>p.permission==="fleets.manage"),joining:permits.some(p=>p.permission==="join.manage"),assertCurrent};
++}
+diff --git a/src/hub/roles/resource-effects.ts b/src/hub/roles/resource-effects.ts
+index a77dd25ed..1d39afe5d 100644
+--- a/src/hub/roles/resource-effects.ts
++++ b/src/hub/roles/resource-effects.ts
+@@ -11,16 +11,17 @@ import {createHubGroupResources} from "../group-policy/resources.js";
+ import {readHubOperationalPolicy,type HubGroupPolicyStore} from "../group-policy/store.js";
+ import {parseRolePolicy} from "./model.js";
+ import type {RoleWriteEffects} from "./writer.js";
+-export function createHubRoleResourceEffects(options:{
++export interface RoleResourceOptions {
+  db:Database.Database;root:PersonKey;transport:Pick<HubTransportStore,"read">;policy:HubGroupPolicyStore;
+  audit:Pick<HubAuditStore,"appendInTransaction">;current():boolean;now():number;
+-}):RoleWriteEffects{
++}
++export function createHubRoleResourceEffects(options:RoleResourceOptions):RoleWriteEffects{
+  const {db,root,transport,policy,audit,current,now}=options;
+  const live=()=>{if(current()!==true)throw new HubProtocolError("unavailable");};
+  const inventory=createHubGroupAdminInventory({db,transport,realm:root.realm});
+  const observations=createHubGroupImpactInventory({db,transport,administrator:root,inventory,current,now});
+  const read=()=>{live();return parseRolePolicy(readHubOperationalPolicy(policy));};
+- const snapshot=()=>{const s=observations.snapshot([read()]);return{fingerprint:s.fingerprint,ordinaryFingerprint:s.ordinaryFingerprint,people:s.people.map(p=>p.key)};};
++ const snapshot=(policies?:readonly import("./model.js").HubRolePolicy[])=>{const currentPolicy=read(),s=observations.snapshot(policies??[currentPolicy]);return{fingerprint:s.fingerprint,ordinaryFingerprint:s.ordinaryFingerprint,people:s.people.map(p=>p.key)};};
+  return{snapshot,async prepare(plan,facts,assertCurrent,context){
+   assertCurrent();live();if(!context||context.actor.realm!==root.realm)throw new HubProtocolError("unavailable");
+   const before=observations.snapshot([plan.before,plan.next]);
+diff --git a/src/hub/roles/writer.ts b/src/hub/roles/writer.ts
+index e421a8d5f..10cc67a13 100644
+--- a/src/hub/roles/writer.ts
++++ b/src/hub/roles/writer.ts
+@@ -9,6 +9,7 @@ import { planRoleChange } from "./change.js";
+ import { heldRoleBundle, checkRoleChange } from "./delegation.js";
+ import { roleAuditValue, assignmentAuditValue, rolePersonLabel } from "./audit-details.js";
+ import { hasCurrentAdministrator, mayReduceAdministrators, roleReview, type RoleReview } from "./review.js";
++import {readAllowedListTeams} from "../group-policy/team-subjects.js";
+ import { snapshotRolePersonFacts } from "./evaluate.js";
+ import type { HubAuditStore } from "../audit/index.js";
+ import type { HubDirectory } from "../directory/types.js";
+@@ -30,7 +31,7 @@ export interface RoleWriteEffects {
+     assertCommitted(): void;
+   }>;
+   /** Full inventory binds preview; ordinary excludes only this plan's exact lifecycle consequences. */
+-  snapshot(): { fingerprint: string; ordinaryFingerprint: string; people: readonly PersonKey[] };
++  snapshot(policies?:readonly HubRolePolicy[]): { fingerprint: string; ordinaryFingerprint: string; people: readonly PersonKey[] };
+ }
+ export interface RoleWriterOptions {
+   db: Database.Database; hubId: string; realm: string; generation: string; root: PersonKey;
+@@ -67,7 +68,7 @@ function logical(plan: RoleChangePlan): string {
+ }
+ interface Captured { requestId: string; current(): ReturnType<HubRequestContext["current"]>; requirePerson(): Promise<PersonKey>; isCurrent(): boolean }
+ interface Identity { person: PersonKey; sessionId: string }
+-type Operation = "ordinary" | "root-self";
++type Operation = "ordinary" | "root-self" | "allowed-list";
+ interface Candidate { operation: Operation; actor: Identity; raw: string; before: string; epoch: number; inventory: string; logical: string; facts: string; impact: string; effects: string; created: number; expiresAt: number }
+ export function createHubRoleWriter(options: RoleWriterOptions) {
+   const { db, audit, reads, directory, effects, current, version: readVersion, advanceAuthorization, refreshAuthorization } = options;
+@@ -116,8 +117,8 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
+     }
+     return { ok: false, code };
+   };
+-  const snapshot = () => {
+-    const s = effects.snapshot(); if (!s || typeof s.fingerprint !== "string" || s.fingerprint.length > 1024 || typeof s.ordinaryFingerprint !== "string" || s.ordinaryFingerprint.length > 1024 || !Array.isArray(s.people) || s.people.length > 256) throw new Refusal("unknown");
++  const snapshot = (policies?:readonly HubRolePolicy[]) => {
++    const s = effects.snapshot(policies); if (!s || typeof s.fingerprint !== "string" || s.fingerprint.length > 1024 || typeof s.ordinaryFingerprint !== "string" || s.ordinaryFingerprint.length > 1024 || !Array.isArray(s.people) || s.people.length > 256) throw new Refusal("unknown");
+     return { fingerprint: s.fingerprint, ordinaryFingerprint: s.ordinaryFingerprint, people: s.people.map(p => validated(person, p)) };
+   };
+   const rootId = `root-self:${root.objectId}`;
+@@ -132,19 +133,33 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
+   const prepare = async (input: HubRolePolicy, ctx: Captured, actor: Identity, operation: Operation) => {
+     if (db.inTransaction) throw new Refusal("invalid");
+     const before = read(), authEpoch = version(), started = now(), elapsedStart = elapsed();
++    const policyImages=[before.policy,input];
+     let inventory: ReturnType<typeof snapshot> | null = null;
+     const assertBudget = () => { const at = elapsed(); if (now() < started || at < elapsedStart || at >= elapsedStart + 20_000) throw new Refusal("expired"); };
+     const assertBefore = () => {
+       assert(ctx); assertBudget();
+-      if (read().raw !== before.raw || version() !== authEpoch || inventory && snapshot().fingerprint !== inventory.fingerprint) throw new Refusal("conflict");
++      if (read().raw !== before.raw || version() !== authEpoch || inventory && snapshot(policyImages).fingerprint !== inventory.fingerprint) throw new Refusal("conflict");
+     };
+-    let plan = planRoleChange(before.policy, input, actor.person, now());
++    let plan = planRoleChange(before.policy, input, actor.person, now(),{allowCarriedSelfUse:operation==="allowed-list"});
+     const authorize = (bundle: ReturnType<typeof heldRoleBundle>) => {
+       if (operation === "root-self") {
+         if (!same(actor.person, root) || bundle.kind !== "known" || !bundle.administrator) throw new Refusal("denied");
+         if (logical(plan) !== logical(planRoleChange(before.policy, rootProposal(before.policy), root, now()))) throw new Refusal("invalid");
+       } else {
+         if ([...plan.roles, ...plan.assignments].some(d => d.after?.id.startsWith("root-self:"))) throw new Refusal("invalid");
++        if(operation==="allowed-list"){
++          if(bundle.kind!=="known"||!bundle.administrator)throw new Refusal("denied");
++          const permissionImage=(r:{allow:readonly string[];maxFleets:number}|undefined)=>r?json([SELF_PERMISSIONS.filter(c=>r.allow.includes(c)),r.maxFleets]):null;
++          const ownBefore=plan.before.people?.find(r=>same(r.person,actor.person)),ownAfter=plan.next.people?.find(r=>same(r.person,actor.person));
++          if(permissionImage(ownBefore)!==permissionImage(ownAfter))throw new Refusal("self-target");
++          const increases=(before:{allow:readonly string[];maxFleets:number}|undefined,after:{allow:readonly string[];maxFleets:number})=>after.allow.some(c=>!before?.allow.includes(c))||after.allow.includes("pair_fleet")&&after.maxFleets>(before?.maxFleets??0);
++          const teams=readAllowedListTeams(db,plan.next);
++          if(teams.snapshots.some(r=>!r.team))throw new Refusal("invalid");
++          for(const row of plan.next.teams??[])if(increases(plan.before.teams?.find(r=>r.teamId===row.teamId),row)&&teams.memberships(actor.person).includes(row.teamId))throw new Refusal("self-target");
++          for(const row of plan.next.people??[])if(increases(plan.before.people?.find(r=>same(r.person,row.person)),row)){
++            const fact=facts.get(personKeyString(row.person));if(fact?.kind==="ineligible")throw new Refusal("denied");if(fact?.kind==="unknown")throw new Refusal("unknown");
++          }
++        }
+         const answer = checkRoleChange(plan, bundle); if (answer !== "allow") throw new Refusal(answer);
+       }
+     };
+@@ -161,10 +176,11 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
+     // A person without delegation authority must not trigger inventory/other-person directory scans.
+     await observe(actor.person);
+     authorize(heldRoleBundle(before.policy, actor.person, facts.get(personKeyString(actor.person))!, now(), root));
+-    inventory = snapshot(); const people = new Map<string, PersonKey>();
+-    for (const p of [actor.person, root, ...inventory.people, ...before.policy.assignments.flatMap(a => a.subject.kind === "person" ? [a.subject.person] : []), ...input.assignments.flatMap(a => a.subject.kind === "person" ? [a.subject.person] : [])]) people.set(personKeyString(p), p);
++    inventory = snapshot(policyImages); const people = new Map<string, PersonKey>();
++    for (const p of [actor.person, root, ...inventory.people,...(before.policy.people??[]).map(r=>r.person),...(input.people??[]).map(r=>r.person), ...before.policy.assignments.flatMap(a => a.subject.kind === "person" ? [a.subject.person] : []), ...input.assignments.flatMap(a => a.subject.kind === "person" ? [a.subject.person] : [])]) people.set(personKeyString(p), p);
+     if (people.size > 256) throw new Refusal("unknown");
+     for (const [id, who] of [...people].sort(([a], [b]) => a.localeCompare(b))) if (!facts.has(id)) await observe(who);
++    if(operation==="allowed-list")for(const row of input.people??[])if(!facts.has(personKeyString(row.person)))throw new Refusal("unknown");
+     // Resolve every newly affected group by GUID. A search hit or a DN label cannot stand in for this proof.
+     for (const d of plan.affected) if (d.after) {
+       const a = d.after;
+@@ -181,7 +197,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
+     }
+     await authenticate(ctx, actor); assertBefore();
+     // Authentication may have awaited past an assignment's expiry: recompute the held bundle at this exact time.
+-    plan = planRoleChange(before.policy, input, actor.person, now());
++    plan = planRoleChange(before.policy, input, actor.person, now(),{allowCarriedSelfUse:operation==="allowed-list"});
+     const finalBundle = heldRoleBundle(before.policy, actor.person, facts.get(personKeyString(actor.person))!, now(), root);
+     authorize(finalBundle);
+     const value = await effects.prepare(plan, new Map([...facts].map(([id, fact]) => [id, structuredClone(fact)])), assertBefore, Object.freeze({actor:Object.freeze({...actor.person}),requestId:ctx.requestId})); assertBefore();
+@@ -192,7 +208,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
+       assertCurrent: value.assertCurrent.bind(value), commit: value.commit.bind(value), ...(value.afterPolicyWrite ? {afterPolicyWrite:value.afterPolicyWrite.bind(value)} : {}), assertCommitted: value.assertCommitted.bind(value) });
+     sync(prepared.assertCurrent());
+     await authenticate(ctx, actor); assertBefore();
+-    plan = planRoleChange(before.policy, input, actor.person, now());
++    plan = planRoleChange(before.policy, input, actor.person, now(),{allowCarriedSelfUse:operation==="allowed-list"});
+     const semanticFacts = json([...facts].map(([id, f]) => [id, f.kind === "complete" ? { kind: f.kind, person: f.person, groups: [...f.groups].sort() } : f.kind === "unknown" ? { kind: f.kind } : { kind: f.kind, person: f.person }]));
+     const recipients = [...people].filter(([id, who]) => [before.policy, plan.next].some(p => heldRoleBundle(p, who, facts.get(id)!, now(), root).administrator && facts.get(id)!.kind !== "ineligible" && facts.get(id)!.kind !== "unknown")).map(([id]) => id).sort();
+     const assertAuthority = () => {
+@@ -204,7 +220,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
+     };
+     assertAuthority();
+     const review=roleReview(plan,people.values(),facts,root,now());
+-    return { before, plan, review, authEpoch, inventory, facts: semanticFacts, prepared, recipients, started, assertBudget, assertBefore, assertAuthority, logical: logical(plan) };
++    return { before, plan, review, authEpoch, inventory, inventoryCurrent:()=>snapshot(policyImages), facts: semanticFacts, prepared, recipients, started, assertBudget, assertBefore, assertAuthority, logical: logical(plan) };
+   };
+   const prune = () => { const at = now(); for (const [id, c] of candidates) if (at < c.created || at >= c.expiresAt) candidates.delete(id); };
+   const preview = async (input: unknown, incoming: HubRequestContext, operation: Operation = "ordinary"): Promise<RolePreviewResponse> => {
+@@ -256,7 +272,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
+           if (operation === "root-self") db.prepare("INSERT INTO hub_role_root_self VALUES(?,?,?,?)").run(personKeyString(root), rootId, rootId, id);
+           if (notify) for (const recipient of p.recipients) db.prepare("INSERT INTO hub_role_notices(id,person) VALUES(?,?)").run(id, recipient);
+           const committed = () => { assert(ctx!); unexpired(); p.assertBudget(); p.assertAuthority();
+-            if (read().raw !== serialized || snapshot().ordinaryFingerprint !== p.inventory.ordinaryFingerprint) throw new Refusal("conflict");
++            if (read().raw !== serialized || p.inventoryCurrent().ordinaryFingerprint !== p.inventory.ordinaryFingerprint) throw new Refusal("conflict");
+             if (operation === "root-self" && json(rootMarker()) !== json({ person: personKeyString(root), role_id: rootId, assignment_id: rootId, audit_id: id })) throw new Refusal("conflict");
+             sync(p.prepared.assertCommitted());
+           };
+@@ -303,6 +319,9 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
+     } catch(error) { return refused(ctx,actor,error); }
+   };
+   return {
++    /** Internal allowed-list adapter only; ordinary HTTP role writes cannot select this operation. */
++    previewAllowedList:(input:unknown,ctx:HubRequestContext)=>preview(input,ctx,"allowed-list"),
++    applyAllowedList:(input:unknown,digest:string,ctx:HubRequestContext)=>apply(input,digest,ctx,"allowed-list"),
+     preview: (input: unknown, ctx: HubRequestContext) => preview(input,ctx),
+     apply: (input: unknown, digest: string, ctx: HubRequestContext) => apply(input,digest,ctx), notices, acknowledge,
+     async previewRootSelf(ctx: HubRequestContext): Promise<RolePreviewResponse> {
+diff --git a/src/hub/runtime.ts b/src/hub/runtime.ts
+index 9b890ed97..661f28adb 100644
+--- a/src/hub/runtime.ts
++++ b/src/hub/runtime.ts
+@@ -51,7 +51,7 @@ export type HubMemberHost = Pick<HubMemberFactoryOptions, "updates" | "attachUpd
+  */
+ export const S3B_HTTP_ENTRY = async (): Promise<HubHttpEntry> => {
+   const s3 = await import("./http/compose.js");
+-  return { migrations: s3.migrations, createHubHttp: (deps) => s3.createHubHttp(deps, hubTxDatabase) };
++  return { roleSettingsV1:true,migrations: s3.migrations, createHubHttp: (deps) => s3.createHubHttp(deps, hubTxDatabase) };
+ };
+ import { hubTxDatabase, type HubHoldCode } from "./db.js";
+ 
+diff --git a/src/hub/session-directory-transition.ts b/src/hub/session-directory-transition.ts
+index 411a4c299..a899a5b15 100644
+--- a/src/hub/session-directory-transition.ts
++++ b/src/hub/session-directory-transition.ts
+@@ -1,3 +1,4 @@
++import {assertHubManagementAttestation,type HubManagementPermit} from "./roles/authority.js";
+ /** #3425: request-local browser handoff for the ONE directory SQL decision. No token in files, audit or notices. */
+ import { createHash, randomBytes, randomUUID } from "node:crypto";
+ import type Database from "better-sqlite3";
+@@ -31,9 +32,9 @@ function current(r: Row | undefined, who: string, epoch: number, now: number): r
+ }
+ 
+ /** Only server session rows created by successful trusted-directory sign-in attest authentication. Never touches seen_at. */
+-export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor): number | null {
++export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor,permit?:HubManagementPermit): number | null {
+   const actor = validated(actorSchema, raw);
+-  if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) return null;
++  if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) {try{assertHubManagementAttestation(permit,"hub.admin",actor);}catch{return null;}}
+   return core.atomic(db => {
+     const now = core.now(), who = personKeyString(actor.person), r = row(db, actor.sessionId);
+     if (!current(r, who, core.directoryEpoch, now)) return null;
+diff --git a/src/hub/sessions.ts b/src/hub/sessions.ts
+index 9bab86a29..d9f8e0962 100644
+--- a/src/hub/sessions.ts
++++ b/src/hub/sessions.ts
+@@ -110,8 +110,8 @@ export class HubSessions {
+   }
+ 
+   /** Internal server adapters only; never mounted as token/ref lookup routes. */
+-  recentAuthentication(actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>): number | null {
+-    return recentHubDirectoryAuthentication(this.core, actor);
++  recentAuthentication(actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>,permit?:import("./roles/authority.js").HubManagementPermit): number | null {
++    return recentHubDirectoryAuthentication(this.core, actor,permit);
+   }
+   prepareDirectoryRotation(token: string, actor: Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>): HubDirectorySessionRotation {
+     return prepareHubDirectorySessionRotation(this.core, token, actor);
+@@ -203,7 +203,13 @@ export class HubSessions {
+       administrative = await this.core.deps.management.require(base,"hub.admin");
+       administrative.assertCurrent(); return administrative.actor;
+     };
+-    const isCurrent = () => { if (!identityCurrent()) return false; try { administrative?.assertCurrent(); return true; } catch { return false; } };
++    const isCurrent = () => {
++      if (!identityCurrent()) return false;
++      try {
++        if (administrative) administrative.assertAuthority ? administrative.assertAuthority() : administrative.assertCurrent();
++        return true;
++      } catch { return false; }
++    };
+     return {requestId,token,current,isCurrent,isIdentityCurrent,requirePerson,requireAdmin};
+   }
+ }
+diff --git a/src/hub/settings-commit.ts b/src/hub/settings-commit.ts
+index 0b4e77dd5..05a76a13a 100644
+--- a/src/hub/settings-commit.ts
++++ b/src/hub/settings-commit.ts
+@@ -28,6 +28,7 @@
+  * - Directory-v2 preserves rename v1. Its ONLY decision is settings-directory-decision.ts's root SQL COMMIT (including
+  *   floor/version, binding, sessions, audit and complete security notices). Its file phase is recovery progress only.
+  */
++import { assertHubManagementAttestation, type HubManagementPermit } from "./roles/authority.js";
+ import { createHash, randomBytes, randomUUID } from "node:crypto";
+ import { closeSync, existsSync, fsyncSync, openSync, readFileSync, rmSync } from "node:fs";
+ import { dirname, join } from "node:path";
+@@ -112,10 +113,11 @@ interface PreparedDirectory {
+   changes: HubDirectoryDecisionRequest["changes"]; recipients: HubDirectoryDecisionRequest["recipients"];
+   createdAt: number; expiresAt: number;
+   recoveryDeadline?: number;
++  adminPermit?: HubManagementPermit;
+ }
+ export interface HubDirectorySettingsWriter {
+   /** Internal only: caller proves old-directory recent auth/D3, same immutable candidate admin, GUIDs and trust consent. */
+-  prepare(candidate: HubDirectorySettingsCandidate, actor: DirectoryActor, current: () => boolean): { ref: string; expiresAt: number };
++  prepare(candidate: HubDirectorySettingsCandidate, actor: DirectoryActor, current: () => boolean, adminPermit?: HubManagementPermit): { ref: string; expiresAt: number };
+   commit(ref: string, actor: DirectoryActor, current: () => boolean, rotation?: HubDirectorySessionRotation, recoveryDeadline?: number): { receiptId: string; directoryEpoch: number };
+   /** Only the exact prior-content intent preauthorized by the original operation; never an old session/role.
+    * An optional orchestration deadline is checked by the writer's final clock, not just before an await. */
+@@ -291,6 +293,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
+     };
+     const check = () => {
+       checkTime();
++      if (p.adminPermit && p.actor.kind === "hub-administrator") assertHubManagementAttestation(p.adminPermit, "hub.admin", p.actor);
+       if (!currentProof(current)) throw new HubSettingsError("denied");
+       image(true);
+       if (!same(directoryImage(), p.before)) throw new HubSettingsError("stale");
+@@ -331,11 +334,14 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
+     return finishDirectory(journal)!;
+   };
+   const directoryWriter: HubDirectorySettingsWriter = {
+-    prepare(candidate, actor, current) {
++    prepare(candidate, actor, current, adminPermit) {
+       const metadata = parseHubDirectoryDecisionMetadata({ actor, changes: candidate.changes, recipients: candidate.recipients });
+       const cfg = structuredClone(candidate.directory), nextDirectory = resolveDirectoryConfig(cfg), old = image(true), oldCfg = obj(old.hub.directory);
+       const oldSecret = readSecret(), before = directoryImage(old.hub, old.manifest, oldSecret);
+-      if (metadata.actor.kind === "hub-administrator" && !same(metadata.actor.person, old.hub.administrator)) throw new HubSettingsError("denied");
++      if (metadata.actor.kind === "hub-administrator") {
++        if (adminPermit) assertHubManagementAttestation(adminPermit, "hub.admin", metadata.actor);
++        else if (!same(metadata.actor.person, old.hub.administrator)) throw new HubSettingsError("denied");
++      }
+       if (oldCfg.bindPasswordRef !== BIND_PASSWORD_REF || cfg.bindPasswordRef !== undefined && cfg.bindPasswordRef !== BIND_PASSWORD_REF
+         || nextDirectory.realm !== oldCfg.realm || nextDirectory.profile !== oldCfg.profile) throw new HubSettingsError("invalid");
+       const next = { ...old.hub, directory: { ...cfg, bindPasswordRef: BIND_PASSWORD_REF } };
+@@ -357,7 +363,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
+       for (const [key, value] of preparedDirectory) if (value.expiresAt <= t) preparedDirectory.delete(key);
+       if (preparedDirectory.size >= MAX_PREPARED) throw new HubSettingsError("busy");
+       const ref = randomBytes(24).toString("base64url"), expiresAt = t + PREPARED_MS;
+-      preparedDirectory.set(ref, { ...metadata, before, expected, next: structuredClone(next), secret, generation, createdAt: t, expiresAt });
++      preparedDirectory.set(ref, { ...metadata, before, expected, next: structuredClone(next), secret, generation, createdAt: t, expiresAt, ...(adminPermit ? { adminPermit } : {}) });
+       return { ref, expiresAt };
+     },
+     commit(ref, actor, current, rotation, recoveryDeadline) {
+diff --git a/src/hub/settings-directory-ca.ts b/src/hub/settings-directory-ca.ts
+index 32f00b43a..3ab19a4b5 100644
+--- a/src/hub/settings-directory-ca.ts
++++ b/src/hub/settings-directory-ca.ts
+@@ -34,7 +34,7 @@ export function createHubDirectorySettingsCa(options: HubDirectorySettingsCaDeps
+   const probes = new Map<string, Probe>();
+   let stopped = false, preparing = 0;
+   const time = () => { const t = now(); if (!Number.isSafeInteger(t) || t < 0) throw new HubProtocolError("revoked"); return t; };
+-  const context = (input: HubDirectoryProofContext) => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal });
++  const context = (input: HubDirectoryProofContext) => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal,adminPermit:input.adminPermit });
+   const check = (record: Pick<Probe, "actor" | "source" | "createdAt" | "expiresAt">, ctx: HubDirectoryProofContext) => {
+     const before = time();
+     if (stopped || ctx.signal?.aborted || ctx.current() !== true || actorKey(ctx.actor) !== record.actor || !record.source.current()) throw new HubProtocolError("revoked");
+diff --git a/src/hub/settings-directory-control.ts b/src/hub/settings-directory-control.ts
+index cee43f540..6d31047d0 100644
+--- a/src/hub/settings-directory-control.ts
++++ b/src/hub/settings-directory-control.ts
+@@ -2,7 +2,7 @@
+ import { z } from "zod";
+ import { canonicalArguments } from "./identity.js";
+ import { HubProtocolError, validated } from "./validation.js";
+-import { createHubDirectorySettingsProof, type HubDirectoryProofContext, type HubDirectoryProofDeps } from "./settings-directory-proof.js";
++import { assertDirectoryAdministrator,createHubDirectorySettingsProof, type HubDirectoryProofContext, type HubDirectoryProofDeps } from "./settings-directory-proof.js";
+ import { createHubDirectorySaveCoordinator, type HubDirectorySaveDeps, type HubDirectorySaveDelivery } from "./settings-directory-save.js";
+ import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
+ import { HUB_DIRECTORY_HOST_NOTICE_SINK } from "./settings-directory-notices.js";
+@@ -34,18 +34,18 @@ export function createHubDirectorySettingsControl(options: HubDirectorySettingsC
+     if (!owned() || !m?.current() || m.decision.hubId !== deps.hubId) throw new HubProtocolError("unavailable");
+     return m;
+   };
+-  const context = (input: HubDirectoryProofContext): HubDirectoryProofContext => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal });
++  const context = (input: HubDirectoryProofContext): HubDirectoryProofContext => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal,adminPermit:input.adminPermit });
+   const source = (ctx: HubDirectoryProofContext) => {
+     if (ctx.signal?.aborted || ctx.current() !== true) throw new HubProtocolError("revoked");
+     const m = mounted(), s = m.source();
+     parseHubDirectoryDecisionMetadata({ actor: ctx.actor, changes: ["search"], recipients: [{ kind: "host", sink: HUB_DIRECTORY_HOST_NOTICE_SINK }] });
+-    if (ctx.actor.kind === "hub-administrator" && !same(ctx.actor.person, s.administrator)) throw new HubProtocolError("denied");
++    assertDirectoryAdministrator(ctx,s.administrator);
+     if (!s.current() || !m.current() || !owned() || ctx.current() !== true) throw new HubProtocolError("revoked");
+-    return s;
++    assertDirectoryAdministrator(ctx,s.administrator);return s;
+   };
+   const proof = createHubDirectorySettingsProof({ source: () => mounted().source(), writer: deps.writer, now,
+     withDirectoryRead: (person, work) => mounted().withDirectoryRead(person, work), createDirectory: deps.createDirectory,
+-    recentAuthentication: actor => mounted().sessions().recentAuthentication(actor), ...(deps.probeTls ? { probeTls: deps.probeTls } : {}) });
++    recentAuthentication: (actor,permit) => mounted().sessions().recentAuthentication(actor,permit), ...(deps.probeTls ? { probeTls: deps.probeTls } : {}) });
+   const save = createHubDirectorySaveCoordinator({ ...deps, proof });
+   const ca = createHubDirectorySettingsCa({ source, now, withDirectoryRead: (person, work) => mounted().withDirectoryRead(person, work) });
+   const track = <T>(work: () => Promise<T>): Promise<T> => {
+@@ -64,7 +64,7 @@ export function createHubDirectorySettingsControl(options: HubDirectorySettingsC
+       const ctx = context(input), s = source(ctx);
+       // The secret and its filesystem reference are never returned, even to the administrator or host owner.
+       const { bindPasswordRef: _ref, ...directory } = structuredClone(s.config);
+-      const at = ctx.actor.kind === "hub-administrator" ? mounted().sessions().recentAuthentication(ctx.actor) : null, time = now();
++      const at = ctx.actor.kind === "hub-administrator" ? mounted().sessions().recentAuthentication(ctx.actor,ctx.adminPermit) : null, time = now();
+       const reauthentication = ctx.actor.kind === "host-owner" ? "host" : at !== null && Number.isSafeInteger(time) && time >= at && time - at < 300_000 ? "recent" : "required";
+       if (!s.current() || source(ctx).image !== s.image) throw new HubProtocolError("revoked");
+       return { directory, bindPasswordSet: true, reauthentication, epoch: s.epoch };
+@@ -92,7 +92,7 @@ export function createHubDirectorySettingsControl(options: HubDirectorySettingsC
+       return track(async () => { source(ctx); await proof.test(request.ref, request.confirmation, ctx); source(ctx); return { ok: true }; });
+     },
+     apply(raw: unknown, input: HubDirectoryProofContext, delivery?: HubDirectorySaveDelivery) {
+-      const request = validated(saveRequest, raw), ctx = context(input), captured = delivery && { capture: delivery.capture, rotation: delivery.rotation };
++      const request = validated(saveRequest, raw), ctx = context(input), captured = delivery && { capture: delivery.capture, rotation: delivery.rotation, reauthenticateAfterSave: delivery.reauthenticateAfterSave };
+       return track(() => { source(ctx); return save.apply(request.ref, request, ctx, captured); });
+     },
+     cancel(raw: unknown, input: HubDirectoryProofContext) {
+diff --git a/src/hub/settings-directory-http.ts b/src/hub/settings-directory-http.ts
+index 057a473b4..edc3e7476 100644
+--- a/src/hub/settings-directory-http.ts
++++ b/src/hub/settings-directory-http.ts
+@@ -1,3 +1,4 @@
++import {personKeyString} from "./identity.js";
+ /** Configured-administrator Hub listener adapter. The fleet/D3 listener acquires its own authority separately. */
+ import type { IncomingMessage, ServerResponse } from "node:http";
+ import type { HubActor } from "./types.js";
+@@ -27,7 +28,7 @@ export function directorySettingsRefusal(error: unknown) {
+ }
+ export interface HubDirectorySettingsHttpRequest {
+   req: IncomingMessage; res: ServerResponse; path: string; method: string; query: URLSearchParams;
+-  ctx: { token: string | null; requestId: string; current(): boolean; requireAdmin(): Promise<HubActor> };
++  ctx: { token: string | null; requestId: string; current(): boolean; requireAdmin(): Promise<HubActor>;authorizeAdmin?():Promise<import("./roles/authority.js").HubManagementPermit>;readonly configuredRoot?:import("./types.js").PersonKey };
+   signedIn(): unknown; csrf(): unknown; body(): Promise<Record<string, unknown>>;
+   send(status: number, value: unknown): void;
+   sessions: HubDirectoryBrowserSessions;
+@@ -43,11 +44,17 @@ export async function handleHubDirectorySettingsHttp(create: (() => Promise<HubD
+   let disconnected = false;
+   const closed = () => { if (!q.res.writableEnded) disconnected = true; };
+   q.res.once("close", closed);
+-  const current = () => !disconnected && q.ctx.current() === true;
++  let adminPermit:import("./roles/authority.js").HubManagementPermit|undefined;
++  const current = () => {
++    try {
++      if (adminPermit) adminPermit.assertAuthority ? adminPermit.assertAuthority() : adminPermit.assertCurrent();
++      return !disconnected && q.ctx.current() === true;
++    } catch { return false; }
++  };
+   try {
+-    const actor = await q.ctx.requireAdmin();
++    adminPermit=await q.ctx.authorizeAdmin?.();const actor=adminPermit?.actor??await q.ctx.requireAdmin();
+     if (actor.kind !== "directory" || !current()) throw new HubProtocolError("denied");
+-    const context = { actor: { kind: "hub-administrator" as const, person: { ...actor.person }, sessionId: actor.sessionId, requestId: q.ctx.requestId }, current };
++    const context = { actor: { kind: "hub-administrator" as const, person: { ...actor.person }, sessionId: actor.sessionId, requestId: q.ctx.requestId }, current,...(adminPermit?{adminPermit}:{}) };
+     const input = action ? await q.body() : undefined;
+     q.signedIn(); if (!current()) throw new HubProtocolError("revoked");
+     const control = await invoke(create);
+@@ -61,9 +68,12 @@ export async function handleHubDirectorySettingsHttp(create: (() => Promise<HubD
+     else if (action === "/ca/fetch") result = await invoke(() => control.fetchCa(input, context));
+     else {
+       if (!q.ctx.token || !q.capture) throw new HubProtocolError("unavailable");
+-      const rotation = q.sessions.prepareDirectoryRotation(q.ctx.token, context.actor);
+-      try { await invoke(() => control.apply(input, context, { capture: () => q.capture!(current), rotation })); }
+-      finally { rotation.discard(); }
++      // Only the configured root is mapped into the candidate directory by this protocol.
++      // Auxiliary admins may save, but must authenticate afresh there; never mint an unproved successor cookie.
++      const auxiliary=adminPermit&&q.ctx.configuredRoot&&personKeyString(context.actor.person)!==personKeyString(q.ctx.configuredRoot);
++      const rotation = auxiliary?undefined:q.sessions.prepareDirectoryRotation(q.ctx.token, context.actor);
++      try { await invoke(() => control.apply(input, context, { capture: () => q.capture!(current), rotation, ...(auxiliary ? { reauthenticateAfterSave: true as const } : {}) })); }
++      finally { rotation?.discard(); }
+       return true; // The Save owns its original response, including known pre-decision refusals. Never send twice.
+     }
+     q.signedIn(); if (!current()) throw new HubProtocolError("revoked");
+diff --git a/src/hub/settings-directory-proof.ts b/src/hub/settings-directory-proof.ts
+index a267b05b6..abd01c5c0 100644
+--- a/src/hub/settings-directory-proof.ts
++++ b/src/hub/settings-directory-proof.ts
+@@ -1,3 +1,4 @@
++import {assertHubManagementAttestation,type HubManagementPermit} from "./roles/authority.js";
+ /** #3425: internal preparation authority for the ONE settings writer. No HTTP route or production caller yet. */
+ import { randomBytes, X509Certificate } from "node:crypto";
+ import { isIP } from "node:net";
+@@ -9,7 +10,7 @@ import type { HubDirectory, PersonKey } from "./directory/types.js";
+ import { directoryCaInfo } from "./init/directory-certificate.js";
+ import { pemCertificates } from "./init/browser-tls.js";
+ import { BIND_PASSWORD_REF } from "./init/layout.js";
+-import { scalarString, person, validated } from "./validation.js";
++import { HubProtocolError,scalarString, person, validated } from "./validation.js";
+ import { MAX_POLICY_DIRECTORY_GROUPS } from "./roles/read.js";
+ import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
+ import type { HubDirectorySettingsCandidate, HubDirectorySettingsWriter } from "./settings-commit.js";
+@@ -19,6 +20,8 @@ type Actor = HubDirectoryDecisionRequest["actor"];
+ export interface HubDirectoryProofContext {
+   /** Produced by the configured-admin route or the hostSessionHere/D3 adapter, NEVER decoded from the request body. */
+   actor: Actor;
++  /** Actual in-process hub.admin permit from the role-aware HTTP adapter, never JSON. */
++  adminPermit?:HubManagementPermit;
+   current(): boolean;
+   signal?: AbortSignal;
+ }
+@@ -40,7 +43,7 @@ export interface HubDirectoryProofDeps {
+   createDirectory(config: HubDirectoryConfig, secrets: { bindPassword: string }, options: { expectedServerFingerprint?: string }): HubDirectory;
+   writer(): HubDirectorySettingsWriter;
+   /** Optional SERVER attestation from the current HubSessions row's AD sign-in, not a client timestamp. */
+-  recentAuthentication?(actor: Extract<Actor, { kind: "hub-administrator" }>): number | null;
++  recentAuthentication?(actor: Extract<Actor, { kind: "hub-administrator" }>,permit?:HubManagementPermit): number | null;
+   now?(): number;
+   /** Inert tests only; production uses the verified TLS probe below. */
+   probeTls?(config: ResolvedDirectoryConfig): Promise<string>;
+@@ -51,6 +54,16 @@ export class HubDirectoryProofError extends Error {
+ }
+ function refuse(code: HubDirectoryProofCode): never { throw new HubDirectoryProofError(code); }
+ const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
++export function assertDirectoryAdministrator(ctx: HubDirectoryProofContext, root: PersonKey): void {
++  if (ctx.actor.kind !== "hub-administrator") return;
++  if (ctx.adminPermit !== undefined) {
++    try { assertHubManagementAttestation(ctx.adminPermit, "hub.admin", ctx.actor); }
++    catch (error) { refuse(error instanceof HubProtocolError && error.code === "denied" ? "denied" : "unavailable"); }
++    return;
++  }
++  if (!same(ctx.actor.person, root)) refuse("denied");
++}
++
+ /** Structurally identical plain data (the same keys, strictly equal leaves); anything it is unsure of is "not identical", and the caller asks `same`. */
+ const identical = (a: unknown, b: unknown): boolean => {
+   if (a === b) return true;
+@@ -127,7 +140,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
+   const context = (input: HubDirectoryProofContext) => {
+     const actor = parseHubDirectoryDecisionMetadata({ actor: input.actor, changes: ["search"], recipients: [{ kind: "host", sink: "owner" }] }).actor;
+     // Capture callback/signal and nested identity before any await; later input replacement cannot retarget a proof.
+-    return { actor, current: input.current, signal: input.signal };
++    return { actor, current: input.current, signal: input.signal,adminPermit:input.adminPermit };
+   };
+   const capture = (): CapturedSource => {
+     const s = deps.source(), config = structuredClone(s.config), administrator = validated(person, s.administrator);
+@@ -149,6 +162,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
+     canonicalGroups.add(kept); return true;
+   };
+   const current = (d: Pick<Draft, "source" | "actor" | "createdAt" | "expiresAt">, ctx: ReturnType<typeof context>) => {
++    assertDirectoryAdministrator(ctx,d.source.administrator);
+     const t = time();
+     if (stopped || ctx.signal?.aborted || actorKey(ctx.actor) !== actorKey(d.actor) || !boolean(ctx.current) || !boolean(d.source.current)) refuse("denied");
+     const s = capture();
+@@ -158,6 +172,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
+     // The authority/material callbacks may move the clock too. Last sample follows ALL of them.
+     const final = time();
+     if (t < d.createdAt || t >= d.expiresAt || final < d.createdAt || final >= d.expiresAt) refuse("expired");
++    assertDirectoryAdministrator(ctx,d.source.administrator);
+   };
+   const admitted = async <T>(d: Draft, ctx: ReturnType<typeof context>, work: () => Promise<T>): Promise<T> => {
+     current(d, ctx);
+@@ -193,15 +208,16 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
+   });
+   const authenticate = async (d: Draft, ctx: ReturnType<typeof context>, credentials?: { login: string; password: string }) => {
+     if (ctx.actor.kind === "host-owner") { if (credentials !== undefined) refuse("invalid"); return d.createdAt; }
++    const actorPerson=ctx.actor.person;
+     const key = actorKey(ctx.actor), stored = recent.get(key);
+-    const attested = stored?.image === d.source.image && stored.epoch === d.source.epoch ? stored.at : deps.recentAuthentication?.(ctx.actor);
++    const attested = stored?.image === d.source.image && stored.epoch === d.source.epoch ? stored.at : deps.recentAuthentication?.(ctx.actor,ctx.adminPermit);
+     current(d, ctx);
+     const t = time();
+     if (credentials === undefined && attested !== undefined && attested !== null && Number.isSafeInteger(attested) && attested >= 0 && attested <= t && t - attested < TTL) {
+       await admitted(d, ctx, async () => {
+-        const answer = await d.source.directory.checkEligibility(Object.freeze({ ...d.source.administrator })); current(d, ctx);
++        const answer = await d.source.directory.checkEligibility(Object.freeze({ ...actorPerson })); current(d, ctx);
+         if (!answer.eligible) refuse(answer.reason === "unavailable" ? "unavailable" : "denied");
+-        if (!same(answer.person.key, d.source.administrator)) refuse("denied");
++        if (!same(answer.person.key, actorPerson)) refuse("denied");
+       });
+       return attested;
+     }
+@@ -222,7 +238,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
+         // Personal password has exactly ONE destination: the already mounted, trusted OLD directory.
+         const answer = await d.source.directory.signIn(credentials.login.trim(), credentials.password); current(d, ctx);
+         if (!answer.ok) refuse(answer.reason === "unavailable" ? "unavailable" : "denied");
+-        if (!same(answer.person.key, d.source.administrator)) refuse("denied");
++        if (!same(answer.person.key, actorPerson)) refuse("denied");
+       });
+     } catch (error) { failure = error instanceof HubDirectoryProofError && error.code === "denied"; throw error; }
+     finally { if (!failure && attempts.get(key) === window && --window.count === 0) attempts.delete(key); }
+@@ -237,7 +253,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
+       if (Object.keys(copy).some(key => !["directory", "bindPassword", "changes", "recipients"].includes(key))) refuse("invalid");
+       const metadata = parseHubDirectoryDecisionMetadata({ actor: ctx.actor, changes: copy.changes, recipients: copy.recipients });
+       const resolved = resolveDirectoryConfig(copy.directory);
+-      if (ctx.actor.kind === "hub-administrator" && !same(ctx.actor.person, source.administrator)) refuse("denied");
++      assertDirectoryAdministrator(ctx,source.administrator);
+       if (resolved.realm !== source.resolved.realm || resolved.profile !== source.resolved.profile
+         || copy.directory.bindPasswordRef !== undefined && copy.directory.bindPasswordRef !== BIND_PASSWORD_REF) refuse("invalid");
+       if (copy.bindPassword === undefined) {
+@@ -269,7 +285,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
+       d.expiresAt = Math.min(d.expiresAt, at + TTL);
+       await candidate(d, ctx); current(d, ctx);
+       const writer = deps.writer(), proof = () => { current(d, ctx); return true; };
+-      const prepared = writer.prepare(structuredClone(d.candidate), ctx.actor, proof);
++      const prepared = writer.prepare(structuredClone(d.candidate), ctx.actor, proof, ctx.adminPermit);
+       const effect: unknown = beforeCommit?.();
+       if (effect && (typeof effect === "object" || typeof effect === "function") && typeof (effect as { then?: unknown }).then === "function") {
+         try { (effect as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused below */ }
+diff --git a/src/hub/settings-directory-recovery.ts b/src/hub/settings-directory-recovery.ts
+index 1d2c9de0e..5d2e5ea18 100644
+--- a/src/hub/settings-directory-recovery.ts
++++ b/src/hub/settings-directory-recovery.ts
+@@ -1,3 +1,4 @@
++import {hubRoleMigrationsForState} from "./roles/migrations.js";
+ /** Cold directory recovery participant, called by the runtime before mounting. The shared writer owns every file write. */
+ import { createHubAudit } from "./audit/index.js";
+ import { assertHubMigrationsCurrent, bindHubInstance, HubStateError, inspectStateSet, openHubDatabase,
+@@ -36,7 +37,7 @@ function openState(options: HubDirectoryRecoveryOptions) {
+   const db = openHubDatabase(home, set.database, { create: false });
+   let key: Buffer | undefined;
+   try {
+-    assertHubMigrationsCurrent(db, options.migrations);
++    assertHubMigrationsCurrent(db, hubRoleMigrationsForState(db,options.migrations));
+     // A registry row alone cannot replace the authority tables. These reads never recreate a lost component.
+     for (const sql of [
+       "SELECT singleton,operation_id,directory_epoch FROM hub_settings_head LIMIT 0",
+diff --git a/src/hub/settings-directory-save.ts b/src/hub/settings-directory-save.ts
+index 993af736f..b08b10b4a 100644
+--- a/src/hub/settings-directory-save.ts
++++ b/src/hub/settings-directory-save.ts
+@@ -1,6 +1,6 @@
+ /** #3425: private Save orchestration. The configured-admin/D3 HTTP adapters remain responsible for acquiring authority. */
+ import { canonicalArguments } from "./identity.js";
+-import { hubSetCookie } from "./sessions.js";
++import { hubSetCookie,hubClearCookie } from "./sessions.js";
+ import { HubProtocolError } from "./validation.js";
+ import { HubSettingsError } from "./settings-commit.js";
+ import { HubDirectoryProofError } from "./settings-directory-proof.js";
+@@ -30,6 +30,8 @@ export interface HubDirectorySaveDelivery {
+   /** Captures the original fully consumed request; it must not admit any other browser/response. */
+   capture(): HubDirectoryResponse;
+   rotation?: HubDirectorySessionRotation;
++  /** Private role-aware HTTP mode: no successor identity has been proved in the candidate directory. */
++  reauthenticateAfterSave?: true;
+ }
+ 
+ const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
+@@ -49,9 +51,9 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
+   const fence = () => { stopped = true; deps.proof.close(); void response?.discard().catch(() => {}); };
+   async function run(ref: string, raw: Parameters<HubDirectorySettingsProof["apply"]>[1], inputContext: HubDirectoryProofContext,
+     delivery?: HubDirectorySaveDelivery): Promise<HubDirectorySaveResult> {
+-    const context = { actor: structuredClone(inputContext.actor), current: inputContext.current, signal: inputContext.signal };
++    const context = { actor: structuredClone(inputContext.actor), current: inputContext.current, signal: inputContext.signal,adminPermit:inputContext.adminPermit };
+     const input = { confirmation: raw.confirmation, ...(raw.credentials ? { credentials: { ...raw.credentials } } : {}) };
+-    const capture = delivery?.capture, rotation = delivery?.rotation;
++    const capture = delivery?.capture, rotation = delivery?.rotation, reauthenticate = delivery?.reauthenticateAfterSave === true;
+     const old = deps.mounted();
+     let at: number | undefined, expected: ReturnType<HubDirectorySettingsDecision["inspect"]> | undefined;
+     const current = () => context.current() === true && owned();
+@@ -67,7 +69,9 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
+       return head.operationId === saved.receiptId && head.directoryEpoch === saved.directoryEpoch && mounted.current() ? mounted : null;
+     };
+     try {
+-      if (context.actor.kind === "hub-administrator" ? !capture || !rotation : rotation !== undefined) fail("invalid");
++      if (context.actor.kind === "hub-administrator"
++        ? !capture || (reauthenticate ? rotation !== undefined || !context.adminPermit : !rotation)
++        : rotation !== undefined || reauthenticate) fail("invalid");
+       if (!old?.current() || old.decision.hubId !== deps.hubId || !current()) fail("revoked");
+       const saved = await deps.proof.apply(ref, input, { ...context, current }, rotation, () => {
+         if (!old.current() || !current()) fail("revoked");
+@@ -121,8 +125,9 @@ export function createHubDirectorySaveCoordinator(options: HubDirectorySaveDeps)
+           postDecision(); const mounted = ready(exact); if (!mounted) fail("revoked");
+           const cookie = result.state === "ready" && rotation
+             ? mounted.sessions().completeDirectoryRotation(rotation, result.receiptId) : undefined;
+-          return { status: result.state === "ready" ? 200 : 503, json: JSON.stringify(result),
+-            ...(cookie ? { cookie: hubSetCookie(deps.hubId, cookie.token, cookie.maxAgeMs) } : {}) };
++          const signInAgain = reauthenticate;
++          return { status: result.state === "ready" ? 200 : 503, json: JSON.stringify({...result,...(signInAgain?{reauthenticationRequired:true}:{})}),
++            ...(cookie ? { cookie: hubSetCookie(deps.hubId, cookie.token, cookie.maxAgeMs) } : signInAgain?{cookie:hubClearCookie(deps.hubId)}:{}) };
+         }, () => { postDecision(); return ready(exact) !== null; });
+       }
+       return result;
+diff --git a/src/ui/panel-hub.js b/src/ui/panel-hub.js
+index 17a44fd30..cbaaaa9ac 100644
+--- a/src/ui/panel-hub.js
++++ b/src/ui/panel-hub.js
+@@ -62,8 +62,8 @@ const ha = key => t(`hubAccess.${key}`);
+ // Kept with the fresh renderer: retained owner dictionaries do not know this label.
+ // M-3162: Administration's tabs (Lumen's names: "Manage" holds today's long page; "This Hub" its name already).
+ register("hubAdminTabs", {
+-  en: { label: "Administration", overview: "Overview", manage: "Manage", teams: "Teams", groups: "Groups", roles: "Roles and permissions", thisHub: "This Hub" },
+-  "zh-TW": { label: "管理", overview: "總覽", manage: "管理項目", teams: "團隊", groups: "群組", roles: "角色與權限", thisHub: "這個 Hub" },
++  en: { label: "Administration", overview: "Overview", manage: "Manage", teams: "Teams", groups: "Groups", roles: "Roles and permissions",allowedList:"Allowed list", thisHub: "This Hub" },
++  "zh-TW": { label: "管理", overview: "總覽", manage: "管理項目", teams: "團隊", groups: "群組", roles: "角色與權限",allowedList:"允許清單", thisHub: "這個 Hub" },
+ });
+ const hat = (key) => t(`hubAdminTabs.${key}`);
+ register("hubGrantStatus", {
+@@ -179,9 +179,9 @@ export function HubPanel({ route }) {
+     return stop;
+   }, [s && s.login]);
+   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
+-  const pageName = companyPage ? hj("title") : tab === "ask" && view === "ai-apps" ? hApps("title") : tab === "ask" && view === "app-consent" ? hApps("consentHeading") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : hc("admin") : view === "notices" ? hc("noticesTitle")
++  const pageName = companyPage ? hj("title") : tab === "ask" && view === "ai-apps" ? hApps("title") : tab === "ask" && view === "app-consent" ? hApps("consentHeading") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : view==="allowed-list"?hat("allowedList") : (view==="roles"||view==="groups"&&rolesOn(s,hubClient()))?hat("roles"):hc("admin") : view === "notices" ? hc("noticesTitle")
+     : view === "invitations" ? hroom("invitationsTitle") : view === "teams" ? ht("mine") : hc("chats");
+-  useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && view === "groups")) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
++  useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && (view === "groups"&&!rolesOn(s,hubClient())||view==="allowed-list"))) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
+   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
+     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
+     : html`<${Skeleton} variant="rows" lines=${4} />`;
+@@ -1123,12 +1123,13 @@ function HubAdmin({ admin }) {
+   const overview = !overviewGone && s?.features?.includes("admin-dashboard-v1") && typeof hubClient()?.adminDashboard === "function";
+   const tabs = [admin && overview ? "overview" : null, canManage ? "manage" : null, admin && teams ? "teams" : null, roles && canRole ? "roles" : admin && groups ? "groups" : null, admin ? "this-hub" : null].filter(Boolean);
+   const view = adminView();
+-  const selected = roles && view === "groups" ? "roles" : ADMIN_TAB_VIEWS[view];
++  const selected = roles && ["groups","allowed-list"].includes(view) ? "roles" : ADMIN_TAB_VIEWS[view];
+   const current = view === "" ? tabs[0] : tabs.includes(selected) ? selected : tabs[0];
+   const bar = html`<${AdminTabs} tabs=${tabs} current=${current} />`;
+   if (current === "overview") return html`${bar}<div class="col hub-owner hub-admin-ov-col"><${LazyRoomPart} load=${() => import("./hub-admin-overview.js")} name="HubAdminOverview"
+     props=${{ client: hubClient(), onOpen: openAdminTab, onGone: () => { setOverviewGone(true); openAdminTab("manage"); } }} /></div>`;
+   if (current === "this-hub") return html`${bar}${directory && view === "directory" ? html`<${LazyDirectory} session=${s} />` : html`<div class="col hub-owner"><div class="s-section-layout"><${LazyThisHub} directory=${directory} />${s?.features?.includes("mcp-apps-v1")?html`<${LazyRoomPart} load=${()=>import("./hub-ai-apps.js")} name="AiAppsAdminCard" props=${{client:hubClient()}}/>`:null}</div></div>`}`;
++  if(current==="roles"&&view==="allowed-list"&&admin&&groups)return html`${bar}<${LazyGroups} pick=${m=>m.HubGroupPolicyPage} props=${{roleShortcut:true}} />`;
+   if (current === "roles") return html`${bar}<div class="col hub-owner"><${LazyRoomPart} load=${() => import("./hub-roles.js")} name="HubRoles" props=${{client:hubClient()}} /></div>`;
+   if (current === "groups") return html`${bar}<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
+   if (current === "teams") return html`${bar}<div class="col hub-owner"><h2 class="sr-only">${ht("title")}</h2><${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsPage" props=${{ client: hubClient(), mode: "admin", person: s?.person }} /></div>`;
+@@ -1172,7 +1173,10 @@ function GroupPermissionsEntry() {
+ }
+ function HubAdminPage({ groups = false, companyJoin = false, directory = false } = {}) {
+   const assistantSession = useSession();
++  const fullAdmin=assistantSession?.admin===true;
+   const [view, reload] = useRead(() => hubClient().adminOverview());
++  const canFleets=Array.isArray(view?.permissions)?view.permissions.includes("fleets.manage"):fullAdmin;
++  const canJoin=Array.isArray(view?.permissions)?view.permissions.includes("join.manage"):fullAdmin;
+   const [needsOnly, setNeedsOnly] = useState(false);   // M-3137: Connected fleets' "Needs update" filter
+   const [canRecommend, setCanRecommend] = useState(false);   // M-3141: this Hub serves the recommended-version setting
+   const [login, setLogin] = useState("");
+@@ -1218,17 +1222,17 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
+   const ManualFrame = accessEntry ? "details" : "div";
+   return html`<div class="col hub-owner hub-admin">${lead}
+     <div class="s-section-layout">
+-      ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
+-      ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
++      ${fullAdmin && groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
++      ${canJoin && companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
+       ${/* Lumen's order: Let colleagues join → Teams → Rooms → Room assistant → Connected fleets → pairing. */ ""}
+-      ${teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
+-      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
+-      ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
++      ${fullAdmin && teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
++      ${fullAdmin && roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
++      ${fullAdmin && assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
+       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
+       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+       ${/* M-3141 (versions spec §3.1): the recommended version, a small card above the list. */ ""}
+-      ${hasVersions(fleets) ? html`<${RecommendedVersionCard} client=${hubClient()} onSaved=${reload} onAvailable=${setCanRecommend} />` : null}
+-      <section class="card hub-fleet-list" id="hub-admin-fleets"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
++      ${fullAdmin && hasVersions(fleets) ? html`<${RecommendedVersionCard} client=${hubClient()} onSaved=${reload} onAvailable=${setCanRecommend} />` : null}
++      ${canFleets?html`<section class="card hub-fleet-list" id="hub-admin-fleets"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
+         ${/* M-3137 (versions spec §2.2): the summary line and its filter, when this Hub reports versions. */ ""}
+         ${hasVersions(fleets) ? html`<${FleetVersionsSummary} fleets=${fleets} recommended=${view.recommendedVersion ?? null} canRecommend=${canRecommend} filtered=${needsOnly} onFilter=${setNeedsOnly} />` : null}
+         ${/* M-3145 (§4.2): "Update {n} Fleets that allow it", while at least one qualifies. */ ""}
+@@ -1248,8 +1252,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
+           return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
+             ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;
+         })() : html`<p class="note">${ho("noFleets")}</p>`}
+-      </section>
+-      <${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
++      </section>`:null}
++      ${canJoin?html`<${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
+         <ol class="hub-steps">
+           <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
+             <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${ho("ownerLogin")}</span><input id="hubOwnerLogin" placeholder=${ho("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
+@@ -1269,8 +1273,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
+             : p.ownerConfirmed ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!p.fingerprint} onClick=${() => approve(p)}>${ho("approveGo")}</button>`
+             : html`<span class="tag warn">${ho("waitingOwner")}</span>`}
+         </div>`)}</div>` : null}
+-      </section></${ManualFrame}>
+-      <${LazyThisHub} directory=${directory} />
++      </section></${ManualFrame}>`:null}
++      ${fullAdmin?html`<${LazyThisHub} directory=${directory} />`:null}
+     </div></div>`;
+ }
+ 
