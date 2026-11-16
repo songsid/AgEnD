@@ -694,6 +694,13 @@ Say plainly that these are not in the product yet:
 
 ## Personal-agent questions (preview)
 
+- On a Hub that offers it, an administrator opens **Administration → Manage → Personal agents**, turns it on, and
+  selects the people or teams allowed to add one. It starts off. The administrator is included while it is on.
+- The owner opens **My agents → Personal agent**, reads the folder/account disclosure and chooses **Add a personal
+  agent**. Keep the 15-minute install command private and run it on the intended Windows computer. Node.js, a
+  signed-in Codex or Claude and trust in the Hub's certificate are required. The installer makes an empty folder;
+  put only material intended for sharing there. Choose the available CLI, name and description, save, then use
+  **Choose who may ask**. After installing or signing in to a CLI, use **Refresh** to check it again.
 - A personal agent answers with its owner's Codex or Claude on their own computer. It is read-only in one shared
   folder; anything in that folder may be quoted to people allowed to ask. It has no AgEnD tools or connectors.
 - A direct question or an explicit person's @mention may ask it. A verified **person via agent** request also counts

@@ -105,4 +105,16 @@ describe("company-owned personal computer enrollment",()=>{
     expect(f.r.db.prepare("SELECT COUNT(*) n FROM hub_personal_agents").get()).toEqual({n:0});
     expect(f.r.db.prepare("SELECT COUNT(*) n FROM hub_exposures").get()).toEqual({n:0});
   });
+  it("refreshes only the current owner's computer and refuses a replaced binding after the probe",async()=>{
+    const f=await fixture();await f.allow();const token=await f.host.enrollment(f.ctx(f.a)),joined=f.enroll(token.token);
+    const original=f.runtime.machine.bind(f.runtime);
+    vi.spyOn(f.runtime,"machine").mockImplementation(id=>{const value=original(id);return value?{...value,status:"online"}:null;});
+    let finish!:()=>void;const waiting=new Promise<void>(resolve=>{finish=resolve;});
+    const probe=vi.spyOn(f.runtime,"call").mockImplementation(async()=>{await waiting;return {};});
+    expect((await f.host.refreshComputer(f.ctx(f.b))).computer).toBeNull();expect(probe).not.toHaveBeenCalled();
+    const pending=f.host.refreshComputer(f.ctx(f.a));await vi.waitFor(()=>expect(probe).toHaveBeenCalledWith(joined.machineId,"probe",{force:true}));
+    f.r.db.prepare("DELETE FROM hub_personal_computers WHERE owner=?").run(personKeyString(f.a));finish();
+    await expect(pending).rejects.toMatchObject({code:"stale"});
+    await expect(f.host.refreshComputer(f.ctx(f.a),{machineId:joined.machineId})).rejects.toMatchObject({code:"invalid"});
+  });
 });

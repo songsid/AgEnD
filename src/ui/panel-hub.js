@@ -965,6 +965,7 @@ function HubMine() {
     <div class="s-section-layout">
       ${/* M-3190: 「我的 Fleet」 moved here from 對話 — the person's Fleets and the steps to connect one. */ ""}
       ${groupPolicyOn(session, hubClient()) ? html`<${LazyGroups} pick=${(m) => m.MyFleetsCard || (() => null)} props=${{ quick: session.features.includes("quick-pairing-v1"), admin: session.admin === true, features: session.features }} />` : null}
+      ${session?.features?.includes("personal-agents-v1") ? html`<${LazyRoomPart} load=${() => import("./hub-personal-agent.js")} name="HubPersonalAgent" props=${{client:hubClient(),scope:session.csrf,onSaved:reload}} />` : null}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: true }} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${!pairings ? html`<${Skeleton} lines=${2} />` : pairings.error ? html`<${ErrorState} message=${pairings.error} onRetry=${reloadPairings} />` : null}
@@ -1208,6 +1209,7 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
       ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
       ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
       ${/* Lumen's order: Let colleagues join → Teams → Rooms → Room assistant → Connected fleets → pairing. */ ""}
+      ${session?.features?.includes("personal-agents-v1") ? html`<${LazyRoomPart} load=${() => import("./hub-personal-agent.js")} name="HubPersonalAgentAdmin" props=${{client:hubClient(),scope:session.csrf}} />` : null}
       ${teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
       ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}

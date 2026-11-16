@@ -16,17 +16,34 @@ signed-in company session. Administrator operations use the mounted `hub.admin` 
 
 | Route | Result |
 | --- | --- |
-| GET/PUT `/hub/v1/admin/personal-agents` | `{enabled,people,teams}`; PUT takes that same strict shape |
+| GET/PUT `/hub/v1/admin/personal-agents` | `{enabled,people,teams,peopleInfo,teamsInfo}`; PUT takes only `{enabled,people,teams}` |
 | GET `/hub/v1/me/personal-agent` | `{enabled,canAdd,agent,computer}`; only the current owner's records |
 | PUT `/hub/v1/me/personal-agent` | `{name,description,cli,model?,ifRevision}` → `{exposure}` |
 | DELETE `/hub/v1/me/personal-agent` | `{}` → `{disconnected:true}` |
 | POST `/hub/v1/me/personal-agent/enrollment` | `{}` → one-time token/fingerprint/expiry, plus installer hashes and `server` when the production installer is composed |
+| POST `/hub/v1/me/personal-agent/refresh` | `{}` → owner view after probing the owner's currently connected computer; the owner/binding/generation is rechecked after the probe |
 
 `agent` is null or `{id,exposureId,name,description,cli,model,revision,state}`. `computer` is null or
-`{id,name,connected,compatible,folder,clis}`. Each CLI keeps its existing bounded inventory fields plus `available`
+`{id,name,connected,compatible,folder,working,clis}`. Each CLI keeps its existing bounded inventory fields plus `available`
 and `personalStatus`. Availability comes from that computer's actual local enforcement check and sign-in, never
 from a Windows version allowlist. The personal source requires a Windows computer. `agentKind: "personal"` is
 additive on browser room views/members; it is not added to the existing strict Fleet member-list response.
+
+## Owner and administrator screens
+
+The cards load only when the signed-in session advertises `personal-agents-v1`. The administrator's Manage page
+keeps the switch off by default and selects named people or teams using the existing bounded directory picker.
+Display metadata is returned only on the administrator endpoint; canonical person keys are not shown as names.
+
+My agents explains the read-only folder and the owner's AI account before issuing a private, 15-minute Windows
+install command. The installer creates an empty folder. The computer reports actual CLI enforcement and sign-in
+checks; an unavailable Codex does not hide Claude's separate status. Explicit Refresh re-probes that computer,
+while ordinary polling only reads its state. The card preserves typed changes during polling and shows unsaved
+changes. Save uses the captured revision, and every client request uses the captured sign-in CSRF scope. Disconnect
+asks first and retains conversation history. The sharing link selects who may ask the published personal agent.
+
+The headless gallery uses the product HTTPS shell and real Hub HTTP/SQLite/audit, with an inert directory and
+Runtime inventory/turn. It is not a Windows sandbox, installer, authentication or model-execution proof.
 
 A replacement binds the latest consumed owner enrollment, freezes the previous publication and retires older
 credentials. Disconnect first records revoked enrollments, removes the binding and freezes publication in the same

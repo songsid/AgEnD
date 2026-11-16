@@ -2409,3 +2409,22 @@ describe.skipIf(process.platform === "win32")("M-3118 member capability composit
     finally {await service.close();start.mockRestore();}
   });
 });
+
+describe.skipIf(process.platform!=="linux")("personal receiver registration seam (inert, unstarted factory)",()=>{
+  it.each([false,true])("mounts the private personal service only for an explicit migration plan: %s",async registered=>{
+    const hub=await initializedHub(),real=await import("../src/hub/runtime.js").then(m=>m.S3B_HTTP_ENTRY());
+    const {HUB_PERSONAL_AGENTS_MIGRATION}=await import("../src/hub/personal/schema.js");
+    let deps:HubHttpDeps|undefined,http:HubHttp|undefined;
+    const entry:HubHttpEntry={...real,migrations:[...real.migrations.filter(m=>m.component!==HUB_PERSONAL_AGENTS_MIGRATION.component),...(registered?[HUB_PERSONAL_AGENTS_MIGRATION]:[])],
+      createHubHttp(value){deps=value;http=real.createHubHttp(value);return http;}};
+    const f=factory(hub.home,entry),service=await f.create(hub.config.hub,()=>true);
+    try{
+      expect(http!.features?.includes("personal-agents-v1")).toBe(registered);
+      expect(typeof deps!.personalAgents==="function").toBe(registered);
+      expect(typeof deps!.personalInstaller==="function").toBe(registered);
+      expect(existsSync(join(hub.home,"hub/personal-runtime"))).toBe(registered);
+      if(registered){expect(statSync(join(hub.home,"hub/personal-runtime")).mode&0o777).toBe(0o700);
+        deps!.uow.atomic(tx=>expect(hubTxDatabase(tx).prepare("SELECT enabled FROM hub_personal_settings").get()).toEqual({enabled:0}));}
+    }finally{await service.close();}
+  });
+});
