@@ -61,4 +61,3 @@ SqliteError: table hub_exposures has 13 columns but 11 values were supplied
       Tests  3 failed | 5 passed (8)
    Start at  23:55:47
    Duration  964ms (transform 871ms, setup 178ms, import 1.07s, tests 251ms, environment 0ms)
-
