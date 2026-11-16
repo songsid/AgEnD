@@ -1,3 +1,5 @@
+import {HubRoomMentionFeedback,HUB_ROOM_MENTION_FEEDBACK_MIGRATION,verifyRoomMentionFeedback} from "../member/room-mention-feedback.js";
+import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-model.js";
 /**
  * S5b member factory (S-51 PR 2b; docs/design/hub-composition.md §5 "Member"). Called by S1's HubMount for an enabled
  * hub_member, and only for a current, non-disconnected binding (S3c's pairing state). Builds, in order:
@@ -325,7 +327,7 @@ function openMemberState(options: {
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_MEMBER_JOURNAL_MIGRATION,
         { component: "s4-execution", version: 1, up: execution.migrateHubExecution }, exposureStore.HUB_EXPOSURE_MIGRATION,
-        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION, HUB_ROOM_CONTEXT_RECEIPTS_MIGRATION, HUB_MEMBER_RECOMMENDATION_MIGRATION, IDLE_UPDATE_MIGRATION, HUB_MEMBER_UPDATES_MIGRATION]);
+        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION, HUB_ROOM_CONTEXT_RECEIPTS_MIGRATION, HUB_MEMBER_RECOMMENDATION_MIGRATION, IDLE_UPDATE_MIGRATION, HUB_MEMBER_UPDATES_MIGRATION,HUB_ROOM_MENTION_FEEDBACK_MIGRATION]);
       bindHubInstance(db, hubId, state, now());
       // P1 never initialized S4, so its absent meta row is valid only with the untouched zero floor.
       const executionMeta = db.prepare("SELECT revision FROM hub_execution_meta WHERE singleton=1").get() as { revision: number } | undefined;
@@ -340,16 +342,19 @@ function openMemberState(options: {
         Buffer.from(JSON.stringify(["agend-hub-room-journal-key-v1", roomBinding])), 32));
       const postKey = Buffer.from(hkdfSync("sha256", readKey(home, set.keys[1]!), Buffer.alloc(0),
         Buffer.from(JSON.stringify(["agend-hub-room-post-key-v1", roomBinding])), 32));
+      const feedbackKey=Buffer.from(hkdfSync("sha256",readKey(home,set.keys[1]!),Buffer.alloc(0),Buffer.from(JSON.stringify(["agend-hub-room-feedback-key-v1",roomBinding])),32));
       if (!db.transaction(() => {
         // An unbound legacy set must authenticate room history before bindPairing can advance its durable floor.
         const meta = db.prepare("SELECT binding FROM hub_member_meta WHERE singleton=1").get() as { binding: string | null };
         if (meta.binding === null) {
           verifyRoomPostJournal({db,binding:roomBinding,encryptionKey:postKey});
           verifyRoomAskJournal(db, { bindingKey: roomBinding, encryptionKey: roomKey });
+          verifyRoomMentionFeedback({db,binding:roomBinding,encryptionKey:feedbackKey});
         }
         if (!journal.bindPairing(profile, exposures.list())) return false;
         verifyRoomPostJournal({db,binding:roomBinding,encryptionKey:postKey});
         verifyRoomAskJournal(db, { bindingKey: roomBinding, encryptionKey: roomKey });
+        verifyRoomMentionFeedback({db,binding:roomBinding,encryptionKey:feedbackKey});
         return true;
       }).immediate()) {
         if (set.database === scoped.database) throw new HubStateError("hub-state-mismatch", "the scoped member database belongs to another pairing");
@@ -357,7 +362,7 @@ function openMemberState(options: {
       }
       if (!options.current()) throw new HubStateError("hub-member-pairing", "the pairing changed while opening its state");
       selected = true;
-      return { db, journal, exposures, audit, roomKey, postKey, roomBinding };
+      return { db, journal, exposures, audit, roomKey, postKey, feedbackKey, roomBinding };
     } finally { if (!selected) db.close(); }
   }
   throw new HubStateError("hub-state-mismatch", "no member state belongs to this pairing");
@@ -453,7 +458,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       };
       const profileCurrent = () => current() && options.boundHub() === hubId
         && new HubMemberProfileStore(options.home, hubId).profileDigest() === profileDigest;
-      const { db, journal, exposures, audit, roomKey, postKey, roomBinding } = openMemberState({ home: options.home, hubId, profile, execution,
+      const { db, journal, exposures, audit, roomKey, postKey, feedbackKey, roomBinding } = openMemberState({ home: options.home, hubId, profile, execution,
         exposureStore: exposureMods.store, views, outbox: forwarding, now, current: profileCurrent });
       teardown.add("the member database", () => db.close());
       if ((cfg as { execution?: { provider?: unknown } }).execution?.provider !== undefined) {
@@ -524,8 +529,16 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       outbox = service.restrictedOutbox();
 
       const roomCurrent = () => live() && profileCurrent() && !terminalHold;
+      const feedback=new HubRoomMentionFeedback({db,binding:roomBinding,encryptionKey:feedbackKey,locale:options.representative.locale,
+        current:source=>{
+          if(!roomCurrent()||!online?.current()||!online.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))return false;
+          const local=exposures.localExposure(source.exposureId);
+          return !!local&&local.agent===source.agent&&local.exposure.state==="published"&&local.exposure.revision===source.revision&&local.consentId===source.consentId
+            &&options.representative.agentToken(source.agent)===source.token&&service.readiness(source.exposureId,source.revision).ok;
+        },deliver:input=>options.roomNotify?.(input)??Promise.resolve(false),held:id=>options.log("warn","Hub mention feedback delivery held",{notificationId:id})});
+      const receiveFeedback=feedback.receive.bind(feedback);
       const room = new HubRoomAskAdapter({ db, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
-        locale: options.representative.locale, generation: options.roomConversationGeneration,
+        locale: options.representative.locale, generation: options.roomConversationGeneration,feedback:receiveFeedback,
         localExposure: id => {
           if (!roomCurrent()) return null;
           const local = exposures.localExposure(id);
@@ -536,7 +549,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         deliver: input => options.representative.deliver(input), ...(memberFiles ? { files: memberFiles } : {}) });
       const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,
-        receipt: options.roomReceipt,
+        receipt: options.roomReceipt,feedback:receiveFeedback,
         notify: options.roomNotify,
         held: id => options.log("warn", "Hub room reply delivery held", {notificationId:id}),
         changed: () => options.roomToolsChanged?.(),
@@ -565,7 +578,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
               if(result.type!=="room.context-state-result")throw new HubProtocolError("invalid");return result.payload; },
             contextInput: async payload => { const result=await l.exchange({v:1,type:"room.context-input",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload},"room.context-input-result");
               if(result.type!=="room.context-input-result")throw new HubProtocolError("invalid");return result.payload; },
-            sendAnswer: payload => l.send({ v: 1, type: "room.answer", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
+            sendAnswer: payload => l.send({ v: 1, type: "room.answer", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload:{...payload,...(options.roomNotify&&l.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)?{mentionFeedback:true as const}:{})} }),
             // M-3125 (room files, roomFilesNegotiated): the 1:1 chat's own file frames, on this link.
             fetchFile: async (id: string, offset: number) => { const reply = await l.exchange({ v: 1, type: "attachment.get", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload: { id, offset } }, "attachment.chunk");
               if (reply.type !== "attachment.chunk") throw new HubProtocolError("invalid"); return reply.payload; },
@@ -579,7 +592,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       };
       let roomTimer: NodeJS.Timeout | null = null;
       const stopRooms = () => { if (roomTimer) clearInterval(roomTimer); roomTimer = null; room.connected(null); roomState.connected(null); posts.connected(null); };
-      const refreshRooms = () => Promise.all([room.flush(), roomState.refresh(), posts.flushAnswers(), room.refreshContexts(roomExposures())]).then(() => undefined);
+      const refreshRooms = () => {feedback.flush();return Promise.all([room.flush(), roomState.refresh(), posts.flushAnswers(), room.refreshContexts(roomExposures())]).then(() => undefined);};
       let postLink: import("../member/room-post.js").RoomPostLink | null = null;
       const startRooms = (l: HubMemberLink) => {
         stopRooms();
@@ -592,7 +605,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             return result.payload;
           },
           post: async payload => {
-            const result = await l.exchange({v:1,type:"room.post",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload},"room.post-result");
+            const result = await l.exchange({v:1,type:"room.post",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{...payload,...(options.roomNotify&&l.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)?{mentionFeedback:true as const}:{})}},"room.post-result");
             if (result.type !== "room.post-result") throw new HubProtocolError("invalid");
             return result.payload;
           },
@@ -609,7 +622,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         roomTimer = setInterval(() => { void refreshRooms().catch(() => {}); }, 5_000); roomTimer.unref();
         void refreshRooms().catch(() => {});
       };
-      teardown.add("room asks and presence", () => { stopRooms(); posts.close(); roomState.close(); room.close(); });
+      teardown.add("room asks and presence", () => { stopRooms(); feedback.close(); posts.close(); roomState.close(); room.close(); });
 
       // 6. S1 admission + client: #3116's handshake on (re)connect, S5's receive routing.
       const sender = exposureMods.store.exposureSnapshotSender(exposures);
@@ -689,6 +702,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         fleetInfo: reportedInfo,
         receiveRecommendations: !!recommendations,
         roomContext: !!options.roomConversationGeneration && !!options.attachRoomInputs,
+        roomMentionFeedback:!!options.roomNotify,
         home: options.home,
         hubId,
         capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY] : []),
@@ -801,6 +815,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           options.attachAgentRooms?.(posts);
           options.representative.attachReports(input => room.report(input) ?? service.report(input), (cid, agent) => {
             if(cid.startsWith("hub-room-post-answer-"))posts.deliveryFailed(cid.slice("hub-room-post-answer-".length),agent);
+            if(cid.startsWith("hub-room-mention-feedback-"))feedback.deliveryFailed(cid.slice("hub-room-mention-feedback-".length),agent);
             room.deliveryFailed(cid, agent); service.deliveryFailed(cid, agent);
           });
           options.representative.attachReacts?.(input => room.react(input));

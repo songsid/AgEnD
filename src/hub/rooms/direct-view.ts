@@ -5,8 +5,8 @@ import { personKeyString } from "../identity.js";
 import type { HubCore } from "../http/core.js";
 import { HubProtocolError } from "../validation.js";
 
-export function directRoomView(room: HubRoomListItem, presence: "idle" | "paused" | "offline" = "offline", unread = 0) {
-  return { ...room, kind: "direct" as const, name: room.exposureName, people: 1, agents: 1, online: presence === "idle" ? 1 : 0, unread,
+export function directRoomView(room: HubRoomListItem, presence: "idle" | "working" | "paused" | "offline" = "offline", unread = 0) {
+  return { ...room, kind: "direct" as const, name: room.exposureName, people: 1, agents: 1, online: presence === "idle" || presence === "working" ? 1 : 0, unread,
     lastText: "", lastAuthor: "", archived: room.state === "closed",
     agent: { exposureId: room.exposureId, owner: { name: room.ownerName }, presence } };
 }

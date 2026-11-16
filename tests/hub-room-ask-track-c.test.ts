@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { createHubRoomsFixture } from "./support/hub-rooms-fixture.js";
 import { agentPresence, createRoomStatePublisher, formatRoomAskPrompt, HubRoomAskAdapter, migrateRoomAsks, type RoomAsk, type RoomAskOptions, type RoomAskLink, type RoomAnswer, type AgentStateInput, type RoomStateLink } from "../src/hub/member/room-ask.js";
 import type { HubRepresentativeDelivery } from "../src/hub/representative.js";
+import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../src/hub/room-mention-feedback-model.js";
 
 function example(): RoomAsk {
   const fixture = createHubRoomsFixture(), room = fixture.rooms.find(r => r.id === "room-weekly")!;
@@ -94,6 +95,17 @@ function member(contactLimit?: boolean) {
     retire: () => { live = false; }, replace: () => { exposure = { ...exposure, token: "replacement" }; } };
 }
 describe("Track C durable room adapter (injectable Track R seam)", () => {
+  it("binds refusal feedback to the exact retained answer without reopening its frozen body",async()=>{
+    const f=member(),feedback=vi.fn(()=>true);f.options.feedback=feedback;(f.link.features as Set<string>).add(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY);
+    f.adapter.accept(f.ask,f.link);await f.adapter.settled();await f.report("A frozen answer");const answer=f.sent[0]!;
+    const value={id:randomUUID(),refusals:[{code:"personal-people-only" as const,name:"Private notes"}]};
+    expect(f.adapter.acknowledge({...answer,answerId:randomUUID(),mentionRefusals:value},f.link)).toBe(false);expect(feedback).not.toHaveBeenCalled();
+    feedback.mockImplementationOnce(()=>{throw Error("feedback journal unavailable");});
+    expect(f.adapter.acknowledge({...answer,mentionRefusals:value},f.link)).toBe(false);expect(f.db.prepare("SELECT state FROM hub_room_asks").get()).toEqual({state:"answered"});
+    expect(f.adapter.acknowledge({...answer,mentionRefusals:value},f.link)).toBe(true);
+    expect(feedback).toHaveBeenLastCalledWith(value,expect.objectContaining({agent:"existing-agent",exposureId:f.ask.exposureId,token:"life-1"}),`answer:${f.ask.messageId}:${answer.answerId}`);
+    expect(f.sent[0]).toEqual(answer);expect(f.sent[0]).not.toHaveProperty("mentionFeedback");f.adapter.close();
+  });
   it.each([true, false, undefined])("carries local contact policy %s into the same Fleet handoff", async contactLimit => {
     const f = member(contactLimit); f.adapter.accept(f.ask, f.link); await f.adapter.settled();
     expect(f.inputs).toHaveLength(1); expect(f.inputs[0]!.contactLimit).toBe(contactLimit !== false); f.adapter.close();

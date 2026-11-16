@@ -46,5 +46,7 @@ CREATE TABLE hub_personal_jobs(
  CHECK((direct_message_id IS NOT NULL AND room_delivery_id IS NULL) OR (direct_message_id IS NULL AND room_delivery_id IS NOT NULL))
 );
 CREATE INDEX hub_personal_jobs_queue ON hub_personal_jobs(state,created_at);
+CREATE TABLE hub_personal_mention_refusals(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id) ON DELETE CASCADE,
+ source_exposure_id TEXT NOT NULL,id TEXT NOT NULL UNIQUE,content_ref TEXT NOT NULL,digest TEXT NOT NULL);
 `);
 } });

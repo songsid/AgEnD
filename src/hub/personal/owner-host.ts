@@ -13,7 +13,7 @@ import { exposureOf, readExposure } from "../catalog.js";
 import type { HubPersonalExposure } from "../types.js";
 type DB=Database.Database;
 const policyInput=z.strictObject({enabled:z.boolean(),people:z.array(z.string().min(1).max(512)).max(200),teams:z.array(z.string().uuid()).max(200)});
-const agentInput=z.strictObject({name:z.string().trim().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/),
+const agentInput=z.strictObject({name:z.string().trim().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/).refine(s=>Buffer.byteLength(s,"utf8")<=256),
   description:z.string().trim().max(512),cli:z.string().refine(isPersonalAgentCli),model:z.string().min(1).max(128).optional(),ifRevision:z.number().int().min(0)});
 export interface PersonalDefinition {id:string;owner:string;machine_id:string;cli:import("../../runtime-personal-answer.js").PersonalAgentCli;model:string|null;description:string}
 interface Enrollment { id:string;owner:string;created_at:number;expires_at:number;machine_id:string|null }
@@ -109,12 +109,21 @@ export class HubPersonalOwnerHost {
     return db.prepare("SELECT * FROM hub_personal_agents WHERE id=?").get(id) as PersonalDefinition|undefined;
   }
   assertSource(db:DB,exposure:HubPersonalExposure):void {
-    this.core.check();if(this.closed||!this.policy(db).enabled)throw new HubProtocolError("unavailable");
+    this.core.check();if(this.closed)throw new HubProtocolError("unavailable");
+    if(!this.policy(db).enabled)throw new HubProtocolError("denied");
     const agent=this.definition(db,exposure.personalAgentId),owner=personKeyString(exposure.owner);
     const binding=db.prepare("SELECT machine_id FROM hub_personal_computers WHERE owner=?").get(owner) as {machine_id:string}|undefined;
     const machine=agent&&this.runtime.machine(agent.machine_id);
     if(!agent||agent.owner!==owner||agent.machine_id!==binding?.machine_id||!machine||machine.status==="revoked"
       ||!machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE))throw new HubProtocolError("revoked");
+  }
+  /** Exact non-secret source material for policy preview/resume fences; an offline computer remains the same source. */
+  sourceMaterial(db:DB,exposure:HubPersonalExposure):unknown|null {
+    try{this.assertSource(db,exposure);}catch(error){if(error instanceof HubProtocolError)return null;throw error;}
+    const agent=this.definition(db,exposure.personalAgentId)!,machine=this.runtime.machine(agent.machine_id)!;
+    const computer=db.prepare("SELECT * FROM hub_personal_computers WHERE owner=?").get(agent.owner);
+    return {exposure,agent,computer,machine:{id:machine.id,generation:machine.generation,enrollmentId:machine.enrollmentId,
+      enrolledVia:machine.enrolledVia,personalFolder:machine.inventory?.personalFolder??null}};
   }
   async publish(ctx:HubRequestContext,input:unknown):Promise<HubPersonalExposure> {
     const value=validated(agentInput,input),key=await ctx.requirePerson(),owner=personKeyString(key),request=this.fence(ctx);

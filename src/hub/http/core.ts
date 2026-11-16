@@ -155,8 +155,20 @@ export class HubCore {
     const groups = this.deps.groups;
     const exposure = this.atomic(db => { const row = readExposure(db, exposureId); return row && exposureOf(row); });
     if (!exposure) throw new HubProtocolError("not-found");
-    // The dedicated personal execution adapter must be mounted before such a source can be used.
-    if(exposure.kind==="personal")throw new HubProtocolError("unavailable");
+    if(exposure.kind==="personal"){
+      const personal=this.deps.personal;if(!personal)throw new HubProtocolError("unavailable");
+      const normalize=(e:HubExposure)=>{if(!sharingChange)return JSON.stringify(e);const {sharingEpoch:_epoch,...value}=e;return JSON.stringify({...value,state:value.state==="paused"?"published":value.state});};
+      const image=normalize(exposure),assertSource=()=>{
+        if(!this.live()||!ctx.current()||this.deps.personal!==personal||this.deps.groups!==groups)throw new HubProtocolError("unavailable");
+        this.atomic(db=>{const row=readExposure(db,exposureId),e=row&&exposureOf(row);
+          if(!e||e.kind!=="personal"||normalize(e)!==image)throw new HubProtocolError("stale");personal.assertSource(db,e);});
+      };
+      assertSource();const permits:HubOperationPermit[]=[];
+      if(asker)permits.push(await this.groupAsker(asker,ctx));
+      if(groups)permits.push(await this.group(()=>groups.check({kind:"exposure",id:exposure.id,revision:exposure.revision,owner:exposure.owner},ctx)));
+      const permit={source:groups?undefined:"legacy" as const,assertCurrent:()=>{assertSource();for(const p of permits)p.assertCurrent();}};
+      permit.assertCurrent();return permit;
+    }
     const bytes = (e: HubExposure) => {
       if (!sharingChange) return JSON.stringify(e);
       const { sharingEpoch: _epoch, ...rest } = e;

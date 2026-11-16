@@ -1,3 +1,4 @@
+import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 /** Dedicated TLS machine listener. No Hub browser routes or ordinary fleet authority lives here. */
 import { HUB_FLEET_UPDATE_CAPABILITY } from "./protocol.js";
@@ -28,6 +29,10 @@ import type { HubRelocation } from "./types.js";
 export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: string; revision: number; readonly link: object }
 /** Optional operations negotiated at hello, plus the Hub-only fleet-info receiver offer. */
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
+/** fleet-update-v1 is the existing explicit signal that this peer accepts a 32-name welcome. */
+export function hubWelcomeCapabilities(configured:readonly string[],member:readonly string[]):string[]{
+  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
+}
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout;
   /** The credential binding the link authenticated with (#3429 B: what a relocation ack's proof is rechecked against). */
   binding: { generation: number; revocationVersion: number } }
@@ -148,11 +153,12 @@ export class HubServer {
     if (!connection.hello) {
       if (frame.type !== "hello" || frame.linkEpoch !== 0 || !frame.payload.supportedVersions.includes(1) || HUB_CAPABILITIES.some(c => !frame.payload.capabilities.includes(c))) throw new HubProtocolError("incompatible");
       connection.hello = true; clearTimeout(connection.timer);
-      const offered = (this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES).filter(c => c !== HUB_FLEET_UPDATE_CAPABILITY || frame.payload.capabilities.includes(HUB_FLEET_UPDATE_CAPABILITY)), features = context.features as Set<string>;
+      const offered = hubWelcomeCapabilities(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES,frame.payload.capabilities), features = context.features as Set<string>;
       for (const c of offered) if (frame.payload.capabilities.includes(c)) features.add(c);
       // This is a Hub-only receiver offer; it does not take a slot in a member hello.
       if (features.has("welcome-caps-v1") && offered.includes(HUB_FLEET_INFO_CAPABILITY)) features.add(HUB_FLEET_INFO_CAPABILITY);
       if (features.has("welcome-caps-v1") && features.has(HUB_ROOM_ASK_CAPABILITY) && offered.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
+      if(features.has(HUB_ROOM_ASK_CAPABILITY)&&features.has("welcome-caps-v1")&&offered.includes(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))features.add(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY);
       try { this.options.connected?.(context); } catch { warnFleetDiagnostics(this.options.log, context.fleetId, "connect"); }
       await link.send({ v: 1, type: "welcome", requestId: frame.requestId, linkEpoch: context.linkEpoch,
         payload: { selectedVersion: 1, hubId: this.options.hubId, fleetId: context.fleetId, linkEpoch: context.linkEpoch, revocationVersion,

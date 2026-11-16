@@ -26,6 +26,8 @@ import { RoomDirectoryCandidates, rememberRoomPeople, type RoomPersonSelection }
 import type { HubAttachmentStore } from "../attachments/store.js";
 import type { HubAttachmentRef } from "../types.js";
 import { isInlineImage } from "../attachments/limits.js";
+import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-model.js";
+import {personalMentionRefusals,recordPersonalMentionRefusals} from "../personal/refusals.js";
 
 type DB = Database.Database;
 interface RoomRow { id: string; name: string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null }
@@ -249,12 +251,14 @@ export class HubGroupRooms {
       const e = m.kind === "agent" ? readExposure(db, m.subject) : undefined;
       return e && e.owner === m.owner_at_join ? [{ ...m, name: e.display_name }] : [];
     }) as MentionMember[];
-    const resolved = resolveRoomMentions(this.core.deps.content.get(post.content_ref)?.question ?? "", members, onBehalf ? "" : sourceId), accepted: string[] = [];
+    const resolved = resolveRoomMentions(this.core.deps.content.get(post.content_ref)?.question ?? "", members, onBehalf ? "" : sourceId), accepted: string[] = [],refusedPersonal:string[]=[];
     if (resolved.all && !onBehalf) this.stop(db, tx, post, "all");
-    const targets = resolved.all && onBehalf ? members.filter(m => m.kind === "agent").map(m => m.subject) : resolved.all ? [] : resolved.agents;
+    const targets = resolved.all && onBehalf ? members.filter(m => m.kind === "agent"
+      && (readExposure(db,m.subject)?.source_kind!=="personal"||resolved.agents.includes(m.subject))).map(m => m.subject) : resolved.all ? [] : resolved.agents;
     for (const name of resolved.ambiguous) this.stop(db, tx, post, "ambiguous", name);
     for (const target of [...resolved.people, ...targets]) {
       const agent = targets.includes(target);
+      if(agent&&readExposure(db,target)?.source_kind==="personal"&&!onBehalf){refusedPersonal.push(readExposure(db,target)!.display_name);continue;}
       const recipient = members.find(m => agent ? m.kind === "agent" && m.subject === target : m.kind === "person" && m.id === target);
       if (recipient && (db.prepare("SELECT joined_sequence FROM hub_room_members WHERE id=?").get(recipient.id) as { joined_sequence: number }).joined_sequence > this.automation.lineage(db, post).audience_sequence) continue;
       if (agent && (db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE state IN ('queued','sent')").get() as { n: number }).n + accepted.filter(id => targets.includes(id)).length >= 4096) { this.stop(db, tx, post, "capacity"); continue; }
@@ -264,6 +268,7 @@ export class HubGroupRooms {
       accepted.push(target);
     }
     if (resolved.all && onBehalf) accepted.push("all");
+    recordPersonalMentionRefusals(this.core,db,tx,post,sourceId,[...new Set(refusedPersonal)]);
     db.prepare("UPDATE hub_room_posts SET mentions=? WHERE id=?").run(JSON.stringify(accepted), post.id);
     this.agents.enqueue(db, tx, { ...post, mentions: JSON.stringify(accepted.filter(id => id !== "all")) }, source.id);
   }
@@ -332,7 +337,9 @@ export class HubGroupRooms {
   }
   async agentPost(input: unknown, link: HubLinkContext): Promise<HubRoomPostResult> {
     const body = validated(roomPostSchema, input), { source, fence } = await this.agentSource(body.exposureId, link);
-    const digest = createHash("sha256").update(JSON.stringify(body)).digest("hex"); let added = false; let refusedEffects: string | undefined;
+    if(body.mentionFeedback&&!link.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))throw new HubProtocolError("incompatible");
+    const {mentionFeedback:_feedback,...operation}=body;
+    const digest = createHash("sha256").update(JSON.stringify(operation)).digest("hex"); let added = false; let refusedEffects: string | undefined;
     const result = this.core.atomic((db, tx): HubRoomPostResult => {
       const old = db.prepare("SELECT * FROM hub_room_agent_operations WHERE exposure_id=? AND idempotency_key=?").get(source.id, body.idempotencyKey) as { digest: string; room_id: string; post_id: string; owner: string; fleet_id: string; at: number; member_id: string } | undefined;
       if (old) {
@@ -374,6 +381,10 @@ export class HubGroupRooms {
       this.emit({ type: "unread.changed", roomId: row.room_id, data: { roomId: row.room_id } }); this.agentEffects(row.id); this.agents.wake();
     }
     if (refusedEffects) this.agentEffects(refusedEffects);
+    if(result.ok&&body.mentionFeedback&&link.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)){
+      const mentionRefusals=personalMentionRefusals(this.core,result.messageId,body.exposureId);
+      if(mentionRefusals)return {...result,mentionRefusals};
+    }
     return result;
   }
   private insert(db: DB, tx: HubTx, roomId: string, author: { kind: PostRow["author_kind"]; id: string; subject: string; name: string }, text: string,

@@ -6,6 +6,7 @@ import type { HubFleetVersions } from "./fleet-versions.js";
 import type { HubVersionRecommendations } from "./recommendations.js";
 import { personKeyString } from "./identity.js";
 import { HubProtocolError } from "./validation.js";
+import { exposureOf,readExposure } from "./catalog.js";
 
 export const HUB_ADMIN_DASHBOARD_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-admin-dashboard", version: 1, up(db: Database.Database) {
   // Do not manufacture historical answer times from mutable stage_at or a placeholder's creation time.
@@ -110,7 +111,7 @@ export class HubAdminDashboard {
         SELECT created_at created FROM hub_messages WHERE answer_id IS NULL AND stage NOT IN ('rejected','cancelled','failed','uncertain') AND expires_at>? AND created_at<=?
         UNION ALL SELECT created_at FROM hub_room_deliveries WHERE state IN ('queued','sent') AND expires_at>? AND created_at<=?)`).get(now, now, now, now) as { n: number; oldest: number | null };
       const exposures = db.prepare("SELECT e.id,e.display_name,e.owner,e.fleet_id,e.state,e.frozen_through,e.revision,p.display_name owner_name FROM hub_exposures e LEFT JOIN hub_people p ON p.person=e.owner").all() as
-        { id: string; display_name: string; owner: string; owner_name: string | null; fleet_id: string; state: string; frozen_through: number; revision: number }[];
+        { id: string; display_name: string; owner: string; owner_name: string | null; fleet_id: string|null; state: string; frozen_through: number; revision: number }[];
       const topAgents = [...agentCounts].sort((a, b) => b[1].questions - a[1].questions || a[0].localeCompare(b[0])).slice(0, 5).map(([id, a]) => {
         const e = exposures.find(e => e.id === id);
         return { id, name: e?.display_name ?? "Agent", ownerName: e?.owner_name ?? null, questions: a.questions,
@@ -122,7 +123,13 @@ export class HubAdminDashboard {
       return { generatedAt: now, range, timeZone, start, end: now, people,
         questions: { asked: selected.length, perDay, answerTime: typical(times), waiting: waiting.n, longestWaitMs: waiting.oldest === null ? null : now - waiting.oldest,
           notAnswered: { total: Object.values(reasons).reduce((a, b) => a + b, 0), reasons } }, topAgents,
-        sharedAgents: exposures.filter(e => e.state === "published" && e.frozen_through < e.revision && fleets.some(f => f.id === e.fleet_id && personKeyString(f.owner) === e.owner)).length,
+        sharedAgents: exposures.filter(e => {
+          if(e.state!=="published"||e.frozen_through>=e.revision)return false;
+          if(e.fleet_id!==null)return fleets.some(f=>f.id===e.fleet_id&&personKeyString(f.owner)===e.owner);
+          const row=readExposure(db,e.id),personal=row&&exposureOf(row);
+          if(!personal||personal.kind!=="personal"||!this.core.deps.personal)return false;
+          try{this.core.deps.personal.assertSource(db,personal);return true;}catch{return false;}
+        }).length,
         fleets: { total: fleets.length, connected: fleetViews.filter(f => f.connected).length, needsUpdate: fleetViews.filter(f => f.versionState === "needs-update").length,
           tooOldRooms: fleetViews.filter(f => f.versionState === "too-old-rooms").length, unknownVersion: fleetViews.filter(f => f.versionState === "unknown").length, recommendedVersion: recommendation.recommendedVersion },
         rooms: { total: count("SELECT COUNT(*) n FROM hub_group_rooms WHERE assistant_for IS NULL"),

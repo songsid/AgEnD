@@ -14,7 +14,8 @@ import {HubTransportStore} from "../src/hub/store.js";
 import {HubFileVersionFloor} from "../src/hub/version-floor.js";
 import {HubEnrolmentCodes} from "../src/hub/enrolment-code.js";
 import {createHubRoleCutover,type RoleCutoverOptions} from "../src/hub/roles/cutover.js";
-import {captureRoleCutoverInventory} from "../src/hub/roles/cutover-inventory.js";
+import {captureRoleCutoverInventory,PERSONAL_ROLE_AUTHORITY_TABLES} from "../src/hub/roles/cutover-inventory.js";
+import {HUB_PERSONAL_AGENTS_MIGRATION} from "../src/hub/personal/schema.js";
 import {GROUP_CAPABILITIES,evaluateGroupPolicy,type HubGroupPolicy} from "../src/hub/group-policy/model.js";
 import {createJoinSealer,type DeliveryBinding} from "../src/hub/join/receipt.js";
 import {CompanyJoinRecords,type JoinRecord,companyInvitationRecord} from "../src/hub/join/store.js";
@@ -49,6 +50,27 @@ function fixture(state:HubGroupPolicy["state"]="enabled",disk=false){
  return{home,db,hubId,root,owner,policy,oldRaw,codes,code,audit,auditKey,append,transport,fileFloor,raise,floor,refresh,options,cutover,raw,time:(n:number)=>{time+=n;},elapsed:(n:number)=>{elapsed+=n;},stop:()=>{live=false;}};
 }
 describe("inactive atomic roles cutover",()=>{
+ it("binds every optional personal authority table, with no job or content inventory",()=>{
+  const w=fixture(),before=captureRoleCutoverInventory(w.db,w.transport,()=>{});
+  expect(before.tables.some(t=>t.name.startsWith("hub_personal_"))).toBe(false);
+  HUB_PERSONAL_AGENTS_MIGRATION.up(w.db);
+  let previous=captureRoleCutoverInventory(w.db,w.transport,()=>{});
+  expect(previous.tables.filter(t=>t.name.startsWith("hub_personal_")).map(t=>t.name)).toEqual(PERSONAL_ROLE_AUTHORITY_TABLES);
+  const owner=`corp/${randomUUID()}`,enrollment=randomUUID(),machine=randomUUID();
+  const changes=[()=>w.db.prepare("UPDATE hub_personal_settings SET enabled=1").run(),
+   ()=>w.db.prepare("INSERT INTO hub_personal_creators VALUES('person',?)").run(owner),
+   ()=>w.db.prepare("INSERT INTO hub_personal_enrollments(id,owner,created_at,expires_at,machine_id) VALUES(?,?,0,999,?)").run(enrollment,owner,machine),
+   ()=>w.db.prepare("INSERT INTO hub_personal_computers VALUES(?,?,?,0)").run(owner,machine,enrollment),
+   ()=>w.db.prepare("INSERT INTO hub_personal_agents(id,owner,machine_id,cli,created_at,updated_at) VALUES(?,?,?,'codex',0,0)").run(randomUUID(),owner,machine)];
+  expect(changes).toHaveLength(PERSONAL_ROLE_AUTHORITY_TABLES.length);
+  for(const change of changes){change();const next=captureRoleCutoverInventory(w.db,w.transport,()=>{});expect(next.digest).not.toBe(previous.digest);previous=next;}
+  expect(previous.tables.map(t=>t.name)).not.toContain("hub_personal_jobs");
+  expect(captureRoleCutoverInventory(w.db,w.transport,()=>{})).toEqual(previous);
+ });
+ it("refuses a partial personal authority schema instead of accepting a narrower proof",()=>{
+  const w=fixture();HUB_PERSONAL_AGENTS_MIGRATION.up(w.db);w.db.exec("DROP TABLE hub_personal_creators");
+  expect(()=>captureRoleCutoverInventory(w.db,w.transport,()=>{})).toThrow(expect.objectContaining({code:"hub-state-mismatch"}));
+ });
  it.each(["never-enabled","enabled","suspended"]as const)("atomically converts %s without changing state/latch/root self-use or retained bytes",state=>{
   const w=fixture(state),inventory=captureRoleCutoverInventory(w.db,w.transport,()=>{});
   expect(w.cutover.migrate()).toEqual({ok:true,changed:true,revision:7,epoch:1});

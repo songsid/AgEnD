@@ -1,3 +1,4 @@
+import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "../room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "../room-context-model.js";
 import { HUB_RECOMMENDATION_CAPABILITY } from "../recommendation-model.js";
 import { HUB_FLEET_INFO_CAPABILITY } from "../fleet-info.js";
@@ -675,5 +676,5 @@ export type { HubPerson };
 
 /** The member-link features this Hub offers (exported so M-3125's negotiation test uses the real list, Fable #3925). */
 export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; features?: readonly string[] }): string[] {
-  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
+  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
 }

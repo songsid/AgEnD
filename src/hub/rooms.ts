@@ -29,6 +29,7 @@ import { POSITIVE, QUESTION_LIFETIME_MS, TERMINAL, messageFacts, readMessage, ty
 import { personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
 import { RoomReadPacer, ROOM_READ_BURST } from "./room-read-pacer.js";
 import { HubSharingPaused } from "./sharing.js";
+import type { PersonalQuestionAdapter } from "./personal/types.js";
 
 /** The normal client poll interval; the shared session allowance replenishes over this interval. */
 export const ROOM_POLL_MS = 10_000;
@@ -42,7 +43,7 @@ export interface HubRoomListItem extends HubRoom {
   exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
   grantExpiresAt: number; lastAt: number; waiting: boolean; features: readonly string[];
 }
-type RoomViewRow = RoomRow & { fleet_id: string; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number; sharing_paused: number;
+type RoomViewRow = RoomRow & { fleet_id: string|null; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number; sharing_paused: number;
   owner_name: string | null; grant_expires_at: number | null; last_at: number; waiting: number };
 const ROOM_VIEW_SQL = `SELECT r.*, e.fleet_id AS fleet_id, e.display_name AS exposure_name, e.state AS exposure_state, e.revision AS exposure_revision, e.frozen_through,e.sharing_paused,
   p.display_name AS owner_name, g.expires_at AS grant_expires_at,
@@ -78,7 +79,7 @@ export class HubRoomsService {
   constructor(private readonly core: HubCore, private readonly policy: HubPolicyService) {
     this.buttons = new HubButtonsService(core, {
       insert: (db, tx, input) => this.insertQuestion(db, tx, input).receipt,
-      flush: fleetId => { void this.flush(fleetId); },
+      flush: fleetId => { if(fleetId)void this.flush(fleetId);this.core.deps.personal?.wake(); },
     });
   }
 
@@ -87,10 +88,11 @@ export class HubRoomsService {
     if (!old || old.linkEpoch <= link.linkEpoch) this.links.set(link.fleetId, link);
   }
   forget(): void { this.links.clear(); this.polls.clear(); }
-  presence(exposureId: string): "idle" | "paused" | "offline" {
+  presence(exposureId: string): "idle" | "working" | "paused" | "offline" {
     const exposure = this.core.atomic(db => readExposure(db, exposureId));
     if (!exposure || exposure.state !== "published" || exposure.frozen_through >= exposure.revision) return "offline";
     if (exposure.sharing_paused) return "paused";
+    if(exposure.source_kind==="personal")return this.core.deps.personal?.presence(exposureId)??"offline";
     return exposure.fleet_id&&this.links.get(exposure.fleet_id)?.current() ? "idle" : "offline";
   }
 
@@ -285,6 +287,7 @@ export class HubRoomsService {
       roomId, asker, idempotencyKey, text, requestId: ctx.requestId, actor: { kind: "person", person: asker }, grantProof: permit.grant,
     }, fileIds), permit);
     if (out.fleet) void this.flush(out.fleet);
+    this.core.deps.personal?.wake();
     return out.receipt;
   }
 
@@ -310,7 +313,41 @@ export class HubRoomsService {
       .run(id, roomId, idempotencyKey, sequence, exposure.fleetId, exposure.id, exposure.revision, grant.id, grant.revision, me, personKeyString(exposure.owner), digest, ref, now, now, now + QUESTION_LIFETIME_MS);
     this.core.audit(tx, { requestId: input.requestId, actor: input.actor, action: "question.accepted", result: "allowed",
       messageId: id, roomId, fleetId: exposure.fleetId??undefined, exposureId: exposure.id, ownerAtEvent: exposure.owner, grantId: grant.id, grantRevision: grant.revision, contentRef: ref });
+    if(exposure.kind==="personal"){
+      const port=this.core.deps.personal;if(!port)throw new HubProtocolError("unavailable");port.enqueue(db,exposure,{direct:id});
+    }
     return { receipt: { messageId: id, contentDigest: digest, stage: "queued", sequence: 0, at: now }, fleet: exposure.fleetId };
+  }
+
+  /** The personal executor reuses this room's fresh grant and people checks, without a Fleet release lease. */
+  personalQuestions(changed:(messageId:string)=>void=()=>{}):PersonalQuestionAdapter {
+    return {
+      prepare:async job=>{
+        const msg=this.core.atomic(db=>readMessage(db,job.direct_message_id!));
+        if(!msg||msg.id!==job.id||msg.fleet_id!==null)throw new HubProtocolError("not-found");
+        if(!await this.policy.peopleEligible(msg))throw new HubProtocolError("revoked");
+        const permit=await this.core.exposureGrant(msg.exposure_id,msg.grant_id,personFromString(msg.asker),{requestId:job.id,current:()=>this.core.live()});
+        return this.core.atomic(db=>{
+          const current=readMessage(db,msg.id);if(!current)throw new HubProtocolError("not-found");
+          const facts=messageFacts(db,current,this.core.now(),permit);if(!facts.ok)throw new HubProtocolError(facts.reason);
+          if(facts.exposure.kind!=="personal"||facts.exposure.personalAgentId!==job.personal_agent_id)throw new HubProtocolError("revoked");
+          const prompt=this.core.deps.content.get(current.question_ref)?.question;if(!prompt)throw new HubProtocolError("expired");
+          return {prompt,permit};
+        },permit);
+      },
+      settle:(db,tx,job,outcome)=>{
+        const msg=readMessage(db,job.direct_message_id!);if(!msg||msg.id!==job.id||msg.fleet_id!==null)throw new HubProtocolError("not-found");
+        if("text" in outcome&&TERMINAL.has(msg.stage))throw new HubProtocolError("revoked");
+        if(msg.answer_id||TERMINAL.has(msg.stage))return;
+        const now=this.core.now(),success="text" in outcome;
+        const ref=success?this.core.deps.content.put(tx,{answer:outcome.text}):null;
+        db.prepare("UPDATE hub_messages SET stage=?,stage_at=?,reason_code=?,answer_id=?,answer_digest=?,answer_ref=?,answered_at=CASE WHEN ? THEN COALESCE(answered_at,?) ELSE answered_at END WHERE id=?")
+          .run(success?"answered":"failed",now,success?null:outcome.reason,success?job.id:null,success?messageContentDigest("answer",outcome.text):null,ref,success?1:0,now,msg.id);
+        this.core.audit(tx,{requestId:job.id,actor:{kind:"person",person:personFromString(job.owner)},action:"personal.answer",result:success?"completed":"held",
+          ...(ref?{contentRef:ref}:{}),messageId:msg.id,roomId:msg.room_id,exposureId:msg.exposure_id,ownerAtEvent:personFromString(job.owner),...(success?{}:{reasonCode:outcome.reason})});
+      },
+      changed:job=>changed(job.direct_message_id!),
+    };
   }
 
   /** The room's entries after `after`, for its asker only — both people and the grant re-checked; paced per session. */

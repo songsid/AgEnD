@@ -8,9 +8,7 @@ import type { HubRoomPostAnswer } from "../types.js";
 export type RoomPostAnswer = HubRoomPostAnswer;
 export interface RoomPostSource { agent: string; local: RoomIdentity; roomId: string; receiptId?: string }
 export interface RoomPostAnswerLink { current(): boolean; ack(id: string): void | Promise<void> }
-export interface RoomPostNotification {
-  agent: string; id: string; text: string; beforeInput(): Promise<boolean>; stillCurrent(): boolean;
-}
+export type RoomPostNotification=import("./room-notification.js").HubRoomNotification;
 interface Options {
   db: Database.Database; binding: string; encryptionKey: Buffer;
   source(answer: RoomPostAnswer): RoomPostSource | null;

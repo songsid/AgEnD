@@ -8,6 +8,10 @@ export const ROLE_CUTOVER_TABLES=Object.freeze([
  "hub_company_join_control","hub_company_join_requests","hub_company_join_invites","hub_company_join_nonces","hub_company_join_cipher_nonces",
  "hub_enrolment_codes","hub_enrolment_code_uses","hub_enrolment_code_key","hub_pairing_notices","hub_pairing_notice_targets",
 ]as const);
+/** The unregistered personal schema is optional; a half-present authority model is never a valid proof. */
+export const PERSONAL_ROLE_AUTHORITY_TABLES=Object.freeze([
+ "hub_personal_settings","hub_personal_creators","hub_personal_enrollments","hub_personal_computers","hub_personal_agents",
+]as const);
 export interface RoleCutoverInventory {readonly digest:string;readonly tables:readonly {readonly name:string;readonly rows:number;readonly digest:string}[]}
 const sha=(s:string)=>createHash("sha256").update(s).digest("hex");
 /** Caller binds the exact policy/epoch and takes another snapshot in its owning immediate transaction. */
@@ -16,7 +20,9 @@ export function captureRoleCutoverInventory(db:Database.Database,transport:Pick<
  guard();const first=transport.read(),{revision:_r,revocationVersion:_v,...ordinary}=first;
  const tables:{name:string;rows:number;digest:string}[]=[{name:"hub_transport_state",rows:1,digest:sha(JSON.stringify(ordinary))}];
  const quote=(s:string)=>`"${s.replaceAll('"','""')}"`;
- for(const name of ROLE_CUTOVER_TABLES){
+ const personal=PERSONAL_ROLE_AUTHORITY_TABLES.filter(name=>!!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name));
+ if(personal.length&&personal.length!==PERSONAL_ROLE_AUTHORITY_TABLES.length)throw new HubStateError("hub-state-mismatch","personal authority inventory is incomplete");
+ for(const name of [...ROLE_CUTOVER_TABLES,...personal]){
   guard();const columns=db.prepare(`PRAGMA table_info(${quote(name)})`).all()as{name:string;type:string;pk:number}[];
   const keys=columns.filter(c=>c.pk>0).sort((a,b)=>a.pk-b.pk);
   if(!columns.length||!keys.length)throw new HubStateError("hub-state-mismatch","authority inventory table is missing or unkeyed");

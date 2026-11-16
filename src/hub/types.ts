@@ -64,8 +64,8 @@ export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: st
   contextState?: import("./room-context-model.js").HubRoomContextState }
 export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string;
   /** M-3127: room-answer-buttons-v1 links only; bound into the answer digest like its text. */
-  buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[] }
-export interface HubRoomAnswerAck { messageId: MessageId; answerId: string }
+  buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[]; mentionFeedback?: true }
+export interface HubRoomAnswerAck { messageId: MessageId; answerId: string; mentionRefusals?: import("./room-mention-feedback-model.js").HubRoomMentionFeedback }
 /** M-3127 (agent reactions, on room-answer-buttons-v1): the agent's reaction to the room question it was asked ("" takes it back). */
 export interface HubRoomReact { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; emoji: string }
 export interface HubRoomReactResult { messageId: MessageId; ok: boolean; code?: "invalid" | "denied" | "not-found" | "archived" | "revoked" }
@@ -74,7 +74,7 @@ export type HubRoomPostRefusalCode = "invalid" | "denied" | "revoked" | "not-fou
 export interface HubRoomListRequest { exposureId: ExposureId }
 export type HubRoomListResult = { ok: true; exposureId: ExposureId; rooms: readonly { id: RoomId; name: string }[]; truncated?: boolean }
   | { ok: false; exposureId: ExposureId; code: HubRoomPostRefusalCode; retryAt?: Millis };
-export interface HubRoomPost { exposureId: ExposureId; room: string; text: string; idempotencyKey: string; onBehalfOf?: { receiptId: string } }
+export interface HubRoomPost { exposureId: ExposureId; room: string; text: string; idempotencyKey: string; onBehalfOf?: { receiptId: string }; mentionFeedback?: true }
 export interface HubRoomMembersRequest { exposureId: ExposureId; room: string }
 export type HubRoomMembersResult = { ok: true; roomId: RoomId; members: readonly { id: string; kind: "person" | "agent" | "assistant"; name: string; presence: string; owner?: { name: string }; presenceReason?: string; presenceNote?: string }[] }
   | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis; rooms?: readonly { id: RoomId; name: string }[] };
@@ -84,7 +84,7 @@ export type HubPeopleSearchResult = { ok: true; people: readonly { id: string; n
 export interface HubRoomPostAnswer { id: string; idempotencyKey: string; postId: MessageId; roomId: RoomId; exposureId: ExposureId;
   message: { id: MessageId; author: { name: string }; text: string; at: Millis }; receiptId?: string }
 export interface HubRoomPostAnswerAck { id: string }
-export type HubRoomPostResult = { ok: true; roomId: RoomId; messageId: MessageId; at: Millis }
+export type HubRoomPostResult = { ok: true; roomId: RoomId; messageId: MessageId; at: Millis; mentionRefusals?: import("./room-mention-feedback-model.js").HubRoomMentionFeedback }
   | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis; rooms?: readonly { id: RoomId; name: string }[] };
 
 export type HubAgentStateReason = "quota" | "auth" | "approval" | "update" | "operator" | "idle" | "capacity" | "error" | "stopped" | "crashed" | "stuck" | "unknown";
