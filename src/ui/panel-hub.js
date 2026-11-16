@@ -60,8 +60,8 @@ const ha = key => t(`hubAccess.${key}`);
 // Kept with the fresh renderer: retained owner dictionaries do not know this label.
 // M-3162: Administration's tabs (Lumen's names: "Manage" holds today's long page; "This Hub" its name already).
 register("hubAdminTabs", {
-  en: { label: "Administration", overview: "Overview", manage: "Manage", teams: "Teams", groups: "Groups", thisHub: "This Hub" },
-  "zh-TW": { label: "管理", overview: "總覽", manage: "管理項目", teams: "團隊", groups: "群組", thisHub: "這個 Hub" },
+  en: { label: "Administration", overview: "Overview", manage: "Manage", teams: "Teams", groups: "Groups", roles: "Roles and permissions", thisHub: "This Hub" },
+  "zh-TW": { label: "管理", overview: "總覽", manage: "管理項目", teams: "團隊", groups: "群組", roles: "角色與權限", thisHub: "這個 Hub" },
 });
 const hat = (key) => t(`hubAdminTabs.${key}`);
 register("hubGrantStatus", {
@@ -90,6 +90,8 @@ register("hubGroupsNote", {
   en: { unavailable: "Group permissions aren't available on this Hub yet. Update the Hub, then try again." },
   "zh-TW": { unavailable: "這個 Hub 還沒有群組權限。請更新 Hub 後再試。" },
 });
+const rolesOn = (session,client) => session?.features?.includes("role-settings-v1") && client?.roleSettingsV1 === true;
+const manages = session => session?.admin === true || Array.isArray(session?.management) && session.management.length > 0;
 const groupPolicyOn = (session, client) => !!session && Array.isArray(session.features) && session.features.includes("group-policy-v1")
   && !!client && client.groupPolicyV1 === true;
 function LazyGroups({ pick, props }) {
@@ -438,7 +440,7 @@ export function HubSide({ onPick } = {}) {
       ${teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubMyTeamsEntry" props=${{ client: hubClient(), person: s.person, active: here("teams"), onPick }} />` : null}
       ${roomsLive() && rs.invitations > 0 ? html`<a class=${`side-row${here("invitations") ? " active" : ""}`} href=${INVITATIONS_PATH} aria-current=${here("invitations") ? "page" : undefined}
         onClick=${(e) => go(e, INVITATIONS_PATH)}><${Icon} name="inbox" /><span class="grow">${hroom("invitationsTitle")}</span><span class="nav-count" title=${hroom("invitationsN", String(rs.invitations))}>${rs.invitations}</span></a>` : null}
-      ${s.admin ? row("admin", "/ui/hub/admin", "key", hc("admin")) : null}
+      ${manages(s) ? row("admin", "/ui/hub/admin", "key", hc("admin")) : null}
       ${noticesOffered(s) ? row("notices", NOTICES_PATH, "bell", hc("notices")) : null}
       <button type="button" class="side-row side-search" onClick=${openFilter} title=${`${hc("search")} (${searchShortcut()})`}
         aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${hc("navSearch")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>
@@ -1088,14 +1090,14 @@ function LegacyAllowDialog({ x, act, onClose }) {
  * (today's long page, unchanged), Teams, Groups and This Hub (with its directory page); a tab whose feature is off is not
  * drawn. The tab is the address's ?view=, so a reload or a shared link lands on it. On a phone the row scrolls sideways.
  */
-const ADMIN_TAB_VIEWS = { overview: "overview", manage: "manage", teams: "teams", groups: "groups", "this-hub": "this-hub", directory: "this-hub" };
+const ADMIN_TAB_VIEWS = { overview: "overview", manage: "manage", teams: "teams", groups: "groups", roles: "roles", "this-hub": "this-hub", directory: "this-hub" };
 let pendingAnchor = "";   // M-3162: a card on Manage to bring into view once it is drawn (Overview's links: "join", "fleets")
 export function takeAdminAnchor() { const a = pendingAnchor; pendingAnchor = ""; return a; }
 function openAdminTab(view, anchor = "") { pendingAnchor = anchor; navigate(`/ui/hub/admin?view=${view}`); }
 function AdminTabs({ tabs, current }) {
   const row = useRef(null);
   useEffect(() => { row.current?.querySelector?.('[aria-current="page"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" }); }, [current]);
-  const label = { overview: hat("overview"), manage: hat("manage"), teams: hat("teams"), groups: hat("groups"), "this-hub": hat("thisHub") };
+  const label = { overview: hat("overview"), manage: hat("manage"), teams: hat("teams"), groups: hat("groups"), roles: hat("roles"), "this-hub": hat("thisHub") };
   return html`<div class="hub-admin-tabs-wrap"><nav class="hub-admin-tabs" aria-label=${hat("label")} ref=${row}>
     ${tabs.map((k) => html`<a key=${k} href=${`/ui/hub/admin?view=${k}`} class=${`hub-admin-tab${k === current ? " active" : ""}`} aria-current=${k === current ? "page" : undefined}
       onClick=${(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; e.preventDefault(); openAdminTab(k); }}>${label[k]}</a>`)}
@@ -1106,17 +1108,21 @@ function HubAdmin({ admin }) {
   const s = useSession();
   const [overviewGone, setOverviewGone] = useState(false);   // the route answered 404: an older Hub after all
   useEffect(() => { linkHubOwnerCss(); }, []);             // the tab row and Overview are styled there too (not only Manage)
-  if (!admin) return html`<div class="center hub-empty"><${Empty} icon="key" title=${hw("adminOnly")} hint=${hw("adminOnlyHint")} /></div>`;
+  if (!admin && !manages(s)) return html`<div class="center hub-empty"><${Empty} icon="key" title=${hw("adminOnly")} hint=${hw("adminOnlyHint")} /></div>`;
   const directory = s?.features?.includes("directory-editor-v1") && hubClient()?.directoryEditorV1 === true;
-  const groups = groupPolicyOn(s, hubClient()), teams = teamsLive();
+  const groups = groupPolicyOn(s, hubClient()), teams = teamsLive(), roles = rolesOn(s,hubClient());
+  const canRole = admin || s?.management?.some(p => ["roles.assign","audit.view"].includes(p));
+  const canManage = admin || s?.management?.some(p => ["fleets.manage","join.manage"].includes(p));
   const overview = !overviewGone && s?.features?.includes("admin-dashboard-v1") && typeof hubClient()?.adminDashboard === "function";
-  const tabs = [overview ? "overview" : null, "manage", teams ? "teams" : null, groups ? "groups" : null, "this-hub"].filter(Boolean);
+  const tabs = [admin && overview ? "overview" : null, canManage ? "manage" : null, admin && teams ? "teams" : null, roles && canRole ? "roles" : admin && groups ? "groups" : null, admin ? "this-hub" : null].filter(Boolean);
   const view = adminView();
-  const current = view === "" ? tabs[0] : tabs.includes(ADMIN_TAB_VIEWS[view]) ? ADMIN_TAB_VIEWS[view] : "manage";
+  const selected = roles && view === "groups" ? "roles" : ADMIN_TAB_VIEWS[view];
+  const current = view === "" ? tabs[0] : tabs.includes(selected) ? selected : tabs[0];
   const bar = html`<${AdminTabs} tabs=${tabs} current=${current} />`;
   if (current === "overview") return html`${bar}<div class="col hub-owner hub-admin-ov-col"><${LazyRoomPart} load=${() => import("./hub-admin-overview.js")} name="HubAdminOverview"
     props=${{ client: hubClient(), onOpen: openAdminTab, onGone: () => { setOverviewGone(true); openAdminTab("manage"); } }} /></div>`;
   if (current === "this-hub") return html`${bar}${directory && view === "directory" ? html`<${LazyDirectory} session=${s} />` : html`<div class="col hub-owner"><${LazyThisHub} directory=${directory} /></div>`}`;
+  if (current === "roles") return html`${bar}<div class="col hub-owner"><${LazyRoomPart} load=${() => import("./hub-roles.js")} name="HubRoles" props=${{client:hubClient()}} /></div>`;
   if (current === "groups") return html`${bar}<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
   if (current === "teams") return html`${bar}<div class="col hub-owner"><h2 class="sr-only">${ht("title")}</h2><${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsPage" props=${{ client: hubClient(), mode: "admin", person: s?.person }} /></div>`;
   // Reached from a fleet's Settings link on a Hub (or a tab) without group permissions: say so instead of a silent admin page.

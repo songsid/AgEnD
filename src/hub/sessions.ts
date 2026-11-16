@@ -185,16 +185,25 @@ export class HubSessions {
       await current();                                     // the session may have ended while the directory answered
       return actor.person;
     };
-    const requireAdmin = async (): Promise<HubActor> => {
+    const legacyAdmin = async (): Promise<HubActor> => {
       const person = await requirePerson();
       if (!this.isAdmin(person)) throw new HubProtocolError("denied");
       return current();
     };
-    const isCurrent = () => this.session(token) !== null;
+    const identityCurrent = () => this.session(token) !== null;
     const isIdentityCurrent = (person: PersonKey, sessionId: string) => {
       const s = this.session(token);
       return s !== null && s.sessionId === sessionId && personKeyString(s.person) === personKeyString(person);
     };
-    return { requestId, token, current, isCurrent, isIdentityCurrent, requirePerson, requireAdmin };
+    const base: HubRequestContext = {requestId,current,isCurrent:identityCurrent,isIdentityCurrent,requirePerson,requireAdmin:legacyAdmin};
+    let administrative: import("./roles/authority.js").HubManagementPermit | undefined;
+    const requireAdmin = async (): Promise<HubActor> => {
+      if (!this.core.deps.roleAdmin || !this.core.deps.management) return legacyAdmin();
+      // Authority captures the identity-only context, avoiding a recursive proof fence.
+      administrative = await this.core.deps.management.require(base,"hub.admin");
+      administrative.assertCurrent(); return administrative.actor;
+    };
+    const isCurrent = () => { if (!identityCurrent()) return false; try { administrative?.assertCurrent(); return true; } catch { return false; } };
+    return {requestId,token,current,isCurrent,isIdentityCurrent,requirePerson,requireAdmin};
   }
 }

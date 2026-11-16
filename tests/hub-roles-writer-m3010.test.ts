@@ -281,3 +281,14 @@ describe("inactive SQL role writer", () => {
   });
 
 });
+
+it("audits assignment metadata in the owning policy transaction",async()=>{
+ const w=await fixture(),next=w.proposal();expect(await w.apply(next)).toMatchObject({ok:true});
+ const rows=w.db.prepare("SELECT e.body FROM hub_role_events e JOIN hub_audit a ON a.id=e.id WHERE a.action='role.assigned'").all() as {body:string}[];
+ expect(rows).toHaveLength(1);expect(JSON.parse(rows[0]!.body)).toMatchObject({before:null,after:{id:"member1",roleId:BUILTIN_ROLE_IDS.member,subject:{kind:"person",person:w.target}}});
+ expect(w.audit.verifyChain().ok).toBe(true);
+});
+it("rolls back policy and metadata together when a detailed role event cannot append",async()=>{
+ const w=await fixture(),before=w.saved();w.append.mockImplementation((event,db)=>{if(event.action==="role.assigned")throw Error("audit unavailable");return w.audit.appendInTransaction(event,db);});
+ expect(await w.apply()).toMatchObject({ok:false});expect(w.saved()).toEqual(before);expect(w.db.prepare("SELECT id FROM hub_audit WHERE action='role.assigned'").all()).toEqual([]);
+});

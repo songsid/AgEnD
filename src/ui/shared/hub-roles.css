@@ -1,0 +1,27 @@
+.hub-roles .btn, .hub-roles .field :is(input,select) { min-height: var(--tap); }
+.hub-role-head, .hub-role-actions, .hub-role-list > li { display:flex; gap:var(--s-3); align-items:center; flex-wrap:wrap; }
+.hub-role-head { justify-content:space-between; }
+.hub-role-actions { margin-top:var(--s-4); }
+.hub-role-list { list-style:none; padding:0; margin:0; }
+.hub-role-list > li { padding:var(--s-3) 0; border-bottom:1px solid var(--border); }
+.hub-role-list .grow { min-width:0; overflow-wrap:anywhere; }
+.hub-role-detail { display:block; }
+.hub-role-check { display:flex; align-items:center; gap:var(--s-3); min-height:var(--tap); padding:var(--s-2) 0; }
+.hub-role-check input { flex:none; }
+.hub-role-search { display:flex; gap:var(--s-3); flex-wrap:wrap; align-items:end; }
+.hub-role-search > .field { flex:1; min-width:10rem; }
+.hub-role-search > ul { width:100%; }
+.hub-roles :is(code,p,td,small) { overflow-wrap:anywhere; }
+.hub-roles code { white-space:normal; }
+.hub-role-table-wrap { overflow-x:auto; }
+.hub-roles table { width:100%; border-collapse:collapse; }
+.hub-roles :is(th,td) { text-align:start; vertical-align:top; padding:var(--s-3); border-bottom:1px solid var(--border); }
+@media (max-width:899px), (pointer:coarse) {
+ .hub-roles .field :is(input,select) { min-width:0; width:100%; font-size:var(--fs-md); }
+ .hub-role-table-wrap { overflow:visible; }
+ .hub-roles :is(table,tbody) { display:block; }
+ .hub-roles thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+ .hub-roles tr { display:block; padding:var(--s-3) 0; border-bottom:1px solid var(--border); }
+ .hub-roles td { display:block; border:0; padding:var(--s-1) 0; }
+ .hub-roles td::before { content:attr(data-label); color:var(--text-2); margin-inline-end:var(--s-2); }
+}

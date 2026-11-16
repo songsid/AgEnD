@@ -470,6 +470,17 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     acceptInvitation(invitationId) { return call("POST", `/hub/v1/invitations/${id(invitationId)}/accept`, {}); },
     declineInvitation(invitationId) { return call("POST", `/hub/v1/invitations/${id(invitationId)}/decline`, {}); },
     // Seam 5: teams, who may open rooms, and the administrator's list of rooms (names and members, no content).
+    // Role settings: calls remain authoritative on the Hub, never in these display flags.
+    roleSettingsV1: true,
+    roles() { return call("GET", "/hub/v1/roles"); },
+    roleSearch(kind,q) { return call("GET", `/hub/v1/roles/search?${new URLSearchParams({kind,q})}`); },
+    rolePreview(policy) { return call("POST", "/hub/v1/roles/preview", {policy}); },
+    roleApply(policy,previewDigest) { return call("POST", "/hub/v1/roles/apply", {policy,previewDigest}); },
+    roleRootPreview() { return call("POST", "/hub/v1/roles/root-self/preview", {}); },
+    roleRootApply(previewDigest) { return call("POST", "/hub/v1/roles/root-self/apply", {previewDigest}); },
+    roleAudit(cursor) { return call("GET", `/hub/v1/roles/audit${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
+    roleNotices() { return call("GET", "/hub/v1/roles/notices"); },
+    acknowledgeRoleNotice(noticeId) { return call("POST", `/hub/v1/roles/notices/${id(noticeId)}/ack`, {}); },
     teamSettings() { return call("GET", "/hub/v1/teams/settings"); },
     saveTeamSettings(input) { return call("PUT", "/hub/v1/teams/settings", input); },
     teams() { return call("GET", "/hub/v1/teams"); },
