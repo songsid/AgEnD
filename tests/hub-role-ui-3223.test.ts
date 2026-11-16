@@ -90,3 +90,8 @@ it("shows the specific last-administrator refusal in Roles settings",async()=>{
 it("a retained older client cannot silently ignore audit filters or export an unfiltered file",async()=>{
  const {p,client}=await mount("en",{roleAuditFiltersV1:false});await click(p.root,"Audit log");expect(p.root.querySelector(".hub-role-audit-filters")).toBeNull();expect(button(p.root,"Export CSV").disabled).toBe(true);expect(p.root.textContent).toContain("Refresh this page for filters and CSV export");expect(client.roleAudit).toHaveBeenCalledWith(null,{});
 });
+
+it("shows permission disclosure cues and uses a recipient label in the zh-TW assignment drawer",async()=>{
+ const {p}=await mount("zh-TW");await click(p.root,"主管");const tab=[...p.root.querySelectorAll('button[role="tab"]')].find((el:any)=>el.textContent.startsWith("權限"))!;fire(tab,"click");await settle(10);expect(p.root.querySelectorAll(".hub-role-disclosure")).toHaveLength(3);
+ await click(p.root,"‹ 角色");await click(p.root,"指派");const panel=p.root.querySelector(".hub-role-panel")!;expect(panel.textContent).toContain("指派對象");expect(panel.textContent).not.toContain("操作者");
+});

@@ -93,3 +93,7 @@
 
 .hub-role-future > summary { min-height:var(--tap); display:flex; align-items:center; cursor:pointer; }
 @media (max-width:899px),(pointer:coarse) { .hub-role-review details > summary,.hub-role-audit summary { min-height:var(--tap); } }
+
+.hub-role-disclosure { flex:none; font-size:var(--fs-lg); line-height:1; }
+.hub-role-permission-section[open] > summary .hub-role-disclosure { transform:rotate(90deg); }
+.hub-role-permission-section > summary > strong { flex:1; }

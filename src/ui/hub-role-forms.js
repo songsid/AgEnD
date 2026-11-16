@@ -7,7 +7,7 @@ import {personKey,personName,roleName,roleDescription,permissionGroups,managemen
 const copy=value=>structuredClone(value);
 const dateValue=at=>at?new Date(at-new Date(at).getTimezoneOffset()*60000).toISOString().slice(0,16):"";
 export function RoleSearch({client,kind,onPick,disabled,id}){
- const candidates=useRef(new Map());
+ const candidates=useRef(new Map()),[revision,setRevision]=useState(0);
  const search=useMemo(()=>async(requested,q)=>{const out=await client.roleSearch(requested,q);if(!out.ok)return out;
   if(requested==="person")return {...out,people:out.candidates.map(row=>({person:row.key,displayName:row.name,login:row.login}))};
   // Retain recent rendered hits while the shared picker fetches its next query. No key is reconstructed.
@@ -15,7 +15,7 @@ export function RoleSearch({client,kind,onPick,disabled,id}){
   return {...out,groups:out.candidates.map(row=>({objectId:row.key.objectId,cn:row.name,dn:row.dn}))};
  },[client]);
  const groups=useMemo(()=>({searchGroups:q=>search("group",q)}),[search]);
- return kind==="person"?html`<${PeopleSearch} search=${search} disabled=${disabled} id=${id} onPick=${row=>onPick({kind:"person",key:row.person,name:row.displayName,login:row.login})}/>`:html`<${GroupSearch} client=${groups} disabled=${disabled} id=${id} onPick=${row=>{const original=candidates.current.get(row.objectId);if(original)onPick(original);}}/>`;
+ return kind==="person"?html`<${PeopleSearch} key=${revision} search=${search} disabled=${disabled} id=${id} onPick=${row=>{onPick({kind:"person",key:row.person,name:row.displayName,login:row.login});setRevision(n=>n+1);}}/>`:html`<${GroupSearch} key=${revision} client=${groups} disabled=${disabled} id=${id} onPick=${row=>{const original=candidates.current.get(row.objectId);if(original){onPick(original);setRevision(n=>n+1);}}}/>`;
 }
 export function PermissionSections({permissions,onChange,disabled=false,readOnly=false,administrator=false}){
  const [small,setSmall]=useState(()=>typeof window!=="undefined"&&window.matchMedia?.("(max-width: 899px)").matches);
@@ -23,7 +23,7 @@ export function PermissionSections({permissions,onChange,disabled=false,readOnly
  const groups=permissionGroups.map(group=>group.key==="runningHub"&&administrator?{...group,permissions:[...group.permissions,"hub.admin"]}:group);
  const pick=(permission,checked)=>onChange(checked?[...new Set([...permissions,permission])]:permissions.filter(p=>p!==permission));
  return html`<div class="hub-role-permissions">${groups.map(group=>html`<details class="hub-role-permission-section" key=${group.key} open=${!readOnly||!small||group.key==="usingHub"}>
-  <summary><strong>${hr(group.key)}</strong><span class="note">${hr("permissionCount",group.permissions.filter(p=>permissions.includes(p)).length,group.permissions.length)}</span></summary>
+  <summary><span class="hub-role-disclosure" aria-hidden="true">›</span><strong>${hr(group.key)}</strong><span class="note">${hr("permissionCount",group.permissions.filter(p=>permissions.includes(p)).length,group.permissions.length)}</span></summary>
   <div class="hub-role-permission-list">${!readOnly?html`<button type="button" class="btn btn-sm" disabled=${disabled} onClick=${()=>onChange([...new Set([...permissions,...group.permissions])])}>${hr("selectAll")}</button>`:null}
    ${group.permissions.map(p=>html`<label class=${`hub-role-permission ${readOnly?"is-readonly":"check"}`} key=${p}>
     ${readOnly?html`<span class="hub-role-permission-mark" aria-label=${hr(p)}>${permissions.includes(p)?"✓":"–"}</span>`:html`<input type="checkbox" checked=${permissions.includes(p)} disabled=${disabled} onChange=${e=>pick(p,e.target.checked)}/>`}
@@ -87,7 +87,7 @@ export function AssignPanel({view,client,roleId:initialRole,assignment,checked,b
   ${failure?html`<p class="err" role="alert">${failure}</p><button type="button" class="btn" disabled=${busy} onClick=${onReload}>${hr("reloadRoles")}</button>`:null}
   ${checked?html`<${Review} view=${view} checked=${checked}/>`:html`<div class="hub-role-assignment">
    <label class="field"><span>${hr("role")}</span><select value=${roleId} disabled=${busy} onChange=${e=>{setRoleId(e.target.value);setSelected([]);setKind("person");}}>${view.policy.roles.map(r=>html`<option key=${r.id} value=${r.id}>${roleName(r,view)}</option>`)}</select></label>
-   <label class="field"><span>${hr("who")}</span><select value=${kind} disabled=${busy} onChange=${e=>setKind(e.target.value)}><option value="person">${hr("people")}</option><option value="group" disabled=${adminRole}>${hr("groups")}</option></select></label>
+   <label class="field"><span>${hr("subject")}</span><select value=${kind} disabled=${busy} onChange=${e=>setKind(e.target.value)}><option value="person">${hr("people")}</option><option value="group" disabled=${adminRole}>${hr("groups")}</option></select></label>
    ${adminRole?html`<p class="s-info">${hr("personOnly")}</p>`:kind==="group"?html`<p class="s-info">${hr("groupCost")}</p>`:null}
    ${selected.length?html`<div class="chips hub-role-selected">${selected.map(s=>html`<span class="tag" key=${s.kind+personKey(s.key)}>${s.name}<button type="button" class="icon-btn" disabled=${busy} aria-label=${hr("removeSelection",s.name)} onClick=${()=>setSelected(old=>old.filter(row=>row!==s))}>×</button></span>`)}</div>`:null}
    <${RoleSearch} key=${kind} client=${client} kind=${kind} disabled=${busy||selected.length>=50} id="hubRoleSubject" onPick=${pick}/>
