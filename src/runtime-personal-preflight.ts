@@ -35,8 +35,10 @@ export async function checkPersonalCodexPrompt(binary: NativeCliExecutable, plan
       { cwd: plan.cwd, env: environment, encoding: "utf8", windowsHide: true, shell: false, timeout: 10_000, maxBuffer: 512 * 1024 });
     validatePersonalPromptOutput(rendered.stdout);
     // Explicit MXC refuses an unsupported host instead of provisioning legacy sandbox users, ACLs or a UAC prompt.
-    const sandbox = await exec(binary.command, [...binary.args, "-C", plan.cwd, "sandbox", "-P", "hub-personal", "--", process.execPath, "-e", 'process.stdout.write("PERSONAL_PROFILE_READY")'],
-      { cwd: plan.cwd, env: environment, encoding: "utf8", windowsHide: true, shell: false, timeout: 10_000, maxBuffer: 4096 });
-    if (sandbox.stdout.trim() !== "PERSONAL_PROFILE_READY") throw new PersonalAgentStageError("profile-unavailable");
-  } catch { throw new PersonalAgentStageError("profile-unavailable"); }
+    try {
+      const sandbox = await exec(binary.command, [...binary.args, "-C", plan.cwd, "sandbox", "-P", "hub-personal", "--", process.execPath, "-e", 'process.stdout.write("PERSONAL_PROFILE_READY")'],
+        { cwd: plan.cwd, env: environment, encoding: "utf8", windowsHide: true, shell: false, timeout: 10_000, maxBuffer: 4096 });
+      if (sandbox.stdout.trim() !== "PERSONAL_PROFILE_READY") throw Error("Sandbox did not start");
+    } catch { throw new PersonalAgentStageError("sandbox-unavailable"); }
+  } catch (error) { throw error instanceof PersonalAgentStageError ? error : new PersonalAgentStageError("profile-unavailable"); }
 }

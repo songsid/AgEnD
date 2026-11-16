@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { HubProtocolError, person as personSchema, validated } from "../validation.js";
 import { personKeyString } from "../identity.js";
-import type { HubAuditRecord, HubRequestContext, HubTx, PersonKey } from "../types.js";
+import type { HubAuditRecord, HubExposure, HubRequestContext, HubTx, PersonKey } from "../types.js";
 import { exposureOf, readExposure, readGrant, grantOf } from "../catalog.js";
 import { HubGroupAuthorizationError, type HubGroupPermit } from "../group-policy/authorization.js";
 import { HubGroupPolicyError, HubGroupReadOverload, type GroupCheckContext } from "../group-policy/store.js";
@@ -155,7 +155,9 @@ export class HubCore {
     const groups = this.deps.groups;
     const exposure = this.atomic(db => { const row = readExposure(db, exposureId); return row && exposureOf(row); });
     if (!exposure) throw new HubProtocolError("not-found");
-    const bytes = (e: typeof exposure) => {
+    // The dedicated personal execution adapter must be mounted before such a source can be used.
+    if(exposure.kind==="personal")throw new HubProtocolError("unavailable");
+    const bytes = (e: HubExposure) => {
       if (!sharingChange) return JSON.stringify(e);
       const { sharingEpoch: _epoch, ...rest } = e;
       return JSON.stringify({ ...rest, state: rest.state === "paused" ? "published" : rest.state });

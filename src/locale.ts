@@ -1788,6 +1788,8 @@ const enMessages = {
     "liveness.todo_prompt": "A person has to answer it (it is in Needs you), or you can reassign the card.",
     "liveness.todo_quiet": "You can ask it (send_to_instance), wake it, or reassign the card.",
     "liveness.read_one": "Read it with: task get {0}",
+    // M-3239: {0} the cards ("M-1 \"title\""), {1} the assignee, {2} its question.
+    "liveness.question": "{0} — its assignee {1} ended its turn on a question and sent it to no one; it is only on its own screen: \"{2}\" Answer it with send_to_instance.",
     "liveness.many": "The assignees of {0} of the cards you handed out stopped:",
     "liveness.read_many": "Cards whose assignee stopped: task list with stale: true",
     "liveness.back": "{0} \"{1}\": its assignee {2} is working again.",
@@ -3561,6 +3563,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "liveness.todo_prompt": "需要有人回覆那個提示（在「等你處理」裡），或者你可以把卡改派給別人。",
     "liveness.todo_quiet": "你可以問它（send_to_instance）、喚醒它，或把卡改派給別人。",
     "liveness.read_one": "查看：task get {0}",
+    "liveness.question": "{0}：接手的 {1} 這一輪最後問了一個問題，但沒有發給任何人，只留在它自己的畫面上：「{2}」請用 send_to_instance 回答它。",
     "liveness.many": "你派出的卡中，有 {0} 張的接手者停下來了：",
     "liveness.read_many": "接手者停下來的卡：task list（stale: true）",
     "liveness.back": "{0}「{1}」：接手的 {2} 已恢復工作。",

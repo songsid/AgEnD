@@ -46,6 +46,13 @@ const cleanups: Array<() => void> = [];
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0)) cleanup(); });
 
 describe("runtime installer routes", () => {
+  it("uses an independent Hub mount policy without enabling Fleet remote runtimes", () => {
+    vi.stubEnv("AGEND_REMOTE_RUNTIME", "");let enabled=true;const service=make({enabled:()=>enabled});
+    expect(get(service,RUNTIME_INSTALL_SCRIPT_PATH).res.status).toBe(200);
+    enabled=false;vi.stubEnv("AGEND_REMOTE_RUNTIME","1");
+    expect(get(service,RUNTIME_INSTALL_SCRIPT_PATH).res.status).toBe(404);
+    expect(get(make({enabled:()=>{throw Error("policy unavailable");}}),RUNTIME_INSTALL_SCRIPT_PATH).res.status).toBe(404);
+  });
   it("answers 404 for all installer routes, whatever the method, and builds nothing, while remote runtimes are off", () => {
     vi.stubEnv("AGEND_REMOTE_RUNTIME", ""); const bundle = vi.fn(() => fixtureBundle()), template = vi.fn(() => TEMPLATE), service = make({ bundle, template });
     for (const path of INSTALL_ROUTES) for (const method of ["GET", "HEAD", "POST", "PUT"]) {

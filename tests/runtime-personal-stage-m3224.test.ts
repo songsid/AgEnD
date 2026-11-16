@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stagePersonalAgent, type PersonalStageHost } from "../src/runtime-personal-stage.js";
+import { stagePersonalAgent, stagePersonalProbe, type PersonalStageHost } from "../src/runtime-personal-stage.js";
 const shared = "C:\\Users\\Alex\\Hub agent";
 const now = 1_800_000_000_000;
 const access = (expiresAt: number) => `synthetic.${Buffer.from(JSON.stringify({ exp: Math.floor(expiresAt / 1000) })).toString("base64url")}.fixture`;
@@ -15,6 +15,11 @@ function fixture() {
   return {host,files,reads,input,get cleaned(){return cleaned;},get created(){return created;}};
 }
 describe("worker-owned personal authentication staging",()=>{
+  it("checks the local profile without reading or copying any authentication",()=>{
+    const f=fixture();f.files.clear();const stage=stagePersonalProbe(f.input,f.host);
+    expect(f.reads).toEqual([]);expect(f.files.has("C:\\Private\\job\\auth\\auth.json")).toBe(false);
+    expect(f.files.has("C:\\Private\\job\\auth\\config.toml")).toBe(true);stage.cleanup();expect(f.cleaned).toBe(1);
+  });
   it("copies only the selected account's authentication and generates its own profile",()=>{
     const f=fixture(),source=f.files.get("C:\\Users\\Alex\\.codex\\auth.json");const s=stagePersonalAgent(f.input,f.host);
     expect(f.reads).toEqual(["C:\\Users\\Alex\\.codex\\auth.json"]);expect(s.plan.args).toContain("--strict-config");
