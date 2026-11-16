@@ -31,7 +31,10 @@ export const SYNCED = {
   "nav.collapsed": { ls: "agend_instance_collapsed", ...json },
   "nav.filter": { ls: "agend_instance_filter", ...json },
   "nav.favorites": { ls: "agend_favorites", ...json },   // #1664
-  "nav.density": { ls: "agend_nav_density", toLocal: (v) => (v === "compact" ? v : null), fromLocal: (s) => (s === "compact" ? s : undefined) },
+  // M-3252: the desktop sidebar's density, and the phone drawer's own. Both values are cached: a choice is not the same as
+  // none (none: the layout's default — the desktop 精簡, the phone 詳細).
+  "nav.density": { ls: "agend_nav_density", toLocal: (v) => (v === "compact" || v === "detailed" ? v : null), fromLocal: (s) => (s === "compact" || s === "detailed" ? s : undefined) },
+  "nav.densityPhone": { ls: "agend_nav_density_phone", toLocal: (v) => (v === "compact" || v === "detailed" ? v : null), fromLocal: (s) => (s === "compact" || s === "detailed" ? s : undefined) },
   "nav.sort": { ls: "agend_nav_sort", ...json },          // #2179
   "preview.optIn": { ls: "agend_html_preview", toLocal: (v) => (v ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
   "names.primary": { ls: "agend_names_primary", toLocal: (v) => (v === "instance" ? v : null), fromLocal: (s) => (s === "instance" ? s : undefined) },   // #1722
@@ -87,7 +90,7 @@ const listeners = new Set();
 // this page's own in prefInForce) but not sent: `held` keeps it until savePrefsHeld sends them all, or discardHeldPrefs
 // puts back what the host has (the same path as another device's change: apply and onPrefsChanged).
 // Only keys Settings itself changes (a card's own size, card.sizeByInstance, is set from the card, outside Settings).
-export const HELD_KEYS = Object.freeze(new Set(["theme", "lang", "names.primary", "nav.density", "preview.optIn", "fx.show", "color.show", "color.off", "card.size"]));
+export const HELD_KEYS = Object.freeze(new Set(["theme", "lang", "names.primary", "nav.density", "nav.densityPhone", "preview.optIn", "fx.show", "color.show", "color.off", "card.size"]));
 let holding = 0;
 const held = new Map();        // key → value chosen in Settings, shown here, not saved yet
 const heldFrom = new Map();    // key → its cached form before it was held (a choice back to it is no change)

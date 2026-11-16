@@ -73,6 +73,7 @@ describe("the sidebar", () => {
     const { applyStatus } = await import("/assets/app-store.js");
     const { Shell } = await import("/assets/app-shell.js");
     const nav = await import("/assets/instance-nav.js");
+    nav.sidebarDensityStore.set({ value: "detailed", layout: "desk" });   // M-3252: these rows are the detailed ones (a desktop now defaults to compact)
     const prefs = await import("/assets/app-prefs.js");
     await prefs.refresh();
     (await import("/assets/app-i18n.js")).setLang(opts.lang ?? "en");
@@ -208,6 +209,7 @@ describe("#2181 review: the anonymous View reader — no reply times there, so a
     const pg = page({ url: "http://127.0.0.1:19280/view", storage: { agend_tour_done: "1", agend_nav_sort: JSON.stringify({ mode: "recent", favs: "fixed" }) } });
     mounted.push(pg);
     const nav = await import("/assets/instance-nav.js");
+    nav.sidebarDensityStore.set({ value: "detailed", layout: "desk" });   // M-3252: these rows are the detailed ones (a desktop now defaults to compact)
     nav.loadNavPrefs();
     expect(nav.navStore.get().sort.mode, "the kept choice is read").toBe("recent");
     await pg.mount(h(nav.InstanceNav, { route: { panel: "view", instance: null }, items: roster, viewOnly: true }));

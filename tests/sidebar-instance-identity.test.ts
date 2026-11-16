@@ -18,6 +18,7 @@ async function sidebar(instances: Array<Record<string, unknown>>, path = "/ui") 
   const { startRouter } = await import("/assets/app-nav.js");
   const { applyStatus } = await import("/assets/app-store.js");
   const { Shell } = await import("/assets/app-shell.js");
+  (await import("/assets/instance-nav.js")).sidebarDensityStore.set({ value: "detailed", layout: "desk" });   // M-3252: these rows are the detailed ones (a desktop now defaults to compact)
   startRouter(pg.window);
   applyStatus({ instances });
   await pg.mount(h(Shell, { panels: new Map(), onNewInstance() {} }));
@@ -33,6 +34,7 @@ async function viewSidebar(roster: Array<Record<string, unknown>>, path = "/view
   const { startRouter } = await import("/assets/app-nav.js");
   const { applyStatus } = await import("/assets/app-store.js");
   const { Shell } = await import("/assets/app-shell.js");
+  (await import("/assets/instance-nav.js")).sidebarDensityStore.set({ value: "detailed", layout: "desk" });   // M-3252: these rows are the detailed ones (a desktop now defaults to compact)
   const { ViewPanel, viewStore } = await import("/assets/panel-view.js");
   viewStore.set({ loaded: false, error: null, roster: [], current: null });
   startRouter(pg.window);

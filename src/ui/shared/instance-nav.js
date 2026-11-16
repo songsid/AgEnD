@@ -334,19 +334,33 @@ export function labelOf(it) {
   return d || nameOf(it);
 }
 
-// M-3129: one synced density choice; the same row links, groups and menus stay mounted.
-const DENSITY_KEY = "agend_nav_density";
+// M-3129: a synced density choice; the same row links, groups and menus stay mounted.
+// M-3252 (the user, 11-16): the phone's drawer and the desktop's sidebar keep their own — nav.density is the desktop
+// sidebar's (the one value both had until now), nav.densityPhone the drawer's (a window under 900 px: the layout where the
+// sidebar is a drawer, app-shell's narrow()). Both still follow the person between devices. The user's defaults: the
+// desktop 精簡 (compact), the phone 詳細 (detailed). The split keeps a value already chosen as the desktop's; the phone
+// starts at 詳細 until one is chosen there. The list's ⋯ (自訂) and Settings → This device show and change the one for the
+// layout in force.
+const DENSITY_KEY = "agend_nav_density", PHONE_DENSITY_KEY = "agend_nav_density_phone";
+const DRAWER_MEDIA = "(max-width: 899px)";
+const drawerLayout = () => { try { return typeof matchMedia === "function" && matchMedia(DRAWER_MEDIA).matches; } catch { return false; } };
+const chosen = (v) => (v === "compact" || v === "detailed" ? v : null);
+function choiceOf(key, ls) { const p = prefInForce(key); return chosen(p ? p.value : stored(ls)); }
 function readSidebarDensity() {
-  const p = prefInForce("nav.density");
-  return (p ? p.value : stored(DENSITY_KEY)) === "compact" ? "compact" : "detailed";
+  return drawerLayout() ? (choiceOf("nav.densityPhone", PHONE_DENSITY_KEY) ?? "detailed") : (choiceOf("nav.density", DENSITY_KEY) ?? "compact");
 }
-export const sidebarDensityStore = createStore({ value: readSidebarDensity() });
+const densityNow = () => ({ value: readSidebarDensity(), layout: drawerLayout() ? "phone" : "desk" });
+export const sidebarDensityStore = createStore(densityNow());
+/** The layout's own value again (a window that crossed 900 px; another device's change). */
+export const refreshDensity = () => { const n = densityNow(), c = sidebarDensityStore.get(); if (n.value !== c.value || n.layout !== c.layout) sidebarDensityStore.set(n); };
 export function setSidebarDensity(value) {
-  const density = value === "compact" ? "compact" : "detailed";
-  sidebarDensityStore.set({ value: density });
-  savePref("nav.density", density);
+  const density = value === "compact" ? "compact" : "detailed", phone = drawerLayout();
+  savePref(phone ? "nav.densityPhone" : "nav.density", density);
+  sidebarDensityStore.set({ value: density, layout: phone ? "phone" : "desk" });
 }
-onPrefsChanged((keys) => { if (keys.has("nav.density")) sidebarDensityStore.set({ value: readSidebarDensity() }); });
+onPrefsChanged((keys) => { if (keys.has("nav.density") || keys.has("nav.densityPhone")) refreshDensity(); });
+// A window that crosses 900 px (a tablet turned, a desktop window narrowed) shows that layout's own.
+try { const mq = typeof matchMedia === "function" ? matchMedia(DRAWER_MEDIA) : null; if (mq && typeof mq.addEventListener === "function") mq.addEventListener("change", refreshDensity); } catch { /* no media queries */ }
 
 // M-3212 (the user, 11-16): the phone's drawer — 滿版, the screen's width (the default since M-3211), or 窄版, 300 px with
 // the page beside it (as before). This browser's own choice (localStorage, not a synced pref: a phone and a tablet may
@@ -508,6 +522,7 @@ function SortMenu({ sort, phone = false }) {
   }, [open]);
   const recent = sort.mode === "recent";
   // M-3164: the list's density, the same synced choice as Settings (nav.density, M-3129): either place changes it at once, for both.
+  // M-3252: the one for the layout in force (the drawer's on a phone, the sidebar's on a desktop).
   const density = useStore(sidebarDensityStore).value;
   const drawer = useStore(phoneDrawerStore).value;   // M-3212
   const drawerRadio = (value, label) => html`<label class="nav-sort-opt"><input type="radio" name="nav-sort-drawer" value=${value}

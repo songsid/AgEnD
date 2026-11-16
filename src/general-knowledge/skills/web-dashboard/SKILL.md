@@ -478,8 +478,10 @@ every 5 s.
 
 **The sidebar list.** Grouped by team (an instance in `teams.<name>.members` under its first team, whatever its tags), else by
 its first tag ("#" before the heading), ClassicBot rooms under Classic, the rest under Other; Settings → Agents the same (#2172).
-Settings → Preferences → **Sidebar agent list** chooses **Detailed** (default) or **Compact** (`nav.density`, synced;
-Save/Discard like the other preferences). Compact uses a status dot (working pulses), name and muted last-reply time,
+Settings → Preferences → **Sidebar agent list** chooses **Detailed** or **Compact**, one for a phone's drawer and one for a
+desktop's sidebar (M-3252; `nav.densityPhone` / `nav.density`, both synced; Save/Discard like the other preferences): the
+one shown, there and in the list's **Custom** menu, is the screen's own. Defaults: desktop Compact, phone Detailed; a choice
+made before the split stays the desktop's. Compact uses a status dot (working pulses), name and muted last-reply time,
 without an avatar: 30 px on desktop, 40 px on phones. Hover shows the existing details tooltip. Filters, favorites,
 groups, sorting and keyboard links are the same. Detailed keeps the current presentation.
 Each detailed row (#2179): name and context % on the first line, the time of the agent's last reply to a person at the end of the
