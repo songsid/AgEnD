@@ -18,6 +18,7 @@ const dn = z.string().min(1).max(1024).regex(/^[^\u0000-\u001f\u007f]+$/);
 const limit = z.number().int().min(0).max(8);
 const permissions = z.array(z.enum(ROLE_PERMISSIONS)).max(12).refine(a => new Set(a).size === a.length);
 const roleSchema = z.strictObject({ id: identifier, name: label, kind: z.enum(["admin", "manager", "member", "carried-over", "custom"]),
+  description: plain(500).refine(s => !/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(s)).optional(),
   permissions, defaultMaxFleets: limit });
 export type HubRole = z.infer<typeof roleSchema>;
 const assignmentSchema = z.strictObject({ id: identifier, roleId: identifier,
@@ -54,7 +55,7 @@ export function parseRolePolicy(input: unknown): HubRolePolicy {
   for (const expected of builtinRoles()) {
     const actual = roles.get(expected.id);
     if (!actual || actual.kind !== expected.kind || p.roles.filter(r => r.kind === expected.kind).length !== 1) invalid();
-    if (expected.kind === "admin" && (actual.name !== expected.name || actual.defaultMaxFleets !== expected.defaultMaxFleets
+    if (expected.kind === "admin" && (actual.name !== expected.name || actual.description !== undefined || actual.defaultMaxFleets !== expected.defaultMaxFleets
       || actual.permissions.length !== expected.permissions.length || expected.permissions.some(c => !actual.permissions.includes(c)))) invalid();
   }
   if (p.roles.filter(r => r.kind === "carried-over").length > 7

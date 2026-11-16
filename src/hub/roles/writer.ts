@@ -7,6 +7,8 @@ import { HubProtocolError, epoch, identifier, parseStrictJson, person, validated
 import { parseRolePolicy, SELF_PERMISSIONS, MANAGEMENT_PERMISSIONS } from "./model.js";
 import { planRoleChange } from "./change.js";
 import { heldRoleBundle, checkRoleChange } from "./delegation.js";
+import { roleAuditValue, assignmentAuditValue, rolePersonLabel } from "./audit-details.js";
+import { hasCurrentAdministrator, mayReduceAdministrators, roleReview, type RoleReview } from "./review.js";
 import { snapshotRolePersonFacts } from "./evaluate.js";
 import type { HubAuditStore } from "../audit/index.js";
 import type { HubDirectory } from "../directory/types.js";
@@ -42,9 +44,9 @@ export const HUB_ROLE_WRITER_MIGRATION: HubMigration = { component: "roles-write
     CREATE TABLE IF NOT EXISTS hub_role_notices(id TEXT NOT NULL REFERENCES hub_role_events(id) ON DELETE CASCADE, person TEXT NOT NULL, acknowledged_at INTEGER, PRIMARY KEY(id,person));
     CREATE TABLE IF NOT EXISTS hub_role_root_self(person TEXT PRIMARY KEY, role_id TEXT NOT NULL, assignment_id TEXT NOT NULL, audit_id TEXT NOT NULL);`);
 } };
-export type RoleWriteCode = "denied" | "unknown" | "self-target" | "conflict" | "stale-preview" | "expired" | "invalid" | "unavailable";
+export type RoleWriteCode = "denied" | "unknown" | "self-target" | "conflict" | "stale-preview" | "expired" | "invalid" | "unavailable" | "last-administrator";
 type Failure = { ok: false; code: RoleWriteCode };
-export type RolePreviewResponse = Failure | { ok: true; revision: number; previewDigest: string; expiresAt: number; impact: unknown };
+export type RolePreviewResponse = Failure | { ok: true; revision: number; previewDigest: string; expiresAt: number; impact: unknown; review?:RoleReview };
 export type RoleApplyResponse = Failure | { ok: true; revision: number };
 class Refusal extends Error { constructor(readonly code: RoleWriteCode) { super(code); } }
 const json = (value: unknown) => JSON.stringify(value);
@@ -194,12 +196,15 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     const semanticFacts = json([...facts].map(([id, f]) => [id, f.kind === "complete" ? { kind: f.kind, person: f.person, groups: [...f.groups].sort() } : f.kind === "unknown" ? { kind: f.kind } : { kind: f.kind, person: f.person }]));
     const recipients = [...people].filter(([id, who]) => [before.policy, plan.next].some(p => heldRoleBundle(p, who, facts.get(id)!, now(), root).administrator && facts.get(id)!.kind !== "ineligible" && facts.get(id)!.kind !== "unknown")).map(([id]) => id).sort();
     const assertAuthority = () => {
+      if (mayReduceAdministrators(plan) && !hasCurrentAdministrator(plan.next, people.values(), facts, root, now())) throw new Refusal("last-administrator");
       const bundle = heldRoleBundle(before.policy, actor.person, facts.get(personKeyString(actor.person))!, now(), root);
       if (operation === "root-self") {
         if (!same(actor.person, root) || bundle.kind !== "known" || !bundle.administrator) throw new Refusal("denied");
       } else { const answer = checkRoleChange(plan, bundle); if (answer !== "allow") throw new Refusal(answer); }
     };
-    return { before, plan, authEpoch, inventory, facts: semanticFacts, prepared, recipients, started, assertBudget, assertBefore, assertAuthority, logical: logical(plan) };
+    assertAuthority();
+    const review=roleReview(plan,people.values(),facts,root,now());
+    return { before, plan, review, authEpoch, inventory, facts: semanticFacts, prepared, recipients, started, assertBudget, assertBefore, assertAuthority, logical: logical(plan) };
   };
   const prune = () => { const at = now(); for (const [id, c] of candidates) if (at < c.created || at >= c.expiresAt) candidates.delete(id); };
   const preview = async (input: unknown, incoming: HubRequestContext, operation: Operation = "ordinary"): Promise<RolePreviewResponse> => {
@@ -214,7 +219,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
         const created = now(), expiresAt = created + 120_000, previewDigest = randomUUID();
         candidates.set(previewDigest, { operation, actor, raw: json(raw), before: p.before.raw, epoch: p.authEpoch, inventory: p.inventory.fingerprint,
           logical: p.logical, facts: p.facts, impact: json(p.prepared.impact), effects: json([p.prepared.fingerprint,p.prepared.changed]), created, expiresAt });
-        return { ok: true, revision: p.before.policy.revision, previewDigest, expiresAt, impact: structuredClone(p.prepared.impact) };
+        return { ok: true, revision: p.before.policy.revision, previewDigest, expiresAt, impact: structuredClone(p.prepared.impact),review:structuredClone(p.review) };
       } finally { working--; }
     } catch (error) { return refused(ctx, actor, error); }
   };
@@ -240,11 +245,11 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
           sync(p.prepared.commit(db));
           if (db.prepare("UPDATE hub_group_policy SET body=? WHERE singleton=1 AND hub_id=? AND body=?").run(serialized, hubId, p.before.raw).changes !== 1) throw new Refusal("conflict");
           if (p.prepared.afterPolicyWrite) sync(p.prepared.afterPolicyWrite(db));
-          const id = record(ctx!, actor!, operation === "root-self" ? "role.root-self-use-activated" : "role.policy-changed", "completed", next.revision, { policy: next, impact: p.prepared.impact });
+          const id = record(ctx!, actor!, operation === "root-self" ? "role.root-self-use-activated" : "role.policy-changed", "completed", next.revision, { policy: next, impact: p.prepared.impact, details:{kind:operation === "root-self" ? "root-self":"policy",before:{rolesActive:p.plan.before.rolesActive,state:p.plan.before.state},after:{rolesActive:next.rolesActive,state:next.state}} });
           // Metadata-only event rows give the administration audit a precise before/after change.
           // They share the policy transaction: an append failure rolls the entire write back.
-          for (const delta of p.plan.roles) record(ctx!,actor!,delta.before === null ? "role.created" : delta.after === null ? "role.deleted" : "role.changed","completed",next.revision,delta);
-          for (const delta of p.plan.assignments) record(ctx!,actor!,delta.after === null ? "role.unassigned" : "role.assigned","completed",next.revision,delta);
+          for (const delta of p.plan.roles) record(ctx!,actor!,delta.before === null ? "role.created" : delta.after === null ? "role.deleted" : "role.changed","completed",next.revision,{...delta,details:{kind:"role",before:delta.before?roleAuditValue(delta.before):null,after:delta.after?roleAuditValue(delta.after):null}});
+          for (const delta of p.plan.assignments) record(ctx!,actor!,delta.after === null ? "role.unassigned" : "role.assigned","completed",next.revision,{...delta,details:{kind:"assignment",before:delta.before?assignmentAuditValue(delta.before,p.plan.before,id=>rolePersonLabel(db,id)):null,after:delta.after?assignmentAuditValue(delta.after,next,id=>rolePersonLabel(db,id)):null}});
           const management = (p: readonly string[]) => p.some(c => (MANAGEMENT_PERMISSIONS as readonly string[]).includes(c));
           const notify = operation === "root-self" || p.plan.before.rolesActive !== next.rolesActive || p.plan.roles.some(d => management(d.before?.permissions ?? []) || management(d.after?.permissions ?? []))
             || p.plan.assignments.some(d => [d.before, d.after].some(a => a && management((a === d.before ? p.plan.before : next).roles.find(r => r.id === a.roleId)!.permissions)));
