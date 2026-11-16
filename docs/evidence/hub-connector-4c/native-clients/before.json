@@ -1,0 +1,11 @@
+{
+  "initialNativeCodexOAuth": true,
+  "finding": "Unbound encrypted app content: blank post and uncertain question handoff",
+  "oldSource": "1842a145b801f2d8e7cd0a4eb35e9325583ed4dd",
+  "realModelCallsBeforeRepair": 2,
+  "noModelReproduction": "HubProtocolError uncertain at rooms.ts content verification",
+  "fixtureOnlyIssues": [
+    "Docker Desktop host network is separate from WSL loopback",
+    "Claude no-browser OAuth requires a private pseudo-terminal"
+  ]
+}

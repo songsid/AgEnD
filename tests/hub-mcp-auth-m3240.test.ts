@@ -48,7 +48,7 @@ it("validates public registration and prevents external/injected redirect scheme
 });
 it("binds consent, code and tokens to the company person, client, resource, redirect and S256 verifier",async()=>{
   const w=await world(), ctx=await w.browser(), request=w.begin();
-  expect(await w.auth.preview(ctx,request.request)).toEqual({name:"Example AI",scopes:[...HUB_MCP_SCOPES]});
+  expect(await w.auth.preview(ctx,request.request)).toEqual({name:"Example AI",scopes:[...HUB_MCP_SCOPES],redirectOrigin:new URL(uri).origin});
   const target=new URL(await w.auth.approve(ctx,request.request,["rooms:read"])), code=target.searchParams.get("code")!;
   expect(target.searchParams.get("state")).toBe("app-state");
   for(const extra of [{client_id:"a".repeat(43)},{redirect_uri:"http://127.0.0.1:43124/callback"},{resource:"https://other.test/mcp"},{code_verifier:"x".repeat(43)}])

@@ -20,6 +20,7 @@ import { register, t } from "/assets/app-i18n.js";
 import "./hub-strings.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
+import {ha} from "./hub-ai-apps-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
 import { TextSizeButton } from "/assets/header-tools.js";
 import { HubNotifyToggle } from "./hub-room-notify.js";
@@ -62,6 +63,7 @@ export function authorLine(author, mine = false, direct = false) {
  */
 const SYSTEM = { "room-created": "createdSys", "member-joined": "sysJoined", "admin-joined": "sysAdminJoined", "poll-closed": "sysPollClosed" };
 export function systemText(m) {
+  if(m?.system?.kind==="app-rate-limited")return ha("rateLimited",m.system.name||"");
   if (m?.system?.kind === "agent-mention-stopped") return agentStopText(m.system) ?? String(m.text || "");
   const key = m && m.system && SYSTEM[m.system.kind];
   return key && typeof m.system.name === "string" ? hroom(key, m.system.name) : String((m && m.text) || "");
