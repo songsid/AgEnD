@@ -108,3 +108,26 @@ it("does not call audit for a limited Fleet manager without role or audit permis
 it("can select a role action filter even when that event is absent from the loaded page",async()=>{
  const {p,client}=await mount();await click(p.root,"Audit log");const form=p.root.querySelector(".hub-role-audit-filters")!,action=form.querySelectorAll("select")[1]!;expect([...action.querySelectorAll("option")].some((el:any)=>el.value==="role.assigned")).toBe(true);action.value="role.assigned";fire(action,"change");await settle(5);fire(form,"submit");await settle(10);expect(client.roleAudit).toHaveBeenLastCalledWith(null,{action:"role.assigned"});
 });
+it.each(["en","zh-TW"])("labels an unknown legacy audit actor without exposing raw actor JSON (%s)",async lang=>{
+ const {p}=await mount(lang,{roleAudit:vi.fn(async()=>({ok:true,rows:[{id:"row",at:100,actor:{id:"unknown",name:""},action:"fixture.legacy",result:"completed",summary:[]}],nextCursor:null}))});
+ await click(p.root,lang==="en"?"Audit log":"稽核紀錄");
+ expect(p.root.textContent).toContain(lang==="en"?"Unknown actor":"未知操作者");
+});
+
+it.each(["en","zh-TW"])("shows cached person names and localized change/audit copy (%s)",async lang=>{
+ const current={...view(),personLabels:[{id:`${actor.realm}/${actor.objectId}`,name:"Avery Chen"}]};
+ const {p}=await mount(lang,{roles:vi.fn(async()=>({ok:true,view:current})),roleAudit:vi.fn(async()=>({ok:true,rows:[{id:"created",at:100,actor:{id:"root",name:"Avery Chen"},action:"role.created",result:"completed",summary:[],details:{kind:"role",before:null,after:{roleName:"Helpers",roleKind:"custom",permissions:["ask_agents"]}}}],nextCursor:null}))});
+ await click(p.root,lang==="en"?"Audit log":"稽核紀錄");
+ expect(p.root.textContent).toContain("Avery Chen");expect(p.root.textContent).toContain(lang==="en"?"Created the role “Helpers”":"建立角色「Helpers」");expect(p.root.querySelector(".hub-role-audit-values").textContent).toContain(lang==="en"?"HelpersChat with agents":"Helpers和 Agent 對話");
+ await click(p.root,lang==="en"?"Roles settings":"角色設定");
+ fire(button(p.root,lang==="en"?"Turn roles off":"關閉角色功能"),"click");await settle(10);
+ expect(p.root.querySelector("[data-role-review]").textContent).toContain(lang==="en"?"Turn roles off":"關閉角色功能");
+});
+
+it("carries a newly selected person's display name into the checked change summary",async()=>{
+ const target={realm:"corp",objectId:"11111111-1111-4111-8111-111111111111"};
+ const {p}=await mount("en",{roleSearch:vi.fn(async()=>({ok:true,candidates:[{kind:"person",key:target,name:"Alex Chen",login:"alex"}]}))});
+ await click(p.root,"Assign");const form=p.root.querySelector(".hub-role-panel"),input=form.querySelector('input[type="search"]');input.value="Al";fire(input,"input");
+ await vi.waitFor(()=>expect(button(form,"Choose")).toBeTruthy());await click(form,"Choose");await click(form,"Review");
+ expect(p.root.querySelector("[data-role-review]").textContent).toContain("You are giving Administrator to Alex Chen.");
+});

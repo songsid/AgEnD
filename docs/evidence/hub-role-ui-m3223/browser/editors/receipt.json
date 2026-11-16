@@ -1,0 +1,71 @@
+{
+  "mode": "editors",
+  "head": "4b34dfac856fbe3dcdeb084ac8ac761d651e4f1c",
+  "tree": "8f6bb6c6a6378b04a267ed695df4e23b6758ee15",
+  "dirty": "M scripts/manual/hub-roles-m3223/browser.mts\n M src/ui/hub-roles.js\n M tests/hub-role-ui-3223.test.ts",
+  "checks": [
+    {
+      "label": "production Hub ready",
+      "pass": true
+    },
+    {
+      "label": "editors-desk-light-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "editors-desk-light-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "editors-desk-light-en twelve permissions",
+      "pass": true
+    },
+    {
+      "label": "editors-desk-light-zh-TW no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "editors-desk-light-zh-TW real role capability",
+      "pass": true
+    },
+    {
+      "label": "editors-desk-light-zh-TW twelve permissions",
+      "pass": true
+    },
+    {
+      "label": "all intended screenshots captured",
+      "pass": true
+    },
+    {
+      "label": "no browser errors",
+      "pass": true
+    }
+  ],
+  "screens": [
+    {
+      "tag": "editors-desk-light-en",
+      "file": "editors-desk-light-en.png",
+      "sha256": "6e4496e13d464f3aa93f7a3a2d2ececd41389a5b391fdd990a39ef0b959db263"
+    },
+    {
+      "tag": "editors-desk-light-en-editor",
+      "file": "editors-desk-light-en-editor.png",
+      "sha256": "0c3fc43886683e12e94235b1005b2e8324fd1b2d6baca43ff1e5104759981915"
+    },
+    {
+      "tag": "editors-desk-light-zh-TW",
+      "file": "editors-desk-light-zh-TW.png",
+      "sha256": "d8f02b3991d2d30c0ffa786f60c4d7a3e56348b6cb51b89acf83e19d35ca7627"
+    },
+    {
+      "tag": "editors-desk-light-zh-TW-editor",
+      "file": "editors-desk-light-zh-TW-editor.png",
+      "sha256": "b8100dfc2138a228f9b8183e0a8b1d90cc42705df43744070b9d7c0728f8d831"
+    }
+  ],
+  "errors": [],
+  "scope": "Separate initialized production Hub runtime/HTTPS/SQLite and assets from REPO. Synthetic AD people/groups; no real credentials, Fleet or model process. Headless Chromium inside WSL.",
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}

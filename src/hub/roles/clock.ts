@@ -4,18 +4,21 @@ import type { HubTransportStore } from "../store.js";
 import type { PersonKey } from "../types.js";
 import { epoch, HubProtocolError, person, uuid, validated } from "../validation.js";
 import { personKeyString } from "../identity.js";
+import type { HubCanonicalPolicy } from "./read.js";
 import { createHubCanonicalPolicyReader } from "./read.js";
 import { parseHubRoleCutoverMarker } from "./cutover-marker.js";
 export interface HubRoleClockOptions {
   db: Database.Database; hubId: string; realm: string; generation: string; root: PersonKey;
   transport: Pick<HubTransportStore, "read">; current(): boolean; now?: () => number;
+  /** Internal composition: the exact old policy only during its synchronous owned directory decision. */
+  policy?(): HubCanonicalPolicy;
 }
 export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
   const { db, transport, current, realm } = options, hubId = validated(uuid, options.hubId), root = validated(person, options.root);
   const readTransport = transport.read, readState = readTransport.bind(transport), now = options.now ?? Date.now;
   let closed = false;
   const live = () => !closed && current() === true && root.realm === realm && transport.read === readTransport;
-  const read = createHubCanonicalPolicyReader({ ...options, current: live });
+  const read = options.policy ?? createHubCanonicalPolicyReader({ ...options, current: live });
   const rawMarker = () => {
     const rows = db.prepare("SELECT singleton,body FROM hub_role_cutover").all() as { singleton: number; body: string }[];
     if (rows.length !== 1 || rows[0]!.singleton !== 1) throw new HubProtocolError("unavailable");

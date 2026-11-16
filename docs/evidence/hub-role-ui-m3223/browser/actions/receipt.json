@@ -1,0 +1,67 @@
+{
+  "mode": "actions",
+  "head": "4b34dfac856fbe3dcdeb084ac8ac761d651e4f1c",
+  "tree": "8f6bb6c6a6378b04a267ed695df4e23b6758ee15",
+  "dirty": "M scripts/manual/hub-roles-m3223/browser.mts\n M src/ui/hub-roles.js\n M tests/hub-role-ui-3223.test.ts",
+  "checks": [
+    {
+      "label": "production Hub ready",
+      "pass": true
+    },
+    {
+      "label": "actions-phone-light-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "actions-phone-light-en tap controls44px",
+      "pass": true
+    },
+    {
+      "label": "actions-phone-light-en real role capability",
+      "pass": true
+    },
+    {
+      "label": "actual preview names Alex",
+      "pass": true
+    },
+    {
+      "label": "stored assignment is real",
+      "pass": true
+    },
+    {
+      "label": "all intended screenshots captured",
+      "pass": true
+    },
+    {
+      "label": "no browser errors",
+      "pass": true
+    }
+  ],
+  "screens": [
+    {
+      "tag": "actions-phone-light-en",
+      "file": "actions-phone-light-en.png",
+      "sha256": "ecb31e485e89415dbf6fc5d22005592c5c124ddd59374d64a26e688aa397e035"
+    },
+    {
+      "tag": "actions-phone-light-en-assignment",
+      "file": "actions-phone-light-en-assignment.png",
+      "sha256": "e30a5782d1cf91746665ca6979204ca74309676091697471011fee654f1f123a"
+    },
+    {
+      "tag": "actions-phone-light-en-preview",
+      "file": "actions-phone-light-en-preview.png",
+      "sha256": "9479c497ac7bfbc1c381586407ad30613d99beea0721b4a0e8e73554eddec0a9"
+    },
+    {
+      "tag": "actions-phone-light-en-assigned-audit",
+      "file": "actions-phone-light-en-assigned-audit.png",
+      "sha256": "abc7533a376985904717cc2c4e29ae60678d34fb0460318ec85ce447c2fd5209"
+    }
+  ],
+  "errors": [],
+  "scope": "Separate initialized production Hub runtime/HTTPS/SQLite and assets from REPO. Synthetic AD people/groups; no real credentials, Fleet or model process. Headless Chromium inside WSL.",
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}

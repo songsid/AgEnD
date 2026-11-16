@@ -39,10 +39,11 @@ export function GroupPermissionsCard() {
     <div class="hub-groups-actions"><a class="btn btn-primary" href="/ui/hub/admin?view=groups" onClick=${go}>${hg("entryOpen")}</a></div></section>`;
 }
 
-export function HubGroupPolicyPage() {
+export function HubGroupPolicyPage({roleShortcut=false}={}) {
+  const title=hg(roleShortcut?"allowedListTitle":"title");
   const c = hubClient();
   const teamSummaries = useAllowedTeams(c);
-  useEffect(() => { setTitle(hg("title")); }, []);           // the tab names this page (Argon #17)
+  useEffect(() => { setTitle(title); }, [title]);           // the tab names this page (Argon #17)
   const [view, setView] = useState(null), [error, setError] = useState(""), [msg, setMsg] = useState(null);
   const [state, setState] = useState("never-enabled"), [groups, setGroups] = useState([]);
   const [dn, setDn] = useState(""), [adding, setAdding] = useState(false), [addError, setAddError] = useState("");
@@ -135,7 +136,7 @@ export function HubGroupPolicyPage() {
   // Back to Administration first, as a sub-page's crumb (My shared agents → an agent draws it the same way), then the page's
   // head (Argon #14: the link sat below the head, a raw "←").
   const head = html`<a class="hub-crumb" href="/ui/hub/admin" onClick=${(e) => { e.preventDefault(); navigate("/ui/hub/admin"); }}><${Icon} name="back" size=${14} />${hg("back")}</a>
-    <${PageHead} title=${hg("title")} scope=${hg("experimental")} lead=${hg("lead")} />`;
+    <${PageHead} title=${title} scope=${hg("experimental")} lead=${hg("lead")} />`;
   if (error) return html`<div class="col hub-owner hub-groups">${head}<div class="s-section-layout">${error === READ_BUSY
     ? html`<p class="note" role="status" data-groups="busy">${hr("busy")}</p>`
     : html`<${ErrorState} message=${error} onRetry=${load} />`}</div></div>`;

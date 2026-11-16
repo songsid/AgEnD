@@ -1,3 +1,4 @@
+import {assertHubManagementAttestation,type HubManagementPermit} from "./roles/authority.js";
 /** #3425: request-local browser handoff for the ONE directory SQL decision. No token in files, audit or notices. */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
@@ -31,9 +32,9 @@ function current(r: Row | undefined, who: string, epoch: number, now: number): r
 }
 
 /** Only server session rows created by successful trusted-directory sign-in attest authentication. Never touches seen_at. */
-export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor): number | null {
+export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor,permit?:HubManagementPermit): number | null {
   const actor = validated(actorSchema, raw);
-  if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) return null;
+  if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) {try{assertHubManagementAttestation(permit,"hub.admin",actor);}catch{return null;}}
   return core.atomic(db => {
     const now = core.now(), who = personKeyString(actor.person), r = row(db, actor.sessionId);
     if (!current(r, who, core.directoryEpoch, now)) return null;

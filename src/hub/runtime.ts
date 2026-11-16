@@ -51,7 +51,7 @@ export type HubMemberHost = Pick<HubMemberFactoryOptions, "updates" | "attachUpd
  */
 export const S3B_HTTP_ENTRY = async (): Promise<HubHttpEntry> => {
   const s3 = await import("./http/compose.js");
-  return { migrations: s3.migrations, createHubHttp: (deps) => s3.createHubHttp(deps, hubTxDatabase) };
+  return { roleSettingsV1:true,migrations: s3.migrations, createHubHttp: (deps) => s3.createHubHttp(deps, hubTxDatabase) };
 };
 import { hubTxDatabase, type HubHoldCode } from "./db.js";
 

@@ -28,6 +28,7 @@
  * - Directory-v2 preserves rename v1. Its ONLY decision is settings-directory-decision.ts's root SQL COMMIT (including
  *   floor/version, binding, sessions, audit and complete security notices). Its file phase is recovery progress only.
  */
+import { assertHubManagementAttestation, type HubManagementPermit } from "./roles/authority.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -112,10 +113,11 @@ interface PreparedDirectory {
   changes: HubDirectoryDecisionRequest["changes"]; recipients: HubDirectoryDecisionRequest["recipients"];
   createdAt: number; expiresAt: number;
   recoveryDeadline?: number;
+  adminPermit?: HubManagementPermit;
 }
 export interface HubDirectorySettingsWriter {
   /** Internal only: caller proves old-directory recent auth/D3, same immutable candidate admin, GUIDs and trust consent. */
-  prepare(candidate: HubDirectorySettingsCandidate, actor: DirectoryActor, current: () => boolean): { ref: string; expiresAt: number };
+  prepare(candidate: HubDirectorySettingsCandidate, actor: DirectoryActor, current: () => boolean, adminPermit?: HubManagementPermit): { ref: string; expiresAt: number };
   commit(ref: string, actor: DirectoryActor, current: () => boolean, rotation?: HubDirectorySessionRotation, recoveryDeadline?: number): { receiptId: string; directoryEpoch: number };
   /** Only the exact prior-content intent preauthorized by the original operation; never an old session/role.
    * An optional orchestration deadline is checked by the writer's final clock, not just before an await. */
@@ -291,6 +293,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     };
     const check = () => {
       checkTime();
+      if (p.adminPermit && p.actor.kind === "hub-administrator") assertHubManagementAttestation(p.adminPermit, "hub.admin", p.actor);
       if (!currentProof(current)) throw new HubSettingsError("denied");
       image(true);
       if (!same(directoryImage(), p.before)) throw new HubSettingsError("stale");
@@ -331,11 +334,14 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     return finishDirectory(journal)!;
   };
   const directoryWriter: HubDirectorySettingsWriter = {
-    prepare(candidate, actor, current) {
+    prepare(candidate, actor, current, adminPermit) {
       const metadata = parseHubDirectoryDecisionMetadata({ actor, changes: candidate.changes, recipients: candidate.recipients });
       const cfg = structuredClone(candidate.directory), nextDirectory = resolveDirectoryConfig(cfg), old = image(true), oldCfg = obj(old.hub.directory);
       const oldSecret = readSecret(), before = directoryImage(old.hub, old.manifest, oldSecret);
-      if (metadata.actor.kind === "hub-administrator" && !same(metadata.actor.person, old.hub.administrator)) throw new HubSettingsError("denied");
+      if (metadata.actor.kind === "hub-administrator") {
+        if (adminPermit) assertHubManagementAttestation(adminPermit, "hub.admin", metadata.actor);
+        else if (!same(metadata.actor.person, old.hub.administrator)) throw new HubSettingsError("denied");
+      }
       if (oldCfg.bindPasswordRef !== BIND_PASSWORD_REF || cfg.bindPasswordRef !== undefined && cfg.bindPasswordRef !== BIND_PASSWORD_REF
         || nextDirectory.realm !== oldCfg.realm || nextDirectory.profile !== oldCfg.profile) throw new HubSettingsError("invalid");
       const next = { ...old.hub, directory: { ...cfg, bindPasswordRef: BIND_PASSWORD_REF } };
@@ -357,7 +363,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
       for (const [key, value] of preparedDirectory) if (value.expiresAt <= t) preparedDirectory.delete(key);
       if (preparedDirectory.size >= MAX_PREPARED) throw new HubSettingsError("busy");
       const ref = randomBytes(24).toString("base64url"), expiresAt = t + PREPARED_MS;
-      preparedDirectory.set(ref, { ...metadata, before, expected, next: structuredClone(next), secret, generation, createdAt: t, expiresAt });
+      preparedDirectory.set(ref, { ...metadata, before, expected, next: structuredClone(next), secret, generation, createdAt: t, expiresAt, ...(adminPermit ? { adminPermit } : {}) });
       return { ref, expiresAt };
     },
     commit(ref, actor, current, rotation, recoveryDeadline) {

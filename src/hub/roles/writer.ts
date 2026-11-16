@@ -7,6 +7,7 @@ import { HubProtocolError, epoch, identifier, parseStrictJson, person, validated
 import { parseRolePolicy, SELF_PERMISSIONS, MANAGEMENT_PERMISSIONS } from "./model.js";
 import { planRoleChange } from "./change.js";
 import { heldRoleBundle, checkRoleChange } from "./delegation.js";
+import {readAllowedListTeams} from "../group-policy/team-subjects.js";
 import { roleAuditValue, assignmentAuditValue, rolePersonLabel } from "./audit-details.js";
 import { hasCurrentAdministrator, mayReduceAdministrators, roleReview, type RoleReview } from "./review.js";
 import { snapshotRolePersonFacts } from "./evaluate.js";
@@ -30,7 +31,7 @@ export interface RoleWriteEffects {
     assertCommitted(): void;
   }>;
   /** Full inventory binds preview; ordinary excludes only this plan's exact lifecycle consequences. */
-  snapshot(): { fingerprint: string; ordinaryFingerprint: string; people: readonly PersonKey[] };
+  snapshot(policies?:readonly HubRolePolicy[]): { fingerprint: string; ordinaryFingerprint: string; people: readonly PersonKey[] };
 }
 export interface RoleWriterOptions {
   db: Database.Database; hubId: string; realm: string; generation: string; root: PersonKey;
@@ -67,7 +68,7 @@ function logical(plan: RoleChangePlan): string {
 }
 interface Captured { requestId: string; current(): ReturnType<HubRequestContext["current"]>; requirePerson(): Promise<PersonKey>; isCurrent(): boolean }
 interface Identity { person: PersonKey; sessionId: string }
-type Operation = "ordinary" | "root-self";
+type Operation = "ordinary" | "root-self" | "allowed-list";
 interface Candidate { operation: Operation; actor: Identity; raw: string; before: string; epoch: number; inventory: string; logical: string; facts: string; impact: string; effects: string; created: number; expiresAt: number }
 export function createHubRoleWriter(options: RoleWriterOptions) {
   const { db, audit, reads, directory, effects, current, version: readVersion, advanceAuthorization, refreshAuthorization } = options;
@@ -116,8 +117,8 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     }
     return { ok: false, code };
   };
-  const snapshot = () => {
-    const s = effects.snapshot(); if (!s || typeof s.fingerprint !== "string" || s.fingerprint.length > 1024 || typeof s.ordinaryFingerprint !== "string" || s.ordinaryFingerprint.length > 1024 || !Array.isArray(s.people) || s.people.length > 256) throw new Refusal("unknown");
+  const snapshot = (policies?:readonly HubRolePolicy[]) => {
+    const s = effects.snapshot(policies); if (!s || typeof s.fingerprint !== "string" || s.fingerprint.length > 1024 || typeof s.ordinaryFingerprint !== "string" || s.ordinaryFingerprint.length > 1024 || !Array.isArray(s.people) || s.people.length > 256) throw new Refusal("unknown");
     return { fingerprint: s.fingerprint, ordinaryFingerprint: s.ordinaryFingerprint, people: s.people.map(p => validated(person, p)) };
   };
   const rootId = `root-self:${root.objectId}`;
@@ -132,19 +133,33 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
   const prepare = async (input: HubRolePolicy, ctx: Captured, actor: Identity, operation: Operation) => {
     if (db.inTransaction) throw new Refusal("invalid");
     const before = read(), authEpoch = version(), started = now(), elapsedStart = elapsed();
+    const policyImages=[before.policy,input];
     let inventory: ReturnType<typeof snapshot> | null = null;
     const assertBudget = () => { const at = elapsed(); if (now() < started || at < elapsedStart || at >= elapsedStart + 20_000) throw new Refusal("expired"); };
     const assertBefore = () => {
       assert(ctx); assertBudget();
-      if (read().raw !== before.raw || version() !== authEpoch || inventory && snapshot().fingerprint !== inventory.fingerprint) throw new Refusal("conflict");
+      if (read().raw !== before.raw || version() !== authEpoch || inventory && snapshot(policyImages).fingerprint !== inventory.fingerprint) throw new Refusal("conflict");
     };
-    let plan = planRoleChange(before.policy, input, actor.person, now());
+    let plan = planRoleChange(before.policy, input, actor.person, now(),{allowCarriedSelfUse:operation==="allowed-list"});
     const authorize = (bundle: ReturnType<typeof heldRoleBundle>) => {
       if (operation === "root-self") {
         if (!same(actor.person, root) || bundle.kind !== "known" || !bundle.administrator) throw new Refusal("denied");
         if (logical(plan) !== logical(planRoleChange(before.policy, rootProposal(before.policy), root, now()))) throw new Refusal("invalid");
       } else {
         if ([...plan.roles, ...plan.assignments].some(d => d.after?.id.startsWith("root-self:"))) throw new Refusal("invalid");
+        if(operation==="allowed-list"){
+          if(bundle.kind!=="known"||!bundle.administrator)throw new Refusal("denied");
+          const permissionImage=(r:{allow:readonly string[];maxFleets:number}|undefined)=>r?json([SELF_PERMISSIONS.filter(c=>r.allow.includes(c)),r.maxFleets]):null;
+          const ownBefore=plan.before.people?.find(r=>same(r.person,actor.person)),ownAfter=plan.next.people?.find(r=>same(r.person,actor.person));
+          if(permissionImage(ownBefore)!==permissionImage(ownAfter))throw new Refusal("self-target");
+          const increases=(before:{allow:readonly string[];maxFleets:number}|undefined,after:{allow:readonly string[];maxFleets:number})=>after.allow.some(c=>!before?.allow.includes(c))||after.allow.includes("pair_fleet")&&after.maxFleets>(before?.maxFleets??0);
+          const teams=readAllowedListTeams(db,plan.next);
+          if(teams.snapshots.some(r=>!r.team))throw new Refusal("invalid");
+          for(const row of plan.next.teams??[])if(increases(plan.before.teams?.find(r=>r.teamId===row.teamId),row)&&teams.memberships(actor.person).includes(row.teamId))throw new Refusal("self-target");
+          for(const row of plan.next.people??[])if(increases(plan.before.people?.find(r=>same(r.person,row.person)),row)){
+            const fact=facts.get(personKeyString(row.person));if(fact?.kind==="ineligible")throw new Refusal("denied");if(fact?.kind==="unknown")throw new Refusal("unknown");
+          }
+        }
         const answer = checkRoleChange(plan, bundle); if (answer !== "allow") throw new Refusal(answer);
       }
     };
@@ -161,10 +176,11 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     // A person without delegation authority must not trigger inventory/other-person directory scans.
     await observe(actor.person);
     authorize(heldRoleBundle(before.policy, actor.person, facts.get(personKeyString(actor.person))!, now(), root));
-    inventory = snapshot(); const people = new Map<string, PersonKey>();
-    for (const p of [actor.person, root, ...inventory.people, ...before.policy.assignments.flatMap(a => a.subject.kind === "person" ? [a.subject.person] : []), ...input.assignments.flatMap(a => a.subject.kind === "person" ? [a.subject.person] : [])]) people.set(personKeyString(p), p);
+    inventory = snapshot(policyImages); const people = new Map<string, PersonKey>();
+    for (const p of [actor.person, root, ...inventory.people,...(before.policy.people??[]).map(r=>r.person),...(input.people??[]).map(r=>r.person), ...before.policy.assignments.flatMap(a => a.subject.kind === "person" ? [a.subject.person] : []), ...input.assignments.flatMap(a => a.subject.kind === "person" ? [a.subject.person] : [])]) people.set(personKeyString(p), p);
     if (people.size > 256) throw new Refusal("unknown");
     for (const [id, who] of [...people].sort(([a], [b]) => a.localeCompare(b))) if (!facts.has(id)) await observe(who);
+    if(operation==="allowed-list")for(const row of input.people??[])if(!facts.has(personKeyString(row.person)))throw new Refusal("unknown");
     // Resolve every newly affected group by GUID. A search hit or a DN label cannot stand in for this proof.
     for (const d of plan.affected) if (d.after) {
       const a = d.after;
@@ -181,7 +197,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     }
     await authenticate(ctx, actor); assertBefore();
     // Authentication may have awaited past an assignment's expiry: recompute the held bundle at this exact time.
-    plan = planRoleChange(before.policy, input, actor.person, now());
+    plan = planRoleChange(before.policy, input, actor.person, now(),{allowCarriedSelfUse:operation==="allowed-list"});
     const finalBundle = heldRoleBundle(before.policy, actor.person, facts.get(personKeyString(actor.person))!, now(), root);
     authorize(finalBundle);
     const value = await effects.prepare(plan, new Map([...facts].map(([id, fact]) => [id, structuredClone(fact)])), assertBefore, Object.freeze({actor:Object.freeze({...actor.person}),requestId:ctx.requestId})); assertBefore();
@@ -192,7 +208,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
       assertCurrent: value.assertCurrent.bind(value), commit: value.commit.bind(value), ...(value.afterPolicyWrite ? {afterPolicyWrite:value.afterPolicyWrite.bind(value)} : {}), assertCommitted: value.assertCommitted.bind(value) });
     sync(prepared.assertCurrent());
     await authenticate(ctx, actor); assertBefore();
-    plan = planRoleChange(before.policy, input, actor.person, now());
+    plan = planRoleChange(before.policy, input, actor.person, now(),{allowCarriedSelfUse:operation==="allowed-list"});
     const semanticFacts = json([...facts].map(([id, f]) => [id, f.kind === "complete" ? { kind: f.kind, person: f.person, groups: [...f.groups].sort() } : f.kind === "unknown" ? { kind: f.kind } : { kind: f.kind, person: f.person }]));
     const recipients = [...people].filter(([id, who]) => [before.policy, plan.next].some(p => heldRoleBundle(p, who, facts.get(id)!, now(), root).administrator && facts.get(id)!.kind !== "ineligible" && facts.get(id)!.kind !== "unknown")).map(([id]) => id).sort();
     const assertAuthority = () => {
@@ -204,7 +220,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     };
     assertAuthority();
     const review=roleReview(plan,people.values(),facts,root,now());
-    return { before, plan, review, authEpoch, inventory, facts: semanticFacts, prepared, recipients, started, assertBudget, assertBefore, assertAuthority, logical: logical(plan) };
+    return { before, plan, review, authEpoch, inventory, inventoryCurrent:()=>snapshot(policyImages), facts: semanticFacts, prepared, recipients, started, assertBudget, assertBefore, assertAuthority, logical: logical(plan) };
   };
   const prune = () => { const at = now(); for (const [id, c] of candidates) if (at < c.created || at >= c.expiresAt) candidates.delete(id); };
   const preview = async (input: unknown, incoming: HubRequestContext, operation: Operation = "ordinary"): Promise<RolePreviewResponse> => {
@@ -256,7 +272,7 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
           if (operation === "root-self") db.prepare("INSERT INTO hub_role_root_self VALUES(?,?,?,?)").run(personKeyString(root), rootId, rootId, id);
           if (notify) for (const recipient of p.recipients) db.prepare("INSERT INTO hub_role_notices(id,person) VALUES(?,?)").run(id, recipient);
           const committed = () => { assert(ctx!); unexpired(); p.assertBudget(); p.assertAuthority();
-            if (read().raw !== serialized || snapshot().ordinaryFingerprint !== p.inventory.ordinaryFingerprint) throw new Refusal("conflict");
+            if (read().raw !== serialized || p.inventoryCurrent().ordinaryFingerprint !== p.inventory.ordinaryFingerprint) throw new Refusal("conflict");
             if (operation === "root-self" && json(rootMarker()) !== json({ person: personKeyString(root), role_id: rootId, assignment_id: rootId, audit_id: id })) throw new Refusal("conflict");
             sync(p.prepared.assertCommitted());
           };
@@ -303,6 +319,9 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     } catch(error) { return refused(ctx,actor,error); }
   };
   return {
+    /** Internal allowed-list adapter only; ordinary HTTP role writes cannot select this operation. */
+    previewAllowedList:(input:unknown,ctx:HubRequestContext)=>preview(input,ctx,"allowed-list"),
+    applyAllowedList:(input:unknown,digest:string,ctx:HubRequestContext)=>apply(input,digest,ctx,"allowed-list"),
     preview: (input: unknown, ctx: HubRequestContext) => preview(input,ctx),
     apply: (input: unknown, digest: string, ctx: HubRequestContext) => apply(input,digest,ctx), notices, acknowledge,
     async previewRootSelf(ctx: HubRequestContext): Promise<RolePreviewResponse> {
