@@ -200,3 +200,8 @@ describe("directory notices in the current Hub shell", () => {
     expect(calls.some(path => path.includes("security-notices/directory"))).toBe(false);
   });
 });
+
+it("offers role notices only on the existing Notices destination, without a false pairing-empty message",async()=>{
+ const pg=await hub({admin:true,features:["role-settings-v1","quick-pairing-v1"],path:"/ui/hub?view=notices"});await settle(15);
+ expect(rows(pg)).toContain("Notices");expect(calls).toContain("GET /hub/v1/roles/notices");expect(pg.root.textContent).toContain("Administrator notices");expect(pg.root.textContent).not.toContain("No security notices");
+});

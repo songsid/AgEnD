@@ -68,9 +68,9 @@ export function createHubGroupResources(options: {
       || !["active", "suspended"].includes(raw.state) || !Number.isSafeInteger(raw.revision) || raw.revision < 1) throw new HubGroupPolicyError("unavailable");
     return { resource, ...(code ? { code } : {}), source: raw.source, state: raw.state, revision: raw.revision };
   };
-  const record = (r: HubGroupResource, actor: PersonKey, action: string, ctx: ReturnType<typeof snapshotContext>, payload: unknown) => {
+  const record = (r: HubGroupResource, actor: PersonKey | {kind:"local-host"}, action: string, ctx: ReturnType<typeof snapshotContext>, payload: unknown) => {
     const p = readHubOperationalPolicy(policy), id = randomUUID(), body = JSON.stringify({ resource: r, generation: p.generation, policyRevision: p.revision, payload });
-    const result: unknown = audit.appendInTransaction({ id, sequence: 0, at: now(), requestId: ctx.requestId, actor: { kind: "person", person: actor },
+    const result: unknown = audit.appendInTransaction({ id, sequence: 0, at: now(), requestId: ctx.requestId, actor: "kind" in actor ? actor : { kind: "person", person: actor },
       action, result: "completed", policyVersion: p.revision, reasonCode: createHash("sha256").update(body).digest("hex") }, db);
     if (result && (typeof result === "object" || typeof result === "function") && typeof (result as { then?: unknown }).then === "function") {
       try { (result as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refuse */ }
@@ -80,7 +80,7 @@ export function createHubGroupResources(options: {
     if (readHubOperationalPolicy(policy).revision !== p.revision) throw new HubGroupPolicyError("conflict");
     db.prepare("INSERT INTO hub_group_resource_events VALUES(?,?)").run(id, body);
   };
-  const update = (before: HubGroupResourceView, state: "active" | "suspended", actor: PersonKey, ctx: ReturnType<typeof snapshotContext>) => {
+  const update = (before: HubGroupResourceView, state: "active" | "suspended", actor: PersonKey | {kind:"local-host"}, ctx: ReturnType<typeof snapshotContext>) => {
     if (before.state === state) return;
     if (before.revision === Number.MAX_SAFE_INTEGER) throw new HubGroupPolicyError("conflict");
     const policyRevision = readHubOperationalPolicy(policy).revision;
@@ -238,6 +238,14 @@ export function createHubGroupResources(options: {
       if (!before || who.realm !== p.realm || r.owner.realm !== p.realm || p.state === "never-enabled"
         && (before.source !== "code" || !p.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes(capability(r))))) throw new HubGroupPolicyError("invalid");
       update(before, "suspended", who, ctx);
+    },
+    /** Owned expiry settlement only; never attributes an automatic suspension to a person. */
+    suspendExpired(input:HubGroupResource,incoming:GroupCheckContext):void{
+      const r=capture(input),ctx=snapshotContext(incoming);
+      if(!db.inTransaction)throw new HubGroupPolicyError("invalid");assert(ctx);
+      const p=readHubOperationalPolicy(policy),before=row(r);
+      if(!("rolesActive" in p)||!before||before.source!=="group"||r.owner.realm!==p.realm||p.state==="never-enabled")throw new HubGroupPolicyError("invalid");
+      update(before,"suspended",{kind:"local-host"},ctx);
     },
     /** Same outer transaction as a confirmed switch-off: policy off/on never silently resumes group resources. */
     suspendAll(incoming: GroupCheckContext): number {

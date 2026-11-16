@@ -120,7 +120,7 @@ export type GroupWelcomeResponse = {
 };
 
 /** Server-bound context of an admin call: the control itself calls `requireAdmin` (a supplied actor alone cannot re-authenticate). */
-export interface GroupAdminContext { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor> }
+export interface GroupAdminContext { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor>; /** Private HTTP-owned identity context, never request-body data. */ readonly roleContext?:import("../types.js").HubRequestContext }
 /**
  * Context of a welcome read (S-89): the welcome reveals one person's allow/deny per capability, so its subject is never a value
  * passed in. The projection calls `requirePerson()` itself: the request's own current session's person, fresh (Fable #3356 N1).

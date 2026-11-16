@@ -40,7 +40,8 @@ async function app(path: string, storage: Record<string, string> = {}, instances
   const { Shell } = await import("/assets/app-shell.js");
   startRouter(pg.window);
   applyStatus({ instances });
-  (await import("/assets/instance-nav.js")).loadNavPrefs();   // a page load: this browser's order, folds and filter
+  (await import("/assets/instance-nav.js")).loadNavPrefs();
+  (await import("/assets/instance-nav.js")).sidebarDensityStore.set({ value: "detailed", layout: "desk" });   // M-3252: these rows are the detailed ones (a desktop now defaults to compact)   // a page load: this browser's order, folds and filter
   await pg.mount(h(Shell, { panels: PANELS, onNewInstance() {} }));
   await settle(3);
   return pg;

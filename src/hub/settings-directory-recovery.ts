@@ -1,3 +1,4 @@
+import {hubRoleMigrationsForState} from "./roles/migrations.js";
 /** Cold directory recovery participant, called by the runtime before mounting. The shared writer owns every file write. */
 import { createHubAudit } from "./audit/index.js";
 import { assertHubMigrationsCurrent, bindHubInstance, HubStateError, inspectStateSet, openHubDatabase,
@@ -36,7 +37,7 @@ function openState(options: HubDirectoryRecoveryOptions) {
   const db = openHubDatabase(home, set.database, { create: false });
   let key: Buffer | undefined;
   try {
-    assertHubMigrationsCurrent(db, options.migrations);
+    assertHubMigrationsCurrent(db, hubRoleMigrationsForState(db,options.migrations));
     // A registry row alone cannot replace the authority tables. These reads never recreate a lost component.
     for (const sql of [
       "SELECT singleton,operation_id,directory_epoch FROM hub_settings_head LIMIT 0",

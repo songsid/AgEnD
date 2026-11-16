@@ -1,0 +1,691 @@
+{
+  "mode": "before",
+  "head": "66762a819a9aaf85c31b4b7504bb4cd1fed090b5",
+  "tree": "b152e5c6aa5bfb1e12671e01d4fc7eb5b06b4020",
+  "dirty": "",
+  "checks": [
+    {
+      "label": "production Hub ready",
+      "pass": true
+    },
+    {
+      "label": "real HTTP creates described role, named assignment and own-access defaults",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en roles no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en review no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-en audit no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW roles no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW review no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-light-zh-TW audit no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en roles no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en review no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-en audit no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW roles no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW review no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-desk-dark-zh-TW audit no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en roles no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en review no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-en audit no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW roles no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW review no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-light-zh-TW audit no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en roles no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en review no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-en audit no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW roles no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW permissions no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW create no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW assign no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW review no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "before-phone-dark-zh-TW audit no horizontal overflow",
+      "pass": true
+    },
+    {
+      "label": "all8 combinations and requested views",
+      "pass": true
+    },
+    {
+      "label": "no browser exceptions",
+      "pass": true
+    }
+  ],
+  "screens": [
+    {
+      "tag": "before-desk-light-en-roles",
+      "file": "before-desk-light-en-roles.png",
+      "sha256": "e0ccf3628b0aac9a3ab95bc7dc0742d505ff334230b8e87f9e6132d5bb3ca9b3"
+    },
+    {
+      "tag": "before-desk-light-en-roles-2",
+      "file": "before-desk-light-en-roles-2.png",
+      "sha256": "8e63fef08b0cbcfdaefe21c5fe4d10e43fbf98ac85d13ecc3423a95b8bd03e1f"
+    },
+    {
+      "tag": "before-desk-light-en-roles-3",
+      "file": "before-desk-light-en-roles-3.png",
+      "sha256": "bc50dfb1dcfff5b592c15488228ac27d182940d1f746d4a08dbdd23474324acf"
+    },
+    {
+      "tag": "before-desk-light-en-roles-4",
+      "file": "before-desk-light-en-roles-4.png",
+      "sha256": "66cc7e78abfab13a40e51ce6f3e9f616efe4d6fc1c439c7354c07fac3187a070"
+    },
+    {
+      "tag": "before-desk-light-en-permissions",
+      "file": "before-desk-light-en-permissions.png",
+      "sha256": "801b0abf4a5932ab0b0aa32ec6a6288b67aaa8d1f455ad560b796ab6dd328e04"
+    },
+    {
+      "tag": "before-desk-light-en-create",
+      "file": "before-desk-light-en-create.png",
+      "sha256": "5c179a1f6809f60afd078cb897a85f64bec9295bb20c23727e5f947428b74fd1"
+    },
+    {
+      "tag": "before-desk-light-en-assign",
+      "file": "before-desk-light-en-assign.png",
+      "sha256": "4cd014086feceb66df8debd0b56e9410abae7a4780b56e0ddf720e7db46be90f"
+    },
+    {
+      "tag": "before-desk-light-en-review",
+      "file": "before-desk-light-en-review.png",
+      "sha256": "c9bfa62442c3d9725aad516b947139700bd1aef65a4483db8267cc297368505d"
+    },
+    {
+      "tag": "before-desk-light-en-audit",
+      "file": "before-desk-light-en-audit.png",
+      "sha256": "d400dbfadf3d0a80669ea9fdfa0f3e53c0dc9754f98071e0b1f1d750f48a809e"
+    },
+    {
+      "tag": "before-desk-light-en-audit-2",
+      "file": "before-desk-light-en-audit-2.png",
+      "sha256": "34c64c15b07e0ec51a9ddf52e95100c17e014f4210f1557b257514d29ad921d8"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-roles",
+      "file": "before-desk-light-zh-TW-roles.png",
+      "sha256": "8e512608753cf05dde844a7f4b76ad49edbb36dd6dd3443509b8ccc1779692eb"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-roles-2",
+      "file": "before-desk-light-zh-TW-roles-2.png",
+      "sha256": "9465ceabbe536d94a6197cdbe2e424d4b5fa07f69cd647edc25a28e587ac63f1"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-roles-3",
+      "file": "before-desk-light-zh-TW-roles-3.png",
+      "sha256": "b6ec7c111b7db5f61f2844021a304542ad65c64222851d1979c8818cf6ee5c56"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-roles-4",
+      "file": "before-desk-light-zh-TW-roles-4.png",
+      "sha256": "113722bade9a9076ca2e7fe48e4b27a902403ef6a984783c087d3b7b11598a2c"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-permissions",
+      "file": "before-desk-light-zh-TW-permissions.png",
+      "sha256": "cf5ea730d55a0eb0980b0480191da6fe02b266c3f86fd80aadd437964e64b877"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-create",
+      "file": "before-desk-light-zh-TW-create.png",
+      "sha256": "f025f7e337ee22ea698a0b1b3aa579b165070cf030a2d0a86725b4ec6ad969d9"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-assign",
+      "file": "before-desk-light-zh-TW-assign.png",
+      "sha256": "b3168b193a7e310a1703a2e5458c0971057a549c3127834c5b1e70ac679d714c"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-review",
+      "file": "before-desk-light-zh-TW-review.png",
+      "sha256": "aa3013efdba66844dc19cd675e3413f28cc5cf43948a1983eeccae12c162ff95"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-audit",
+      "file": "before-desk-light-zh-TW-audit.png",
+      "sha256": "39ee1a6a1af8d2b68d2528bb19705e944de4182a8f83e20e5781b043d1081161"
+    },
+    {
+      "tag": "before-desk-light-zh-TW-audit-2",
+      "file": "before-desk-light-zh-TW-audit-2.png",
+      "sha256": "f594f12a8dceba55e1fbb33638a76eba05a8b35e40c5aaf443c3e4d9bbce6e5c"
+    },
+    {
+      "tag": "before-desk-dark-en-roles",
+      "file": "before-desk-dark-en-roles.png",
+      "sha256": "9d56705b4bab5623b229bf1a07abc4766878fb8c3f8824033321a13d5cc6d720"
+    },
+    {
+      "tag": "before-desk-dark-en-roles-2",
+      "file": "before-desk-dark-en-roles-2.png",
+      "sha256": "63c0a2fdc8f35346f926319725a6d9748befbcaf1c5c99ba2dcdc07285d593e8"
+    },
+    {
+      "tag": "before-desk-dark-en-roles-3",
+      "file": "before-desk-dark-en-roles-3.png",
+      "sha256": "8e1eff25cf735f70895eb501e9a908765d6f410f71032406ed3b89925a07535b"
+    },
+    {
+      "tag": "before-desk-dark-en-roles-4",
+      "file": "before-desk-dark-en-roles-4.png",
+      "sha256": "fc7ba628558d715d6be100bd66c38252aeda15d441a66bddaac3b44c84b110c7"
+    },
+    {
+      "tag": "before-desk-dark-en-permissions",
+      "file": "before-desk-dark-en-permissions.png",
+      "sha256": "bc170d3e9f356dbdac17db46a515b4ff79eed979afaad8470b89b683efeaf520"
+    },
+    {
+      "tag": "before-desk-dark-en-create",
+      "file": "before-desk-dark-en-create.png",
+      "sha256": "dfab2691cbdd2dd3e02c6dcdee82baf7d20e3b69e419d886d45dae2bdca037e1"
+    },
+    {
+      "tag": "before-desk-dark-en-assign",
+      "file": "before-desk-dark-en-assign.png",
+      "sha256": "488e828b328352e10851441fc82eea2dbcdb48e3e82b5022b3bcc0b72bb0cd26"
+    },
+    {
+      "tag": "before-desk-dark-en-review",
+      "file": "before-desk-dark-en-review.png",
+      "sha256": "b063dad7590ea516e52aac98e69f94fb1cb1dec241607b445a7de6de28416898"
+    },
+    {
+      "tag": "before-desk-dark-en-audit",
+      "file": "before-desk-dark-en-audit.png",
+      "sha256": "9b07ea1c18dd1d8f0df1830a8df9ffd001c6bb275fabdcc6d5dc2a2d69f720d9"
+    },
+    {
+      "tag": "before-desk-dark-en-audit-2",
+      "file": "before-desk-dark-en-audit-2.png",
+      "sha256": "b8c42c979f1bae723a3f24bc411c35d7fc8201731320bcc28be868bfc0716147"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-roles",
+      "file": "before-desk-dark-zh-TW-roles.png",
+      "sha256": "e751f1c88129d4b02bd67575a9ec7de68431c338d4a78326482ab71752f621dd"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-roles-2",
+      "file": "before-desk-dark-zh-TW-roles-2.png",
+      "sha256": "0dec3909691ce189002dd106ce39cb1c98daee34747da6c7287e7363aff98bc1"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-roles-3",
+      "file": "before-desk-dark-zh-TW-roles-3.png",
+      "sha256": "32c641141c001debaf5cac013e1c2a37946c55404b57d9391bd45c5104f63134"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-roles-4",
+      "file": "before-desk-dark-zh-TW-roles-4.png",
+      "sha256": "98edcc9eef364d755659b12efee7356d7e13af42b29691f3dfe23b77c5dccaad"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-permissions",
+      "file": "before-desk-dark-zh-TW-permissions.png",
+      "sha256": "f09d1eb46d1d5e261fdc3b9b80feeeb8055836ceecbb9d36f71bfc1f6e067e9b"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-create",
+      "file": "before-desk-dark-zh-TW-create.png",
+      "sha256": "0f8e6ef502053849de811a8ef5a53881c869e915a3387f31cd5b7303076df66c"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-assign",
+      "file": "before-desk-dark-zh-TW-assign.png",
+      "sha256": "517da05477267db0633109547383e85bff58a81b2f235cfc881b9398ef96fa8e"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-review",
+      "file": "before-desk-dark-zh-TW-review.png",
+      "sha256": "e47db35142579c059b185cc5f7a46142c394326e01c7580222d74be3685924d8"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-audit",
+      "file": "before-desk-dark-zh-TW-audit.png",
+      "sha256": "732631f408f282fec67bcdc70200e5e4049ade4132eb31a18962ccf92b735d12"
+    },
+    {
+      "tag": "before-desk-dark-zh-TW-audit-2",
+      "file": "before-desk-dark-zh-TW-audit-2.png",
+      "sha256": "759550e47c090f3ed5fef6032bf8038e93958484600b474b0c342c15447eca99"
+    },
+    {
+      "tag": "before-phone-light-en-roles",
+      "file": "before-phone-light-en-roles.png",
+      "sha256": "5e5871d934ca9c70cecb9bd5f7f83fd4eee899c31d12f228d2efd1a2221c2112"
+    },
+    {
+      "tag": "before-phone-light-en-roles-2",
+      "file": "before-phone-light-en-roles-2.png",
+      "sha256": "36432d7cc263da71dfd9fe50ef7011c290ef78f96ba7982f594906adceeda0c3"
+    },
+    {
+      "tag": "before-phone-light-en-roles-3",
+      "file": "before-phone-light-en-roles-3.png",
+      "sha256": "e808b2f3b1edf70df58ca4dc5a1290429baf4f67ac7adb7f9a74febd9075fb9e"
+    },
+    {
+      "tag": "before-phone-light-en-roles-4",
+      "file": "before-phone-light-en-roles-4.png",
+      "sha256": "e7c1dc4205eb60c199b4cbb6f412718f9e1cabb7485ff8fe7dd9bac7f3c39203"
+    },
+    {
+      "tag": "before-phone-light-en-permissions",
+      "file": "before-phone-light-en-permissions.png",
+      "sha256": "1e333bf5f89c3273c8311fef31a267e71aec3d8269bee322a0350f8b819ffdd9"
+    },
+    {
+      "tag": "before-phone-light-en-permissions-2",
+      "file": "before-phone-light-en-permissions-2.png",
+      "sha256": "3b67bc46d0ac74cf817595b7c1772757e509a95c45a369b22aecd041105a5959"
+    },
+    {
+      "tag": "before-phone-light-en-create",
+      "file": "before-phone-light-en-create.png",
+      "sha256": "e5f0af57fdc8ec7009744b85b30180389e8c449592ceb624c3169191d47136c1"
+    },
+    {
+      "tag": "before-phone-light-en-create-2",
+      "file": "before-phone-light-en-create-2.png",
+      "sha256": "cf502f58c90e0f039b910f5e1c74286ee1abef2eb8143a61bab89a3650ecdcb0"
+    },
+    {
+      "tag": "before-phone-light-en-assign",
+      "file": "before-phone-light-en-assign.png",
+      "sha256": "5a56161b4c77390cf7859d94a85832d51e4c7599d283cd0005ee92bfe4ab0abe"
+    },
+    {
+      "tag": "before-phone-light-en-assign-2",
+      "file": "before-phone-light-en-assign-2.png",
+      "sha256": "5e16b37493e04743ed7a7c233f91fcca4b245d25334b723a55b283772de50e7a"
+    },
+    {
+      "tag": "before-phone-light-en-review",
+      "file": "before-phone-light-en-review.png",
+      "sha256": "75549798dbfe6962fab820389fb36a5d70100a9e0d9a07ea07115e528a51ddc9"
+    },
+    {
+      "tag": "before-phone-light-en-audit",
+      "file": "before-phone-light-en-audit.png",
+      "sha256": "ba26f26c2cd081f20cadd70272dd8c8c2d9ba63848aadcf003d64ebb23541cc6"
+    },
+    {
+      "tag": "before-phone-light-en-audit-2",
+      "file": "before-phone-light-en-audit-2.png",
+      "sha256": "ef051fd63d269bb24f3504b32b626e30c07b365533dde69edc882bf3ca098f40"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-roles",
+      "file": "before-phone-light-zh-TW-roles.png",
+      "sha256": "4d827cf25e17eafd6b46f7f503bec1e891d2bb7665e7b11698a35b28c9caa3bd"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-roles-2",
+      "file": "before-phone-light-zh-TW-roles-2.png",
+      "sha256": "cce7e165f358825356325eadc3bfbd2f41b6e33b1d85076e5cd263c6b95d4e6e"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-roles-3",
+      "file": "before-phone-light-zh-TW-roles-3.png",
+      "sha256": "2d2d9dfb8fed3f37f7652216d7a51dbe79a5e174113b75f49d803656655fabd1"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-roles-4",
+      "file": "before-phone-light-zh-TW-roles-4.png",
+      "sha256": "cd9b2616779a9080c0f423ccabce10919ad6f85adac4b5e9f623cf9aa5e73359"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-permissions",
+      "file": "before-phone-light-zh-TW-permissions.png",
+      "sha256": "4c66f4010af8a88e6af75bb4bcfeb54c79ee97f75cfbc7f1ef8590bec7864320"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-permissions-2",
+      "file": "before-phone-light-zh-TW-permissions-2.png",
+      "sha256": "a6721c177ebfdc2414c32e26931bbbc98385ab468622c1683ae2ce8566b60d3f"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-create",
+      "file": "before-phone-light-zh-TW-create.png",
+      "sha256": "5e06b3eab2e8eb483cbaeb58d73c149e6454d40f287400607de8f8cc568983b8"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-create-2",
+      "file": "before-phone-light-zh-TW-create-2.png",
+      "sha256": "c6314c3e6bf6dd7e58cc0bc419edb8c4f54611a438f9b196bde9d9c588c3df88"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-assign",
+      "file": "before-phone-light-zh-TW-assign.png",
+      "sha256": "89efbf75be45287dbbf0596d8e7c3d2ffa019cb16432334b70cc6df4d8a46fca"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-assign-2",
+      "file": "before-phone-light-zh-TW-assign-2.png",
+      "sha256": "ec243a979b2e5fa3280f2a2583b216413ff32bc34071f8175aa370e495b233f4"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-review",
+      "file": "before-phone-light-zh-TW-review.png",
+      "sha256": "2a147ab9ae568736bfc87aa188d5aa7848c72be24afdabdc4bb21d571e7784e4"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit",
+      "file": "before-phone-light-zh-TW-audit.png",
+      "sha256": "6ab907b722e77d312c67ab23dc1b2b995de6c3700810e6af05ebfa95e6ebc0d7"
+    },
+    {
+      "tag": "before-phone-light-zh-TW-audit-2",
+      "file": "before-phone-light-zh-TW-audit-2.png",
+      "sha256": "e74dfb8ed536605abac9940de775c2c77c2da473b34ce0a90d957fab428d5af2"
+    },
+    {
+      "tag": "before-phone-dark-en-roles",
+      "file": "before-phone-dark-en-roles.png",
+      "sha256": "040a2bc10cb17507604afbb7cb394b8b47a29b0ba8afcacbd34a3739d9ba6f0c"
+    },
+    {
+      "tag": "before-phone-dark-en-roles-2",
+      "file": "before-phone-dark-en-roles-2.png",
+      "sha256": "f782a1653e48836d5452f58c5e2735ceb57e8f31a3ad1fada12abe55f29f45b3"
+    },
+    {
+      "tag": "before-phone-dark-en-roles-3",
+      "file": "before-phone-dark-en-roles-3.png",
+      "sha256": "10fb0fb60756f6a1a69de5e9bfd2a07bd7aa3a78014926616f7ac448f99ba084"
+    },
+    {
+      "tag": "before-phone-dark-en-roles-4",
+      "file": "before-phone-dark-en-roles-4.png",
+      "sha256": "b6df30cf14b79ac161946f69225e3ca416da1a10bf6bef89b4aacaf42ebcc18e"
+    },
+    {
+      "tag": "before-phone-dark-en-permissions",
+      "file": "before-phone-dark-en-permissions.png",
+      "sha256": "aa9a3c24c24c078f7a33497d45b534a85b27296c64f0275fe1e51906b4a2ed36"
+    },
+    {
+      "tag": "before-phone-dark-en-permissions-2",
+      "file": "before-phone-dark-en-permissions-2.png",
+      "sha256": "e019a236e214111f67b0e9ca2e3b9e5eac1d52b1d89463cbd2c7bb8d66937c6c"
+    },
+    {
+      "tag": "before-phone-dark-en-create",
+      "file": "before-phone-dark-en-create.png",
+      "sha256": "9fd3412bdbc99c526e2b29f53d7723861e93d8564980efc6a65e21497d0ba3bb"
+    },
+    {
+      "tag": "before-phone-dark-en-create-2",
+      "file": "before-phone-dark-en-create-2.png",
+      "sha256": "f7da4ac7323c741a74b2e173ee0a9c2b907e1990e1fb288030b72fa3bdc5ba5c"
+    },
+    {
+      "tag": "before-phone-dark-en-assign",
+      "file": "before-phone-dark-en-assign.png",
+      "sha256": "56b5b9827c4b2641e024a887d774f64389dc4c488e35a1363e3d3df5ae91f21b"
+    },
+    {
+      "tag": "before-phone-dark-en-assign-2",
+      "file": "before-phone-dark-en-assign-2.png",
+      "sha256": "0815ddae73083e7efd07aa62f46d7d8331fcbb606c5056c1b11263202d6ab930"
+    },
+    {
+      "tag": "before-phone-dark-en-review",
+      "file": "before-phone-dark-en-review.png",
+      "sha256": "496a8052a40f2f8993770ac9b9972f1f57a449a9f09a3549c79c6d35301a5495"
+    },
+    {
+      "tag": "before-phone-dark-en-audit",
+      "file": "before-phone-dark-en-audit.png",
+      "sha256": "4151cd3a99c75e667f5a748bcdab83ce1a489b1e89aed0cfe7f8389a7e4e3ba2"
+    },
+    {
+      "tag": "before-phone-dark-en-audit-2",
+      "file": "before-phone-dark-en-audit-2.png",
+      "sha256": "21a083d1729b4a3d6ebac5f6cc4df8aef762ebfa2bd19c83dc71a6599b87babe"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-roles",
+      "file": "before-phone-dark-zh-TW-roles.png",
+      "sha256": "a2b0662966e31889c519991be30de43238cf557ed499f05feb48e3b9c11783c6"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-roles-2",
+      "file": "before-phone-dark-zh-TW-roles-2.png",
+      "sha256": "6ec6f0ba32d19a2a4ae4be3c887b1d8b518bf13f1bbe449b1d6f751a1cfbb449"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-roles-3",
+      "file": "before-phone-dark-zh-TW-roles-3.png",
+      "sha256": "bdbea5c11d41368fc568b5f4b0ea99166eecefd40e014abad45491677f977ef0"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-roles-4",
+      "file": "before-phone-dark-zh-TW-roles-4.png",
+      "sha256": "8e62941608e1a7a9c53507715e1cb38d138e5328b0f4bf786d7e8720ad5b8c40"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-permissions",
+      "file": "before-phone-dark-zh-TW-permissions.png",
+      "sha256": "7112a325394b550d45750a375014b2fdeba146672c148e886a921baca4a458b1"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-permissions-2",
+      "file": "before-phone-dark-zh-TW-permissions-2.png",
+      "sha256": "0dbbf88acab6650209e1b95e7445fa5ba4d5d5bed735bf241756a4dbfc659dc3"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-create",
+      "file": "before-phone-dark-zh-TW-create.png",
+      "sha256": "ae8315796c356c8a09a785d6d3c54490ee9f2283d2428211dd57ff6bacd00af3"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-create-2",
+      "file": "before-phone-dark-zh-TW-create-2.png",
+      "sha256": "bddb6521c898dc06710df3b64beb2a2d5e35528c0896eef6b33694ae417ce434"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-assign",
+      "file": "before-phone-dark-zh-TW-assign.png",
+      "sha256": "5e000b9adb02fbcf7292632006377d20af5100a5071a4e25e9f43b3fccd9ed70"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-assign-2",
+      "file": "before-phone-dark-zh-TW-assign-2.png",
+      "sha256": "d02ee9dc8725b311800dc1c382389071357937f74eec34b137ed5e524381b81f"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-review",
+      "file": "before-phone-dark-zh-TW-review.png",
+      "sha256": "79d11f397ee69277f23d113be2964d003d88f62ffaa50528ce61866ad7ddc1cc"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit",
+      "file": "before-phone-dark-zh-TW-audit.png",
+      "sha256": "21668a6ec0a5713415ece3a16e06183eed4e673671460f437b93f74882895265"
+    },
+    {
+      "tag": "before-phone-dark-zh-TW-audit-2",
+      "file": "before-phone-dark-zh-TW-audit-2.png",
+      "sha256": "9d07f2d8b2a8ab5db19526d24cf65f72469c7068cb673f04065f25acfdb208db"
+    }
+  ],
+  "errors": [],
+  "scope": "Separate initialized production Hub runtime/HTTPS/SQLite and assets from REPO. Synthetic AD people/groups; no real credentials, Fleet or model process. Headless Chromium inside WSL.",
+  "stages": [
+    "roles",
+    "permissions",
+    "create",
+    "assign",
+    "review",
+    "audit"
+  ],
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}

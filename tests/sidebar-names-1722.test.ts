@@ -31,6 +31,7 @@ beforeAll(async () => {
   router = await import("/assets/app-nav.js");
   shell = await import("/assets/app-shell.js");
   nav = await import("/assets/instance-nav.js");
+  nav.sidebarDensityStore.set({ value: "detailed", layout: "desk" });   // M-3252: these rows are the detailed ones (a desktop now defaults to compact)
   i18n = await import("/assets/app-i18n.js");
   chat = await import("/ui/js/panel-chat.js");
   store.appStore.set({ chatOwner: chat.boot({ stream: { on() { return () => {}; } }, boot: null, deps: { fetch: fetchFake } }) });

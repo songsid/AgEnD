@@ -1,3 +1,4 @@
+import {hubAdminOverviewPermit} from "../roles/overview.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "../room-context-model.js";
 /**
  * AgEnD Hub P1, slice 3 (server side): S3's composition entry (docs/design/hub-composition.md §5 step 5, §6).
@@ -81,7 +82,7 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // M-3092 S-145: the list's favourites (the Fleet sidebar's #1664 rules; synced per person by the Hub).
   "hub-room-favorites.js",
   // S-148: the working bar's words (#3857), shared by the room thread.
-  "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js", "hub-roles.js", "hub-roles-strings.js", "hub-room-search.js",
+  "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js", "hub-roles.js", "hub-roles-strings.js", "hub-role-view.js", "hub-role-forms.js", "hub-role-audit.js", "hub-role-notices.js", "hub-room-search.js",
   // M-3137: Fleet versions (Connected fleets' columns and summary, the older-Fleet banner) with its own words.
   "hub-fleet-versions.js",
   // M-3162: Administration → Overview (the counts dashboard), its own words.
@@ -817,12 +818,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     // #3298 S-89: the group routes (404 until S-88's control is composed), ahead of the other admin routes.
     if (await handleGroupHttp(deps.groupHttp, { path, method, signedIn, csrf, body, send: (status, value, headers) => send(res, status, value, headers),
       // The synchronous fence is this server's lifetime and the session row; who is asking is only ever the session's own require*.
-      ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(), requirePerson: () => ctx.requirePerson() } })) return;
+      ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(), requirePerson: () => ctx.requirePerson(),roleContext:ctx } })) return;
     // M-2682: Administration → This Hub (what it is; its rename through the host's writer for sealed settings).
     if (await handleHubDirectorySettingsHttp(deps.directorySettings, { req, res, path, method, query, signedIn, csrf, body,
       send: (status, value) => send(res, status, value), sessions,
       ...(deps.directoryResponse ? { capture: (proof: () => boolean) => deps.directoryResponse!.capture(req, res, proof) } : {}),
-      ctx: { token: ctx.token, requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() } })) return;
+      ctx: { token: ctx.token, requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(),...(deps.roleAdmin&&deps.management?{configuredRoot:deps.config.administrator,authorizeAdmin:()=>deps.management!.require(ctx,"hub.admin")}: {}) } })) return;
     if (await handleHubSettingsHttp(deps.hubSettings ? { ...deps.hubSettings, name: deps.config.name } : undefined, { path, method, signedIn, csrf, body,
       send: (status, value) => send(res, status, value),
       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() },
@@ -865,21 +866,28 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if (path === "/hub/v1/admin/overview") {
       if (method !== "GET") throw new HttpError(405, "method");
-      signedIn(); await guard(() => ctx.requireAdmin());
-      const state = deps.store.read(), now = core.now(), recommendation = recommendations.settings();
-      fleetUpdates.reconcile();
+      signedIn();
+      const scoped=deps.roleAdmin&&deps.management?await guard(()=>hubAdminOverviewPermit(ctx,deps.management!)):null;
+      if(!scoped)await guard(()=>ctx.requireAdmin());
+      const canFleets=scoped?.fleets??true,canJoin=scoped?.joining??true;
+      const state = deps.store.read(), now = core.now(), recommendation = canFleets?recommendations.settings():null;
+      if(canFleets)fleetUpdates.reconcile();
       const name = (key: { realm: string; objectId: string }) => {
         const id = personKeyString(key);
         const row = core.atomic((db) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined);
         return row ? { name: row.display_name, login: row.login_label } : null;
       };
-      return send(res, 200, {
-        recommendedVersion: recommendation.recommendedVersion, recommendationRevision: recommendation.revision,
-        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendation.recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id, recommendation), updatesAllowed: fleetUpdates.allowed(f.id), updateRequest: fleetUpdates.view(f.id),
+      scoped?.assertCurrent();
+      const overview={
+        permissions:[...(canFleets?["fleets.manage"]:[]),...(canJoin?["join.manage"]:[])],
+        ...(recommendation?{recommendedVersion:recommendation.recommendedVersion,recommendationRevision:recommendation.revision}:{}),
+        fleets: !canFleets?[]:state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null, ...fleetVersions.view(f.id, recommendation!.recommendedVersion), recommendationNotifiedAt: recommendations.notifiedAt(f.id, recommendation!), updatesAllowed: fleetUpdates.allowed(f.id), updateRequest: fleetUpdates.view(f.id),
           ...(deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
-        pairings: state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
+        pairings: !canJoin?[]:state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
           .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),
-      });
+      };
+      scoped?.assertCurrent();if(ctx.isCurrent?.()!==true)throw new HubProtocolError("unavailable");
+      return send(res,200,overview);
     }
     if (path === "/hub/v1/admin/pairings") {
       if (method !== "POST") throw new HttpError(405, "method");
@@ -1045,7 +1053,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   rooms.buttons.start(); groupRooms.agents.wake(); groupRooms.assistant.start();
   return {
     directorySessions: Object.freeze({
-      recentAuthentication: actor => sessions.recentAuthentication(actor),
+      recentAuthentication: (actor, permit) => sessions.recentAuthentication(actor, permit),
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),

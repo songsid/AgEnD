@@ -10,7 +10,7 @@ register("hubGroups", {
     entryOpen: "Open group permissions", entryOpenHub: "Open on the Hub", settingsRowHint: "Set on the Hub's Administration page, signed in as its administrator.",
     experimental: "Preview",
     // Editor
-    title: "Group permissions", lead: "People get the union of their AD groups, teams and own row. A person exclusion wins. Sign-in stays with AD; chatting with an agent still needs its owner's grant.",
+    allowedListTitle:"Allowed list",title: "Group permissions", lead: "People get the union of their AD groups, teams and own row. A person exclusion wins. Sign-in stays with AD; chatting with an agent still needs its owner's grant.",
     back: "Administration", unsupported: "This Hub's directory can't be used for group permissions. Group permissions need Active Directory over LDAPS (port 636).",
     repair: "The directory settings changed since group permissions were saved. Group permissions are paused until the Hub is repaired.",
     stateNever: "Off", stateEnabled: "On", stateSuspended: "Switched off — resources paused",
@@ -61,7 +61,7 @@ register("hubGroups", {
     entryTitle: "群組權限", entryHint: "讓指定目錄群組的成員與 Agent 對話、分享 Agent 或連接自己的 Fleet，不必逐一核准每個人。",
     entryOpen: "開啟群組權限", entryOpenHub: "在 Hub 上開啟", settingsRowHint: "在 Hub 的「管理」頁設定，需以 Hub 管理員身分登入。",
     experimental: "預覽版",
-    title: "群組權限", lead: "權限取自所屬 AD 群組、團隊與個人列的聯集，個人排除優先。登入仍由 AD 決定；與 Agent 對話仍需要擁有者授權。",
+    allowedListTitle:"允許清單",title: "群組權限", lead: "權限取自所屬 AD 群組、團隊與個人列的聯集，個人排除優先。登入仍由 AD 決定；與 Agent 對話仍需要擁有者授權。",
     back: "管理", unsupported: "這個 Hub 的目錄無法用於群組權限。群組權限需要透過 LDAPS（連接埠 636）的 Active Directory。",
     repair: "目錄設定在群組權限儲存後改變了。在修復 Hub 之前，群組權限暫停。",
     stateNever: "關閉", stateEnabled: "開啟", stateSuspended: "已關閉——資源已暫停",

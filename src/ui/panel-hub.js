@@ -22,6 +22,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { PairingNotices } from "./hub-quick-pairing.js";
 import { dn } from "./hub-directory-notice-strings.js";
+import { RoleNotices, roleNoticesOffered, roleNoticeLead } from "./hub-role-notices.js";
 import { DirectoryNotices, directoryNoticesOffered } from "./hub-directory-notices.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
@@ -61,8 +62,8 @@ const ha = key => t(`hubAccess.${key}`);
 // Kept with the fresh renderer: retained owner dictionaries do not know this label.
 // M-3162: Administration's tabs (Lumen's names: "Manage" holds today's long page; "This Hub" its name already).
 register("hubAdminTabs", {
-  en: { label: "Administration", overview: "Overview", manage: "Manage", teams: "Teams", groups: "Groups", roles: "Roles and permissions", thisHub: "This Hub" },
-  "zh-TW": { label: "管理", overview: "總覽", manage: "管理項目", teams: "團隊", groups: "群組", roles: "角色與權限", thisHub: "這個 Hub" },
+  en: { label: "Administration", overview: "Overview", manage: "Manage", teams: "Teams", groups: "Groups", roles: "Roles and permissions",allowedList:"Allowed list", thisHub: "This Hub" },
+  "zh-TW": { label: "管理", overview: "總覽", manage: "管理項目", teams: "團隊", groups: "群組", roles: "角色與權限",allowedList:"允許清單", thisHub: "這個 Hub" },
 });
 const hat = (key) => t(`hubAdminTabs.${key}`);
 register("hubGrantStatus", {
@@ -178,9 +179,9 @@ export function HubPanel({ route }) {
     return stop;
   }, [s && s.login]);
   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
-  const pageName = companyPage ? hj("title") : tab === "ask" && view === "ai-apps" ? hApps("title") : tab === "ask" && view === "app-consent" ? hApps("consentHeading") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : hc("admin") : view === "notices" ? hc("noticesTitle")
+  const pageName = companyPage ? hj("title") : tab === "ask" && view === "ai-apps" ? hApps("title") : tab === "ask" && view === "app-consent" ? hApps("consentHeading") : tab === "exposures" ? hc("mine") : tab === "admin" ? view === "teams" ? ht("title") : view==="allowed-list"?hat("allowedList") : (view==="roles"||view==="groups"&&rolesOn(s,hubClient()))?hat("roles"):hc("admin") : view === "notices" ? hc("noticesTitle")
     : view === "invitations" ? hroom("invitationsTitle") : view === "teams" ? ht("mine") : hc("chats");
-  useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && view === "groups")) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
+  useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && (view === "groups"&&!rolesOn(s,hubClient())||view==="allowed-list"))) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
     : html`<${Skeleton} variant="rows" lines=${4} />`;
@@ -197,9 +198,9 @@ export function HubPanel({ route }) {
   // Security notices stay on their own page. The bound join branch above never renders the chat or notices page.
   if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
     <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
-      <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
-        ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
-        ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}</div></div></div>`;
+      <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${roleNoticesOffered(s, hubClient()) ? roleNoticeLead() : directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
+        ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
+        ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}${roleNoticesOffered(s, hubClient()) ? html`<${RoleNotices} client=${hubClient()} />` : null}</div></div></div>`;
   // M-3092: the owner's invitations (spec §8), a page of the chats like Notices.
   if (s && tab === "ask" && view === "invitations" && roomsLive()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-invitations">
     <${PanelHeader} title=${hroom("invitationsTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body"><div class="col hub-owner">
@@ -366,7 +367,7 @@ export const NOTICES_PATH = "/ui/hub?view=notices";
 export const INVITATIONS_PATH = "/ui/hub?view=invitations";
 export const MY_TEAMS_PATH = "/ui/hub?view=teams";
 const pairingNoticesOffered = (s) => !!s && Array.isArray(s.features) && s.features.includes("quick-pairing-v1") && !!hubClient().quickPairingV1;
-const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient());
+const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient());
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 const AV_TONES = 6;
 const tone = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % AV_TONES; };
@@ -1122,12 +1123,13 @@ function HubAdmin({ admin }) {
   const overview = !overviewGone && s?.features?.includes("admin-dashboard-v1") && typeof hubClient()?.adminDashboard === "function";
   const tabs = [admin && overview ? "overview" : null, canManage ? "manage" : null, admin && teams ? "teams" : null, roles && canRole ? "roles" : admin && groups ? "groups" : null, admin ? "this-hub" : null].filter(Boolean);
   const view = adminView();
-  const selected = roles && view === "groups" ? "roles" : ADMIN_TAB_VIEWS[view];
+  const selected = roles && ["groups","allowed-list"].includes(view) ? "roles" : ADMIN_TAB_VIEWS[view];
   const current = view === "" ? tabs[0] : tabs.includes(selected) ? selected : tabs[0];
   const bar = html`<${AdminTabs} tabs=${tabs} current=${current} />`;
   if (current === "overview") return html`${bar}<div class="col hub-owner hub-admin-ov-col"><${LazyRoomPart} load=${() => import("./hub-admin-overview.js")} name="HubAdminOverview"
     props=${{ client: hubClient(), onOpen: openAdminTab, onGone: () => { setOverviewGone(true); openAdminTab("manage"); } }} /></div>`;
   if (current === "this-hub") return html`${bar}${directory && view === "directory" ? html`<${LazyDirectory} session=${s} />` : html`<div class="col hub-owner"><div class="s-section-layout"><${LazyThisHub} directory=${directory} />${s?.features?.includes("mcp-apps-v1")?html`<${LazyRoomPart} load=${()=>import("./hub-ai-apps.js")} name="AiAppsAdminCard" props=${{client:hubClient()}}/>`:null}</div></div>`}`;
+  if(current==="roles"&&view==="allowed-list"&&admin&&groups)return html`${bar}<${LazyGroups} pick=${m=>m.HubGroupPolicyPage} props=${{roleShortcut:true}} />`;
   if (current === "roles") return html`${bar}<div class="col hub-owner"><${LazyRoomPart} load=${() => import("./hub-roles.js")} name="HubRoles" props=${{client:hubClient()}} /></div>`;
   if (current === "groups") return html`${bar}<${LazyGroups} pick=${(m) => m.HubGroupPolicyPage} props=${{}} />`;
   if (current === "teams") return html`${bar}<div class="col hub-owner"><h2 class="sr-only">${ht("title")}</h2><${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsPage" props=${{ client: hubClient(), mode: "admin", person: s?.person }} /></div>`;
@@ -1171,7 +1173,10 @@ function GroupPermissionsEntry() {
 }
 function HubAdminPage({ groups = false, companyJoin = false, directory = false } = {}) {
   const assistantSession = useSession();
+  const fullAdmin=assistantSession?.admin===true;
   const [view, reload] = useRead(() => hubClient().adminOverview());
+  const canFleets=Array.isArray(view?.permissions)?view.permissions.includes("fleets.manage"):fullAdmin;
+  const canJoin=Array.isArray(view?.permissions)?view.permissions.includes("join.manage"):fullAdmin;
   const [needsOnly, setNeedsOnly] = useState(false);   // M-3137: Connected fleets' "Needs update" filter
   const [canRecommend, setCanRecommend] = useState(false);   // M-3141: this Hub serves the recommended-version setting
   const [login, setLogin] = useState("");
@@ -1217,17 +1222,17 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
   const ManualFrame = accessEntry ? "details" : "div";
   return html`<div class="col hub-owner hub-admin">${lead}
     <div class="s-section-layout">
-      ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
-      ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
+      ${fullAdmin && groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
+      ${canJoin && companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
       ${/* Lumen's order: Let colleagues join → Teams → Rooms → Room assistant → Connected fleets → pairing. */ ""}
-      ${teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
-      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
-      ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
+      ${fullAdmin && teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
+      ${fullAdmin && roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
+      ${fullAdmin && assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${/* M-3141 (versions spec §3.1): the recommended version, a small card above the list. */ ""}
-      ${hasVersions(fleets) ? html`<${RecommendedVersionCard} client=${hubClient()} onSaved=${reload} onAvailable=${setCanRecommend} />` : null}
-      <section class="card hub-fleet-list" id="hub-admin-fleets"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
+      ${fullAdmin && hasVersions(fleets) ? html`<${RecommendedVersionCard} client=${hubClient()} onSaved=${reload} onAvailable=${setCanRecommend} />` : null}
+      ${canFleets?html`<section class="card hub-fleet-list" id="hub-admin-fleets"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
         ${/* M-3137 (versions spec §2.2): the summary line and its filter, when this Hub reports versions. */ ""}
         ${hasVersions(fleets) ? html`<${FleetVersionsSummary} fleets=${fleets} recommended=${view.recommendedVersion ?? null} canRecommend=${canRecommend} filtered=${needsOnly} onFilter=${setNeedsOnly} />` : null}
         ${/* M-3145 (§4.2): "Update {n} Fleets that allow it", while at least one qualifies. */ ""}
@@ -1247,8 +1252,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
           return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
             ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;
         })() : html`<p class="note">${ho("noFleets")}</p>`}
-      </section>
-      <${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
+      </section>`:null}
+      ${canJoin?html`<${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
         <ol class="hub-steps">
           <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
             <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${ho("ownerLogin")}</span><input id="hubOwnerLogin" placeholder=${ho("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
@@ -1268,8 +1273,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
             : p.ownerConfirmed ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!p.fingerprint} onClick=${() => approve(p)}>${ho("approveGo")}</button>`
             : html`<span class="tag warn">${ho("waitingOwner")}</span>`}
         </div>`)}</div>` : null}
-      </section></${ManualFrame}>
-      <${LazyThisHub} directory=${directory} />
+      </section></${ManualFrame}>`:null}
+      ${fullAdmin?html`<${LazyThisHub} directory=${directory} />`:null}
     </div></div>`;
 }
 

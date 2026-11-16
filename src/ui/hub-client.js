@@ -484,13 +484,14 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     // Seam 5: teams, who may open rooms, and the administrator's list of rooms (names and members, no content).
     // Role settings: calls remain authoritative on the Hub, never in these display flags.
     roleSettingsV1: true,
+    roleAuditFiltersV1: true,
     roles() { return call("GET", "/hub/v1/roles"); },
     roleSearch(kind,q) { return call("GET", `/hub/v1/roles/search?${new URLSearchParams({kind,q})}`); },
     rolePreview(policy) { return call("POST", "/hub/v1/roles/preview", {policy}); },
     roleApply(policy,previewDigest) { return call("POST", "/hub/v1/roles/apply", {policy,previewDigest}); },
     roleRootPreview() { return call("POST", "/hub/v1/roles/root-self/preview", {}); },
     roleRootApply(previewDigest) { return call("POST", "/hub/v1/roles/root-self/apply", {previewDigest}); },
-    roleAudit(cursor) { return call("GET", `/hub/v1/roles/audit${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`); },
+    roleAudit(cursor, filters = {}) { const query = new URLSearchParams(); for (const key of ["from", "to", "person", "action"]) if (filters[key] !== undefined && filters[key] !== "") query.set(key, String(filters[key])); if (cursor) query.set("cursor", cursor); return call("GET", `/hub/v1/roles/audit${query.size ? `?${query}` : ""}`); },
     roleNotices() { return call("GET", "/hub/v1/roles/notices"); },
     acknowledgeRoleNotice(noticeId) { return call("POST", `/hub/v1/roles/notices/${id(noticeId)}/ack`, {}); },
     teamSettings() { return call("GET", "/hub/v1/teams/settings"); },

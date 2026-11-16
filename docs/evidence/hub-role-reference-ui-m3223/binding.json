@@ -1,0 +1,32 @@
+{
+  "uiCodeHead": "21e793c4efae607215d22b79e3382383481578be",
+  "uiBaseBeforeSync": "9dc231623",
+  "alphaSyncHead": "6a81a0924499309ef36b78984cba65796878cd39",
+  "heldActivation": "5c164b91f4526a4657454daab1579d0d2a0da1f3",
+  "before": "66762a819a9aaf85c31b4b7504bb4cd1fed090b5",
+  "initialAfter": "d9ad6607eb58b80eecec3c7170c07c4a087240bf",
+  "focusedAfter": "962d5a5295fb7eb2e72ce1351be0de27b2a7419d",
+  "serverTreeBefore": "4089098a0120cfd8efc4e74201ee72dd95a3a417",
+  "serverTreeAfter": "4089098a0120cfd8efc4e74201ee72dd95a3a417",
+  "serverEqual": true,
+  "beforeRoleBlobsFrom": "4fa2b4d4bd1e672f1261120bdd372f4d2a739c41",
+  "beforeAfterUiDelta": [
+    "src/ui/hub-role-forms.js",
+    "src/ui/hub-roles-strings.js",
+    "src/ui/hub-roles.js",
+    "src/ui/shared/hub-roles.css"
+  ],
+  "postCaptureFollowup": {
+    "head": "21e793c4efae607215d22b79e3382383481578be",
+    "scope": "Keyboard tabs, limited-role fallback/refresh and complete audit action-filter options only; captured administrator layout unchanged; focused UI20/20 and display helpers4/4."
+  },
+  "tests": {
+    "roleUiFinal": 20,
+    "displayHelpers": 4,
+    "moduleInventory": 11,
+    "shellFinal": 13,
+    "otherShellNoticeClientBatch": 64,
+    "testTypecheck": 0
+  },
+  "imageReview": "Read-only initial and scoped R1 checks: visible carets, recipient label and cleared searches fixed; final baseline comparison and named review/audit clear."
+}

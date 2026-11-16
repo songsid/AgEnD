@@ -29,7 +29,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { avatarOf, firstCharacter, namesOf } from "/assets/instance-nav.js";
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "/assets/identity-color.js";
 import { buildOrgView, nodeText, OrgChart, OrgSummary } from "./fleet-org.js";
-import { Office } from "./fleet-office.js";
+import { Office, useOfficePhone } from "./fleet-office.js";
 import { OC, REST_KEY, SUM_LINE, canvasLayout, hits, needle, openingRegion, summaryRows } from "./fleet-canvas-layout.js";
 import { createTrafficStore, FAR_K, HEAD, POLL_MS, sendingBy, trafficEdges } from "./fleet-traffic.js";
 import { routeScene } from "./fleet-route-scene.js";
@@ -458,6 +458,8 @@ export function OrgCanvas({ org, app, lease }) {
   useIdentityColors();
   const [mode, setMode] = useState(readMode);
   const [live, setLive] = useState(readLive);
+  // M-3253: on a phone the Office's tools (and Live) are one ⋯ sheet at the end of this bar: one row, Find keeps its width.
+  const phone = useOfficePhone(), [officeMore, setOfficeMore] = useState(false), officeSheet = phone && mode === "office";
   const traffic = useTraffic(lease, live);
   const sending = useMemo(() => sendingBy(traffic), [traffic]);
   const [folded, setFolded] = useState(readFolded);
@@ -499,14 +501,17 @@ export function OrgCanvas({ org, app, lease }) {
           <input type="search" value=${query} placeholder=${tc("findShort")} autocomplete="off" onInput=${(e) => setQuery(e.target.value)} onKeyDown=${onFind} />
           ${q ? html`<span class="oc-found" role="status">${found ? (found === 1 ? tc("foundOne") : tc("found", found)) : tc("noMatch")}</span>` : null}</label>` : null}
         ${mode === "canvas" && live ? html`<${KeyToggle} open=${keyOpen} onToggle=${toggleKey} />` : null}
-        <button type="button" class=${`btn btn-sm oc-live${live ? " on" : ""}`} aria-pressed=${live ? "true" : "false"} title=${live ? tc("liveOn") : tc("liveOff")}
-          onClick=${() => setLive((v) => !v)}><span class="oc-live-dot" aria-hidden="true"></span>${tc("live")}</button>
+        ${officeSheet ? null : html`<button type="button" class=${`btn btn-sm oc-live${live ? " on" : ""}`} aria-pressed=${live ? "true" : "false"} title=${live ? tc("liveOn") : tc("liveOff")}
+          onClick=${() => setLive((v) => !v)}><span class="oc-live-dot" aria-hidden="true"></span>${tc("live")}</button>`}
         <div class="seg-inline" role="group" aria-label=${tc("view")}>${modeBtn("canvas")}${modeBtn("list")}${modeBtn("office")}</div>
+        ${officeSheet ? html`<button type="button" class="icon-btn oo-more-btn" aria-haspopup="dialog" aria-expanded=${officeMore ? "true" : "false"}
+          aria-label=${t("app.more")} title=${t("app.more")} onClick=${() => setOfficeMore(true)}><${Icon} name="more" /></button>` : null}
       </div>
     </div>
     ${mode === "canvas" && live && keyOpen ? html`<${Legend} />` : null}
     ${mode === "list" ? html`<${OrgChart} org=${org} app=${app} bare=${true} sending=${sending} />`
-      : mode === "office" ? html`<${Office} view=${view} traffic=${live ? traffic : null} q=${q} lease=${lease} onOpen=${openChat} />`
+      : mode === "office" ? html`<${Office} view=${view} traffic=${live ? traffic : null} q=${q} lease=${lease} onOpen=${openChat}
+          more=${officeSheet && officeMore} onMore=${officeSheet ? setOfficeMore : null} live=${live} onLive=${setLive} />`
       : html`<${Canvas} view=${view} folded=${folded} onFold=${onFold} q=${q} jump=${jump} traffic=${live ? traffic : null} />`}
   </div>`;
 }
