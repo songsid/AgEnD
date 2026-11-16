@@ -50,7 +50,9 @@ export class HubPersonalTurns implements HubPersonalPort {
     if(this.adapters||this.stopped)throw Error("Personal jobs already started");
     this.adapters=adapters;
     // Phase 1 never replays a turn that may have entered a CLI before the Hub stopped.
-    for(const job of this.core.atomic(db=>db.prepare("SELECT * FROM hub_personal_jobs WHERE state='working'").all() as PersonalJob[]))this.finish(job,{reason:"interrupted"});
+    for(const job of this.core.atomic(db=>db.prepare("SELECT * FROM hub_personal_jobs WHERE state='working'").all() as PersonalJob[])){
+      this.finish(job,{reason:"interrupted"});void this.runtime.call(job.machine_id,"cancel",{runId:job.id}).catch(()=>{});
+    }
     this.timer=setInterval(()=>this.wake(),1000);this.timer.unref();this.wake();
   }
   wake():void {

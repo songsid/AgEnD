@@ -77,7 +77,8 @@ describe("Hub personal one-shot ownership",()=>{
   it("holds offline questions and never replays a claimed turn after restart",async()=>{
     const f=await fixture();f.machine.status="offline";const id=f.enqueue();f.start();await drain();expect(f.call).not.toHaveBeenCalled();
     f.machine.status="online";await f.wake();expect(f.call).toHaveBeenCalledTimes(1);
-    await f.restart();expect(f.row(id)).toMatchObject({state:"failed",reason:"interrupted"});await f.wake();expect(f.call).toHaveBeenCalledTimes(1);
+    await f.restart();expect(f.row(id)).toMatchObject({state:"failed",reason:"interrupted"});expect(f.call).toHaveBeenLastCalledWith(f.machine.id,"cancel",{runId:id});
+    await f.wake();expect(f.call.mock.calls.filter(([,operation])=>operation==="run")).toHaveLength(1);
   });
   it.each(["authority","generation","revision"] as const)("does not disclose a late successful answer after %s changes",async change=>{
     const f=await fixture(),id=f.enqueue();f.start();await drain();

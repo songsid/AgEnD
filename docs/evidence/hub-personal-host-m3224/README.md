@@ -28,3 +28,10 @@ Six selected assertion reversals were caught: personal @all exclusion, running-j
 mapping, legacy welcome size, partial role inventory, and interrupted feedback input recovery. The last reversal
 first exposed a test timeout; moving its persisted-state assertion before the blocked delivery made the failure
 semantic. The production file was restored byte for byte after each reversal.
+
+Review follow-up: the CI correction adds the feedback journal to the exact member migration vector; member hello
+capabilities stay unchanged. Startup also requests cancellation for an interrupted working turn. Retired enrollment
+cleanup now records a confirmed external retirement and skips it on later events. An unconfirmed file outcome is
+retried even if the in-memory machine already says revoked. The restart/retirement assertions were red before these
+repairs; the affected three-file packet passes 25/25, and the final retirement file passes 9/9 (overlapping scopes).
+No TLS/WSS, native, browser or full mutation campaign was repeated for this follow-up.
