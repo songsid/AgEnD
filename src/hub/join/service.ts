@@ -229,7 +229,7 @@ export class HubCompanyJoin {
   private source(r: JoinRecord) { return r.enrolmentCodeId ? "code" as const : r.invitationId ? "manual" as const : "group" as const; }
   private enabled(): void { if (!this.control().enabled) throw new HubProtocolError("denied"); }
   /** Called only inside the group-policy update's owning transaction; never reads the directory. */
-  policyUpdated(policy: import("../group-policy/model.js").HubGroupPolicy): void {
+  policyUpdated(policy: import("../group-policy/store.js").HubOperationalPolicy): void {
     if (!this.options.db.inTransaction) throw new HubProtocolError("uncertain");
     const denied = new Set(policy.denies.filter(d => d.deny.includes("pair_fleet")).map(d => personKeyString(d.person)));
     const rows = this.options.db.prepare("SELECT id FROM hub_company_join_requests WHERE stage IN('identity-approved','issued')").all() as { id: string }[];
