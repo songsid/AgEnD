@@ -105,6 +105,35 @@ describe("M-3241: a group of two or more logins folds", () => {
     expect(text(group("Codex").querySelector(".u-cg-top"))).toMatch(/^64%/);   // design's week: the group's highest
   });
 
+  // #4054 review: a group with failed and stale logins. The one-line rows keep their stale mark and their notes; the collapsed
+  // header never takes a failed login's last numbers, and takes a stale login's cached one only when no current login has a
+  // number — muted and marked cached then, as its row is.
+  it("failed and stale logins: one-line rows keep their marks; the header skips a failed login and ranks current ones first", async () => {
+    const ago = new Date(Date.now() - 2 * H).toISOString();
+    const old = { id: "claude:old", name: "Claude (old)", profile: "old", status: "ok", stale: true, staleCause: "expired", cachedAt: ago, hint: "Sign in again", plan: "Pro", metrics: both(99, 10) };
+    const bad = { id: "claude:bad", name: "Claude (bad)", profile: "bad", status: "error", error: "HTTP 500 from the vendor", metrics: both(98, 98) };
+    const nc = { id: "claude:nc", name: "Claude (nc)", profile: "nc", status: "no-credentials", metrics: [] };
+    usage.usageViewStore.set({ compact: true });
+    usage.setGroupMode("Claude", "compact");
+    await mount("en", [PROVIDERS[0], old, bad, nc, PROVIDERS[1]]);
+    const line = (id: string) => group("Claude").querySelectorAll(".u-crow").find((r: any) => text(r).includes(`(${id})`) || text(r).includes(id));
+    expect(group("Claude").querySelectorAll(".u-crow").length).toBe(5);
+    const o = line("old");
+    expect([o.className.includes("is-stale"), o.className.includes("is-one"), /cached at/.test(text(o))]).toEqual([true, true, true]);
+    const b = line("bad").querySelector(".u-crow-note"), n = line("nc").querySelector(".u-crow-note");
+    expect([b?.getAttribute("class").includes("is-alert"), /HTTP 500/.test(text(b))]).toEqual([true, true]);
+    expect([!!n, n?.getAttribute("class").includes("is-alert")]).toEqual([true, false]);
+    usage.setGroupMode("Claude", "collapsed"); await settle(2);
+    let top = group("Claude").querySelector(".u-cg-top");
+    // work's 93% (current): not bad's 98% (failed), not old's cached 99% (stale)
+    expect([text(top).startsWith("93%"), top.getAttribute("class").includes("is-stale"), top.getAttribute("title")]).toEqual([true, false, "Highest: 93% (work · 5h)"]);
+    await pg!.unmount(); pg!.restore(); pg = null;
+    // Only the stale login has a number: its cached one, muted, marked cached.
+    await mount("en", [old, bad, nc]);
+    top = group("Claude").querySelector(".u-cg-top");
+    expect([text(top).startsWith("99%"), top.getAttribute("class").includes("is-stale"), /^Highest: 99% \(old · 5h\) · cached at \d/.test(top.getAttribute("title"))]).toEqual([true, true, true]);
+  });
+
   it("in zh-TW: 每個帳號一行 / 只顯示標題 / 顯示所有用量", async () => {
     usage.usageViewStore.set({ compact: true });
     await mount("zh-TW");

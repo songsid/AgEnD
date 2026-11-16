@@ -255,14 +255,19 @@ export function bindingMetric(p) {
   const pct = ((p && p.metrics) || []).filter((m) => m && m.type === "percent" && !m.resetPassed);
   return pct.length ? pct.reduce((a, b) => ((b.used ?? 0) > (a.used ?? 0) ? b : a)) : null;
 }
-/** A group's most used window, and whose: the collapsed header's number. */
+/**
+ * A group's most used window, and whose: the collapsed header's number. A failed login has none. A stale login's cached
+ * number (#4054 review) counts only when no current login has one, and is then muted and marked cached, as its row is.
+ */
 function groupTop(group) {
-  let top = null;
+  let top = null, cached = null;
   for (const { p } of group.items) {
     const m = p.status === "error" || p.status === "no-credentials" ? null : bindingMetric(p);
-    if (m && (!top || (m.used ?? 0) > (top.m.used ?? 0))) top = { m, p };
+    if (!m) continue;
+    if (p.stale) { if (!cached || (m.used ?? 0) > (cached.m.used ?? 0)) cached = { m, p }; }
+    else if (!top || (m.used ?? 0) > (top.m.used ?? 0)) top = { m, p };
   }
-  return top;
+  return top || cached;
 }
 /**
  * A provider's logins: its name once (×N), in small capitals, then each login (or the full card of one opened). Two or
@@ -278,7 +283,7 @@ export function CompactGroup({ group, line, mode = "expanded", onCycle }) {
   return html`<section class=${`u-cgroup${many ? ` is-${shown}` : ""}`} data-group=${group.base}>
     <div class="u-cg-head"><span class="u-cg-name" title=${group.base}>${group.base}</span>${group.items.length > 1 ? html`<span class="u-cg-count">×${group.items.length}</span>` : null}
       ${many ? html`<span class="u-cg-tools">
-        ${top ? html`<span class=${`u-cg-top u-cm-pct ${level(pct)}`} title=${tn("usageGroupTop", { pct: pct.toFixed(0), who })}>${pct.toFixed(0)}%<span class="sr-only"> (${who})</span></span>` : null}
+        ${top ? html`<span class=${`u-cg-top u-cm-pct ${level(pct)}${top.p.stale ? " is-stale" : ""}`} title=${tn("usageGroupTop", { pct: pct.toFixed(0), who }) + (top.p.stale && top.p.cachedAt ? ` · ${tn("usageCachedAt", { at: usageClock(top.p.cachedAt) })}` : "")}>${pct.toFixed(0)}%<span class="sr-only"> (${who})</span></span>` : null}
         <button type="button" class="icon-btn u-cg-toggle" aria-expanded=${shown === "collapsed" ? "false" : "true"} aria-label=${`${group.base}: ${tn(next)}`} title=${tn(next)}
           onClick=${() => onCycle(GROUP_MODES[(GROUP_MODES.indexOf(shown) + 1) % GROUP_MODES.length])}><${Icon} name=${shown === "collapsed" ? "plus" : "minus"} size=${14} /></button></span>` : null}</div>
     ${shown === "collapsed" ? null : group.items.map(line)}

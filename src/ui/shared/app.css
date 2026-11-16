@@ -1806,6 +1806,7 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
    login (its binding window beside its name) → the header alone with the highest percent, in its warning colour. */
 .u-cg-tools { margin-left: auto; display: inline-flex; align-items: center; gap: var(--s-2); align-self: center; text-transform: none; letter-spacing: 0; }
 .u-cg-top { font-size: var(--fs-sm); }
+.u-cg-top.u-cm-pct.is-stale { color: var(--text-3); }   /* a stale login's cached number: muted, as its row (#4054 review) */
 .u-cg-toggle { width: 24px; height: 24px; margin: -4px calc(-1 * var(--s-1)) -4px 0; color: var(--text-3); }
 .u-cg-toggle:hover { color: var(--text); }
 .u-cgroup.is-collapsed > .u-cg-head { padding-bottom: 7px; }
