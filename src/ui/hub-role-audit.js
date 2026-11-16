@@ -1,9 +1,9 @@
 import {html,useEffect,useRef,useState} from "/assets/app-html.js";
 import {hr} from "./hub-roles-strings.js";
-import {auditActor,auditAction,auditCsv,auditResult,auditSentence,valueLines} from "./hub-role-view.js";
+import {auditActor,auditAction,auditCsv,auditResult,auditSentence,valueLines,roleAuditActions} from "./hub-role-view.js";
 export function RoleAudit({client}){
  const enhanced=client.roleAuditFiltersV1===true;
- const [page,setPage]=useState(null),[error,setError]=useState(null),[busy,setBusy]=useState(false),[exporting,setExporting]=useState(false),[filters,setFilters]=useState({}),[draft,setDraft]=useState({from:"",to:"",person:"",action:""}),[people,setPeople]=useState([]),[actions,setActions]=useState([]);
+ const [page,setPage]=useState(null),[error,setError]=useState(null),[busy,setBusy]=useState(false),[exporting,setExporting]=useState(false),[filters,setFilters]=useState({}),[draft,setDraft]=useState({from:"",to:"",person:"",action:""}),[people,setPeople]=useState([]),[actions,setActions]=useState(()=>[...roleAuditActions]);
  const epoch=useRef(0),pending=useRef(false);
  const load=async(cursor=null,query=filters,mine=epoch.current)=>{
   if(pending.current)return;pending.current=true;setBusy(true);setError(null);let out;try{out=await client.roleAudit(cursor,query);}catch{out={ok:false};}

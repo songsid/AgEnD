@@ -104,3 +104,7 @@ it("supports arrow and Home navigation between the Roles, People and Audit tabs"
 it("does not call audit for a limited Fleet manager without role or audit permission",async()=>{
  const current={...view(),policy:null,management:["fleets.manage"]};const {p,client}=await mount("en",{roles:vi.fn(async()=>({ok:true,view:current}))});expect(client.roleAudit).not.toHaveBeenCalled();expect(p.root.textContent).toContain("Your role does not allow editing or assigning roles");expect(button(p.root,"Roles settings")).toBeUndefined();
 });
+
+it("can select a role action filter even when that event is absent from the loaded page",async()=>{
+ const {p,client}=await mount();await click(p.root,"Audit log");const form=p.root.querySelector(".hub-role-audit-filters")!,action=form.querySelectorAll("select")[1]!;expect([...action.querySelectorAll("option")].some((el:any)=>el.value==="role.assigned")).toBe(true);action.value="role.assigned";fire(action,"change");await settle(5);fire(form,"submit");await settle(10);expect(client.roleAudit).toHaveBeenLastCalledWith(null,{action:"role.assigned"});
+});

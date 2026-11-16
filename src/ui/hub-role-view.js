@@ -53,7 +53,8 @@ export function reviewImpact(checked,view){
  for(const row of checked.review?.unverified||[]){const person=row.person||row;unknown.set(personKey(person),{name:row.name||personName(view,person)});}
  return {lost:[...lost.values()],unknown:[...unknown.values()],resources:checked.impact?.suspendedOnSave||[]};
 }
-const auditKeys={"role.created":"auditCreated","role.changed":"auditChanged","role.deleted":"auditDeleted","role.assigned":"auditAssignedAction","role.unassigned":"auditUnassignedAction","role.policy-changed":"auditPolicy","role.root-self-use-activated":"auditRootSelf","role.write-refused":"auditTried","role.audit-read":"auditRead","role.migrated":"auditMigrated","role.assignment-expired":"auditExpired","role.authorization-changed":"auditAuthorized","role.mode-on":"auditOn","role.mode-off":"auditOff","session.signed-in":"auditSignedIn","administrator.claimed":"auditFirstAdmin"};
+const auditKeys={"role.created":"eventCreated","role.changed":"eventChanged","role.deleted":"eventDeleted","role.assigned":"auditAssignedAction","role.unassigned":"auditUnassignedAction","role.policy-changed":"auditPolicy","role.root-self-use-activated":"auditRootSelf","role.write-refused":"auditTried","role.audit-read":"auditRead","role.migrated":"auditMigrated","role.assignment-expired":"auditExpired","role.authorization-changed":"auditAuthorized","role.mode-on":"auditOn","role.mode-off":"auditOff","session.signed-in":"auditSignedIn","administrator.claimed":"auditFirstAdmin"};
+export const roleAuditActions=Object.freeze(Object.keys(auditKeys));
 export const auditAction=action=>hr(auditKeys[action]||"auditOther",hr("unknownRole"));
 export const auditResult=result=>["completed","allowed"].includes(result)?hr("done"):result==="denied"?hr("refused"):hr("failedResult");
 export const auditActor=row=>row.actor?.id==="local-host"?hr("localHost"):row.actor?.name||hr("unknownActor");

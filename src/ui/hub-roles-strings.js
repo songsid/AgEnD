@@ -209,7 +209,10 @@ register("hubRole",{
   "selfPaused": "Chat, sharing and Fleet permissions are paused. Their assignments are kept.",
   "refreshAudit": "Refresh this page for filters and CSV export.",
   "noticesLead": "Security notices about your Hub’s access and connections.",
-  "reloadRoles": "Reload roles"
+  "reloadRoles": "Reload roles",
+  "eventCreated": "Role created",
+  "eventChanged": "Role changed",
+  "eventDeleted": "Role deleted"
  },
  "zh-TW": {
   "migrationNotice": "現在可以使用角色與權限了，搬移沒有變更任何人的權限。",
@@ -420,7 +423,10 @@ register("hubRole",{
   "selfPaused": "對話、分享與 Fleet 權限已暫停，仍保留角色指派。",
   "refreshAudit": "請重新整理頁面，以使用篩選與 CSV 匯出。",
   "noticesLead": "Hub 權限與連接的安全通知。",
-  "reloadRoles": "重新讀取角色"
+  "reloadRoles": "重新讀取角色",
+  "eventCreated": "新增角色",
+  "eventChanged": "變更角色",
+  "eventDeleted": "刪除角色"
  }
 });
 export const hr=(key,...args)=>t(`hubRole.${key}`,...args);
