@@ -51,6 +51,7 @@ it("edits an existing assignment atomically while preserving its identity and se
 it.each(["en","zh-TW"])("groups custom permissions without changing locked and forthcoming controls (%s)",async lang=>{
  const {p}=await mount(lang);fire(button(p.root,lang==="en"?"New role":"新增角色"),"click");await settle(10);
  const form=p.root.querySelector(".hub-role-editor"),groups=[...form.querySelectorAll("fieldset")];
+ expect(button(form,lang==="en"?"Delete role":"刪除角色")).toBeUndefined();
  expect(form.querySelector("h3").textContent).toBe(lang==="en"?"New role":"新增角色");
  expect(groups.map((g:any)=>g.querySelectorAll('input[type="checkbox"]').length)).toEqual([3,4,5]);
  expect([...groups[0].querySelectorAll("input")].every((el:any)=>!el.disabled)).toBe(true);
@@ -68,7 +69,7 @@ it("uses the shared person picker, hides it after selection, and previews beside
  const next=form.querySelector('input[type="search"]');next.value="Alex";fire(next,"input");await vi.waitFor(()=>expect(button(form,"Choose")).toBeTruthy());fire(button(form,"Choose"),"click");await settle(10);
  fire(form,"submit");await settle(10);
  expect(client.rolePreview.mock.calls[0][0].assignments[0].subject).toEqual({kind:"person",person:target});
- const siblings=[...form.parentNode.children];expect(siblings[siblings.indexOf(form)+1]?.className).toContain("hub-role-preview");expect(p.root.querySelectorAll(".hub-ov-card")).toHaveLength(3);expect(client.roleApply).not.toHaveBeenCalled();
+ const siblings=[...form.parentNode.children];expect(siblings[siblings.indexOf(form)+1]?.className).toContain("hub-role-preview");expect(p.root.querySelectorAll(".hub-ov-card")).toHaveLength(3);expect(p.root.querySelector(".hub-role-preview").textContent).toContain("Assign Administrator to Alex Chen");expect(client.roleApply).not.toHaveBeenCalled();
 });
 it("keeps the original group key through the shared GroupSearch normalization",async()=>{
  const group={kind:"group",key:{realm:"corp",objectId:"22222222-2222-4222-8222-222222222222"},name:"Support",dn:"cn=support,dc=example,dc=test"};
@@ -76,4 +77,17 @@ it("keeps the original group key through the shared GroupSearch normalization",a
  fire(button(p.root,"Assign role"),"click");await settle(10);const form=p.root.querySelector(".hub-role-assignment"),selects=form.querySelectorAll("select");selects[0].value="builtin:member";fire(selects[0],"change");await settle(10);selects[1].value="group";fire(selects[1],"change");await settle(10);
  const input=form.querySelector('input[type="search"]');input.value="Support";fire(input,"input");await vi.waitFor(()=>expect(button(form,"Add")).toBeTruthy());fire(button(form,"Add"),"click");await settle(10);fire(form,"submit");await settle(10);
  expect(client.rolePreview.mock.calls[0][0].assignments[0].subject).toEqual({kind:"group",group:group.key,dn:group.dn});expect(form.querySelector('input[type="search"]')).toBeNull();
+});
+
+it.each(["en","zh-TW"])("labels an unknown legacy audit actor without exposing raw actor JSON (%s)",async lang=>{
+ const {p}=await mount(lang,{roleAudit:vi.fn(async()=>({ok:true,rows:[{id:"row",at:100,actor:{id:"unknown",name:""},action:"fixture.legacy",result:"completed",summary:[]}],nextCursor:null}))});
+ expect(p.root.textContent).toContain(lang==="en"?"Unknown actor":"未知操作者");
+});
+
+it.each(["en","zh-TW"])("shows cached person names and localized change/audit copy (%s)",async lang=>{
+ const current={...view(),personLabels:[{id:`${actor.realm}/${actor.objectId}`,name:"Avery Chen"}]};
+ const {p}=await mount(lang,{roles:vi.fn(async()=>({ok:true,view:current})),roleAudit:vi.fn(async()=>({ok:true,rows:[{id:"created",at:100,actor:{id:"root",name:"Avery Chen"},action:"role.created",result:"completed",summary:["after: Helpers · ask_agents"]}],nextCursor:null}))});
+ expect(p.root.textContent).toContain("Avery Chen");expect(p.root.textContent).toContain(lang==="en"?"Role created":"新增角色");expect(p.root.textContent).toContain(lang==="en"?"After: Helpers · Chat with agents":"變更後: Helpers · 和 Agent 對話");
+ fire(button(p.root,lang==="en"?"Turn roles off":"關閉角色功能"),"click");await settle(10);
+ expect(p.root.querySelector(".hub-role-preview").textContent).toContain(lang==="en"?"Turn roles off":"關閉角色功能");
 });

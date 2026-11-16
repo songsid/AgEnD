@@ -18,6 +18,7 @@
 .hub-role-list .chips { margin-top:var(--s-2); }
 .hub-roles .chips > .tag { white-space:normal; }
 .hub-roles :is(code,p,td,small,strong) { overflow-wrap:anywhere; }
+.hub-roles .hub-row-text strong { white-space:normal; overflow:visible; text-overflow:clip; }
 .hub-roles code { white-space:normal; }
 .hub-role-meta-grid { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--s-4); align-items:end; }
 .hub-roles .hub-group-fleets input { width:4.5em; min-height:var(--tap); }
@@ -42,6 +43,8 @@
  .hub-roles .btn,
  .hub-roles .field :is(input,select) { min-height:var(--tap); }
  .hub-roles .field :is(input,select) { min-width:0; font-size:var(--fs-md); }
+ .hub-role-root { flex-wrap:wrap; }
+ .hub-role-root > .hub-row-text { flex-basis:100%; }
  .hub-role-meta-grid { grid-template-columns:minmax(0,1fr); }
  .hub-role-group .s-checks { grid-template-columns:minmax(0,1fr); }
  .hub-role-impact-grid { grid-template-columns:minmax(0,1fr); }

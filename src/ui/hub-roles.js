@@ -54,8 +54,8 @@ function SelectedSubject({subject,onClear,disabled}) {
 }
 const permissionGroups=[
  {key:"selfUse",permissions:["ask_agents","publish_agents","pair_fleet"]},
- {key:"teamPermissions",permissions:["team.view","team.usage","team.approve_join","team.approve_ask"],badge:"later"},
- {key:"hubPermissions",permissions:management,badge:"lockedTag"},
+ {key:"teamPermissions",permissions:["team.view","team.usage","team.approve_join","team.approve_ask"],badge:"approvalLater"},
+ {key:"hubPermissions",permissions:management,badge:"settingsLocked"},
 ];
 function RoleEditor({view,role,onCheck,onCancel,busy}) {
  const [quota,setQuota]=useState(String(role.defaultMaxFleets)),[draft,setDraft]=useState(()=>copy(role));
@@ -71,14 +71,14 @@ function RoleEditor({view,role,onCheck,onCancel,busy}) {
   <div class="hub-role-meta-grid"><label class="field"><span>${hr("name")}</span><input required maxlength="100" value=${draft.name} disabled=${busy||locked} onInput=${e=>setDraft({...draft,name:e.target.value})}/></label>
    <label class="field hub-role-quota-field"><span>${hr("quota")}</span><span class="hub-group-fleets"><input type="number" min="0" max="8" step="1" required value=${quota} disabled=${busy||locked} onInput=${e=>setQuota(e.target.value)}/></span></label></div>
   <div class="hub-role-perm-groups">${permissionGroups.map(group=>html`<fieldset class="hub-role-group" key=${group.key}>
-   <legend><span>${hr(group.key)}</span>${group.badge?html`<span class="tag" title=${group.badge==="lockedTag"?hr("locked"):undefined}>${hr(group.badge)}</span>`:null}</legend>
+   <legend><span>${hr(group.key)}</span>${group.badge?html`<span class="tag" title=${group.badge==="settingsLocked"?hr("locked"):undefined}>${hr(group.badge)}</span>`:null}</legend>
    ${group.key==="hubPermissions"?html`<p class="note">${hr("personOnly")}</p>`:null}
    <div class="s-checks">${group.permissions.filter(p=>view.permissions.includes(p)).map(permission=>html`<label class="check hub-role-check" key=${permission}>
     <input type="checkbox" checked=${draft.permissions.includes(permission)} disabled=${busy||locked||permission==="hub.admin"||approvals.includes(permission)} onChange=${e=>setDraft({...draft,permissions:e.target.checked?[...draft.permissions,permission]:draft.permissions.filter(p=>p!==permission)})}/>
     <span>${hr(permission)}${approvals.includes(permission)?html`<span class="tag">${hr("later")}</span>`:permission==="hub.admin"?html`<span class="tag" title=${hr("locked")}>${hr("lockedTag")}</span>`:null}</span>
    </label>`)}</div></fieldset>`)}</div>
   <div class="hub-role-actions"><button type="submit" class="btn btn-primary" disabled=${busy||!valid}>${hr("preview")}</button><button type="button" class="btn" disabled=${busy} onClick=${onCancel}>${hr("cancel")}</button>
-   ${role.kind==="custom"?html`<span class="dlg-spacer"></span><button type="button" class="btn danger" disabled=${busy||locked} onClick=${()=>{const next=copy(view.policy);next.roles=next.roles.filter(r=>r.id!==role.id);next.assignments=next.assignments.filter(a=>a.roleId!==role.id);onCheck(next);}}>${hr("delete")}</button>`:null}</div>
+   ${role.kind==="custom"&&view.policy.roles.some(row=>row.id===role.id)?html`<span class="dlg-spacer"></span><button type="button" class="btn danger" disabled=${busy||locked} onClick=${()=>{const next=copy(view.policy);next.roles=next.roles.filter(r=>r.id!==role.id);next.assignments=next.assignments.filter(a=>a.roleId!==role.id);onCheck(next);}}>${hr("delete")}</button>`:null}</div>
  </form>`;
 }
 const inputDate=at=>at?new Date(at-new Date(at).getTimezoneOffset()*60000).toISOString().slice(0,16):"";
