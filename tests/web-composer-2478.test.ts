@@ -82,9 +82,9 @@ describe("#2478: the chat composer (the real page modules)", () => {
     fire(c.box(), "compositionstart", { data: "" });
     for (const t of ["ㄅ", "ㄅㄠ", "ㄅㄠˇ"]) { c.box().value = t; fire(c.box(), "input", { isComposing: true, inputType: "insertCompositionText", data: t }); await settle(); }
     expect({ height: c.box().style.height, send: send().disabled, ph: !!ph(c), value: c.box().value }, "composing: untouched").toEqual({ ...before, value: "ㄅㄠˇ" });
-    c.box().value = "寶";
+    c.box().value = "寶"; c.box().scrollHeight = 62; c.box().clientHeight = 38;     // the composed text needs a second line
     fire(c.box(), "compositionend", { data: "寶" }); await settle();
-    expect([send().disabled, c.box().value, c.box().style.height]).toEqual([false, "寶", expect.stringMatching(/^\d+px$/)]);
+    expect([send().disabled, c.box().value, c.box().style.height]).toEqual([false, "寶", "62px"]);
   });
 
   it("IME: a render while composing (another part of the chat changed) never writes the box back to the old draft", async () => {
@@ -110,11 +110,36 @@ describe("#2478: the chat composer (the real page modules)", () => {
     expect(send().disabled).toBe(false);
   });
 
+  // M-3206 (the user, iPhone, beta.5: typing flickered): the box was collapsed and measured again on every key — two writes
+  // to the focused field's own style per keystroke, its height unchanged. A key that only adds text now writes nothing
+  // unless the text no longer fits; a deletion still measures again (the box can only shrink then).
+  it("M-3206: a key that adds text writes nothing to the box's height; a new line grows it once; a deletion measures again", async () => {
+    const c = await chatPage({ touch: true });
+    await c.type("h");
+    const style = c.box().style;
+    let height = style.height; const writes: string[] = [];
+    Object.defineProperty(style, "height", { configurable: true, get: () => height, set: (x: string) => { writes.push(x); height = x; } });
+    for (const t of ["he", "hel", "hell", "hello", "hello 你", "hello 你好"]) await c.type(t);
+    expect(writes, "keys that fit: no write").toEqual([]);
+    c.box().scrollHeight = 62; c.box().clientHeight = 38;                // the text wrapped to a second line
+    await c.type("hello 你好 w");
+    expect(writes).toEqual(["62px"]);
+    c.box().clientHeight = 62;
+    for (const t of ["hello 你好 wo", "hello 你好 wor"]) await c.type(t);
+    expect(writes, "the second line fits: no write").toEqual(["62px"]);
+    c.box().scrollHeight = 38;
+    await c.type("hello");                                                 // deleted back to one line
+    expect(writes.slice(1)).toEqual(["auto", "38px"]);
+  });
+
   it("1: empty, the box is one line — its placeholder never sizes it; typed text still grows it", async () => {
     const c = await chatPage();
     expect(c.box().style.height, "empty: no height from the placeholder").toBe("auto");
     await c.type("x");
-    expect(c.box().style.height).toMatch(/^\d+px$/);
+    expect(c.box().style.height, "one line that fits: nothing written (M-3206)").toBe("auto");
+    c.box().scrollHeight = 62; c.box().clientHeight = 38;
+    await c.type("x y");
+    expect(c.box().style.height).toBe("62px");
     await c.type("");
     expect(c.box().style.height).toBe("auto");
     const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
