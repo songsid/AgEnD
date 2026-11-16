@@ -13,7 +13,7 @@ ignores its trust error and maps `agend-pwa.test` to loopback. Host admission an
 page's production CSP stay enabled. This checks URL routing/install behavior, not
 production certificate provisioning.
 
-CDP `PWA.install` and `PWA.launch` create real installed apps. Each must report standalone
+Windows UI Automation invokes Chrome’s own Install app menu and confirmation dialog, creating real installed apps. Each must report standalone
 mode. Light and dark run against an emulated light OS; the PNG captures the exact owned
 Windows app window, including its native title bar. Caption brightness is checked. A live
 custom surface change is checked separately. All installed test apps are uninstalled,
@@ -25,4 +25,4 @@ Output: `.artifacts/m3214/browser` (PNG/result/cleanup; private scope file exclu
 Primary references: [Edge theme colors](https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/how-to/icon-theme-color)
 and [Chromium PWA protocol](https://chromedevtools.github.io/devtools-protocol/tot/PWA/).
 
-Set `PWA_BROWSER=edge` to select Edge. The fresh test process enables Chromium’s documented `--enable-devtools-pwa-handler` automation switch; no setting is changed in the user’s browser.
+Set `PWA_BROWSER=edge` to select Edge. Installation and removal use native browser menus, not `--app` or a simulated standalone page; no setting is changed in the user’s browser.

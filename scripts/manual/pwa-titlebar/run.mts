@@ -32,7 +32,7 @@ try{
  const {s3bRig}=await import('../../../tests/helpers/hub-s3b-rig.ts');hub=await s3bRig();
  const code=()=>{fm.initializeWebSessions();return fm.webLoginCodes.issue({tier:'admin',epoch:tokenEpoch(fm.webToken)}).display;};
  writeFileSync(join(root,'private.json'),JSON.stringify({tag,browserExecutable,browserProcess,entries:[{label:'fleet-local',base,path:'/ui',code:true},{label:'fleet-named',base:namedBase,path:'/ui',code:true},{label:'hub-local',base:hub.base,path:'/ui/hub'}]}));
- for(const f of ['browser.mjs','window.ps1'])copyFileSync(new URL(f,import.meta.url),join(root,f));
+ for(const f of ['browser.mjs','window.ps1','app-menu.ps1'])copyFileSync(new URL(f,import.meta.url),join(root,f));
  const node=execFileSync('wslpath',['-u',paths.node],{encoding:'utf8'}).trim();
  const child=spawn(node,[win32.join(nativeRoot,'browser.mjs'),nativeRoot],{stdio:['pipe','pipe','inherit']});
  const lines=createInterface({input:child.stdout});lines.on('line',line=>{const row=JSON.parse(line);if(row.kind==='code-request')child.stdin.write(JSON.stringify({code:code()})+'\n');else console.log(line);});
