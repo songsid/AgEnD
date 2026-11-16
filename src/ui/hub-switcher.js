@@ -21,7 +21,7 @@ export function HubSwitcher() {
   if (!origin) return null;
   const name = pairing.hub.name || hw("hub");
   return html`<div class="hub-switch" role="group" aria-label=${hw("switcher")} data-trust="navigation">
-    <span class="hub-switch-item is-current" aria-current="true">${hw("myFleet")}</span>
-    <a class="hub-switch-item" href=${origin} target="_blank" rel="noopener noreferrer" title=${hw("openHubTab", name)}>${name}<${Icon} name="external" size=${13} /></a>
+    <span class="hub-switch-item is-current" aria-current="true"><span class="hub-switch-name">${hw("myFleet")}</span></span>
+    <a class="hub-switch-item" href=${origin} target="_blank" rel="noopener noreferrer" title=${hw("openHubTab", name)} aria-label=${hw("openHubTab", name)}><span class="hub-switch-name">${name}</span><${Icon} name="external" size=${13} /></a>
   </div>`;
 }
