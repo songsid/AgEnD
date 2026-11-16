@@ -1,0 +1,33 @@
+{
+  "source": "6418735c5ffd3661eb2efe63fee012f4ee244cae",
+  "artifacts": [
+    {
+      "path": "origin-after.log",
+      "sha256": "b24e34c816fb59aae8084510291bf821b7b7669a6bc300fb6dc2f70e7b8a0add"
+    },
+    {
+      "path": "origin-before.log",
+      "sha256": "8452c725d725a5b8fed98af4358e1c64943e92955fabb6a60fb3076e33555dab"
+    },
+    {
+      "path": "origin-instructions-final.log",
+      "sha256": "9e987158f658ecf5d150b6c6ca42645c9e875ea885befb0b43d253012340b875"
+    },
+    {
+      "path": "origin-source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "origin-tests-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "origin-types.json",
+      "sha256": "60c3d3f5a56ddf697f55dd41e89c2f1c27b40555ec356df09e3b2fbe4045884e"
+    },
+    {
+      "path": "summary.json",
+      "sha256": "e50c1132bd03c971d5af801514dbfef554c893635ec456e8251a12957591909b"
+    }
+  ]
+}

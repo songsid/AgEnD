@@ -1,5 +1,6 @@
 /** Windows execution adapter for the ordinary Fleet instance registry and delivery facade. */
 import { addsSecondGeneral } from "./web-only-fleet.js";
+import { formatHumanInboundMessage } from "./human-delivery-receipts.js";
 import { randomUUID } from "node:crypto";
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import { windowsAgentsFor, type WindowsAgent, type WindowsAgents } from "./windows-agents.js";
@@ -305,7 +306,8 @@ export class FleetWindowsRuntime {
       ...(typeof meta.from_instance === "string" ? [`Incoming Fleet context: ${JSON.stringify({from_instance:meta.from_instance.slice(0,128),correlation_id:typeof meta.correlation_id === "string" ? meta.correlation_id.slice(0,256) : undefined,requires_reply:meta.requires_reply === "true"})}`] : []),
     ].join("\n") : undefined;
     let task:ReturnType<WindowsAgents["send"]>;
-    try { task=this.store.send(agent.id,{requestId,prompt:raw},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection,context} : {}),...(credentialProfile ? {credentialProfile} : {}),onSettled:task=>{
+    const prompt=meta.source === "app" ? formatHumanInboundMessage(raw,{source:"app"},"mcp") : raw;
+    try { task=this.store.send(agent.id,{requestId,prompt},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection,context} : {}),...(credentialProfile ? {credentialProfile} : {}),onSettled:task=>{
       const reportedCorrelationIds=lease?.reportedCorrelations(typeof meta.from_instance === "string" ? meta.from_instance : undefined) ?? [];
       closeLease();
       const replyId=`native:${task.id}:reply`;
@@ -313,7 +315,7 @@ export class FleetWindowsRuntime {
       this.changed(name);settled({...task,reportedCorrelationIds});
     }}); } catch(error) { closeLease();throw error; }
     if (task.finishedAt) closeLease();
-    if (meta.source !== "web") {
+    if (meta.source !== "web" && meta.source !== "app") {
       const userId=`native:${requestId}:user`;
       if (!this.host.history?.findByMessageId(name,userId)) this.host.emit("message",{instance:name,role:"user",sender:String(meta.from_instance || meta.user || "Fleet"),text:raw,ts:new Date().toISOString(),messageId:userId});
     }

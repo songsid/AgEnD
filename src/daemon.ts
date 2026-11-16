@@ -944,6 +944,7 @@ type DeliveryStatus = { chatId: string; messageId: string; threadId?: string };
 
 /** Build a status holder from channel metadata, keeping chat and thread apart. */
 export function channelStatus(meta: Record<string, string>): DeliveryStatus | undefined {
+  if (meta.source === "app") return undefined; // no platform post exists to react to
   const chatId = meta.chat_id;
   const messageId = meta.message_id;
   // A web chat message has no platform chat when the fleet has no channel, and still gets its reports:

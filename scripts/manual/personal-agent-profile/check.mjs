@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createServer } from "node:net";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlinkSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, release, version } from "node:os";
 import { dirname, join } from "node:path";
 import { findCli, nativeCliEnvironment } from "../../../dist/windows-cli-worker.js";
 import { stagePersonalAgent, windowsPersonalStageHost } from "../../../dist/runtime-personal-stage.js";
@@ -21,13 +21,22 @@ writeFileSync(join(auth, "config.toml"), 'model = "must-not-copy"');
 writeFileSync(join(shared, "allowed.txt"), "SHARED_OK");
 writeFileSync(join(outside, "private.txt"), "OUTSIDE_CANARY");
 symlinkSync(outside, join(shared, "escape"), "junction");
-let stage, server;
+let stage, server, outcome = "failed";
 const checks = [];
+const output = process.env.PERSONAL_PROOF_OUTPUT;
+assert.ok(output); mkdirSync(output, { recursive: true });
+const versions = { windows: release(), description: version(), architecture: process.arch, node: process.version };
 const run = async (command, args, env, cwd = root) => (await exec(command, args, { env, cwd, shell: false, windowsHide: true, timeout: 30_000, maxBuffer: 512 * 1024 })).stdout.trim();
 try {
+  const revision = await run(join(process.env.SystemRoot, "System32", "reg.exe"), ["query", "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "/v", "UBR"], nativeCliEnvironment());
+  const match = /REG_DWORD\s+0x([a-f0-9]+)/i.exec(revision); assert.ok(match);
+  versions.windows = `${release()}.${parseInt(match[1], 16)}`;
   const codex = await findCli("codex"), claude = await findCli("claude-code");
   assert.ok(codex && claude, "Both pinned CLIs must be installed on this disposable host");
   const environment = { ...nativeCliEnvironment(), CODEX_HOME: auth };
+  versions.codex = await run(codex.command, [...codex.args, "--version"], environment);
+  versions.claude = await run(claude.command, [...claude.args, "--version"], { ...environment, DISABLE_AUTOUPDATER: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" });
+  writeFileSync(join(output, "versions.json"), JSON.stringify(versions, null, 2));
   stage = stagePersonalAgent({ cli: "codex", folder: shared, question: "Setup verification only", runtimeReads: [dirname(codex.command), dirname(process.execPath)] }, windowsPersonalStageHost(environment));
   const env = { ...environment, ...stage.plan.environment };
   await checkPersonalCodexPrompt(codex, stage.plan, env); checks.push("effective tool flags and no inherited skills/instructions");
@@ -50,6 +59,7 @@ try {
   assert.equal(await run(process.execPath, ["-e", read(join(outside, "private.txt"))], env), "OUTSIDE_CANARY");
   assert.equal(await sandbox(read(join(shared, "allowed.txt"))), "SHARED_OK"); checks.push("shared folder can be read");
   assert.equal(await sandbox(read(join(outside, "private.txt"))), "DENIED"); checks.push("outside read denied with positive unsandboxed control");
+  assert.equal(await sandbox(read(join(stage.plan.environment.CODEX_HOME, "auth.json"))), "DENIED"); checks.push("staged authentication is not readable by command tools");
   assert.equal(await sandbox(read(join(shared, "escape", "private.txt"))), "DENIED"); checks.push("junction cannot escape shared folder");
   const created = join(shared, "must-not-write.txt");
   assert.equal(await sandbox(`try { require('fs').writeFileSync(${JSON.stringify(created)},'forbidden'); process.stdout.write('WROTE'); } catch { process.stdout.write('DENIED'); }`), "DENIED");
@@ -67,15 +77,13 @@ try {
   // Hidden safety switches must also be accepted by the actual argument parser, without starting a turn.
   await run(claude.command, [...claude.args, "--safe-mode", "--restricted", "--permission-prompts", "none", "--disable-slash-commands", "--no-chrome", "--help"], { ...nativeCliEnvironment(), CLAUDE_CONFIG_DIR: auth, DISABLE_AUTOUPDATER: "1" });
   checks.push("Claude shipped help and safety argv accepted");
-  const output = process.env.PERSONAL_PROOF_OUTPUT;
-  assert.ok(output);
-  mkdirSync(output, { recursive: true });
   writeFileSync(join(output, "claude-help.txt"), help);
-  writeFileSync(join(output, "result.json"), JSON.stringify({ platform: process.platform, checks, providerCalls: 0, userCredentials: false, desktopWindows: false }, null, 2));
   assert.equal(readFileSync(join(auth, "auth.json"), "utf8"), authText);
   assert.equal(readFileSync(join(auth, "config.toml"), "utf8"), 'model = "must-not-copy"');
+  outcome = "passed";
   console.log(`${checks.length} real Windows personal-profile controls passed; no model/provider call.`);
 } finally {
+  writeFileSync(join(output, "result.json"), JSON.stringify({ outcome, versions, checks, modelTurns: 0, userCredentials: false, desktopWindows: false }, null, 2));
   if (server) await new Promise(resolve => server.close(resolve));
   stage?.cleanup();
   // Exact own root only. Hosted runner is discarded after the job.

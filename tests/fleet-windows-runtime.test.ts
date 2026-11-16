@@ -40,6 +40,14 @@ function fixture(openMcp?:FleetWindowsRuntimeHost["openMcp"]) {
 }
 
 describe("Fleet Windows runtime adapter",()=>{
+  it("labels app input for one-shot native turns without duplicating externally recorded user history",async()=>{
+    const f=fixture(),{name,agent}=await f.create();
+    await f.runtime.deliver(name,{requestId:id,content:"App question",meta:{source:"app",user:"Local app",user_id:"local-connector"}});
+    expect(f.store.get(agent.id).turns[0].prompt).toContain("[user:Local app@app#local-connector]");
+    expect(f.store.get(agent.id).turns[0].prompt).toContain("unverified local app");
+    expect(f.events.filter(e=>e.event==="message" && e.data.role==="user")).toHaveLength(0);
+    f.settle();
+  });
   it("grants trusted per-turn MCP without persisting it, keeps retries on the original lease, and revokes on completion",async()=>{
     const close=vi.fn(),connection={endpoint:"http://127.0.0.1:19280/agent",token:"a".repeat(64),tools:["task"]};
     let current:()=>boolean=()=>false;

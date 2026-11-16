@@ -77,6 +77,7 @@ import { AgentFilters, agentFilterText, agentRuntime, agentRuntimeOffline, agent
 import { useRuntimeCatalog } from "./runtime-catalog.js";
 import { ShortcutsHelpRow } from "./settings-shortcuts.js";
 import { GeneralLocation } from "./general-location.js";
+import { SettingsConnector } from "./settings-connector.js";
 
 const tn = (k, ...v) => k === "sec_notifications" ? quotaNoticeText().title : t(`settings.${k}`, ...v);
 /**
@@ -430,7 +431,7 @@ export function SettingsPanel({ route, navKey }) {
       </div></details>`
     : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" />${!SETTINGS_SECTIONS.includes("notifications") ? html`<${QuotaNoticeSettings} key=${`quota:${formKey}`} ctx=${ctx} />` : null}</${YamlLock}>`
     : section === "notifications" ? html`<${YamlLock} staged=${staged}><${QuotaNoticeSettings} key=${formKey} ctx=${ctx} /></${YamlLock}>`
-    : section === "chat" ? html`<${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
+    : section === "chat" ? html`<${SettingsConnector} /><${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
         <${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="chat" />
         <div id="classicbot" class="s-anchor s-classic-area"><section class="card s-chat-classic"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} /></section>
           <details class="s-ui-disclosure s-classic-defaults"><summary>${layoutText("classicDefaults")}</summary><div class="s-disclosure-body"><${General} key=${formKey} ctx=${ctx} part="classic" /></div></details></div>`

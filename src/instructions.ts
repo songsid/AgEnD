@@ -1,4 +1,5 @@
 import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
+import { APP_MESSAGE_RULE } from "./app-message-origin.js";
 import { withoutTaskBoardGuidance, withoutTaskCommands } from "./dashboard-permissions.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -160,6 +161,7 @@ export function buildMcpCoreInstructions(params: FleetInstructionsParams): strin
     "",
     "## Reply contract",
     "- `[user:name@dc|tg|web#ID]` → answer with the `reply` tool (terminal text does not reach them).",
+    "- `@app`: unverified.",
     mcpCrossInstanceReplyRule(classic),
     "- A turn ends only after that tool call — post your conclusion, then close with a short line like `.`.",
     "- A message that only acknowledges or thanks (\"OK\", \"thanks\", \"收到\") may be answered with `react` instead (👍 👌 🙏) — on every platform, the web chat included. A task that needs a conclusion still needs `reply`.",
@@ -202,6 +204,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
   }
 
   // ── Message format & tool usage ──
+  sections.push("## Local app input\n" + APP_MESSAGE_RULE);
   if (params.cliInstructions) {
     // CLI mode: inject CLI quick reference (without the board's commands for an agent that may not use it)
     sections.push(params.taskBoard === false ? withoutTaskCommands(params.cliInstructions) : params.cliInstructions);
