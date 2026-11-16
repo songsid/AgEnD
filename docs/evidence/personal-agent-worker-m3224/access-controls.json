@@ -1,0 +1,22 @@
+[
+  {
+    "control": "codex-refresh",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "claude-refresh",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "codex-expiry",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "claude-expiry",
+    "caught": true,
+    "exit": 1
+  }
+]
