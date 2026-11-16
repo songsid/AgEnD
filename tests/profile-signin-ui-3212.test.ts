@@ -136,11 +136,12 @@ it("Sign in → the link opens the provider's page → the code is pasted back i
     await open({ backend: "claude-code", profile: "CHY" });
     await press("Connect account");
     expect(posts(ENDPOINT, "start")[0]!.body).toEqual({ operation: "start", backend: "claude-code", relogin: false });
-    // M-3238: the link is step 1, a big button that names the page (host and path); its title still says where it finishes.
+    // M-3238 (Argon's review): step 1, "Finish on the provider's official website": the short primary 「Open the sign-in page」
+    // (with Copy link beside it), the page's address a quiet note under them.
     const link = p.root.querySelector("a.signin-open") as any;
-    expect([link.href, link.target, link.rel, link.title]).toEqual([AUTH_URL, "_blank", "noopener noreferrer", "Finish on the provider's official website"]);
+    expect([link.href, link.target, link.rel, link.textContent.trim(), link.className]).toEqual([AUTH_URL, "_blank", "noopener noreferrer", "Open sign-in page", "btn btn-primary signin-open"]);
     const u = new URL(AUTH_URL);
-    expect(link.querySelector(".signin-open-url").textContent).toBe((u.host + u.pathname).slice(0, 48).replace(/^(.{47}).+$/, "$1…"));
+    expect(p.root.querySelector(".signin-url").textContent).toBe((u.host + u.pathname).slice(0, 48).replace(/^(.{47}).+$/, "$1…"));
     const field = p.root.querySelectorAll("input").find((i: any) => i.type === "password") as any;
     expect(field, "a field for the code").toBeDefined(); field.value = "pasted#code";
     await press("Submit authorization code");
@@ -188,10 +189,13 @@ describe("closing, cancelling and the console fallback end the sign-in", () => {
     fire(btn("Close"), "click"); await settle(8);
     expect(reqs.filter(r => r.method === "POST")).toEqual([]);
   });
-  it("the cancel button inside the cards posts a cancel to the account's endpoint", async () => {
+  // M-3238 (Argon's review): the one-account dialog's Cancel connecting is in its footer (a quiet danger button on the left).
+  it("the footer's Cancel connecting posts a cancel to the account's endpoint", async () => {
     answer = r => r.url === ENDPOINT ? snapshot({ login: waitingForCode }) : {};
     await open({ backend: "claude-code", profile: "CHY" });
-    await press("Cancel connecting");
+    const cancel = p.root.querySelectorAll(".dlg-actions button").find((b: any) => b.textContent.trim() === "Cancel connecting") as any;
+    expect([cancel?.className, p.root.querySelectorAll(".signin-browser button").some((b: any) => b.textContent.trim() === "Cancel connecting")]).toEqual(["btn danger", false]);
+    fire(cancel, "click"); await settle(8);
     expect(posts(ENDPOINT, "cancel").length).toBeGreaterThanOrEqual(1);
     expect(posts(DEFAULT_ENDPOINT)).toEqual([]);
   });
