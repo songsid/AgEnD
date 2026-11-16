@@ -83,6 +83,10 @@ function inventory(value: unknown): WindowsCliProbe {
       readOnlySupport: row.readOnlySupport, permissionNote: row.permissionNote, models,
       ...(row.reason !== undefined ? { reason: row.reason as string } : {}),
       ...((MODEL_SOURCES as readonly unknown[]).includes(row.modelsSource) ? { modelsSource: row.modelsSource as NativeCliRow["modelsSource"] } : {}) };
+    if(row.personalStatus!==undefined){
+      if(typeof row.personalStatus!=="string"||!["ready","sandbox-unavailable","profile-unavailable"].includes(row.personalStatus))throw new RuntimeProtocolError("Invalid personal profile status");
+      entry.personalStatus=row.personalStatus as NativeCliRow["personalStatus"];
+    }
     seen.add(row.id); clis.push(entry);
   }
   if (Buffer.byteLength(JSON.stringify(value)) > RUNTIME_MAX_FRAME_BYTES / 2) throw new RuntimeProtocolError("Runtime inventory is too large");
@@ -332,10 +336,10 @@ export class RuntimeCoordinator {
   }
   /**
    * issues a one-time install-command token. The same people who may create a pairing code may issue one (the caller checked
-   * for an administrator session on the dashboard, never the bare header token, #3327); `actor` is only the opaque handle recorded for them. A new token ends every earlier unused one. The token is returned
+   * for an administrator session on the dashboard, never the bare header token, #3327); `actor` is only the opaque handle recorded for them. A new token ends every earlier unused one by default; the Hub's owner flow explicitly supersedes only that actor's tokens. The token is returned
    * here and nowhere else: the journal keeps its SHA-256 only.
    */
-  createEnrollment(actor: string): RuntimeEnrollment {
+  createEnrollment(actor: string, options: { supersede?: "actor" } = {}): RuntimeEnrollment {
     if (this.closed) throw Error("Runtime coordinator is closed");
     if (!text(actor, 64)) throw Error("Invalid enrollment actor");
     const now = this.now(), identity = this.identity(), previousRows = structuredClone(this.state.enrollments!);
@@ -344,7 +348,7 @@ export class RuntimeCoordinator {
     let rows = this.state.enrollments!.filter(row => (row.usedAt ?? row.revokedAt ?? row.expiresAt) + ENROLLMENT_KEEP_MS > now);
     while (rows.length >= ENROLLMENT_CAP) { const ended = rows.findIndex(row => this.enrollmentStatus(row) !== "unused"); if (ended < 0) throw Error("Too many install-command tokens"); rows = rows.filter((_, index) => index !== ended); }
     this.state.enrollments = rows;
-    for (const row of rows) if (this.enrollmentStatus(row) === "unused") { row.revokedAt = now; events.push({ at: now, event: "superseded", enrollmentId: row.id, actor }); }
+    for (const row of rows) if (this.enrollmentStatus(row) === "unused" && (options.supersede !== "actor" || row.createdBy === actor)) { row.revokedAt = now; events.push({ at: now, event: "superseded", enrollmentId: row.id, actor }); }
     const token = generateEnrollToken(), id = randomUUID(), expiresAt = now + ENROLL_TTL_MS;
     rows.push({ id, tokenHash: hashEnrollToken(token), fingerprint: identity.fingerprint, createdAt: now, expiresAt, createdBy: actor });
     events.push({ at: now, event: "issued", enrollmentId: id, actor });

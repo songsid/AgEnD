@@ -31,7 +31,7 @@ export interface HubWelcome {
 export interface HubAttachmentRef { id: string; name: string; size: number; mime: string; sha256: Sha256 }
 export interface HubAttachmentChunk { id: string; offset: number; total: number; sha256: Sha256; data: string }
 export interface HubExposureSnapshot {
-  revision: Epoch; exposures: readonly HubExposure[];
+  revision: Epoch; exposures: readonly HubFleetExposure[];
 }
 /** quota-band-v1: member-derived, coarse and ephemeral. Exact usage never crosses the link. */
 export interface HubQuota {
@@ -224,13 +224,21 @@ export interface HubFleet {
   generation: Epoch; status: "pending" | "online" | "offline" | "revoked" | "frozen";
   approvedAt?: Millis;
 }
-export interface HubExposure {
-  id: ExposureId; fleetId: FleetId; owner: PersonKey; displayName: string;
+interface HubExposureCommon {
+  id: ExposureId; owner: PersonKey; displayName: string;
   revision: Epoch; state: "published" | "withdrawn" | "frozen" | "paused";
   /** Hub browser projection only; member snapshots cannot set a Hub-owned pause or its epoch. */
   sharingEpoch?: Epoch;
-  dataViewId: string; allowedTools: readonly string[]; policyDigest: Sha256;
 }
+export interface HubFleetExposure extends HubExposureCommon {
+  kind?: "fleet";
+  fleetId: FleetId;dataViewId:string;allowedTools:readonly string[];policyDigest:Sha256;
+}
+export interface HubPersonalExposure extends HubExposureCommon {
+  kind:"personal";personalAgentId:string;
+  fleetId:null;dataViewId:null;allowedTools:readonly [];policyDigest:null;
+}
+export type HubExposure=HubFleetExposure|HubPersonalExposure;
 export interface HubGrant {
   id: GrantId; revision: Epoch; owner: PersonKey; exposureId: ExposureId;
   exposureRevision: Epoch; approvedBy: PersonKey; approvedAt: Millis;

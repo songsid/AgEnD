@@ -103,13 +103,35 @@ describe("a sign-in re-reads the CLI's models", () => {
     expect(ids("codex", null)).toEqual([]);                           // the default account's list is not this one's
   });
 
-  it("a named Antigravity account never borrows the default account's list: nothing is probed for it", async () => {
+  it("AGEND-278: a named Antigravity account is probed with ITS folder and its list lands in its own cache, apart from the default account's", async () => {
     fleet("antigravity", { credential_profile: "work" });
-    FakeProbeWorker.answer = found("ambient");
+    const folder = join(dir, "credential-profiles", "antigravity", "work");
+    FakeProbeWorker.answer = (input: any) => ({ models: [{ id: input.config.credentialStoreHome ? "work-model" : "default-model", label: "m" }] });
+    // The default account answered at startup; the named one is empty until its own sign-in ends.
+    await fm.probeBackendBounded("antigravity");
+    expect(ids("antigravity", null)).toEqual(["default-model"]);
+    expect(ids("antigravity")).toEqual([]);
+    const events = stream();
     fm.profileSignIns.deps.changed({ backend: "antigravity", profile: "work", phase: "done" }, {}, false);
     await settled();
-    expect(FakeProbeWorker.workers).toHaveLength(0);
+    const named = FakeProbeWorker.workers.filter(w => w.input.config.credentialStoreHome);
+    expect(named.length).toBeGreaterThan(0);
+    for (const w of named) expect(w.input.config.credentialStoreHome).toBe(folder);
+    expect(ids("antigravity")).toEqual(["work-model"]);              // the agent on the account: from empty to its own list
+    expect(ids("antigravity", null)).toEqual(["default-model"]);     // the default account's list is untouched
+    expect(fm.readCliEnv("antigravity")?.models.map((m: any) => m.id)).toEqual(["default-model"]);
+    expect(fm.readCliEnv("antigravity", "work")).toBeNull();         // nothing is written under the account's name on disk, nor into the shared cache
+    expect(events.models()).toContainEqual({ backend: "antigravity" });
+  });
+
+  it("AGEND-278: a named Antigravity account with nothing to answer (signed out) stays empty — it never takes the default's list", async () => {
+    fleet("antigravity", { credential_profile: "work" });
+    FakeProbeWorker.answer = (input: any) => input.config.credentialStoreHome ? signedOut() : { models: [{ id: "default-model", label: "m" }] };
+    await fm.probeBackendBounded("antigravity");
+    fm.profileSignIns.deps.changed({ backend: "antigravity", profile: "work", phase: "done" }, {}, false);
+    await settled();
     expect(ids("antigravity")).toEqual([]);
+    expect(ids("antigravity", null)).toEqual(["default-model"]);
   });
 
   it("chat /login and the dashboard's terminal sign-in (the login controller) read the list again", async () => {
