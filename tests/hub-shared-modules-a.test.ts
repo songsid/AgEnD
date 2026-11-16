@@ -25,6 +25,7 @@ const ui = (...p: string[]) => join(process.cwd(), "src", "ui", ...p);
 
 describe("where the shared chat modules are served (#3226 PR A)", () => {
   it("each moved or new module is under shared/ and in the /assets map; each old path only re-exports it", () => {
+    expect(isServedAsset("agend-mark.svg")).toBe(true);
     for (const f of [...MOVED, ...NEW]) expect([f, existsSync(ui("shared", f)), isServedAsset(f)]).toEqual([f, true, true]);
     for (const f of MOVED) {
       const code = readFileSync(ui(f), "utf8").split("\n").filter((l) => l.trim() && !l.trim().startsWith("//"));
@@ -52,7 +53,7 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
       "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js", "hub-roles.js", "hub-roles-strings.js", "hub-role-view.js", "hub-role-forms.js", "hub-role-audit.js", "hub-role-notices.js",   // S-148
       "hub-room-search.js",   // M-3127 C: Ctrl K's search dialog
       "hub-fleet-versions.js",   // M-3137: Fleet versions
-      "hub-admin-overview.js", "hub-ai-apps.js", "hub-ai-apps-strings.js"]);   // M-3162: Administration → Overview; M3240 app pages
+      "hub-admin-overview.js", "hub-ai-apps.js", "hub-ai-apps-strings.js", "hub-room-source.js", "hub-room-source-strings.js"]);   // M3256 source badges
   });
 });
 

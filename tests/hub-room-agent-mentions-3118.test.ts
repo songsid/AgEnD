@@ -151,7 +151,7 @@ it("posts a verified owner's request via the agent without fabricating person me
   const result=await w.post(w.a,"@All agents ask from Telegram",w.id,randomUUID(),receipt);
   expect(result).toMatchObject({payload:{ok:true}}); await vi.waitFor(()=>expect(w.asks()).toHaveLength(2));
   const post=(await w.page()).find(m=>m.id===(result as any).payload.messageId);
-  expect(post.author).toMatchObject({kind:"person",via:{id:w.a.id,name:"Notes"}});
+  expect(post.author).toMatchObject({kind:"person",via:{kind:"agent",id:w.a.id,name:"Notes"}});
   expect(post.proactive).toBeUndefined(); expect(post.mentions).toContain("all");
   expect((await w.page()).filter(m => m.answerTo === post.id).every(m => m.askedBy === undefined)).toBe(true);
   expect(r!.db.prepare("SELECT COUNT(*) n FROM hub_room_members WHERE room_id=? AND kind='person'").get(w.id)).toEqual({n:1});

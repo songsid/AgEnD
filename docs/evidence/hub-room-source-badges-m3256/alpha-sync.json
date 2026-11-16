@@ -1,0 +1,19 @@
+{
+  "source": "b03b0c72ac58c20f91a5b6fd3ba57d5ee9c18c04",
+  "base": "be7ae0f10a3ade672ac0c88a41365132f2900c2e",
+  "alpha": "47701428f95a15035d6e0ff567c57f6fb17dde56",
+  "head": "41ac8ef30717c04e437900f4ae3a937fe7ef4629",
+  "parents": [
+    "b03b0c72ac58c20f91a5b6fd3ba57d5ee9c18c04",
+    "47701428f95a15035d6e0ff567c57f6fb17dde56"
+  ],
+  "ownPaths": 21,
+  "ownBlobsModesUnchanged": 20,
+  "incomingOnlyBlobsModesEqual": 84,
+  "automaticOverlap": [
+    "src/hub/http/compose.ts"
+  ],
+  "isolatedOwnPatchTree": "1170a711ab6f003bddaf7aec2225fad1cec3caa5",
+  "actualTree": "1170a711ab6f003bddaf7aec2225fad1cec3caa5",
+  "verification": "Whole merge tree equals original own patch applied to current alpha in an isolated index. No conflicts, force or local sync reruns."
+}

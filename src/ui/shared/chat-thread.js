@@ -207,8 +207,11 @@ export function createThread(list, scroller, opts) {
     const reactable = typeof opts.react === "function" && x.roomMessage && opts.canReact?.(x) !== false;
     const addReact = reactable ? `<button type="button" class="chip-btn icon-only" data-act="reactPick" data-arg="${escAttr(key)}" aria-haspopup="true" aria-expanded="false" title="${escAttr(reactText("add"))}" aria-label="${escAttr(reactText("add"))}">${REACT}</button>` : "";
     const act = opts.canReply?.() === false ? (addReact ? `<div data-trust="thread-control" class="msg-actions">${addReact}</div>` : "") : `<div data-trust="thread-control" class="msg-actions">${addReact}<button type="button" class="chip-btn icon-only" data-act="reply" data-arg="${escAttr(key)}" title="${escAttr(tr("chat.reply"))}" aria-label="${escAttr(tr("chat.reply"))}">${REPLY}</button></div>`;
+    // A Hub sender's stateless badge is mounted as DOM below. Its escaped descriptor participates in keyed updates;
+    // Fleet callers supply no senderBadge hook and retain their existing sender markup.
+    const badge = opts.senderBadge && x.sourceBadge ? ` data-source-badge="${escAttr(JSON.stringify(x.sourceBadge))}"` : "";
     // M-3092 (Hub rooms): another person's message, a bubble on the left (`msg-person`); the fleet never sets x.person.
-    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender"${badge}>${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
   }
   /** M-3127: a room's words for its reaction controls (opts.reactText(key)), English when the page gives none. */
   function reactText(k, ...a) {
@@ -412,6 +415,7 @@ export function createThread(list, scroller, opts) {
     pollLeft(node);
     if (x) decorateHtmlCards(node, x, stoppedKeys || []);
     if (x) decorateTextCards(node, x);
+    if (x?.sourceBadge) opts.senderBadge?.(node.querySelector(".meta .sender"), x);
     return node;
   }
 
