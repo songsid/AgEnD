@@ -81,3 +81,21 @@ describe("S129 canonical policy bridge",()=>{
   const max=parseCanonicalPolicy(JSON.stringify({...document.policy,revision:Number.MAX_SAFE_INTEGER}));expect(()=>rebindCanonicalPolicy(max,"g2")).toThrow();
  });
 });
+
+it("uses owned local T1 team snapshots after conversion and retires a decision on roster change", async()=>{
+ const w=fixture(),user={realm:"corp",objectId:randomUUID()},teamId=randomUUID();
+ const {HUB_TEAMS_MIGRATION,HUB_TEAM_MANAGEMENT_MIGRATION}=await import("../src/hub/teams/store.js");
+ const {assertHubSelfUseDecisionCurrent}=await import("../src/hub/group-policy/store.js");
+ HUB_TEAMS_MIGRATION.up(w.db);HUB_TEAM_MANAGEMENT_MIGRATION.up(w.db);
+ w.db.prepare("INSERT INTO hub_teams VALUES(?,1,'Local','','','',?,1,1,0)").run(teamId,`${user.realm}/${user.objectId}`);
+ w.db.prepare("INSERT INTO hub_team_members VALUES(?,?,?,'member','')").run(teamId,`${user.realm}/${user.objectId}`,"Member");
+ w.options.directory.checkEligibility=async person=>({eligible:true,person:{key:person,login:"member",dn:"CN=Member",groups:[]}});
+ const roles=convertGroupPolicy({...w.old,state:"enabled",teams:[{teamId,name:"Local",allow:["pair_fleet"],maxFleets:5}]},{root:w.root,now:100,rolesActive:true});w.save(roles);
+ const store=createHubGroupPolicyStore({...w.options,roles:{root:w.root,assertAuthorizationTime(){}},now:()=>200});
+ const decision=await store.check(user,"pair_fleet",{requestId:randomUUID(),current:()=>true});expect(decision).toMatchObject({outcome:"allow",maxFleets:5});
+ assertHubSelfUseDecisionCurrent(decision,200);
+ w.db.prepare("UPDATE hub_teams SET revision=revision+1 WHERE id=?").run(teamId);
+ expect(()=>assertHubSelfUseDecisionCurrent(decision,200)).toThrow();
+ w.db.prepare("DELETE FROM hub_team_members WHERE team_id=?").run(teamId);
+ expect(await store.check(user,"pair_fleet",{requestId:randomUUID(),current:()=>true})).toMatchObject({outcome:"deny"});
+});

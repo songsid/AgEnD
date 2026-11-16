@@ -13,7 +13,7 @@ export interface RoleDecision {
   readonly maxFleets: number;
   readonly nextExpiry: number | null;
 }
-export interface RoleEvaluationFacts { readonly subject: RolePersonFacts; readonly target?: RolePersonFacts }
+export interface RoleEvaluationFacts { readonly subject: RolePersonFacts; readonly target?: RolePersonFacts; /** Owned local T1 roster snapshot, never AD group inference. */ readonly teams?: readonly string[] }
 const knownFacts = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("eligible"), person, observedAt: epoch }),
   z.strictObject({ kind: z.literal("complete"), person, observedAt: epoch, groups: z.array(uuid).max(256) }),
@@ -58,6 +58,16 @@ export function evaluateRolePolicy(input: unknown, subject: PersonKey, permissio
   const roles = new Map(p.roles.map(r => [r.id, r]));
   const matches: { id: string; limit: number; expiresAt: number | null }[] = [];
   let uncertain = false;
+  if (self) {
+    for (const rule of p.people ?? []) if (same(rule.person,who) && rule.allow.includes(cap as typeof SELF_PERMISSIONS[number]))
+      matches.push({id:`legacy:person:${rule.person.objectId}`,limit:rule.maxFleets,expiresAt:null});
+    if (p.teams?.some(rule => rule.allow.includes(cap as typeof SELF_PERMISSIONS[number]))) {
+      const parsed = z.array(uuid).max(32).safeParse(facts.teams);
+      if (!parsed.success) uncertain = true;
+      else for (const rule of p.teams) if (parsed.data.includes(rule.teamId) && rule.allow.includes(cap as typeof SELF_PERMISSIONS[number]))
+        matches.push({id:`legacy:team:${rule.teamId}`,limit:rule.maxFleets,expiresAt:null});
+    }
+  }
   for (const a of p.assignments) {
     const role = roles.get(a.roleId)!;
     if (!role.permissions.includes(cap) || a.startsAt > at || (a.expiresAt !== null && a.expiresAt <= at)) continue;

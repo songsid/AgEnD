@@ -59,6 +59,9 @@ export function checkRoleChange(plan: RoleChangePlan, bundle: HeldRoleBundle): "
     if (!bundle.rolesActive) return "denied";
     if (plan.required.some(p => !bundle.grants.some(g => g.permission === p))) return bundle.unknownGroups ? "unknown" : "denied";
   }
+  const deniedBefore = plan.before.denies.find(d => same(d.person,bundle.actor))?.deny ?? [];
+  const deniedAfter = plan.next.denies.find(d => same(d.person,bundle.actor))?.deny ?? [];
+  if (deniedBefore.some(permission => !deniedAfter.includes(permission))) return "self-target";
   // Direct self edits are never delegated to the ordinary writer, including root edits. The named
   // one-time self-use activation has its own sealed operation, rather than a bypass in this check.
   for (const d of plan.assignments) for (const a of [d.before, d.after]) {

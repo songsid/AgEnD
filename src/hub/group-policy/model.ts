@@ -9,12 +9,12 @@ export type GroupCapability = typeof GROUP_CAPABILITIES[number];
 const capabilities = z.array(z.enum(GROUP_CAPABILITIES)).max(3).refine(a => new Set(a).size === a.length);
 const label = z.string().min(1).max(1024).regex(/^[^\u0000-\u001f\u007f]+$/);
 const rule = z.strictObject({ group: person, dn: label, allow: capabilities, maxFleets: z.number().int().min(0).max(8) });
-const teamRule = z.strictObject({ teamId: uuid, name: label, allow: capabilities, maxFleets: z.number().int().min(0).max(8) });
-const personRule = z.strictObject({ person, name: label, allow: capabilities, maxFleets: z.number().int().min(0).max(8) });
+export const allowedTeamRule = z.strictObject({ teamId: uuid, name: label, allow: capabilities, maxFleets: z.number().int().min(0).max(8) });
+export const allowedPersonRule = z.strictObject({ person, name: label, allow: capabilities, maxFleets: z.number().int().min(0).max(8) });
 const deny = z.strictObject({ person, deny: capabilities });
 const schema = z.strictObject({ realm: person.shape.realm, generation: identifier, revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   state: z.enum(["never-enabled", "enabled", "suspended"]), groups: z.array(rule).max(32), denies: z.array(deny).max(256),
-  teams: z.array(teamRule).max(32).optional(), people: z.array(personRule).max(256).optional(),
+  teams: z.array(allowedTeamRule).max(32).optional(), people: z.array(allowedPersonRule).max(256).optional(),
 }).refine(p => p.groups.every(r => r.group.realm === p.realm) && p.denies.every(d => d.person.realm === p.realm)
   && new Set(p.groups.map(r => r.group.objectId)).size === p.groups.length
   && new Set(p.denies.map(d => d.person.objectId)).size === p.denies.length

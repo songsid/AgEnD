@@ -61,6 +61,9 @@ export function planRoleChange(before: unknown, next: unknown, actor: PersonKey,
     const a = oldAssignments.get(id) ?? null, b = nextAssignments.get(id) ?? null;
     return equal(authority(a, a ? oldRoles.get(a.roleId) : undefined), authority(b, b ? nextRoles.get(b.roleId) : undefined)) ? [] : [{ before: a, after: b }];
   });
+  // Carried T1 rules are not role assignments. A role write must never edit them as a
+  // side channel around the assignment/self-target checks. The allowed-list adapter owns edits.
+  if (!equal(old.teams,proposed.teams) || !equal(old.people,proposed.people)) throw new HubProtocolError("invalid");
   const controls = old.rolesActive !== proposed.rolesActive || old.state !== proposed.state || !equal(old.denies, proposed.denies);
   const changed = roles.length > 0 || assignments.length > 0 || controls;
   const required: ("hub.admin" | "roles.assign")[] = [];
