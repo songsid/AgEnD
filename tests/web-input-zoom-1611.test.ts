@@ -18,8 +18,8 @@ describe("#1611: text fields are never under 16px on a phone", () => {
     const css = noComments(read("shared/tokens.css"));
     const m = /@media \(pointer: coarse\), \(max-width: 899px\) \{\s*input, select, textarea \{([^}]*)\}\s*\}/.exec(css);
     expect(m, "the shared rule").not.toBeNull();
-    const decl = Object.fromEntries([...m![1]!.matchAll(/(--fs-[a-z]+):\s*(\d+)px/g)].map(x => [x[1], Number(x[2])]));
-    expect(decl).toEqual({ "--fs-xs": 16, "--fs-sm": 16, "--fs-md": 16 });
+    const decl = Object.fromEntries([...m![1]!.matchAll(/(--fs-[0-9a-z]+):\s*(\d+)px/g)].map(x => [x[1], Number(x[2])]));
+    expect(decl).toEqual({ "--fs-3xs": 16, "--fs-2xs": 16, "--fs-xs": 16, "--fs-sm": 16, "--fs-md": 16 });   // M-3226: every small step
   });
   it("every page with text fields loads it, and none disables pinch zoom", () => {
     for (const page of ["app.html", "signin.html"]) {

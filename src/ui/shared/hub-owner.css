@@ -54,7 +54,7 @@
 .hub-danger h3 { color: var(--danger); }
 .hub-steps { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); counter-reset: hub-step; }
 .hub-steps > li { display: flex; align-items: flex-start; gap: var(--s-3); counter-increment: hub-step; }
-.hub-steps > li::before { content: counter(hub-step); flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600;
+.hub-steps > li::before { content: counter(hub-step); flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-xs); font-weight: 600;
   background: var(--surface-2); color: var(--text-2); }
 .hub-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); text-align: start; }
 .hub-steps > li.done::before { content: "✓"; background: var(--ok-bg, var(--surface)); color: var(--ok); }
