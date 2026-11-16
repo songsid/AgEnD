@@ -1,0 +1,218 @@
+{
+  "scratch": "%USERPROFILE%\\agend-personal-proof-a76dd809-6cb4-4b8b-93c8-1cb2e5f03655",
+  "entriesRemovedWithOwnedRoot": [
+    {
+      "path": "outside",
+      "type": "directory"
+    },
+    {
+      "path": "payload",
+      "type": "directory"
+    },
+    {
+      "path": "shared",
+      "type": "directory"
+    },
+    {
+      "path": "source-auth",
+      "type": "directory"
+    },
+    {
+      "path": "temp",
+      "type": "directory"
+    },
+    {
+      "path": ".owned",
+      "type": "file"
+    },
+    {
+      "path": "diag-home.pid",
+      "type": "file"
+    },
+    {
+      "path": "diag-home.stderr",
+      "type": "file"
+    },
+    {
+      "path": "diag-home.stdout",
+      "type": "file"
+    },
+    {
+      "path": "diag-modules.pid",
+      "type": "file"
+    },
+    {
+      "path": "diag-modules.stderr",
+      "type": "file"
+    },
+    {
+      "path": "diag-modules.stdout",
+      "type": "file"
+    },
+    {
+      "path": "diag-readroot.pid",
+      "type": "file"
+    },
+    {
+      "path": "diag-readroot.stderr",
+      "type": "file"
+    },
+    {
+      "path": "diag-readroot.stdout",
+      "type": "file"
+    },
+    {
+      "path": "diag-work.pid",
+      "type": "file"
+    },
+    {
+      "path": "diag-work.stderr",
+      "type": "file"
+    },
+    {
+      "path": "diag-work.stdout",
+      "type": "file"
+    },
+    {
+      "path": "diag.pid",
+      "type": "file"
+    },
+    {
+      "path": "diag.stderr",
+      "type": "file"
+    },
+    {
+      "path": "diag.stdout",
+      "type": "file"
+    },
+    {
+      "path": "home-diagnostic.json",
+      "type": "file"
+    },
+    {
+      "path": "host.pid",
+      "type": "file"
+    },
+    {
+      "path": "host.stderr",
+      "type": "file"
+    },
+    {
+      "path": "host.stdout",
+      "type": "file"
+    },
+    {
+      "path": "module-diagnostic.json",
+      "type": "file"
+    },
+    {
+      "path": "progress.json",
+      "type": "file"
+    },
+    {
+      "path": "result.json",
+      "type": "file"
+    },
+    {
+      "path": "shell-diagnostic.json",
+      "type": "file"
+    },
+    {
+      "path": "shell-readroot-diagnostic.json",
+      "type": "file"
+    },
+    {
+      "path": "writable-work-diagnostic.json",
+      "type": "file"
+    },
+    {
+      "path": "outside\\private.txt",
+      "type": "file"
+    },
+    {
+      "path": "payload\\diag-home-bundle.mjs",
+      "type": "file"
+    },
+    {
+      "path": "payload\\diag-modules-bundle.mjs",
+      "type": "file"
+    },
+    {
+      "path": "payload\\diag-readroot-bundle.mjs",
+      "type": "file"
+    },
+    {
+      "path": "payload\\diag-shell-bundle.mjs",
+      "type": "file"
+    },
+    {
+      "path": "payload\\diag-work-bundle.mjs",
+      "type": "file"
+    },
+    {
+      "path": "payload\\host-bundle.mjs",
+      "type": "file"
+    },
+    {
+      "path": "payload\\package.json",
+      "type": "file"
+    },
+    {
+      "path": "payload\\runtime-pane-private.ps1",
+      "type": "file"
+    },
+    {
+      "path": "payload\\windows-cli-worker.js",
+      "type": "file"
+    },
+    {
+      "path": "shared\\escape",
+      "type": "link"
+    },
+    {
+      "path": "shared\\allowed.txt",
+      "type": "file"
+    },
+    {
+      "path": "source-auth\\tmp",
+      "type": "directory"
+    },
+    {
+      "path": "source-auth\\auth.json",
+      "type": "file"
+    },
+    {
+      "path": "source-auth\\config.toml",
+      "type": "file"
+    },
+    {
+      "path": "source-auth\\tmp\\arg0-windows",
+      "type": "directory"
+    },
+    {
+      "path": "source-auth\\tmp\\arg0-windows\\codex-arg09OX700",
+      "type": "directory"
+    },
+    {
+      "path": "source-auth\\tmp\\arg0-windows\\codex-arg09OX700\\.lock",
+      "type": "file"
+    },
+    {
+      "path": "source-auth\\tmp\\arg0-windows\\codex-arg09OX700\\applypatch.bat",
+      "type": "file"
+    },
+    {
+      "path": "source-auth\\tmp\\arg0-windows\\codex-arg09OX700\\apply_patch.bat",
+      "type": "file"
+    }
+  ],
+  "privateStagesRemovedBeforeRoot": [
+    "temp\\agend-personal-5cq98t",
+    "temp\\agend-personal-0fMjez",
+    "temp\\agend-personal-MxYwld",
+    "temp\\agend-personal-M94NN0",
+    "temp\\agend-personal-WIbeAt"
+  ],
+  "primaryStages": "All main-run stage creations/removals were recorded in the private ledger; no stage remained in temp at root removal.",
+  "removed": true
+}

@@ -1,0 +1,29 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/runtime-personal-shell-m3224.test.ts (5 tests | 1 failed | 4 skipped) 17ms
+     × refuses a successful shell exit with missing or wrong readback 14ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/runtime-personal-shell-m3224.test.ts > personal Codex shell readiness > refuses a successful shell exit with missing or wrong readback
+AssertionError: promise resolved "undefined" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+undefined
+
+ ❯ tests/runtime-personal-shell-m3224.test.ts:42:110
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  22:02:04
+   Duration  743ms (transform 456ms, setup 123ms, import 442ms, tests 17ms, environment 0ms)
