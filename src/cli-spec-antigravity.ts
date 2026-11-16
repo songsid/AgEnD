@@ -15,7 +15,9 @@ export const ANTIGRAVITY_SPEC = {
     dashboardSignIn: byDesign("Bare `agy` is the whole agent CLI, not a login command, so it never gets the browser terminal (login-flows.ts: `remoteLogin: \"unsupported\"`)."),
     // `agy acp --login` ("Log in with Google interactively, then exit", agy 1.5.0 and later). It prints no success line that has been seen, so the sign-in is over only when the command ended
     // with exit 0 AND `authCheck` passes; its screen has a closed table of its own (runtime-signin.ts `reduceAgyLoginScreen`). A Google-account (subscription) sign-in only.
-    structuredSignIn: yes({ argv: ["agy", "acp", "--login"], rank: 3, ends: "exit-code", screen: "own", answer: "code-or-address", minVersion: "1.5.0", named: true }),
+    // AGEND-274: agy's file names no version (one executable, no versioned path, no version file) and a host that cannot make a network namespace may not start it to ask, so there the version is unknown. `marker` is
+    // the flag's own help line, which sits in the executable (agy 1.5.9: `agy acp --help` prints it, and it is in the file as plain text; an agy without the command has no such line): its presence stands in for `minVersion`.
+    structuredSignIn: yes({ argv: ["agy", "acp", "--login"], rank: 3, ends: "exit-code", screen: "own", answer: "code-or-address", minVersion: "1.5.0", marker: "Log in with Google interactively, then exit", named: true }),
     // The first-run page still only names the console command for it (a browser sign-in needs a version check and the person's own confirmation, which the Accounts page has).
     firstRunSignIn: yes({ mode: "console", rank: 3 }),
     authCheck: yes({ argv: ["agy", "models"] }),

@@ -136,7 +136,7 @@ import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, load
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
 import { deletePlannedTopic, planInstanceTopicDelete, topicDestination, topicMustStay, type InstanceTopicPlan, type TopicDeleteOutcome, type TopicOwnership } from "./instance-topic-delete.js";
-import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, versionAtLeast, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
+import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, structuredSignInReady, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
@@ -22389,7 +22389,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (dashboardSignInSupported(backend, profile)) return true;
     if (!structuredSignInSupported(backend) || !STRUCTURED_PROFILE_BACKENDS.has(backend)) return false;
     const row = this.backendAvailabilityRows().find(r => r.backend === backend);
-    return !!row && row.state !== "not_installed" && row.state !== "too_old" && versionAtLeast(row.version, hostFacts(backend, "structuredSignIn")?.minVersion);
+    return !!row && row.state !== "not_installed" && row.state !== "too_old" && structuredSignInReady(row, hostFacts(backend, "structuredSignIn")?.minVersion);
   }
 
   backendSignInTargets(): SignInTarget[] {
@@ -22404,7 +22404,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // >= its `minVersion`) is signed in from Settings → Accounts. A CLI that is older, or whose version is not known, keeps "Sign in on the host" and is told to update.
       const structured = hostFacts(row.backend, "structuredSignIn");
       const viaStructured = !!structured && flow?.remoteLogin === "unsupported" && row.state !== "not_installed";
-      const structuredSignIn = viaStructured && versionAtLeast(row.version, structured!.minVersion);
+      const structuredSignIn = viaStructured && structuredSignInReady(row, structured!.minVersion);
       // Told to update only when the version is KNOWN to be older: a version that was not read yet is not "too old".
       const structuredUpdate = viaStructured && !structuredSignIn && typeof row.version === "string" && /\d/.test(row.version);
       out.push({
