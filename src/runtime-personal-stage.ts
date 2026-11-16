@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { lstatSync, realpathSync, readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, win32 } from "node:path";
-import { personalAgentFolder, personalAgentProfile, type PersonalProfilePlan } from "./runtime-personal-profile.js";
+import { PERSONAL_AGENT_DEADLINE_MS, personalAgentFolder, personalAgentProfile, type PersonalProfilePlan } from "./runtime-personal-profile.js";
 import { isPersonalAgentCli, type PersonalAgentCli } from "./runtime-personal-answer.js";
 import { protectRuntimeProfileDirectorySync } from "./runtime-pane-private.js";
 
@@ -14,6 +14,7 @@ export interface PersonalStageHost {
   platform: string;
   userHome: string;
   environment: NodeJS.ProcessEnv;
+  now(): number;
   realDirectory(path: string): string;
   readPrivate(path: string): string;
   create(): { work: string; home: string; cleanup(): void };
@@ -26,20 +27,27 @@ function environmentValue(env: NodeJS.ProcessEnv, key: string): string | undefin
   return values[0];
 }
 /** The known authentication fields only; settings, hooks, plugins and model/provider config cannot hitchhike. */
-function authentication(cli: PersonalAgentCli, text: string): string {
+function authentication(cli: PersonalAgentCli, text: string, now: number): string {
   let v: unknown; try { v = JSON.parse(text); } catch { throw new PersonalAgentStageError("authentication-unavailable"); }
   if (!object(v)) throw new PersonalAgentStageError("authentication-unavailable");
+  const minimumExpiry = now + PERSONAL_AGENT_DEADLINE_MS + 60_000;
   if (cli === "codex") {
     const source = object(v.tokens) ? v.tokens : null;
-    const tokens = source ? Object.fromEntries(["id_token", "access_token", "refresh_token", "account_id"].filter(k => typeof source[k] === "string").map(k => [k, source[k]])) : undefined;
-    if (!tokens?.access_token && !(typeof v.OPENAI_API_KEY === "string" && v.OPENAI_API_KEY.trim())) throw new PersonalAgentStageError("authentication-unavailable");
-    return JSON.stringify({ ...(typeof v.auth_mode === "string" ? { auth_mode: v.auth_mode } : {}),
-      ...(typeof v.OPENAI_API_KEY === "string" ? { OPENAI_API_KEY: v.OPENAI_API_KEY } : {}), ...(tokens ? { tokens } : {}),
-      ...(typeof v.last_refresh === "string" ? { last_refresh: v.last_refresh } : {}) });
+    if ((v.auth_mode === undefined || v.auth_mode === null || v.auth_mode === "apikey") && typeof v.OPENAI_API_KEY === "string" && v.OPENAI_API_KEY.trim())
+      return JSON.stringify({ auth_mode: "apikey", OPENAI_API_KEY: v.OPENAI_API_KEY });
+    if (!source || typeof source.access_token !== "string" || typeof source.id_token !== "string" || v.auth_mode !== undefined && v.auth_mode !== null && v.auth_mode !== "chatgpt") throw new PersonalAgentStageError("authentication-unavailable");
+    let expiry: unknown;
+    try { const parts = source.access_token.split("."); if (parts.length !== 3 || !/^[A-Za-z0-9_-]+$/.test(parts[1])) throw Error(); expiry = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")).exp; } catch { throw new PersonalAgentStageError("authentication-unavailable"); }
+    if (typeof expiry !== "number" || !Number.isSafeInteger(expiry) || expiry * 1000 < minimumExpiry) throw new PersonalAgentStageError("authentication-unavailable");
+    // Codex 0.167 requires this string field to deserialize TokenData. Empty is deliberately not a usable
+    // refresh credential; a turn may never rotate the owner's real login from a disposable home.
+    const tokens = { id_token: source.id_token, access_token: source.access_token, refresh_token: "", ...(typeof source.account_id === "string" ? { account_id: source.account_id } : {}) };
+    return JSON.stringify({ auth_mode: "chatgpt", tokens, ...(typeof v.last_refresh === "string" ? { last_refresh: v.last_refresh } : {}) });
   }
   if (!object(v.claudeAiOauth) || typeof v.claudeAiOauth.accessToken !== "string" || !v.claudeAiOauth.accessToken) throw new PersonalAgentStageError("authentication-unavailable");
   const source = v.claudeAiOauth;
-  const oauth = Object.fromEntries(["accessToken", "refreshToken", "expiresAt", "scopes", "subscriptionType", "rateLimitTier"].filter(k => source[k] !== undefined).map(k => [k, source[k]]));
+  if (typeof source.expiresAt !== "number" || !Number.isSafeInteger(source.expiresAt) || source.expiresAt < minimumExpiry) throw new PersonalAgentStageError("authentication-unavailable");
+  const oauth = Object.fromEntries(["accessToken", "expiresAt", "scopes", "subscriptionType", "rateLimitTier"].filter(k => source[k] !== undefined).map(k => [k, source[k]]));
   return JSON.stringify({ claudeAiOauth: oauth });
 }
 export interface PersonalStageInput { cli: PersonalAgentCli; folder: string; question: string; model?: string; runtimeReads: readonly string[] }
@@ -62,7 +70,7 @@ export function stagePersonalAgent(input: PersonalStageInput, host: PersonalStag
     const sourceHome = input.cli === "codex" ? codexHome : claudeHome;
     const filename = input.cli === "codex" ? "auth.json" : ".credentials.json";
     let auth: string;
-    try { auth = authentication(input.cli, host.readPrivate(win32.join(sourceHome, filename))); }
+    try { auth = authentication(input.cli, host.readPrivate(win32.join(sourceHome, filename)), host.now()); }
     catch { throw new PersonalAgentStageError("authentication-unavailable"); }
     host.writePrivate(win32.join(stage.home, filename), auth);
     // These are the bundled system skills observed in the approved step-0 CLI. The final prompt check still
@@ -80,7 +88,7 @@ export function stagePersonalAgent(input: PersonalStageInput, host: PersonalStag
 
 /** Actual filesystem port. No source authentication/config file is changed or logged out. */
 export function windowsPersonalStageHost(environment: NodeJS.ProcessEnv): PersonalStageHost {
-  return { platform: process.platform, userHome: homedir(), environment,
+  return { platform: process.platform, userHome: homedir(), environment, now: () => Date.now(),
     realDirectory(path) {
       const entry = lstatSync(path); if (!entry.isDirectory() || entry.isSymbolicLink()) throw Error("Personal folder is not a real directory");
       return realpathSync(path);

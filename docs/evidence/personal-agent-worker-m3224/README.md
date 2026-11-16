@@ -8,6 +8,10 @@ M-3224 worker transport layer, following #4040. Dedicated local binding, authent
 
 The Windows profile workflow runs the real pinned Codex/Claude binaries on a disposable hosted runner, with synthetic authentication, local sandbox commands and help/prompt rendering only. Its result is pending at initial draft publication; no real enforcement or live provider claim is made by the unit results. No user Windows/WSLg window, account, Fleet or provider call is used.
 
+Review repair: access-only OAuth staging refuses credentials with less than six minutes remaining. The seven staging cases pass; four targeted reversals are caught (Codex refresh copy, Claude refresh copy, and each expiry guard). Codex 0.167's local parser was checked with synthetic OAuth data: omitting the required refresh-token field is refused; an empty string parses as ChatGPT auth without passing refresh authority.
+
+Platform discovery: the hosted Windows Server default refuses restricted reads without its elevated sandbox. The profile now explicitly selects MXC and a pre-turn sandbox startup check; it never requests legacy provisioning. The Windows 11 hosted proof is pending. Unsupported MXC hosts fail closed, and the phase-1 support wording is with the product owner. No Windows enforcement success is claimed yet.
+
 ## Boundaries and rollback
 
 The profile marker cannot enable a personal binding remotely. Wrong folders, tools, resume and alternate accounts fail before execution. Preview output is empty; only the terminal structured answer crosses after physical exit. Source authentication files are preserved. A bounded failure carries a code, never raw diagnostics. Strict configuration/effective-feature/prompt checks fail closed.

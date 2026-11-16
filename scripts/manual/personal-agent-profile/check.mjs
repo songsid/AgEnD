@@ -31,6 +31,19 @@ try {
   stage = stagePersonalAgent({ cli: "codex", folder: shared, question: "Setup verification only", runtimeReads: [dirname(codex.command), dirname(process.execPath)] }, windowsPersonalStageHost(environment));
   const env = { ...environment, ...stage.plan.environment };
   await checkPersonalCodexPrompt(codex, stage.plan, env); checks.push("effective tool flags and no inherited skills/instructions");
+  const jwt = payload => `eyJhbGciOiJub25lIn0.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.synthetic`;
+  const token = jwt({ exp: Math.floor(Date.now() / 1000) + 3600, email: "synthetic@example.test", "https://api.openai.com/auth": { chatgpt_account_id: "synthetic-account" } });
+  const oauthText = JSON.stringify({ auth_mode: "chatgpt", tokens: { id_token: token, access_token: token, refresh_token: "synthetic-refresh-must-not-copy", account_id: "synthetic-account" } });
+  writeFileSync(join(auth, "auth.json"), oauthText);
+  const oauth = stagePersonalAgent({ cli: "codex", folder: shared, question: "Setup verification only", runtimeReads: [dirname(codex.command), dirname(process.execPath)] }, windowsPersonalStageHost(environment));
+  try {
+    const staged = readFileSync(join(oauth.plan.environment.CODEX_HOME, "auth.json"), "utf8");
+    assert.equal(JSON.parse(staged).tokens.refresh_token, ""); assert.ok(!staged.includes("synthetic-refresh-must-not-copy"));
+    const status = await exec(codex.command, [...codex.args, "login", "status"], { env: { ...environment, ...oauth.plan.environment }, cwd: oauth.plan.cwd, shell: false, windowsHide: true, timeout: 10_000 });
+    assert.match(status.stderr, /Logged in using ChatGPT/);
+    assert.equal(readFileSync(join(auth, "auth.json"), "utf8"), oauthText);
+    checks.push("access-only OAuth parses without changing source or copying refresh authority");
+  } finally { oauth.cleanup(); writeFileSync(join(auth, "auth.json"), authText); }
   // Sandbox runs the same named profile as the turn. Never use --sandbox: it overrides that profile.
   const sandbox = script => run(codex.command, [...codex.args, "-C", stage.plan.cwd, "sandbox", "-P", "hub-personal", "--", process.execPath, "-e", script], env, stage.plan.cwd);
   const read = path => `try { process.stdout.write(require('fs').readFileSync(${JSON.stringify(path)},'utf8')); } catch { process.stdout.write('DENIED'); }`;

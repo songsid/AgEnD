@@ -80,6 +80,7 @@ export function personalAgentProfile(input: PersonalProfileInput): PersonalProfi
     environment: { ...environment, CLAUDE_CONFIG_DIR: home, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", ENABLE_TOOL_SEARCH: "false" }, files: {} };
   // Do not append --sandbox: that older option overrides the named read-root profile.
   const config = `approval_policy = "never"\ndefault_permissions = "hub-personal"\nproject_doc_max_bytes = 0\nweb_search = "disabled"\ncheck_for_update_on_startup = false\n` +
+    `[windows]\nsandbox = "mxc"\n` +
     `[features]\n${PERSONAL_CODEX_DISABLED_FEATURES.map(name => `${name} = false\n`).join("")}skip_host_skill_discovery = true\n` +
     `[permissions.hub-personal.filesystem]\n":root" = "deny"\n":minimal" = "read"\n${uniquePaths([work, folder, ...runtimeReads]).map(p => `${toml(p)} = "read"`).join("\n")}\n` +
     `[permissions.hub-personal.network]\nenabled = false\n${skills.map(p => `\n[[skills.config]]\npath = ${toml(p)}\nenabled = false\n`).join("")}`;

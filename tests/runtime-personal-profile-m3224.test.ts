@@ -19,6 +19,7 @@ describe("a separate personal-agent launch plan", () => {
     expect(p.args).not.toContain("--sandbox"); expect(p.args).not.toContain("resume");
     expect(p.args).toContain("--ephemeral"); expect(p.deadlineMs).toBe(300_000);
     expect(p.files["config.toml"]).toContain('default_permissions = "hub-personal"');
+    expect(p.files["config.toml"]).toContain('[windows]\nsandbox = "mxc"');
     expect(p.files["config.toml"]).toContain('"C:\\\\Users\\\\Alex\\\\Hub agent" = "read"');
     expect(p.files["config.toml"]).toContain('":root" = "deny"');
     expect(p.files["config.toml"]).toContain('[permissions.hub-personal.network]\nenabled = false');
