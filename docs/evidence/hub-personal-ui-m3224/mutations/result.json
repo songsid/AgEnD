@@ -1,0 +1,17 @@
+[
+  {
+    "name": "captured-signin",
+    "exit": 1,
+    "caught": true
+  },
+  {
+    "name": "stale-owner-read",
+    "exit": 1,
+    "caught": true
+  },
+  {
+    "name": "refresh-binding",
+    "exit": 1,
+    "caught": true
+  }
+]

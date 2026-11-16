@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-ui-m3224.test.ts (10 tests | 1 failed | 9 skipped) 122ms
+   × drops a previous sign-in's late owner read 78ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 skipped (10)
+   Start at  19:03:30
+   Duration  456ms (transform 164ms, setup 98ms, import 99ms, tests 122ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-ui-m3224.test.ts > drops a previous sign-in's late owner read
+AssertionError: expected 'Personal agentAnswer colleagues with …' to contain 'Current computer'
+
+Expected: "Current computer"
+Received: "Personal agentAnswer colleagues with Codex or Claude on your computer. No Fleet is needed.Read-only, one shared folder. People allowed to ask may receive anything in that folder. Your own AI account pays for answers.Connect a replacement computerRefreshPrevious person's computerC:\SharedReadyCodexReadyClaudeInstall this CLI on that computer, then refresh.Agent nameOne-line descriptionAnswer withCodexModelCLI defaultSave personal agentDisconnect computer"
+
+ ❯ tests/hub-personal-ui-m3224.test.ts:64:29
+     62|  await p.mount(h(ui.HubPersonalAgent,{client,scope:"old"}));await sett…
+     63|  release({...view(),computer:{...view().computer,name:"Previous person…
+     64|  expect(p.root.textContent).toContain("Current computer");expect(p.roo…
+       |                             ^
+     65| });
+     66|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

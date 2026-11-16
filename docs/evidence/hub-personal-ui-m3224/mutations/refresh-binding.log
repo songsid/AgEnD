@@ -1,0 +1,47 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-personal-ui-m3224
+
+ ❯ tests/hub-personal-owner-m3224.test.ts (10 tests | 1 failed | 9 skipped) 151ms
+     × refreshes only the current owner's computer and refuses a replaced binding after the probe 149ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 skipped (10)
+   Start at  19:03:31
+   Duration  3.42s (transform 2.38s, setup 75ms, import 3.07s, tests 151ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-personal-owner-m3224.test.ts > company-owned personal computer enrollment > refreshes only the current owner's computer and refuses a replaced binding after the probe
+AssertionError: promise resolved "{ agent: null, enabled: true, …(2) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "agent": null,
++   "canAdd": true,
++   "computer": {
++     "clis": [],
++     "compatible": false,
++     "connected": true,
++     "folder": null,
++     "id": "9c58a1e5-208f-49dc-86e1-e1a9e5bfdf19",
++     "name": "Computer",
++     "working": false,
++   },
++   "enabled": true,
+  }
+
+ ❯ tests/hub-personal-owner-m3224.test.ts:128:26
+    126|     const pending=f.host.refreshComputer(f.ctx(f.a));await vi.waitFor(…
+    127|     f.r.db.prepare("DELETE FROM hub_personal_computers WHERE owner=?")…
+    128|     await expect(pending).rejects.toMatchObject({code:"stale"});
+       |                          ^
+    129|     await expect(f.host.refreshComputer(f.ctx(f.a),{machineId:joined.m…
+    130|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

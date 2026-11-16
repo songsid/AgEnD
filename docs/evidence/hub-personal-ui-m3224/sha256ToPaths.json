@@ -1,0 +1,59 @@
+{
+  "99aae83a3803560ed38f8bcb3925fc3cddc1bfa14746a367665a4ff5f68b1fed": [
+    "browser/desktop-en-light-admin.png"
+  ],
+  "2f4bbde571097959661e4894aa9eb437271bc7721b847305c656c72c465294b5": [
+    "browser/desktop-en-light-install.png"
+  ],
+  "b6f9f47597af8fd8fe7683e3c61d1eb96f377aebedd22e017e30da79676b6faf": [
+    "browser/desktop-en-light-offline.png"
+  ],
+  "2494372ba8dc4d555655ee23225a43e8e940752a7180a5a8dfc166c0322c2742": [
+    "browser/desktop-en-light-ready.png"
+  ],
+  "a26ecd3da40fede2186f6732236ab7587b018ec8b74231abdae144cdd7b0ada4": [
+    "browser/desktop-en-light-working.png"
+  ],
+  "cf87a9d400f63c3d4ac6c2129c3adc598ff41809d4fa2be4c15602b522793316": [
+    "browser/phone-zh-TW-dark-admin.png"
+  ],
+  "035222e6cdbc386edffa9fa91305dd88ff4ee5052815af6c032e9be1d74aac7b": [
+    "browser/phone-zh-TW-dark-install.png"
+  ],
+  "3884b2facfd02060d413fab9b78a58e754b145a2bd30e80b3269ced8124e7a1f": [
+    "browser/phone-zh-TW-dark-offline.png"
+  ],
+  "7f050524189bc2a3106dae2d2ace7765025eca6342bc43f2e8006d0106db34e5": [
+    "browser/phone-zh-TW-dark-ready.png"
+  ],
+  "0999b9a76d0bd9640c929acc19fbf5b9dd724168f73814e19c18e13f211cd6b9": [
+    "browser/phone-zh-TW-dark-working.png"
+  ],
+  "1844bc977fedb8c18c21b2eecfee6e04a536c84a01aa80c7e793a59e7d73a796": [
+    "browser/receipt.json"
+  ],
+  "f3e7daf4e6644832dcf0d6039fac9097bc4c33fde341eda3cc34110ea0809391": [
+    "capture-repair-unit.log"
+  ],
+  "c82b8dd0578364db0e724d006ccb0dbea9103b8ff9e053aa4486107ba8fe2f30": [
+    "factory-registration.log"
+  ],
+  "b005bd7706b4b5feb140009c70d81cc2dc325df62ebfce48f3c8e46523141f43": [
+    "final-affected.log"
+  ],
+  "268047cdfafefb21203b68c342858b2e2f12897f6c3f90b05e0214bf7015016c": [
+    "integration.log"
+  ],
+  "b232b53817865f9113d013c5ea8a6a49ab9040139fcea719197fa686ed6c3cc6": [
+    "mutations/captured-signin.log"
+  ],
+  "ecf0b697a30e7c9cd460ba5e4b02d5da5e7731931192d24dd049c5b0f06ef5f6": [
+    "mutations/refresh-binding.log"
+  ],
+  "b8a042062b077746e22b8491e8b7da4432eb6b6b1cbe435a54679798cbee940b": [
+    "mutations/result.json"
+  ],
+  "8104f49ac7a454d67a1d51a252d723bd757aea216464cadc1a453b21a98b061f": [
+    "mutations/stale-owner-read.log"
+  ]
+}
