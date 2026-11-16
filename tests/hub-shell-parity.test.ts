@@ -66,6 +66,9 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
     const limited = await hub({ ...options, management: ["fleets.manage"] });
     await until(() => calls.includes("GET /hub/v1/admin/overview") && limited.root.querySelector("#hub-admin-fleets"));
     expect(limited.root.querySelector("#hub-admin-fleets")).toBeTruthy();
+    // The page can render before LazyRoomPart resolves; flush only after its module has evaluated.
+    await import("/ui/js/hub-personal-agent.js");
+    await settle();
     expect(limited.root.querySelector("[data-personal-admin]")).toBeNull();
     expect(calls).not.toContain("GET /hub/v1/admin/personal-agents");
     await limited.unmount(); mounted.splice(mounted.indexOf(limited), 1); limited.restore();
