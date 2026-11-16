@@ -186,7 +186,10 @@ Proposed name: **Ask first** / 「先問我」.
    other setting that makes every command ask; under the remaining setting, commands the sandbox allows run
    without asking. The two have not been reconciled and nothing was run. **If a current Codex cannot be made to
    ask before every command, this mode cannot be built as described**, and the words-only fallback in 10.9 is
-   what remains. E0 must settle this first, on the Codex version colleagues actually have.
+   what remains. E0 must settle this first, on the Codex version colleagues actually have. One lead from Ridge
+   for that trial: in 0.167, with the remaining setting (`on-request`), a run whose settings declare filesystem
+   restrictions while the Windows sandbox itself is off also asks before each unmatched command. That would be a
+   route that does not depend on the retired setting. It is a policy asking, not an enforced folder limit.
 5. **There is another way to get one folder, which needs IT.** Codex's documentation describes a Windows sandbox
    that does support denied folders, set up once with administrator rights (separate low-privilege accounts and
    firewall rules). Phase 1 rules that out ("nothing is installed or changed on the computer"). If IT is willing
