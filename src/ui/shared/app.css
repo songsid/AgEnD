@@ -4600,8 +4600,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* M-3166 (Argon 4–5, the user's OK of round 2): a phone moves around by its drawer alone — no bottom tab bar, no counts or
    badges on the Fleet side. The drawer is a phone's own: 300 px; one search (the agent filter) with [+] beside it at the top;
-   Fleet 概覽 and 等你處理; then the agents, rows of 48 px with their dot and name (no avatar letters, CLI marks, % or ⋯);
-   設定 at the foot. Fleet is two rows: ☰ and its tabs, then the page's tools; the org page opens on its list. */
+   Fleet 概覽 and 等你處理; then the agents, rows of 48 px (no CLI marks, % or ⋯); 設定 at the foot. M-3209 (the user, iPhone,
+   beta.6: 「大頭被改壞了」): a row's face is the list's own — Detailed, the whole avatar with its dot on its corner; Compact, the
+   dot alone (instance-nav.js draws no avatar there). The drawer shrank the avatar to 10 px and hid only its letters, so a
+   picture or an emoji stayed, squashed beside its dot. Fleet is two rows: ☰ and its tabs, then the page's tools; the org page opens on its list. */
 @media (max-width: 899px) {
   .tabs { display: none !important; }
   /* The tab bar's room goes; a list page keeps the home-indicator inset. Not inside an agent's pages (the dock keeps it, #3972)
@@ -4619,10 +4621,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side .side-search, .sidebar.fleet-side .side-nav > a[href="/ui/notices"], .sidebar.fleet-side .inst-head { display: none !important; }
   .sidebar.fleet-side .side-new { position: absolute; top: calc(var(--header-h) + max(var(--s-1), env(safe-area-inset-top))); right: var(--s-2); width: var(--tap); height: var(--tap); padding: 0; justify-content: center; }
   .sidebar.fleet-side .side-new .grow { display: none; }
-  .sidebar.fleet-side .inst-row-menu, .sidebar.fleet-side .av-cli, .sidebar.fleet-side .av-text, .sidebar.fleet-side .v-group-kind, .sidebar.fleet-side .v-meta { display: none !important; }
+  .sidebar.fleet-side .inst-row-menu, .sidebar.fleet-side .av-cli, .sidebar.fleet-side .v-group-kind, .sidebar.fleet-side .v-meta { display: none !important; }
   .sidebar.fleet-side .v-inst { min-height: 48px; }
-  .sidebar.fleet-side .v-inst .av { width: 10px; height: 10px; background: none; border: 0; box-shadow: none; margin: 0 var(--s-1); }
-  .sidebar.fleet-side .v-inst .av-dot { position: static; width: 8px; height: 8px; border: 0; }
   .p-fleet > .panel-head .sb-search, .p-fleet > .panel-head .panel-title h1, .p-fleet > .panel-head .panel-actions { display: none !important; }
   /* The title gives way, but a host-memory warning (its subtitle) stays: a line of its own under ☰ and the tabs (#4008 review). */
   .p-fleet > .panel-head .panel-title:not(:has(.host-mem)) { display: none; }

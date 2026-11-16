@@ -6,7 +6,8 @@
 //             sideways when it does not fit, and the open last tab (用量) is in view
 //   3-memory  a host-memory warning (the header's subtitle) stays, on its own line under ☰ and the tabs
 //   2-drawer  ☰ opens the drawer: 300 px; the agent filter at the top with [+] beside it; Fleet 概覽 and 等你處理 (no count),
-//             no 搜尋 / 通知 rows, no filter block at the bottom; agent rows ≥ 48 px with their dot and name only
+//             no 搜尋 / 通知 rows, no filter block at the bottom; agent rows ≥ 48 px with no CLI mark, % or ⋯ (their faces:
+//             smoke-phone-drawer-avatars-m3209)
 // The desk: the sidebar as before (its search row, its filters) and Fleet's title; no phone tabs. No horizontal overflow, no page error.
 // Run it on the base too (SMOKE_NAME=…-before): every phone case FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-phone-drawer-fleet-m3166.mts
@@ -79,12 +80,12 @@ try {
         links: [...sb.querySelectorAll(".side-nav > .side-row:not(.side-new)")].filter(shown).map((e) => (e.querySelector(".grow")?.textContent || "").trim()),
         counts: [...sb.querySelectorAll(".nav-count, .v-group-head .count")].filter(shown).length, facets: shown(sb.querySelector(".nav-facets")),
         rowMin: rows.length ? Math.min(...rows.map((e) => e.getBoundingClientRect().height)) : 0,
-        extra: [...sb.querySelectorAll(".av-text, .av-cli, .inst-row-menu, .v-meta")].filter(shown).length };
+        extra: [...sb.querySelectorAll(".av-cli, .inst-row-menu, .v-meta")].filter(shown).length };
     });
     const zh = c.lang === "zh-TW";
     need(d.w === 300 && d.filterTop && d.plusBeside, `the drawer: 300 px, the filter at the top with [+] beside it (${JSON.stringify(d)})`);
     need(JSON.stringify(d.links) === JSON.stringify(zh ? ["Fleet 概覽", "等你處理"] : ["Fleet", "Needs you"]) && d.counts === 0 && !d.facets, `two links, no count, no filter block (${JSON.stringify(d.links)}, ${d.counts}, ${d.facets})`);
-    need(d.rowMin >= 47.5 && d.extra === 0, `agent rows ≥ 48 px, dot and name only (${d.rowMin}, ${d.extra})`);
+    need(d.rowMin >= 47.5 && d.extra === 0, `agent rows ≥ 48 px, no CLI mark, % or ⋯ (${d.rowMin}, ${d.extra})`);
     await page.screenshot({ path: shotPath(SMOKE, caseName(c), "2-drawer") });
     // The tab bar's room goes; only a list page keeps the home-indicator inset: never inside an agent's pages (the dock keeps
     // it, #3972) nor with the keyboard up (the box sits on the keyboard, #2478) — no band, no double inset.
