@@ -25,4 +25,4 @@ Output: `.artifacts/m3214/browser` (PNG/result/cleanup; private scope file exclu
 Primary references: [Edge theme colors](https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/how-to/icon-theme-color)
 and [Chromium PWA protocol](https://chromedevtools.github.io/devtools-protocol/tot/PWA/).
 
-Set `PWA_BROWSER=edge` only for an Edge build implementing the PWA CDP domain. Edge 157 did not expose that domain; Chrome is the default.
+Set `PWA_BROWSER=edge` to select Edge. The fresh test process enables Chromium’s documented `--enable-devtools-pwa-handler` automation switch; no setting is changed in the user’s browser.
