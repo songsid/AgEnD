@@ -59,6 +59,8 @@
   .help { margin-top: 8px; font-size: var(--fs-xs); color: var(--text-3); }
   .help summary { cursor: pointer; width: fit-content; }
   .help p { margin: 6px 0 0; color: var(--text-3); }
+  .help ol { margin: 6px 0 0; padding-left: 1.4em; }
+  .help li + li { margin-top: 4px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -80,7 +82,7 @@
     <button id="another" type="button" class="secondary" hidden data-i18n="another">Sign in with another device</button>
     <div id="msg" role="alert" aria-live="polite"></div>
     <p id="authHint" hidden></p>
-    <details id="reachHelp" class="help" hidden><summary id="reachTitle">How does my phone reach AgEnD?</summary><p id="reachLead"></p><ul><li id="reachWifi"></li><li id="reachPrivate"></li><li id="reachOutside"></li></ul></details>
+    <details id="reachHelp" class="help" hidden><summary id="reachTitle">How do I open AgEnD on my phone?</summary><p id="reachLead"></p><ol><li id="reachTemp"></li><li id="reachFixed"></li><li id="reachPrivate"></li></ol></details>
     <details class="help"><summary data-i18n="nobot">No chat bot?</summary><p data-i18n="nobot_body">Ask the operator to run <code>agend web --code</code> on the AgEnD computer.</p></details>
     <details class="help"><summary data-i18n="safe">Page looks wrong after signing in?</summary><p data-i18n="safe_body">Your custom CSS may be hiding something. Add ?safe=1 to the end of the address to load the page without it, then fix it or turn it off in Settings → Web appearance.</p></details>
   </form>
