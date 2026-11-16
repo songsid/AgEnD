@@ -59,3 +59,55 @@
     },
   };
 })();
+
+// The installed window's title bar follows the page, including page themes and owner CSS.
+// Read paint rather than the OS setting: a person can choose Dark on a light desktop.
+(function () {
+  "use strict";
+  if (!document.head || typeof window.getComputedStyle !== "function") return;
+  var pending = false;
+  function fallback() {
+    var mode = window.AgendTheme.get();
+    if (mode === "system") mode = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    return mode === "light" ? "#ffffff" : "#212121";
+  }
+  function color() {
+    var el = document.body || document.documentElement, top = Infinity;
+    var heads = document.querySelectorAll(".panel-head");
+    for (var i = 0; i < heads.length; i++) {
+      var h = heads[i];
+      if (h.getClientRects().length && h.getBoundingClientRect().top < top) { el = h; top = h.getBoundingClientRect().top; }
+    }
+    // Headers may be transparent: use the nearest painted surface behind them.
+    for (; el; el = el.parentElement) {
+      var bg = window.getComputedStyle(el).backgroundColor;
+      if (bg && bg !== "transparent" && !/^rgba\([^)]*,\s*0\s*\)$/.test(bg)) return bg;
+    }
+    return fallback();
+  }
+  function update() {
+    pending = false;
+    var tags = document.querySelectorAll('meta[name="theme-color"]'), tag = tags[0];
+    if (!tag) { tag = document.createElement("meta"); tag.setAttribute("name", "theme-color"); document.head.appendChild(tag); }
+    // Retire the old OS-qualified pair as well, for a tab crossing an upgrade.
+    for (var i = 1; i < tags.length; i++) tags[i].remove();
+    tag.removeAttribute("media");
+    var value = color();
+    if (tag.content !== value) tag.content = value;
+  }
+  function schedule() {
+    if (!pending) { pending = true; window.requestAnimationFrame(update); }
+  }
+  update();
+  window.AgendTheme.onChange(schedule);
+  window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", schedule);
+  document.addEventListener("DOMContentLoaded", schedule);
+  document.addEventListener("transitionend", schedule, true);
+  document.addEventListener("load", schedule, true); // Stylesheet arrival / replacement, including owner CSS.
+  window.addEventListener("pageshow", schedule);
+  // Page palettes are applied to the shell; routes replace headers. Coalesce paints and
+  // ignore content attributes so updating this meta element cannot trigger itself.
+  new MutationObserver(schedule).observe(document.documentElement, {
+    subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style", "data-theme", "data-agent"],
+  });
+})();

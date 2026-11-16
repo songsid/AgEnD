@@ -1,0 +1,5 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/web-pwa-theme-m3214.test.ts > installed app chrome follows the rendered page > serves the Hub's advertised manifest and icons without signing in
+AssertionError: expected 404 to be 200 // Object.is equality
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 skipped (6)

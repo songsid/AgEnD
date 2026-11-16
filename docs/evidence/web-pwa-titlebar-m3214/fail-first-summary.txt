@@ -1,0 +1,15 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/web-pwa-theme-m3214.test.ts > installed app chrome follows the rendered page > uses the explicit choice over the OS and leaves one unqualified theme-color
+AssertionError: expected [ { content: '#ffffff', …(4) }, …(1) ] to have a length of 1 but got 2
+ FAIL  tests/web-pwa-theme-m3214.test.ts > installed app chrome follows the rendered page > updates live for explicit and system changes
+AssertionError: expected '#ffffff' to be 'rgb(255, 255, 255)' // Object.is equality
+ FAIL  tests/web-pwa-theme-m3214.test.ts > installed app chrome follows the rendered page > follows and clears page/owner appearance colors after DOM and stylesheet changes
+AssertionError: expected '#ffffff' to be 'rgb(23, 49, 63)' // Object.is equality
+ FAIL  tests/web-pwa-theme-m3214.test.ts > installed app chrome follows the rendered page > recovers when CSS becomes ready after boot
+AssertionError: expected '#ffffff' to be 'rgb(255, 255, 255)' // Object.is equality
+ FAIL  tests/web-pwa-theme-m3214.test.ts > installed app chrome follows the rendered page > keeps a stable same-origin standalone identity and one color tag on Fleet and Hub HTML
+AssertionError: expected undefined to be '/' // Object.is equality
+ FAIL  tests/web-pwa-theme-m3214.test.ts > installed app chrome follows the rendered page > serves the Hub's advertised manifest and icons without signing in
+AssertionError: expected 404 to be 200 // Object.is equality
+ Test Files  1 failed (1)
+      Tests  6 failed (6)

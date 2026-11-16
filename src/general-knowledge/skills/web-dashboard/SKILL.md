@@ -11,6 +11,8 @@ English UI labels (the page also has 中文). Before you state a value the user 
 it: `get_fleet_config` shows fleet.yaml; this skill gives defaults. Never invent a control that is not listed here.
 Never tell anyone to kill `wslrelay` or run `wsl --shutdown` (see Troubleshooting).
 
+**Installed app:** Chrome or Edge’s “Install app” opens AgEnD in its own window. Its title bar follows the current page’s light, dark or custom theme, including Hub pages, and changes with the page’s appearance.
+
 For how *you* look on the dashboard (theme, identity card, colour, widgets and ambient effects), load `web-appearance`.
 
 ## Index
