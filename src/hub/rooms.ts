@@ -307,6 +307,7 @@ export class HubRoomsService {
     const digest = messageContentDigest("question", text, { attachments: files });
     const sequence = ((db.prepare("SELECT MAX(sequence) AS n FROM hub_messages WHERE room_id=?").get(roomId) as { n: number | null }).n ?? 0) + 1;
     const id = randomUUID(), ref = this.core.deps.content.put(tx, { question: text });
+    if(application)this.core.deps.content.bindMessage?.(tx,ref,id);
     if (files.length) { this.requireFiles(exposure.fleetId);store!.bindQuestion(db, files, id, exposure.fleetId); }
     db.prepare(`INSERT INTO hub_messages(id, room_id, idempotency_key, sequence, fleet_id, exposure_id, exposure_revision, grant_id, grant_revision, asker, owner,
       content_digest, question_ref, stage, stage_at, created_at, expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?)`)

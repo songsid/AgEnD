@@ -13,8 +13,8 @@ let rig:Awaited<ReturnType<typeof s3bRig>>|undefined;
 const clients:Client[]=[];
 afterEach(async()=>{vi.restoreAllMocks();for(const client of clients.splice(0))await client.close();await rig?.close();rig=undefined;});
 const resource="https://hub.example.test/mcp",redirect="http://127.0.0.1:43123/callback",verifier="v".repeat(43);
-async function world(enabled=true,attachments=false) {
-  let now=Date.now();rig=await s3bRig({now:()=>now,attachments});const member=rig.addPerson("member","Example Person"),other=rig.addPerson("other","Other Person");
+async function world(enabled=true,attachments=false,realAudit=false) {
+  let now=Date.now();rig=await s3bRig({now:()=>now,attachments,realAudit});const member=rig.addPerson("member","Example Person"),other=rig.addPerson("other","Other Person");
   const admin=await rig.signIn("admin"),browser=await rig.signIn("member"),outsider=await rig.signIn("other");
   const made=await rig.call(admin,"POST","/hub/v1/rooms",{name:"Project",people:[personKeyString(member)]});expect(made.status).toBe(200);const roomId=made.json.room.id as string;
   const settings=async (value:Record<string,unknown>)=>{const current=await rig!.call(admin,"GET","/hub/v1/admin/ai-apps");return rig!.call(admin,"PATCH","/hub/v1/admin/ai-apps",{...current.json,...value});};
@@ -218,6 +218,24 @@ it("returns the actual leased answer to this app without another browser questio
   expect((await rig!.call(w.browser,"POST",`/hub/v1/rooms/${row.room_id}/messages`,{text:"A different browser question",idempotencyKey:randomUUID()})).status).toBe(200);
   const result=await a.call("hub_ask_result",{id:asked.id});expect(result).toMatchObject({ok:true,status:"answered",answer:text});
   expect(JSON.stringify(result)).not.toContain("different browser question");
+});
+it("keeps app posts and question handoff readable with the real encrypted store without audit content pointers",async()=>{
+ const w=await world(true,false,true),{e,link}=await w.exposure(),a=await w.app();
+ const post=await a.call("hub_room_post",{room:w.roomId,text:"Visible app post"});expect(post.ok).toBe(true);
+ const page=await rig!.call(w.browser,"GET",`/hub/v1/rooms/${w.roomId}/messages`);
+ expect(page.json.messages.find((m:{id:string})=>m.id===post.messageId)?.text).toBe("Visible app post");
+ await rig!.http.receive(rig!.frame("reconcile",{afterReceiptSequence:0,messages:[]},link) as never,link);
+ const asked=await a.call("hub_ask",{agent:e.id,text:"Real encrypted question"});expect(asked.status).toBe("still-working");
+ await vi.waitFor(()=>expect(rig!.sent.some(s=>s.frame.type==="question")).toBe(true));
+ const question=rig!.sent.find(s=>s.frame.type==="question")!.frame.payload as {text:string;identity:{messageId:string}};
+ expect(question.text).toBe("Real encrypted question");
+ const messageId=question.identity.messageId,answerId=randomUUID(),text="Real encrypted answer",digest=createHash("sha256").update(text).digest("hex");
+ const released=await rig!.http.receive(rig!.frame("authorize.request",{messageId,operationId:randomUUID(),exposureRevision:1,phase:"release-answer",answer:{answerId,contentDigest:digest}},link) as never,link);expect(released?.payload).toMatchObject({ok:true});
+ await rig!.http.receive(rig!.frame("answer",{messageId,answerId,text,contentDigest:digest,releaseLease:(released!.payload as {lease:unknown}).lease},link) as never,link);
+ expect(await a.call("hub_ask_result",{id:asked.id})).toMatchObject({status:"answered",answer:text});
+ expect(rig!.db.prepare("SELECT content_ref FROM hub_audit WHERE message_id=? AND action='room.message'").get(post.messageId)).toEqual({content_ref:null});
+ expect(rig!.db.prepare("SELECT content_ref FROM hub_audit WHERE message_id=? AND action='question.accepted'").get(messageId)).toEqual({content_ref:null});
+ expect(rig!.db.prepare("SELECT record_id FROM hub_audit_content WHERE ref=(SELECT question_ref FROM hub_messages WHERE id=?)").get(messageId)).toEqual({record_id:`message:${messageId}`});
 });
 it("preserves the original post and person budget when an exact request is retried after a mount restart",async()=>{
   const w=await world(),a=await w.app(),input={room:w.roomId,text:"A retained post",operationId:randomUUID()},first=await a.call("hub_room_post",input);

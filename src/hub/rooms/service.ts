@@ -663,6 +663,7 @@ export class HubGroupRooms {
       const post = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name: this.name(db, me) }, body.text, body.mentions, body.idempotencyKey, digest, body.replyTo ?? null);
       if(ctx.application)db.prepare("INSERT INTO hub_mcp_room_posts VALUES(?,?,?)").run(post.id,ctx.application.id,ctx.application.name);
       if (refs.length) this.store().bindPost(db, refs, post.id);
+      if(ctx.application)this.core.deps.content.bindMessage?.(tx,post.content_ref,post.id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.message", result: "completed", roomId: id, messageId: post.id, ...(ctx.application?{}:{contentRef: post.content_ref}) });
       this.automation.human(db, post);
       this.agents.enqueue(db, tx, { ...post, mentions: JSON.stringify(body.mentions.filter(m => m !== "assistant")) }, member.id,
