@@ -56,6 +56,10 @@ does not extract answers, so it matters for a later phase, not the first.
 
 One-shot mode is unattended by design. Proposed rules, all of which exist as CLI settings today except where marked:
 
+- **No enforced sandbox, no Codex (M-3224).** On a Windows computer where Codex's sandbox cannot enforce the
+  one-folder rule, Codex is shown as unavailable for a personal agent, with the reason; nothing is installed or
+  changed on the computer to make it work. Claude stays eligible there, because its configuration has no shell.
+  Which Windows versions qualify comes from the builder's proof, not from this note.
 - **Read-only.** Codex runs in its read-only sandbox. Claude runs with read tools only and permission prompts off.
   Anything that would need approval is refused, not queued.
 - **One folder.** The agent sees one folder the person chooses. The installer creates an empty default
