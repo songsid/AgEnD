@@ -4649,6 +4649,14 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .sidebar.fleet-side:not(.drawer-narrow) .inst-nav.compact .v-li, .sidebar.fleet-side:not(.drawer-narrow) .inst-nav.compact .v-inst { height: 52px; min-height: 52px; padding-block: 0; }
   .sidebar.fleet-side:not(.drawer-narrow) .inst-nav.compact .inst-status { width: 10px; height: 10px; }
   .sidebar.fleet-side:not(.drawer-narrow) .inst-nav.compact .inst-line2 { margin-top: 0; }
+  /* M-3222 (the user, iPhone, beta.6): the reminders were big boxes — a fresh reply tinted its row (and pulsed), and a
+     finger's left-over hover tinted another, blocks of uneven height with a lighter band between neighbours. In the drawer
+     (either width) a fresh reply is a quiet marker at the row's own height, its reply time in the accent (.inst-when.fresh);
+     the open row keeps its background. No counts, no dots (the user's rule for the Fleet side). */
+  .sidebar.fleet-side .inst.replied:not(.active):not(:hover) { background: none; }
+  .sidebar.fleet-side .inst.just:not(.active) { animation: none; }
+  .sidebar.fleet-side .inst-nav.compact .inst-when.fresh { color: var(--accent); font-weight: var(--fw-semibold); }   /* Compact mutes the time; not a fresh one here */
+  @media (hover: none) { .sidebar.fleet-side .inst:hover:not(.active) { background: none; } }
   /* M-3212 (the user, 11-16): 窄版, chosen per browser (instance-nav.js, 手機側欄): the drawer as it was before M-3211 — 300 px with
      the page beside it, the sidebar icon at its right, rows of 48 px in the list's own sizes (the avatars as M-3209 left them). */
   .sidebar.fleet-side.drawer-narrow { width: 300px; }
