@@ -33,5 +33,12 @@
     "failed": 0,
     "backend": "WSL Node built-ins only"
   },
-  "newWindowsOrModelRuns": 0
+  "newWindowsOrModelRuns": 0,
+  "standaloneCheck": "harness/public-evidence.check.mjs",
+  "vitestCollection": {
+    "beforeEvidenceFiles": 1,
+    "afterEvidenceFiles": 0,
+    "afterAllUnitFiles": 2346,
+    "realPersonalSuiteStillCollected": true
+  }
 }
