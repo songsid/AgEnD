@@ -39,7 +39,8 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | `hub`, `hub_member` in fleet.yaml | [Config keys](#config-keys) |
 | how many, how long | [Limits](#limits) |
 | virtual teams, My teams, team lead, team grants | [Teams](#teams) |
-| custom roles, sharing a ClassicBot room | [Not available yet](#not-available-yet) |
+| Roles, second administrator, assignments, audit, migration, roles off | [Roles and permissions](#roles-and-permissions) |
+| sharing a ClassicBot room | [Not available yet](#not-available-yet) |
 | can't connect, certificate, different host names, old tab | [Troubleshooting](#troubleshooting) |
 
 ## What the Hub is
@@ -530,6 +531,20 @@ approval or a join code.
   with the reason ("Connecting a fleet is not included in your access.", "Paused by your Hub admin.", "Your account
   can sign in, but no actions are allowed yet.").
 
+## Roles and permissions
+
+On a Hub that offers **Administration → Roles and permissions** (角色與權限), use the **Roles / People / Audit log** tabs. Older servers and clients keep their existing interface. Roles never grant reading conversations or seeing spending.
+
+- **Roles** lists built-in Administrator, Manager and Member (Fleet defaults 8, 2 and 1), role purposes and assigned counts. Open a role for its **People / Permissions** pages. Manager/Member names and purposes can be customized; the Administrator definition is fixed.
+- **Create new role** has three steps: **Role info → Permissions → Review**. You can start from Member, Manager or an existing custom role. Nine permissions can be chosen. `hub.admin` is read-only on Administrator; the two approval permissions are not available. Team roster/usage choices are saved but take effect only when team views open.
+- **Assign** opens one panel for several people or AD groups. A role with Hub-management permissions goes to people only. Team scope is shown only when it applies; starts, ends and a Fleet-limit override are under **More options**. Delegated assigners remain limited by their current permission, scope, quota and expiry.
+- Every change ends in **Review**, with named known people losing permissions and the resources to pause. Unverified membership is shown separately. **Save changes** uses only the checked proposal; stale previews must be reviewed again. Another administrator must change your own assignments.
+- Assign Administrator to another person's company account for a second administrator. The first administrator stays configured on the host and cannot be removed here. Authority-reducing writes cannot leave the Hub without a currently verified administrator; check the first administrator's directory account if a roles-off change is refused.
+- **Audit log** has date, person and action filters, named old/new details, and CSV export of up to 5,000 filtered action entries. Narrow filters for larger exports. No conversation content or content references are included. Migration/administrator notices appear in **Notices** and are acknowledged there.
+- **Roles settings** is under the top-right menu. It contains role mode, the first administrator and the allowed-list link. **Manage joining** covers Fleet invitations and join codes, not the allowed list; that and recommended versions require the Administrator's Hub-settings permission.
+- Migration preserves existing access, limits, denies and paused resources. **Apply new defaults for myself** is a once-only checked notice for the first administrator. Until self-use is enabled in the allowed list, saved chat/share/Fleet permissions retain the previous behaviour.
+- **Turn roles off** is a forward mode rollback on the current binary: current self-use rules, denies and paused resources remain; only the first administrator manages the Hub. It does not restore an old graph, downgrade a database or permit an older strict-schema binary to read newer role descriptions. Damaged/incomplete migration state stays held for repair.
+
 ## Room assistant administration
 
 On a Hub that offers the room-assistant pilot, a Hub administrator opens **Administration → Room assistant**
@@ -685,8 +700,8 @@ Two keys in `fleet.yaml`, both off unless something turned them on. Prefer the p
 
 Say plainly that these are not in the product yet:
 
-- **Custom roles and a manager's team view** (several administrators, roles assigned to people or AD groups, a team
-  list with usage counts). Designed and decided; not shipped. Today there is one Hub administrator.
+- **A manager's team view** (team
+  list with usage counts). The permissions can be saved on a role-capable Hub; the views are not shipped.
 - **Sharing a ClassicBot room.** Only fleet agents can be shared.
 - **A second sign-in factor on the Hub.** It uses the company account and password only.
 - **Adding to People excluded from the editor.** The list is shown; it cannot be edited there in this release.
