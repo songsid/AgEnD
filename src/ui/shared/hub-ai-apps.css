@@ -1,0 +1,9 @@
+.hub-ai-apps .hub-app-button { min-height: var(--tap); min-width: var(--tap); }
+.hub-ai-apps .hub-subject-picker .btn { min-height: var(--tap); min-width: var(--tap); }
+.hub-ai-apps :is(select, input[type="url"], input[type="search"]) { min-height: var(--tap); }
+.hub-ai-apps .check { min-height: var(--tap); }
+.hub-ai-apps .hub-app-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.hub-ai-apps .hub-app-list { padding: 0; list-style: none; }
+.hub-ai-apps .hub-app-row { display: grid; gap: var(--s-2); min-width: 0; overflow-wrap: anywhere; }
+.hub-ai-apps textarea { width: 100%; resize: vertical; }
+.hub-ai-apps summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; }

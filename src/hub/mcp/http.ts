@@ -10,7 +10,7 @@ import type {HubSessions} from "../sessions.js";
 import {HubProtocolError,parseStrictJson} from "../validation.js";
 
 const paths=new Set(["/mcp","/.well-known/oauth-protected-resource","/.well-known/oauth-protected-resource/mcp","/.well-known/oauth-authorization-server",
-  "/mcp/oauth/register","/mcp/oauth/authorize","/mcp/oauth/token","/mcp/oauth/revoke","/hub/v1/me/ai-apps","/hub/v1/mcp/consent","/hub/v1/admin/ai-apps"]);
+  "/mcp/oauth/register","/mcp/oauth/authorize","/mcp/oauth/token","/mcp/oauth/revoke","/hub/v1/me/ai-apps","/hub/v1/mcp/consent","/hub/v1/admin/ai-apps","/hub/v1/admin/ai-apps/search"]);
 function json(res:ServerResponse,status:number,value:unknown,headers:Record<string,string>={}) {
   if(res.destroyed||res.writableEnded)return;
   res.writeHead(status,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer",...headers});res.end(JSON.stringify(value));
@@ -106,8 +106,15 @@ export class HubMcpDoor {
       if(!value||typeof value.request!=="string"||Object.keys(value).some(k=>!["request","scopes","cancel"].includes(k)))throw new HubProtocolError("invalid");
       const location=value.cancel===true?this.auth.cancel(value.request):await this.auth.approve(ctx,value.request,value.scopes);return json(res,200,{location});
     }
-    if(path==="/hub/v1/me/ai-apps"){if(method!=="GET"||url.searchParams.size)throw new HubProtocolError("invalid");return json(res,200,{apps:await this.auth.list(ctx),address:this.auth.resource});}
+    if(path==="/hub/v1/me/ai-apps"){
+      if(method!=="GET"||url.searchParams.size)throw new HubProtocolError("invalid");const apps=await this.auth.list(ctx),who=await ctx.requirePerson();let available=true;
+      try{const permit=await this.policy.authorize(who,()=>ctx.isCurrent?.()===true);permit.assertCurrent();}catch(error){if(error instanceof HubProtocolError&&error.code==="denied")available=false;else throw error;}
+      if(ctx.isCurrent?.()!==true)throw new HubProtocolError("revoked");return json(res,200,{apps,address:this.auth.resource,available});
+    }
     if(path.startsWith("/hub/v1/me/ai-apps/")){if(method!=="DELETE"||url.searchParams.size)throw new HubProtocolError("invalid");await this.auth.disconnect(ctx,path.split("/").at(-1)!);return json(res,200,{ok:true});}
+    if(path==="/hub/v1/admin/ai-apps/search") {
+      if(method!=="GET")throw new HubProtocolError("invalid");return json(res,200,await this.policy.search(ctx,fields(url.searchParams)));
+    }
     if(path==="/hub/v1/admin/ai-apps") {
       if(url.searchParams.size)throw new HubProtocolError("invalid");
       if(method==="GET")return json(res,200,await this.policy.settings(ctx));

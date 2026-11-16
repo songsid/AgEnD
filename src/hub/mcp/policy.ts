@@ -14,6 +14,7 @@ interface Row {revision:number;enabled:number;everyone:number;subjects:string}
 const image=(v:unknown)=>JSON.stringify(v);
 
 export class HubMcpPolicy implements HubMcpAppPolicy {
+  private readonly searches=new Map<string,{at:number;used:number}>();
   constructor(private readonly core:HubCore,private readonly endAll:(reason:"feature-disabled"|"not-allowed")=>void) {}
   private row():Row { return this.core.atomic(db=>{
     const row=db.prepare("SELECT revision,enabled,everyone,subjects FROM hub_mcp_settings WHERE singleton=1").get() as Row|undefined;
@@ -21,6 +22,23 @@ export class HubMcpPolicy implements HubMcpAppPolicy {
   }); }
   read() {const row=this.row();return {revision:row.revision,enabled:row.enabled===1,everyone:row.everyone===1,subjects:JSON.parse(row.subjects) as z.infer<typeof subject>[]};}
   async settings(ctx:HubRequestContext) {await ctx.requireAdmin();if(ctx.isCurrent?.()!==true)throw new HubProtocolError("revoked");return this.read();}
+  async search(ctx:HubRequestContext,input:unknown) {
+    const query=validated(z.strictObject({kind:z.enum(["person","group"]),q:plain(64).min(2).refine(q=>q===q.trim()&&!/[\u0000-\u001f\u007f]/.test(q))}),input);
+    await ctx.requireAdmin();const who=await ctx.requirePerson(),directory=this.core.deps.directory,people=directory.searchGrantPeople,groups=directory.searchPolicyGroups;
+    const at=this.core.now(),key=personKeyString(who);for(const [id,b]of this.searches)if(at<b.at||at-b.at>=60_000)this.searches.delete(id);
+    const bucket=this.searches.get(key);if(bucket?bucket.used>=30:this.searches.size>=1024)throw new HubProtocolError("backpressure");
+    this.searches.set(key,{at:bucket?.at??at,used:(bucket?.used??0)+1});
+    const fence=()=>{this.core.check();if(ctx.isCurrent?.()!==true||this.core.deps.directory!==directory||directory.searchGrantPeople!==people||directory.searchPolicyGroups!==groups)throw new HubProtocolError("revoked");};
+    fence();
+    if(query.kind==="person") {
+      if(!people)throw new HubProtocolError("unavailable");const result=await this.core.readDirectory(who,this.core.groupContext(ctx),()=>people.call(directory,query.q));fence();
+      if(!result.ok)throw new HubProtocolError("unavailable");const rows=validated(z.array(z.strictObject({person,login:plain(256),displayName:plain(256)})).max(20),result.people);
+      if(rows.some(p=>p.person.realm!==directory.realm))throw new HubProtocolError("unavailable");return {people:rows,truncated:result.truncated===true};
+    }
+    if(!groups||directory.groupPolicy!=="ad-direct-guid")throw new HubProtocolError("unavailable");
+    const result=await this.core.readDirectory(who,this.core.groupContext(ctx),()=>groups.call(directory,query.q));fence();if(!result.ok)throw new HubProtocolError("unavailable");
+    return {groups:validated(z.array(z.strictObject({objectId:uuid,cn:plain(256),dn:plain(2048)})).max(20),result.groups),truncated:result.truncated===true};
+  }
   async save(ctx:HubRequestContext,input:unknown) {
     const value=validated(inputSchema,input), actor=await ctx.requireAdmin(), before=this.row(), directory=this.core.deps.directory;
     if(value.revision!==before.revision)throw new HubProtocolError("stale");

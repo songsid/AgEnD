@@ -1,0 +1,126 @@
+{
+  "parentSource": "992a542b20f4fb447b4aabae2f79b09899c66ddc",
+  "inputs": [
+    {
+      "path": "scripts/manual/hub-connector-4c/browser.mts",
+      "sha256": "710d52edc5dafb2096d2271ec00ce0b5a2a7c76977da76ad3a981e8ef8fbe1f9",
+      "mode": "0o664"
+    },
+    {
+      "path": "scripts/manual/hub-connector-4c/client-server.mts",
+      "sha256": "3bebb19f75246eb956d45d1b3996c22da412384002e54cad5d92ae77d5ee9c59",
+      "mode": "0o664"
+    },
+    {
+      "path": "scripts/manual/hub-connector-4c/clients.mts",
+      "sha256": "d3ca312d06349a184e4efc5f1b80647a93c769ea94fddd5b85284c68947c7970",
+      "mode": "0o664"
+    },
+    {
+      "path": "scripts/manual/hub-connector-4c/rig.mts",
+      "sha256": "049666abaacfd3feb65ad954caef493648623eb83f71ffbb86805034d02acd53",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/auth-api.ts",
+      "sha256": "2a75ad632e5a8b9842c0ee57fb01805e0844b30d8a90691315b378daf30f12bd",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "3af9bd8f7721a41eeaffcf99bb6f5379778d90e9dcc8b92888a9603e4454c10b",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "63ffab88912a99b5ae4ae518ee060e45939d448dfd9ee5dd361fb88007e88f92",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/hub/mcp/http.ts",
+      "sha256": "4193556970a104d836929eef3b8b8627530de6a594670a9d4acfeff580c66dd7",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/hub/mcp/policy.ts",
+      "sha256": "ffbdeb851875bdc3632eb9670d2c1ba946875213c3ff1128d82787a15f37b658",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/ui/hub-ai-apps-strings.js",
+      "sha256": "161b00b1e915399ca1488aa8ddebe5e0be28f77a54c5c1d060b08cda9e3fe100",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/ui/hub-ai-apps.js",
+      "sha256": "3c1da4b8b417e7f5109af7ba3b7ac1a05c27597baa66fce73e14b8a38b204423",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "2fbded34ef9bc4a6b5cae20b0887dd9acf64b69843f72f9056fc213ae71c1d0c",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/ui/hub-room-settings.js",
+      "sha256": "32d3437d6cabbc56a4d3aaa7dc706ced63e40b4fbe76a6234aae2f77c9609fc5",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "23cfcd73ea1314ca37c41b89265454e16f9881536896e05939d7becb11aedc8f",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "201bf561c9a69460785126c2c7806340c875c79c9124aa57ecc36dd60abaa775",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/ui/shared/connector-prompt.d.ts",
+      "sha256": "cac7aa89259fe49393d7dc4ef049ed9e97a4917466fefc93685e836a74694759",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/ui/shared/connector-prompt.js",
+      "sha256": "e767a6097264fd1ae3109dba3bb26f9614cfd0e4efae31145242678212573294",
+      "mode": "0o664"
+    },
+    {
+      "path": "src/ui/shared/hub-ai-apps.css",
+      "sha256": "36b42926f4d2ff9aae67edad151264c5542b748f8602724aa30e515c946d2927",
+      "mode": "0o664"
+    },
+    {
+      "path": "tests/hub-groups-mount-s89.test.ts",
+      "sha256": "bf87c29575c880484cad5306a95c2f33a478163700dda7f481cc2bebbdeb27b8",
+      "mode": "0o664"
+    },
+    {
+      "path": "tests/hub-mcp-pages-api-m3240.test.ts",
+      "sha256": "7bddbd1e2ed9fa5bef491a5ee3bb14a2adb9217dc0bd03d81fe1d65f1d19c27a",
+      "mode": "0o664"
+    },
+    {
+      "path": "tests/hub-mcp-pages-ui-m3240.test.ts",
+      "sha256": "f1415a4fd76aa650c1972f41dd85941364fb1ba9d665edcedc836745c0025197",
+      "mode": "0o664"
+    },
+    {
+      "path": "tests/hub-shared-modules-a.test.ts",
+      "sha256": "926aa4c7f416fd84fe5469882895e7a5fd31c74fc9118ebd1b181651a0c70b4a",
+      "mode": "0o664"
+    },
+    {
+      "path": "tests/hub-skill.test.ts",
+      "sha256": "d7d876571506bf9884410880def9c6116c2980b18b00da138737d62acd144e6d",
+      "mode": "0o664"
+    }
+  ],
+  "stages": {
+    "pages": "Original34 checks with desktop4 preferred; font-only phone retake19 overlapping checks with phone4 preferred. Served UI bodies still match current sources in preferred-bindings.json.",
+    "gates": "Full shell696 and UI366; UI source unchanged since that capture.",
+    "types": "Both programs0 at page stage; parent R2 both programs0 independently.",
+    "native": "Codex and Claude success on parent992a plus these unchanged UI source files. Future harness parsing now requires completed tool events; public proof separately reconciles the captured events."
+  }
+}

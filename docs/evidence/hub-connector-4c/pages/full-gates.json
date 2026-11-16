@@ -1,0 +1,14 @@
+[
+  {
+    "gate": "shell-full",
+    "exit": 0,
+    "seconds": 84.403,
+    "headlessLinux": true
+  },
+  {
+    "gate": "ui-full",
+    "exit": 0,
+    "seconds": 92.887,
+    "headlessLinux": true
+  }
+]

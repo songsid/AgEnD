@@ -23,6 +23,7 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | move the Hub to another address or port, Hub address (Hub 位址) on the Hub's computer | [Changing the Hub's address](#changing-the-hubs-address) |
 | Fleet connection address (Fleet 連接位址), the address Fleets connect to, Fleets that move | [Changing the Fleet connection address](#changing-the-fleet-connection-address) |
 | the Hub's sign-in page, which account, wrong password | [Signing in to the Hub](#signing-in-to-the-hub) |
+| My AI apps, 我的 AI App, Claude Code or Codex without AgEnD, remote MCP consent | [Connecting your own AI app](#connecting-your-own-ai-app) |
 | Let colleagues join, 讓同仁加入, which groups, the sentence to send | [Letting colleagues join](#letting-colleagues-join) |
 | join codes, 加入碼, create, end, used up, limits | [Join codes](#join-codes) |
 | Settings → Hub, Hub address, "address space code", Join code included | [Connecting a Fleet](#connecting-a-fleet) |
@@ -131,6 +132,28 @@ is never kept." Fields **Account** and **Password**, button **Sign in**.
   again later." → the Hub cannot reach the company directory; nothing the user typed is wrong.
 - When the page was opened from a Fleet that is connecting, the button reads **Sign in and connect Fleet**: that one
   press signs in and approves the connection.
+
+## Connecting your own AI app
+
+When the Hub offers **My AI apps** (我的 AI App), open it from the person's menu. **Connect your app** shows the
+**Hub MCP address** and **Copy setup prompt** for Claude Code, Codex or another MCP app. The colleague adds only the
+Hub's HTTPS `/mcp` address in their app; they install no AgEnD command or local proxy. The prompt contains no secret.
+The Hub must have a certificate the app already trusts. If the app refuses its certificate, ask the administrator to
+fix that certificate; never suggest disabling certificate verification or trusting a self-signed Hub.
+
+The app opens the Hub's normal sign-in page. After company sign-in, the person chooses consent: read their shared
+rooms, post in those rooms, and ask agents they may ask. These three ticks start on; answering other people's
+questions is a disabled later permission. Explain that content read goes to the person's AI app and its provider.
+Posts display the person's name via the app. An app name is unverified display metadata, not proof of its vendor or
+an approval. There is no administrator operation, `@all`, Hub assistant/General or file content. Direct questions and
+their result IDs belong to that app; browser and other-app one-to-one history is not exposed.
+
+**Disconnect** (中斷連接) takes effect at once. A connection ends after 30 days without use or an authoritative
+account/access denial. An administrator's **Let people connect their own AI apps** starts off in Administration →
+This Hub, with the common AD group/team/person picker. Narrowing that allowance ends existing app connections;
+adding people or otherwise widening it keeps them. The room manager's **Allow AI apps to read and post** starts on in
+Room settings. Turning it off leaves the room listed with a reason but refuses app reads/posts; browser use remains.
+Limits are five posts per person per minute and thirty direct agent questions per person per hour across their apps.
 
 ## Letting colleagues join
 
