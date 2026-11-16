@@ -1,0 +1,205 @@
+{
+  "scope": "Headless Linux Chromium; real Fleet dispatcher and Hub HTTP/SQLite; fake directory, empty Fleet. No native title-bar claim.",
+  "checks": [
+    {
+      "name": "fleet-local production CSP",
+      "ok": true
+    },
+    {
+      "name": "fleet-local standalone manifest",
+      "ok": true
+    },
+    {
+      "name": "fleet-local launch colors",
+      "ok": true
+    },
+    {
+      "name": "fleet-local icon 192x192",
+      "ok": true
+    },
+    {
+      "name": "fleet-local icon 512x512",
+      "ok": true
+    },
+    {
+      "name": "fleet-local browser parses manifest",
+      "ok": true
+    },
+    {
+      "name": "fleet-local light live color",
+      "ok": true
+    },
+    {
+      "name": "fleet-local dark live color",
+      "ok": true
+    },
+    {
+      "name": "fleet-local custom live color",
+      "ok": true
+    },
+    {
+      "name": "fleet-local no script errors",
+      "ok": true
+    },
+    {
+      "name": "fleet-named production CSP",
+      "ok": true
+    },
+    {
+      "name": "fleet-named standalone manifest",
+      "ok": true
+    },
+    {
+      "name": "fleet-named launch colors",
+      "ok": true
+    },
+    {
+      "name": "fleet-named icon 192x192",
+      "ok": true
+    },
+    {
+      "name": "fleet-named icon 512x512",
+      "ok": true
+    },
+    {
+      "name": "fleet-named browser parses manifest",
+      "ok": true
+    },
+    {
+      "name": "fleet-named light live color",
+      "ok": true
+    },
+    {
+      "name": "fleet-named dark live color",
+      "ok": true
+    },
+    {
+      "name": "fleet-named custom live color",
+      "ok": true
+    },
+    {
+      "name": "fleet-named no script errors",
+      "ok": true
+    },
+    {
+      "name": "hub-named production CSP",
+      "ok": true
+    },
+    {
+      "name": "hub-named standalone manifest",
+      "ok": true
+    },
+    {
+      "name": "hub-named launch colors",
+      "ok": true
+    },
+    {
+      "name": "hub-named icon 192x192",
+      "ok": true
+    },
+    {
+      "name": "hub-named icon 512x512",
+      "ok": true
+    },
+    {
+      "name": "hub-named browser parses manifest",
+      "ok": true
+    },
+    {
+      "name": "hub-named light live color",
+      "ok": true
+    },
+    {
+      "name": "hub-named dark live color",
+      "ok": true
+    },
+    {
+      "name": "hub-named custom live color",
+      "ok": true
+    },
+    {
+      "name": "hub-named no script errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "file": "fleet-local-light.png",
+      "color": "rgb(255, 255, 255)",
+      "count": 1,
+      "media": null,
+      "osLight": true,
+      "sha256": "ba602b9925d919f758362639af43599f2b75b6bdc0b3ea2b050b53af7108b6e6"
+    },
+    {
+      "file": "fleet-local-dark.png",
+      "color": "rgb(33, 33, 33)",
+      "count": 1,
+      "media": null,
+      "osLight": true,
+      "sha256": "dccd34aae505439df6d20ee1d7eed196a45d4b6bb9d638e902456ff60605cdc9"
+    },
+    {
+      "file": "fleet-local-custom.png",
+      "color": "rgb(23, 49, 63)",
+      "count": 1,
+      "media": null,
+      "osLight": true,
+      "sha256": "fd685446208ab19b0c6737cca99b20b0631f10a2c3fd33706dad8f69473a5329"
+    },
+    {
+      "file": "fleet-named-light.png",
+      "color": "rgb(255, 255, 255)",
+      "count": 1,
+      "media": null,
+      "osLight": true,
+      "sha256": "f6b1eb8ab430734d7c14454e5bcfd6e5df81b15276e2490f9a3d512790b480bc"
+    },
+    {
+      "file": "fleet-named-dark.png",
+      "color": "rgb(33, 33, 33)",
+      "count": 1,
+      "media": null,
+      "osLight": true,
+      "sha256": "34bde870ddd97527b5167a3cbcab74e9084f67276d6db76993c1d4d2b6f8b74b"
+    },
+    {
+      "file": "fleet-named-custom.png",
+      "color": "rgb(23, 49, 63)",
+      "count": 1,
+      "media": null,
+      "osLight": true,
+      "sha256": "ad0dfd4faf269d03621f54f8e1e46a4e3d802db253937fdbe548e5002c60a543"
+    },
+    {
+      "file": "hub-named-light.png",
+      "color": "rgb(255, 255, 255)",
+      "count": 1,
+      "media": null,
+      "osLight": true,
+      "sha256": "d52a0df7a2e8d655191ddd032b1eed1926771834483973544b079631ae3ef155"
+    },
+    {
+      "file": "hub-named-dark.png",
+      "color": "rgb(33, 33, 33)",
+      "count": 1,
+      "media": null,
+      "osLight": true,
+      "sha256": "f6dbd999f5aa178b88b37d3e63a0ac1c140d3bb562e63d70f5d58c085f358bf8"
+    },
+    {
+      "file": "hub-named-custom.png",
+      "color": "rgb(23, 49, 63)",
+      "count": 1,
+      "media": null,
+      "osLight": true,
+      "sha256": "04a98049bc021a78e914d9b81d978a6c6b56826289b617ebe078e6b0804edc88"
+    }
+  ],
+  "browser": "156.0.8078.4",
+  "cleanup": {
+    "browserClosed": true,
+    "listenersClosed": true,
+    "privateHomeRemoved": true
+  }
+}

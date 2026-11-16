@@ -1,28 +1,30 @@
-# Installed-window title-bar acceptance (M-3214)
+# Headless theme-color acceptance (M-3214)
 
-From WSL with Windows Chrome and Node installed:
+From Linux/WSL, using an owned Playwright installation and Linux Chromium:
 
 ```sh
+PW_DIR=/path/to/owned/playwright-prefix \
+PLAYWRIGHT_BROWSERS_PATH=/path/to/owned/linux-browsers \
 node_modules/.bin/tsx scripts/manual/pwa-titlebar/run.mts
 ```
 
 Uses a fresh scratch `AGEND_HOME`, the real Fleet web dispatcher, a test Hub HTTP service,
-and a fresh Windows Chrome profile. No Fleet start, CLI, updater or live user profile is used.
-The named HTTPS listener has a temporary test certificate; only this fresh browser process
+and headless Chromium contexts. No Fleet start, CLI, updater or live user profile is used.
+The named HTTPS listener has a temporary test certificate; only the test browser context
 ignores its trust error and maps `agend-pwa.test` to loopback. Host admission and the
-page's production CSP stay enabled. This checks URL routing/install behavior, not
-production certificate provisioning.
+page's production CSP stay enabled. This checks URL/manifest routing, not production
+certificate provisioning or a native installed window.
 
-Windows UI Automation invokes Chrome’s own Install app menu and confirmation dialog, creating real installed apps. Each must report standalone
-mode. Light and dark run against an emulated light OS; the PNG captures the exact owned
-Windows app window, including its native title bar. Caption brightness is checked. A live
-custom surface change is checked separately. All installed test apps are uninstalled,
-the browser closed and owned processes checked before the profile/scratch is removed. On failure,
-`scope-private.json` points to retained owned scratch for diagnosis; never publish it.
+Checks local Fleet, named HTTPS Fleet and signed-in named HTTPS Hub pages. Each manifest is parsed by
+Chromium, icons must load, and live light/dark/custom colors must leave exactly one
+unqualified `theme-color` tag while the emulated OS stays light. The screenshots show
+page content, not an OS title bar. The browser, listeners and scratch home close in `finally`.
 
-Output: `.artifacts/m3214/browser` (PNG/result/cleanup; private scope file excluded from evidence).
+Output: `.artifacts/m3214/headless` (PNGs, checks and cleanup receipt).
+
+Browser automation stays headless inside WSL. Any native Windows installed-window check
+needs the leader to obtain the user's approval and a time slot first. This runner has no
+Windows executable or headed mode.
 
 Primary references: [Edge theme colors](https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/how-to/icon-theme-color)
 and [Chromium PWA protocol](https://chromedevtools.github.io/devtools-protocol/tot/PWA/).
-
-Set `PWA_BROWSER=edge` to select Edge. Installation and removal use native browser menus, not `--app` or a simulated standalone page; no setting is changed in the user’s browser.

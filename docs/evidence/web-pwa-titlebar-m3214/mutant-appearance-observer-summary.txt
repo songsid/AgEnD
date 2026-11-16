@@ -1,0 +1,5 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/web-pwa-theme-m3214.test.ts > installed app chrome follows the rendered page > follows and clears page/owner appearance colors after DOM and stylesheet changes
+AssertionError: expected 'rgb(33, 33, 33)' to be 'rgb(23, 49, 63)' // Object.is equality
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 skipped (6)

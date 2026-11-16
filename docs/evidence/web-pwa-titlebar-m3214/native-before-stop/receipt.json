@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "label": "fleet-local-light",
+      "color": "rgb(255, 255, 255)",
+      "standalone": true,
+      "screen": {
+        "captionColor": "#ffffff",
+        "width": 1120,
+        "owned": true,
+        "height": 820
+      }
+    },
+    {
+      "label": "fleet-local-dark",
+      "color": "rgb(33, 33, 33)",
+      "standalone": true,
+      "screen": {
+        "captionColor": "#212121",
+        "width": 1120,
+        "owned": true,
+        "height": 820
+      }
+    },
+    {
+      "label": "fleet-local-custom",
+      "color": "rgb(23, 49, 63)",
+      "live": true
+    }
+  ],
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.79",
+    "revision": "@6dc9bc3bdaea5c35ed6d41fceab2f7a3a2227c4f",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.43"
+  },
+  "scope": "Supplementary actual registered Windows app captured before the 05:13Z stop instruction; local Fleet only. No named/Hub native install or completed uninstall claim.",
+  "closed": "At 05:15Z, exact-tag Chrome/node processes stopped; remaining0. Test app registration/profile preserved for approved cleanup slot."
+}
