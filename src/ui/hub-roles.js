@@ -7,7 +7,7 @@ import {RoleAudit} from "./hub-role-audit.js";
 import {personKey,personName,roleName,roleDescription,assignedSubjects,assignmentCount,subjectId,scopeName,roleError} from "./hub-role-view.js";
 const copy=value=>structuredClone(value);
 function Tabs({items,value,onChange,disabled=false,label}){
- return html`<div class="hub-role-tabs" role="tablist" aria-label=${label}>${items.map(item=>html`<button key=${item.key} type="button" role="tab" aria-selected=${item.key===value} class=${item.key===value?"is-active":""} disabled=${disabled} onClick=${()=>onChange(item.key)}>${item.label}</button>`)}</div>`;
+ return html`<div class="hub-role-tabs" role="tablist" aria-label=${label}>${items.map(item=>html`<button key=${item.key} type="button" role="tab" tabindex=${item.key===value?0:-1} onKeyDown=${e=>{const at=items.findIndex(row=>row.key===value),keys={ArrowRight:(at+1)%items.length,ArrowLeft:(at+items.length-1)%items.length,Home:0,End:items.length-1};if(Object.hasOwn(keys,e.key)){e.preventDefault();const next=keys[e.key];onChange(items[next].key);(e.currentTarget||e.target).parentNode.querySelectorAll('[role="tab"]')[next]?.focus();}}} aria-selected=${item.key===value} class=${item.key===value?"is-active":""} disabled=${disabled} onClick=${()=>onChange(item.key)}>${item.label}</button>`)}</div>`;
 }
 function RoleList({view,busy,canEdit,canAssign,onOpen,onAssign,onCreate}){
  return html`<section class="card hub-role-list-page"><div class="hub-card-head"><h2>${hr("roles")}</h2>${canEdit?html`<button type="button" class="btn btn-primary" disabled=${busy} onClick=${onCreate}>${hr("newRole")}</button>`:null}</div>
@@ -43,8 +43,8 @@ export function HubRoles({client}){
  const [styled,setStyled]=useState(null),[styleRetry,setStyleRetry]=useState(0),[view,setView]=useState(null),[failure,setFailure]=useState(null),[busy,setBusy]=useState(false),[saved,setSaved]=useState(false),[reload,setReload]=useState(0),[tab,setTab]=useState("roles"),[page,setPage]=useState(null),[wizard,setWizard]=useState(null),[assign,setAssign]=useState(null),[settings,setSettings]=useState(false),[checked,setChecked]=useState(null);
  const epoch=useRef(0),writing=useRef(false);
  useEffect(()=>{let live=true;linkRoleCss().then(out=>{if(live)setStyled(out);});return()=>{live=false;};},[styleRetry]);
- useEffect(()=>{let live=true;const mine=++epoch.current;setView(null);setChecked(null);
-  Promise.resolve().then(()=>client.roles()).then(out=>{if(!live||mine!==epoch.current)return;if(out.ok){setView(out.view);setFailure(null);if(!out.view.policy)setTab("audit");}else setFailure(roleError(out));},()=>{if(live&&mine===epoch.current)setFailure(hr("failed"));});
+ useEffect(()=>{let live=true;const mine=++epoch.current;setView(null);setChecked(null);setWizard(null);setAssign(null);setSettings(false);
+  Promise.resolve().then(()=>client.roles()).then(out=>{if(!live||mine!==epoch.current)return;if(out.ok){setView(out.view);setFailure(null);if(!out.view.policy)setTab(out.view.management.includes("audit.view")?"audit":"roles");}else setFailure(roleError(out));},()=>{if(live&&mine===epoch.current)setFailure(hr("failed"));});
   const end=client.onSignedOut?.(()=>{epoch.current++;writing.current=false;setView(null);setChecked(null);setWizard(null);setAssign(null);setSettings(false);setBusy(false);setFailure(hr("denied"));});return()=>{live=false;epoch.current++;end?.();};
  },[client,reload]);
  const preview=async(policy,origin="page",rootSelf=false)=>{

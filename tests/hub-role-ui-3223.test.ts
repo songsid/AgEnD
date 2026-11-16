@@ -95,3 +95,12 @@ it("shows permission disclosure cues and uses a recipient label in the zh-TW ass
  const {p}=await mount("zh-TW");await click(p.root,"主管");const tab=[...p.root.querySelectorAll('button[role="tab"]')].find((el:any)=>el.textContent.startsWith("權限"))!;fire(tab,"click");await settle(10);expect(p.root.querySelectorAll(".hub-role-disclosure")).toHaveLength(3);
  await click(p.root,"‹ 角色");await click(p.root,"指派");const panel=p.root.querySelector(".hub-role-panel")!;expect(panel.textContent).toContain("指派對象");expect(panel.textContent).not.toContain("操作者");
 });
+
+it("supports arrow and Home navigation between the Roles, People and Audit tabs",async()=>{
+ const {p}=await mount();const roles=p.root.querySelector('.hub-role-top [role="tab"]')!;fire(roles,"keydown",{key:"ArrowRight"});await settle(10);expect(p.root.querySelector(".hub-role-people")).toBeTruthy();
+ const people=[...p.root.querySelectorAll('.hub-role-top [role="tab"]')].find((el:any)=>el.getAttribute("aria-selected")==="true")!;fire(people,"keydown",{key:"Home"});await settle(10);expect(p.root.querySelector(".hub-role-list")).toBeTruthy();
+});
+
+it("does not call audit for a limited Fleet manager without role or audit permission",async()=>{
+ const current={...view(),policy:null,management:["fleets.manage"]};const {p,client}=await mount("en",{roles:vi.fn(async()=>({ok:true,view:current}))});expect(client.roleAudit).not.toHaveBeenCalled();expect(p.root.textContent).toContain("Your role does not allow editing or assigning roles");expect(button(p.root,"Roles settings")).toBeUndefined();
+});
