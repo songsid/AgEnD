@@ -99,6 +99,13 @@ describe("company-owned personal computer enrollment",()=>{
     expect(f.r.store.read().fleets).toEqual([]);
     expect((f.host.sourceMaterial(f.r.db,first) as any).agent).toEqual(f.r.db.prepare("SELECT * FROM hub_personal_agents WHERE id=?").get(first.personalAgentId));
     expect((await f.host.view(f.ctx(f.a))).agent?.shared).toBe(false);
+    expect((await f.host.view(f.ctx(f.a))).agent).toMatchObject({intro:"Shared notes",introBy:"owner"});
+    // A pre-H1 private description is not published merely by reading either owner or public data.
+    f.r.db.prepare("DELETE FROM hub_agent_intros WHERE exposure_id=?").run(first.id);
+    f.r.db.prepare("UPDATE hub_personal_agents SET description=? WHERE id=?").run("private earlier description".repeat(4),first.personalAgentId);
+    expect((await f.host.view(f.ctx(f.a))).agent).toMatchObject({intro:"",description:"private earlier description".repeat(4)});
+    expect(f.r.db.prepare("SELECT COUNT(*) n FROM hub_agent_intros").get()).toEqual({n:0});
+
     const grant=randomUUID(),now=f.core.now();
     f.r.db.prepare("INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state) VALUES(?,1,?,?,1,?,?,?,'[\"ask\"]',?,?,'active')").run(grant,personKeyString(f.a),first.id,personKeyString(f.a),now,personKeyString(f.b),now,now+60000);
     expect((await f.host.view(f.ctx(f.a))).agent?.shared).toBe(true);

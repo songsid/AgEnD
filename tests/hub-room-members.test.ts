@@ -55,7 +55,7 @@ describe("Hub room members panel (section 5)", () => {
     fire(button(pg, "… 其餘 4 個"), "click"); await settle(5);
     expect(agentRows(pg).slice(8)).toEqual([["schedule-bot", "dot warn", "暫停 · 額度用完"], ["old-helper", "dot off", "需要更新 AgEnD"], ["report-bot", "dot off", "離線"], ["desk-notes", "dot off", "上線時回答"]]);
     expect(button(pg, "收合")).toBeTruthy();
-    expect(pg.root.querySelector(".hub-member-assistant").textContent).toBe("房間助理待命 · Hub 提供");
+    expect(pg.root.querySelector(".hub-member-assistant").textContent).toBe("房間助理待命 · Hub 提供Hub 提供的助理，根據這個房間的對話回答。");
     expect(pg.root.querySelector(".hub-room-who p").textContent).toBe("房間裡的每個人都看得到所有訊息與回答。Agent 被 @ 時會讀到最近的對話。");
     expect(pg.root.querySelector(".hub-member-agent .hub-member-open").getAttribute("title")).toBe("AgEnD Agent"); // older DTO: do not guess personal vs Fleet
   });

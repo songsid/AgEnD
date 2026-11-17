@@ -172,3 +172,6 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
 .inst-alt.hub-answer-only-note, .cmd-desc.hub-answer-only-note { white-space: normal; overflow-wrap: anywhere; }
 
 .hub-chat-head.hub-answer-only-head { padding-block: var(--s-2); }
+
+/* Room context H1: a short public introduction stays readable on narrow screens. */
+.hub-chat-title .hub-agent-intro-line{white-space:normal;overflow-wrap:anywhere;text-overflow:clip}

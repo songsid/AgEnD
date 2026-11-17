@@ -1,3 +1,4 @@
+import { AgentIntroEditor, hi } from "./hub-agent-intro.js";
 import {hp,personalAgentQuestionHint} from "./hub-personal-agent-strings.js";
 import * as ownerEntryWords from "./hub-owner-strings.js";
 import * as companyViews from "./hub-company-join.js";
@@ -617,7 +618,7 @@ function ChatLauncher() {
     let live = true;
     if (typeof hubClient().room !== "function") return undefined;
     Promise.all(groups.map((r) => hubClient().room(r.id).then((d) => (d && Array.isArray(d.members) ? d.members : [])
-      .filter((m) => m && m.kind === "agent" && !m.mine).map((m) => ({ key: `room:${r.id}:${m.id}`, name: m.name || "", sub: hc("launchInRoom", r.name), href: roomPath(r.id) })), () => [])))
+      .filter((m) => m && m.kind === "agent" && !m.mine).map((m) => ({ key: `room:${r.id}:${m.id}`, name: m.name || "", sub: [m.intro,hc("launchInRoom", r.name)].filter(Boolean).join(" · "), href: roomPath(r.id) })), () => [])))
       .then((all) => { if (live) setInRooms(all.flat()); });
     return () => { live = false; };
   }, [groupKey]);
@@ -633,9 +634,9 @@ function ChatLauncher() {
   const chats = rs.rooms.filter((r) => r.kind !== "group" && !r.archived);
   const shownIn = new Set(chats.map((r) => (r.legacy || r.agent || {}).exposureId).filter(Boolean));
   const rows = [
-    ...chats.map((r) => ({ key: r.id, name: r.assistant ? hroom("hubAssistant") : r.name, sub: r.assistant ? hroom("providedByHub") : r.agent?.owner?.name ? hc("launchOwner", r.agent.owner.name) : "",
+    ...chats.map((r) => ({ key: r.id, name: r.assistant ? hroom("hubAssistant") : r.name, sub: r.assistant ? hi("assistant") : [r.agent?.intro,r.agent?.owner?.name ? hc("launchOwner", r.agent.owner.name) : ""].filter(Boolean).join(" · "),
       href: roomPath(r.id), online: r.assistant ? (r.presence || "idle") !== "unavailable" : r.agent?.presence === "online" })),
-    ...askable.filter((it) => !shownIn.has(it.exposure.id)).map((it) => ({ key: it.grant.id, name: it.exposure.displayName, sub: it.exposure.answerOnly ? hp("answerOnlyAsker") : hc("launchOwner", it.ownerName || "—"), ask: it })),
+    ...askable.filter((it) => !shownIn.has(it.exposure.id)).map((it) => ({ key: it.grant.id, name: it.exposure.displayName, sub: [it.exposure.intro,it.exposure.answerOnly ? hp("answerOnlyAsker") : hc("launchOwner", it.ownerName || "—")].filter(Boolean).join(" · "), ask: it })),
     ...inRooms,
   ];
   const needle = q.trim().toLowerCase();
@@ -796,7 +797,7 @@ function HubRoomView({ room: given }) {
   return html`<div class=${`hub-chat${showRail ? " with-rail" : ""}`} ref=${split}>
     <section class="hub-chat-main" aria-label=${name}>
       <header class=${`hub-chat-head${room.answerOnly?" hub-answer-only-head":""}`} data-trust="panel-content">${back}<${Avatar} name=${name} size="sm" />
-        <span class="hub-chat-title"><strong>${name}</strong><span class=${`s${room.answerOnly?" hub-answer-only-note":""}`}>${room.answerOnly?hp("answerOnlyAsker"):room.ownerName ? hc("answersFor", room.ownerName) : ""}</span></span>
+        <span class="hub-chat-title"><strong>${name}</strong><span class=${`s${room.answerOnly?" hub-answer-only-note":""}`}>${room.answerOnly?hp("answerOnlyAsker"):room.ownerName ? hc("answersFor", room.ownerName) : ""}</span>${room.intro?html`<span class="s hub-agent-intro-line">${room.intro}</span>`:null}</span>
         ${tag}
         <button type="button" class="icon-btn" aria-pressed=${wide ? String(showRail) : undefined} aria-label=${hc("showInfo")} title=${hc("showInfo")} onClick=${toggleInfo}><${Icon} name="info" /></button>
         <span class="hub-head-tools"><${TextSizeButton} /></span>
@@ -917,7 +918,7 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
 /** The right-hand panel's cards (the usage rail's look): the agent, its quota (G), your access, who sees it, what is not here. */
 function HubRoomInfo({ room, closed = false, denied = false }) {
   const name = room.exposureName || "", owner = room.ownerName || "";
-  return html`<section class="u-provider hub-card hub-agent-card"><${Avatar} name=${name} size="lg" /><strong>${name}</strong>
+  return html`<section class="u-provider hub-card hub-agent-card"><${Avatar} name=${name} size="lg" /><strong>${name}</strong>${room.intro?html`<p class="note">${room.intro}</p>`:null}
       ${owner ? html`<span class="note">${hc("answersFor", owner)}</span>` : null}</section>
     <${QuotaCard} room=${room} />
     ${room.grantExpiresAt && !closed ? html`<section class="u-provider hub-card"><div class="u-head"><strong>${hc("yourAccess")}</strong></div>
@@ -1003,7 +1004,7 @@ function HubMine() {
       ${cat && !cat.error && !mine.length ? html`<div class="center hub-empty"><${Empty} icon="globe" title=${hw("exposuresEmpty")} hint=${hw("exposuresHint")} /></div>` : null}
       ${mine.length ? html`<section class="card hub-shared"><h3>${ho(mine.some(e => e.kind === "personal") ? "yourAgentsCount" : "sharedCount", mine.length)}</h3>
         <div class="hub-rows">${mine.map((e) => html`<a key=${e.id} class="s-row hub-row hub-row-link" href=${`/ui/hub/exposures?agent=${encodeURIComponent(e.id)}`}>
-          <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong><small class="note">${grantSummary(e.grants)}</small></span>
+          <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong>${e.intro?html`<small class="note">${e.intro}</small>`:null}<small class="note">${grantSummary(e.grants)}</small></span>
           ${stateTag(e.state, e.kind === "personal")}<${Icon} name="next" size=${16} /></a>`)}</div></section>` : null}
     </div></div>`;
 }
@@ -1042,6 +1043,7 @@ function HubAgentPage({ x, act, msg }) {
       ? `${hroom("agentNoOneToOne")} · ${roomCount === 1 ? hroom("inRoomsOne") : hroom("inRoomsMany", String(roomCount))}` : grantSummary(grants)} />
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+      ${session?.features?.includes("agent-intros-v1") && client.agentIntrosV1 ? html`<${AgentIntroEditor} exposure=${x} client=${client} onSaved=${()=>act(async()=>({ok:true}))} />` : null}
       <section class="card"><div class="hub-card-head"><h3>${ho("whoMayAsk")}</h3>${shared ? html`<button type="button" class="btn btn-sm" onClick=${() => setAllowing(true)}><${Icon} name="plus" size=${14} />${ho("allow")}</button>` : null}</div>
         ${grants.length ? html`<div class="hub-rows">${grants.map((g) => html`<div key=${g.id} class="s-row hub-row">
           <${Avatar} name=${g.subjectName || g.subjectLogin} size="sm" />
