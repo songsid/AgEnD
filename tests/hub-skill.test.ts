@@ -102,7 +102,7 @@ describe("the hub skill", () => {
       "Connected. You can close this tab.", "Reconnect", "Remove this connection", "Other ways", "Allow this fleet to connect to a Hub", "Hub membership",
       "Connection needs attention", "Recover this connection", "Cancel connection", "Check again", "Open Hub", "Replace saved Hub identity",
       "Shared agents", "Waiting for your confirmation", "Shared: Hub questions go to this agent's own conversation.", "Don't share it", "Share again",
-      "This fleet has no agents to share yet.", "Pause sharing", "Resume sharing", "Sharing paused", "Stop sharing…", "Sharing stopped on the Hub", "Allow someone to ask…", "My shared agents", "Who may ask",
+      "This fleet has no agents to share yet.", "Pause sharing", "Resume sharing", "Sharing paused", "Stop sharing…", "Sharing stopped on the Hub", "Allow someone to ask…", "My agents", "Who may ask",
       "Allow…", "Their sign-in name", "Hasn't signed in to Hub yet", "Revoke…", "Recent questions", "Subscription quota", "Show quota to people asking",
       "Chats", "New chat", "Waiting for the owner's fleet", "At the owner's fleet", "Answered", "Not answered", "Outcome unknown",
       "Open on the Hub", "Connect a Fleet", "People excluded", "What this change does", "Turn on and save", "Turn off", "Resume", "Paused",

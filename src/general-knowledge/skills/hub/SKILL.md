@@ -59,7 +59,7 @@ Active Directory account they use at work).
   person or an AD security group.
 - The Hub administrator manages who may connect and sees connected Fleets, not chats ("You cannot read anyone's chats
   here."). What was asked stays in the owner's Fleet chat.
-- The Hub's pages are at `https://<hub address>/ui/hub`: **Chats**, **My shared agents** (who may ask them, until
+- The Hub's pages are at `https://<hub address>/ui/hub`: **Chats**, **My agents** (who may ask them, until
   when), **Administration** (administrator only) and **Notices**.
 
 ## Setting up a Hub
@@ -313,6 +313,7 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
   confirmation"): on the confirm card at the top of the page, or on the card in General when the page names Discord or
   Telegram. Then the row reads "Shared: Hub questions go to this agent's own conversation."
 - Turning the switch off withdraws the agent.
+- On **My agents** / **我的 Agent**, your Fleet groups list private and shared agents. Tick changes, then press **Share N agents** or **Apply changes**; nothing changes before that. **Select all** skips General, whose row warns that it can manage the Fleet. ClassicBot rooms are shareable; read their one-memory notice. Stopping asks once and clears the ask list; **Pause instead** preserves it. After a new share, choose who may ask, use one list for several agents, or decide later (nobody may ask yet). A retained list is an explicit choice for 24 hours; only Undo restores it by itself. An unanswered Fleet request is **not confirmed yet**, not a definite failure: refresh retries its same frozen request. Offline/older/switched-off Fleets show why their checkboxes are unavailable; existing shared agents still open their access page and can be paused. Personal agents use their separate controls.
 - **Let me share agents from the Hub page** / **允許我從 Hub 頁面分享 Agent** is on by default in Fleet Settings → Hub, at the top of **Shared agents** while connected; it is hidden without an online Hub connection. It sends only the owner-visible agent list to the connected Hub and lets that owner share or stop from its page without another Fleet confirmation. Each Hub-page change creates a durable General/web notice with **Undo** for 24 hours. Turning this setting off stops that list and new Hub-page changes; existing shares stay as they are. The individual Settings Share switches still use their existing confirmation.
 - **Who may share:** when group permissions are on, only people whose AD group, team, or personal row has **Share agents**. Otherwise the row
   reads "Not shared: your Hub administrator hasn't allowed you to share agents. It will be shared once they do."
@@ -335,7 +336,7 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
   "This fleet has no agents to share yet."
 - "Shared under the older restricted mode. Hub questions are refused until you share this agent again." → **Share
   again**.
-- On the Hub, under **My shared agents**, an owner can **Pause sharing** (暫停分享) and **Resume sharing** (繼續分享). Pause hides the agent from new-chat choices and refuses new questions; existing authorized chats say **Sharing paused** and stay readable. Person and AD group grants, IDs and original expiry dates are kept. Expiry time keeps running: resume does not extend or resurrect an expired/revoked grant, and live AD membership and Hub group permissions still apply. Reconnecting the Fleet or restarting the Hub never resumes sharing.
+- On the Hub, under **My agents**, an owner can **Pause sharing** (暫停分享) and **Resume sharing** (繼續分享). Pause hides the agent from new-chat choices and refuses new questions; existing authorized chats say **Sharing paused** and stay readable. Person and AD group grants, IDs and original expiry dates are kept. Expiry time keeps running: resume does not extend or resurrect an expired/revoked grant, and live AD membership and Hub group permissions still apply. Reconnecting the Fleet or restarting the Hub never resumes sharing.
 - Pause is not instantaneous cancellation: a pre-Pause authorization whose result is already travelling to the Fleet may start its one first input within its existing lease (at most five seconds). Already-running work may finish. The committed authorization version makes members reconnect; after a member observes that fence, old capabilities stay unusable even after Resume. No new authorization is admitted while paused, and old answer-release leases are retired immediately. Do not promise an instant halt or automatic replay.
 - **Stop sharing…** (停止分享) is separate and permanent for the current publication. It means: "No one can ask it any more. To share it again, it has to
   be shared again from its fleet, and everyone has to be allowed to ask again. What was asked stays readable." Its
@@ -345,7 +346,7 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
 
 Sharing lets nobody ask yet. The owner allows a person, an AD security group, or a Team when Teams is offered; Hub eligibility and operational group permissions still apply.
 
-- From the Fleet row, **Allow someone to ask…** opens the Hub at the agent's page; or on the Hub: **My shared agents**
+- From the Fleet row, **Allow someone to ask…** opens the Hub at the agent's page; or on the Hub: **My agents**
   → the agent → **Who may ask** → **Allow…**.
 - On a supported AD Hub, **Allow access to** *agent* offers **A person** (search the beginning of their name or login) or **An AD security group** (the same group-search control as Let colleagues join). Select a result, choose **Access lasts** 1, 7 (default), 30 or 90 days, then **Allow**.
 - Group grants bind the directory's immutable GUID, not its name. Every action checks fresh direct membership; nested and primary groups are not included. An AD group manager can change who may ask, as the dialog explains. Each person's chat stays private. Joining or leaving takes effect on the next check. Unknown membership is unavailable, not a grant removal.
@@ -472,7 +473,7 @@ stops both posting and reply return.
 ### Inviting another owner's agent
 
 When the Hub offers room invitations, a room manager can invite another owner's shared agent. The owner sees
-**Invitations** (邀請) above the chat list and at the top of **My shared agents**. The invitation names the inviter,
+**Invitations** (邀請) above the chat list and at the top of **My agents**. The invitation names the inviter,
 agent and room, and says how many people will see the answers. **Agree** (同意) adds the agent; **Decline** (不要)
 does not. The owner does not become a person in that room and cannot read its messages just by accepting.
 
@@ -752,7 +753,7 @@ Say plainly that these are not in the product yet:
 - If personal agents are off, an administrator uses **Open the setting** / **前往設定** to open the exact
   **Administration → Manage → Personal agents** card. Other colleagues ask their Hub administrator.
   If enabled but the person is not allowed to add one, the administrator must allow that person or team.
-- Open **My shared agents → Personal agent** / **我分享的 Agent → 個人 Agent**. The setup stepper expands only the
+- Open **My agents → Personal agent** / **我的 Agent → 個人 Agent**. The setup stepper expands only the
   current step; earlier steps become a ticked title and later ones stay as titles:
   1. Prepare a Windows computer with Node.js 22.14 or newer and Codex or Claude Code signed in. **About this** /
      **了解更多** holds the optional requirements details. Choose **Get install command** / **取得安裝指令**.
