@@ -1,0 +1,4 @@
+YAML parsed.
+smoke-phone-typing-steady-m3265.mts: once, HP19681.
+smoke-compact-name-m3269.mts: once, HP19676.
+All configured HP values are distinct.

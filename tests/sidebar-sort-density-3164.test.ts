@@ -37,7 +37,7 @@ afterAll(() => { p.restore(); vi.unstubAllGlobals(); });
 describe("M-3164 Display in the sort popover", () => {
   it("is the third section, below Sort and Favorites, with Detailed and Compact as radios like theirs", async () => {
     await p.mount(h(Preview)); await openMenu();
-    expect([...menu().querySelectorAll("legend")].map((l: any) => l.textContent)).toEqual(["Sort the list", expect.any(String), "Display", "Phone sidebar"]);
+    expect([...menu().querySelectorAll("legend")].map((l: any) => l.textContent)).toEqual(["Sort the list", expect.any(String), "Display", "Compact row name", "Phone sidebar"]);
     expect(own(section())).toEqual(["Detailed", "Compact"]);
     expect(radio("detailed").checked).toBe(true); expect(radio("compact").checked).toBe(false);
   });

@@ -113,7 +113,7 @@ describe("#1604: Settings → Preferences and Look", () => {
     expect(pg.root.querySelector("#pref-theme"), "theme moved to Look, linked from Preferences").toBeNull();
     expect(pg.root.querySelector('a.s-pref-look-link[href="/settings/look"]')?.textContent).toBe("Theme, appearance and effects are in Look");
     const box = sec.querySelector("#pref-previews");
-    expect(sec.querySelector("label.check > span").textContent.trim()).toBe("Allow HTML previews");
+    expect(box.closest("label").querySelector("span").textContent.trim()).toBe("Allow HTML previews");
     box.checked = true; fire(box, "change"); await settle(6);
     expect([asked.length, pg.storage.get("agend_html_preview")]).toEqual([1, "on"]);   // asked once (the same question), then allowed — the device's own key
     expect(asked[0]).toMatch(/Allow HTML previews\?\n\nThis applies on every device where you are signed in\./);

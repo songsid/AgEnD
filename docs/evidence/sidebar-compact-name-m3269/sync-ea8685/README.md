@@ -1,0 +1,7 @@
+The assigning lead requested a plain sync with the dev tip and affected checks for the workflow overlap. Merge fbbb19c4424a4bd88826e72c07a7af7dad61d126 combines the reviewed 3ce1e328db468d9bbbf405fb50f6ddabdfb0157f and actual dev tip ea8685e19917029ebc359f035409f2462a0172d5. No rebase or force-push.
+
+Both overlapping paths merge automatically: the CI workflow retains both the phone-typing smoke and the compact-name smoke, each once with distinct ports. The shell retains the incoming keyboard-fit changes and the compact-name controls. All 60 non-overlapping own paths and 17 incoming-only paths keep exact blobs and modes. Applying the old own patch to the incoming tree in an isolated index yields the identical whole merged tree. See proof.json.
+
+The explicit request includes affected re-verification: compact-name, footer, phone-typing and keyboard-fit unit suites pass 38/38 across four files. The compact-name actual HTTP/UI smoke passes 28 checks across desktop and phone. These are integration checks, not a new screenshot or model campaign. Existing preferred screenshots retain their original source bindings.
+
+The incoming phone-typing smoke passes all 12 cases in serial headless Chromium. Keyboard and IME viewport changes are modeled by that existing smoke; this is not a real-device keyboard claim. Both loopback fixtures close before publication. These affected reruns were explicitly requested by the assigning lead.

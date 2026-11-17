@@ -105,7 +105,7 @@ try {
     }
     await p.ctx.close();
     // The density is a synced pref: put it back unset so the next case starts from the defaults (freshPage checks).
-    (fx as any).fm.webPrefs.writeForViewer("operator", new Map<string, unknown>([["nav.density", null], ["nav.densityPhone", null]]));   // M-3252: a phone's own too
+    (fx as any).fm.webPrefs.writeForViewer("operator", new Map<string, unknown>([["nav.density", null], ["nav.densityPhone", null], ["nav.compactName", null]]));   // M-3252: a phone's own too
   }
 } finally {
   for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"} ${r.name}${r.failed.length ? " — " + r.failed.join("; ") : ""}`);

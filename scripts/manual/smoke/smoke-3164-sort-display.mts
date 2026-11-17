@@ -82,7 +82,7 @@ async function runCase(name: string, c: any) {
   chk.settingsToPopover = d.checked === "detailed" && !d.compact;
   await p.page.screenshot({ path: shotPath(SMOKE, name, "3-settings-detailed-menu") });
   chk.noErrors = p.errors.length === 0;
-  for (const who of [p.personKey, OPERATOR]) fm.webPrefs.write(who, new Map([["nav.density", null], ["nav.densityPhone", null]]));   // M-3252: a phone's own too
+  for (const who of [p.personKey, OPERATOR]) fm.webPrefs.write(who, new Map([["nav.density", null], ["nav.densityPhone", null], ["nav.compactName", null]]));   // M-3252: a phone's own too
   const failed = Object.entries(chk).filter(([, v]) => !v).map(([k]) => k);
   results.push({ name, ok: !failed.length });
   console.log(`${failed.length ? "FAIL" : "ok  "} ${name}${failed.length ? ` [${failed.join(", ")}] ${JSON.stringify({ a, b, d, errors: p.errors }).slice(0, 900)}` : ""}`);

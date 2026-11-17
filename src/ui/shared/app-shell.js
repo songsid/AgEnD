@@ -17,7 +17,7 @@ import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { StaleTabPrompt, isStaleModuleError } from "./stale-tab.js";
 import { Dialog } from "./ui-dialog.js";
-import { InstanceNav, RosterNav, namesStore, phoneDrawerStore, setNamesPrimary, sidebarDensityStore, setSidebarDensity } from "./instance-nav.js";
+import { InstanceNav, RosterNav, namesStore, phoneDrawerStore, setNamesPrimary, sidebarDensityStore, setSidebarDensity, compactNameStore, setCompactName } from "./instance-nav.js";
 import { usageRailStore } from "./header-tools.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
@@ -513,6 +513,7 @@ export function DevicePrefs({ labels = false, fields = ["theme", "language", "na
   const [l, setL] = useState(lang());
   const names = useStore(namesStore);   // #1722
   const density = useStore(sidebarDensityStore).value;
+  const compactName = useStore(compactNameStore).value ?? names.primary;
   // #1665: what is in force, as it changes — another device's choice arriving while this is open is shown at once.
   useEffect(() => (typeof AgendTheme !== "undefined" && typeof AgendTheme.onChange === "function" ? AgendTheme.onChange(setTheme) : undefined), []);
   useEffect(() => onLang(setL), []);
@@ -530,6 +531,11 @@ export function DevicePrefs({ labels = false, fields = ["theme", "language", "na
     ${shows("density") ? html`<label class="pref"><${Icon} name="sidebar" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.sidebarDensity")}</span>
       <select id=${labels ? "pref-density" : undefined} value=${density} aria-label=${t("app.sidebarDensity")} onChange=${(e) => setSidebarDensity(e.target.value)}>
         <option value="detailed">${t("app.sidebarDetailed")}</option><option value="compact">${t("app.sidebarCompact")}</option></select></label>` : null}
+    ${shows("compactName") ? html`<div class="pref"><span class=${labels ? "pref-label" : "sr-only"}>${t("app.compactName")}</span>
+      <div id=${labels ? "pref-compact-name" : undefined} class="pref-name-options" role="radiogroup" aria-label=${t("app.compactName")}>
+        ${["nickname", "instance"].map(value => html`<label class="check"><input type="radio" name="pref-compact-name" value=${value}
+          checked=${compactName === value} onChange=${() => setCompactName(value)} /><span>${t(value === "nickname" ? "app.compactNickname" : "app.compactInstance")}</span></label>`)}
+      </div></div>` : null}
   </div>`;
 }
 

@@ -44,6 +44,8 @@ export interface FixtureOptions {
   webYaml?: string;
   /** Use the full ~60-instance fleet (default) or only the first `instances` of it. */
   instances?: number;
+  /** Small synthetic roster for a focused feature walk. */
+  roster?: FixtureInstance[];
   /** Write classicBot.yaml rooms (default true). */
   classic?: boolean;
   /** Sign in as the host's own session (`agend web` on this computer: host, admin, local) instead of a plain admin code. */
@@ -118,7 +120,7 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   // A store can still flush after close() (a debounced write recreates the folder): remove the home again at exit.
   process.once("exit", () => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ } });
   try {                                                  // BEFORE fleet-manager is imported
-  const instances = fixtureInstances().slice(0, o.instances ?? 60);
+  const instances = (o.roster ?? fixtureInstances()).slice(0, o.instances ?? 60);
   const q = (s: string) => JSON.stringify(s);
   const teams = TEAMS.map(t => ({ t, members: instances.filter(i => i.team === t).map(i => i.name) })).filter(x => x.members.length);
   const yaml = [

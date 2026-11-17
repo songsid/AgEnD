@@ -254,6 +254,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .pref { display: flex; align-items: center; gap: var(--s-1); color: var(--text-2); flex: 1; min-width: 0; }
 .pref select { flex: 1; min-width: 0; height: 30px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; }
 .pref select:hover { background: var(--surface-2); color: var(--text); }
+.pref-name-options { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+.pref-name-options .check { min-height: var(--tap); }
 .session { position: relative; }
 .pop {
   position: absolute; left: 0; right: 0; bottom: calc(100% + var(--s-1)); z-index: 30; display: flex; flex-direction: column; gap: var(--s-2);
@@ -1648,7 +1650,7 @@ img.amb-p { object-fit: contain; }
 .nav-sort-static { cursor: default; }
 .nav-sort-menu { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; padding: var(--s-3);
   border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-  display: flex; flex-direction: column; gap: var(--s-3); }
+  display: flex; flex-direction: column; gap: var(--s-3); overflow-y: auto; }
 .nav-sort-menu fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .nav-sort-menu legend { padding: 0 0 4px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
 .nav-sort-opt { display: flex; align-items: flex-start; gap: var(--s-2); min-height: 36px; padding: 4px 2px; font-size: var(--fs-sm); cursor: pointer; }
