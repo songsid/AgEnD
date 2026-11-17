@@ -14,7 +14,7 @@ register("archiveFiles", {
   en: {
     title: "Archived chat files",
     field: "Size limit for all agents (GB)",
-    hint: "Files and pictures of messages that have left an agent's last 500 are kept with them, every agent's together within this limit. Past it the oldest are removed first, and their messages show the file as no longer kept. 0 keeps no files.",
+    hint: "Files and pictures of messages that have left an agent's last 500 are kept with them, every agent's together within this limit. Past it the oldest are removed first, down to 90% of the limit so the next ones fit, and their messages show the file as no longer kept. 0 keeps no files.",
     used: "Kept now: {0} in {1} files.",
     range: "Must be a number of GB from 0 to 100000",
     save: "Save limit", saving: "Saving…", saved: "Saved.", savedRemoved: "Saved. {0} of the oldest files were removed.",
@@ -26,7 +26,7 @@ register("archiveFiles", {
   "zh-TW": {
     title: "封存的聊天檔案",
     field: "所有 agent 合計的大小上限（GB）",
-    hint: "超出 agent 最近 500 則的訊息，其檔案與圖片會一起保留，所有 agent 合計不超過這個上限。超過時從最舊的開始移除，對應的訊息會顯示檔案已不再保留。設為 0 則不保留檔案。",
+    hint: "超出 agent 最近 500 則的訊息，其檔案與圖片會一起保留，所有 agent 合計不超過這個上限。超過時從最舊的開始移除，降到上限的 90% 以便容納之後的檔案，對應的訊息會顯示檔案已不再保留。設為 0 則不保留檔案。",
     used: "目前保留：{0}，共 {1} 個檔案。",
     range: "必須是 0 到 100000 之間的 GB 數",
     save: "儲存上限", saving: "儲存中…", saved: "已儲存。", savedRemoved: "已儲存。已移除 {0} 個最舊的檔案。",
@@ -35,6 +35,13 @@ register("archiveFiles", {
     confirmBody: "這會移除約 {0} 最舊的封存檔案（{1} 個檔案）。訊息會保留，並顯示檔案已不再保留。此動作無法復原。",
     confirm: "移除並儲存", cancel: "取消",
   },
+});
+// The in-effect line of `web.chat_archive` (Settings → Advanced's read-only list, panel-settings.js) — here for the same reason.
+register("settings", {
+  en: { chatArchiveInEffect: "messages kept {0}; their files up to {1} GB for all agents together, the oldest removed first (the limit: Web dashboard → Archived chat files)",
+    chatArchiveForever: "with no age limit", chatArchiveDays: "{0} days" },
+  "zh-TW": { chatArchiveInEffect: "訊息保存{0}；檔案所有 agent 合計最多 {1} GB，超過時先移除最舊的（上限：網頁儀表板 → 封存的聊天檔案）",
+    chatArchiveForever: "不限天數", chatArchiveDays: "{0} 天" },
 });
 const copy = (key, ...v) => t(`archiveFiles.${key}`, ...v);
 
