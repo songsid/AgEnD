@@ -586,6 +586,7 @@ Refreshes every 60 s while open; **Refresh** forces it (at most once per 30 s); 
 **A failed read keeps the last numbers** (#2236 follow-up): an expired token, a rate limit, a network blip or any other
 error shows the numbers from the last good read (up to a week old), greyed, with "expired · cached at 14:05" (or "not
 updated" / "couldn't read") and what to do under it; a window that has reset since says "reset since …" with no number.
+#4112: in the grouped view's one line per account the cached mark is a clock beside the name (the words in its tooltip).
 `get_usage` rows carry `stale: true`, `cachedAt`, `staleCause` (expired / transient / error) and `resetPassed` on such
 metrics; read them as old. A provider never read successfully still shows its error. A good read clears the mark.
 

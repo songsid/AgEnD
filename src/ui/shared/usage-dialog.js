@@ -252,6 +252,8 @@ export function CompactRow({ p, onExpand, one = false }) {
   // Last known numbers (stale, e.g. an expired token) show as the others do (the user, 2026-10-23; the full card has since
   // #2386), with a small "cached at 07:47" on the name line; a window that reset since is left out (compactSlots).
   // M-3241: `one` — its group shows one line per login: the binding window (the most used) beside the name.
+  // M-3288 (the user): there the name, the ⓘ (M-3248) and the cached mark share a third of the line — the cached mark is a
+  // clock there, its words its tooltip and read aloud (the visible words were what ran into the bar and hid the name).
   const binding = one && !failed ? bindingMetric(p) : null;
   const pools = failed || one ? null : compactPools(p);
   const metrics = failed ? [] : one ? (binding ? [binding] : []) : pools ? pools.flatMap((x) => x.metrics) : compactMetrics(p);
@@ -263,7 +265,7 @@ export function CompactRow({ p, onExpand, one = false }) {
   return html`<button type="button" class=${`u-crow${p.stale ? " is-stale" : ""}${pools ? " is-pooled" : ""}${models ? " has-models" : ""}${one ? " is-one" : ""}`} aria-expanded="false" title=${`${p.name} — ${tn("usageExpand")}`} onClick=${onExpand}>
     <span class="u-crow-head"><span class="u-crow-name">${name}</span>${p.noAgents ? html`<${NoAgentsMark} inRow=${true} />` : null}
       ${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
-      ${stale && metrics.length ? html`<span class="u-crow-stale" title=${detail}>${p.cachedAt ? tn("usageCachedAt", { at: usageClock(p.cachedAt) }) : stale.mark}<span class="sr-only"> (${detail})</span></span>` : null}</span>
+      ${stale && metrics.length ? html`<span class="u-crow-stale" title=${detail}><span class="u-crow-stale-icon" aria-hidden="true"><${Icon} name="clock" size=${13} /></span><span class="u-crow-stale-text">${p.cachedAt ? tn("usageCachedAt", { at: usageClock(p.cachedAt) }) : stale.mark}</span><span class="sr-only"> (${detail})</span></span>` : null}</span>
     ${pools ? pools.map((x) => html`<${CompactMeter} key=${x.pool.label} m=${x.worst} tag=${usageText(x.pool.label, x.pool.labelI18n)}
         title=${x.metrics.map((m) => { const c = resetClock(m); return `${usageText(m.label, m.labelI18n)}: ${pctOf(m).toFixed(0)}%${c ? ` (${c})` : ""}`; }).join(" · ")} />`)
       : metrics.length ? metrics.map((m, j) => html`<${CompactMeter} key=${j} m=${m} tag=${m.scope === "model" ? modelTag(m) : undefined} />`)
