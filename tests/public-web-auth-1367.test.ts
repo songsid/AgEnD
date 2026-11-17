@@ -158,6 +158,18 @@ describe("public credential scopes, real auth handlers", () => {
     expect(h.status()).toBe(200); expect(h.body()).toContain('data-web-transport="poll"');
     expect(h.body()).toContain('data-preview-origin=""'); expect(previewForUi).not.toHaveBeenCalled();
   });
+  it("M-3278 5/5: on the fixed (named) link an admin's page streams (no poll mark); its read-only session and a quick tunnel's admin poll", () => {
+    const store = new WebSessionStore();
+    const page = (tier: "admin" | "read", named: boolean) => {
+      const p = store.create({ tier, surface: "gateway", exposureId: id, label: "phone", tokenEpoch: tokenEpoch(token) });
+      const h = request("/ui", "GET", { cookie: `__Host-agend_session=${p.sessionId}` });
+      bindGatewayRequest(h.req, { surface: "gateway", named, exposureId: id, expectedOrigin: origin, isCurrent: () => true });
+      expect(handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, origin), { webToken: token, webSessions: store } as never)).toBe(true);
+      expect(h.status()).toBe(200);
+      return h.body().includes('data-web-transport="poll"');
+    };
+    expect([page("admin", true), page("read", true), page("admin", false)]).toEqual([false, true, true]);
+  });
   it("a public Settings body buffered across close cannot save config", async () => {
     const store = new WebSessionStore(); const p = store.create({ tier: "admin", surface: "gateway", exposureId: id, label: "fixture", tokenEpoch: tokenEpoch(token) }); let current = true;
     // A defaults edit (#1620; M-3278: the web settings are an admin's over the link too, below).
@@ -203,7 +215,9 @@ describe("public credential scopes, real auth handlers", () => {
   });
 });
 describe("dedicated gateway manifest and sockets", () => {
-  it.each(["/health", "/agent", "/status", "/activity", "/api/activity", "/auth/issue-code", "/ui/events", "/restart/worker", "/frame", "/api/settings/unknown"])("excludes %s", path => { for (const method of ["GET", "POST", "PUT"]) expect(isPublicWebRoute(method, path)).toBe(false); });
+  it.each(["/health", "/agent", "/status", "/activity", "/api/activity", "/auth/issue-code", "/restart/worker", "/frame", "/api/settings/unknown"])("excludes %s", path => { for (const method of ["GET", "POST", "PUT"]) expect(isPublicWebRoute(method, path)).toBe(false); });
+  // M-3278 (part 5): GET /ui/events is on the list (the gateway passes it on the fixed link only — link-sse-named-m3278).
+  it("/ui/events: GET only", () => { expect(isPublicWebRoute("GET", "/ui/events")).toBe(true); for (const m of ["POST", "PUT"]) expect(isPublicWebRoute(m, "/ui/events")).toBe(false); });
   it("real gateway rejects foreign hosts, pre-open data, absolute and malformed targets; closes tracked upgrades after listener", async () => {
     let callback!: (req: any, res: any) => void; const order: string[] = []; let open = false, current = true;
     const server: any = Object.assign(new EventEmitter(), { setTimeout: vi.fn(), listen: (_p: number, host: string, cb: () => void) => { expect(host).toBe("127.0.0.1"); cb(); }, address: () => ({ port: 321 }), close: () => order.push("listener"), closeAllConnections: () => order.push("connections") });

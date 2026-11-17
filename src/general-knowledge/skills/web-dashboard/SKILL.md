@@ -81,7 +81,7 @@ copying its install command stay on the AgEnD computer: a Runtime connects to it
 updating AgEnD, an agent's Files & changes, custom CSS, the app icon, mods, `/raw` and `/save`. An admin there also has
 **Open beside** (split chat; its layout is kept as on the dashboard reached directly), the **Subagents** row and the chat's
 activity steps (and **Show thinking** when it is on). Two technical limits stay: no live stream on a temporary link (the
-page polls) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
+page polls; the fixed address streams for an admin session, at most 8 at once) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
 jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`

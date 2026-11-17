@@ -2,7 +2,8 @@
 //
 // The mode comes from the server (<body data-mode / data-web-transport>):
 // - local, signed in: ONE EventSource on /ui/events; while it is silent or down, /ui/poll every 5 s until it speaks.
-// - the public link (data-web-transport="poll"): NO EventSource (its manifest has no /ui/events); /ui/poll from the start.
+// - the public link (data-web-transport="poll"): NO EventSource; /ui/poll from the start. M-3278: the fixed (named) link's
+//   admin page has no poll mark and streams as locally (a quick tunnel buffers a stream; guests and read sessions poll).
 // - View-only (step 2): neither.
 // A proxy that buffers a stream looks exactly like a server that never sends, so a stream that says nothing is treated
 // as no stream. Every read here is on the #1374 passive list: no timer here ever counts as the person's activity.
