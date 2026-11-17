@@ -289,7 +289,7 @@ function Schedules({ lease }) {
   return html`<${Loaded} state=${state}>${(d) => {
     const list = d.schedules || [];
     // #1724: the public link lists schedules and changes none (the server refuses it too).
-    const writable = !publicLink();
+    const writable = true;   // M-3278: the public link's admin too (the host refuses a read-only session)
     return html`<${ListHead} count=${list.length === 1 ? t("fleet.countSchedule") : t("fleet.countSchedules", list.length)} label=${t("fleet.newSchedule")} action=${writable ? { onClick: () => setCreating(true) } : null} />
       ${list.length ? html`<ul class="rows">${list.map(x => {
         const next = scheduleNext(x);
@@ -307,7 +307,6 @@ function Schedules({ lease }) {
 }
 
 /** #1689: the public link changes no team (the server refuses it): it lists them only. */
-const publicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
 
 function Teams({ lease }) {
   const [version, setVersion] = useState(0);
@@ -322,7 +321,7 @@ function Teams({ lease }) {
   }
   return html`<${Loaded} state=${state}>${(d) => {
     const entries = Object.entries(d.teams || {});
-    const writable = !publicLink();
+    const writable = true;   // M-3278: the public link's admin too (the host refuses a read-only session)
     return html`<${ListHead} count=${entries.length === 1 ? t("fleet.countTeam") : t("fleet.countTeams", entries.length)} label=${t("fleet.newTeam")} action=${writable ? { onClick: () => setCreating(true) } : null} />
       ${entries.length ? html`<ul class="rows">${entries.map(([name, team]) => html`<li key=${name} class="row-item">
         <span class="grow strong">${name}</span><span class="muted">${(team.members || []).join(", ")}</span>

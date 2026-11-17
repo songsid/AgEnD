@@ -608,7 +608,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
     ...themeMenuItems(name),
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
-    ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
+    ...ambientMenuItems(name, { publicLink: false, clear: clearAmbient }),   // M-3278
     // AGEND-181: the activity timeline above each reply (this browser's choice), when the Log is on.
     ...(activityOffered() && activityInfo(name)?.level !== "off" ? [
       { key: "activity", checkbox: true, checked: activityPrefs.get().on, label: t("act.menuActivity"), onSelect: () => setActivityOn(!activityPrefs.get().on) },
@@ -760,6 +760,10 @@ function threadEntry(name, doc) {
     // #2272: reply to a message (the bar above the composer), and show the one a reply quotes.
     startReply: (x) => { store.startReply(name, x); composerField(name)?.focus(); },
     findQuoted: (key) => store.findQuoted(name, key),
+    // M-3272: scroll-back — older at the very top, the unloaded newest end again at the bottom (chat-store.js loadOlder).
+    onTop: () => { if (!guestPage()) void store.loadOlder(name); },   // #4103 review N1: a guest is refused; never asked
+    onBottom: () => { void store.loadNewer(name); },
+    detached: () => store.pagingState(name).detached,
     notice: (text) => toast(text, false),
     replyButtonBusy: (id) => store.state.rbBusy.has(id),
     pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
@@ -814,8 +818,11 @@ function follow(name, thread) {
     }
     if (instance !== name) return;
     if (kind === "msgs") { thread.render(rowsOf(name)); wantEmojis(store.state.msgs[name]); if (feed) feed.nudge(); }   // a message came or went: read the steps now
+    // M-3272: a page of scroll-back (older at the top, newer at the bottom): drawn with the reader kept where they were.
+    else if (kind === "page") { thread.render(rowsOf(name), { keep: true }); wantEmojis(store.state.msgs[name]); }
     else if (kind === "progress") thread.progress();                       // an upload moved: its bar, in place
-    else if (kind === "sent") thread.jumpLatest();
+    // Sent while scrolled back past an unloaded newest end: the live chat again, then its end (M-3272).
+    else if (kind === "sent") { if (store.pagingState(name).detached) void store.backToLatest(name).then(() => thread.jumpLatest()); else thread.jumpLatest(); }
   }));
   offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
   offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
@@ -932,7 +939,7 @@ function Thread({ name, label = name, th, bindings }) {
     <div class="thread-host" ref=${host}></div>
     ${empty === "hidden" ? html`<${Empty} icon="chat" title=${t("chat.guestAllHidden")} hint=${t("chat.guestAllHiddenHint")} />`
       : empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
-    </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}
+    </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => { const t2 = th.current; if (!t2) return; if (store.pagingState(name).detached) void store.backToLatest(name).then(() => t2.jumpLatest()); else t2.jumpLatest(); }}
         aria-label=${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}>
       <${Icon} name="down" size=${16} /><span class="jump-text">${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</span>${
         /* The user (before 2.4.0-beta.3): no unread counts for now — a phone's round button has no badge. */ ""}</button>` : null}</div>

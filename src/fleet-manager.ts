@@ -4098,7 +4098,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!role.ok || !handle || role.onHost) return null;
       if (asking && !this.strictFor(role.actor)) return null;
       if (role.account && !this.settingsAccountMayConfirm(store, id, role.actor)) return null;
-      if (store.opensLink(id) && gatewayRequestContext(req)) return null;
+      // M-3278 (decision 7933bf90, the leader's (a)): a verified admin over a link confirms a change that opens a link too, as
+      // by Apply now; the role decides (its link option, Only this computer, the strict switch), and a Notice is posted.
       return { handle, actor: role.actor, account: role.account };
     };
     const first = check(true);
@@ -4140,7 +4141,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Apply now is open to it (the option is off, or this is the AgEnD computer's own browser): no code is asked.
     if (!this.strictFor(role.actor) || role.onHost) return null;
     if (role.account && !this.settingsAccountMayConfirm(store, id, role.actor)) return null;
-    if (store.opensLink(id) && gatewayRequestContext(req)) return "on_host";
     return this.webRemoteAccess()?.isEnrolled(adminKey(role.actor.adapter_id, role.actor.user_id)) ? "ready" : "not_set_up";
   }
   /**
@@ -19676,7 +19676,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * and their switch are another thing and stay a web-only fleet's, on its own computer (liveOwner).
    */
   private authenticatorOwner(req: IncomingMessage): { handle: string; who: string; actor: { adapter_id: string; user_id: string }; onHost: boolean; current(): boolean } | null {
-    if (gatewayRequestContext(req)) return null;
+    // M-3278 (decision 7933bf90): over a link too — the settings role decides (its link option, Only this computer), and an
+    // app that exists asks its current code off this computer (authenticatorCodeAsked), as from the LAN.
     const first = this.settingsRole(req);
     if (!first.role.ok || !first.handle) return null;
     const handle = first.handle, actor = first.role.actor, who = adminKey(actor.adapter_id, actor.user_id);

@@ -943,10 +943,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   useEffect(() => {
     const body = globalThis.document?.body;
     if (!body || body.dataset.tier === "guest") return undefined;
-    const overLink = body.dataset.publicLink === "1";
     let live = true;
     const auth = globalThis.AgendAuth;
-    if (auth && typeof auth.canWrite === "function") Promise.resolve(auth.canWrite()).then((v) => { if (live) { setCanEdit(v === true && !overLink); setCanShare(v === true); } }, () => {});
+    if (auth && typeof auth.canWrite === "function") Promise.resolve(auth.canWrite()).then((v) => { if (live) { setCanEdit(v === true); setCanShare(v === true); } }, () => {});
     return () => { live = false; };
   }, []);
   // The stage's width (the grid wraps at it), and the theme (the tokens the canvas reads).
@@ -1099,11 +1098,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const wander = zones && !overview && !still && !layout;
   // #3685: who sits where on a visit, kept between ticks (the layout is rebuilt on every state change; the style's
   // seats are not): someone who turns idle later never moves a visitor already there. A new style starts afresh.
+  // M-3286: the office's "Idle people stay in their own area" (Edit offices): strolls stay in the area, no visits.
+  const ownArea = !!custom && custom.stayInArea === true;
   const visitMemo = useMemo(() => ({ claims: new Map(), idle: null }), [skin]);
   useEffect(() => {
     if (!zones || overview) return undefined;
     const go = () => {
-      const t = now(), to = walkTargets(desksOf(L), L, t, wander, skin.pack.furniture, night, visitMemo);
+      const t = now(), to = walkTargets(desksOf(L), L, t, wander, skin.pack.furniture, night, visitMemo, ownArea);
       // An act's walk; not someone in bed for the night (#2568: bedtime wins, as for mail).
       for (const d of desksOf(L)) { const a = actsHere.get(d.node.name), at = !d.night && actLive(a, d.node.state, Date.now(), actSeen.current) ? actTarget(a, L, walkers, t) : null; if (at) to.set(d.node.name, at); }
       for (const [name, at] of mail.targets(L, t)) to.set(name, at);
@@ -1115,7 +1116,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (still) return undefined;
     const h = setInterval(go, WANDER.TICK);
     return () => clearInterval(h);
-  }, [L, wander, mail, skin, night, actsHere, visitMemo]);
+  }, [L, wander, mail, skin, night, actsHere, visitMemo, ownArea]);
   // …and in each tile on a zones style; the traffic within a tile is its own, between tiles the overview's.
   useEffect(() => {
     for (const tl of tiles) if (tl.zones) tl.walkers.sync(new Map(desksOf(tl.L).map((d) => [d.node.name, d.seat])), now(), tl.L, still);

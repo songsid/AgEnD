@@ -205,12 +205,14 @@ function request(path: string, headers: Record<string, string> = {}, host = "127
   const res = Object.assign(new EventEmitter(), { destroyed: false, headersSent: false, writableEnded: false, setHeader() {}, writeHead: (c: number) => { status = c; }, end: (t = "") => { body = String(t); }, write: () => true, destroy: vi.fn() });
   return { req, res, status: () => status, json: () => JSON.parse(body || "null") };
 }
-async function routes(o: { tier?: "admin" | "read" | "guest"; publicLink?: boolean } = {}) {
+async function routes(o: { tier?: "admin" | "read" | "guest"; publicLink?: boolean; cardLine?: boolean } = {}) {
   const sessions = new WebSessionStore();
   const s = sessions.create({ tier: o.tier ?? "admin", surface: o.publicLink ? "gateway" : "local", label: "t", tokenEpoch: tokenEpoch(token),
     ...(o.publicLink ? { exposureId } : {}), ...(o.tier === "guest" ? { owner: { adapterId: "discord", userId: "42" } } : {}) } as never);
   const { h, a, say } = history();
-  for (let n = 1; n <= 23; n++) say(n);
+  // `cardLine`: message 10 is a status line that named too many cards to keep (cards ["*"]) — the public link's filter for
+  // anyone it restricts withholds it whole (web-api.ts visibleMessages).
+  for (let n = 1; n <= 23; n++) say(n, o.cardLine && n === 10 ? { role: "status", cards: ["*"] } : {});
   await a.flush();
   const ctx = { webToken: token, webSessions: sessions, webChatHistory: h, logger: { info() {}, debug() {}, error() {}, warn() {} }, sseClients: new Set(), getUiStatus: () => ({ instances: [] }), emitSseEvent: vi.fn() } as any;
   const cookie = `${o.publicLink ? "__Host-" : ""}agend_session=${s.sessionId}`, host = o.publicLink ? "sample.trycloudflare.com" : "127.0.0.1:19280";
@@ -224,7 +226,7 @@ async function routes(o: { tier?: "admin" | "read" | "guest"; publicLink?: boole
 }
 
 describe("GET /ui/history/older | newer | around", () => {
-  it("an admin: pages across the window and the archive; a bad request 400; an unknown key 404", async () => {
+  it("an admin: pages across the window and the archive; a bad request 400; an unknown key: no messages, found: false (not an error)", async () => {
     const t = await routes();
     const older = t.get("/ui/history/older?instance=alpha&before=b0-19&limit=3");
     expect([older.status, keys(older.json.messages), older.json.more, older.json.messages.every((m: any) => m.archived)]).toEqual([200, ["b0-16", "b0-17", "b0-18"], true, true]);
@@ -234,11 +236,21 @@ describe("GET /ui/history/older | newer | around", () => {
     expect([around.status, keys(around.json.messages), around.json.olderMore, around.json.newerMore]).toEqual([200, ["b0-1", "b0-2", "b0-3", "b0-4", "b0-5"], false, true]);
     expect(t.get("/ui/history/older?instance=alpha&before=nope&limit=3").status).toBe(400);
     expect(t.get("/ui/history/older?instance=alpha&before=b0-1&limit=101").status).toBe(400);
-    expect(t.get("/ui/history/around?instance=alpha&key=b0-999&limit=5").status).toBe(404);
+    expect(t.get("/ui/history/around?instance=alpha&key=b0-999&limit=5")).toEqual({ status: 200, json: { messages: [], more: false, olderMore: false, newerMore: false, found: false } });
   });
   it("on the public link's route list (the gateway lets them through; the handler decides who)", () => {
     expect(["older", "newer", "around"].map(r => isPublicWebRoute("GET", `/ui/history/${r}`))).toEqual([true, true, true]);
     expect([isPublicWebRoute("POST", "/ui/history/older"), isPublicWebRoute("GET", "/ui/history/other")]).toEqual([false, false]);
+  });
+  it("M-3278 parity (#4100): over the public link an admin's scroll-back is filtered as /ui/history is — linkRestricted, so not at all", async () => {
+    const direct = await routes({ cardLine: true }), link = await routes({ cardLine: true, publicLink: true });
+    const page = (t: Awaited<ReturnType<typeof routes>>) => t.get("/ui/history/older?instance=alpha&before=b0-12&limit=5");
+    expect([page(link).status, keys(page(link).json.messages)], "the card line is not withheld from an admin over the link")
+      .toEqual([200, keys(page(direct).json.messages)]);
+    expect(keys(page(link).json.messages)).toContain("b0-10");
+    for (const tier of ["read", "guest"] as const) {
+      expect([tier, (await routes({ tier, publicLink: true, cardLine: true })).get("/ui/history/older?instance=alpha&before=b0-12&limit=5").status]).toEqual([tier, 403]);
+    }
   });
   it("an admin over the public link too (decision 7933bf90); a read-only session and a guest: 403", async () => {
     expect((await routes({ publicLink: true })).get("/ui/history/older?instance=alpha&before=b0-19&limit=3").status).toBe(200);

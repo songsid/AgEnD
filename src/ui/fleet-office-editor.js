@@ -28,6 +28,7 @@ register("orge", {
     keepMine: "Keep my edits", loadTheirs: "Load theirs", keptMine: "Your edits are kept. Save replaces what was saved meanwhile.",
     rateLimited: "Too many saves. Try again in a minute.",
     failed: "The offices were not saved ({0}).", layoutKept: "Its seats and paths are kept.",
+    stayInArea: "Idle people stay in their own area", stayInAreaNote: "They stroll only within the area they sit in and never go to sit in another area.",
     styleUnknown: "{0} (not available here: drawn as Desks)",
     packs: "Skin packs", packsLead: "Styles drawn from an artist's pictures. Pick a pack's manifest.json and all its PNG files together (or its folder).",
     packsNone: "No skin packs yet.", upload: "Upload a skin pack", uploadFolder: "Upload a folder", uploading: "Uploading…", uploaded: "Skin pack “{0}” uploaded.",
@@ -51,6 +52,7 @@ register("orge", {
     keepMine: "保留我的編輯", loadTheirs: "載入對方的版本", keptMine: "已保留你的編輯。儲存時會取代對方在這期間的修改。",
     rateLimited: "儲存太頻繁，請一分鐘後再試。",
     failed: "辦公室沒有儲存（{0}）。", layoutKept: "它的座位與路徑會保留。",
+    stayInArea: "待命只在自己的區域走動", stayInAreaNote: "待命的人只在自己座位所在的區域裡走動，不會到其他區域去坐。",
     styleUnknown: "{0}（這裡沒有：以辦公桌顯示）",
     packs: "外觀包", packsLead: "用畫師的圖片畫出的風格。請把外觀包的 manifest.json 和所有 PNG 檔一起選取（或選整個資料夾）。",
     packsNone: "還沒有外觀包。", upload: "上傳外觀包", uploadFolder: "上傳資料夾", uploading: "上傳中…", uploaded: "已上傳外觀包「{0}」。",
@@ -179,7 +181,8 @@ export function newOfficeId(taken, rand = Math.random) {
 }
 /** What is sent: the office as the host stores it (no empty layout key). */
 export function officeForSave(o) {
-  return { id: o.id, name: o.name.trim(), skin: o.skin, members: [...o.members], ...(o.layout ? { layout: o.layout } : {}), ...(o.overrides ? { overrides: o.overrides } : {}) };
+  return { id: o.id, name: o.name.trim(), skin: o.skin, members: [...o.members], ...(o.layout ? { layout: o.layout } : {}), ...(o.overrides ? { overrides: o.overrides } : {}),
+    ...(o.stayInArea === true ? { stayInArea: true } : {}) };   // M-3286: off is no key (offices saved before it stay as they are)
 }
 
 const whoText = (members) => {
@@ -284,6 +287,8 @@ export function OfficeEditor({ offices, rev, view, store, packs = [], ask = () =
           ${te("members")}: ${whoText(o.members)}</button>
         <button type="button" class="btn btn-sm btn-danger oe-remove" onClick=${() => { setDraft((d) => d.filter((x) => x.id !== o.id)); if (open === o.id) setOpen(null); }}>${te("remove")}</button>
       </div>
+      <label class="check oe-stay" title=${te("stayInAreaNote")}><input type="checkbox" class="oe-stay-in-area" checked=${o.stayInArea === true}
+        onChange=${(e) => set(o.id, e.target.checked ? { stayInArea: true } : { stayInArea: undefined })} /><span>${te("stayInArea")}</span></label>
       ${o.layout ? html`<p class="note">${te("layoutKept")}</p>` : null}
       ${open === o.id ? html`<${Members} office=${o} view=${view} everyone=${everyone} onChange=${(members) => set(o.id, { members })} />` : null}
     </li>`)}</ul>

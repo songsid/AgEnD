@@ -32,7 +32,7 @@ vi.mock("../src/tmux-manager.js", async original => ({ ...await original<typeof 
 import { FleetManager } from "../src/fleet-manager.js";
 import { EventLog } from "../src/event-log.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
-import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE } from "../src/web-auth.js";
+import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE, WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
 import { SettingsBaselines } from "../src/settings-baseline.js";
@@ -131,6 +131,14 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
   const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
   const sid = sessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
   const guestSid = sessions.create({ tier: "guest", surface: "local", label: "guest", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "dc", userId: "999" } }).sessionId as string;
+  // M-3278: the public link's own sessions (its surface and exposure; it reads only its __Host- cookie).
+  const EXPOSURE = "e".repeat(32);
+  // Made on first use, so the tests that look the one admin session up by tier find only the local one.
+  let gw: { admin: string; read: string } | undefined;
+  const gateway = () => gw ??= {
+    admin: sessions.create({ tier: "admin", surface: "gateway", exposureId: EXPOSURE, label: "gateway admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string,
+    read: sessions.create({ tier: "read", surface: "gateway", exposureId: EXPOSURE, label: "gateway read", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string,
+  };
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
     guestOverview: () => ({ audit: [{ kind: "grant", at: 1, account: "dc:111", name: "Ada", via: "direct", added: [], removed: ["a"], endedSessions: 1 }] }), revokeGuestWebSessions: revoke, forgetGuestPrefs: forget, guestPeople: people, guestGrantRefusal: refusal, sendGuestCodeByAdmin: sendCode, noteGuestGrantChange: note,
@@ -141,13 +149,16 @@ function harness(fleet: Record<string, unknown> = {}, opts: { refuse?: (a: strin
     principal: req => req.headers.cookie ? { id: "session-a", label: "browser", source: "web_session", current: () => true } : null,
     baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
   });
-  function request(method: string, url: string, body?: unknown, o: { publicLink?: boolean; as?: "admin" | "guest" | "none" } = {}) {
+  function request(method: string, url: string, body?: unknown, o: { publicLink?: boolean; as?: "admin" | "read" | "guest" | "none" } = {}) {
     return new Promise<{ status: number; body: any }>((resolve, reject) => {
       const req = new EventEmitter() as any;
       req.method = method; req.url = url; req.destroy = () => undefined;
-      const who = o.as === "guest" ? guestSid : o.as === "none" ? "not-a-session" : sid;
-      req.headers = { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "http://localhost", cookie: `${WEB_SESSION_COOKIE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) };
-      if (o.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.example", isCurrent: () => true });
+      const who = o.publicLink ? (o.as === "read" ? gateway().read : o.as === "none" ? "not-a-session" : gateway().admin)
+        : o.as === "guest" ? guestSid : o.as === "none" ? "not-a-session" : sid;
+      req.headers = o.publicLink
+        ? { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "https://x.example", cookie: `${WEB_SESSION_COOKIE_SECURE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) }
+        : { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "http://localhost", cookie: `${WEB_SESSION_COOKIE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) };
+      if (o.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: EXPOSURE, expectedOrigin: "https://x.example", isCurrent: () => true });
       let status = 0;
       const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
         end(text: string) { resolve({ status, body: JSON.parse(text) }); } } as any;
@@ -239,13 +250,15 @@ describe("through the real gate and handler", () => {
     expect((await h.request("PUT", WEB, { guests: { grants: { "dc:111": { instances: ["a"] } } } })).status).toBe(200);
     expect(h.note.mock.calls.map((c) => [c[0].by, c[0].via, c[0].removed])).toEqual([[`session:${handle}`, "direct", ["b"]]]);
   });
-  it("the audit an admin reads comes with the section's own list: an admin's, never over the public link (a guest: see enforcement)", async () => {
+  it("the audit an admin reads comes with the section's own list: an admin's, over the public link too (M-3278) (a guest: see enforcement)", async () => {
     const h = harness({ web: { guests: { enabled: true } } });
     const mine = await h.request("GET", "/api/settings/guests");
     expect([mine.status, mine.body.audit?.[0]?.removed]).toEqual([200, ["a"]]);
     // A guest's request never reaches this handler: the fleet's guest gate (GUEST_ROUTES, default deny) refuses it first —
     // guest-grants-enforcement-2348 asks /api/settings/guests through the real listener as a guest (403).
-    expect((await h.request("GET", "/api/settings/guests", undefined, { publicLink: true })).status).toBe(403);
+    // M-3278 (decision 7933bf90): an admin session over the public link reads it as on the dashboard reached directly.
+    const link = await h.request("GET", "/api/settings/guests", undefined, { publicLink: true });
+    expect([link.status, link.body.audit?.[0]?.removed]).toEqual([200, ["a"]]);
   });
   it("a new grant for someone not seen in chat (or a fleet admin) is refused when it would apply; nothing is written", async () => {
     const h = harness({ web: { guests: { enabled: true, grants: {} } } });
@@ -260,7 +273,7 @@ describe("through the real gate and handler", () => {
     expect((await g.request("PUT", WEB, { guests: { grants: { "dc:999": { instances: ["a"] } } } })).status).toBe(200);
     expect(g.refusal).not.toHaveBeenCalled();
   });
-  it("the people list and Send sign-in code: an admin's (with who asked), never a guest's, never over the public link", async () => {
+  it("the people list and Send sign-in code: an admin's (with who asked), never a guest's; over the public link an admin's only (M-3278)", async () => {
     const h = harness({ web: { guests: { enabled: true } } });
     expect(await h.request("GET", "/api/settings/guests/people")).toEqual({ status: 200, body: { people: [{ adapterId: "dc", userId: "111", username: "ada" }] } });
     const sent = await h.request("POST", "/api/settings/guests/send-code", { adapterId: "dc", userId: "111" });
@@ -272,9 +285,16 @@ describe("through the real gate and handler", () => {
       expect((await h.request("GET", "/api/settings/guests/people", undefined, { as })).status, as).toBe(401);
       expect((await h.request("POST", "/api/settings/guests/send-code", { adapterId: "dc", userId: "111" }, { as })).status, as).toBe(401);
     }
-    expect((await h.request("GET", "/api/settings/guests/people", undefined, { publicLink: true })).status).toBe(403);
-    expect((await h.request("POST", "/api/settings/guests/send-code", { adapterId: "dc", userId: "111" }, { publicLink: true })).status).toBe(403);
+    // M-3278: over the public link a read-only session or none is still refused; an admin session there is served.
+    for (const as of ["read", "none"] as const) {
+      expect((await h.request("GET", "/api/settings/guests/people", undefined, { publicLink: true, as })).status, `link ${as}`).toBe(401);
+      expect((await h.request("POST", "/api/settings/guests/send-code", { adapterId: "dc", userId: "111" }, { publicLink: true, as })).status, `link ${as}`).toBe(401);
+    }
     expect(h.sendCode).toHaveBeenCalledTimes(1);
+    expect((await h.request("GET", "/api/settings/guests/people", undefined, { publicLink: true })).status).toBe(200);
+    expect((await h.request("POST", "/api/settings/guests/send-code", { adapterId: "dc", userId: "111" }, { publicLink: true })).status).toBe(200);
+    expect(h.sendCode).toHaveBeenCalledTimes(2);
+    expect(h.sendCode.mock.calls[1]![1]).toMatch(/^session:/);
     // #2365 review: the route hands down a check of that admin's session as it is now.
     const still = (h.sendCode.mock.calls[0] as unknown[])[2] as () => boolean;
     expect(still()).toBe(true);

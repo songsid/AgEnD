@@ -88,7 +88,7 @@ register("webauth", {
 });
 const tn = (k, ...v) => t(`webauth.${k}`, ...v);
 // The switch and "Only this computer" are changed in Settings on this computer — never over the public link (#2525 review).
-const fixable = (reason) => (reason === "disabled" || reason === "loopback_only") && globalThis.document?.body?.dataset?.publicLink !== "1";
+const fixable = (reason) => reason === "disabled" || reason === "loopback_only";   // M-3278: its Settings card is reachable over the link too
 const REASONS = ["disabled", "loopback_only", "no_account", "host_sign_in", "not_admin", "not_admin_session", "token_rotated", "public_link", "named_link_off", "quick_link_off", "not_session"];
 // Until when: the time, with the day when it isn't today (an authorization lasts up to 48 h).
 const clock = (ms) => {

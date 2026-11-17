@@ -241,25 +241,24 @@ describe("3a. one answer per card at a time", () => {
   });
 });
 
-describe("3c. the public link shows the board and changes nothing (the server refuses it too)", () => {
+// M-3278 (decision 7933bf90): the public link's admin works the board as here (the host refuses a read-only session).
+describe("3c. the public link's board is writable as here (M-3278)", () => {
   afterEach(() => { (globalThis as any).document.body.removeAttribute("data-public-link"); });
 
-  it("a read-only note; no Confirm or Send back, no New project; on a project, no New main task and no dragging", async () => {
+  it("no read-only note; Confirm and Send back, New project; on a project, its Main task button and dragging", async () => {
     (globalThis as any).document.body.dataset.publicLink = "1";
     const open = { ...REVIEW_CARD, id: "M-2", uuid: "u2", status: "open", needsReview: false };
     handler = (path) => (path === "/ui/tasks/board" ? { ...BOARD, cards: [REVIEW_CARD, open] } : {});
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|link|en" }));
     await settle(6);
-    expect(p.root.querySelector(".tb-readonly")?.textContent).toContain("read-only");
+    expect(p.root.querySelector(".tb-readonly")).toBeNull();
     expect(p.root.querySelector(".tb-wait-row")).not.toBeNull();                 // the waiting card is listed…
-    expect(p.root.querySelectorAll(".tb-wait-row .btn")).toHaveLength(0);         // …with nothing to answer it with
-    expect(p.root.querySelector(".list-head .btn-primary")).toBeNull();                 // no New project (Instances is a read)
+    expect(p.root.querySelectorAll(".tb-wait-row .btn").length).toBeGreaterThan(0);   // …with its answers
+    expect(p.root.querySelector(".list-head .btn-primary")).not.toBeNull();             // New project
     p.root.querySelector(".tb-project-open").click(); await settle(6);
     expect(p.root.querySelectorAll(".tb-tile")).toHaveLength(2);
-    expect([...p.root.querySelectorAll(".tb-tile")].map((el: any) => el.getAttribute("draggable"))).toEqual(["false", "false"]);
-    expect([...p.root.querySelectorAll(".btn")].some((b: any) => b.textContent.includes("New main task"))).toBe(false);
-    fire(p.root.querySelector(".tb-tile-title"), "keydown", { key: "ArrowRight", altKey: true }); await settle(4);
-    expect(requests.filter(r => r.startsWith("POST"))).toEqual([]);
+    expect([...p.root.querySelectorAll(".tb-tile")].map((el: any) => el.getAttribute("draggable"))).toEqual(["true", "true"]);
+    expect([...p.root.querySelectorAll(".btn")].some((b: any) => b.textContent.includes("Main task"))).toBe(true);
   });
 });
 

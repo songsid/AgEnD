@@ -363,12 +363,12 @@ describe("the app's modules", () => {
     expect([ls("agend_theme"), requests.map((r) => r.method)]).toEqual(["light", ["POST", "GET"]]);
   });
 
-  it("the public link writes nothing to the host: no upload, no change sent (the browser keeps its own)", async () => {
+  it("M-3278: the public link's admin page writes to the host as anywhere: the upload and the change are sent", async () => {
     const m = await boot({ storage: { agend_lang: "zh-TW" }, host: {}, publicLink: true });
     await m.migratePrefs();
     m.savePref("theme", "dark");
     await new Promise((r) => setTimeout(r, 450));
-    expect([m.prefsWritable(), posts(), ls("agend_theme")]).toEqual([false, [], "dark"]);
+    expect([m.prefsWritable(), posts(), ls("agend_theme")]).toEqual([true, [{ onlyIfUnset: true, set: { lang: "zh-TW" } }, { set: { theme: "dark" } }], "dark"]);
   });
 
   it("the anonymous reader (no host values on the page): nothing is read or sent", async () => {

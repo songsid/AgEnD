@@ -122,20 +122,22 @@ describe("the theme routes", () => {
       expect([status, f.fm.themeStore.get("alpha").locked]).toEqual([401, false]);
     } finally { await f.stop(); }
   }, 30_000);
-  it("the public link: reads on its manifest, reset and lock absent — and refused by the handler on its own", async () => {
+  it("the public link: reads, reset and lock on its manifest (M-3278) — a read-only session there refused by the handler, an admin's admitted", async () => {
     expect([isPublicWebRoute("GET", "/ui/themes"), isPublicWebRoute("GET", `/ui/img/theme/a/${"a".repeat(32)}`)]).toEqual([true, true]);
-    for (const p of ["/ui/themes/a/reset", "/ui/themes/a/lock"]) expect(isPublicWebRoute("POST", p), p).toBe(false);
+    for (const p of ["/ui/themes/a/reset", "/ui/themes/a/lock"]) expect(isPublicWebRoute("POST", p), p).toBe(true);
     const f = await fleet();
     try {
-      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
-      const status = await new Promise<number>(resolve => {
+      const overLink = (tier: "admin" | "read") => new Promise<number>(resolve => {
+        const { sessionId } = f.fm.webSessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
         let code = 0;
         const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end() { resolve(code); } };
         const req = Object.assign(new EventEmitter(), { method: "POST", url: "/ui/themes/alpha/reset", headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sessionId}`, origin: "https://x.trycloudflare.com", "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" }, destroy() {}, resume() {} });
         bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
         expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/themes/alpha/reset"), f.fm)).toBe(true);
+        req.emit("data", Buffer.from("{}")); req.emit("end");
       });
-      expect(status).toBe(403);
+      expect(await overLink("read")).toBe(403);
+      expect(await overLink("admin")).toBe(200);   // M-3278
     } finally { await f.stop(); }
   }, 30_000);
   it("the page's theme reads are passive (they never slide a session's idle expiry)", () => {
@@ -276,12 +278,12 @@ describe("the page", () => {
       expect(nav.avatarOf({ ...it0, theme_avatar: { kind: "image", src } }), src).toEqual({ kind: "image", src: "/ui/img/bot/discord?v=1" });
     }
   });
-  it("Lock and Reset are offered — but not over the public link; Unlock once locked", async () => {
+  it("Lock and Reset are offered — over the public link too (M-3278); Unlock once locked", async () => {
     let { themes } = await load();
     expect(themes.themeMenuItems("alpha").map((i: { key: string }) => i.key)).toEqual(["theme-lock", "theme-reset"]);
     themes.themesStore.set({ locked: ["alpha"] });
     expect(themes.themeMenuItems("alpha")[0].label).toBe("Unlock theme");
     ({ themes } = await load({ publicLink: true }));
-    expect(themes.themeMenuItems("alpha")).toEqual([]);
+    expect(themes.themeMenuItems("alpha").map((i: { key: string }) => i.key)).toEqual(["theme-lock", "theme-reset"]);   // M-3278
   });
 });

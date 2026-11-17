@@ -159,16 +159,22 @@ describe("PUT /ui/office-level-titles", () => {
       expect(JSON.parse((await put(admin, { levels: null })).body)).toEqual({ rev: 2, levels: null });
       const third = await put(admin, { levels: RANKS });                                     // the offices' saves' limit
       expect([third.status, JSON.parse(third.body).error, f.fm.officeStore.levels()]).toEqual([429, "offices_rate_limited", null]);
-      expect([isPublicWebRoute("PUT", "/ui/office-level-titles"), isPassiveWebRead("PUT", "/ui/office-level-titles")]).toEqual([false, false]);
-      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
-      const answer = await new Promise<{ status: number; body: string }>(resolve => {
+      // M-3278 (decision 7933bf90): routed over the public link; an admin session saves there as anywhere, a read-only one is refused.
+      expect([isPublicWebRoute("PUT", "/ui/office-level-titles"), isPassiveWebRead("PUT", "/ui/office-level-titles")]).toEqual([true, false]);
+      const overLink = (tier: "admin" | "read") => new Promise<{ status: number; body: string }>(resolve => {
+        const { sessionId } = f.fm.webSessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
         let code = 0;
         const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end(b: string) { resolve({ status: code, body: String(b) }); } };
         const req = Object.assign(new EventEmitter(), { method: "PUT", url: "/ui/office-level-titles", headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sessionId}`, origin: "https://x.trycloudflare.com", "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" }, destroy() {}, resume() {} });
         bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
         expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/office-level-titles"), f.fm)).toBe(true);
+        req.emit("data", Buffer.from(JSON.stringify({ levels: null }))); req.emit("end");
       });
-      expect([answer.status, JSON.parse(answer.body).error]).toEqual([403, "offices_not_over_public_link"]);
+      const readOverLink = await overLink("read");
+      expect([readOverLink.status, JSON.parse(readOverLink.body).error]).toEqual([403, "offices_need_an_admin_session"]);
+      f.fm.officeWrites = undefined;   // the limit was reached above; the link's save is judged on its own
+      const answer = await overLink("admin");
+      expect([answer.status, JSON.parse(answer.body)]).toEqual([200, { rev: 3, levels: null }]);
     } finally { await f.stop(); }
   }, 30_000);
   it("PUT /ui/office-style still answers as before (the shared handler)", async () => {

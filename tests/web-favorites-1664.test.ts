@@ -129,8 +129,8 @@ describe("the host: nav.favorites", () => {
     const sessions = new WebSessionStore();
     const ctx = { webToken: token, webSessions: sessions, webPrefs: prefs, logger: { info() {}, debug() {}, error() {}, warn() {} },
       sseClients: new Set(), getUiStatus: () => ({ instances: [], prefs_rev: prefs.rev() }), emitSseEvent: vi.fn() } as any;
-    const session = (publicLink = false) => {
-      const s = sessions.create({ tier: "admin", surface: publicLink ? "gateway" : "local", label: "t", tokenEpoch: tokenEpoch(token), ...(publicLink ? { exposureId } : {}) });
+    const session = (publicLink = false, tier: "admin" | "read" = "admin") => {
+      const s = sessions.create({ tier, surface: publicLink ? "gateway" : "local", label: "t", tokenEpoch: tokenEpoch(token), ...(publicLink ? { exposureId } : {}) });
       const call = (method: string, body?: unknown) => new Promise<{ status: number; body: any }>((resolve) => {
         const headers: Record<string, string> = { host: publicLink ? "sample.trycloudflare.com" : "127.0.0.1:19280", cookie: `${publicLink ? "__Host-" : ""}agend_session=${s.sessionId}` };
         if (method === "POST") Object.assign(headers, { origin: publicLink ? pub : local, "sec-fetch-site": "same-origin", "x-agend-csrf": csrfTokenFor(s.sessionId) });
@@ -153,17 +153,19 @@ describe("the host: nav.favorites", () => {
     const seen = await desktop.get();
     expect([w.status, seen.body.values["nav.favorites"], r.ctx.emitSseEvent.mock.calls]).toEqual([200, ["beta", "alpha"], [["status", { instances: [], prefs_rev: 1 }]]]);
   });
-  it("the public link reads the favorites but cannot change them; an unknown or __proto__ name is a 400 with nothing written", async () => {
+  it("M-3278: an admin over the public link changes the favorites as anywhere (a read-only session there cannot); an unknown or __proto__ name is a 400 with nothing written", async () => {
     const prefs = new WebPrefsStore(tmp(), { exists: (n) => Object.hasOwn({ alpha: 1 }, n) });
     prefs.write(OPERATOR, new Map([["nav.favorites", ["alpha"]]]));
     const r = route(prefs);
-    const link = r.session(true), signedIn = r.session();
+    const link = r.session(true), linkRead = r.session(true, "read"), signedIn = r.session();
     const out = [
-      await link.post({ set: { "nav.favorites": [] } }), await signedIn.post({ set: { "nav.favorites": ["alpha", "ghost"] } }),
+      await linkRead.post({ set: { "nav.favorites": [] } }), await signedIn.post({ set: { "nav.favorites": ["alpha", "ghost"] } }),
       await signedIn.post({ set: { "nav.favorites": ["__proto__"] } }),
     ].map((x) => [x.status, x.body.error]);
     expect([out, (await link.get()).body.values["nav.favorites"], prefs.rev()])
-      .toEqual([[[403, "prefs_not_over_public_link"], [400, "unknown_instance: ghost"], [400, "unknown_instance: __proto__"]], ["alpha"], 1]);
+      .toEqual([[[403, "prefs_read_only"], [400, "unknown_instance: ghost"], [400, "unknown_instance: __proto__"]], ["alpha"], 1]);
+    const w = await link.post({ set: { "nav.favorites": [] } });
+    expect([w.status, (await signedIn.get()).body.values["nav.favorites"], prefs.rev()]).toEqual([200, [], 2]);
   });
 });
 
@@ -361,9 +363,10 @@ describe("the sidebar's Favorites", () => {
       expect([first, groups(pg)[0], pg.storage.get("agend_favorites")]).toEqual([["Favorites", ["charlie"]], ["Favorites", ["alpha"]], '["alpha"]']);
     } finally { ls.setItem = saved.set; ls.removeItem = saved.remove; }
   });
-  it("the public link sees the favorites but has no star and no Edit", async () => {
+  it("M-3278: the public link's admin page has the stars and Edit as anywhere", async () => {
     const pg = await sidebar([I("alpha"), I("beta")], { favorites: ["beta"], publicLink: true });
-    expect([groups(pg), pg.root.querySelectorAll("button.inst-star").length, pg.root.querySelector("button.fav-edit")]).toEqual([[["Favorites", ["beta"]], ["AgEnD", ["alpha"]]], 0, null]);
+    expect([groups(pg), !!pg.root.querySelector("button.fav-edit")]).toEqual([[["Favorites", ["beta"]], ["AgEnD", ["alpha"]]], true]);
+    expect((await star(pg, "Add alpha to favorites"))?.textContent).toContain("Add");
   });
   it("zh-TW: the heading and the star's label", async () => {
     const pg = await sidebar([I("alpha"), I("beta")], { favorites: ["beta"] });

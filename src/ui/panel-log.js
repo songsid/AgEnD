@@ -135,7 +135,6 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
   const cursor = useRef({ key: null, after: null, skip: false, before: null, ev: 0, trimmed: false, epoch: 0 });
   const reading = useRef(false), again = useRef(false);
   const scroller = useRef(null), pinned = useRef(true);
-  const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
   const polling = globalThis.document?.body?.dataset?.webTransport === "poll";
 
   const q = (params) => `/ui/steps?${new URLSearchParams({ instance: name, ...params })}`;
@@ -266,8 +265,7 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
   else if (state.phase === "loading") content = html`<${Skeleton} lines=${6} />`;
   else if (state.phase === "off") {
     content = html`<div class="log-off center"><${Empty} icon="tasks" title=${tl("offTitle")} hint=${tl("offBody")}
-      action=${overPublicLink ? html`<p class="note">${tl("offPublic")}</p>`
-        : html`<button type="button" class="btn btn-primary log-enable" disabled=${enabling} onClick=${enable}>${enabling ? tl("enabling") : tl("enable")}</button>`} /></div>`;
+      action=${html`<button type="button" class="btn btn-primary log-enable" disabled=${enabling} onClick=${enable}>${enabling ? tl("enabling") : tl("enable")}</button>`} /></div>`;
   } else {
     const why = info && info.reason ? (info.reason === "unsupported" ? tl("unsupported", info.backend)
       : KIRO_REASONS.has(info.reason) ? tl("kiroWhy", tl(info.reason))

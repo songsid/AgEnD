@@ -107,13 +107,13 @@ describe("Settings → Web, as rendered", () => {
     expect(w.webWrites().map(s => s.body)).toEqual([{ session: { local: { absolute_hours: 24, idle_hours: 6 } }, web_terminal: { enabled: false, ttl_minutes: 5 } }]);
   });
 
-  it("#2122: Usage report over the public link — off by default; ticking it stages exactly that key; it says it applies at once", async () => {
+  it("#2122 / M-3278: Usage report over the public link — on by default; unticking it stages exactly that key; it says it applies at once", async () => {
     const w = await open({}, "web-dashboard");
-    expect(w.$("webUsagePublic").checked).toBe(false);
-    expect(w.text()).toContain("Fleet → Usage (up to 400 days of each agent's tokens, requests, messages and API-equivalent amounts) is offered over the temporary public link too. Off by default; guests never see it. Applies at once.");
-    await w.check(w.$("webUsagePublic"), true);
+    expect(w.$("webUsagePublic").checked).toBe(true);
+    expect(w.text()).toContain("Fleet → Usage (up to 400 days of each agent's tokens, requests, messages and API-equivalent amounts) is offered to an admin over the public link too (temporary or fixed). On by default; guests never see it. Applies at once.");
+    await w.check(w.$("webUsagePublic"), false);
     await w.review(); await w.apply();
-    expect(w.webWrites().map(s => s.body)).toEqual([{ usage_report_on_public_link: true }]);
+    expect(w.webWrites().map(s => s.body)).toEqual([{ usage_report_on_public_link: false }]);
   });
 
   it("#2911 (7): CDN libraries in previews — off by default; says plainly the requests leave this machine; ticking it stages exactly that key", async () => {
@@ -208,12 +208,12 @@ describe("Settings → Web, as rendered", () => {
     select.value = "false"; fire(select, "change"); await settle(); await w.apply();
     expect(w.webWrites().at(-1)?.body).toEqual({ notify_login: false });
   });
-  it.each([[{ notify_login: true, notice_delivery: { login: "dm" } }], [{ notify_login: "dm" }]])("a legacy DM setting %j shows as Topic; the select stays disabled on the public link", async web => {
+  it.each([[{ notify_login: true, notice_delivery: { login: "dm" } }], [{ notify_login: "dm" }]])("a legacy DM setting %j shows as Topic; the select is editable on the public link too (M-3278)", async web => {
     p.document.body.setAttribute("data-public-link", "1");
     const w = await open({ web }, "access");
     expect(w.$("webNotifyLogin").value).toBe("true");
     expect(w.$("webNotifyLogin").closest(".field").textContent).toContain("In effect: Topic");
-    expect(w.$("webNotifyLogin").closest("fieldset").disabled).toBe(true);
+    expect(w.$("webNotifyLogin").closest("fieldset").disabled).toBe(false);
     expect(w.webWrites()).toEqual([]);
   });
   it("lists every other web setting read-only, with its value from fleet.yaml or the one in effect, marked default (#2347 §10)", async () => {
@@ -243,15 +243,15 @@ describe("Settings → Web, as rendered", () => {
     expect(value()).toBe("90");
   });
 
-  it("over the temporary public link: the web form is disabled and says why (the server refuses Web writes there); nothing can be staged", async () => {
+  it("M-3278: over the temporary public link an admin edits the web form as anywhere; the tunnel token stays this computer's", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const w = await open();
-    // The user's decision (2026-10-22): an admin may change the fleet's settings over the link — but not these, which the
-    // server keeps refusing there; so no general "read-only" note either.
-    expect([p.root.querySelector(".s-web-fields").hasAttribute("disabled"), !!w.$("webPublicRefused"), !!p.root.querySelector(".s-readonly")]).toEqual([true, true, false]);
+    // M-3278 (decision 7933bf90): the Web fields are an admin's over the link too — enabled, no refusal note, no read-only note.
+    expect([p.root.querySelector(".s-web-fields").hasAttribute("disabled"), !!w.$("webPublicRefused"), !!p.root.querySelector(".s-readonly")]).toEqual([false, false, false]);
+    expect(w.$("publicTunnelToken")).toBeNull();
     await w.type(w.$("webSessionAbsolute"), "6");
     await w.review(); await w.apply();
-    expect([p.root.querySelector("[role=region]"), w.webWrites()]).toEqual([null, []]);   // #2347: no Save bar over the link
+    expect(w.webWrites().length).toBe(1);
   });
 
   it("from the dashboard's own address the same form is enabled (control)", async () => {
@@ -397,13 +397,13 @@ describe("#2344 Web edits join the existing Apply draft automatically", () => {
     await w.type(w.$("publicWebOriginPort"), "19300"); expect(w.webWrites()).toEqual([]); await w.apply();
     expect(w.webWrites().map(s => s.body)).toEqual([{ echo_to_channel: false, session: { local: { absolute_hours: null, idle_hours: null } }, web_terminal: { enabled: null, ttl_minutes: null }, public_link: { origin_port: 19300 } }]);
   });
-  it("public-link fields cannot auto-stage even if an input event is forged", async () => {
+  it("M-3278: over the public link an admin's Web edits join the Apply draft as anywhere", async () => {
     p.document.body.setAttribute("data-public-link", "1"); const w = await open();
     await w.type(w.$("publicWebHostname"), "chat.example.com");
     const { SettingsPanel } = await import("/ui/js/panel-settings.js");
     await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "web-dashboard" }, navKey: "settings:web-dashboard" })); await settle();
     await w.check(w.$("webLogTab"), true);
-    expect(pending()).toBeNull(); await w.apply(); expect(w.webWrites()).toEqual([]);
+    expect(pending()).not.toBeNull(); await w.apply(); expect(w.webWrites().length).toBe(1);
   });
   it("typing a secret never joins the Web draft or sends token material before Set token", async () => {
     const w = await open({ web: { public_link: { hostname: "chat.example.com", tunnel_token_env: "MY_CUSTOM_CONNECTOR" } } });

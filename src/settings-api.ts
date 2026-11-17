@@ -710,7 +710,6 @@ export function handleSettingsRequest(
 
   const retryConnection = path.match(/^\/api\/settings\/connections\/([^/]+)\/retry$/);
   if (method === "POST" && retryConnection) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "Connection retries are not permitted over a public link" }); return true; }
     if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "An admin sign-in is required" }); return true; }
     if (!ctx.retryAdapterNow) { json(res, 503, { error: "The fleet is not running" }); return true; }
     try {
@@ -726,7 +725,6 @@ export function handleSettingsRequest(
   // only and never over the public link, like the rest of Access; the typed token is read from the body once, used
   // only in the test connector's environment, and never echoed — the answer is closed step codes.
   if (method === "POST" && path === "/api/settings/public-link/test") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }, true); return true; }
     const caller = guestSettingsCaller(req, url, ctx);
     if (!caller) { json(res, 403, { error: "An admin sign-in is required" }, true); return true; }
     if (!ctx.testNamedLink) { json(res, 501, { error: "test unavailable" }, true); return true; }
@@ -1062,7 +1060,8 @@ export function handleSettingsRequest(
   // ── #1920 phase 3: Settings → Web sign-ins → Guests. The list (GET) and an account's sign-out (POST — it only takes
   // away, so it is not a confirmed change). Never over the public link. The switches and lists are fleet/web's PUT.
   if (path === "/api/settings/guests" && method === "GET") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
+    // Fable on #4100 (F3): an admin's (or the CLI token's) on any listener — the overview names guests and their reach.
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
     if (!ctx.guestOverview) { json(res, 404, { error: "not available" }); return true; }
     res.setHeader("Cache-Control", "no-store");
     json(res, 200, ctx.guestOverview());
@@ -1072,7 +1071,6 @@ export function handleSettingsRequest(
   // a minute per account — a code is not a settings change: the grant it needs was already confirmed). Never over the
   // public link; the caller asked again after the body, as the sign-out below.
   if (path === "/api/settings/guests/people" && method === "GET") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
     if (!ctx.guestPeople) { json(res, 404, { error: "not available" }); return true; }
     if (!guestSettingsCaller(req, url, ctx)) { json(res, 401, { error: "not authorized" }); return true; }
     res.setHeader("Cache-Control", "no-store");
@@ -1080,7 +1078,6 @@ export function handleSettingsRequest(
     return true;
   }
   if (path === "/api/settings/guests/send-code" && method === "POST") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
     if (!ctx.sendGuestCodeByAdmin) { json(res, 404, { error: "not available" }); return true; }
     const caller = guestSettingsCaller(req, url, ctx);
     if (!caller) { json(res, 401, { error: "not authorized" }); return true; }
@@ -1097,7 +1094,6 @@ export function handleSettingsRequest(
     return true;
   }
   if (path === "/api/settings/guests/revoke" && method === "POST") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
     if (!ctx.revokeGuestWebSessions) { json(res, 404, { error: "not available" }); return true; }
     // #2103 review: not a gated settings change (it only takes away), so no transaction fences it — the caller is
     // asked again after the body: the same admin session (or the header token) still current, else nothing happens.
@@ -1119,14 +1115,14 @@ export function handleSettingsRequest(
   // takes away, so it is not a confirmed change; the caller is asked again after the body, as the guests' sign-out).
   // Never over the public link. The switches and the lists are fleet/web's PUT.
   if (path === "/api/settings/web-authority" && method === "GET") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_authority_not_over_public_link" }); return true; }
+    // Fable on #4100 (F3): an admin's on any listener — it lists the authorized sessions and LAN hosts.
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
     if (!ctx.webAuthorityOverview) { json(res, 404, { error: "not available" }); return true; }
     res.setHeader("Cache-Control", "no-store");
     json(res, 200, ctx.webAuthorityOverview(req));
     return true;
   }
   if (path === "/api/settings/web-authority/revoke" && method === "POST") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_authority_not_over_public_link" }); return true; }
     if (!ctx.revokeWebAuthority) { json(res, 404, { error: "not available" }); return true; }
     // AGEND-138: only the verified owner (webAuthorityRevoker: this fleet's owner, or a chat fleet's web-verified admin) may
     // revoke — any other admin sign-in, a guest, a read-only session: 403 `owner_required`, whatever the page showed. The
@@ -1504,7 +1500,6 @@ export function handleSettingsRequest(
   if (method === "PUT" && path === "/api/settings/fleet/web") {
     // #1620: never over the temporary public link — refused before the body is read (the confirmation gate refuses it
     // first; this is the second wall, for any path that reaches the handler without it).
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     // #1920 phase 3: room for guest lists (open_instances, narrow — up to 200 names each); the gate reads up to 512 KiB.
     readBody(req, 256 * 1024).then(buf => {
@@ -1635,7 +1630,9 @@ export function handleSettingsRequest(
   // ── #1629 r4.1 Q3 (b): the identity card's upload limits (Settings → Appearance) — never over the public link: absent
   // from its manifest, and refused here too. A lower limit applies directly; a higher one is confirmed (settings-change.ts).
   if (path === "/api/settings/fleet/appearance" && (method === "GET" || method === "PUT")) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "appearance_settings_not_over_public_link" }); return true; }
+    // Fable on #4100 (F3): reading it is an admin's on any listener (a change comes through the confirmation gate, which asks
+    // who it is, and is applied by its replay).
+    if (method === "GET" && !guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     const view = (configured: unknown) => {
       const { limits, warnings } = effectiveAppearanceLimits(configured);
