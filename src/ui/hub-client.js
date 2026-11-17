@@ -378,6 +378,15 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     savePersonPrefs(sessionCsrf, favorites, onlyIfUnset = false) {
       return sessionCsrf && sessionCsrf === csrf ? call("PUT", "/hub/v1/me/prefs", { favorites, onlyIfUnset }) : Promise.resolve(retired());
     },
+    agentSharingV1: true,
+    ownAgents(scope) { return scope && scope === csrf ? call("GET", "/hub/v1/me/agents") : Promise.resolve(retired()); },
+    refreshOwnAgents(scope, fleetId) { return scope && scope === csrf ? call("POST", "/hub/v1/me/agents/refresh", { fleetId }) : Promise.resolve(retired()); },
+    requestAgentSharing(scope, input) { return scope && scope === csrf ? call("POST", "/hub/v1/me/agent-sharing", input) : Promise.resolve(retired()); },
+    agentSharingRequest(scope, requestId) { return scope && scope === csrf ? call("GET", `/hub/v1/me/agent-sharing/${id(requestId)}`) : Promise.resolve(retired()); },
+    previousAgentAccess(scope, exposureId) { return scope && scope === csrf ? call("GET", `/hub/v1/me/agents/${id(exposureId)}/previous-access`) : Promise.resolve(retired()); },
+    usePreviousAgentAccess(scope, exposureId, input) { return scope && scope === csrf ? call("POST", `/hub/v1/me/agents/${id(exposureId)}/previous-access`, input) : Promise.resolve(retired()); },
+    ownerGrant(scope, input) { return scope && scope === csrf ? call("POST", "/hub/v1/grants", input) : Promise.resolve(retired()); },
+    ownerSharing(scope, exposureId, revision, sharingEpoch, paused) { return scope && scope === csrf ? call("POST", `/hub/v1/exposures/${id(exposureId)}/sharing`, { revision, sharingEpoch, paused }) : Promise.resolve(retired()); },
     agentIntrosV1: true,
     saveAgentIntro: (exposureId, revision, text) => call("PUT", `/hub/v1/exposures/${id(exposureId)}/intro`, {revision,text}),
     catalog() { return call("GET", "/hub/v1/exposures"); },

@@ -57,7 +57,7 @@ async function mountWith(c: any, node: any, url = "http://127.0.0.1:19290/ui/hub
 }
 const text = (el: any) => (el?.textContent || "").replace(/\s+/g, " ").trim();
 
-// M-3190 (Argon's chat-first review): the welcome's two cards became 我分享的 Agent → 「我的 Fleet」 (MyFleetsCard) and the chat
+// M-3190 (Argon's chat-first review): the welcome's two cards became 我的 Agent → 「我的 Fleet」 (MyFleetsCard) and the chat
 // launcher's frame (ChatLauncherFrame: a note when chatting isn't available now, the administrator's "Hub ready" line, the Fleet line).
 const W = (over: Record<string, any> = {}) => ({ ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 2, fleets: [] }, ...over });
 describe("the welcome's projection: 我的 Fleet and the launcher's frame, shaped by what the person may do now", () => {
@@ -118,7 +118,7 @@ describe("the welcome's projection: 我的 Fleet and the launcher's frame, shape
     expect(card.root.querySelector(".hub-pair-more")).toBe(null);
     expect(text(card.root.querySelector(".hub-my-fleets"))).not.toMatch(/automatic|instantly/i);          // no quick-pairing promise
     const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
-    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("Want to share agents from your own AgEnD? Connect a fleet in My shared agents →");
+    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("Want to share agents from your own AgEnD? Connect a fleet in My agents →");
     expect(frame.root.querySelector('[data-welcome="fleets"] a').getAttribute("href")).toBe("/ui/hub/exposures");
   });
   it("with a Fleet: its row (normal text, its state) and the steps behind 「+ Connect another fleet」; the launcher's line names them", async () => {
@@ -129,12 +129,12 @@ describe("the welcome's projection: 我的 Fleet and the launcher's frame, shape
     fire(card.root.querySelector(".hub-pair-more"), "click"); await settle(10);
     expect([card.root.querySelector(".hub-pair-more"), !!card.root.querySelector(".hub-pair-steps")]).toEqual([null, true]);
     const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
-    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Alex, My fleet) · Manage in My shared agents →");
+    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Alex, My fleet) · Manage in My agents →");
   });
   it("the launcher's Fleet line counts and names only the Fleets still connected — a revoked one is left out", async () => {
     const f = fake({ welcome: async () => W({ connect: { state: "allow", maxFleets: 8, fleets: [{ id: "f1", label: "Alex", status: "active" }, { id: "f2", label: "Old desk", status: "revoked" }, { id: "f3", label: "Lab", status: "suspended" }] } }) });
     const frame = await mountWith(f.c, h(welcome.ChatLauncherFrame, {}));
-    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Alex, Lab) · Manage in My shared agents →");
+    expect(text(frame.root.querySelector('[data-welcome="fleets"]'))).toBe("● 2 fleets connected (Alex, Lab) · Manage in My agents →");
   });
   it("revoke is in the row's ⋯ (quick pairing): it asks first; No sends nothing, Yes revokes that Fleet's generation and reads again", async () => {
     const fleets = [{ id: "f1", label: "Alex", status: "active", generation: 7 }];

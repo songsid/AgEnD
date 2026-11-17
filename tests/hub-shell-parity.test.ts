@@ -2,7 +2,7 @@
  * cid-hub-shell-parity (the user: 「agend 排得很好看, agend hub 醜到不行」; the approved mockup): the Hub's sidebar is the
  * fleet dashboard's own (style guide rule 1), in a mini DOM:
  * - the brand is one line, "AgEnD Hub" — the Hub's name its tooltip, absent when the Hub has none (#3426);
- * - the dashboard's rows: Conversations, My shared agents, Administration (the administrator only), Notices (only where the
+ * - the dashboard's rows: Conversations, My agents, Administration (the administrator only), Notices (only where the
  *   Hub offers its security notices — and no count: the Hub exposes no read state), Search (Ctrl K: the conversation
  *   filter), New conversation (the side-new row, never a bordered pill);
  * - the conversation list under its section label, its empty state one line (no paragraph); the main page's too;
@@ -89,19 +89,19 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
   });
   it("the rows, as the dashboard draws them: Administration for the administrator only; New conversation a side-new row heading the conversation list (M-3190), never a pill", async () => {
     const person = await hub();
-    expect(rows(person)).toEqual(["Chats", "My shared agents", "Search"]);
+    expect(rows(person)).toEqual(["Chats", "My agents", "Search"]);
     const newChat = person.root.querySelector("#sidebar .hub-side-rooms .side-new")!;
     expect([person.root.querySelector("#sidebar .hub-new"), person.root.querySelector(".side-nav .side-new"), newChat.tagName, newChat.textContent.trim()]).toEqual([null, null, "BUTTON", "New chat"]);
     fire(newChat, "click"); await settle(20);
     expect([person.window.location.search, person.root.querySelector(".hub-launch-title")?.textContent]).toEqual(["?view=new", "Who do you want to talk to today?"]);
     await person.unmount(); mounted.splice(0); person.restore();
     const admin = await hub({ admin: true });
-    expect(rows(admin)).toEqual(["Chats", "My shared agents", "Administration", "Search"]);
+    expect(rows(admin)).toEqual(["Chats", "My agents", "Administration", "Search"]);
     expect(admin.root.querySelector(".side-nav a.side-row.active .grow")!.textContent).toBe("Chats");
   });
   it("Notices only where the Hub offers its security notices — with no count (the Hub exposes no read state); it opens their own page", async () => {
     const pg = await hub({ features: ["quick-pairing-v1"] });
-    expect(rows(pg)).toEqual(["Chats", "My shared agents", "Notices", "Search"]);
+    expect(rows(pg)).toEqual(["Chats", "My agents", "Notices", "Search"]);
     const notices = [...pg.root.querySelectorAll(".side-nav a.side-row")].find((a: any) => a.textContent.includes("Notices")) as any;
     expect([notices.getAttribute("href"), notices.querySelector(".nav-count")]).toEqual(["/ui/hub?view=notices", null]);
     notices.click(); await settle(20);
@@ -141,7 +141,7 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
       pg.root.querySelector(".hub-home-pick .hub-launch-title")!.textContent, pg.root.querySelector(".hub-home-pick .hub-launch-empty strong")!.textContent])
       .toEqual([null, "hub-home is-launch", "今天想找哪位 Agent？", "還沒有人直接分享 Agent 給你"]);
     await pg.unmount(); mounted.splice(0); pg.restore();
-    // Elsewhere (My shared agents) the sidebar's list says it, in one line.
+    // Elsewhere (My agents) the sidebar's list says it, in one line.
     const other = await hub({ lang: "zh-TW", path: "/ui/hub/exposures" });
     await until(() => other.root.querySelector("#sidebar .side-empty"));
     expect(other.root.querySelector("#sidebar .side-empty")!.textContent).toBe("還沒有對話");
@@ -160,7 +160,7 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
 
 describe("Argon's review of the Hub shell (cid-hub-ux-fixes)", () => {
   const qp = ["quick-pairing-v1"];
-  it("#1/#5: the security notices show on the Notices page only — under its header, never pinned above Chats, My shared agents or Administration", async () => {
+  it("#1/#5: the security notices show on the Notices page only — under its header, never pinned above Chats, My agents or Administration", async () => {
     for (const path of ["/ui/hub", "/ui/hub/exposures", "/ui/hub/admin"]) {
       const pg = await hub({ admin: true, features: qp, notices: [NOTICE], path });
       await until(() => pg.root.querySelector(".p-hub .panel-body"));
@@ -192,7 +192,7 @@ describe("Argon's review of the Hub shell (cid-hub-ux-fixes)", () => {
     } finally { g.confirm = was; }
   });
   it("#7/#17: each page is named once — the panel header and the tab say the same name; no second title under it", async () => {
-    const cases: Array<[string, string]> = [["/ui/hub", "Chats"], ["/ui/hub/exposures", "My shared agents"], ["/ui/hub/admin", "Administration"], ["/ui/hub?view=notices", "Notices"]];
+    const cases: Array<[string, string]> = [["/ui/hub", "Chats"], ["/ui/hub/exposures", "My agents"], ["/ui/hub/admin", "Administration"], ["/ui/hub?view=notices", "Notices"]];
     for (const [path, name] of cases) {
       const pg = await hub({ admin: true, features: qp, path });
       await until(() => pg.root.querySelector(".p-hub header.panel-head h1"));

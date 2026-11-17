@@ -1,3 +1,4 @@
+import { HubPreviousAccess } from "../sharing-previous-access.js";
 import { HubAgentIntros } from "../agent-intro.js";
 import { HubSharingRequests } from "../sharing-requests.js";
 import { HubAgentCatalogs } from "../agent-catalog.js";
@@ -69,7 +70,7 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-personal-agent
   // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
   "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",
   // Hub UX U2 (M-2932): the group-search picker (its own words inside), shared with B2's join-code scope.
-  "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js", "hub-subject-picker.js", "hub-policy-subjects.js",
+  "hub-my-agents.js", "hub-my-agents-model.js", "hub-my-agents-strings.js", "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js", "hub-subject-picker.js", "hub-policy-subjects.js",
   // B2: code management and the same-request Hub approval queue.
   "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js",
   // Hub rooms (hub-rooms-ux.md §§2,5): the rooms words (#3850) then the presence helper (pure, no DOM).
@@ -185,6 +186,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const quota = new HubQuotaService(core);
   const fleetVersions = new HubFleetVersions(core);
   const agentCatalogs = new HubAgentCatalogs(core);
+  const previousAccess = new HubPreviousAccess(core, agentCatalogs);
   const sharingRequests = new HubSharingRequests(core, agentCatalogs, publishSharingSettlement);
   const recommendations = new HubVersionRecommendations(core, fleetVersions);
   const fleetUpdates = new HubFleetUpdates(core, fleetVersions, recommendations);
@@ -262,13 +264,27 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn(); return send(res, 200, await guard(() => sharingRequests.view(ctx, path.split("/").at(-1)!)));
     }
+    if (path === "/hub/v1/me/agents/refresh") {
+      if (method !== "POST") throw new HttpError(405, "method");
+      if (query.size) throw new HubProtocolError("invalid");
+      csrf(); const input = await body();
+      return send(res, 200, await guard(() => agentCatalogs.refresh(ctx, input)));
+    }
+    const previousMatch = /^\/hub\/v1\/me\/agents\/([a-f0-9-]{36})\/previous-access$/.exec(path);
+    if (previousMatch) {
+      if (query.size) throw new HubProtocolError("invalid");
+      if (method === "GET") { signedIn(); return send(res, 200, await guard(() => previousAccess.view(ctx, previousMatch[1]!))); }
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const input = await body();
+      return send(res, 200, await guard(() => previousAccess.use(ctx, previousMatch[1]!, input)));
+    }
     if (path === "/hub/v1/me/agents") {
       if (method !== "GET") throw new HttpError(405, "method");
       if (query.size) throw new HubProtocolError("invalid");
       signedIn(); return send(res, 200, await guard(() => agentCatalogs.view(ctx)));
     }
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = ["agent-intros-v1", "admin-dashboard-v1", "rooms-v1", "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    const offered = ["agent-sharing-v1", "agent-intros-v1", "admin-dashboard-v1", "rooms-v1", "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     offered.push("mcp-apps-v1");
@@ -1101,7 +1117,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentCatalogV1: true, exposureRequestsV1: true, features: Object.freeze(["agent-intros-v1", "admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentCatalogV1: true, exposureRequestsV1: true, features: Object.freeze(["agent-sharing-v1", "agent-intros-v1", "admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; sharingRequests.close(); agentCatalogs.close(); personal?.owner.close(); await personal?.turns.close(); fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };

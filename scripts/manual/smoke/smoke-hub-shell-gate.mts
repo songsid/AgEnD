@@ -8,7 +8,7 @@
 //               hint on a wide screen) and New chat as side-rows (no bordered pill, no old Hub brand line); the conversation
 //               list under its section label, its empty state one line; the foot (Settings, the session row) at the bottom;
 //               Notices with no count (the Hub has no read state); the session menu opens on the screen (upward);
-//   - pages:    Chats, My shared agents, Administration and Notices — each page's own cards share one frame; one height per
+//   - pages:    Chats, My agents, Administration and Notices — each page's own cards share one frame; one height per
 //               button kind; nothing past the content column or the page; no coloured left edge on a rounded box; the
 //               dashboard's page head (PanelHeader) on every page but the chat; the security notices card in the page's
 //               column (the cards' own edges), never full-bleed above a chat;
@@ -169,11 +169,11 @@ const PAGE = `(() => {
 })()`;
 
 const pw = createRequire(PW + "/")("playwright-core");
-const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
+const browser = await pw.chromium.launch({ headless: true, ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
 const started = Date.now();
 const PAGES = [
   { key: "chats", path: "/ui/hub", current: { en: "Chats", "zh-TW": "對話" }, head: false },
-  { key: "mine", path: "/ui/hub/exposures", current: { en: "My shared agents", "zh-TW": "我分享的 Agent" }, head: true },
+  { key: "mine", path: "/ui/hub/exposures", current: { en: "My agents", "zh-TW": "我的 Agent" }, head: true },
   { key: "admin", path: "/ui/hub/admin", current: { en: "Administration", "zh-TW": "管理" }, head: true },
   { key: "notices", path: "/ui/hub?view=notices", current: { en: "Notices", "zh-TW": "通知" }, head: true },
 ] as const;
@@ -247,7 +247,7 @@ try {
       if (sb.missing) { check(`${tag}:sidebar`, false, "no #sidebar"); continue; }
       // M-3092: a Hub with rooms adds 「新房間」 for someone who may open rooms (the administrator, by default).
       // M-3190 (Argon): the primary rows only; 新對話 (and 「新房間」 for someone who may open rooms — M-3092) head the conversation list.
-      const want = c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "團隊", "管理", "通知", "搜尋"] : ["Chats", "My shared agents", "Teams", "Administration", "Notices", "Search"];
+      const want = c.lang === "zh-TW" ? ["對話", "我的 Agent", "團隊", "管理", "通知", "搜尋"] : ["Chats", "My agents", "Teams", "Administration", "Notices", "Search"];
       const wantNew = [c.lang === "zh-TW" ? "新對話" : "New chat", ...(roomsOffered ? [c.lang === "zh-TW" ? "新房間" : "New room"] : [])];
       const rows = sb.rows as any[];
       check(`${tag}:sidebar:brand`, !!sb.brand && sb.brand.text === "AgEnD Hub" && sb.brand.title === null && sb.brand.lines === 1 && sb.brand.name === "Team Hub", sb.brand);   // M-3190: the name under it

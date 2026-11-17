@@ -962,6 +962,8 @@ function HubMine() {
   const [cat, reload] = useRead(() => hubClient().catalog());
   const [pairings, reloadPairings] = useRead(() => hubClient().pairings());
   const [msg, setMsg] = useState(null);
+  const [allowTarget, setAllowTarget] = useState(null);
+  const modernSharing = session?.features?.includes("agent-sharing-v1") && hubClient()?.agentSharingV1 === true;
   useEffect(() => {
     linkHubChatCss(); linkHubOwnerCss();
     if (!document.querySelector('link[data-hub-sharing-css="1"]')) {
@@ -987,10 +989,10 @@ function HubMine() {
   // lands nowhere (useRead's own liveness ends with that page).
   if (x) return html`<${HubAgentPage} key=${x.id} x=${x} act=${act} msg=${msg} />`;
   // Nothing shared yet: the empty state below says where to share from, so the lead doesn't say it too (Argon #20).
-  return html`<div class="col hub-owner"><${OlderFleetBanner} client=${hubClient()} signIn=${session?.csrf || ""} /><p class="s-page-lead hub-page-lead">${ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
+  return html`<div class="col hub-owner">${!modernSharing ? html`<${OlderFleetBanner} client=${hubClient()} signIn=${session?.csrf || ""} />` : null}<p class="s-page-lead hub-page-lead">${modernSharing ? ho("mineLeadNew") : ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
     <div class="s-section-layout">
       ${/* M-3190: 「我的 Fleet」 moved here from 對話 — the person's Fleets and the steps to connect one. */ ""}
-      ${groupPolicyOn(session, hubClient()) ? html`<${LazyGroups} pick=${(m) => m.MyFleetsCard || (() => null)} props=${{ quick: session.features.includes("quick-pairing-v1"), admin: session.admin === true, features: session.features }} />` : null}
+      ${groupPolicyOn(session, hubClient()) ? html`<${LazyGroups} pick=${(m) => m.MyFleetsCard || (() => null)} props=${{ quick: session.features.includes("quick-pairing-v1"), admin: session.admin === true, features: session.features, compact: modernSharing }} />` : null}
       ${session?.features?.includes("personal-agents-v1") ? html`<${LazyRoomPart} load=${() => import("./hub-personal-agent.js")} name="HubPersonalAgent" props=${{client:hubClient(),scope:session.csrf,isAdmin:session.admin===true,onSaved:reload}} />` : null}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: true }} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
@@ -1001,12 +1003,13 @@ function HubMine() {
           ${p.ownerConfirmed ? html`<span class="tag ok">${hw("confirmed")}</span>` : html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => confirmPairing(p)}>${hw("confirmPairing")}</button>`}
         </div>`)}</div></section>` : null}
       ${!cat ? html`<${Skeleton} variant="rows" lines=${4} />` : cat.error ? html`<${ErrorState} message=${cat.error} onRetry=${reload} />` : null}
-      ${cat && !cat.error && !mine.length ? html`<div class="center hub-empty"><${Empty} icon="globe" title=${hw("exposuresEmpty")} hint=${hw("exposuresHint")} /></div>` : null}
-      ${mine.length ? html`<section class="card hub-shared"><h3>${ho(mine.some(e => e.kind === "personal") ? "yourAgentsCount" : "sharedCount", mine.length)}</h3>
+      ${modernSharing ? html`<${LazyRoomPart} load=${() => import("./hub-my-agents.js")} name="HubMyAgents" props=${{ client: hubClient(), scope: session.csrf, shared: mine, policy: groupPolicyOn(session, hubClient()), personal: session.features.includes("personal-agents-v1"), apps: session.features.includes("mcp-apps-v1"), pausable: session.features.includes("sharing-pause-v1"), subjects: session.features.includes("grant-subjects-v1"), onChanged: reload, onAllow: setAllowTarget }} />` : null}
+      ${!modernSharing && cat && !cat.error && !mine.length ? html`<div class="center hub-empty"><${Empty} icon="globe" title=${hw("exposuresEmpty")} hint=${hw("exposuresHint")} /></div>` : null}
+      ${!modernSharing && mine.length ? html`<section class="card hub-shared"><h3>${ho(mine.some(e => e.kind === "personal") ? "yourAgentsCount" : "sharedCount", mine.length)}</h3>
         <div class="hub-rows">${mine.map((e) => html`<a key=${e.id} class="s-row hub-row hub-row-link" href=${`/ui/hub/exposures?agent=${encodeURIComponent(e.id)}`}>
           <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong>${e.intro?html`<small class="note">${e.intro}</small>`:null}<small class="note">${grantSummary(e.grants)}</small></span>
           ${stateTag(e.state, e.kind === "personal")}<${Icon} name="next" size=${16} /></a>`)}</div></section>` : null}
-    </div></div>`;
+    </div>${allowTarget ? html`<${AllowDialog} x=${allowTarget} act=${act} onClose=${() => setAllowTarget(null)} />` : null}</div>`;
 }
 
 /** One shared agent: who may ask (allow, revoke), whether askers see its quota (G), who asked lately, pause. */

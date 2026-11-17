@@ -25,8 +25,8 @@ import { HubPageSharingSettings } from "./settings-hub-page-sharing.js";
 import { HubUpdateConsent } from "./settings-hub-updates.js";
 
 register("hubSharingFleet", {
-  en: { hint: "To pause and resume without clearing the allow list, open this agent under My shared agents on the Hub. Turning Share off stops sharing." },
-  "zh-TW": { hint: "要保留允許名單並暫停或繼續分享，請在 Hub「我分享的 Agent」開啟這個 Agent。關閉「分享」會停止分享。" },
+  en: { hint: "To pause and resume without clearing the allow list, open this agent under My agents on the Hub. Turning Share off stops sharing." },
+  "zh-TW": { hint: "要保留允許名單並暫停或繼續分享，請在 Hub「我的 Agent」開啟這個 Agent。關閉「分享」會停止分享。" },
 });
 const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy", unreachable: "errUnreachable", refused: "errRefused" };
 const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected", "rejected"]);

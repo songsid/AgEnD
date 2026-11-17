@@ -1,0 +1,564 @@
+{
+  "stage": "after",
+  "checks": [
+    {
+      "key": "bootstrap actual local sharing writer",
+      "ok": true
+    },
+    {
+      "key": "desk-light-en: own grouped inventory",
+      "ok": true
+    },
+    {
+      "key": "desk-light-en: offline and old reasons",
+      "ok": true
+    },
+    {
+      "key": "desk-light-en: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-light-en: Classic disclosure scrolls above action bar",
+      "ok": true
+    },
+    {
+      "key": "desk-light-en: no page errors",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW: own grouped inventory",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW: offline and old reasons",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW: no horizontal overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW: Classic disclosure scrolls above action bar",
+      "ok": true
+    },
+    {
+      "key": "phone-dark-zh-TW: no page errors",
+      "ok": true
+    },
+    {
+      "key": "no member delivery failures",
+      "ok": true
+    }
+  ],
+  "servedAssets": [
+    {
+      "path": "/assets/tokens.css",
+      "sha256": "41ba246b185ec32312748cd78dcba621e80b06ecefc8b0b247cf0cb1a6d7dc28"
+    },
+    {
+      "path": "/assets/app.css",
+      "sha256": "33598bbda0debaaf06ea01d10af7498d2050694c6e71a025efe1cd1a0274dbbd"
+    },
+    {
+      "path": "/assets/loading.css",
+      "sha256": "ce2756c19eb6c7e114e43e0fa031b13a7476f6c33376b5d51461eda037535699"
+    },
+    {
+      "path": "/assets/theme.js",
+      "sha256": "f88297999de8073c95bc104d8ac2b06c0a365c70e6b361656bc66eb2e97ca860"
+    },
+    {
+      "path": "/assets/app.js",
+      "sha256": "7d742730069e17f031617055636400e83cbcdea7f6ac0a5c6076f94542681bc8"
+    },
+    {
+      "path": "/assets/app-swipe.js",
+      "sha256": "2b5e7154b853394cb9e823281c2bae19d97260183d525d478a2e5f8efd207986"
+    },
+    {
+      "path": "/assets/app-stream.js",
+      "sha256": "839ae6d18c8a54da6170c418107fe3976186981dd975e207b8f3d673615b2e29"
+    },
+    {
+      "path": "/assets/app-html.js",
+      "sha256": "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9"
+    },
+    {
+      "path": "/assets/app-nav.js",
+      "sha256": "339642557680e95b818587035aa25cde0bb626bf2354bf0a5da28ce013e4d89c"
+    },
+    {
+      "path": "/assets/app-shell.js",
+      "sha256": "eaca1f3942b86c3eb41e23e173b890d373ea4a01e720fdbeed74dde18fe104fd"
+    },
+    {
+      "path": "/assets/app-prefs.js",
+      "sha256": "11a19a85aba6cd57ffe474bf226315c52254c64a4efb7ef25d89741a75ec8bbd"
+    },
+    {
+      "path": "/assets/app-store.js",
+      "sha256": "ee22617828ff1a1f602c2aebc1cb18733517c3f99f11392a7a41a3d36e24789f"
+    },
+    {
+      "path": "/assets/text-undo.js",
+      "sha256": "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a"
+    },
+    {
+      "path": "/assets/ui-toast.js",
+      "sha256": "993b0c3b9e1b21d5f3ec419a23f6e0b1c95df61d16d81cffd30578587143e964"
+    },
+    {
+      "path": "/assets/owner-css.js",
+      "sha256": "faa019b08c2dad62fc1e2c49c748ae069d9d4cb3c699f624411cf416b34a3bb7"
+    },
+    {
+      "path": "/assets/app-route.js",
+      "sha256": "7ac0e483841958ed0c75abc15107aaac12b3c2f6aad5c94cc681d9f3d73c791a"
+    },
+    {
+      "path": "/assets/app-needs.js",
+      "sha256": "47fdfcbd3dd53d6d2ef90943ce3cdd2aabb5178454f01a6c90968497a805c8c2"
+    },
+    {
+      "path": "/assets/header-tools.js",
+      "sha256": "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d"
+    },
+    {
+      "path": "/assets/app-i18n.js",
+      "sha256": "b71b0b687a584246924f322ed5b8f06ead8e6c1d2243a929490b270ebee7b754"
+    },
+    {
+      "path": "/assets/htm.module.js",
+      "sha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
+    },
+    {
+      "path": "/assets/preact-hooks.module.js",
+      "sha256": "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38"
+    },
+    {
+      "path": "/assets/ui-confirm.js",
+      "sha256": "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b"
+    },
+    {
+      "path": "/assets/preact.module.js",
+      "sha256": "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8"
+    },
+    {
+      "path": "/assets/ui-icons.js",
+      "sha256": "0016aa6dca8622ae2aae2c584b5bdaea5cc95dcaaf03782c6582564ae39ed277"
+    },
+    {
+      "path": "/assets/app-themes.js",
+      "sha256": "585aa0abfffde88d440a141c2c1a2fd8cddfca756751685f89c99aea0b1d5cf8"
+    },
+    {
+      "path": "/assets/app-session.js",
+      "sha256": "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec"
+    },
+    {
+      "path": "/assets/identity-color.js",
+      "sha256": "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a"
+    },
+    {
+      "path": "/assets/ui-states.js",
+      "sha256": "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31"
+    },
+    {
+      "path": "/assets/stale-tab.js",
+      "sha256": "c951cb7122e5c3f7c76f3e01ab072f0a5d0ac7433ad1088a9a9e1cffc3fcf657"
+    },
+    {
+      "path": "/assets/ui-dialog.js",
+      "sha256": "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6"
+    },
+    {
+      "path": "/assets/instance-nav.js",
+      "sha256": "2a6324e6f517b1af125c9ea931c12691f9d845499f489f9b73e40b6d04a4d50b"
+    },
+    {
+      "path": "/assets/settings-width.js",
+      "sha256": "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1"
+    },
+    {
+      "path": "/assets/model-observation.js",
+      "sha256": "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef"
+    },
+    {
+      "path": "/assets/side-panel.js",
+      "sha256": "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946"
+    },
+    {
+      "path": "/assets/app-update.js",
+      "sha256": "ee14762e47b71769f428e637825dee0fbd4c6e6dae5db8cbdb1566104880f47c"
+    },
+    {
+      "path": "/assets/app-ctx.js",
+      "sha256": "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6"
+    },
+    {
+      "path": "/assets/agent-widget.js",
+      "sha256": "acb1d6107adb005be5f07867da951228113ae1bb2976261928ff8c9c20cf6486"
+    },
+    {
+      "path": "/assets/device-roles.js",
+      "sha256": "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d"
+    },
+    {
+      "path": "/assets/web-authorize.js",
+      "sha256": "e3bb1bb3002dbba21f4cc7e2f4c8de8dd9e6be341745408d9eceac1139f718f1"
+    },
+    {
+      "path": "/assets/view-roster-store.js",
+      "sha256": "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8"
+    },
+    {
+      "path": "/assets/side-rail.js",
+      "sha256": "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56"
+    },
+    {
+      "path": "/assets/ui-menu.js",
+      "sha256": "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48"
+    },
+    {
+      "path": "/assets/usage-dialog.js",
+      "sha256": "869570ff75e0ae994729ea1e23622472efaf123fac9e1fb86257d8aec1115e5d"
+    },
+    {
+      "path": "/assets/machine-name.js",
+      "sha256": "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae"
+    },
+    {
+      "path": "/assets/view-strings.js",
+      "sha256": "02005971785a1da312668b413dcf59e3e072d5af62e67c22ea3ed4bac55c5aea"
+    },
+    {
+      "path": "/assets/read-stream.js",
+      "sha256": "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41"
+    },
+    {
+      "path": "/assets/usage-meter.js",
+      "sha256": "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200"
+    },
+    {
+      "path": "/assets/inter.woff2",
+      "sha256": "6dc9db6cb53e6ce9c82b760d5c94c3a773003abac2c8efa2cb535a9d87c7ecea"
+    },
+    {
+      "path": "/ui/js/panel-hub.js",
+      "sha256": "28c4f6da7722c5a0e85bd746b3b5b138f22fd272ffa5022bb8800558561593c5"
+    },
+    {
+      "path": "/ui/js/hub-personal-agent-strings.js",
+      "sha256": "5803fcfdc1f484c1d81e8061394c9bd128f0849efb7d7558c819af59f7a30ee1"
+    },
+    {
+      "path": "/ui/js/hub-join-approval.js",
+      "sha256": "abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1"
+    },
+    {
+      "path": "/ui/js/hub-owner-strings.js",
+      "sha256": "b61ddba72748ccebdb0aa55bc01f74018b70475500762dd69d0a03c4a2b3fb83"
+    },
+    {
+      "path": "/ui/js/hub-company-join.js",
+      "sha256": "7840122cfb793af9b9ae44e9081252064c8993274d3fc0a9e485c908259b9f58"
+    },
+    {
+      "path": "/ui/js/hub-company-join-strings.js",
+      "sha256": "e11e7cd022cb23c758726f1cd7f07d530608ab38f1907085ae86a8926ac29676"
+    },
+    {
+      "path": "/ui/js/hub-joincode-flow-strings.js",
+      "sha256": "4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "sha256": "1cd193a5d4c6ae6a7fafb412d24ac16007c205bc7a3ed8184ba6caa8b691fc59"
+    },
+    {
+      "path": "/ui/js/hub-directory-notices.js",
+      "sha256": "c4d0a6cf1b12d7fde9bb1e30ab005da1ca9c7916b693cc86e9bf0d28f5a8f9eb"
+    },
+    {
+      "path": "/assets/chat-msg-actions.js",
+      "sha256": "74651cf51d57bb1f73b46fb94161ba20b13234820f410c4c19625d6536870e83"
+    },
+    {
+      "path": "/ui/js/hub-directory-notice-strings.js",
+      "sha256": "90f089c96321bdf5a45be4921fb6133f9203f0aa4826e796c02f1dc9dcb8896e"
+    },
+    {
+      "path": "/ui/js/hub-fleet-versions.js",
+      "sha256": "fc6c93dc0da5d483cf252bb21127371d8d63029957e7690825832555b039423b"
+    },
+    {
+      "path": "/assets/chat-thread.js",
+      "sha256": "fd7f48ef65de7803f03d002e42799a0f7bdda8e03c0ab3fe304b2e6142f432e2"
+    },
+    {
+      "path": "/ui/js/hub-role-notices.js",
+      "sha256": "b066ed86d7e9cc20314fead2fd3c50119056001533b7f912f85a6204d59272c6"
+    },
+    {
+      "path": "/ui/js/hub-chat-strings.js",
+      "sha256": "18b4642af13a69a480dc04289ed8015de02955131514495eb8b931f0c5ead6cb"
+    },
+    {
+      "path": "/ui/js/hub-strings.js",
+      "sha256": "e4e41fcb8f7a31898fb570cb31118e6498f9ca20bf9f1e2cbcd88949a434a884"
+    },
+    {
+      "path": "/assets/chat-composer.js",
+      "sha256": "c9b00a990057b3edcdd9f218fbe313843f5e11ef0fbcd81b6fb129e3158f4b24"
+    },
+    {
+      "path": "/ui/js/hub-client.js",
+      "sha256": "b35412dfa8d282b026b3c6b2dbbff7e852f011d1eb630c548448f0303429bb16"
+    },
+    {
+      "path": "/assets/chat-strings.js",
+      "sha256": "aa6d27b7fcddadf2615550dc3c242524040845779bb3f414d2c525929999deec"
+    },
+    {
+      "path": "/assets/preview-panel.js",
+      "sha256": "83e4a03a24170d096768fe0e0bcf786be70bfe5be0d395e8e1fbb242a19ec2e1"
+    },
+    {
+      "path": "/ui/js/hub-room-favorites.js",
+      "sha256": "588bce06acfd85b37ddc48c1c0b7449cc41dd029f30d8164789a4e1283ae508f"
+    },
+    {
+      "path": "/ui/js/hub-room-notify.js",
+      "sha256": "e48e417dd25f82c7ae3eb17024956cd3205d8ecb4a01d5a90be1a3d7d86c3ba9"
+    },
+    {
+      "path": "/ui/js/hub-room-list.js",
+      "sha256": "73ad13687260dd66291f361ac40963db99d160e45dc799e6e761570acd4662bd"
+    },
+    {
+      "path": "/ui/js/hub-ai-apps-strings.js",
+      "sha256": "e07ebf330c2eedcd2c237f1a81c36fb762ee355bc171e21fd2f9926b8cf71ae2"
+    },
+    {
+      "path": "/ui/js/hub-room-strings.js",
+      "sha256": "de85db11976cb4f7b7e37dbd5be4adf600677fc2d4ca4037cc6587e423aa1f93"
+    },
+    {
+      "path": "/ui/js/hub-room-thread.js",
+      "sha256": "c4454b2995c628c7ebb9ec40f21589be1ba8135004f8aee72dbe669c20ffefaf"
+    },
+    {
+      "path": "/ui/js/hub-read-strings.js",
+      "sha256": "1be8bee71352ed41e8b71592b6acc404829f574327f3ab2aab433c64ace4a046"
+    },
+    {
+      "path": "/ui/js/hub-grant-strings.js",
+      "sha256": "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4"
+    },
+    {
+      "path": "/assets/page-head.js",
+      "sha256": "52e2fb81b5fbb1acabdd6b5e02ea89b6125494d6be6d722d963c4ec053a81707"
+    },
+    {
+      "path": "/ui/js/hub-teams-strings.js",
+      "sha256": "0872c2d5030206e6783dbe67b32fe42180f9f2d84d197fa36a24afc34918f603"
+    },
+    {
+      "path": "/ui/js/hub-chat-store.js",
+      "sha256": "f75ed0aaf89169e60885b0e127167122ffddb174f9412d335914004d73c2d01b"
+    },
+    {
+      "path": "/ui/js/hub-quota.js",
+      "sha256": "b4cf4c2c4976b3b0ba5d1440579bd89c7b54f1231a33a38b1aef4bd49bdc14d1"
+    },
+    {
+      "path": "/ui/js/hub-preview.js",
+      "sha256": "b653dd4b49b92b91c1db71d6e652a08da06cc8164db5dfad4bdb46fe6ef711d5"
+    },
+    {
+      "path": "/ui/js/hub-join-queue.js",
+      "sha256": "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764"
+    },
+    {
+      "path": "/ui/js/hub-attachments.js",
+      "sha256": "dedbf75e56c51d5a8d22c449a2869bc04e7c5a9e59bda8d5e0c139e856ba5c09"
+    },
+    {
+      "path": "/ui/js/hub-enrolment-code-strings.js",
+      "sha256": "1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324"
+    },
+    {
+      "path": "/ui/js/hub-join-steps.js",
+      "sha256": "ed9bdfaf827670df4da489e54ddde2dfb4be5ab4fe9dda5b6e6ad3258c05b987"
+    },
+    {
+      "path": "/ui/js/hub-quick-strings.js",
+      "sha256": "0a6b59ad416fe04765c9ec8fcb06aea0d75f1c22cededf746415377fe19c4c35"
+    },
+    {
+      "path": "/assets/preview.js",
+      "sha256": "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1"
+    },
+    {
+      "path": "/assets/html-attachment.js",
+      "sha256": "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643"
+    },
+    {
+      "path": "/assets/chat-render.js",
+      "sha256": "fd65d839aa7800272b784cb590963a9fb588e1bc85e5c565a36c3609fe541104"
+    },
+    {
+      "path": "/assets/preview-pages.js",
+      "sha256": "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925"
+    },
+    {
+      "path": "/assets/preview-panel-actions.js",
+      "sha256": "95da3f86c47afc846e21d94b402b20cdc5068a610c0d486d8d6cff6edc94b07b"
+    },
+    {
+      "path": "/assets/chat-md-strings.js",
+      "sha256": "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b"
+    },
+    {
+      "path": "/assets/preview-versions.js",
+      "sha256": "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814"
+    },
+    {
+      "path": "/assets/chat-time.js",
+      "sha256": "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538"
+    },
+    {
+      "path": "/ui/js/hub-roles-strings.js",
+      "sha256": "f147a53eba98f49a368d6f0cc42781e4723f64ed06a2cc6c0a0f64bc17d66305"
+    },
+    {
+      "path": "/ui/js/hub-room-unread.js",
+      "sha256": "0d3cb93701525bcdbfb44bb8b6ef285493b53fff928e096fa595c3ddc85c3e1b"
+    },
+    {
+      "path": "/ui/js/hub-room-agent-strings.js",
+      "sha256": "6b582bc8220c2fefe549277bb3441dd8d317834f18a36e86202d26f0f41cd521"
+    },
+    {
+      "path": "/ui/js/hub-room-presence.js",
+      "sha256": "d5f729b2f878f46cfb40c4e8f6b0e668061a0f420d39378f8fc7effde4c8e011"
+    },
+    {
+      "path": "/ui/js/hub-button-actions.js",
+      "sha256": "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063"
+    },
+    {
+      "path": "/ui/js/hub-room-composer.js",
+      "sha256": "210593f190baa058667a6f274367f82c49407eed117c7e4c856df24f8bc95ef3"
+    },
+    {
+      "path": "/ui/js/hub-room-new-strings.js",
+      "sha256": "33f6cca50137fb9bc3c60bb878299ff452dbe1378b8907888e5fd02c051c397e"
+    },
+    {
+      "path": "/ui/js/hub-room-source.js",
+      "sha256": "43b7e2510203ef96b82d2ee6918bdd776efe1f372bacf2e3e791b6d47dee3bd3"
+    },
+    {
+      "path": "/ui/js/hub-room-working.js",
+      "sha256": "d7c0cc5473d0170b0852080ea8b4ab7ac8c1ba308bf94b2daf3c82c20cb06eee"
+    },
+    {
+      "path": "/ui/js/hub-policy-subjects.js",
+      "sha256": "79fbc881a9ad1ad85fc308fd7d043a07338dd016d6925db7b1a0766ef856f097"
+    },
+    {
+      "path": "/assets/image-lightbox.js",
+      "sha256": "6d9b28e3806a8008baf91e8041c76cbc766dac24a6d680e6b461d9d7aa78d8e5"
+    },
+    {
+      "path": "/ui/js/hub-subject-picker.js",
+      "sha256": "af350a23e6208a1a17c337c9ed17b66650f6b40871fe077194f75f94947a7ed7"
+    },
+    {
+      "path": "/ui/js/hub-room-source-strings.js",
+      "sha256": "ce9835cbe83444d00c8dc6645f040fd43d2a8cafac050291f64bd119ed864902"
+    },
+    {
+      "path": "/ui/js/hub-group-search.js",
+      "sha256": "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a"
+    },
+    {
+      "path": "/assets/image-zoom.js",
+      "sha256": "acabf42a7aa0a5cd29eb24fc179dfc8bd01acf061650c39184afb6100b8932a5"
+    },
+    {
+      "path": "/assets/hub-rooms-u2.css",
+      "sha256": "d597471db1303cc94503c209dd9ee067f631040c021abda31710e88572cae0ab"
+    },
+    {
+      "path": "/assets/hub-quota.css",
+      "sha256": "dbb490b50f06f45d538259cad57f5d130ed29c17f4295d8d3c4c848b037190fb"
+    },
+    {
+      "path": "/assets/hub.css",
+      "sha256": "8fbb588874a8baf2b0a8134c9f150bb0fa396ae8d60a38e42964efef50797241"
+    },
+    {
+      "path": "/assets/hub-owner.css",
+      "sha256": "bd0b7a27ba06546a1d603abf4e045c2ab1c2a20ca3ad1299aa1741187a720d59"
+    },
+    {
+      "path": "/assets/hub-chat.css",
+      "sha256": "459cee4dddc4352db3b6046422aba68a1d55e3eb6ac45aae8a162e4a32113167"
+    },
+    {
+      "path": "/assets/hub-signin.css",
+      "sha256": "ea16dd295195de1bc5d3ce3e03f4b0d00cc85e61c3cecd6273d2dfb7723ade13"
+    },
+    {
+      "path": "/assets/hub-sharing.css",
+      "sha256": "ba7a0ede1d290286ff5c2fec717719e7f21df412a19c8ac09906e07dafd77e51"
+    },
+    {
+      "path": "/ui/js/hub-welcome.js",
+      "sha256": "ca25d0954bf1d90cb42310343515e0c16b14cbe95e034d40c12ae00a310f3322"
+    },
+    {
+      "path": "/ui/js/hub-invitations.js",
+      "sha256": "94b3c88ef6b0047be4ad04f0e58c9c7c7960c47464e08abc4829a757ab86c58e"
+    },
+    {
+      "path": "/ui/js/hub-group-policy.js",
+      "sha256": "313ba4770f2bfd80e25f628341c971e579a0c96753dd07fe1a57a15cdca063d7"
+    },
+    {
+      "path": "/ui/js/hub-my-agents.js",
+      "sha256": "373f42cc5e3f5ed4c8a6dae062b3c3132aafa2a731ca9a8ac457910324ce7616"
+    },
+    {
+      "path": "/ui/js/hub-group-strings.js",
+      "sha256": "49e754f480015d1c34997aad37d00a5b9787600f7948558a783b0ec1a5f4c236"
+    },
+    {
+      "path": "/ui/js/hub-my-agents-strings.js",
+      "sha256": "43523a2fb123c37fb0240ea15748aab1009d8909c801b9e037be19e7c3ef2a11"
+    },
+    {
+      "path": "/ui/js/hub-invitations-strings.js",
+      "sha256": "ab8162ab1193cfd7ddd0c1e6873e82cb6771f2b8693143e00b3933217dd0e5be"
+    },
+    {
+      "path": "/assets/hub-groups.css",
+      "sha256": "fdfa9f87aa96260797c7c252f7bc66519f0e430878391c02f593a65810d8010f"
+    },
+    {
+      "path": "/ui/js/hub-grant-picker.js",
+      "sha256": "4691c343116658934cfe18af8758980db6a867ebb4f6819c7ce009b6d3cf010c"
+    },
+    {
+      "path": "/ui/js/hub-my-agents-model.js",
+      "sha256": "856ecd1a921b208a78a700fd331c42045b139f294f9657bc957306cd09919d27"
+    },
+    {
+      "path": "/assets/hub-my-agents.css",
+      "sha256": "7705ab9cbc3cb073958918dce8c44407bfd58bf1a7fbff1990489276b445e793"
+    }
+  ],
+  "scope": "Actual owned Hub HTTPS/SQLite/real audit, real local sharing journal/writer; in-process transport and inert directory. Headless Linux, rig-only trusted CA. No live Hub/Fleet/AD/CLI/model or desktop windows."
+}

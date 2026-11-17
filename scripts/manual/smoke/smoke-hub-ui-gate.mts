@@ -153,7 +153,7 @@ const PAGES = [
 ] as const;
 
 const pw = createRequire(PW + "/")("playwright-core");
-const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
+const browser = await pw.chromium.launch({ headless: true, ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
 async function open(c: Case, who: { cookie: string } | null, viewport: { width: number; height: number }) {
   const ctx = await browser.newContext({ viewport, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true,
     isMobile: c.device === "phone", hasTouch: c.device === "phone" });

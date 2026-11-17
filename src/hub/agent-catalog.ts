@@ -1,5 +1,8 @@
 /** Separate owner-only inventory: never used by the shared-agent directory or app tools. */
 import type Database from "better-sqlite3";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import { uuid } from "./validation.js";
 import { agentCatalogSchema, HUB_AGENT_CATALOG_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY, type HubAgentCatalog } from "./agent-catalog-model.js";
 import { canonicalArguments, personKeyString } from "./identity.js";
 import { HubProtocolError, validated } from "./validation.js";
@@ -14,6 +17,7 @@ interface Row { owner:string;generation:number;revision:string;body:string;recei
 export class HubAgentCatalogs {
   private readonly links=new Map<string,HubLinkContext>();
   private readonly reports=new WeakSet<HubLinkContext>();
+  private readonly refreshed = new Map<string, number>();
   constructor(private readonly core:HubCore) {}
   connected(link:HubLinkContext):void { if(link.current())this.links.set(link.fleetId,link); }
   prune():void {
@@ -76,6 +80,22 @@ export class HubAgentCatalogs {
           catalog:row?{...validated(agentCatalogSchema,JSON.parse(row.body)) as HubAgentCatalog,at:row.received_at}:null};
       })};
     });
+  }
+  /** A send is only a refresh request, never proof of a new report. Old peers receive nothing. */
+  async refresh(ctx: HubRequestContext, input: unknown) {
+    const { fleetId } = validated(z.strictObject({ fleetId: uuid }), input);
+    const browser = await this.owner(ctx), report = this.reportOf(fleetId);
+    if (!report || personKeyString(report.fleet.owner) !== personKeyString(browser.person)) throw new HubProtocolError("not-found");
+    const link = report.link, transport = this.core.deps.transport();
+    if (!link?.current() || !link.features.has(HUB_AGENT_CATALOG_CAPABILITY) || !transport) throw new HubProtocolError("unavailable");
+    const now = this.core.now();
+    for (const [id, at] of this.refreshed) if (now - at >= 5_000) this.refreshed.delete(id);
+    if (this.refreshed.has(fleetId)) throw new HubProtocolError("backpressure");
+    browser.assertCurrent(); this.refreshed.set(fleetId, now);
+    await transport.send(fleetId, { v: 1, type: "agent.catalog-refresh", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: {} });
+    browser.assertCurrent();
+    if (this.reportOf(fleetId)?.link !== link || !link.current()) throw new HubProtocolError("unavailable");
+    return { requested: true, fleetId };
   }
   close():void {this.links.clear();}
 }

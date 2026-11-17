@@ -261,6 +261,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "hub-teams.css": { file: join("shared", "hub-teams.css"), type: "text/css; charset=utf-8" },
   "hub-ai-apps.css": { file: join("shared", "hub-ai-apps.css"), type: "text/css; charset=utf-8" },
   "hub-grant-picker.css": { file: join("shared", "hub-grant-picker.css"), type: "text/css; charset=utf-8" },
+  "hub-my-agents.css": { file: join("shared", "hub-my-agents.css"), type: "text/css; charset=utf-8" },
   "hub-sharing.css": { file: join("shared", "hub-sharing.css"), type: "text/css; charset=utf-8" },
   "hub-quota.css": { file: join("shared", "hub-quota.css"), type: "text/css; charset=utf-8" },
   // #3298 S-89: the welcome and group permissions pages (linked by hub-group-strings.js; an older hub-chat.css lacks them).

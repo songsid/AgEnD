@@ -341,8 +341,8 @@ export function signInHref() {
 
 // ── AgEnD Hub P1 (docs/design/hub-ui-client.md): the page's mark, set by the listener that served it ──
 register("hubShell", {
-  en: { brand: "AgEnD Hub", ask: "Ask", exposures: "My shared agents", admin: "Administration", preview: "Preview" },
-  "zh-TW": { brand: "AgEnD Hub", ask: "提問", exposures: "我分享的 Agent", admin: "管理", preview: "預覽版" },
+  en: { brand: "AgEnD Hub", ask: "Ask", exposures: "My agents", admin: "Administration", preview: "Preview" },
+  "zh-TW": { brand: "AgEnD Hub", ask: "提問", exposures: "我的 Agent", admin: "管理", preview: "預覽版" },
 });
 function hubMarks() {
   const tokens = String((typeof document !== "undefined" && document.body?.dataset?.hub) || "").split(/\s+/);

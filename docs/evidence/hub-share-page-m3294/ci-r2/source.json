@@ -1,0 +1,31 @@
+{
+  "sourceHead": "a308269ad19c5c94403bb77aa6d8d8769556e27d",
+  "previousHead": "1da33ef7e96b914218c2bccbcdfdb39e741ebebd",
+  "sourceFiles": [
+    {
+      "path": "scripts/manual/hub-share-page-m3294/browser.mts",
+      "sha256": "15d80d5778b2be49956cdbf94aa0d9eb9a7562b0162a4ce414e5bf17ebd68da5"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-hub-shell-gate.mts",
+      "sha256": "e48636121bd5eb72bb2dbd8eec77a34b3fb2c76d29b57c8b0a98b18868025389"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-hub-ui-gate.mts",
+      "sha256": "e6e0bf8922c292abcdd2dbb77928ed9fa26704a9e4f6d46b7ced64cbd4bd8f23"
+    },
+    {
+      "path": "src/ui/shared/hub-my-agents.css",
+      "sha256": "4234a92cb4e5f3e619cd6c9d890a6ed03dfd234e4bf4bf412974230871996df6"
+    }
+  ],
+  "tapAllowance": {
+    "path": "scripts/manual/smoke/ui-gate-hub-tap-allowlist.json",
+    "sha256": "edbb827275e53babcba526c7605a3216bec9a5fd22c649311dc24a3b0a171bd7",
+    "unchanged": true
+  },
+  "fullHubUiGate": 92,
+  "fullHubShellGate": 174,
+  "focusedPhoneRetake": 13,
+  "cssTests": 7
+}
