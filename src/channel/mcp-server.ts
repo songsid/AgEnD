@@ -94,7 +94,7 @@ const pendingRequests = new Map<
 >();
 
 const DURABLE_OPERATION_TOOLS = new Set([
-  "hub_room_post",
+  "hub_room_post", "hub_set_intro",
   "send_to_instance",
   "broadcast",
   "report_result",

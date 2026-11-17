@@ -1,3 +1,4 @@
+import {HUB_AGENT_INTRO_CAPABILITY} from "./agent-intro-model.js";
 import { HUB_AGENT_CATALOG_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "./agent-catalog-model.js";
 import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
@@ -32,9 +33,10 @@ export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: 
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 /** fleet-update-v1 is the existing explicit signal that this peer accepts a 32-name welcome. */
 export function hubWelcomeCapabilities(configured:readonly string[],member:readonly string[]):string[]{
-  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
+  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY,HUB_AGENT_INTRO_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
 }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout;
+  introOffered?: boolean;
   catalogOffered?: boolean;
   requestsOffered?: boolean;
   /** The credential binding the link authenticated with (#3429 B: what a relocation ack's proof is rechecked against). */
@@ -165,6 +167,7 @@ export class HubServer {
       const offered = hubWelcomeCapabilities(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES,frame.payload.capabilities), features = context.features as Set<string>;
       for (const c of offered) if (frame.payload.capabilities.includes(c)) features.add(c);
       // This is a Hub-only receiver offer; it does not take a slot in a member hello.
+      connection.introOffered = features.has("welcome-caps-v1") && offered.includes(HUB_AGENT_INTRO_CAPABILITY);
       connection.catalogOffered = features.has("welcome-caps-v1") && offered.includes(HUB_AGENT_CATALOG_CAPABILITY);
       connection.requestsOffered = connection.catalogOffered && offered.includes(HUB_EXPOSURE_REQUEST_CAPABILITY);
       if (features.has("welcome-caps-v1") && offered.includes(HUB_FLEET_INFO_CAPABILITY)) features.add(HUB_FLEET_INFO_CAPABILITY);
@@ -178,6 +181,10 @@ export class HubServer {
           ...(features.has("welcome-caps-v1") && features.has(HUB_WEB_ORIGIN_CAPABILITY) && this.options.webOrigin ? { webOrigin: this.options.webOrigin(context.fleetId) } : {}) } }); return;
     }
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
+    if(frame.type === "agent.intro"){
+      if(!connection.introOffered)throw new HubProtocolError("incompatible");
+      (context.features as Set<string>).add(HUB_AGENT_INTRO_CAPABILITY);
+    }
     if (frame.type === "agent.catalog") {
       if (!connection.catalogOffered) throw new HubProtocolError("incompatible");
       // A report is the member's explicit opt-in. Never send a refresh to a peer that merely accepted a welcome.
@@ -252,6 +259,7 @@ export class HubServer {
       || frame.type === "welcome" || frame.type === "question" && (frame.payload.identity.destinationFleetId !== fleetId || frame.payload.identity.issuer !== this.options.hubId)) throw new HubProtocolError("unavailable");
     if ((frame.type === "fleet.update" || frame.type === "fleet.update-cancel" || frame.type === "fleet.update-status-ack") && !connection.context.features.has(HUB_FLEET_UPDATE_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "fleet.recommendation" && !connection.context.features.has(HUB_RECOMMENDATION_CAPABILITY)) throw new HubProtocolError("incompatible");
+    if(frame.type === "agent.intro-result" && !connection.context.features.has(HUB_AGENT_INTRO_CAPABILITY))throw new HubProtocolError("incompatible");
     if (frame.type === "agent.catalog-refresh" && !connection.context.features.has(HUB_AGENT_CATALOG_CAPABILITY)) throw new HubProtocolError("incompatible");
     if ((frame.type === "exposure.request" || frame.type === "exposure.request-ack" || frame.type === "exposure.undo-result") && !connection.context.features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice" && (!connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");

@@ -694,6 +694,7 @@ export const DelegateTaskArgs = z.object({
     .describe("Optional: thread this onto an existing exchange (from an inbound block)."),
 });
 
+export const HubSetIntroArgs = z.strictObject({text:z.string().describe("Your public introduction: one line, at most 50 visible characters; empty clears it.")});
 export const HubRoomListArgs = z.strictObject({});
 const HubRoomSelector = z.string().min(1).refine(value => Buffer.byteLength(value,"utf8") <= 128 && !/[\u0000-\u001f\u007f]/.test(value) && value.trim().length > 0);
 export const HubRoomMembersArgs = z.strictObject({ room: HubRoomSelector.describe("Room UUID or exact unique member-room name.") });

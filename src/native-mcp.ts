@@ -18,7 +18,7 @@ const TTL_MS = 6 * 60_000;
 const MAX_BYTES = 64 * 1024;
 const MAX_CALLS = 64;
 const OPS: Readonly<Record<string,string>> = Object.freeze({
-  hub_room_list:"hub-room-list", hub_room_post:"hub-room-post", hub_room_members:"hub-room-members", hub_people_search:"hub-people-search",
+  hub_set_intro:"hub-set-intro",hub_room_list:"hub-room-list", hub_room_post:"hub-room-post", hub_room_members:"hub-room-members", hub_people_search:"hub-people-search",
   list_instances:"list", describe_instance:"describe", task:"task", send_to_instance:"send",
   delegate_task:"delegate", request_information:"ask", report_result:"report", delivery_status:"delivery-status",
 });

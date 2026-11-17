@@ -1,3 +1,4 @@
+import { HUB_AGENT_INTRO_TOOL_MIGRATION } from "../agent-intro-tool.js";
 import { HUB_AGENT_INTROS_MIGRATION } from "../agent-intro.js";
 import { HUB_SHARING_WITHDRAWAL_MIGRATION } from "../sharing-withdrawal.js";
 import { HUB_SHARING_REQUESTS_MIGRATION } from "../sharing-requests.js";
@@ -138,4 +139,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_PERSONAL_AGENTS_MIGRATION,
   HUB_PERSONAL_ANSWER_ONLY_MIGRATION,
   HUB_AGENT_INTROS_MIGRATION,
+  HUB_AGENT_INTRO_TOOL_MIGRATION,
 ]);

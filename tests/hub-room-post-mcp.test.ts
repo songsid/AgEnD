@@ -16,6 +16,7 @@ async function harness(profile = "worker") {
   const server = new IpcServer(socket); await server.listen();
   const state = { online: false, boot: "boot-1" }, calls: {name:string;args:any;operationId?:string}[] = [];
   const ctx: any = { getDaemonBootId: () => state.boot, hubRoomToolsAvailable: () => state.online,
+    hubSetIntro:vi.fn(async(caller:any,text:string,operationId:string)=>state.online?{ok:true,intro:text,introBy:"agent",introAt:1,changed:true,caller:caller.agent,operationId}:{ok:false,code:"unsupported"}),
     hubRoomMembers:vi.fn(async(caller:any,room:string)=>({ok:caller.current(),room,members:[{name:"Alex",presence:"online"}]})),
     hubPeopleSearch:vi.fn(async(caller:any,q:string)=>({ok:caller.current(),q,people:[{name:"Alex",login:"alex"}]})),
     hubRoomList: vi.fn(async (caller:any) => ({ok:true,exposureId:"owned-exposure",rooms:caller.current() ? [{id:"room-A",name:"Weekly"}] : []})),
@@ -42,9 +43,15 @@ async function harness(profile = "worker") {
 it("actual MCP menu stays static and posts only as its current connected IPC owner", async () => {
   const h = await harness();
   const staticMenu=(await h.client.listTools()).tools.map(t=>t.name);
-  expect(staticMenu).toEqual(expect.arrayContaining(["reply","hub_room_list","hub_room_post","hub_room_members","hub_people_search"]));
+  expect(staticMenu).toEqual(expect.arrayContaining(["hub_set_intro","reply","hub_room_list","hub_room_post","hub_room_members","hub_people_search"]));
+  const oldIntro:any=await h.client.callTool({name:"hub_set_intro",arguments:{text:"I handle notes."}});
+  expect(JSON.parse(oldIntro.content[0].text)).toMatchObject({ok:false,code:"unsupported",message:"This Hub doesn't support introductions yet."});
   h.state.online=true; h.server.broadcast({type:"hub_room_tools_changed"});
   expect((await h.client.listTools()).tools.map(t=>t.name)).toEqual(staticMenu);
+  const intro:any=await h.client.callTool({name:"hub_set_intro",arguments:{text:"I handle notes."}});
+  expect(JSON.parse(intro.content[0].text)).toMatchObject({ok:true,intro:"I handle notes.",caller:"agent-A"});
+  const spoofIntro:any=await h.client.callTool({name:"hub_set_intro",arguments:{text:"forged",agent:"agent-B"}});expect(spoofIntro.isError).toBe(true);
+  expect(h.ctx.hubSetIntro).toHaveBeenCalledTimes(2);
   const members:any=await h.client.callTool({name:"hub_room_members",arguments:{room:"Weekly"}});
   const people:any=await h.client.callTool({name:"hub_people_search",arguments:{q:"Al"}});
   expect(JSON.parse(members.content[0].text)).toMatchObject({ok:true,members:[{name:"Alex"}]});

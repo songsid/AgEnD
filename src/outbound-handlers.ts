@@ -43,7 +43,7 @@ import {
   ListInstancesArgs,
   ListTeamsArgs,
   ReplaceInstanceArgs,
-  HubRoomListArgs, HubRoomPostArgs, HubRoomMembersArgs, HubPeopleSearchArgs,
+  HubSetIntroArgs, HubRoomListArgs, HubRoomPostArgs, HubRoomMembersArgs, HubPeopleSearchArgs,
   ReportResultArgs,
   DeliveryStatusArgs,
   RequestInformationArgs,
@@ -128,6 +128,7 @@ export interface OutboundContext {
     options?: OutboundDeliveryOptions,
   ): Promise<void | boolean>;
   /** Connected, caller-scoped room operations; tool arguments never select an agent. */
+  hubSetIntro?(caller: import("./hub/member/room-post.js").RoomCaller,text:string,operationId:string):Promise<import("./hub/agent-intro-model.js").HubAgentIntroResult>;
   hubRoomToolsAvailable?(): boolean;
   hubRoomList?(caller: import("./hub/member/room-post.js").RoomCaller): Promise<import("./hub/member/room-post.js").RoomListResult>;
   hubRoomMembers?(caller: import("./hub/member/room-post.js").RoomCaller, room:string): Promise<import("./hub/types.js").HubRoomMembersResult>;
@@ -2558,15 +2559,21 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
 
 // ── Registry ────────────────────────────────────────────────────────────
 
-const hubRoom = (kind: "list"|"post"|"members"|"people"): Handler => async (ctx, args, respond, meta) => {
+const hubRoom = (kind: "list"|"post"|"members"|"people"|"intro"): Handler => async (ctx, args, respond, meta) => {
   if (meta.senderSessionName && meta.senderSessionName !== meta.instanceName) { respond(null, "Hub rooms require the invoking Fleet agent"); return; }
-  const parsed = kind === "post" ? validateArgs(HubRoomPostArgs,args,"hub_room_post")
+  const parsed = kind === "intro" ? validateArgs(HubSetIntroArgs,args,"hub_set_intro") : kind === "post" ? validateArgs(HubRoomPostArgs,args,"hub_room_post")
     : kind === "members" ? validateArgs(HubRoomMembersArgs,args,"hub_room_members")
     : kind === "people" ? validateArgs(HubPeopleSearchArgs,args,"hub_people_search") : validateArgs(HubRoomListArgs,args,"hub_room_list");
   if (!parsed.ok) { respond(null, parsed.error); return; }
   const boot = meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName);
   const current = () => (meta.callerCurrent?.() ?? true) && (!ctx.getDaemonBootId || !!boot && ctx.getDaemonBootId(meta.instanceName) === boot);
   if (!current()) { respond({ok:false,code:"unavailable",message:"This invoking agent is no longer current."}); return; }
+  if(kind === "intro") {
+    if(!meta.operationId){respond(null,"Hub introductions require an operation identity");return;}
+    const result=await ctx.hubSetIntro?.({agent:meta.instanceName,current},(parsed.data as {text:string}).text,meta.operationId)??{ok:false,code:"unavailable"};
+    const message=!result.ok?(result.code==="uncertain"?"Not confirmed: the introduction may already have changed. Check it on the Hub; do not resend as a new call.":result.code==="stale"?"Not confirmed: the invoking agent or Hub changed while this call was running.":result.code==="unsupported"?"This Hub doesn't support introductions yet.":result.code==="invalid"?"Not changed: an introduction is one line of at most 50 characters.":result.code==="limit"?"Not changed: this agent can change its introduction five times per UTC day.":"Not changed: this agent is not currently shared with a compatible connected Hub."):undefined;
+    respond({...result,...(message?{message}:{})});return;
+  }
   if (!ctx.hubRoomToolsAvailable?.()) { respond({ok:false,code:"unavailable",message:"This Fleet isn't connected to a Hub."}); return; }
   const caller = {agent:meta.instanceName,current};
   if (kind === "post") {
@@ -2579,6 +2586,7 @@ const hubRoom = (kind: "list"|"post"|"members"|"people"): Handler => async (ctx,
   else respond(await ctx.hubRoomList?.(caller) ?? {ok:false,code:"unavailable"});
 };
 export const outboundHandlers = new Map<string, Handler>([
+  ["hub_set_intro",hubRoom("intro")],
   ["hub_room_status", (ctx, _args, respond, meta) => { respond({available:(!meta.senderSessionName || meta.senderSessionName === meta.instanceName) && ctx.hubRoomToolsAvailable?.() === true}); }],
   ["hub_room_list", hubRoom("list")],
   ["hub_room_post", hubRoom("post")],

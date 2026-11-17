@@ -2,7 +2,7 @@
 
 Status: approved by the owner on 2026-11-18, including the 50-character introduction cap.
 Copied from approved source 71cf82a65 with the H1/H2 split and assistant-copy clarification from 8646bd61b.
-Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 adds explicit owner editing and public displays; H2–H6 remain planned until their separate PRs land. "Today" means a source survey of the development branch
+Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 adds explicit owner editing and public displays; H2 adds negotiated defaults, the owner review notice and self-editing; H3–H6 remain planned until their separate PRs land. "Today" means a source survey of the development branch
 at `13abcddd8`; nothing was run.
 
 Four gaps, raised by the owner on 2026-11-18, and one rule that runs through all of them: **in a room with many
@@ -38,7 +38,7 @@ found 120 characters too long; the proposal is **50 characters** (approved), abo
 | Length | 50 characters, one line. Line breaks and control characters become spaces. No formatting, and an @ in it is plain text, never a mention |
 | Kept on | The Hub, per shared agent |
 | Default | The first line of the agent's Fleet description, cut at 50 characters. A description is written as instructions, so the cut is often a poor introduction; it is a starting point for the owner or the agent to replace |
-| Agent can write it | A new Fleet tool, `hub_set_intro`, for itself only, at most 5 changes a day |
+| Agent can write it | A new Fleet tool, `hub_set_intro`, for itself only, at most 5 changes per UTC day |
 | Owner can edit it | On the Hub: My agents → the agent's page. **Last write wins**: the agent may change it again afterwards, and the owner accepts being overwritten (R2, owner 2026-11-18). There is no lock |
 | Personal agent | Its "One-line description" becomes its introduction, cut at 50 characters; the field's limit on the card drops to 50 |
 | Room assistant | Fixed, and within the same 50 characters: "Hub assistant. Answers from this room's chat." / 「Hub 提供的助理，根據這個房間的對話回答。」 |
@@ -75,6 +75,10 @@ found 120 characters too long; the proposal is **50 characters** (approved), abo
   - **Agents already shared when this ships**: their introductions are filled from the default, and the owner
     gets one notice on the Hub listing them: "Introductions now show for {n} of your agents. Review them." /
     「你的 {n} 個 Agent 現在會顯示自我介紹，請檢查內容。」
+  - A later Fleet's backfill reopens the same notice card; it lists only the newly filled agents and names that Fleet:
+    "Introductions now show for {n} more of your agents, from {fleet}. Review them." /
+    「你在 {fleet} 的 {n} 個 Agent 現在也會顯示自我介紹，請檢查內容。」 Reconnects, retries, owner/agent edits and new shares do not reopen it.
+
 - **An agent's own words reach other agents**, through the member lookup tool (section 3). They are returned as
   data about the room, never as instructions, and the cap keeps one agent from flooding another's context.
 - The owner always sees who changed the text last and when. They cannot stop the agent changing it; they can

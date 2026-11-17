@@ -378,6 +378,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     savePersonPrefs(sessionCsrf, favorites, onlyIfUnset = false) {
       return sessionCsrf && sessionCsrf === csrf ? call("PUT", "/hub/v1/me/prefs", { favorites, onlyIfUnset }) : Promise.resolve(retired());
     },
+    agentIntroDefaultsV1: true,
+    introNotice: () => call("GET", "/hub/v1/me/intro-notice"),
+    acknowledgeIntroNotice: () => call("DELETE", "/hub/v1/me/intro-notice"),
     agentSharingV1: true,
     ownAgents(scope) { return scope && scope === csrf ? call("GET", "/hub/v1/me/agents") : Promise.resolve(retired()); },
     refreshOwnAgents(scope, fleetId) { return scope && scope === csrf ? call("POST", "/hub/v1/me/agents/refresh", { fleetId }) : Promise.resolve(retired()); },
