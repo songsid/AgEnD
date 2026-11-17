@@ -1,0 +1,15 @@
+{
+  "testedCommit": "b5ef3282afda8e2dd429f2fb61974a617631f86c",
+  "incomingAlpha": "6acab70da27ce6ebf575810f00923c00de7b5b8e",
+  "mergeCommit": "6282666233cd4dc739c59f50562416367c4a664d",
+  "ownCodePaths": 63,
+  "ownAddedRemovedLinesEqual": true,
+  "runtimeNormalization": "Removed only the incoming maxCrossInstanceMessageBytes Pick entry on both diff sides for comparison. The merged type retains it.",
+  "incomingOnlyPathsEqual": 21,
+  "resolved": [
+    "src/fleet-manager.ts",
+    "src/hub/compose/member.ts",
+    "src/hub/runtime.ts"
+  ],
+  "resolution": "Concatenated the sharing adapters and incoming room-budget getter/type additions; no own behavioral edit."
+}

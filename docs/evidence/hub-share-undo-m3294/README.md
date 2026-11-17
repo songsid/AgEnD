@@ -60,3 +60,7 @@ Set `hub_member.share_from_hub` to false to stop new Hub-page work and catalog r
 The member and Hub add independent migration components; old strict registries refuse unknown components. Before upgrading, retain the normal quiesced complete state backup, including keys and independent floors. A binary rollback needs that matching state backup. Do not delete migration records, lower floors, or restore an old grant row to reopen history. This is an additive-migration verification packet, not a packaged rollback rehearsal.
 
 Compressed logs have workspace paths redacted. The manifest uses separate `path` and `sha256` fields for file digests. Screenshots use generic fixture names only.
+
+## Plain alpha sync
+
+The tested source commit `b5ef3282afda8e2dd429f2fb61974a617631f86c` was merged with alpha `6acab70da27ce6ebf575810f00923c00de7b5b8e`. The three adjacent conflicts keep both the sharing adapters and the incoming room-history byte-budget getter/types. Every own added/removed code and test line is unchanged; the combined `HubMemberHost` line also retains the incoming Pick member. All incoming-only paths match alpha exactly. `sync.json` records the proof, and the manifest distinguishes tested-source from merged-source digests. No local behavioral campaign was repeated for this plain sync. Exact-head CI validates the combined tree.
