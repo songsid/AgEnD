@@ -206,7 +206,7 @@ Runtime 連上之後（第一次，或已儲存的配對資料重新連線），
 
 Runtime 會在那台電腦上讀取 `claude auth status`，對每個 credential profile 與電腦自己的預設登入，回報**完整的 email 與方案**，顯示成 `work · alice@example.com · Team`（設定 → Runtime 的電腦卡片，以及 Agent 的「Claude 帳號」選單）。同一個人的多個帳號前綴通常相同，縮短成 `al***@example.com` 會讓兩個帳號看起來一樣，所以顯示完整地址。email 只會經由 Runtime 與所配對 AgEnD 之間已驗證的連線傳送；不會被記錄，也不會出現在錯誤訊息、audit、通知或聊天回覆裡，Runtime 只把它存在該 profile 自己資料夾內的狀態快取中（Windows 上受該使用者資料夾的 ACL 保護，POSIX 為 `0600`）。沒有 email、含非 ASCII 字元、含空白或第二個 `@`、或超過 254 字元時不會回報（絕不截短後送出）；API key 登入顯示為「沒有帳號 email（API key）」。方案是 `free`、`pro`、`max`、`team`、`enterprise` 或 `unknown` 其中之一；AgEnD 只接受這個格式（舊版 Runtime 已快取的 `ab***@example.com` 仍可接受），其他一律視為通訊協定錯誤，錯誤訊息只指出欄位，不會附上內容。只有按「重新偵測」或 `agend-runtime login` 之後才會更新；不認得這個欄位的舊版 Runtime 就只是不顯示。
 
-**只有直接連到 dashboard 的 fleet 管理員看得到這些詳細資訊**（email 與方案；「直接連到」是指這台電腦、區網、tailnet 或自己的 proxy，見[三種連線方式比較](web-dashboard.zh-TW.md#三種連線方式比較)），在 Runtime 頁、Claude 帳號選單、設定 → Agents 與設定 → Accounts 看到。其他人看到的是同一個頁面但沒有這兩項，profile 名稱與是否已登入照舊：經由臨時公開連結或固定位址（named tunnel）登入的 session 看不到，即使是 fleet 管理員也一樣；guest、唯讀 session，以及用 CLI header token 呼叫的 Agent 也看不到。Agent 工具與 Agent 能讀到的內容裡也沒有。
+**只有 fleet 管理員的 session 看得到這些詳細資訊**（email 與方案），不論是直接連到 dashboard（這台電腦、區網、tailnet 或自己的 proxy），或自 M-3278 起經由臨時公開連結或固定位址（named tunnel），見[三種連線方式比較](web-dashboard.zh-TW.md#三種連線方式比較)；在 Runtime 頁、Claude 帳號選單、設定 → Agents 與設定 → Accounts 看到。其他人看到的是同一個頁面但沒有這兩項，profile 名稱與是否已登入照舊：任何一種連線方式的 guest、唯讀 session，以及用 CLI header token 呼叫的 Agent 都看不到。Agent 工具與 Agent 能讀到的內容裡也沒有。
 
 
 ## Profile 資料夾的 Windows 權限

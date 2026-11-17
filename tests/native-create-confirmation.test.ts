@@ -61,7 +61,7 @@ function harness(tier: "admin" | "read" | "guest" = "admin", directAgentCreation
     principal(req) {
       const allowed = evaluateWebRequest(req as unknown as WebGateRequest, new URL("http://localhost/ui/instances"), TOKEN, sessions, { touch: false });
       if (allowed.kind !== "allow" || allowed.via !== "session" || allowed.session.tier !== "admin") return null;
-      return { id: session.sessionId, label: "Native administrator", source: variant.source ?? "web_session", current: () => context.webToken === TOKEN,
+      return { id: session.sessionId, label: "Native administrator", source: variant.source ?? (variant.gateway ? "public_link" : "web_session"), current: () => context.webToken === TOKEN,
         localAdmin: () => variant.localAdmin ?? (context.webToken === TOKEN && tier === "admin") };
     },
     baseline: async () => ({ config: cfg, classic: {}, fingerprint: settingsFingerprint(cfg) }),
@@ -105,8 +105,9 @@ describe("native Agent creation through settings confirmation", () => {
     expect(h.create).toHaveBeenCalledOnce();
     expect(h.create.mock.calls[0][0]).toMatchObject({cli:"codex",name:"CodexTest",...(remote?{machineId:MACHINE_ID}:{})});
   });
-  // directAgentCreation (src/settings-http-confirmation.ts) applies only when the request is a web session AND not a gateway
-  // request AND localAdmin() is true. Each condition on its own must send the create back to the confirmation card.
+  // directAgentCreation (src/settings-http-confirmation.ts) applies only when the principal is a web session (FleetManager's
+  // principal is "public_link" for a gateway request, as this harness's is) AND localAdmin() is true. M-3278: there is no
+  // separate gateway term any more; each condition on its own must still send the create back to the confirmation card.
   it.each([
     ["localAdmin() is false (a verified or remote administrator)", { localAdmin: false }],
     ["the principal is a public link", { source: "public_link" as const }],

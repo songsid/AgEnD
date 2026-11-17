@@ -1,3 +1,4 @@
+import { replyPreviews } from "./reply-preview-spec.js";
 import { settingsSummary, translatedSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 import { readInstalledBuild } from "./build-provenance.js";
 import { buildNativeFleetInstructions } from "./instructions.js";
@@ -3882,7 +3883,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (auth.kind !== "ok" || !current()) return null;
         const record = auth.session, sessions = this.webSessions, exposure = gatewayRequestContext(req);
         return { requester: { handle: record.handle, label: record.label }, localSession: this.hubCompanySession(req) ?? undefined, id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
-          localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
+          // M-3278 (decision 7933bf90): an admin session on any listener, the public link's too (its exposure still
+          // current: `current` below; a closed link's sessions are revoked with it).
+          localAdmin: () => record.tier === "admin" && (!exposure || exposure.isCurrent()),
           current: () => current() && sessions === this.webSessions && !!this.webToken
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
@@ -14430,6 +14433,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // still in flight and about to succeed. One real send, everyone gets its
     // outcome; a genuinely failed send clears the entry so a retry passes.
     if (tool === "reply") {
+      if (!replyPreviews(args.previews)) { respond(null, "reply: invalid previews"); return; }
       // Registered synchronously before a web message is handed to this CLI.
       // This waits only on display ordering, never on the web delivery itself.
       const echoTail = this.webChannelEchoTails.get(instanceName)?.tail;
@@ -14607,6 +14611,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
+  captureReplyPreview(instance: string, args: Record<string, unknown>): ((result: unknown) => void) | undefined {
+    if (!replyPreviews(args.previews)?.length) return undefined;
+    const identity = this.webChatIdentity(instance);
+    return result => { void this.afterReplyRouted(instance, args, instance, null, false, undefined, identity, result); };
+  }
+
   private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, sentAs?: { adapterId: string; result: unknown }, identity: WebChatIdentity = this.webChatIdentity(instanceName), replyResult: unknown = sentAs?.result): Promise<void> {
     // AGEND-181: the id the reply call returned (also on a fleet with no adapter: web-only), the row's anchor.
     const returned = replyResult && typeof replyResult === "object" ? (replyResult as { messageId?: unknown }).messageId : undefined;
@@ -14655,6 +14665,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ts,
         ...(attachments.length ? { attachments } : {}),
         ...(buttons ? { buttons } : {}),                 // #1266
+        ...(replyPreviews(args.previews)?.length ? { previews: replyPreviews(args.previews) } : {}),
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
         ...(post ? { posts: [post] } : {}),              // #2281
         ...(typeof returned === "string" && returned ? { anchor: returned } : {}),   // AGEND-181: what the reply call returned
@@ -20287,7 +20298,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { handle, current: verified, revoke: () => { const session = live(); return this.revokeWebAuthority(session ? { session, peer, gateway: false } : undefined); } };
   }
 
-  /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request. */
+  /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request by anyone but an admin session (M-3278). */
   /** #2855: the table scope of an instance the web chat may command (a fleet instance or a ClassicBot room), else null. */
   private webCommandScope(instance: string): CommandScope | null {
     // Own entries only: a name like "__proto__" or "constructor" must not be found on the prototype (#1476 review).
@@ -20386,6 +20397,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return { choices: { step: step.step, args: joinBackendArgs(step.args), ...(step.step === "model" ? { actions: ["refresh" as const] } : {}), prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
             // #2233: the web offers Sign in beside it, so its reason is no longer "use /login".
             // Not over the public link: Sign in is refused there, so the choice keeps its "(use /login)" (#2262 review).
+            // M-3278 (decision 7933bf90): `publicLink` is set for a non-admin only, so the link's admin session gets Sign in.
             const signIn = c.signIn && !stepOpts?.publicLink && dashboardSignInSupported(c.signIn) ? c.signIn : null;
             const disabled = signIn ? t("backend.reason_not_signed_in_web") : c.disabled;
             return { id: id(c.token), label: signIn ? `${c.token} — ${disabled}` : c.label, ...(disabled ? { disabled } : {}), ...(signIn ? { signIn } : {}) };
@@ -22704,11 +22716,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return out;
   }
 
-  /** #2233: the session with this handle is live, admin, local and of the current dashboard token. */
+  /**
+   * #2233: the session with this handle is live, admin and of the current dashboard token. M-3278 (decision 7933bf90): on
+   * any listener — the public link's admin session too (closing the link revokes its sessions, so none outlives it).
+   */
   private isLocalAdminSession(handle: string): boolean {
     const sessions = this.webSessions, token = this.webToken;
     const record = sessions?.findByHandle(handle);
-    return !!record && !!token && record.tier === "admin" && record.surface === "local" && sessions!.isCurrent(record, tokenEpoch(token));
+    return !!record && !!token && record.tier === "admin" && sessions!.isCurrent(record, tokenEpoch(token));
   }
 
   /**
@@ -23723,7 +23738,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -23731,6 +23746,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         anchor: typeof m.anchor === "string" ? m.anchor : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
+        previews: m.previews,
         click: m.click,
         links: m.links,
         channel: m.channel,

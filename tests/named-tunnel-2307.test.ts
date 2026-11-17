@@ -100,7 +100,7 @@ describe("named connector credentials and exact host policy", () => {
     expect(validateQuickTunnelUrl("https://a.trycloudflare.com")).toBe("https://a.trycloudflare.com");
     for (const suffix of ["/path", "?q=x", "#x", ":8443"]) expect(validateQuickTunnelUrl(`https://agend.example.com${suffix}`, "agend.example.com")).toBeNull();
   });
-  it("gateway binds the named loopback port, accepts only its pinned host and excludes token endpoints", async () => {
+  it("gateway binds the named loopback port, accepts only its pinned host and (M-3278) routes the token endpoints for its admin", async () => {
     let dispatchRequest: any;
     const server = Object.assign(new EventEmitter(), { listen: vi.fn((_port, _host, ready) => ready()), address: () => ({ port: 19282 }), setTimeout: vi.fn(), close: vi.fn(), closeAllConnections: vi.fn() });
     const dispatch = vi.fn();
@@ -114,7 +114,8 @@ describe("named connector credentials and exact host policy", () => {
     expect(denied.writeHead).toHaveBeenCalledWith(403);
     dispatchRequest({ url: "/signin", headers: { host: "agend.example.com" }, method: "GET" }, res());
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(isPublicWebRoute("POST", "/api/settings/public-tunnel-token/apply")).toBe(false);
+    // M-3278 (decision 7933bf90): the token's routes are on the link for its admin session (the handler refuses anyone else).
+    expect(isPublicWebRoute("POST", "/api/settings/public-tunnel-token/apply")).toBe(true);
     gateway.close();
   });
   it.runIf(process.platform === "linux")("an actual stub receives env but /proc cmdline contains no token", async () => {

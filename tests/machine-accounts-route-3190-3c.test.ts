@@ -86,7 +86,7 @@ describe("accounts writes with a machine", () => {
     expect((await f.call("POST", "/ui/accounts/claude-code", noCsrf, { name: "w", machine: ID })).status).toBe(401);
     expect([f.add.mock.calls.length, f.rm.mock.calls.length, f.out.mock.calls.length]).toEqual([0, 0, 0]);
     for (const [method, path] of [["POST", "/ui/accounts/claude-code"], ["DELETE", "/ui/accounts/claude-code/w"], ["POST", "/ui/accounts/claude-code/signout"], ["GET", "/ui/browser-backend-signins"]] as const) {
-      expect(isPublicWebRoute(method, path)).toBe(false);
+      expect(isPublicWebRoute(method, path)).toBe(true);   // M-3278: on the public link for its admin session (the handler refuses anyone else)
       expect(GUEST_ROUTES.some(r => (r.methods as readonly string[]).includes(method) && r.pattern.test(path))).toBe(false);
     }
   });

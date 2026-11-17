@@ -95,7 +95,7 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     p.document.body.setAttribute("data-public-link", "1");
     try {
       await open("look");
-      expect($(".s-owner-css")).toBeNull();                         // customization stays unavailable over the public link
+      expect($(".s-owner-css")).not.toBeNull();                     // M-3278: custom CSS is drawn over the public link too (its admin's)
       const was = (globalThis as any).AgendTheme.get();
       await chooseTheme(was === "dark" ? "light" : "dark");
       const shown = !!bar();

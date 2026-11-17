@@ -1,3 +1,4 @@
+import { pipeline } from "node:stream/promises";
 import { buildAgentExport, parseAgentExport } from "./agent-export.js";
 import { STRUCTURED_PROFILE_BACKENDS } from "./structured-signin-transport.js";
 import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
@@ -74,6 +75,8 @@ import { PAGE_SHARE_LIMITS, htmlFences, htmlTitle } from "./page-share.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import { workspaceChanges, workspaceFile, workspaceFileDiff, workspaceImage, workspaceList, workspaceRoot, WorkspaceError } from "./agent-workspace.js";
+import { readReplyPreview, ReplyPreviewError } from "./reply-preview-files.js";
+import { REMOTE_PREVIEW_REFUSAL } from "./reply-preview-spec.js";
 import { resolveFollowSteps, type FollowStep } from "./workspace-follow.js";
 import { isGeneralInstance } from "./general-instance.js";
 import { resolveToolSet } from "./tool-permissions.js";
@@ -745,7 +748,7 @@ function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ct
 /**
  * #2308: the app icon. GET: its state, for the settings card (a signed-in person's session). PUT (one PNG, at most
  * 5 MiB) and DELETE (back to the bundled icon): a signed-in admin's session only — never the CLI's token, a read-only
- * session, a guest or the public link; checked again once the body has arrived.
+ * session or a guest (M-3278: the public link's admin session may); checked again once the body has arrived.
  */
 /** An app icon refusal as the page reads it: its code, the English detail and, when named, the detail's key (#2390). */
 function appIconRefusal(r: { error: string; detail?: string; detail_key?: string; detail_args?: Array<string | number> }): Record<string, unknown> {
@@ -756,7 +759,6 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   if (!store) { json(res, 404, { error: "app_icon_not_kept", detail: "The app icon is not kept on this fleet" }); return true; }
   const reading = method === "GET" || method === "HEAD";
   if (!reading && method !== "PUT" && method !== "DELETE") { res.setHeader("Allow", "GET, PUT, DELETE"); json(res, 405, { error: "method not allowed" }); return true; }
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "app_icon_not_over_public_link" }); return true; }
   const who = (): { person: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
@@ -808,7 +810,7 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
  *   POST /ui/update/check  look now (one a minute) → the GET's answer
  *   POST /ui/update/start  { confirm: "update-agend" } + Idempotency-Key → 202 { started } (the progress is the GET's)
  *   GET  /ui/update/log    { text, error } — the updater's own words, for the failure's "full log"
- * Signed-in sessions only (never the CLI's token, a guest or the public link: none of these is a public route); an
+ * Signed-in sessions only (never the CLI's token or a guest; M-3278: the public link's sessions too, as locally); an
  * admin's for all but the version. Asked again once a body is in.
  */
 function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
@@ -817,7 +819,6 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
   const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/log": "GET" };
   if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
   if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
-  if (gatewayRequestContext(req)) { json(res, 404, { error: "not found" }); return true; }
   res.setHeader("Cache-Control", "no-store");
   const who = (): { admin: boolean; person: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
@@ -1210,7 +1211,6 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
   const store = ctx.ownerCss;
   if (!store) { json(res, 404, { error: "Owner CSS is not kept on this fleet" }); return true; }
   const reading = method === "GET" || method === "HEAD";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "owner_css_not_over_public_link" }); return true; }
   const who = (): { person: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
@@ -1320,10 +1320,9 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = req.method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "sign_in_not_over_public_link" }); return true; }
   const who = () => {
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-    return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local" ? v.session : null;
+    return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null;   // M-3278: the public link's admin too
   };
   const owner = who();
   if (!owner) { json(res, 403, { error: "sign_in_needs_a_local_admin" }); return true; }
@@ -1438,18 +1437,17 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
 
 /**
  * #2233: signing a backend in from the dashboard (web-backend-login.ts). A signed-in admin session on the local surface
- * only — never the CLI's header token (an agent's), a guest, a read session or the public link (refused before the body
+ * only (M-3278: the public link's too) — never the CLI's header token (an agent's), a guest or a read session (refused before the body
  * is read, and again after it). Every answer is no-store: the starter's view carries the terminal's access code.
  */
 function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "sign_in_not_over_public_link" }); return true; }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "sign_in_needs_a_local_admin", status: 403 };
+    if (v.via !== "session" || v.session.tier !== "admin") return { error: "sign_in_needs_a_local_admin", status: 403 };   // M-3278: any listener
     return { handle: v.session.handle, label: v.session.label };
   };
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -1496,7 +1494,7 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
 
 /**
  * AGEND-133 (upstream #3521): installing a CLI on the AgEnD host from the dashboard (web-host-install.ts). The gate is the sign-in routes' own — a signed-in admin
- * session on the local surface; never the CLI's header token (an agent's), a guest, a read session, or the public link (refused before the body is read, and again
+ * session (M-3278: the public link's too); never the CLI's header token (an agent's), a guest or a read session (refused before the body is read, and again
  * after it). `GET` reads the current install; `POST` `{ backend }` starts one — the browser names a CLI, the server looks up the registry's command, nothing it sends
  * is ever run; `POST …/cancel` `{}` stops the running one. Every answer is no-store.
  */
@@ -1505,7 +1503,6 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "install_not_over_public_link" }); return true; }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
     if (isSettingsReplay(req)) {
       const requester = settingsRequestRequester(req);
@@ -1514,7 +1511,7 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
     }
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "install_needs_a_local_admin", status: 403 };
+    if (v.via !== "session" || v.session.tier !== "admin") return { error: "install_needs_a_local_admin", status: 403 };   // M-3278: any listener
     return { handle: v.session.handle, label: v.session.label };
   };
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -1560,7 +1557,7 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
  * folder); `DELETE /ui/accounts/<backend>/<name>` `{ confirm: <name> }` removes one (accounts-profiles.ts: every refusal
  * deletes nothing). PR 3: `POST /ui/accounts/<backend>/signout` `{ profile: <name> | null, confirm: true }` signs an
  * account out with the CLI's own logout (accounts-signout.ts). The fleet's local admin session only, as the sign-in routes: never the CLI's header token, a guest,
- * a read session, the public link or the gateway — refused before the body is read, and again after it.
+ * or a read session (M-3278: the public link's admin session may) — refused before the body is read, and again after it.
  */
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
   backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
@@ -1572,11 +1569,10 @@ const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
 function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
-  if (gatewayRequestContext(req)) { json(res, 403, { error: "accounts_not_over_public_link" }); return true; }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "accounts_need_a_local_admin", status: 403 };
+    if (v.via !== "session" || v.session.tier !== "admin") return { error: "accounts_need_a_local_admin", status: 403 };   // M-3278: any listener
     return { handle: v.session.handle, label: v.session.label };
   };
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -1645,12 +1641,11 @@ const KEEPALIVE_STATUS: Readonly<Record<string, number>> = { backend: 400, profi
 function handleAccountKeepAlive(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
-  if (gatewayRequestContext(req)) { json(res, 403, { error: "accounts_not_over_public_link" }); return true; }
   if (method !== "POST") { json(res, 405, { error: "method_not_allowed" }); return true; }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "accounts_need_a_local_admin", status: 403 };
+    if (v.via !== "session" || v.session.tier !== "admin") return { error: "accounts_need_a_local_admin", status: 403 };   // M-3278: any listener
     return { handle: v.session.handle, label: v.session.label };
   };
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -1673,14 +1668,13 @@ function handleAccountKeepAlive(req: IncomingMessage, res: ServerResponse, url: 
 
 /**
  * #1629 r4 §4 (r4-5): mods — a person's import (stage, then commit), uninstall and export. Every route is a signed-in
- * session's, writes an admin's: never the CLI's header token (the way an agent could reach it) and never the public link
- * (absent from its manifest, and refused here too). `who()` is asked first and again once a body is in.
+ * session's, writes an admin's: never the CLI's header token (the way an agent could reach it); M-3278: the public link's
+ * sessions too, as locally. `who()` is asked first and again once a body is in.
  */
 function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   const mods = ctx.mods;
   if (!mods) { json(res, 404, { error: "Mods are not kept on this fleet" }); return true; }
   const reading = method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "mods_not_over_public_link" }); return true; }
   const who = (): { person: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
@@ -2535,10 +2529,10 @@ export function handleWebRequest(
   // same rule as the sign-in list it extends).
   if (method === "GET" && path === "/ui/accounts") {
     res.setHeader("Cache-Control", "private, no-store");
-    if (gatewayRequestContext(req)) { json(res, 404, { error: "not_found" }); return true; }
+    // M-3278 (decision 7933bf90): an admin session on any listener, the public link too (temporary or fixed).
     const localAdmin = () => {
       const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local" ? v.session : null;
+      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null;
     };
     const who = localAdmin();
     if (!who) { json(res, 403, { error: "accounts_need_a_local_admin" }); return true; }
@@ -2550,17 +2544,54 @@ export function handleWebRequest(
     return true;
   }
 
+  // M-3283: one reply-linked file, for an admin session on any listener. No folder listing or gateway refusal.
+  if (method === "GET" && path === "/ui/reply-preview") {
+    res.setHeader("Cache-Control", "private, no-store"); res.setHeader("X-Content-Type-Options", "nosniff");
+    const admin = () => { const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false }); return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null; };
+    const who = admin(); if (!who) { json(res, 403, { error: "preview_needs_admin" }); return true; }
+    const p = url.searchParams, instance = p.get("instance") ?? "", op = p.get("op") ?? "meta";
+    const cfg = ctx.fleetConfig?.instances && Object.hasOwn(ctx.fleetConfig.instances, instance) ? ctx.fleetConfig.instances[instance] : undefined;
+    if (!cfg) { json(res, 404, { error: "not_found" }); return true; }
+    if (cfg.runtime === "windows" || cfg.machine_id) { json(res, 403, { error: "preview_remote_unavailable", message: REMOTE_PREVIEW_REFUSAL }); return true; }
+    const offered = () => !isGeneralInstance(ctx.fleetConfig as never, instance) && resolveToolSet(cfg as never, instance) !== "coordinator" && cfg.runtime !== "windows" && !cfg.machine_id;
+    if (!offered()) { json(res, 404, { error: "workspace_not_offered" }); return true; }
+    if (op !== "meta" && op !== "raw") { json(res, 400, { error: "invalid" }); return true; }
+    const wd = String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
+    const current = () => admin()?.handle === who.handle && ctx.fleetConfig?.instances[instance] === cfg && String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~") === wd && offered();
+    void (async () => {
+      let closeRead: (() => Promise<void>) | undefined;
+      try {
+        const r = await readReplyPreview(wd, getAgendHome(), p.get("path"), op === "raw", current, req.headers.range);
+        if (r.kind === "raw") closeRead = r.close;
+        if (!current()) throw new ReplyPreviewError("preview_changed");
+        if (r.kind === "meta") { json(res, 200, r.body); return; }
+        if (r.mime === "application/pdf") res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        res.setHeader("Content-Security-Policy", r.mime === "application/pdf" ? "default-src 'none'; frame-ancestors 'self'" : "default-src 'none'; sandbox");
+        res.setHeader("Content-Type", r.mime); res.setHeader("Content-Length", String(r.length)); res.setHeader("Accept-Ranges", "bytes");
+        if (r.partial) res.setHeader("Content-Range", `bytes ${r.start}-${r.end}/${r.size}`);
+        res.writeHead(r.partial ? 206 : 200);
+        await pipeline(r.chunks, res, { end: false }); res.end();
+      } catch (error) {
+        if (res.headersSent || res.destroyed) { res.destroy(); return; }
+        const e = error instanceof ReplyPreviewError ? error : new ReplyPreviewError("unavailable");
+        if (e.code === "range_not_satisfiable") res.setHeader("Content-Range", `bytes */${e.size}`);
+        json(res, e.code === "not_found" || e.code === "not_a_directory" ? 404 : e.code === "range_not_satisfiable" ? 416 : e.code === "too_large" ? 413 : e.code === "unavailable" ? 503 : 403, { error: e.code });
+      } finally { if (closeRead) await closeRead().catch(() => {}); }
+    })();
+    return true;
+  }
+
   // ── #3153 P1: an agent's Files / Changes (read-only) ─────────────────────────────────
-  // The fleet's local admin session only: never the public link, a guest, a token or a connection from outside. One
+  // The fleet's admin session only (M-3278: the public link's too): never a guest or a token. One
   // agent's own working directory (agent-workspace.ts confines and filters every path); not General or a coordinator
   // (they work in the fleet's own directory), not an agent on another machine.
   if (method === "GET" && path === "/ui/workspace") {
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    if (gatewayRequestContext(req)) { json(res, 404, { error: "not_found" }); return true; }
+    // M-3278 (decision 7933bf90): an admin session on any listener, the public link too (temporary or fixed).
     const localAdmin = () => {
       const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local" ? v.session : null;
+      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null;
     };
     const who = localAdmin();
     if (!who) { json(res, 403, { error: "workspace_needs_a_local_admin" }); return true; }
@@ -3144,9 +3175,14 @@ export function handleWebRequest(
   }
 
   // #1629 r4 §3: owner CSS — one person's own stylesheet, for their own screens. Every route is a signed-in human's
-  // session: never the CLI's header token (no person, and the way an agent could reach it), never the public link
-  // (absent from its manifest, and refused here too), reads included. The stylesheet and its assets are that session's
+  // session: never the CLI's header token (no person, and the way an agent could reach it); M-3278: the public link's
+  // sessions too, as locally. The stylesheet and its assets are that session's
   // person's only: no name or identity in any URL.
+  // M-3278 (Fable on #4107, N1): owner CSS, AgEnD's update and mods over the public link are an admin session's only —
+  // a guest or read-only session there is answered as the gateway answered it before (not found).
+  const linkPrivileged = path === "/ui/owner-css.css" || path === "/ui/owner-css" || path.startsWith("/ui/owner-css/")
+    || path === "/ui/update" || path.startsWith("/ui/update/") || path === "/ui/mods" || path.startsWith("/ui/mods/");
+  if (linkPrivileged && linkRestricted(req, url, ctx)) { json(res, 404, { error: "not_found" }); return true; }
   if (path === "/ui/owner-css.css" || path === "/ui/owner-css" || path.startsWith("/ui/owner-css/")) {
     return handleOwnerCss(req, res, url, ctx, path, method);
   }
@@ -3155,7 +3191,7 @@ export function handleWebRequest(
   if (path === "/ui/app-icon") return handleAppIcon(req, res, url, ctx, method);
   if (path === "/ui/update" || path.startsWith("/ui/update/")) return handleWebUpdate(req, res, url, ctx, path, method);
 
-  // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
+  // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only; M-3278: the public link's too).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
 
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
@@ -3477,7 +3513,9 @@ export function handleWebRequest(
       try {
         const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
         const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined, ...(body.action ? { action: body.action as WebModelAction } : {}) },
-          { publicLink: !!gatewayRequestContext(req), person, authority, ...(guest ? { guest: true } : {}) });
+          // M-3278 (decision 7933bf90): `publicLink` is a request over the link by anyone but an admin session — the link's
+          // admin runs /save and gets /model and /backend's Sign in, as on the local dashboard.
+          { publicLink: !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx), person, authority, ...(guest ? { guest: true } : {}) });
         if (!stillAuthorized(req, res, url, ctx)) return;
         json(res, r.status, r.body);
       } finally { if (guest) guestCommandsRunning.delete(account); }
@@ -4413,9 +4451,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // The same tags and meta a Telegram photo/document produces, so the agent needs nothing new.
       const delivery = attachmentDelivery(typed, files);
       // #1269: `/raw ` is pasted into the CLI with no [user:] envelope (the daemon's own check, on this exact text).
-      // A signed-in local session may do that, as a fleet admin on the platform may; the public link — the outward-
-      // facing surface — may not.
-      if (gatewayRequestContext(req) && delivery.text.startsWith("/raw ")) {
+      // M-3278 (decision 7933bf90): the public link's admin session may do that too, as a local one may; anyone else
+      // over the link (a guest) still may not.
+      if (gatewayRequestContext(req) && delivery.text.startsWith("/raw ") && !adminAdmissionOf(req, new URL(req.url ?? "/", "http://localhost"), ctx)) {
         ctx.webFiles?.release(files);
         json(res, 403, { error: t("web.raw_public_refused") });
         return;
@@ -4834,7 +4872,9 @@ function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiCon
     return { person: webPersonKey(v.session.owner), epoch: v.session.handle, scope: "person", canWrite: false, via: "session", ...guest,
       guestScope: () => g?.scope() ?? new Set<string>() };
   }
-  if (!gatewayRequestContext(req) && v.via === "session" && v.session) {
+  // M-3278 (decision 7933bf90): the public link's admin session gets its own person scope, as on the local dashboard.
+  // A read-only session over the link keeps no person scope, as before (Fable on #4107, N1: the decision is an admin's).
+  if (v.via === "session" && v.session && (v.session.tier === "admin" || !gatewayRequestContext(req))) {
     const person = webPersonKey(v.session.owner);
     return { person, epoch: v.session.handle, scope: person === OPERATOR ? "operator" : "person", canWrite: v.session.tier === "admin", via: "session", ...guest };
   }
@@ -4864,7 +4904,7 @@ function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVie
 
 /**
  * #1629 r4 §3: the owner CSS this load links (its sha), or null. Only the full app of a signed-in human session — never
- * the public link, the anonymous View reader, the CLI's header token or the sign-in and setup pages (other panels).
+ * the anonymous View reader, the CLI's header token or the sign-in and setup pages (other panels); M-3278: the public link's too.
  */
 function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string | null {
   return mode === "full" && !viewer?.guest && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
@@ -4882,7 +4922,12 @@ function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
   let config: HubSwitches = null;
   try { config = (ctx.getRawFleetConfig?.() ?? null) as HubSwitches; } catch { config = null; }
   // hub.md §1: member handlers are local-owner-only and unavailable through the public gateway — no member mark there.
-  const member = hubModeOf(config).member && !gatewayRequestContext(req) ? ' data-hub="member"' : "";
+  // M-3278 (decision 7933bf90): except for the link's admin session, which the member handlers now answer as locally.
+  const linkAdmin = (): boolean => {
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    return v.kind === "allow" && v.via === "session" && v.session.tier === "admin";
+  };
+  const member = hubModeOf(config).member && (!gatewayRequestContext(req) || linkAdmin()) ? ' data-hub="member"' : "";
   // #3298 S-89 (leader, #3372 N2): Settings → Hub's Group permissions row only when this fleet's own Hub has them composed —
   // learned in this process, never by reading a Hub session across origins. Never over the public link.
   let groups = false;
@@ -4910,7 +4955,7 @@ function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: strin
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
   const ownerCss = shellOwnerCss(ctx, mode, viewer);
-  let ownerCssState: "off" | "on" | "unknown" = mode === "full" && (gatewayRequestContext(req) || viewer?.guest) ? "off" : "unknown";
+  let ownerCssState: "off" | "on" | "unknown" = mode === "full" && viewer?.guest ? "off" : "unknown";   // M-3278: the public link's admin as locally
   if (mode === "full" && !viewer?.guest && viewer?.person != null && ctx.ownerCss) {
     ownerCssState = ctx.ownerCss.effectState(viewer.person);
     if (ownerCssState === "off" && ownerCss !== null || ownerCssState === "on" && ownerCss === null) ownerCssState = "unknown";
@@ -5007,7 +5052,10 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
     // the page may load); every other page frames exactly the origin this load chose (#1723).
     const previewFrames = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
-    const frameSrc = previewFrames ?? "";
+    // M-3283: frame only the narrow file endpoint, never all of this origin. Recheck the actual session tier locally too.
+    const fileViewer = own ? evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false }) : null;
+    const fileFrame = own && fileViewer?.kind === "allow" && fileViewer.via === "session" && fileViewer.session.tier === "admin" ? `${own}/ui/reply-preview` : null;
+    const frameSrc = [previewFrames, fileFrame].filter(Boolean).join(" ");
     sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });

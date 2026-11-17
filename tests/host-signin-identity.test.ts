@@ -198,17 +198,17 @@ describe("who is served the list with the accounts in it: a local administrator 
     for (const answer of answers) expect(answer.raw).not.toMatch(/alice\.fixture|maskedEmail|identity/);
     expect(f.refresh).not.toHaveBeenCalled();
   });
-  it("the public link and the gateway: the route is in neither manifest, and a bound gateway request is refused even as an admin, reading nothing", async () => {
+  it("M-3278: the public link carries the route for its admin session (not the guest table); its read session is refused, reading nothing", async () => {
     const f = await fixture();
-    expect(isPublicWebRoute("GET", "/ui/backend-login")).toBe(false);
+    expect(isPublicWebRoute("GET", "/ui/backend-login")).toBe(true);
     expect(GUEST_ROUTES.some(r => (r.methods as readonly string[]).includes("GET") && r.pattern.test("/ui/backend-login"))).toBe(false);
-    const made = f.sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
+    const made = f.sessions.create({ tier: "read", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
     let status = 0, body = "";
     const res: any = { headersSent: false, setHeader() {}, writeHead(n: number) { status = n; this.headersSent = true; }, end(chunk?: string) { body += chunk ?? ""; } };
     const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/backend-login", headers: { host: "x.trycloudflare.com", origin: "https://x.trycloudflare.com", cookie: `__Host-agend_session=${made.sessionId}` }, socket: {} });
     bindGatewayRequest(req as never, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
     expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/backend-login"), f.ctx)).toBe(true);
-    expect(status).toBe(404); expect(body).not.toMatch(/alice\.fixture|maskedEmail/); expect(f.refresh).not.toHaveBeenCalled();
+    expect(status).toBe(403); expect(body).not.toMatch(/alice\.fixture|maskedEmail/); expect(f.refresh).not.toHaveBeenCalled();
   });
   it("the answer never waits for a read: a read that never finishes, or one that throws, changes nothing about it (and the sign-in view is still in it)", async () => {
     const f = await fixture(), admin = f.session("admin");

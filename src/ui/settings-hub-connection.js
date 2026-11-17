@@ -44,7 +44,7 @@ const validPairing = p => !!p && states.has(p.state) && (p.state === "unpaired" 
 const safeOrigin = p => { try { const value = p?.hub?.webOrigin, u = new URL(value); return u.protocol === "https:" && u.origin === value ? u.origin + "/ui/hub" : null; } catch { return null; } };
 export function HubConnectionSettings({ onMode } = {}) {
   const [pilotRevision, setPilotRevision] = useState(0);
-  const publicPage = globalThis.document?.body?.dataset?.publicLink === "1";
+  // M-3278 (decision 7933bf90): over the public link too, for its admin session (the server refuses anyone else).
   const [view, setView] = useState(null), [error, setFailureCode] = useState(""), [busy, setBusy] = useState(false), [fallback, setFallback] = useState(typeof legacy.markMember !== "function");
   const [Company, setCompany] = useState(null), [Connect, setConnect] = useState(null), [pending, setPending] = useState(null);
   // M-2921 (spec 1.1 / 1.3): the company-join record of this connection (its address, label, Hub name, owner), the
@@ -71,9 +71,9 @@ export function HubConnectionSettings({ onMode } = {}) {
     life.current.read = work; void work.finally(() => { if (life.current.read === work) life.current.read = null; }); return work;
   };
   useEffect(() => {
-    life.current.live = true; if (!publicPage && !fallback) void read();
+    life.current.live = true; if (!fallback) void read();
     return () => { life.current.live = false; life.current.sequence++; };
-  }, [publicPage, fallback]);
+  }, [fallback]);
   useEffect(() => {
     let live = true;
     if ((view?.pairing?.state === "unpaired" || joinWait) && !fallback) import("./settings-hub-company-join.js").then(m => {
@@ -118,7 +118,7 @@ export function HubConnectionSettings({ onMode } = {}) {
     finally { if (life.current.live) { setBusy(false); setPending(null); } }
   };
   const change = async enabled => {
-    if (publicPage || !view || life.current.busy || error) return;
+    if (!view || life.current.busy || error) return;
     life.current.busy = true; life.current.sequence++; setBusy(true); setPending(null);
     try {
       const result = await confirmedWrite(path, { method: "PUT", body: { enabled }, resendable: true, label: hc("title"),
@@ -139,7 +139,6 @@ export function HubConnectionSettings({ onMode } = {}) {
   };
   const reported = !view ? "unknown" : view.pairing?.state === "paired" ? (!view.enabled ? "paused" : view.pairing.link === "online" ? "connected" : "connecting") : "unconnected";
   useEffect(() => { onMode?.(reported); }, [reported]);
-  if (publicPage) return null;
   if (fallback) return html`<${legacy.HubMembershipSettings} />`;
   const p = view?.pairing, paired = p?.state === "paired", paused = paired && !view.enabled;
   const online = paired && view.enabled && p.link === "online", bound = p && p.state !== "unpaired";
