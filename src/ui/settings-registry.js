@@ -27,6 +27,7 @@ const ROWS = [
   ["prefs.theme", "look", "#pref-theme", "app.theme", null, ["theme", "dark", "light", "dark mode", "colour scheme"], ["主題", "深色", "淺色", "外觀"]],
   ["prefs.lang", "preferences", "#pref-lang", "app.language", null, ["language", "dashboard language", "english", "chinese", "locale"], ["語言", "介面語言", "中文", "英文"]],
   ["prefs.density", "preferences", "#pref-density", "app.sidebarDensity", null, ["sidebar", "compact", "detailed", "density", "agent list"], ["側邊欄", "精簡", "詳細", "密度", "Agent 清單"]],
+  ["prefs.compactName", "preferences", "#pref-compact-name", "app.compactName", null, ["compact", "display name", "instance name"], ["精簡", "暱稱", "instance 名稱"]],
   ["prefs.names", "preferences", "#pref-names", "app.names", null, ["names", "nickname", "real name", "instance name", "display"], ["名稱", "暱稱", "實名"]],
   ["prefs.previews", "preferences", "#pref-previews", "chat.previews", null, ["html preview", "preview", "iframe"], ["預覽", "HTML 預覽"]],
   ["prefs.tour", "preferences", "#tourBtn", "chat.tour", null, ["tour", "help", "walkthrough", "guide"], ["導覽", "說明", "教學"]],
