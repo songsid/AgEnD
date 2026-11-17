@@ -401,7 +401,18 @@ function unitRig(opts: { onInstall?: (n: number) => void; installStatus?: number
 }
 
 /** The rig's deps with this host's real process readers (pids, start times, open files). */
-const realDepsFor = (r: ReturnType<typeof unitRig>) => ({ ...r.deps, lockReaders: undefined, alive: (p: number) => { try { process.kill(p, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; } } });
+/**
+ * M-3268: the real /proc scan, judging only the processes a test owns — this one and the pids it names (its children);
+ * every other process reads as another user's, so a runner's unrelated non-dumpable process can never make a case
+ * that expects "moved" answer "cannot be told". `inner` is a case's own stat (an injected failure), kept for its pids.
+ */
+const ownedOnly = (pids: readonly number[], inner: (p: string) => { uid: number } = statSync) => (p: string) => {
+  const m = /^\/proc\/(\d+)$/.exec(p);
+  if (m && Number(m[1]) !== process.pid && !pids.includes(Number(m[1]))) return { uid: -1 };
+  return inner(p);
+};
+const realDepsFor = (r: ReturnType<typeof unitRig>, pids: readonly number[] = []) => ({ ...r.deps, lockReaders: undefined, procStat: ownedOnly(pids),
+  alive: (p: number) => { try { process.kill(p, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; } } });
 
 describe("#2264 review (Prism r1 P1): the installer owns the prefix before it touches anything, until it is done", () => {
   // Prism r2: admission is announce-then-check — nothing of another installer is moved to decide it.
@@ -695,7 +706,7 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
     await new Promise<void>(resolve => writer.stdout!.once("data", () => resolve()));
     const longAgo = new Date(Date.now() - 60 * 60_000); utimesSync(r.lock, longAgo, longAgo);   // an hour old: age is no evidence
     const inode = statSync(r.lock).ino;
-    const real = realDepsFor(r);
+    const real = realDepsFor(r, [writer.pid!]);
     expect(installer.admit(r.prefix, real, {}).refuse).toMatch(/is being written by another AgEnD install/);
     expect(statSync(r.lock).ino, "the writer's file stays where its claim will find it").toBe(inode);
     writer.stdin!.write("go\n");
@@ -708,6 +719,32 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
     expect(got.refuse).toBeUndefined();
     expect(cut.quarantined()).toContain('{"pid":');
     got.release!();
+  });
+
+  // M-3268: the flake on CI (#4090's first run) — an unrelated process of this user that cannot be inspected (a runner's
+  // non-dumpable one: its descriptors EACCES, its command line naming agend or unreadable) made the real all-process scan
+  // answer "cannot be told", so the cut-short case above was refused. The product is right to refuse then; the tests
+  // judge only the processes they own. Here a decoy of that kind runs throughout (python3 sets itself non-dumpable).
+  // Still exposed, by choice (no test hook in the installer's safety scan): the 5 tests above that run the REAL
+  // installer against a cut-short lock ("one run of the target's installer …", "killed before any of the new release
+  // was written …", "a hand-started fleet …", "the user's host after the session ended …", "another npm running on the
+  // host …") scan the whole machine, so a process like this decoy fails them ("cannot be told (EACCES on /proc/<pid>/fd
+  // …)"). Repro: `python3 -c "import ctypes,time; ctypes.CDLL(None).prctl(4,0,0,0,0); time.sleep(300)" agend-decoy &`,
+  // then run this file. If one of them flakes on CI, the next step is a private PID namespace for them.
+  it.skipIf(process.platform !== "linux" || spawnSync("python3", ["-c", "1"]).status !== 0)("an unrelated process that cannot be inspected never decides a test's lock: the cut-short lock is moved (the scan judges the test's own processes) — control: the whole-machine scan refuses because of it", async () => {
+    const decoy = spawn("python3", ["-c", "import ctypes, sys, time; ctypes.CDLL(None).prctl(4, 0, 0, 0, 0); sys.stdout.write('ready\\n'); sys.stdout.flush(); time.sleep(60)", "agend-decoy"], { stdio: ["ignore", "pipe", "ignore"] });
+    await new Promise<void>(resolve => decoy.stdout!.once("data", () => resolve()));
+    try {
+      const cut = unitRig();
+      writeFileSync(cut.lock, '{"pid":');
+      // Control: the decoy is what a runner has — the unscoped scan cannot tell (it names an uninspectable process) and leaves the lock.
+      expect(installer.admit(cut.prefix, { ...realDepsFor(cut), procStat: statSync }, {}).refuse).toMatch(/cannot be told \(EACCES on \/proc\/\d+\/fd/);
+      expect(readFileSync(cut.lock, "utf8")).toBe('{"pid":');
+      const got = installer.admit(cut.prefix, realDepsFor(cut), {});
+      expect(got.refuse).toBeUndefined();
+      expect(cut.quarantined()).toContain('{"pid":');
+      got.release!();
+    } finally { decoy.kill("SIGKILL"); }
   });
 
   // Prism r5: /proc/<pid>/fd is behind ptrace checks — only "gone" (ENOENT) may be skipped; anything else is unknown.
@@ -727,14 +764,14 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
         ["its descriptors, EIO", failing(p => p.startsWith(`/proc/${pid}/fd/`), "EIO")],
         ["the lock itself, EACCES", failing(p => p === r.lock, "EACCES")],
       ] as const) {
-        expect(installer.admit(r.prefix, { ...realDepsFor(r), procStat }, {}).refuse, what).toMatch(/is being written by another AgEnD install/);
+        expect(installer.admit(r.prefix, { ...realDepsFor(r, [pid]), procStat: ownedOnly([pid], procStat) }, {}).refuse, what).toMatch(/is being written by another AgEnD install/);
         expect(existsSync(r.lock), `${what}: the lock stays`).toBe(true);
       }
       // Its descriptor list cannot be read: EIO → unknown; EACCES (non-dumpable) on a process whose command line names
       // node → unknown too (an old updater is a node process).
       for (const code of ["EIO", "EACCES"]) {
         const procReaddir = (p: string) => { if (p === `/proc/${pid}/fd`) throw Object.assign(new Error(code), { code }); return readdirSync(p); };
-        expect(installer.admit(r.prefix, { ...realDepsFor(r), procReaddir }, {}).refuse, `descriptor list ${code}`).toMatch(/is being written by another AgEnD install/);
+        expect(installer.admit(r.prefix, { ...realDepsFor(r, [pid]), procReaddir }, {}).refuse, `descriptor list ${code}`).toMatch(/is being written by another AgEnD install/);
       }
     } finally { writer.kill("SIGKILL"); }
   });
@@ -778,12 +815,14 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
   it.skipIf(process.platform !== "linux")("a process none of whose descriptors may be inspected (stat and link both EACCES): skipped unless its command line names node/agend — then unknown, naming it", async () => {
     const r = unitRig();
     writeFileSync(r.lock, '{"pid":');   // cut short, its writer gone
+    let owned: number[] = [];
     const deny = (pid: number) => ({
-      procStat: (p: string) => { if (p.startsWith(`/proc/${pid}/fd/`)) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return statSync(p); },
+      procStat: ownedOnly(owned, (p: string) => { if (p.startsWith(`/proc/${pid}/fd/`)) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return statSync(p); }),
       procReadlink: (p: string) => { if (p.startsWith(`/proc/${pid}/fd/`)) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return readlinkSync(p); },
     });
     const sleeper = spawn("sleep", ["60"], { stdio: "ignore" });
     const nodeOne = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+    owned = [sleeper.pid!, nodeOne.pid!];
     try {
       await new Promise(resolve => setTimeout(resolve, 150));
       const asSleep = installer.admit(r.prefix, { ...realDepsFor(r), ...deny(sleeper.pid!) }, {});
@@ -802,7 +841,7 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
     try {
       await new Promise(resolve => setTimeout(resolve, 100));
       const procReaddir = (p: string) => { if (p === `/proc/${other.pid}/fd`) throw Object.assign(new Error("EIO"), { code: "EIO" }); return readdirSync(p); };
-      expect(installer.admit(r.prefix, { ...realDepsFor(r), procReaddir }, {}).refuse).toMatch(/is being written by another AgEnD install/);
+      expect(installer.admit(r.prefix, { ...realDepsFor(r, [other.pid!]), procReaddir }, {}).refuse).toMatch(new RegExp(`cannot be told \\(EIO on /proc/${other.pid}/fd\\)`));
       expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
     } finally { other.kill("SIGKILL"); }
   });
