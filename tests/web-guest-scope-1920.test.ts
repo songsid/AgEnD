@@ -243,7 +243,9 @@ describe("web.guests in fleet.yaml", () => {
     expect(check({ enabled: true, chat: false, open_instances: { dc: ["a"] }, narrow: { "dc:123": ["b"] }, session: { absolute_hours: 12, idle_minutes: 120 } }).errors).toEqual([]);
     expect(paths(check({ enabled: "yes", chat: 1, lasers: true }))).toEqual(["web.guests.lasers", "web.guests.enabled", "web.guests.chat"]);
     expect(paths(check({ open_instances: { dc: "a" }, narrow: { nouser: ["a"] } }))).toEqual(["web.guests.open_instances.dc", "web.guests.narrow.nouser"]);
-    expect(paths(check({ session: { absolute_hours: 25 } }))).toEqual(["web.guests.session.absolute_hours"]);
+    // M-3276: an admin's own bounds (1–720 h) — 25 h is now within them; 721 is not.
+    expect(paths(check({ session: { absolute_hours: 25 } }))).toEqual([]);
+    expect(paths(check({ session: { absolute_hours: 721 } }))).toEqual(["web.guests.session.absolute_hours"]);
     expect(paths(check({ session: { idle_minutes: 14 } }))).toEqual(["web.guests.session.idle_minutes"]);
     expect(paths(check({ session: { absolute_hours: 1, idle_minutes: 61 } }))).toEqual(["web.guests.session.idle_minutes"]);
     expect(paths(check({ session: { idle_minutes: 720 } })), "12 h idle within the default 12 h").toEqual([]);

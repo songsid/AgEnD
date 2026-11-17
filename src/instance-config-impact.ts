@@ -146,6 +146,9 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   // #2346: guests and web authority are read at each sign-in, message and check (`web` is read at the point of use);
   // the page asked for nothing and wrote "now" itself.
   "web.guests": "now",
+  // M-3276: the guest session limits, read at every session check (guestPolicy), like the local ones.
+  "web.guests.session.absolute_hours": "now",
+  "web.guests.session.idle_minutes": "now",
   "web.verified_authority": "now",
   // #2346: read once at startup (fleet-level-config.ts STARTUP_ONLY_FLEET_KEYS: setLocale(detectLocale(fleet))).
   "defaults.locale": "fleet",

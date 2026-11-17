@@ -108,7 +108,9 @@ function chatArchivePatch(v: unknown): { filesMaxGb: number | null; confirmRemov
 /**
  * #1920 phase 3: `guests` — `{ enabled?, chat?: boolean | null, open_instances?: { <connection id>: [instance…] | null },
  * narrow?: { "<connection id>:<user id>": [instance…] | null } }`; null = back to the default (the key leaves fleet.yaml).
- * The session limits stay fleet.yaml's. Names are checked for shape here; the validator judges the whole result.
+ * M-3276: `session?: { absolute_hours?: number | null, idle_minutes?: number | null }` — a guest's sign-in limits (Settings →
+ * Access & security → Guests). Names and numbers are checked for shape here; the validator judges the whole result (its
+ * bounds, idle ≤ absolute).
  */
 export type GuestsPatch = {
   enabled?: boolean | null;
@@ -117,6 +119,8 @@ export type GuestsPatch = {
   narrow?: Record<string, string[] | null>;
   /** #2348: per `<connection id>:<user id>` — the grant (replaced whole), or null to remove it. */
   grants?: Record<string, { name?: string; instances: string[]; level?: "trusted" } | null>;
+  /** M-3276: the guest session limits, each a number or null (back to the default). */
+  session?: { absolute_hours?: number | null; idle_minutes?: number | null };
 };
 const GUEST_ACCOUNT_KEY = /^[A-Za-z0-9_.-]{1,64}:[0-9A-Za-z_-]{1,64}$/;
 /** #2348: one grant as the patch carries it: `{ name?, instances, level? }`, or null (removed). #2855: level "chat" (the
@@ -162,6 +166,16 @@ export function guestsPatch(raw: unknown): GuestsPatch | null | "invalid" {
       if (map) out[k] = map;
       continue;
     }
+    if (k === "session") {
+      if (!v || typeof v !== "object" || Array.isArray(v)) return "invalid";
+      const session: { absolute_hours?: number | null; idle_minutes?: number | null } = {};
+      for (const [key, n] of Object.entries(v)) {
+        if ((key !== "absolute_hours" && key !== "idle_minutes") || (n !== null && (typeof n !== "number" || !Number.isFinite(n)))) return "invalid";
+        session[key] = n as number | null;
+      }
+      if (Object.keys(session).length) out.session = session;
+      continue;
+    }
     if (k === "grants") {
       if (!v || typeof v !== "object" || Array.isArray(v)) return "invalid";
       const grants: Record<string, { name?: string; instances: string[] } | null> = Object.create(null);
@@ -203,6 +217,17 @@ export function applyGuestsPatch(current: WebGuestsConfig | undefined, patch: Gu
       else { merged[k] = list; changes.push({ path: ["web", "guests", key, k], value: list }); }
     }
     if (Object.keys(merged).length) next[key] = { ...merged }; else delete next[key];
+  }
+  // M-3276: the session limits, key by key (null removes one; an emptied session leaves).
+  if (patch.session) {
+    const merged: { absolute_hours?: number; idle_minutes?: number } = { ...(current?.session ?? {}) };
+    for (const key of ["absolute_hours", "idle_minutes"] as const) {
+      if (!(key in patch.session)) continue;
+      const v = patch.session[key];
+      if (v === null || v === undefined) { delete merged[key]; changes.push({ path: ["web", "guests", "session", key], value: undefined, remove: true }); }
+      else { merged[key] = v; changes.push({ path: ["web", "guests", "session", key], value: v }); }
+    }
+    if (Object.keys(merged).length) next.session = merged; else delete next.session;
   }
   // #2348: grants, each replaced whole or removed. An emptied map stays ({}): its presence is what makes grants the
   // only scope, and taking the last person's access away must not bring the derived scope back.

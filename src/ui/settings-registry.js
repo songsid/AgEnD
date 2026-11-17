@@ -11,7 +11,7 @@ import "./settings-revoke-strings.js";   // settings.vaRevokeOthers, the revoke 
 import "./settings-public-session-strings.js";   // #3708: publicSessionAbsolute / publicSessionIdle (a file of its own)
 import "./settings-access-strings.js";   // …and this one (webLoginQr), added by Access & security (#3061)
 import "/assets/chat-strings.js";
-import { GUESTS_SETTINGS } from "./settings-guests.js";
+import { GUESTS_SETTINGS } from "./settings-guests-entries.js";
 
 const L = (en, zh) => ({ en, "zh-TW": zh });
 /** [id, section, target, labelKey | label, config key, words en, words zh] */
@@ -129,7 +129,7 @@ const ROWS = [
 export const SETTINGS_REGISTRY = Object.freeze([
   ...ROWS.map(([id, section, target, labelKey, key, en, zh, label]) => Object.freeze({ id, section, target, labelKey, label: label || null, key, words: { en, "zh-TW": zh } })),
   // dev-claude2's Guests section (#2348): its entries, brought to the same shape (the card itself is the target).
-  ...GUESTS_SETTINGS.map((g) => Object.freeze({ id: g.id, section: g.section, target: g.id === "guests.enabled" ? "#guestsEnabled" : g.id === "guests.chat" ? "#guestsChat" : "#guests",
+  ...GUESTS_SETTINGS.map((g) => Object.freeze({ id: g.id, section: g.section, target: g.target || (g.id === "guests.enabled" ? "#guestsEnabled" : g.id === "guests.chat" ? "#guestsChat" : "#guests"),
     labelKey: null, label: g.label, key: g.key || null, words: g.words })),
 ]);
 
