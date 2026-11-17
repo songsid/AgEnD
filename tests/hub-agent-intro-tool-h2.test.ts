@@ -75,3 +75,15 @@ it("reopens the same notice for a later Fleet, listing only its newly filled age
  await w.r.call(w.o,"DELETE","/hub/v1/me/intro-notice");await w.send("Repeated default","default",randomUUID(),link,e.id);
  expect((await w.r.call(w.o,"GET","/hub/v1/me/intro-notice")).json.notice).toBeNull();
 });
+it("backfills a historical registry without personal-agent columns as Fleet shares",async()=>{
+ const {default:Database}=await import("better-sqlite3"),{HUB_HTTP_MIGRATIONS}=await import("../src/hub/http/schema.js"),{applyHubMigrations}=await import("../src/hub/db.js");
+ const legacy=HUB_HTTP_MIGRATIONS.filter(m=>!m.component.startsWith("s3-personal-")),db=new Database(":memory:");try{
+  applyHubMigrations(db,legacy.filter(m=>m.component!=="s3-agent-intro-tool"));
+  expect((db.prepare("PRAGMA table_info(hub_exposures)").all() as {name:string}[]).some(c=>c.name==="source_kind")).toBe(false);
+  const active=randomUUID(),withdrawn=randomUUID(),edited=randomUUID();
+  for(const [id,state] of [[active,"published"],[withdrawn,"withdrawn"],[edited,"published"]])db.prepare("INSERT INTO hub_exposures(id,fleet_id,owner,display_name,revision,state,data_view_id,allowed_tools,policy_digest,updated_at) VALUES(?,?,?,'Guide',1,?,'agent','[]',?,1)").run(id,randomUUID(),"example/"+randomUUID(),state,"b".repeat(64));
+  db.prepare("INSERT INTO hub_agent_intros VALUES(?,'','owner',1)").run(edited);
+  applyHubMigrations(db,legacy);
+  expect(db.prepare("SELECT exposure_id FROM hub_agent_intro_existing").all()).toEqual([{exposure_id:active}]);
+ }finally{db.close();}
+});

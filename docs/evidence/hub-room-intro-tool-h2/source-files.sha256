@@ -6,7 +6,7 @@ c755217ed90d4c26676b83bd7661baee50717758cad7ccade0cb3385b872fd43  src/channel/mc
 b084bf3adcdcf90af61b01100f427bc2acef80ff3e0e5f1c5685af9fef6c63fc  src/fleet-manager.ts
 a5b9f83a7e00b4354e5ac80500be60bb6aafa545446a3972f432f2463ad57c3d  src/general-knowledge/skills/hub/SKILL.md
 9d87291ef28c1c83d97a15c0cf17f3edb3aa3e33f8ce9873acd4cf5bda3d1f00  src/hub/agent-intro-model.ts
-f3aa4a2bc1a65a05bc3b959b1da5d0f8cee10ffd681a93b06a63ec04f97bbd28  src/hub/agent-intro-tool.ts
+8c2f3d5ed2887330cb93fc338aec6c0a47f53f1d843845f315eaa70cf4be167e  src/hub/agent-intro-tool.ts
 93966e3c1070aafa5cc97108496521a88b1ee2b29404e040f0b286b10f17b536  src/hub/client.ts
 90775d9e100edb040a51b37399a15534aea3472185b018117e2e1345179fc09a  src/hub/compose/member.ts
 391fa66ff6103f0fd6652ccfa209976f260ce363a3c571b027a7b13536897476  src/hub/compose/server.ts
@@ -26,10 +26,11 @@ e181b84556add9689197571c796bcd20d42586ff4e4ebfb8fc6448613b38d26c  src/hub/server
 be3c64164908328f5ab8312d8f5bbb8c11f858f26d891e35defabad776b3116b  src/ui/hub-intro-notice.js
 35fd816732bf276c68421b448d9635d85b3a3cfcdbccb8cbbd9129e4d0407a9f  src/ui/hub-my-agents.js
 ef190852c577c992186da5a1fe4c302ec4bbab65046ef33ccdadc9def58cad06  src/ui/panel-hub.js
+e0dc83f11d5f914a902ed0c6d3aa6adfef5b36a5263de36c9353aa679caa0256  tests/classic-outbound-address-1626.test.ts
 49167f832ad96ba3636d657d77a01852fd07b6d3a4cee4f3a2d3f42b4ff9d854  tests/helpers/hub-rig.ts
 1a0761c62ca7c3a8ca5a188caee9533ce5c3ebaa2e3c6a295b0170fd8a6f8d73  tests/hub-agent-intro-link-h2.test.ts
 6af83e26ca39e9a20239ce4422625856e35eca202f0dbd3e768b0ca5be51fc05  tests/hub-agent-intro-member-h2.test.ts
-4859847ae47717a94578a3641ac067c31f20e848668b492fc13a69a61179a972  tests/hub-agent-intro-tool-h2.test.ts
+a774933af18f2277a5a7676fd86cf2f44af6c8fda2fc7c22ea09b92ace55db71  tests/hub-agent-intro-tool-h2.test.ts
 06335b8c60ceb09e33ec518c2f10aa5c37104427e7a16e74d9fcd7ae1bb8dc8b  tests/hub-agent-intro-ui-h2.test.ts
 75fd8d3332676136076de54934d619061c3fc98bf3cfe85f66bfcb94bbc0b42a  tests/hub-groups-mount-s89.test.ts
 d2e50ed691f73d66bd4aa245c62f60b6b167b0719c8528e265eae7aa1fc0904e  tests/hub-room-post-mcp.test.ts

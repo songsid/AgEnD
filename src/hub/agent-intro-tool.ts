@@ -8,11 +8,14 @@ import type {HubCore} from "./http/core.js";
 import type {HubLinkContext} from "./server.js";
 import type {HubRequestContext} from "./types.js";
 import {HubProtocolError} from "./validation.js";
-export const HUB_AGENT_INTRO_TOOL_MIGRATION=Object.freeze({component:"s3-agent-intro-tool",version:1,up(db:Database.Database){db.exec(`
+export const HUB_AGENT_INTRO_TOOL_MIGRATION=Object.freeze({component:"s3-agent-intro-tool",version:1,up(db:Database.Database){
+ // Historical registries without the personal-agent discriminator contain only Fleet shares.
+ const fleetOnly=(db.prepare("PRAGMA table_info(hub_exposures)").all() as {name:string}[]).some(c=>c.name==="source_kind")?"source_kind='fleet'":"1";
+ db.exec(`
  CREATE TABLE hub_agent_intro_changes(exposure_id TEXT NOT NULL REFERENCES hub_exposures(id) ON DELETE CASCADE,day INTEGER NOT NULL,changes INTEGER NOT NULL,PRIMARY KEY(exposure_id,day));
  CREATE TABLE hub_agent_intro_operations(fleet_id TEXT NOT NULL,operation_id TEXT NOT NULL,input TEXT NOT NULL,result TEXT NOT NULL,PRIMARY KEY(fleet_id,operation_id));
  CREATE TABLE hub_agent_intro_existing(exposure_id TEXT PRIMARY KEY REFERENCES hub_exposures(id) ON DELETE CASCADE);
- INSERT INTO hub_agent_intro_existing SELECT id FROM hub_exposures WHERE source_kind='fleet' AND state!='withdrawn' AND NOT EXISTS(SELECT 1 FROM hub_agent_intros i WHERE i.exposure_id=hub_exposures.id);
+ INSERT INTO hub_agent_intro_existing SELECT id FROM hub_exposures WHERE ${fleetOnly} AND state!='withdrawn' AND NOT EXISTS(SELECT 1 FROM hub_agent_intros i WHERE i.exposure_id=hub_exposures.id);
  CREATE TABLE hub_agent_intro_notices(owner TEXT PRIMARY KEY,batches TEXT NOT NULL,acknowledged_at INTEGER,seen INTEGER NOT NULL DEFAULT 0);
 `);}});
 interface IntroNoticeBatch{fleetId:string;fleet:string|null;more:boolean;agents:{id:string;name:string}[]}

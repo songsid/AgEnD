@@ -34,6 +34,12 @@ The browser harness uses real HTTPS/SQLite/audit and the actual local sharing wr
 
 Captures were inspected. A fixture-only missing invitation service was corrected before the final captures. The receipt identifies the base checkout; source hashes identify the submitted implementation. The screenshots show the first batch; later-batch wording and persistence are covered by the focused tests.
 
+## R1: historical schema compatibility
+
+Exact CI found historical registries that intentionally omit personal-agent migrations. Their exposure table has no `source_kind`, so the new backfill originally failed. A fail-first regression reproduced that failure. The migration now checks `PRAGMA table_info`: without the discriminator, all historical rows are Fleet shares; modern schemas keep the Fleet-only predicate. Withdrawn rows and explicit introductions remain excluded.
+
+The exhaustive Classic outbound-tool table also now includes `hub_set_intro` as a non-channel-addressed tool. The intro tool, Classic table, personal schema, sharing-pause migration and room migration files pass **120/120**. No browser, stdio or TLS rig was rerun for this narrow repair.
+
 ## Risks and rollback
 
 A default intentionally makes the first line public; the preview and persistent review notice are part of this feature. Defaults and edits stay separate from Fleet instructions, private inventory identity, grants and Undo retention. Five changes means UTC days, not a rolling 24-hour window. A lost edit acknowledgement remains uncertain.
