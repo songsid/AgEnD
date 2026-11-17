@@ -1,0 +1,128 @@
+{
+  "source": "3ac5e91283cc35be36854bfe48a81d90a8b2c800",
+  "baseline": "0f61ea1fa9f39a5111b71d16f3210c32520a00b6",
+  "inputs": [
+    {
+      "path": "changes/3279-guest-mention-names.md",
+      "sha256": "e9caabf495f73653f08a039324c611ceabda4b7f1fb9a70988d1e86b2082a8ec"
+    },
+    {
+      "path": "changes/3279-guest-mention-names.zh-TW.md",
+      "sha256": "547dd7cf00c705e2e4dab1d2ecaf944ef5fba511eb652e7f25e5c67c732b700b"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-guest-mentions-m3279.mts",
+      "sha256": "7aef932bf60d448cd751abf209b6c1a9d7b14340ebad06b5adbbc68bf463aebf"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "1fd89c799317faddc1bb79559e9ccf46eeb57f3f274780beb00170aab995e33a"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "117b9b81634f519804b1600f2db00cd4ef62feb043f0204a2d3af1ac2dd73f37"
+    },
+    {
+      "path": "src/ui/chat-mentions.js",
+      "sha256": "1d8f5d8d9ac154c3c4dd3ec336730b07939a06e8e61027bbc93ea4b1a90ef8e8"
+    },
+    {
+      "path": "src/ui/panel-chat.js",
+      "sha256": "e99e725f2da3d00d19bdc472ec81004f307b19a774f837dce9a0908c25a7320d"
+    },
+    {
+      "path": "src/web-guest-access.ts",
+      "sha256": "1269046aec9d366cd33ed9a05ebcc2349dec375bde0df78bb2e9ed50c51c1630"
+    },
+    {
+      "path": "src/web-mentions.ts",
+      "sha256": "084673f77724ed55aca46f3be3257261d5482c46112e27bdfd1d4a8a971ba0a8"
+    },
+    {
+      "path": "tests/web-guest-mentions-m3279.test.ts",
+      "sha256": "899d5fff661d993bd2a6ea9a1f4abaa7cfeeb4ed5d1053c691fc65ab00fc2d26"
+    },
+    {
+      "path": "src/ui/shared/chat-render.js",
+      "sha256": "fd65d839aa7800272b784cb590963a9fb588e1bc85e5c565a36c3609fe541104"
+    },
+    {
+      "path": "scripts/manual/smoke-fixture/index.mts",
+      "sha256": "1e55ede6d3e80f41077887da0ba08596733f60dfb07b9d6882882d5ad4442dae"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "after.json",
+      "sha256": "9199f7a8059103c0913b40d366d2a4a02f60fbabbb1124d5ad2ca32afeba9150"
+    },
+    {
+      "path": "before.json",
+      "sha256": "0be7ce5c1738656da3326ea4ba9cde29ae31d5e536cae04cf0667104c85a0302"
+    },
+    {
+      "path": "images/after-admin.png",
+      "sha256": "354959f7b7d29e2a23369493e48e9a262f43a098962dea02f7128738049ab945"
+    },
+    {
+      "path": "images/after-guest.png",
+      "sha256": "29139a6053d952c5f9beaa429d973b17d53431bafed5aa415663e0ac9aa1d688"
+    },
+    {
+      "path": "images/before-admin.png",
+      "sha256": "d18b2d50c0ce106cb2ffe3c275fd6d7d347880ad6793b7f0c8c14fb988263b23"
+    },
+    {
+      "path": "images/before-guest.png",
+      "sha256": "f1d3c1338a7fd75ccebd45a1843636b9d9bf88d8acad4221c709493c2e323f26"
+    },
+    {
+      "path": "logs/baseline-poll-semantic.log.gz",
+      "sha256": "7568ec0fda02c00228bf5e37734c0a0b8c56d75fb008852600a6f69edb48f799"
+    },
+    {
+      "path": "logs/baseline-semantic.log.gz",
+      "sha256": "64fea27ca407b8b79f610ddcd6493a8e621c099391a102a229f0a8f3bbe1f71b"
+    },
+    {
+      "path": "logs/browser-after.log.gz",
+      "sha256": "8295d7247c97460c8f42968eea856b7e36b44c7584b524fafaea54c701b0e83f"
+    },
+    {
+      "path": "logs/browser-before.log.gz",
+      "sha256": "d94f74ae311d1b0d93ef9494adbf4b585cde350cd1f7dbc5b9e849a5079766a2"
+    },
+    {
+      "path": "logs/focused-final.log.gz",
+      "sha256": "0615f0caf3751273e86d9e10dda069ea1c41a63a9c5e9e5c9d0c87001750c645"
+    },
+    {
+      "path": "logs/focused.log.gz",
+      "sha256": "4979f9c69c290005367e73943410776d27e62dc7bf94cd1ca9a0ef27fa5dfcdc"
+    },
+    {
+      "path": "logs/source-ts-final.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "logs/testTypes-final.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    }
+  ],
+  "verification": {
+    "baseline": "Admin and route controls pass; guest labels fail by assertion. Initial poll failure was a missing-field TypeError; corrected optional access then pins a semantic assertion failure in the isolated poll run. A prior setup parse error is not counted.",
+    "focused": "40/40 in 3 suites at initial fix; final new suite 8/8 after four added projection/client controls and typed fixture repair. Four checks overlap: 44 distinct total.",
+    "types": "Source native TypeScript produced no diagnostics; final test native TypeScript exit 0.",
+    "browser": "Real HTTP/session/history/DOM; inert agent lifecycle and synthetic memory caches; before and after headless Chromium on desktop dark EN. Guest live/reload unknown-name fallback also checked after capture.",
+    "images": "Independent image-only inspection of all four originals clears labels, layout and guest scope.",
+    "scope": "No live Discord, directory, CLI, pane or Fleet lifecycle. Existing mention renderer and pills reused; no CSS or markup changes.",
+    "cleanup": "Owned browser/fixture closed; both listeners reject connection; slot released."
+  },
+  "plainSync": {
+    "head": "b74b1452b783fba3db9904b0a5c669e23b0b5f63",
+    "incoming": "ef092431445257eca02cf5b0a0be66dea241d006",
+    "ownChangedLines": 244,
+    "ownDeltaUnchanged": true,
+    "localRerun": false
+  }
+}

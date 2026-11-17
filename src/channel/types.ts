@@ -82,6 +82,8 @@ export interface ChannelAdapter extends EventEmitter {
   getBotUserId?(): string | undefined;
   /** #1682: names for Discord mention ids from this adapter's own caches (never a request). */
   mentionNames?(query: { u: string[]; r: string[]; c: string[] }): { u?: Record<string, string>; r?: Record<string, string>; c?: Record<string, string> };
+  /** Guest labels: this channel's guild only; channel names require the viewer's cached read permission. No requests. */
+  mentionNamesInChannel?(query: { u: string[]; r: string[]; c: string[] }, channelId: string, viewerId: string): { u?: Record<string, string>; r?: Record<string, string>; c?: Record<string, string> };
 
   start(): Promise<void>;
   /** Fence inbound polling synchronously; retain outbound transport for shutdown notices. */
