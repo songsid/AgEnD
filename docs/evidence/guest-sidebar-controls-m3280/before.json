@@ -1,0 +1,75 @@
+{
+  "before": true,
+  "results": [
+    {
+      "device": "desk",
+      "tier": "admin",
+      "initial": [
+        "agent-alpha",
+        "agent-beta",
+        "shared-room",
+        "hidden-agent"
+      ],
+      "phoneCustom": false,
+      "stored": {
+        "theme": "dark",
+        "lang": "en"
+      },
+      "prefWrites": [],
+      "checks": 4,
+      "errors": []
+    },
+    {
+      "device": "desk",
+      "tier": "guest",
+      "initial": [
+        "agent-alpha",
+        "agent-beta",
+        "shared-room"
+      ],
+      "phoneCustom": false,
+      "stored": {
+        "theme": "dark",
+        "lang": "en"
+      },
+      "prefWrites": [],
+      "checks": 4,
+      "errors": []
+    },
+    {
+      "device": "phone",
+      "tier": "admin",
+      "initial": [
+        "agent-alpha",
+        "agent-beta",
+        "shared-room",
+        "hidden-agent"
+      ],
+      "phoneCustom": true,
+      "stored": {
+        "theme": "light",
+        "lang": "zh-TW"
+      },
+      "prefWrites": [],
+      "checks": 5,
+      "errors": []
+    },
+    {
+      "device": "phone",
+      "tier": "guest",
+      "initial": [
+        "agent-alpha",
+        "agent-beta",
+        "shared-room"
+      ],
+      "phoneCustom": false,
+      "stored": {
+        "theme": "light",
+        "lang": "zh-TW"
+      },
+      "prefWrites": [],
+      "checks": 5,
+      "errors": []
+    }
+  ]
+}

@@ -435,7 +435,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   // #1920 phase 3: a guest's sidebar — its own agents to pick from, who it is signed in as, and its session; no fleet,
   // Needs you, View, Settings, new agent or widget (each is an admin's, and the server refuses a guest them anyway).
   if (guestPage()) {
-    return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
+    return html`<aside id="sidebar" class=${`sidebar fleet-side${narrowDrawer ? " drawer-narrow" : ""}`} aria-label=${t("app.menu")}>
       <div class="side-head" data-trust="navigation">
         <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
         <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>

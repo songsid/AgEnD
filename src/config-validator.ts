@@ -37,7 +37,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["experimental", "public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "log_thinking", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "notice_delivery", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "preview_cdn", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search", "office_share", "page_share", "office_levels", "login_qr"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "notice_delivery", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "preview_cdn", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search", "chat_archive", "office_share", "page_share", "office_levels", "login_qr"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -480,6 +480,15 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
         if (config.web.search.public_link !== undefined && typeof config.web.search.public_link !== "boolean") err("web.search.public_link", "must be a boolean");
         const days = config.web.search.retention_days;
         if (days !== undefined && (typeof days !== "number" || !Number.isInteger(days) || days < 0 || days > 3650)) err("web.search.retention_days", "must be a whole number of days (0-3650; 0 = no age limit)");
+      }
+    }
+    // M-3272: the web chat's archive past the 500-message window.
+    if (config.web.chat_archive !== undefined) {
+      if (!isObj(config.web.chat_archive)) err("web.chat_archive", "must be a mapping");
+      else {
+        for (const k of Object.keys(config.web.chat_archive)) if (k !== "retention_days") warn(`web.chat_archive.${k}`, "unknown key (known: retention_days) — ignored");
+        const days = config.web.chat_archive.retention_days;
+        if (days !== undefined && (typeof days !== "number" || !Number.isInteger(days) || days < 0 || days > 3650)) err("web.chat_archive.retention_days", "must be a whole number of days (0-3650; 0 = keep everything)");
       }
     }
     // #2636: Office share links.
