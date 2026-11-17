@@ -291,6 +291,7 @@ import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./vi
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore, isSafeInstanceDirName } from "./web-chat-store.js";
+import { WebChatArchive } from "./web-chat-archive.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
 import { agendVersion } from "./agent-whats-new.js";
@@ -3312,6 +3313,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly webChatHistory = new WebChatHistory();
   /** #1565: the web chat history's files (set at fleet start, once the home and the instances are known). */
   private webChatStore: WebChatDiskStore | null = null;
+  /** M-3272: the archive past each agent's 500-message web chat window (web-chat-archive.ts). */
+  private webChatArchive: WebChatArchive | null = null;
   /** #2293: the dashboard's global search (null: web.search.enabled is false, or the fleet has not started). */
   searchIndex: SearchIndex | null = null;
   /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
@@ -23604,6 +23607,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (swept) this.logger.info({ swept }, "Removed web reply snapshots no message holds");
       this.webChatStore = store;
       this.webChatHistory.setStore(store);
+      // M-3272: messages leaving the 500-message window are archived per agent (owner-bound as web-chat.json is), kept
+      // for web.chat_archive.retention_days (unset or 0: everything).
+      this.webChatArchive = new WebChatArchive({ home: getAgendHome(), ownerOf: (name) => this.webChatOwner(name), logger: this.logger,
+        retentionDays: () => this.fleetConfig?.web?.chat_archive?.retention_days });
+      this.webChatHistory.setArchive(this.webChatArchive);
       if (restored) this.logger.info({ restored, instances: names.size }, "Web chat history restored from disk");
     } catch (err) {
       this.logger.warn({ err }, "Web chat history could not be restored; it starts empty");
@@ -27222,7 +27230,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ledger flush completes before process.exit(0) in doStopAll's caller.
     const cacheStopped = this.cacheService?.stop() ?? Promise.resolve();
     // #1565: the web chat's last changes reach the disk (bounded: a slow disk does not hold the shutdown).
-    const webChatStopped = this.webChatStore ? Promise.race([this.webChatStore.flush().catch(() => {}), new Promise<void>(r => setTimeout(r, 3_000).unref?.())]) : Promise.resolve();
+    const webChatStopped = this.webChatStore ? Promise.race([Promise.all([this.webChatStore.flush().catch(() => {}), this.webChatArchive?.flush().catch(() => {})]), new Promise<void>(r => setTimeout(r, 3_000).unref?.())]) : Promise.resolve();
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     // S-51: the Hub closes in the same drain, bounded so an unanswering listener does not hold the shutdown.
     const hubInit = this.hubRuntimeInit, hubNow = this.hubRuntime;
