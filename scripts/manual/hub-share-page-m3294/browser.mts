@@ -114,10 +114,14 @@ try {
    if (stage === "before") { await page.screenshot({ path: join(out, c.tag + "-before.png") }); check(c.tag + ": old shared-only page", await page.locator("[data-share-agent]").count() === 0); continue; }
    check(c.tag + ": invitation service mounted without error", (await page.locator(".hub-owner").innerText()).includes(c.lang === "en" ? "Invitations could not be loaded" : "無法載入邀請") === false);
    check(c.tag + ": compact Fleet summary has no duplicate rows", await page.locator(".hub-my-fleets .hub-rows").count() === 0);
+   check(c.tag + ": one page lead", await page.locator(".hub-page-lead").count() === 1 && await page.locator("[data-my-agents] > .field-row p").count() === 0);
+   check(c.tag + ": capability-specific old count", (await page.locator(".hub-my-agents .hub-banner").innerText()).includes(c.lang === "en" ? "1 Fleet needs" : "1 個 Fleet"));
+   check(c.tag + ": visible avatar fallback", await page.locator(".hub-my-agents .hub-av").first().evaluate((el: HTMLElement) => !["rgba(0, 0, 0, 0)", "transparent", "rgb(255, 255, 255)"].includes(getComputedStyle(el).backgroundColor)));
    const group = page.locator(".hub-agent-fleet").filter({ hasText: "Work laptop" }); await group.scrollIntoViewIfNeeded();
    check(c.tag + ": own grouped inventory", await page.locator(".hub-agent-fleet").count() === 3);
    check(c.tag + ": offline and old reasons", (await page.locator("[data-my-agents]").innerText()).includes(c.lang === "en" ? "Update this Fleet" : "請更新這個 Fleet"));
    check(c.tag + ": no horizontal overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+   if (c.width < 600) { const pause = group.locator(".hub-agent-pause").first(); const box = await pause.boundingBox(); const text = await pause.locator("..").locator(".hub-row-text").boundingBox(); writeFileSync(join(out, c.tag + "-row-geometry.json"), JSON.stringify({box,text,css:await pause.evaluate((el:HTMLElement)=>({parent:getComputedStyle(el.parentElement!).display,columns:getComputedStyle(el.parentElement!).gridTemplateColumns,column:getComputedStyle(el).gridColumn,row:getComputedStyle(el).gridRow}))},null,2)); await page.screenshot({path:join(out,c.tag+"-row-check.png")}); check(c.tag + ": Pause below row status", box && text && box.y >= text.y + text.height); }
    await page.screenshot({ path: join(out, c.tag + "-groups.png") });
    if (process.env.RETAKE === "1") {
     await group.locator('[data-share-agent="support"]').check();

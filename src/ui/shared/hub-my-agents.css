@@ -29,6 +29,6 @@
 .hub-share-access-list { list-style: none; padding: 0; margin: 0; }
 .hub-share-access-item { display: flex; align-items: center; gap: var(--s-3); padding-block: var(--s-2); flex-wrap: wrap; }
 @media (max-width: 899px), (pointer: coarse) {
- .hub-agent-choice .hub-row { display: grid; grid-template-columns: 44px 28px minmax(0, 1fr); }
+ .hub-my-agents .hub-agent-choice .s-row.hub-row { display: grid; grid-template-columns: 44px 28px minmax(0, 1fr); }
  .hub-agent-choice .hub-agent-pause { grid-column: 3; justify-self: start; }
 }
