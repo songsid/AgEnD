@@ -131,7 +131,7 @@ describe("M-3111: with the keyboard up the shell is the visible view", () => {
     fire(box, "compositionend", { data: "你" }); await settle();
     expect([kb(), ...vars()]).toEqual([true, "436px", null]);
   });
-  it("composing, settled: the candidate bar shortens the view — followed after the hold; it going away grows nothing until compositionend", async () => {
+  it("composing, settled: the candidate bar shortens the view — followed after the hold; it going away grows nothing until compositionend (and typing stopped)", async () => {
     const { pg, vv, vars, kb, focus } = await phone();
     await focus();
     vv.height = 480; vv.emit("resize"); await settle();
@@ -143,6 +143,9 @@ describe("M-3111: with the keyboard up the shell is the visible view", () => {
     vv.height = 480; vv.emit("resize"); await new Promise((r) => setTimeout(r, 400));
     expect(vars(), "growing waits for the IME").toEqual(["436px", null]);
     fire(box, "compositionend", { data: "你" }); await new Promise((r) => setTimeout(r, 400));
+    // M-3265: grown back by a bar's height only once typing has stopped (2 s), not per character (web-typing-steady-m3265).
+    expect([kb(), ...vars()], "the next character's bar may come: nothing yet").toEqual([true, "436px", null]);
+    await new Promise((r) => setTimeout(r, 1700));
     expect([kb(), ...vars()]).toEqual([true, "480px", null]);
   });
 

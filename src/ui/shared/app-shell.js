@@ -1235,6 +1235,20 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   // A language switch re-renders everything and gives the panel a new lease (its key includes the language).
   useEffect(() => onLang(() => relang(n => n + 1)), []);
   useEffect(() => { closeDrawer(); }, [nav.seq]);
+  // ── Typing on a phone: the invariants (M-3265 — each of these broke at least once; every change here keeps all of them) ──
+  //  1. A keystroke moves nothing: a view reading that comes and goes with a key (the suggestion or candidate bar, a pan,
+  //     one full-height reading) changes neither the shell's height or place nor kb-open (#4011, #4026 M-3206).
+  //  2. A reading that holds DOWN_HOLD_MS (300 ms) — that reading itself, not the first one that differed — is followed; a
+  //     change of NUDGE_PX or less is no move while typing (M-3265: 注音 nudges the view on every key while candidates show).
+  //     The keyboard coming up (a keyboard shorter) and a turn (a new width) are followed at once (#4026).
+  //  3. Mid-composition the box is never under the keyboard or its candidate bar: a view that got shorter is followed (#4057
+  //     M-3244); the shell grows back only after compositionend.
+  //  4. With an IME, a character is not a move: growing back by a bar's height after a composition waits IME_GROW_HOLD_MS
+  //     (2 s), so the next character's bar comes first; when typing stops it goes back once (M-3265).
+  //  5. With the keyboard up the shell is the view itself (no band between the box and the keyboard: M-3111), and the
+  //     composer's box writes its height only when its line count changes (#4026).
+  // Pinned per keystroke by tests/web-typing-steady-m3265.test.ts and tests/web-keyboard-fit-3111.test.ts, and in the real app
+  // (WebKit) by smoke-phone-kb-steady, smoke-phone-ime-keyboard-m3244 and smoke-phone-typing-steady-m3265.
   // The bottom tabs (and the line under the composer) give their room to the keyboard on a phone (#2478).
   useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
@@ -1274,6 +1288,18 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // new reading has held for DOWN_HOLD_MS; one that comes and goes with a keystroke moves nothing. The keyboard coming up
     // (the view a keyboard shorter) and a turn (a new width) are followed at once.
     let raf = 0, followUntil = 0, fitH = 0, fitTop = 0, fitW = -1, moveSince = 0, moveTimer = 0;
+    // M-3265 (the user, iPhone, beta.9: typing flickers again): with M-3244 the shell follows an IME's candidate bar (the view
+    // a bar shorter) mid-composition, and once the composition ended the bar went and the shell grew back after the 300 ms
+    // hold — so with 注音 every character moved the box twice: up for its bar, down after it was chosen. After a composition,
+    // the view growing back by no more than a bar waits IME_GROW_HOLD_MS from compositionend: the next character's
+    // composition (its bar again) comes first and nothing moves; when typing stops, the box goes back down once.
+    const IME_GROW_HOLD_MS = 2000;
+    // M-3265 (the same report, the user's detail: "each new 注音 key flickers while candidates are showing"): each key changes
+    // the candidate row, and the view with it, by a few px. #4026's hold counted from the first reading that differed, so once
+    // that was 300 ms old every later reading was taken at once — a move per key. Now a reading must itself hold (a reading
+    // more than NUDGE_PX away starts the hold again), and while typing a change of NUDGE_PX or less is no move at all.
+    const NUDGE_PX = 12;
+    let composedAt = -Infinity, pendH = 0, pendTop = 0;
     const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
     const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : null;
     const unfit = (el) => { if (el?.style) { el.style.removeProperty("height"); el.style.removeProperty("transform"); } };
@@ -1293,10 +1319,18 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       const seen = Math.round(vv.height), top = Math.max(0, Math.round(Number(vv.offsetTop) || 0)), w = Math.round(vv.width);
       const h = composingNow && fitH && w === fitW && seen > fitH ? fitH : seen;
       const settled = fitH && typingNow && w === fitW && now() >= followUntil;
+      if (settled && Math.abs(h - fitH) <= NUDGE_PX && Math.abs(top - fitTop) <= NUDGE_PX) { moveSince = 0; return; }   // a nudge
       if (settled && (h !== fitH || top !== fitTop) && !(fitH - h > KEYBOARD_MIN_PX)) {
-        if (!moveSince) moveSince = now();
-        const left = DOWN_HOLD_MS - (now() - moveSince);
-        if (left > 0) {                                                // not held yet: the shell stays as it is
+        if (!moveSince || Math.abs(h - pendH) > NUDGE_PX || Math.abs(top - pendTop) > NUDGE_PX) { moveSince = now(); pendH = h; pendTop = top; }
+        const held = DOWN_HOLD_MS - (now() - moveSince);
+        const growWait = h > fitH && h - fitH <= KEYBOARD_MIN_PX ? composedAt + IME_GROW_HOLD_MS - now() : 0;
+        if (held > 0 || growWait > 0) {                                // not held yet: the shell stays as it is
+          // Held, but a grow after a composition still waits: the place (a pan) is followed now, the height later.
+          if (held <= 0 && Math.abs(top - fitTop) > NUDGE_PX) {
+            fitTop = top;
+            if (top) el.style.setProperty("transform", `translateY(${top}px)`); else el.style.removeProperty("transform");
+          }
+          const left = held > 0 ? held : growWait;
           if (!moveTimer && typeof setTimeout === "function") moveTimer = setTimeout(() => { moveTimer = 0; fit(); }, left + 20);
           return;
         }
@@ -1347,7 +1381,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     };
     const focusChanged = () => { check(); follow(); };
     const start = (e) => { composing = (e && e.target) || document.activeElement || null; };
-    const end = () => { composing = null; check(); };
+    const end = () => { composing = null; composedAt = now(); check(); };
     check();
     vv.addEventListener("resize", check);
     vv.addEventListener("scroll", fit);
