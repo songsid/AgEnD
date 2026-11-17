@@ -45,7 +45,7 @@ continue through their existing controls. No schema migration is introduced by t
 
 ## UX revision: current preferred views
 
-Use the eight originals in **pm-r1/**: desktop EN and phone zh-TW, each with groups, draft, stop confirmation and
+The UX-revision originals are in **pm-r1/** (the three phone page views are superseded by the CI repair below): desktop EN and phone zh-TW, each with groups, draft, stop confirmation and
 multi-agent access. All nine feedback points are addressed in one batch. The invitation error was a fixture omission:
 the production server already mounts `createHubRoomInvitations` and its migration; the rig now does too. Modern
 fixture Fleets report their version, and the page's update notice counts only connected Fleets lacking the catalog or
@@ -67,3 +67,23 @@ team/group grants remain inert if their subjects stop resolving: each ask uses `
 current team membership and fenced directory group facts. Missing readers or disabled group support are unavailable;
 only matching current membership allows an action. The proof rechecks the selected grant row and membership image.
 This is the same ongoing subject check used by ordinary grants and the earlier Undo path.
+
+
+## CI repair: tap targets and renamed gate labels
+
+The reviewed head's UI job reported one phone tap regression (`section.card > p > a`): the new empty-state My AI apps
+link was shorter than the touch minimum with CJK fonts. Scoped links now use inline flex with both minimum width
+and minimum height from the existing tap token; buttons also keep a minimum width. The tap allowance file is byte-identical.
+The shell gate's 14 failures pinned the previous section name; its expected sidebar, header and tab-title strings now
+match My agents / 我的 Agent. Both harness launches explicitly request headless mode.
+
+After the repair, the **full Hub UI gate passes 92/92**, including phone-dark-zh-TW and the additional desktop width.
+The **full shell gate passes 174/174**, serially on the same headless Linux slot with CJK fonts. A focused phone retake
+passes 13/13; the CSS ratchet passes 7/7. This does not repeat the backend journey. No native Windows browser or visible
+window was opened, and all owned listeners, keys, browser contexts and homes are closed or removed.
+
+Current preferred after views: desktop views and phone access in **pm-r1/**; phone groups, draft and stop confirmation
+in **ci-r2/**. The larger links preserve Pause below status, the ClassicBot explanation, the General warning and the bar.
+These eight after views plus the two original before views comprise the ten preferred captures. All earlier evidence
+remains stage-bound. Backend Hub source, sharing requests, previous-access checks and membership authorization remain
+byte-identical to the source-cleared head.

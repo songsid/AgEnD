@@ -122,7 +122,7 @@
   "evidenceFiles": [
     {
       "path": "README.md",
-      "sha256": "a8d4109362532d6da234427998cf896c0c8aba6cf8f8853daa67a627015fdfab"
+      "sha256": "ae183545f08947b7e031520a61df01439f58bba4af8f5928a4b42fff695a45fc"
     },
     {
       "path": "after/desk-light-en-access.png",
@@ -223,6 +223,54 @@
     {
       "path": "checks/ui-baseline-semantic.log.gz",
       "sha256": "abf408ad8119f4f9e271b15bd17acac415863873a7a008f7dd4ff9614ca21e29"
+    },
+    {
+      "path": "ci-r2/css-check.log.gz",
+      "sha256": "7f19c04d0efc02430a04fe5055e8f8ebd13103df6ca96b2ca6e365226acab8d3"
+    },
+    {
+      "path": "ci-r2/full-shell-gate.log.gz",
+      "sha256": "c88c045e4871bd6897860b242f9ab212a429a8ffeb0fe4a4974e31dd129caf3c"
+    },
+    {
+      "path": "ci-r2/full-ui-gate.log.gz",
+      "sha256": "acabb769869eba8021e33606bfa9597cab498cfcc1b616705eb52bde4546700a"
+    },
+    {
+      "path": "ci-r2/phone-dark-zh-TW-draft.png",
+      "sha256": "5c590eaccb6146d420c1732d072550cb74b932ea0960003669f2d8fe6e8e40a2"
+    },
+    {
+      "path": "ci-r2/phone-dark-zh-TW-groups.png",
+      "sha256": "b981e2a89b8779ec3f314a26587625f1a736e267b68fec4b76ef219a84647c0b"
+    },
+    {
+      "path": "ci-r2/phone-dark-zh-TW-row-geometry.json",
+      "sha256": "6ebf9642df8b500a96924f88f46170e09d6d9a88e4c4943289ba2d5fde31ecdc"
+    },
+    {
+      "path": "ci-r2/phone-dark-zh-TW-stop-confirm.png",
+      "sha256": "040022960a3b9faad105681c6adf6507dc0ed7f361ddbc17c68519053497de56"
+    },
+    {
+      "path": "ci-r2/phone-retake.log.gz",
+      "sha256": "3e22411d0b2b5bb0b51ae2b6b29da5df6ad7a87f436630db359577bd241c8d89"
+    },
+    {
+      "path": "ci-r2/receipt.json",
+      "sha256": "b4f02bf508e77ae0eae89415d14edd938c4cadff966e9e0be6ce1184d097d29d"
+    },
+    {
+      "path": "ci-r2/shell-gate-result.json.gz",
+      "sha256": "d61c966197061eb322e892479542630049dd698d71692cd97c3f861f325273ef"
+    },
+    {
+      "path": "ci-r2/source.json",
+      "sha256": "67d19046615fe39c72d4eb00530e2ba5bdcac95166cca4e54a9919ded1678c9e"
+    },
+    {
+      "path": "ci-r2/ui-gate-result.json.gz",
+      "sha256": "167fff24bc9cc07337368daf3b354a0ab00a870b3c3b69aa124e40251b31fb91"
     },
     {
       "path": "journey-receipt.json",
@@ -338,6 +386,25 @@
         "pm-r1/phone-dark-zh-TW-stop-confirm.png",
         "pm-r1/phone-dark-zh-TW-access.png"
       ]
+    },
+    {
+      "stage": "ci-r2",
+      "sourceHead": "a308269ad19c5c94403bb77aa6d8d8769556e27d",
+      "fullHubUiGate": 92,
+      "fullHubShellGate": 174,
+      "tapAllowanceUnchanged": true,
+      "focusedPhoneRetake": 13,
+      "cssTests": 7
     }
+  ],
+  "preferredAfter": [
+    "pm-r1/desk-light-en-groups.png",
+    "pm-r1/desk-light-en-draft.png",
+    "pm-r1/desk-light-en-stop-confirm.png",
+    "pm-r1/desk-light-en-access.png",
+    "pm-r1/phone-dark-zh-TW-access.png",
+    "ci-r2/phone-dark-zh-TW-groups.png",
+    "ci-r2/phone-dark-zh-TW-draft.png",
+    "ci-r2/phone-dark-zh-TW-stop-confirm.png"
   ]
 }
