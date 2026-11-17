@@ -44,9 +44,9 @@ try{
   const ctx=await browser.newContext({viewport:device==="phone"?{width:390,height:844}:{width:1366,height:900},locale:language,colorScheme:theme,ignoreHTTPSErrors:true});
   await ctx.addInitScript(({language,theme}:any)=>{localStorage.setItem("agend_lang",language);localStorage.setItem("agend_theme",theme);localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");},{language,theme});
   await ctx.route("**/*",(route:any)=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
-  await ctx.addInitScript(()=>{Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:async(text:string)=>{(window as any).__copied=text;}}});});
+  await ctx.addInitScript("Object.defineProperty(navigator, 'clipboard', {configurable:true,value:{writeText:async function(text){window.__copied=text;}}});");
   await ctx.addInitScript(()=>{const scroll=Element.prototype.scrollIntoView;Element.prototype.scrollIntoView=function(...args:any[]){if(this.id==="hub-personal-agents")(window as any).__personalScroll=((window as any).__personalScroll??0)+1;return scroll.apply(this,args);};});
-  const p=await ctx.newPage(),errors:string[]=[];p.on("pageerror",(error:Error)=>errors.push(error.message));
+  const p=await ctx.newPage(),errors:string[]=[];p.on("pageerror",(error:Error)=>{errors.push(error.message);console.error("browser error:",error.message);});
   const sign=async(cookie:string)=>{const i=cookie.indexOf("=");await ctx.clearCookies();await ctx.addCookies([{name:cookie.slice(0,i),value:cookie.slice(i+1),url:origin,httpOnly:true,secure:true,sameSite:"Strict"}]);};
   const shot=async(name:string,selector:string)=>{
    if(!["disabled-admin","disabled-member","setup","install","ready","working","offline"].includes(name))return;

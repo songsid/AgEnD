@@ -1,0 +1,18 @@
+{
+  "applicationBefore": "297475387086e6403eb9724e5452d2024f29b11b",
+  "applicationAfter": "c04069c4259bda91f009e3431724df0c75467ad1",
+  "headlessOnly": true,
+  "screenshots": 28,
+  "pngMetadataEntries": 0,
+  "fixtures": "All directory people, logins, computer names and folders are deliberately synthetic. No live directory or Runtime was queried.",
+  "review": "Image reader opened all 28 originals; no actionable clipping, overflow or live host/company identity. PM rendered-view review pending.",
+  "validation": {
+    "focusedPassed": 47,
+    "focusedFailed": 0,
+    "testTypecheckExit": 0,
+    "beforeBrowserChecks": 37,
+    "afterBrowserChecks": 45
+  },
+  "logPaths": "%REPO% and %HOME%",
+  "publicChecker": "Run with the private check-public tool on the final diff and every GitHub body before publication; no allow override requested."
+}
