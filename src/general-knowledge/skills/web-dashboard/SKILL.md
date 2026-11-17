@@ -432,7 +432,11 @@ the rest. **Show** picks a team or the Lobby and **People** pins chosen instance
 **Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
 (over the public link too, M-3278; never a read-only one or a guest) gets **Edit offices**: add, rename and delete offices, pick who is
 in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its style's NPCs only; none picked = everyone) and its style,
-#4104 **Idle people stay in their own area** (per office, off by default: idle strolls stay in the seat's area, no visits), and upload or delete **skin packs** (an
+#4104 **Idle people stay in their own area** (per office, off by default: idle strolls stay in the seat's area, no visits),
+#4119 **Drag and pat** in the Office bar (per device, on by default, off with reduced motion; never on a share link): drag
+someone and they walk back; their card's Pat/Feed show hearts and words; nothing reaches the agent unless that card's
+**Tell <agent> (with their next message)** is ticked (per agent, off) — then one `[Office] … patted your head ×N` line rides
+its next real message's `[Recent reactions: …]` (never a wake; capped); a pack's `bubbles.<lang>.pat` / `.feed` give the words, and upload or delete **skin packs** (an
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
 checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
 pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, and a character may walk four

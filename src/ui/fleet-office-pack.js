@@ -103,7 +103,9 @@
 //     "byInstance": { "atlas": "fox" },               optional: an instance name → its character set
 //     "props": { "task": STRIP, "send": STRIP, "report": STRIP, "broadcast": STRIP },   optional traffic items
 //     "bubbles": { "en": { "working": ["On it."] }, "zh-TW": { … } }   optional: short lines per state (≤ 12 a state,
-//                                                     ≤ 40 characters each), in place of the page's own
+//                                                     ≤ 40 characters each), in place of the page's own; M-3293:
+//                                                     also "pat" and "feed" (what a person says to a pat or a feed in
+//                                                     the Office; none: the page's own words)
 //     "bubblesByInstance": { "atlas": { "en": { "idle": ["Coffee?"] } } }
 //                                                     optional (#3681): an instance's own lines, as "bubbles" (names
 //                                                     checked like byInstance's, ≤ 500). A person's line for a state
@@ -177,6 +179,8 @@ export const LOGICAL = { w: 1280, h: 720 };
 /** The people's depth: furniture below it is drawn under them, the rest over them. */
 export const CHAR_DEPTH = 1000;
 export const PACK_STATES = ["needs", "crashed", "stuck", "working", "idle", "paused", "stopped", "missing"];
+/** M-3293 (#4119): what a bubbles table may name — the states, and the Office's two reactions (a pat, a feed). */
+export const BUBBLE_KEYS = [...PACK_STATES, "pat", "feed"];
 const POSES = ["working", "idle", "paused", "needs", "walk", "walkDown", "walkUp", "walkSide"], PROPS = ["task", "send", "report", "broadcast"];
 /** A character set's strips: its poses, and what its people send (#2562). */
 const SET_STRIPS = [...POSES, "prop"];
@@ -298,7 +302,7 @@ function bubblesOf(v, at) {
     out[lang] = {};
     for (const [s, lines] of Object.entries(table)) {
       const here = `${at}.${lang}.${s}`;
-      if (!PACK_STATES.includes(s)) throw new Refused(here, "a state");
+      if (!BUBBLE_KEYS.includes(s)) throw new Refused(here, "a state, pat or feed");
       out[lang][s] = list(lines, LIMIT.lines, here).map((l, i) => {
         if (typeof l !== "string" || !l.trim() || [...l].length > LIMIT.line || /[\u0000-\u001f\u007f]/.test(l)) throw new Refused(`${here}[${i}]`, `1–${LIMIT.line} characters`);
         return l.trim();

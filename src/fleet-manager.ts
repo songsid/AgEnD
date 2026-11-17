@@ -13208,6 +13208,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * M-3293 (#4119): an Office pat or feed a person chose to tell `instance` about (their "Tell" on, the page's per-agent
+   * choice). Queued with the reactions (EventLog.addOfficeReaction): it rides the instance's next real message in the
+   * same `[Recent reactions: …]` line, never wakes it and never sends anything by itself. Whether it was stored (capped).
+   */
+  officeTell(instance: string, person: string, kind: "pat" | "feed"): boolean {
+    return this.eventLog?.addOfficeReaction(instance, person, kind) ?? false;
+  }
+
+  /**
    * The queued-reaction summary for an instance's next real message, or {} when
    * nothing is pending (the common case must add zero context). The consume
    * callback is separate from the fetch so reactions are only marked once the

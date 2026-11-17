@@ -491,6 +491,9 @@ export function createWalkers() {
       }
     },
     at(name, now) { const w = by.get(name); return w ? posAt(w, now) : null; },
+    /** M-3293: `name` set down at `at` (picked up and carried, or just dropped): standing there, no walk; the next sync
+     * walks them from there to their target along the graph, as any walk. */
+    place(name, at) { by.set(name, { pts: null, to: { x: at.x, y: at.y } }); },
     moving(now) { for (const w of by.values()) if (posAt(w, now).walking) return true; return false; },
   };
 }
@@ -568,11 +571,12 @@ const QUIET_IN_CROWD = new Set(["idle", "paused", "stopped", "starting", "queued
 /**
  * The bubbles a frame may show (#2513): in an area over capacity (`over`), none for idle or asleep people and at most
  * CROWD_BUBBLES, the highest ranked first (bubbleRank); elsewhere all of them. `items`: { area, state, shown, key, … }.
+ * M-3293: one with `keep` (the words to a pat or a feed: an answer to what the viewer just did) is always kept.
  */
 export function thinBubbles(items, over) {
   const byArea = new Map(), out = [];
   for (const it of items) {
-    if (!over || !over.has(it.area)) { out.push(it); continue; }
+    if (!over || !over.has(it.area) || it.keep) { out.push(it); continue; }
     if (QUIET_IN_CROWD.has(it.state)) continue;
     if (!byArea.has(it.area)) byArea.set(it.area, []);
     byArea.get(it.area).push(it);

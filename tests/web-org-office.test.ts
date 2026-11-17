@@ -582,7 +582,8 @@ describe("the Office view on the page", () => {
     expect(p.root.querySelector(".oo-card-rows").textContent).toContain("12.3K work tokens · 45 requests");
     expect(p.root.querySelector(".oo-card-now").textContent).toContain("Typing away");
     expect(p.root.querySelector(".oo-card .oo-badge.tier-4").textContent).toBe("50");
-    expect(p.root.querySelectorAll(".oo-card-actions button").map((b: any) => b.textContent)).toEqual(["Find in office", "Chat"]);
+    // M-3293: Pat and Feed on the dashboard's own Office ("Drag and pat" on by default); never on a share link.
+    expect(p.root.querySelectorAll(".oo-card-actions button").map((b: any) => b.textContent)).toEqual(["Pat", "Feed", "Find in office", "Chat"]);
     fire(desk("quill"), "pointerdown", { pointerType: "mouse" }); await settle(2);   // a whole gesture (#2761 review): press,
     fire(desk("quill"), "pointerup", { pointerType: "mouse" }); desk("quill").click(); await settle(2);   // then the click
     expect(card()).toBeNull();                                               // the same person again: closed

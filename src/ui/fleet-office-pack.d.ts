@@ -51,6 +51,7 @@ export interface LayoutOverrides {
 export const LOGICAL: { w: number; h: number };
 export const CHAR_DEPTH: number;
 export const PACK_STATES: string[];
+export const BUBBLE_KEYS: string[];
 export function own<T = unknown>(o: unknown, k: unknown): T | undefined;
 export function inherited(k: unknown): boolean;
 export function matteOk(v: unknown): v is string;

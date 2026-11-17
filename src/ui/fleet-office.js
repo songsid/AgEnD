@@ -75,6 +75,7 @@ import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
+import { PLAY, createHold, playAllowed, pruneReactions, reactionAt } from "./fleet-office-play.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
@@ -99,7 +100,7 @@ register("orgo", {
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
     b_crashed: "Ouch, crashed|Help!", b_stuck: "Hmm, stuck?|Still thinking…",
-    hideAsleep: "Hide paused and stopped", nightOn: "Bedtime 0–6: the idle sleep", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
+    hideAsleep: "Hide paused and stopped", nightOn: "Bedtime 0–6: the idle sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
     styleForAll: "The whole fleet's style, for everyone: every device and share link", styleHere: "The whole fleet's style in this browser",
     styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
@@ -128,7 +129,7 @@ register("orgo", {
     b_working: "處理中|打字中…|快好了|專心中|再測一次", b_idle: "喝茶中|隨時可以開工|伸個懶腰|有事找我嗎？",
     b_paused: "Zzz…|晚點回來", b_stopped: "下班了|Zzz…", b_needs: "需要你！|有個問題|在這裡！",
     b_crashed: "糟糕，當掉了|救命！", b_stuck: "嗯，卡住了？|還在想…",
-    hideAsleep: "隱藏暫停與停止的成員", nightOn: "0–6 點就寢：閒著的人去睡", layoutIgnored: "它儲存的配置不適用這個風格：以風格本身的配置顯示。",
+    hideAsleep: "隱藏暫停與停止的成員", nightOn: "0–6 點就寢：閒著的人去睡", playOn: "拖曳與摸頭", playStill: "開啟「減少動態效果」時關閉", layoutIgnored: "它儲存的配置不適用這個風格：以風格本身的配置顯示。",
     styleForAll: "整個 fleet 的風格，所有人共用：每台裝置與分享連結都一樣", styleHere: "這個瀏覽器裡整個 fleet 的風格",
     styleFailed: "風格沒有替所有人儲存（{0}）。", styleBusy: "變更太頻繁，請一分鐘後再試。",
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
@@ -587,6 +588,18 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     }
     ctx.restore();
   }
+  // M-3293: a pat or a feed — a few hearts rising over the head (the palette's danger red, the text font: no new art)
+  // and their words in a bubble, while it lasts.
+  const t0 = now(), reacting = ms && p.reacts && p.reacts.size && pruneReactions(p.reacts, t0) ? p.reacts : null;
+  if (reacting) {
+    ctx.save();
+    ctx.fillStyle = env.pal.danger; ctx.font = "700 11px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    for (const sp of speakers) {
+      const ra = reacting.has(sp.look.name) ? reactionAt(reacting.get(sp.look.name), t0, p.lang) : null;
+      if (ra) for (const h of ra.hearts) { ctx.globalAlpha = h.alpha; ctx.fillText("♥", sp.x + h.dx, sp.y + h.dy); }
+    }
+    ctx.restore();
+  }
   // Speech bubbles: a short line for the state, now and then (typed out; whole at once when still), placed so no two
   // overlap (placeBubbles; #2431).
   const bubbles = [];
@@ -594,9 +607,14 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (sp.look.dim || sp.look.pose === "away") continue;
     const says = sp.look.night ? "paused" : sp.look.state;                // asleep at night: its "Zzz…" lines
     // What an agent says itself (office_set, #2578): whole, kept over the area's thinning like a call.
-    const act = p.acts && p.acts.get(sp.look.name), own = actLive(act, says, Date.now(), p.actSeen) && act.say ? act.say : null;
+    const act = p.acts && p.acts.get(sp.look.name), ra = reacting && reacting.has(sp.look.name) ? reactionAt(reacting.get(sp.look.name), t0, p.lang) : null;
+    // M-3293: a pat's or a feed's words first — the pack's own for it ("pat" / "feed" in its bubbles: theirs, their
+    // set's, the pack's), one picked by when it happened, else the page's.
+    const packSays = ra ? linesFor(reacting.get(sp.look.name).kind, p.lang, sk.pack, null, sp.look.name) : [];
+    const raSays = ra ? (packSays.length ? packSays[Math.floor(reacting.get(sp.look.name).t0) % packSays.length] : ra.say) : null;
+    const own = raSays ? raSays : actLive(act, says, Date.now(), p.actSeen) && act.say ? act.say : null;
     const b = own ? { text: own, shown: [...own].length } : bubbleAt(sp.look.name, says, ms, linesFor(says, p.lang, sk.pack, p.lines, sp.look.name));   // #3681: theirs, their set's, the pack's
-    if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : bubbleRank(sp.look.state), shown: b.shown,
+    if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : bubbleRank(sp.look.state), shown: b.shown, ...(raSays ? { keep: true } : {}),
       box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
   }
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
@@ -604,7 +622,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags);
   const say = () => { T(); for (const { sp, b, dy } of placed) sk.drawBubble(ctx, sp.x, sp.y, [...b.text].slice(0, b.shown).join(""), env, -dy); };
   if (defer) defer.push(say); else say();
-  return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0;
+  return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting;
 }
 /**
  * #2661: an NPC's name tag (a furniture item's label) — with the title a pack pins on it (`levels.fixed` by its id),
@@ -752,6 +770,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [nightNow, setNightNow] = useState(() => isNight());
   useEffect(() => { if (!nightOn) return undefined; setNightNow(isNight()); const h = setInterval(() => setNightNow(isNight()), NIGHT.TICK); return () => clearInterval(h); }, [nightOn]);
   const night = nightOn && nightNow;
+  // M-3293: "Drag and pat" here (per device, on by default); in force only where playAllowed says (below).
+  const [playOn, setPlayOn] = useState(() => store.playOn());
+  const [, setTellRev] = useState(0);                                 // M-3293: the card's Tell box redrawn when ticked
   const [lobbyOn, setLobbyOn] = useState(() => store.lobbyTile());       // #2554: All offices' lobby tile
   const [packs, setPacks] = useState([]);                             // the skin packs the host keeps: [{ id, name, sha }]
   const [packSkins, setPackSkins] = useState(() => new Map());        // id@sha → a loaded skin, or null (not a pack)
@@ -1101,6 +1122,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // M-3286: the office's "Idle people stay in their own area" (Edit offices): strolls stay in the area, no visits.
   const ownArea = !!custom && custom.stayInArea === true;
   const visitMemo = useMemo(() => ({ claims: new Map(), idle: null }), [skin]);
+  // M-3293: play — never on a share link's page (no onOpen there, or its own `talk`), with reduced motion, in All
+  // offices, the carousel or Edit layout. `hold`: the person picked up (carried where the pointer is, walked back from
+  // where they are dropped); `reacts`: pats and feeds showing (name → { kind, t0 }). The viewer's own: no request.
+  const shared = talk !== undefined || typeof onOpen !== "function";
+  const play = playAllowed({ on: playOn, still, zones, overview, layout: !!layout, shared }) && !carouselPick;
+  const hold = useMemo(() => createHold(), []), reacts = useRef(new Map()), walkNow = useRef(null), holdTimer = useRef(null);
+  useEffect(() => { if (!play) { hold.cancel(); reacts.current.clear(); } }, [play]);
   useEffect(() => {
     if (!zones || overview) return undefined;
     const go = () => {
@@ -1108,11 +1136,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       // An act's walk; not someone in bed for the night (#2568: bedtime wins, as for mail).
       for (const d of desksOf(L)) { const a = actsHere.get(d.node.name), at = !d.night && actLive(a, d.node.state, Date.now(), actSeen.current) ? actTarget(a, L, walkers, t) : null; if (at) to.set(d.node.name, at); }
       for (const [name, at] of mail.targets(L, t)) to.set(name, at);
+      const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
+      if (held) to.set(held.name, held.at);
       walkers.sync(to, t, L, still);
       // Reduced motion has no loop: drawn again here, or an act's walk (set after the scene was drawn) never shows.
       if (still) { if (scene.current && !globalThis.document?.hidden) draw(0); } else loop.current?.wake();
     };
     go();
+    walkNow.current = go;
     if (still) return undefined;
     const h = setInterval(go, WANDER.TICK);
     return () => clearInterval(h);
@@ -1390,7 +1421,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(tl.skin) }));
       scene.current = { ...base, overview: true, parts, lay: arranged };
     } else {
-      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin) } };
+      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current } };
     }
     if (still) draw(0); else loop.current?.wake();
   }, [L, looks, skin, pal, size.w, size.h, ratio, matte, overview, tiles, tileLooks, arranged, ghosts, night, mail, actsHere, lv, wordsOf]);
@@ -1580,12 +1611,47 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     pinch: (from, to) => { raw.current = Math.min(OK_MAX, Math.max(OK_MIN, raw.current * (to.dist / from.dist))); setView(pinchOffice(view0(), from, to, raw.current)); } });
   /** Where a drag pans: the canvas, and Edit layout's overlay off its handles (the controls, the bar and the list: never). */
   const onScene = (el) => !!el && (el === canvasRef.current || (typeof el.closest === "function" && !!el.closest(".ol-svg") && !el.closest(".ol-handle")));
+  /** M-3293: someone picked up — their walker set down under the pointer, no card, no tooltip, the click after it swallowed. */
+  const pickedUp = (pointerId) => {
+    const h = hold.held();
+    if (!h) return;
+    // Captured only now: a press that stays a click must reach the canvas (its card), which a capture would take away.
+    try { stageRef.current.setPointerCapture(pointerId); } catch { /* gone */ }
+    walkers.place(h.name, h.at); drag.current.swallow = true;
+    setTip(null); setCard(null); loop.current?.wake();
+  };
   const onDown = (e) => {
     lastType.current = e.pointerType || "mouse";
     if (!onScene(e.target)) return;
+    // M-3293: a press on a person may pick them up — a mouse once it moves (no pan then), a touch once held still
+    // (LONG_MS; a finger that moves first pans, as before).
+    if (play && e.isPrimary !== false && !(e.pointerType === "mouse" && e.button !== 0)) {
+      const d = deskOf(e), w = pointOf(e);
+      const st = d && d.node && d.node.i && w ? hold.down(e.pointerId, e.pointerType || "mouse", w.x, w.y, now(), d.node.name, e.clientX, e.clientY) : hold.down(e.pointerId, "mouse", 0, 0, 0, null);
+      if (st === "maybe") return;                                   // no pan: a click (their card), or a pick-up once it moves
+      if (st === "press") { const id = e.pointerId; clearTimeout(holdTimer.current); holdTimer.current = setTimeout(() => { if (hold.tick(now()) === "held") pickedUp(id); }, PLAY.LONG_MS); }
+    }
     g.down(e);
     if (drag.current.pts.size === 2) raw.current = view0().k;      // a pinch starts from the zoom shown
   };
+  /** M-3293: while a press may pick someone up it is theirs (no pan); once held it carries them; a finger that moved first pans. */
+  const onStageMove = (e) => {
+    if (hold.state()) {
+      const w = pointOf(e), was = hold.state();
+      const st = w ? hold.move(e.pointerId, w.x, w.y, now(), e.clientX, e.clientY) : hold.state();
+      if (st === "held") { if (was !== "held") pickedUp(e.pointerId); else { const h = hold.held(); walkers.place(h.name, h.at); loop.current?.wake(); } return; }
+      if (st === "maybe" || st === "press") return;
+      if (st === "pan") { clearTimeout(holdTimer.current); hold.cancel(); }
+    }
+    g.move(e);
+  };
+  const onStageUp = (e) => {
+    clearTimeout(holdTimer.current);
+    const r = hold.up(e.pointerId);
+    if (r) { walkers.place(r.name, r.at); drag.current.swallow = true; setTimeout(() => { if (!drag.current.pts.size) drag.current.swallow = false; }, 0); walkNow.current?.(); }
+    g.up(e);
+  };
+  const onStageCancel = (e) => { clearTimeout(holdTimer.current); const r = hold.up(e.pointerId); if (r) walkNow.current?.(); g.up(e); };
   const onWheel = (e) => {
     if (!onScene(e.target) && !(typeof e.target?.closest === "function" && e.target.closest(".ol-handle, .oo-tile-label"))) return;
     e.preventDefault();
@@ -1816,6 +1882,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         </select></label>
         <${People} nodes=${everyone} pinned=${f.pinned} onChange=${(pinned) => setF({ ...f, pinned })} />` : null}
       <label class="check oo-hide-asleep"><input type="checkbox" checked=${hideAsleep} onChange=${() => { const v = !hideAsleep; store.saveHideAsleep(v); setHideAsleep(v); setTip(null); }} /><span>${to("hideAsleep")}</span></label>
+      ${zones && !overview && !shared ? html`<label class="check oo-play" title=${still ? to("playStill") : null}><input type="checkbox" checked=${playOn && !still} disabled=${still}
+        onChange=${() => { const v = !playOn; store.savePlayOn(v); setPlayOn(v); }} /><span>${to("playOn")}</span></label>` : null}
       ${zones || overview ? html`<label class="check oo-night"><input type="checkbox" checked=${nightOn} onChange=${() => { const v = !nightOn; store.saveNightOn(v); setNightOn(v); }} /><span>${to("nightOn")}</span></label>` : null}
       <label class="check oo-dialogue" title=${to("dialogueTitle")}><input type="checkbox" checked=${dialogueOn} onChange=${toggleDialogue} /><span>${to("dialogue")}</span></label>
       ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
@@ -1856,7 +1924,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ${editing && !overview && !carouselPick ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store} packs=${packs}
       ask=${ask} current=${() => shown.current} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
     ${overview || people.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
-    <div class=${`oo-stage${layout ? " editing" : ""}`} ref=${stageRef} onPointerDown=${onDown} onPointerMove=${g.move} onPointerUp=${g.up} onPointerCancel=${g.up}
+    <div class=${`oo-stage${layout ? " editing" : ""}`} ref=${stageRef} onPointerDown=${onDown} onPointerMove=${onStageMove} onPointerUp=${onStageUp} onPointerCancel=${onStageCancel}
       onWheel=${onWheel} onKeyDown=${onKeyDown} onFocusIn=${onFocusIn} onClickCapture=${g.clickCapture}>
       ${dialogueOn ? html`<div class="sr-only oo-dialogue-live" aria-live="polite">${dlgSay}</div>` : null}
       <canvas ref=${canvasRef} class=${`oo-canvas${(tipDesk && tipDesk.node.i) || dlgHot ? " hot" : ""}`} role="application" tabindex="0" aria-label=${to(carouselPick ? "labelCarousel" : overview ? "labelAll" : "label")}
@@ -1879,7 +1947,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           state: stateWords(cardOf.node), now: caption(officePose(cardOf.node.state), cardOf.node.state),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
         avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
-        onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard} />` : null}
+        onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard}
+        onReact=${play ? (kind) => { const n = cardOf.node.name; reacts.current.set(n, { kind, t0: now() }); loop.current?.wake(); if (store.tellOn(n)) void store.tell(n, kind); } : null}
+        tell=${play ? { on: store.tellOn(cardOf.node.name), set: (v) => { store.saveTell(cardOf.node.name, v); setTellRev((x) => x + 1); } } : null} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = caption(officePose(d.node.state), d.node.state), where = d.office ? ` · ${d.office}` : "";
         return html`<li key=${d.key}>${d.node.i

@@ -22,6 +22,11 @@ import { levelsOk } from "./fleet-office-levels.js";
 import { checkLevels } from "./fleet-office-pack.js";
 
 const CHOICE_KEY = "agend_org_office", FILTER_KEY = "agend_org_office_filter", SKIN_KEY = "agend_org_office_skin", ASLEEP_KEY = "agend_org_office_hide_asleep", NIGHT_KEY = "agend_org_office_night";
+/** M-3293: "Drag and pat" here (default: on; reduced motion turns it off whatever this says). */
+const PLAY_KEY = "agend_org_office_play";
+/** M-3293: the agents told about their pats and feeds, from this device (a list of names; default: none). */
+const TELL_KEY = "agend_org_office_tell";
+const TELL_MAX = 200;
 /** #2554: "0" when All offices leaves the lobby tile out (default: shown). */
 const LOBBY_KEY = "agend_org_office_lobby";
 /** #2946: whether the key to the items in the air is open here (default: folded). */
@@ -214,6 +219,24 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
     /** #2568: whether the idle go to bed at night (00:00–06:00 on this device's clock) here (default: off). */
     nightOn: () => read(NIGHT_KEY) === "1",
     saveNightOn: (v) => write(NIGHT_KEY, v ? "1" : "0"),
+    /** M-3293: whether a person can be picked up, patted and fed here (default: on). */
+    playOn: () => read(PLAY_KEY) !== "0",
+    savePlayOn: (v) => write(PLAY_KEY, v ? "1" : "0"),
+    /** M-3293: whether `name` is told (with its next real message) about this device's pats and feeds (default: no). */
+    tellOn: (name) => { try { const l = JSON.parse(read(TELL_KEY) || "[]"); return Array.isArray(l) && l.includes(name); } catch { return false; } },
+    saveTell: (name, v) => {
+      let l = [];
+      try { const x = JSON.parse(read(TELL_KEY) || "[]"); if (Array.isArray(x)) l = x.filter((n) => typeof n === "string" && n !== name); } catch { /* none */ }
+      write(TELL_KEY, JSON.stringify((v ? [...l, name] : l).slice(-TELL_MAX)));
+    },
+    /** M-3293: tell `instance` about a pat or a feed (only when tellOn says so: the caller asks). { ok, queued } or { ok: false }. */
+    async tell(instance, kind) {
+      try {
+        const r = await get("/ui/office-tell", { method: "POST", headers, body: JSON.stringify({ instance, kind }) });
+        const d = await r.json().catch(() => ({}));
+        return r.ok ? { ok: true, queued: d.queued === true } : { ok: false, status: r.status };
+      } catch { return { ok: false, status: 0 }; }
+    },
     /** #2554: whether All offices shows the lobby tile (the instances in no stored office) here (default: shown). */
     lobbyTile: () => read(LOBBY_KEY) !== "0",
     /** #2946: whether the key to the items carried between desks is open here (default: folded). */

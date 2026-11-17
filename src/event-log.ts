@@ -262,6 +262,10 @@ export class EventLog {
     }
 
     const groups: string[] = [];
+    // M-3293: the Office's pats and feeds — "[Office] alice patted your head ×3, bob gave you a snack" — after the
+    // messages' reactions, cut to OFFICE_LINE_MAX.
+    const office = byMessage.get(EventLog.OFFICE_MESSAGE);
+    byMessage.delete(EventLog.OFFICE_MESSAGE);
     for (const [messageId, counts] of byMessage) {
       const parts: string[] = [];
       for (const [key, count] of counts) {
@@ -270,8 +274,42 @@ export class EventLog {
       }
       groups.push(`msg ${messageId}: ${parts.join(", ")}`);
     }
+    if (office) {
+      const verb: Record<string, string> = { pat: "patted your head", feed: "gave you a snack" };
+      const parts: string[] = [];
+      for (const [key, count] of office) {
+        const [kind, username] = key.split("\u0000");
+        if (!verb[kind!]) continue;
+        parts.push(`${username} ${verb[kind!]}${count > 1 ? ` ×${Math.min(count, EventLog.OFFICE_TELL_CAP)}` : ""}`);
+      }
+      if (parts.length) {
+        const line = `[Office] ${parts.join(", ")}`, chars = [...line];
+        groups.push(chars.length > EventLog.OFFICE_LINE_MAX ? chars.slice(0, EventLog.OFFICE_LINE_MAX - 1).join("") + "…" : line);
+      }
+    }
+    if (!groups.length) return null;
     return { summary: groups.join(" | "), maxId: rows[rows.length - 1].id };
   }
+
+  /**
+   * M-3293 (#4119): a pat or a feed in the Office, for the instance's next real message — only when the person turned
+   * "Tell" on for it (the page asks; never otherwise). Rides the reactions queue as message "office": never a turn,
+   * never a wake. At most OFFICE_TELL_CAP pending a person and kind (more are taken and not stored: "×N" is capped
+   * there), so a page tapping in a loop never grows the queue. Returns whether it was stored.
+   */
+  addOfficeReaction(instance: string, username: string, kind: "pat" | "feed"): boolean {
+    const name = [...username.trim()].slice(0, EventLog.OFFICE_NAME_MAX).join("") || "someone";
+    const n = (this.db.prepare("SELECT COUNT(*) AS n FROM reactions WHERE instance_name = ? AND message_id = ? AND username = ? AND emoji = ? AND consumed_at IS NULL")
+      .get(instance, EventLog.OFFICE_MESSAGE, name, kind) as { n: number }).n;
+    if (n >= EventLog.OFFICE_TELL_CAP) return false;
+    this.addReaction(instance, EventLog.OFFICE_MESSAGE, name, kind);
+    return true;
+  }
+  static readonly OFFICE_MESSAGE = "office";
+  static readonly OFFICE_TELL_CAP = 20;
+  static readonly OFFICE_NAME_MAX = 40;
+  /** M-3293: the Office's part of the reactions line at most this long (characters; cut with "…"). */
+  static readonly OFFICE_LINE_MAX = 200;
 
   /** Mark reactions up to `maxId` as shown. Call only after the delivery succeeded. */
   markReactionsConsumed(instance: string, maxId: number): void {

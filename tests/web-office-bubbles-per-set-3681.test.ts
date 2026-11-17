@@ -64,7 +64,7 @@ describe("the format", () => {
     expect(set({ en: { working: ["x".repeat(41)] } })).toEqual({ ok: false, error: "characters.fox.bubbles.en.working[0]: 1–40 characters" });
     expect(set({ en: { working: ["   "] } })).toEqual({ ok: false, error: "characters.fox.bubbles.en.working[0]: 1–40 characters" });
     expect(set({ en: { working: ["two\nlines"] } })).toEqual({ ok: false, error: "characters.fox.bubbles.en.working[0]: 1–40 characters" });
-    expect(set({ en: { dancing: ["x"] } })).toEqual({ ok: false, error: "characters.fox.bubbles.en.dancing: a state" });
+    expect(set({ en: { dancing: ["x"] } })).toEqual({ ok: false, error: "characters.fox.bubbles.en.dancing: a state, pat or feed" });   // M-3293: pat and feed too
     expect(set({ fr: { working: ["x"] } })).toEqual({ ok: false, error: 'characters.fox.bubbles.fr: "en" or "zh-TW"' });
     expect(set(["x"])).toEqual({ ok: false, error: "characters.fox.bubbles: an object" });
     expect(inst({ "zh-TW": { idle: lines(12, 40) } }).ok).toBe(true);

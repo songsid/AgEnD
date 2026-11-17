@@ -34,7 +34,7 @@ export const SHARE_ASSET_FILES: Readonly<Record<string, string>> = {
 };
 /** `/ui/js/<name>` → src/ui/<name>: the share page's own module and the Office's. */
 export const SHARE_MODULES: readonly string[] = [
-  "office-share-page.js", "fleet-office.js", "fleet-office-model.js", "fleet-office-skin.js", "fleet-office-zones.js", "fleet-office-store.js",
+  "office-share-page.js", "fleet-office.js", "fleet-office-model.js", "fleet-office-skin.js", "fleet-office-zones.js", "fleet-office-store.js", "fleet-office-play.js",
   "fleet-office-editor.js", "fleet-office-layout.js", "fleet-office-pack.js", "fleet-office-overview.js", "fleet-office-carousel.js", "fleet-office-view.js",
   "fleet-org.js", "fleet-canvas-layout.js", "fleet-canvas-view.js", "fleet-traffic.js", "office-share-dialog.js", "fleet-office-levels.js", "fleet-office-card.js", "fleet-office-dialogue.js",
 ];
