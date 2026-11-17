@@ -86,7 +86,9 @@ export class SubagentService {
         if (source.backend === "claude-code") {
           for (const spec of specs) {
             const base = join(dirname(source.path), source.sessionId, "subagents", "agent-" + spec.id);
-            const records = jsonl(await this.readFile(source.root, base + ".jsonl", 512 * 1024));
+            // M-3270: a Claude Code 2.1.326 child passes 512 KB within minutes (attachments, API diagnostics): read its first
+            // record and recent window, bounded as the parent is, instead of refusing it unread.
+            const records = jsonl(await this.readFile(source.root, base + ".jsonl", 512 * 1024, true));
             const meta = await this.readFile(source.root, base + ".meta.json", 32 * 1024);
             if (!current()) return empty();
             try { if (records && meta !== null) children.set(spec.id, { records, meta: JSON.parse(meta) }); } catch { /* partial sidecar: unknown */ }

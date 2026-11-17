@@ -105,6 +105,29 @@ function parentEnds(i: SubagentProjection): Map<string, number> {
   return ends;
 }
 const diagnostic = (r: Obj) => r.type === "api-request-shape" || r.type === "api-request-blob" || r.type === "api-request";
+/** M-3270: a launch that names no subagent_type runs Claude Code's built-in general-purpose agent (its meta says so). */
+const DEFAULT_AGENT = "general-purpose";
+/** M-3270: an interim notification — the child stopped with background work of its own still running (Claude Code 2.1.326). */
+const WAITING = /\bis waiting on its own background work\b/i;
+/**
+ * A task notification in the parent, as its text: a system user record (the parent was idle), or — Claude Code 2.1.326
+ * (M-3270), the parent busy — the queued attachment that carries it into the running turn. Bound to this session's main
+ * stream; null for anything else.
+ */
+function notice(r: Obj, i: SubagentProjection): string | null {
+  // 2.1.326: the queue's own record of it, written the moment it is queued (the attachment is written only once the busy
+  // turn takes it in, perhaps minutes later). It carries the session but no cwd/sidechain/origin fields; its text must be
+  // a task notification from the start, and is still bound to this child by its task-id and tool-use-id below.
+  if (r.type === "queue-operation" && r.operation === "enqueue" && r.sessionId === i.sessionId && typeof r.content === "string"
+    && r.content.startsWith("<task-notification>")) return r.content;
+  if (r.sessionId !== i.sessionId || r.cwd !== i.cwd || r.isSidechain !== false) return null;
+  if (r.type === "user" && r.origin?.kind === "task-notification" && r.origin.producer === "session-task"
+    && r.promptSource === "system" && typeof r.message?.content === "string") return r.message.content;
+  const a = obj(r.attachment);
+  if (r.type === "attachment" && a.type === "queued_command" && a.commandMode === "task-notification"
+    && a.origin?.kind === "task-notification" && a.origin.producer === "session-task" && typeof a.prompt === "string") return a.prompt;
+  return null;
+}
 export function projectSubagents(i: SubagentProjection): SubagentRun[] {
   const ends = parentEnds(i);
   return subagentLaunches(i).filter(edge => edge.startedAt <= i.now + 1000).map(edge => {
@@ -124,7 +147,9 @@ export function projectSubagents(i: SubagentProjection): SubagentRun[] {
     let latest = 0;
     if (i.backend === "claude-code") {
       const meta = obj(child.meta);
-      if (meta.toolUseId !== call || meta.agentType !== edge.type || meta.spawnDepth !== 1
+      // No type named: the built-in general-purpose agent only (M-3270).
+      const typed = edge.type !== undefined ? meta.agentType === edge.type : meta.agentType === DEFAULT_AGENT && meta.isBuiltIn === true;
+      if (meta.toolUseId !== call || !typed || meta.spawnDepth !== 1
         // These three captured diagnostic schemas omit cwd/isSidechain. Ignore their payload/activity,
         // retaining their explicit session/child binding and every message/sidechain check below.
         || all.some(r => diagnostic(r) && (r.sessionId !== i.sessionId || r.agentId !== id))
@@ -134,16 +159,26 @@ export function projectSubagents(i: SubagentProjection): SubagentRun[] {
         || rs.some(r => r.type === "user" && r.promptId && r.promptId !== turn)) return row;
       for (const r of rs) latest = Math.max(latest, at(r.timestamp));
       if (latest && latest <= i.now + 1000) row.expiresAt = Math.max(row.startedAt, latest) + SUBAGENT_UNKNOWN_MS;
-      const completions = i.parent.map(obj).filter(r => r.sessionId === i.sessionId && r.cwd === i.cwd && r.isSidechain === false
-        && r.type === "user" && r.origin?.kind === "task-notification" && r.origin.producer === "session-task"
-        && r.promptSource === "system" && at(r.timestamp) >= edge.startedAt && typeof r.message?.content === "string")
-        .filter(r => tag(r.message.content, "task-id") === id && tag(r.message.content, "tool-use-id") === call);
-      const last = completions.at(-1);
-      if (last && meta.finished === true && tag(last.message.content, "status") === "completed") {
-        const d = tag(last.message.content, "duration_ms"), ms = d !== null && /^\d+(?:\.\d+)?$/.test(d) ? Number(d) : NaN;
-        if (duration(ms)) return completed(at(last.timestamp), ms, tag(last.message.content, "result"));
+      // Its notifications: its task-id, and its call's tool-use-id — a later notification of the same child may omit it
+      // (2.1.326), never name another.
+      const completions = i.parent.map(obj).flatMap(r => { const c = notice(r, i); return c !== null && at(r.timestamp) >= edge.startedAt ? [{ r, c }] : []; })
+        .filter(({ c }) => tag(c, "task-id") === id && (tag(c, "tool-use-id") === call || !c.includes("<tool-use-id>")));
+      const last = completions.at(-1), lastAt = last ? at(last.r.timestamp) : 0;
+      // The child went on after its last notification (a background command of its own finished): not its end.
+      const workedSince = !!last && latest > lastAt + 1000;
+      if (last && !workedSince) {
+        const status = tag(last.c, "status");
+        // An interim notice: it waits on its own background work — still running until its next notice.
+        if (status === "completed" && WAITING.test(tag(last.c, "summary") ?? "") && i.live && lastAt <= i.now + 1000) {
+          return { ...row, state: "running" as const, expiresAt: Math.max(latest, lastAt) + SUBAGENT_UNKNOWN_MS };
+        }
+        if (meta.finished === true && status === "completed") {
+          const d = tag(last.c, "duration_ms"), ms = d !== null && /^\d+(?:\.\d+)?$/.test(d) ? Number(d) : NaN;
+          if (duration(ms)) return completed(lastAt, ms, tag(last.c, "result"));
+        }
+        return row;
       }
-      if (last || meta.finished === true) return row;
+      if (!last && meta.finished === true) return row;
     } else {
       const meta = obj(rs.find(r => r.type === "session_meta")).payload;
       const spawn = meta?.source?.subagent?.thread_spawn;
