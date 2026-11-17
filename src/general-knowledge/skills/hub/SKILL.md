@@ -737,23 +737,25 @@ Say plainly that these are not in the product yet:
 
 - On a Hub that offers it, an administrator opens **Administration → Manage → Personal agents**, turns it on, and
   selects the people or teams allowed to add one. It starts off. The administrator is included while it is on.
-- If the card says personal agents are off, a Hub administrator uses **Open Administration** / **前往管理** to open
-  **Administration → Manage → Personal agents** and enable **Allow personal agents**. Other colleagues ask their Hub
-  administrator. If it is enabled but the person is not allowed to add one, the administrator must allow that person or team.
-- The owner opens **My shared agents → Personal agent** / **我分享的 Agent → 個人 Agent**. Before a computer is connected,
-  the card gives four steps:
-  1. On the Windows computer, install Node.js 22.14 or newer and install and sign in to Codex or
-     Claude Code. One of the two is enough. Read the folder/account disclosure; only put intended sharing material in
-     the empty Hub agent folder the installer creates. On some computers Codex is available only in **Answer only**.
-  2. Choose **Get install command** / **取得安裝指令**, then **Copy command** / **複製指令**. It is private and valid for
-     15 minutes. **New command** / **重新產生指令** replaces an expired command.
-  3. Paste it into Windows PowerShell on that computer, or give it to the owner's own Codex or Claude Code to run.
-  4. When the computer appears on the card, choose an available CLI, name the agent and save. Then use **Choose who
-     may ask**. Until sharing is configured, nobody can ask it. Allowed colleagues can @mention it in a room or ask
-     one-to-one. If the computer has not appeared after a minute, use **Refresh**.
-  Once paired, the finished install steps leave the card. Certificate/trust errors mean the computer does not yet
-  trust this Hub: ask the administrator and do not change security settings to get past it. After installing or signing
-  in to a CLI, use **Refresh** to check it again.
+- If personal agents are off, an administrator uses **Open the setting** / **前往設定** to open the exact
+  **Administration → Manage → Personal agents** card. Other colleagues ask their Hub administrator.
+  If enabled but the person is not allowed to add one, the administrator must allow that person or team.
+- Open **My shared agents → Personal agent** / **我分享的 Agent → 個人 Agent**. The setup stepper expands only the
+  current step; earlier steps become a ticked title and later ones stay as titles:
+  1. Prepare a Windows computer with Node.js 22.14 or newer and Codex or Claude Code signed in. **About this** /
+     **了解更多** holds the optional requirements details. Choose **Get install command** / **取得安裝指令**.
+  2. **Copy command** / **複製指令**, then paste it into Windows PowerShell on that computer. The command is private
+     and valid for 15 minutes. Alternatively give it to the owner's own Codex or Claude Code. After copying,
+     **Check connection** / **檢查連接** checks whether it appeared. **New command** replaces an expired command.
+     **Need help?** / **需要協助？** holds failure guidance: ask the administrator about trust errors; do not bypass security settings.
+  3. Choose Codex or Claude, name the agent and save. The folder/account disclosure stays visible beside the action;
+     **More options** / **更多選項** holds description and model. A Codex that needs **Answer only** shows its explicit
+     tick inline; choosing it alone never enables that mode.
+  4. Saved is not shared: use **Choose who may ask**. Until that choice, nobody can ask it. Folder-mode sharing again
+     warns that the selected people can receive anything in the Hub agent folder.
+  A shared agent collapses to its actual status and **Shared** / **分享中**, with **Edit** / **編輯** for settings.
+  A saved unshared agent keeps its sharing action. **Edit** retains the quiet computer-replacement and confirmed
+  Disconnect controls. **Need help?** holds recovery instructions when the computer is offline.
 - A personal agent answers with its owner's Codex or Claude on their own computer. In the one-folder mode it is read-only in that folder; anything there may be quoted to people allowed to ask. It has no AgEnD tools or connectors.
 - If Codex's one-folder check fails, the owner's card may offer **Use Codex to answer only** / **只讓 Codex 回答**. It stays off until the owner ticks **Turn on Answer only** / **開啟「只回答」** and saves. This separate check must prove the entire tool list empty. In this mode Codex answers only from the question and general knowledge: it cannot read files, run commands, change anything or go online, and says what it could not check. The owner still pays for answers. Asker views show **Answers from general knowledge only. It can't look at any files.** / **只根據一般知識回答，無法查看任何檔案。** Do not ask it to inspect the owner's work. Claude and the one-folder choice stay separate. Changing mode creates a new publication revision and requires sharing for that revision.
 - A direct question or an explicit person's @mention may ask it. A verified **person via agent** request also counts
