@@ -34,6 +34,9 @@ const CASES: Record<string, { v: string; width: number; flags: Record<string, un
   "325-lookup": { v: "325", width: 160, flags: { tengu_amber_tally: TIER } },
   "325-summary-lookup": { v: "325", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
   "325-summary-newfocus": { v: "325", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  "326-lookup": { v: "326", width: 160, flags: { tengu_amber_tally: TIER } },
+  "326-summary-lookup": { v: "326", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
+  "326-summary-newfocus": { v: "326", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 
