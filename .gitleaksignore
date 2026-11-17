@@ -155,3 +155,8 @@ b1827bb363eac62e13091de50451437d0c9b69ba:docs/evidence/hub-rooms-integration-r3/
 22718dc5af6c175e9009a7f2e48bd874a71e41ed:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:17
 22718dc5af6c175e9009a7f2e48bd874a71e41ed:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:36
 22718dc5af6c175e9009a7f2e48bd874a71e41ed:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:38
+
+# M-3283: the squash retained the same three verified source-file digest bindings; historical fingerprints only.
+c8404fcdbe4b8c542705f4653324d66568aaed72:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:17
+c8404fcdbe4b8c542705f4653324d66568aaed72:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:36
+c8404fcdbe4b8c542705f4653324d66568aaed72:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:38
