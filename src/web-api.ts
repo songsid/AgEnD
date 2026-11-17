@@ -2496,7 +2496,9 @@ export function handleWebRequest(
   // GET /ui/history/newer?instance=&after=<boot>-<id>&limit=1..100 → { messages, more }: newer than `after`.
   // GET /ui/history/around?instance=&key=<boot>-<id>&limit=1..100 → { messages, olderMore, newerMore }: a jump's page.
   // An admin's, as /ui/subagents (decision 7933bf90: over the public link too, its card-line filter applied as /ui/history's);
-  // a guest or a read-only session: 403. A key in neither the window nor the archive: 404.
+  // a guest or a read-only session: 403. A key in neither the window nor the archive: 200 { messages: [], found: false } —
+  // an ordinary answer, not an error (#4103: a pin or search jump to a message no longer kept falls back to its copy; a 404
+  // was a console error on every such jump).
   const archiveRead = /^\/ui\/history\/(older|newer|around)$/.exec(path);
   if (method === "GET" && archiveRead) {
     if (!adminAdmissionOf(req, url, ctx) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return true; }
@@ -2507,7 +2509,7 @@ export function handleWebRequest(
     }
     const history = ctx.webChatHistory;
     const page = !history ? null : archiveRead[1] === "older" ? history.older(instance, key, limit) : archiveRead[1] === "newer" ? history.newer(instance, key, limit) : history.around(instance, key, limit);
-    if (!page) { json(res, 404, { error: "not_found" }); return true; }
+    if (!page) { json(res, 200, { messages: [], more: false, olderMore: false, newerMore: false, found: false }); return true; }
     json(res, 200, { ...page, messages: visibleMessages(ctx, !!gatewayRequestContext(req), page.messages) });
     return true;
   }
