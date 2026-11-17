@@ -61,7 +61,7 @@ describe("the list's groups and rows (pure)", () => {
     i18n.setLang("zh-TW", { store: false });
     expect(list.rowView(answer.rooms.find((r: any) => r.name === "每週主管會議"))).toMatchObject({ line2: "3 人 · 12 個 Agent", avatar: { square: true, text: "每" }, dot: null, unread: 2 });
     expect(list.rowView(answer.rooms.find((r: any) => r.name === "report-bot"))).toMatchObject({ line2: "吳小安", avatar: { square: false }, dot: "off" });
-    expect(list.rowView(answer.rooms.find((r: any) => r.assistant))).toMatchObject({ title: "Hub 助理", line2: "Hub 提供", dot: "ok" });
+    expect(list.rowView(answer.rooms.find((r: any) => r.assistant))).toMatchObject({ title: "Hub 助理", line2: "Hub 提供的助理，根據這個房間的對話回答。", dot: "ok" });
     expect(list.rowView(answer.rooms.find((r: any) => r.name === "去年專案"))).toMatchObject({ archived: true });
   });
   it("archived stays last and the Hub assistant stays last, whatever their time or unread (Fable via Muse)", () => {

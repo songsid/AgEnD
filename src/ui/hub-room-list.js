@@ -1,3 +1,4 @@
+import { hi } from "./hub-agent-intro.js";
 import {hp} from "./hub-personal-agent-strings.js";
 // M-3092 (Hub rooms, track U): the Hub's conversation list, drawn as the Fleet chat draws its roster — the same row
 // (`li.v-li > a.inst.v-inst`: avatar with its status dot, the name line and the second line), the same section head
@@ -30,7 +31,7 @@ export function listRoomOf(item) {
   if (!item || typeof item !== "object" || typeof item.id !== "string") return null;
   return { id: item.id, kind: "direct", name: String(item.exposureName || ""), people: 1, agents: 1, online: null, unread: 0,
     lastAt: Number.isFinite(item.lastAt) ? item.lastAt : 0, lastText: "", lastAuthor: "",
-    agent: { ...(item.answerOnly?{answerOnly:true}:{}), exposureId: String(item.exposureId || ""), owner: { name: String(item.ownerName || "") }, presence: null }, limited: true, legacy: item };
+    agent: { ...(typeof item.intro==="string"?{intro:item.intro}:{}), ...(item.answerOnly?{answerOnly:true}:{}), exposureId: String(item.exposureId || ""), owner: { name: String(item.ownerName || "") }, presence: null }, limited: true, legacy: item };
 }
 /** The rooms list from whichever client this page has: roomList() when it can, else rooms() mapped by listRoomOf(). */
 export function readRoomList(client) {
@@ -73,7 +74,7 @@ export function rowView(r) {
   const closed = limited && r.legacy?.state === "closed", waiting = limited && !closed && r.legacy?.waiting === true;
   const line2 = group ? countsLine(r.people, r.agents)
     : closed ? t("hubChat.tagClosed") : waiting ? t("hubChat.waiting")
-    : r.assistant ? tr("providedByHub") : r.agent?.answerOnly ? hp("answerOnlyAsker") : String(r.agent?.owner?.name || "");
+    : r.assistant ? hi("assistant") : [r.agent?.intro,r.agent?.answerOnly ? hp("answerOnlyAsker") : String(r.agent?.owner?.name || "")].filter(Boolean).join(" · ");
   return {
     title: r.assistant ? tr("hubAssistant") : String(r.name || ""), line2,
     avatar: { square: group, text: firstCharacter(r.assistant ? tr("hubAssistant") : String(r.name || "?")) || "?" },

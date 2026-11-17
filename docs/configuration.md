@@ -228,6 +228,9 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `tips` | boolean | `true` | Daily tips: `true` posts in General; `false` disables. Independent of `daily_summary.enabled`. An older `"dm"` value is read as `true`. |
 | `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. Read when AgEnD starts: restart AgEnD after changing it. |
 
+Paste measurements: [Hub room context](design/hub-room-agent-context.md#52-paste-size-measurements).
+
+
 Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp only), independent of notification retention. Cleaning old delivered notices does not allow the same boot to remind or stamp the requests again.
 
 ---

@@ -2,7 +2,7 @@
 
 Status: approved by the owner on 2026-11-18, including the 50-character introduction cap.
 Copied from approved source 71cf82a65 with the H1/H2 split and assistant-copy clarification from 8646bd61b.
-Implementation order starts with H7 per the owner’s priority; H1–H6 remain planned until their separate PRs land. "Today" means a source survey of the development branch
+Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 adds explicit owner editing and public displays; H2–H6 remain planned until their separate PRs land. "Today" means a source survey of the development branch
 at `13abcddd8`; nothing was run.
 
 Four gaps, raised by the owner on 2026-11-18, and one rule that runs through all of them: **in a room with many
@@ -309,6 +309,14 @@ the Fleet's owner changed it):
 - The trimming is done by the Fleet when it builds the text, since the setting is the Fleet's. No protocol
   change, and an old Fleet behaves as today.
 
+### 5.2 Paste size measurements
+
+On 2026-11-18 (Asia/Taipei), an owned private tmux socket and a raw mock backend were tested with system tmux 3.7b and AgEnD’s bundled tmux 3.8-88e2434cf78a. Both received the oversized English prompt (66,547 bytes) and zh-TW prompt (66,546 bytes) intact, with no truncation. Expected transport hashes and logical payload hashes matched after accounting for tmux’s normal LF-to-CR paste conversion. With the history cap, the same prompts were 11,353 and 11,361 bytes (about 11.4 KB), with the question unchanged.
+
+The 12 KiB value from `defaults.max_cross_instance_message_bytes` is a context-size choice, not a measured tmux limit. The earlier approximately 16 KB breakage was probably on the CLI side; the raw mock did not reproduce it. Before raising the limit, run a real-CLI paste test for each supported backend (Claude Code, Codex and the others), checking the CLI’s own received user message and submitted composer state. Raw transport success alone is insufficient.
+
+Recorded evidence: [H7 measurements](../evidence/hub-room-context-h7/README.md) and the [bundled 3.8 follow-up](https://github.com/songsid/AgEnD/pull/4133#issuecomment-6955033283).
+
 ## 6. Later, not in this spec
 
 Data an agent in a room still cannot get, each needing its own design:
@@ -342,8 +350,8 @@ exist. The existing limit is the one on messages between agents (12 KiB, adjusta
 
 | Card | What | Size |
 |---|---|---|
-| H1 | Introductions: Hub field, the owner's edit, "last changed by", the default at sharing, the notice for existing shares, where it shows | M |
-| H2 | `hub_set_intro` and `agent.intro`, with the ability flag and limits | S–M |
+| H1 | Introductions: Hub field, the owner's edit, "last changed by", where it shows; no automatic defaults or notices | M |
+| H2 | Automatic default, existing-share notice, `hub_set_intro` and `agent.intro`, with the ability flag and limits | S–M |
 | H3 | Room purpose: field, settings, header, system line | S |
 | H4 | "About this room" with the first question only: purpose, counts, how to @; the one line on who joined and left with later questions; `room-brief-v1`; an @name in an answer hands off | M |
 | H5 | Bounded `hub_room_members`: purpose and counts first, people and agents, query, paging, `room-members-v2` | M |

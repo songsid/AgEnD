@@ -1,3 +1,4 @@
+import { agentIntro } from "../agent-intro.js";
 /** Person-facing facade over the same mount-local services as the browser, never a Fleet tool dispatcher. */
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -98,7 +99,7 @@ export class HubMcpTools {
     }
     if(name==="hub_agent_list") {
       const view=await this.services.catalog.visible(p.context);
-      return resultData({agents:view.askable.map(({exposure,ownerName,grant})=>({id:exposure.id,name:exposure.displayName,owner:ownerName,state:exposure.state,expiresAt:grant.expiresAt}))});
+      return resultData({agents:view.askable.map(({exposure,ownerName,grant})=>({id:exposure.id,name:exposure.displayName,...this.core.atomic(db=>agentIntro(db,exposure.id)),owner:ownerName,state:exposure.state,expiresAt:grant.expiresAt}))});
     }
     if(name==="hub_ask") {
       const view=await this.services.catalog.visible(p.context), selected=view.askable.find(e=>e.exposure.id===body.agent);

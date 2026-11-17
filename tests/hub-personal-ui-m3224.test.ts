@@ -208,3 +208,12 @@ it("keeps Answer only inline and opt-in when editing a Claude agent to use Codex
  const toggle=p.root.querySelector('[data-answer-only-option] input');expect(toggle.checked).toBe(false);expect(toggle.closest("details")).toBeNull();expect(button(p,"Save personal agent")?.disabled).toBe(true);expect(client.savePersonalAgent).not.toHaveBeenCalled();
  toggle.checked=true;fire(toggle,"change");await settle();expect(button(p,"Save personal agent")?.disabled).toBe(false);
 });
+
+it("prefills an old private description without publishing it, with review and cut notices",async()=>{
+ const data:any=view();data.agent={name:"Guide",description:"界".repeat(60),cli:"codex",revision:2,intro:"",exposureId:"exposure"};
+ const {p,client}=await fixture("en",data);fire(button(p,"Edit"),"click");await settle();
+ expect(p.root.textContent).toContain("Colleagues will see this line. Check it and save.");
+ expect(p.root.textContent).toContain("Your earlier description was longer");
+ const input=[...p.root.querySelectorAll("input")].find((el:any)=>el.getAttribute("placeholder")==="I handle…");expect(input?.value).toBe("界".repeat(50));
+ expect(button(p,"Save personal agent")?.disabled).toBe(false);expect(client.savePersonalAgent).not.toHaveBeenCalled();expect(data.agent.description).toBe("界".repeat(60));
+});

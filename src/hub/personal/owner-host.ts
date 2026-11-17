@@ -1,3 +1,4 @@
+import { agentIntro, normalizeAgentIntro, writeOwnerIntro } from "../agent-intro.js";
 /** Company-owner enrollment. Runtime identity is kept separate from Fleet identity. */
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
@@ -15,7 +16,7 @@ import type { HubPersonalExposure } from "../types.js";
 type DB=Database.Database;
 const policyInput=z.strictObject({enabled:z.boolean(),people:z.array(z.string().min(1).max(512)).max(200),teams:z.array(z.string().uuid()).max(200)});
 const agentInput=z.strictObject({name:z.string().trim().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/).refine(s=>Buffer.byteLength(s,"utf8")<=256),
-  description:z.string().trim().max(512),cli:z.string().refine(isPersonalAgentCli),model:z.string().min(1).max(128).optional(),ifRevision:z.number().int().min(0),answerOnly:z.boolean().optional()});
+  description:z.string().transform(normalizeAgentIntro),cli:z.string().refine(isPersonalAgentCli),model:z.string().min(1).max(128).optional(),ifRevision:z.number().int().min(0),answerOnly:z.boolean().optional()});
 export interface PersonalDefinition {id:string;owner:string;machine_id:string;cli:import("../../runtime-personal-answer.js").PersonalAgentCli;model:string|null;description:string;answer_only:number}
 interface Enrollment { id:string;owner:string;created_at:number;expires_at:number;machine_id:string|null;revoked_at:number|null;retired_at:number|null }
 interface Computer { owner:string;machine_id:string;enrollment_id:string;bound_at:number }
@@ -150,7 +151,7 @@ export class HubPersonalOwnerHost {
       const now=this.core.now(),shared=definition?.state==="published"&&(
         !!db.prepare("SELECT 1 FROM hub_grants WHERE exposure_id=? AND exposure_revision=? AND owner=? AND state='active' AND starts_at<=? AND expires_at>? AND EXISTS(SELECT 1 FROM json_each(permissions) WHERE value='ask') LIMIT 1").get(definition.exposure_id,definition.revision,owner,now,now)
         ||!!db.prepare("SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id WHERE m.kind='agent' AND m.subject=? AND r.archived=0 AND EXISTS(SELECT 1 FROM hub_room_members p WHERE p.room_id=r.id AND p.kind='person') LIMIT 1").get(definition.exposure_id));
-      return {agent:definition?{shared:shared===true,id:definition.id,exposureId:definition.exposure_id,name:definition.display_name,description:definition.description,cli:definition.cli,model:definition.model,...(definition.answer_only===1?{answerOnly:true}:{}),revision:definition.revision,state:definition.state}:null,enabled:policy.enabled,canAdd:this.canAdd(db,owner),computer:machine?{
+      return {agent:definition?{shared:shared===true,id:definition.id,exposureId:definition.exposure_id,name:definition.display_name,description:definition.description,...agentIntro(db,definition.exposure_id),cli:definition.cli,model:definition.model,...(definition.answer_only===1?{answerOnly:true}:{}),revision:definition.revision,state:definition.state}:null,enabled:policy.enabled,canAdd:this.canAdd(db,owner),computer:machine?{
         id:machine.id,name:machine.name,connected:machine.status==="online",compatible:machine.platform==="win32"&&machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true,
         folder:machine.inventory?.personalFolder??null,working:!!db.prepare("SELECT 1 FROM hub_personal_jobs WHERE machine_id=? AND state='working'").get(machine.id),clis:(machine.inventory?.clis??[]).filter(cli=>isPersonalAgentCli(cli.id)).map(cli=>({...cli,
           available:machine.platform==="win32"&&machine.runtimeInfo?.capabilities.includes(PERSONAL_AGENT_PROFILE)===true&&cli.personalStatus==="ready"&&cli.runnable&&cli.authenticated===true,
@@ -217,6 +218,7 @@ export class HubPersonalOwnerHost {
         .run(before.agentId,owner,before.machine,value.cli,before.model,value.description,now,now);
       db.prepare("INSERT INTO hub_exposures(id,owner,display_name,revision,state,updated_at,source_kind,personal_agent_id,answer_only) VALUES(?,?,?,?,'published',?,'personal',?,?) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,revision=excluded.revision,state='published',updated_at=excluded.updated_at,answer_only=excluded.answer_only")
         .run(before.id,owner,value.name,before.revision,now,before.agentId,value.answerOnly?1:0);
+      writeOwnerIntro(db,before.id,value.description,now);
       enrollment?.commit(db);
       this.core.audit(tx,{requestId:ctx.requestId,actor:{kind:"person",person:key},action:"personal.published",result:"completed",exposureId:before.id,ownerAtEvent:key});
       return exposureOf(readExposure(db,before.id)!) as HubPersonalExposure;

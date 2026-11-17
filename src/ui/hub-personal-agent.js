@@ -1,10 +1,11 @@
+import { hi, introCount, introPreview } from "./hub-agent-intro.js";
 import {html,useEffect,useLayoutEffect,useRef,useState} from "/assets/app-html.js";
 import {ErrorState,Skeleton} from "/assets/ui-states.js";
 import {confirmDialog} from "/assets/ui-confirm.js";
 import {runtimeEnrollCommand} from "./runtime-commands.js";
 import {hp} from "./hub-personal-agent-strings.js";
 const refused=()=>({ok:false});
-const fields=agent=>({name:agent?.name??"",description:agent?.description??"",cli:agent?.cli??"",model:agent?.model??"",ifRevision:agent?.revision??0,answerOnly:agent?.answerOnly===true});
+const fields=agent=>({name:agent?.name??"",description:agent?.introBy?agent.intro:introPreview(agent?.description??""),cli:agent?.cli??"",model:agent?.model??"",ifRevision:agent?.revision??0,answerOnly:agent?.answerOnly===true});
 const policy=value=>({enabled:value.enabled===true,people:[...(value.people??[])],teams:[...(value.teams??[])]});
 export function personalCliReason(cli){
  if(cli?.available)return "canUse";
@@ -29,7 +30,7 @@ export function HubPersonalAgent({client,scope,isAdmin=false,onSaved=()=>{}}){
  const enroll=async()=>{if(busyRef.current)return;markBusy(true);setError("");const mine=generation.current;let result;try{result=await client.personalEnrollment(scope);}catch{result=refused();}
   if(mine!==generation.current)return;markBusy(false);if(!result?.ok){setError(hp("saveFailed"));return;}setIssued(result);setClock(Date.now());setCopied(false);setWaiting(false);setEditing(true);
  };
- const save=async event=>{event.preventDefault();if(busyRef.current||!form?.name.trim())return;markBusy(true);setError("");const mine=generation.current;
+ const save=async event=>{event.preventDefault();if(busyRef.current||!form?.name.trim()||introCount(form.description)>50)return;markBusy(true);setError("");const mine=generation.current;
   let result;try{const {model,answerOnly,...input}=form;result=await client.savePersonalAgent(scope,{...input,...(model?{model}:{}),...(answerOnly?{answerOnly:true}:{})});}catch{result=refused();}
   if(mine!==generation.current)return;markBusy(false);if(!result?.ok){setError(hp("saveFailed"));return;}dirty.current=false;setIssued(null);setEditing(false);await load(false,true);if(mine===generation.current)onSaved();
  };
@@ -57,8 +58,8 @@ export function HubPersonalAgent({client,scope,isAdmin=false,onSaved=()=>{}}){
  const configure=choices.length?html`<form onSubmit=${save} class="form"><label class="field"><span>${hp("cli")}</span><select required disabled=${busy} value=${form?.cli||""} onChange=${e=>edit({cli:e.target.value,model:"",answerOnly:e.target.value==="codex"&&form.answerOnly})}><option value=""></option>${choices.map(c=>html`<option value=${c.id}>${c.id==="codex"?"Codex":"Claude"}</option>`)}</select></label>
   ${answerOnlyChoice}<label class="field"><span>${hp("name")}</span><input required maxlength="256" disabled=${busy} value=${form?.name||""} onInput=${e=>edit({name:e.target.value})} /></label>
   ${!answerOnlyChoice?html`<p class="note" data-personal-disclosure>${hp("folderDisclosure")}</p>`:null}
-  ${disclosure(hp("moreSettings"),html`<label class="field"><span>${hp("description")}</span><input maxlength="512" disabled=${busy} value=${form?.description||""} onInput=${e=>edit({description:e.target.value})} /></label><label class="field"><span>${hp("model")}</span><select disabled=${busy} value=${form?.model||""} onChange=${e=>edit({model:e.target.value})}><option value="">${hp("defaultModel")}</option>${(selected?.models??[]).map(m=>html`<option value=${m.id}>${m.label||m.id}</option>`)}</select></label>${cliReasons}`)}
-  <div class="field-row"><button class="btn btn-sm btn-primary" disabled=${busy||!canUse(selected)||!computer.connected||!form?.name.trim()||!!view.agent&&!dirty.current}>${hp("save")}</button>${dirty.current?html`<span class="note" role="status">${hp("unsaved")}</span>`:null}</div></form>`:html`${cliReasons}${refreshButton}`;
+  ${disclosure(hp("moreSettings"),html`<label class="field"><span>${hi("title")}</span>${view.agent&&!view.agent.introBy?html`<small class="note">${hi("review")}</small>${introCount(view.agent.description)>50?html`<small class="note">${hi("cut")}</small>`:null}`:null}<input placeholder=${hi("placeholder")} disabled=${busy} value=${form?.description||""} onInput=${e=>edit({description:e.target.value})} /><small class="note">${`${hi("hint")} ${introCount(form?.description)}/50`}</small></label><label class="field"><span>${hp("model")}</span><select disabled=${busy} value=${form?.model||""} onChange=${e=>edit({model:e.target.value})}><option value="">${hp("defaultModel")}</option>${(selected?.models??[]).map(m=>html`<option value=${m.id}>${m.label||m.id}</option>`)}</select></label>${cliReasons}`)}
+  <div class="field-row"><button class="btn btn-sm btn-primary" disabled=${busy||!canUse(selected)||!computer.connected||!form?.name.trim()||!!view.agent&&!dirty.current&&!!view.agent.introBy||introCount(form?.description)>50}>${hp("save")}</button>${dirty.current?html`<span class="note" role="status">${hp("unsaved")}</span>`:null}</div></form>`:html`${cliReasons}${refreshButton}`;
  const sharing=html`<p class="note">${hp("notShared")}</p>${!view?.agent?.answerOnly?html`<p class="note" data-personal-sharing-disclosure>${hp("sharingDisclosure")}</p>`:null}<div class="field-row"><a class="btn btn-sm btn-primary" href=${`/ui/hub/exposures?agent=${encodeURIComponent(view?.agent?.exposureId??"")}`}>${hp("sharing")}</a>${view?.agent?html`<button type="button" class="btn btn-sm btn-ghost" onClick=${()=>setEditing(true)}>${hp("editAgent")}</button>`:null}</div>`;
  const current=issued?2:computer?view.agent?4:3:1;
  const setup=html`<ol class="runtime-steps">

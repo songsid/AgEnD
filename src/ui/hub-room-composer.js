@@ -1,3 +1,4 @@
+import { hi } from "./hub-agent-intro.js";
 import {hp} from "./hub-personal-agent-strings.js";
 // M-3092 PR 2 (Hub rooms, track U): a room's composer — the Fleet chat's own ComposerInput, its palette (`cmd-palette`)
 // and its reply bar (`reply-bar`), with what a room adds (docs/design/hub-rooms-ux.md §4):
@@ -40,8 +41,8 @@ export function mentionOptions(detail, query = "") {
   if ((detail?.settings?.allMention !== false || manager) && agents.length && hit(hroom("mentionAll")))
     out.push({ kind: "all", key: "all", label: hroom("mentionAll"), hint: hroom("mentionAllHint", String(agents.length)) });
   if ((detail?.members || []).some((m) => m.kind === "assistant") && hit(hroom("mentionAssistant")))
-    out.push({ kind: "assistant", key: "assistant", label: hroom("mentionAssistant"), hint: hroom("mentionAssistantHint") });
-  for (const a of agents) if (hit(a.name, a.owner?.name)) out.push({ kind: "agent", key: a.id, label: `@${a.name}`, ...(a.answerOnly?{answerOnly:true}:{}), hint: a.answerOnly ? hp("answerOnlyAsker") : a.owner?.name || "", dot: presenceDot(a.presence, a.presenceReason) });
+    out.push({ kind: "assistant", key: "assistant", label: hroom("mentionAssistant"), hint: hi("assistant") });
+  for (const a of agents) if (hit(a.name, a.owner?.name)) out.push({ kind: "agent", key: a.id, label: `@${a.name}`, ...(a.answerOnly?{answerOnly:true}:{}), hint: [a.intro,a.answerOnly?hp("answerOnlyAsker"):a.owner?.name].filter(Boolean).join(" · "), dot: presenceDot(a.presence, a.presenceReason) });
   for (const p of (detail?.members || []).filter((m) => m.kind === "person" && m.id !== detail?.me?.id)) if (hit(p.name)) out.push({ kind: "person", key: p.id, label: `@${p.name}`, hint: "" });
   return out;
 }
