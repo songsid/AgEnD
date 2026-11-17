@@ -1,0 +1,34 @@
+{
+  "base": "b38f0c2782bfd4c8ab65476ca1387da2411c9593",
+  "cases": 738,
+  "files": 19,
+  "sourceTypeScriptExit": 0,
+  "testTypeScriptExit": 0,
+  "commonPatchedFunctions": [
+    {
+      "name": "GROK_LEGEND_SCROLLBACK",
+      "identical": true
+    },
+    {
+      "name": "grokWeeklyLimitActive",
+      "identical": true
+    },
+    {
+      "name": "grokWeeklyLimitScrollbackDialog",
+      "identical": true
+    },
+    {
+      "name": "grokSignInDialog",
+      "identical": true
+    },
+    {
+      "name": "getStartupDialogs",
+      "identical": true
+    },
+    {
+      "name": "getRuntimeDialogs",
+      "identical": true
+    }
+  ],
+  "liveEvidence": "Reuses alpha real-binary captures; no duplicate live campaign. Inline switching remains alpha-only."
+}

@@ -22,6 +22,7 @@ import { setLocale } from "../src/locale.js";
 const fx = (n: string) => readFileSync(new URL(`./fixtures/grok-1.0.70-weekly-limit/${n}.pane.txt`, import.meta.url), "utf8");
 const MODAL = fx("modal"), SCROLLBACK = fx("modal-scrollback-focus"), AFTER = fx("after-shift-x"), AFTER_ESC = fx("after-esc-then-shift-x");
 const OLD_MODAL = readFileSync(new URL("./fixtures/grok-weekly-limit-modal.pane.txt", import.meta.url), "utf8");
+const TAB_SCROLLBACK = readFileSync(new URL("./fixtures/grok-1.0.88-audit/weekly-scrollback.pane.txt", import.meta.url), "utf8");
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agend-2867-")); dirs.push(d); return d; };
@@ -34,8 +35,8 @@ describe("the modal is matched by its rows, both builds, both focus states", () 
   it.each([["1.0.70 (three options)", () => MODAL], ["the earlier build (two options)", () => OLD_MODAL]])(
     "%s → the Shift+x spec", (_, pane) => { expect(runtimeHit(pane())).toMatchObject({ keys: ["X"], literalKeys: true, verifyAfterKeys: true }); });
 
-  it("focus moved to the scrollback (Esc) → Space restores the picker (1.0.77 unbinds Shift+x there)", () => {
-    expect(runtimeHit(SCROLLBACK)).toMatchObject({ keys: [" "], literalKeys: true, verifyAfterKeys: true, autoResolutionKey: "grok-weekly-limit-scrollback" });
+  it("focus moved to the scrollback (Esc) → Tab restores the picker (1.0.77 unbinds Shift+x there)", () => {
+    expect(runtimeHit(SCROLLBACK)).toMatchObject({ keys: ["\t"], literalKeys: true, verifyAfterKeys: true, autoResolutionKey: "grok-weekly-limit-scrollback" });
     expect(runtimeHit(SCROLLBACK)!.dismissIncident).toBeUndefined();
   });
 
@@ -69,7 +70,7 @@ function makeDaemon(initial: string) {
   const tmux = {
     capturePane: vi.fn(async () => state.pane), isWindowAlive: vi.fn(async () => true),
     sendSpecialKey: vi.fn(async () => true), sendKeys: vi.fn(async (k: string) => {
-      if (k === " " && /Tab\/Space:question/.test(state.pane)) { state.pane = MODAL; return true; }
+      if (k === "\t" && /Tab(?:\/Space)?:question/.test(state.pane)) { state.pane = MODAL; return true; }
       if (k === "X") { state.pane = AFTER; return true; }
       return true;
     }),
@@ -99,13 +100,13 @@ describe("in the real Daemon", () => {
     daemon.freezeRuntimeMonitors();
   });
 
-  it("scrollback focus (1.0.77): Space restores the picker, then X dismisses with one quota pause", async () => {
+  it.each([["1.0.77", SCROLLBACK], ["1.0.88", TAB_SCROLLBACK]])("scrollback focus (%s): literal Tab then X causes one quota pause", async (_version, pane) => {
     vi.useFakeTimers();
-    const { daemon, tmux, errors, parked } = makeDaemon(SCROLLBACK);
-    expect(daemon.interactionEvidence(SCROLLBACK, daemon.runtimeDialogs())).toBeNull();
+    const { daemon, tmux, errors, parked } = makeDaemon(pane);
+    expect(daemon.interactionEvidence(pane, daemon.runtimeDialogs())).toBeNull();
     daemon.startErrorMonitor();
     await vi.advanceTimersByTimeAsync(120_000);
-    expect(tmux.sendKeys.mock.calls.map((c: any[]) => c[0])).toEqual([" ", "X"]);
+    expect(tmux.sendKeys.mock.calls.map((c: any[]) => c[0])).toEqual(["\t", "X"]);
     expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
     expect(tmux.pasteText).not.toHaveBeenCalled();
     expect(parked).toEqual([]);

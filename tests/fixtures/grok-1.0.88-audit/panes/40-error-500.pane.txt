@@ -1,0 +1,43 @@
+
+  master /r/work/errors-120                                                                  1.3k / 256k │ [Dashboard]
+
+
+     ❯ error turn f                                                                                          1:15 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ⠋ Server error (500) | Retrying (attempt 1)… 0.5s                                               0.6s ⇣1.33k [stop]
+
+   Queued · Enter to send now
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+c:cancel  │  Ctrl+x:shortcuts
