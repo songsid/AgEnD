@@ -46,8 +46,7 @@ register("settingsLayout", {
   en: {
     lead_accounts: "Connect the AI accounts your agents run on, and keep the provider API keys, on the AgEnD host and paired computers.",
     agentsAccountsNote: "Which AI account an agent uses is chosen in its settings; connect and manage accounts and API keys in",
-    agentsAccountsLink: "AI accounts & API keys",
-    aiAccounts: "AI accounts and API keys", aiAccountsSummary: "AI accounts connected on the host and provider API keys, managed separately.",
+    agentsAccountsLink: "AI accounts & keys",
     aiHostScope: "Credentials on the AgEnD host and paired computers", aiAccountsHint: "Connected AI accounts are listed per computer: this AgEnD host, then each paired computer. Provider API keys belong to the host.", aiWindowsLink: "Manage Windows computers and their CLIs in Runtime",
     apiKeysTitle: "Provider API keys", apiKeysHint: "API credentials for supported provider integrations.", apiKeysUnavailableState: "Not offered", apiKeysUnavailable: "Provider API key management is not offered in this session.",
     apiNewPlaceholder: "Enter an API key to verify", apiReplacePlaceholder: "Enter a replacement API key",
@@ -55,8 +54,7 @@ register("settingsLayout", {
   "zh-TW": {
     lead_accounts: "連接 Agent 使用的 AI 帳號，並管理供應商 API 金鑰；涵蓋 AgEnD 主機與已配對的電腦。",
     agentsAccountsNote: "Agent 要用哪個 AI 帳號，在它自己的設定裡選；連接與管理帳號、API 金鑰請到",
-    agentsAccountsLink: "AI 帳號與 API 金鑰",
-    aiAccounts: "AI 帳號與 API 金鑰", aiAccountsSummary: "分開管理主機上連接的 AI 帳號與供應商 API 金鑰。",
+    agentsAccountsLink: "AI 帳號與金鑰",
     aiHostScope: "AgEnD 主機與已配對電腦上的憑證", aiAccountsHint: "連接的 AI 帳號依電腦列出：先是這台 AgEnD 主機，再來是每台已配對電腦。供應商 API 金鑰屬於主機。", aiWindowsLink: "前往 Runtime 管理 Windows 電腦與 CLI",
     apiKeysTitle: "供應商 API 金鑰", apiKeysHint: "供支援的供應商整合功能使用的 API 憑證。", apiKeysUnavailableState: "目前未提供", apiKeysUnavailable: "此工作階段未提供供應商 API 金鑰管理。",
     apiNewPlaceholder: "輸入要驗證的 API 金鑰", apiReplacePlaceholder: "輸入替換用的 API 金鑰",

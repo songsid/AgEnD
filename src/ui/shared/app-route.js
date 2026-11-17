@@ -106,7 +106,9 @@ export function sectionPath(name) {
   return path === "/settings" ? "/settings/agents" : path;
 }
 /** #2347: an old /settings/<name> address as its new one (with the place in it), or null. */
-export function legacySettingsTarget(pathname) {
+export function legacySettingsTarget(pathname, search = "") {
+  // AGEND-288: the installer's sign-in list (`?backend_signins=`) used to open on Agents; its accounts moved to their own section.
+  if ((pathname === "/settings/agents" || pathname === "/settings") && new URLSearchParams(search || "").has("backend_signins")) return "/settings/accounts" + search;
   // #2347 §10: Fleet → Config's settings live in Settings now; its project folders are in Agent defaults.
   if (pathname === "/ui/fleet/config") return "/settings/agent-defaults#project-roots";
   const m = /^\/settings\/([^/]+)$/.exec(pathname || "");

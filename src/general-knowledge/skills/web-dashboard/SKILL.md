@@ -689,7 +689,7 @@ confirm. After a failure, unapplied changes are staged again
 **Look** — see [Look](#look) for the cards and what they mean.
 
 **Connecting an AI account (#2233; S-117 wording: 連接 AI 帳號 / 已連接 / 撤銷連接, never "sign in with a device
-code")** — local admin sessions only (never a guest or the public link): Settings → Agents → **AI accounts and API keys** → **Accounts** (one card per CLI: its default
+code")** — local admin sessions only (never a guest or the public link): Settings → **AI accounts & keys** → **Accounts** (one card per CLI: its default
 connection and every named account, with which account it is, its state — **connected** / **not connected** / **needs
 reconnecting** / **not installed** / **too old** —, who uses it and its weekly usage; **Connect** / **Reconnect**, or the
 host command where the dashboard cannot), the web
@@ -715,7 +715,7 @@ from here (#3521; Antigravity: **Update to latest (not audited by AgEnD)**; Muse
 installed and checked versions). A paired Windows computer's Claude Code accounts are listed under **On *computer***.
 
 **Antigravity (agy) in Accounts (#3771; AGEND-224)** — agy **can** be connected from the dashboard now (it could not
-before), from Settings → Agents → AI accounts and API keys → Accounts, local admin sessions only. What the Antigravity
+before), from Settings → AI accounts & keys → Accounts, local admin sessions only. What the Antigravity
 card offers, and what it means:
 - **Connect / Reconnect** on the **Default connection** and on each named account: the dashboard runs `agy acp --login`
   in its own login window (never in an agent's pane; needs agy 1.5.0 or newer, otherwise the card keeps the command to

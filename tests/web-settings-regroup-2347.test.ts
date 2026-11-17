@@ -100,6 +100,16 @@ describe("#2347: the sections in two groups, and the old addresses", () => {
     expect([p.window.location.pathname, p.window.location.hash]).toEqual(["/settings/chat", "#classicbot"]);
     nav.navigate("/settings");
   });
+  it("AGEND-288: an old /settings/agents?backend_signins=… link (an open tab, an earlier install's printed link) goes to /settings/accounts, query kept", () => {
+    const q = "?backend_signins=codex%2Ckiro-cli";
+    expect([route.legacySettingsTarget("/settings/agents", q), route.legacySettingsTarget("/settings", q), route.legacySettingsTarget("/settings/agents", "?x=1"), route.legacySettingsTarget("/settings/agents"), route.legacySettingsTarget("/settings/access", q)])
+      .toEqual([`/settings/accounts${q}`, `/settings/accounts${q}`, null, null, null]);
+    nav.navigate(`/settings/agents${q}`);
+    expect([p.window.location.pathname, p.window.location.search, nav.navStore.get().route]).toEqual(["/settings/accounts", q, { panel: "settings", section: "accounts" }]);
+    nav.navigate("/settings/agents");
+    expect([p.window.location.pathname, p.window.location.search]).toEqual(["/settings/agents", ""]);
+    nav.navigate("/settings");
+  });
   it("going to an old address lands on the new one (the address bar too), with the place in it", () => {
     nav.navigate("/settings/general");
     expect([p.window.location.pathname, nav.navStore.get().route]).toEqual(["/settings/agent-defaults", { panel: "settings", section: "agent-defaults" }]);
