@@ -117,27 +117,37 @@ export class WebChatArchive {
     if (dir) rmSync(dir, { recursive: true, force: true });
   }
 
-  /** Lines from newest to oldest (the files newest first, each read backwards in chunks). */
+  /**
+   * Lines from newest to oldest (the files newest first, each read backwards in chunks). Bytes, never text, until a line is
+   * whole (#4101 review F1): a chunk's edge can cut a character (CJK, an emoji) in two — decoding each chunk on its own
+   * turned both halves into U+FFFD, still valid JSON, the message silently changed. Lines split on the newline byte, the
+   * cut-off start kept as bytes for the next (earlier) chunk; LINE_MAX is in bytes. Retention is applied on reads too.
+   */
   private *backwards(instance: string): Generator<string> {
     const dir = this.ownDir(instance);
     if (!dir) return;
+    this.pruneSoon(instance, dir);
     for (const f of this.months(dir)) {
       let fd: number;
       try { fd = openSync(join(dir, f), "r"); } catch { continue; }
       try {
-        let pos = statSync(join(dir, f)).size, rest = "";
+        let pos = statSync(join(dir, f)).size, rest: Buffer = Buffer.alloc(0);
         while (pos > 0) {
           const size = Math.min(CHUNK, pos);
           pos -= size;
           const buf = Buffer.alloc(size);
           readSync(fd, buf, 0, size, pos);
-          const text = buf.toString("utf8") + rest;
-          const parts = text.split("\n");
-          rest = parts.shift()!;                                  // may be cut: kept for the next (earlier) chunk
-          if (rest.length > LINE_MAX) rest = "";
-          for (let i = parts.length - 1; i >= 0; i--) if (parts[i]) yield parts[i]!;
+          const data = rest.length ? Buffer.concat([buf, rest]) : buf;
+          let end = data.length;
+          for (let nl = data.lastIndexOf(10, end - 1); nl >= 0; nl = end > 0 ? data.lastIndexOf(10, end - 1) : -1) {
+            const l = data.subarray(nl + 1, end);
+            if (l.length && l.length <= LINE_MAX) yield l.toString("utf8");
+            end = nl;
+          }
+          // The start of a line that began in an earlier chunk: kept as bytes (a line longer than LINE_MAX is not ours).
+          rest = end > LINE_MAX ? Buffer.alloc(0) : Buffer.from(data.subarray(0, end));
         }
-        if (rest) yield rest;
+        if (rest.length) yield rest.toString("utf8");
       } finally { closeSync(fd); }
     }
   }

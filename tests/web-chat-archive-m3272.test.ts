@@ -5,7 +5,7 @@
  * a read-only session's); `web.chat_archive.retention_days` (unset or 0: keep everything) drops whole months.
  */
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -60,6 +60,33 @@ describe("the archive: append-only, a month a file, read backwards a page at a t
     expect(across.lines[0]!.text).toBe(big + 25);                         // whole lines, never cut at a chunk's edge
   });
 
+  it("#4101 review F1: a character cut by a 64 KiB read boundary (CJK, 3 bytes) comes back whole — no U+FFFD, the text as written", () => {
+    const home = tmp(), dir = join(home, "workspaces", "alpha", "web-chat-archive");
+    const a = new WebChatArchive({ home, ownerOf: () => "dir:/w/alpha", logger: log, now: () => NOV });
+    const big = "測試中文訊息".repeat(4000);                                 // 72,000 bytes of 3-byte characters
+    const first = JSON.stringify(line(1, { text: big }));
+    // The second (last) line's padding puts the read boundary (end − 65536) inside one of the first line's characters.
+    const prefix = Buffer.byteLength(first) - Buffer.byteLength(big) - 2;    // the bytes before the text's first character
+    let p = 0, file = "";
+    for (; p < 3; p++) {
+      file = `${first}\n${JSON.stringify(line(2, { text: "x".repeat(p) }))}\n`;
+      const boundary = Buffer.byteLength(file) - 65536;
+      if ((boundary - prefix - 1) % 3 !== 0) break;                       // not on a character's first byte: inside one
+    }
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "owner"), "dir:/w/alpha"); writeFileSync(join(dir, "2026-11.jsonl"), file);
+    const back = a.older("alpha", null, 10).lines;
+    expect(back.map(l => l.key)).toEqual(["ab12-1", "ab12-2"]);
+    expect([back[0]!.text === big, String(back[0]!.text).includes("\uFFFD")]).toEqual([true, false]);
+    // Many zh-TW lines across several chunks: every one as written.
+    const many = new WebChatArchive({ home: tmp(), ownerOf: () => "dir:/w/alpha", logger: log, now: () => NOV });
+    const texts = Array.from({ length: 200 }, (_, i) => "測試中文訊息".repeat(50 + (i % 7)) + "🙂" + i);
+    many.append("alpha", texts.map((text, i) => line(i + 1, { text })));
+    return many.flush().then(() => {
+      expect(many.older("alpha", null, 500).lines.map(l => l.text)).toEqual(texts);
+    });
+  });
+
   it("around: the key with older and newer ones; null when not archived", async () => {
     const { a } = archive();
     a.append("alpha", Array.from({ length: 20 }, (_, i) => line(i + 1)));
@@ -97,6 +124,16 @@ describe("the archive: append-only, a month a file, read backwards a page at a t
     expect(readdirSync(join(home, "workspaces", "alpha", "web-chat-archive")).sort()).toEqual(["2026-09.jsonl", "2026-10.jsonl", "2026-11.jsonl", "owner"]);
     await a.forget("alpha");
     expect(existsSync(join(home, "workspaces", "alpha", "web-chat-archive"))).toBe(false);
+  });
+
+  it("#4101 review N2: retention applies on a read too — an agent gone quiet does not keep serving months past it", async () => {
+    let now = Date.UTC(2026, 7, 5);
+    const days = { v: undefined as number | undefined }, home = tmp();
+    const a = new WebChatArchive({ home, ownerOf: () => "dir:/w/alpha", retentionDays: () => days.v, logger: log, now: () => now });
+    a.append("alpha", [line(1)]); await a.flush();                        // August
+    now = Date.UTC(2026, 10, 5); days.v = 30;                             // November, 30 days: August is past it
+    expect(a.older("alpha", null, 10).lines).toEqual([]);
+    expect(readdirSync(join(home, "workspaces", "alpha", "web-chat-archive"))).toEqual(["owner"]);
   });
 });
 
