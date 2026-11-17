@@ -73,7 +73,10 @@ describe("owner CSS lifecycle admission", () => {
   it("an unowned existing link never gets a successful admission verdict", async () => {
     const f=await boot({active:A,evidence:'on'});f.link().remove();const extra=p!.document.createElement('link');extra.id='owner-css';p!.document.head.appendChild(extra);f.nav.navStore.set({route:{panel:'chat',instance:'b'},seq:2});expect(f.css.ownerCssLifecycle.get()).toMatchObject({state:'unknown',reason:'unowned_link'});
   });
-  it.each([{route:'settings'},{mode:'view-only'},{publicLink:true},{safe:true}])("host-disabled surface has no link: %j", async opts => {
+  it("M-3278: the public link's page is not a host-disabled surface: it links the sheet", async () => {
+    const f=await boot({active:A,evidence:'on',publicLink:true});expect(f.link()).not.toBeNull();
+  });
+  it.each([{route:'settings'},{mode:'view-only'},{safe:true}])("host-disabled surface has no link: %j", async opts => {
     const f=await boot({active:A,evidence:'on',...opts});expect(f.link()).toBeNull();expect(f.css.ownerCssLifecycle.get().state).toBe('off');
   });
   it("Settings removes the sheet, leaving recreates a loading sheet with a new generation", async () => {

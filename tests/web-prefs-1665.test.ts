@@ -241,11 +241,12 @@ describe("/ui/prefs", () => {
     const rw = ro.write({ set: { theme: "dark" } });
     await flush();
     expect([rw.status(), rw.json().error, ro.prefs.read().values]).toEqual([403, "prefs_read_only", {}]);
-    // It reads what is in force.
+    // It reads what is in force — M-3278 (decision 7933bf90): in the admin session's own person scope, as on the local
+    // dashboard (here the operator's), no longer the scope-less view.
     const t = setup({ publicLink: true });
     t.prefs.write(OPERATOR, new Map([["theme", "dark"]]));
     const r = t.read();
-    expect([r.status(), r.json()]).toEqual([200, { values: { theme: "dark" }, rev: 1, ownerScope: "none", ownerEpoch: null }]);
+    expect([r.status(), r.json()]).toEqual([200, { values: { theme: "dark" }, rev: 1, ownerScope: "operator", ownerEpoch: expect.stringMatching(/^[0-9a-f]{16}$/) }]);
     expect([isPublicWebRoute("GET", "/ui/prefs"), isPublicWebRoute("POST", "/ui/prefs")]).toEqual([true, true]);
   });
   it("a read-only session cannot write", async () => {

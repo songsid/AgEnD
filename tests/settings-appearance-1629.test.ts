@@ -48,8 +48,9 @@ describe("Settings → Appearance", () => {
     await settle(); await settle();
     expect([p!.root.querySelector(".s-owner-css .err")?.textContent, oc.ownerCssTrial.get()]).toEqual(["Not saved: @import isn't allowed.", null]);
   });
-  it("over the public link: only that it is not available here; nothing is read", async () => {
+  it("M-3278: over the public link the full Look is drawn, custom CSS included (its admin session's own)", async () => {
     const { calls } = await mount({ publicLink: true });
-    expect([p!.root.querySelector(".s-css-text"), p!.root.textContent.includes("isn't available over a public link"), calls]).toEqual([null, true, []]);
+    expect([!!p!.root.querySelector(".s-css-text"), p!.root.textContent.includes("isn't available over a public link")]).toEqual([true, false]);
+    expect(calls.some(c => c.url.startsWith("/ui/owner-css"))).toBe(true);
   });
 });

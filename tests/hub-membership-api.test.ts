@@ -76,9 +76,11 @@ describe("owner membership API and real FleetManager Settings composition", () =
     expect(await call({ method: "GET", raw: { hub_member: { enabled: "true" } } })).toMatchObject({ status: 409, body: { error: "invalid_hub_membership" } });
   });
   it("only a server-owned local-admin continuation writes; body and save errors are bounded", async () => {
-    for (const o of [{}, { replay: true, admin: false }, { replay: true, gateway: true }]) {
+    for (const o of [{}, { replay: true, admin: false }, { replay: true, gateway: true, admin: false }]) {
       const r = await call(o); expect(r.status).toBe(403); expect(r.save).not.toHaveBeenCalled();
     }
+    // M-3278 (decision 7933bf90): the public link's admin continuation writes as a local one does.
+    expect(await call({ replay: true, gateway: true, raw: { hub_member: { remembered: "keep" } } })).toMatchObject({ status: 200, body: { ok: true, enabled: true } });
     const good = await call({ replay: true, raw: { hub_member: { remembered: "keep" } } });
     expect(good).toMatchObject({ status: 200, body: { ok: true, enabled: true }, raw: { hub_member: { enabled: true, remembered: "keep" } } });
     expect(good.save).toHaveBeenCalledWith([{ path: ["hub_member", "enabled"], value: true }]);
@@ -115,7 +117,7 @@ describe("owner membership API and real FleetManager Settings composition", () =
     expect((yaml.load(readFileSync(h.file, "utf8")) as any).hub_member).toEqual({ enabled: false, remembered: "keep" });
     expect((await h.gate.store.list("local-owner")).filter((v: any) => v.state === "pending")).toHaveLength(0);
   });
-  it("pending enable never survives a changed baseline or revoked local owner; public requests make no proposal", async () => {
+  it("pending enable never survives a changed baseline or revoked local owner; the public link's admin proposes as locally (M-3278)", async () => {
     for (const mode of ["baseline", "session", "admin"] as const) {
       const h = fleet(), r = await h.request(true);
       if (mode === "baseline") h.fm.saveFleetConfig([{ path: ["hub_member", "remembered"], value: "newer" }]);
@@ -124,7 +126,7 @@ describe("owner membership API and real FleetManager Settings composition", () =
       const settled = await h.gate.store.decide(r.body.pending_change.id, "confirm", { label: "host", current: () => true });
       expect(["stale", "failed"]).toContain(settled.state); expect(h.fm.getRawFleetConfig().hub_member.enabled).toBe(false);
     }
-    const h = fleet(); expect((await h.request(true, true)).status).toBe(403); expect(h.gate.store.list("local-owner")).toEqual([]);
+    const h = fleet(); expect((await h.request(true, true)).status).toBe(202); expect(h.gate.store.list("local-owner")).toHaveLength(1);
   });
   it("a cached on value cannot bypass confirmation after the owner manually turned the file off", async () => {
     const h = fleet(); h.fm.saveFleetConfig([{ path: ["hub_member", "enabled"], value: true }]);

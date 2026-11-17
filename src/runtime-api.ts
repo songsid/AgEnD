@@ -83,7 +83,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     return true;
   }
   const hub = ctx.runtimeCoordinator!();
-  // The header token (an agent's) may still use these routes, but it is shown no account: only an admin session on the directly reached dashboard is (accountIdentityVisible).
+  // The header token (an agent's) may still use these routes, but it is shown no account: only an admin session is (accountIdentityVisible; M-3278: the public link's too).
   const machineFor = (machine: RuntimeMachine): RuntimeMachine => accountIdentityVisible(req, url, ctx) ? machine : machineWithoutAccountIdentity(machine);
   // `enrollments` is what the page shows next to a token it issued (a status and a time, never the token or its hash), so a computer that joins is noticed on the next refresh. Only the administrator
   // session that makes and revokes them is shown them: the header token (an agent's) gets none.
@@ -141,7 +141,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
   }
   const setupRoute = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})\/(remote-setup|cli-install)$/.exec(url.pathname);
   if (setupRoute) {
-    // Only a local administrator session (remoteSetupActor); a header token, guest, public link or gateway gets nothing, and is not told why.
+    // Only an administrator session (remoteSetupActor; M-3278: the public link's too); a header token or guest gets nothing, and is not told why.
     const id = setupRoute[1], what = setupRoute[2], machine = hub.machine(id);
     // AGEND-148 (Prism R3 on #3539): an install (and the Update that reuses it) is the Settings gate's confirmed replay and nothing else — the same gate, principal, per-admin policy and replay
     // that #3542 put in front of the host's install (settings-http-confirmation.ts proposes it; the administrator's own Apply now / digest-bound code confirms it). The replay has no session: the

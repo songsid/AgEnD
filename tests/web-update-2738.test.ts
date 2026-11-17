@@ -108,8 +108,8 @@ describe("M-2738: the offer follows the notice's rules", () => {
 });
 
 describe("M-2738: /ui/update on the dashboard", () => {
-  it("anonymous 401, a guest 403, a read session only the version, an admin the offer; never a public route", async () => {
-    for (const [m, p] of [["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["GET", "/ui/update/log"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
+  it("anonymous 401, a guest 403, a read session only the version, an admin the offer; M-3278: on the public link's route list too", async () => {
+    for (const [m, p] of [["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["GET", "/ui/update/log"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(true);
     const f = await fleet();
     try {
       await f.offer("2.3.5-beta.3");
@@ -308,15 +308,20 @@ describe("M-2738 Fable #3504 review: who may reach the routes, asked at the hand
   }
   const ROUTES = [["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["GET", "/ui/update/log"]] as const;
 
-  it("(1) a request bound to a public link is answered 404 on every /ui/update route, even an admin's", async () => {
+  it("(1) M-3278: a request bound to a public link is answered as locally — its admin reads the offer; its read session starts nothing", async () => {
     const f = await fleet();
     try {
       await f.offer("2.3.5-beta.3");
-      const sid = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken), owner: { adapterId: "discord", userId: "1" } }).sessionId;
+      const made = (tier: "admin" | "read") => f.fm.webSessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken), owner: { adapterId: "discord", userId: "1" } }).sessionId;
+      const over = (sid: string) => ({ host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sid}`, origin: "https://x.trycloudflare.com",
+        "x-agend-csrf": csrfTokenFor(sid), "content-type": "application/json", "idempotency-key": "k-gw-00001" });
+      const admin = made("admin"), read = made("read");
+      const offer = await call(f, { method: "GET", path: "/ui/update", gateway: true, headers: over(admin) });
+      expect([offer.status, offer.body.admin]).toEqual([200, true]);
       for (const [method, path] of ROUTES) {
-        const r = await call(f, { method, path, gateway: true, headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sid}`, origin: "https://x.trycloudflare.com",
-          "x-agend-csrf": csrfTokenFor(sid), "content-type": "application/json", "idempotency-key": "k-gw-00001" }, ...(method === "POST" ? { body: { confirm: "update-agend" } } : {}) });
-        expect([path, r.status], path).toEqual([path, 404]);
+        if (method !== "POST") continue;
+        const r = await call(f, { method, path, gateway: true, headers: over(read), body: { confirm: "update-agend" } });
+        expect([path, r.status], path).toEqual([path, 403]);
       }
       await new Promise(r => setTimeout(r, 30));
       expect(spawned).toEqual([]);

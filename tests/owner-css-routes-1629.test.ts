@@ -100,14 +100,16 @@ describe("who may use it", () => {
     } finally { await f.stop(); }
   }, 30_000);
 
-  it("the public link: absent from its manifest — every route, read or write — and refused by the handler on its own", async () => {
+  it("M-3278: the public link carries every route for its admin session (as locally); its read session still writes nothing", async () => {
     for (const [m, p] of [["GET", "/ui/owner-css.css"], ["GET", "/ui/owner-css/state"], ["GET", `/ui/owner-css/asset/${"a".repeat(32)}`], ["POST", "/ui/owner-css"],
-      ["POST", "/ui/owner-css/shown"], ["POST", "/ui/owner-css/keep"], ["POST", "/ui/owner-css/revert"], ["POST", "/ui/owner-css/restore"], ["POST", "/ui/owner-css/asset"], ["DELETE", `/ui/owner-css/asset/${"a".repeat(32)}`]] as const) {
-      expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
+      ["POST", "/ui/owner-css/shown"], ["POST", "/ui/owner-css/keep"], ["POST", "/ui/owner-css/revert"], ["POST", "/ui/owner-css/restore"], ["POST", "/ui/owner-css/asset"]] as const) {
+      expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(true);
     }
+    expect(isPublicWebRoute("DELETE", `/ui/owner-css/asset/${"a".repeat(32)}`)).toBe(false);   // no such route anywhere
     const f = await fleet();
     try {
-      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
+      const made = (tier: "admin" | "read") => f.fm.webSessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) }).sessionId;
+      let sessionId = made("admin");
       const call = (method: string, path: string) => new Promise<number>(resolve => {
         let status = 0;
         const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { status = c; res.headersSent = true; return res; }, end() { resolve(status); } };
@@ -115,8 +117,9 @@ describe("who may use it", () => {
         bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
         expect(handleWebRequest(req as never, res, new URL(`https://x.trycloudflare.com${path}`), f.fm)).toBe(true);
       });
-      expect([await call("GET", "/ui/owner-css.css"), await call("GET", "/ui/owner-css/state"), await call("POST", "/ui/owner-css"), await call("POST", "/ui/owner-css/restore")])
-        .toEqual([404, 404, 403, 403]);
+      expect(await call("GET", "/ui/owner-css/state")).toBe(200);
+      sessionId = made("read");
+      expect([await call("POST", "/ui/owner-css"), await call("POST", "/ui/owner-css/restore")]).toEqual([403, 403]);
     } finally { await f.stop(); }
   }, 30_000);
 });
@@ -281,7 +284,8 @@ describe("no agent path reaches it", () => {
       // web-auth.ts: the passive-read classification of the page's own owner-CSS reads.
       // web-mod-*.ts (#1629 r4-5): the mod format, and a person's import and export of their own CSS — reached only by
       // the /ui/mods routes (a signed-in session; tested in web-mods-1629), never by a tool or the agent endpoint.
-      if (["web-api.ts", "web-owner-css.ts", "web-owner-css-store.ts", "fleet-manager.ts", "web-prefs.ts", "web-image-meta.ts", "auth-api.ts", "web-auth.ts",
+      // public-web-gateway.ts (M-3278): the public link's route list, for an admin session's page — never an agent's route.
+      if (["web-api.ts", "public-web-gateway.ts", "web-owner-css.ts", "web-owner-css-store.ts", "fleet-manager.ts", "web-prefs.ts", "web-image-meta.ts", "auth-api.ts", "web-auth.ts",
         "web-mod-bundle.ts", "web-mod-store.ts", "web-mod-export.ts",
         // #2026: file admission names the host CSS store only as a forbidden managed root (pinned below).
         "agent-file-read.ts",

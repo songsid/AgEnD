@@ -9,7 +9,8 @@
  * - What: instance commands only. Fleet-level ones (/status, /restart, /update, /login, …) stay in General
  *   (Discord-first), and /raw is not a command here (it bypasses the [user:] envelope).
  * - The public link (a gateway request) is the outward-facing surface: /save is refused there — it makes the CLI
- *   write a file under a name the caller picks, outside the agent's own judgement.
+ *   write a file under a name the caller picks, outside the agent's own judgement. M-3278 (decision 7933bf90): an admin
+ *   session over the link is not `publicLink` here (the caller says so): it runs /save as on the local dashboard.
  * - /clear asks first, as on the platforms: the first call answers a confirmation token; only the second, with that
  *   token, clears — and only if the instance is still the one that was asked about. /backend (#1806) asks the same way
  *   once its backend, model and effort are chosen.
@@ -19,7 +20,7 @@ import { SAVE_FILENAME_RE } from "./topic-commands.js";
 
 export const WEB_COMMANDS = ["ctx", "compact", "clear", "model", "backend", "effort", "cancel", "btw", "steer", "pause", "wake", "save"] as const;
 export type WebCommand = typeof WEB_COMMANDS[number];
-/** Refused on the public link (see the header). */
+/** Refused on the public link to anyone but an admin session (see the header; M-3278). */
 export const PUBLIC_LINK_REFUSED: ReadonlySet<WebCommand> = new Set<WebCommand>(["save"]);
 export const MAX_COMMAND_ARGS = 4000;
 
@@ -58,7 +59,7 @@ export interface WebCommandDeps {
   applyEffort(instance: string, level: string): Promise<string>;
   effortChoices(instance: string): WebChoices | null;
   /** #1806: the next `/backend` step for these arguments (each choice's id is the arguments with it added). */
-  /** `publicLink`: the request came over the public link, where the dashboard's Sign in is refused (#2233). */
+  /** `publicLink`: the request came over the public link from anyone but an admin session (M-3278), where the dashboard's Sign in is refused (#2233). */
   backendStep(instance: string, args: string, opts?: { publicLink: boolean }): Promise<WebBackendAnswer>;
   /** #1806: switch, if the token is live, for these same arguments, and the instance is still on the backend asked about. */
   backendConfirm(instance: string, args: string, token: string): Promise<{ status: number; text: string }>;

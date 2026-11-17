@@ -134,8 +134,7 @@ describe("S-120: POST /ui/public-link/close", () => {
     // M-3278: closed over the link itself, the answer goes first (202), then the link closes.
     expect(answer).toEqual({ status: 202, body: { ok: true, closing: true } });
     await vi.waitFor(() => expect(closeSpy).toHaveBeenCalledTimes(1));
-    expect(closeSpy).toHaveBeenCalledTimes(1);
-    expect(h.fm.getPublicWebStatus().state).toBe("closed");
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("closed"));
   }, 30_000);
 
   it("an admin on this fleet's own listener closes the open link at once, and its owner is forgotten", async () => {
