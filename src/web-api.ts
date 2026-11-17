@@ -2754,11 +2754,14 @@ export function handleWebRequest(
   // Office is an admin's (decision 7933bf90: over the public link too), as the archive's reads: a guest (no Office) or a
   // read-only session is refused; a registered instance; a person (a session revoked meanwhile: 401).
   if (method === "POST" && path === "/ui/office-tell") {
-    if (!adminAdmissionOf(req, url, ctx) || guestRequestOf(req)) { req.resume(); json(res, 403, { error: "admin_only" }); return true; }
+    const admission = adminAdmissionOf(req, url, ctx);
+    if (!admission || guestRequestOf(req)) { req.resume(); json(res, 403, { error: "admin_only" }); return true; }
     (async () => {
       let raw: Record<string, unknown>;
       try { raw = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
       if (!permitWebContinuation(req, res, ctx)) return;
+      // Fable #4130: still that admin once the body is in (a session demoted meanwhile queues nothing), as the other admin POSTs.
+      if (adminAdmissionOf(req, url, ctx) !== admission || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return; }
       const b = raw as { instance?: unknown; kind?: unknown } | null;
       const instance = typeof b?.instance === "string" ? b.instance : "", kind = b?.kind;
       if (!instance || instance.length > 128 || !safeInstanceSegment(instance) || (kind !== "pat" && kind !== "feed")) { json(res, 400, { error: "instance and kind (pat or feed) required" }); return; }
