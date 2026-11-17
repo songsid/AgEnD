@@ -4110,7 +4110,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-settings .s-host-cli-row > .s-actions { grid-column: 1 / -1; grid-row: auto; }
   .p-settings .s-host-cli-help[data-inline-help="true"] { grid-column: 1 / -1; grid-row: 2; }
   .p-settings .s-host-cli-help[data-inline-help="true"] > summary { position: relative; top: auto; right: auto; }
-  .p-settings .s-host-cli-help > summary, .p-settings .s-host-cli-row .btn { min-height: 40px; }
+  .p-settings .s-host-cli-row .btn { min-height: 40px; }
+  /* Phone tap size (style guide rule 7): the accounts have their own section now, so the UI gate measures these controls. */
+  .p-settings :is(.s-host-cli-help > summary, button.s-account-used) { min-height: var(--tap); min-width: var(--tap); }
+  .p-settings :is(.s-agents-accounts-link, .s-auth-scope > div) > a { display: inline-flex; align-items: center; gap: 6px; min-height: var(--tap); min-width: var(--tap); }
   .p-settings .s-host-cli-help > summary::after { top: 15px; }
   .p-settings .s-host-cli-help[open] > summary::after { top: 18px; }
   .p-settings .s-api-key-form { grid-template-columns: minmax(0, 1fr); }

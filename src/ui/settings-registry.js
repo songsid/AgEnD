@@ -12,8 +12,12 @@ import "./settings-public-session-strings.js";   // #3708: publicSessionAbsolute
 import "./settings-access-strings.js";   // …and this one (webLoginQr), added by Access & security (#3061)
 import "/assets/chat-strings.js";
 import { GUESTS_SETTINGS } from "./settings-guests.js";
+import { CLI_CAPS } from "./cli-caps.js";
 
 const L = (en, zh) => ({ en, "zh-TW": zh });
+// The CLIs' names as search words for the AI accounts (AGEND-288), from the registry-generated cli-caps.js — not a list written out here:
+// each id ("claude-code") and its first word ("claude").
+const CLI_WORDS = Object.keys(CLI_CAPS).flatMap((id) => [id, id.split("-")[0]]);
 /** [id, section, target, labelKey | label, config key, words en, words zh] */
 const ROWS = [
   ["general.location", "agent-defaults", "#general-location", null, null, ["general", "windows", "paired PC", "host", "location"], ["General", "Windows", "電腦", "主機", "執行位置"], L("Run General on", "General 執行位置")],
@@ -49,7 +53,7 @@ const ROWS = [
   // AGEND-288: the AI accounts have their own section, and are found by the words people use for them ("account", "帳號", a CLI's
   // name) — before this, only the provider API keys were registered, and "帳號" found Hub's company account instead. The
   // target is the Accounts group (always drawn, whatever the host's CLIs report); the rows below it come and go with the data.
-  ["accounts.ai-accounts", "accounts", ".s-accounts", null, null, ["account", "accounts", "ai account", "ai accounts", "connect", "connect account", "sign in", "login", "cli login", "credential", "credential profile", "claude", "claude code", "codex", "kiro", "gemini", "grok"], ["AI 帳號", "帳號", "連接帳號", "連線", "登入", "CLI 登入", "憑證", "Claude", "Codex"], L("AI accounts", "AI 帳號")],
+  ["accounts.ai-accounts", "accounts", ".s-accounts", null, null, ["account", "accounts", "ai account", "ai accounts", "connect", "connect account", "sign in", "login", "cli login", "credential", "credential profile", "claude code", ...CLI_WORDS], ["AI 帳號", "帳號", "連接帳號", "連線", "登入", "CLI 登入", "憑證", "Claude", "Codex"], L("AI accounts", "AI 帳號")],
   ["accounts.add", "accounts", ".s-accounts", null, null, ["add account", "new account", "another account", "named account", "credential profile", "second account"], ["新增帳號", "新帳號", "另一個帳號", "命名帳號", "多個帳號"], L("Add an account", "新增帳號")],
   ["accounts.default", "accounts", ".s-accounts", null, "defaults.backend_options", ["default account", "fleet default", "which account", "move agents", "switch account", "default connection"], ["預設帳號", "預設連線", "切換帳號", "移動 Agent", "哪個帳號"], L("Default account", "預設帳號")],
   ["accounts.keepalive", "accounts", ".s-accounts", null, null, ["keep alive", "keep connection alive", "keepalive", "stay signed in", "session expires", "refresh login"], ["保持連線", "保活", "保持登入", "登入過期"], L("Keep connection alive", "保持連線")],
