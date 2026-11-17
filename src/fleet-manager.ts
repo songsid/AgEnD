@@ -2620,16 +2620,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private hubClassicPrivacy: HubClassicPrivateTurns | null = null;
   private classicPrivacy():HubClassicPrivateTurns { return this.hubClassicPrivacy??=new HubClassicPrivateTurns(join(this.dataDir,"hub-classic-private.json")); }
-  private classicHubPrivateBlocked(agent:string):boolean {return this.isClassicInstance(agent)&&this.classicPrivacy().blocked(agent);}
+  /** The mark outlives registration: a late tool from a removed room must not fall through to General. */
+  private classicHubPrivateBlocked(agent:string):boolean {return this.classicPrivacy().blocked(agent);}
   private classicHubSerialized(agent:string):boolean {
-    if(!this.isClassicInstance(agent))return false;
     if(this.classicHubPrivateBlocked(agent))return true;
+    if(!this.isClassicInstance(agent))return false;
     try{return this.hubMemberExposureApi?.list().some(row=>row.agent===agent&&row.state!=="withdrawn")??false;}catch{return true;}
   }
   private hubPrivateQuestions:((agent:string)=>boolean)|null=null;
   private classicRoomPersonInput(agent:string,payload:Record<string,unknown>):boolean {
     const meta=payload.meta as Record<string,unknown>|undefined;
-    return this.isClassicInstance(agent)&&payload.type==="fleet_inbound"&&!!meta&&typeof meta.chat_id==="string"&&!!meta.chat_id
+    return (this.isClassicInstance(agent)||this.classicHubPrivateBlocked(agent))&&payload.type==="fleet_inbound"&&!!meta&&typeof meta.chat_id==="string"&&!!meta.chat_id
       &&typeof meta.user_id==="string"&&!!meta.user_id&&!meta.from_instance&&!meta.is_cross_instance;
   }
   /** Prepare a public handoff without opening output until IPC accepts that exact input. */

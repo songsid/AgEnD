@@ -100,3 +100,8 @@ it("rechecks the private turn after asynchronous reply validation",async()=>{
  const sending=r.send("reply",{text:"MUST_NOT_LEAK_AFTER_AWAIT"});await vi.waitFor(()=>expect(release).toBeTypeOf("function"));expect(await r.ask()).toBe(true);release(null);const result=await sending;
  expect(r.adapter.sendText).not.toHaveBeenCalled();expect(result.error).toMatch(/Hub|private/i);
 });
+
+it("keeps private output fenced after the Classic room is unregistered",async()=>{
+ const r=rig();expect(await r.ask()).toBe(true);r.classic.unregister("111111111111111111","fixture-adapter");
+ const result=await r.send("reply",{text:"PRIVATE_AFTER_UNREGISTER"});expect(r.adapter.sendText).not.toHaveBeenCalled();expect(result.error).toMatch(/Hub|private/i);
+});
