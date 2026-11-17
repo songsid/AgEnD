@@ -23,7 +23,7 @@ npm run typecheck
 npm run typecheck:tests
 ```
 
-The browser harness uses real HTTPS/SQLite/audit and the actual local sharing writer with an inert in-process member transport, synthetic directory and identities. Chromium is headless on Linux. It checks the existing-share notice/acknowledgement, sharing preview and explicit owner edit, with no grant sent by the intro Save. No page errors, foreign requests, nested forms or horizontal overflow. No account, vendor CLI, model call, live Fleet or Windows window.
+The browser harness uses real HTTPS/SQLite/audit and the actual local sharing writer with an inert in-process member transport, synthetic directory and identities. Chromium is headless on Linux. It checks the existing-share notice/acknowledgement, sharing preview and explicit owner edit. The form-isolation unit test separately pins that intro Save never submits the surrounding grant form. No page errors, foreign requests, nested forms or horizontal overflow. No account, vendor CLI, model call, live Fleet or Windows window.
 
 | View | Desktop EN/light | Phone zh-TW/dark |
 |---|---|---|
