@@ -1,3 +1,4 @@
+import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "../room-answer-status-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "../room-brief-model.js";
 import {roomRoster,previousRoster,buildRoomBrief,confirmRoomBrief} from "./brief.js";
 /** Durable group-room deliveries. Room consent is separate from one-to-one grants. */
@@ -139,15 +140,16 @@ export class HubRoomAgents {
   }
   progress(db: DB, parentId: string): RoomMessage["ask"] {
     const rows = (this.core.deps.personal
-      ? db.prepare("SELECT CASE WHEN d.state='queued' AND j.state='working' THEN 'sent' ELSE d.state END state,COUNT(*) n FROM hub_room_deliveries d LEFT JOIN hub_personal_jobs j ON j.room_delivery_id=d.id WHERE d.parent_id=? GROUP BY 1").all(parentId)
-      : db.prepare("SELECT state,COUNT(*) AS n FROM hub_room_deliveries WHERE parent_id=? GROUP BY state").all(parentId)) as { state: Delivery["state"]; n: number }[];
+      ? db.prepare("SELECT CASE WHEN d.reason_code='finished-without-answer' AND d.state IN ('queued','sent') THEN 'expired' WHEN d.state='queued' AND j.state='working' THEN 'sent' ELSE d.state END state,COUNT(*) n FROM hub_room_deliveries d LEFT JOIN hub_personal_jobs j ON j.room_delivery_id=d.id WHERE d.parent_id=? GROUP BY 1").all(parentId)
+      : db.prepare("SELECT CASE WHEN reason_code='finished-without-answer' AND state IN ('queued','sent') THEN 'expired' ELSE state END state,COUNT(*) AS n FROM hub_room_deliveries WHERE parent_id=? GROUP BY 1").all(parentId)) as { state: Delivery["state"]; n: number }[];
     if (!rows.length) return undefined;
     const n = (state: Delivery["state"]) => rows.find(r => r.state === state)?.n ?? 0;
     const total = rows.reduce((v, r) => v + r.n, 0), failed = n("expired"), blocked = n("retired");
+    const missing=total===1&&failed===1&&db.prepare("SELECT 1 FROM hub_room_deliveries WHERE parent_id=? AND reason_code='finished-without-answer'").get(parentId);
     const stopped = total === 1 && blocked === 1 && db.prepare("SELECT 1 FROM hub_room_deliveries WHERE parent_id=? AND reason_code='owner-stopped-sharing'").get(parentId);
     return { total, answered: n("answered"), working: n("sent"), later: n("queued"),
       ...(failed ? { failed } : {}), ...(blocked ? { blocked } : {}),
-      ...(total === 1 && failed === 1 ? { reason: "expired" as const } : total === 1 && blocked === 1 ? { reason: stopped ? "owner-stopped-sharing" as const : "retired" as const } : {}) };
+      ...(total === 1 && failed === 1 ? { reason: missing?"finished-without-answer" as const:"expired" as const } : total === 1 && blocked === 1 ? { reason: stopped ? "owner-stopped-sharing" as const : "retired" as const } : {}) };
   }
   /** Called inside the person's message transaction, once per idempotency key. */
   /**
@@ -336,10 +338,10 @@ export class HubRoomAgents {
     const link = this.links.get(fleetId), transport = this.core.deps.transport();
     if (!link || !this.supports(link) || !transport) return false;
     const rows = this.core.atomic(db => link.features.has(HUB_ROOM_CONTEXT_CAPABILITY)
-      ? db.prepare(`SELECT d.* FROM hub_room_deliveries d WHERE fleet_id=? AND state IN ('queued','sent') AND (sent_epoch<>? OR last_sent_at<=?)
+      ? db.prepare(`SELECT d.* FROM hub_room_deliveries d WHERE fleet_id=? AND state IN ('queued','sent') AND COALESCE(reason_code,'')<>'finished-without-answer' AND (sent_epoch<>? OR last_sent_at<=?)
           AND (context_generation IS NULL OR EXISTS(SELECT 1 FROM hub_room_context_generations g WHERE g.exposure_id=d.exposure_id AND g.generation=d.context_generation AND g.link_epoch=?))
           ORDER BY created_at,d.rowid LIMIT 64`).all(fleetId,link.linkEpoch,this.core.now()-30_000,link.linkEpoch) as Delivery[]
-      : db.prepare("SELECT * FROM hub_room_deliveries WHERE fleet_id=? AND state IN ('queued','sent') AND (sent_epoch<>? OR last_sent_at<=?) ORDER BY created_at,rowid LIMIT 64").all(fleetId,link.linkEpoch,this.core.now()-30_000) as Delivery[]);
+      : db.prepare("SELECT * FROM hub_room_deliveries WHERE fleet_id=? AND state IN ('queued','sent') AND COALESCE(reason_code,'')<>'finished-without-answer' AND (sent_epoch<>? OR last_sent_at<=?) ORDER BY created_at,rowid LIMIT 64").all(fleetId,link.linkEpoch,this.core.now()-30_000) as Delivery[]);
     for (const d of rows) {
       if (!this.live() || !this.supports(link) || this.links.get(fleetId) !== link) return false;
       try {
@@ -392,6 +394,20 @@ export class HubRoomAgents {
       const value=body.mentionFeedback&&link.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)?personalMentionRefusals(this.core,d.reply_id,d.exposure_id):undefined;
       return {messageId:d.id,answerId:body.answerId,...(value?{mentionRefusals:value}:{})};
     };
+    if(body.notAnswered){
+      if(!link.features.has(HUB_ROOM_ANSWER_STATUS_CAPABILITY))throw new HubProtocolError("incompatible");
+      if(d.answer_id||!pending(d)||!this.core.atomic(db=>this.valid(db,d))||this.core.now()>=d.expires_at)return ack();
+      const permit=await this.permission(d,link);
+      if(!await this.core.eligible(personFromString(d.asker))||!await this.core.eligible(link.owner))throw new HubProtocolError("unavailable");
+      this.core.atomic((db,tx)=>{
+        const now=db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(d.id) as Delivery;
+        if(!link.current())throw new HubProtocolError("stale");
+        if(now.answer_id||!pending(now)||!this.valid(db,now)||this.core.now()>=now.expires_at||now.reason_code==="finished-without-answer")return;
+        db.prepare("UPDATE hub_room_deliveries SET reason_code='finished-without-answer' WHERE id=?").run(d.id);
+        db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id);
+        this.core.audit(tx,{requestId:body.answerId,actor:{kind:"person",person:link.owner},action:"room.answer-missing",result:"completed",roomId:d.room_id,messageId:d.reply_id,exposureId:d.exposure_id,fleetId:link.fleetId,reasonCode:"finished-without-answer"});
+      },permit);this.update(d);return ack();
+    }
     if (d.answer_id) {
       if (d.answer_id !== body.answerId || d.answer_digest !== hash) throw new HubProtocolError("conflict");
       return ack();
@@ -416,7 +432,7 @@ export class HubRoomAgents {
       const e = readExposure(db, d.exposure_id);
       if (pending(current) && this.valid(db, current) && e && (exposureOf(e).state !== "published" || !this.sourcePublished(db, current))) throw new HubProtocolError("unavailable");
       const disclose = pending(current) && this.valid(db, current) && this.core.now() < current.expires_at && !!e && exposureOf(e).state === "published";
-      db.prepare("UPDATE hub_room_deliveries SET state=?,answer_id=?,answer_digest=?,answered_at=CASE WHEN ? THEN COALESCE(answered_at,?) ELSE answered_at END WHERE id=?").run(disclose ? "answered" : "retired", body.answerId, hash, disclose ? 1 : 0, this.core.now(), d.id);
+      db.prepare("UPDATE hub_room_deliveries SET reason_code=CASE WHEN ? THEN NULL ELSE reason_code END,state=?,answer_id=?,answer_digest=?,answered_at=CASE WHEN ? THEN COALESCE(answered_at,?) ELSE answered_at END WHERE id=?").run(disclose?1:0,disclose ? "answered" : "retired", body.answerId, hash, disclose ? 1 : 0, this.core.now(), d.id);
       if (disclose) {
         const seq = (db.prepare("SELECT MAX(sequence) AS n FROM hub_room_posts WHERE room_id=?").get(d.room_id) as { n: number }).n + 1;
         const answerRef = this.core.deps.content.put(tx, { question: body.text });

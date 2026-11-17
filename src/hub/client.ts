@@ -1,3 +1,4 @@
+import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "./room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "./room-members-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "./room-brief-model.js";
 import {HUB_AGENT_INTRO_CAPABILITY} from "./agent-intro-model.js";
@@ -192,6 +193,7 @@ export class HubMemberClient implements HubMemberTransport {
       if (this.options.agentCatalog && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_CAPABILITY)) features.add(HUB_AGENT_CATALOG_CAPABILITY);
       if (this.options.exposureRequests && features.has(HUB_AGENT_CATALOG_CAPABILITY) && frame.payload.capabilities?.includes(HUB_EXPOSURE_REQUEST_CAPABILITY)) features.add(HUB_EXPOSURE_REQUEST_CAPABILITY);
       if (this.options.roomContext && features.has(HUB_ROOM_ASK_CAPABILITY) && frame.payload.capabilities?.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
+      if(features.has(HUB_ROOM_ASK_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_ANSWER_STATUS_CAPABILITY))features.add(HUB_ROOM_ANSWER_STATUS_CAPABILITY);
       if(features.has(HUB_ROOM_POST_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_MEMBERS_CAPABILITY))features.add(HUB_ROOM_MEMBERS_CAPABILITY);
       if(features.has(HUB_ROOM_CONTEXT_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_BRIEF_CAPABILITY))features.add(HUB_ROOM_BRIEF_CAPABILITY);
       if(this.options.roomMentionFeedback&&features.has(HUB_ROOM_ASK_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))features.add(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY);
@@ -204,6 +206,7 @@ export class HubMemberClient implements HubMemberTransport {
           if (value.type === "agent.catalog" && !features.has(HUB_AGENT_CATALOG_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "agent.catalog" && value.payload.requests && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "exposure.request-result" || value.type === "exposure.undo") && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
+          if(value.type==="room.answer"&&value.payload.notAnswered&&!features.has(HUB_ROOM_ANSWER_STATUS_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if(value.type==="room.members"&&value.payload.v2&&!features.has(HUB_ROOM_MEMBERS_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if(value.type==="room.context-state"&&value.payload.brief&&!features.has(HUB_ROOM_BRIEF_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "room.context-state" || value.type === "room.context-input") && !features.has(HUB_ROOM_CONTEXT_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));

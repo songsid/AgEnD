@@ -80,7 +80,7 @@ export function systemText(m) {
  * child counts as failed.
  */
 const count = (v) => (Number.isSafeInteger(v) && v > 0 ? v : 0);
-const REASON = { expired: "reasonExpired", unavailable: "reasonUnavailable", interrupted: "reasonInterrupted", retired: "reasonRetired", unknown: "reasonUnknown" };
+const REASON = { "finished-without-answer":"reasonUnanswered",expired: "reasonExpired", unavailable: "reasonUnavailable", interrupted: "reasonInterrupted", retired: "reasonRetired", unknown: "reasonUnknown" };
 export function askReason(code) { return REASON[code] ? hroom(REASON[code]) : ""; }
 export function askState(ask) {
   if (!ask || !Number.isSafeInteger(ask.total) || ask.total < 1) return null;
@@ -175,7 +175,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
       ...(!direct && Array.isArray(m.reactions) && m.reactions.length ? { reactionBar: reactionBar(m.reactions, { meId, names }) } : {}),
       ...(!direct && kind !== "person" && m.buttons ? { buttons: roomButtons(m.buttons, meId) } : {}),
       ...(quotedId ? { replyTo: { boot: BOOT, id: num(quotedId), sender: quoted ? authorLine(quoted.author, quoted.author?.id === meId, direct) : "", text: quoted ? String(quoted.text || "").slice(0, 120) : "" } } : {}),
-      ...(m.stage === "not-answered" ? { text: m.reasonCode === "owner-stopped-sharing" ? hroom("noAnswerStopped", author.owner?.name || "") : hroom("noAnswer") } : {}) });
+      ...(m.stage === "not-answered" ? { text: m.reasonCode === "owner-stopped-sharing" ? hroom("noAnswerStopped", author.owner?.name || "") : m.reasonCode==="finished-without-answer"?hroom("noAnswerUnanswered"):hroom("noAnswer") } : {}) });
     if (foldAfter) out.push({ boot: BOOT, id: num(`expand:${foldAfter.arg}`), role: "status", sender: "", text: "", bare: true, fold: true, action: foldAfter });
     // Spec §10: once an @所有 Agent has answers, under the last one shown, 「請房間助理整理」 (it sends 「@房間助理 整理上面的回答」).
     if (summarise && lastShown && byId.get(m.answerTo)?.mentions?.includes("all"))

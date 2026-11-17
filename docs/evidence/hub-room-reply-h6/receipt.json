@@ -1,0 +1,29 @@
+{
+  "source": "9483109d969209a0fa3e0a2b66d7b0d64db2585c",
+  "baseline": false,
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "status": "PASS",
+      "checks": [
+        "working before marker",
+        "localized No answer reason",
+        "late answer replaces notice",
+        "no horizontal overflow"
+      ]
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "status": "PASS",
+      "checks": [
+        "working before marker",
+        "localized No answer reason",
+        "late answer replaces notice",
+        "no horizontal overflow"
+      ]
+    }
+  ],
+  "pageErrors": [],
+  "foreign": [],
+  "status": "PASS"
+}

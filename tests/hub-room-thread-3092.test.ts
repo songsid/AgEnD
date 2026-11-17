@@ -514,3 +514,10 @@ describe("a room on the page", () => {
     } finally { restore(); }
   });
 });
+
+it.each(["en","zh-TW"])("H6 missing-answer notice has locale-specific punctuation (%s)",lang=>{
+  i18n.setLang(lang,{store:false});
+  const input={id:"missing",roomId:"room",at:1,sequence:1,author:{kind:"agent",id:"notes",name:"Notes"},text:"",mentions:[],stage:"not-answered",reasonCode:"finished-without-answer"};
+  const rows=thread.toThreadMessages([input],{meId:"reader",ids:new Map()});
+  expect(rows[0].text).toBe(lang==="en"?"No answer: The agent finished without answering here":"沒有回答：Agent 已結束處理，但沒有在這裡回答。");
+});

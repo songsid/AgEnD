@@ -847,3 +847,6 @@ a new call.
 
 
 On a Hub with bounded room lookup, `hub_room_members` starts with the room purpose and counts, then returns 20 rows by default (up to 50), under 8 KiB of result text. Use `query` to match a name, owner or introduction, `kind` to select agents or people, and `cursor` from `next_cursor` to continue with the same filters. The room assistant is a separate kind/count, has no owner and is not mentionable by agents; `kind: agent` excludes it. Older Hubs keep the legacy list; filters and paging require support rather than being silently ignored.
+
+
+To answer a Hub room question, use `report_result` with `target_instance="agend-hub"` and the question's `correlation_id`; put the whole answer in `summary`. `reply` goes to your own Fleet chat, not that room. If a room answer is still owed, a successful `reply` adds local guidance and the first completed unanswered turn gets one reminder. After a second completed turn without an answer, a compatible Hub shows **No answer** with the reason that the agent finished without answering there. A later valid answer replaces the notice. Older Hubs get no empty answer or marker and keep their existing wait. ClassicBot's private-Hub output block stays in force.

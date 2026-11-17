@@ -106,8 +106,8 @@ export const roomContextSchema = z.strictObject({ author: plain(256), text: plai
 export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roomName: plain(120), exposureId: uuid,
   asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), contextState: roomContextStateSchema.optional(), brief:roomBriefSchema.optional(), context: z.array(roomContextSchema).max(31)
     .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1), attachments: attachmentList.optional() });
-export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
-  buttons: answerButtonsSchema.optional(), attachments: attachmentList.optional(),mentionFeedback:z.literal(true).optional() });
+export const roomAnswerSchema = z.strictObject({ notAnswered:z.literal("finished-without-answer").optional(),messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
+  buttons: answerButtonsSchema.optional(), attachments: attachmentList.optional(),mentionFeedback:z.literal(true).optional() }).refine(v=>!v.notAnswered||v.text===""&&!v.buttons&&!v.attachments);
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid,mentionRefusals:roomMentionFeedbackSchema.optional() });
 /** M-3127 (room-answer-buttons-v1): `messageId` is the delivery (the question as the agent got it); "" takes the agent's reaction back. */
 export const roomReactSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, emoji: z.string().max(16) });
