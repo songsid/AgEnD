@@ -1,0 +1,44 @@
+
+  master /r/work/errors-120                                                                  1.3k / 256k │ [Dashboard]
+
+
+     ❯ error turn g                                                                                          1:15 PM
+
+
+  ┃  Request denied (403): invalid_request_error: usage limit reached
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

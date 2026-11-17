@@ -1,0 +1,44 @@
+
+  master /r/work/commands-120                                                                  45 / 256k │ [Dashboard]
+
+
+     ❯ use tool please                                                                                       1:15 PM
+
+
+     ◆ Ran echo tool-ok-marker
+
+     tool done r9                                                                                            1:15 PM
+
+     Worked for 0.1s
+
+
+     ❯ mcp tool please                                                                                       1:15 PM
+
+
+     ◆ Agend-audit-grok Reply
+
+     tool done r10                                                                                           1:15 PM
+
+     Worked for 0.1s
+
+     Switched to grok-mock (low effort)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

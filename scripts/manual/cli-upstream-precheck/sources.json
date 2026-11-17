@@ -85,7 +85,7 @@
     "grok": [
       { "file": "src/backend/grok-model-switch.ts", "symbols": ["answers"], "surfaces": { "answers": "other" } },
       { "file": "src/backend/grok.ts", "exclude": ["parseGrokModelsOutput", "buildCommand", "writeConfig", "probeCLIEnv", "listModels"],
-        "surfaces": { "grokWeeklyLimitDialog": "error", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
+        "surfaces": { "grokWeeklyLimitDialog": "error", "grokSignInDialog": "onboarding", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
           "getStartupDialogs": "onboarding", "getRuntimeDialogs": "approval" } },
       { "file": "src/login-flows.ts", "symbols": ["grok"], "surfaces": { "grok": "onboarding" } },
       { "file": "src/daemon.ts", "symbols": ["LEGACY_NO_CONVERSATION"], "surfaces": { "LEGACY_NO_CONVERSATION": "resume" } },

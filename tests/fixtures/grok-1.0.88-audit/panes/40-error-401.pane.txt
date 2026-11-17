@@ -1,0 +1,44 @@
+
+  master /r/work/errors-120                                                                  1.3k / 256k │ [Dashboard]
+
+
+     ❯ error turn a                                                                                          1:15 PM
+
+
+  ┃  Authentication required: your session has expired or your credentials were rejected. Run /login to re-
+  ┃  authenticate, then resend your message.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

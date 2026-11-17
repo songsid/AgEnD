@@ -1,0 +1,44 @@
+
+  master /r/work/errors-120                                                                  1.3k / 256k │ [Dashboard]
+
+
+     ❯ error turn e                                                                                          1:15 PM
+
+
+  ┃  Retry failed: rate_limit_error: Rate limit exceeded
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

@@ -1,0 +1,30 @@
+{
+  "variants": [
+    {
+      "variant": "legacy-footer",
+      "exit": 1,
+      "assertionRed": true,
+      "test": "recognizes the Tab-only footer"
+    },
+    {
+      "variant": "space-key",
+      "exit": 1,
+      "assertionRed": true,
+      "test": "recognizes the Tab-only footer"
+    },
+    {
+      "variant": "no-sign-in-hold",
+      "exit": 1,
+      "assertionRed": true,
+      "test": "holds the actual unauthenticated screen"
+    },
+    {
+      "variant": "unfenced-sign-in",
+      "exit": 1,
+      "assertionRed": true,
+      "test": "does not turn stale sign-in labels"
+    }
+  ],
+  "exactRestore": true,
+  "sourceSha256": "ffce5ce404a933d8418a056739affb9e706eba66e9aa4a266e7497b687317dd4"
+}

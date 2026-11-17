@@ -31,7 +31,7 @@ const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
  *   ┃  ↑/↓ navigate · y copy                                                Enter:submit
  *   Tab:next answer  │  Esc:scrollback  │  Shift+x:dismiss
  *
- * Before the recorded reset: Shift+x (`X`) closes it with nothing selected (1.0.70 audit; 1.0.77 after Esc needs Space
+ * Before the recorded reset: Shift+x (`X`) closes it with nothing selected (1.0.70 audit; after Esc use Tab
  * first). Never Enter, never a digit, never `y` — digit 3 does not move grok's highlight, and Enter on the default
  * (option 1, Upgrade) is a paid action. The modal leaves no error row, so the quota pause comes from dismissIncident.
  *
@@ -42,7 +42,7 @@ const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
  * re-shows the picker on option 1; the next scan Shift+x-pauses again.
  */
 const GROK_LEGEND_QUESTION = /^Tab:next answer\s+│\s+Esc:scrollback\s+│\s+Shift\+x:dismiss$/;
-const GROK_LEGEND_SCROLLBACK = /^Tab\/Space:question\s+│\s+Ctrl\+e:collapse thinking\s+│\s+Ctrl\+x:shortcuts$/;
+const GROK_LEGEND_SCROLLBACK = /^Tab(?:\/Space)?:question\s+│\s+Ctrl\+e:collapse thinking\s+│\s+Ctrl\+x:shortcuts$/;
 /** One option row: its number and label exactly; its description whole, or cut by grok with "…" on a narrow pane (80 columns). */
 function grokOption(n: number, label: string, description: string) {
   const row = new RegExp(`^${n} \\(○\\) ${label}(?:\\s{2,}(\\S.*))?$`);
@@ -188,20 +188,34 @@ function grokWeeklyLimitTryAgainDialog(instanceDir: string, pending: GrokTryAgai
   };
 }
 
-/** 1.0.77: Esc:scrollback unbinds Shift+x; Space (the legend's Tab/Space:question) restores the picker. */
+/** Esc unbinds Shift+x. Tab restores the picker on 1.0.77 and 1.0.88; 1.0.88 no longer accepts Space. */
 function grokWeeklyLimitScrollbackDialog(): RuntimeDialog {
   const pattern = /You hit your weekly limit\./;
   return {
     pattern,
-    keys: [" "],
+    keys: ["\t"],
     literalKeys: true,
-    description: "Grok Build weekly limit scrollback (Grok 週限) — Space returns to the picker so Shift+x can dismiss",
+    description: "Grok Build weekly limit scrollback (Grok 週限) — Tab returns to the picker so Shift+x can dismiss",
     blocksDelivery: true,
     inputBlocked: true,
     verifyAfterKeys: true,
     autoResolutionKey: "grok-weekly-limit-scrollback",
     answeredByAgend: true,
     isActive: pane => grokWeeklyLimitActive(pane, "scrollback"),
+  };
+}
+
+/** 1.0.88 paints a composer behind sign-in, including when discovery is offline. Never type into it. */
+function grokSignInDialog(): RuntimeDialog {
+  const pattern = /^[ \t]*Sign in with Grok[ \t]+l[ \t]*\r?\n[ \t]*Quit[ \t]+q[ \t]*$/m;
+  return {
+    pattern,
+    isActive: pane => pattern.test(pane)
+      && /^[ \t]*Grok Build[ \t]+\d+\.\d+\.\d+(?:[^\r\n]*)$/.test(pane.trimEnd().split(/\r?\n/).at(-1) ?? ""),
+    keys: [],
+    blocksDelivery: true,
+    inputBlocked: true,
+    description: "Grok sign-in screen — wait for user authorization (no auto-dismiss)",
   };
 }
 
@@ -677,7 +691,7 @@ export class GrokBackend implements CliBackend {
   getStartupDialogs(): StartupDialog[] {
     const dir = this.instanceDir;
     return [
-      // After the recorded reset: Try Again (question) or Space (scrollback) first so the ready pattern cannot
+      // After the recorded reset: Try Again (question) or Tab (scrollback) first so the ready pattern cannot
       // mistake "Grok Build" in the credits row for a composer. Hold is the fallback (before the reset, and if
       // Try Again is already claimed this launch). Never a paid option from startup.
       grokWeeklyLimitTryAgainDialog(dir, this.grokWeeklyTryAgainPending),
@@ -705,6 +719,7 @@ export class GrokBackend implements CliBackend {
       // mistaken for the idle prompt. (The "[Click here to Upgrade]" banner is
       // non-blocking and is intentionally NOT listed — nothing to dismiss.)
       { pattern: /Waiting for approval|Log in to continue|device.*approval/i, keys: [], description: "Grok device-flow login — wait for user authorization (no auto-dismiss)" },
+      grokSignInDialog(),
     ];
   }
 
@@ -767,6 +782,7 @@ export class GrokBackend implements CliBackend {
       grokWeeklyLimitTryAgainDialog(dir, this.grokWeeklyTryAgainPending),
       grokWeeklyLimitDialog(dir, this.grokWeeklyTryAgainPending),
       grokWeeklyLimitScrollbackDialog(),
+      grokSignInDialog(),
       // Mid-task tool-approval prompt ("1. Yes, always  2. Yes  3. No"). Select
       // option 1 so the fleet runs unattended. Primary mechanism is
       // --always-approve at launch; this is the net if that flag is absent/ignored.

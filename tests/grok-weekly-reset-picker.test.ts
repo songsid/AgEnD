@@ -189,10 +189,10 @@ describe("dialogs: before the reset Shift+x; after it Try Again", () => {
     expect(weekly(b, STILL, "startup").map(d => [d.holdOnly, d.keys])).toEqual([[true, []]]);
   });
 
-  it("scrollback after reset: Space first, not Try Again", () => {
+  it.each([SCROLLBACK, readFileSync(new URL("./fixtures/grok-1.0.88-audit/weekly-scrollback.pane.txt", import.meta.url), "utf8")])("scrollback after reset: Tab first, not Try Again", pane => {
     const b = new GrokBackend(dueDir(true));
-    expect(weekly(b, SCROLLBACK).map(d => d.keys)).toEqual([[" "]]);
-    expect(weekly(b, SCROLLBACK, "startup").map(d => d.keys)).toEqual([[" "], []]);
+    expect(weekly(b, pane).map(d => d.keys)).toEqual([["\t"]]);
+    expect(weekly(b, pane, "startup").map(d => d.keys)).toEqual([["\t"], []]);
   });
 });
 

@@ -1,0 +1,42 @@
+{
+  "regression": {
+    "files": 25,
+    "passed": 809
+  },
+  "addedControls": {
+    "files": 3,
+    "passed": 73,
+    "newCases": 6
+  },
+  "resetControls": {
+    "files": 1,
+    "passed": 51,
+    "newCases": 3
+  },
+  "distinctFinalCoverage": {
+    "files": 26,
+    "cases": 818,
+    "note": "Across these staged runs; runtime source unchanged between runs."
+  },
+  "typescript": {
+    "sourceExit": 0,
+    "testExit": 0
+  },
+  "manifest": "current",
+  "mutations": {
+    "caught": 4,
+    "exactRestore": true
+  },
+  "realModelAccountCalls": 0,
+  "binaryVersion": "grok 1.0.88 (2fe3608f7398)",
+  "scopes": [
+    "Linux real TUI on netless local API mock",
+    "actual Daemon/TmuxManager inline model and effort switching"
+  ],
+  "limitations": [
+    "OAuth not completed; external authorization discovery/device endpoints are unreachable in the namespace",
+    "No Windows CLI",
+    "Plain grok login produced no frame within ten seconds; not counted as pass",
+    "Historical unmatched optional approval and statusless401/403 usage classification not broadened"
+  ]
+}

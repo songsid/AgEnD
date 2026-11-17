@@ -1,0 +1,44 @@
+
+  master /r/work/commands-120                                                                  13 / 256k │ [Dashboard]
+
+
+     ❯ mcp tool please                                                                                       1:15 PM
+
+
+     ◆ Agend-audit-grok Reply
+
+     tool done r10                                                                                           1:15 PM
+
+     Worked for 0.1s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

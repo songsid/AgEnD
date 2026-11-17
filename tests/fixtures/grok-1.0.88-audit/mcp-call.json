@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "_meta": {
+      "progressToken": 1
+    },
+    "name": "reply",
+    "arguments": {
+      "text": "audit reply"
+    }
+  }
+}

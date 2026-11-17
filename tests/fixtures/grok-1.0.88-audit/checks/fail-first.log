@@ -1,0 +1,57 @@
+
+ RUN  v4.1.12 <repo>
+
+ ❯ tests/grok-1.0.88-audit.test.ts (5 tests | 2 failed) 34ms
+     × recognizes the Tab-only footer and returns with a literal tab, never a paid choice 13ms
+     × keeps old Tab/Space captures compatible with the same literal tab 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/grok-1.0.88-audit.test.ts > Grok1.0.88 real weekly-limit scrollback > recognizes the Tab-only footer and returns with a literal tab, never a paid choice
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/grok-1.0.88-audit.test.ts:16:21
+     14|     expect(pane.trimEnd().split('\n').at(-1)).toContain('Tab:question'…
+     15|     const dialogs = active(backend(), pane);
+     16|     expect(dialogs).toHaveLength(1);
+       |                     ^
+     17|     expect(dialogs[0]!.autoResolutionKey).toBe('grok-weekly-limit-scro…
+     18|     expect(dialogs[0]!.keys).toEqual(['\t']);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/grok-1.0.88-audit.test.ts > Grok1.0.88 real weekly-limit scrollback > keeps old Tab/Space captures compatible with the same literal tab
+AssertionError: expected [ [ ' ' ] ] to deeply equal [ [ '\t' ] ]
+
+- Expected
++ Received
+
+  [
+    [
+-     "	",
++     " ",
+    ],
+  ]
+
+ ❯ tests/grok-1.0.88-audit.test.ts:26:54
+     24|   it('keeps old Tab/Space captures compatible with the same literal ta…
+     25|     const pane = fixture('weekly-scrollback.pane.txt').replace('Tab:qu…
+     26|     expect(active(backend(), pane).map(d => d.keys)).toEqual([['\t']]);
+       |                                                      ^
+     27|   });
+     28|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  21:19:34
+   Duration  1.65s (transform 1.11s, setup 89ms, import 1.38s, tests 34ms, environment 0ms)
+

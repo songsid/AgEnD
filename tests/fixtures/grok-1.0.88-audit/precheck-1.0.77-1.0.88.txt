@@ -1,0 +1,82 @@
+precheck grok (manifest scripts/manual/cli-upstream-precheck/sources.json, 30 literals)
+  old: <download>/1.0.77 — 1 file, 201.7 MB
+  new: <download>/1.0.88 — 1 file, 207.6 MB
+
+literals in the old artifact: 18 of 30 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 5
+  [idle-busy] 81 -> 87  "Grok Build"   (src/backend/grok.ts:522 GrokBackend.getReadyPattern)
+  [error] 73 -> 78  "rate_limit"   (src/backend/grok.ts:616 GrokBackend.getErrorPatterns.type)
+  [onboarding] 3 -> 2  "Do you trust the contents"   (src/backend/grok.ts:674 GrokBackend.getStartupDialogs.pattern)
+  [onboarding] 75 -> 76  "grok login"   (src/login-flows.ts:211 LOGIN_FLOWS.grok.command)
+  [onboarding] 5 -> 6  "Signed in"   (src/login-flows.ts:219 LOGIN_FLOWS.grok.successPattern)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 5
+  [idle-busy,onboarding] "No, cancel╭╮╰╯y n activeAll agentsExecutescancelledfailedfaile"   near "Grok Build"; "Do you trust the contents"; "Waiting for approval"
+  [idle-busy,onboarding] "Yes, proceedDo you trust the contents of this directory?Grok Build may r"   near "Grok Build"; "Do you trust the contents"; "Waiting for approval"   hint: the old release has "Yes, proceed"… (only a neighbouring string changed?)
+  [idle-busy,onboarding] "Yes, proceedn No, quitEnter or y to trust · n or Esc to quitStarting yo"   near "Grok Build"; "Do you trust the contents"; "Waiting for approval"   hint: the old release has "Yes, proceedn No, quit"… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstBrowse comm"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called first}false{"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+
+NEW PROMPT-LIKE STRINGS elsewhere: 26
+  "Approve ModeEdit Prompt in External EditorOtherSubagents are still running. Stop them?"
+  "Continue the current sessionagent present (re-borrow)Finish answering the current question fi"
+  "No, and tell Grok what to do differently Yes, and don"
+  "Press Enter to jump to a match and Esc to dismiss./findpastePaste images (a"   hint: the old release has "Press Enter to jump to a match and Esc t"… (only a neighbouring string changed?)
+  "Press Enter to review and send** on its transcript row,"   hint: has markdown ** (embedded docs?)
+  "Press Enter to review and send** |"   hint: has markdown ** (embedded docs?)
+  "Press Enter to review and send]unreadable replayed subagent end"
+  "Press Esc to closefwdsclear searchkeep filtersearchcommentdeletefullscree"
+  "Press h to show all.▲▼./../~/Searching Can"   hint: the old release has "Press h to show all."… (only a neighbouring string changed?)
+  "Resume the paused goal<objective> | status | pause | resumeExport the current conversation"   hint: the old release has "Resume the paused goal<objective> | stat"… (only a neighbouring string changed?)
+  "Resume this session here first; its copy can then open in a worktreeChat conversations can"
+  "Would you like to cancel it before moving?"
+  "Yes, allow edits in"
+  "Yes, allow edits in this folder for this sessionYes...event crates/cod"
+  "Yes, proceedNever allow:YesYes, allow onceYes, send onceYes, run this su"   hint: the old release has "Yes, proceed"… (only a neighbouring string changed?)
+  "continue from it with"
+  "press Enter to insert a newline.control-modebyobu-screenunsupported-emulato"   hint: the old release has "press Enter to insert a newline."… (only a neighbouring string changed?)
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.a"   hint: the old release has "press Enter to retry."… (only a neighbouring string changed?)
+  "press Enter to save, Esc to discard,unsetevent crates/codegen/xai-grok-page"
+  "press Esc to close"
+  "press Tab to focus the scrollback, then → on the block"
+  "press a to approveType revision notes, or press a to see the planNo com"   hint: the old release has "press a to approve"… (only a neighbouring string changed?)
+  "press t to turn memory on or off and s for status.HistoryTreeNodenodeId"   hint: the old release has "press t to turn memory on or off and s f"… (only a neighbouring string changed?)
+  "resume this subagentStartYes, start this subagentRunaskauto-reviewalways-approveevent crates"
+  "usage limit as JSONSearchExecuteThinkFetchSwitchModeCheckOpenedPreContextPrevChunkNextChunkI"
+  "usage limit upsellmodel switch/doctor fix/deleteOpened question view from ext_methodFailed t"   hint: the old release has "usage limit upsellmodel switch/doctor fi"… (only a neighbouring string changed?)
+
+POSSIBLE NEIGHBOUR REORDERS (a run of spaces inside a new hit; evidence only, the verdict is unchanged): 0
+
+PROMPT-LIKE STRINGS gone in the new artifact: 24
+  "Approve ModeEdit Prompt in External EditorSubagents are still running. Stop them?"
+  "Continue the current sessionFinish answering the current question first; default model not sa"
+  "No, and tell Grok what to do differently ProtectedEditPermission ser"
+  "Press Enter to jump to a match and Esc to dismiss.pastePaste images (and te"
+  "Press Esc to closefwdsclear searchkeep filter[Open][Copy]"
+  "Press h to show all.No tasks or agents.▲▼ActiveInterruptedBudget Li"
+  "Resume the paused goal<objective> | status | pause | resumeUsage: /loop [interval] <prompt>"
+  "Yes, allow all edits during this sessionYes, and don"
+  "Yes, proceedNever allow:YesYes, allow onceYes, send onceYes, save drafta"
+  "Yes, proceedNo, cancelDo you trust the contents of this directory?Grok B"
+  "Yes, proceedn No, quitEnter or y to trust · n or Esc to quitSigning in"
+  "Yes, proceednDo you trust the contents of this directory?Grok Build may"
+  "press Enter to insert a newline., sandbox.tomlBGrok is using the user profi"
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.C"
+  "press Enter to save, Esc to discardevent crates/codegen/xai-grok-pager/src/"
+  "press Esc to closeevent crates/codegen/xai-grok-pager-minimal/src/full_vi"
+  "press Tab to focus the scrollback, then → on the block."
+  "press a to approve.Type revision notes, or press a to see the plan.No c"
+  "press t to turn memory on or off and s for status.memory/memorymemView"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstRegistryUna"
+
+REASON: 5 new prompt-like string(s) on a known surface: [idle-busy,onboarding] "No, cancel╭╮╰╯y n activeAll agentsExecutescancelledfailedfai"; [idle-busy,onboarding] "Yes, proceedDo you trust the contents of this directory?Grok"; [idle-busy,onboarding] "Yes, proceedn No, quitEnter or y to trust · n or Esc to quit"; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "
+REASON: 5 literal count(s) changed
+REASON: 26 new prompt-like string(s) away from known literals
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 1, hinted new prompts 4
+BASIS: hard=1; hinted=4
+PRECHECK: MAJOR

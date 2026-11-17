@@ -1,0 +1,44 @@
+
+  master /r/work/approval-120                                                                1.5k / 256k │ [Dashboard]
+
+
+     ❯ approval use tool please                                                                              1:20 PM
+
+
+     ◆ Running remove an owned scratch directory and fetch the local mock
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ◆ Remove an owned scratch directory and fe… 0.1s                                             0.2s ⇣1.51k [↓][stop]
+
+  ┃
+  ┃  ›  Remove an owned scratch directory and fetch the local mock
+  ┃  │ mkdir -p /rig/work/owned-directory && rm -rf /rig/work/owned-directory &&·
+  ┃  ┆ curl -s http://127.0.0.1:18080/v1/models > /rig/work/approval-marker
+  ┃  ←/→ widen/narrow scope
+  ┃
+  ┃  2 (●) Yes, proceed
+  ┃  3 (○) No, reject (type to add feedback)
+  ┃  4 (○) Never allow: mkdir -p
+  ┃    (○) Yes, and don't ask again for anything (always-approve mode)
+  ┃
+
+  2/4:select  │  Tab:next option  │  ←/→:scope  │  Ctrl+c:cancel  │  Esc:scrollback
+
