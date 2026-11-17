@@ -1,0 +1,6 @@
+Excerpt from the failing pre-fix regression; repetitive DOM dump omitted.
+ FAIL  tests/hub-personal-ui-m3224.test.ts > retires the consumed install command when the new computer appears
+AssertionError: expected { Object (_listeners, nodeType, ...) } to be null
+ Test Files  1 failed (1)
+      Tests  1 failed | 32 skipped (33)
+   Duration  623ms (transform 284ms, setup 91ms, import 206ms, tests 182ms, environment 0ms)

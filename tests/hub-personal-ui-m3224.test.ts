@@ -8,11 +8,11 @@ const view=()=>({ok:true,enabled:true,canAdd:true,agent:null,computer:{id:"compu
  clis:[{id:"codex",path:"C:\\codex.exe",available:true,authenticated:true,personalStatus:"ready",models:[{id:"model-one",label:"Model One"}]},{id:"claude-code",path:null,available:false,authenticated:false,personalStatus:"unchecked",models:[]}]}});
 const button=(p:AppPage,label:string)=>[...p.root.querySelectorAll("button")].find((b:any)=>b.textContent===label);
 const change=(el:any,value:string,event="input")=>{expect(el).toBeTruthy();el.value=value;fire(el,event);};
-async function fixture(language="en",value:any=view(),overrides:any={}){
+async function fixture(language="en",value:any=view(),overrides:any={},props:any={}){
  const p=page({url:"http://127.0.0.1/ui/hub/exposures",storage:{agend_lang:language}});pages.push(p);words.setLang(language,{store:false});
  const client={personalAgent:vi.fn(async()=>value),refreshPersonalAgent:vi.fn(async()=>value),personalEnrollment:vi.fn(async()=>({ok:true,server:"https://hub.example.test",token:"agend_enroll_"+"a".repeat(43),fingerprint:"b".repeat(64),expiresAt:Date.now()+900000,installer:{scriptSha256:"c".repeat(64)}})),
   savePersonalAgent:vi.fn(async(_scope,input)=>{value.agent={id:"personal",exposureId:"exposure",revision:1,shared:false,...input};return {ok:true,exposure:{id:"exposure"}};}),disconnectPersonalAgent:vi.fn(async()=>({ok:true})),...overrides};
- await p.mount(h(ui.HubPersonalAgent,{client,scope:"captured-signin"}));await settle(20);return {p,client};
+ await p.mount(h(ui.HubPersonalAgent,{client,scope:"captured-signin",...props}));await settle(20);return {p,client};
 }
 it.each(["en","zh-TW"])("uses the personal read-only disclosure and normal controls (%s)",async language=>{
  const {p}=await fixture(language);expect(p.root.textContent).toContain(language==="en"?"Personal agent":"個人 Agent");expect(p.root.textContent).toContain(language==="en"?"Your own AI account":"自己的 AI 帳號");
@@ -35,9 +35,9 @@ it("saves only the named fields and revision under its captured sign-in",async()
  expect(p.root.textContent).toContain("Choose who may ask");expect(client.savePersonalAgent.mock.calls[0][1]).not.toHaveProperty("owner");
 });
 it("keeps the enrollment command private until the owner requests one",async()=>{
- const {p,client}=await fixture();expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();fire(button(p,"Use a different computer"),"click");fire(button(p,"Use a different computer"),"click");await settle(20);expect(client.personalEnrollment).toHaveBeenCalledTimes(1);
+ const data=view(),{p,client}=await fixture("en",data);expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();fire(button(p,"Use a different computer"),"click");fire(button(p,"Use a different computer"),"click");await settle(20);expect(client.personalEnrollment).toHaveBeenCalledTimes(1);
  expect(client.personalEnrollment).toHaveBeenCalledWith("captured-signin");expect(p.root.querySelector("pre")?.textContent).toContain("agend_enroll_");expect(p.root.textContent).toContain("15 minutes");expect(p.root.querySelectorAll("button").filter((b:any)=>b.textContent==="New command")).toHaveLength(1);expect(button(p,"New command")?.className).toContain("btn-ghost");
- change(p.root.querySelector("form input"),"Notes");change(p.root.querySelector("form select"),"codex","change");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);expect(p.root.querySelector("pre")).toBeNull();
+ data.computer.id="replacement";fire(button(p,"Refresh"),"click");await settle(20);expect(p.root.querySelector("pre")).toBeNull();expect(p.root.querySelector("form")).toBeTruthy();
 });
 it("does not call enrollment while disabled or while the owner lacks permission",async()=>{
  const value=view();value.enabled=false;const f=await fixture("en",value);expect(button(f.p,"Use a different computer")).toBeUndefined();expect(f.client.personalEnrollment).not.toHaveBeenCalled();
@@ -81,13 +81,13 @@ it("retries a failed person search without saving the administrator's unsaved po
 
 it("keeps sharing primary until configured, and replacement/disconnect quiet at the bottom",async()=>{
  const data:any=view();data.agent={id:"personal",exposureId:"exposure",revision:1,name:"Notes",cli:"codex",shared:false};
- const {p,client}=await fixture("en",data);expect(p.root.textContent).toContain("Not shared yet. Nobody can ask this agent.");
+ const {p,client}=await fixture("en",data);expect(p.root.textContent).toContain("Saved. Nobody can ask this agent yet.");
  expect(p.root.querySelector('a.btn-primary')?.getAttribute("href")).toBe("/ui/hub/exposures?agent=exposure");
- expect(button(p,"Use a different computer")?.className).toContain("btn-ghost");expect(button(p,"Disconnect computer")?.className).toContain("btn-danger");
+ fire(button(p,"Edit"),"click");await settle();expect(button(p,"Use a different computer")?.className).toContain("btn-ghost");expect(button(p,"Disconnect computer")?.className).toContain("btn-danger");
  (globalThis as any).confirm=undefined;fire(button(p,"Disconnect computer"),"click");fire(button(p,"Disconnect computer"),"click");await settle();const q=confirms.confirmStore.get().queue;
  expect(q).toHaveLength(1);expect(q[0]).toMatchObject({danger:true,confirmLabel:"Disconnect",message:"Disconnect this computer? The agent stops answering. Nothing on the computer is deleted or uninstalled."});
  confirms.answerConfirm(q[0].id,false);await settle();expect(client.disconnectPersonalAgent).not.toHaveBeenCalled();
- data.agent.shared=true;fire(button(p,"Refresh"),"click");await settle(20);expect(p.root.textContent).not.toContain("Not shared yet.");expect(p.root.querySelector('a.btn-primary')).toBeNull();expect(p.root.querySelector("a")?.textContent).toBe("Change who may ask");expect(p.root.querySelector("a")?.parentElement?.className).toBe("field-row");
+ data.agent.shared=true;fire(button(p,"Refresh"),"click");await settle(20);expect(p.root.textContent).toContain("Ready · Shared");expect(p.root.querySelector('a.btn-primary')).toBeNull();expect(p.root.querySelector("a")?.textContent).toBe("Change who may ask");expect(p.root.querySelector("[data-personal-editor]")).toBeTruthy();
 });
 it("leaves an unavailable CLI out of the selector while explaining it separately",async()=>{
  const data=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable"});Object.assign(data.computer.clis[1],{available:true,authenticated:true,path:"C:/claude"});
@@ -96,10 +96,10 @@ it("leaves an unavailable CLI out of the selector while explaining it separately
 });
 it("offers a new command after expiry",async()=>{
  const data:any=view();data.computer=null;const {p}=await fixture("en",data,{personalEnrollment:async()=>({ok:true,expiresAt:Date.now()-1})});
- fire(button(p,"Add a personal agent"),"click");await settle(20);expect(p.root.querySelector("pre")).toBeNull();expect(p.root.textContent).toContain("This command has expired.");expect(button(p,"New command")).toBeTruthy();
+ fire(button(p,"Get install command"),"click");await settle(20);expect(p.root.querySelector("pre")).toBeNull();expect(p.root.textContent).toContain("This command has expired.");expect(button(p,"New command")).toBeTruthy();
 });
 it("keeps certificate help in a closed disclosure and personal terminal advice safe",async()=>{
- const data:any=view();data.computer=null;const next=await fixture("en",data);fire(button(next.p,"Add a personal agent"),"click");await settle(20);expect(next.p.root.querySelector("details")?.getAttribute("open")).toBeNull();
+ const data:any=view();data.computer=null;const next=await fixture("en",data);fire(button(next.p,"Get install command"),"click");await settle(20);expect(next.p.root.querySelector("details")?.getAttribute("open")).toBeNull();
  expect(next.p.root.textContent).toContain("Don't change security settings to get past it.");expect(button(next.p,"Copy command")?.className).toContain("btn-primary");
  const ordinary=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64)),personal=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64),"personal");
  expect(ordinary).toContain("or use the ZIP");expect(personal).not.toContain("or use the ZIP");expect(personal).toContain("Don''t change security settings");expect(personal).toContain("if ($s -and $h -eq");
@@ -107,11 +107,11 @@ it("keeps certificate help in a closed disclosure and personal terminal advice s
 
 it.each(["en","zh-TW"])("requires the explicit Answer only tick and hides folder access claims (%s)",async language=>{
  const data:any=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable",answerOnlyAvailable:true});
- const {p,client}=await fixture(language,data);const toggle=p.root.querySelector('[data-answer-only-option] input');expect(toggle.checked).toBe(false);expect(p.root.querySelector("form")).toBeNull();
- expect(p.root.textContent).toContain(language==="en"?"Use Codex to answer only":"只讓 Codex 回答");
+ const {p,client}=await fixture(language,data);change(p.root.querySelector("form select"),"codex","change");await settle();const toggle=p.root.querySelector('[data-answer-only-option] input');expect(toggle.checked).toBe(false);expect(button(p,language==="en"?"Save personal agent":"儲存個人 Agent")?.disabled).toBe(true);
+ expect(toggle.closest("details")).toBeNull();
  toggle.checked=true;fire(toggle,"change");await settle();
  expect(p.root.textContent).not.toContain("C:\\Shared");expect(p.root.textContent).toContain(language==="en"?"It cannot read your files, run anything or go online.":"它不能讀取你的檔案、執行任何東西或上網");
- change(p.root.querySelector("form input"),"Knowledge");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);
+ change(p.root.querySelector('input[maxlength="256"]'),"Knowledge");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);
  expect(client.savePersonalAgent).toHaveBeenCalledWith("captured-signin",{name:"Knowledge",description:"",cli:"codex",ifRevision:0,answerOnly:true});
 });
 it("keeps a failed empty-tool check unavailable and never selects it automatically",async()=>{
@@ -123,7 +123,7 @@ it("keeps a failed empty-tool check unavailable and never selects it automatical
 it("keeps a saved Answer only choice compact, with its tick and access restriction",async()=>{
  const data:any=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable",answerOnlyAvailable:true});
  data.agent={id:"personal",exposureId:"exposure",revision:1,cli:"codex",answerOnly:true,name:"Knowledge",shared:true};
- const {p}=await fixture("en",data),option=p.root.querySelector("[data-answer-only-option]");
+ const {p}=await fixture("en",data);expect(p.root.querySelector("form")).toBeNull();fire(button(p,"Edit"),"click");await settle();const option=p.root.querySelector("[data-answer-only-option]");
  expect(option.querySelector('input[type="checkbox"]').checked).toBe(true);
  expect(option.textContent).toContain("It cannot read your files, run anything or go online.");
  expect(option.textContent).not.toContain("Codex can't be kept inside one folder on this computer.");
@@ -143,9 +143,68 @@ it("keeps the sign-in action when only authentication withholds an otherwise che
 it("lets the owner turn off a saved Answer only choice if the one-folder check later succeeds",async()=>{
  const data:any=view();Object.assign(data.computer.clis[0],{available:true,personalStatus:"ready",answerOnlyAvailable:false});
  data.agent={id:"personal",exposureId:"exposure",revision:1,cli:"codex",answerOnly:true,name:"Knowledge",shared:true};
- const {p,client}=await fixture("en",data),toggle=p.root.querySelector('[data-answer-only-option] input');
+ const {p,client}=await fixture("en",data);fire(button(p,"Edit"),"click");await settle();const toggle=p.root.querySelector('[data-answer-only-option] input');
  expect(toggle).toBeTruthy();expect(toggle.checked).toBe(true);toggle.checked=false;fire(toggle,"change");await settle();
  expect(p.root.querySelector('[data-answer-only-option]')).toBeNull();expect(button(p,"Save personal agent")?.disabled).toBe(false);
  fire(p.root.querySelector("form"),"submit");await settle(20);
  expect(client.savePersonalAgent.mock.calls[0][1]).not.toHaveProperty("answerOnly");expect(client.savePersonalAgent.mock.calls[0][1].ifRevision).toBe(1);
+});
+
+
+it.each(["en","zh-TW"])("gives a disabled Hub administrator a direct card link (%s)",async language=>{
+ const data:any={...view(),enabled:false,computer:null};
+ const admin=await fixture(language,data,{}, {isAdmin:true});
+ const link=admin.p.root.querySelector("a");expect(link?.getAttribute("href")).toBe("/ui/hub/admin?view=manage&section=personal-agents");
+ expect(link?.textContent).toBe(language==="en"?"Open the setting":"前往設定");
+ expect(admin.client.personalEnrollment).not.toHaveBeenCalled();
+ });
+it.each(["en","zh-TW"])("gives a disabled Hub member its next step without an administrator link (%s)",async language=>{
+ const data:any={...view(),enabled:false,computer:null};
+ const member=await fixture(language,data);expect(member.p.root.querySelector("a")).toBeNull();expect(member.p.root.textContent).toContain(language==="en"?"Personal agents are turned off on this Hub. Ask your Hub administrator.":"這個 Hub 還沒有開啟個人 Agent，請洽 Hub 管理員。");
+ expect(member.p.root.querySelector("ol")).toBeNull();expect(member.client.personalEnrollment).not.toHaveBeenCalled();
+});
+it.each(["en","zh-TW"])("expands one setup step, retaining the optional requirements link (%s)",async language=>{
+ const {p,client}=await fixture(language,{...view(),computer:null});const steps=p.root.querySelectorAll("ol.runtime-steps > li");expect(steps).toHaveLength(4);
+ expect(p.root.querySelectorAll('[aria-current="step"]')).toHaveLength(1);expect(steps[0].getAttribute("aria-current")).toBe("step");
+ expect(steps[0].textContent).toContain(language==="en"?"Node.js 22.14 or newer":"Node.js 22.14 或更新版本");
+ expect(steps[0].querySelector("a")?.getAttribute("href")).toBe("https://nodejs.org/");expect(steps[0].querySelector("details")?.getAttribute("open")).toBeNull();
+ expect(steps[0].querySelector("button")?.textContent).toBe(language==="en"?"Get install command":"取得安裝指令");
+ for(const step of steps.slice(1)){expect(step.querySelector("button,input,select,p")).toBeNull();}
+ expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();
+ fire(button(p,language==="en"?"Get install command":"取得安裝指令"),"click");await settle(20);
+ const next=p.root.querySelectorAll("ol.runtime-steps > li");expect(next[0].textContent).toContain("✓");expect(next[0].querySelector("button,p")).toBeNull();expect(next[1].getAttribute("aria-current")).toBe("step");
+ expect(next[1].textContent).toContain("Windows PowerShell");expect(next[1].querySelector("pre")?.closest("details")).toBeTruthy();
+});
+it.each(["en","zh-TW"])("keeps mode and sharing facts visible at the action (%s)",async language=>{
+ const data:any=view(),{p}=await fixture(language,data);expect(p.root.querySelector('[aria-current="step"]')?.getAttribute("data-personal-step")).toBe("3");
+ const line=p.root.querySelector("[data-personal-disclosure]");expect(line?.closest("details")).toBeNull();expect(line?.textContent).toContain(language==="en"?"People you let ask can get anything in it":"可能取得資料夾內的任何內容");
+ change(p.root.querySelector("form input"),"Notes");change(p.root.querySelector("form select"),"codex","change");await settle();fire(p.root.querySelector("form"),"submit");await settle(20);
+ expect(p.root.querySelector("form")).toBeNull();expect(p.root.querySelector("[data-personal-sharing-disclosure]")?.closest("details")).toBeNull();
+ expect(p.root.querySelector("a.btn-primary")?.textContent).toBe(language==="en"?"Choose who may ask":"選擇誰可以問");expect(p.root.textContent).toContain(language==="en"?"Nobody can ask this agent yet":"目前還沒有人可以問");
+});
+it.each(["ready","working","offline"])("collapses a shared %s agent to its real status and one action",async state=>{
+ const data:any=view();data.agent={id:"personal",exposureId:"exposure",revision:1,name:"Notes",cli:"codex",shared:true};data.computer.working=state==="working";data.computer.connected=state!=="offline";
+ const {p}=await fixture("en",data);expect(p.root.querySelector("form,ol")).toBeNull();expect(p.root.querySelector(".tag")?.textContent).toContain("Shared");
+ if(state==="offline"){expect(p.root.textContent).toContain("connect-agend.bat");expect(p.root.querySelector("details")?.getAttribute("open")).toBeNull();expect(button(p,"Refresh")).toBeTruthy();}
+ else {expect(button(p,"Edit")).toBeTruthy();expect(button(p,"Refresh")).toBeUndefined();}
+ if(state==="working")expect(p.root.textContent).toContain("Answering a question. Keep this computer on.");
+});
+it.each(["enabled","canAdd"])("withholds setup controls after %s is withdrawn while editing",async field=>{
+ const data:any=view();data.agent={id:"personal",exposureId:"exposure",revision:1,name:"Notes",cli:"codex",shared:true};const {p}=await fixture("en",data);
+ fire(button(p,"Edit"),"click");await settle();expect(p.root.querySelector("form")).toBeTruthy();data[field]=false;fire(button(p,"Refresh"),"click");await settle(20);
+ expect(p.root.querySelector("form,ol")).toBeNull();expect(p.root.textContent).toContain(field==="enabled"?"Ask your Hub administrator":"let you add a personal agent");
+});
+
+it("retires the consumed install command when the new computer appears",async()=>{
+ const data:any={...view(),computer:null},f=await fixture("en",data);
+ fire(button(f.p,"Get install command"),"click");await settle(20);expect(f.p.root.querySelector("pre")).toBeTruthy();Object.defineProperty(globalThis.navigator,"clipboard",{configurable:true,value:{writeText:async()=>{}}});fire(button(f.p,"Copy command"),"click");await settle();
+ data.computer=view().computer;fire(button(f.p,"Check connection")??button(f.p,"Refresh"),"click");await settle(20);
+ expect(f.p.root.querySelector("form")).toBeTruthy();expect(f.p.root.querySelector('[aria-current="step"]')?.getAttribute("data-personal-step")).toBe("3");expect(f.p.root.querySelector("pre")).toBeNull();
+});
+
+it("keeps Answer only inline and opt-in when editing a Claude agent to use Codex",async()=>{
+ const data:any=view();Object.assign(data.computer.clis[0],{available:false,personalStatus:"sandbox-unavailable",answerOnlyAvailable:true});Object.assign(data.computer.clis[1],{available:true,path:"C:/claude",authenticated:true});data.agent={id:"personal",exposureId:"exposure",revision:2,name:"Notes",cli:"claude-code",shared:true};
+ const {p,client}=await fixture("en",data);fire(button(p,"Edit"),"click");await settle();change(p.root.querySelector("form select"),"codex","change");await settle();
+ const toggle=p.root.querySelector('[data-answer-only-option] input');expect(toggle.checked).toBe(false);expect(toggle.closest("details")).toBeNull();expect(button(p,"Save personal agent")?.disabled).toBe(true);expect(client.savePersonalAgent).not.toHaveBeenCalled();
+ toggle.checked=true;fire(toggle,"change");await settle();expect(button(p,"Save personal agent")?.disabled).toBe(false);
 });

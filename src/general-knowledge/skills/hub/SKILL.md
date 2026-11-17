@@ -737,20 +737,36 @@ Say plainly that these are not in the product yet:
 
 - On a Hub that offers it, an administrator opens **Administration → Manage → Personal agents**, turns it on, and
   selects the people or teams allowed to add one. It starts off. The administrator is included while it is on.
-- The owner opens **My agents → Personal agent**, reads the folder/account disclosure and chooses **Add a personal
-  agent**. Keep the 15-minute install command private and run it on the intended Windows computer. Node.js, a
-  signed-in Codex or Claude are required. The installer makes an empty folder;
-  put only material intended for sharing there. Choose the available CLI, name and description, save, then use
-  **Choose who may ask**; until sharing is configured, nobody can ask it. Certificate/trust errors mean that the
-  computer does not yet trust this Hub: ask the administrator and do not change security settings to get past it. After installing or signing in to a CLI, use **Refresh** to check it again.
+- If personal agents are off, an administrator uses **Open the setting** / **前往設定** to open the exact
+  **Administration → Manage → Personal agents** card. Other colleagues ask their Hub administrator.
+  If enabled but the person is not allowed to add one, the administrator must allow that person or team.
+- Open **My shared agents → Personal agent** / **我分享的 Agent → 個人 Agent**. The setup stepper expands only the
+  current step; earlier steps become a ticked title and later ones stay as titles:
+  1. Prepare a Windows computer with Node.js 22.14 or newer and Codex or Claude Code signed in. **About this** /
+     **了解更多** holds the optional requirements details. Choose **Get install command** / **取得安裝指令**.
+  2. **Copy command** / **複製指令**, then paste it into Windows PowerShell on that computer. The command is private
+     and valid for 15 minutes. Alternatively give it to the owner's own Codex or Claude Code. After copying,
+     **Check connection** / **檢查連接** checks whether it appeared. **New command** replaces an expired command.
+     **Need help?** / **需要協助？** holds failure guidance: ask the administrator about trust errors; do not bypass security settings.
+  3. Choose Codex or Claude, name the agent and save. The folder/account disclosure stays visible beside the action;
+     **More options** / **更多選項** holds description and model. A Codex that needs **Answer only** shows its explicit
+     tick inline; choosing it alone never enables that mode.
+  4. Saved is not shared: use **Choose who may ask**. Until that choice, nobody can ask it. Folder-mode sharing again
+     warns that the selected people can receive anything in the Hub agent folder.
+  A shared agent collapses to its actual status and **Shared** / **分享中**, with **Edit** / **編輯** for settings.
+  A saved unshared agent keeps its sharing action. **Edit** retains the quiet computer-replacement and confirmed
+  Disconnect controls. **Need help?** holds recovery instructions when the computer is offline.
 - A personal agent answers with its owner's Codex or Claude on their own computer. In the one-folder mode it is read-only in that folder; anything there may be quoted to people allowed to ask. It has no AgEnD tools or connectors.
 - If Codex's one-folder check fails, the owner's card may offer **Use Codex to answer only** / **只讓 Codex 回答**. It stays off until the owner ticks **Turn on Answer only** / **開啟「只回答」** and saves. This separate check must prove the entire tool list empty. In this mode Codex answers only from the question and general knowledge: it cannot read files, run commands, change anything or go online, and says what it could not check. The owner still pays for answers. Asker views show **Answers from general knowledge only. It can't look at any files.** / **只根據一般知識回答，無法查看任何檔案。** Do not ask it to inspect the owner's work. Claude and the one-folder choice stay separate. Changing mode creates a new publication revision and requires sharing for that revision.
 - A direct question or an explicit person's @mention may ask it. A verified **person via agent** request also counts
   as a person. Personal agents are left out of @all; an autonomous agent's @mention is not delivered and the source
   receives “Not delivered: {name} is a personal agent and answers people only.” / 「沒有送出：{name} 是個人 Agent，只回答人的提問。」
   No question is queued for that refusal. Mentions in a personal agent's answer do not ask another agent.
-- A disconnected computer shows **Answers when connected**. One question runs at a time, for at most five minutes;
-  later questions wait. A Hub restart does not re-run a turn whose execution is uncertain.
+- A paired computer shows **Ready**, **Working**, or **Answers when connected** / **待命**、**處理中**、**上線時回答**.
+  While it is working, keep the computer on. If disconnected, turn it on and sign in to Windows; the connection starts
+  automatically by default. If automatic start was turned off, double-click **connect-agend.bat** in the folder the
+  installer showed, then use **Refresh**. One question runs at a time, for at most five minutes; later questions wait.
+  A Hub restart does not re-run a turn whose execution is uncertain.
 - Disconnecting the personal computer stops its authority and keeps the previous conversation history. A replacement
   needs owner setup again before its previous agent can answer. Re-run the install command for updates.
 - These controls appear only on a Hub that offers personal agents. The standalone `--personal-folder` option does

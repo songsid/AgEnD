@@ -1,0 +1,37 @@
+{
+  "applicationBefore": "297475387086e6403eb9724e5452d2024f29b11b",
+  "applicationAfter": "c04069c4259bda91f009e3431724df0c75467ad1",
+  "headlessOnly": true,
+  "screenshots": 28,
+  "pngMetadataEntries": 0,
+  "fixtures": "All directory people, logins, computer names and folders are deliberately synthetic. No live directory or Runtime was queried.",
+  "review": "Card copy/layout accepted after six compact originals were opened by the product manager; user approved three phone views. Final phone replacement fixes only rig composition, with app source byte-identical. Image inspection covers all16 revised originals plus scoped refreshed phone views. No clipping or live identity.",
+  "validation": {
+    "focusedPassed": 47,
+    "focusedFailed": 0,
+    "testTypecheckExit": 0,
+    "beforeBrowserChecks": 37,
+    "afterBrowserChecks": 45,
+    "compactFocusedPassed": 66,
+    "compactFocusedFailed": 0,
+    "compactBrowserChecks": 67,
+    "compactListAlignmentChecks": 19,
+    "compactPhoneCleanChecks": 45
+  },
+  "logPaths": "%REPO% and %HOME%",
+  "publicChecker": "Run with the private check-public tool on the final diff and every GitHub body before publication; no allow override requested.",
+  "compactApplication": "2518084b93eed51c39b69d1df42f88d9c2891254",
+  "compactScreenshots": 16,
+  "compactViewport": {
+    "width": 390,
+    "height": 844,
+    "heightExpanded": false
+  },
+  "compactListAlignmentSource": "8daa17d4742ed6a6fd2b6d5ac214de0e5104ed2c",
+  "compactListAlignmentPictures": 3,
+  "compactPhoneSource": "db1b35924795bec4773c18337e825b3612a7aa09",
+  "compactPhoneInvitationsControl": {
+    "beforeMountStatus": 404,
+    "afterMountStatus": 200
+  }
+}
