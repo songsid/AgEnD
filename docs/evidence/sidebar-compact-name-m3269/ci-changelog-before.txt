@@ -1,0 +1,3 @@
+2026-11-17T05:26:22.2259819Z changelog-assemble: changes/m3269-compact-name.md: the name must be <issue>.md or <issue>-<slug>.md (and .zh-TW.md for zh)
+2026-11-17T05:26:22.2260756Z changelog-assemble: changes/m3269-compact-name.zh-TW.md: the name must be <issue>.md or <issue>-<slug>.md (and .zh-TW.md for zh)
+2026-11-17T05:26:22.3822019Z ##[error]Process completed with exit code 1.

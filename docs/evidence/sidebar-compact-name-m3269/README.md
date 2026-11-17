@@ -19,3 +19,5 @@ The new key is `nav.compactName` (cache `agend_nav_compact_name`). It uses the s
 Risk: a larger Customize menu needs its own scroll area. Both options are visible and clickable in the final captures. Rollback removes this cosmetic choice; it changes no agent identity or schema. Clear `nav.compactName` before rollback if restoring the previous name behavior is desired.
 
 Plain sync after the source run: the incoming dev tip changed only unrelated Hub files. All 20 own paths have identical blobs and modes; no local re-verification on that sync. See `sync.json`.
+
+CI later caught the two changelog fragment filenames. R1 renames them without changing content; the local validator changes from two filename errors to 601 fragments OK. Runtime, UI and tests are unchanged. See `ci-r1.md`.
