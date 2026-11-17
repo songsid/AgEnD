@@ -538,6 +538,8 @@ export interface WebApiContext {
   readonly guestSearches?: OfficeWriteLimiter;
   /** #2578: the agents' live acts in the Office view (office_set); absent: /ui/office-acts is not offered. */
   readonly officeActs?: Pick<OfficeActs, "live">;
+  /** M-3293: an Office pat or feed for the instance's next real message (FleetManager.officeTell); whether it was stored. */
+  officeTell?(instance: string, person: string, kind: "pat" | "feed"): boolean;
   /** #2636: Office share links (office-share-service.ts): the open ones, making and ending one. */
   readonly officeShares?: {
     enabled(): boolean;
@@ -2745,6 +2747,26 @@ export function handleWebRequest(
 
   if (method === "POST" && path === "/ui/send") {
     handleSendMessage(req, res, ctx);
+    return true;
+  }
+
+  // M-3293 (#4119): "Tell" — an Office pat or feed, for the agent's next real message (never a turn, never a wake). The
+  // Office is an admin's (decision 7933bf90: over the public link too), as the archive's reads: a guest (no Office) or a
+  // read-only session is refused; a registered instance; a person (a session revoked meanwhile: 401).
+  if (method === "POST" && path === "/ui/office-tell") {
+    if (!adminAdmissionOf(req, url, ctx) || guestRequestOf(req)) { req.resume(); json(res, 403, { error: "admin_only" }); return true; }
+    (async () => {
+      let raw: Record<string, unknown>;
+      try { raw = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const b = raw as { instance?: unknown; kind?: unknown } | null;
+      const instance = typeof b?.instance === "string" ? b.instance : "", kind = b?.kind;
+      if (!instance || instance.length > 128 || !safeInstanceSegment(instance) || (kind !== "pat" && kind !== "feed")) { json(res, 400, { error: "instance and kind (pat or feed) required" }); return; }
+      if (!registeredChatInstance(ctx, instance) && !ctx.instanceIpcClients.has(instance)) { json(res, 404, { error: `Instance not found: ${instance}` }); return; }
+      const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
+      if (!person) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+      json(res, 200, { queued: ctx.officeTell?.(instance, person.name, kind) ?? false });
+    })();
     return true;
   }
 

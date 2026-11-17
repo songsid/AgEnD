@@ -26,12 +26,12 @@ import { badgeText, fixedOf, tierOf, titleOf, tokens, xpOf } from "./fleet-offic
 register("ocard", {
   en: {
     card: "{0}'s card", level: "Lv {0}", work: "{0} work tokens", estimated: "estimated", toNext: "{0} to Lv {1}", office: "Office", model: "Model", backend: "Backend",
-    today: "Today", todayN: "{0} work tokens · {1} requests", firstSeen: "First seen", day: "Day {0}", now: "Now", find: "Find in office", chat: "Chat",
+    today: "Today", todayN: "{0} work tokens · {1} requests", firstSeen: "First seen", day: "Day {0}", now: "Now", find: "Find in office", chat: "Chat", pat: "Pat", feed: "Feed", tell: "Tell {0} (with their next message)", tellNote: "Off: only you see it. On: a line like “[Office] <your name> patted your head ×3” rides the next message they get anyway — it never wakes them.",
     close: "Close", xp: "Progress to Lv {0}",
   },
   "zh-TW": {
     card: "{0} 的名片", level: "Lv {0}", work: "{0} 工作 token", estimated: "估算", toNext: "再 {0} 到 Lv {1}", office: "辦公室", model: "模型", backend: "後端",
-    today: "今天", todayN: "{0} 工作 token · {1} 次請求", firstSeen: "首次出現", day: "第 {0} 天", now: "現在", find: "在辦公室找他", chat: "聊天",
+    today: "今天", todayN: "{0} 工作 token · {1} 次請求", firstSeen: "首次出現", day: "第 {0} 天", now: "現在", find: "在辦公室找他", chat: "聊天", pat: "摸頭", feed: "餵點心", tell: "讓 {0} 知道（隨下一則訊息）", tellNote: "關閉：只有你看得到。開啟：下一則本來就會送給它的訊息會附上一行，例如「[Office] <你的名字> patted your head ×3」，不會叫醒它。",
     close: "關閉", xp: "升到 Lv {0} 的進度",
   },
 });
@@ -78,9 +78,9 @@ export function cardModel({ node, lv, levels, share = false, state, now, where }
 /**
  * The card. `model`: cardModel's; `avatar(canvas)`: draws the person's idle frame on it; `sheet`: a bottom sheet (a
  * phone); `place(el)`: the page positions the popover (beside the person, following them); `onChat` (none on a share
- * link), `onFind`, `onClose`.
+ * link), `onFind`, `onClose`; M-3293: `onReact(kind)` — Pat and Feed (only where play is on; none on a share link).
  */
-export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose }) {
+export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null }) {
   const box = useRef(null), canvas = useRef(null), swipe = useRef(null);
   useEffect(() => { if (canvas.current && avatar) avatar(canvas.current); });
   useEffect(() => { place && place(box.current); });
@@ -108,7 +108,11 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
     </div>` : null}
     <dl class="oo-card-rows">${m.rows.map(([k, v]) => html`<div><dt>${k}</dt><dd>${v}</dd></div>`)}</dl>
     ${m.now ? html`<div class="oo-card-now"><span class="muted">${tc("now")}:</span> ${m.now}</div>` : null}
+    ${tell ? html`<label class="check oo-card-tell" title=${tc("tellNote")}><input type="checkbox" checked=${tell.on} onChange=${(e) => tell.set(e.target.checked)} />
+      <span>${tc("tell", m.name)}</span></label>` : null}
     <div class="oo-card-actions">
+      ${onReact ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-pat" onClick=${() => onReact("pat")}>${tc("pat")}</button>
+        <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
       ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}
       ${onChat ? html`<button type="button" class="btn btn-sm btn-primary oo-card-chat" onClick=${onChat}>${tc("chat")}</button>` : null}
     </div>
