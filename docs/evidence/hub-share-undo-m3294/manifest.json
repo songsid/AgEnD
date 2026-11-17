@@ -258,7 +258,7 @@
   "evidenceSha256": [
     {
       "path": "docs/evidence/hub-share-undo-m3294/README.md",
-      "sha256": "a5f769eb1243083146ddd0d300a20ef3abe6b9afce895b8edaa52b1b3c37f92e"
+      "sha256": "3f73aa414a247b55a5109a23fc213f9b2babc46b514969f24683f7e995217ade"
     },
     {
       "path": "docs/evidence/hub-share-undo-m3294/logs/browser.log.gz",
@@ -327,6 +327,38 @@
     {
       "path": "docs/evidence/hub-share-undo-m3294/logs/static-consumers.log.gz",
       "sha256": "8314d0ab9926346ffc940d0f771780095bd79ad748f08e31e4711e94e0acc979"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/pm-r1/logs/after.log.gz",
+      "sha256": "f4470a1da7efaafc31e98526b6e2f1d2a5bccfc69ae618b7944fbea7141af019"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/pm-r1/logs/before.log.gz",
+      "sha256": "968da917cfd8e0af446163b635df8e20467f157b78fbe75a3ec006bedbafe7f5"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/pm-r1/logs/browser.log.gz",
+      "sha256": "044839052e68f8074b74a4ad654be732dce2fba137b6e17572d804dab18c8fc1"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/pm-r1/logs/selector-repair.log.gz",
+      "sha256": "1fe5f6e9002f009037ab86ad4a4f79d3c8f4fd05118d98bfb893b125e2d8d7a8"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/pm-r1/logs/selectors-final.log.gz",
+      "sha256": "d013ec38636b54322f6ed5c82b232f98b203d73ce1f3ee2bdedee4b01a0bca72"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/pm-r1/logs/test-tsc.log.gz",
+      "sha256": "b567e00ba9dff6eaf0c8b833443f754a7ed1b905fa887d3749d98295069a168b"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/pm-r1/views/desk-light-en-settings-on.png",
+      "sha256": "ea2898eeb578cf6ab3fbba40c9bc1af1af7eb036ac86a0ac2db199e211b01dc6"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/pm-r1/views/phone-dark-zh-TW-settings-on.png",
+      "sha256": "4f6ecadfcf7697594ca148060204974aac701d4bbdc4ca6a106148090e8cc96c"
     },
     {
       "path": "docs/evidence/hub-share-undo-m3294/reversals.json",
@@ -624,6 +656,33 @@
     {
       "path": "tests/web-settings-search-2347.test.ts",
       "sha256": "18420fb44e4dedad96e6d6b1b9436ea0dd0cabab5924faef28e8eff7dd962bcc"
+    }
+  ],
+  "pmR1Base": "dea8eb7db0a2645182ccd383da38ff38fa0209f8",
+  "pmR1SourceSha256": [
+    {
+      "path": "scripts/manual/hub-share-undo-m3294/browser.mts",
+      "sha256": "2658a4470e91b7b4fefb5de5e266ecb77261c0add141e95b5d877ad818eb4179"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "6c716f8f30304cdd541c99cf83b888974f2a026601d95376dc201b22cc25baab"
+    },
+    {
+      "path": "src/ui/settings-hub-page-sharing.js",
+      "sha256": "b8997d4a83eb1946383b60cab4a93aefa2bf774e8106cc8abf2316a21a98421a"
+    },
+    {
+      "path": "src/ui/settings-hub.js",
+      "sha256": "e525fab632d600b8b9c08545443ad07346b71ee44528766887896f8e3c0a8624"
+    },
+    {
+      "path": "tests/hub-share-ui-m3294.test.ts",
+      "sha256": "f4a428b69fef42736509667906458b1cb7ff101174311c15246280ef687428f1"
+    },
+    {
+      "path": "tests/hub-ui-s3c.test.ts",
+      "sha256": "468732fa252f6ccb27ff102b6faf08bd483bfc83c1490e8bc060e434ba5916bc"
     }
   ]
 }

@@ -49,7 +49,7 @@ node_modules/@typescript/native/bin/tsc -p tsconfig.test.json --noEmit --pretty 
 
 ## Preferred views and limits
 
-`views/` contains desktop light EN and phone dark zh-TW, each showing the setting on/off and the shared/undone notice. The scratch dashboard exercised the actual Settings writer and admin Undo endpoint, backed by the canonical local exposure writer and journal. The eight originals were inspected after the final capture: no remaining visual blocker, overflow, page or CSP error. The General chat callback is covered separately by its four controls.
+`views/` retains the initial desktop light EN and phone dark zh-TW packet, each showing the setting on/off and the shared/undone notice. The scratch dashboard exercised the actual Settings writer and admin Undo endpoint, backed by the canonical local exposure writer and journal. The General chat callback is covered separately by its four controls. The original Settings captures are historical and superseded by the connected-state retakes in `pm-r1/views/`; the unchanged Notice views carry.
 
 No live Fleet, directory, vendor/model API, Windows desktop, installed-package upgrade or downgrade was exercised. The browser runs were headless inside WSL; listeners and browser processes were closed and the shared slot released. The final Hub share-page journey is reserved for S-172.
 
@@ -64,3 +64,13 @@ Compressed logs have workspace paths redacted. The manifest uses separate `path`
 ## Plain alpha sync
 
 The tested source commit `b5ef3282afda8e2dd429f2fb61974a617631f86c` was merged with alpha `6acab70da27ce6ebf575810f00923c00de7b5b8e`. The three adjacent conflicts keep both the sharing adapters and the incoming room-history byte-budget getter/types. Every own added/removed code and test line is unchanged; the combined `HubMemberHost` line also retains the incoming Pick member. All incoming-only paths match alpha exactly. `sync.json` records the proof, and the manifest distinguishes tested-source from merged-source digests. No local behavioral campaign was repeated for this plain sync. Exact-head CI validates the combined tree.
+
+## PM correction: connected Settings placement
+
+The initial capture placed the new switch below a disconnected connection warning. The PM accepted the Notices, and requested that the setting move to the top of **Shared agents**, above individual switches, with no setting shown without an online Hub connection. The hint now starts with its effect, **When on** / **開啟後**, without a default-state sentence beside an off switch. The stored default remains on. The Hub skill describes the location and visibility.
+
+The new controls first produced six assertion failures on the earlier UI. After the move, the 10 sharing-UI cases pass. The connected-card, skill and locale checks also pass. Four older per-agent tests initially selected the newly nested setting's note/status instead of their own confirmation; their selectors now address the section's direct note/status, retaining every existing text assertion. The corrected 24-case suite passes. Across these staged runs, all 86 distinct cases in the five affected files pass; no broad sharing or transport campaign was repeated. Test TypeScript has zero diagnostics.
+
+Only the requested two Settings-on captures were retaken: desktop EN/light and phone zh-TW/dark, 18 checks. The real dashboard and HTTP readers use an injected connected-member projection and the actual local exposure API; no Hub machine link or live Hub is started for these images. Both show the connected state, the switch first under Shared agents, the revised hint, no overflow and no page/CSP errors. An image-only review found no remaining layout blocker. The browser and its two listeners were closed, and the slot was released.
+
+The `pm-r1` logs retain the initial six semantic failures, the selector fixture failures and their correction, the focused retake, and the clean test type check. `pmR1SourceSha256` identifies just this UI/test/harness/skill delta. The previously reviewed sharing, authority, journal, Undo, migration and answer-fence source is unchanged.

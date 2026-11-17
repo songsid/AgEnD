@@ -16,6 +16,10 @@ const [{ default: Database }, { HUB_EXPOSURE_MIGRATION, HubExposureStore }, { cr
 const db = new Database(join(fx.dir, "sharing.sqlite")); HUB_EXPOSURE_MIGRATION.up(db); HUB_MEMBER_SHARING_MIGRATION.up(db); HUB_AUDIT_MIGRATION.up(db);
 let live = true, floor = 0;
 const owner = { realm: "corp", objectId: randomUUID() }, fleetId = randomUUID(), token = "c".repeat(64);
+const settingsOnly = process.env.STEP === "settings";
+// Inject a connected member projection, not a live Hub connection. Settings and exposure reads still use real HTTP.
+const paired = { state: "paired", link: "online", binding: "b".repeat(64), hub: { hubId: randomUUID(), name: "Example Hub",
+  webOrigin: "https://hub.example.com", memberOrigin: "https://hub.example.com", fingerprint: { kind: "hub-key", digest: "f".repeat(64) } } };
 const audit = createHubAudit({ db, contentKey: randomBytes(32) });
 const store = new HubExposureStore(db, { views: new Map(), floor: { read: () => floor, raise: value => { floor = value; } }, binding: () => ({ owner, fleetId }), audit }); store.initialize();
 const agents = () => { const e = store.list().find(row => row.agent === "Docs")?.committed?.exposure; return [{ exposure: e ? { id: e.id, revision: e.revision, state: e.state } : null, instance: "Docs", displayName: "Documents", description: "Document questions", avatar: null, kind: "agent" as const, general: false, shareable: true as const, incarnation: token }]; };
@@ -32,6 +36,8 @@ const configure = () => {
   const path = join(fx.dir, "fleet.yaml"), raw = yaml.load(readFileSync(path, "utf8")) as Record<string, unknown>;
   fx.fm.webNotices = null; rmSync(join(fx.dir, "web-notices.json"), { force: true });
   raw.hub_member = { enabled: true }; writeFileSync(path, yaml.dump(raw)); fx.fm.loadConfig(path);
+  fx.fm.attachHubMemberPairing({ view: () => paired, notices: () => [] });
+  fx.fm.attachHubMemberExposures(api);
   if (fx.fm.hubRuntime) throw Error("smoke must not mount a live Hub runtime");
 };
 try {
@@ -39,7 +45,7 @@ try {
     configure();
     const checks: string[] = [], check = (ok: unknown, text: string) => { if (!ok) throw Error(text); checks.push(text); };
     const at = Date.now(), requestId = randomUUID();
-    await domain.apply(requestId, { by: owner, byName: "Owner", catalogRevision: memberAgentCatalog(true, agents(), true).revision, share: ["Docs"], stop: [], createdAt: at, expiresAt: at + 600_000 });
+    if (!settingsOnly) await domain.apply(requestId, { by: owner, byName: "Owner", catalogRevision: memberAgentCatalog(true, agents(), true).revision, share: ["Docs"], stop: [], createdAt: at, expiresAt: at + 600_000 });
     const { ctx, page } = await freshPage(fx, c, { account: "operator", path: "/settings/hub", beforeNavigate: async context => {
       await context.addInitScript(() => { (window as any).__csp = []; document.addEventListener("securitypolicyviolation", event => (window as any).__csp.push(event.violatedDirective)); });
     } });
@@ -54,6 +60,15 @@ try {
       check(await toggle.isChecked(), "default-on raw setting");
       check((await label.innerText()).includes(c.lang === "en" ? "Let me share agents from the Hub page" : "允許我從 Hub 頁面分享 Agent"), "approved localized label");
       const bounds = await label.boundingBox(); check(bounds && (c.device === "desk" || bounds.width >= 44 && bounds.height >= 44), "phone switch tap target");
+      if (settingsOnly) {
+        check(await page.locator('#hub-connection[data-state="connected"]').count() === 1, "connected member projection shown");
+        check(await page.locator(".hub-exposures input").first().getAttribute("id") === "hubShareFromHub", "switch first in Shared agents");
+        check((await page.locator("#hubShareFromHub-note").innerText()).startsWith(c.lang === "en" ? "When on," : "開啟後，"), "hint starts with its effect rather than its default");
+        check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "no horizontal overflow");
+        check(errors.length === 0 && (await page.evaluate(() => (window as any).__csp || [])).length === 0, "no page or CSP errors");
+        await page.screenshot({ path: shotPath("hub-share-undo-m3294-pm-r1", c, "settings-on") });
+        results.push({ name: caseName(c), checks }); continue;
+      }
       await page.screenshot({ path: shotPath("hub-share-undo-m3294", c, "settings-on") });
       await toggle.click(); await page.waitForFunction(() => { const box = document.querySelector("#hubShareFromHub") as HTMLInputElement; return box && !box.disabled && !box.checked; });
       check(fx.fm.getRawFleetConfig().hub_member.share_from_hub === false, "actual Settings writer persisted off");
@@ -75,6 +90,6 @@ try {
     } finally { await ctx.close(); }
   }
 } finally {
-  live = false; fx.fm.hubSharingController = null; await fx.close(); db.close();
+  live = false; fx.fm.hubSharingController = null; fx.fm.attachHubMemberPairing(null); fx.fm.attachHubMemberExposures(null); await fx.close(); db.close();
   console.log(JSON.stringify({ cases: results, scope: "Scratch real dashboard/Settings/Notices plus real local journal/writer. No live Hub, Fleet, AD, CLI, model or desktop windows." }));
 }
