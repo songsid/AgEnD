@@ -1,4 +1,27 @@
-Personal agent: clear setup steps (M-3262)
+Personal agent: progressive setup (M-3262)
+
+The first setup rewrite still showed every instruction at once. The revised card expands only the current step: prepare the computer, install, choose the app and name, then share. Completed steps become ticked titles; later steps show only their title. Optional settings and troubleshooting stay closed. The folder/account disclosure remains visible beside Save, and the folder-sharing warning remains beside Share. Answer only remains an inline explicit choice when Codex needs it. Saved agents show their actual status and Shared / Not shared yet, with Edit. Off states have one sentence and the administrator's exact-setting link.
+
+The revised real-app walk uses application source `2518084b93eed51c39b69d1df42f88d9c2891254`: **16 PNGs, 67 passing checks**. It retains the same seven desktop-English/light and phone-Traditional-Chinese/dark states, plus the unsaved configuration step in each language. Phone images are full **390×844** viewport captures. The viewport is never enlarged: every default card, including configuration, fits without scrolling to read it. Deliberately opened optional settings/help may need scrolling.
+
+| Revised state | Desktop English | Phone Traditional Chinese | Phone card height |
+| --- | --- | --- | --- |
+| Hub off, administrator | [view](compact/desktop-en-light-disabled-admin.png) | [view](compact/phone-zh-TW-dark-disabled-admin.png) | 150 px |
+| Hub off, member | [view](compact/desktop-en-light-disabled-member.png) | [view](compact/phone-zh-TW-dark-disabled-member.png) | 94 px |
+| Prepare computer | [view](compact/desktop-en-light-setup.png) | [view](compact/phone-zh-TW-dark-setup.png) | 445 px |
+| Install command | [view](compact/desktop-en-light-install.png) | [view](compact/phone-zh-TW-dark-install.png) | 561 px |
+| Choose app, name and save | [view](compact/desktop-en-light-configure.png) | [view](compact/phone-zh-TW-dark-configure.png) | 683 px |
+| Saved, not shared | [view](compact/desktop-en-light-ready.png) | [view](compact/phone-zh-TW-dark-ready.png) | 288 px |
+| Working, shared | [view](compact/desktop-en-light-working.png) | [view](compact/phone-zh-TW-dark-working.png) | 228 px |
+| Offline, shared | [view](compact/desktop-en-light-offline.png) | [view](compact/phone-zh-TW-dark-offline.png) | 300 px |
+
+The revised walk also proves exact-command Copy through an inert clipboard, the actual Administration-card scroll target, a single current step, consumed-command retirement, current CLI eligibility and failure help. The 66 focused UI/shell/skill tests and test TypeScript program pass. Private rig homes, browser and loopback listeners were closed in `finally`; no private home remains. No Windows process, user account, model or live directory was used.
+
+Reproduce the revised packet with `PHASE=compact`, an isolated output folder, local Playwright package and Linux headless Chromium. The source script refuses other platforms. All 16 revised originals were inspected, then the three affected phone views were checked again after list-label alignment. No clipping, overflow, exposed token or live identity remains. Lumen's shortened copy is implemented; revised rendered-view and user review are pending, so the PR remains on author hold. The earlier walks below are retained as historical before/expanded comparisons, not proof of the compact layout.
+
+The personal publication row below the card previously said Shared even before any person could ask. Its list now says **My agents** when it contains a personal agent, and all personal publication tags say **Saved**. The row has no authoritative sharing boolean, so the card remains the authority for Shared / Not shared yet; no count or grant was invented. Fleet labels are unchanged. The three affected phone views (ready, working, offline) were refreshed at `8daa17d4742ed6a6fd2b6d5ac214de0e5104ed2c` with 19 checks; `compact/list-alignment.json` records their source and unchanged viewport. The other 13 originals retain the earlier source.
+
+Historical comparison
 
 The old card described the feature but gave no route from “not enabled” to an answering agent. The new card names the next action for each state: the administrator opens the exact Administration card; a member asks the administrator; a new owner gets four setup steps; a paired owner gets configuration, sharing, working or reconnect guidance.
 

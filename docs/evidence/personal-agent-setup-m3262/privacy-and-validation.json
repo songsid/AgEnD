@@ -5,14 +5,27 @@
   "screenshots": 28,
   "pngMetadataEntries": 0,
   "fixtures": "All directory people, logins, computer names and folders are deliberately synthetic. No live directory or Runtime was queried.",
-  "review": "Image reader opened all 28 originals; no actionable clipping, overflow or live host/company identity. PM rendered-view review pending.",
+  "review": "Historical28 originals inspected. All16 compact originals inspected, then three changed phone list views inspected again. No actionable clipping, overflow or live identity. Revised PM and user rendered-view review pending.",
   "validation": {
     "focusedPassed": 47,
     "focusedFailed": 0,
     "testTypecheckExit": 0,
     "beforeBrowserChecks": 37,
-    "afterBrowserChecks": 45
+    "afterBrowserChecks": 45,
+    "compactFocusedPassed": 66,
+    "compactFocusedFailed": 0,
+    "compactBrowserChecks": 67,
+    "compactListAlignmentChecks": 19
   },
   "logPaths": "%REPO% and %HOME%",
-  "publicChecker": "Run with the private check-public tool on the final diff and every GitHub body before publication; no allow override requested."
+  "publicChecker": "Run with the private check-public tool on the final diff and every GitHub body before publication; no allow override requested.",
+  "compactApplication": "2518084b93eed51c39b69d1df42f88d9c2891254",
+  "compactScreenshots": 16,
+  "compactViewport": {
+    "width": 390,
+    "height": 844,
+    "heightExpanded": false
+  },
+  "compactListAlignmentSource": "8daa17d4742ed6a6fd2b6d5ac214de0e5104ed2c",
+  "compactListAlignmentPictures": 3
 }
