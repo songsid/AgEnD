@@ -245,17 +245,21 @@ export class HubGroupRooms {
     this.core.audit(tx, { requestId: source.id, actor: { kind: "person", person: personFromString(source.author_subject) }, action: "room.agent-mention-stopped", result: "completed", roomId: source.room_id, messageId: row.id, contentRef: row.content_ref });
   }
   /** Both answers and proactive posts use this transaction, once, before any external delivery. */
-  private agentMentions(db: DB, tx: HubTx, post: PostRow): void {
-    const operation = db.prepare("SELECT exposure_id,receipt_id FROM hub_room_agent_operations WHERE post_id=?").get(post.id) as { exposure_id: string; receipt_id: string | null } | undefined;
-    const sourceId = operation?.exposure_id ?? post.author_id, onBehalf = !!operation?.receipt_id;
-    const source = db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=? AND owner_at_join=?").get(post.room_id, sourceId, post.author_subject) as MemberRow | undefined;
-    if (!source) return;
-    const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=?").all(post.room_id) as MemberRow[]).flatMap(m => {
+  /** The room's members by the names an @ can use: people (and their login), and agents whose owner still publishes them. */
+  private mentionMembers(db: DB, roomId: string): MentionMember[] {
+    return (db.prepare("SELECT * FROM hub_room_members WHERE room_id=?").all(roomId) as MemberRow[]).flatMap(m => {
       if (m.kind === "person") { const p = db.prepare("SELECT login_label FROM hub_people WHERE person=? UNION ALL SELECT login_label FROM hub_room_people WHERE person=? LIMIT 1").get(m.subject, m.subject) as { login_label: string } | undefined;
         return [{ ...m, name: this.name(db, m.subject), login: p?.login_label }]; }
       const e = m.kind === "agent" ? readExposure(db, m.subject) : undefined;
       return e && e.owner === m.owner_at_join ? [{ ...m, name: e.display_name }] : [];
     }) as MentionMember[];
+  }
+  private agentMentions(db: DB, tx: HubTx, post: PostRow): void {
+    const operation = db.prepare("SELECT exposure_id,receipt_id FROM hub_room_agent_operations WHERE post_id=?").get(post.id) as { exposure_id: string; receipt_id: string | null } | undefined;
+    const sourceId = operation?.exposure_id ?? post.author_id, onBehalf = !!operation?.receipt_id;
+    const source = db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=? AND owner_at_join=?").get(post.room_id, sourceId, post.author_subject) as MemberRow | undefined;
+    if (!source) return;
+    const members = this.mentionMembers(db, post.room_id);
     const resolved = resolveRoomMentions(this.core.deps.content.get(post.content_ref)?.question ?? "", members, onBehalf ? "" : sourceId), accepted: string[] = [],refusedPersonal:string[]=[];
     if (resolved.all && !onBehalf) this.stop(db, tx, post, "all");
     const targets = resolved.all && onBehalf ? members.filter(m => m.kind === "agent"
@@ -673,7 +677,11 @@ export class HubGroupRooms {
       if (old) { if (old.digest !== digest || old.sequence < member.joined_sequence) throw new HubRoomRefusal(409, "conflict"); return old; }
       if (body.replyTo && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(body.replyTo, id, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
       const refs = files.length ? this.store().pending(db, id, me, files) : [];
-      const post = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name: this.name(db, me) }, body.text, body.mentions, body.idempotencyKey, digest, body.replyTo ?? null);
+      // M-3298: an "@Name" a person types reminds that person (the room list's @, their page's ping) whichever page sent it —
+      // the people the text names are resolved here as an agent post's are (agentMentions), and kept with what was sent
+      // (an older page sends agents only). Not oneself; an ambiguous name, code and email addresses are no one (mentions.ts).
+      const people = resolveRoomMentions(body.text, this.mentionMembers(db, id), "").people.filter(p => p !== member.id && !body.mentions.includes(p));
+      const post = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name: this.name(db, me) }, body.text, [...body.mentions, ...people], body.idempotencyKey, digest, body.replyTo ?? null);
       if(ctx.application)db.prepare("INSERT INTO hub_mcp_room_posts VALUES(?,?,?)").run(post.id,ctx.application.id,ctx.application.name);
       if (refs.length) this.store().bindPost(db, refs, post.id);
       if(ctx.application){if(!this.core.deps.content.bindMessage)throw new HubProtocolError("unavailable");this.core.deps.content.bindMessage(tx,post.content_ref,post.id);}
