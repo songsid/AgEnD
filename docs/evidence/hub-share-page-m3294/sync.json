@@ -1,0 +1,38 @@
+{
+  "old": "936702276",
+  "base": "62c56d7f7bf710187378447fb39d832aebe8a799",
+  "merged": "261512c4b94c9c8970d73e1f4cc5bfc57436f369",
+  "sameOwnBlobsAndModes": [
+    "docs/design/hub-share-from-hub.md",
+    "scripts/manual/hub-share-page-m3294/browser.mts",
+    "src/auth-api.ts",
+    "src/general-knowledge/skills/hub/SKILL.md",
+    "src/hub/agent-catalog.ts",
+    "src/hub/sharing-previous-access.ts",
+    "src/ui/hub-chat-strings.js",
+    "src/ui/hub-grant-picker.js",
+    "src/ui/hub-group-strings.js",
+    "src/ui/hub-my-agents-model.js",
+    "src/ui/hub-my-agents-strings.js",
+    "src/ui/hub-my-agents.js",
+    "src/ui/hub-owner-strings.js",
+    "src/ui/hub-strings.js",
+    "src/ui/settings-hub.js",
+    "src/ui/shared/app-shell.js",
+    "src/ui/shared/hub-my-agents.css",
+    "tests/hub-groups-ui-s89.test.ts",
+    "tests/hub-share-page-api-m3294.test.ts",
+    "tests/hub-share-page-model-m3294.test.ts",
+    "tests/hub-share-page-ui-m3294.test.ts",
+    "tests/hub-shell-parity.test.ts",
+    "tests/hub-skill.test.ts",
+    "tests/hub-ui-s3.test.ts"
+  ],
+  "overlapsKeepingBoth": [
+    "src/hub/http/compose.ts",
+    "src/ui/hub-client.js",
+    "src/ui/panel-hub.js",
+    "tests/hub-groups-mount-s89.test.ts",
+    "tests/hub-shared-modules-a.test.ts"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "results": [
+    {
+      "guard": "owner",
+      "exit": 0
+    },
+    {
+      "guard": "generation",
+      "exit": 1
+    },
+    {
+      "guard": "digest",
+      "exit": 1
+    }
+  ],
+  "restored": true,
+  "sha256": "df1fdfb6f12abb986dfdeda135ea81df8e509323b5a6eff1c3c65fcbfd8d0a06",
+  "note": "The exposure-owner single-check removal is equivalent because Fleet-owner and kept-owner checks independently refuse it; it is not counted as a caught mutant."
+}
