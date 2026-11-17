@@ -74,3 +74,9 @@ The new controls first produced six assertion failures on the earlier UI. After 
 Only the requested two Settings-on captures were retaken: desktop EN/light and phone zh-TW/dark, 18 checks. The real dashboard and HTTP readers use an injected connected-member projection and the actual local exposure API; no Hub machine link or live Hub is started for these images. Both show the connected state, the switch first under Shared agents, the revised hint, no overflow and no page/CSP errors. An image-only review found no remaining layout blocker. The browser and its two listeners were closed, and the slot was released.
 
 The `pm-r1` logs retain the initial six semantic failures, the selector fixture failures and their correction, the focused retake, and the clean test type check. `pmR1SourceSha256` identifies just this UI/test/harness/skill delta. The previously reviewed sharing, authority, journal, Undo, migration and answer-fence source is unchanged.
+
+## CI historical-registry correction
+
+CI on `dea8eb7d` found two failures in `hub-rooms-migration-r1`: its pre-room historical registries removed `s3-room-agents` (which creates `hub_room_deliveries`) but still included the new `s3-sharing-withdrawal` migration that alters that table. The test-only correction excludes the dependent migration from those two historical shapes as well. The full current registry still applies it in order, and all original row-preservation, idempotence and older-registry refusal assertions remain.
+
+The file reproduced the two missing-table failures locally, then passed all seven cases. `ci-r2/` retains both logs. No production migration or sharing behavior changed, and the two connected Settings retakes remain exact. `ciR2SourceSha256` identifies the one test file.

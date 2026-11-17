@@ -13,7 +13,7 @@ function upgradeToCurrent(db: Database.Database): void {
 }
 
 it("migrates once, preserves direct-room bytes and refuses an older migration registry", () => {
-  const db = new Database(":memory:"), older = prePersonal.filter(m => m.component !== "s3-room-context" && !["s3-admin-dashboard", "s3-room-agent-posts", "s3-rooms", "s3-room-agents", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
+  const db = new Database(":memory:"), older = prePersonal.filter(m => m.component !== "s3-room-context" && !["s3-admin-dashboard", "s3-room-agent-posts", "s3-rooms", "s3-room-agents", "s3-sharing-withdrawal", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
   try {
     applyHubMigrations(db, older);
     const id = randomUUID(), grant = randomUUID(), owner = `corp/${randomUUID()}`, asker = `corp/${randomUUID()}`, exposure = randomUUID();
@@ -29,7 +29,7 @@ it("migrates once, preserves direct-room bytes and refuses an older migration re
 });
 
 it("adds retained agent deliveries without changing existing group message or membership fields", () => {
-  const db = new Database(":memory:"), r1 = prePersonal.filter(m => m.component !== "s3-room-context" && !["s3-admin-dashboard", "s3-room-agent-posts", "s3-room-agents", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
+  const db = new Database(":memory:"), r1 = prePersonal.filter(m => m.component !== "s3-room-context" && !["s3-admin-dashboard", "s3-room-agent-posts", "s3-room-agents", "s3-sharing-withdrawal", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
   try {
     applyHubMigrations(db, r1);
     const room = randomUUID(), member = randomUUID(), post = randomUUID(), person = `corp/${randomUUID()}`;

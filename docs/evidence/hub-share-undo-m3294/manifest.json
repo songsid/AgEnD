@@ -258,7 +258,15 @@
   "evidenceSha256": [
     {
       "path": "docs/evidence/hub-share-undo-m3294/README.md",
-      "sha256": "3f73aa414a247b55a5109a23fc213f9b2babc46b514969f24683f7e995217ade"
+      "sha256": "ee1c22b15f838f06952cbec0f8c375defe7c7e7dacb252984e8f781019ed1035"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/ci-r2/after.log.gz",
+      "sha256": "2ac5f62c10d3ff51319b16f2f9bba08f9acc6091599619ec4e9b70d2eb3182a4"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/ci-r2/before.log.gz",
+      "sha256": "507a1c52559facf97999d603d89703aba5c48a96b0ac208317415e85686a9556"
     },
     {
       "path": "docs/evidence/hub-share-undo-m3294/logs/browser.log.gz",
@@ -683,6 +691,12 @@
     {
       "path": "tests/hub-ui-s3c.test.ts",
       "sha256": "468732fa252f6ccb27ff102b6faf08bd483bfc83c1490e8bc060e434ba5916bc"
+    }
+  ],
+  "ciR2SourceSha256": [
+    {
+      "path": "tests/hub-rooms-migration-r1.test.ts",
+      "sha256": "6d0137be7261a327d60b3fb7a07655785f97a7f9a1fda37846cd29c845a21817"
     }
   ]
 }
