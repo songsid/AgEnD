@@ -45,7 +45,7 @@ const ROWS = [
   ["look.restore", "look", ".s-restore", "settings.restoreTitle", null, ["restore defaults", "reset", "default"], ["還原預設值", "重設", "預設"]],
   // Fleet · Agents
   ["agents.new", "agents", "#newAgentBtn", "settings.newAgent", null, ["new agent", "create", "add agent", "instance"], ["新增 agent", "建立", "新 agent"]],
-  ["agents.provider-keys", "accounts", ".s-provider-keys", "settings.providerKeys", "web.provider_secrets", ["api key", "provider", "openai", "anthropic", "token", "secret"], ["API 金鑰", "金鑰", "供應商", "token"]],
+  ["agents.provider-keys", "accounts", ".s-provider-keys, .s-api-unavailable", "settings.providerKeys", "web.provider_secrets", ["api key", "provider", "openai", "anthropic", "token", "secret"], ["API 金鑰", "金鑰", "供應商", "token"]],
   // AGEND-288: the AI accounts have their own section, and are found by the words people use for them ("account", "帳號", a CLI's
   // name) — before this, only the provider API keys were registered, and "帳號" found Hub's company account instead. The
   // target is the Accounts group (always drawn, whatever the host's CLIs report); the rows below it come and go with the data.
