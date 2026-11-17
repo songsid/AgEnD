@@ -74,7 +74,7 @@ describe("#2347: the sections in two groups, and the old addresses", () => {
     const groups = p.root.querySelectorAll(".s-nav .s-nav-group").map((g: any) => [g.querySelector(".s-nav-head").textContent,
       g.querySelectorAll(".seg-item").map((a: any) => a.textContent.trim())]);
     expect(groups).toEqual([["You", ["Preferences", "Look"]],
-      ["Fleet", ["Agents", "Runtime", "AI accounts & API keys", "Shared agent settings", "Notifications", "Chat & connections", "Web dashboard", "Access & security", "Hub", "Advanced"]]]);
+      ["Fleet", ["Agents", "Runtime", "AI accounts & keys", "Shared agent settings", "Notifications", "Chat & connections", "Web dashboard", "Access & security", "Hub", "Advanced"]]]);
     expect(p.root.querySelector(".s-nav .seg-item[aria-current=page]").textContent.trim()).toBe("Agents");
   });
   it("each old address names its new section, on the page and on the server; ClassicBot's carries its place", () => {
