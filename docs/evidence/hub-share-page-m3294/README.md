@@ -32,7 +32,7 @@ Validation:
 - Landed agent-introduction changes are plain-merged. Five overlapping files preserve both features; 24 own blobs/modes
   stay identical. Conflict-focused suites pass 46 tests in six files; no unchanged browser journey was repeated.
 
-Preferred originals: both `before/*`; both `after/*-groups.png`, `after/*-draft.png` and `after/*-stop-confirm.png`;
+Original-stage images (historical after the UX revision below): both `before/*`; both `after/*-groups.png`, `after/*-draft.png` and `after/*-stop-confirm.png`;
 `after/desk-light-en-access.png` records the successful multi-agent access step. Phone before/after originals use an
 owned Noto CJK font. The initial fixture lacked that font and those unreadable phone images are excluded. An earlier
 fault-injection fetch did not inherit Chromium's DNS override, and the first search fixture omitted its granting-directory
@@ -41,3 +41,29 @@ private and are not included. Every owned temporary browser home, key and listen
 
 Rollback: revert this page slice. Existing shares, grants, Settings confirmations and the earlier notice/Undo implementation
 continue through their existing controls. No schema migration is introduced by this slice.
+
+
+## UX revision: current preferred views
+
+Use the eight originals in **pm-r1/**: desktop EN and phone zh-TW, each with groups, draft, stop confirmation and
+multi-agent access. All nine feedback points are addressed in one batch. The invitation error was a fixture omission:
+the production server already mounts `createHubRoomInvitations` and its migration; the rig now does too. Modern
+fixture Fleets report their version, and the page's update notice counts only connected Fleets lacking the catalog or
+request ability. It does not label an otherwise capable Fleet old because its general version is unknown.
+
+The Fleet summary is one line with Connect instead of a duplicate roster. There is one lead under the title. Avatars
+reuse the existing identity-tone classes. Offline information is a short header, repeated row reasons are removed,
+and older Fleets show only the known shared count. Common access is primary and names are plain list items. Phone
+Pause occupies a row beneath status; the bar names affected agents instead of duplicating its button.
+
+Two new regression assertions fail on the original UI. The focused final suites pass **87/6**; test TypeScript has no
+diagnostics. The first phone geometry check caught a more-specific shared flex rule overriding the grid. Increasing
+the scoped selector fixes that real layout defect; before/after geometry is retained. The final headless real-page
+retake passes **27/27**, with no invitation error, readable avatars, one lead, the correct update count, a plain access
+list and Pause below status. It is a focused retake; the earlier lost-response/backend journey is not rerun.
+
+Non-UI Hub source, the sharing writer and previous-access service are byte-identical to the reviewed head. Retained
+team/group grants remain inert if their subjects stop resolving: each ask uses `prepareGrantAccess`, which reads
+current team membership and fenced directory group facts. Missing readers or disabled group support are unavailable;
+only matching current membership allows an action. The proof rechecks the selected grant row and membership image.
+This is the same ongoing subject check used by ordinary grants and the earlier Undo path.

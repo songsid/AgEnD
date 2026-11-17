@@ -1,0 +1,35 @@
+{
+  "sourceHead": "563693947af2740fa50a514397c466dc1b2e4f37",
+  "reviewedHead": "6c24e591e7681d98fa8e86e86046e9dded01e386",
+  "backendUnchanged": true,
+  "sourceFiles": [
+    {
+      "path": "scripts/manual/hub-share-page-m3294/browser.mts",
+      "sha256": "650b6b20ed099063997b46324b502630e03d99eb6262d80246ce5e64a9cee76a"
+    },
+    {
+      "path": "src/ui/hub-my-agents-strings.js",
+      "sha256": "1068f06829f889e0481272b7d0df8fd80d11b90d26b94636a6f4595887768f33"
+    },
+    {
+      "path": "src/ui/hub-my-agents.js",
+      "sha256": "0c0b177193701ebdba0c1d25efd5bd4a78031180383a2ae0305e01f144b181ed"
+    },
+    {
+      "path": "src/ui/hub-welcome.js",
+      "sha256": "6a29640827081a68d4cb184c0a4273eff03269ca15c573f8892f4c2873fbda03"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "5a295cff1cb023538633021ae39c0de49442ababc483d4f229dfd7ce9fa0a2b5"
+    },
+    {
+      "path": "src/ui/shared/hub-my-agents.css",
+      "sha256": "31fa44a9fb7aba08acf42018df43a7869d5bd15e1b683def3d4880f1f874ca05"
+    },
+    {
+      "path": "tests/hub-share-page-ui-m3294.test.ts",
+      "sha256": "ab4a9eef7830647414ab053ef0ef44ff1cb545ed46561ce4d69b18a412d8956a"
+    }
+  ]
+}

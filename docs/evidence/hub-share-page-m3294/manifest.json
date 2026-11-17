@@ -122,7 +122,7 @@
   "evidenceFiles": [
     {
       "path": "README.md",
-      "sha256": "bf3cc6fe5a607a9bddeceef251738547cb2cf43e078b272064bac5a11969e427"
+      "sha256": "a8d4109362532d6da234427998cf896c0c8aba6cf8f8853daa67a627015fdfab"
     },
     {
       "path": "after/desk-light-en-access.png",
@@ -229,6 +229,74 @@
       "sha256": "4e083f2e90b7e554641a5e2bae8ac2fb31587ed9143a64b482f8517cc0ad82ee"
     },
     {
+      "path": "pm-r1/desk-light-en-access.png",
+      "sha256": "93bb7c22babbd872117bee6f1a1f3c425f107507969c2fba9ebd5942c6b7722c"
+    },
+    {
+      "path": "pm-r1/desk-light-en-draft.png",
+      "sha256": "b1e23c09f8142872d5933bc146944a49322e91eb3d1001b42465feecb6c57ffb"
+    },
+    {
+      "path": "pm-r1/desk-light-en-groups.png",
+      "sha256": "2356eebe76a30d1d0d7945a2bfa993baf5a715b66063b16ede3ceaca3fd7ae2f"
+    },
+    {
+      "path": "pm-r1/desk-light-en-stop-confirm.png",
+      "sha256": "cc36fafa5458f21f10c3f6960580bf884a3ac8a4b0f846899c77e0bb38a7ff81"
+    },
+    {
+      "path": "pm-r1/phone-dark-zh-TW-access.png",
+      "sha256": "7bacade7638cd33745f515114c1a8ca2796f88fbbd497e3aebe1e67735cc7c50"
+    },
+    {
+      "path": "pm-r1/phone-dark-zh-TW-draft.png",
+      "sha256": "0c42bb1e216854447e4752997fa00e8dc2e99ea465374c02acaab19381d83d05"
+    },
+    {
+      "path": "pm-r1/phone-dark-zh-TW-groups.png",
+      "sha256": "10089c8bdeb02b2ebdb032d68484b66e0ca6e59912461cf1777e63557e985c84"
+    },
+    {
+      "path": "pm-r1/phone-dark-zh-TW-row-geometry.json",
+      "sha256": "2efb0114bca29e59037bd7891c44c0955472eb3a7debf0904b044ab9d9385a1e"
+    },
+    {
+      "path": "pm-r1/phone-dark-zh-TW-stop-confirm.png",
+      "sha256": "70bf6022cdd7db8ec72672e2671f562afaf988e1f3869983e72737d667921e45"
+    },
+    {
+      "path": "pm-r1/phone-row-before.json",
+      "sha256": "2741eef7359bf753249499e06b81535a72515a7ba21897c20ff9d6ebcada3179"
+    },
+    {
+      "path": "pm-r1/pm-r1-before.log.gz",
+      "sha256": "fe48c39a743ee8b2d717a84b090eac1cb5f975144b219354095e95e1a580b972"
+    },
+    {
+      "path": "pm-r1/pm-r1-final-browser.log.gz",
+      "sha256": "4a24f9391c2aef07bc40d68cc65906f7ac46dfb9294e6e50478a5e5d4f110e64"
+    },
+    {
+      "path": "pm-r1/pm-r1-final-tests.log.gz",
+      "sha256": "35c75902e93f0369170e65acdc40e66fcc6377d4c0341df03a2efe557ffd8ca3"
+    },
+    {
+      "path": "pm-r1/pm-r1-phone-diagnostic.log.gz",
+      "sha256": "9d36e976d282d2d5c679807f85af9ffec552b70cb8319d7303314404eebeb08e"
+    },
+    {
+      "path": "pm-r1/pm-r1-test-tsc.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "pm-r1/receipt.json",
+      "sha256": "c72732f1ab5dda6ba61527fb8457d53931f077f678c9778d89a1b2f34565560d"
+    },
+    {
+      "path": "pm-r1/source.json",
+      "sha256": "eab3b03b00e22afcac0a1209848d92fb4031a7a088d343346bc9d3ef83edc4b0"
+    },
+    {
       "path": "retake-receipt.json",
       "sha256": "a432195419fd4d35b5c94bd805ff1b5d8e42baca8a46bb6d8915af1368be6fa4"
     },
@@ -241,7 +309,7 @@
       "sha256": "e0d8cc0445b729c672ce5d1fa4faa8bd3dcf8707024cda851742c6745dd84f91"
     }
   ],
-  "preferredCaptures": 9,
+  "preferredCaptures": 10,
   "checks": {
     "affected": "185/14",
     "lastAdditionalPins": "10/2, overlapping tests; not additive",
@@ -252,5 +320,24 @@
     "nativeSource": 0,
     "nativeTests": 0
   },
-  "limitations": "Owned Hub HTTP/SQLite/real audit and local sharing journal/writer; in-process member transport and inert directory. No live Hub/Fleet/AD/model/CLI or desktop windows. Captures precede only additive introduction base sync; own page/runtime blobs unchanged."
+  "limitations": "Owned Hub HTTP/SQLite/real audit and local sharing journal/writer; in-process member transport and inert directory. No live Hub/Fleet/AD/model/CLI or desktop windows. Captures precede only additive introduction base sync; own page/runtime blobs unchanged.",
+  "revisions": [
+    {
+      "stage": "pm-r1",
+      "sourceHead": "563693947af2740fa50a514397c466dc1b2e4f37",
+      "backendUnchanged": true,
+      "tests": "87/6",
+      "headlessRetake": 27,
+      "preferredAfter": [
+        "pm-r1/desk-light-en-groups.png",
+        "pm-r1/desk-light-en-draft.png",
+        "pm-r1/desk-light-en-stop-confirm.png",
+        "pm-r1/desk-light-en-access.png",
+        "pm-r1/phone-dark-zh-TW-groups.png",
+        "pm-r1/phone-dark-zh-TW-draft.png",
+        "pm-r1/phone-dark-zh-TW-stop-confirm.png",
+        "pm-r1/phone-dark-zh-TW-access.png"
+      ]
+    }
+  ]
 }
