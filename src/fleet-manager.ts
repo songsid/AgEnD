@@ -12113,10 +12113,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Delete inbox files older than retentionDays (by mtime). Cleans the shared
    * inbox (`<dataDir>/inbox`) and every workspace inbox
    * (`<agendHome>/workspaces/*\/inbox`). Piggybacks on the daily summary timer,
-   * mirroring classic chat-log rotation (same 7-day retention).
+   * mirroring classic chat-log rotation (same 7-day retention). M-3281: never a file the web chat still shows.
    */
   private rotateInboxes(retentionDays = 7): number {
     const cutoff = Date.now() - retentionDays * 86400_000;
+    // M-3281: a file the web chat still shows stays (device + inode), so it is there to keep when its message is archived.
+    const shown = this.webFiles.shownFiles();
     const dirs: string[] = [join(this.dataDir, "inbox")];
     const workspacesDir = join(getAgendHome(), "workspaces");
     if (existsSync(workspacesDir)) {
@@ -12131,7 +12133,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const full = join(dir, file);
         try {
           const st = statSync(full);
-          if (st.isFile() && st.mtimeMs < cutoff) { unlinkSync(full); deleted++; }
+          if (st.isFile() && st.mtimeMs < cutoff && !shown.has(`${st.dev}:${st.ino}`)) { unlinkSync(full); deleted++; }
         } catch { /* file vanished or unreadable — skip */ }
       }
     }
@@ -23595,6 +23597,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         storablePath: (id) => this.webFiles.storablePath(id),
         restore: (entry, instance) => this.webFiles.restoreServed(entry, instance, join(getAgendHome(), "workspaces", instance, "inbox"), webFilesDir(getAgendHome(), instance) ?? undefined),
         drop: (ids) => this.webFiles.dropServed(ids),
+        // M-3281: an archived message keeps its files (web-chat-archive.ts `files/`), served from there while it is read.
+        keep: (id, dest) => this.webFiles.keepCopy(id, dest),
+        restoreKept: (entry, instance, keptDir) => this.webFiles.restoreKept(entry, instance, keptDir),
       });
       let restored = 0;
       for (const name of names) restored += this.webChatHistory.restore(name, store.load(name));
@@ -23609,10 +23614,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.webChatStore = store;
       this.webChatHistory.setStore(store);
       // M-3272: messages leaving the 500-message window are archived per agent (owner-bound as web-chat.json is), kept
-      // for web.chat_archive.retention_days (unset or 0: everything).
-      this.webChatArchive = new WebChatArchive({ home: getAgendHome(), ownerOf: (name) => this.webChatOwner(name), logger: this.logger,
-        retentionDays: () => this.fleetConfig?.web?.chat_archive?.retention_days });
-      this.webChatHistory.setArchive(this.webChatArchive);
+      // for web.chat_archive.retention_days (unset or 0: everything). M-3281: with their files, every agent's together
+      // within web.chat_archive.files_max_gb (default 5 GiB; the oldest go first) — checked once soon after the start too.
+      const archive = new WebChatArchive({ home: getAgendHome(), ownerOf: (name) => this.webChatOwner(name), logger: this.logger,
+        retentionDays: () => this.fleetConfig?.web?.chat_archive?.retention_days,
+        filesMaxGb: () => this.fleetConfig?.web?.chat_archive?.files_max_gb });
+      this.webChatArchive = archive;
+      this.webChatHistory.setArchive(archive);
+      const capCheck = setTimeout(() => { try { archive.enforceFilesCap(); } catch (err) { this.logger.warn({ err }, "Web chat archive: the files' size limit could not be checked"); } }, 30_000);
+      capCheck.unref?.();
       if (restored) this.logger.info({ restored, instances: names.size }, "Web chat history restored from disk");
     } catch (err) {
       this.logger.warn({ err }, "Web chat history could not be restored; it starts empty");

@@ -362,4 +362,12 @@ describe("live: the stream, the poll and a file for a guest scoped to `a`", () =
     expect(await get(`/ui/file/${"0".repeat(32)}`, guest)).toEqual({ status: 404, body: JSON.stringify({ error: "No such file" }) });
     expect(await get(`/ui/file/${fb.id}`, admin)).toEqual({ status: 200, body: "for b" });
   });
+  it("M-3281: an archived message's kept file is never a guest's, even of an instance in scope (the archive is an admin's); the admin gets it", async () => {
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
+    const pk = join(dir, "kept.txt");
+    writeFileSync(pk, "kept for a");
+    const fk = fm.webFiles.registerServed({ path: pk, instance: "a", kept: true });
+    expect(await get(`/ui/file/${fk.id}`, cookieOf(session("guest", ALICE)))).toEqual({ status: 404, body: JSON.stringify({ error: "No such file" }) });
+    expect(await get(`/ui/file/${fk.id}`, cookieOf(session("admin")))).toEqual({ status: 200, body: "kept for a" });
+  });
 });

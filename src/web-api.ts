@@ -2713,11 +2713,12 @@ export function handleWebRequest(
   if (method === "GET" && fileMatch) {
     const id = fileMatch[1]!;
     // #1920: a guest gets a file only when its stored instance is in scope — "no such file" otherwise, like an unknown id
-    // (an id from another instance's chat is useless).
+    // (an id from another instance's chat is useless). M-3281: never an archived message's kept file (the archive is an
+    // admin's: a guest cannot scroll back to it).
     const guest = guestRequestOf(req);
     if (guest) {
       const served = isFileId(id) ? ctx.webFiles?.servedFile?.(id) ?? null : null;
-      if (!served || !guest.scope().has(served.instance)) { json(res, 404, { error: "No such file" }); return true; }
+      if (!served || served.kept || !guest.scope().has(served.instance)) { json(res, 404, { error: "No such file" }); return true; }
     }
     // #1589: audio and video, played in the page — one byte range at a time (206), by id only, never a whole video in
     // memory. Every other type is answered exactly as before.
