@@ -25,3 +25,5 @@ CI later caught the two changelog fragment filenames. R1 renames them without ch
 CI R2: the established zh-TW label 實際名稱 replaces the English word in the localized control and keyword. The footer regression now selects HTML previews by ID. Baseline two assertion failures become 20/20 across three affected suites. The phone-only journey passes 14 checks; only Customize and Settings images are retaken for this copy change. Prior row and English images keep their source scope. See `r2/README.md`.
 
 Transcripts with trailing blank lines use lossless gzip; their decompressed text was checked before publication.
+
+Requested sync to dev tip ea8685e1 keeps both workflow steps and incoming keyboard-fit logic. Affected unit checks38/4, compact-name smoke28 and phone-typing smoke12 all pass; see `sync-ea8685/`. No manual resolutions or preference-logic changes.

@@ -1,0 +1,16 @@
+{
+  "previousHead": "3ce1e328db468d9bbbf405fb50f6ddabdfb0157f",
+  "incoming": "ea8685e19917029ebc359f035409f2462a0172d5",
+  "mergeBase": "d70535f737c2ad854fda1bf7f55724c222a26932",
+  "ownNonOverlapBlobsModes": 60,
+  "incomingOnlyBlobsModes": 17,
+  "overlaps": [
+    ".github/workflows/ci.yml",
+    "src/ui/shared/app-shell.js"
+  ],
+  "manualResolutions": [],
+  "isolatedPatchReplayTree": "1b42b55d0a9cc21c93920c96539e00e87b3a295c",
+  "stagedMergeTree": "1b42b55d0a9cc21c93920c96539e00e87b3a295c",
+  "leaderRequestedAffectedReruns": true,
+  "mergeCommit": "fbbb19c4424a4bd88826e72c07a7af7dad61d126"
+}

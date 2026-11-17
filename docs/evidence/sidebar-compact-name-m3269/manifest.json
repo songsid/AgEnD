@@ -17,7 +17,7 @@
     "r2/before/phone-settings.png": "6703b6f9f9de2e58ddd204ab9baa0918b6cebbce"
   },
   "artifacts": {
-    "README.md": "5afbc0e01753129f82bca0f46afdf8806e1983b0f3c751570462920c27414a17",
+    "README.md": "ad7e3c578e4608c249a9c43a25ca3f1b58dbd2e3913725f4b0f2b09d86dbf069",
     "adjacent.txt.gz": "0059b7eea89a306298905694d707fc099ba11e4d54eeb2cdc4763c31cabf1821",
     "after/desk-customize.png": "770079f1d9a4d490f369f12b74a683ec6131644366e41b80373c3e0923ac50e6",
     "after/desk-display-name.png": "18b2a05c7bafde10950287b41a0136e3ba0cebe8be7ec4751562e13979c4da20",
@@ -54,8 +54,15 @@
     "smoke-phone-drawer-telegram-m3211.txt": "3897a55d05b542f6d67019ceefad13f9259c9a9d28088764657907f6a4bd94dd",
     "smoke-phone-drawer-width-m3212.txt": "f8adddc3e613327a12e64678fd7835ed852b700726e1225442692cbcacf059db",
     "source-bindings.json": "9f4f6f5f5230e91c473d3ef6fe397ac734980dc58bf8b857517267b0468a531a",
+    "sync-ea8685/README.md": "f9ed3dbd394faccf05d35a61b2f7d9903b4104c6ff1fababef7b373ef95225f5",
+    "sync-ea8685/compact-smoke.txt.gz": "c756ca1d0fbefc9d99d9637fbe7a97a6a9b07e8aa71610bedaa2058b3a0d88b2",
+    "sync-ea8685/proof.json": "84913f225444e65d9789739bcfed47c7d11c3704aaa5c97630ee0f85c690d83f",
+    "sync-ea8685/typing-smoke.txt.gz": "3cdf5b9081bd5226b2f34b731980c224b8840d242fcc06ea9a5d789b2d55c15f",
+    "sync-ea8685/unit.txt.gz": "470c8e730b8cc4e4f877bb20abc3f75ac5e027f7e6983dd171058d61217c7f28",
+    "sync-ea8685/workflow.txt": "288625adf8155eccf9c0a18250b9877869c7fac24dff54a9a4843396a5a4d646",
     "sync.json": "5ce61506cc5ddc710de0cf973b9b700fb4e154808bb5ad61e48ec32577e23895",
     "ts-source.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "ts-tests.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-  }
+  },
+  "syncSource": "fbbb19c4424a4bd88826e72c07a7af7dad61d126"
 }
