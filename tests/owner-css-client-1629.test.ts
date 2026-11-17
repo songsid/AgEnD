@@ -58,8 +58,11 @@ describe("the link", () => {
     nav.navStore.set({ route: { panel: "fleet" }, seq: 2 });
     expect(link()).not.toBeNull();
   });
+  it("M-3278: the public link's page links it too (its admin session's own; the server names no version for a guest)", async () => {
+    const { link } = await boot({ publicLink: true } as never);
+    expect(link()).not.toBeNull();
+  });
   it.each([
-    ["the public link", { publicLink: true }],
     ["the anonymous View reader", { mode: "view-only", url: "http://127.0.0.1:19280/view/a" }],
     ["no version named by the host", { owner: null }],
     ["this device turned it off", { storage: { agend_owner_css_off: "1" } }],

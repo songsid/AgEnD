@@ -123,20 +123,14 @@ export class SettingsHttpConfirmation {
       return true;
     }
     if (!isSettingsMutation(method, path)) return false;
-    if (isCliInstallPath(path) && gatewayRequestContext(req)) { json(res, 403, { error: "install_not_over_public_link" }); return true; }
+    // M-3278 (decision 7933bf90): an install (and update) is proposed over the public link too, by its admin session (the
+    // principal's localAdmin below; the same confirmation policy as anywhere off the AgEnD computer).
     const installPrincipal = isCliInstallPath(path) ? this.options.principal(req) : undefined;
     if (isCliInstallPath(path) && !installPrincipal?.current()) { json(res, 401, { error: "session_required" }); return true; }
-    // #1620: the tunnel token is never changed over the public link — the same rule as tokens and secrets. M-3278
-    // (decision 7933bf90): the web settings and the appearance limits are proposed over the link as anywhere; what may be
-    // confirmed there is the settings role's (the leader's (a): a change that opens a link too, by Apply now or the code).
-    if (path.startsWith("/api/settings/public-tunnel-token/") && gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
-    // M-2255: Settings → Runtime's switches and limit (who may run agents where) — refused before anything is proposed.
-    if (path === "/api/settings/fleet/runtimes" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
-    if (path.startsWith("/api/settings/hub/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
-    // AGEND-144: an install on the AgEnD computer is never asked for over the public link (refused before anything is proposed, as before it was a held change).
-    if (path.startsWith("/api/hub/member/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
-    if (path === "/api/hub/member/exposures" && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
-    if (path === "/api/settings/general-location" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    // M-3278 (decision 7933bf90): the web settings, the appearance limits, the fixed link's Cloudflare token, Settings →
+    // Runtime (M-2255), the Hub's settings and membership and General's location are proposed over the public link too, by
+    // its admin session — the handlers ask for an admin as anywhere else; what may be confirmed there is the settings
+    // role's (the leader's (a): a change that opens a link too, by Apply now or the code).
     void this.prepare(req, res, url, next, installPrincipal).catch(err => json(res, err instanceof SettingsConfirmationError ? err.status : 409,
       { error: err instanceof SettingsConfirmationError ? err.code : "settings_confirmation_unavailable" }));
     return true;
@@ -153,8 +147,9 @@ export class SettingsHttpConfirmation {
     if (installPrincipal && (principal!.id !== installPrincipal.id || principal!.requester?.handle !== installPrincipal.requester?.handle))
       throw new SettingsConfirmationError(409, "install_session_changed");
     const localAdmin = principal?.localAdmin ? () => principal.current() && principal.localAdmin?.() === true : undefined;
-    // AGEND-144 / #3542: only a signed-in local administrator proposes a host CLI install (a guest, a read session or a header token never even holds one for another admin to confirm).
-    if (isCliInstallPath(url.pathname) && (!principal?.requester || principal.source !== "web_session" || localAdmin?.() !== true))
+    // AGEND-144 / #3542: only a signed-in administrator proposes a host CLI install (a guest, a read session or a header token never even holds one for another admin to confirm).
+    // M-3278 (decision 7933bf90): the public link's admin session too (its source is "public_link"); it is confirmed as any admin off the AgEnD computer is.
+    if (isCliInstallPath(url.pathname) && (!principal?.requester || (principal.source !== "web_session" && principal.source !== "public_link") || localAdmin?.() !== true))
       throw new SettingsConfirmationError(403, "install_needs_a_local_admin");
     if (companyStart && (principal?.source !== "web_session" || localAdmin?.() !== true || !principal.localSession?.current()))
       throw new SettingsConfirmationError(403, "private_session_required");
@@ -230,10 +225,14 @@ export class SettingsHttpConfirmation {
     // digest-bound code instead.
     const policy = (): boolean => this.options.directCreationPolicy?.(req) !== false;
     const ordinaryInstall = this.options.directHostInstall === true && method === "POST" && isCliInstallPath(url.pathname);
+    // M-3278 (decision 7933bf90): no public-link term — the link's admin session follows the same policy (an admin off the
+    // AgEnD computer whose own code switch is on, or "Only this computer can authorize", takes the held change).
     const direct = (this.options.directAgentCreation === true && ordinaryCreate || ordinaryInstall) && principal.source === "web_session"
-      && !gatewayRequestContext(req) && localAdmin?.() === true && policy();
+      && localAdmin?.() === true && policy();
     const companyPolicy = (): boolean => this.options.companyJoinPolicy?.(req) === true;
-    const companyDirect = companyStart && principal.source === "web_session" && !gatewayRequestContext(req)
+    // M-3278: no public-link term here either; a company join still needs the local company session (principal.localSession),
+    // which is bound to this Fleet's own browser origin (authority/company-join.ts) and so is never held over the link.
+    const companyDirect = companyStart && principal.source === "web_session"
       && localAdmin?.() === true && principal.localSession?.current() === true && companyPolicy();
     const self = result.reused ? null : direct || companyDirect
       ? { label: principal.label, current: () => localAdmin?.() === true && (!direct || policy()) && (!companyDirect || companyPolicy() && principal.localSession?.current() === true) }

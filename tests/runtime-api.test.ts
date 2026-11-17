@@ -269,6 +269,19 @@ describe("runtime package download", () => {
     }
     expect(bundle).not.toHaveBeenCalled(); expect(coordinator).not.toHaveBeenCalled();
   });
+  it("M-3278 (Fable on #4107, N2): an admin session over the public link is told to use this computer's dashboard — no package, no installer pin", () => {
+    const { ctx, bundle, coordinator, download } = setup(), store = new WebSessionStore(); Object.assign(ctx, { webSessions: store });
+    const session = store.create({ tier: "admin", surface: "gateway", exposureId: "a".repeat(32), label: "link", tokenEpoch: tokenEpoch(token) });
+    for (const p of [path, "/ui/runtimes/installer"]) {
+      const req = request(p); delete req.headers["x-agend-token"]; req.headers.cookie = `${WEB_SESSION_COOKIE}=${session.sessionId}`;
+      req.headers.host = "public.example"; req.headers.origin = "https://public.example";
+      bindGatewayRequest(req, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true });
+      const res = download(req);
+      expect([p, res.status], p).toEqual([p, 403]);
+      expect(res.body, p).toContain("this computer's dashboard");
+    }
+    expect(bundle).not.toHaveBeenCalled(); expect(coordinator).not.toHaveBeenCalled();
+  });
   it("rejects caller-selected paths and remains unavailable when the preview is disabled", () => {
     const { bundle, coordinator, download } = setup();
     expect(download(request(path + "?path=connection.json")).status).toBe(400);

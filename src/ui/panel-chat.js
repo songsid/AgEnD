@@ -598,9 +598,9 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     running && supportsInstanceFeature(inst,"lifecycle") ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
     running && supportsInstanceFeature(inst,"lifecycle") ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
     // #1958: its identity colour and where it shows (the public link too, as profile edits).
-    // #3153 P1: the folder it works in, read-only — this computer's admin only (never over the public link), and not an
+    // #3153 P1: the folder it works in, read-only — an admin only (M-3278: over the public link too), and not an
     // agent on another machine (the server also refuses General and coordinators: their folder is the fleet's own).
-    document.body.dataset.publicLink === "1" || inst.runtime === "windows" || inst.machine_id || inst.general_topic === true ? null
+    inst.runtime === "windows" || inst.machine_id || inst.general_topic === true ? null
       : { key: "workspace", label: t("chat.wsOpen"), icon: "file", onSelect: () => openWorkspace({ key: `ws:${name}`, instance: name }) },
     // M-3271: the pinned list — here too, for a phone (its header shows ← title ⋯ only) and a narrow pane.
     pinCount ? { key: "pins", label: `${t("chat.pinsTitle")} · ${pinCount}`, icon: "pin", onSelect: openPins } : null,
@@ -980,8 +980,6 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
   </div></div>`;
 }
 
-/** #2233: the public link's page — the dashboard's Sign in is refused there, so it is never offered (#2262 review). */
-const publicLinkPage = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
 /** #2233: a backend's "not signed in" choice offers Sign in (the module behind the session gate, loaded when asked). */
 function openBackendSignIn(backend) {
   import("./backend-signin.js").then((m) => m.openSignIn({ backend }), () => toast(t("app.loadFailed"), false));
@@ -1077,7 +1075,7 @@ function ModelMenu({ name, c, lease }) {
       <div class="model-menu-seg" role="group" aria-label=${mm("effort")}>${cur.effort.levels.map((level) => html`<button key=${level} type="button"
         class=${level === cur.effort.current ? "on" : ""} aria-pressed=${level === cur.effort.current ? "true" : "false"} disabled=${c.busy}
         onClick=${() => store.runCommand(name, "effort", level, { alive })}>${effortWord(level)}</button>`)}</div>` : null}
-    ${options.some((o) => o.signIn) && !publicLinkPage() ? html`<div class="model-menu-signin">${options.filter((o) => o.signIn).map((o) => html`<button
+    ${options.some((o) => o.signIn) ? html`<div class="model-menu-signin">${options.filter((o) => o.signIn).map((o) => html`<button
       key=${`signin:${o.signIn}`} type="button" class="btn btn-sm btn-primary" onClick=${() => openBackendSignIn(o.signIn)}>${t("chat.cmdSignInTo", o.signIn)}</button>`)}</div>` : null}
   </div>`;
   if (narrow) return html`<${Dialog} title=${mm("title")} onClose=${close} cls="model-menu-sheet"
@@ -1143,7 +1141,7 @@ function CommandCard({ name, lease }) {
     })}</div>` : null}
     ${c.command === "model" && c.choices ? html`<p class="note">${mw("selectionHint")}</p>` : null}
     ${actions.includes("more") ? html`<div class="cmd-model-more"><button type="button" class="btn btn-sm btn-ghost" data-model-action="more" disabled=${c.busy} onClick=${() => run("", "more")}>${mw("more")}</button></div>` : null}
-    ${c.choices && c.choices.options.some((o) => o.signIn) && !publicLinkPage() ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdSignIn")}>${c.choices.options.filter((o) => o.signIn).map((o) => html`<button
+    ${c.choices && c.choices.options.some((o) => o.signIn) ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdSignIn")}>${c.choices.options.filter((o) => o.signIn).map((o) => html`<button
       key=${`signin:${o.signIn}`} type="button" class="btn btn-sm btn-primary" onClick=${() => openBackendSignIn(o.signIn)}>${t("chat.cmdSignInTo", o.signIn)}</button>`)}</div>` : null}
   </div>`;
 }

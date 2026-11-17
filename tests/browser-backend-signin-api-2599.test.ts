@@ -19,8 +19,9 @@ async function rig() {
   const state = { gateway: false, auth: "invalid" as "invalid" | "valid", pane: "https://auth.openai.com/codex/device\nTEST-CODE", alive: true };
   const transport = { start: vi.fn(async () => {}), capture: vi.fn(async () => state.pane), status: vi.fn(async () => ({ alive: state.alive })), write: vi.fn(async () => {}), close: vi.fn(async () => {}) };
   const installed = vi.fn(async () => ["codex", "kiro-cli", "claude-code", "antigravity"]);
+  // M-3278: the owner check mirrors FleetManager.isLocalAdminSession — an admin session on any listener, the public link's too.
   const service = new BrowserBackendSignIns({ dataDir: dir, lock, current: owner => {
-    const r = owner as { handle: string }; return sessions.findByHandle(r.handle) === owner && (owner as any).tier === "admin" && (owner as any).surface === "local" && sessions.isCurrent(owner as any, tokenEpoch(token));
+    const r = owner as { handle: string }; return sessions.findByHandle(r.handle) === owner && (owner as any).tier === "admin" && sessions.isCurrent(owner as any, tokenEpoch(token));
   }, installed, checkAuth: async () => state.auth, transport: () => transport });
   const context = { webToken: token, webSessions: sessions } as WebApiContext;
   const getter = vi.fn(() => service); Object.defineProperty(context, "browserBackendSignIns", { get: getter });
@@ -42,15 +43,20 @@ async function rig() {
   const admin = session();
   return { dir, token, sessions, lock, state, transport, installed, service, getter, session, admin, call };
 }
-it("only a current local human admin can reach the service; header/read/guest/public are refused first", async () => {
+it("only a current human admin can reach the service; header/read/guest are refused first (M-3278: the public link's admin may)", async () => {
   const h = await rig();
   for (const headers of [{}, { "x-agend-token": h.token }, h.session("read").headers, h.session("guest").headers, h.session("admin", "gateway").headers]) {
     expect([401, 403]).toContain((await h.call(headers)).status);
   }
-  const gateway = h.session("admin", "gateway"); gateway.headers.cookie = `__Host-agend_session=${gateway.sessionId}`;
-  h.state.gateway = true; expect((await h.call(gateway.headers)).status).toBe(404);
-  expect((await h.call(gateway.headers, { operation: "start", backend: "codex" })).status).toBe(403);
+  h.state.gateway = true;
+  const gwRead = h.session("read", "gateway"); gwRead.headers.cookie = `__Host-agend_session=${gwRead.sessionId}`;
+  expect((await h.call(gwRead.headers)).status).toBe(403);
+  expect((await h.call(gwRead.headers, { operation: "start", backend: "codex" })).status).toBe(403);
   expect(h.getter).not.toHaveBeenCalled(); expect(h.transport.start).not.toHaveBeenCalled();
+  // M-3278 (decision 7933bf90): the public link's own admin session reads the controls as a local admin does.
+  const gateway = h.session("admin", "gateway"); gateway.headers.cookie = `__Host-agend_session=${gateway.sessionId}`;
+  expect((await h.call(gateway.headers)).status).toBe(200);
+  expect(h.getter).toHaveBeenCalled();
 });
 it("pending IDs for a backend without an agent survive into the authenticated dashboard", async () => {
   const h = await rig(), seen = h.admin.record.lastSeen; vi.spyOn(Date, "now").mockReturnValue(seen + 1000);

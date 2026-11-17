@@ -167,11 +167,11 @@ describe("the icon and manifest routes", () => {
     expect(withAppIconLinks("<!--app-icon-->x<!--/app-icon-->\n")).toContain("/favicon.ico?v=default");
   });
 
-  it("the public link may read every icon route (and nothing of /ui/app-icon)", async () => {
+  it("the public link may read every icon route (and, M-3278, /ui/app-icon for its admin session)", async () => {
     for (const p of ["/favicon.ico", "/favicon.svg", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/manifest.webmanifest"]) {
       expect([isWebIconPath(p), isPublicWebRoute("GET", p), isPublicWebRoute("HEAD", p)], p).toEqual([true, true, true]);
     }
-    for (const m of ["GET", "PUT", "DELETE"]) expect(isPublicWebRoute(m, "/ui/app-icon"), m).toBe(false);
+    for (const m of ["GET", "PUT", "DELETE"]) expect(isPublicWebRoute(m, "/ui/app-icon"), m).toBe(true);
   });
 });
 
@@ -244,7 +244,7 @@ describe("who may change it (/ui/app-icon)", () => {
     expect(store.current()).toBeNull();
   });
 
-  it("a read-only session reads it and changes nothing; a guest, the token and the public link get nothing", async () => {
+  it("a read-only session reads it and changes nothing (the public link's too); a guest and the token get nothing", async () => {
     const store = new AppIconStore(stateDir(), undefined, convertInProcess);
     await store.set(sourcePng(), "p");
     const before = store.current();
@@ -255,9 +255,10 @@ describe("who may change it (/ui/app-icon)", () => {
       ["guest GET", { tier: "guest" as const }, 403, "app_icon_needs_a_signed_in_person"],
       ["guest PUT", { tier: "guest" as const, body: sourcePng(600) }, 403, "app_icon_needs_a_signed_in_person"],
       ["token PUT", { token: true, body: sourcePng(600) }, 403, "app_icon_needs_a_signed_in_person"],
-      ["public link PUT", { gateway: true, body: sourcePng(600) }, 403, "app_icon_not_over_public_link"],
-      ["public link DELETE", { gateway: true }, 403, "app_icon_not_over_public_link"],
-      ["public link GET", { gateway: true }, 404, "app_icon_not_over_public_link"],
+      // M-3278 (decision 7933bf90): over the public link its admin session is answered as locally; its read session as a read session.
+      ["public link read PUT", { gateway: true, tier: "read" as const, body: sourcePng(600) }, 403, "app_icon_admin_only"],
+      ["public link read DELETE", { gateway: true, tier: "read" as const }, 403, "app_icon_admin_only"],
+      ["public link admin GET", { gateway: true }, 200, undefined],
     ] as const) {
       const method = label.split(" ").pop()!;
       const r = await viaWeb(method, "/ui/app-icon", { ...opts, store });

@@ -179,10 +179,11 @@ describe("explicit persistent-pane recovery boundary",()=>{
   const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const recover=vi.fn(async(_name:string,_launchId:string,_current:()=>boolean)=>{});f.context.recoverNativePane=recover;
   const req=request("POST",body,url("/recover-pane")),res=new Response(req);handleNativeInstanceRequest(req,res,url("/recover-pane"),f.context);await finish(res,400);expect(recover).not.toHaveBeenCalled();
  });
- it.each(["guest","gateway","missing"])("refuses %s authority before any recovery",async kind=>{
+ it.each(["guest","gateway","missing"])("refuses %s authority before any recovery (gateway: the header token over the link)",async kind=>{
   const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const recover=vi.fn(async(_name:string,_launchId:string,_current:()=>boolean)=>{});f.context.recoverNativePane=recover;
   const req=request("POST",{confirmedStopped:true,launchId},url("/recover-pane")),res=new Response(req);
-  if(kind==="gateway")bindGatewayRequest(req,{kind:"edge-public",gatewayId:"test"} as never);
+  // M-3278: the link's admin session is admitted (nativeCliAuthorization); the CLI's header token never is over the link.
+  if(kind==="gateway")bindGatewayRequest(req,{surface:"gateway",exposureId:"e".repeat(32),expectedOrigin:"https://link.example",isCurrent:()=>true});
   else if(kind==="missing")delete req.headers["x-agend-token"];
   else {const sessions=new WebSessionStore(),session=sessions.create({tier:"guest",surface:"local",label:"test",tokenEpoch:tokenEpoch(token),owner:{adapterId:"tg",userId:"1"}});Object.assign(f.context,{webSessions:sessions});delete req.headers["x-agend-token"];req.headers.cookie=`${WEB_SESSION_COOKIE}=${session.sessionId}`;req.headers.origin="http://localhost";req.headers["x-agend-csrf"]=csrfTokenFor(session.sessionId);}
   handleNativeInstanceRequest(req,res,url("/recover-pane"),f.context);await finish(res,403);expect(recover).not.toHaveBeenCalled();
@@ -205,10 +206,11 @@ describe("explicit fresh Claude conversation boundary",()=>{
   const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const fresh=vi.fn(async()=>{});f.context.startFreshNativePane=fresh;
   const req=request("POST",body,url("/new-conversation")),res=new Response(req);handleNativeInstanceRequest(req,res,url("/new-conversation"),f.context);await finish(res,400);expect(fresh).not.toHaveBeenCalled();
  });
- it.each(["guest","gateway","missing"])("refuses %s before a new conversation",async kind=>{
+ it.each(["guest","gateway","missing"])("refuses %s before a new conversation (gateway: the header token over the link)",async kind=>{
   const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const fresh=vi.fn(async()=>{});f.context.startFreshNativePane=fresh;
   const req=request("POST",{confirmedNewConversation:true,launchId,sessionId},url("/new-conversation")),res=new Response(req);
-  if(kind==="gateway")bindGatewayRequest(req,{kind:"edge-public",gatewayId:"test"} as never);
+  // M-3278: the link's admin session is admitted (nativeCliAuthorization); the CLI's header token never is over the link.
+  if(kind==="gateway")bindGatewayRequest(req,{surface:"gateway",exposureId:"e".repeat(32),expectedOrigin:"https://link.example",isCurrent:()=>true});
   else if(kind==="missing")delete req.headers["x-agend-token"];
   else {const sessions=new WebSessionStore(),session=sessions.create({tier:"guest",surface:"local",label:"test",tokenEpoch:tokenEpoch(token),owner:{adapterId:"tg",userId:"1"}});Object.assign(f.context,{webSessions:sessions});delete req.headers["x-agend-token"];req.headers.cookie=`${WEB_SESSION_COOKIE}=${session.sessionId}`;req.headers.origin="http://localhost";req.headers["x-agend-csrf"]=csrfTokenFor(session.sessionId);}
   handleNativeInstanceRequest(req,res,url("/new-conversation"),f.context);await finish(res,403);expect(fresh).not.toHaveBeenCalled();

@@ -43,7 +43,7 @@ export const markMember = on => {
   if (tokens.length) body.dataset.hub = tokens.join(" "); else delete body.dataset.hub;
 };
 export function HubMembershipSettings() {
-  const publicPage = globalThis.document?.body?.dataset?.publicLink === "1";
+  // M-3278 (decision 7933bf90): over the public link too, for its admin session (the server refuses anyone else).
   const [view, setView] = useState(null), [busy, setBusy] = useState(false), [messageKey, setMessageKey] = useState("loading");
   const [Connect, setConnect] = useState(null);
   const [connectError, setConnectError] = useState(false), [attempt, setAttempt] = useState(0);
@@ -58,19 +58,19 @@ export function HubMembershipSettings() {
   };
   useEffect(() => {
     owner.current.mounted = true;
-    if (!publicPage) read();
+    read();
     return () => { owner.current.mounted = false; owner.current.seq++; };
-  }, [publicPage]);
+  }, []);
   useEffect(() => {
     let live = true;
-    if (!publicPage && view?.enabled && markedMember()) {
+    if (view?.enabled && markedMember()) {
       setConnectError(false);
       import("./settings-hub.js").then(m => { if (live) setConnect(() => m.HubConnectCard); }, () => { if (live) setConnectError(true); });
     }
     return () => { live = false; };
-  }, [publicPage, view?.enabled, attempt]);
+  }, [view?.enabled, attempt]);
   const change = async enabled => {
-    if (publicPage || !view || owner.current.busy) return;
+    if (!view || owner.current.busy) return;
     owner.current.busy = true; owner.current.seq++; setBusy(true); setMessageKey("");
     try {
       const result = await confirmedWrite(path, { method: "PUT", body: { enabled }, resendable: true, label: copy("title"),
@@ -81,7 +81,6 @@ export function HubMembershipSettings() {
     } catch { if (owner.current.mounted) { setView(null); setMessageKey("failed"); } }
     finally { owner.current.busy = false; if (owner.current.mounted) setBusy(false); }
   };
-  if (publicPage) return null;
   return html`<div class="form hub-membership-settings"><${CompanyJoinSettings} onSaved=${read} memberEnabled=${view?.enabled === true} /><section class="card" id="hub-membership">
     <h3>${copy("title")}</h3><p class="note">${copy("hint")}</p>
     ${!view && messageKey === "loading" ? html`<${Skeleton} variant="rows" lines=${2} label=${copy("loading")} />` : html`<label class="check"><input id="hubMemberEnabled" class="s-ui-toggle" type="checkbox" role="switch" checked=${view?.enabled === true}

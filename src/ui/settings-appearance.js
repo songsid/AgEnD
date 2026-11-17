@@ -77,15 +77,13 @@ function refusal(body) {
  */
 export function AppearanceSection(props = {}) {
   const part = props.part || "look";
-  const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   // #2347 regrouping: Look (the person's own), this device's switches (in Preferences) and the host-wide cards (in Web
-  // dashboard) are drawn where each belongs. Public Look keeps the existing browser-only theme choice; customization stays unavailable there.
-  if (publicLink) return part === "look" ? html`<div class="s-look-workspace s-look-public"><div class="s-look-main">
-    <${ThemeModeCard} publicLink=${true} />
-    <section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>
-  </div></div>` : null;
+  // dashboard) are drawn where each belongs. M-3278 (decision 7933bf90): the public link's page draws the full Look, as the
+  // local dashboard does (it had only the theme choice and a note); its admin session's changes are answered as locally.
   if (part === "device") return html`<${MotionCard} ...${props} /><${DeviceCard} ...${props} />`;
-  if (part === "dashboard") return html`<${AppIconCard} /><details class="s-look-disclosure s-dashboard-limits"><summary><${Icon} name="sliders" size=${17} /><span>${tn("cardLimitsTitle")}</span><${Icon} name="chevron" size=${16} /></summary><div class="s-look-disclosure-body"><${CardLimitsCard} /></div></details>`;
+  // The card upload limits (Settings → Appearance's fleet setting) are not changed over the public link: the server refuses it.
+  const overLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
+  if (part === "dashboard") return overLink ? html`<${AppIconCard} />` : html`<${AppIconCard} /><details class="s-look-disclosure s-dashboard-limits"><summary><${Icon} name="sliders" size=${17} /><span>${tn("cardLimitsTitle")}</span><${Icon} name="chevron" size=${16} /></summary><div class="s-look-disclosure-body"><${CardLimitsCard} /></div></details>`;
   return html`<div class="s-look-workspace">
     <div class="s-look-basics">
     <div class="s-look-main">
@@ -108,8 +106,8 @@ export function AppearanceSection(props = {}) {
   </div>`;
 }
 
-/** Theme remains a normal personal preference, including the public dashboard's existing browser-only choice. */
-function ThemeModeCard({ publicLink = false }) {
+/** Theme remains a normal personal preference. */
+function ThemeModeCard() {
   const [theme, setTheme] = useState(typeof AgendTheme !== "undefined" ? AgendTheme.get() : "system");
   useEffect(() => (typeof AgendTheme !== "undefined" && typeof AgendTheme.onChange === "function" ? AgendTheme.onChange(setTheme) : undefined), []);
   const choose = (value) => { setTheme(value); if (typeof AgendTheme !== "undefined") AgendTheme.set(value); savePref("theme", value); };
@@ -122,7 +120,6 @@ function ThemeModeCard({ publicLink = false }) {
       </label>`)}
     </div></fieldset>
     <${SettingsContentWidth} />
-    ${publicLink ? html`<p class="sub">${tn("syncedPublicLink")}</p>` : null}
   </section>`;
 }
 

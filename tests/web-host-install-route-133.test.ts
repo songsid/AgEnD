@@ -110,14 +110,14 @@ describe("who may ask", () => {
     expect((await t.call("POST", "/ui/host-install", gw, { backend: "grok" })).status).toBeGreaterThanOrEqual(401);
     expect(t.start).not.toHaveBeenCalled();
   });
-  it("a request that came through the public link: not found for a read; a write is refused (by the session gate before the route, or the route)", async () => {
+  it("M-3278: a request through the public link by its admin session is answered as locally (a read; an install still only as the gate's confirmed replay)", async () => {
     const t = await setup();
     const sessions = t.sessions;
     const gw = sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(t.token) } as never);
     class Res extends ServerResponse { status = 0; body = "";
       override writeHead(code: number): this { this.status = code; return this; }
       override end(chunk?: unknown): this { this.body += String(chunk ?? ""); return this; } }
-    for (const [method, path] of [["GET", "/ui/host-install"], ["POST", "/ui/host-install"], ["POST", "/ui/host-install/cancel"]] as const) {
+    for (const [method, path] of [["GET", "/ui/host-install"], ["POST", "/ui/host-install"]] as const) {
       const req = Readable.from([]) as unknown as IncomingMessage; req.method = method; req.url = path;
       req.headers = { host: "localhost", cookie: `${WEB_SESSION_COOKIE_SECURE}=${gw.sessionId}` };
       Object.defineProperty(req, "socket", { value: { remoteAddress: "127.0.0.1" }, configurable: true });
@@ -125,16 +125,16 @@ describe("who may ask", () => {
       const res = new Res(req);
       expect(handleWebRequest(req, res, new URL(path, "http://localhost"), t.ctx)).toBe(true);
       await vi.waitFor(() => expect(res.status).not.toBe(0));
-      if (method === "GET") expect([res.status, JSON.parse(res.body).error]).toEqual([404, "install_not_over_public_link"]);
-      else expect(res.status, `${method} ${path}`).toBeGreaterThanOrEqual(401);
+      if (method === "GET") expect(res.status).toBe(200);
+      else expect(res.status, `${method} ${path}`).toBeGreaterThanOrEqual(401);   // no CSRF here; and an install runs only as the gate's replay
     }
     expect(t.start).not.toHaveBeenCalled();
   });
-  it("an admin session of the public link that reaches the local listener is refused (403) — the route's own surface check, behind the store's", async () => {
+  it("a read session of the public link that reaches the local listener is refused (403) — the route's own admin check, behind the store's (M-3278: no surface check)", async () => {
     const t = await setup();
     const admin = t.as("admin");
     // The real store refuses a gateway-surface session on a non-gateway request (401). Make it hand the record over anyway: the route must still say no.
-    t.sessions.bend = r => ({ ...r, surface: "gateway", exposureId: "e".repeat(32) });
+    t.sessions.bend = r => ({ ...r, tier: "read", surface: "gateway", exposureId: "e".repeat(32) });
     for (const [method, path, body] of [["GET", "/ui/host-install", undefined], ["POST", "/ui/host-install", { backend: "grok" }], ["POST", "/ui/host-install/cancel", {}]] as const) {
       const r = await t.call(method, path, admin, body);
       expect([r.status, r.body.error], `${method} ${path}`).toEqual([403, "install_needs_a_local_admin"]);

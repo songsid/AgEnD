@@ -160,7 +160,8 @@ describe("#1604: Settings → Preferences and Look", () => {
       expect(theme.querySelector("legend")?.textContent, String(publicLink)).toBe("Theme");
       expect([...theme.querySelectorAll('input[type="radio"]')].map((input: any) => input.value)).toEqual(["light", "dark", "system"]);
       const lookHints = [...pg.root.querySelectorAll(".s-look-display p.sub")].map((p: any) => p.textContent);
-      expect(lookHints.includes(publicNote), "public Look retains the browser-only scope warning").toBe(publicLink);
+      // M-3278 (decision 7933bf90): the public link draws the full Look as locally — the theme card carries no link-only note.
+      expect(lookHints.includes(publicNote), "the Look's theme card has no link-only note").toBe(false);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
   });

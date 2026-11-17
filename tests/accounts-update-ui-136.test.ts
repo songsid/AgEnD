@@ -170,10 +170,13 @@ describe("pressing Update", () => {
 });
 
 describe("who sees it, and in which words", () => {
-  it("the public link's page shows neither the line nor the button", async () => {
+  it("M-3278: the public link's admin page shows them; a guest's page over the link shows neither the line nor the button", async () => {
     document.body.setAttribute("data-public-link", "1");
-    try { await mount(); expect(updateBtn("grok")).toBeUndefined(); expect(line("grok")).toBeNull(); }
+    try { await mount(); expect(updateBtn("grok")).toBeDefined(); expect(line("grok")).not.toBeNull(); }
     finally { document.body.removeAttribute("data-public-link"); }
+    document.body.setAttribute("data-public-link", "1"); document.body.setAttribute("data-tier", "guest");
+    try { await mount(); expect(updateBtn("grok")).toBeUndefined(); expect(line("grok")).toBeNull(); }
+    finally { document.body.removeAttribute("data-public-link"); document.body.removeAttribute("data-tier"); }
   });
   it("the words exist in both languages: no raw key", async () => {
     for (const lang of ["en", "zh-TW"]) {
@@ -273,10 +276,13 @@ describe("AGEND-153: the named exception (Antigravity — update to the latest, 
     expect(text(line("antigravity"))).toContain("尚未稽核");
     expect(text(card("antigravity"))).not.toMatch(/hostinstall\./);
   });
-  it("the public link's page shows neither", async () => {
+  it("M-3278: the public link's admin page shows them; a guest's page over the link shows neither", async () => {
     view = { clis: [AGY("current", "1.5.3")] };
     document.body.setAttribute("data-public-link", "1");
-    try { await mount(); expect(updateBtn("antigravity")).toBeUndefined(); expect(line("antigravity")).toBeNull(); }
+    try { await mount(); expect(updateBtn("antigravity")).toBeDefined(); expect(line("antigravity")).not.toBeNull(); }
     finally { document.body.removeAttribute("data-public-link"); }
+    document.body.setAttribute("data-public-link", "1"); document.body.setAttribute("data-tier", "guest");
+    try { await mount(); expect(updateBtn("antigravity")).toBeUndefined(); expect(line("antigravity")).toBeNull(); }
+    finally { document.body.removeAttribute("data-public-link"); document.body.removeAttribute("data-tier"); }
   });
 });
