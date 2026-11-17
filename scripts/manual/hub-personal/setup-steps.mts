@@ -45,6 +45,7 @@ try{
   await ctx.addInitScript(({language,theme}:any)=>{localStorage.setItem("agend_lang",language);localStorage.setItem("agend_theme",theme);localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");},{language,theme});
   await ctx.route("**/*",(route:any)=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
   await ctx.addInitScript(()=>{Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:async(text:string)=>{(window as any).__copied=text;}}});});
+  await ctx.addInitScript(()=>{const scroll=Element.prototype.scrollIntoView;Element.prototype.scrollIntoView=function(...args:any[]){if(this.id==="hub-personal-agents")(window as any).__personalScroll=((window as any).__personalScroll??0)+1;return scroll.apply(this,args);};});
   const p=await ctx.newPage(),errors:string[]=[];p.on("pageerror",(error:Error)=>errors.push(error.message));
   const sign=async(cookie:string)=>{const i=cookie.indexOf("=");await ctx.clearCookies();await ctx.addCookies([{name:cookie.slice(0,i),value:cookie.slice(i+1),url:origin,httpOnly:true,secure:true,sameSite:"Strict"}]);};
   const shot=async(name:string,selector:string)=>{
@@ -62,7 +63,8 @@ try{
   };
   const openMine=async(cookie:string)=>{await sign(cookie);const response=p.waitForResponse((res:any)=>res.url().endsWith("/hub/v1/me/personal-agent")&&res.request().method()==="GET");await p.goto(origin+"/ui/hub/exposures");await response;};
   await openMine(admin.cookie);await p.getByText(phase==="before"?(index?"這個 Hub 尚未啟用個人 Agent。":"Personal agents are not enabled on this Hub."):(index?'這個 Hub 還沒有開啟個人 Agent。請到「管理 → 管理項目 → 個人 Agent」開啟「允許個人 Agent」。':'Personal agents are turned off on this Hub. Turn on "Allow personal agents" in Administration → Manage → Personal agents.'),{exact:true}).waitFor();await shot("disabled-admin","[data-personal-agent]");
-  if(phase!=="before"){await p.getByRole("link",{name:index?"前往管理":"Open Administration",exact:true}).click();await p.locator("#hub-personal-agents form").waitFor();const box=await p.locator("#hub-personal-agents").boundingBox();check(`${tag}/admin-link-target`,new URL(p.url()).searchParams.get("section")==="personal-agents"&&box.y>=0&&box.y<300);}
+  if(phase!=="before"){await p.getByRole("link",{name:index?"前往管理":"Open Administration",exact:true}).click();await p.locator("#hub-personal-agents form").waitFor();await p.waitForFunction(()=>{const heading=document.querySelector("#hub-personal-agents h3"),box=heading?.getBoundingClientRect();return new URLSearchParams(location.search).get("section")==="personal-agents"&&(window as any).__personalScroll>0&&box&&box.top>=0&&box.bottom<=innerHeight;});check(`${tag}/admin-link-target`,true);}
+  if(process.env.CHECK_LINK_ONLY){await ctx.close();break;}
   await openMine(cookieOwner.cookie);await p.getByText(phase==="before"?(index?"這個 Hub 尚未啟用個人 Agent。":"Personal agents are not enabled on this Hub."):(index?"這個 Hub 還沒有開啟個人 Agent，請洽 Hub 管理員。":"Personal agents are turned off on this Hub. Ask your Hub administrator."),{exact:true}).waitFor();await shot("disabled-member","[data-personal-agent]");
   await sign(admin.cookie);await p.goto(origin+"/ui/hub/admin?view=manage");await p.locator('[data-personal-admin] input[role="switch"]').waitFor();
   const adminCard=p.locator("[data-personal-admin]");await shot("admin-empty","[data-personal-admin]");await adminCard.locator('input[role="switch"]').check();await adminCard.locator('input[type="search"]').fill(index?"王經":"Al");
@@ -83,7 +85,7 @@ try{
    {id:"claude-code",path:"C:\\claude.exe",version:"fixture",runnable:true,authenticated:true,personalStatus:"ready",supports:{execution:true,resume:false,model:true,mcp:false},readOnlySupport:true,permissionNote:"",models:[]}]}};
   await ownerCard.getByRole("button",{name:index?"重新整理":"Refresh",exact:true}).click();await ownerCard.locator("form").waitFor();await ownerCard.locator("form input").nth(0).fill(index?"王經理的筆記":"Personal notes");await ownerCard.locator("form input").nth(1).fill(index?"Hub agent 資料夾中的工作筆記":"Notes from the Hub agent folder");await ownerCard.locator("form select").nth(0).selectOption("claude-code");
   check(`${tag}/eligible-options`,JSON.stringify(await ownerCard.locator("form select").nth(0).locator("option").evaluateAll((options:HTMLOptionElement[])=>options.map(option=>option.value)))===JSON.stringify(["","claude-code"]));
-  if(phase!=="before")check(`${tag}/finished-steps-gone`,await ownerCard.locator("ol.runtime-steps").count()===0);
+  if(phase!=="before")check(`${tag}/finished-steps-gone`,await ownerCard.locator("ol.runtime-steps,pre").count()===0);
   const savedResponse=p.waitForResponse((res:any)=>res.url().endsWith("/hub/v1/me/personal-agent")&&res.request().method()==="PUT");await ownerCard.locator("form button").click();const publication=await (await savedResponse).json();check(`${tag}/published`,publication.exposure.kind==="personal");await ownerCard.getByRole("link",{name:index?"選擇誰可以問":"Choose who may ask",exact:true}).waitFor();await shot("ready","[data-personal-agent]");
   const g=await r.call(cookieOwner,"POST","/hub/v1/grants",{exposureId:publication.exposure.id,exposureRevision:1,login:"admin",days:1});const room=await r.call(admin,"POST","/hub/v1/rooms",{exposureId:publication.exposure.id,grantId:g.json.grant.id});
   await r.call(admin,"POST",`/hub/v1/rooms/${room.json.room.id}/messages`,{text:"Read the shared notes",idempotencyKey:crypto.randomUUID()});await until(()=>[...tasks.values()].some(t=>t.status==="running"));await ownerCard.getByRole("button",{name:index?"重新整理":"Refresh",exact:true}).click();await p.waitForFunction(expected=>document.querySelector("[data-personal-agent] .tag")?.textContent===expected,index?"處理中":"Working");await shot("working","[data-personal-agent]");
@@ -91,6 +93,6 @@ try{
   reported.status="offline";await ownerCard.getByRole("button",{name:index?"重新整理":"Refresh",exact:true}).click();await p.waitForFunction(expected=>document.querySelector("[data-personal-agent] .tag")?.textContent===expected,index?"上線時回答":"Answers when connected");await shot("offline","[data-personal-agent]");
   check(`${tag}/no-page-errors`,errors.length===0);await ctx.close();
  }
- check("checked-screens",receipt.pictures.length===14&&receipt.checks.length>0);
+ check("checked-screens",receipt.pictures.length===(process.env.CHECK_LINK_ONLY?1:14)&&receipt.checks.length>0);
  writeFileSync(join(out,"receipt.json"),JSON.stringify(receipt,null,2)+"\n");console.log(JSON.stringify({checks:receipt.checks.length,pictures:receipt.pictures.length,pass:true}));
 }finally{await browser?.close();await r.close();runtime.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));rmSync(privateHome,{recursive:true});}

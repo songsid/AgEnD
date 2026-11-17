@@ -180,3 +180,10 @@ it.each(["en","zh-TW"])("replaces completed setup steps with the connected compu
  data.computer.working=false;data.computer.connected=false;fire(button(p,language==="en"?"Refresh":"重新整理"),"click");await settle(20);
  expect(p.root.textContent).toContain("connect-agend.bat");expect(p.root.textContent).toContain(language==="en"?"sign in to Windows":"登入 Windows");expect(p.root.querySelector("ol")).toBeNull();
 });
+
+it("retires the consumed install command when the new computer appears",async()=>{
+ const data:any={...view(),computer:null},f=await fixture("en",data);
+ fire(button(f.p,"Get install command"),"click");await settle(20);expect(f.p.root.querySelector("pre")).toBeTruthy();
+ data.computer=view().computer;fire(button(f.p,"Refresh"),"click");await settle(20);
+ expect(f.p.root.querySelector("form")).toBeTruthy();expect(f.p.root.querySelector("ol")).toBeNull();expect(f.p.root.querySelector("pre")).toBeNull();
+});

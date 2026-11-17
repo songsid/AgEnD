@@ -17,13 +17,13 @@ function installCss(){if(typeof document==="undefined"||document.querySelector('
 /** The captured sign-in is passed through every client call, including writes after an await. */
 export function HubPersonalAgent({client,scope,isAdmin=false,onSaved=()=>{}}){
  const [view,setView]=useState(null),[form,setForm]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[issued,setIssued]=useState(null),[saved,setSaved]=useState(false),[copied,setCopied]=useState(false),[clock,setClock]=useState(Date.now());
- const generation=useRef(0),dirty=useRef(false),reads=useRef(0),busyRef=useRef(false);
+ const generation=useRef(0),dirty=useRef(false),reads=useRef(0),busyRef=useRef(false),computerId=useRef(null);
  const markBusy=value=>{busyRef.current=value;if(value)reads.current++;setBusy(value);};
  const load=async(refresh=false,replace=false)=>{const mine=generation.current,read=++reads.current;let value;try{value=await (refresh?client.refreshPersonalAgent(scope):client.personalAgent(scope));}catch{value=refused();}
-  if(mine!==generation.current||read!==reads.current)return;if(!value?.ok){setError(hp("loadFailed"));return;}setView(value);setError("");
+  if(mine!==generation.current||read!==reads.current)return;if(!value?.ok){setError(hp("loadFailed"));return;}const nextId=value.computer?.id??null;if(nextId&&nextId!==computerId.current)setIssued(null);computerId.current=nextId;setView(value);setError("");
   setForm(previous=>!previous||replace||!dirty.current?fields(value.agent):previous);
  };
- useEffect(()=>{generation.current++;dirty.current=false;markBusy(false);setView(null);setForm(null);setIssued(null);setSaved(false);setError("");installCss();void load();
+ useEffect(()=>{generation.current++;computerId.current=null;dirty.current=false;markBusy(false);setView(null);setForm(null);setIssued(null);setSaved(false);setError("");installCss();void load();
   const timer=setInterval(()=>{setClock(Date.now());if(!busyRef.current)void load();},5000);return()=>{generation.current++;clearInterval(timer);};},[client,scope]);
  const edit=patch=>{dirty.current=true;setSaved(false);setForm(value=>({...value,...patch}));};
  const enroll=async()=>{if(busyRef.current)return;markBusy(true);setError("");const mine=generation.current;let result;try{result=await client.personalEnrollment(scope);}catch{result=refused();}
