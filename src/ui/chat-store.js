@@ -591,16 +591,27 @@ export function createChatStore(deps) {
   // no longer held loads the page around it (loadAround). The host serves them from its archive past the 500-message
   // window (GET /ui/history/older | newer | around: an admin's; a guest gets none — it is refused, so nothing more).
   function pagingOf(name) { return (s.paging[name] ??= {}); }
+  /**
+   * #4103 review F1: each chat's paging generation. A jump (loadAround), Jump to latest (backToLatest) and a stream gap
+   * replace what is held; a page still in flight then belongs to a list that is gone — merged into the new one it left a
+   * silent hole (the around page plus an old page, everything between never shown). Bumped by each of those; a page
+   * whose generation moved (or whose paging state was replaced) is dropped.
+   */
+  const pageGen = new Map();
+  const genOf = (name) => pageGen.get(name) ?? 0;
+  const bumpGen = (name) => { pageGen.set(name, genOf(name) + 1); return genOf(name); };
+  const stale = (name, gen, p) => genOf(name) !== gen || s.paging[name] !== p;
   /** How many messages a chat holds: the live 500, or SCREEN_MAX once the reader has paged back. */
   function capOf(name) { return s.paging[name]?.olderMore !== undefined || s.paging[name]?.detached ? SCREEN_MAX : 500; }
   const keyOfRow = (m) => `${m.boot}-${m.id}`;
   /** The reader is at the very top: the PAGE_SIZE messages before the oldest held. False: none (more), or busy. */
   async function loadOlder(name) {
-    const p = pagingOf(name), rows = s.msgs[name] || [];
+    const p = pagingOf(name), rows = s.msgs[name] || [], gen = genOf(name);
     if (p.busy || p.olderMore === false || !rows.length) return false;
     p.busy = true;
     try {
       const r = await api("GET", `/ui/history/older?instance=${encodeURIComponent(name)}&before=${keyOfRow(rows[0])}&limit=${PAGE_SIZE}`);
+      if (stale(name, gen, p)) return false;                            // what it was for was replaced meanwhile
       if (!r || !Array.isArray(r.messages)) { p.olderMore = false; return false; }
       p.olderMore = r.more === true;
       if (!r.messages.length) return false;
@@ -613,11 +624,12 @@ export function createChatStore(deps) {
   }
   /** Scrolled back down to what is held, the newest unloaded: the next PAGE_SIZE; the live end reached: attached again. */
   async function loadNewer(name) {
-    const p = pagingOf(name), rows = s.msgs[name] || [];
+    const p = pagingOf(name), rows = s.msgs[name] || [], gen = genOf(name);
     if (p.busy || !p.detached || !rows.length) return false;
     p.busy = true;
     try {
       const r = await api("GET", `/ui/history/newer?instance=${encodeURIComponent(name)}&after=${keyOfRow(rows[rows.length - 1])}&limit=${PAGE_SIZE}`);
+      if (stale(name, gen, p)) return false;
       if (!r || !Array.isArray(r.messages)) return false;
       let next = R().mergeMessages(s.msgs[name] || [], r.messages, Infinity);
       if (r.more !== true) { next = R().mergeMessages(next, p.held || [], Infinity); p.detached = false; p.held = []; }
@@ -630,9 +642,11 @@ export function createChatStore(deps) {
   }
   /** The page around one message (a jump): what is held is replaced by it. False: it is in neither window nor archive. */
   async function loadAround(name, key) {
-    const p = pagingOf(name);
+    const gen = bumpGen(name);                                         // a page in flight now belongs to a list going away
     const r = await api("GET", `/ui/history/around?instance=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&limit=${PAGE_SIZE}`);
+    if (genOf(name) !== gen) return false;                             // another jump (or Jump to latest) came after it
     if (!r || !Array.isArray(r.messages) || !r.messages.length) return false;
+    const p = pagingOf(name);
     s.msgs[name] = R().mergeMessages([], r.messages, Infinity);
     p.olderMore = r.olderMore === true; p.detached = r.newerMore === true; p.held = [];
     changed(name, "msgs");
@@ -643,6 +657,7 @@ export function createChatStore(deps) {
     const p = s.paging[name];
     if (!p?.detached) return false;
     const held = p.held || [];
+    bumpGen(name);
     delete s.paging[name];
     s.historyRead.delete(name);
     s.msgs[name] = R().mergeMessages([], held, 500);
@@ -767,6 +782,7 @@ export function createChatStore(deps) {
   function onGap() {
     for (const name of new Set([...Object.keys(s.msgs), ...s.historyRead])) { s.historyRead.delete(name); s.gapped.add(name); }
     s.paging = {};                         // M-3272: read again as a first visit — scroll-back starts over from the newest
+    for (const name of pageGen.keys()) bumpGen(name);   // #4103 review F1: a page in flight belongs to the list a gap replaces
     for (const name of shown()) void openHistory(name);
   }
   /** Wire the store to the app's stream, for the life of the page. */

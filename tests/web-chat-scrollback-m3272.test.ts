@@ -30,8 +30,11 @@ async function world(count: number) {
   for (let n = 1; n <= count; n++) say(n);
   await archive.flush();
   const reads: string[] = [];
+  // #4103 review F1: `hold` keeps an /ui/history/older answer back until released (a slow link).
+  const hold = { older: false, release: null as null | (() => void) };
   const fetch = vi.fn(async (path: string) => {
     reads.push(path);
+    if (hold.older && path.startsWith("/ui/history/older")) await new Promise<void>((r) => { hold.release = r; });
     const u = new URL(path, "http://x"), p = u.searchParams, limit = Number(p.get("limit"));
     const body = u.pathname === "/ui/history" ? { messages: history.list("w", limit) }
       : u.pathname === "/ui/history/older" ? history.older("w", p.get("before")!, limit)
@@ -44,7 +47,7 @@ async function world(count: number) {
   const kinds: string[] = [];
   st.subscribe((inst: string, kind: string) => { if (inst === "w") kinds.push(kind); });
   const ids = () => (st.state.msgs.w || []).map((m: any) => m.id);
-  return { history, st, reads, ids, kinds, say };
+  return { history, st, reads, ids, kinds, say, hold };
 }
 
 describe("M-3272: the store pages back through the archive, holding at most 1,000", () => {
@@ -83,6 +86,37 @@ describe("M-3272: the store pages back through the archive, holding at most 1,00
     // Jump to latest from there: the live chat again, as a first visit reads it.
     await w.st.backToLatest("w"); await settle(2);
     expect([w.ids()[0], w.ids().at(-1), w.st.pagingState("w").detached]).toEqual([2801, 3000, false]);
+  });
+
+  it("#4103 review F1: a page still in flight when a jump replaces the list is dropped — no silent hole", async () => {
+    const w = await world(3000);
+    await w.st.openHistory("w");
+    w.hold.older = true;
+    const pending = w.st.loadOlder("w");                                  // before=b0-2801, held open
+    await vi.waitFor(() => expect(w.hold.release).not.toBeNull());
+    w.hold.older = false;
+    expect(await w.st.loadAround("w", "b0-1000")).toBe(true);            // a search or pin jump meanwhile
+    const around = w.ids();
+    w.hold.release!();
+    expect(await pending).toBe(false);
+    expect(w.ids(), "the stale page did not land on the jump's list").toEqual(around);
+    expect(around.every((id: number, i: number) => i === 0 || id === around[i - 1] + 1), "contiguous").toBe(true);
+    await w.st.loadNewer("w");                                            // and paging on from it continues where it is
+    expect(w.ids().at(-1)).toBe(around.at(-1) + 100);
+  });
+
+  it("#4103 review F1: …and when Jump to latest (or a send) replaces it: the live chat, nothing stale merged into it", async () => {
+    const w = await world(3000);
+    await w.st.openHistory("w");
+    await w.st.loadAround("w", "b0-1000");                               // detached deep in the archive
+    w.hold.older = true;
+    const pending = w.st.loadOlder("w");
+    await vi.waitFor(() => expect(w.hold.release).not.toBeNull());
+    w.hold.older = false;
+    await w.st.backToLatest("w"); await settle(2);
+    w.hold.release!();
+    expect(await pending).toBe(false);
+    expect([w.ids()[0], w.ids().at(-1), w.ids().length, w.st.pagingState("w")]).toEqual([2801, 3000, 200, { olderMore: true, detached: false }]);
   });
 
   it("a gap (the stream came back after missing messages) starts scroll-back over from the newest", async () => {

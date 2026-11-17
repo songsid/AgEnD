@@ -761,7 +761,7 @@ function threadEntry(name, doc) {
     startReply: (x) => { store.startReply(name, x); composerField(name)?.focus(); },
     findQuoted: (key) => store.findQuoted(name, key),
     // M-3272: scroll-back — older at the very top, the unloaded newest end again at the bottom (chat-store.js loadOlder).
-    onTop: () => { void store.loadOlder(name); },
+    onTop: () => { if (!guestPage()) void store.loadOlder(name); },   // #4103 review N1: a guest is refused; never asked
     onBottom: () => { void store.loadNewer(name); },
     detached: () => store.pagingState(name).detached,
     notice: (text) => toast(text, false),
