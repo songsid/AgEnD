@@ -156,6 +156,16 @@ Agents then see that browser's messages as `@web:v` and check their receipt like
 
 A message to a paused agent wakes it through the same delivery path as Discord/Telegram, including ClassicBot. The composer shows **Waking…**; a refused wake explains why, keeps the draft/files and offers **Retry send**. No automatic resend. Stopped agents still require Start. Upload/history/Cancel do not wake agents. Existing guest/public-link send permissions are unchanged.
 
+**Scrolling back (M-3272).** A chat opens with its newest messages. Scroll to the very top and the 100 before
+them load; nothing loads before you get there. Past each agent's newest 500, they come from the host's archive
+(`workspaces/<agent>/web-chat-archive/`, kept per `web.chat_archive.retention_days`; unset: kept forever).
+- **Archived messages:** text, author, time and file names (their files are no longer served); a reply's buttons and poll
+  are shown but read-only.
+- **At most about 1,000 messages are on screen.** Scrolled far back, the newest end is set aside, and it comes back as you
+  scroll down. **Jump to latest** (↓) returns to the live chat at once; sending a message does too.
+- **Search hits and pins** open the page around the message, however far back it is.
+- **Admins only** (over the public link too); a guest sees only the chat's newest messages, as before.
+
 **Sending.** Type and press Enter. A message sent while the agent works waits its turn; `/steer <text>` goes into
 the current turn, `/btw <question>` asks a side question. **Stop reply** (or Esc) interrupts the reply and drops
 queued messages. While the agent works, "*name* is working…" and **Stop reply** sit in a bar above the message box; the
