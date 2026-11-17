@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.23
+
+❯ start background work
+
+◆ Backgrounded sleep 300 · 0.3s · ctrl+o
+
+◆ mock reply ok
+
+  (↓ to view terminals)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+  Local work is still active
+  The following will stop when you exit:
+
+  background task · tool.bash
+
+  ⟩ 1. Exit anyway
+    2. Stay
+
+  Enter to confirm · Esc to cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+main · ↓ to select
+└ ◈ sleep 300  running                                                                                                9s
+  mock-model · high · /home/u/work · Launch overrides
+
+
+
+
+
+
+
+
+
+

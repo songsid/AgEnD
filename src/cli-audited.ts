@@ -13,8 +13,8 @@ import type { CliId } from "./cli-capability.js";
 
 /** Audited releases, oldest first. The last entry is the one an update goes to. A list is `readonly`: nothing at run time adds to it. */
 export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = Object.freeze({
-  // The maintainer-confirmed ledger of 2026-11-15 (Taipei): Claude 2.1.325, Codex 0.169.0, Kiro 3.3.0, Grok 1.0.77, Antigravity 1.5.9, OpenCode 1.19.5, Muse 1.4.20-R8619.1 are
-  // the newest audited release of each. (Maintaining this shipped ledger is part of our audit PRs: when a version is marked audited, the maintainer who audits it adds it here.)
+  // The maintainer-confirmed ledger of 2026-11-15 (Taipei): Claude 2.1.325, Codex 0.169.0, Kiro 3.3.0, Grok 1.0.77, Antigravity 1.5.9, OpenCode 1.19.5 are
+  // the newest audited release of each; Muse 1.4.23-R8977.1 is added with its audit evidence (M-3290, 2026-11-17). (Maintaining this shipped ledger is part of our audit PRs: when a version is marked audited, the maintainer who audits it adds it here.)
   // 2.1.316: native persistent-pane acceptance. 2.1.318: upstream watch audit (#3048). 2.1.319: live-captured (tests/claude-cold-resume-2.1.319.test.ts). 2.1.325: upstream watch audit (tests/fixtures/claude-2.1.325-*).
   "claude-code": Object.freeze(["2.1.316", "2.1.318", "2.1.319", "2.1.325"]),
   // 0.165.0: native persistent-pane acceptance (#2954 / #3001 / #3219). 0.166.0: upstream watch audit. 0.167.0: tests/codex-0167-audit.test.ts. 0.169.0: tests/codex-0169-audit.test.ts (#3830).
@@ -25,9 +25,10 @@ export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = 
   antigravity: Object.freeze(["1.3.5", "1.3.6", "1.5.3", "1.5.9"]),
   // tests/grok-1.0.*-audit.test.ts: 1.0.52 … 1.0.77.
   grok: Object.freeze(["1.0.52", "1.0.60", "1.0.67", "1.0.70", "1.0.77"]),
-  // tests/muse-1.4.*-audit.test.ts. The newest is kept with its build (`1.4.20-R8619.1`, tests/fixtures/muse-1.4.20, M-3113 #3906): an installed `1.4.20-R8500.1` is not the
-  // audited release, and the page can say so. (Older entries are the numbers, without a build: 1.4.14 was R7309.1, 1.4.15 was R8339.1, tests/fixtures/muse-1.4.15.)
-  muse: Object.freeze(["1.4.4", "1.4.6", "1.4.7", "1.4.11", "1.4.12", "1.4.13", "1.4.14", "1.4.15", "1.4.20-R8619.1"]),
+  // tests/muse-1.4.*-audit.test.ts. The newest is kept with its build (`1.4.23-R8977.1`, tests/fixtures/muse-1.4.23, M-3290): an installed `1.4.23-R8500.1` is not the
+  // audited release, and the page can say so. (Older entries are the numbers, without a build: 1.4.14 was R7309.1, 1.4.15 was R8339.1, 1.4.20 was R8619.1,
+  // tests/fixtures/muse-1.4.15 and muse-1.4.20.)
+  muse: Object.freeze(["1.4.4", "1.4.6", "1.4.7", "1.4.11", "1.4.12", "1.4.13", "1.4.14", "1.4.15", "1.4.20", "1.4.23-R8977.1"]),
   // tests/fixtures/opencode-1.18.34-*; 1.19.5 on the maintainer's ledger.
   opencode: Object.freeze(["1.18.34", "1.19.5"]),
 });

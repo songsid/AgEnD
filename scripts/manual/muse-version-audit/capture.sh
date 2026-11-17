@@ -1,5 +1,5 @@
 #!/bin/bash
-# Offline muse capture run (1.4.14 audit 2026-10-28; 1.4.15 additions 2026-11-10). Run INSIDE a disposable container as an unprivileged user (1.4.15: the image's `rh`, uid 1000, with /home/u owned by it):
+# Offline muse capture run (1.4.14 audit 2026-10-28; 1.4.15 additions 2026-11-10; 1.4.23: the quit menu, 2026-11-17). Run INSIDE a disposable container as an unprivileged user (1.4.15: the image's `rh`, uid 1000, with /home/u owned by it):
 #   docker run -d --name m --network none --memory 2g --cpus 2 --pids-limit 256 \
 #     -v <dir with this script and mock.py>:/rig:ro -v <binary dir>:/opt/musebin:ro -v <out>:/home/u/out <node+tmux+python3 image> sleep infinity
 #   docker exec m sh -c 'mkdir -p /home/u/bin && cp /opt/musebin/muse /home/u/bin/muse && chmod +x /home/u/bin/muse'
@@ -64,4 +64,10 @@ orphan(){ local name=$1 m=$2 a=$3; fresh $name; mode $m; [ -n "$a" ] && args "$a
 orphan orphan-stream slow ""
 orphan orphan-tool tool '{"command":"sleep 300"}'
 orphan orphan-bg tool '{"command":"sleep 300","yield_time_ms":1000}'
+# 1.4.23 audit: the quit menu with local work still running (MUSE_QUIT_HINT / museLocalWorkQuitActive) — a background task, /quit,
+# Down once, Escape. Never "Exit anyway". --disable-sandbox only so the task runs in this container (as the orphan runs).
+fresh quitlw; mode tool; args '{"command":"sleep 300","yield_time_ms":100}'; start "$KEY" $META $PROD --disable-sandbox; sleep 9
+paste "start background work"; sleep 8; cap prod-background-work
+paste "/quit"; sleep 2; cap prod-quit-with-local-work; $T send-keys -t m Down; sleep 1; cap quit-menu-cursor2
+$T send-keys -t m Escape; sleep 1.5; cap quit-menu-after-esc; pkill -f "^$MUSE" 2>/dev/null; sleep 1
 $T kill-session -t m 2>/dev/null; echo RUN-DONE
