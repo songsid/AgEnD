@@ -46,6 +46,13 @@ const ROWS = [
   // Fleet · Agents
   ["agents.new", "agents", "#newAgentBtn", "settings.newAgent", null, ["new agent", "create", "add agent", "instance"], ["新增 agent", "建立", "新 agent"]],
   ["agents.provider-keys", "accounts", ".s-provider-keys", "settings.providerKeys", "web.provider_secrets", ["api key", "provider", "openai", "anthropic", "token", "secret"], ["API 金鑰", "金鑰", "供應商", "token"]],
+  // AGEND-288: the AI accounts have their own section, and are found by the words people use for them ("account", "帳號", a CLI's
+  // name) — before this, only the provider API keys were registered, and "帳號" found Hub's company account instead. The
+  // target is the Accounts group (always drawn, whatever the host's CLIs report); the rows below it come and go with the data.
+  ["accounts.ai-accounts", "accounts", ".s-accounts", null, null, ["account", "accounts", "ai account", "ai accounts", "connect", "connect account", "sign in", "login", "cli login", "credential", "credential profile", "claude", "claude code", "codex", "kiro", "gemini", "grok"], ["AI 帳號", "帳號", "連接帳號", "連線", "登入", "CLI 登入", "憑證", "Claude", "Codex"], L("AI accounts", "AI 帳號")],
+  ["accounts.add", "accounts", ".s-accounts", null, null, ["add account", "new account", "another account", "named account", "credential profile", "second account"], ["新增帳號", "新帳號", "另一個帳號", "命名帳號", "多個帳號"], L("Add an account", "新增帳號")],
+  ["accounts.default", "accounts", ".s-accounts", null, "defaults.backend_options", ["default account", "fleet default", "which account", "move agents", "switch account", "default connection"], ["預設帳號", "預設連線", "切換帳號", "移動 Agent", "哪個帳號"], L("Default account", "預設帳號")],
+  ["accounts.keepalive", "accounts", ".s-accounts", null, null, ["keep alive", "keep connection alive", "keepalive", "stay signed in", "session expires", "refresh login"], ["保持連線", "保活", "保持登入", "登入過期"], L("Keep connection alive", "保持連線")],
   // M-2255: the two switches (fleet.yaml runtimes.*).
   ["runtimes.windows-cli", "runtimes", "#runtimeWindowsCli", null, "runtimes.windows_cli", ["windows cli", "this pc", "local windows", "AGEND_WINDOWS_CLI", "codex", "claude code"], ["Windows CLI", "這台電腦", "本機"], L("Use this PC's Windows CLIs", "使用這台電腦 Windows 上的 CLI")],
   ["runtimes.remote-runtime", "runtimes", "#runtimeRemoteRuntime", null, "runtimes.remote_runtime", ["pair", "remote", "other computer", "AGEND_REMOTE_RUNTIME", "tailscale", "ssh"], ["配對", "遠端", "其他電腦"], L("Allow other Windows PCs to pair", "允許其他 Windows 電腦配對")],
