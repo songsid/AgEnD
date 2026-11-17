@@ -258,9 +258,11 @@ export const CLAUDE_RESUME_PROMPT_DEFAULT = /^[ \t]*[❯›][ \t]*1\.[ \t]*Resum
 export const CLAUDE_RESUME_PROMPT_MENU = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]*Resume (?:full session as-is|from summary)[^\n]*\n[ \t]*[❯›]?[ \t]*\d\.[ \t]*Resume (?:full session as-is|from summary)/m;
 
 const RESUME_OPTION_ROW = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]*Resume (?:full session as-is|from summary)/;
-/** 2.1.286 appends a persistent "never ask" option after the two Resume rows. */
-const RESUME_NEVER_ASK_ROW = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]*Don't ask me again[ \t]*$/;
+/** 2.1.286 appends a persistent "never ask" option after the two Resume rows ("Don't ask me again"; 2.1.326: "Don't ask again"). */
+const RESUME_NEVER_ASK_ROW = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]*Don't ask (?:me )?again[ \t]*$/;
 const RESUME_DIALOG_FOOTER = /Enter to confirm|Esc to cancel|↑↓|to select|to navigate/i;
+/** Any third numbered option under the pair (a wording AgEnD does not know yet). */
+const RESUME_OTHER_OPTION_ROW = /^[ \t]*[❯›]?[ \t]*3\.[ \t]*\S/;
 
 /**
  * Is the resume menu the CURRENT interactive region of the pane, and is the
@@ -279,9 +281,14 @@ export function claudeResumeMenuState(pane: string): { active: boolean; defaultC
   const trailing = rows.slice(start + 2).filter(r => r.trim().length > 0);
   // The third option belongs to the menu, not to whatever follows it: skip it
   // (once, directly under the pair) before judging what trails the menu.
+  // 2.1.326 reworded it ("Don't ask again"), and the menu then read as no menu at all — neither answered nor held. Any
+  // other numbered row in that place is still the menu's (fail-safe): active, so the hold entry holds it, but never the
+  // known default, so nothing presses a key on a menu whose rows are not all known.
+  let unknownRow = false;
   if (trailing.length > 0 && RESUME_NEVER_ASK_ROW.test(trailing[0])) trailing.shift();
+  else if (trailing.length > 0 && RESUME_OTHER_OPTION_ROW.test(trailing[0])) { trailing.shift(); unknownRow = true; }
   const active = trailing.length <= 2 && trailing.every(r => RESUME_DIALOG_FOOTER.test(r));
-  const defaultCursor = /^[ \t]*[❯›][ \t]*1\.[ \t]*Resume from summary \((?:instant, )?recommended\)/.test(rows[start]);
+  const defaultCursor = !unknownRow && /^[ \t]*[❯›][ \t]*1\.[ \t]*Resume from summary \((?:instant, )?recommended\)/.test(rows[start]);
   return { active, defaultCursor };
 }
 const resumeDefaultActive = (pane: string): boolean => { const s = claudeResumeMenuState(pane); return s.active && s.defaultCursor; };
@@ -773,7 +780,12 @@ export function claudeLoginScreenActive(pane: string): boolean {
  * reads `· Retrying in not a duration · attempt 6/10` is not a retry.
  */
 const CLAUDE_RETRY_WAIT = "\\d+(?:\\.\\d+)?[dhms](?: \\d+[dhms])*(?: \\([^)\\n]*\\))?";
-const CLAUDE_RETRY_SUFFIX = `[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t]·[ \\t]attempt \\d+/\\d+`;
+/**
+ * 2.1.326 lower-cases it and drops the wait when there is none: ` · retrying in ${wait}${resets} · attempt n/m`, or
+ * ` · retrying… · attempt n/m` (wait 0). Both spellings, both forms.
+ */
+const CLAUDE_RETRY_WHEN = `[Rr]etrying(?: in ${CLAUDE_RETRY_WAIT}|…)`;
+const CLAUDE_RETRY_SUFFIX = `[ \\t]·[ \\t]${CLAUDE_RETRY_WHEN}[ \\t]·[ \\t]attempt \\d+/\\d+`;
 /** The spinner glyphs Claude Code cycles through (six measured frames). */
 const CLAUDE_SPINNER_GLYPH = "[✻✽✢·✶*]";
 /**
@@ -808,7 +820,7 @@ const CLAUDE_LIVE_TAIL = "\\n(?:[ \\t]*\\n|[ \\t]*⎿(?![ \\t\\u00a0]*Interrupte
   + "(?:(?!─{10,})[^\\n]*\\n)*(?!─{10,})[^\\n]*(?![\\s\\S])";
 /** A LIVE retry row whose message starts with one of these HTTP statuses. */
 const claudeRetryRow = (statuses: string): RegExp =>
-  new RegExp(`^[ \\t]*${CLAUDE_SPINNER_GLYPH}[ \\t]+(${statuses})\\b[^\\n]*?[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t]·[ \\t]attempt (\\d+)/(\\d+)[ \\t]*$(?=${CLAUDE_LIVE_TAIL})`, "im");
+  new RegExp(`^[ \\t]*${CLAUDE_SPINNER_GLYPH}[ \\t]+(${statuses})\\b[^\\n]*?[ \\t]·[ \\t]${CLAUDE_RETRY_WHEN}[ \\t]·[ \\t]attempt (\\d+)/(\\d+)[ \\t]*$(?=${CLAUDE_LIVE_TAIL})`, "im");
 
 /**
  * Claude Code's destructive shell-command confirmation menu.  Claude renders
