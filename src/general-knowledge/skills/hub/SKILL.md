@@ -742,7 +742,7 @@ Say plainly that these are not in the product yet:
   administrator. If it is enabled but the person is not allowed to add one, the administrator must allow that person or team.
 - The owner opens **My shared agents → Personal agent** / **我分享的 Agent → 個人 Agent**. Before a computer is connected,
   the card gives four steps:
-  1. On the Windows computer, install [Node.js 22.14 or newer](https://nodejs.org/) and install and sign in to Codex or
+  1. On the Windows computer, install Node.js 22.14 or newer and install and sign in to Codex or
      Claude Code. One of the two is enough. Read the folder/account disclosure; only put intended sharing material in
      the empty Hub agent folder the installer creates. On some computers Codex is available only in **Answer only**.
   2. Choose **Get install command** / **取得安裝指令**, then **Copy command** / **複製指令**. It is private and valid for
