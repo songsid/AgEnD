@@ -1,0 +1,43 @@
+
+  master /r/work/core-120                                                                    1.5k / 256k │ [Dashboard]
+
+
+     ❯ [agend-delivery-id:aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa]                                              1:14 PM
+       [from:Audit peer (audit-peer)] please stall a
+       (message_id: audit-message)
+
+
+     mock reply r1                                                                                           1:15 PM
+
+     Worked for 8.1s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                ╭─────────────────────────────────────────────────────────────────────────────────────╮
+                │[agend-delivery-id:bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb]                             │
+                │[from:Audit peer (audit-peer)] please stall a                                        │
+                │inert audit line 0                                                                   │
+                │… (15 more lines)                                                                    │
+                │inert audit line 16                                                                  │
+                │inert audit line 17                                                                  │
+                │(message_id: audit-message)                                                          │
+                ╰─ paste again or double-click to expand ─────────────────────────────────────────────╯
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ [Pasted: 21 lines]                                                                                             │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Enter:send  │  Alt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+x:shortcuts

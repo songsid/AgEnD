@@ -1,0 +1,43 @@
+
+  master /r/work/core-120                                                                    1.3k / 256k │ [Dashboard]
+
+
+     ❯ [agend-delivery-id:aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa]                                              1:14 PM
+       [from:Audit peer (audit-peer)] please stall a
+       (message_id: audit-message)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ⠴ Waiting for response… 0.1s                                                                    0.1s ⇣1.33k [stop]
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+c:cancel  │  Ctrl+x:shortcuts

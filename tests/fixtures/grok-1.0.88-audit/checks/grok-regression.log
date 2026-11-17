@@ -1,0 +1,13 @@
+
+ RUN  v4.1.12 <repo>
+
+(node:250552) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+error: no such file or directory: <scratch>/none
+(node:251660) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  25 passed (25)
+      Tests  809 passed (809)
+   Start at  21:35:41
+   Duration  22.17s (transform 15.74s, setup 1.86s, import 34.28s, tests 38.77s, environment 2ms)

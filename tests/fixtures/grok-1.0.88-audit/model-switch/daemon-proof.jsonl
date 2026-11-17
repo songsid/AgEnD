@@ -1,0 +1,3 @@
+{"ready":true,"busy":false,"blockers":[],"idle":true}
+{"asked":{"model":"grok-4","effort":"high"},"typed":"/model grok-4 high","result":{"type":"runtime_switch_result","id":"rig-0","outcome":"switched","confirmed":true,"shown":"Switched to grok-4 (high effort)"}}
+{"asked":{"model":null,"effort":"low"},"typed":"/effort low","result":{"type":"runtime_switch_result","id":"rig-1","outcome":"switched","confirmed":true,"shown":"Switched to grok-4 (low effort)"}}

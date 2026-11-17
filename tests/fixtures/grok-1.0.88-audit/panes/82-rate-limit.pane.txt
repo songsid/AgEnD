@@ -1,0 +1,43 @@
+
+  master /r/work/core-80                             1.5k / 256k │ [Dashboard]
+
+
+     ❯ error turn e                                                  1:16 PM
+
+
+  ┃  Retry failed: rate_limit_error: Rate limit exceeded
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰─────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
