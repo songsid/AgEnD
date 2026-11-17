@@ -202,16 +202,22 @@ describe("the routes", () => {
       expect(JSON.parse((await put(admin, { skin: null })).body)).toEqual({ rev: 2, autoSkin: null });
       const third = await put(admin, { skin: "pixel" });                                       // the offices' saves' limit
       expect([third.status, JSON.parse(third.body).error, f.fm.officeStore.autoSkin()]).toEqual([429, "offices_rate_limited", null]);
-      expect([isPublicWebRoute("PUT", "/ui/office-style"), isPassiveWebRead("PUT", "/ui/office-style")]).toEqual([false, false]);
-      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
-      const answer = await new Promise<{ status: number; body: string }>(resolve => {
+      // M-3278 (decision 7933bf90): routed over the public link; an admin session saves there as anywhere, a read-only one is refused.
+      expect([isPublicWebRoute("PUT", "/ui/office-style"), isPassiveWebRead("PUT", "/ui/office-style")]).toEqual([true, false]);
+      const overLink = (tier: "admin" | "read") => new Promise<{ status: number; body: string }>(resolve => {
+        const { sessionId } = f.fm.webSessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
         let code = 0;
         const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end(b: string) { resolve({ status: code, body: String(b) }); } };
         const req = Object.assign(new EventEmitter(), { method: "PUT", url: "/ui/office-style", headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sessionId}`, origin: "https://x.trycloudflare.com", "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" }, destroy() {}, resume() {} });
         bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
         expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/office-style"), f.fm)).toBe(true);
+        req.emit("data", Buffer.from(JSON.stringify({ skin: "pixel" }))); req.emit("end");
       });
-      expect([answer.status, JSON.parse(answer.body).error]).toEqual([403, "offices_not_over_public_link"]);
+      const readOverLink = await overLink("read");
+      expect([readOverLink.status, JSON.parse(readOverLink.body).error]).toEqual([403, "offices_need_an_admin_session"]);
+      f.fm.officeWrites = undefined;   // the limit was reached above; the link's save is judged on its own
+      const answer = await overLink("admin");
+      expect([answer.status, JSON.parse(answer.body)]).toEqual([200, { rev: 3, autoSkin: "pixel" }]);
     } finally { await f.stop(); }
   }, 30_000);
   // Office review (#2399 carry, Fable): a save without the rev it read would overwrite another person's unseen.
@@ -273,19 +279,26 @@ describe("the routes", () => {
       expect([status, f.fm.officeStore.list().offices]).toEqual([401, []]);
     } finally { await f.stop(); }
   }, 30_000);
-  it("the public link: the read on its manifest, the write absent — and refused by the handler on its own", async () => {
-    expect([isPublicWebRoute("GET", "/ui/offices"), isPublicWebRoute("PUT", "/ui/offices"), isPublicWebRoute("POST", "/ui/offices")]).toEqual([true, false, false]);
+  it("the public link: the read and the write on its manifest (M-3278) — a read-only session there refused by the handler, an admin's saved", async () => {
+    expect([isPublicWebRoute("GET", "/ui/offices"), isPublicWebRoute("PUT", "/ui/offices"), isPublicWebRoute("POST", "/ui/offices")]).toEqual([true, true, false]);
     const f = await fleet();
     try {
-      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
-      const answer = await new Promise<{ status: number; body: string }>(resolve => {
+      vi.spyOn(f.fm, "emitSseEvent").mockImplementation(() => {});
+      const overLink = (tier: "admin" | "read") => new Promise<{ status: number; body: string }>(resolve => {
+        const { sessionId } = f.fm.webSessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
         let code = 0;
         const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end(b: string) { resolve({ status: code, body: String(b) }); } };
         const req = Object.assign(new EventEmitter(), { method: "PUT", url: "/ui/offices", headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sessionId}`, origin: "https://x.trycloudflare.com", "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" }, destroy() {}, resume() {} });
         bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
         expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/offices"), f.fm)).toBe(true);
+        req.emit("data", Buffer.from(JSON.stringify({ rev: 0, offices: [OPS] }))); req.emit("end");
       });
-      expect([answer.status, JSON.parse(answer.body).error]).toEqual([403, "offices_not_over_public_link"]);
+      const readOverLink = await overLink("read");
+      expect([readOverLink.status, JSON.parse(readOverLink.body).error]).toEqual([403, "offices_need_an_admin_session"]);
+      expect(f.fm.officeStore.list().offices).toEqual([]);
+      const answer = await overLink("admin");
+      expect(answer.status).toBe(200);
+      expect(f.fm.officeStore.list().offices.map((o: { id: string }) => o.id)).toEqual([OPS.id]);
     } finally { await f.stop(); }
   }, 30_000);
 });

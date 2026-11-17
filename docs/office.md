@@ -316,7 +316,7 @@ Each instance has a level, from the work it has done over its whole recorded lif
 
 Who sees what:
 
-- **The dashboard:** every level, with the work tokens, today's work and requests, and first seen. The numbers follow the usage report's rules: none while `web.usage_panel` is `false`, and over the public link only with `web.usage_report_on_public_link: true`. Otherwise only the level is shown.
+- **The dashboard:** every level, with the work tokens, today's work and requests, and first seen. The numbers follow the usage report's rules: none while `web.usage_panel` is `false`, and over the public link only with `web.usage_report_on_public_link` is not `false` (on by default since M-3278). Otherwise only the level is shown.
 - **Share-link viewers:** the level of the people the share shows, and nothing else.
 - **Guests:** no Office, so no levels.
 - **Agents:** `office_view` lists each member's `level`. It changes nothing an agent can do.

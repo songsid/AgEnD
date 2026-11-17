@@ -412,6 +412,16 @@ jobs:
           HP: '19691'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-chat-pins-m3271.mts
+      # M-3272 (the user): web chat scroll-back — a phone scrolled up through 4,000 messages (into the archive past the 500):
+      # a page only at the very top, the reader kept in place, at most 1,000 on screen with DOM nodes and heap bounded, back
+      # down to the live end, a jump deep into the archive, an archived reply's buttons read-only.
+      - name: Chat scroll-back (phone, bounded)
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19701'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-chat-scrollback-m3272.mts
       # M-3210 (the user, phone): the image viewer swipes — sideways through the chat's pictures (message order, no wrap), up
       # or down to close with the dark fading; a short one springs back; a zoomed-in picture pans. Real touch input.
       - name: Phone image viewer swipes

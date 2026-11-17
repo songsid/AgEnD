@@ -171,12 +171,13 @@ describe("#2889: a tap on 'Not verified' shows why it can't be authorized here",
     fire(btn, "click"); await settle(4); fire(p.document.body, "keydown", { key: "Escape" }); await settle(4);
     expect([tip().hidden, (p.document as any).listenerCount("pointerdown")]).toEqual([true, base]);
   });
-  it("the Settings link stays beside it where the reason is fixable; over the public link, none", async () => {
+  it("the Settings link stays beside it where the reason is fixable; over the public link too (M-3278)", async () => {
     const r = await row({ state: "none", reason: "loopback_only" });
     expect([r.querySelector("button.webauth-why")?.textContent, r.querySelector('a[href="/settings/access#webAuthority"]')?.textContent]).toEqual(["Not verified", "Settings"]);
     p.document.body.setAttribute("data-public-link", "1");
     const pub = await row({ state: "none", reason: "disabled" });
-    expect([pub.querySelector("button.webauth-why")?.textContent, pub.querySelector("a")]).toEqual(["Not verified", null]);
+    // M-3278 (decision 7933bf90): the Web authority card is reachable over the link too, so the fix link stays.
+    expect([pub.querySelector("button.webauth-why")?.textContent, pub.querySelector('a[href="/settings/access#webAuthority"]')?.textContent]).toEqual(["Not verified", "Settings"]);
   });
   it("the not-authorized row is unchanged: no bubble, the Authorize button", async () => {
     const r = await row({ state: "none", reason: "authorization_expired" });

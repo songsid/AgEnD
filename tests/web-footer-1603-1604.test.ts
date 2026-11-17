@@ -145,10 +145,12 @@ describe("#1604: Settings → Preferences and Look", () => {
       const local = pg.root.querySelector(".s-device.s-local") as any;
       const scope = account.querySelector(".s-scope");
       const publicNote = "On the public link these are read-only: a change here stays in this browser.";
+      // M-3278: the public link's admin saves them to the host as anywhere: no "stays in this browser" note.
       expect([scope.textContent, scope.getAttribute("title")], String(publicLink)).toEqual([
-        "Your account", publicLink ? publicNote : "Changes here apply on every device where you are signed in.",
+        "Your account", "Changes here apply on every device where you are signed in.",
       ]);
-      expect(account.querySelector("p.sub")?.textContent ?? null).toBe(publicLink ? publicNote : null);
+      expect(account.querySelector("p.sub")?.textContent ?? null).toBe(null);
+      void publicNote;
       expect(account.querySelector("#pref-lang")).toBeTruthy();
       expect(local.querySelector("#tourBtn")?.textContent).toBe("Replay tour");
       expect(local.querySelector("#pref-lang, #pref-previews, #profile-name"), "account controls stay out of local guidance").toBeNull();

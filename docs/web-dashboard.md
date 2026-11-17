@@ -352,7 +352,7 @@ The fleet's shared work and its overview, one tab each. Every tab has its own ad
   - **CSV:** **Download CSV** saves the shown answer's daily rows (date, zone, agent, backend, model, tier, profile, the token columns, requests, amount, the basis, the marks and an `estimated` column; messages on rows of their own).
   - **Freshness:** collected from when the fleet started (kept 400 days) and read every 10 minutes; while the reader catches up the page says totals may still grow. It never re-reads on a timer.
   - **Not everything at once:** when a long range has more daily rows than one answer carries, the page says from which date the trend, the heatmap and the CSV start; the rows and totals still cover the whole range. A day used only by a model not in the price table is shown as used ("not priced"), never as a day with nothing used. If the fleet's timezone changed, days keep the zone they were made in and the page says so; a day made in both shows each part.
-  - **Who sees it:** signed-in sessions; never a guest. Over the temporary public link it says "Not offered over the public link" unless **Settings → Web dashboard → Usage report over the public link** is on (`web.usage_report_on_public_link: true`, [configuration](configuration.md); it applies at once), with a link to that switch on the dashboard reached directly. `web.usage_panel: false` hides it with the rest of usage. Agents read the same report with `get_usage_report`.
+  - **Who sees it:** signed-in sessions; never a guest. Over the public link an admin gets it too (M-3278); it says "Not offered over the public link" only when **Settings → Web dashboard → Usage report over the public link** is off (`web.usage_report_on_public_link: false`; on by default, [configuration](configuration.md); it applies at once), with a link to that switch. `web.usage_panel: false` hides it with the rest of usage. Agents read the same report with `get_usage_report`.
 
 ## Needs you (`/ui/needs`)
 
@@ -718,13 +718,14 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | `/view` | ✅ open without signing in by default (`web.view_access: open`) | ✅ signing in is always required | ✅ as B |
 | Log tab | ✅ with `web.log_tab: true` (off by default) | ✅ the same setting | ✅ the same setting |
 | Usage panel | ✅ | ✅ | ✅ |
-| Usage report | ✅ | ✅ with `web.usage_report_on_public_link: true` (off by default) | ✅ as B |
+| Usage report | ✅ | ✅ unless `web.usage_report_on_public_link: false` (on by default since M-3278) | ✅ as B |
 | Settings: agents, defaults, connections, ClassicBot rooms, apply and restart | ✅ a sensitive change waits for a fleet admin's confirmation; a web-verified browser can confirm it by applying, when its account may confirm that change | ✅ as A when this browser holds web authority over the link (`web.verified_authority.quick_link`, on by default; the fixed link: `named_link`), or by the admin's authenticator code (M-3278); otherwise it waits for a fleet admin's confirmation | ✅ as B |
-| Settings: Web, Appearance, Guests, Web authority, secrets and tokens | ✅ | ❌ refused | ❌ as B |
-| Office editing | ✅ | ❌ view only | ❌ as B |
+| Settings: Web, Appearance, Guests, Web authority | ✅ | ✅ an admin (M-3278). A change that opens or widens a link may be confirmed over the link too, by **Apply now** or the authenticator code, as the settings role allows (its link option, Only this computer, the strict switch); the sign-in protections (a private code, the sign-in notice with **Not me**, `/web revoke`) are what guard a stolen link session | ✅ as B |
+| Settings: secrets and tokens | ✅ | ❌ refused | ❌ as B |
+| Office editing | ✅ | ✅ an admin (M-3278) | ✅ as B |
 | Office share links (Share…, Settings' Revoke) | ✅ | ✅ a fleet admin; the share runs on its own tunnel, never this link's | ✅ as B |
-| Task board, schedules, teams | ✅ | ❌ read only | ❌ as B |
-| Look: themes, custom CSS, widgets, app icon | ✅ | ❌ (your profile, picture, card and identity colour can still be changed) | ❌ as B |
+| Task board, schedules, teams | ✅ | ✅ an admin, as itself (M-3278); a read-only session reads them | ✅ as B |
+| Look: themes, custom CSS, widgets, app icon | ✅ | ✅ themes and widgets for an admin (M-3278); ❌ custom CSS and the app icon (your profile, picture, card and identity colour can still be changed) | ✅ as B |
 | Mods and effects | ✅ | ❌ mods; the effects in this chat only play | ❌ as B |
 | Authorize this browser (web authority; a private `/web` code verifies at sign-in, #1939 §0.4) | ✅ | ✅ unless `web.verified_authority.quick_link: false` (on by default) | ✅ unless `web.verified_authority.named_link: false` (on by default) |
 | Guests | ✅ with `web.guests.enabled: true` (off by default) | ✅ only while an admin has the link open | ✅ as B |

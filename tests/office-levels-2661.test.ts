@@ -152,9 +152,9 @@ describe("who reads what", () => {
   });
 
   const X = "a".repeat(32), ORIGIN = "https://sample.trycloudflare.com", TOKEN = "c".repeat(48);
-  function get(web: Record<string, unknown> | undefined, publicLink: boolean, o: { signedIn?: boolean; levels?: () => Promise<Record<string, OfficeLevel> | null> } = {}) {
+  function get(web: Record<string, unknown> | undefined, publicLink: boolean, o: { signedIn?: boolean; tier?: "admin" | "read"; levels?: () => Promise<Record<string, OfficeLevel> | null> } = {}) {
     const sessions = new WebSessionStore();
-    const sid = sessions.create({ tier: "admin", surface: publicLink ? "gateway" : "local", label: "phone", tokenEpoch: tokenEpoch(TOKEN), ...(publicLink ? { exposureId: X } : {}) }).sessionId as string;
+    const sid = sessions.create({ tier: o.tier ?? "admin", surface: publicLink ? "gateway" : "local", label: "phone", tokenEpoch: tokenEpoch(TOKEN), ...(publicLink ? { exposureId: X } : {}) }).sessionId as string;
     const cookie = o.signedIn === false ? "" : publicLink ? `__Host-agend_session=${sid}` : `agend_session=${sid}`;
     const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/office-levels", headers: { host: publicLink ? "sample.trycloudflare.com" : "127.0.0.1:19280", cookie } as Record<string, string>, destroy: vi.fn() });
     let status = 0, body = "";
@@ -174,12 +174,21 @@ describe("who reads what", () => {
     const off = get({ usage_panel: false }, false); await settle();
     expect(off.json()).toEqual({ enabled: true, unit: 100_000, detail: false, levels: { "dev-a": { level: 12 }, "ops-bot": { level: 4 } } });
   });
-  it("the public link: the level only, unless web.usage_report_on_public_link is true", async () => {
-    const no = get(undefined, true); await settle();
+  // M-3278 (decision 7933bf90): the numbers over the link by default; the level only when the switch is explicitly false.
+  it("the public link: the numbers unless web.usage_report_on_public_link is false (M-3278: on by default)", async () => {
+    const no = get({ usage_report_on_public_link: false }, true); await settle();
     expect([no.status(), no.json().detail, no.json().levels["dev-a"]]).toEqual([200, false, { level: 12 }]);
+    const unset = get(undefined, true); await settle();
+    expect(unset.json().levels["dev-a"]).toEqual(L["dev-a"]);
     const yes = get({ usage_report_on_public_link: true }, true); await settle();
     expect(yes.json().levels["dev-a"]).toEqual(L["dev-a"]);
     expect(isPublicWebRoute("GET", "/ui/office-levels")).toBe(true);
+  });
+  it("Fable on #4100 (F2): a read-only session over the link gets the numbers only when the owner opted in (true)", async () => {
+    const unset = get(undefined, true, { tier: "read" }); await settle();
+    expect([unset.json().detail, unset.json().levels["dev-a"]]).toEqual([false, { level: 12 }]);
+    const yes = get({ usage_report_on_public_link: true }, true, { tier: "read" }); await settle();
+    expect(yes.json().levels["dev-a"]).toEqual(L["dev-a"]);
   });
   it("web.office_levels false: no levels; switched off while they were worked out: none either", async () => {
     const off = get({ office_levels: false }, false, { levels: async () => null }); await settle();

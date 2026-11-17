@@ -252,8 +252,7 @@ export function startThemes() {
   onPrefsChanged((changed) => { if (changed.has("fx.show")) themesStore.set({ shown: themesShown() }); });
 }
 
-const publicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
-const localAppearanceViewer = () => publicLink() || typeof document !== "undefined" && document.body?.dataset.tier === "guest";
+const localAppearanceViewer = () => typeof document !== "undefined" && document.body?.dataset.tier === "guest";   // M-3278
 
 /** A person's Reset or Lock of an agent's theme (an admin session; never over the public link). */
 async function themeAction(name, what, body) {
@@ -293,7 +292,6 @@ export async function clearAmbient(name, which) {
 
 /** The chat's and Details' ⋯ entries for an agent's theme: Lock/Unlock, Reset… and its widgets' Remove — none over the public link. */
 export function themeMenuItems(name) {
-  if (publicLink()) return [];
   const locked = isThemeLocked(name);
   const w = themesStore.get().widgets;
   const placed = w && own(w, name) && w[name] && typeof w[name] === "object" ? w[name] : {};

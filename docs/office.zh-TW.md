@@ -316,7 +316,7 @@ agent 可以自己檢查、上傳、取代、刪除與還原外觀包，例如�
 
 誰看得到什麼：
 
-- **dashboard：**每個等級，加上工作 token、今天的工作量與請求數、首次出現。這些數字依用量報告的規則：`web.usage_panel` 為 `false` 時不提供；透過公開連結時，只有 `web.usage_report_on_public_link: true` 才提供。其他情況只顯示等級。
+- **dashboard：**每個等級，加上工作 token、今天的工作量與請求數、首次出現。這些數字依用量報告的規則：`web.usage_panel` 為 `false` 時不提供；透過公開連結時，只有 `web.usage_report_on_public_link` 不是 `false` 時提供（M-3278 起預設開啟）。其他情況只顯示等級。
 - **分享連結的觀看者：**只有該分享顯示的人的等級，其他都沒有。
 - **訪客：**看不到辦公室，所以也沒有等級。
 - **agent：**`office_view` 會列出每位成員的 `level`。它不會改變 agent 能做的任何事。

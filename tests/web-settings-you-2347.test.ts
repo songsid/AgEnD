@@ -130,13 +130,13 @@ describe("app-prefs: holding the \"You\" preferences while Settings is open", ()
     m = await import("/assets/app-prefs.js");
     expect([cached, ls("agend_theme"), m.prefInForce("theme"), m.heldPrefsCount()]).toEqual(["dark", "light", { value: "light" }, 0]);
   });
-  it("over the public link Save keeps the choice in this browser only, as before (no host write)", async () => {
+  it("M-3278: over the public link Save writes an admin's choice to the host as anywhere", async () => {
     const m = await boot({ theme: "light" }, { publicLink: true });
     const release = m.holdPrefs();
     m.savePref("theme", "dark");
     await m.savePrefsHeld();
     await wait(450);
-    expect([ls("agend_theme"), m.heldPrefsCount(), posts()]).toEqual(["dark", 0, []]);
+    expect([ls("agend_theme"), m.heldPrefsCount(), posts()]).toEqual(["dark", 0, [{ theme: "dark" }]]);
     release();
   });
 });

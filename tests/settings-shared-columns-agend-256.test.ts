@@ -37,6 +37,6 @@ describe("AGEND-256 Settings lists share one set of columns", () => {
     expect(line(".p-settings .s-connections-list > .s-conn > .s-actions {")).toContain("grid-template-columns: subgrid");
     expect(line(".p-settings .s-connection-columns > span:last-child {")).toContain("grid-column: 3 / -1");
     expect(line(".p-settings .s-connections-list .s-facts {")).toContain("text-align: left");
-    expect(panel).toMatch(/<span class="s-conn-buttons">\$\{!overPublicLink[\s\S]*?settingsButton[\s\S]*?<\/span><\/span>/);
+    expect(panel).toMatch(/<span class="s-conn-buttons">\$\{ctx\.fleetUp[\s\S]*?settingsButton[\s\S]*?<\/span><\/span>/);   // M-3278: no public-link hide
   });
 });
