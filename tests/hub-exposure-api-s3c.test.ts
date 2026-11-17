@@ -27,7 +27,7 @@ import { agentPolicyDigest, isAgentDescriptor } from "../src/hub/member/agent-mo
 const dbs: Database.Database[] = [], caps: SettingsExecution[] = [];
 afterEach(() => { dbs.splice(0).forEach((d) => d.close()); caps.splice(0).forEach((c) => c.close()); });
 
-function member(opts: { agents?: () => Array<{ name: string; display: string }>; readinessCandidate?: ((c: HubLocalExposure) => HubExecutionReadiness) | null } = {}) {
+function member(opts: { agents?: () => Array<{ name: string; display: string; kind?: "classic-room" }>; readinessCandidate?: ((c: HubLocalExposure) => HubExecutionReadiness) | null } = {}) {
   const db = new Database(":memory:"); dbs.push(db);
   applyHubMigrations(db, [HUB_AUDIT_MIGRATION, HUB_EXPOSURE_MIGRATION]);
   let floor = 0;
@@ -258,4 +258,13 @@ describe("Prism #3115 r1 (exposures)", () => {
     process.off("unhandledRejection", unhandled);
     expect(unhandled).not.toHaveBeenCalled();
   });
+});
+
+describe("Classic room shares use the same consent and opaque exposure wire shape",()=>{
+ it("labels the local row and confirmation while exporting no room history or kind metadata",()=>{
+  const m=member({agents:()=>[{name:"room-agent",display:"Example room",kind:"classic-room"}]});expect(m.api.list()[0]).toMatchObject({kind:"classic-room",contactLimit:true});
+  const input={agent:"room-agent",dataViewId:"agent",tools:[],expectedRevision:0};const preview=m.api.preview(input);expect(preview.summary[0]).toContain("Their questions and its answers are not posted in the room");expect(preview.summary[0]).toContain("what people said in the room");
+  const row=m.api.publish(input);expect(row).toMatchObject({kind:"classic-room",state:"published",contactLimit:true});const sent=m.store.snapshot().exposures[0]!;expect(sent).not.toHaveProperty("kind");expect(sent).not.toHaveProperty("history");expect(sent).not.toHaveProperty("chat_id");expect(sent).not.toHaveProperty("messages");
+  expect(m.api.list()[0]?.revision).toBe(1);
+ });
 });

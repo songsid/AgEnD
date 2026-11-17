@@ -306,7 +306,7 @@ function HubExposures({ client, pairing }) {
         <input class="s-ui-toggle" type="checkbox" role="switch" checked=${row.state === "published" && row.reason !== "hub_refused"} aria-label=${hw("share", row.display)}
           disabled=${busy !== null || !!row.pending || row.state === "frozen" || row.reason === "hub_refused" || (row.state !== "published" && !row.enforceable)}
           onChange=${(e) => toggle(row, e.target.checked)} />
-        <span class="hub-exposure-name">${row.display}${row.display !== row.agent ? html` <small><code>${row.agent}</code></small>` : null}</span>
+        <span class="hub-exposure-name">${row.display}${row.kind==="classic-room"?html` <span class="tag">${hw("classicRoomTag")}</span>`:null}${row.display !== row.agent ? html` <small><code>${row.agent}</code></small>` : null}</span>
       </label>
       <label class="check hub-contact-limit">
         <input type="checkbox" checked=${contactChoices[row.agent] ?? (row.contactLimit !== false)}

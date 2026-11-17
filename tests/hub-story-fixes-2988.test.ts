@@ -1,7 +1,7 @@
 /**
  * M-2988: Fleet-side Hub flow gaps from Lumen's user-story board (docs/evidence/hub-ux-stories-m2986), wording and
  * state-dependent hints only — no new product behaviour.
- *  #1  "Shared agents" says ClassicBot rooms can't be shared yet (the empty list no longer stops at "no agents").
+ *  #1  ClassicBot room sharing explains private routing and the shared memory.
  *  #6  「暫停提問」 is 「停止分享」, and its confirm says sharing again needs the Fleet to share it again and everyone to be
  *      allowed again (there is no resume on the Hub, and the grants do not come back).
  *  #8  after a Share switch, the hint names General only when a General holds the card; otherwise the confirm card.
@@ -162,9 +162,11 @@ describe("#1 / #6 / #11 / #13 / #17: the words", () => {
     for (const lang of ["en", "zh-TW"]) for (const key of ["hub.freeze", "hub.freezeAsk", "hub.frozen", "hub.state_frozen", "hubOwner.pauseGo", "hubOwner.pauseTitle", "hubOwner.pauseLead", "hubOwner.statePaused"])
       expect(T(lang, key, "Atlas")).not.toMatch(/暫停|凍結|Pause|Frozen|Stop all asking|停止所有提問/);
   });
-  it("#1: shared agents say ClassicBot rooms can't be shared yet", () => {
-    expect(T("en", "hub.agentLead")).toContain("ClassicBot rooms can't be shared yet");
-    expect(T("zh-TW", "hub.agentLead")).toContain("ClassicBot 房間還不能分享");
+  it("#1: Classic sharing explains private routing and the one-memory cost", () => {
+    expect(T("en", "hub.agentLead")).toContain("one agent with one memory");
+    expect(T("en", "hub.agentLead")).toContain("room's chat is not copied to the Hub");
+    expect(T("zh-TW", "hub.agentLead")).toContain("同一個 Agent、同一份記憶");
+    expect(T("zh-TW", "hub.agentLead")).toContain("房間的聊天也不會複製到 Hub");
   });
   it("#11: the administrator is told why and what to do, not to ask the administrator", () => {
     for (const lang of ["en", "zh-TW"]) {

@@ -472,6 +472,10 @@ export class HubRepresentativeExecution {
     const row = this.row("message_id", messageId);
     if (row) this.hold(row, reasonCode);
   }
+  /** Already handed-off model work only; future queued asks must not deadlock the room-person input ahead of them. */
+  hasOpenQuestion(agent:string):boolean {
+    return !this.closed && !!this.options.db.prepare("SELECT 1 FROM hub_representative_questions WHERE agent=? AND state IN ('input','delivered','answering') LIMIT 1").get(agent);
+  }
   attentionItems(): HubExecutionAttentionInput[] {
     const rows = this.options.db.prepare(`SELECT * FROM hub_representative_questions WHERE state='held' ORDER BY at DESC LIMIT ${HELD_MAX}`).all() as Row[];
     return rows.map(r => ({ id: `hold:${r.id}`, kind: "hold" as const, agent: r.agent, messageId: r.message_id, exposureId: r.exposure_id, since: r.at }));

@@ -41,7 +41,7 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | how many, how long | [Limits](#limits) |
 | virtual teams, My teams, team lead, team grants | [Teams](#teams) |
 | Roles, second administrator, assignments, audit, migration, roles off | [Roles and permissions](#roles-and-permissions) |
-| sharing a ClassicBot room | [Not available yet](#not-available-yet) |
+| sharing a ClassicBot room | [Sharing agents](#sharing-agents) |
 | can't connect, certificate, different host names, old tab | [Troubleshooting](#troubleshooting) |
 
 ## What the Hub is
@@ -323,7 +323,14 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
   send_to_instance, delegate_task, request_information and broadcast are refused; the agent can retry after answering.
   Answers to agend-hub and hub_room_post still work. The agent's own tools/folder, previously learned information and
   actions after the window ends are not isolated. Hub General and MCP agents are not changed by this setting.
-- Only fleet agents can be shared for now: "ClassicBot rooms can't be shared yet." A Fleet with nothing to share reads
+- A ClassicBot room's agent can be shared through the same confirmed owner choice. Its row is tagged **ClassicBot room** /
+  **ClassicBot 房間**. The same who-may-ask grants, Pause/Resume, Stop and default contact restriction apply.
+  Hub questions and answers are not posted in its Discord or Telegram room, and room chat is not copied to the Hub.
+  It is still one agent with one memory: it may use what it learned in the room when answering on the Hub, and the other
+  way round. The share confirmation discloses that cost. Sharing sends no notice to the room's members.
+  During a private Hub turn, channel replies, reactions, edits and progress/notices stay out of the room. Answer with
+  `report_result` to `agend-hub`, using that question's correlation. Normal room replies resume only with a new room
+  person's input after the private turn has ended and the agent is idle. A Fleet with nothing to share reads
   "This fleet has no agents to share yet."
 - "Shared under the older restricted mode. Hub questions are refused until you share this agent again." → **Share
   again**.
@@ -728,7 +735,6 @@ Say plainly that these are not in the product yet:
 
 - **A manager's team view** (team
   list with usage counts). The permissions can be saved on a role-capable Hub; the views are not shipped.
-- **Sharing a ClassicBot room.** Only fleet agents can be shared.
 - **A second sign-in factor on the Hub.** It uses the company account and password only.
 - **Adding to People excluded from the editor.** The list is shown; it cannot be edited there in this release.
 - **Per-person cost or quota figures on the Hub.** Exact usage stays in each Fleet.

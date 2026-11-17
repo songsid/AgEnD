@@ -329,3 +329,9 @@ describe("Track C current-link agent.state publisher", () => {
     (f.link.features as Set<string>).add("room-ask-v1"); await f.p.refresh(); expect(f.link.sendState).toHaveBeenCalledTimes(1);
   });
 });
+
+it("counts only handed-off room asks as private model work, avoiding a queued-input deadlock",async()=>{
+ const f=member(),go=deferred<boolean>();f.options.deliver=async input=>{if(!await go.promise||!await input.beforeInput())return false;f.inputs.push(input);return true;};
+ f.adapter.accept(f.ask,f.link);expect(f.adapter.hasOpenQuestion("existing-agent")).toBe(false);go.resolve(true);await f.adapter.settled();expect(f.adapter.hasOpenQuestion("existing-agent")).toBe(true);
+ expect(await f.report()).toMatchObject({ok:true});expect(f.adapter.hasOpenQuestion("existing-agent")).toBe(false);
+});

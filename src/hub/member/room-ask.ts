@@ -147,6 +147,9 @@ export class HubRoomAskAdapter {
       }
     }).immediate();
   }
+  hasOpenQuestion(agent:string):boolean {
+    return !this.closed&&this.rows().some(row=>["input","delivered"].includes(row.state)&&this.read(row).local.agent===agent);
+  }
   private rows(state?: State): Row[] {
     return (state ? this.options.db.prepare("SELECT * FROM hub_room_asks WHERE state=? ORDER BY rowid").all(state)
       : this.options.db.prepare("SELECT * FROM hub_room_asks ORDER BY rowid").all()) as Row[];
