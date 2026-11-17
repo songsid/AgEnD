@@ -114,6 +114,7 @@ const roomsStore = createStore({ loaded: false, rooms: [], error: null });
 let roomsReading = null;
 // The page's one view of the Hub session, shared by the panel and the sidebar's session row.
 let session;                                     // undefined: not read yet; null: signed out; else the session
+let unreadOff = null;                            // the list's unread.changed subscription, for the signed-in person
 const sessionSubs = new Set();
 function setSession(next) {
   const was = session;
@@ -125,6 +126,13 @@ function setSession(next) {
   // #3226 B: the conversation list is this person's: cleared when no one is signed in, read again when someone is.
   if (!next) roomsStore.set({ loaded: false, rooms: [], error: null });
   else if (!was || was.login !== next.login) void refreshRooms();
+  // M-3260: each room's unread as the Hub counts it for this person (unread.changed { roomId, unread }), into the list at once
+  // rather than at its next read: the open room's read clears its badge, a message in another room raises it.
+  if (!next || !was || was.login !== next.login) {
+    unreadOff?.(); unreadOff = null;
+    const c = hubClient();
+    if (next && typeof c?.subscribeRooms === "function") unreadOff = c.subscribeRooms({ "unread.changed": noteUnread });
+  }
   for (const fn of sessionSubs) { try { fn(next); } catch { /* a subscriber's own failure */ } }
 }
 let reading = null;
@@ -346,6 +354,13 @@ export function refreshRooms() {
     if (!r.ok && (r.code === "denied" || r.code === "revoked") && groupPolicyOn(session, hubClient())) roomsStore.set({ loaded: true, rooms: [], error: null, denied: true });
     else roomsStore.set(r.ok ? { loaded: true, rooms: r.rooms || [], me: r.me || null, invitations: Number(r.invitations) || 0, error: null } : { ...roomsStore.get(), loaded: true, error: errText(r) });
   }, () => roomsStore.set({ ...roomsStore.get(), loaded: true, error: hw("errFailed") })).finally(() => { roomsReading = null; });
+}
+/** One room's unread from the stream, into the list as it is (a room the list does not hold yet waits for the next read). */
+function noteUnread(d) {
+  const n = Number(d.unread), s = roomsStore.get();
+  if (!Number.isSafeInteger(n) || n < 0 || !s.rooms.some((r) => r.id === d.roomId && r.unread !== n)) return;
+  // Read through (0): its @ mark goes too; the next list read has the Hub's own answer for both.
+  roomsStore.set({ ...s, rooms: s.rooms.map((r) => (r.id === d.roomId ? { ...r, unread: n, ...(n === 0 ? { mentioned: false } : {}) } : r)) });
 }
 /** Keeps the list fresh while something shows it (every ROOMS_MS, paused while the page is hidden). */
 function useRooms() {
