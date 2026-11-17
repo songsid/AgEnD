@@ -1,0 +1,177 @@
+{
+  "source": "96cbbceef84e03696b1f6b280d859ae197733c22",
+  "baseline": "83afcc0565cbc95af7fd2e8f197b7ad36eb2aa9e",
+  "inputs": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "bc5230cc721d32c5e374b72919185d1e804d6b777e98bfdc73c5e3f4b9d8ba7b"
+    },
+    {
+      "path": "changes/3280-guest-sidebar.md",
+      "sha256": "bcca28122c88fc140c79205d7156462a3c9537178be55ed036268ee43998defc"
+    },
+    {
+      "path": "changes/3280-guest-sidebar.zh-TW.md",
+      "sha256": "0422f0ecf8333acbe187006c75ab964e29365d87e58c11005a5dadf706a00a75"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-guest-sidebar-m3280.mts",
+      "sha256": "8dd566a92398a36e9f3643bdf50a754a342bc0caecca3e00e5c1b9150820484f"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "185a451e3e70aa8042f8e21734f9292f5abdb448229ef53b4b6d72413e2924e7"
+    },
+    {
+      "path": "src/ui/shared/app-prefs.js",
+      "sha256": "aaa325620c6959852eec85373d92fa10fd054a355ae6ffd0ef20df752cf5a3f1"
+    },
+    {
+      "path": "src/ui/shared/app-shell.js",
+      "sha256": "5c550a42ad05dc123e5b0dd8c936853b29eb277cf12dc7f63762b5f0aba74b02"
+    },
+    {
+      "path": "src/ui/shared/app-store.js",
+      "sha256": "946d0d876a70f2f41185ed55070cedde5c48f4423313bb47221f5493fdf36226"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "cdb66b05f0c267daf21c18907f920d2dd4351ddfbcc20096059bf4ada3a925bd"
+    },
+    {
+      "path": "src/web-prefs.ts",
+      "sha256": "093c686f3161f0e4bbe0ef2b5472e732dc38e01f30143a373246b6567f15e6d0"
+    },
+    {
+      "path": "tests/guest-sidebar-controls-m3280.test.ts",
+      "sha256": "65fc4645ac724d62fb0d40598ec94bcb2524893d110db2ccb0a43d48be422347"
+    },
+    {
+      "path": "tests/web-guest-sidebar-prefs-m3280.test.ts",
+      "sha256": "8478fc63d5c0ca85bf00c1be37aed312cddfccccfa4faf35057498d73510e604"
+    },
+    {
+      "path": "src/web-api.ts",
+      "sha256": "b7cdfa4b7ca99d61c856593a75193ddca6ffe49840718b57893999f764ce6ce8"
+    },
+    {
+      "path": "src/web-guest-access.ts",
+      "sha256": "818c5dad89a65fd92e3615e115e6785275fb717ccec4cbd6ac06cfa4beef4960"
+    },
+    {
+      "path": "src/ui/shared/instance-nav.js",
+      "sha256": "2a6324e6f517b1af125c9ea931c12691f9d845499f489f9b73e40b6d04a4d50b"
+    },
+    {
+      "path": "scripts/manual/smoke-fixture/index.mts",
+      "sha256": "1e55ede6d3e80f41077887da0ba08596733f60dfb07b9d6882882d5ad4442dae"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "after-complete.json",
+      "sha256": "fa311cb883880d65fe3b91a4282ed627f4709bca53233ad02a8e471e070af5fd"
+    },
+    {
+      "path": "after-partial.json",
+      "sha256": "1ba5c2d7724ff1fccbd48251c1de3475a461391b5e792cd87abacd0fc2e32e1a"
+    },
+    {
+      "path": "before.json",
+      "sha256": "7b2bbb57afefa482e25e8d199c930064eb6ba2a3ca5c36b8cc527c8505187bbf"
+    },
+    {
+      "path": "header-retake.json",
+      "sha256": "ee7e347812e56e312d7ca807f46e673f804ca5a6dfe927d3e93f9a9e71d0f0dd"
+    },
+    {
+      "path": "images/after-desk-dark-en-admin.png",
+      "sha256": "e52a29c5d603ad96d095e6bf814df33a425156088e0a36b27d50dc34c2f3be04"
+    },
+    {
+      "path": "images/after-desk-dark-en-guest-list.png",
+      "sha256": "8b6b08dda0550906f9c667f9214b81dc3f2642824e39b770e1dacd808097d039"
+    },
+    {
+      "path": "images/after-desk-dark-en-guest.png",
+      "sha256": "6a6d0059e1442dfc2e7c5c640b1805e6f9bb4d72bf914a3b5871ca82950f6a58"
+    },
+    {
+      "path": "images/after-phone-light-zh-TW-admin.png",
+      "sha256": "9c665e0a87eb22a719bd6dac1f2195fd6d0519e622292193208b2fe27b452a69"
+    },
+    {
+      "path": "images/after-phone-light-zh-TW-guest-list.png",
+      "sha256": "b631c11c923ecece91c952542d77a40a3e31cada7a2d6d3c42c965179756e759"
+    },
+    {
+      "path": "images/after-phone-light-zh-TW-guest.png",
+      "sha256": "e6e74e3a940fb23a73fd3985490fe289a9e03e1eeb212be5879366b9574cf1a3"
+    },
+    {
+      "path": "images/before-desk-dark-en-admin.png",
+      "sha256": "6288052ab62fdb7e6bee47208229442dc522a8bb8b539aab789d885230716a0b"
+    },
+    {
+      "path": "images/before-desk-dark-en-guest.png",
+      "sha256": "7c227e2bee2a3c0184e6d027d3c5beb32f68c632144c3d1a842de58b8513ecc5"
+    },
+    {
+      "path": "images/before-phone-light-zh-TW-admin.png",
+      "sha256": "9c665e0a87eb22a719bd6dac1f2195fd6d0519e622292193208b2fe27b452a69"
+    },
+    {
+      "path": "images/before-phone-light-zh-TW-guest.png",
+      "sha256": "160d9bbc7046e2364ec889a0b8cea3eb00fcf07032c69bb9be094a79f832c423"
+    },
+    {
+      "path": "images/historical-before-header-fix.png",
+      "sha256": "da3afc13f0a68aae4ea9534002a9cebb663f5e2ad0d0f5ab351ad90853be2889"
+    },
+    {
+      "path": "logs/baseline-semantic.log.gz",
+      "sha256": "4139b3b43211ba15d912d3e2a37250d186d78a14ef1c27d8bc544785ba09681c"
+    },
+    {
+      "path": "logs/browser-after-mount-wait.log.gz",
+      "sha256": "a5abea1fdbd5b45ff3c88453e678c54a5973d7d72c72480f79e760e4ae537f6f"
+    },
+    {
+      "path": "logs/browser-after.log.gz",
+      "sha256": "a930a77104751b79e50e740abcddf14dd096d8d8c92c70c1a3aead6d9b0c38ad"
+    },
+    {
+      "path": "logs/browser-before.log.gz",
+      "sha256": "37a5b6f6b1a790785a8bb0deba440c96cf9f7d36048f5186b50246ab6c6e9fff"
+    },
+    {
+      "path": "logs/browser-header.log.gz",
+      "sha256": "cee1cca77e57e5837f9748db8deb65f21f95c98c812da8762983d5bb6f08a5d5"
+    },
+    {
+      "path": "logs/focused.log.gz",
+      "sha256": "1b0c760b67b181d93bebdab74fac14b833c7fdb033f4be69cf35addddba8b5e0"
+    },
+    {
+      "path": "logs/sourceTypes.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "logs/testTypes.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    }
+  ],
+  "results": {
+    "baseline": "3 assertion failures/6 positive controls; initial locale helper toggle failure excluded after correction.",
+    "focused": "57/57 in6suites; guest+admin DOM, actual handler/gateway binding+store isolation, existing preferences/sidebar controls.",
+    "native": {
+      "source": 0,
+      "tests": 0
+    },
+    "browser": "Before4cases/18checks. Initial after4cases/32checks across one partial+three completed cases, no product repair. Image-found heading crowding then CSS-wrap repair; focused3case29check retake, with closed-menu guest list views. Prior phone-admin view carries (desktop header hidden).",
+    "images": "Initial8 and final5 originals independently inspected. Preferred10 views clear; one historical heading-crowding view retained.",
+    "scope": "Actual local web HTTP/session/preferences/DOM with synthetic guest and inert agents; public-link writes covered by actual handlers with bound test gateway request, not a live tunnel. No live Fleet/Discord/AD/CLI/pane.",
+    "choice": "Desktop/phone density stays separate; compact-name choice shared; only guest bucket writes, no new pref keys.",
+    "cleanup": "Owned browsers/fixtures closed; both listeners connect_errno111; slot released."
+  }
+}

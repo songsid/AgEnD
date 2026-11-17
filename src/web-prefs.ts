@@ -76,7 +76,7 @@ const FAVORITES = "nav.favorites";
  * #2855: the preferences a guest keeps as its own — on the host, in its account's bucket (`person:<connection>:<user>`),
  * the same on every device, and gone when the admin removes the guest. The rest of a guest's page follows the host's look.
  */
-export const GUEST_OWN_PREF_KEYS: readonly string[] = Object.freeze(["theme", "lang", FAVORITES, "nav.sort", "nav.filter"]);
+export const GUEST_OWN_PREF_KEYS: readonly string[] = Object.freeze(["theme", "lang", FAVORITES, "nav.sort", "nav.filter", "nav.density", "nav.densityPhone", "nav.compactName"]);
 const GUEST_OWN: ReadonlySet<string> = new Set(GUEST_OWN_PREF_KEYS);
 
 /** The status chips of the sidebar filter (src/ui/shared/instance-nav.js STATUS_FACETS). */

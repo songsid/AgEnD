@@ -546,6 +546,13 @@ jobs:
           HP: '19676'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-compact-name-m3269.mts
+      - name: Guest sidebar controls and preference isolation
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19677'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-guest-sidebar-m3280.mts
       - name: Save verified CJK archive (best effort, after the gate)
         if: always() && needs.detect-changes.outputs.text-only != 'true' && steps.cjk-fonts.outcome == 'success' && steps.cjk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5

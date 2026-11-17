@@ -113,6 +113,11 @@ as their own Discord or Telegram account. What a guest sees:
   ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
   **Start from today's guests** turns that into grants.
 
+Guests can filter their granted agents and rooms, change sorting, and use **Custom** (「自訂」) for detailed or compact
+rows and a compact row's display name or instance name. Choices belong to that guest's account, including over the
+public link; they never change the host's preferences. Desktop and phone keep separate density choices and share the
+compact-name choice. The phone drawer puts Filter and Custom together at the top, as the admin's does.
+
 Discord mentions in shared-channel messages they may read use that channel's cached names. Guests' own messages and
 private-room replies do not look up names; other servers and unreadable channels stay private. An unknown name still
 shows as `@user`, `@role` or `#channel`.
