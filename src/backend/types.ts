@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 export type InstanceState = "idle" | "working" | "stuck";
 
 /** Interaction metadata is presentation only; execution/lifecycle gates remain three-valued. */
-export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "kiro_choice" | "suspected_terminal_input";
+export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "kiro_choice" | "suspected_terminal_input" | "safety_review";
 export interface InteractionOwner {
   bootId: string;
   spawnGeneration: number;
@@ -331,6 +331,10 @@ export interface RemoteCardOption {
   title: string;
   recommended: boolean;
   description: string | null;
+  /** A filtered CLI card retains the physical row, independent of its displayed choices. */
+  row?: number;
+  /** A static report closes with q, never Enter. Only a code-owned reader sets this. */
+  submitKey?: "q";
   /** Sub-options page only: whether its box is ticked. */
   checked?: boolean;
 }
@@ -364,6 +368,8 @@ export interface RemoteQuestionCard {
   noSkip?: true;
   /** Legacy CLI-dialog marker (#2910 D4). #3334 also posts it in chat, with owning-adapter fleet-admin authority. */
   webOnly?: true;
+  /** Safety decisions require a signed-in human; script-token prompt clicks cannot answer them. */
+  humanOnly?: true;
 }
 
 /**
@@ -386,6 +392,8 @@ export type RemoteCard = RemoteQuestionCard | RemoteInputCard;
 
 /** A dialog that may appear at runtime and needs auto-dismissal via key sequences. */
 export interface RuntimeDialog {
+  /** Exclude this hold from generic assistant/automatic prompt handling. */
+  humanOnly?: true;
   /** Pattern to detect the dialog in PTY output. */
   pattern: RegExp;
   /** Key sequence to dismiss: strings are literal text, "Up"/"Down"/"Enter"/"Escape" are special keys. */

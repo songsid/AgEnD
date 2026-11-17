@@ -7,7 +7,7 @@
  */
 import type { RemoteCard, RemoteInputCard, RemoteQuestionCard } from "./backend/types.js";
 
-export type RemoteCardKey = "Up" | "Down" | "Enter" | "Escape" | "Space";
+export type RemoteCardKey = "Up" | "Down" | "Enter" | "Escape" | "Space" | "q";
 
 export interface RemoteCardIo {
   /** Run `fn` holding the pane write lock. */
@@ -134,7 +134,13 @@ export async function answerRemoteCard(
     case "option": {
       if (question.page !== "options") return { outcome: "refused", reason: `the card is on its ${question.page} page` };
       if (!Number.isInteger(action.n) || action.n < 1 || action.n > question.options.length) return { outcome: "refused", reason: "no such option" };
-      const target = action.n - 1;
+      const option = question.options[action.n - 1];
+      const target = option.row ?? action.n - 1;
+      if (option.submitKey === "q") {
+        if (!await press(card => card.kind === "question" && card.page === "options"
+            && card.options[action.n - 1]?.submitKey === "q", "q")) return { outcome: "stale" };
+        return closed();
+      }
       if (!await walk(target, "options")) return { outcome: "stopped", step: `moving to option ${action.n}` };
       if (!await press(card => onRow(card, "options", target), "Enter")) return { outcome: "stopped", step: "submitting the option" };
       const after = await waitFor(card => !ours(card) || (card.kind === "question" && card.page === "suboptions"), RESULT_WAIT_MS);
