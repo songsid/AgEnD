@@ -93,8 +93,8 @@ export function ArchiveFilesSetting() {
     <p class="note">${copy("hint")}</p>
     ${!info && !msg ? html`<${Skeleton} variant="form" lines=${2} />` : null}
     ${info ? html`<form class="form" onSubmit=${save}>
-      <label class="field">${copy("field")}<input id="webArchiveFilesGb" type="number" inputmode="decimal" min="0" max="100000" step="0.1" value=${value} disabled=${busy}
-        aria-invalid=${validGb(value) ? "false" : "true"} onInput=${(e) => setValue(e.target.value)} /></label>
+      <div class="field"><label for="webArchiveFilesGb">${copy("field")}</label><input id="webArchiveFilesGb" type="number" inputmode="decimal" min="0" max="100000" step="0.1" value=${value} disabled=${busy}
+        aria-invalid=${validGb(value) ? "false" : "true"} onInput=${(e) => setValue(e.target.value)} /></div>
       ${validGb(value) ? null : html`<p class="field-error" role="alert">${copy("range")}</p>`}
       <p class="note">${copy("used", archiveSize(info.used_bytes), String(info.files))}</p>
       <button class="btn" type="submit" disabled=${busy || !validGb(value) || Number(value) === info.files_max_gb}>${busy ? copy("saving") : copy("save")}</button>
