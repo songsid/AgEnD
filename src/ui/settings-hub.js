@@ -289,6 +289,7 @@ function HubExposures({ client, pairing }) {
   return html`<div class="hub-exposures">
     <h4>${hw("sharedTitle")}</h4>
     <p class="note">${hw("agentLead")}</p>
+    <p class="note">${hw("classicRoomLead")}</p>
     <p class="note hub-sharing-hint">${t("hubSharingFleet.hint")}</p>
     ${readError ? html`<${ErrorState} message=${hw("errFailed")} onRetry=${load} />` : !rows ? html`<${Skeleton} variant="rows" lines=${3} />` : null}
     ${rows?.some(row => row.contactLimitNotice) ? html`<div class="note hub-contact-notice" role="status">

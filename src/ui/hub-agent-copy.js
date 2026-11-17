@@ -3,7 +3,8 @@
 import { register } from "/assets/app-i18n.js";
 register("hub", {
   en: {
-    agentLead: "Every agent is private unless you share it. A shared agent answers Hub questions in its own conversation, with its own folder and the tools its Settings allow. Actions that need approval still come to you. You can also share the agent of a ClassicBot room. Hub questions and answers are not posted in its Discord or Telegram room, and the room's chat is not copied to the Hub. It is one agent with one memory, though: it may use what it learned in the room when it answers on the Hub, and the other way round.",
+    agentLead: "Every agent is private unless you share it. A shared agent answers Hub questions in its own conversation, with its own folder and the tools its Settings allow. Actions that need approval still come to you.",
+    classicRoomLead: "You can also share the agent of a ClassicBot room. Hub questions and answers are not posted in its Discord or Telegram room, and the room's chat is not copied to the Hub. It is one agent with one memory, though: it may use what it learned in the room when it answers on the Hub, and the other way round.",
     agentShared: "Shared: Hub questions go to this agent's own conversation.",
     republishRequired: "Shared under the older restricted mode. Hub questions are refused until you share this agent again.",
     shareAgain: "Share again",
@@ -12,7 +13,8 @@ register("hub", {
     agentDeliveryUnavailable: "Sharing isn't available on this fleet yet: Hub questions can't reach an agent here.",
   },
   "zh-TW": {
-    agentLead: "每個 Agent 預設都不分享。分享後，Agent 會在自己的對話中回答 Hub 的提問，使用它自己的資料夾和設定允許的工具。需要核准的動作仍會交給你。也可以分享 ClassicBot 房間的 Agent。Hub 的提問與回答不會貼到它的 Discord 或 Telegram 房間，房間的聊天也不會複製到 Hub。但它是同一個 Agent、同一份記憶：回答 Hub 的提問時，可能用到它在房間裡得知的內容，反過來也一樣。",
+    agentLead: "每個 Agent 預設都不分享。分享後，Agent 會在自己的對話中回答 Hub 的提問，使用它自己的資料夾和設定允許的工具。需要核准的動作仍會交給你。",
+    classicRoomLead: "也可以分享 ClassicBot 房間的 Agent。Hub 的提問與回答不會貼到它的 Discord 或 Telegram 房間，房間的聊天也不會複製到 Hub。但它是同一個 Agent、同一份記憶：回答 Hub 的提問時，可能用到它在房間裡得知的內容，反過來也一樣。",
     agentShared: "已分享：Hub 的提問會送到這個 Agent 自己的對話。",
     republishRequired: "這是舊的受限模式分享。重新分享這個 Agent 之前，Hub 的提問都會被拒絕。",
     shareAgain: "重新分享",

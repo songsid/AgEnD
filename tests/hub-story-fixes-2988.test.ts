@@ -163,10 +163,10 @@ describe("#1 / #6 / #11 / #13 / #17: the words", () => {
       expect(T(lang, key, "Atlas")).not.toMatch(/暫停|凍結|Pause|Frozen|Stop all asking|停止所有提問/);
   });
   it("#1: Classic sharing explains private routing and the one-memory cost", () => {
-    expect(T("en", "hub.agentLead")).toContain("one agent with one memory");
-    expect(T("en", "hub.agentLead")).toContain("room's chat is not copied to the Hub");
-    expect(T("zh-TW", "hub.agentLead")).toContain("同一個 Agent、同一份記憶");
-    expect(T("zh-TW", "hub.agentLead")).toContain("房間的聊天也不會複製到 Hub");
+    expect(T("en", "hub.classicRoomLead")).toContain("one agent with one memory");
+    expect(T("en", "hub.classicRoomLead")).toContain("room's chat is not copied to the Hub");
+    expect(T("zh-TW", "hub.classicRoomLead")).toContain("同一個 Agent、同一份記憶");
+    expect(T("zh-TW", "hub.classicRoomLead")).toContain("房間的聊天也不會複製到 Hub");
   });
   it("#11: the administrator is told why and what to do, not to ask the administrator", () => {
     for (const lang of ["en", "zh-TW"]) {

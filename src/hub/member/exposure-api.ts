@@ -99,7 +99,7 @@ export function createHubMemberExposureApi(deps: {
     acknowledgeContactLimitNotice: () => deps.store.acknowledgeContactLimitNotice(),
     preview(raw) {
       const { input, a } = checked(raw);
-      const who=a.kind==="classic-room"?[summaryLine(`Share the agent of "${a.display}" with the Hub? People you allow on the Hub can ask it. Their questions and its answers are not posted in the room. It may use what people said in the room when it answers them.`,summaryMessage("hub.exposure.summary.classicRoom",a.display))]
+      const who=a.kind==="classic-room"?[summaryLine(`Share the agent of the ClassicBot room "${a.display}" with the Hub. People you allow on the Hub can ask it. Their questions and its answers are not posted in the room. It may use what people said in the room when it answers them.`,summaryMessage("hub.exposure.summary.classicRoom",a.display))]
         :[summaryLine(`Share "${a.display}" with the Hub`, summaryMessage("hub.exposure.summary.share", a.display)),
           summaryLine("Hub questions go to this agent's own conversation, with its folder and Settings tools", summaryMessage("hub.exposure.summary.context"))];
       return settingsSummary([...who,

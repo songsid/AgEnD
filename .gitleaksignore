@@ -150,3 +150,8 @@ b1827bb363eac62e13091de50451437d0c9b69ba:docs/evidence/hub-rooms-integration-r3/
 
 # Same public subject-key expression after its whitespace-only CI fix.
 8d738e6d5052a8405bf34174bb7ac405be244ab0:src/ui/hub-role-forms.js:generic-api-key:75
+
+# PR #4111: two historical public-source patch-line SHA-256 values, independently recomputed.
+# Current evidence uses structured path/digest rows. Exact old commit/path/rule/line only.
+54bae4f3a51afa41f6d97af16b650945e5415065:docs/evidence/hub-classic-share-m3285/alpha-sync.json:generic-api-key:14
+54bae4f3a51afa41f6d97af16b650945e5415065:docs/evidence/hub-classic-share-m3285/alpha-sync.json:generic-api-key:21
