@@ -193,8 +193,11 @@ export function dismissHostInstall(id) {
   hostInstallStore.set({ dismissed: [...s.dismissed.slice(-20), id] });
 }
 
-/** Installing is offered to a signed-in local admin; the public link's page never shows it. */
-export const hostInstallOffered = () => !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
+/**
+ * Installing is offered to a signed-in admin — M-3278 (decision 7933bf90): over the public link too; a guest's page over the
+ * link still never shows it (the server refuses anyone but an admin).
+ */
+export const hostInstallOffered = () => !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1" && document.body.dataset.tier === "guest");
 
 /** The run to show for `backend` in its row: not one the person dismissed. */
 export function runFor(state, backend) {

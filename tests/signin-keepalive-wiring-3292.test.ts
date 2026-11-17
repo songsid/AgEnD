@@ -77,17 +77,17 @@ describe("POST /ui/accounts/keep-alive", () => {
       expect(await f.call("POST", a, { backend: "codex", profile: null, enabled: true }), error).toEqual({ status, body: { error } });
     }
   });
-  it("the public link: not in its manifest or the guest table; a bound gateway request is refused even as an admin", async () => {
+  it("M-3278: the public link carries it for its admin session (not the guest table); its read session is refused", async () => {
     const f = await fixture();
-    expect(isPublicWebRoute("POST", "/ui/accounts/keep-alive")).toBe(false);
+    expect(isPublicWebRoute("POST", "/ui/accounts/keep-alive")).toBe(true);
     expect(GUEST_ROUTES.some(r => (r.methods as readonly string[]).includes("POST") && r.pattern.test("/ui/accounts/keep-alive"))).toBe(false);
-    const made = f.sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
+    const made = f.sessions.create({ tier: "read", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
     let status = 0, sent = "";
     const res: any = { headersSent: false, setHeader() {}, writeHead(n: number) { status = n; this.headersSent = true; return this; }, end(chunk?: unknown) { sent = String(chunk ?? ""); } };
     const req = Object.assign(new EventEmitter(), { method: "POST", url: "/ui/accounts/keep-alive", headers: { host: "x.trycloudflare.com", origin: "https://x.trycloudflare.com", cookie: `__Host-agend_session=${made.sessionId}`, "x-agend-csrf": csrfTokenFor(made.sessionId) }, destroy() {}, resume() {} });
     bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
     expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/accounts/keep-alive"), f.ctx)).toBe(true);
-    expect([status, JSON.parse(sent).error]).toEqual([403, "accounts_not_over_public_link"]);
+    expect([status, JSON.parse(sent).error]).toEqual([403, "accounts_need_a_local_admin"]);
     expect(f.keep).not.toHaveBeenCalled();
   });
 });

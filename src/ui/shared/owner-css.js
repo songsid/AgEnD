@@ -42,7 +42,7 @@ export function ownerCssActive() { return active; }
 
 function eligiblePage() {
   const b = document.body && document.body.dataset;
-  return !!b && b.mode === "full" && b.publicLink !== "1";
+  return !!b && b.mode === "full";   // M-3278 (decision 7933bf90): the public link's admin page too (the server marks a guest's off)
 }
 function wanted() {
   if (!eligiblePage() || safe || !active || ownerCssOffHere()) return false;

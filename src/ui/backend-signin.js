@@ -250,8 +250,11 @@ async function post(path, body) {
 
 const errorText = (code) => (code === "confirm_expired" ? tn("expired") : code === "tunnel_not_offered" ? tn("notOffered")
   : code === "sign_in_not_over_public_link" ? tn("notHere") : code === "sign_in_needs_a_local_admin" ? tn("notAdmin") : tn("failed"));
-/** The public link's page (#2233: Sign in is refused there — never offered). */
-export const signInOffered = () => !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
+/**
+ * #2233: Sign in was never offered on the public link's page. M-3278 (decision 7933bf90): it is for the link's admin session
+ * now, as on the local dashboard; a guest's page over the link still never shows it (the server refuses anyone but an admin).
+ */
+export const signInOffered = () => !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1" && document.body.dataset.tier === "guest");
 const loopbackHost = (h) => h === "localhost" || h === "::1" || h === "[::1]" || /^127\./.test(h);
 
 function CopyButton({ value, label, small = false }) {

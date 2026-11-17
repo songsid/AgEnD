@@ -442,7 +442,7 @@ export function SettingsPanel({ route, navKey }) {
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
     // alpha.6 feedback (#2): the Hub cards have their own section (they were under Access & security, unfound by search).
-    : section === "hub" ? html`<${HubSection} overPublicLink=${typeof document !== "undefined" && document.body?.dataset?.publicLink === "1"} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />`
+    : section === "hub" ? html`<${HubSection} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />`
     : html`<${UpdateSection} /><${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;
   // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
   // on its way), focused, and flashed for 2 s.
@@ -1271,8 +1271,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
   const plSession = (web.session && web.session.public_link) || {};   // #3708
   // M-3278 (decision 7933bf90): over the public link an admin edits these as anywhere (Guests and Web authority included);
-  // only the tunnel token and the Hub stay this computer's (`onLink`).
-  const onLink = globalThis.document?.body?.dataset?.publicLink === "1";
+  // the tunnel token and the Hub too (part 4).
   const overPublicLink = false;
   const original = useMemo(() => ({
     notify: noticeMode(web.notify_login),
@@ -1487,7 +1486,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     </section>`)}
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
           ${/* A tab whose shell is from before Settings → Hub (its app-route.js has no "hub"): the Hub cards stay here. */ ""}
-          ${!SETTINGS_SECTIONS.includes("hub") ? html`<${HubSection} overPublicLink=${onLink} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />` : null}
+          ${!SETTINGS_SECTIONS.includes("hub") ? html`<${HubSection} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />` : null}
           <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>
@@ -1521,8 +1520,10 @@ function WebSection({ ctx, staged, part = "all" }) {
       ${named || f.autoOpen ? html`<label class=${fc("check", "autoOpen")}><input id="publicAutoOpen" type="checkbox" checked=${f.autoOpen} onChange=${(e) => set("autoOpen")(e.target.checked)} /><span>${tn("publicAutoOpen")}</span><${Impact} schema=${schema} field="web.public_link.auto_open" /></label>
       <p class="note">${tn("publicAutoOpenHint")}</p><${Feedback} error=${errors.autoOpen} />` : null}
 
-      ${!onLink ? html`<div class="s-public-credentials"><${PublicTunnelToken} /></div>` : null}
+      <div class="s-public-credentials"><${PublicTunnelToken} /></div>
     </section>`)}
+          ${/* M-3278 (decision 7933bf90): the fixed link's token over the public link too, for its admin — outside the locked fields. */ ""}
+          ${overPublicLink ? html`<section class="card s-public-entry"><div class="s-public-credentials"><${PublicTunnelToken} /></div></section>` : null}
           <div class="s-sharing-list"><h3>${layoutText("revReadOnlySharing")}</h3><p class="note">${layoutText("revSharingOrigin")}</p><${OfficeSharesCard} /><${PageSharesCard} /></div>
         </div>
       </${SettingsTabPanel}>` : null}

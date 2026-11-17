@@ -243,12 +243,12 @@ describe("Settings → Web, as rendered", () => {
     expect(value()).toBe("90");
   });
 
-  it("M-3278: over the temporary public link an admin edits the web form as anywhere; the tunnel token stays this computer's", async () => {
+  it("M-3278: over the temporary public link an admin edits the web form as anywhere; the fixed address's token is offered too (part 4)", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const w = await open();
     // M-3278 (decision 7933bf90): the Web fields are an admin's over the link too — enabled, no refusal note, no read-only note.
     expect([p.root.querySelector(".s-web-fields").hasAttribute("disabled"), !!w.$("webPublicRefused"), !!p.root.querySelector(".s-readonly")]).toEqual([false, false, false]);
-    expect(w.$("publicTunnelToken")).toBeNull();
+    expect(w.$("publicTunnelToken")).not.toBeNull();   // M-3278 part 4: the fixed address's token too
     await w.type(w.$("webSessionAbsolute"), "6");
     await w.review(); await w.apply();
     expect(w.webWrites().length).toBe(1);
@@ -328,11 +328,11 @@ describe("#2307 fixed public link settings and write-only token", () => {
       expect(sent.filter(s => s.path.endsWith("/apply"))[1].body.verification_id).toBe("clear-proof");
     } finally { (globalThis as any).fetch = fakeFetch; }
   });
-  it("does not expose connector inputs or token endpoints through a public-link settings page", async () => {
+  it("M-3278: a public-link settings page offers the token (its admin session; the server refuses anyone else) and its fields are editable (part 3)", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const w = await open();
-    expect(w.$("publicTunnelToken")).toBeNull();
-    expect(sent.filter(s => s.path.startsWith("/api/settings/public-tunnel-token"))).toHaveLength(0);
+    expect(w.$("publicTunnelToken")).not.toBeNull();
+    expect(w.$("publicWebHostname")?.closest("fieldset")?.disabled).toBe(false);   // M-3278 part 3: the admin edits the form
     // #2636 follow-up (the user's choice): the Office share links card, with its Revoke, is an admin's over the link too.
     expect(p.root.querySelector(".os-card")).not.toBeNull();
     expect(sent.some(s => s.method === "GET" && s.path === "/ui/office-share")).toBe(true);

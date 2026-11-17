@@ -3,8 +3,7 @@
  * - a fleet that runs no Hub: the membership card only — never the Hub host's retention or browser-certificate cards
  *   (they would read "unavailable" on every fleet, and search leads every fleet here);
  * - a Hub host: all three;
- * - over the public link: only the note that Hub settings are on this fleet's own dashboard — no Hub card at all, the
- *   Hub host's included.
+ * - over the public link (M-3278, decision 7933bf90): the same cards as locally, for its admin session.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
@@ -22,8 +21,7 @@ async function section(props: { hubHost: boolean; overPublicLink: boolean }) {
   const { HubSection } = await import("/ui/js/settings-hub-section.js");
   await pg.mount(h(HubSection, props));
   // Each card is its own lazy module: wait for every one this case should draw, then a while longer for any it should not.
-  await until(() => props.overPublicLink ? pg.root.querySelector("#hub-public-link")
-    : pg.root.querySelector("#hub-membership") && (!props.hubHost || pg.root.querySelector(".hub-retention") && pg.root.querySelector(".hub-browser-certificate")));
+  await until(() => pg.root.querySelector("#hub-membership") && (!props.hubHost || pg.root.querySelector(".hub-retention") && pg.root.querySelector(".hub-browser-certificate")));
   await settle(12);
   const has = (sel: string) => !!pg.root.querySelector(sel);
   return { pg, drawn: { membership: has("#hub-membership"), retention: has(".hub-retention"), certificate: has(".hub-browser-certificate"), publicNote: has("#hub-public-link") } };
@@ -36,9 +34,9 @@ describe("Settings → Hub (#3324 F1)", () => {
   it("a Hub host: the membership card, retention and the browser certificate", async () => {
     expect((await section({ hubHost: true, overPublicLink: false })).drawn).toEqual({ membership: true, retention: true, certificate: true, publicNote: false });
   });
-  it("over the public link (a Hub host too): only the note — no Hub card", async () => {
+  it("M-3278: over the public link (a Hub host too): the same cards as locally, and no note", async () => {
     const s = await section({ hubHost: true, overPublicLink: true });
-    expect(s.drawn).toEqual({ membership: false, retention: false, certificate: false, publicNote: true });
-    expect(s.pg.root.textContent).toContain("Hub settings are only on this fleet's own dashboard, not over the public link.");
+    expect(s.drawn).toEqual({ membership: true, retention: true, certificate: true, publicNote: false });
+    expect(s.pg.root.textContent).not.toContain("not over the public link");
   });
 });

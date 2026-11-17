@@ -33,9 +33,11 @@ describe("the Fleet pilot-trust setting", () => {
     expect(await call({ method: "GET", admin: false })).toMatchObject({ status: 403 });
   });
   it("only a confirmed local admin writes the one raw leaf, preserving membership and other fields", async () => {
-    for (const o of [{}, { replay: true, admin: false }, { replay: true, gateway: true }]) {
+    for (const o of [{}, { replay: true, admin: false }, { replay: true, gateway: true, admin: false }]) {
       const r = await call(o); expect(r.status).toBe(403); expect(r.save).not.toHaveBeenCalled();
     }
+    // M-3278 (decision 7933bf90): the public link's admin continuation writes as a local one does.
+    expect((await call({ replay: true, gateway: true })).status).toBe(200);
     const r = await call({ replay: true });
     expect(r).toMatchObject({ status: 200, body: { enabled: false }, raw: { hub_member: { enabled: true, pilot_trust: false, retained: "keep" } } });
     expect(r.save).toHaveBeenCalledExactlyOnceWith([{ path: ["hub_member", "pilot_trust"], value: false }]);

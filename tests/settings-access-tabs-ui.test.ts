@@ -101,9 +101,10 @@ describe("the real Settings forms across page tabs", () => {
     p.document.body.setAttribute("data-public-link", "1");
     await open("access", "#publicWebHostname");
     expect(byId("access-tab-sharing").getAttribute("aria-selected")).toBe("true");
-    // M-3278 (decision 7933bf90): an admin edits the Web fields over the link as anywhere; the tunnel token stays this computer's.
+    // M-3278 (decision 7933bf90): an admin edits the Web fields over the link as anywhere, and the fixed address's token too
+    // (part 4), outside the form's fields.
     expect(byId("publicWebHostname").closest("fieldset").disabled).toBe(false);
-    expect(byId("publicTunnelToken")).toBeNull();
+    expect(byId("publicTunnelToken")).not.toBeNull();
     expect(byId("vaEnabled")).not.toBeNull();
     expect(byId("guestsEnabled")).not.toBeNull();
     expect(writes).toEqual([]);

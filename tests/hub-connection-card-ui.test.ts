@@ -110,7 +110,7 @@ describe("one Hub connection card", () => {
   it("an earlier host retains its original UI and sends no write", async () => {
     const f = await fixture({ legacy: true }); await until(() => f.p.root.querySelector("#hub-membership")); expect(f.calls.every(c => !c.init.method)).toBe(true);
   });
-  it("public pages make no private read", async () => { const f = await fixture({ public: true }); expect(f.calls).toEqual([]); expect(f.p.root.textContent).toBe(""); });
+  it("M-3278: a public-link page (its admin session) reads the connection as a local page does", async () => { const f = await fixture({ public: true }); expect(f.calls.length).toBeGreaterThan(0); });
   it("a late read after unmount cannot publish a member mark or connect", async () => {
     const d = deferred(), f = await fixture({ heldRead: d.promise }); await f.p.unmount(); d.resolve(response({ ok: true, enabled: true, connectionCardV1: true, pairing: paired() })); await settle(20);
     expect(f.p.document.body.dataset.hub).toBeUndefined(); expect(f.c.pairing).not.toHaveBeenCalled();

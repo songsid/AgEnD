@@ -143,6 +143,15 @@ describe("through the gate and the real handler", () => {
     expect((await h.request("PUT", { portrait: { max_kib: null } })).status).toBe(200);   // 2048 → 1536: lower
     expect(h.raw().web).toEqual({ usage_panel: false, appearance: { portrait: { max_width: 800 } } });
   });
+  it("Fable on #4100: reading them is an admin's — no session (on this computer or over the link) is refused", async () => {
+    const h = harness();
+    for (const publicLink of [false, true]) {
+      const r = await h.request("GET", undefined, { publicLink, anonymous: true });
+      expect([publicLink, r.status], `anonymous GET publicLink=${publicLink}`).toEqual([publicLink, 403]);
+    }
+    expect((await h.request("GET", undefined)).status).toBe(200);
+    expect((await h.request("GET", undefined, { publicLink: true })).status).toBe(200);
+  });
   it("GET: written, in force (clamped), defaults, bounds and the warnings", async () => {
     const h = harness({ web: { appearance: { portrait: { max_width: 9999 } } } });
     const r = await h.request("GET", undefined);
