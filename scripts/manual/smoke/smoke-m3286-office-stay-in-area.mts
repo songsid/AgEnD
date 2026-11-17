@@ -2,7 +2,7 @@
 // Edit offices → Add office (Cozy), tick "Idle people stay in their own area", Save; the office opens; Edit offices again
 // shows the box ticked; the host keeps it beside the list in web-offices.json (never in the office's entry).
 // Cases: desk light en, desk dark zh-TW.
-//   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf [HP=48886] \
+//   PW_DIR=… REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf [HP=19693] \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-m3286-office-stay-in-area.mts
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
