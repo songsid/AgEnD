@@ -41,4 +41,3 @@
   ┃
 
   Tab:permission  │  Ctrl+e:collapse thinking  │  Ctrl+c:cancel  │  Ctrl+b:send to bg  │  Ctrl+x:shortcuts
-

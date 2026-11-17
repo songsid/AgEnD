@@ -395,5 +395,6 @@
       "sha256": "a33013fe73ea63d2f18df636f90f84060a88712f9932b77cda0447dd83b4bfe5"
     }
   ],
-  "grokManifestSemanticUnchangedBySync": true
+  "grokManifestSemanticUnchangedBySync": true,
+  "publishedCaptureNormalization": "Trailing spaces and blank rows at EOF removed; raw pre-normalization stage remains identified above."
 }

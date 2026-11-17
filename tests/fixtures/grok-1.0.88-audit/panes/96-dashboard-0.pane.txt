@@ -41,4 +41,3 @@
   ╰────────────────────────────────────────────────────────────────────────────────── grok-mock (low) · auto-review ─╯
 
   Ctrl+\:dashboard  │  Ctrl+x:archive  │  Shift+Tab:mode  │  Ctrl+.:shortcuts
-

@@ -34,7 +34,8 @@ The new binary reports `grok 1.0.88 (2fe3608f7398)`.
 working/completed turns, short and collapsed drafts, taken/queued input,
 cancel, errors, weekly limit, tools/MCP, compact/new, quit/resume and model
 switching. `weekly-scrollback.pane.txt` and `login-unavailable.pane.txt`
-are the two regression inputs. Historical fixture text was not rewritten.
+are the two regression inputs. Historical fixture text was not rewritten. Published new panes trim trailing
+spaces and blank rows at EOF; raw captures remain in the private audit packet.
 
 The JSONL files contain actual structured `user_message_chunk` records.
 Before Enter and after a never-sent paste they are empty. The submitted

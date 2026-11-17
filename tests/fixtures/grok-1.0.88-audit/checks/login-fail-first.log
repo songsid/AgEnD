@@ -34,4 +34,3 @@ ObjectContaining {
       Tests  1 failed | 6 passed (7)
    Start at  21:26:16
    Duration  4.45s (transform 3.26s, setup 110ms, import 4.07s, tests 80ms, environment 0ms)
-

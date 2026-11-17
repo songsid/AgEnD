@@ -38,5 +38,6 @@
     "No Windows CLI",
     "Plain grok login produced no frame within ten seconds; not counted as pass",
     "Historical unmatched optional approval and statusless401/403 usage classification not broadened"
-  ]
+  ],
+  "stage": "alpha feature verification before plain sync; main validation is separate"
 }

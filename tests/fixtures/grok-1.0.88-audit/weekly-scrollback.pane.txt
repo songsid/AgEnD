@@ -41,4 +41,3 @@
   ┃
 
   Tab:question  │  Ctrl+e:collapse thinking  │  Ctrl+x:shortcuts
-

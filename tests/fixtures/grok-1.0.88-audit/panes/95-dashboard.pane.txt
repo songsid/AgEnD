@@ -41,4 +41,3 @@
   ╰───────────────────────────────────────────────────────────────────────────────────────── grok-mock · auto-review ╯
 
   Enter:create  │  Tab:list  │  Shift+Tab:mode  │  ?:shortcuts
-

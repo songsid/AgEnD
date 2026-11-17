@@ -41,4 +41,3 @@
   ┃
 
   2/4:select  │  Tab:next option  │  ←/→:scope  │  Ctrl+c:cancel  │  Esc:scrollback
-

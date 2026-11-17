@@ -41,4 +41,3 @@
   ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
 
   Enter:send now  │  Shift+Tab:mode  │  Ctrl+c:cancel  │  Ctrl+y:queue  │  Ctrl+x:shortcuts
-
