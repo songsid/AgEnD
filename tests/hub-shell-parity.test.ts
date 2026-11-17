@@ -227,7 +227,7 @@ it("offers role notices only on the existing Notices destination, without a fals
 
 it.each(["en","zh-TW"])("does not label a saved personal publication as already shared (%s)",async lang=>{
  const pg=await hub({path:"/ui/hub/exposures",lang,mine:[{id:"11111111-1111-4111-8111-111111111111",kind:"personal",displayName:"Notes",state:"published",grants:[]}]});
- await until(()=>pg.root.querySelector(".hub-shared .tag"));expect(pg.root.querySelector(".hub-shared h3")?.textContent).toBe(lang==="en"?"Your agents · 1":"你的 Agent · 1");
+ await until(()=>pg.root.querySelector(".hub-shared .tag"));expect(pg.root.querySelector(".hub-shared h3")?.textContent).toBe(lang==="en"?"My agents · 1":"我的 Agent · 1");
  expect(pg.root.querySelector(".hub-shared .tag")?.textContent).toBe(lang==="en"?"Saved":"已儲存");
 });
 it("keeps Fleet publication labels unchanged",async()=>{
