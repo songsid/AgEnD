@@ -37,8 +37,12 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if ((method === "GET" || method === "POST") && path === "/ui/authorization") return true;
   if (method === "DELETE" && /^\/auth\/sessions(?:\/[0-9a-f]{16})?$/.test(path)) return true;
   if (reads && /^\/api\/(pane|profile|avatar)\/[^/]+$/.test(path)) return true;
-  // #1665: the sidebar's order is a host preference now (/ui/prefs, read-only here); the old fleet-wide /api/sort-order
-  // write, which the page no longer makes, is not offered on the public link either.
+  // #1665: the sidebar's order is a host preference now; the old fleet-wide /api/sort-order write, which the page no
+  // longer makes, is not offered on the public link either. #4084: a guest saves its own preferences here too (#2855:
+  // its stars, sort, filter, theme, language — its own bucket only); the handler refuses every other session's write
+  // over the link (prefs_not_over_public_link). Before, this route list refused the guest's write before the handler saw
+  // it, and the page put the host's view back: a star vanished moments after it was set.
+  if (method === "POST" && path === "/ui/prefs") return true;
   if (method === "POST" && /^\/api\/(profile|avatar)\/[^/]+$/.test(path)) return true;
   if (method === "DELETE" && /^\/api\/avatar\/[^/]+$/.test(path)) return true;   // #1630 follow-up: removing it, as uploading it
   // #1629 r4.1 Q2: the identity card follows the profile and avatar (the person's card, read and edited here); the
