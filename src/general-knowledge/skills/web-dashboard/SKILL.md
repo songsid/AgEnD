@@ -484,7 +484,7 @@ one shown, there and in the list's **Custom** menu, is the screen's own. Default
 made before the split stays the desktop's. Compact uses a status dot (working pulses), name and muted last-reply time,
 without an avatar: 30 px on desktop, 40 px on phones. Hover shows the existing details tooltip. Filters, favorites,
 groups, sorting and keyboard links are the same. **Compact row name** in **Custom** and Settings → **This device**
-chooses one visible name: **Display name** (暱稱) or **Instance name** (instance 名稱). This single synced choice applies to
+chooses one visible name: **Display name** (暱稱) or **Instance name** (實際名稱). This single synced choice applies to
 both desktop and phone; density still belongs to each layout. Until a compact name is chosen, the existing leading-name
 choice is kept (normally the display name, falling back to the instance name). The other name remains in the tooltip
 and accessible name, and search matches both. Detailed keeps the current presentation.

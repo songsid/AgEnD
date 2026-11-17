@@ -86,7 +86,7 @@ describe("M-3269 compact rows show exactly one chosen name", () => {
   it("labels the single choice in Traditional Chinese", async () => {
     i18n.setLang("zh-TW", { store: false }); await settle(3); await menu();
     expect(control().getAttribute("aria-label")).toBe("精簡列名稱");
-    expect(control().textContent).toBe("暱稱instance 名稱");
-    expect(radios().map(r => r.parentNode.textContent)).toEqual(["暱稱", "instance 名稱"]);
+    expect(control().textContent).toBe("暱稱實際名稱");
+    expect(radios().map(r => r.parentNode.textContent)).toEqual(["暱稱", "實際名稱"]);
   });
 });

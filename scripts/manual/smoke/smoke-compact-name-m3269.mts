@@ -53,13 +53,13 @@ try {
       need(a.label === "Atlas", "unchanged default display name");
       need(a.title!.includes("agent-alpha"), "tooltip retains instance name");
       need(first.every(r => !r.alt && r.nameHeight <= r.lineHeight + 1), "one visible name line");
-      await p.page.screenshot({ path: shotPath(smoke, device, "display-name") });
+      if (process.env.CAPTURE !== "labels") await p.page.screenshot({ path: shotPath(smoke, device, "display-name") });
       if (!before) {
         await pick(p.page, phone, "nav-sort-compact-name", "instance");
         const second = await p.page.evaluate(read), b = second.find(r => r.name === "agent-alpha")!;
         need(b.label === "agent-alpha" && b.aria!.includes("Atlas"), "instance name plus accessible display name");
         need(second.every(r => !r.alt && r.nameHeight <= r.lineHeight + 1), "instance choice stays one line");
-        await p.page.screenshot({ path: shotPath(smoke, device, "instance-name") });
+        if (process.env.CAPTURE !== "labels") await p.page.screenshot({ path: shotPath(smoke, device, "instance-name") });
         await menu(p.page, phone);
         const controls = p.page.locator('input[name="nav-sort-compact-name"]');
         need(await controls.count() === 2 && await controls.locator("xpath=..").count() === 2, "two exclusive options");
