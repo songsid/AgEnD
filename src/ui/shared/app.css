@@ -1839,6 +1839,12 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .u-crow.is-one > .u-crow-head { flex: 0 0 32%; min-width: 0; }
 .u-crow.is-one > .u-crow-head .u-crow-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .u-crow.is-one .u-plan { display: none; }   /* one line: the name gets the room; the plan is in the full rows */
+/* M-3288: one line — the cached mark is a clock (its words the tooltip and read aloud), so the name and the ⓘ keep room
+   and nothing runs into the window's bar; every window: the words, as before. */
+.u-crow-stale-icon { display: none; }
+.u-crow.is-one .u-crow-stale { display: inline-grid; place-items: center; padding-left: 0; }
+.u-crow.is-one .u-crow-stale-icon { display: inline-grid; place-items: center; }
+.u-crow.is-one .u-crow-stale-text { display: none; }
 .u-crow.is-one .u-cm { grid-template-columns: 3em minmax(0, 1fr) 2.9em 3.7em; }   /* 「5小時」 whole */
 .u-crow.is-one > .u-cm, .u-crow.is-one > .u-crow-note { flex: 1 1 0; min-width: 0; }
 @media (pointer: coarse) { .u-cg-toggle { width: var(--tap); height: var(--tap); margin-block: calc((24px - var(--tap)) / 2); } }

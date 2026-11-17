@@ -147,7 +147,7 @@ describe("the switch, the groups and a line opened", () => {
     expect([kiro.querySelectorAll(".u-cm").length, kiro.querySelector(".u-crow-note")]).toEqual([1, null]);
     expect(`${text(kiro.querySelector(".u-cm-tag"))} ${text(kiro.querySelector(".u-cm-pct"))} ${text(kiro.querySelector(".u-cm-reset").firstChild)}`).toBe("30d 55% ↻ 8d");
     // Cached two hours ago: the time, and its day too when that was yesterday (usageClock) — a run just after midnight.
-    expect(text(kiro.querySelector(".u-crow-stale").firstChild)).toMatch(/^cached at (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d$/);
+    expect(text(kiro.querySelector(".u-crow-stale .u-crow-stale-text"))).toMatch(/^cached at (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d$/);
     expect(kiro.querySelector(".u-crow-stale").getAttribute("title")).toMatch(/^expired · cached at (?:\d{1,2}\/\d{1,2} )?\d\d:\d\d — Sign in again: kiro-cli login$/);
     expect([text(grok.querySelector(".u-crow-note")), grok.querySelector(".u-crow-note").getAttribute("class")]).toEqual(["HTTP 500 from the vendor", "u-crow-note is-alert"]);
     expect([text(muse.querySelector(".u-crow-note")), muse.querySelector(".u-crow-note").getAttribute("class"), text(muse.querySelector(".u-crow-name"))])
