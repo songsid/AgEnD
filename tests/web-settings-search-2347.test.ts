@@ -68,7 +68,7 @@ const open = async (section: string) => {
   await settle(20);
   if (section === "look") for (let i = 0; i < 40 && !p.root.querySelector(".s-effects"); i++) await new Promise((r) => setTimeout(r, 25));
 };
-const SECTIONS = ["preferences", "look", "agents", "agent-defaults", "chat", "web-dashboard", "access", "hub", "advanced"];
+const SECTIONS = ["preferences", "look", "agents", "accounts", "agent-defaults", "chat", "web-dashboard", "access", "hub", "advanced"];
 
 /** What a section draws that no entry covers, and the entries whose element it does not draw. */
 async function coverage(sections: string[], skipAbsent: (e: any) => boolean = () => false) {
@@ -130,6 +130,32 @@ describe("#2347 §6: what a search finds", () => {
   const ids = (q: string) => reg.searchSettings(q).map((e: any) => e.id);
   it("\"token\": the Cloudflare token, a connection's bot token and the provider API keys", () => {
     expect(ids("token")).toEqual(expect.arrayContaining(["access.cloudflare-token", "chat.new-connection", "agents.provider-keys"]));
+  });
+  it("AGEND-288: \"帳號\" and \"account\" find the AI accounts first — before Hub's company account", () => {
+    for (const q of ["帳號", "account", "accounts", "AI 帳號"]) {
+      const found = ids(q);
+      expect(found[0], q).toBe("accounts.ai-accounts");
+      if (found.includes("hub.company-address")) expect(found.indexOf("accounts.ai-accounts"), q).toBeLessThan(found.indexOf("hub.company-address"));
+    }
+  });
+  it.each([
+    ["claude", "accounts.ai-accounts"], ["Codex", "accounts.ai-accounts"], ["connect account", "accounts.ai-accounts"], ["CLI 登入", "accounts.ai-accounts"],
+    ["新增帳號", "accounts.add"], ["預設帳號", "accounts.default"], ["default account", "accounts.default"],
+    ["保持連線", "accounts.keepalive"], ["keep alive", "accounts.keepalive"],
+  ])("AGEND-288: \"%s\" finds %s, which opens the AI accounts section", (q, id) => {
+    expect(ids(q)).toContain(id);
+    expect(reg.SETTINGS_REGISTRY.find((e: any) => e.id === id).section).toBe("accounts");
+  });
+  it("AGEND-288: the API key words still go to the accounts section; the browser terminal, guests and Hub are still found; \"other access settings\" is gone", () => {
+    expect(reg.SETTINGS_REGISTRY.find((e: any) => e.id === "agents.provider-keys").section).toBe("accounts");
+    for (const q of ["api key", "API 金鑰"]) expect(ids(q), q).toContain("agents.provider-keys");
+    expect(ids("瀏覽器終端機")).toContain("access.terminal");
+    expect(ids("terminal")).toContain("access.terminal");
+    expect(ids("訪客")[0]).toMatch(/^guests\./);
+    expect(ids("hub")[0]).toMatch(/^hub\./);
+    expect([ids("other access settings"), ids("其他存取設定")]).toEqual([[], []]);
+    // no entry points at a removed card
+    expect(reg.SETTINGS_REGISTRY.filter((e: any) => /access-related|s-access-related|ovAccounts/.test(e.target))).toEqual([]);
   });
   it("\"語言\": the dashboard's language and the bots' reply language", () => {
     expect(ids("語言")).toEqual(expect.arrayContaining(["prefs.lang", "defaults.locale"]));

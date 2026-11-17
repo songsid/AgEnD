@@ -33,7 +33,7 @@ register("accessov", {
     on: "On", goOwner: "Owner verification settings", twoStepNone: "Without it, changes from other devices are confirmed with Apply now.",
     otherTitle: "Other connections", otherLead: "Disconnect or remove each one on its own page.",
     hub: "Hub", hubHint: "Your team's Hub and the agents shared there", windows: "Windows computers", windowsHint: "Windows computers connected to run agents",
-    accounts: "AI accounts", accountsHint: "The Claude, Codex and other accounts your agents use", hubOn: "Connected", paired: "{0} connected",
+    hubOn: "Connected", paired: "{0} connected",
   },
   "zh-TW": {
     tab: "總覽", devicesTitle: "已登入的裝置", devicesCount: "{0} 個登入", more: "另外 {0} 個，到「裝置與登入」查看", manageDevices: "裝置與登入", manageGuests: "訪客",
@@ -52,7 +52,7 @@ register("accessov", {
     on: "開啟", goOwner: "擁有者驗證設定", twoStepNone: "未設定時，其他裝置上的變更以「立即套用」確認。",
     otherTitle: "其他連線", otherLead: "到各自的頁面中斷或移除。",
     hub: "Hub", hubHint: "你的團隊 Hub，以及在那裡分享的 Agent", windows: "Windows 電腦", windowsHint: "連上這裡、用來執行 Agent 的 Windows 電腦",
-    accounts: "AI 帳號", accountsHint: "Agent 使用的 Claude、Codex 等帳號", hubOn: "已連接", paired: "已連上 {0} 台",
+    hubOn: "已連接", paired: "已連上 {0} 台",
   },
 });
 const to = (k, ...a) => t(`accessov.${k}`, ...a);
@@ -171,7 +171,7 @@ export function AccessOverview({ web = {}, hub, openTab, overPublicLink, active 
     </div>
     <section class="s-ov-other" id="ovOther"><h3>${to("otherTitle")}</h3><p class="note">${to("otherLead")}</p>
       <div class="s-ov-tiles">
-        ${[["plug", "hub", "hubHint", "hub", hub ? to("hubOn") : null], ["code", "windows", "windowsHint", "runtimes", machines ? to("paired", machines) : null], ["bot", "accounts", "accountsHint", "agents", null]].map(([icon, k, hint, sec, state]) => html`
+        ${[["plug", "hub", "hubHint", "hub", hub ? to("hubOn") : null], ["code", "windows", "windowsHint", "runtimes", machines ? to("paired", machines) : null]].map(([icon, k, hint, sec, state]) => html`
           <button type="button" class="s-ov-tile" data-ov-go=${sec} onClick=${() => navigate(sectionPath(sec))}><${Icon} name=${icon} size=${18} />
             <span><strong>${to(k)}</strong><small>${to(hint)}</small>${state ? html`<small class="s-ov-state">${state}</small>` : null}</span><${Icon} name="chevron" size=${16} /></button>`)}
       </div>

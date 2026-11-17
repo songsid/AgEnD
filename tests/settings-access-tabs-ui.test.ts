@@ -52,12 +52,13 @@ async function open(section: string, hash = "") {
 }
 
 describe("the real Settings forms across page tabs", () => {
-  it("alpha.6 feedback (#2): Access & security's related card points to Settings → Hub, and it goes there", async () => {
+  it("AGEND-288: the sign-in tab no longer repeats the tab bar as \"Other access settings\"; the Hub is reached from the Overview tile, and the AI accounts tile is gone", async () => {
     await open("access");
-    const hub = [...p.root.querySelectorAll(".s-access-related > button")].find((b: any) => b.querySelector("strong")?.textContent === "Hub") as any;
-    expect(hub, "the Hub entry").toBeDefined();
-    expect(hub.querySelector("small").textContent).toBe("Connect this fleet to a team Hub and choose which agents to share.");
-    fire(hub, "click"); await settle(6);
+    expect(p.root.querySelector(".s-access-related"), "no duplicate related-settings card").toBeNull();
+    expect(p.root.querySelector("#access-panel-login .s-access-stack")).not.toBeNull();
+    expect(p.root.querySelector('[data-ov-go="accounts"]'), "AI accounts is not an Access & security item").toBeNull();
+    expect([...p.root.querySelectorAll("[data-ov-go]")].map((b: any) => b.getAttribute("data-ov-go"))).toEqual(["hub", "runtimes"]);
+    fire(p.root.querySelector('[data-ov-go="hub"]'), "click"); await settle(6);
     expect([location.pathname, nav.navStore.get().route]).toEqual(["/settings/hub", { panel: "settings", section: "hub" }]);
   });
   it("keeps Access edits and the same fields while viewing other groups, without writing", async () => {

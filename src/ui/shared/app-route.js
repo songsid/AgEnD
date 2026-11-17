@@ -6,7 +6,7 @@ export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage
 // #2347: two groups — "You" changes only you or this browser; "Fleet" changes AgEnD for everyone.
 export const SETTINGS_GROUPS = Object.freeze([
   Object.freeze({ id: "you", sections: Object.freeze(["preferences", "look"]) }),
-  Object.freeze({ id: "fleet", sections: Object.freeze(["agents", "runtimes", "agent-defaults", "notifications", "chat", "web-dashboard", "access", "hub", "advanced"]) }),
+  Object.freeze({ id: "fleet", sections: Object.freeze(["agents", "runtimes", "accounts", "agent-defaults", "notifications", "chat", "web-dashboard", "access", "hub", "advanced"]) }),
 ]);
 export const SETTINGS_SECTIONS = Object.freeze(SETTINGS_GROUPS.flatMap((g) => g.sections));
 /** #2347: the sections' names before the regrouping (links and bookmarks keep working) and where each one went. */
@@ -106,7 +106,9 @@ export function sectionPath(name) {
   return path === "/settings" ? "/settings/agents" : path;
 }
 /** #2347: an old /settings/<name> address as its new one (with the place in it), or null. */
-export function legacySettingsTarget(pathname) {
+export function legacySettingsTarget(pathname, search = "") {
+  // AGEND-288: the installer's sign-in list (`?backend_signins=`) used to open on Agents; its accounts moved to their own section.
+  if ((pathname === "/settings/agents" || pathname === "/settings") && new URLSearchParams(search || "").has("backend_signins")) return "/settings/accounts" + search;
   // #2347 §10: Fleet → Config's settings live in Settings now; its project folders are in Agent defaults.
   if (pathname === "/ui/fleet/config") return "/settings/agent-defaults#project-roots";
   const m = /^\/settings\/([^/]+)$/.exec(pathname || "");

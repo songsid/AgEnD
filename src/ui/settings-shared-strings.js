@@ -26,6 +26,7 @@ register("settings", {
     crossInstanceVisibility: "Bot-to-bot messages in topics",
     crossInstanceVisibilityHint: "How much of a message from one agent to another is shown in this agent's topic: all of it, one line, or nothing. Messages are always delivered; the Mirror Topic still shows them.",
     "sec_agent-defaults": "Shared agent settings",
+    sec_accounts: "AI accounts & keys",   // AGEND-288: its own section (it was a drawer under Agents)
     updateDefaults: "Update shared agent settings",
     devFormsUnsaved: "Save or discard the unsaved changes to agents, shared agent settings or connections first: this editor writes the same settings.",
     help4: "General: shared agent settings and ClassicBot defaults. Web: the dashboard's sign-in sessions, browser terminal, web echo, Log and public link. Review changes stages them.",
@@ -97,6 +98,7 @@ register("settings", {
     crossInstanceVisibility: "Agent 之間的訊息",
     crossInstanceVisibilityHint: "Agent 傳給 Agent 的訊息，要在這個 Agent 的主題裡顯示多少：完整、一行摘要，或不顯示。訊息一律照常送達，鏡像主題也照常顯示。",
     "sec_agent-defaults": "Agent 共用設定",
+    sec_accounts: "AI 帳號與金鑰",
     updateDefaults: "更新 Agent 共用設定",
     devFormsUnsaved: "請先儲存或捨棄 Agent、Agent 共用設定或連線中未儲存的變更：這個編輯器會寫入相同的設定。",
     help4: "一般：Agent 共用設定與 ClassicBot 預設值。網頁：儀表板的登入 session、瀏覽器終端機、網頁轉發、紀錄與公開連結。「檢查變更」會把它們暫存。",

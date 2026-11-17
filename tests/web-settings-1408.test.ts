@@ -454,7 +454,8 @@ describe("staged changes and leaving", () => {
 describe("#1374 and leaks", () => {
   it("mounting reads the configuration once; while it stays open nothing is read again", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
-    const m = mount(); await vi.advanceTimersByTimeAsync(50); await m;
+    const m = mount("accounts");   // AGEND-288: the accounts and sign-in reads belong to the AI accounts page now (Agents no longer makes them)
+    await vi.advanceTimersByTimeAsync(50); await m;
     // #2599: both sign-in controllers are read once; the stream says when to read again.
     expect(reads().sort()).toEqual(["/api/fleet", "/api/profiles", "/api/settings/classic", "/api/settings/connections", "/api/settings/fleet/raw",
       "/api/settings/pending", "/api/settings/provider-secrets", "/api/settings/schema", "/ui/accounts", "/ui/backend-login", "/ui/browser-backend-signins", "/ui/host-install"]);   // AGEND-133: the install's run, read once
@@ -1107,7 +1108,7 @@ describe("#1453 review", () => {
       if (r.url === "/api/settings/secrets/p2/verify") return { status: 400, body: { error: "bad key" } };
       return undefined;
     });
-    await mount("agents", "settings:agents|1|en"); await settle(6);
+    await mount("accounts", "settings:accounts|1|en"); await settle(6);
     const keyRow = (name: string) => p.root.querySelectorAll(".s-key").find((k: any) => k.textContent.includes(name));
     const enter = async (name: string, v: string) => { const i = keyRow(name).querySelector("input"); i.value = v; fire(i, "input"); await settle(2); btn(keyRow(name), "Verify & apply").click(); await settle(4); };
     await enter("One", "fake-one");
@@ -1168,7 +1169,7 @@ describe("#1453 review r2", () => {
     expect(app.appStore.get().pendingChanges.map((x: any) => x.id)).toEqual(["b".repeat(32)]);
   });
 
-  it("3. a provider key verified after its card was unmounted (Agents → Agent defaults → Agents; #2347: the keys are in Agents) is never applied over the key entered since", async () => {
+  it("3. a provider key verified after its card was unmounted (AI accounts → Agent defaults → AI accounts; AGEND-288: the keys are in AI accounts) is never applied over the key entered since", async () => {
     const verifyA = gate<{ body: unknown }>();
     let verifies = 0;
     routes.push(r => {
@@ -1177,7 +1178,7 @@ describe("#1453 review r2", () => {
       if (r.url === "/api/settings/secrets/p1/apply") return { body: { result: "reloaded" } };
       return undefined;
     });
-    await mount("agents", "settings:agents|1|en"); await settle(6);
+    await mount("accounts", "settings:accounts|1|en"); await settle(6);
     const enter = async (v: string) => {
       const row = p.root.querySelector(".s-key");
       const i = row.querySelector("input"); i.value = v; fire(i, "input"); await settle(2);
@@ -1185,7 +1186,7 @@ describe("#1453 review r2", () => {
     };
     await enter("fake-key-a");
     await mount("agent-defaults", "settings:agent-defaults|2|en"); await settle(4);
-    await mount("agents", "settings:agents|3|en"); await settle(6);
+    await mount("accounts", "settings:accounts|3|en"); await settle(6);
     await enter("fake-key-b");
     await vi.waitFor(() => expect(writes().filter(r => r.url === "/api/settings/secrets/p1/apply")).toHaveLength(1));
     verifyA.open({ body: { verification_id: "vA" } });

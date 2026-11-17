@@ -8,7 +8,7 @@ import { expect, it } from 'vitest';
 import { backendSignInGuide } from '../src/backend-signin-guide.js';
 it('guide navigation accepts only canonical IDs, never commands, URLs or empty lists',()=>{
  expect(backendSignInGuide(undefined)).toBe('');
- expect(backendSignInGuide('codex,kiro-cli,codex')).toBe('/settings/agents?backend_signins=codex%2Ckiro-cli');
+ expect(backendSignInGuide('codex,kiro-cli,codex')).toBe('/settings/accounts?backend_signins=codex%2Ckiro-cli');
  for(const csv of ['', 'codex,', 'codex;id', 'https://example.org', 'codex,codex,codex,codex,codex']) expect(backendSignInGuide(csv)).toBeNull();
 });
 it('the real CLI mints a code locally and prints only non-secret navigation, without starting setup or a backend',async()=>{
@@ -23,7 +23,7 @@ it('the real CLI mints a code locally and prints only non-secret navigation, wit
   const {stdout,stderr}=await promisify(execFile)(process.execPath,[...cli,'--backend-signins','kiro-cli,codex'],{env:{...process.env,AGEND_HOME:home},timeout:15000});
   const signin=new URL(stdout.match(/Sign-in page: (\S+)/)![1]!);
   expect(signin.origin).toBe(`http://localhost:${port}`);
-  expect(signin.pathname).toBe('/signin');expect(signin.searchParams.get('next')).toBe('/settings/agents?backend_signins=kiro-cli%2Ccodex');
+  expect(signin.pathname).toBe('/signin');expect(signin.searchParams.get('next')).toBe('/settings/accounts?backend_signins=kiro-cli%2Ccodex');
   expect(stdout).toContain(code);expect(stdout+stderr).not.toContain(token);
   expect(requests).toEqual([['POST','/auth/issue-code',token]]);
   expect(readFileSync(join(home,'fleet.yaml'),'utf8')).toBe(`health_port: ${port}\ninstances: {}\n`);
