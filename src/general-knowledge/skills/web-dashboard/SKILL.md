@@ -73,7 +73,9 @@ hostname (named tunnel, `web.public_link.hostname`) the minutes go up to 10080, 
 still needs a code).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
 A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Access & security, Look,
-schedule edits and preference writes are refused. HTML previews work over it through a second tunnel
+schedule edits and preference writes are refused. An admin session there has **Open beside** (split chat; its layout is kept
+for that page only), the **Subagents** row and the chat's activity steps (and **Show thinking** when it is on), as on the
+dashboard reached directly (M-3278). HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
 jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`
@@ -196,7 +198,8 @@ Linux mean no colour emoji font is installed). A bare URL is a link, also right 
 full-width punctuation (it ends at the first one, #3716). There is no @-autocomplete in the composer.
 
 **Subagents (#3516).** When Claude Code runs child agents, a read-only **Subagents** (「子 Agent」) row in the chat lists
-them: "N running", "N finished", "Main Agent task: …" (up to 16 recent).
+them: "N running", "N finished", "Main Agent task: …" (up to 16 recent). A fleet admin sees it over the public link too
+(M-3278); guests never.
 
 **Activity steps (#3709, #3738, alpha).** For a fleet admin, an agent's work shows in the chat: while it works, one live
 line above where its reply will come (the current step · N tools · elapsed; grok says **Reasoning…**, **Running a
@@ -269,7 +272,8 @@ Alpha (#3637, #3689, #3702, #3707). On a computer whose window is at least 1200 
   pane**.
 - **Quote into the other pane (*B*)** (「引用到另一格（*B*）」) appears next to **Quote**: the passage goes into the
   other agent's box. From the image editor, **Quote to *B*** puts the PNG there too.
-- A narrower window shows one pane with a tab per agent; phones keep the single chat. Guests have no split chat.
+- A narrower window shows one pane with a tab per agent; phones keep the single chat. Guests have no split chat; an admin
+  over the public link has it too (M-3278).
 
 ## Claude model switch observations
 

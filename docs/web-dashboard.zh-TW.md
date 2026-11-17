@@ -709,6 +709,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | 檔案預覽（Markdown、CSV/TSV、JSON、程式碼、文字） | ✅ **顯示** 卡片：先顯示 200 行，再按 **全部顯示**；超過 1 MiB 改為下載 | ✅ 同樣的 **顯示** 卡片（#2547）；影片和音訊仍是下載 | ✅ 同 B |
 | HTML 預覽 | ✅ 這台裝置同意後 | ✅ 這台裝置同意後，透過另一條 quick tunnel（`web.preview_on_public_link`，預設開啟）；設定了 `web.preview_origin` 時改走它 | ✅ 同 B：即使這個連結是 named tunnel，預覽仍走另一條 quick tunnel，或 `web.preview_origin` |
 | 回覆與 reaction | ✅ | ✅ | ✅ |
+| 在旁邊開啟（分割聊天）、子 Agent 列、聊天活動與顯示思考（admin 登入；訪客一律沒有） | ✅ | ✅（M-3278）；分割版面只保留在這個頁面 | ✅ 同 B |
 | 全域搜尋 | ✅ | ✅ 預設開啟；`web.search.public_link: false` 會在這裡關閉 | ✅ 同 B |
 | `/view` | ✅ 預設不用登入（`web.view_access: open`） | ✅ 一律要登入 | ✅ 同 B |
 | 紀錄分頁 | ✅ 設定 `web.log_tab: true`（預設關閉） | ✅ 同一個設定 | ✅ 同一個設定 |

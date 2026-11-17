@@ -712,6 +712,7 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | File previews (Markdown, CSV/TSV, JSON, code, text) | ✅ the **Show** card: 200 lines, then **Show all**; over 1 MiB, a download | ✅ the same **Show** card (#2547); video and audio stay downloads | ✅ as B |
 | HTML previews | ✅ after this device opts in | ✅ after this device opts in, through a second quick tunnel (`web.preview_on_public_link`, on by default), or through `web.preview_origin` when it is set | ✅ as B: a second quick tunnel even though this link is named, or `web.preview_origin` |
 | Replies and reactions | ✅ | ✅ | ✅ |
+| Open beside (split chat), Subagents row, chat activity and Show thinking (an admin session; never a guest) | ✅ | ✅ (M-3278); a split layout is kept for this page only | ✅ as B |
 | Global search | ✅ | ✅ on by default; `web.search.public_link: false` turns it off here | ✅ as B |
 | `/view` | ✅ open without signing in by default (`web.view_access: open`) | ✅ signing in is always required | ✅ as B |
 | Log tab | ✅ with `web.log_tab: true` (off by default) | ✅ the same setting | ✅ the same setting |
