@@ -21,5 +21,13 @@
   "liveCodexExecutions": 0,
   "modelRequests": 0,
   "nativeRuns": 0,
-  "visibleWindows": 0
+  "visibleWindows": 0,
+  "main": {
+    "testFiles": 7,
+    "passed": 205,
+    "failed": 0,
+    "workers": 2,
+    "sourceTypeErrors": 0,
+    "testTypeErrors": 0
+  }
 }

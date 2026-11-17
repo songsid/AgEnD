@@ -40,3 +40,5 @@ node_modules/.bin/vitest run tests/codex-precaution-3292.test.ts tests/daemon-in
 node_modules/.bin/tsc --noEmit
 node_modules/.bin/tsc --noEmit -p tsconfig.test.json
 ```
+
+Main twin: 205/205 across the seven affected precaution, daemon, channel-card, web-gate, generic-dialog, warning-footer and trust files; source and test typechecks each report zero errors. The shared parser/card implementation is identical; the main daemon uses its existing tmux-only input API.
