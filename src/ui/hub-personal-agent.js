@@ -1,4 +1,4 @@
-import {html,useEffect,useRef,useState} from "/assets/app-html.js";
+import {html,useEffect,useLayoutEffect,useRef,useState} from "/assets/app-html.js";
 import {ErrorState,Skeleton} from "/assets/ui-states.js";
 import {confirmDialog} from "/assets/ui-confirm.js";
 import {runtimeEnrollCommand} from "./runtime-commands.js";
@@ -15,7 +15,7 @@ export function personalCliReason(cli){
 }
 function installCss(){if(typeof document==="undefined"||document.querySelector('link[data-personal-install="1"]'))return;const link=document.createElement("link");link.rel="stylesheet";link.href="/assets/runtime-install.css";link.setAttribute("data-personal-install","1");document.head.appendChild(link);}
 /** The captured sign-in is passed through every client call, including writes after an await. */
-export function HubPersonalAgent({client,scope,onSaved=()=>{}}){
+export function HubPersonalAgent({client,scope,isAdmin=false,onSaved=()=>{}}){
  const [view,setView]=useState(null),[form,setForm]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[issued,setIssued]=useState(null),[saved,setSaved]=useState(false),[copied,setCopied]=useState(false),[clock,setClock]=useState(Date.now());
  const generation=useRef(0),dirty=useRef(false),reads=useRef(0),busyRef=useRef(false);
  const markBusy=value=>{busyRef.current=value;if(value)reads.current++;setBusy(value);};
@@ -40,13 +40,24 @@ export function HubPersonalAgent({client,scope,onSaved=()=>{}}){
  const refresh=async()=>{if(busyRef.current)return;const mine=generation.current;markBusy(true);await load(true);if(mine===generation.current)markBusy(false);};
  const computer=view?.computer,selected=computer?.clis.find(row=>row.id===form?.cli),command=issued&&issued.expiresAt>clock?runtimeEnrollCommand(issued.server,issued.installer?.scriptSha256,issued.token,issued.fingerprint,"personal"):"";
  const canUse=cli=>cli?.available && (cli.id!=="codex"||!form?.answerOnly) || cli?.id==="codex" && form?.answerOnly && cli.answerOnlyAvailable===true;
- return html`<section class="card hub-personal-agent" data-personal-agent><h3>${hp("title")}</h3><p class="note">${hp("lead")}</p>${!form?.answerOnly?html`<p class="note">${hp("guard")}</p>`:null}
+ const step=(number,title,body)=>html`<li class="runtime-step"><span class="runtime-step-n" aria-hidden="true">${number}</span><div><h4>${title}</h4>${body}</div></li>`;
+ const refreshButton=html`<button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${refresh}>${hp("refresh")}</button>`;
+ const commandActions=html`<div class="field-row"><button type="button" class=${`btn btn-sm ${command?"btn-ghost":"btn-primary"}`} disabled=${busy} onClick=${enroll}>${hp(issued?"newCommand":"getCommand")}</button></div>`;
+ const commandCard=issued?command?html`<div class="runtime-command-card"><p class="note">${hp("installHint")}</p><div class="runtime-command-row"><pre class="runtime-command-text"><code>${command}</code></pre><button type="button" class="btn btn-sm btn-primary" onClick=${async()=>{try{const mine=generation.current;await navigator.clipboard.writeText(command);if(mine===generation.current)setCopied(true);}catch{setCopied(false);}}}>${hp(copied?"copied":"copy")}</button></div><p class="note">${hp("folderHint")}</p><details class="s-ui-disclosure"><summary>${hp("commandFails")}</summary><div class="s-disclosure-body form"><p class="note">${hp("certificateFailure")}</p><p class="note">${hp("nodeFailure")}</p><p class="note">${hp("expiredHelp")}</p></div></details></div>`:html`<div class="form"><p class="note">${hp("expired")}</p></div>`:null;
+ const next=computer?(!computer.connected?"offlineNext":computer.working?"workingNext":computer.clis.some(canUse)?!view.agent?"configureNext":view.agent.shared?"sharedReady":null:null):null;
+ return html`<section class="card hub-personal-agent" data-personal-agent><h3>${hp("title")}</h3><p class="note">${hp("lead")}</p>
   ${error?html`<${ErrorState} message=${error} onRetry=${()=>void load()} />`:null}
   ${!view&&!error?html`<${Skeleton} lines=${3} />`:null}
-  ${view&&!view.enabled?html`<p class="note">${hp("off")}</p>`:view&&!view.canAdd?html`<p class="note">${hp("denied")}</p>`:view?html`
-   <div class="field-row">${!computer||issued?html`<button type="button" class=${`btn btn-sm ${issued?"btn-ghost":"btn-primary"}`} disabled=${busy} onClick=${enroll}>${hp(issued?"newCommand":"add")}</button>`:null}<button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${refresh}>${hp("refresh")}</button></div>
-   ${issued?command?html`<div class="runtime-command-card"><strong class="runtime-command-label">${hp("install")}</strong><p class="note">${hp("installHint")}</p><div class="runtime-command-row"><pre class="runtime-command-text"><code>${command}</code></pre><button type="button" class="btn btn-sm btn-primary" onClick=${async()=>{try{const mine=generation.current;await navigator.clipboard.writeText(command);if(mine===generation.current)setCopied(true);}catch{setCopied(false);}}}>${hp(copied?"copied":"copy")}</button></div><p class="note">${hp("folderHint")}</p><details class="s-ui-disclosure"><summary>${hp("commandFails")}</summary><div class="s-disclosure-body form"><p class="note">${hp("certificateFailure")}</p><p class="note">${hp("nodeFailure")}</p><p class="note">${hp("expiredHelp")}</p></div></details></div>`:html`<div class="form"><p class="note">${hp("expired")}</p></div>`:null}
-   ${computer?html`<div class="s-row"><span class="hub-row-text"><strong>${computer.name}</strong><small class="note">${form?.answerOnly?hp("answerOnly"):computer.folder||hp("unchecked")}</small></span><span class="tag">${hp(!computer.connected?"later":computer.working?"working":computer.clis.some(canUse)?"ready":"unavailable")}</span></div>
+  ${view&&!view.enabled?html`<p class="note">${hp(isAdmin?"offAdmin":"offMember")}</p>${isAdmin?html`<div class="field-row"><a class="btn btn-sm btn-primary" href="/ui/hub/admin?view=manage&section=personal-agents">${hp("openAdmin")}</a></div>`:null}`:view&&!view.canAdd?html`<p class="note">${hp("denied")}</p>`:view?html`
+   ${!form?.answerOnly?html`<p class="note">${hp("guard")}</p>`:null}
+   ${!computer?html`<ol class="runtime-steps">
+    ${step(1,hp("prepare"),html`<p class="note">${hp("requirementsBefore")}<a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer">${hp("requirementsNode")}</a>${hp("requirementsAfter")}</p><p class="note">${hp("codexSetupNote")}</p>`)}
+    ${step(2,hp("commandStep"),html`${commandActions}${commandCard}`)}
+    ${step(3,hp("runStep"),html`<p class="note">${hp("runHint")}</p>`)}
+    ${step(4,hp("finishStep"),html`<p class="note">${hp("finishHint")}</p><p class="note">${hp("waitingHint")}</p><div class="field-row">${refreshButton}</div>`)}
+   </ol>`:html`<div class="s-row"><span class="hub-row-text"><strong>${computer.name}</strong><small class="note">${form?.answerOnly?hp("answerOnly"):computer.folder||hp("unchecked")}</small></span><span class="tag">${hp(!computer.connected?"later":computer.working?"working":computer.clis.some(canUse)?"ready":"unavailable")}</span></div>
+    ${next?html`<p class="note" role="status">${hp(next)}</p>`:null}<div class="field-row">${refreshButton}</div>
+    ${issued?html`<div class="form"><strong>${hp("install")}</strong>${commandActions}${commandCard}<p class="note">${hp("runHint")}</p></div>`:null}
     ${computer.clis.map(cli=>{const compact=view.agent?.answerOnly===true&&form?.answerOnly,reason=personalCliReason(cli);return html`<div key=${cli.id} class="hub-personal-cli">
      <div class="s-row"><span class="hub-row-text"><strong>${cli.id==="codex"?"Codex":"Claude"}</strong><small class="note">${hp(form?.answerOnly&&cli.id==="codex"&&cli.answerOnlyAvailable?"answerOnly":reason)}</small>${cli.reason&&!cli.available&&reason!=="answerOnlyFailed"?html`<small class="note">${cli.reason}</small>`:null}</span></div>
      ${cli.id==="codex"&&(cli.answerOnlyAvailable===true||form?.answerOnly&&cli.available)?html`<div class="form" data-answer-only-option>
@@ -59,13 +70,15 @@ export function HubPersonalAgent({client,scope,onSaved=()=>{}}){
      <label class="field"><span>${hp("cli")}</span><select required disabled=${busy} value=${form?.cli||""} onChange=${e=>edit({cli:e.target.value,model:"",answerOnly:e.target.value==="codex"&&form.answerOnly})}><option value=""></option>${computer.clis.filter(canUse).map(c=>html`<option value=${c.id}>${c.id==="codex"?"Codex":"Claude"}</option>`)}</select></label>
      <label class="field"><span>${hp("model")}</span><select disabled=${busy} value=${form?.model||""} onChange=${e=>edit({model:e.target.value})}><option value="">${hp("defaultModel")}</option>${(selected?.models??[]).map(m=>html`<option value=${m.id}>${m.label||m.id}</option>`)}</select></label>
      <div class="field-row"><button class="btn btn-sm btn-primary" disabled=${busy||!canUse(selected)||!computer.connected||!form?.name.trim()||!!view.agent&&!dirty.current}>${hp("save")}</button>${dirty.current?html`<span class="note" role="status">${hp("unsaved")}</span>`:null}</div></form>`:null}
-    `:null}
+   `}
    ${saved?html`<p class="note" role="status">${hp("saved")}</p>`:null}${view.agent?html`<div class="form">${!view.agent.shared?html`<p class="note">${hp("notShared")}</p>`:null}<div class="field-row"><a class=${`btn btn-sm ${!view.agent.shared?"btn-primary":"btn-ghost"}`} href=${`/ui/hub/exposures?agent=${encodeURIComponent(view.agent.exposureId)}`}>${hp(view.agent.shared?"changeSharing":"sharing")}</a></div></div>`:null}
    ${computer?html`<div class="hub-this-actions"><button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${enroll}>${hp("replace")}</button><button type="button" class="btn btn-sm btn-danger" disabled=${busy} onClick=${disconnect}>${hp("disconnect")}</button></div>`:null}`:null}
  </section>`;
 }
 export function HubPersonalAgentAdmin({client,scope}){
+ const card=useRef(null);
  const [view,setView]=useState(null),[form,setForm]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[errorKind,setErrorKind]=useState("load"),[saved,setSaved]=useState(false),[query,setQuery]=useState(""),[hits,setHits]=useState([]),[teams,setTeams]=useState([]);
+ useLayoutEffect(()=>{if(form&&new URLSearchParams(location.search).get("section")==="personal-agents")card.current?.scrollIntoView?.({block:"start"});},[!!form]);
  const generation=useRef(0),searchSequence=useRef(0),reads=useRef(0),busyRef=useRef(false);
  const markBusy=value=>{busyRef.current=value;if(value)reads.current++;setBusy(value);};
  const load=async()=>{const mine=generation.current,read=++reads.current;const [settings,teamRows]=await Promise.allSettled([client.personalAgentSettings(scope),client.teams()]);if(mine!==generation.current||read!==reads.current)return;
@@ -81,7 +94,7 @@ export function HubPersonalAgentAdmin({client,scope}){
   if(mine!==generation.current)return;markBusy(false);if(!result?.ok){setErrorKind("save");setError(hp("saveFailed"));return;}setView(result);setForm(policy(result));setSaved(true);
  };
  const changed=!!form&&JSON.stringify(policy(view))!==JSON.stringify(form);
- return html`<section class="card" data-personal-admin><h3>${hp("adminTitle")}</h3><p class="note">${hp("adminLead")}</p>${error?html`<${ErrorState} message=${error} onRetry=${()=>void (errorKind==="save"?save():errorKind==="search"?search():load())} />`:null}
+ return html`<section class="card" id="hub-personal-agents" ref=${card} data-personal-admin><h3>${hp("adminTitle")}</h3><p class="note">${hp("adminLead")}</p>${error?html`<${ErrorState} message=${error} onRetry=${()=>void (errorKind==="save"?save():errorKind==="search"?search():load())} />`:null}
   ${!form&&!error?html`<${Skeleton} lines=${3} />`:form?html`<form onSubmit=${save} class="form"><label class="s-row"><span class="hub-row-text">${hp("enabled")}</span><input class="s-ui-toggle" role="switch" aria-label=${hp("enabled")} type="checkbox" disabled=${busy} checked=${form.enabled} onChange=${e=>edit({enabled:e.target.checked})} /></label>
    <p class="note">${hp("adminAlways")}</p><h4>${hp("allowed")}</h4>${!form.people.length&&!form.teams.length?html`<p class="note">${hp("onlyAdmin")}</p>`:null}
    ${form.people.map(id=>{const p=view.peopleInfo?.find(p=>p.id===id);return html`<div key=${id} class="s-row"><span class="hub-row-text"><strong>${p?.name||hp("unknownPerson")}</strong><small class="note">${p?.login||""}</small></span><button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${()=>edit({people:form.people.filter(p=>p!==id)})}>${hp("remove")}</button></div>`;})}

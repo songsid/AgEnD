@@ -8,11 +8,11 @@ const view=()=>({ok:true,enabled:true,canAdd:true,agent:null,computer:{id:"compu
  clis:[{id:"codex",path:"C:\\codex.exe",available:true,authenticated:true,personalStatus:"ready",models:[{id:"model-one",label:"Model One"}]},{id:"claude-code",path:null,available:false,authenticated:false,personalStatus:"unchecked",models:[]}]}});
 const button=(p:AppPage,label:string)=>[...p.root.querySelectorAll("button")].find((b:any)=>b.textContent===label);
 const change=(el:any,value:string,event="input")=>{expect(el).toBeTruthy();el.value=value;fire(el,event);};
-async function fixture(language="en",value:any=view(),overrides:any={}){
+async function fixture(language="en",value:any=view(),overrides:any={},props:any={}){
  const p=page({url:"http://127.0.0.1/ui/hub/exposures",storage:{agend_lang:language}});pages.push(p);words.setLang(language,{store:false});
  const client={personalAgent:vi.fn(async()=>value),refreshPersonalAgent:vi.fn(async()=>value),personalEnrollment:vi.fn(async()=>({ok:true,server:"https://hub.example.test",token:"agend_enroll_"+"a".repeat(43),fingerprint:"b".repeat(64),expiresAt:Date.now()+900000,installer:{scriptSha256:"c".repeat(64)}})),
   savePersonalAgent:vi.fn(async(_scope,input)=>{value.agent={id:"personal",exposureId:"exposure",revision:1,shared:false,...input};return {ok:true,exposure:{id:"exposure"}};}),disconnectPersonalAgent:vi.fn(async()=>({ok:true})),...overrides};
- await p.mount(h(ui.HubPersonalAgent,{client,scope:"captured-signin"}));await settle(20);return {p,client};
+ await p.mount(h(ui.HubPersonalAgent,{client,scope:"captured-signin",...props}));await settle(20);return {p,client};
 }
 it.each(["en","zh-TW"])("uses the personal read-only disclosure and normal controls (%s)",async language=>{
  const {p}=await fixture(language);expect(p.root.textContent).toContain(language==="en"?"Personal agent":"個人 Agent");expect(p.root.textContent).toContain(language==="en"?"Your own AI account":"自己的 AI 帳號");
@@ -96,10 +96,10 @@ it("leaves an unavailable CLI out of the selector while explaining it separately
 });
 it("offers a new command after expiry",async()=>{
  const data:any=view();data.computer=null;const {p}=await fixture("en",data,{personalEnrollment:async()=>({ok:true,expiresAt:Date.now()-1})});
- fire(button(p,"Add a personal agent"),"click");await settle(20);expect(p.root.querySelector("pre")).toBeNull();expect(p.root.textContent).toContain("This command has expired.");expect(button(p,"New command")).toBeTruthy();
+ fire(button(p,"Get install command"),"click");await settle(20);expect(p.root.querySelector("pre")).toBeNull();expect(p.root.textContent).toContain("This command has expired.");expect(button(p,"New command")).toBeTruthy();
 });
 it("keeps certificate help in a closed disclosure and personal terminal advice safe",async()=>{
- const data:any=view();data.computer=null;const next=await fixture("en",data);fire(button(next.p,"Add a personal agent"),"click");await settle(20);expect(next.p.root.querySelector("details")?.getAttribute("open")).toBeNull();
+ const data:any=view();data.computer=null;const next=await fixture("en",data);fire(button(next.p,"Get install command"),"click");await settle(20);expect(next.p.root.querySelector("details")?.getAttribute("open")).toBeNull();
  expect(next.p.root.textContent).toContain("Don't change security settings to get past it.");expect(button(next.p,"Copy command")?.className).toContain("btn-primary");
  const ordinary=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64)),personal=commands.runtimeInstallCommand("https://hub.example.test","a".repeat(64),"personal");
  expect(ordinary).toContain("or use the ZIP");expect(personal).not.toContain("or use the ZIP");expect(personal).toContain("Don''t change security settings");expect(personal).toContain("if ($s -and $h -eq");
@@ -148,4 +148,35 @@ it("lets the owner turn off a saved Answer only choice if the one-folder check l
  expect(p.root.querySelector('[data-answer-only-option]')).toBeNull();expect(button(p,"Save personal agent")?.disabled).toBe(false);
  fire(p.root.querySelector("form"),"submit");await settle(20);
  expect(client.savePersonalAgent.mock.calls[0][1]).not.toHaveProperty("answerOnly");expect(client.savePersonalAgent.mock.calls[0][1].ifRevision).toBe(1);
+});
+
+
+it.each(["en","zh-TW"])("gives a disabled Hub administrator a direct card link (%s)",async language=>{
+ const data:any={...view(),enabled:false,computer:null};
+ const admin=await fixture(language,data,{}, {isAdmin:true});
+ const link=admin.p.root.querySelector("a");expect(link?.getAttribute("href")).toBe("/ui/hub/admin?view=manage&section=personal-agents");
+ expect(link?.textContent).toBe(language==="en"?"Open Administration":"前往管理");
+ expect(admin.client.personalEnrollment).not.toHaveBeenCalled();
+ });
+it.each(["en","zh-TW"])("gives a disabled Hub member its next step without an administrator link (%s)",async language=>{
+ const data:any={...view(),enabled:false,computer:null};
+ const member=await fixture(language,data);expect(member.p.root.querySelector("a")).toBeNull();expect(member.p.root.textContent).toContain(language==="en"?"Personal agents are turned off on this Hub. Ask your Hub administrator.":"這個 Hub 還沒有開啟個人 Agent，請洽 Hub 管理員。");
+ expect(member.p.root.querySelector("ol")).toBeNull();expect(member.client.personalEnrollment).not.toHaveBeenCalled();
+});
+it.each(["en","zh-TW"])("shows ordered setup steps and a real requirements link without issuing a command (%s)",async language=>{
+ const {p,client}=await fixture(language,{...view(),computer:null});const steps=p.root.querySelectorAll("ol.runtime-steps > li");expect(steps).toHaveLength(4);
+ expect(steps[0].textContent).toContain(language==="en"?"Node.js 22.14 or newer":"Node.js 22.14 或更新版本");
+ expect(steps[0].querySelector("a")?.getAttribute("href")).toBe("https://nodejs.org/");
+ expect(steps[1].querySelector("button")?.textContent).toBe(language==="en"?"Get install command":"取得安裝指令");
+ expect(steps[2].textContent).toContain("Windows PowerShell");expect(steps[2].textContent).toContain("Codex");
+ expect(steps[3].textContent).toContain(language==="en"?"Nobody can ask it until you do.":"在你選擇之前，沒有人可以問它。");
+ expect(client.personalEnrollment).not.toHaveBeenCalled();expect(p.root.querySelector("pre")).toBeNull();
+});
+it.each(["en","zh-TW"])("replaces completed setup steps with the connected computer's next action (%s)",async language=>{
+ const data:any=view(),{p}=await fixture(language,data);expect(p.root.querySelector("ol")).toBeNull();
+ expect(p.root.textContent).toContain(language==="en"?"Choose Codex or Claude Code below, name your agent, then save.":"在下方選擇 Codex 或 Claude Code、填寫名稱，然後儲存。");
+ data.computer.working=true;fire(button(p,language==="en"?"Refresh":"重新整理"),"click");await settle(20);
+ expect(p.root.textContent).toContain(language==="en"?"Answering a question. Keep this computer on.":"正在回答提問，請讓這台電腦保持開機。");
+ data.computer.working=false;data.computer.connected=false;fire(button(p,language==="en"?"Refresh":"重新整理"),"click");await settle(20);
+ expect(p.root.textContent).toContain("connect-agend.bat");expect(p.root.textContent).toContain(language==="en"?"sign in to Windows":"登入 Windows");expect(p.root.querySelector("ol")).toBeNull();
 });
