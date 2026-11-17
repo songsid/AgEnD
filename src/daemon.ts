@@ -4628,7 +4628,7 @@ export class Daemon extends EventEmitter {
         const loginFlow = LOGIN_FLOWS[this.config.backend ?? "claude-code"];
         if (loginFlow?.loginScreenActive && this.reportLoginScreen(pane)) return;
 
-        const interactivePrompt = this.interactivePromptDetector.observe(
+        const interactivePrompt = dialogs.some(d => d.humanOnly && Daemon.dialogMatches(d, pane)) ? null : this.interactivePromptDetector.observe(
           pane,
           Date.now(),
           this.instanceStateLastOutputAt,
@@ -9853,7 +9853,7 @@ export class Daemon extends EventEmitter {
         locked: fn => this.paneWriteLock.run(fn),
         // An unreadable screen (a failed capture, another spawn's pane) is unknown — never "the card closed".
         read: async () => answerScreen = this.tmux === tmux ? await tmux.capturePane().catch(() => null) : null,
-        key: key => this.tmux !== tmux || answerScreen === null ? Promise.resolve(false) : key === "Space" ? (this.nativePaneLifecycle ? tmux.sendKeys(" ", { kind: "dialog", screen: answerScreen }) : tmux.sendKeys(" ")) : (this.nativePaneLifecycle ? tmux.sendSpecialKey(key, undefined, { kind: "dialog", screen: answerScreen }) : tmux.sendSpecialKey(key)),
+        key: key => this.tmux !== tmux || answerScreen === null ? Promise.resolve(false) : (key === "Space" || key === "q") ? (this.nativePaneLifecycle ? tmux.sendKeys(key === "q" ? "q" : " ", { kind: "dialog", screen: answerScreen }) : tmux.sendKeys(key === "q" ? "q" : " ")) : (this.nativePaneLifecycle ? tmux.sendSpecialKey(key, undefined, { kind: "dialog", screen: answerScreen }) : tmux.sendSpecialKey(key)),
         paste: text => this.tmux !== tmux || answerScreen === null ? Promise.resolve(false) : this.nativePaneLifecycle ? tmux.pasteBuffer(text, { proof: { kind: "dialog", screen: answerScreen } }) : tmux.pasteBuffer(text),
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
         now: () => performance.now(),
