@@ -238,8 +238,14 @@ gets the web notice only.
 
 - **Who**: a Fleet administrator, as for other General buttons.
 - **Until when**: 24 hours after the notice.
-- **Undo a share**: the agent stops being shared. Anyone allowed to ask in the meantime loses that; questions
-  already delivered are still answered.
+- **After a Fleet restart**: the chat buttons are kept only in memory today, so the web notice and the Fleet's
+  own record are what count. Undo stays available on the web for the full 24 hours; a chat button posted before
+  the restart either works again or says to use the web notice.
+- **Undo a share**: the agent stops being shared, exactly as a stop does. Anyone allowed to ask in the meantime
+  loses that. **Questions still waiting for an answer are not answered**: today a stopped share sends nothing
+  more, and this keeps that rule rather than adding an exception (settled with the builder, M-3294). Each such
+  asker sees, in the direct conversation or the room: "No answer: {owner} stopped sharing this agent." /
+  「沒有回答：{owner} 已停止分享這個 Agent。」 The same applies to a stop made from the Hub page.
 - **Undo a stop**: the agent is shared again **with its earlier list of who may ask**. For that, the Hub keeps
   the list of a stopped agent for 24 hours before clearing it. (Today it is cleared at once.)
 - Undo acts on the whole notice. To undo one agent of several, use the switches.
