@@ -10,7 +10,8 @@
 // (390×844, touch). No headless browser raises an on-screen keyboard: window.visualViewport is a stand-in installed before
 // the app loads (as smoke-phone-kb-steady), and the composition is WebKit's events on the box. Per case, in an agent's chat:
 //   1-bar     — the keyboard up (480), a composition starts and its candidate bar makes the view 436: the box stays on screen;
-//               the bar going away mid-composition does not grow the shell until compositionend
+//               the bar going away mid-composition does not grow the shell until compositionend, and then once typing has
+//               stopped (M-3265: 2 s, not per character)
 //   2-rising  — the box tapped and the first key typed as the keyboard comes up (436 mid-composition): the box on screen
 //   3-settings — Settings → Preferences → the drawer's density changed, back to the chat, then 2 again: the header and the box
 //               both on screen
@@ -101,8 +102,13 @@ try {
       const gone = await read();
       need(gone.shellH === "436px", `1-bar: the bar going away mid-composition grows nothing yet (${JSON.stringify(gone)})`);
       await ime("compositionend"); await page.waitForTimeout(600);
+      // M-3265: the shell grows back by a bar's height only once typing has stopped (2 s after compositionend), so the next
+      // character's bar finds it in place (smoke-phone-typing-steady-m3265).
+      const chosen = await read();
+      need(chosen.kb && chosen.shellH === "436px" && chosen.onScreen, `1-bar: just after compositionend nothing moves yet (${JSON.stringify(chosen)})`);
+      await page.waitForTimeout(1800);
       const done = await read();
-      need(done.kb && done.shellH === "480px" && done.onScreen, `1-bar: at compositionend the shell is the view's 480 px (${JSON.stringify(done)})`);
+      need(done.kb && done.shellH === "480px" && done.onScreen, `1-bar: typing stopped, the shell is the view's 480 px (${JSON.stringify(done)})`);
       // 2-rising
       await away();
       await rising("2-rising");
