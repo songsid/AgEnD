@@ -1,0 +1,25 @@
+[
+  {
+    "tier": "admin",
+    "actual": [
+      "@Avery",
+      "@Blair"
+    ],
+    "lookupResponses": [
+      200
+    ],
+    "outOfScope": 200,
+    "pageErrors": []
+  },
+  {
+    "tier": "guest",
+    "actual": [
+      "@Avery",
+      "@Blair"
+    ],
+    "lookupResponses": [],
+    "outOfScope": 404,
+    "pageErrors": [],
+    "liveAndReloadUnknownFallback": true
+  }
+]

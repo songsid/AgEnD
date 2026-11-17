@@ -27,8 +27,9 @@ export function verifiedAuthorityBody(original, f) {
   if (f.enabled !== original.enabled) out.enabled = f.enabled ? null : false;                   // §0.1: on is the default
   if (f.loopbackOnly !== original.loopbackOnly) out.loopback_only = f.loopbackOnly ? true : null;
   if (f.hours !== original.hours) out.max_session_hours = f.hours === null ? null : f.hours;
-  // #2453 (§0.2): off by default; turning it on is confirmed in a General or on the host.
-  if (f.namedLink !== original.namedLink) out.named_link = f.namedLink ? true : null;
+  // #2453 (§0.2): on by default since decision 7933bf90 (as quick_link), so off is written as false; turning it back on is
+  // confirmed in a General or on the host.
+  if (f.namedLink !== original.namedLink) out.named_link = f.namedLink ? null : false;
   // §0.3: on by default (the user's decision, 2026-10-28), so off is written as false; turning it back on is confirmed in a
   // General or on the host.
   if (f.quickLink !== original.quickLink) out.quick_link = f.quickLink ? null : false;
@@ -50,7 +51,8 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     if (!o || typeof o !== "object" || !o.state || !o.hours || !Array.isArray(o.lanHosts) || !Array.isArray(o.authorized)) { setFailed(true); return; }
     const c = o.configured || {};
     const orig = { enabled: c.enabled !== false, loopbackOnly: c.loopback_only === true, hours: typeof c.max_session_hours === "number" ? c.max_session_hours : null,
-      namedLink: c.named_link === true, quickLink: c.quick_link == null || c.quick_link === true };   // #2819: on unless set otherwise
+      namedLink: c.named_link == null || c.named_link === true, quickLink: c.quick_link == null || c.quick_link === true,   // #2819 / 7933bf90: on unless set otherwise
+      namedSet: c.named_link === true || c.named_link === false };
     setOverview(o); setFailed(false);
     setOriginal((prev) => prev || orig);
     // #2347: a draft kept from before this card was last shown (still unsaved) comes back over what is saved now — only
@@ -108,7 +110,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
         <${Feedback} error=${hoursError} />
         ${hoursText.trim() === "" ? html`<${InEffect} text=${tn("hoursValue", overview.hours.default)} />` : null}</div>
       <p class="note s-authority-public-warning">${layoutText("revAuthorityPublicWarning")}</p>
-      <details class="s-authority-links"><summary>${layoutText("revAuthorityLinks")}</summary><div>      ${overview.namedHost || original.namedLink ? html`<label class=${fc("check", "namedLink")}><input class="s-ui-toggle" id="vaNamedLink" type="checkbox" checked=${f.namedLink} onChange=${(e) => set({ namedLink: e.target.checked })} /><span>${tn("vaNamedLink", overview.namedHost || "—")}</span></label>
+      <details class="s-authority-links"><summary>${layoutText("revAuthorityLinks")}</summary><div>      ${overview.namedHost || original.namedSet ? html`<label class=${fc("check", "namedLink")}><input class="s-ui-toggle" id="vaNamedLink" type="checkbox" checked=${f.namedLink} onChange=${(e) => set({ namedLink: e.target.checked })} /><span>${tn("vaNamedLink", overview.namedHost || "—")}</span></label>
       <p class="note">${tn("vaNamedLinkHint")}</p>` : null}
       ${/* §0.3: always shown — any fleet can open the temporary public link with /web. */ ""}
       <label class=${fc("check", "quickLink")}><input class="s-ui-toggle" id="vaQuickLink" type="checkbox" checked=${f.quickLink} onChange=${(e) => set({ quickLink: e.target.checked })} /><span>${tn("vaQuickLink")}</span></label>

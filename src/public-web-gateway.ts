@@ -54,6 +54,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)) return true;
   // #2182: the org canvas's router, libavoid's two files (the route worker itself is under /ui/js/ above).
   if (method === "GET" && LIBAVOID_PATHS.includes(path)) return true;
+  // M-3278 (decision 7933bf90): an admin session's child-agent progress (the handler refuses guests and read sessions).
+  if (method === "GET" && path === "/ui/subagents") return true;
   if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|offices|office-acts|office-levels|traffic|cache|usage-report|prefs|preview-status|steps)$/.test(path)) return true;
   // #2513: the Office view's skin packs, read-only as the offices are (the list, a manifest, its pictures); never uploaded
   // or deleted here (the handler refuses it too).
@@ -91,6 +93,10 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "POST" && /^\/ui\/outside\/(?:enroll|enroll\/confirm|remove|switch|strict)$/.test(path)) return true;
   if (method === "POST" && path === "/ui/public-link/close") return true;
   if ((method === "GET" && path === "/ui/pins") || (method === "POST" && /^\/ui\/pins\/[^/]+$/.test(path))) return true;
+  // M-3278 (decision 7933bf90): routes the dashboard needs that were simply missing here (no handler refuses the link and
+  // none gave a reason): the model and effort pickers, and an agent's export/import (admin only, in their handlers).
+  if (method === "GET" && (path === "/ui/models" || path === "/ui/effort-options")) return true;
+  if (method === "POST" && (path === "/ui/models/refresh" || path === "/ui/agent-export/build" || path === "/ui/agent-export/parse")) return true;
   // #1827: the person's own name (a profile edit, which the public link may make).
   if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
   // #1724: schedules are not created, edited or deleted over the public link (the handlers refuse it too).
@@ -106,7 +112,11 @@ function isPublicSettingsRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/api\/settings\/(?:guests|guests\/people|web-authority|fleet\/appearance)$/.test(path)) return true;
   if (method === "POST" && /^\/api\/settings\/(?:guests\/send-code|guests\/revoke|web-authority\/revoke|public-link\/test|connections\/[^/]+\/retry)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/fleet/appearance") return true;
-  if (method === "GET") return /^\/api\/settings\/(schema|restart-pending|fleet|fleet\/raw|classic|status-emojis|status-emojis\/guild-emojis|connections|provider-secrets|secrets|apply\/[^/]+|quickstart\/environment)$/.test(path)
+  // M-3278 (decision 7933bf90): "Apply now" and the authenticator's confirmation of one's own pending change. The fleet
+  // decides who may (settingsSelfConfirmation / settingsCodeSession, by web authority); before, this list refused them
+  // before the handler — which says "over a link too" (AGEND-122).
+  if (method === "POST" && /^\/api\/settings\/pending\/[0-9a-f]{32}\/(confirm|confirm-totp)$/.test(path)) return true;
+  if (method === "GET") return /^\/api\/settings\/(schema|restart-pending|fleet|fleet\/raw|classic|status-emojis|status-emojis\/guild-emojis|connections|connector|provider-secrets|secrets|apply\/[^/]+|quickstart\/environment)$/.test(path)
     || /^\/api\/settings\/(provider-secrets|secrets)\/[^/]+\/apply\/[^/]+$/.test(path)
     || /^\/api\/settings\/connections\/[^/]+\/(secret|binding)\/apply\/[^/]+$/.test(path);
   if (method === "POST") return /^\/api\/settings\/(status-emojis\/preview|apply|restart-fleet|reload|fleet\/instances|quickstart\/(probe|plan|commit))$/.test(path)

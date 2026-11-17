@@ -57,9 +57,13 @@ describe("the whole block is for an admin session on the local dashboard — ref
     expect(r.status).toBe(200);
     expect(r.q).toMatchObject({ chat: true });
   });
+  it("M-3278 (decision 7933bf90): the public link's admin session gets the chat's block too", async () => {
+    const r = await ask({ gateway: true });
+    expect(r.status).toBe(200);
+    expect(r.q).toMatchObject({ chat: true });
+  });
   it.each([
     ["a guest", { tier: "guest" as const }],
-    ["the public link", { gateway: true }],
     ["a read-only session", { tier: "read" as const }],
   ])("%s asking for it gets 403 admin_only, and the service is never reached", async (_n, opts) => {
     const r = await ask(opts);
@@ -69,7 +73,6 @@ describe("the whole block is for an admin session on the local dashboard — ref
   });
   it.each([
     ["a guest", { tier: "guest" as const }],
-    ["the public link", { gateway: true }],
   ])("%s, with the chat flag AND with thinking asked, still gets nothing of either", async (_n, opts) => {
     const r = await ask({ ...opts, query: "instance=w&chat=1&thinking=1" });
     expect(r.status).toBe(403);

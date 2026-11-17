@@ -17,7 +17,7 @@
 import { readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "../atomic-write.js";
 import type { WebVerifiedAuthorityConfig } from "../types.js";
-import { quickLinkEffective } from "./web-authority.js";
+import { namedLinkEffective, quickLinkEffective } from "./web-authority.js";
 
 export interface AuthorityState {
   /** The switch, as in force (false while the state cannot be written). */
@@ -57,6 +57,17 @@ export interface AuthorityStateIo {
   write(path: string, data: string): void;
 }
 const fileIo: AuthorityStateIo = { read: p => readFileSync(p, "utf8"), write: (p, d) => atomicWriteFileSync(p, d, { mode: 0o600 }) };
+
+/**
+ * M-3277 (#4099 review, F1): the named link was turned on once and is off now, as this file last recorded it. Before
+ * M-3277 the Settings card turned it off by removing `named_link` from fleet.yaml, so such a fleet's fleet.yaml says nothing
+ * — which now reads as the new default, on. FleetManager.migrateNamedLinkDefault writes `named_link: false` for it first,
+ * so the owner's last choice stands. Read-only; anything unreadable says no (a fresh or unknown file is not that choice).
+ */
+export function namedLinkLastTurnedOff(path: string, io: Pick<AuthorityStateIo, "read"> = fileIo): boolean {
+  try { const v = JSON.parse(io.read(path)) as Partial<Stored>; return v?.v === 1 && v.named_link_seen === true && v.named_link !== true; }
+  catch { return false; }
+}
 
 export class AuthorityStateStore {
   /** What should be on disk. */
@@ -114,7 +125,7 @@ export class AuthorityStateStore {
   current(config: WebVerifiedAuthorityConfig | undefined): AuthorityState {
     const s = this.load();
     const enabled = config?.enabled !== false, loopbackOnly = config?.loopback_only === true;            // §0.1: on by default
-    const namedLink = config?.named_link === true;                                                       // §0.2: off by default
+    const namedLink = namedLinkEffective(config);                                                        // §0.2: on by default (7933bf90)
     const quickLink = quickLinkEffective(config);                                                        // §0.3: on by default
     const reopened = (namedLink && !s.named_link && !!s.named_link_seen) || (quickLink && !s.quick_link);   // §0.3: every widening
     const closed = !!s.named_link && !namedLink, quickClosed = !!s.quick_link && !quickLink;

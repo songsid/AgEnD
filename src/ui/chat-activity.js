@@ -11,7 +11,7 @@
 //   mountActivity(node, …)     a Preact island in a node of the chat's keyed DOM thread (chat-thread.js), updated in place
 //                              — the same node for a live turn and for the reply it becomes (no remount, state kept).
 //
-// Nothing here runs unless this is an admin session on the local dashboard (<body data-chat-activity="1">; the server
+// Nothing here runs unless this is an admin session (M-3278: on any listener, the public link too) (<body data-chat-activity="1">; the server
 // refuses anyone else), the agent's tool_progress is not off (the answer's `level`), and this browser has Show activity on
 // (the ⋯ menu). The server decides what a step holds (tool_progress) and who gets thinking (an admin, switch on).
 import { html, render, useEffect, useState } from "/assets/app-html.js";
@@ -100,7 +100,7 @@ export const activityPrefs = createStore({ on: !off(ACT_KEY), thinking: !off(THI
 export const setActivityOn = (on) => { keep(ACT_KEY, on); activityPrefs.set((s) => ({ ...s, on })); };
 export const setActivityThinking = (on) => { keep(THINK_KEY, on); activityPrefs.set((s) => ({ ...s, thinking: on })); };
 /**
- * The page may ask for the block when this is an admin session on the local dashboard (the server says so in the body, and
+ * The page may ask for the block when this is an admin session (M-3278: the public link's too) (the server says so in the body, and
  * refuses everyone else); each agent's tool_progress then decides whether it has one (its answer's `level`). Thinking is
  * asked for only when `web.log_thinking` is on (the server still checks who asks).
  */

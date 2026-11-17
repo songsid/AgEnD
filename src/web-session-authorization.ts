@@ -42,6 +42,10 @@ interface Card {
 export interface AuthorizationCardText {
   ask(c: { label: string; peer: WebPeer; askedAt: number; until: number }): string;
   confirmed(c: { label: string; peer: WebPeer; until: number }): string;
+  /** M-3277: a browser signed in with a code sent to this account privately — verified at once, Not me below. */
+  signedIn(c: { label: string; peer: WebPeer; until: number }): string;
+  /** M-3277: that notice could not go by DM — one line with no details in General (where to end it: /web revoke). */
+  signedInHint(): string;
   denied(c: { label: string }): string;
   expired(c: { label: string }): string;
   refused(c: { label: string; refusal: string }): string;
@@ -155,6 +159,32 @@ export class SessionAuthorizationRequests {
     c.timer.unref?.();
     this.deps.event("session_authorization_issued", { challenge: c.nonce, session: c.handle, actor: key, peer: c.peer });
     return { ok: true, expiresInMs: AUTHORIZATION_CARD_TTL_MS };
+  }
+
+  /**
+   * M-3277 (decision 7933bf90): a session that signed in with a code delivered privately to its account was authorized
+   * at sign-in (the caller: FleetManager.authorizeSignedInSession, §3 judged there). No Confirm is asked — that code went
+   * to the very DM a Confirm card would — but the account is told at once, with Not me (the card a Confirm leaves,
+   * already confirmed): it signs that browser out, and the notice says when the authorization ends. No DM: one line with
+   * no details in General, as for a card (the browser stays signed in and verified; /web revoke ends it).
+   */
+  async noteAuthorized(input: { handle: string; owner: AuthorizationOwner; label: string; peer: WebPeer; until: number }): Promise<{ sent: boolean }> {
+    const key = `${input.owner.adapterId}:${input.owner.userId}`;
+    const c: Card = { nonce: randomBytes(16).toString("hex"), handle: input.handle, owner: { ...input.owner }, label: input.label, peer: input.peer,
+      expiresAt: this.deps.now(), state: "confirmed", where: null, until: input.until };
+    let where: { chatId: string; messageId: string } | null = null;
+    try { where = await this.deps.sendDirect(c.owner, this.deps.text.signedIn({ label: c.label, peer: c.peer, until: input.until }), this.choices(c, false)); }
+    catch (err) { this.deps.log.warn({ err: (err as Error)?.message }, "Web sign-in notice could not be sent"); }
+    this.deps.event("session_authorization_verified", { challenge: c.nonce, session: c.handle, actor: key, peer: c.peer, via: "private_code" });
+    if (!where) {
+      try { await this.deps.sendGeneralHint(c.owner, this.deps.text.signedInHint()); } catch { /* best effort: /web revoke still ends it */ }
+      return { sent: false };
+    }
+    c.where = where;
+    this.byNonce.set(c.nonce, c);
+    const end = setTimeout(() => { void this.end(c); }, Math.max(0, Math.min(input.until - this.deps.wallNow(), 2 ** 31 - 1)));
+    end.unref?.();
+    return { sent: true };
   }
 
   private forget(c: Card): void {

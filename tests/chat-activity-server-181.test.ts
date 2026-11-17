@@ -46,16 +46,19 @@ function ask(opts: { tier?: "admin" | "read" | "guest"; gateway?: boolean; query
   });
 }
 
-describe("thinking is for an admin session on the local dashboard only (server side)", () => {
+describe("thinking is for an admin session only, on any listener (server side)", () => {
   it("admin, local, asked: the service is told thinking is allowed", async () => {
     const r = await ask();
+    expect(r.q).toMatchObject({ thinking: true });
+  });
+  it("M-3278 (decision 7933bf90): the public link's admin session, asked: allowed too", async () => {
+    const r = await ask({ gateway: true });
     expect(r.q).toMatchObject({ thinking: true });
   });
   it.each([
     ["not asked", { query: "instance=w" }],
     ["a read-only session", { tier: "read" as const }],
     ["a guest", { tier: "guest" as const }],
-    ["the public link", { gateway: true }],
   ])("never: %s", async (_name, opts) => {
     const r = await ask(opts);
     if (r.status === 200) expect(r.q).not.toHaveProperty("thinking");
@@ -123,17 +126,19 @@ describe("the service: no parser is asked for thinking unless the request is all
     expect(a).not.toHaveProperty("cwd");
     expect(a).not.toHaveProperty("home");
   });
-  it("through the real route: the public link, a guest and a read-only session get no cwd/home; the admin on the local dashboard does", async () => {
+  it("through the real route: a guest and a read-only session get no cwd/home; an admin session does, the public link's too (M-3278)", async () => {
     const s = svc({ cwd: () => "/work/proj" });
-    for (const opts of [{ gateway: true }, { tier: "guest" as const }, { tier: "read" as const }]) {
+    for (const opts of [{ tier: "guest" as const }, { tier: "read" as const }]) {
       const r = await ask(opts);
       const a: any = await s.steps("w", (r.q ?? {}) as never);
       expect(a, JSON.stringify(opts)).not.toHaveProperty("cwd");
       expect(a, JSON.stringify(opts)).not.toHaveProperty("home");
     }
-    const admin: any = await s.steps("w", (await ask()).q as never);
-    expect(admin).toMatchObject({ cwd: "/work/proj", thinking: true });
-    expect(typeof admin.home).toBe("string");
+    for (const opts of [{}, { gateway: true }]) {
+      const admin: any = await s.steps("w", (await ask(opts)).q as never);
+      expect(admin, JSON.stringify(opts)).toMatchObject({ cwd: "/work/proj", thinking: true });
+      expect(typeof admin.home).toBe("string");
+    }
   });
 });
 

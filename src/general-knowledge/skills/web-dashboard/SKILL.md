@@ -77,7 +77,8 @@ schedules, teams, the task board, the Office editor, preferences and pins, Setti
 authority, sessions, the link itself), **Retry now** and **Close public link** — including confirming a change that opens
 a link, as the settings role allows. Not over a link yet: secrets and tokens, the Hub, runtimes, installs and updates, AI
 account sign-in, custom CSS and mods, an agent's Files & changes, `/save` and `/raw`; and two technical limits stay: no live
-stream on a temporary link (the page polls) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
+stream on a temporary link (the page polls) and 95 MB a file. Guests and read-only sessions are unchanged. An admin there also has **Open beside** (split chat; its layout is kept
+for that page only), the **Subagents** row and the chat's activity steps (and **Show thinking** when it is on). HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
 jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`
@@ -115,6 +116,10 @@ as their own Discord or Telegram account. What a guest sees:
   ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
   **Start from today's guests** turns that into grants.
 
+Discord mentions in shared-channel messages they may read use that channel's cached names. Guests' own messages and
+private-room replies do not look up names; other servers and unreadable channels stay private. An unknown name still
+shows as `@user`, `@role` or `#channel`.
+
 They can chat there unless `web.guests.chat` is false, run only the commands the command table lets anyone run in that
 agent's channel (on the web: `/ctx`, `/steer`, `/btw`, `/cancel`; anything else is refused), open the usage panel, and the
 agent sees them as `@web:g`. A guest's app has no Fleet, Settings or Needs you. Each person is **Chat** (the
@@ -125,16 +130,23 @@ on, grant them their agents in Settings → Access & security → Guests, and pr
 send `/web`). An admin has the Guests section over the public link too (M-3278).
 
 **Web authority (#1939).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
-account. The one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
+account.
+- **Signed in with a private /web code (M-3277).** A code sent to the admin privately (a DM, Discord's private reply when
+  DMs are closed, or Telegram's `/start web` DM) makes the browser **Verified** at once, with no card. The same DM gets
+  "*browser* signed in with the code sent to you, and is verified until …" with **Not me**, which signs that browser
+  out. With no DM, General gets one line with no details: `/web revoke` if it wasn't you.
+- **Codes that don't verify:** a guest code, or `agend web --code` on a fleet with a chat connection.
+- **Otherwise** (and to re-verify once the authorization runs out) the one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
 session menu says **Not verified · Authorize this browser**. Pressing it
 sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
 **Confirm** and **Not me**. A card left for 5 minutes is marked expired on the card, and the line offers Authorize
 again. Confirm within 5 minutes and the session menu says **Verified · speaks as you until …**; the composer's row says
 just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
-Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
+Not me signs that browser out, also after Confirm, from the same card. The card, and its expired and ended texts, also
+offer the other way: sign in again with `/web` (a private code verifies at once). At most one card waits per browser, and 3 an hour
 per account. Never for a guest. Over the admin's own named link (#2453) only with **Also over my named link**
-(`named_link`, off by default); over the temporary public link `/web` opens while **Also over the temporary public
+(`named_link`, on by default since M-3277; `named_link: false` turns it off); over the temporary public link `/web` opens while **Also over the temporary public
 link** is on (`quick_link`, on by default since #2819, §0.3; `quick_link: false` turns it off). That authority ends with the link, and the card says "over your named link"
 or "over the temporary public link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
 this computer" or the named-link option is the reason). Settings → Access & security → **Web authority** (`web.verified_authority`, on
@@ -197,7 +209,8 @@ Linux mean no colour emoji font is installed). A bare URL is a link, also right 
 full-width punctuation (it ends at the first one, #3716). There is no @-autocomplete in the composer.
 
 **Subagents (#3516).** When Claude Code runs child agents, a read-only **Subagents** (「子 Agent」) row in the chat lists
-them: "N running", "N finished", "Main Agent task: …" (up to 16 recent).
+them: "N running", "N finished", "Main Agent task: …" (up to 16 recent). A fleet admin sees it over the public link too
+(M-3278); guests never.
 
 **Activity steps (#3709, #3738, alpha).** For a fleet admin, an agent's work shows in the chat: while it works, one live
 line above where its reply will come (the current step · N tools · elapsed; grok says **Reasoning…**, **Running a
@@ -270,7 +283,8 @@ Alpha (#3637, #3689, #3702, #3707). On a computer whose window is at least 1200 
   pane**.
 - **Quote into the other pane (*B*)** (「引用到另一格（*B*）」) appears next to **Quote**: the passage goes into the
   other agent's box. From the image editor, **Quote to *B*** puts the PNG there too.
-- A narrower window shows one pane with a tab per agent; phones keep the single chat. Guests have no split chat.
+- A narrower window shows one pane with a tab per agent; phones keep the single chat. Guests have no split chat; an admin
+  over the public link has it too (M-3278).
 
 ## Claude model switch observations
 

@@ -41,6 +41,7 @@ function rig(over: Partial<SessionAuthorizationDeps> = {}) {
     signOut: (handle) => { signedOut.push(handle); return { durable: true, authorizationDurable: true }; },
     event: (type, payload) => { events.push([type, payload]); },
     text: { ask: (c) => `ASK ${c.label} ${c.peer} ${c.askedAt} ${c.until}`, confirmed: (c) => `OK ${c.label} ${c.until}`, denied: (c) => `DENIED ${c.label}`,
+      signedIn: (c) => `SIGNED IN ${c.label}`, signedInHint: () => "SIGNED-IN HINT",
       expired: (c) => `EXPIRED ${c.label}`, refused: (c) => `REFUSED ${c.label} ${c.refusal}`, revoked: (c) => `REVOKED ${c.label}`, notSaved: (c) => `NOT SAVED ${c.label}`, ended: (c) => `ENDED ${c.label}`, generalHint: () => "HINT",
       confirmLabel: () => "Confirm", notMeLabel: () => "Not me", notYours: () => "NOT YOURS" },
     log: { warn: vi.fn() }, ...over,

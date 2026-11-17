@@ -72,7 +72,7 @@ function fleet(o: { enrolled?: boolean; chat?: boolean; strict?: boolean; va?: R
   const fm = new FleetManager(dir), any = fm as any;
   fm.fleetConfig = { defaults: { backend: "codex" },
     ...(o.chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: [ADMIN, ADMIN2] } }] } : {}),
-    web: { verified_authority: { ...o.va } },
+    web: { verified_authority: { named_link: false, ...o.va } },   // M-3277: the named link is on by default now; these fixtures keep it off so that turning it on still opens a link
     instances: { general: { working_directory: dir, general_topic: true } } } as any;
   writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
   any.outsideLink = () => ({ exposureId: "outside" });   // a web-only fleet whose "connections from outside" opened a link: the owner who signed in over it (remote: "totp") is the fleet's admin there

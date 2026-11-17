@@ -358,7 +358,7 @@ export function boot({ stream, boot: bootData, deps = {} }) {
     ...deps,
   });
   emojiIndex = createEmojiIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
-  mentionIndex = createMentionIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
+  mentionIndex = createMentionIndex((url) => guestPage() ? null : (deps.fetch || fetch)(url, { credentials: "same-origin" }));
   store.attach(stream);
   // #1306: what the server said about previews for this load. The page-wide message and storage listeners this adds
   // belong to the app, once (they are never per mount).
@@ -942,7 +942,7 @@ function Thread({ name, label = name, th, bindings }) {
 // Missing optional chunks on an older server never prevent chat from loading. No shared export added.
 function SubagentProgress({ name }) {
   const [Component, setComponent] = useState(null);
-  const offered = typeof document !== "undefined" && document.body?.dataset.subagents === "1" && !guestPage() && !publicLinkPage();
+  const offered = typeof document !== "undefined" && document.body?.dataset.subagents === "1" && !guestPage();   // M-3278: the public link's admin too
   useEffect(() => {
     if (!offered) return;
     let live = true;

@@ -24,7 +24,7 @@ import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, 
 import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
-import { quickLinkEffective } from "./authority/web-authority.js";
+import { namedLinkEffective, quickLinkEffective } from "./authority/web-authority.js";
 import { parseNativeInstanceCreate, nativePaneTopicTarget } from "./native-instance-input.js";
 import { parseRuntimesSettingsBody } from "./runtime-switches.js";
 import { parseGeneralSwitchInput } from "./general-binding.js";
@@ -202,7 +202,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   // #2453 (§0.2): the trusted effect — the named-link option off before, on after — marks the change as one that opens a
   // public link (a Notice for every confirmation from another device; never over a link while a code is asked).
   // §0.3: likewise the quick-link option, on its value as in force (explicit, else the release default) before and after.
-  const opensPublicLink = () => (before.fleet?.web?.verified_authority?.named_link !== true && after.fleet?.web?.verified_authority?.named_link === true)
+  const opensPublicLink = () => (!namedLinkEffective(before.fleet?.web?.verified_authority) && namedLinkEffective(after.fleet?.web?.verified_authority))
     || (!quickLinkEffective(before.fleet?.web?.verified_authority) && quickLinkEffective(after.fleet?.web?.verified_authority));
   const scoped = (diff: SettingsChangeDiff | null, authority?: SettingsChangeAuthority): SettingsChangeDiff | null => diff
     ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { opensLink: true as const } : {}) } : null;

@@ -29,6 +29,7 @@ import {
   Status,
   ActivityType,
   type TextChannel,
+  type GuildBasedChannel,
   type Message,
   type MessageReaction,
   type PartialMessageReaction,
@@ -1554,6 +1555,29 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     for (const id of query.c) {
       const ch = client.channels?.cache?.get(id) as { name?: unknown } | undefined;
       if (ch && typeof ch.name === "string") out.c[id] = ch.name;
+    }
+    return out;
+  }
+
+  /** Guest rendering never falls back to global users, other guilds or unreadable channels. */
+  mentionNamesInChannel(query: { u: string[]; r: string[]; c: string[] }, channelId: string, viewerId: string): { u: Record<string, string>; r: Record<string, string>; c: Record<string, string> } {
+    const out = { u: Object.create(null) as Record<string, string>, r: Object.create(null) as Record<string, string>, c: Object.create(null) as Record<string, string> };
+    const room = this.client.channels.cache.get(channelId);
+    if (!room || !("guild" in room) || !room.guild) return out;
+    const guild = room.guild, viewer = guild.members.cache.get(viewerId);
+    if (!viewer) return out;
+    const readable = (ch: GuildBasedChannel): boolean => {
+      if (ch.guild.id !== guild.id) return false;
+      const perms = ch.permissionsFor(viewer);
+      return perms?.has(PermissionFlagsBits.ViewChannel) === true && perms.has(PermissionFlagsBits.ReadMessageHistory)
+        && (ch.type !== ChannelType.PrivateThread || perms.has(PermissionFlagsBits.ManageThreads) || ch.members.cache.has(viewerId));
+    };
+    if (!readable(room)) return out;
+    for (const id of query.u) { const name = guild.members.cache.get(id)?.displayName; if (name) out.u[id] = name; }
+    for (const id of query.r) { const name = guild.roles.cache.get(id)?.name; if (name) out.r[id] = name; }
+    for (const id of query.c) {
+      const ch = this.client.channels.cache.get(id);
+      if (ch && "guild" in ch && readable(ch)) out.c[id] = ch.name;
     }
     return out;
   }

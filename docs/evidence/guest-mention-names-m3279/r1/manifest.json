@@ -1,0 +1,125 @@
+{
+  "source": "9772fada57c77a69f05607ec7dafba16aabbed6c",
+  "supersedes": "3d05a8cfcce4e73c6a203aa61b6ec392e9f71459",
+  "inputs": [
+    {
+      "path": "changes/3279-guest-mention-names.md",
+      "sha256": "c1e1a058f78e4ee6b4a2cf410978d8d4012455c03178b35b5dcea88413a8cf10"
+    },
+    {
+      "path": "changes/3279-guest-mention-names.zh-TW.md",
+      "sha256": "6961214c1f35c14deb6acc02443d31723e91423957592c89d87c13ac9b01d0d0"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-guest-mentions-m3279.mts",
+      "sha256": "305bad9ba56a3ef7ab0b87a2fd2328fd8a0bf96d6b39a2163e1c8d9be4c63cad"
+    },
+    {
+      "path": "src/channel/adapters/discord.ts",
+      "sha256": "bd51dde5d6f17d42e44cd936b47b30ea855f81d902f10814570db13b60bf9222"
+    },
+    {
+      "path": "src/channel/types.ts",
+      "sha256": "d97386c6cf128bdc93b728eb9a8dcae7dd1335184c82a20783d89fde269c9f70"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "f9bd6159ef20afb81a4b6e11dfdee1e606b72a7025aa344c323094ca84a0bd49"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "2baf997a4eb2d3db1691cddd5a9e3771e8aac5f8adee91462a4b198bc0bdf348"
+    },
+    {
+      "path": "src/ui/chat-mentions.js",
+      "sha256": "1d8f5d8d9ac154c3c4dd3ec336730b07939a06e8e61027bbc93ea4b1a90ef8e8"
+    },
+    {
+      "path": "src/ui/panel-chat.js",
+      "sha256": "581057588d7497eddd19197403971590e09ac41cda1b4ebf9427a24eabcb9359"
+    },
+    {
+      "path": "src/web-guest-access.ts",
+      "sha256": "818c5dad89a65fd92e3615e115e6785275fb717ccec4cbd6ac06cfa4beef4960"
+    },
+    {
+      "path": "src/web-mentions.ts",
+      "sha256": "084673f77724ed55aca46f3be3257261d5482c46112e27bdfd1d4a8a971ba0a8"
+    },
+    {
+      "path": "tests/support/guest-mentions-fixture-m3279.ts",
+      "sha256": "37b9abbcda12a0b934a0a93c08cab603ae7d9dc778324bab981819322250da96"
+    },
+    {
+      "path": "tests/web-guest-mentions-m3279.test.ts",
+      "sha256": "46c0c7b35ff72a3f330b63564d878dae1edcf3143a51e50ab8760e7b8223cd9d"
+    },
+    {
+      "path": "src/ui/shared/chat-render.js",
+      "sha256": "fd65d839aa7800272b784cb590963a9fb588e1bc85e5c565a36c3609fe541104"
+    },
+    {
+      "path": "scripts/manual/smoke-fixture/index.mts",
+      "sha256": "1e55ede6d3e80f41077887da0ba08596733f60dfb07b9d6882882d5ad4442dae"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "after.json",
+      "sha256": "9199f7a8059103c0913b40d366d2a4a02f60fbabbb1124d5ad2ca32afeba9150"
+    },
+    {
+      "path": "images/after-admin.png",
+      "sha256": "fc711c22e1c5267afb87f0d1c0cdc4e4ce42bb927adce35355de39478b8a1a33"
+    },
+    {
+      "path": "images/after-guest.png",
+      "sha256": "155ae5fe3b43216fb8d3ba7cf7bcf84f6135b18a4c8651dc0fecea160f7a99f4"
+    },
+    {
+      "path": "logs/r1-before.log.gz",
+      "sha256": "b7a1d0d7582b82d6522a4974d846f01bb86883f07d221cca292d828d31e4b1a2"
+    },
+    {
+      "path": "logs/r1-browser.log.gz",
+      "sha256": "1a9759af3bf9172f6c7ba3547f7011f5bcf52804023f409f27e4b054f132557f"
+    },
+    {
+      "path": "logs/r1-finalTestTypes.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "logs/r1-focused.log.gz",
+      "sha256": "d2ba7a2c150b005aa31a7a1bafc77b2a38723c3b95e0a589e9edd13c5d4d7a65"
+    },
+    {
+      "path": "logs/r1-mine-guard-red.log.gz",
+      "sha256": "5f931cf72f73108d5c7e72bb365b709950e9d3b1c4e84e44df30065cafeefdde"
+    },
+    {
+      "path": "logs/r1-restored.log.gz",
+      "sha256": "390997397d984c1d2b524931fecb19d0bc1622fd0d824f65c1ee4ece45ac1efc"
+    },
+    {
+      "path": "logs/r1-sourceTypes.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "logs/r1-testTypes.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    }
+  ],
+  "results": {
+    "before": "2 assertion failures (guest-owned history/poll and private-room echo), null-fetch control passes;8 unselected excluded.",
+    "focused": "49/49 in3files, then final14/14 new suite with13overlap=50distinct.",
+    "reversal": "Removing only !mine:1 assertionred/13excluded; exact source restored; final14green.",
+    "native": {
+      "source": 0,
+      "tests": 0
+    },
+    "browser": "Two affected after views only; headless WSL/inert agents/cache-only actual Discord adapter and exact instance connection. Both names, no guest lookup, live/reload fallback, other room404.",
+    "imageReview": "Both originals inspected: names visible, no layout/privacy regression.",
+    "cleanup": "Browser/fixture closed; listener connect_errno111; slot released."
+  },
+  "fallback": "Missing cached viewer/read permission, absent adapter/channel/guild or unknown member means no labels; no network/global cache fallback."
+}

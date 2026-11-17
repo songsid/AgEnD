@@ -79,12 +79,12 @@ describe("#1423 retained real web-session authority", () => {
     if (reason === "owner") h.fm.webSessions = new WebSessionStore();
     expect(principal.current()).toBe(false);
   });
-  it("public pending reads are passive and no public confirm route exists", () => {
+  it("public pending reads are passive; the confirm route is routed (M-3278: the fleet's settings role decides who may)", () => {
     for (const path of ["/api/settings/pending", "/api/settings/pending/" + "a".repeat(32)]) {
       expect(isPassiveWebRead("GET", path)).toBe(true); expect(isPublicWebRoute("GET", path)).toBe(true);
     }
     expect(isPublicWebRoute("DELETE", "/api/settings/pending/" + "a".repeat(32))).toBe(true);
-    expect(isPublicWebRoute("POST", "/api/settings/pending/" + "a".repeat(32) + "/confirm")).toBe(false);
+    expect(isPublicWebRoute("POST", "/api/settings/pending/" + "a".repeat(32) + "/confirm")).toBe(true);
   });
 });
 async function promptData(h: ReturnType<typeof harness>, user = "admin") {
