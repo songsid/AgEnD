@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale } from "../src/locale.js";
+import { codexPrecaution } from "../src/backend/codex-precaution.js";
 import { selectionCard } from "../src/selection-card.js";
 import { answerRemoteCard, type RemoteCardAction, type RemoteCardIo } from "../src/remote-card-answer.js";
 
@@ -242,4 +243,30 @@ it("#3334 the web-only control retains the same choices, exact instance binding 
   expect((await h.fm.clickWebPrompt("worker", nonce, "opt-4")).status).toBe(200);
   expect(h.keys).toEqual(["Down", "Down", "Down", "Enter"]);
   expect((await h.fm.clickWebPrompt("worker", nonce, "opt-1")).status).toBe(409);
+});
+
+describe("precaution cards require a person", () => {
+  it("does not let an ordinary web-token click claim a safety decision", async () => {
+    const h = fleet("web");
+    const pane = readFileSync(new URL("./fixtures/codex-0169-precaution-confirm.pane.txt", import.meta.url), "utf8");
+    const card = codexPrecaution(pane)!.card;
+    h.answer.mockResolvedValue({ outcome: "answered" });
+    await h.fm.postRemoteCard("worker", card);
+    const nonce = h.currentPrompt().nonce;
+    expect(h.fm.webPromptNeedsHuman(nonce)).toBe(true);
+    expect((await h.fm.clickWebPrompt("worker", nonce, "opt-1")).status).toBe(403);
+    expect(h.answer).not.toHaveBeenCalled();
+    expect(h.fm.listWebPrompts()).toHaveLength(1);
+    expect((await h.fm.clickWebPrompt("worker", nonce, "opt-1", undefined, true)).status).toBe(200);
+    expect(h.answer).toHaveBeenCalledOnce();
+    expect(h.answer).toHaveBeenCalledWith(card.identity, { kind: "option", n: 1 });
+  });
+  it("keeps the no-findings card visible without any session-changing buttons", async () => {
+    const h = fleet("web");
+    const pane = readFileSync(new URL("./fixtures/codex-0169-precaution-stopped.pane.txt", import.meta.url), "utf8");
+    await h.fm.postRemoteCard("worker", codexPrecaution(pane)!.card);
+    expect(h.currentPrompt().text).toContain("safety review");
+    expect(h.currentPrompt().actions).toEqual([]);
+    expect(h.answer).not.toHaveBeenCalled();
+  });
 });

@@ -168,6 +168,7 @@ const INTERACTION_REASON: Record<string, NeedsYouReason> = {
   login: "login",
   dialog: "dialog",
   kiro_choice: "dialog",
+  safety_review: "dialog",
   suspected_terminal_input: "terminal_input",
 };
 

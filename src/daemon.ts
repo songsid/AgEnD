@@ -4378,7 +4378,7 @@ export class Daemon extends EventEmitter {
         const loginFlow = LOGIN_FLOWS[this.config.backend ?? "claude-code"];
         if (loginFlow?.loginScreenActive && this.reportLoginScreen(pane)) return;
 
-        const interactivePrompt = this.interactivePromptDetector.observe(
+        const interactivePrompt = dialogs.some(d => d.humanOnly && Daemon.dialogMatches(d, pane)) ? null : this.interactivePromptDetector.observe(
           pane,
           Date.now(),
           this.instanceStateLastOutputAt,
@@ -9297,7 +9297,7 @@ export class Daemon extends EventEmitter {
         locked: fn => this.paneWriteLock.run(fn),
         // An unreadable screen (a failed capture, another spawn's pane) is unknown — never "the card closed".
         read: () => this.tmux === tmux ? tmux.capturePane().catch(() => null) : Promise.resolve(null),
-        key: key => this.tmux !== tmux ? Promise.resolve(false) : key === "Space" ? tmux.sendKeys(" ") : tmux.sendSpecialKey(key),
+        key: key => this.tmux !== tmux ? Promise.resolve(false) : (key === "Space" || key === "q") ? tmux.sendKeys(key === "q" ? "q" : " ") : tmux.sendSpecialKey(key),
         paste: text => this.tmux !== tmux ? Promise.resolve(false) : tmux.pasteBuffer(text),
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
         now: () => performance.now(),

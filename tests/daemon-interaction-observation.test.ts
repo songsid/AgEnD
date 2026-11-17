@@ -423,3 +423,23 @@ describe("outward presentation and incident privacy", () => {
     await vi.advanceTimersByTimeAsync(70_000); expect(notices).toHaveLength(4);
   });
 });
+
+describe("Codex precaution hold through the real daemon", () => {
+  it.each(["root", "stopped", "confirm", "disabled", "narrow", "pager", "overlap"])("holds %s, raises Needs-you state and a neutral card without any automatic key", async name => {
+    const pane = readFileSync(new URL(`./fixtures/codex-0169-precaution-${name}.pane.txt`, import.meta.url), "utf8");
+    const dialogs = CodexBackend.prototype.getRuntimeDialogs.call(Object.create(CodexBackend.prototype));
+    const h = harness(pane, dialogs, "codex"), cards: any[] = [], assist: any[] = [];
+    h.d.on("remote_card", (v: any) => cards.push(v));
+    h.d.on("interactive_prompt", (v: any) => assist.push(v));
+    await confirm(h);
+    expect(h.d.getInteractionSnapshot()).toMatchObject({ kind: "safety_review", phase: "waiting" });
+    await expect(h.d.paneReadinessForDelivery("@sandbox")).resolves.toBe("dialog");
+    h.d.startErrorMonitor(); await vi.advanceTimersByTimeAsync(10_000);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].card.question).toContain("paused this chat for a safety review");
+    expect(JSON.stringify(cards)).not.toMatch(/Synthetic findings|synthetic demonstration|stale draft/);
+    expect(assist).toEqual([]);
+    expect(hooks.forbidden).not.toHaveBeenCalled();
+    expect(h.fm.getInstanceState?.("worker") ?? h.d.getInstanceState()).not.toBe("idle");
+  });
+});

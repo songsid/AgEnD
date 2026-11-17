@@ -516,7 +516,8 @@ export interface WebApiContext {
   webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
   /** `text`: #2675 — the typed answer, for the one action the page shows a text box for. */
-  clickWebPrompt?(instance: string, nonce: string, action: string, text?: string): Promise<{ status: number; error?: string }>;
+  webPromptNeedsHuman?(nonce: string): boolean;
+  clickWebPrompt?(instance: string, nonce: string, action: string, text?: string, humanSession?: boolean): Promise<{ status: number; error?: string }>;
   /** #1266: a click on an agent reply's button. */
   clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string; guest?: true; authority?: HumanAuthority }): Promise<{ status: number; error?: string; options?: number[] }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
@@ -2303,7 +2304,15 @@ export function handleWebRequest(
         json(res, 400, { error: "instance, nonce and action required" });
         return;
       }
-      const r = text === undefined ? await click(instance, nonce, action) : await click(instance, nonce, action, text);
+      const needsHuman = ctx.webPromptNeedsHuman?.(nonce) === true;
+      if (needsHuman) {
+        const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+        if (verdict.kind !== "allow" || verdict.via !== "session" || verdict.session.tier !== "admin") {
+          json(res, 403, { error: "This decision needs a signed-in administrator" }); return;
+        }
+      }
+      const r = needsHuman ? await click(instance, nonce, action, text, true)
+        : text === undefined ? await click(instance, nonce, action) : await click(instance, nonce, action, text);
       // 409: answered elsewhere first, expired, or never open — the page drops the buttons on `gone`.
       json(res, r.status, r.status === 200 ? { answered: true } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {

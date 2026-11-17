@@ -1,0 +1,28 @@
+{
+  "packageVersion": "0.169.0",
+  "binarySha256": "b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b",
+  "executedCodex": false,
+  "strings": {
+    "Chat paused as a precaution": true,
+    "Chat stopped as a precaution": true,
+    "Review findings": true,
+    "Agent command center": true,
+    "New chat": true,
+    "Resume another chat": true,
+    "What we detected": true,
+    "Continuation request (quoted)": true,
+    "Acknowledge findings and continue": true,
+    "Back": true,
+    "misalignment_override": true,
+    "Couldn\u2019t continue this chat. Review its latest status before trying again.": true,
+    "to scroll": true,
+    "to page": true,
+    "to jump": true
+  },
+  "inlineReviewLabel": {
+    "prefix": "Review f",
+    "suffix": "findings",
+    "overlapOffset": 7,
+    "proof": "adjacent immediate stores reconstruct the 15-byte string; not contiguous rodata"
+  }
+}

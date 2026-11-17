@@ -28,6 +28,8 @@
         "surfaces": { "CLAUDE_MODEL_USAGE_LIMIT": "error", "CLAUDE_USAGE_LIMIT_PAUSE": "error", "CLAUDE_CREDIT_BALANCE_LOW": "error" } }
     ],
     "codex": [
+      { "file": "src/backend/codex-precaution.ts", "symbols": ["STOPPED", "ACK", "ROOT", "FALLBACK", "CONFIRM", "codexPrecaution"],
+        "surfaces": { "STOPPED": "dialog", "ACK": "dialog", "ROOT": "dialog", "FALLBACK": "dialog", "CONFIRM": "dialog", "codexPrecaution": "dialog" } },
       { "file": "src/backend/codex-footer-hints.ts",
         "surfaces": { "base": "idle-busy", "binding": "idle-busy", "shortcut": "idle-busy", "warningKey": "idle-busy", "count": "idle-busy", "warning": "idle-busy", "hint": "idle-busy", "CODEX_PASSIVE_HINT_ROW": "idle-busy", "row": "idle-busy", "stripCodexPassiveHintRow": "idle-busy", "withCodexPassiveHintTail": "idle-busy" } },
       { "file": "src/backend/codex.ts",
@@ -41,7 +43,7 @@
           "USAGE_LIMIT_CONTINUE": "error", "CODEX_EXHAUSTED_429_ROW": "error", "codexUsageLimitMenuVisible": "error", "codexRateSwitchVisible": "error",
           "codexRateSwitchPickerVisible": "error", "rateSwitchPickerDialog": "error", "usageLimitLunaReserveDialog": "error",
           "CODEX_CTRL": "resume", "CODEX_SESSION_LOCK_FOOTER": "resume", "CODEX_RESUME_CWD_FOOTER": "resume",
-          "codexUpdatePickerVisible": "dialog", "updatePickerDialog": "dialog", "unknownSelectionHoldDialog": "dialog",
+          "codexUpdatePickerVisible": "dialog", "updatePickerDialog": "dialog", "unknownSelectionHoldDialog": "dialog", "precautionHoldDialog": "dialog",
           "isProxyReplyChromeLine": "idle-busy", "getInputUnavailableTransients": "resume" } },
       { "file": "src/daemon.ts", "symbols": ["isCodexResumeScreen", "LEGACY_NO_CONVERSATION"], "surfaces": { "isCodexResumeScreen": "exit", "LEGACY_NO_CONVERSATION": "resume" } },
       { "file": "src/login-flows.ts", "symbols": ["codex"], "surfaces": { "codex": "onboarding" } },

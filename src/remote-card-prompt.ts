@@ -57,7 +57,7 @@ export function remoteCardPrompt(instance: string, card: RemoteCard): RemoteCard
     ? card.options.map(o => ({ action: `opt-${o.n}`, label: clip(`${o.n}. ${o.title}${o.recommended ? " ★" : ""}`) })) : [];
   return {
     message: [t("card.question_intro", instance), card.question, ...listed,
-      card.noSkip ? t("card.selection_hint") : card.freeText ? t("card.question_hint_text") : t("card.question_hint")].join("\n"),
+      card.humanOnly && card.options.length === 0 ? "" : card.noSkip ? t("card.selection_hint") : card.freeText ? t("card.question_hint_text") : t("card.question_hint")].join("\n"),
     // #2910 D4: a dialog whose Esc is not a skip offers only its own options.
     choices: [...buttons, ...(card.noSkip ? [] : [{ action: "skip", label: t("card.skip") }])],
     webInput: card.freeText ? { action: "text", label: t("card.answer_in_words") } : null,
