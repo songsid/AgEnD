@@ -8,6 +8,7 @@
 // dialog). Pictured per case: 1-rows (the mark, its words shown: hover on desk, a tap on a phone), 2-one-line, 3-card.
 // Run it on the base too (SMOKE_NAME=…-before): it FAILs there (the words inline, no mark).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-usage-no-agents-m3248.mts
+// ui-gate: {"name": "Usage \"no agents\" mark (rows, one line, card)", "hp": 19673}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-usage-no-agents-m3248";

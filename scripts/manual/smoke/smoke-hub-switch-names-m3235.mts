@@ -8,6 +8,7 @@
 // (the drawer open). Pictured per case: the 16- and 60-character names.
 // Run it on the base too (SMOKE_NAME=…-before): it FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-hub-switch-names-m3235.mts
+// ui-gate: {"name": "Hub switch alignment and long Hub names", "hp": 19668}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-hub-switch-names-m3235";

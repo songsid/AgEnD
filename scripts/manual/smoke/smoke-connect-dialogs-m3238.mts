@@ -8,6 +8,7 @@
 // desk dark zh-TW, phone light en, phone dark zh-TW. Pictured per case: 1-device (the older dialog), 2-done, 3-card (the
 // account dialog's card). Run it on the base too (SMOKE_NAME=…-before): it FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-connect-dialogs-m3238.mts
+// ui-gate: {"name": "Connect dialogs (device steps and the end)", "hp": 19669}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-connect-dialogs-m3238";

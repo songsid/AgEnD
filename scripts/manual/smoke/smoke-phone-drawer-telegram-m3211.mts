@@ -6,6 +6,7 @@
 // pictures, an emoji, a letter), a phone (390×844, touch, an iPhone's safe area), light/dark; per case and density, judged
 // and pictured with the drawer open. Run it on the base too (SMOKE_NAME=…-before): every case FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] [PW_ENGINE=webkit] scripts/manual/smoke/run.sh smoke-phone-drawer-telegram-m3211.mts
+// ui-gate: {"name": "Phone drawer full width, chat-list rows", "hp": 19663}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 import { clearDensity, density, faces, withFaces } from "../smoke-fixture/faces.mts";
 

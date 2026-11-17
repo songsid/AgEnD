@@ -7,6 +7,7 @@
 // The agent is a stub at the IPC boundary; its messages are synthetic SSE rows whose attachments are real served files.
 // Run it on the base too (SMOKE_NAME=…-before): it FAILs there (nothing swipes; the set is one message's).
 //   PW_DIR=… REPO=<checkout> OUT=<dir> [MATRIX=…] npx tsx scripts/manual/smoke/smoke-lightbox-swipe-m3210.mts
+// ui-gate: {"name": "Phone image viewer swipes", "hp": 19664}
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";

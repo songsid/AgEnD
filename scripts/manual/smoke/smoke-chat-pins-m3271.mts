@@ -9,6 +9,7 @@
 //   then × in the list unpins (the count goes; with none, no 📌).
 // BEFORE=1 (on the base, SMOKE_NAME=…-before): only the menu and the header, as they are there (no Pin, no 📌).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [HP=<port>] npx tsx scripts/manual/smoke/smoke-chat-pins-m3271.mts
+// ui-gate: {"name": "Chat pinned messages (desk and phone)", "hp": 19691}
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-chat-pins-m3271";
