@@ -29843,6 +29843,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             // §3.2: a stream that connects reads its rooms again (in the background; at most once a minute).
             streamOpened: () => { void this.refreshGuestRooms(owner, { mode: "force" }); },
             history: () => this.webChatHistory,
+            mentionNames: (query) => this.webMentionNames(query),
             // #1920 §5.1: guests chat unless the host made them read-only (web.guests.chat: false).
             chat: () => this.fleetConfig?.web?.guests?.chat !== false,
             // #2855: the admin's level for this guest, read at each request (a change applies at once).

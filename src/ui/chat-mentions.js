@@ -28,6 +28,19 @@ export function createMentionIndex(fetchImpl) {
     name: (kind, id) => names.get(`${kind}:${id}`) ?? null,
     /** Ask for the names of the mentions in these messages the page has not asked about yet. */
     ensure(msgs) {
+      // Guests receive labels with permitted messages; only ids in that message may seed this page's index.
+      let added = false;
+      for (const x of msgs || []) {
+        if (!x || typeof x.text !== "string" || !x.mentionNames) continue;
+        for (const m of x.text.replace(/\u0000/g, "").matchAll(TOKEN)) {
+          const kind = KIND[m[1]], id = m[2], got = x.mentionNames[kind], key = `${kind}:${id}`;
+          if (!got || !Object.prototype.hasOwnProperty.call(got, id) || typeof got[id] !== "string" || !got[id].trim()) continue;
+          const value = got[id].trim().slice(0, 100);
+          if (names.get(key) !== value) { names.set(key, value); added = true; }
+          asked.add(key);
+        }
+      }
+      if (added) for (const f of [...listeners]) f();
       const want = idsIn(msgs);
       for (let i = 0; i < want.length; i += MAX_IDS) {
         const batch = want.slice(i, i + MAX_IDS);
