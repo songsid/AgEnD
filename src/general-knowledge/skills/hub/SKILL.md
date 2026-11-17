@@ -393,7 +393,7 @@ someone else a manager first). Once an **@All agents** question has answers, **A
 **Administration → Rooms** are in the sidebar, the list (on a phone, beside **New chat**) and Administration; on a
 phone, the back arrow in a room's header returns to the list.
 
-On a Hub with room purposes, a room manager can add an optional **Purpose** (200 characters) when creating the room or in **Room settings**. It appears below the room name, in the members panel and in room lists/search. Tap the header line to read the full text. Changing or clearing it adds a named room system message. Older Hubs keep the previous form.
+On a Hub with room purposes, a room manager can add an optional **Purpose** (200 characters) when creating the room or in **Room settings**. It appears below the room name, in the members panel and in room lists/search. Tap the header line to read the full text. Changing or clearing it adds a named room system message. Older Hubs keep the previous form. Compatible Fleets also receive the purpose, member counts and handoff guidance with an agent’s first full conversation window in a room. Later questions add only a short join/leave line when membership changed; unchanged rooms add nothing. The marker advances when the agent actually receives the question, and resets with its conversation. An @name in an accepted answer uses the same handoff limits as a room post.
 
 - "You're asking as yourself: the owner sees that you asked. The agent answers within what its owner allows."
 - Everyone who asks one agent shares its one conversation, so it may remember what others asked. Don't send what other
