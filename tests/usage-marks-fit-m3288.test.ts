@@ -70,8 +70,10 @@ it("every window: the same parts — the words show there (the icon is hidden by
 });
 
 it("the stylesheet: the clock only in one line, the words only in every window", () => {
-  const rule = (sel: string) => { const i = CSS.indexOf(`${sel} {`); return i < 0 ? null : CSS.slice(i, CSS.indexOf("}", i)); };
+  const rule = (sel: string) => { const i = CSS.indexOf(`\n${sel} {`); return i < 0 ? null : CSS.slice(i, CSS.indexOf("}", i)); };   // a rule of its own line
   expect(rule(".u-crow-stale-icon")).toMatch(/display: none/);
   expect(rule(".u-crow.is-one .u-crow-stale-icon")).toMatch(/display: inline-grid/);
+  expect(rule(".u-crow.is-one .u-crow-stale")).toMatch(/color: var\(--warn\)/);   // the clock alone is coloured (Fable #4113)
+  expect(rule(".u-crow-stale")).not.toMatch(/--warn/);                             // every window: the muted words, as before
   expect(rule(".u-crow.is-one .u-crow-stale-text")).toMatch(/display: none/);
 });

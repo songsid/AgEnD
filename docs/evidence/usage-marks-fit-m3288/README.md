@@ -4,7 +4,7 @@ Source `bac15ff43dbc603fe9a38632eca8fcf83d23d553`, from dev tip `b644a3078`.
 
 **Cause.** In one line per login (the grouped view's −/+, #4054), the row's head is a third of the line (`.u-crow.is-one > .u-crow-head { flex: 0 0 32% }`). A login both stale and used by no agent puts three things there: the name, the ⓘ (#4069) and the cached words ("cached at 10:47", `flex: none; white-space: nowrap`). The words can't shrink, so they ran 10–32 px into the window's tag and bar, and the name was squeezed to 0 px.
 
-**Fix.** In one line per login, the cached mark is a 13 px clock icon. Its words are its `title` and are read aloud: the visually hidden text holds the full "expired · cached at 10:47 — …". The name and the ⓘ keep their room. Rows that show every window keep the words as before. The change is in the stylesheet: the same markup carries both, and `.u-crow.is-one` picks which one shows.
+**Fix.** In one line per login, the cached mark is a 13 px clock icon, in the warning colour (Fable's review: a grey clock beside a muted bar reads as normal, and a phone shows no tooltip; the every-window words stay muted as before). Its words are its `title` and are read aloud: the visually hidden text holds the full "expired · cached at 10:47 — …". The name and the ⓘ keep their room. Rows that show every window keep the words as before. The change is in the stylesheet: the same markup carries both, and `.u-crow.is-one` picks which one shows.
 
 **Fail-first.**
 

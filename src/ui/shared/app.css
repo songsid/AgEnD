@@ -1842,7 +1842,7 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 /* M-3288: one line — the cached mark is a clock (its words the tooltip and read aloud), so the name and the ⓘ keep room
    and nothing runs into the window's bar; every window: the words, as before. */
 .u-crow-stale-icon { display: none; }
-.u-crow.is-one .u-crow-stale { display: inline-grid; place-items: center; padding-left: 0; }
+.u-crow.is-one .u-crow-stale { display: inline-grid; place-items: center; padding-left: 0; color: var(--warn); }   /* the clock alone: coloured, so it never reads as normal (a phone shows no tooltip; Fable #4113) */
 .u-crow.is-one .u-crow-stale-icon { display: inline-grid; place-items: center; }
 .u-crow.is-one .u-crow-stale-text { display: none; }
 .u-crow.is-one .u-cm { grid-template-columns: 3em minmax(0, 1fr) 2.9em 3.7em; }   /* 「5小時」 whole */
