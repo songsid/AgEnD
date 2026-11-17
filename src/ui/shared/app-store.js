@@ -28,7 +28,7 @@ export const appStore = createStore({ ready: false, instances: [], uptime: 0, ex
 
 /**
  * #1920 phase 3: this page is a guest's — the server says so on <body> (data-tier="guest"). A guest sees only its own
- * agents' chats: no fleet, Needs you, View, Settings, filters, commands or new agent, and nothing it may not read is asked
+ * agents' chats: no fleet, Needs you, Settings or new agent, and nothing it may not read is asked
  * for (each would be refused). The server checks every request regardless; this only keeps the page to what works.
  */
 export function guestPage() {
