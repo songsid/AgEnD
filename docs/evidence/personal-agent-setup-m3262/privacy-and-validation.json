@@ -5,7 +5,7 @@
   "screenshots": 28,
   "pngMetadataEntries": 0,
   "fixtures": "All directory people, logins, computer names and folders are deliberately synthetic. No live directory or Runtime was queried.",
-  "review": "Historical28 originals inspected. All16 compact originals inspected, then three changed phone list views inspected again. No actionable clipping, overflow or live identity. Revised PM and user rendered-view review pending.",
+  "review": "Card copy/layout accepted after six compact originals were opened by the product manager; user approved three phone views. Final phone replacement fixes only rig composition, with app source byte-identical. Image inspection covers all16 revised originals plus scoped refreshed phone views. No clipping or live identity.",
   "validation": {
     "focusedPassed": 47,
     "focusedFailed": 0,
@@ -15,7 +15,8 @@
     "compactFocusedPassed": 66,
     "compactFocusedFailed": 0,
     "compactBrowserChecks": 67,
-    "compactListAlignmentChecks": 19
+    "compactListAlignmentChecks": 19,
+    "compactPhoneCleanChecks": 45
   },
   "logPaths": "%REPO% and %HOME%",
   "publicChecker": "Run with the private check-public tool on the final diff and every GitHub body before publication; no allow override requested.",
@@ -27,5 +28,10 @@
     "heightExpanded": false
   },
   "compactListAlignmentSource": "8daa17d4742ed6a6fd2b6d5ac214de0e5104ed2c",
-  "compactListAlignmentPictures": 3
+  "compactListAlignmentPictures": 3,
+  "compactPhoneSource": "db1b35924795bec4773c18337e825b3612a7aa09",
+  "compactPhoneInvitationsControl": {
+    "beforeMountStatus": 404,
+    "afterMountStatus": 200
+  }
 }
