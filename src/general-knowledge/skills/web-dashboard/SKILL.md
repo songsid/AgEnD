@@ -424,7 +424,8 @@ name by name). **Find** dims
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
 **Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
 (over the public link too, M-3278; never a read-only one or a guest) gets **Edit offices**: add, rename and delete offices, pick who is
-in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its style's NPCs only; none picked = everyone) and its style, and upload or delete **skin packs** (an
+in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its style's NPCs only; none picked = everyone) and its style,
+#4104 **Idle people stay in their own area** (per office, off by default: idle strolls stay in the seat's area, no visits), and upload or delete **skin packs** (an
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
 checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
 pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, and a character may walk four
