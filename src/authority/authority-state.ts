@@ -17,7 +17,7 @@
 import { readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "../atomic-write.js";
 import type { WebVerifiedAuthorityConfig } from "../types.js";
-import { quickLinkEffective } from "./web-authority.js";
+import { namedLinkEffective, quickLinkEffective } from "./web-authority.js";
 
 export interface AuthorityState {
   /** The switch, as in force (false while the state cannot be written). */
@@ -114,7 +114,7 @@ export class AuthorityStateStore {
   current(config: WebVerifiedAuthorityConfig | undefined): AuthorityState {
     const s = this.load();
     const enabled = config?.enabled !== false, loopbackOnly = config?.loopback_only === true;            // §0.1: on by default
-    const namedLink = config?.named_link === true;                                                       // §0.2: off by default
+    const namedLink = namedLinkEffective(config);                                                        // §0.2: on by default (7933bf90)
     const quickLink = quickLinkEffective(config);                                                        // §0.3: on by default
     const reopened = (namedLink && !s.named_link && !!s.named_link_seen) || (quickLink && !s.quick_link);   // §0.3: every widening
     const closed = !!s.named_link && !namedLink, quickClosed = !!s.quick_link && !quickLink;

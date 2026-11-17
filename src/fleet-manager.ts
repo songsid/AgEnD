@@ -9998,7 +9998,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.initializeWebSessions();
     // #1827: the code goes privately to this account (a DM, or else this slash command's ephemeral answer): whoever
     // redeems it is recognised as that account. Recognition only — no owner (this is not an owning General's code).
-    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), recipient: { adapterId, userId: data.userId, ...(data.username ? { username: data.username } : {}) } });
+    // M-3277: private — a DM, else this slash command's ephemeral answer, else withdrawn (below): the session starts verified.
+    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), recipient: { adapterId, userId: data.userId, ...(data.username ? { username: data.username } : {}) }, private: true });
     const current = (): boolean => !this.shuttingDown && this.adapters.get(adapterId) === adapter
       && this.webToken === token && this.hasFleetAdmins(adapterId) && this.isFleetAdmin(data.userId, adapterId);
     const privateText = `${text}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
@@ -10169,7 +10170,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const token = this.webToken;
       if (!token || !current()) return false;
       this.initializeWebSessions();
-      const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner });
+      // M-3277: private — the owner's DM, else (Discord) the click's ephemeral answer, else withdrawn below; never the menu itself.
+      const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner, private: true });
       // Only a public link has a link expiry (null: none — a named tunnel's ttl_minutes 0); the code's five-minute
       // lifetime applies to either packet.
       const minutes = Math.round(LOGIN_CODE_TTL_MS / 60_000);
@@ -10643,7 +10645,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const link = this.publicWebLink;
       if (!link || !input.exposureId || link.exposureId !== input.exposureId || link.status().state !== "open") return { kind: "refused" };
     } else if (input.exposureId !== undefined) return { kind: "refused" };
-    const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: input.exposureId ?? "local", owner });
+    // M-3277: private — by DM only (withdrawn when that is not confirmed).
+    const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: input.exposureId ?? "local", owner, private: true });
     const text = t("web.resend_code", issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), input.label || t("web.resend_unknown_browser"),
       t(input.surface === "gateway" ? "web.resend_public" : "web.resend_local")) + "\n" + t("dashboard.code_next");
     try {
@@ -19445,6 +19448,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * M-3277 (decision 7933bf90; auth-api, at sign-in): an admin session that signed in with a code AgEnD delivered privately
+   * to its account (a DM, or Discord's ephemeral reply) starts verified — that code went to the very DM a Confirm card
+   * would. §3 is judged as at a Confirm (authorizeWebSession: the switch, loopback only, the named / quick link options,
+   * still an admin, the namespace); a refusal leaves the session signed in and unverified, as before. The account is told
+   * at once, with Not me (noteAuthorized). Re-verifying once that authorization has run out still takes the card.
+   */
+  authorizeSignedInSession(session: SessionRecord, peer: WebPeer, gateway: boolean): void {
+    if (session.tier !== "admin" || !session.owner || session.host) return;
+    const r = this.authorizeWebSession(session, peer, gateway);
+    if (!r.ok) { this.logger.info({ handle: session.handle, refusal: r.refusal }, "Web session signed in with a private code, not verified"); return; }
+    this.logger.info({ handle: session.handle, durable: r.durable }, "Web session verified at sign-in (a private code)");
+    void this.sessionAuthorizationRequests().noteAuthorized({ handle: session.handle, owner: session.owner, label: session.label, peer, until: Math.min(r.authorization.until, session.absoluteExpiry) })
+      .catch(err => this.logger.warn({ err: (err as Error)?.message }, "Web sign-in notice failed"));
+  }
+
+  /**
    * #2910 D1 (auth-api, at sign-in): a web-only fleet's host session — signed in with the host's own code (`agend web
    * --code`) on this computer — is the host operator, authorized from now for max_session_hours (as an account's
    * Confirm would be), under the current epoch: a revocation ends it, and only a new sign-in on this computer gives it
@@ -20035,6 +20054,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       text: {
         ask: (c) => t("web_auth.card_ask", c.label, where(c.peer), when(c.askedAt), when(c.until)),
         confirmed: (c) => t("web_auth.card_confirmed", c.label, where(c.peer), when(c.until)),
+        signedIn: (c) => t("web_auth.signed_in", c.label, where(c.peer), when(c.until)),
+        signedInHint: () => t("web_auth.signed_in_hint"),
         denied: (c) => t("web_auth.card_denied", c.label),
         expired: (c) => t("web_auth.card_expired", c.label),
         refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),

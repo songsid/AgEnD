@@ -202,7 +202,7 @@ describe("§0.3: the quick-link option through the gate (#2819: on by default)",
 
 describe("#2453 (§0.2): the named-link option through the gate", () => {
   it("on: held for a confirmation, the held change marked opensLink; nothing written yet", async () => {
-    const h = harness();
+    const h = harness({ web: { verified_authority: { named_link: false } } });           // M-3277: on by default — "on" widens from an explicit off
     const r = await h.request("PUT", WEB, { verified_authority: { named_link: true } });
     expect([r.status, r.body.result, h.store.opensLink(r.body.pending_change.id), h.save.mock.calls.length]).toEqual([202, "pending_confirmation", true, 0]);
   });
@@ -234,7 +234,7 @@ describe("the overview (a real FleetManager)", () => {
     const firefox = h.session("Firefox on Mac"), phone = h.session("Safari on iPhone");
     expect(h.s.authorizeWebSession(firefox, "loopback", false)).toMatchObject({ ok: true });
     const o = h.s.webAuthorityOverview();
-    expect(o.state).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 1 });          // #2819: the quick link on by default
+    expect(o.state).toEqual({ enabled: true, loopbackOnly: false, namedLink: true, quickLink: true, epoch: 1 });          // #2819 / M-3277: both links on by default
     expect(o.configured).toEqual({ enabled: true, max_session_hours: 6 });
     expect(o.hours).toEqual({ min: 1, max: 48, default: 48 });
     expect(o.lanHosts).toEqual(["agend.example.com", "192.168.1.5:19280"]);

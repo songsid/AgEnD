@@ -59,7 +59,8 @@ async function startFleet(config: Record<string, unknown> = {}, opts: { strict?:
   const sink = () => {};
   fm.logger = { info: sink, warn: sink, error: sink, debug: sink, trace: sink, fatal: sink, child: () => fm.logger } as unknown as typeof fm.logger;
   const notify = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);          // the Notice a remote confirmation posts
-  fm.fleetConfig = { defaults: {}, instances: {}, web: { verified_authority: { enabled: true } }, ...config } as never;
+  // M-3277: the named link is on by default now; these fixtures keep it off so that turning it on still opens a link
+  fm.fleetConfig = { defaults: {}, instances: {}, web: { verified_authority: { enabled: true, named_link: false } }, ...config } as never;
   any.initializeWebAuthTokens();
   any.startHealthServer(0);
   await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
@@ -194,7 +195,7 @@ describe("a link option turned on (#2453): marked opensLink; any signed-in admin
   it("the effect marks only turning a link option on: named_link or quick_link on → opensLink (the old noSelfConfirm / hostSessionOnly marks are gone); off → none", () => {
     const fleet = (va?: Record<string, unknown>) => ({ defaults: {}, ...CHAT, web: va ? { verified_authority: va } : {} }) as never;
     const judge = (va: unknown, current?: Record<string, unknown>) => prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: va }, { config: fleet(current), classic: {} }).diff;
-    for (const on of [judge({ named_link: true }), judge({ quick_link: true }, { quick_link: false })]) expect([on?.opensLink, on && "noSelfConfirm" in on, on && "hostSessionOnly" in on]).toEqual([true, false, false]);
+    for (const on of [judge({ named_link: true }, { named_link: false }), judge({ quick_link: true }, { quick_link: false })]) expect([on?.opensLink, on && "noSelfConfirm" in on, on && "hostSessionOnly" in on]).toEqual([true, false, false]);
     expect(judge({ named_link: null }, { named_link: true })).toBeNull();
     const other = judge({ max_session_hours: 6 }, { max_session_hours: 1 });
     expect(other?.opensLink).toBeUndefined();
@@ -297,7 +298,9 @@ describe("a link opener and a web-verified admin's Apply now / an authenticator 
     if (!chat) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), enrolled(strict), { mode: 0o600 });
     const fm = new FleetManager(dir), any = fm as any;
     fm.fleetConfig = { defaults: { backend: "codex" }, ...(chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: ["1"] } }] } : {}),
-      instances: { general: { working_directory: dir, general_topic: true } } } as any;
+      instances: { general: { working_directory: dir, general_topic: true } },
+      // M-3277: the named link is on by default now; kept off so that turning it on is still a link opener here.
+      web: { verified_authority: { named_link: false } } } as any;
     writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
     const notify = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
     const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);

@@ -107,8 +107,8 @@ describe("§3 every check, in order, for one request", () => {
       .toEqual({ authority: { kind: "none", actor: null, authority_epoch: 0 }, refusal: "session_changed" });
   });
   it("the policy: 48 h and LAN by default, and the temporary public link (#2819); a bad value never loosens it", () => {
-    expect(webAuthorityPolicy(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, maxSessionMs: 48 * HOUR });         // §0.1: on by default
-    expect(webAuthorityPolicy({ verified_authority: { enabled: true, loopback_only: true, max_session_hours: 6 } })).toEqual({ enabled: true, loopbackOnly: true, namedLink: false, quickLink: true, maxSessionMs: 6 * HOUR });
+    expect(webAuthorityPolicy(undefined)).toEqual({ enabled: true, loopbackOnly: false, namedLink: true, quickLink: true, maxSessionMs: 48 * HOUR });         // §0.1: on by default; M-3277: the named link too
+    expect(webAuthorityPolicy({ verified_authority: { enabled: true, loopback_only: true, max_session_hours: 6 } })).toEqual({ enabled: true, loopbackOnly: true, namedLink: true, quickLink: true, maxSessionMs: 6 * HOUR });
     expect(webAuthorityPolicy({ verified_authority: { enabled: false } }).enabled).toBe(false);
     expect(webAuthorityPolicy({ verified_authority: { max_session_hours: 500 } }).maxSessionMs).toBe(48 * HOUR);
     expect(webAuthorityPolicy({ verified_authority: { max_session_hours: 0 } }).maxSessionMs).toBe(HOUR);

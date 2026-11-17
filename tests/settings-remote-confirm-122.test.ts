@@ -89,7 +89,7 @@ function fleet(o: { enrolled?: boolean; strict?: boolean; chat?: boolean; outsid
   const fm = new FleetManager(dir), any = fm as any;
   fm.fleetConfig = { defaults: { backend: "codex" },
     ...(o.chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: [ADMIN, ADMIN_B] } }] } : {}),
-    ...(o.va ? { web: { verified_authority: o.va } } : {}),
+    web: { verified_authority: { named_link: false, ...(o.va ?? {}) } },   // M-3277: the named link is on by default now; these fixtures keep it off so that turning it on still opens a link
     instances: { general: { working_directory: dir, general_topic: true } } } as any;
   writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
   const store = new SettingsConfirmationStore({ audit: vi.fn() });
