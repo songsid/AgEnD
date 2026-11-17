@@ -1,0 +1,9 @@
+ / What we detected
+
+Continuation request (quoted)
+"Continue the synthetic demonstration."
+
+Synthetic findings: a quoted example needs review.
+
+↑/↓ to scroll · pgup/pgdn to page · home/end to jump
+q close

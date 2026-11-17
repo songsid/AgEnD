@@ -1,0 +1,22 @@
+[
+  {
+    "control": "registered-hold",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "disabled-ack",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "fresh-identity",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "human-only",
+    "caught": true,
+    "exit": 1
+  }
+]

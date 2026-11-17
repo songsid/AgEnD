@@ -928,7 +928,7 @@ interface NonceButtonEntry {
   /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
   assistFor?: { owner: string | null; episode: number | null };
   /** card-answer only (#2675): the card it offers, as it was read — what is asked and the rows the buttons name. */
-  remoteCard?: { identity: string; kind: RemoteCard["kind"]; options: Array<{ n: number; title: string }>; requiresAdmin?: boolean; ownerAdapterId?: string };
+  remoteCard?: { identity: string; kind: RemoteCard["kind"]; options: Array<{ n: number; title: string }>; requiresAdmin?: boolean; ownerAdapterId?: string; humanOnly?: boolean };
 }
 
 
@@ -19117,7 +19117,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return buttons ? buttons.clickWeb(instance, id, index, voter) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
 
-  async clickWebPrompt(instance: string, nonce: string, action: string, text?: string): Promise<{ status: 200 | 400 | 403 | 409; error?: string; outcome?: string }> {
+  webPromptNeedsHuman(nonce: string): boolean {
+    return this.pendingNonceButtons.get(nonce)?.remoteCard?.humanOnly === true;
+  }
+
+  async clickWebPrompt(instance: string, nonce: string, action: string, text?: string, humanSession = false): Promise<{ status: 200 | 400 | 403 | 409; error?: string; outcome?: string }> {
     if (!/^[0-9a-f]{32}$/.test(nonce) || !/^[a-z][a-z0-9-]{0,23}$/.test(action)) return { status: 400, error: "Malformed prompt answer" };
     // #2675: only an action the page shows a text box for takes text, and it must say something.
     const input = this.pendingNonceButtons.get(nonce)?.web?.actions.find(a => a.id === action)?.input === true;
@@ -19127,6 +19131,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!entry || !entry.web) return { status: 409, error: "This prompt is no longer open" };
     if (entry.instanceName !== instance) return { status: 403, error: "This prompt belongs to another instance" };
     if (!entry.web.actions.some(a => a.id === action)) return { status: 400, error: "Not one of this prompt's answers" };
+    if (entry.remoteCard?.humanOnly && !humanSession) return { status: 403, error: "This decision needs a signed-in administrator" };
     let notice: string | undefined;
     const data: AdapterCallbackData = {
       callbackData: `${entry.prefix}${nonce}:${action}`,
@@ -21008,7 +21013,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       message: prompt.message, choices: prompt.choices, webInput: prompt.webInput,
       expiredText: t("card.expired", instanceName), timeoutMs: REMOTE_CARD_TIMEOUT_MS,
       extra: { remoteCard: { identity: card.identity, kind: card.kind, options: shown.kind === "question" ? shown.options.map(o => ({ n: o.n, title: o.title })) : [],
-        requiresAdmin, ownerAdapterId: this.getInstanceAdapterId(instanceName) } },
+        requiresAdmin, ownerAdapterId: this.getInstanceAdapterId(instanceName), humanOnly: card.kind === "question" && card.humanOnly === true } },
     });
     if (nonce) this.remoteCardPosts.set(instanceName, nonce);
   }

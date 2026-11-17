@@ -1,0 +1,8 @@
+Chat paused as a precaution
+
+Codex paused this chat to review the instructions.
+
+› 1. Review findings
+  2. Agent command center
+  3. New chat
+  4. Resume another chat
