@@ -6,6 +6,7 @@ import { HUB_SHARING_REQUESTS_MIGRATION } from "../sharing-requests.js";
 import { HUB_SHARING_RETENTION_MIGRATION } from "../sharing-retention.js";
 import { HUB_AGENT_CATALOG_MIGRATION } from "../agent-catalog.js";
 import { HUB_PERSONAL_AGENTS_MIGRATION, HUB_PERSONAL_ANSWER_ONLY_MIGRATION } from "../personal/schema.js";
+import {HUB_ROOM_BRIEF_MIGRATION} from "../rooms/brief.js";
 import { HUB_ROOM_CONTEXT_MIGRATION } from "../rooms/context-cursor.js";
 import { HUB_MCP_AUTH_MIGRATION } from "../mcp/auth-schema.js";
 import { HUB_MCP_DOOR_MIGRATION } from "../mcp/door-schema.js";
@@ -137,6 +138,7 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_RECOMMENDATIONS_MIGRATION, HUB_FLEET_UPDATES_MIGRATION,
   HUB_ADMIN_DASHBOARD_MIGRATION,
   HUB_ROOM_CONTEXT_MIGRATION,
+  HUB_ROOM_BRIEF_MIGRATION,
   HUB_MCP_AUTH_MIGRATION, HUB_MCP_DOOR_MIGRATION,
   HUB_PERSONAL_AGENTS_MIGRATION,
   HUB_PERSONAL_ANSWER_ONLY_MIGRATION,

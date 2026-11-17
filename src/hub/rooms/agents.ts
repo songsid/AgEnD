@@ -1,3 +1,5 @@
+import {HUB_ROOM_BRIEF_CAPABILITY} from "../room-brief-model.js";
+import {roomRoster,previousRoster,buildRoomBrief,confirmRoomBrief} from "./brief.js";
 /** Durable group-room deliveries. Room consent is separate from one-to-one grants. */
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
@@ -129,7 +131,9 @@ export class HubRoomAgents {
       if (!parent) return false;
       const interval=ask.contextState ?? {generation:body.generation,after:0,through:parent.sequence};
       if (interval.through!==parent.sequence) return false;
-      return cursor.received(d.room_id,d.exposure_id,binding,body.generation,interval);
+      const ok=cursor.received(d.room_id,d.exposure_id,binding,body.generation,interval);
+      if(ok&&link.features.has(HUB_ROOM_BRIEF_CAPABILITY))confirmRoomBrief(db,d.id,d.room_id,d.exposure_id,binding,body.generation,interval.through);
+      return ok;
     });
     return {...body,ok,...(!ok ? {code:"stale" as const} : {})};
   }
@@ -153,7 +157,7 @@ export class HubRoomAgents {
   enqueue(db: DB, tx: HubTx, parent: RoomPostRow, askerMember: string, as?: { asker: string; name: string; text: string }): void {
     const mentions = JSON.parse(parent.mentions) as string[];
     if (!mentions.length) return;
-    const room = db.prepare("SELECT name FROM hub_group_rooms WHERE id=?").get(parent.room_id) as { name: string };
+    const room = db.prepare("SELECT name,purpose FROM hub_group_rooms WHERE id=?").get(parent.room_id) as { name: string;purpose:string };
     const agents = db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='agent'").all(parent.room_id) as Member[];
     const operation = db.prepare("SELECT exposure_id,receipt_id FROM hub_room_agent_operations WHERE post_id=?").get(parent.id) as { exposure_id: string; receipt_id: string | null } | undefined;
     const source = parent.author_kind === "agent" || operation ? readExposure(db, operation?.exposure_id ?? parent.author_id) : undefined;
@@ -173,14 +177,20 @@ export class HubRoomAgents {
       if (!e || e.owner !== m.owner_at_join) throw new HubProtocolError("revoked");
       if (this.automation.lineage(db, parent).audience_sequence < m.joined_sequence) continue;
       const link=e.fleet_id?this.links.get(e.fleet_id):undefined;
-      const contextState=link?.current() && link.features.has(HUB_ROOM_CONTEXT_CAPABILITY)
+      let contextState=link?.current() && link.features.has(HUB_ROOM_CONTEXT_CAPABILITY)
         ? new RoomContextCursor(db).snapshot(parent.room_id,e.id,JSON.stringify([e.fleet_id,e.owner]),parent.sequence,link.linkEpoch) : null;
+      const roster=contextState&&link?.features.has(HUB_ROOM_BRIEF_CAPABILITY)?roomRoster(db,parent.room_id):null;
+      let previous=roster&&contextState?previousRoster(db,parent.room_id,e.id,JSON.stringify([e.fleet_id,e.owner]),contextState.generation):null;
+      // A newly joined incarnation gets the full window and brief together, even in the same agent conversation.
+      if(previous&&!previous.some(row=>row.id===m.id))previous=null;
+      if(roster&&!previous&&contextState)contextState={...contextState,after:0};
+      const brief=roster?buildRoomBrief(room.purpose??"",roster,previous):undefined;
       const context = roomContext(this.core, db, parent, Math.max(m.joined_sequence, sourceMember.joined_sequence),contextState?.after);
       const id = randomUUID(), replyId = randomUUID(), now = this.core.now();
       // M-3125: a person's post carries its files; a Hub-made post on someone's behalf (`as`) has none.
       const files = as ? [] : this.postFiles(db, parent.id);
       const payload: HubRoomAsk = validated(roomAskSchema, { ...(files.length ? { attachments: files } : {}), messageId: id, roomId: parent.room_id, roomName: trim(room.name, 120), exposureId: e.id,
-        asker: { name: trim(as ? as.name : source && !operation?.receipt_id ? `${parent.author_name} · ${this.project(parent).author.owner?.name ?? ""}'s agent` : parent.author_name, 256) }, text: trim(as ? as.text : this.core.deps.content.get(parent.content_ref)?.question ?? "", HUB_LIMITS.question), context, ...(contextState ? {contextState} : {}) });
+        asker: { name: trim(as ? as.name : source && !operation?.receipt_id ? `${parent.author_name} · ${this.project(parent).author.owner?.name ?? ""}'s agent` : parent.author_name, 256) }, text: trim(as ? as.text : this.core.deps.content.get(parent.content_ref)?.question ?? "", HUB_LIMITS.question), context, ...(contextState ? {contextState} : {}),...(brief?{brief}:{}) });
       const bytes = JSON.stringify(payload);
       if (Buffer.byteLength(bytes) + 512 > HUB_LIMITS.frame) throw new HubProtocolError("backpressure");
       const max = (db.prepare("SELECT MAX(sequence) AS n FROM hub_room_posts WHERE room_id=?").get(parent.room_id) as { n: number }).n;
@@ -192,6 +202,7 @@ export class HubRoomAgents {
       db.prepare(`INSERT INTO hub_room_deliveries(id,room_id,parent_id,reply_id,exposure_id,exposure_revision,fleet_id,owner,asker,asker_member,agent_member,payload_ref,payload_digest,state,created_at,expires_at,source_exposure_id,source_exposure_revision,source_fleet_id,on_behalf)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?)`).run(id, parent.room_id, parent.id, replyId, e.id, e.revision, e.fleet_id, e.owner, as?.asker ?? parent.author_subject, askerMember, m.id,
           payloadRef, digest(bytes), now, now + 24 * 60 * 60_000, source?.id ?? null, source?.revision ?? null, source?.fleet_id ?? null, operation?.receipt_id ? 1 : 0);
+      if(roster)db.prepare("INSERT INTO hub_room_brief_deliveries VALUES(?,?)").run(id,JSON.stringify(roster));
       if (contextState) db.prepare("UPDATE hub_room_deliveries SET context_generation=? WHERE id=?").run(contextState.generation,id);
       this.automation.child(db, parent, replyId, e.id);
       const projected=exposureOf(e);
@@ -344,6 +355,7 @@ export class HubRoomAgents {
           const ask = validated(roomAskSchema, JSON.parse(bytes));
           if (ask.contextState && (!link.features.has(HUB_ROOM_CONTEXT_CAPABILITY)
             || new RoomContextCursor(db).generation(d.exposure_id,JSON.stringify([d.fleet_id,d.owner]),link.linkEpoch)!==ask.contextState.generation)) return null;
+          if(ask.brief&&!link.features.has(HUB_ROOM_BRIEF_CAPABILITY))delete ask.brief;
           // M-3125: an older member's strict schema refuses `attachments`; it gets the words only.
           if (ask.attachments && !roomFilesNegotiated(link.features)) delete ask.attachments;
           return ask;

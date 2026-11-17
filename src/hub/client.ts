@@ -1,3 +1,4 @@
+import {HUB_ROOM_BRIEF_CAPABILITY} from "./room-brief-model.js";
 import {HUB_AGENT_INTRO_CAPABILITY} from "./agent-intro-model.js";
 import { HUB_AGENT_CATALOG_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "./agent-catalog-model.js";
 import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
@@ -190,6 +191,7 @@ export class HubMemberClient implements HubMemberTransport {
       if (this.options.agentCatalog && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_CAPABILITY)) features.add(HUB_AGENT_CATALOG_CAPABILITY);
       if (this.options.exposureRequests && features.has(HUB_AGENT_CATALOG_CAPABILITY) && frame.payload.capabilities?.includes(HUB_EXPOSURE_REQUEST_CAPABILITY)) features.add(HUB_EXPOSURE_REQUEST_CAPABILITY);
       if (this.options.roomContext && features.has(HUB_ROOM_ASK_CAPABILITY) && frame.payload.capabilities?.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
+      if(features.has(HUB_ROOM_CONTEXT_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_BRIEF_CAPABILITY))features.add(HUB_ROOM_BRIEF_CAPABILITY);
       if(this.options.roomMentionFeedback&&features.has(HUB_ROOM_ASK_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))features.add(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY);
       if (canReceiveRecommendation) (features as Set<string>).add(HUB_RECOMMENDATION_CAPABILITY);
       const view: HubMemberLink = { profile: structuredClone(profile), linkEpoch: epoch, endpoint, features, get revocationVersion() { return self.revocation; },
@@ -200,6 +202,7 @@ export class HubMemberClient implements HubMemberTransport {
           if (value.type === "agent.catalog" && !features.has(HUB_AGENT_CATALOG_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "agent.catalog" && value.payload.requests && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "exposure.request-result" || value.type === "exposure.undo") && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
+          if(value.type==="room.context-state"&&value.payload.brief&&!features.has(HUB_ROOM_BRIEF_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "room.context-state" || value.type === "room.context-input") && !features.has(HUB_ROOM_CONTEXT_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if((value.type==="room.answer"||value.type==="room.post")&&value.payload.mentionFeedback&&!features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "fleet.recommendation-ack" && !canReceiveRecommendation) return Promise.reject(new HubProtocolError("incompatible"));
@@ -251,6 +254,7 @@ export class HubMemberClient implements HubMemberTransport {
   }
   private async dispatch(frame: HubServerFrame, view: HubMemberLink): Promise<void> {
     if (!view.current() || frame.type === "welcome") throw new HubProtocolError("stale");
+    if(frame.type==="room.ask"&&frame.payload.brief&&!view.features.has(HUB_ROOM_BRIEF_CAPABILITY))throw new HubProtocolError("incompatible");
     if ((frame.type === "room.context-state-result" || frame.type === "room.context-input-result"
       || frame.type === "room.ask" && !!frame.payload.contextState) && !view.features.has(HUB_ROOM_CONTEXT_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "agent.catalog-refresh" && !view.features.has(HUB_AGENT_CATALOG_CAPABILITY)) throw new HubProtocolError("incompatible");

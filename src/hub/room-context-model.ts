@@ -5,8 +5,8 @@ import { epoch, uuid } from "./validation.js";
 export const HUB_ROOM_CONTEXT_CAPABILITY = "room-context-v1";
 export const roomContextStateSchema = z.strictObject({ generation: uuid, after: epoch, through: epoch.min(1) })
   .refine(v => v.after < v.through, "Invalid context interval");
-export const roomContextRequestSchema = z.strictObject({ exposureId: uuid, generation: uuid });
-export const roomContextInputSchema = roomContextRequestSchema.extend({ messageId: uuid });
+export const roomContextRequestSchema = z.strictObject({ exposureId: uuid, generation: uuid,brief:z.literal(true).optional() });
+export const roomContextInputSchema = roomContextRequestSchema.omit({brief:true}).extend({ messageId: uuid });
 const outcome = { ok: z.boolean(), code: z.enum(["stale", "denied", "not-found"]).optional() };
 export const roomContextResultSchema = roomContextRequestSchema.extend(outcome);
 export const roomContextInputResultSchema = roomContextInputSchema.extend(outcome);
