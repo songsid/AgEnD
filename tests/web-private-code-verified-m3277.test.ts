@@ -27,6 +27,8 @@ import { handleAuthRequest, type AuthApiContext } from "../src/auth-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { tokenEpoch } from "../src/web-session.js";
 import { setLocale, t } from "../src/locale.js";
+import { namedLinkLastTurnedOff } from "../src/authority/authority-state.js";
+import { readFileSync } from "node:fs";
 
 const OWNER = { adapterId: "owner", userId: "admin" };
 const H = "a1b2c3d4e5f60718";
@@ -270,5 +272,40 @@ describe("not verified at sign-in: as before", () => {
       setLocale(lang);
       expect([t("web_auth.card_ask", "a", "b", "c", "d"), t("web_auth.card_ended", "a"), t("web_auth.card_expired", "a")].every(x => x.includes(word)), lang).toBe(true);
     }
+  });
+});
+
+describe("#4099 review F1: named_link on by default never overrides an owner who turned it off before", () => {
+  const STATE_OFF = { v: 1, epoch: 9, enabled: true, loopback_only: false, named_link_seen: true, quick_link: true };   // turned on once, off since (by removing the key)
+  const SOURCE = "defaults:\n  backend: claude-code\ninstances:\n  worker:\n    working_directory: /tmp/worker\n";
+  function upgraded(state: object | null, source = SOURCE) {
+    const dir = mkdtempSync(join(tmpdir(), "agend-m3277-f1-")); rigs.push({ dir, s: null });
+    if (state) writeFileSync(join(dir, "web-authority.json"), JSON.stringify(state) + "\n");
+    const path = join(dir, "fleet.yaml"); writeFileSync(path, source);
+    const fm = new FleetManager(dir); fm.loadConfig(path);
+    return { fm, s: fm as any, path, dir };
+  }
+  afterEach(() => { for (const h of rigs.splice(0)) rmSync(h.dir, { recursive: true, force: true }); });
+  it("the state file's shapes: seen and off now → turned off; on now, never seen, unreadable → not", () => {
+    const io = (v: unknown) => ({ read: () => (typeof v === "string" ? v : JSON.stringify(v)) });
+    expect([namedLinkLastTurnedOff("x", io(STATE_OFF)), namedLinkLastTurnedOff("x", io({ ...STATE_OFF, named_link: true })),
+      namedLinkLastTurnedOff("x", io({ v: 1, epoch: 3, enabled: true, loopback_only: false })), namedLinkLastTurnedOff("x", io("{ nope")),
+      namedLinkLastTurnedOff("x", { read: () => { throw Object.assign(new Error("x"), { code: "ENOENT" }); } })]).toEqual([true, false, false, false, false]);
+  });
+  it("turned off before (no key in fleet.yaml, the state file: seen, off): it stays off, the epoch does not move, fleet.yaml says named_link: false", () => {
+    const h = upgraded(STATE_OFF);
+    expect(h.s.webAuthorityState()).toEqual({ enabled: true, loopbackOnly: false, namedLink: false, quickLink: true, epoch: 9 });
+    expect(h.s.fleetConfig.web.verified_authority.named_link).toBe(false);
+    expect(readFileSync(h.path, "utf8")).toMatch(/verified_authority:\s*\n\s+named_link: false/);
+    expect(JSON.parse(readFileSync(join(h.dir, "web-authority.json"), "utf8")).epoch).toBe(9);
+  });
+  it("never turned on (no key, never seen): the new default — on, no epoch move, fleet.yaml untouched", () => {
+    const h = upgraded({ v: 1, epoch: 4, enabled: true, loopback_only: false, quick_link: true });
+    expect(h.s.webAuthorityState()).toMatchObject({ namedLink: true, epoch: 4 });
+    expect(readFileSync(h.path, "utf8")).toBe(SOURCE);
+  });
+  it("an explicit value is never touched (on stays on; off stays off)", () => {
+    const on = upgraded({ ...STATE_OFF, named_link: true }, SOURCE + "web:\n  verified_authority:\n    named_link: true\n");
+    expect([on.s.webAuthorityState().namedLink, readFileSync(on.path, "utf8").includes("named_link: true")]).toEqual([true, true]);
   });
 });

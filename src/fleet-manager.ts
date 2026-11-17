@@ -428,7 +428,7 @@ import { findSigninKnownEntry, addSigninKnownDevice } from "./web-signin-device.
 import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_SIGNIN_OVER_PUBLIC_LINK, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess, type SignInVerdict } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
-import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
+import { AuthorityStateStore, namedLinkLastTurnedOff, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
@@ -19926,12 +19926,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private authorityStateStore: AuthorityStateStore | null = null;
+  private namedLinkDefaultChecked = false;
+  /**
+   * M-3277 (#4099 review, F1): the named link is on by default now, and before M-3277 the Settings card turned it off by
+   * removing `named_link` from fleet.yaml. A fleet whose owner did that (the state file: seen, and off now) would read the
+   * absent key as the new default — on again, and the epoch moved — against that owner's last choice. Once per process
+   * (and again after a reload), before the state is read: such a fleet gets `named_link: false`, in memory at once and in
+   * fleet.yaml (a backup first, as every upgrade migration). A fleet that never turned it on gets the default (nothing
+   * was ever authorized over that link); an explicit value is never touched.
+   */
+  private migrateNamedLinkDefault(): void {
+    if (this.namedLinkDefaultChecked || !this.fleetConfig || !this.dataDir) return;
+    this.namedLinkDefaultChecked = true;
+    const va = this.fleetConfig.web?.verified_authority;
+    if (va?.named_link !== undefined && va?.named_link !== null) return;
+    if (!namedLinkLastTurnedOff(join(this.dataDir, "web-authority.json"))) return;
+    this.fleetConfig.web = { ...(this.fleetConfig.web ?? {}), verified_authority: { ...(va ?? {}), named_link: false } };
+    this.logger.info("Web authority over the named link stays off, as last turned off (stored as named_link: false now that it is on by default)");
+    if (!this.configPath || this.configHistory?.isFallback(this.configPath) || !validateFleetConfig(this.rawFleetConfig).valid) return;
+    try {
+      this.writeFleetConfigBackup(readFileSync(this.configPath, "utf8"));
+      this.saveFleetConfig();
+    } catch (err) { this.logger.warn({ err }, "Could not store named_link: false in fleet.yaml; it stays off for this run"); }
+  }
   /**
    * #1939 §10: the switch, "Only this computer can authorize" and the revocation epoch in force for the configuration as
    * it is now (a change since last seen moves the epoch first; authority-state.ts). No data directory: off.
    */
   webAuthorityState(): AuthorityState {
     if (!this.dataDir) return { enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 0 };
+    this.migrateNamedLinkDefault();                  // M-3277 F1: before the first read of the state (it would move the epoch)
     this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
       () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
     const state = this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
@@ -27572,6 +27596,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.probeChangedCliEnvs(oldConfig);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
+    this.namedLinkDefaultChecked = false; this.migrateNamedLinkDefault();   // M-3277 F1: a reloaded file is checked again
 
     // Classic behavior settings share the fleet defaults but are not entries
     // in fleet.yaml. Snapshot the old effective chain before reloading the

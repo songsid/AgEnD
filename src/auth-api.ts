@@ -665,8 +665,9 @@ export function handleAuthRequest(
       // provenance: the named tunnel or the quick link), else what the TCP peer and Host say.
       if (result.private && record.tier === "admin" && record.owner) {
         const peer: WebPeer = gateway ? (gateway.named === true ? "named_link" : "quick_link") : classifyWebPeer(req);
-        const live = sessions.authenticate(sessionId, tokenEpoch(token), { touch: false, surface: gateway?.surface, exposureId: gateway?.exposureId }) ?? record;
-        try { ctx.authorizeSignedInSession?.(live, peer, !!gateway); } catch (err) { ctx.logger.debug({ err }, "signed-in session not verified"); }
+        // Read again (activated over a link); one already gone (revoked meanwhile) is not verified, nor told about.
+        const live = sessions.authenticate(sessionId, tokenEpoch(token), { touch: false, surface: gateway?.surface, exposureId: gateway?.exposureId });
+        if (live) try { ctx.authorizeSignedInSession?.(live, peer, !!gateway); } catch (err) { ctx.logger.debug({ err }, "signed-in session not verified"); }
       }
       try { if (!gateway) ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle, ...(record.owner ? { owner: record.owner } : {}) }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
       // #1570: a code delivered privately to its owner makes this browser a returning device (a separate cookie; the
