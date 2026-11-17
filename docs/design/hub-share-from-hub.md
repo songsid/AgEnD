@@ -137,12 +137,21 @@ The checkbox is greyed and the reason replaces the description.
 |---|---|---|
 | Fleet offline | This Fleet is offline. Shown as last seen at {time}. | 這個 Fleet 目前離線，顯示的是 {time} 的狀態。 |
 | Administrator has not allowed sharing (banner above the groups; every unshared row greyed) | Your Hub administrator hasn't allowed you to share agents. | Hub 管理員還沒有允許你分享 Agent。 |
-| ClassicBot room | ClassicBot rooms can't be shared yet. | ClassicBot 房間還不能分享。 |
+| ClassicBot room, until M-3285 lands | ClassicBot rooms can't be shared yet. | ClassicBot 房間還不能分享。 |
 | Windows one-shot agent | This kind of agent can't answer Hub questions yet. | 這種 Agent 還不能回答 Hub 的提問。 |
 | Fleet too old (one line for the group, section 5) | Update this Fleet to share agents from here. | 請更新這個 Fleet，才能從這裡分享 Agent。 |
 | Turned off in the Fleet (3.5) | Sharing from the Hub page is turned off in this Fleet's Settings → Hub. | 這個 Fleet 的「設定 → Hub」關閉了從 Hub 頁面分享。 |
 | 64 already shared | This Fleet already shares 64 agents, the most allowed. | 這個 Fleet 已經分享 64 個 Agent，達到上限。 |
 | Fleet paused or revoked | This Fleet is paused on this Hub. / This Fleet was removed from this Hub. | 這個 Fleet 在這個 Hub 已暫停。/ 這個 Fleet 已從這個 Hub 移除。 |
+
+**ClassicBot rooms after M-3285** (decision 215c8928): the row can be ticked like any other. It carries the tag
+"ClassicBot room" / 「ClassicBot 房間」 (not "room agent": on the Hub, "room" means a Hub room). Because there is
+no confirmation on the Fleet, the one thing its owner must know is shown under the row the moment it is ticked,
+and again in the General notice:
+
+| | EN | zh-TW |
+|---|---|---|
+| Under a ticked ClassicBot row | Hub questions and answers are not posted in its Discord or Telegram room, and the room's chat is not copied to the Hub. It is one agent with one memory: it may use what it learned in the room when it answers here. | Hub 的提問與回答不會貼到它的 Discord 或 Telegram 房間，房間的聊天也不會複製到 Hub。但它是同一個 Agent、同一份記憶：在這裡回答時，可能用到它在房間裡得知的內容。 |
 
 A shared agent whose Fleet is offline keeps its tick, greyed (▣ above): it cannot be stopped from here until the
 Fleet returns, but it can be paused.
