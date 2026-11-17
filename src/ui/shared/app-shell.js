@@ -1232,8 +1232,9 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   // ── Typing on a phone: the invariants (M-3265 — each of these broke at least once; every change here keeps all of them) ──
   //  1. A keystroke moves nothing: a view reading that comes and goes with a key (the suggestion or candidate bar, a pan,
   //     one full-height reading) changes neither the shell's height or place nor kb-open (#4011, #4026 M-3206).
-  //  2. A reading that holds DOWN_HOLD_MS (300 ms) is followed; the keyboard coming up (a keyboard shorter) and a turn (a new
-  //     width) are followed at once (#4026).
+  //  2. A reading that holds DOWN_HOLD_MS (300 ms) — that reading itself, not the first one that differed — is followed; a
+  //     change of NUDGE_PX or less is no move while typing (M-3265: 注音 nudges the view on every key while candidates show).
+  //     The keyboard coming up (a keyboard shorter) and a turn (a new width) are followed at once (#4026).
   //  3. Mid-composition the box is never under the keyboard or its candidate bar: a view that got shorter is followed (#4057
   //     M-3244); the shell grows back only after compositionend.
   //  4. With an IME, a character is not a move: growing back by a bar's height after a composition waits IME_GROW_HOLD_MS
@@ -1287,7 +1288,12 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     // the view growing back by no more than a bar waits IME_GROW_HOLD_MS from compositionend: the next character's
     // composition (its bar again) comes first and nothing moves; when typing stops, the box goes back down once.
     const IME_GROW_HOLD_MS = 2000;
-    let composedAt = -Infinity;
+    // M-3265 (the same report, the user's detail: "each new 注音 key flickers while candidates are showing"): each key changes
+    // the candidate row, and the view with it, by a few px. #4026's hold counted from the first reading that differed, so once
+    // that was 300 ms old every later reading was taken at once — a move per key. Now a reading must itself hold (a reading
+    // more than NUDGE_PX away starts the hold again), and while typing a change of NUDGE_PX or less is no move at all.
+    const NUDGE_PX = 12;
+    let composedAt = -Infinity, pendH = 0, pendTop = 0;
     const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
     const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : null;
     const unfit = (el) => { if (el?.style) { el.style.removeProperty("height"); el.style.removeProperty("transform"); } };
@@ -1307,13 +1313,14 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       const seen = Math.round(vv.height), top = Math.max(0, Math.round(Number(vv.offsetTop) || 0)), w = Math.round(vv.width);
       const h = composingNow && fitH && w === fitW && seen > fitH ? fitH : seen;
       const settled = fitH && typingNow && w === fitW && now() >= followUntil;
+      if (settled && Math.abs(h - fitH) <= NUDGE_PX && Math.abs(top - fitTop) <= NUDGE_PX) { moveSince = 0; return; }   // a nudge
       if (settled && (h !== fitH || top !== fitTop) && !(fitH - h > KEYBOARD_MIN_PX)) {
-        if (!moveSince) moveSince = now();
+        if (!moveSince || Math.abs(h - pendH) > NUDGE_PX || Math.abs(top - pendTop) > NUDGE_PX) { moveSince = now(); pendH = h; pendTop = top; }
         const held = DOWN_HOLD_MS - (now() - moveSince);
         const growWait = h > fitH && h - fitH <= KEYBOARD_MIN_PX ? composedAt + IME_GROW_HOLD_MS - now() : 0;
         if (held > 0 || growWait > 0) {                                // not held yet: the shell stays as it is
           // Held, but a grow after a composition still waits: the place (a pan) is followed now, the height later.
-          if (held <= 0 && top !== fitTop) {
+          if (held <= 0 && Math.abs(top - fitTop) > NUDGE_PX) {
             fitTop = top;
             if (top) el.style.setProperty("transform", `translateY(${top}px)`); else el.style.removeProperty("transform");
           }

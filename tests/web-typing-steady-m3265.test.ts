@@ -69,7 +69,20 @@ async function typing() {
     if (bar) read(480);
     await wait(pause);
   };
-  return { vv, shell, read, character, changes, height: () => st.height || null };
+  /**
+   * The user's case (iPhone, iOS 27.3, portrait, 注音): while the candidates show, each key changes the candidate row and the
+   * view with it by a few px — its height, or where it is panned — through compositionupdate. One character, eight keys.
+   */
+  const keys = async (by: "height" | "pan") => {
+    fire(box, "compositionstart", { data: "" }); read(436); await wait(150);
+    for (const d of [0, 5, -2, 3, 0, 7, 1, 4]) {
+      fire(box, "compositionupdate", { data: "ㄋ" });
+      if (by === "height") read(436 - d); else read(436, Math.max(0, d));
+      fire(box, "input"); await wait(150);
+    }
+    fire(box, "compositionend", { data: "你" }); read(480); await wait(450);
+  };
+  return { vv, shell, read, character, keys, changes, height: () => st.height || null };
 }
 
 describe("M-3265: typing on a phone moves nothing per keystroke, with or without an IME", () => {
@@ -109,6 +122,44 @@ describe("M-3265: typing on a phone moves nothing per keystroke, with or without
     await wait(2100); perChar.push(t.changes());
     expect(perChar.flat()).toEqual([]);
     expect(t.height()).toBe("436px");
+  });
+
+  it("the user's case: each 注音 key while the candidates show nudges the view's height — after the first bar, no change per key", async () => {
+    const t = await typing();
+    await t.keys("height");
+    const first = t.changes();
+    expect(first.length, `the first bar, followed once (${first.join(" ")})`).toBeLessThanOrEqual(1);
+    for (let c = 0; c < 2; c++) { await t.keys("height"); expect(t.changes(), `character ${c + 2}`).toEqual([]); }
+  });
+
+  it("the same with the view panned a few px per key: no change per key, nor when the pan goes with the bar", async () => {
+    const t = await typing();
+    await t.keys("pan");
+    t.changes();
+    await wait(1600);                                                      // typing stopped: back to the view, in one move
+    expect(t.changes()).toEqual(["height=480px", "transform=∅"]);
+    await t.keys("pan");
+    const again = t.changes();                                             // the bar again from the full view: one move, nothing after
+    expect([again.filter((c) => c.startsWith("height")), again.filter((c) => c.startsWith("transform")).length <= 1],
+      `the bar's follow only — not the pan back to 0 when it went (${again.join(" ")})`).toEqual([["height=436px"], true]);
+    for (let c = 0; c < 2; c++) { await t.keys("pan"); expect(t.changes(), `character ${c + 2}`).toEqual([]); }
+  });
+
+  it("a nudge that stays (a few px) is no move while typing; a bar's height is", async () => {
+    const t = await typing();
+    t.read(475); await wait(500);
+    t.read(480, 6); await wait(500);
+    expect(t.changes(), "5 px of height, 6 px of pan, each held 500 ms: nothing").toEqual([]);
+    t.read(436, 0); await wait(400);
+    expect(t.changes()).toEqual(["height=436px"]);
+  });
+
+  it("#4026's hold is a reading's own: readings that change every key (more than a nudge) never hold; one that stays is taken", async () => {
+    const t = await typing();
+    for (let k = 0; k < 8; k++) { t.read(k % 2 ? 400 : 436); await wait(150); }
+    expect(t.changes(), "1.2 s of readings, none held 300 ms").toEqual([]);
+    t.read(400); await wait(400);
+    expect(t.changes()).toEqual(["height=400px"]);
   });
 
   it("after a composition, the keyboard put away (the field kept focus) is followed after #4026's 300 ms, not the bar's 2 s", async () => {
