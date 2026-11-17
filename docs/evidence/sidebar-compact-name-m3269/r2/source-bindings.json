@@ -1,0 +1,13 @@
+{
+  "sourceCommit": "ba2208c561a0e9893942356a30698cdfc7f057bc",
+  "previousHead": "ddd01739e3125b10c17d21bda551585b9e6a510a",
+  "changedFiles": {
+    "changes/4091-compact-name.zh-TW.md": "c417f7e382e85b367543fdbbc165f4e13a653d934b402c27284e8f3da05ff88d",
+    "scripts/manual/smoke/smoke-compact-name-m3269.mts": "d71745ba8bbfb978892384e7736b46764db94e2053324d0cd9f546a6eb0576cb",
+    "src/general-knowledge/skills/web-dashboard/SKILL.md": "801268543f53a91f957eaf1c1f2cbf07dde19b1652240e87b7b46e43f1390a8f",
+    "src/ui/settings-registry.js": "8aa898f1be3d4e68a41fbca94c98a6dd75104493984e4953874e8e6a34257686",
+    "src/ui/shared/app-i18n.js": "b71b0b687a584246924f322ed5b8f06ead8e6c1d2243a929490b270ebee7b754",
+    "tests/sidebar-compact-name-m3269.test.ts": "a4e6a2667c9405f4b4963d3173bb0f650efe9fa5e21a321a6ff28c56285914aa",
+    "tests/web-footer-1603-1604.test.ts": "3f6f940852b28f7c3aba13705eb26fb6c0589c7e0a9923f8691c63c1567b2a5b"
+  }
+}

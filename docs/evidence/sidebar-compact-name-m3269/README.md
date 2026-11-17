@@ -1,4 +1,4 @@
-Compact lists now offer one name: Display name / 暱稱 or Instance name / instance 名稱. The radio choice is shared by desktop and phone; density remains per layout. An unset choice preserves the existing leading-name preference (normally display name), including native rows. Detailed rows and both-name filtering keep their previous behavior. The other name stays in the tooltip and accessible name.
+Compact lists now offer one name: Display name / 暱稱 or Instance name / 實際名稱. The radio choice is shared by desktop and phone; density remains per layout. An unset choice preserves the existing leading-name preference (normally display name), including native rows. Detailed rows and both-name filtering keep their previous behavior. The other name stays in the tooltip and accessible name.
 
 Source: `6703b6f9f9de2e58ddd204ab9baa0918b6cebbce`, based on dev tip `d253f0e5e1cccd548f92a03b7d1f4d3427f21cba`.
 
@@ -21,3 +21,7 @@ Risk: a larger Customize menu needs its own scroll area. Both options are visibl
 Plain sync after the source run: the incoming dev tip changed only unrelated Hub files. All 20 own paths have identical blobs and modes; no local re-verification on that sync. See `sync.json`.
 
 CI later caught the two changelog fragment filenames. R1 renames them without changing content; the local validator changes from two filename errors to 601 fragments OK. Runtime, UI and tests are unchanged. See `ci-r1.md`.
+
+CI R2: the established zh-TW label 實際名稱 replaces the English word in the localized control and keyword. The footer regression now selects HTML previews by ID. Baseline two assertion failures become 20/20 across three affected suites. The phone-only journey passes 14 checks; only Customize and Settings images are retaken for this copy change. Prior row and English images keep their source scope. See `r2/README.md`.
+
+Transcripts with trailing blank lines use lossless gzip; their decompressed text was checked before publication.
