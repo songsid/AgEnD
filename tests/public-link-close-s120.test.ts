@@ -134,7 +134,11 @@ describe("S-120: POST /ui/public-link/close", () => {
     // M-3278: closed over the link itself, the answer goes first (202), then the link closes.
     expect(answer).toEqual({ status: 202, body: { ok: true, closing: true } });
     await vi.waitFor(() => expect(closeSpy).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("closed"));
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    // The close runs after the answer: await the very call the handler started (the spy passes the real one through),
+    // never the state at some moment — it reads "closing" until that call has finished (b644a307 post-merge).
+    await closeSpy.mock.results[0]!.value;
+    expect(h.fm.getPublicWebStatus().state).toBe("closed");
   }, 30_000);
 
   it("an admin on this fleet's own listener closes the open link at once, and its owner is forgotten", async () => {
