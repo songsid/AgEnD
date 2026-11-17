@@ -1,0 +1,407 @@
+{
+  "sourceCommit": "2518084b93eed51c39b69d1df42f88d9c2891254",
+  "phase": "compact",
+  "scope": "M3262; Headless WSL; real product shell/HTTP/SQL/audit; inert directory and Runtime inventory/turn; no Windows process/auth/provider/installer execution. Command token masked only in screenshot.",
+  "checks": [
+    {
+      "name": "desktop-en-light/disabled-admin/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/disabled-admin/one-screen",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/disabled-admin/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/admin-link-target",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/disabled-member/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/disabled-member/one-screen",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/disabled-member/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/admin-allow",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/four-steps",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/setup/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/setup/one-screen",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/setup/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/install/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/install/one-screen",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/install/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/copy-exact-command",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/safe-failure-help",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/configure/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/configure/one-screen",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/configure/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/eligible-options",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/finished-steps-gone",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/published",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/ready/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/ready/one-screen",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/ready/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/working/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/working/one-screen",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/working/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/offline/fits",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/offline/one-screen",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/offline/no-token",
+      "pass": true
+    },
+    {
+      "name": "desktop-en-light/no-page-errors",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/disabled-admin/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/disabled-admin/one-screen",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/disabled-admin/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/admin-link-target",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/disabled-member/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/disabled-member/one-screen",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/disabled-member/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/admin-allow",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/four-steps",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/setup/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/setup/one-screen",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/setup/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/install/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/install/one-screen",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/install/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/copy-exact-command",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/safe-failure-help",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/configure/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/configure/one-screen",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/configure/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/eligible-options",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/finished-steps-gone",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/published",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/ready/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/ready/one-screen",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/ready/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/working/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/working/one-screen",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/working/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/offline/fits",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/offline/one-screen",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/offline/no-token",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/no-page-errors",
+      "pass": true
+    },
+    {
+      "name": "checked-screens",
+      "pass": true
+    }
+  ],
+  "pictures": [
+    "desktop-en-light-disabled-admin.png",
+    "desktop-en-light-disabled-member.png",
+    "desktop-en-light-setup.png",
+    "desktop-en-light-install.png",
+    "desktop-en-light-configure.png",
+    "desktop-en-light-ready.png",
+    "desktop-en-light-working.png",
+    "desktop-en-light-offline.png",
+    "phone-zh-TW-dark-disabled-admin.png",
+    "phone-zh-TW-dark-disabled-member.png",
+    "phone-zh-TW-dark-setup.png",
+    "phone-zh-TW-dark-install.png",
+    "phone-zh-TW-dark-configure.png",
+    "phone-zh-TW-dark-ready.png",
+    "phone-zh-TW-dark-working.png",
+    "phone-zh-TW-dark-offline.png"
+  ],
+  "geometry": [
+    {
+      "name": "desktop-en-light/disabled-admin",
+      "height": 144,
+      "viewportHeight": 900,
+      "top": 121,
+      "bottom": 266
+    },
+    {
+      "name": "desktop-en-light/disabled-member",
+      "height": 102,
+      "viewportHeight": 900,
+      "top": 121,
+      "bottom": 224
+    },
+    {
+      "name": "desktop-en-light/setup",
+      "height": 372,
+      "viewportHeight": 900,
+      "top": 121,
+      "bottom": 494
+    },
+    {
+      "name": "desktop-en-light/install",
+      "height": 474,
+      "viewportHeight": 900,
+      "top": 121,
+      "bottom": 596
+    },
+    {
+      "name": "desktop-en-light/configure",
+      "height": 653,
+      "viewportHeight": 900,
+      "top": 121,
+      "bottom": 775
+    },
+    {
+      "name": "desktop-en-light/ready",
+      "height": 258,
+      "viewportHeight": 900,
+      "top": 121,
+      "bottom": 380
+    },
+    {
+      "name": "desktop-en-light/working",
+      "height": 222,
+      "viewportHeight": 900,
+      "top": 121,
+      "bottom": 344
+    },
+    {
+      "name": "desktop-en-light/offline",
+      "height": 270,
+      "viewportHeight": 900,
+      "top": 121,
+      "bottom": 392
+    },
+    {
+      "name": "phone-zh-TW-dark/disabled-admin",
+      "height": 150,
+      "viewportHeight": 844,
+      "top": 120,
+      "bottom": 271
+    },
+    {
+      "name": "phone-zh-TW-dark/disabled-member",
+      "height": 94,
+      "viewportHeight": 844,
+      "top": 120,
+      "bottom": 215
+    },
+    {
+      "name": "phone-zh-TW-dark/setup",
+      "height": 445,
+      "viewportHeight": 844,
+      "top": 120,
+      "bottom": 566
+    },
+    {
+      "name": "phone-zh-TW-dark/install",
+      "height": 561,
+      "viewportHeight": 844,
+      "top": 120,
+      "bottom": 682
+    },
+    {
+      "name": "phone-zh-TW-dark/configure",
+      "height": 683,
+      "viewportHeight": 844,
+      "top": 120,
+      "bottom": 804
+    },
+    {
+      "name": "phone-zh-TW-dark/ready",
+      "height": 288,
+      "viewportHeight": 844,
+      "top": 143,
+      "bottom": 432
+    },
+    {
+      "name": "phone-zh-TW-dark/working",
+      "height": 228,
+      "viewportHeight": 844,
+      "top": 143,
+      "bottom": 372
+    },
+    {
+      "name": "phone-zh-TW-dark/offline",
+      "height": 300,
+      "viewportHeight": 844,
+      "top": 143,
+      "bottom": 444
+    }
+  ]
+}

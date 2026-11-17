@@ -32,14 +32,14 @@ afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); 
 /** A Hub workspace page signed in as `who`, its client answering the session, the rooms and the notices. */
 const calls: string[] = [];
 const NOTICE = { id: "n1", label: "Olivia's laptop", at: Date.UTC(2026, 10, 8, 6, 0), fleetId: "f1", generation: 1, revoked: false };
-async function hub(o: { admin?: boolean; management?: string[]; features?: string[]; rooms?: unknown[]; name?: string | null; path?: string; lang?: string; notices?: unknown[] } = {}) {
+async function hub(o: { admin?: boolean; management?: string[]; features?: string[]; rooms?: unknown[]; mine?: unknown[]; name?: string | null; path?: string; lang?: string; notices?: unknown[] } = {}) {
   const session = { signedIn: true, displayName: "Alex", login: "alex", admin: !!o.admin, ...(o.management ? { management: o.management } : {}), csrf: "c".repeat(64), features: o.features ?? [] };
   calls.length = 0;
   const c = client.createHubWebClient({ fetchImpl: async (path: string, init: any = {}) => {
     const key = `${init.method || "GET"} ${path.split("?")[0]}`;
     calls.push(key);
     const json = key === "GET /hub/v1/session" ? session : key === "GET /hub/v1/rooms" ? { rooms: o.rooms ?? [] } : key === "GET /hub/v1/notices" ? { notices: o.notices ?? [] }
-      : key === "GET /hub/v1/exposures" ? { mine: [], askable: [] }
+      : key === "GET /hub/v1/exposures" ? { mine: o.mine ?? [], askable: [] }
       : key === "GET /hub/v1/admin/overview" ? { fleets: [], pairings: [], permissions: o.management ?? (o.admin ? ["fleets.manage", "join.manage"] : []) }
       : key === "GET /hub/v1/security-notices/directory" ? { items: [], nextBefore: null } : {};
     return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
@@ -223,4 +223,14 @@ describe("directory notices in the current Hub shell", () => {
 it("offers role notices only on the existing Notices destination, without a false pairing-empty message",async()=>{
  const pg=await hub({admin:true,features:["role-settings-v1","quick-pairing-v1"],path:"/ui/hub?view=notices"});await settle(15);
  expect(rows(pg)).toContain("Notices");expect(calls).toContain("GET /hub/v1/roles/notices");expect(pg.root.textContent).toContain("Administrator notices");expect(pg.root.textContent).not.toContain("No security notices");
+});
+
+it.each(["en","zh-TW"])("does not label a saved personal publication as already shared (%s)",async lang=>{
+ const pg=await hub({path:"/ui/hub/exposures",lang,mine:[{id:"11111111-1111-4111-8111-111111111111",kind:"personal",displayName:"Notes",state:"published",grants:[]}]});
+ await until(()=>pg.root.querySelector(".hub-shared .tag"));expect(pg.root.querySelector(".hub-shared h3")?.textContent).toBe(lang==="en"?"My agents · 1":"我的 Agent · 1");
+ expect(pg.root.querySelector(".hub-shared .tag")?.textContent).toBe(lang==="en"?"Saved":"已儲存");
+});
+it("keeps Fleet publication labels unchanged",async()=>{
+ const pg=await hub({path:"/ui/hub/exposures",mine:[{id:"11111111-1111-4111-8111-111111111111",kind:"fleet",displayName:"Notes",state:"published",grants:[]}]});
+ await until(()=>pg.root.querySelector(".hub-shared .tag"));expect(pg.root.querySelector(".hub-shared h3")?.textContent).toBe("Shared · 1");expect(pg.root.querySelector(".hub-shared .tag")?.textContent).toBe("Shared");
 });
