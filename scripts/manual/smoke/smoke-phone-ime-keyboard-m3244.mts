@@ -18,6 +18,7 @@
 // Run it on the base too (REPO=<base checkout> SMOKE_NAME=…-before): 1-bar and 2-rising FAIL there.
 // PW_ENGINE=webkit runs it in WebKit (Safari's engine).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] [PW_ENGINE=webkit] scripts/manual/smoke/run.sh smoke-phone-ime-keyboard-m3244.mts
+// ui-gate: {"name": "Phone box on screen while an IME composes", "hp": 19671}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-ime-keyboard-m3244";

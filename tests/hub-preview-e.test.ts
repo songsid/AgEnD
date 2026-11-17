@@ -22,15 +22,17 @@ const ui = (...p: string[]) => join(process.cwd(), "src", "ui", ...p);
 const codeLines = (f: string) => readFileSync(f, "utf8").split("\n").filter((l) => l.trim() && !l.trim().startsWith("//"));
 
 describe("the side panel is shared (#3226 E)", () => {
-  it("each module is under shared/ and in the /assets map; the old paths re-export it; the fleet's registers its two pieces", () => {
+  it("each module is under shared/ and in the /assets map; the old paths re-export it; the fleet's registers its three pieces", () => {
     for (const f of SHARED) expect([f, existsSync(ui("shared", f)), isServedAsset(f)]).toEqual([f, true, true]);
     for (const f of SHARED.slice(1)) expect(codeLines(ui(f)), f).toEqual([`export * from "/assets/${f}";`]);
     expect(codeLines(ui("preview-panel.js"))).toEqual([
-      'import { setWorkspaceView } from "/assets/preview-panel.js";',
+      'import { ReplyFilePanel } from "./reply-file-preview.js";',
+      'import { setReplyFileView, setWorkspaceView } from "/assets/preview-panel.js";',
       'import { setShareButton } from "/assets/preview-panel-actions.js";',
       'import { WorkspacePanel } from "./workspace-panel.js";',
       'import { PageShareButton } from "./page-share-dialog.js";',
       "setWorkspaceView(WorkspacePanel);",
+      "setReplyFileView(ReplyFilePanel);",
       "setShareButton(PageShareButton);",
       'export * from "/assets/preview-panel.js";',
     ]);
@@ -38,7 +40,7 @@ describe("the side panel is shared (#3226 E)", () => {
   it("the core imports nothing of the fleet's", () => {
     for (const f of SHARED) {
       const imports = codeLines(ui("shared", f)).filter((l) => /^\s*import\b/.test(l)).join("\n");
-      expect(imports, f).not.toMatch(/workspace-panel|page-share|\/ui\/js\//);
+      expect(imports, f).not.toMatch(/workspace-panel|page-share|reply-file-preview|\/ui\/js\//);
     }
   });
   it("the old path and /assets are one module (one instance)", async () => {

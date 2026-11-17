@@ -18,6 +18,7 @@ import { api } from "./settings-confirm.js";
 import { DEFAULT_SCHEMA, impactOf } from "./settings-model.js";
 import "./settings-strings.js";
 import { layoutText } from "./settings-layout.js";
+import { Feedback, Impact, InEffect } from "./settings-dialogs.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const PLATFORMS = { discord: "Discord", telegram: "Telegram" };
@@ -27,10 +28,34 @@ const accountKey = (g) => `${g.adapterId}:${g.userId}`;
 // #2855: a grant's level — "trusted", or chat (the default, so never written).
 const grantOf = (v) => ({ ...(v.name ? { name: v.name } : {}), instances: [...v.instances], ...(v.level === "trusted" ? { level: "trusted" } : {}) });
 const copyGrants = (m) => { const out = {}; for (const [k, v] of Object.entries(m || {})) if (v && Array.isArray(v.instances)) out[k] = grantOf(v); return out; };
-/** The saved state, from the fleet's config: `grants` null while the fleet still uses #1920's derived access. */
+const text = (v) => (v === null || v === undefined ? "" : String(v));
+/**
+ * The saved state, from the fleet's config: `grants` null while the fleet still uses #1920's derived access. M-3276:
+ * `sAbs` / `sIdle`, the guest session limits as typed (empty: the default).
+ */
 export function savedGuests(fleet) {
-  const g = (fleet && fleet.web && fleet.web.guests) || {};
-  return { enabled: g.enabled === true, chat: g.chat !== false, grants: g.grants ? copyGrants(g.grants) : null };
+  const g = (fleet && fleet.web && fleet.web.guests) || {}, session = (g.session && typeof g.session === "object") ? g.session : {};
+  return { enabled: g.enabled === true, chat: g.chat !== false, grants: g.grants ? copyGrants(g.grants) : null,
+    sAbs: text(session.absolute_hours), sIdle: text(session.idle_minutes) };
+}
+/**
+ * M-3276: GUEST_SESSION_BOUNDS and GUEST_SESSION_POLICY (web-session.ts) — an admin's own bounds: 1–720 h, 15–43200 min
+ * (720 h); default 12 h / 120 min.
+ */
+export const GUEST_SESSION = { absMin: 1, absMax: 720, idleMin: 15, idleMax: 43200, absDefault: 12, idleDefault: 120 };
+const typed = (v) => (String(v ?? "").trim() === "" ? null : Number(v));
+/**
+ * M-3276: the guest session fields' checks, as the validator judges them (config-validator.ts, web.guests.session): each
+ * within its bounds, the idle time never over the sign-in length (a typed one; an empty one follows a shorter length) —
+ * and what applies: the length, and the idle time (capped by the length).
+ */
+export function guestSessionCheck(f) {
+  const G = GUEST_SESSION, a = typed(f.sAbs), i = typed(f.sIdle);
+  const abs = a !== null && (!Number.isFinite(a) || a < G.absMin || a > G.absMax) ? "guestSessionAbsoluteRange" : "";
+  const absNow = a === null || abs ? G.absDefault : a;
+  const idle = i !== null && (!Number.isFinite(i) || i < G.idleMin || i > G.idleMax) ? "guestSessionIdleRange"
+    : i !== null && !abs && i > absNow * 60 ? "guestSessionIdleOver" : "";
+  return { abs, idle, absNow, idleNow: Math.min(i === null || idle ? G.idleDefault : i, absNow * 60) };
 }
 const levelOf = (g) => (g && g.level === "trusted" ? "trusted" : "chat");
 const sameGrant = (a, b) => !!a && !!b && (a.name || "") === (b.name || "") && sameList(a.instances, b.instances) && levelOf(a) === levelOf(b);
@@ -44,6 +69,13 @@ export function guestsBody(original, f) {
   let count = 0;
   if (f.enabled !== original.enabled) { out.enabled = f.enabled ? true : null; count++; }     // off is the default
   if (f.chat !== original.chat) { out.chat = f.chat ? null : false; count++; }                // on is the default
+  // M-3276: the session limits, a key each (empty: null, back to the default).
+  const session = {};
+  for (const [key, field] of [["absolute_hours", "sAbs"], ["idle_minutes", "sIdle"]]) {
+    if (String(f[field] ?? "").trim() === String(original[field] ?? "").trim()) continue;
+    session[key] = typed(f[field]); count++;
+  }
+  if (Object.keys(session).length) out.session = session;
   if (f.grants) {
     const was = original.grants || {}, diff = {};
     for (const k of new Set([...Object.keys(was), ...Object.keys(f.grants)])) {
@@ -84,7 +116,7 @@ const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", min
 const COOLDOWN_MS = 60_000;
 
 /** A draft as staged (#2365 review: carried in the staged change, so leaving the section and coming back keeps it). */
-const cloneDraft = (d) => ({ enabled: !!d.enabled, chat: d.chat !== false, grants: d.grants ? copyGrants(d.grants) : null });
+const cloneDraft = (d) => ({ enabled: !!d.enabled, chat: d.chat !== false, grants: d.grants ? copyGrants(d.grants) : null, sAbs: text(d.sAbs), sIdle: text(d.sIdle) });
 
 export function GuestsSection({ ctx, staged }) {
   const readOnly = !!ctx.readOnly;
@@ -129,12 +161,14 @@ export function GuestsSection({ ctx, staged }) {
   }, [sendState]);
 
   const empty = f.grants ? Object.entries(f.grants).find(([, g]) => !g.instances.length) : null;
+  const sessionCheck = guestSessionCheck(f), sessionError = sessionCheck.abs || sessionCheck.idle;
   // Stage on every edit: the shell's bar is this section's Save.
   useEffect(() => {
     const change = (diff) => (diff ? {
       label: tn("guestsTitle"), impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.guests"), count: diff.count, draft: cloneDraft(f),
       request: { method: "PUT", url: "/api/settings/fleet/web", body: { guests: diff.body } },
-      ...(empty ? { invalid: tn("grantsNoAgents"), section: "access", target: "#guests" } : {}),
+      ...(sessionError ? { invalid: tn(sessionError), section: "access", target: sessionCheck.abs ? "#guestSessionAbsolute" : "#guestSessionIdle" }
+        : empty ? { invalid: tn("grantsNoAgents"), section: "access", target: "#guests" } : {}),
       onResult: (outcome) => {
         if (!outcome || outcome.status === "applied") { setStatus(null); load(); }
         else if (outcome.status === "waiting") setStatus({ kind: "waiting" });
@@ -227,6 +261,21 @@ export function GuestsSection({ ctx, staged }) {
 </div><div>      <label class=${`check${f.chat !== original.chat ? " s-dirty" : ""}`}><input class="s-ui-toggle" id="guestsChat" type="checkbox" checked=${f.chat} onChange=${(e) => set({ chat: e.target.checked })} /><span>${tn("guestsChat")}</span></label>
       <p class="note">${tn("guestsChatHint")}</p>
 </div></div>
+      ${/* M-3276: a guest's sign-in length and idle sign-out (web.guests.session), as the local session fields. */ ""}
+      <div class="s-guest-session" id="guestSession">
+        <h4>${tn("guestSessionTitle")}</h4>
+        <div class="grid2">
+          <div class=${`field${f.sAbs.trim() !== original.sAbs.trim() ? " s-dirty" : ""}`}><label for="guestSessionAbsolute">${tn("guestSessionAbsolute")}<${Impact} schema=${ctx.schema || DEFAULT_SCHEMA} field="web.guests.session.absolute_hours" /></label>
+            <input id="guestSessionAbsolute" type="number" min=${GUEST_SESSION.absMin} max=${GUEST_SESSION.absMax} step="any" class=${sessionCheck.abs ? "invalid" : ""} value=${f.sAbs} onInput=${(e) => set({ sAbs: e.target.value })} />
+            <${Feedback} error=${sessionCheck.abs} />
+            ${f.sAbs.trim() === "" ? html`<${InEffect} text=${tn("hoursValue", GUEST_SESSION.absDefault)} />` : null}</div>
+          <div class=${`field${f.sIdle.trim() !== original.sIdle.trim() ? " s-dirty" : ""}`}><label for="guestSessionIdle">${tn("guestSessionIdle")}<${Impact} schema=${ctx.schema || DEFAULT_SCHEMA} field="web.guests.session.idle_minutes" /></label>
+            <input id="guestSessionIdle" type="number" min=${GUEST_SESSION.idleMin} max=${GUEST_SESSION.idleMax} step="any" class=${sessionCheck.idle ? "invalid" : ""} value=${f.sIdle} onInput=${(e) => set({ sIdle: e.target.value })} />
+            <${Feedback} error=${sessionCheck.idle} />
+            ${f.sIdle.trim() === "" && !sessionCheck.abs ? html`<${InEffect} text=${tn("minutesValue", sessionCheck.idleNow)} why=${sessionCheck.idleNow < GUEST_SESSION.idleDefault ? tn("cappedBySession") : null} />` : null}</div>
+        </div>
+        <p class="note" id="guestSessionNote">${tn("guestSessionNote")}</p>
+      </div>
       ${failed ? html`<p class="note" role="status">${tn("guestsLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`
         : !overview ? html`<${Skeleton} variant="rows" lines=${3} />` : null}
       ${!f.grants && overview ? html`<div class="g-legacy"><p class="note">${tn("grantsLegacy")}</p>
@@ -306,13 +355,6 @@ export const CODE_REASONS = { guests_off: "codeGuestsOff", admin: "codeAdmin", n
 const AUDIT_OUTCOMES = { dm_failed: "grantsAuditDmFailed", wait: "grantsAuditWait", admin_limit: "grantsAuditAdminLimit" };
 const auditOutcome = (outcome) => (Object.prototype.hasOwnProperty.call(AUDIT_OUTCOMES, outcome) ? tn(AUDIT_OUTCOMES[outcome]) : guestCodeReason({ outcome }));
 export const guestCodeReason = (b) => (Object.prototype.hasOwnProperty.call(CODE_REASONS, b.outcome) ? tn(CODE_REASONS[b.outcome]) : b.error || b.outcome || "?");
-export const GUESTS_SETTINGS = [
-  { id: "guests.enabled", section: "access", card: "guests", key: "web.guests.enabled",
-    label: { en: "Guest sign-in", "zh-TW": "訪客登入" }, words: { en: ["guest", "sign in", "visitor", "share"], "zh-TW": ["訪客", "登入", "分享"] } },
-  { id: "guests.chat", section: "access", card: "guests", key: "web.guests.chat",
-    label: { en: "Guests may chat", "zh-TW": "訪客可以聊天" }, words: { en: ["guest", "chat", "read-only"], "zh-TW": ["訪客", "聊天", "唯讀"] } },
-  { id: "guests.grants", section: "access", card: "guests", key: "web.guests.grants",
-    label: { en: "People with access", "zh-TW": "有存取權的人" }, words: { en: ["guest", "grant", "access", "person", "user", "agents", "who can see"], "zh-TW": ["訪客", "授權", "存取", "使用者", "誰可以看"] } },
-  { id: "guests.send-code", section: "access", card: "guests",
-    label: { en: "Send sign-in code", "zh-TW": "傳送裝置登入碼" }, words: { en: ["code", "sign-in code", "invite", "token", "DM"], "zh-TW": ["裝置登入碼", "登入碼", "邀請", "私訊"] } },
-];
+// The search entries live in settings-guests-entries.js (no imports): settings-registry reads them, and this file uses
+// settings-dialogs, which reads settings-registry — kept apart, neither import waits on the other (M-3276).
+export { GUESTS_SETTINGS } from "./settings-guests-entries.js";

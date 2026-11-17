@@ -154,6 +154,22 @@ It prints each failing check with the elements involved, and it saves a picture 
 `$OUT/smoke-settings-ui-gate/`. A failing CI run uploads the same folder as the `ui-gate` artifact. zh-TW needs a CJK
 font to measure real widths: CI installs `fonts-noto-cjk`, and locally any Noto Sans CJK will do.
 
+**Adding a smoke to the gate (M-3287).** Don't edit `.github/workflows/ci.yml`. Put one line in the smoke's own file,
+under `scripts/manual/smoke/`:
+
+```ts
+// ui-gate: {"name": "Phone image viewer swipes", "hp": 19664}
+```
+
+`name` is what the run calls it, and `hp` is the loopback port its fixture boots on (`HP`), different from every other
+smoke's. The job's **UI gate smokes** step (`scripts/ci/ui-gate-smokes.mjs`) finds every such file and runs each in turn
+with `npx tsx`, `HP` set and the usual `PW_DIR`, `REPO`, `OUT` and `FONTCONFIG_FILE`. It runs every smoke even after one
+fails, and fails if any did. Each smoke is a log group, and the run's summary has a table. A marker that doesn't parse,
+an unknown key, a missing name or port, or a port used twice fails the step before anything runs.
+`node scripts/ci/ui-gate-smokes.mjs --list` shows what it would run, and `--only <file>…` runs just those, as CI does
+(prefix `CHROME=…` or `PW_DIR=…` as above). The Settings, Hub and Hub-shell gates and the composer-width check keep their
+own steps: they need their own environment.
+
 `playwright-core` is pinned, but the runner image's Chrome moves with each image update. If a new image ever breaks
 the pairing (the job fails before the first check, on launching or connecting to Chrome), bump `playwright-core` to a
 release that supports that Chrome, or point the job's `CHROME` at a known-good build until it does. Never switch the

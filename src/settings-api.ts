@@ -115,7 +115,17 @@ function linkNonAdmin(req: IncomingMessage, url: URL, ctx: { webToken?: string |
   return !!gatewayRequestContext(req) && !guestSettingsCaller(req, url, ctx);
 }
 
+/** M-3281: the archived chat files, as Settings reads and lowers their size limit (web-chat-archive.ts). */
+export interface ChatArchiveFilesControl {
+  /** What is kept now, and what a limit of `capBytes` would remove (the oldest first); nothing is removed. */
+  usage(capBytes?: number): { usedBytes: number; files: number; removeBytes: number; removeFiles: number; capBytes: number };
+  /** Remove what the limit in force no longer allows, the oldest first; how many files went. */
+  enforce(): number;
+}
+const GIB = 1024 ** 3;
+
 export interface SettingsApiContext extends AppShellContext {
+  chatArchiveFiles?(): ChatArchiveFilesControl | null;
   hubFleetUpdates?(): import("./hub/member/updates.js").HubMemberUpdates | null;
   hubWebAddress?():Promise<import("./hub/settings-web-address-control.js").HubWebAddressControl>;
   hubMemberAddress?():Promise<import("./hub/settings-member-address-control.js").HubMemberAddressControl>;
@@ -1578,6 +1588,20 @@ export function handleSettingsRequest(
         if (applied.next) web.guests = applied.next; else delete web.guests;
         changes.push(...applied.changes);
       }
+      // M-3281: the archived chat files' size limit. Raising it applies at once; a lower one that would remove kept files is
+      // saved only with the page's confirmation, which named how much goes (`confirm_remove`) — refused here otherwise, with
+      // that amount, before anything is written.
+      if (parsed.chatArchive) {
+        const gb = parsed.chatArchive.filesMaxGb, control = ctx.chatArchiveFiles?.() ?? null;
+        const would = control ? control.usage(Math.floor((gb ?? 5) * GIB)) : null;
+        if (would && would.removeBytes > 0 && !parsed.chatArchive.confirmRemove) {
+          return json(res, 409, { ok: false, error: "confirm_remove", remove_bytes: would.removeBytes, remove_files: would.removeFiles });
+        }
+        const ca: Record<string, number> = { ...web.chat_archive };
+        if (gb === null) { delete ca.files_max_gb; changes.push({ path: ["web", "chat_archive", "files_max_gb"], value: undefined, remove: true }); }
+        else { ca.files_max_gb = gb; changes.push({ path: ["web", "chat_archive", "files_max_gb"], value: gb }); }
+        if (Object.keys(ca).length) web.chat_archive = ca; else delete web.chat_archive;
+      }
       // #1939 S2a: web authority; loosening it is confirmed, tightening applies at once (settings-change.ts).
       if (parsed.verifiedAuthority) {
         const applied = applyVerifiedAuthorityPatch(cfg.web?.verified_authority, parsed.verifiedAuthority);
@@ -1630,8 +1654,36 @@ export function handleSettingsRequest(
           catch (err) { ctx.logger.warn({ err }, "settings: could not audit a guest grant change"); }
         }
       }
-      json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
+      // M-3281: a lower limit (confirmed above) removes the oldest archived files now, not at the next file kept.
+      let archiveRemoved: number | undefined;
+      if (parsed.chatArchive) {
+        try { archiveRemoved = ctx.chatArchiveFiles?.()?.enforce(); }
+        catch (err) { ctx.logger.warn({ err }, "settings: the archived chat files' new limit could not be applied now"); }
+      }
+      json(res, 200, { ok: true, warnings: saveWarnings(before, after), ...(archiveRemoved !== undefined ? { chat_archive_removed_files: archiveRemoved } : {}) });
     }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  // ── M-3281: the archived chat files — what they take, and what a lower limit (`?gb=`) would remove, for Settings' field
+  // and its confirmation. An admin's, on any listener (as the other Web settings since #4100); a change is a PUT of
+  // /api/settings/fleet/web (chat_archive), through the confirmation gate like any other.
+  if (path === "/api/settings/chat-archive" && method === "GET") {
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+    if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
+    const control = ctx.chatArchiveFiles?.() ?? null;
+    const configured = cfg.web?.chat_archive?.files_max_gb;
+    const inEffect = typeof configured === "number" && Number.isFinite(configured) && configured >= 0 ? configured : 5;
+    const asked = url.searchParams.get("gb");
+    let cap = Math.floor(inEffect * GIB);
+    if (asked !== null) {
+      const n = Number(asked);
+      if (asked.trim() === "" || !Number.isFinite(n) || n < 0 || n > 100_000) { json(res, 400, { error: "gb must be 0..100000" }); return true; }
+      cap = Math.floor(n * GIB);
+    }
+    const u = control ? control.usage(cap) : { usedBytes: 0, files: 0, removeBytes: 0, removeFiles: 0, capBytes: cap };
+    json(res, 200, { ok: true, files_max_gb: inEffect, configured: typeof configured === "number", available: !!control,
+      used_bytes: u.usedBytes, files: u.files, ...(asked !== null ? { remove_bytes: u.removeBytes, remove_files: u.removeFiles } : {}) });
     return true;
   }
 

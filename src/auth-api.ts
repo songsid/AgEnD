@@ -268,6 +268,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // Hub rooms, track U2: New room, Room settings, the members panel, invitations, Administration → Rooms (linked by hub-room-new-strings.js).
   "hub-rooms-u2.css": { file: join("shared", "hub-rooms-u2.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
+  "reply-previews.css": { file: join("shared", "reply-previews.css"), type: "text/css; charset=utf-8" },
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
   // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).
   "accounts.css": { file: join("shared", "accounts.css"), type: "text/css; charset=utf-8" },

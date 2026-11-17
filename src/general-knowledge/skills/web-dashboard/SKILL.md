@@ -81,7 +81,7 @@ copying its install command stay on the AgEnD computer: a Runtime connects to it
 updating AgEnD, an agent's Files & changes, custom CSS, the app icon, mods, `/raw` and `/save`. An admin there also has
 **Open beside** (split chat; its layout is kept as on the dashboard reached directly), the **Subagents** row and the chat's
 activity steps (and **Show thinking** when it is on). Two technical limits stay: no live stream on a temporary link (the
-page polls) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
+page polls; the fixed address streams for an admin session, at most 8 at once) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
 jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`
@@ -135,7 +135,10 @@ default) or **Trusted** (#2855, `level: trusted` on the grant; Chat → Trusted 
 also gets a read-only **View** of those agents (no typing; 2 reads a second, 2 agents at once; for Claude Code with its earlier conversation) and **search** of the chat
 messages it can already see (6 a minute, 20 results; no messages between agents, tasks or settings). To invite someone: turn it
 on, grant them their agents in Settings → Access & security → Guests, and press **Send sign-in code** (or tell them to
-send `/web`). An admin has the Guests section over the public link too (M-3278).
+send `/web`). An admin has the Guests section over the public link too (M-3278). **Guest sign-in length** there (M-3276,
+`web.guests.session`): signed in at most 1–720 h (default 12) and signed out after 15–43200 minutes unused (default 120),
+the same bounds as an admin's own sign-in and never longer than it on this computer (over a link, the link's limits too);
+longer waits for a fleet admin, shorter applies at once.
 
 **Web authority (#1939).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
 account.
@@ -170,8 +173,10 @@ A message to a paused agent wakes it through the same delivery path as Discord/T
 **Scrolling back (M-3272).** A chat opens with its newest messages. Scroll to the very top and the 100 before
 them load; nothing loads before you get there. Past each agent's newest 500, they come from the host's archive
 (`workspaces/<agent>/web-chat-archive/`, kept per `web.chat_archive.retention_days`; unset: kept forever).
-- **Archived messages:** text, author, time and file names (their files are no longer served); a reply's buttons and poll
-  are shown but read-only.
+- **Archived messages:** text, author, time and their files and pictures (M-3281: kept in the archive's `files/`; every
+  agent's together within **Settings → Web dashboard → Archived chat files**, 5 GB by default, `web.chat_archive.files_max_gb`;
+  past it the oldest go first and the message shows the file as "no longer kept"; lowering the limit asks first, naming
+  about how much goes); a reply's buttons and poll are shown but read-only.
 - **At most about 1,000 messages are on screen.** Scrolled far back, the newest end is set aside, and it comes back as you
   scroll down. **Jump to latest** (↓) returns to the live chat at once; sending a message does too.
 - **Search hits and pins** open the page around the message, however far back it is.
@@ -193,6 +198,8 @@ reload, also on the message's Discord/Telegram copy when the fleet posted one; i
 read from the bytes: PNG/JPEG/GIF/WebP are photos, PDF a document, UTF-8 a text file; anything else (archives,
 binaries, `.html`/`.svg` and other markup) is stored as **download-only**. The agent receives the path in its
 workspace `inbox/`; an unused upload is deleted after 30 minutes.
+
+**Previewing a file from a reply.** After editing code, use `reply` with `previews: [{path: "src/app.ts", line: 1000, endLine: 1002}]` and explain the change in `text`. A web administrator gets a Preview button that opens the current file with those lines highlighted; images use the image viewer, Markdown and PDF use the preview panel. Paths are relative to your own working folder, with no `..` or symlinks. Guests cannot use it, and General/coordinator working folders are unavailable. Discord and Telegram get plain `path:line` references. Local CLI callers use `agend-agent reply "Changed." --previews '[{"path":"src/app.ts","line":1000}]'`. Previews of files on a paired Windows computer aren't available yet. Nothing runs or changes a file when previewed.
 
 **Replying to a message (#2272).**
 - **How:** the ↩ on hover, a right-click (Reply / Pin / Copy text / Copy link), a swipe left (as in Telegram; a swipe right still opens the drawer) or long-press on a phone, or R on a focused message. A bar above the composer shows what is answered; ✕ or Esc cancels.
@@ -579,6 +586,7 @@ Refreshes every 60 s while open; **Refresh** forces it (at most once per 30 s); 
 **A failed read keeps the last numbers** (#2236 follow-up): an expired token, a rate limit, a network blip or any other
 error shows the numbers from the last good read (up to a week old), greyed, with "expired · cached at 14:05" (or "not
 updated" / "couldn't read") and what to do under it; a window that has reset since says "reset since …" with no number.
+#4112: in the grouped view's one line per account the cached mark is a clock beside the name (the words in its tooltip).
 `get_usage` rows carry `stale: true`, `cachedAt`, `staleCause` (expired / transient / error) and `resetPassed` on such
 metrics; read them as old. A provider never read successfully still shows its error. A good read clears the mark.
 

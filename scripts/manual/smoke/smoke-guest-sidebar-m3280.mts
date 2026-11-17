@@ -1,4 +1,5 @@
 // Real web HTTP/session/preferences, inert agents, headless Linux only. STAGE=before pins the current dev behavior.
+// ui-gate: {"name": "Guest sidebar controls and preference isolation", "hp": 19677}
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";

@@ -7,6 +7,7 @@
 // dark zh-TW (the Usage dialog). Pictured per case: 1-expanded, 2-compact, 3-collapsed; then a reload keeps the state.
 // Run it on the base too (SMOKE_NAME=…-before): it FAILs there (no −/+).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-usage-group-modes-m3241.mts
+// ui-gate: {"name": "Usage groups fold (expanded, one line, header)", "hp": 19670}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-usage-group-modes-m3241";

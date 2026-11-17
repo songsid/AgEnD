@@ -16,6 +16,7 @@ export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
   if (reads && isWebIconPath(path)) return true;
+  if (method === "GET" && path === "/ui/reply-preview") return true; // handler requires an admin session on every read
   if (reads && ["/", "/signin", "/signin/authenticator", "/ui", "/view", "/auth/session", "/auth/sessions", "/auth/device", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
   if (method === "GET" && path.startsWith("/assets/") && isServedAsset(path.slice("/assets/".length))) return true;
   // #1408: the app shell's pages, exactly as the classifier names them (a malformed one is answered 400 behind it).
@@ -100,6 +101,9 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // #1827: the person's own name (a profile edit, which the public link may make).
   if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
   if (isPublicPrivilegedRoute(method, path)) return true;
+  // M-3278 (decision 7933bf90, part 5): the live stream — the gateway passes it on the fixed (named) link only, and the
+  // handler opens it for an admin session only (namedLinkStream); a quick tunnel and every other session poll.
+  if (method === "GET" && path === "/ui/events") return true;
   // #1724: schedules are not created, edited or deleted over the public link (the handlers refuse it too).
   // #1689: teams are not created, edited or deleted over the public link (the handlers refuse it too).
   // Settings has an explicit method/subroute manifest (not an arbitrary /api prefix).
@@ -110,7 +114,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
  * app icon, AgEnD's own update, owner CSS, mods, sign-ins and accounts, installing and updating a CLI, an agent's Files &
  * changes, Runtimes and the Windows CLI. Over the link each admits an admin session only and refuses guests and read
  * sessions itself (owner CSS, update and mods by web-api's linkRestricted check; the header token never works over the
- * link); the public link's admin session is answered as locally. Never `/ui/events`; Runtime's Windows package and
+ * link); the public link's admin session is answered as locally. `/ui/events` only on the fixed link (below); Runtime's Windows package and
  * installer pin answer 403 there (runtime-api).
  */
 function isPublicPrivilegedRoute(method: string, path: string): boolean {
@@ -146,7 +150,7 @@ function isPublicSettingsRoute(method: string, path: string): boolean {
   if (method === "DELETE" && /^\/api\/settings\/pending\/[0-9a-f]{32}$/.test(path)) return true;
   // M-3278 (decision 7933bf90, part 3): Access & security's Guests and Web authority, Look's limits, "Retry now" and the
   // fixed address's test — an admin session's over the link as anywhere (the handlers admit an admin only).
-  if (method === "GET" && /^\/api\/settings\/(?:guests|guests\/people|web-authority|fleet\/appearance)$/.test(path)) return true;
+  if (method === "GET" && /^\/api\/settings\/(?:guests|guests\/people|web-authority|fleet\/appearance|chat-archive)$/.test(path)) return true;   // M-3281: chat-archive
   if (method === "POST" && /^\/api\/settings\/(?:guests\/send-code|guests\/revoke|web-authority\/revoke|public-link\/test|connections\/[^/]+\/retry)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/fleet/appearance") return true;
   // M-3278 (decision 7933bf90): "Apply now" and the authenticator's confirmation of one's own pending change. The fleet
@@ -224,6 +228,8 @@ export function createPublicWebGateway(opts: {
       }
       // #2453: named only on the exact configured hostname (setHost also takes a trycloudflare name: never named).
       const named = !!opts.hostname && publicTunnelHostname(opts.hostname) === host;
+      // M-3278 (part 5): the live stream only on the fixed link (a quick tunnel buffers it); the handler admits an admin only.
+      if (url.pathname === "/ui/events" && !named) return reject(res, 404);
       bindGatewayRequest(req, { surface: "gateway", named, exposureId: opts.exposureId, expectedOrigin: `https://${host}`, isCurrent: () => opts.isCurrent() && opts.isOpen() });
       opts.dispatch(req, res);
     } catch {

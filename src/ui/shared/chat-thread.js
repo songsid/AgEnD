@@ -211,7 +211,7 @@ export function createThread(list, scroller, opts) {
     // Fleet callers supply no senderBadge hook and retain their existing sender markup.
     const badge = opts.senderBadge && x.sourceBadge ? ` data-source-badge="${escAttr(JSON.stringify(x.sourceBadge))}"` : "";
     // M-3092 (Hub rooms): another person's message, a bubble on the left (`msg-person`); the fleet never sets x.person.
-    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender"${badge}>${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender"${badge}>${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr(x.archived ? "chat.attNotKeptTitle" : "chat.attGone"), goneLabel: tr(x.archived ? "chat.attNotKept" : "chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
   }
   /** M-3127: a room's words for its reaction controls (opts.reactText(key)), English when the page gives none. */
   function reactText(k, ...a) {
@@ -416,6 +416,16 @@ export function createThread(list, scroller, opts) {
     if (x) decorateHtmlCards(node, x, stoppedKeys || []);
     if (x) decorateTextCards(node, x);
     if (x?.sourceBadge) opts.senderBadge?.(node.querySelector(".meta .sender"), x);
+    if (x?.role === "agent" && typeof opts.previewFile === "function" && Array.isArray(x.previews)) {
+      const row = list.ownerDocument.createElement("div"); row.className = "rb-row reply-previews"; row.dataset.trust = "thread-control";
+      x.previews.slice(0, 10).forEach((spec, i) => {
+        if (!spec || typeof spec.path !== "string") return;
+        const button = list.ownerDocument.createElement("button"); button.type = "button"; button.className = "chip-btn"; button.dataset.replyPreview = String(i);
+        button.textContent = opts.previewFileLabel?.(spec) || spec.path;
+        button.addEventListener("click", () => opts.previewFile(spec, button, msgKey(x))); row.append(button);
+      });
+      node.querySelector(".body")?.append(row);
+    }
     return node;
   }
 

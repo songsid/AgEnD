@@ -66,7 +66,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["hub_people_search", schemas.HubPeopleSearchArgs,
     "Search people by name through the invoking agent owner's existing Hub person picker. Bounded and rate-limited; names and sign-in names only, no broader directory fields."],
   ["reply", schemas.ReplyArgs,
-    "Reply on the channel. Routing is handled automatically — do not pass chat_id or thread_id. Add `buttons` to offer choices people can click."],
+    "Reply on the channel. Routing is handled automatically — do not pass chat_id or thread_id. Add `buttons` to offer choices people can click. After editing code, add `previews: [{path: \"src/app.ts\", line: 1000, endLine: 1002}]` to offer a web Preview button. Paths are relative to your working folder; no parent paths or symlinks. Only a web administrator may read them; General and coordinator working folders are unavailable. Channel copies show plain path:line. Paired Windows file previews are unavailable."],
   ["react", schemas.ReactArgs,
     "Add an emoji reaction to a message — a Discord/Telegram message or a web chat message (its message_id starts with web-). A reaction is a complete answer to a message that only acknowledges or thanks (\"OK\", \"thanks\", \"收到\"), on every platform including the web chat; a task that needs a conclusion still needs reply. On the web chat use one emoji from the reaction set (e.g. 👍 👌 ❤ 🙏 🎉 🔥 💯) and never AgEnD's delivery marks; another emoji is refused with an error naming allowed ones."],
   ["edit_message", schemas.EditMessageArgs,

@@ -226,6 +226,8 @@ describe("Settings → Web, as rendered", () => {
       ["web.usage_panel", "true default", true],
       ["web.search", "not set (no age limit; 300,000-row cap)", false],
       ["web.provider_secrets", "false default", true], ["web.upload_max_file_mb", "50 default", true], ["web.upload_max_total_mb", "100 default", true],
+      // M-3281: the archive — its messages' age limit (read-only here) and its files' limit in effect (edited under Web dashboard).
+      ["web.chat_archive", "messages kept with no age limit; their files up to 5 GB for all agents together, the oldest removed first (the limit: Web dashboard → Archived chat files)", false],
       ["web_terminal.bind", "0.0.0.0", false], ["web_terminal.tunnel", "none default", true],
     ]);
     expect(p.root.querySelectorAll(".s-web-ro input, .s-web-ro select, .s-web-ro textarea").length).toBe(0);

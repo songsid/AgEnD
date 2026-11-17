@@ -1,3 +1,4 @@
+import { replyPreviews } from "./reply-preview-spec.js";
 import { settingsSummary, translatedSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 import { readInstalledBuild } from "./build-provenance.js";
 import { buildNativeFleetInstructions } from "./instructions.js";
@@ -2817,6 +2818,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   hubBrowserCertificate(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null { return this.hubRuntime?.browserCertificateSettings() ?? null; }
   hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
+  /** M-3281: the archived chat files, for Settings (their size limit: what is kept, what a lower one removes). */
+  chatArchiveFiles(): import("./settings-api.js").ChatArchiveFilesControl | null {
+    const archive = this.webChatArchive;
+    return archive ? { usage: (capBytes) => archive.filesUsage(capBytes), enforce: () => archive.enforceFilesCap({ exact: true }) } : null;
+  }
   /** M-2682: an unfinished sealed-settings commit; Hub setting saves wait until recover() has run. */
   hubSettingsBusy(): boolean { return this.hubSettingsWriter?.pending() === true || this.hubSetupController?.pending() === true; }
   /** #3298 S-89: this fleet's own Hub offers group permissions (the page mark that shows Settings → Hub's Group permissions row). */
@@ -12115,10 +12121,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Delete inbox files older than retentionDays (by mtime). Cleans the shared
    * inbox (`<dataDir>/inbox`) and every workspace inbox
    * (`<agendHome>/workspaces/*\/inbox`). Piggybacks on the daily summary timer,
-   * mirroring classic chat-log rotation (same 7-day retention).
+   * mirroring classic chat-log rotation (same 7-day retention). M-3281: never a file the web chat still shows.
    */
   private rotateInboxes(retentionDays = 7): number {
     const cutoff = Date.now() - retentionDays * 86400_000;
+    // M-3281: a file the web chat still shows stays (device + inode), so it is there to keep when its message is archived.
+    const shown = this.webFiles.shownFiles();
     const dirs: string[] = [join(this.dataDir, "inbox")];
     const workspacesDir = join(getAgendHome(), "workspaces");
     if (existsSync(workspacesDir)) {
@@ -12133,7 +12141,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const full = join(dir, file);
         try {
           const st = statSync(full);
-          if (st.isFile() && st.mtimeMs < cutoff) { unlinkSync(full); deleted++; }
+          if (st.isFile() && st.mtimeMs < cutoff && !shown.has(`${st.dev}:${st.ino}`)) { unlinkSync(full); deleted++; }
         } catch { /* file vanished or unreadable — skip */ }
       }
     }
@@ -14356,6 +14364,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // still in flight and about to succeed. One real send, everyone gets its
     // outcome; a genuinely failed send clears the entry so a retry passes.
     if (tool === "reply") {
+      if (!replyPreviews(args.previews)) { respond(null, "reply: invalid previews"); return; }
       // Registered synchronously before a web message is handed to this CLI.
       // This waits only on display ordering, never on the web delivery itself.
       const echoTail = this.webChannelEchoTails.get(instanceName)?.tail;
@@ -14528,6 +14537,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
+  captureReplyPreview(instance: string, args: Record<string, unknown>): ((result: unknown) => void) | undefined {
+    if (!replyPreviews(args.previews)?.length) return undefined;
+    const identity = this.webChatIdentity(instance);
+    return result => { void this.afterReplyRouted(instance, args, instance, null, false, undefined, identity, result); };
+  }
+
   private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, sentAs?: { adapterId: string; result: unknown }, identity: WebChatIdentity = this.webChatIdentity(instanceName), replyResult: unknown = sentAs?.result): Promise<void> {
     // AGEND-181: the id the reply call returned (also on a fleet with no adapter: web-only), the row's anchor.
     const returned = replyResult && typeof replyResult === "object" ? (replyResult as { messageId?: unknown }).messageId : undefined;
@@ -14576,6 +14591,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ts,
         ...(attachments.length ? { attachments } : {}),
         ...(buttons ? { buttons } : {}),                 // #1266
+        ...(replyPreviews(args.previews)?.length ? { previews: replyPreviews(args.previews) } : {}),
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
         ...(post ? { posts: [post] } : {}),              // #2281
         ...(typeof returned === "string" && returned ? { anchor: returned } : {}),   // AGEND-181: what the reply call returned
@@ -23601,6 +23617,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         storablePath: (id) => this.webFiles.storablePath(id),
         restore: (entry, instance) => this.webFiles.restoreServed(entry, instance, join(getAgendHome(), "workspaces", instance, "inbox"), webFilesDir(getAgendHome(), instance) ?? undefined),
         drop: (ids) => this.webFiles.dropServed(ids),
+        // M-3281: an archived message keeps its files (web-chat-archive.ts `files/`), served from there while it is read.
+        keep: (id, dest) => this.webFiles.keepCopy(id, dest),
+        restoreKept: (entry, instance, keptDir) => this.webFiles.restoreKept(entry, instance, keptDir),
       });
       let restored = 0;
       for (const name of names) restored += this.webChatHistory.restore(name, store.load(name));
@@ -23615,10 +23634,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.webChatStore = store;
       this.webChatHistory.setStore(store);
       // M-3272: messages leaving the 500-message window are archived per agent (owner-bound as web-chat.json is), kept
-      // for web.chat_archive.retention_days (unset or 0: everything).
-      this.webChatArchive = new WebChatArchive({ home: getAgendHome(), ownerOf: (name) => this.webChatOwner(name), logger: this.logger,
-        retentionDays: () => this.fleetConfig?.web?.chat_archive?.retention_days });
-      this.webChatHistory.setArchive(this.webChatArchive);
+      // for web.chat_archive.retention_days (unset or 0: everything). M-3281: with their files, every agent's together
+      // within web.chat_archive.files_max_gb (default 5 GiB; the oldest go first) — checked once soon after the start too.
+      const archive = new WebChatArchive({ home: getAgendHome(), ownerOf: (name) => this.webChatOwner(name), logger: this.logger,
+        retentionDays: () => this.fleetConfig?.web?.chat_archive?.retention_days,
+        filesMaxGb: () => this.fleetConfig?.web?.chat_archive?.files_max_gb });
+      this.webChatArchive = archive;
+      this.webChatHistory.setArchive(archive);
+      const capCheck = setTimeout(() => { try { archive.enforceFilesCap(); } catch (err) { this.logger.warn({ err }, "Web chat archive: the files' size limit could not be checked"); } }, 30_000);
+      capCheck.unref?.();
       if (restored) this.logger.info({ restored, instances: names.size }, "Web chat history restored from disk");
     } catch (err) {
       this.logger.warn({ err }, "Web chat history could not be restored; it starts empty");
@@ -23642,7 +23666,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -23650,6 +23674,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         anchor: typeof m.anchor === "string" ? m.anchor : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
+        previews: m.previews,
         click: m.click,
         links: m.links,
         channel: m.channel,

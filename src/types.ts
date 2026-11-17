@@ -449,7 +449,8 @@ export interface WebConfig {
    * M-3272: the web chat's archive past each agent's 500-message window (web-chat-archive.ts) — scrolled back to on the
    * page. `retention_days` (0–3650; unset or 0: keep everything): whole months that ended before it are removed.
    */
-  chat_archive?: { retention_days?: number };
+  /** M-3272: the web chat's archive; M-3281: `files_max_gb` — its kept files, every agent's together (GiB, default 5; 0 keeps none). */
+  chat_archive?: { retention_days?: number; files_max_gb?: number };
   /**
    * #2636: Office share links — the live Office view for people outside the fleet, read-only, on a quick tunnel of its
    * own. `enabled` (default true): false offers no Share and ends every open share. `max_hours` (1–24, default 24): the

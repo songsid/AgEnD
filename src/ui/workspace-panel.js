@@ -353,9 +353,10 @@ function Listing({ listing, hl, openDir, openFile }) {
 /** Whether line `n` (1-based) is in the step's highlight. */
 const hlOf = (hl, n) => !hl ? null : hl.kind === "edit" ? (hl.lines.has(n) ? "hl-edit" : null) : n >= hl.from && n <= hl.to ? "hl-read" : null;
 
-function Viewer({ file, instance, back, scroll }) {
+export { Viewer as WorkspaceFileViewer, linkWorkspaceCss };
+function Viewer({ file, instance, back, scroll, highlightLabel }) {
   const pre = useRef(null);
-  const head = html`<div class="ws-viewer-head"><button type="button" class="btn btn-sm" onClick=${back}><${Icon} name="back" size=${14} />${t("chat.pvBack")}</button><code class="ws-path">${file.path}</code></div>`;
+  const head = html`<div class="ws-viewer-head">${back ? html`<button type="button" class="btn btn-sm" onClick=${back}><${Icon} name="back" size=${14} />${t("chat.pvBack")}</button>` : null}<code class="ws-path">${file.path}</code></div>`;
   // #3160: bring the first highlighted line into view (a programmatic scroll: it does not pause Follow).
   useEffect(() => {
     const el = pre.current && pre.current.querySelector(".ws-line.hl-edit, .ws-line.hl-read");
@@ -370,7 +371,7 @@ function Viewer({ file, instance, back, scroll }) {
   if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
   const hl = file.hl, w = String(lines.length).length;
   return html`<div>${head}
-    ${hl ? html`<div class="ws-follow-note" role="status">${t(hl.kind === "edit" ? hl.exact ? "chat.wsFollowHlEditExact" : "chat.wsFollowHlEdit" : "chat.wsFollowHlRead")}</div>` : null}
+    ${hl ? html`<div class="ws-follow-note" role="status">${highlightLabel || t(hl.kind === "edit" ? hl.exact ? "chat.wsFollowHlEditExact" : "chat.wsFollowHlEdit" : "chat.wsFollowHlRead")}</div>` : null}
     <pre class="pv-code ws-text" ref=${pre}><code>${lines.map((l, i) => {
       const cls = hlOf(hl, i + 1);
       return html`<span class=${`ws-line${cls ? ` ${cls}` : ""}`} data-line=${i + 1}><span class="ws-ln" aria-hidden="true">${String(i + 1).padStart(w, " ")}</span>${`${l}\n`}</span>`;

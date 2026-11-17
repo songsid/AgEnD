@@ -75,11 +75,13 @@ export function localSessionPolicy(cfg: { absolute_hours?: unknown; idle_hours?:
 }
 
 /**
- * #1920 §5.4: a guest's session — shorter than an admin's, never longer than the surface's own policy (on the public
- * link the link's 8 h / 30 min, and the link's own end, win). `web.guests.session`: absolute 1–24 h, idle 15 min–12 h.
+ * #1920 §5.4: a guest's session — by default shorter than an admin's (12 h / 2 h), never longer than the surface's own
+ * policy (on this computer `web.session.local`; on the public link the link's limits, and the link's own end, win).
+ * M-3276 (the user, 11-17): `web.guests.session` may go as far as an admin's own — absolute 1–720 h (LOCAL_SESSION_HOURS),
+ * idle 15 min–720 h (in minutes).
  */
 export const GUEST_SESSION_POLICY: SessionPolicy = { absoluteMs: 12 * HOUR, idleMs: 2 * HOUR };
-export const GUEST_SESSION_BOUNDS = { absoluteHours: { min: 1, max: 24 }, idleMinutes: { min: 15, max: 720 } } as const;
+export const GUEST_SESSION_BOUNDS = { absoluteHours: { min: 1, max: LOCAL_SESSION_HOURS.max }, idleMinutes: { min: 15, max: LOCAL_SESSION_HOURS.max * 60 } } as const;
 
 /** The guest policy `web.guests.session` asks for, or the default for what it leaves out; defensive as localSessionPolicy. */
 export function guestSessionPolicy(cfg: { absolute_hours?: unknown; idle_minutes?: unknown } | undefined): SessionPolicy {

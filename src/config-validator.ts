@@ -486,9 +486,12 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     if (config.web.chat_archive !== undefined) {
       if (!isObj(config.web.chat_archive)) err("web.chat_archive", "must be a mapping");
       else {
-        for (const k of Object.keys(config.web.chat_archive)) if (k !== "retention_days") warn(`web.chat_archive.${k}`, "unknown key (known: retention_days) — ignored");
+        for (const k of Object.keys(config.web.chat_archive)) if (k !== "retention_days" && k !== "files_max_gb") warn(`web.chat_archive.${k}`, "unknown key (known: retention_days, files_max_gb) — ignored");
         const days = config.web.chat_archive.retention_days;
         if (days !== undefined && (typeof days !== "number" || !Number.isInteger(days) || days < 0 || days > 3650)) err("web.chat_archive.retention_days", "must be a whole number of days (0-3650; 0 = keep everything)");
+        // M-3281: the archived messages' kept files, every agent's together.
+        const gb = config.web.chat_archive.files_max_gb;
+        if (gb !== undefined && (typeof gb !== "number" || !Number.isFinite(gb) || gb < 0 || gb > 100_000)) err("web.chat_archive.files_max_gb", "must be a number of GB (0-100000; default 5; 0 = keep no files)");
       }
     }
     // #2636: Office share links.

@@ -35,7 +35,8 @@ describe("the archive: append-only, a month a file, read backwards a page at a t
     const { a, dir } = archive();
     a.append("alpha", [line(1), line(2)]); a.append("alpha", [line(3)]);
     await a.flush();
-    expect(readdirSync(dir).sort()).toEqual(["2026-11.jsonl", "owner"]);
+    expect(readdirSync(dir).sort()).toEqual([".gitignore", "2026-11.jsonl", "owner"]);
+    expect(readFileSync(join(dir, ".gitignore"), "utf8"), "#4108 review N1: never committed from the agent's workspace").toBe("*\n");
     const text = readFileSync(join(dir, "2026-11.jsonl"), "utf8");
     expect(text.split("\n").filter(Boolean).map(l => l.slice(0, 18))).toEqual(['{"key":"ab12-1","b', '{"key":"ab12-2","b', '{"key":"ab12-3","b']);
     expect(readFileSync(join(dir, "owner"), "utf8")).toBe("dir:/w/alpha");
@@ -121,7 +122,7 @@ describe("the archive: append-only, a month a file, read backwards a page at a t
     days.v = 0; expect(a.prune("alpha")).toEqual([]);
     days.v = 40;                                                           // now 5 Nov: the cut-off is 26 Sep
     expect(a.prune("alpha").sort()).toEqual(["2026-08.jsonl"]);
-    expect(readdirSync(join(home, "workspaces", "alpha", "web-chat-archive")).sort()).toEqual(["2026-09.jsonl", "2026-10.jsonl", "2026-11.jsonl", "owner"]);
+    expect(readdirSync(join(home, "workspaces", "alpha", "web-chat-archive")).sort()).toEqual([".gitignore", "2026-09.jsonl", "2026-10.jsonl", "2026-11.jsonl", "owner"]);
     await a.forget("alpha");
     expect(existsSync(join(home, "workspaces", "alpha", "web-chat-archive"))).toBe(false);
   });
@@ -133,7 +134,7 @@ describe("the archive: append-only, a month a file, read backwards a page at a t
     a.append("alpha", [line(1)]); await a.flush();                        // August
     now = Date.UTC(2026, 10, 5); days.v = 30;                             // November, 30 days: August is past it
     expect(a.older("alpha", null, 10).lines).toEqual([]);
-    expect(readdirSync(join(home, "workspaces", "alpha", "web-chat-archive"))).toEqual(["owner"]);
+    expect(readdirSync(join(home, "workspaces", "alpha", "web-chat-archive"))).toEqual([".gitignore", "owner"]);
   });
 });
 

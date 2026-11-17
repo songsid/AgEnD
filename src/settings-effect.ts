@@ -326,6 +326,11 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (parsed.officeLevels !== undefined) after.fleet.web.office_levels = parsed.officeLevels;
     if (parsed.previewCdn !== undefined) after.fleet.web.preview_cdn = parsed.previewCdn;
     if (parsed.loginQr !== undefined) after.fleet.web.login_qr = parsed.loginQr;
+    if (parsed.chatArchive) {                                                  // M-3281
+      const ca: Record<string, any> = { ...cfg.web?.chat_archive };
+      if (parsed.chatArchive.filesMaxGb === null) delete ca.files_max_gb; else ca.files_max_gb = parsed.chatArchive.filesMaxGb;
+      if (Object.keys(ca).length) after.fleet.web.chat_archive = ca; else delete after.fleet.web.chat_archive;
+    }
     if (parsed.publicLink && Object.keys(parsed.publicLink).length) after.fleet.web.public_link = { ...cfg.web?.public_link, ...parsed.publicLink };
     if (sessionPatch) {
       const local: Record<string, any> = { ...cfg.web?.session?.local, ...sessionPatch };

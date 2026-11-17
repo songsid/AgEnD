@@ -45,6 +45,9 @@ function set(next) { state = next; version++; for (const fn of [...subs]) { try 
  * Hub E (#3226): the fleet's Files & changes view (workspace-panel.js) is the fleet's only — never served to the Hub, and
  * never shown to an asker. The fleet registers it (its /ui/js/preview-panel.js); without it a workspace panel shows nothing.
  */
+let ReplyFileView = null;
+export function setReplyFileView(view) { ReplyFileView = view || null; }
+export function openReplyFile(spec) { const old = state.open; set({ open: { ...spec, kind: "reply-file" }, run: 0 }); retire(old); }
 let WorkspaceView = null;
 export function setWorkspaceView(component) { WorkspaceView = component || null; }
 export const panelStore = { get: () => state, subscribe(fn) { subs.add(fn); return () => { subs.delete(fn); }; } };
@@ -436,6 +439,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   };
 
   if (!open) return null;
+  if (open.kind === "reply-file") return ReplyFileView ? html`${divider0()}<${ReplyFileView} open=${open} panel=${panel} fs=${fs} enterFs=${enterFs} leaveFs=${leaveFs} onKey=${onPanelKey} close=${closePanel} />` : null;
   if (open.kind === "workspace") return WorkspaceView ? html`${divider0()}
     <${WorkspaceView} open=${open} name=${name} panel=${panel} fs=${fs} enterFs=${enterFs} leaveFs=${leaveFs} onKey=${onPanelKey} subscribe=${subscribe} close=${closePanel} />` : null;
   if (isMd) return html`${divider0()}<${MarkdownPanel} open=${open} name=${name} md=${md} view=${mdView} setView=${setMdView} plain=${mdPlain}

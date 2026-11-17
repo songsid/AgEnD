@@ -1,3 +1,4 @@
+import { replyPreviews } from "./reply-preview-spec.js";
 import { createHash } from "node:crypto";
 
 /**
@@ -27,7 +28,8 @@ import { createHash } from "node:crypto";
  * One rule for the MCP path (FleetManager) and the HTTP path (agend-agent, agent-endpoint.ts).
  */
 export function replyDedupText(args: Record<string, unknown>): string {
-  const text = String(args.text ?? "");
+  const previews = replyPreviews(args.previews);
+  const text = String(args.text ?? "") + (previews?.length ? `\u0000previews:${JSON.stringify(previews)}` : "");
   const stickers = Array.isArray(args.stickers) ? (args.stickers as unknown[]).map(String) : [];
   const keyed = stickers.length ? `${text}\u0000stickers:${stickers.join(",")}` : text;
   // #1266: the same text with other buttons is another reply.

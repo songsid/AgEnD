@@ -6,7 +6,7 @@
  * confirmation gate in front of the real handler, on a fleet.yaml on disk.
  */
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -25,6 +25,7 @@ import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { parseWebSettingsBody } from "../src/web-settings-patch.js";
 import { validateFleetConfig } from "../src/config-validator.js";
+import { WebChatArchive } from "../src/web-chat-archive.js";
 
 // The real FleetManager's loader and saver below: nothing may log to a file or start a process.
 vi.mock("../src/logger.js", () => ({
@@ -135,7 +136,7 @@ describe("the classifier judges these by direction", () => {
   });
 });
 
-function harness(fleet: Record<string, unknown> = {}) {
+function harness(fleet: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) {
   const root = mkdtempSync(join(tmpdir(), "agend-test-1620-")); roots.push(root);
   const path = join(root, "fleet.yaml");
   const config: any = { defaults: {}, instances: {}, ...structuredClone(fleet) };
@@ -146,7 +147,7 @@ function harness(fleet: Record<string, unknown> = {}) {
   const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
   const gwSid = sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
-    getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() } } as unknown as SettingsApiContext;
+    getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() }, ...extra } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
   const gate = new SettingsHttpConfirmation(store, {
@@ -174,7 +175,21 @@ function harness(fleet: Record<string, unknown> = {}) {
     });
   }
   const raw = () => yaml.load(readFileSync(path, "utf8")) as any;
-  return { config, save, store, request, raw, dispatched };
+  /** M-3281: a GET straight to the handler, as an admin session on the public link (its rules: #4100). */
+  function get(path: string, opts: { anonymous?: boolean } = {}) {
+    return new Promise<{ status: number; body: any }>((resolve) => {
+      const req = new EventEmitter() as any;
+      req.method = "GET"; req.url = path; req.destroy = () => undefined;
+      req.headers = opts.anonymous ? { host: "localhost", origin: "https://x.example" }
+        : { host: "localhost", origin: "https://x.example", cookie: `${WEB_SESSION_COOKIE_SECURE}=${gwSid}`, [WEB_CSRF_HEADER]: csrfTokenFor(gwSid) };
+      bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.example", isCurrent: () => true });
+      let status = 0;
+      const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
+        end(text: string) { resolve({ status, body: JSON.parse(text) }); } } as any;
+      expect(handleSettingsRequest(req, res, new URL(path, "http://localhost"), ctx)).toBe(true);
+    });
+  }
+  return { config, save, store, request, raw, dispatched, get };
 }
 const admin = () => ({ label: "F", current: () => true });
 
@@ -457,5 +472,57 @@ describe("the real loader and saver (#1627 review)", () => {
     const outcome = await h.store.decide(r.body.pending_change.id, "confirm", admin());
     expect(outcome.state).toBe("applied");
     expect([(yaml.load(h.file()) as any).web_terminal, h.fm.fleetConfig.web_terminal]).toEqual([{ enabled: true }, { enabled: true }]);
+  });
+});
+
+describe("M-3281: the archived chat files' size limit — an editable field in Settings → Web dashboard", () => {
+  const KIB = 1024, GIB = 1024 ** 3;
+  /** Three 1 KiB files kept by a real archive in a scratch home; its limit is the live config's, as the fleet wires it. */
+  function archived() {
+    const home = mkdtempSync(join(tmpdir(), "agend-test-3281-")); roots.push(home);
+    let config: any = null;
+    let t = Date.UTC(2026, 10, 17);
+    const archive = new WebChatArchive({ home, ownerOf: (n) => `dir:/w/${n}`, logger: { warn: vi.fn() }, now: () => t++, filesMaxGb: () => config?.web?.chat_archive?.files_max_gb });
+    for (let i = 0; i < 3; i++) archive.keepFile("alpha", (dest) => { writeFileSync(dest, String(i).repeat(KIB)); return true; });
+    const h = harness({}, { chatArchiveFiles: () => ({ usage: (cap?: number) => archive.filesUsage(cap), enforce: () => archive.enforceFilesCap({ exact: true }) }) });
+    config = h.config;
+    const kept = () => readdirSync(join(home, "workspaces", "alpha", "web-chat-archive", "files", "2026-11")).sort();
+    return { ...h, archive, kept };
+  }
+  it("applies at once either way (disk space, not reach): no General confirmation; a value out of range or of the wrong kind is refused", () => {
+    expect(judge({ chat_archive: { files_max_gb: 1 } })).toBeNull();
+    expect(judge({ chat_archive: { files_max_gb: 50 } }, { web: { chat_archive: { files_max_gb: 5 } } })).toBeNull();
+    expect(judge({ chat_archive: { files_max_gb: null } }, { web: { chat_archive: { files_max_gb: 1 } } })).toBeNull();
+    for (const bad of [{ files_max_gb: -1 }, { files_max_gb: 100_001 }, { files_max_gb: "5" }, {}, { files_max_gb: 5, retention_days: 9 }, { files_max_gb: 5, confirm_remove: "yes" }]) {
+      expect(() => prepareSettingsEffect("PUT", WEB, { chat_archive: bad }, { config: { defaults: {}, instances: {} } as any, classic: {} }), JSON.stringify(bad)).toThrow("invalid_web_settings");
+    }
+  });
+  it("lowering below what is kept: refused with how much would go (nothing saved, nothing removed); with the page's confirmation, saved and the oldest removed", async () => {
+    const h = archived();
+    const lower = (2.5 * KIB) / GIB;
+    const estimate = await h.get(`/api/settings/chat-archive?gb=${lower}`);
+    expect([estimate.status, estimate.body.used_bytes, estimate.body.files, estimate.body.remove_bytes, estimate.body.remove_files, estimate.body.files_max_gb]).toEqual([200, 3 * KIB, 3, KIB, 1, 5]);
+    const before = h.kept();
+    const refused = await h.request({ chat_archive: { files_max_gb: lower } });
+    expect([refused.status, refused.body.error, refused.body.remove_bytes, refused.body.remove_files]).toEqual([409, "confirm_remove", KIB, 1]);
+    expect([h.save.mock.calls.length, h.raw().web, h.kept()]).toEqual([0, undefined, before]);
+    const confirmed = await h.request({ chat_archive: { files_max_gb: lower, confirm_remove: true } }, { key: "k-2" });
+    expect([confirmed.status, confirmed.body.chat_archive_removed_files]).toEqual([200, 1]);
+    expect([h.raw().web.chat_archive, h.config.web.chat_archive]).toEqual([{ files_max_gb: lower }, { files_max_gb: lower }]);
+    expect(h.kept(), "the oldest went, exactly what the confirmation named").toEqual(before.slice(1));
+  });
+  it("raising (or a lower one that removes nothing) is saved at once, nothing removed; null goes back to the default (5 GB)", async () => {
+    const h = archived();
+    expect((await h.request({ chat_archive: { files_max_gb: 50 } })).status).toBe(200);
+    expect([h.raw().web.chat_archive.files_max_gb, h.kept().length]).toEqual([50, 3]);
+    expect((await h.request({ chat_archive: { files_max_gb: 1 } }, { key: "k-2" })).status).toBe(200);   // 3 KiB fit in 1 GB
+    expect((await h.request({ chat_archive: { files_max_gb: null } }, { key: "k-3" })).status).toBe(200);
+    expect([h.raw().web?.chat_archive, h.kept().length, (await h.get("/api/settings/chat-archive")).body.files_max_gb]).toEqual([undefined, 3, 5]);
+  });
+  it("an admin's (over the public link too, #4100); the reading refused to anyone else", async () => {
+    const h = archived();
+    expect((await h.request({ chat_archive: { files_max_gb: 50 } }, { publicLink: true })).status).toBe(200);
+    expect((await h.get("/api/settings/chat-archive", { anonymous: true })).status).toBe(403);
+    expect((await h.get("/api/settings/chat-archive?gb=-1")).status).toBe(400);
   });
 });

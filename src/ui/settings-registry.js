@@ -11,7 +11,7 @@ import "./settings-revoke-strings.js";   // settings.vaRevokeOthers, the revoke 
 import "./settings-public-session-strings.js";   // #3708: publicSessionAbsolute / publicSessionIdle (a file of its own)
 import "./settings-access-strings.js";   // …and this one (webLoginQr), added by Access & security (#3061)
 import "/assets/chat-strings.js";
-import { GUESTS_SETTINGS } from "./settings-guests.js";
+import { GUESTS_SETTINGS } from "./settings-guests-entries.js";
 import { CLI_CAPS } from "./cli-caps.js";
 
 const L = (en, zh) => ({ en, "zh-TW": zh });
@@ -104,6 +104,8 @@ const ROWS = [
   ["dash.preview-cdn", "web-dashboard", "#webPreviewCdn", "settings.webPreviewCdn", "web.preview_cdn", ["cdn", "libraries", "html preview", "chart", "jsdelivr", "cdnjs"], ["CDN", "函式庫", "HTML 預覽", "圖表"]],
   ["dash.office-levels", "web-dashboard", "#webOfficeLevels", "settings.webOfficeLevels", "web.office_levels", ["office", "level", "badge", "profile card"], ["辦公室", "等級", "徽章", "名片"]],
   ["dash.office-level-titles", "web-dashboard", ".s-level-titles", "settings.levelTitlesTitle", null, ["office", "level titles", "rank", "title", "badge"], ["辦公室", "等級頭銜", "頭銜", "稱號", "階級"]],
+  // M-3281: the archived chat files' size limit (settings-archive-files.js; its card is drawn before its field loads).
+  ["dash.archive-files", "web-dashboard", "#webArchiveFiles", null, null, ["archive", "archived files", "chat files", "pictures", "disk", "storage", "size limit", "files_max_gb"], ["封存", "封存檔案", "聊天檔案", "圖片", "磁碟", "空間", "大小上限"], L("Archived chat files", "封存的聊天檔案")],
   ["dash.app-icon", "web-dashboard", ".s-app-icon", "settings.appIconTitle", null, ["app icon", "favicon", "home screen", "icon"], ["App 圖示", "圖示", "主畫面"]],
   ["dash.card-limits", "web-dashboard", ".s-card-limits", "settings.cardLimitsTitle", "web.appearance", ["upload limits", "portrait", "banner", "card limits"], ["上傳限制", "身分卡上傳限制"]],
   // Fleet · Access & security
@@ -138,7 +140,7 @@ const ROWS = [
 export const SETTINGS_REGISTRY = Object.freeze([
   ...ROWS.map(([id, section, target, labelKey, key, en, zh, label]) => Object.freeze({ id, section, target, labelKey, label: label || null, key, words: { en, "zh-TW": zh } })),
   // dev-claude2's Guests section (#2348): its entries, brought to the same shape (the card itself is the target).
-  ...GUESTS_SETTINGS.map((g) => Object.freeze({ id: g.id, section: g.section, target: g.id === "guests.enabled" ? "#guestsEnabled" : g.id === "guests.chat" ? "#guestsChat" : "#guests",
+  ...GUESTS_SETTINGS.map((g) => Object.freeze({ id: g.id, section: g.section, target: g.target || (g.id === "guests.enabled" ? "#guestsEnabled" : g.id === "guests.chat" ? "#guestsChat" : "#guests"),
     labelKey: null, label: g.label, key: g.key || null, words: g.words })),
 ]);
 

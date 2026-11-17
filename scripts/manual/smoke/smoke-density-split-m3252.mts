@@ -7,6 +7,7 @@
 //   4-desk-detailed (the desk's ⋯ → 詳細, after the phone's change: still its own); then the phone again: still 精簡.
 // Run it on the base too (SMOKE_NAME=…-before): it FAILs there (one shared value, 詳細 by default).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> HP=<port> [MATRIX=light-en,dark-zh-TW] npx tsx scripts/manual/smoke/smoke-density-split-m3252.mts
+// ui-gate: {"name": "Sidebar density per layout (desk compact, phone detailed)", "hp": 19675}
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 import { clearDensity, faces, withFaces } from "../smoke-fixture/faces.mts";
 

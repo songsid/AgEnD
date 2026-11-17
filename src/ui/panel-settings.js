@@ -32,6 +32,7 @@ import "./settings-restart-strings.js";   // S-92: the restart words for a fleet
 import "./settings-public-session-strings.js";   // #3708: the public link's session limits (a file of its own: an open tab may hold the older string files)
 import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
 import { UpdatePillMark, UpdateSection } from "./settings-update.js";
+import { ArchiveFilesSetting } from "./settings-archive-files.js";   // M-3281: the archived chat files' size limit
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {
@@ -1240,7 +1241,7 @@ function General({ ctx, part = "all" }) {
  */
 export const WEB_READ_ONLY = [
   "web.allowed_hosts", "web.view_access", "web.preview", "web.preview_port", "web.preview_origin", "web.preview_on_public_link",
-  "web.usage_panel", "web.search", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web_terminal.bind", "web_terminal.tunnel",
+  "web.usage_panel", "web.search", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web.chat_archive", "web_terminal.bind", "web_terminal.tunnel",
 ];
 /**
  * #2347 §10: what each of them is when fleet.yaml leaves it out, as the host applies it (null: nothing — none is used).
@@ -1254,6 +1255,8 @@ export function webReadOnlyDefault(path, fleet) {
     // #2518: web.search unset is no age limit (the 300,000-row cap still applies); its line says so itself.
     "web.preview_origin": null, "web.preview_on_public_link": true, "web.usage_panel": true, "web.search": null, "web.provider_secrets": false,
     "web.upload_max_file_mb": uploadMbInEffect(fleet.web).file, "web.upload_max_total_mb": 100, "web_terminal.bind": "127.0.0.1", "web_terminal.tunnel": null,
+    // M-3272 / M-3281: the chat archive — messages with no age limit; their files within 5 GiB, every agent's together.
+    "web.chat_archive": { retention_days: 0, files_max_gb: 5 },
   }[path];
 }
 /**
@@ -1414,6 +1417,13 @@ function WebSection({ ctx, staged, part = "all" }) {
       if (days === 0) return tn("searchRetentionZero");
       return String(days);
     }
+    if (top === "web" && key === "chat_archive") {
+      // M-3281: what applies — as the host reads it (web-chat-archive.ts): unset or 0 days keeps every month; files 5 GiB.
+      const a = web.chat_archive && typeof web.chat_archive === "object" ? web.chat_archive : {};
+      const days = Number.isInteger(a.retention_days) && a.retention_days > 0 ? a.retention_days : 0;
+      const gb = typeof a.files_max_gb === "number" && Number.isFinite(a.files_max_gb) && a.files_max_gb >= 0 ? a.files_max_gb : 5;
+      return tn("chatArchiveInEffect", days ? tn("chatArchiveDays", days) : tn("chatArchiveForever"), String(gb));
+    }
     const v = (top === "web" ? web : term)[key];
     // An upload limit that is not what applies (out of range, or a file above the whole message's) says what does.
     const upload = top === "web" ? { upload_max_file_mb: uploads.file, upload_max_total_mb: uploads.total }[key] : undefined;
@@ -1538,6 +1548,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ${toggleRow("cdn", "webPreviewCdn", "webPreviewCdn", "webPreviewCdnHint", "web.preview_cdn")}
     </section>`) : null}
     ${has("dashboard") && !overPublicLink ? html`<${LevelTitlesCard} />` : null}
+    ${has("dashboard") ? html`<${ArchiveFilesSetting} />` : null}
     ${has("readonly") ? html`<div class="s-effective-view"><p class="s-effective-notice"><${Icon} name="info" size=${18} />${layoutText("revEffectiveHint")}</p>
       <section class="card s-web-readonly"><h3 class="sr-only">${tn("webReadOnlyTitle")}</h3>
         <div class="s-ro-columns" aria-hidden="true"><span>${layoutText("effectiveKey")}</span><span>${layoutText("effectiveValue")}</span><span>${layoutText("effectiveSource")}</span></div>

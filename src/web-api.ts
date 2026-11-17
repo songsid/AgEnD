@@ -1,3 +1,4 @@
+import { pipeline } from "node:stream/promises";
 import { buildAgentExport, parseAgentExport } from "./agent-export.js";
 import { STRUCTURED_PROFILE_BACKENDS } from "./structured-signin-transport.js";
 import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
@@ -74,6 +75,8 @@ import { PAGE_SHARE_LIMITS, htmlFences, htmlTitle } from "./page-share.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import { workspaceChanges, workspaceFile, workspaceFileDiff, workspaceImage, workspaceList, workspaceRoot, WorkspaceError } from "./agent-workspace.js";
+import { readReplyPreview, ReplyPreviewError } from "./reply-preview-files.js";
+import { REMOTE_PREVIEW_REFUSAL } from "./reply-preview-spec.js";
 import { resolveFollowSteps, type FollowStep } from "./workspace-follow.js";
 import { isGeneralInstance } from "./general-instance.js";
 import { resolveToolSet } from "./tool-permissions.js";
@@ -2399,7 +2402,18 @@ export function handleWebRequest(
   }
 
   if (method === "GET" && path === "/ui/events") {
-    if (gatewayRequestContext(req)) { json(res, 404, { error: "Use polling on the public link" }); return true; }
+    const overLink = !!gatewayRequestContext(req);
+    if (overLink && !namedLinkStream(req, ctx)) { json(res, 404, { error: "Use polling on the public link" }); return true; }
+    let open: Set<ServerResponse> | undefined;
+    if (overLink) {
+      open = linkStreams.get(ctx) ?? new Set();
+      linkStreams.set(ctx, open);
+      if (open.size >= LINK_STREAMS_MAX) { json(res, 503, { error: "Too many live streams over the public link; this page polls" }); return true; }
+      open.add(res);
+      // Freed when the response closes, however it ends — even if the setup below throws (Fable on #4116).
+      const slots = open;
+      res.on("close", () => { slots.delete(res); });
+    }
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -2444,6 +2458,8 @@ export function handleWebRequest(
       // #2049 review: a guest's stream also needs the exact session that opened it — another cookie on the same request
       // still authenticating does not keep a revoked device's stream (with its scope) alive.
       alive: () => {
+        // M-3278: over the fixed link this check also ends the stream once that link is no longer the current one
+        // (web-auth refuses a request whose gateway is not current).
         if (isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false }) && (!guest || guest.current())) return true;
         // Close the connection too, not just the response: an ended response leaves the socket idle in
         // keep-alive, still held open by whoever's session just ended.
@@ -2459,6 +2475,7 @@ export function handleWebRequest(
     const cleanup = (): void => {
       if (cleanedUp) return;
       cleanedUp = true;
+      open?.delete(res);
       ctx.sseClients.delete(res);
       unsubscribe();
     };
@@ -2538,6 +2555,43 @@ export function handleWebRequest(
       if (localAdmin()?.handle !== who.handle) { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
       json(res, 200, view);
     }, err => { ctx.logger.error({ err: (err as Error).message }, "Accounts view failed"); json(res, 500, { error: "could not read the accounts" }); });
+    return true;
+  }
+
+  // M-3283: one reply-linked file, for an admin session on any listener. No folder listing or gateway refusal.
+  if (method === "GET" && path === "/ui/reply-preview") {
+    res.setHeader("Cache-Control", "private, no-store"); res.setHeader("X-Content-Type-Options", "nosniff");
+    const admin = () => { const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false }); return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null; };
+    const who = admin(); if (!who) { json(res, 403, { error: "preview_needs_admin" }); return true; }
+    const p = url.searchParams, instance = p.get("instance") ?? "", op = p.get("op") ?? "meta";
+    const cfg = ctx.fleetConfig?.instances && Object.hasOwn(ctx.fleetConfig.instances, instance) ? ctx.fleetConfig.instances[instance] : undefined;
+    if (!cfg) { json(res, 404, { error: "not_found" }); return true; }
+    if (cfg.runtime === "windows" || cfg.machine_id) { json(res, 403, { error: "preview_remote_unavailable", message: REMOTE_PREVIEW_REFUSAL }); return true; }
+    const offered = () => !isGeneralInstance(ctx.fleetConfig as never, instance) && resolveToolSet(cfg as never, instance) !== "coordinator" && cfg.runtime !== "windows" && !cfg.machine_id;
+    if (!offered()) { json(res, 404, { error: "workspace_not_offered" }); return true; }
+    if (op !== "meta" && op !== "raw") { json(res, 400, { error: "invalid" }); return true; }
+    const wd = String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
+    const current = () => admin()?.handle === who.handle && ctx.fleetConfig?.instances[instance] === cfg && String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~") === wd && offered();
+    void (async () => {
+      let closeRead: (() => Promise<void>) | undefined;
+      try {
+        const r = await readReplyPreview(wd, getAgendHome(), p.get("path"), op === "raw", current, req.headers.range);
+        if (r.kind === "raw") closeRead = r.close;
+        if (!current()) throw new ReplyPreviewError("preview_changed");
+        if (r.kind === "meta") { json(res, 200, r.body); return; }
+        if (r.mime === "application/pdf") res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        res.setHeader("Content-Security-Policy", r.mime === "application/pdf" ? "default-src 'none'; frame-ancestors 'self'" : "default-src 'none'; sandbox");
+        res.setHeader("Content-Type", r.mime); res.setHeader("Content-Length", String(r.length)); res.setHeader("Accept-Ranges", "bytes");
+        if (r.partial) res.setHeader("Content-Range", `bytes ${r.start}-${r.end}/${r.size}`);
+        res.writeHead(r.partial ? 206 : 200);
+        await pipeline(r.chunks, res, { end: false }); res.end();
+      } catch (error) {
+        if (res.headersSent || res.destroyed) { res.destroy(); return; }
+        const e = error instanceof ReplyPreviewError ? error : new ReplyPreviewError("unavailable");
+        if (e.code === "range_not_satisfiable") res.setHeader("Content-Range", `bytes */${e.size}`);
+        json(res, e.code === "not_found" || e.code === "not_a_directory" ? 404 : e.code === "range_not_satisfiable" ? 416 : e.code === "too_large" ? 413 : e.code === "unavailable" ? 503 : 403, { error: e.code });
+      } finally { if (closeRead) await closeRead().catch(() => {}); }
+    })();
     return true;
   }
 
@@ -2705,11 +2759,12 @@ export function handleWebRequest(
   if (method === "GET" && fileMatch) {
     const id = fileMatch[1]!;
     // #1920: a guest gets a file only when its stored instance is in scope — "no such file" otherwise, like an unknown id
-    // (an id from another instance's chat is useless).
+    // (an id from another instance's chat is useless). M-3281: never an archived message's kept file (the archive is an
+    // admin's: a guest cannot scroll back to it).
     const guest = guestRequestOf(req);
     if (guest) {
       const served = isFileId(id) ? ctx.webFiles?.servedFile?.(id) ?? null : null;
-      if (!served || !guest.scope().has(served.instance)) { json(res, 404, { error: "No such file" }); return true; }
+      if (!served || served.kept || !guest.scope().has(served.instance)) { json(res, 404, { error: "No such file" }); return true; }
     }
     // #1589: audio and video, played in the page — one byte range at a time (206), by id only, never a whole video in
     // memory. Every other type is answered exactly as before.
@@ -4849,6 +4904,20 @@ const prefsView = (prefs: WebPrefsStore, v: PrefsViewer | null) => {
   return v.person ? guestOwnPrefs(view, prefs.readGuestOwn(v.person), v.guestScope?.() ?? new Set<string>()) : guestPrefs(view);
 };
 /** M-3278: an admin session's page over the public link (not a guest, not a read-only session). */
+/**
+ * M-3278 (decision 7933bf90, part 5): the live stream over the public link — only the admin's own fixed (named) link and
+ * only an admin session: a quick tunnel buffers a stream (its page polls), and guests and read-only sessions keep polling
+ * as before. The header token never works over the link.
+ */
+function namedLinkStream(req: IncomingMessage, ctx: Partial<Pick<WebApiContext, "webToken" | "webSessions">>): boolean {
+  const link = gatewayRequestContext(req);
+  if (!link?.named) return false;   // a link that is no longer current is refused by evaluateWebRequest below
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  return v.kind === "allow" && v.via === "session" && v.session.tier === "admin";
+}
+/** At most this many live streams over the public link at once (the gateway keeps 32 connections in all): a tab past it polls. */
+export const LINK_STREAMS_MAX = 8;
+const linkStreams = new WeakMap<object, Set<ServerResponse>>();
 function linkAdminPage(req: IncomingMessage, ctx: AppShellContext, viewer: PrefsViewer | null): boolean {
   if (!gatewayRequestContext(req) || viewer?.guest) return false;
   const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
@@ -4930,7 +4999,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
   const workspaceScope = workspaceMark && viewer?.person && ctx.webToken
     ? createHmac("sha256", ctx.webToken).update(`agend-chat-layout-v1\0${viewer.person}`).digest("hex") : null;
 
-  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${workspaceMark ? ' data-chat-workspace="1"' : ""}${workspaceScope ? ` data-chat-layout-scope="${workspaceScope}"` : ""}${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${workspaceMark ? ' data-chat-workspace="1"' : ""}${workspaceScope ? ` data-chat-layout-scope="${workspaceScope}"` : ""}${mode === "full" && gatewayRequestContext(req) && !namedLinkStream(req, ctx) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
@@ -5012,7 +5081,10 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
     // the page may load); every other page frames exactly the origin this load chose (#1723).
     const previewFrames = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
-    const frameSrc = previewFrames ?? "";
+    // M-3283: frame only the narrow file endpoint, never all of this origin. Recheck the actual session tier locally too.
+    const fileViewer = own ? evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false }) : null;
+    const fileFrame = own && fileViewer?.kind === "allow" && fileViewer.via === "session" && fileViewer.session.tier === "admin" ? `${own}/ui/reply-preview` : null;
+    const frameSrc = [previewFrames, fileFrame].filter(Boolean).join(" ");
     sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });

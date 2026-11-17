@@ -104,6 +104,20 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     expect(w.button("Sign out", w.row("tg:222")), "no session or device: nothing to sign out").toBeUndefined();
     expect(w.$(".s-dirty"), "nothing edited yet").toBeNull();
   });
+  it("M-3276: the guest sign-in length fields — an admin's own bounds; an out-of-range value is flagged; Apply sends the session", async () => {
+    const w = await open({ enabled: true, grants: structuredClone(GRANTS), session: { absolute_hours: 24 } });
+    const abs = w.$("#guestSessionAbsolute"), idle = w.$("#guestSessionIdle");
+    expect([abs.value, abs.getAttribute("max"), idle.value, idle.getAttribute("max")]).toEqual(["24", "720", "", "43200"]);
+    expect(w.$("#guestSession").textContent).toContain("Signed in for at most, hours (1–720)");
+    await w.type(abs, "721");
+    expect(abs.classList.contains("invalid")).toBe(true);
+    expect(w.$("#guestSession").textContent).toContain("Enter 1 to 720 hours");
+    await w.type(abs, "720");
+    await w.type(idle, "43200");
+    expect([abs.classList.contains("invalid"), idle.classList.contains("invalid")]).toEqual([false, false]);
+    await w.apply();
+    expect(w.writes().map((s) => s.body)).toEqual([{ guests: { session: { absolute_hours: 720, idle_minutes: 43200 } } }]);
+  });
   it("an edit is staged at once — no Review step — and Apply writes only what changed: a grant whole", async () => {
     const w = await open();
     await w.click(w.button("Edit agents", w.row("dc:111")));

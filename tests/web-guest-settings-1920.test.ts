@@ -52,7 +52,7 @@ describe("the guests patch", () => {
   it("parses booleans, lists and nulls; refuses anything else", () => {
     expect(guestsPatch({ enabled: true, chat: null, open_instances: { dc: ["a"] }, narrow: { "dc:111": ["a"], "dc:222": null } }))
       .toEqual({ enabled: true, chat: null, open_instances: { dc: ["a"] }, narrow: { "dc:111": ["a"], "dc:222": null } });
-    for (const bad of [{ enabled: "yes" }, { session: { absolute_hours: 2 } }, { open_instances: ["a"] }, { open_instances: { dc: "a" } },
+    for (const bad of [{ enabled: "yes" }, { session: { absolute_hours: "2" } }, { open_instances: ["a"] }, { open_instances: { dc: "a" } },
       { open_instances: { dc: ["a", "a"] } }, { open_instances: { "bad id": ["a"] } }, { narrow: { dc: ["a"] } }, { narrow: { "dc:1 2": ["a"] } },
       { open_instances: { dc: [""] } }, { open_instances: { dc: Array.from({ length: 201 }, (_, i) => `n${i}`) } }]) {
       expect(guestsPatch(bad), JSON.stringify(bad).slice(0, 60)).toBe("invalid");
