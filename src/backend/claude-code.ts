@@ -464,7 +464,7 @@ const CLAUDE_QUEUED_PLACEHOLDER = "Press up to edit queued messages";
  * The row Claude paints at the bottom of its queue block (2.1.291, 2.1.293): `  ctrl+x ctrl+s to send now`, on a row of
  * its own — ONE row under the whole block, however many messages are queued (captured live with two).
  */
-const CLAUDE_QUEUE_MARKER_ROW = /^[ \t]+ctrl\+x ctrl\+s to send now[ \t]*$/;
+const CLAUDE_QUEUE_MARKER_ROW = /^[ \t]+(?:⎿[ \t\u00a0]+Queued · )?ctrl\+x ctrl\+s to send now[ \t]*$/;   // 2.1.326: `  ⎿  Queued · ctrl+x …`
 /** The status rows Claude may paint between its queue block and the box: the spinner / retry row, then `⎿` tip rows. */
 const CLAUDE_STATUS_TIP_ROW = /^ {2}⎿/;
 const CLAUDE_STATUS_SPINNER_ROW = /^[^\s❯●⎿]/;
@@ -589,8 +589,9 @@ function claudeQueueBlockAbove(rows: readonly string[], top: number): boolean {
   let spinner = false;
   for (let i = top - 1; i >= 0; i--) {
     const row = rows[i]!;
-    if (row.trim() === "" || CLAUDE_STATUS_TIP_ROW.test(row)) continue;
+    // The marker first: 2.1.326 paints it as a `⎿` row, which would otherwise pass as a tip.
     if (CLAUDE_QUEUE_MARKER_ROW.test(row)) return true;
+    if (row.trim() === "" || CLAUDE_STATUS_TIP_ROW.test(row)) continue;
     if (!spinner && CLAUDE_STATUS_SPINNER_ROW.test(row)) { spinner = true; continue; }
     return false;
   }
@@ -740,15 +741,32 @@ export function claudeTerminalSetupActive(pane: string): boolean {
 export function claudeLoginScreenActive(pane: string): boolean {
   const rows = claudeRows(pane);
   if (rows.length === 0) return false;
-  // OAuth URL screen: the paste-code prompt is the last row.
-  if (/Paste code here if prompted >[ \t]*$/.test(rows[rows.length - 1])) {
-    return rows.slice(Math.max(0, rows.length - 14), rows.length - 1)
-      .some(r => /Browser didn't open\? Use the url below to sign in|oauth\/authorize/.test(r));
+  // OAuth URL screen: the paste-code prompt is the last row (to 2.1.325: "Paste code here if prompted >").
+  // 2.1.326 draws it as a label over a boxed input with "Esc to go back" under it, and writes "the URL":
+  //   Browser didn't open? Use the URL below to sign in (c to copy)
+  //   https://claude.com/cai/oauth/authorize?…
+  //   Paste code here if prompted
+  //   ╭──────╮
+  //   │      │
+  //   ╰──────╯
+  //   Esc to go back
+  let paste = -1;
+  if (/Paste code here if prompted >[ \t]*$/.test(rows[rows.length - 1])) paste = rows.length - 1;
+  else if (/^[ \t]*Esc to go back[ \t]*$/.test(rows[rows.length - 1])) {
+    for (let i = rows.length - 2; i >= Math.max(0, rows.length - 10); i--) {
+      if (/^[ \t]*Paste code here if prompted[ \t]*$/.test(rows[i])) { paste = i; break; }
+      if (rows[i].trim() !== "" && !/^[ \t]*[╭│╰]/.test(rows[i])) break;   // only the input box (and blank rows) between the label and the footer
+    }
+  }
+  if (paste >= 0) {
+    return rows.slice(Math.max(0, paste - 13), paste)
+      .some(r => /Browser didn't open\? Use the url below to sign in|oauth\/authorize/i.test(r));
   }
   // Cloud gateway sign-in (2.1.314 audit capture, unchanged in 2.1.316; claude-2.1.316-gateway-url.pane.txt): the
   // gateway URL screen ends with "Press Enter to connect" (+ " · Esc for other login methods" unless the screen is
   // locked), under its "Cloud gateway" title. It is a sign-in a person finishes, like the menu below.
-  if (/^[ \t]*Press Enter to connect(?: · Esc for other login methods)?[ \t]*$/.test(rows[rows.length - 1])) {
+  // 2.1.326 composes the footer from key hints: "Enter to connect · Esc to go back" (just "Enter to connect" when locked).
+  if (/^[ \t]*(?:Press Enter to connect(?: · Esc for other login methods)?|Enter to connect(?: · Esc to go back)?)[ \t]*$/.test(rows[rows.length - 1])) {
     return rows.slice(Math.max(0, rows.length - 10), rows.length - 1).some(r => /^[ \t]*Cloud gateway[ \t]*$/.test(r));
   }
   // …and its "Trust gateway <host>?" step (the gateway's certificate fingerprint, the cursor on its No row; from the
@@ -766,6 +784,8 @@ export function claudeLoginScreenActive(pane: string): boolean {
   for (let i = rows.length - 1; i >= 0; i--) if (/^[ \t]*Select login method:[ \t]*$/.test(rows[i])) { t = i; break; }
   if (t < 0) return false;
   const below = rows.slice(t + 1).filter(r => r.trim() !== "");   // a blank row separates title and menu
+  // 2.1.326 (/login) adds the dialog's own "Esc to cancel" footer under the options: once, as the last row.
+  if (below.length > 0 && /^[ \t]*Esc to cancel[ \t]*$/.test(below[below.length - 1])) below.pop();
   return below.length >= 2 && below.every(r => /^[ \t]*[❯›]?[ \t]*\d\.[ \t]+\S/.test(r));
 }
 
@@ -1655,7 +1675,7 @@ export class ClaudeCodeBackend implements CliBackend {
       // The sign-in screen can arrive after the startup scan ended too (theme →
       // login on a first run). No key answers it: hold delivery; the daemon's
       // runtime monitor reports the auth incident (LOGIN_FLOWS loginScreenActive).
-      { pattern: /Select login method:|Paste code here if prompted >/, isActive: claudeLoginScreenActive, keys: [], holdOnly: true, blocksDelivery: true, description: "Claude sign-in screen — waiting for a human login, never auto-selecting" },
+      { pattern: /Select login method:|Paste code here if prompted/, isActive: claudeLoginScreenActive, keys: [], holdOnly: true, blocksDelivery: true, description: "Claude sign-in screen — waiting for a human login, never auto-selecting" },
       // A first run can also reach these after the startup scan ended (slow
       // preflight, cold start). Both are harmless to answer.
       { pattern: /Choose the text style that looks best with your terminal/, isActive: claudeThemePickerActive, keys: ["Enter"], description: "Claude onboarding theme picker — accept the highlighted theme", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-theme" },
