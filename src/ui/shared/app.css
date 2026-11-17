@@ -1195,6 +1195,20 @@ img.amb-p { object-fit: contain; }
 .msg-quote .quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .msg-menu { position: fixed; z-index: 60; min-width: 180px; padding: var(--s-1); border-radius: var(--r-md); background: var(--surface);
   box-shadow: var(--shadow-2); display: flex; flex-direction: column; }
+/* M-3271: pinned messages — the header's 📌 with its count, the list (newest first) and a pin's kept copy. */
+.chat-pins-btn { display: inline-flex; align-items: center; gap: 4px; }
+.chat-pins-count { font-variant-numeric: tabular-nums; }
+.chat-pins { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.chat-pin { display: flex; align-items: flex-start; gap: var(--s-1); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.chat-pin-go { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: var(--s-2); border: 0; border-radius: var(--r-md);
+  background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.chat-pin-go:hover { background: var(--surface-2); }
+.chat-pin-meta { display: flex; gap: var(--s-2); align-items: baseline; margin: 0; font-size: var(--fs-xs); color: var(--text-3); }
+.chat-pin-meta strong { color: var(--text-2); font-weight: var(--fw-semibold); }
+.chat-pin-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
+.chat-pin-files { font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
+.chat-pin-x { flex: none; margin: var(--s-1); }
+.chat-pin-copy-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
 /* M-2789: the 「引用」 pill on a selected passage (chat-quote.js) — the message menu's look, one item, its pointer at the
    passage's end; readable on white and dark alike (the shared border and shadow tokens). A phone's is a 44-px tap. */
 .msg-menu.quote-pop { min-width: 0; max-width: calc(100vw - 32px); padding: 2px; border: 1px solid var(--border-strong); overflow: visible; }

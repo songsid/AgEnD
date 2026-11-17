@@ -1005,11 +1005,14 @@ export function createThread(list, scroller, opts) {
    * #2272: show the message a reply quotes, flashed — drawn now, or after the chat reads back the longest history the
    * server keeps; otherwise it says it is no longer there.
    */
-  async function jumpTo(key) {
-    if (typeof key !== "string" || !key) return;
-    if (reveal(key)) return;
+  async function jumpTo(key, { onGone } = {}) {
+    if (typeof key !== "string" || !key) return false;
+    if (reveal(key)) return true;
     const found = opts.findQuoted ? await opts.findQuoted(key) : false;
-    if (!found || !reveal(key)) opts.notice?.(tr("chat.replyGone"));
+    if (found && reveal(key)) return true;
+    // M-3271: a pin's jump shows the copy it kept instead of the notice (onGone).
+    if (typeof onGone === "function") onGone(); else opts.notice?.(tr("chat.replyGone"));
+    return false;
   }
   /** #2272: a drawn message's row (for the message menu and gestures), or undefined. */
   function messageOf(key) { return msgs.find(y => msgKey(y) === key); }

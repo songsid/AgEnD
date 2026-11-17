@@ -403,6 +403,15 @@ jobs:
           HP: '19681'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-typing-steady-m3265.mts
+      # M-3271 (the user): pin web chat messages — right-click / long press → Pin, the header's 📌 (a phone: the ⋯ sheet's
+      # tile), the list (a jump flashes the message), and a pin whose message left the 500-message history opens its copy.
+      - name: Chat pinned messages (desk and phone)
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19691'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-chat-pins-m3271.mts
       # M-3210 (the user, phone): the image viewer swipes — sideways through the chat's pictures (message order, no wrap), up
       # or down to close with the dark fading; a short one springs back; a zoomed-in picture pans. Real touch input.
       - name: Phone image viewer swipes
