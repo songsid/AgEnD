@@ -45,7 +45,7 @@ const ROWS = [
   ["look.restore", "look", ".s-restore", "settings.restoreTitle", null, ["restore defaults", "reset", "default"], ["還原預設值", "重設", "預設"]],
   // Fleet · Agents
   ["agents.new", "agents", "#newAgentBtn", "settings.newAgent", null, ["new agent", "create", "add agent", "instance"], ["新增 agent", "建立", "新 agent"]],
-  ["agents.provider-keys", "agents", ".s-provider-keys", "settings.providerKeys", "web.provider_secrets", ["api key", "provider", "openai", "anthropic", "token", "secret"], ["API 金鑰", "金鑰", "供應商", "token"]],
+  ["agents.provider-keys", "accounts", ".s-provider-keys", "settings.providerKeys", "web.provider_secrets", ["api key", "provider", "openai", "anthropic", "token", "secret"], ["API 金鑰", "金鑰", "供應商", "token"]],
   // M-2255: the two switches (fleet.yaml runtimes.*).
   ["runtimes.windows-cli", "runtimes", "#runtimeWindowsCli", null, "runtimes.windows_cli", ["windows cli", "this pc", "local windows", "AGEND_WINDOWS_CLI", "codex", "claude code"], ["Windows CLI", "這台電腦", "本機"], L("Use this PC's Windows CLIs", "使用這台電腦 Windows 上的 CLI")],
   ["runtimes.remote-runtime", "runtimes", "#runtimeRemoteRuntime", null, "runtimes.remote_runtime", ["pair", "remote", "other computer", "AGEND_REMOTE_RUNTIME", "tailscale", "ssh"], ["配對", "遠端", "其他電腦"], L("Allow other Windows PCs to pair", "允許其他 Windows 電腦配對")],

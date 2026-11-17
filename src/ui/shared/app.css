@@ -4019,10 +4019,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings [data-settings-section="agents"] .s-page-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 10px; }
 .p-settings [data-settings-section="agents"] .s-page-actions .btn { border-radius: 8px; }
 .p-settings [data-section="agents"] .s-agent-count { margin: -2px 0 12px; min-height: 0; }
-.p-settings .s-ai-accounts > summary { padding: 20px 48px 20px 24px; font-size: 16px; line-height: 1.5; }
-.p-settings .s-ai-accounts > summary small { font-size: var(--fs-sm); }
-.p-settings .s-ai-accounts > summary::after, .p-settings .s-ai-accounts[open] > summary::after { top: 28px; }
-.p-settings .s-ai-accounts > .s-auth-body { padding: 0 24px 24px; gap: 24px; }
+.p-settings .s-ai-accounts { padding: 24px; margin: 0; }
+.p-settings .s-ai-accounts > .s-auth-body { padding: 0; gap: 24px; }
+.p-settings .s-agents-accounts-link { margin: 16px 0 0; }
 .p-settings .s-auth-scope { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 8px; background: var(--surface-2); color: var(--text-2); }
 .p-settings .s-auth-scope > svg { flex: none; margin-top: 2px; }
 .p-settings .s-auth-scope > div { min-width: 0; }
@@ -4103,8 +4102,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-api-unavailable > .note { margin: 0; }
 @container settings-page (max-width: 600px) {
   .p-settings [data-settings-section="agents"] .s-page-actions { margin-left: auto; }
-  .p-settings .s-ai-accounts > summary { padding: 18px 42px 18px 18px; }
-  .p-settings .s-ai-accounts > .s-auth-body { padding: 0 16px 18px; gap: 20px; }
+  .p-settings .s-ai-accounts { padding: 16px; }
+  .p-settings .s-ai-accounts > .s-auth-body { gap: 20px; }
   .p-settings .s-auth-scope { padding: 12px; }
   .p-settings .s-auth-section-head { gap: 10px; flex-wrap: wrap; }
   .p-settings .s-host-cli-row { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 14px 12px; }
@@ -4271,20 +4270,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-access-banner .s-access-policy[open] { flex: 1 0 100%; }
 .p-settings .s-access-banner { flex-wrap: wrap; }
 .p-settings .s-access-policy > summary { padding: 0; }
-.p-settings .s-access-login-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(240px, 1fr); gap: 24px; align-items: start; }
-.p-settings .s-access-login-layout > *, .p-settings .s-guest-workbench > * { min-width: 0; }
-.p-settings .s-access-login-layout .s-access-stack { max-width: none; gap: 20px; }
-.p-settings .s-access-related { padding: 20px; margin: 0; }
-.p-settings .s-access-related > h3 { margin: 0 0 12px; }
-.p-settings .s-access-related > button { display: flex; width: 100%; align-items: center; gap: 12px; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text); padding: 16px 0; text-align: left; cursor: pointer; }
-.p-settings .s-access-related > button:first-of-type { border-top: 0; }
-.p-settings .s-access-related > button:last-of-type { padding-bottom: 0; }
-.p-settings .s-access-related > button > span { flex: 1; display: grid; gap: 4px; }
-.p-settings .s-access-related strong { font-size: 14px; font-weight: var(--fw-medium); }
-.p-settings .s-access-related small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
-.p-settings .s-access-related > button > svg:last-child { color: var(--accent); transform: rotate(-90deg); }
-.p-settings .s-access-related > button:hover strong { color: var(--accent); }
-.p-settings .s-access-related > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 .p-settings .s-access-session > h3 { margin-bottom: 18px; }
 .p-settings .s-access-session .field { margin-bottom: 14px; }
 .p-settings .s-access-session .grid2 { gap: 20px; }
@@ -4323,7 +4308,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-sharing-list > .note { margin: 0 0 4px; }
 .p-settings .s-sharing-list > .card { border: 0; border-radius: 0; padding: 16px 0 0; border-top: 1px solid var(--border); background: transparent; box-shadow: none; }
 .p-settings .s-sharing-list > .card > h3 { font-size: 14px; }
-.p-settings .s-part-access #access-panel-sharing .s-access-stack { max-width: none; }
+.p-settings .s-part-access :is(#access-panel-login, #access-panel-sharing) .s-access-stack { max-width: none; }
+.p-settings .s-guest-workbench > * { min-width: 0; }
 .p-settings .s-part-dashboard .s-dashboard-features > h3 { margin-bottom: 18px; }
 .p-settings .s-part-dashboard .s-setting-row { padding-block: 16px; }
 .p-settings .s-part-dashboard .s-setting-row:first-of-type { padding-top: 0; }
@@ -4388,13 +4374,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-guest-add > div { padding: 0 20px 20px; }
 .p-settings .s-guest-audit > :is(p, ul) { margin: 0 20px 20px; }
 @media (max-width: 1199px) {
-  .p-settings .s-access-login-layout { grid-template-columns: minmax(0, 1.7fr) minmax(220px, 1fr); gap: 20px; }
   .p-settings .s-guest-workbench { grid-template-columns: minmax(0, 1fr); }
   .p-settings .s-guests .guest-list { min-height: 0; }
 }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
-  .p-settings .s-access-login-layout { grid-template-columns: minmax(0, 1fr); }
-  .p-settings .s-access-related { order: 2; }
   .p-settings .s-dev-context { flex-basis: 100%; order: 3; }
   .p-settings .s-effective-view .s-ro-columns { display: none; }
 }
@@ -4402,7 +4385,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-settings .s-access-banner { padding: 12px; }
   .p-settings .s-access-banner > p { flex-basis: calc(100% - 32px); }
   .p-settings .s-access-banner .s-access-policy { padding-left: 28px; }
-  .p-settings .s-access-related, .p-settings .s-sharing-list { padding: 16px; }
+  .p-settings .s-sharing-list { padding: 16px; }
   .p-settings .s-guest-policy { grid-template-columns: minmax(0, 1fr); padding: 16px; }
   .p-settings .s-guest-policy > div + div { border-left: 0; border-top: 1px solid var(--border); padding-left: 0; padding-top: 16px; }
   .p-settings .s-guest-columns { display: none; }

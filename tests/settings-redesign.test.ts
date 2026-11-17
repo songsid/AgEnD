@@ -427,8 +427,8 @@ describe("Settings P0 redesign shell", () => {
         { id: "vendor-b", display_name: "Vendor B", verifier: "available", token_present: true },
       ],
     });
-    await mountSettings("agents");                  // #2347: provider API keys are with the agents' sign-ins
-    const cards = [...p.root.querySelectorAll("section.card")].filter((s: any) => s.textContent.includes("Provider API keys"));
+    await mountSettings("accounts");
+    const cards = [...p.root.querySelectorAll("section.s-provider-keys")].filter((s: any) => s.textContent.includes("Provider API keys"));
     expect(cards).toHaveLength(1);
     const [a, b] = [...cards[0]!.querySelectorAll(".s-key")];
     // The unsupported provider: no key input at all, the reason shown instead.

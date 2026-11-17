@@ -40,7 +40,7 @@ async function fetchFake(url: string, init: any = {}) {
 }
 let p: AppPage, S: any, apply: any, confirmMod: any, nav: any, A: any;
 beforeAll(async () => {
-  p = page({ url: "http://127.0.0.1:19282/settings/agents", storage: { agend_tour_done: "1" } });
+  p = page({ url: "http://127.0.0.1:19282/settings/accounts", storage: { agend_tour_done: "1" } });
   (globalThis as any).fetch = fetchFake;
   S = await import("/ui/js/panel-settings.js");
   apply = await import("/ui/js/settings-apply.js");
@@ -58,7 +58,7 @@ const btn = (scope: any, text: string) => scope.querySelectorAll("button").find(
 const sel = (backend: string) => p.root.querySelector(`.s-account-card[data-backend="${backend}"] .s-account-default select`);
 async function pick(backend: string, value: string) { const el = sel(backend); el.value = value; fire(el, "change"); await settle(6); }
 async function mountAgents() {
-  await p.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "agents" }, navKey: "settings:agents|1|en" }));
+  await p.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "accounts" }, navKey: "settings:accounts|1|en" }));
   await settle(12);
   const d = p.root.querySelector("details.s-ai-accounts"); if (d && !d.open) { d.open = true; fire(d, "toggle"); }
   await settle(8);

@@ -94,7 +94,7 @@ const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff
   "request_no_longer_current", "too_many_pending_changes", "fleet_unavailable", "invalid_settings_effect", "settings_confirmation_unavailable", "failed"]);
 // #2726: a code or words of the setup host (the wizard's commit) in the page's language; anything else as it came.
 export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", hostText(String(code), lang())));
-const ICONS = { preferences: "user", look: "palette", agents: "bot", notifications: "sliders", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", hub: "plug", advanced: "code" };
+const ICONS = { preferences: "user", look: "palette", agents: "bot", notifications: "sliders", runtimes: "view", accounts: "idcard", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", hub: "plug", advanced: "code" };
 
 /** GET under the panel's lease → { ok, status, body }. */
 async function read(lease, path) {
@@ -408,14 +408,9 @@ export function SettingsPanel({ route, navKey }) {
   const toDialog = (d) => setDialog({ ...d, key: navKey });
   const you = { key: `you:${draftEpoch}`, stage, unstage, staged, schema: data && data.schema };
   const formKey = data && !data.error ? `${data.loadedAt}:${draftEpoch}` : "";
-  // #2347 regrouping: each card where the person looks for it (the IA in #2347 §3); a form split across sections (the
-  // defaults, Web) is one form with one draft, shown a part at a time.
-  const sectionBody = section === "preferences" ? html`<${DeviceSection} key=${you.key} />`
-    : section === "look" ? html`<${AppearanceSection} ...${you} part="look" />`
-    : section === "runtimes" ? html`<${RuntimesPanel} navKey=${navKey} />`
-    : !data ? html`<${Skeleton} lines=${6} />`
-    : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
-    : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} clearSearch=${() => setSearch("")} openDialog=${toDialog} /></${YamlLock}><details class="s-ui-disclosure s-ai-accounts"><summary><span>${layoutText("aiAccounts")}</span><small>${layoutText("aiAccountsSummary")}</small></summary><div class="s-disclosure-body s-auth-body">
+  // AGEND-288: AI accounts and provider API keys are host credentials, not an agent's own settings: their own section. A tab whose shell is from before
+  // that section (its app-route.js has no "accounts") keeps them under Agents, as before.
+  const accountsCard = () => html`<section class="card s-ai-accounts"><div class="s-disclosure-body s-auth-body">
         <div class="s-auth-scope"><${Icon} name="view" size=${18} /><div><strong>${layoutText("aiHostScope")}</strong><p>${layoutText("aiAccountsHint")}</p><a href=${settingsPath("runtimes")}>${layoutText("aiWindowsLink")}<span aria-hidden="true">→</span></a></div></div>
         <${AccountsView} instances=${ctx.fleet.instances || {}} stageAgent=${ctx.stageAgent}
           rooms=${(ctx.classic && ctx.classic.channels) || {}} stageClassic=${ctx.stageClassic}
@@ -428,7 +423,16 @@ export function SettingsPanel({ route, navKey }) {
             ctx.stage("defaults:account", { label: tn("updateDefaults"), count: 1, impact: defaultsImpact(ctx.schema, "backend_options"),
               request: { method: "PUT", url: "/api/settings/fleet/defaults", body: { backend_options: opts } } });
           }} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
-      </div></details>`
+      </div></section>`;
+  // #2347 regrouping: each card where the person looks for it (the IA in #2347 §3); a form split across sections (the
+  // defaults, Web) is one form with one draft, shown a part at a time.
+  const sectionBody = section === "preferences" ? html`<${DeviceSection} key=${you.key} />`
+    : section === "look" ? html`<${AppearanceSection} ...${you} part="look" />`
+    : section === "runtimes" ? html`<${RuntimesPanel} navKey=${navKey} />`
+    : !data ? html`<${Skeleton} lines=${6} />`
+    : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
+    : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} clearSearch=${() => setSearch("")} openDialog=${toDialog} /></${YamlLock}>${SETTINGS_SECTIONS.includes("accounts") ? html`<p class="note s-agents-accounts-link">${layoutText("agentsAccountsNote")} <a href=${settingsPath("accounts")}>${layoutText("agentsAccountsLink")}<span aria-hidden="true">→</span></a></p>` : accountsCard()}`
+    : section === "accounts" ? accountsCard()
     : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" />${!SETTINGS_SECTIONS.includes("notifications") ? html`<${QuotaNoticeSettings} key=${`quota:${formKey}`} ctx=${ctx} />` : null}</${YamlLock}>`
     : section === "notifications" ? html`<${YamlLock} staged=${staged}><${QuotaNoticeSettings} key=${formKey} ctx=${ctx} /></${YamlLock}>`
     : section === "chat" ? html`<${SettingsConnector} /><${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
@@ -1446,7 +1450,7 @@ function WebSection({ ctx, staged, part = "all" }) {
           openTab=${(tab, anchor) => { setAccessTab(tab); if (anchor) setTimeout(() => globalThis.document?.getElementById(anchor)?.scrollIntoView({ block: "start" }), 50); }} />
       </${SettingsTabPanel}>
       <${SettingsTabPanel} group="access" id="login" active=${accessTab === "login"}>
-        <div class="s-access-login-layout"><div class="s-access-stack">
+        <div class="s-access-stack">
           ${/* #3008: a web-only fleet's connections from outside — changed on this computer only, shown (read-only) elsewhere. */ ""}
           <${OutsideCard} />
           ${/* Refs #3061 (P2a): sign a new device in with its 8-character code — approved here by the verified owner. */ ""}
@@ -1493,11 +1497,7 @@ function WebSection({ ctx, staged, part = "all" }) {
           ${value(f.termTtl) === null ? html`<${InEffect} text=${tn("minutesValue", 10)} />` : null}</div>
       </div>
     </section>`)}</div></details>
-        </div><aside class="card s-access-related"><h3>${layoutText("revRelatedAccess")}</h3>
-          <button type="button" onClick=${() => setAccessTab("guests")}><${Icon} name="user" size=${18} /><span><strong>${layoutText("accessGuests")}</strong><small>${layoutText("revRelatedGuests")}</small></span><${Icon} name="chevron" size=${16} /></button>
-          <button type="button" onClick=${() => setAccessTab("sharing")}><${Icon} name="globe" size=${18} /><span><strong>${layoutText("accessSharing")}</strong><small>${layoutText("revRelatedSharing")}</small></span><${Icon} name="chevron" size=${16} /></button>
-          ${!onLink && SETTINGS_SECTIONS.includes("hub") ? html`<button type="button" onClick=${() => navigate(sectionPath("hub"))}><${Icon} name="plug" size=${18} /><span><strong>${hubSectionText("relatedTitle")}</strong><small>${hubSectionText("relatedHint")}</small></span><${Icon} name="chevron" size=${16} /></button>` : null}
-        </aside></div>
+        </div>
       </${SettingsTabPanel}>
       <${SettingsTabPanel} group="access" id="guests" active=${accessTab === "guests"}>
         ${!overPublicLink ? html`<${GuestsCard} ctx=${ctx} staged=${staged} />` : html`<p class="note">${tn("webPublicRefused")}</p>`}

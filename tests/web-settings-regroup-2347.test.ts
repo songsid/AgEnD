@@ -74,7 +74,7 @@ describe("#2347: the sections in two groups, and the old addresses", () => {
     const groups = p.root.querySelectorAll(".s-nav .s-nav-group").map((g: any) => [g.querySelector(".s-nav-head").textContent,
       g.querySelectorAll(".seg-item").map((a: any) => a.textContent.trim())]);
     expect(groups).toEqual([["You", ["Preferences", "Look"]],
-      ["Fleet", ["Agents", "Runtime", "Shared agent settings", "Notifications", "Chat & connections", "Web dashboard", "Access & security", "Hub", "Advanced"]]]);
+      ["Fleet", ["Agents", "Runtime", "AI accounts & API keys", "Shared agent settings", "Notifications", "Chat & connections", "Web dashboard", "Access & security", "Hub", "Advanced"]]]);
     expect(p.root.querySelector(".s-nav .seg-item[aria-current=page]").textContent.trim()).toBe("Agents");
   });
   it("each old address names its new section, on the page and on the server; ClassicBot's carries its place", () => {
@@ -113,7 +113,8 @@ describe("#2347: every card where it belongs", () => {
   it.each([
     ["preferences", ["#profile-name", "#pref-lang", "#pref-names", "#tourBtn", ".s-synced"], ["#pref-theme", "#fx-follow-reduced-motion", "#css-off-here", ".s-colors-off", "#g-locale"]],
     ["look", ["#pref-theme", "#fx-follow-reduced-motion", "#css-off-here", ".s-colors-off", ".s-owner-css"], ["#pref-lang", "#pref-names", ".s-app-icon"]],
-    ["agents", [".s-agent-filters", ".s-key"], [".s-conn", "#g-locale"]],     // the provider API keys moved here
+    ["agents", [".s-agent-filters", ".s-agents-accounts-link"], [".s-conn", "#g-locale", ".s-key", ".s-ai-accounts"]],   // AGEND-288: the accounts and provider API keys have a section of their own
+    ["accounts", [".s-ai-accounts", ".s-key"], [".s-agent-filters", ".s-conn", "#g-locale"]],
     ["agent-defaults", ["#g-locale", "#g-ll"], ["#g-cbe", "#webEchoToChannel"]],
     ["chat", [".s-conn", "#webEchoToChannel", "#classicbot", "#g-cbe"], ["#g-locale", ".s-key", "#webSessionAbsolute"]],
     ["web-dashboard", ["#webLogTab", "#webUsagePublic"], ["#webSessionAbsolute", "#webEchoToChannel"]],
@@ -196,7 +197,7 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
     const back = p.root.querySelector(".p-settings .panel-body .s-back");   // M-3245: no "‹ Settings" bar — the header's ← (phone)
     expect([atList, panel().getAttribute("class"), panel().getAttribute("data-view"), back]).toEqual([
       // #1629: the root's class is the effects producer's, exactly — which view is shown is data-view.
-      ["panel p-settings", "index", ["/settings/preferences", "/settings/look", "/settings/agents", "/settings/runtimes", "/settings/agent-defaults", "/settings/notifications", "/settings/chat", "/settings/web-dashboard", "/settings/access", "/settings/hub", "/settings/advanced"]],
+      ["panel p-settings", "index", ["/settings/preferences", "/settings/look", "/settings/agents", "/settings/runtimes", "/settings/accounts", "/settings/agent-defaults", "/settings/notifications", "/settings/chat", "/settings/web-dashboard", "/settings/access", "/settings/hub", "/settings/advanced"]],
       "panel p-settings", "section", null]);
     nav.navigate("/settings");
   });
