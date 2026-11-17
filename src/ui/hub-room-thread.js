@@ -431,9 +431,20 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     })();
     return () => { live = false; };
   }, [store, jump]);
-  // Read when shown: the latest message once loaded and again as messages arrive while the page is visible.
-  const count = store.raw().length;
-  useEffect(() => { if (store.loaded() && (typeof document === "undefined" || !document.hidden)) void store.markRead(); }, [store.loaded(), count]);
+  // Read when shown: the latest message once loaded, again whenever the room's newest row changes while the page is visible,
+  // and when a hidden page is shown again. M-3260: not only when the count changes — an agent's answer is its waiting row,
+  // answered in place and moved to the room's newest sequence (a message.updated, the same count), so with the count alone
+  // the room stayed unread (its list badge 1) while the answer was on screen. A hidden tab marks nothing: it stays unread.
+  const last = store.raw().at(-1);
+  const newest = last ? `${last.id}|${last.sequence ?? ""}|${last.stage ?? ""}` : "";
+  const shown = () => typeof document === "undefined" || !document.hidden;
+  useEffect(() => { if (store.loaded() && shown()) void store.markRead(); }, [store.loaded(), newest]);
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onVisible = () => { if (store.loaded() && shown()) void store.markRead(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [store]);
   // The room's own mention labels, accented in every bubble as 「@Notes」 is (Lumen): @所有 Agent, the assistant, each member —
   // read when the thread draws (the thread keeps its options from its first render, before the room's members are known).
   const labels = () => [hroom("mentionAll"), hroom("mentionAssistant"), ...(store.detail()?.members || []).filter((m) => m.kind !== "assistant").map((m) => `@${m.name}`)];
