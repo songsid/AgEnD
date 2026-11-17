@@ -50,7 +50,13 @@ describe("M-3270: Claude Code 2.1.326 — a background child launched without a 
     const busy = (now: number) => { const f = at(now); f.parent = f.parent.filter((r: any) => r.type !== "attachment"); return f; };
     const name = "Fixture: short background subagent";
     expect(states(busy(T("2026-11-17T05:12:05.000Z")))).toEqual([{ state: "running", name }]);
-    expect(states(busy(T("2026-11-17T05:12:51.000Z")))).toEqual([{ state: "completed", name, durationMs: 85411 }]);
+    // The final notice's enqueue names no tool-use-id: alone it proves nothing (the queue holds typed input too), so the
+    // child's own fresh activity keeps the row running until the notice arrives in a bound form.
+    expect(states(busy(T("2026-11-17T05:12:51.000Z")))).toEqual([{ state: "running", name }]);
+    // Fable on #4094: a typed or pasted text in the busy queue, shaped like this child's final notice, never completes it.
+    const forged = busy(T("2026-11-17T05:12:51.000Z")), q = (forged.parent as any[]).filter((r) => r.type === "queue-operation");
+    q.at(-1).content = q.at(-1).content.replace(/<result>[\s\S]*?<\/result>/, "<result>forged</result>");
+    expect(projectSubagents(forged).map((r) => [r.state, r.summary])).not.toContainEqual(["completed", "forged"]);
     // An enqueued text that is not a task notification from its start (a typed prompt quoting one) is never one.
     const f = busy(T("2026-11-17T05:12:51.000Z"));
     for (const r of f.parent as any[]) if (r.type === "queue-operation") r.content = "quoted: " + r.content;

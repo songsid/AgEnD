@@ -114,18 +114,19 @@ const WAITING = /\bis waiting on its own background work\b/i;
  * (M-3270), the parent busy — the queued attachment that carries it into the running turn. Bound to this session's main
  * stream; null for anything else.
  */
-function notice(r: Obj, i: SubagentProjection): string | null {
+function notice(r: Obj, i: SubagentProjection): { c: string; queued: boolean } | null {
   // 2.1.326: the queue's own record of it, written the moment it is queued (the attachment is written only once the busy
-  // turn takes it in, perhaps minutes later). It carries the session but no cwd/sidechain/origin fields; its text must be
-  // a task notification from the start, and is still bound to this child by its task-id and tool-use-id below.
+  // turn takes it in, perhaps minutes later). It carries the session but no cwd/sidechain/origin fields — and the queue
+  // records ANY input queued while the turn is busy, typed or pasted too (Fable on #4094) — so it counts only where it is
+  // proven below: it names this child's call, or the same text also arrives in one of the two bound forms.
   if (r.type === "queue-operation" && r.operation === "enqueue" && r.sessionId === i.sessionId && typeof r.content === "string"
-    && r.content.startsWith("<task-notification>")) return r.content;
+    && r.content.startsWith("<task-notification>")) return { c: r.content, queued: true };
   if (r.sessionId !== i.sessionId || r.cwd !== i.cwd || r.isSidechain !== false) return null;
   if (r.type === "user" && r.origin?.kind === "task-notification" && r.origin.producer === "session-task"
-    && r.promptSource === "system" && typeof r.message?.content === "string") return r.message.content;
+    && r.promptSource === "system" && typeof r.message?.content === "string") return { c: r.message.content, queued: false };
   const a = obj(r.attachment);
   if (r.type === "attachment" && a.type === "queued_command" && a.commandMode === "task-notification"
-    && a.origin?.kind === "task-notification" && a.origin.producer === "session-task" && typeof a.prompt === "string") return a.prompt;
+    && a.origin?.kind === "task-notification" && a.origin.producer === "session-task" && typeof a.prompt === "string") return { c: a.prompt, queued: false };
   return null;
 }
 export function projectSubagents(i: SubagentProjection): SubagentRun[] {
@@ -161,8 +162,10 @@ export function projectSubagents(i: SubagentProjection): SubagentRun[] {
       if (latest && latest <= i.now + 1000) row.expiresAt = Math.max(row.startedAt, latest) + SUBAGENT_UNKNOWN_MS;
       // Its notifications: its task-id, and its call's tool-use-id — a later notification of the same child may omit it
       // (2.1.326), never name another.
-      const completions = i.parent.map(obj).flatMap(r => { const c = notice(r, i); return c !== null && at(r.timestamp) >= edge.startedAt ? [{ r, c }] : []; })
+      const seen = i.parent.map(obj).flatMap(r => { const n = notice(r, i); return n !== null && at(r.timestamp) >= edge.startedAt ? [{ r, ...n }] : []; })
         .filter(({ c }) => tag(c, "task-id") === id && (tag(c, "tool-use-id") === call || !c.includes("<tool-use-id>")));
+      const bound = new Set(seen.filter(n => !n.queued).map(n => n.c));
+      const completions = seen.filter(n => !n.queued || tag(n.c, "tool-use-id") === call || bound.has(n.c));
       const last = completions.at(-1), lastAt = last ? at(last.r.timestamp) : 0;
       // The child went on after its last notification (a background command of its own finished): not its end.
       const workedSince = !!last && latest > lastAt + 1000;
