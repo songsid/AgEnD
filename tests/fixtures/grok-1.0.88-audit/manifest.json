@@ -1,0 +1,405 @@
+{
+  "format": "path-sha256-v2",
+  "stage": "main common-detector verification",
+  "sourceCommit": "330650fde6d7b0fe6d691ac851b539b1e3ed101e",
+  "base": "b38f0c2782bfd4c8ab65476ca1387da2411c9593",
+  "sharedLiveEvidenceCommit": "af59690542041e544ae2493f98944bde2de7f3fa",
+  "files": [
+    {
+      "path": "changes/4126.md",
+      "sha256": "f910403423834ce1169cba2bf9f650d3d261ad4d549efe5e3ba12f4827324f8f"
+    },
+    {
+      "path": "changes/4126.zh-TW.md",
+      "sha256": "0024905192323faee623a0028709f3a57d604c33af4fa5a8b33a8e2b74cab6c1"
+    },
+    {
+      "path": "docs/design/grok-1.0.88-audit.md",
+      "sha256": "719aefab67492ee467cb53b9531c4e5857c37cd722a1ef81ab1e28ce32046da3"
+    },
+    {
+      "path": "docs/dev/grok-1.0.88-audit.md",
+      "sha256": "2d79d639213e949b0d3e741eb476a637927adaf25fb223117006b71b6ca117df"
+    },
+    {
+      "path": "scripts/manual/cli-upstream-precheck/manifest.json",
+      "sha256": "f2f20b8f31e13c9b5fa66f6fd7ab513216b8b0c042a7ad72939c699be50e9326"
+    },
+    {
+      "path": "scripts/manual/cli-upstream-precheck/sources.json",
+      "sha256": "71421f04856d83c5a691b464d875e9c67ef475428ddf540ef7f25bc447d7c92c"
+    },
+    {
+      "path": "src/backend/grok.ts",
+      "sha256": "5eed52dd8cfc081cdb510bf9ff0f580f729636bce7578bdbe2f68d4cac07be7c"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/10-before-enter.jsonl",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/11-after-enter.jsonl",
+      "sha256": "c8a746106b120a6d3d658357b524ad2e6e3978242fb43ae20e9a7bd563e4eb0e"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/23-after-queue.jsonl",
+      "sha256": "0e3ac1b91ee67b4583e9053e3ad5931692c163a2e40975ce832e695d1c747633"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/70-never-enter.jsonl",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/README.md",
+      "sha256": "6bbd71a6d9c0251cc56edeeed2a643a905744552734f8558c6c4a000178f3a97"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/checks/fail-first.log",
+      "sha256": "33840f1b3246f26f686e50c7ee3330dab3e72b227d21ea880b82736302907734"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/checks/final-added-controls.log",
+      "sha256": "4cd954a1605590a1c02ae9fa0bbda494d2a7db346f6dbefca5507698fc5e3b9b"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/checks/final-reset-controls.log",
+      "sha256": "f74431f85b91b5e831b5f76685b822d33e5ae26a2d4d1dd67a20bb7848ac541f"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/checks/grok-regression.log",
+      "sha256": "4d8fefd2905bcee44858bd5009443664584483e725eb8059b556b3fc1ae9b443"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/checks/login-fail-first.log",
+      "sha256": "09f5af4724d2bd143775a484b2683089dc18b61dbaf89934a8d58442d7da1ba5"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/checks/main-regression.log",
+      "sha256": "6682da0b91f860ccbdce7bbd680a5c0508aa5f12c20b73c1a012913bcf4fc035"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/login-unavailable.pane.txt",
+      "sha256": "551fee4e3accf3a76ffbebdefc9b2e97a324b980ff1dc55db3725ef3f2e1b3ed"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/main-validation.json",
+      "sha256": "f1552793b1f6ef3eb2d6026cb4f1457bd16770d72d50d5796311818910f0c52a"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/mcp-call.json",
+      "sha256": "33af08879272773955cfe9f4cc4b4f449988397f9681cafd9b03bb22df672e7c"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/model-switch/daemon-proof.jsonl",
+      "sha256": "fe9db114d69cb47ec7a71084d40aa9fb600b91bdb00136c54371fa8a7adca3ac"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/model-switch/switch-0.txt",
+      "sha256": "3ba0086735240c80f2d59c69e8ff17a2cda90151987d615e96558b2a0dbfe6e2"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/model-switch/switch-1.txt",
+      "sha256": "0973c7267c82be15eef7c413adb4bc131b732770f237afd640f9ae6888fd6d5d"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/model-switch/switch-2.txt",
+      "sha256": "773f1b2a886f1c8c80a76dea42270892b29498130932180350af107da4d33158"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/mutations.json",
+      "sha256": "397ae91f3eeedf0cb38268ff2c145c8868fcc809221f9301368563aec28f0b24"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/10-short-draft.pane.txt",
+      "sha256": "2e96e56382764b3409db26d51c23a513523809c8c5caeedef32ce1c53b14d948"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/100-picker.pane.txt",
+      "sha256": "248789ade686c28490052764503e387b24ca239f8d79e01efc29fd95f2e57065"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/101-scrollback.pane.txt",
+      "sha256": "dafc6df5485f7355e77b57575f09def67e225231279f8e4ed2615865df42e650"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/102-scrollback-x.pane.txt",
+      "sha256": "dafc6df5485f7355e77b57575f09def67e225231279f8e4ed2615865df42e650"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/103-after-space.pane.txt",
+      "sha256": "dafc6df5485f7355e77b57575f09def67e225231279f8e4ed2615865df42e650"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/104-after-tab.pane.txt",
+      "sha256": "248789ade686c28490052764503e387b24ca239f8d79e01efc29fd95f2e57065"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/105-dismissed.pane.txt",
+      "sha256": "b2e77ad7237ba219a328002a0fd5864ff551f48df27ebd6e31627b476c98e722"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/11-short-taken-busy.pane.txt",
+      "sha256": "bf85f257ba61ec9240feb5942fb979be4210bb6d5765aa3b1b64089dc4aa809c"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/12-short-done.pane.txt",
+      "sha256": "cd48de6de8267242448f0f5692ccd97c0df4a5514fc3a7dea6a535458eb363e1"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/120-rate-limit-text.pane.txt",
+      "sha256": "460a3621cddb6067e720bec3baf78e363c0cda37f14dd5d064c4a7f13dbea3fb"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/130-two-downs.ansi.txt",
+      "sha256": "8ee3007438ac33ff244ca075a3b784b4544a195ab95297498c281865c71c7379"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/130-two-downs.pane.txt",
+      "sha256": "2ac0586df6d31423b293e607d8b1552c574b59ac04686720aec2b6aedef2b8e3"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/131-third-down.ansi.txt",
+      "sha256": "8ee3007438ac33ff244ca075a3b784b4544a195ab95297498c281865c71c7379"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/131-third-down.pane.txt",
+      "sha256": "2ac0586df6d31423b293e607d8b1552c574b59ac04686720aec2b6aedef2b8e3"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/132-retry-success.pane.txt",
+      "sha256": "3bfe2faadb921a95797772df73e114d32ef027f6027c02acb1295ae0542b2633"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/133-still-limited.pane.txt",
+      "sha256": "077ad0f4cc1aad69faee99710e453af494059391ca27857c973a5b0ae69f4e33"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/134-still-dismissed.pane.txt",
+      "sha256": "03cf85b90e27d52426db9961cb4b8e35f0926ff537afa6265bd47888c12795cd"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/20-long-draft.pane.txt",
+      "sha256": "dd7fd186cf9777c9e28b12325e93178f8e77572ff1cccf4c3848d56d19711e02"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/21-long-taken-busy.pane.txt",
+      "sha256": "9193e6923a6f55a50d4a719065b909a17464d9837ad8e9256534143255ba664f"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/22-busy-queued.pane.txt",
+      "sha256": "64150ad272ea45afce6e4c08d4723e8f03148529c4ebf0193cf59ad5686afdf8"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/23-queue-drained.pane.txt",
+      "sha256": "35a5a4dc005b49ca5d0ad66e9e777cb6caef788bb24be06a1c1310a589e9ece9"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/30-before-cancel.pane.txt",
+      "sha256": "83b8014a02b2dda5e733a8dca9c04f01c4d137b61213925074efe118eac6523d"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/31-after-cancel.pane.txt",
+      "sha256": "57cbe1b97385fd2fe25ba321f74fb102f7c96ebee4844f731130d057891280d7"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/40-error-401.pane.txt",
+      "sha256": "3500f6d7169ac53878090e46a6f2ffae8eaf853e6e19a002b4a57e9b65e2278e"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/40-error-403-usage.pane.txt",
+      "sha256": "b3708e84401b921cb3336e13e723bffdec669fe76ba09a09b514068f5d52e219"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/40-error-403.pane.txt",
+      "sha256": "f869cca5f869431a7c5763bacc5cefc6eec823ae351439d65f20d3d8ff5ffc03"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/40-error-426.pane.txt",
+      "sha256": "511d860659129214649d9782f63bea77cf2b88eea895538432eb8f481f51ca2e"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/40-error-429.pane.txt",
+      "sha256": "879d96fad0cd944db26237ddbb1ec37dfd33497c7cb61115aeb5216e44839bcf"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/40-error-500.pane.txt",
+      "sha256": "08fd9bb15188f2d14786bc7117cd2b761e39aea328788b6117a0ac0e77d201ee"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/60-tool.pane.txt",
+      "sha256": "dd762841f6982d9b09e07a9d1663c4b5cbabf6a6b275702ab24de9c12a832884"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/61-mcp.pane.txt",
+      "sha256": "b420aed443b37929c4141c86789a123efa13749bf1e9fcd1de70b8ad7714f62c"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/62-model.pane.txt",
+      "sha256": "7d47d919ec2e3e7a8eafea1f47592da5e90ff31cabef943b9cb105a114a0d664"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/63-effort.pane.txt",
+      "sha256": "ecb003d8baae52689e437f368f3135b96260078b9be4f21be85df3bbd68bbe97"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/64-unknown-model.pane.txt",
+      "sha256": "c876e442ae1d59663b222a1b56a186d17465f2c85e8f8c48f64cefea57cc5e96"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/65-compact.pane.txt",
+      "sha256": "4c2708a793b94872b6fd5ea43df424eb6afa9b512498bdcebfd631ff899b371a"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/66-quit-once.pane.txt",
+      "sha256": "bd02030f340011e46a90585247c0f4101c7734e9d1a68dd60648117ae72fbe81"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/67-quit-twice.pane.txt",
+      "sha256": "531c4d4987b35f845410d94bfe2ac984c7a3380817363b7591d84a73ead97c41"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/68-resume.pane.txt",
+      "sha256": "8fe84c40a75d3fb01716aa69d38c05b26c29d0cdc0cf19243e7360ea99f2c6f2"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/69-new.pane.txt",
+      "sha256": "1f3e63b8064663e2ef05f0700dff7fee38ea7057b553fa134b4dd41bec57aa9e"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/70-never-enter.pane.txt",
+      "sha256": "490b6866347e982102ba7734c73e5e64c2596191a954d5fb7cad4abf5b21fc3a"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/80-busy.pane.txt",
+      "sha256": "590a478678a28d4bcd662de5eb1d274aa4f0213032888903c0ef121aa1c5fb04"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/81-done.pane.txt",
+      "sha256": "609e25303e3c93dc8260b2f64223e3f65e568112875689fafa7bfab077d1420b"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/82-rate-limit.pane.txt",
+      "sha256": "6b6bdcbedae752766acdba8d2ede6b0ab909a00e7d762280f1a9e0397c0f014a"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/83-weekly.pane.txt",
+      "sha256": "a3a9b002b067f3e4416c95d9e2e61d64af18127ced8afcb256e1e44f19eadb60"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/84-dismissed.pane.txt",
+      "sha256": "021fc85ca41f94b1cf1c9bc27d4af595e5d2e221a8a230b76f8865af377dbb9d"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/90-approval.pane.txt",
+      "sha256": "ce2566aae133a4a1b34a44fcc52ebb4b0d0767854b2b8bd1257785aadf1af4f2"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/91-approval-escape.pane.txt",
+      "sha256": "18fcc7ff5b37ad70b4e8bb4496db5797af270842dedefd09a4771db8b99042bf"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/95-dashboard.pane.txt",
+      "sha256": "5fe3d7646f9aee1013caba55ad95ace803797c345a037dc1b2cf6b6f04ec004c"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/96-dashboard-0.pane.txt",
+      "sha256": "a7a2a297318e88d103439863bb74a769e0f3729db710d9f1ae6b1315af5bb079"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/core-120-ready.pane.txt",
+      "sha256": "49f17bb1da106b986364c6d48fb191493593753cda25ac3428102c04d8a6e9b7"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/core-120-trust.pane.txt",
+      "sha256": "06ccb38a1baf05e945aa3776b4b7c564985f1057ab70a8604c10d9e9f01afd3f"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/core-80-ready.pane.txt",
+      "sha256": "bcef3bdc25fb10ae9283d18471c0fa0bf3bfb8233311f2702e944759b12e9f36"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/panes/core-80-trust.pane.txt",
+      "sha256": "7d881180e9a184393a7c102cbe69ab6b15e0f2d79da37c560b295724da9aa931"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/precheck-1.0.77-1.0.88.txt",
+      "sha256": "cd527b38c43b38cbddcca19ab1660fada9d8771af2815b93f7892b236df1a80d"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/requests-1.0.77.json",
+      "sha256": "0b038562d115b5fe94742e8051397a9fa0cfef4bd2fa24ff373ef77f441a8503"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/requests-1.0.88.json",
+      "sha256": "a759bbdbcfa645d90ee35b1224a51404a86e2c4c531985817fb17292cdf9fbbc"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/retry-requests.json",
+      "sha256": "1d21b4676dfc5867b1f66432a4eea22f864f7e832f0d85aa75883ea4be35bb7c"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/rig/controller.py",
+      "sha256": "7894c00a431e552019fe7e5ec6430a899a24d7f5959b326625af8cb8dd27a8c7"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/rig/mcp-stub.cjs",
+      "sha256": "f3ef345743a8e6e2b5df9732c740919a585a5f9ef126bd2a07b852e2f2ca703d"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/rig/mock.cjs",
+      "sha256": "59bcccf8f27f1498aaf171b483e312397ef8d98207ba4feeb88520a0f572836d"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/rig/run.sh",
+      "sha256": "fca10322d46020f1c3880cbb89162e5b955e6f6305778af8c3ecef779d524b50"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/validation.json",
+      "sha256": "8b625dc20e9b0e2ef4e219fe7ce04613914ac4cca33f15ff382c05b3cb4a2b44"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.88-audit/weekly-scrollback.pane.txt",
+      "sha256": "e3868777d6cbe0bad21e2033cd2097103a53a199d663f5958b0d03384160b391"
+    },
+    {
+      "path": "tests/grok-1.0.52-audit.test.ts",
+      "sha256": "5d96450ee092be31d099a4991dc4185006e06840e9b72809fff676d3f829d320"
+    },
+    {
+      "path": "tests/grok-1.0.60-audit.test.ts",
+      "sha256": "32cbb5a46ef45ec32c273e0d29b79e200b6f94cd56912c6a992b35fc1d613792"
+    },
+    {
+      "path": "tests/grok-1.0.67-audit.test.ts",
+      "sha256": "201a1fae87d61cb1f805331dbd3e7c12c3628cc24bdec9f185398b0b4d2ae09e"
+    },
+    {
+      "path": "tests/grok-1.0.70-audit.test.ts",
+      "sha256": "c09b39f7613297723c65dda4fd6f06b3f623e6a1739a4b16c378721714514e80"
+    },
+    {
+      "path": "tests/grok-1.0.77-audit.test.ts",
+      "sha256": "83b93ab3cef9fb61bef5f22203e42aef9954989767bcc97c18d3592414844f65"
+    },
+    {
+      "path": "tests/grok-1.0.88-audit.test.ts",
+      "sha256": "9f4eb1ea88626975aa36d1402d2569c37a1ce47fc6bacc7d8be013353491b4f8"
+    },
+    {
+      "path": "tests/grok-weekly-limit-2872.test.ts",
+      "sha256": "c51b1d55d4fa0c517051af8be0248950a445b80f4c55bc51bbec778ff3481df9"
+    },
+    {
+      "path": "tests/grok-weekly-reset-picker.test.ts",
+      "sha256": "fa8d12c7e737c77a0851b4922b7b64bb149645c4a1d93b36a000a0fe30de4b6c"
+    }
+  ],
+  "validation": {
+    "cases": 738,
+    "files": 19,
+    "sourceTypeScriptExit": 0,
+    "testTypeScriptExit": 0,
+    "commonFunctionsExact": true
+  },
+  "captureRepresentation": "Trailing spaces and blank rows at EOF removed; raw evidence retained privately."
+}
