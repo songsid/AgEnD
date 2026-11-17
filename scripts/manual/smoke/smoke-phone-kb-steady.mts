@@ -18,6 +18,7 @@
 // Run it on the base too (REPO=<base checkout> SMOKE_NAME=…-before): "typing" FAILs there (beta.4 and beta.5: the box moves).
 // PW_ENGINE=webkit runs it in WebKit (Safari's engine; no CDP there, so no safe-area inset: the rest case checks the 8 px floor).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] [PW_ENGINE=webkit] scripts/manual/smoke/run.sh smoke-phone-kb-steady.mts
+// ui-gate: {"name": "Phone keyboard steady while typing (no re-align on a keystroke)", "hp": 19661}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-kb-steady";

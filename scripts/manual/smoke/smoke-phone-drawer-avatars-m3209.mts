@@ -9,6 +9,7 @@
 //   compact   no avatar at all; the dot alone, small
 // Run it on the base too (SMOKE_NAME=…-before): detailed FAILs there, compact PASSes.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] [PW_ENGINE=webkit] scripts/manual/smoke/run.sh smoke-phone-drawer-avatars-m3209.mts
+// ui-gate: {"name": "Phone drawer avatars (Detailed and Compact)", "hp": 19662}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-drawer-avatars-m3209";
