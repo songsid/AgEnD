@@ -29,5 +29,11 @@
     "workers": 2,
     "sourceTypeErrors": 0,
     "testTypeErrors": 0
+  },
+  "staticPrecheck": {
+    "mainPassed": 87,
+    "alphaPassed": 87,
+    "manifestCurrent": true,
+    "runtimeDelta": false
   }
 }
