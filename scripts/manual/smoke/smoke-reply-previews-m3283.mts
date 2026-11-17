@@ -2,6 +2,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { bootFixture, shotPath } from "../smoke-fixture/index.mts";
 const before = process.env.STAGE === "before", tag = `smoke-reply-previews-m3283-${before ? "before" : "after"}`;
 const project = mkdtempSync(join(tmpdir(), "reply-preview-project-"));
@@ -16,6 +17,9 @@ let pdf = "%PDF-1.4\n", offsets = [0];
 for (const [i, body] of pdfObjects.entries()) { offsets.push(Buffer.byteLength(pdf)); pdf += `${i + 1} 0 obj\n${body}\nendobj\n`; }
 const xref = Buffer.byteLength(pdf); pdf += `xref\n0 6\n0000000000 65535 f \n${offsets.slice(1).map(n => String(n).padStart(10, "0") + " 00000 n \n").join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
 writeFileSync(join(project, "example.pdf"), pdf);
+if (process.env.DEBUG_PDF) writeFileSync(join(process.env.OUT!, "fixture.pdf"), pdf);
+// The legacy headless shell omits the native PDF viewer. Use full Chromium in headless mode.
+if (!process.env.CHROME && process.env.PW_ENGINE !== "webkit") process.env.CHROME = createRequire(process.env.PW_DIR + "/")("playwright-core").chromium.executablePath();
 const fx = await bootFixture({ port: Number(process.env.HP ?? 49180), classic: false, roster: [{ name: "agent-alpha", displayName: "Example helper", backend: "codex" }] });
 const results: unknown[] = [];
 try {
@@ -24,8 +28,12 @@ try {
   fx.fm.emitSseEvent("message", { instance: "agent-alpha", sender: "Example helper", role: "agent", text: "I updated src/app.ts at line 1000. Preview the changed lines or the supporting files.", ts: new Date().toISOString(),
     previews: [{ path: "src/app.ts", line: 1000, endLine: 1002 }, { path: "README.md" }, { path: "picture.png" }, { path: "example.pdf" }, { path: "missing.txt" }] });
   for (const device of ["desk", "phone"] as const) {
+    if (process.env.DEVICES && !process.env.DEVICES.split(",").includes(device)) continue;
     const c = { device, theme: device === "desk" ? "dark" as const : "light" as const, lang: device === "desk" ? "en" as const : "zh-TW" as const };
     const { ctx, page } = await fx.page(c, { path: "/ui/chat/agent-alpha", host: true });
+    const diagnostic: unknown[] = [];
+    page.on("console", (m: any) => { if (m.type() === "error") diagnostic.push({ console: m.text() }); });
+    page.on("requestfailed", (r: any) => diagnostic.push({ failed: r.url(), reason: r.failure() }));
     const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
     try {
       await page.getByText("I updated src/app.ts at line 1000.", { exact: false }).first().waitFor();
@@ -52,6 +60,12 @@ try {
         await page.locator('[data-reply-preview="3"]').click(); await page.locator('.pv-panel iframe[data-reply-pdf]').waitFor();
         if ((await pdfResponse).status() !== 200) throw Error("PDF raw response failed");
         await page.waitForTimeout(1200); // Let the browser-native PDF viewer finish its first paint.
+        if (process.env.DEBUG_PDF) {
+          for (const frame of page.frames()) {
+            try { diagnostic.push({ frame: frame.url(), html: (await frame.content()).slice(0, 4000) }); } catch (e) { diagnostic.push({ frame: frame.url(), error: String(e) }); }
+          }
+          writeFileSync(join(process.env.OUT!, `pdf-diagnostic-${device}.json`), JSON.stringify(diagnostic, null, 2));
+        }
         await page.screenshot({ path: shotPath(tag, `${device}-${c.lang}`, "pdf") });
         await page.keyboard.press("Escape");
         if (!process.env.RETAKE) {

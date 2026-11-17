@@ -5037,7 +5037,10 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
     // the page may load); every other page frames exactly the origin this load chose (#1723).
     const previewFrames = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
-    const frameSrc = previewFrames ?? "";
+    // M-3283: frame only the narrow file endpoint, never all of this origin. Recheck the actual session tier locally too.
+    const fileViewer = own ? evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false }) : null;
+    const fileFrame = own && fileViewer?.kind === "allow" && fileViewer.via === "session" && fileViewer.session.tier === "admin" ? `${own}/ui/reply-preview` : null;
+    const frameSrc = [previewFrames, fileFrame].filter(Boolean).join(" ");
     sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });

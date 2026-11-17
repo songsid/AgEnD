@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReplyArgs } from "../src/outbound-schemas.js";
-import { handleWebRequest } from "../src/web-api.js";
+import { handleWebRequest, serveAppShell } from "../src/web-api.js";
 import { WebSessionStore, tokenEpoch } from "../src/web-session.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 
@@ -25,6 +25,7 @@ const endpoint = (path: string, op = "meta") => "/ui/reply-preview?" + new URLSe
 beforeAll(async () => {
   server = createServer((req, res) => {
     if (req.headers["x-rig-gateway"] === "1") bindGatewayRequest(req, { surface: "gateway", exposureId, expectedOrigin: "https://fleet.example.com", isCurrent: () => true });
+    if (req.url === "/ui/rig-shell") { serveAppShell(req, res, ctx, "full"); return; }
     if (!handleWebRequest(req, res, new URL(req.url ?? "/", `http://127.0.0.1:${port}`), ctx)) { res.writeHead(404); res.end('{"error":"not_found"}'); }
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve)); port = (server.address() as { port: number }).port;
@@ -102,5 +103,20 @@ describe("async read fences", () => {
     const r = await get(endpoint("src/app.ts"));
     expect(r.status).toBeGreaterThanOrEqual(400); expect(r.body.toString()).not.toContain("export const"); expect(JSON.parse(r.body.toString()).error).toBe("preview_changed");
     vi.mocked(fsAsync.open).mockImplementation(realOpen);
+  });
+});
+
+describe("the app shell permits only the admin file frame", () => {
+  it.each([false, true])("keeps the HTML preview frame and adds the exact file endpoint (gateway=%s)", async gateway => {
+    const preview = { previewOrigin: "https://preview.example.com", frameSrc: "https://preview.example.com/frame", boot: "fixture", ok: true };
+    ctx.previewForUi = () => preview; ctx.publicPreviewForUi = () => preview;
+    const r = await get("/ui/rig-shell", { gateway }); expect(r.status).toBe(200);
+    const csp = String(r.headers["content-security-policy"]), frame = /(?:^|;)\s*frame-src ([^;]+)/.exec(csp)?.[1];
+    expect(frame).toContain("https://preview.example.com/frame");
+    expect(frame?.split(" ")).toContain((gateway ? "https://fleet.example.com" : `http://127.0.0.1:${port}`) + "/ui/reply-preview");
+    expect(frame?.split(" ")).not.toContain("'self'");
+  });
+  it.each(["read", "guest"] as const)("adds no file-frame source for a %s session", async tier => {
+    for (const gateway of [false, true]) expect(String((await get("/ui/rig-shell", { tier, gateway })).headers["content-security-policy"])).not.toContain("/ui/reply-preview");
   });
 });
