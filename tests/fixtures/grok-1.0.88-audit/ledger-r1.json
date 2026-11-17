@@ -1,0 +1,14 @@
+{
+  "beforeHead": "7adffa68f7d67a828a8ca6b56b05e11a75370b5b",
+  "ciRun": 44096507855,
+  "failure": "tests/cli-audited-136.test.ts: shipped ledger must include the retained Grok1.0.88 audit",
+  "resolution": "Add1.0.88 to AUDITED_CLI_VERSIONS.grok with its evidence. No SHIPPED_LAG exception. External upstream-watch marking remains a post-merge maintainer step.",
+  "main": "No shipped-ledger module exists on this main base; main twin unchanged.",
+  "scope": "No detector, fixture rendering or live audit changes; update-view/plan test targets follow the new newest release.",
+  "checks": {
+    "cases": 66,
+    "files": 4,
+    "command": "vitest run tests/cli-audited-136.test.ts tests/accounts-update-view-136.test.ts tests/web-host-update-fleet-136.test.ts tests/web-host-update-latest-153.test.ts"
+  },
+  "detectorSourceUnchanged": true
+}

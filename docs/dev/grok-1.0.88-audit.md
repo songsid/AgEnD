@@ -70,7 +70,9 @@ uses separate path and hash fields.
 The common detector changes also affect main, which has the same old
 matchers; a main twin is required. Inline switching remains alpha-only and
 is not ported by this audit. The installed CLI is unchanged. The lead,
-after review and merge, decides when to record 1.0.88 as audited.
+after review and merge, records 1.0.88 in the upstream watch. The separate
+shipped ledger entry is included here with its evidence; no lag exception
+is added and no update command is executed.
 
 Rollback reverts the narrow detector and generated-manifest changes. That
 restores the old failure on the new screen; it does not alter CLI binaries

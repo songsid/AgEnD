@@ -83,12 +83,12 @@ describe("startWebInstall — update", () => {
     const { fm, reporter } = fleet();
     const update = vi.fn<(from: string | null, target: string | null) => void>();
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
-    expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
+    expect(update).toHaveBeenCalledWith("1.0.70", "1.0.88");
     expect(fakeSessions).toHaveLength(1);
     const { flow } = fakeSessions[0]!;
     expect(flow.backend).toBe("grok");
     expect(flow.command).toContain("agend-install");
-    expect(flow.command).toContain("curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.77");
+    expect(flow.command).toContain("curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.88");
     expect(flow.command).not.toMatch(/latest/);
     expect((fm as any).loginWindow.heldFor("grok")).toMatchObject({ kind: "install", backend: "grok" });
   });
@@ -97,10 +97,10 @@ describe("startWebInstall — update", () => {
     const { fm, reporter } = fleet();
     const r = reporter();
     await fm.startWebInstall("grok", r, undefined, "update");
-    writeGrok("1.0.77");                                   // what the installer did
+    writeGrok("1.0.88");                                   // what the installer did
     await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
     expect(r.done).toHaveBeenCalledTimes(1);
-    expect(r.done.mock.calls[0]![0]).toMatchObject({ ok: true, verified: true, version: "1.0.77" });
+    expect(r.done.mock.calls[0]![0]).toMatchObject({ ok: true, verified: true, version: "1.0.88" });
     expect((fm as any).loginWindow.isHeld).toBe(false);
     expect((fm as any).activeInstall).toBeNull();
   });
@@ -120,7 +120,7 @@ describe("startWebInstall — update", () => {
     await fm.cancelInstallSession();
     expect(fakeSessions[0]!.cancelled).toEqual(["cancelled"]);
   });
-  it.each([["1.0.77", "at the audited release"], ["1.0.99", "newer than anything audited"]])("%s (%s): refused as up_to_date, nothing opens, the window is free", async version => {
+  it.each([["1.0.88", "at the audited release"], ["1.0.99", "newer than anything audited"]])("%s (%s): refused as up_to_date, nothing opens, the window is free", async version => {
     writeGrok(version); onPath();
     const { fm, reporter } = fleet();
     const update = vi.fn();
@@ -151,31 +151,31 @@ describe("startWebInstall — update", () => {
     writeGrok("1.0.72");                                                             // replaced in place, readable: the update goes from what is there NOW
     const update = vi.fn<(from: string | null, target: string | null) => void>();
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
-    expect(update).toHaveBeenCalledWith("1.0.72", "1.0.77");
+    expect(update).toHaveBeenCalledWith("1.0.72", "1.0.88");
   });
   // AGEND-148 (Prism R3 on #3539, P2-3): the admission decides on the NEWEST observation. The old order read freshVersion, then awaited a forced refresh (a second probe, published) and
-  // still decided with the earlier number — a Grok upgraded to 1.0.78 meanwhile was "updated" to the audited 1.0.77.
-  it("a newer version observed while the update is prepared is not discarded: 1.0.70 first, 1.0.78 after the refresh — refused as up_to_date, nothing opens", async () => {
+  // still decided with the earlier number — a Grok upgraded to 1.0.99 meanwhile was "updated" to the audited 1.0.88.
+  it("a newer version observed while the update is prepared is not discarded: 1.0.70 first, 1.0.99 after the refresh — refused as up_to_date, nothing opens", async () => {
     writeGrok("1.0.70"); onPath();
     const { fm, reporter } = fleet();
     const reads = vi.spyOn(hostAvailabilityProbes, "version");
     reads.mockReset();
-    reads.mockImplementationOnce(async () => "1.0.70").mockImplementation(async () => "1.0.78");   // time-ordered observations of the one executable
+    reads.mockImplementationOnce(async () => "1.0.70").mockImplementation(async () => "1.0.99");   // time-ordered observations of the one executable
     const update = vi.fn();
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ refused: "up_to_date" });
     expect(update).not.toHaveBeenCalled();
     expect(fakeSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
   });
-  it("the control: the later of the two reads decides in the other direction too (1.0.78 first, then 1.0.70) and the update starts from 1.0.70", async () => {
-    writeGrok("1.0.78"); onPath();
+  it("the control: the later of the two reads decides in the other direction too (1.0.99 first, then 1.0.70) and the update starts from 1.0.70", async () => {
+    writeGrok("1.0.99"); onPath();
     const { fm, reporter } = fleet();
     const reads = vi.spyOn(hostAvailabilityProbes, "version");
     reads.mockReset();
-    reads.mockImplementationOnce(async () => "1.0.78").mockImplementation(async () => "1.0.70");
+    reads.mockImplementationOnce(async () => "1.0.99").mockImplementation(async () => "1.0.70");
     const update = vi.fn<(from: string | null, target: string | null) => void>();
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
-    expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
+    expect(update).toHaveBeenCalledWith("1.0.70", "1.0.88");
   });
   it("freshVersion is not a published value: no executable, or no answer, is null; nothing is cached", async () => {
     const { fm } = fleet();
@@ -189,7 +189,7 @@ describe("startWebInstall — update", () => {
     const { fm, reporter } = fleet();
     const update = vi.fn<(from: string | null, target: string | null) => void>();
     expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
-    expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
+    expect(update).toHaveBeenCalledWith("1.0.70", "1.0.88");
     expect(fakeSessions).toHaveLength(1);
   });
   it("a CLI that is not installed anywhere is refused as not_installed; one that updates itself with no exception, or that is not a CLI, as unsupported", async () => {
@@ -215,6 +215,6 @@ describe("startWebInstall — update", () => {
     expect(await fm.startWebInstall("grok", { ...reporter(), update })).toEqual({ started: true });
     expect(update).not.toHaveBeenCalled();
     expect(fakeSessions[0]!.flow.command).toContain("https://x.ai/cli/install.sh | bash");
-    expect(fakeSessions[0]!.flow.command).not.toContain("bash -s 1.0.77");
+    expect(fakeSessions[0]!.flow.command).not.toContain("bash -s 1.0.88");
   });
 });

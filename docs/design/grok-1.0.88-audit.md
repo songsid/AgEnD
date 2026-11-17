@@ -4,7 +4,9 @@ This is the design for M-3291. The upstream precheck of 1.0.77 against
 1.0.88 reports `MAJOR`, with one unhinted and four hinted hits. Its strings
 are evidence to investigate, rather than proof that the running terminal
 changed. The audit will not update the installed CLI or mark a release
-audited; the lead does that after review and merge.
+audited in the upstream watch; the lead does that after review and merge.
+The shipped ledger entry lands with this evidence, so its Update button
+can select the audited release after merge.
 
 ## Scope
 
