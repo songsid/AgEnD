@@ -296,3 +296,19 @@ The binaries were 2.1.323 (sha256 `604d29a6869409106b6a1110bdadcc8b72e8654a5a865
 - **Cold-resume prompt, live** (`cold-resume/live.mts`, 325 cases added): `325-lookup`, `325-summary-lookup` and `325-summary-newfocus` PASS 3/3. The prompt was seen, Escape was sent, history was kept and the prompt was gone.
 - **Fixtures:** `tests/fixtures/claude-2.1.325-*.pane.txt`, held by `tests/claude-2.1.325-surfaces.test.ts` (27 tests). They are the 33 screens of the 2.1.322 set, each from the same capture of this pass, plus the two live cold-resume frames.
   - The file-send card fixtures are not re-made. That card cannot be reached offline (see `scripts/manual/claude-2317-file-send/README.md`), and its literals are unchanged.
+
+## 2.1.325 → 2.1.326: the resume menu and the retry row (2026-11-17)
+
+The binaries were 2.1.325 (sha256 `0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf`) and 2.1.326 (sha256 `b6b3647d981130dc44fc670846ae97b6cde531ffb667cf9c4d17cfcafb38cb37`, byte-identical to the host's `~/.local/share/claude/versions/2.1.326`). The host had already self-updated to 2.1.326. The daily precheck said MAJOR (hard=18). This first PR covers the two changes that broke AgEnD on the live fleet; the sign-in screens and the full fixture set follow in a second one.
+
+- **Passes:** `OLD=325 NEW=326 PORT=18326`, pass1 and extra–extra6. The host's tmux server kept its one session throughout.
+- **The resume-from-summary menu's third row is now "Don't ask again"** (was "Don't ask me again"). `claudeResumeMenuState` then saw an unknown row under the menu, so the menu read as no menu at all: not answered, not held, and the startup scan reported ready with it still up.
+  - The menu is server-gated (`tengu_gleaming_fair`, a session at least 70 minutes old with at least 100k tokens), so pass1–extra6 never show it.
+  - `cold-resume/resume-menu.mts` (new) runs AgEnD's real startup scan against it. It uses the cold-resume rig (`rig.sh up 326`), the production launch with `--continue`, a backdated 180k-token session and the flag served by the rig's proxy.
+  - Before the fix: `325-menu` PASS; `326-menu` FAIL (ready, no key, the menu still up).
+  - After the fix: `325-menu`, `326-menu` and `326-menu-80` PASS. Each time the menu was seen, Down and Enter were sent, the full session was kept and nothing was compacted.
+  - **Fail-safe:** any other numbered third row is now still read as the menu, held for a person (no key, delivery blocked) and never answered.
+- **The API-retry row is lower-case:** `✻ 429 … · retrying in 4s · attempt 5/10` (was "Retrying in"). It reads `· retrying… · attempt n/m` when the renderer's wait is zero (`b===0`).
+  - The busy pattern was case-sensitive, so a retrying turn could look idle. The 429/5xx/401/403 notices use `/i` and still matched the "in Ns" form.
+  - The no-wait form never showed in 350 frames sampled every 0.2 s (`retry-fast.sh`, not committed): the row moves on within the tick. Its fixture is the real 429 frame with only the wait replaced.
+- **Fixtures:** `tests/fixtures/claude-2.1.326-*.pane.txt`: the menu at 160 and 80 columns, the screen after Down and Enter, the 429/401/500 and generic-attempt retry rows (production launch), and the no-wait row. They are held by `tests/claude-2.1.326-surfaces.test.ts`. Paths in the frames are normalised to `/tmp/agend-audit/…`.
