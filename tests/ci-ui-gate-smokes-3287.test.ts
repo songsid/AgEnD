@@ -75,6 +75,10 @@ describe("fails closed", () => {
     ["a port used twice", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": mark({ name: "B", hp: 20001 }) }, "both use hp 20001"],
     ["two marker lines", { "a.mts": mark({ name: "A", hp: 20001 }) + `// ui-gate: {"name":"A2","hp":20003}\n` }, 'more than one "// ui-gate:" line'],
     ["no smoke at all", { "a.mts": "// no marker\n" }, "no smoke under scripts/manual/smoke"],
+    // A smoke meant for the gate whose marker is misspelt would silently never run.
+    ["a misspelt marker (no space)", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": `//ui-gate: {"name":"B","hp":20003}\n` }, "b.mts: \"//ui-gate:"],
+    ["a misspelt marker (underscore)", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": `// ui_gate: {"name":"B","hp":20003}\n` }, "is not written as the marker"],
+    ["a misspelt marker (indented, capitals)", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": `  // UI-Gate : {"name":"B","hp":20003}\n` }, "is not written as the marker"],
   ])("%s", (_w, files, msg) => { expect(bad(files)).toContain(msg); });
   it("neighbouring ports are fine (they run one after another), and found smokes come by port", () => {
     const d = root({ "z.mts": mark({ name: "Z", hp: 20001 }), "a.mts": mark({ name: "A", hp: 20002 }), "plain.mts": "// not in the gate\n" });

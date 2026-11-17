@@ -10,7 +10,7 @@
 //
 // Each runs as its own step did: tsx (`npx tsx <file>`) from the repo with PW_DIR / REPO (default: the checkout), OUT and
 // FONTCONFIG_FILE as given, HP set; one after another, every one even when one before it failed; any failure fails the
-// run. Fails closed: a marker that does not parse, an unknown key, a missing name or port, two smokes on one port, or no
+// run. Fails closed: a marker that does not parse (or a line meant as one but misspelt: that smoke would never run), an unknown key, a missing name or port, two smokes on one port, or no
 // smoke at all is an error before anything runs.
 //
 //   node scripts/ci/ui-gate-smokes.mjs            run them all (CI: the ui-gate job's "UI gate smokes" step)
@@ -24,6 +24,9 @@ import { fileURLToPath } from "node:url";
 
 export const SMOKE_DIR = "scripts/manual/smoke";
 const MARK = /^\/\/ ui-gate: (.*)$/;
+// A line meant as the marker but not written as it (`//ui-gate:`, `// ui_gate:`, `// UI-Gate :`…): that smoke would
+// silently never run, so it is an error.
+const NEAR = /^\s*\/[/*]\s*ui[-_ ]?gate\s*:/i;
 const KEYS = new Set(["name", "hp"]);
 // `npx tsx <file>`, as each step ran it: tsx's own CLI, from this checkout's devDependency (never a download).
 const TSX = createRequire(import.meta.url).resolve("tsx/cli");
@@ -32,7 +35,9 @@ const TSX = createRequire(import.meta.url).resolve("tsx/cli");
 export function discover(root = process.cwd()) {
   const dir = join(root, SMOKE_DIR), found = [], errors = [];
   for (const f of readdirSync(dir).filter((n) => /\.(mts|mjs|ts|js)$/.test(n)).sort()) {
-    const file = join(SMOKE_DIR, f), lines = readFileSync(join(dir, f), "utf8").split("\n").filter((l) => MARK.test(l));
+    const file = join(SMOKE_DIR, f), all = readFileSync(join(dir, f), "utf8").split("\n"), lines = all.filter((l) => MARK.test(l));
+    const near = all.find((l) => NEAR.test(l) && !MARK.test(l));
+    if (near) { errors.push(`${file}: "${near.trim().slice(0, 40)}" is not written as the marker — exactly "// ui-gate: {…}" at the start of a line`); continue; }
     if (!lines.length) continue;
     if (lines.length > 1) { errors.push(`${file}: more than one "// ui-gate:" line`); continue; }
     let m;
