@@ -37,7 +37,7 @@ export function discover(root = process.cwd()) {
   for (const f of readdirSync(dir).filter((n) => /\.(mts|mjs|ts|js)$/.test(n)).sort()) {
     const file = join(SMOKE_DIR, f), all = readFileSync(join(dir, f), "utf8").split("\n"), lines = all.filter((l) => MARK.test(l));
     const near = all.find((l) => NEAR.test(l) && !MARK.test(l));
-    if (near) { errors.push(`${file}: "${near.trim().slice(0, 40)}" is not written as the marker — exactly "// ui-gate: {…}" at the start of a line`); continue; }
+    if (near) { errors.push(`${file}: "${near.trim().slice(0, 40)}" starts like the marker but is not one — write exactly "// ui-gate: {…}" at the start of a line, or reword a comment that only starts like it`); continue; }
     if (!lines.length) continue;
     if (lines.length > 1) { errors.push(`${file}: more than one "// ui-gate:" line`); continue; }
     let m;

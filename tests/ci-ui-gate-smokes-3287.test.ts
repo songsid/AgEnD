@@ -77,8 +77,9 @@ describe("fails closed", () => {
     ["no smoke at all", { "a.mts": "// no marker\n" }, "no smoke under scripts/manual/smoke"],
     // A smoke meant for the gate whose marker is misspelt would silently never run.
     ["a misspelt marker (no space)", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": `//ui-gate: {"name":"B","hp":20003}\n` }, "b.mts: \"//ui-gate:"],
-    ["a misspelt marker (underscore)", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": `// ui_gate: {"name":"B","hp":20003}\n` }, "is not written as the marker"],
-    ["a misspelt marker (indented, capitals)", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": `  // UI-Gate : {"name":"B","hp":20003}\n` }, "is not written as the marker"],
+    ["a misspelt marker (underscore)", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": `// ui_gate: {"name":"B","hp":20003}\n` }, "starts like the marker but is not one"],
+    ["a comment that only starts like it", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": `// UI gate: this smoke is manual only\n` }, "or reword a comment that only starts like it"],
+    ["a misspelt marker (indented, capitals)", { "a.mts": mark({ name: "A", hp: 20001 }), "b.mts": `  // UI-Gate : {"name":"B","hp":20003}\n` }, "starts like the marker but is not one"],
   ])("%s", (_w, files, msg) => { expect(bad(files)).toContain(msg); });
   it("neighbouring ports are fine (they run one after another), and found smokes come by port", () => {
     const d = root({ "z.mts": mark({ name: "Z", hp: 20001 }), "a.mts": mark({ name: "A", hp: 20002 }), "plain.mts": "// not in the gate\n" });
