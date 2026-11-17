@@ -54,6 +54,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)) return true;
   // #2182: the org canvas's router, libavoid's two files (the route worker itself is under /ui/js/ above).
   if (method === "GET" && LIBAVOID_PATHS.includes(path)) return true;
+  // M-3278 (decision 7933bf90): an admin session's child-agent progress (the handler refuses guests and read sessions).
+  if (method === "GET" && path === "/ui/subagents") return true;
   if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|offices|office-acts|office-levels|traffic|cache|usage-report|prefs|preview-status|steps)$/.test(path)) return true;
   // #2513: the Office view's skin packs, read-only as the offices are (the list, a manifest, its pictures); never uploaded
   // or deleted here (the handler refuses it too).
