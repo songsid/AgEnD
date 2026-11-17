@@ -1,3 +1,4 @@
+import {RoomPurposeField,purposeCount} from "./hub-room-purpose.js";
 // Hub rooms, the New room dialog (docs/design/hub-rooms-ux.md section 6), opened from the list's 「＋ 新房間」 row (shown
 // only to people who may start rooms). Name (required, at most 60 characters), members (people, teams, AD groups; I am
 // always in, as the manager), agents (mine join at once; someone else's are invited and join when their owner agrees;
@@ -79,7 +80,8 @@ export function RoomPicker({ client, kinds, picked, onChange, placeholder, label
 }
 
 /** Props: client, onClose(), onOpenRoom(roomId), assistant (whether the Hub offers the room assistant; read from the list when not given). */
-export function NewRoomDialog({ client = hubClient(), onClose, onOpenRoom, assistant } = {}) {
+export function NewRoomDialog({ client = hubClient(), onClose, onOpenRoom, assistant, purposeSupported=false } = {}) {
+  const [purpose,setPurpose]=useState("");
   const [name, setName] = useState(""), [people, setPeople] = useState([]), [agents, setAgents] = useState([]), [withAssistant, setWithAssistant] = useState(false);
   const [offered, setOffered] = useState(assistant === true), [busy, setBusy] = useState(false), [error, setError] = useState(""), [peopleNote, setPeopleNote] = useState("");
   const nameRef = useRef(null), sent = useRef(false);
@@ -90,13 +92,13 @@ export function NewRoomDialog({ client = hubClient(), onClose, onOpenRoom, assis
     return () => { live = false; };
   }, [client, assistant]);
   const create = async () => {
-    if (sent.current) return;
+    if (sent.current || purposeSupported&&purposeCount(purpose)>200) return;
     const title = name.trim();
     if (!title) { setError(hroom("nameRequired")); nameRef.current?.focus(); return; }
     if ([...title].length > NAME_MAX) { setError(hn("nameTooLong")); nameRef.current?.focus(); return; }
     sent.current = true; setBusy(true); setError(""); setPeopleNote("");
     const ids = (kind, from = people) => from.filter(x => x.kind === kind).map(x => x.id);
-    const r = await client.createRoom({ name: title, people: ids("person"), teams: ids("team"), groups: ids("group"),
+    const r = await client.createRoom({ name: title, ...(purposeSupported?{purpose}:{}), people: ids("person"), teams: ids("team"), groups: ids("group"),
       agents: agents.filter(x => x.kind === "agent" && x.mine).map(x => x.id), assistant: offered && withAssistant });
     const roomId = r?.ok ? r.room?.id : null;
     if (!roomId) {
@@ -118,11 +120,12 @@ export function NewRoomDialog({ client = hubClient(), onClose, onOpenRoom, assis
   const me = html`<li class="tag hub-room-me">${hroom("roleYou")} · ${hroom("roleManager")}</li>`;
   return html`<${Dialog} title=${hroom("newRoomTitle")} onClose=${() => onClose?.()} busy=${busy} cls="hub-room-new"
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${() => onClose?.()}>${hroom("cancel")}</button>
-      <button type="button" class="btn btn-primary" disabled=${busy} onClick=${() => { void create(); }}>${hroom("create")}</button>`}>
+      <button type="button" class="btn btn-primary" disabled=${busy||purposeSupported&&purposeCount(purpose)>200} onClick=${() => { void create(); }}>${hroom("create")}</button>`}>
     <form class="form" onSubmit=${(e) => { e.preventDefault(); void create(); }}>
       <label class="field"><span>${hroom("name")}</span>
         <input id="hubRoomName" ref=${nameRef} maxlength=${NAME_MAX} autocomplete="off" placeholder=${hroom("namePlaceholder")} value=${name}
           aria-invalid=${error === hroom("nameRequired") || error === hn("nameTooLong") ? "true" : "false"} onInput=${(e) => { setName(e.target.value); if (error) setError(""); }} /></label>
+      ${purposeSupported?html`<${RoomPurposeField} value=${purpose} onValue=${setPurpose} disabled=${busy} />`:null}
       ${error ? html`<p class="note hub-room-new-error" role="alert">${error}</p>` : null}
       <${RoomPicker} client=${client} id="hubRoomPeople" kinds=${["person", "team", "group"]} label=${hroom("members")} placeholder=${hroom("addPeople")}
         picked=${people} onChange=${(next) => { setPeople(next); setPeopleNote(""); }} fixed=${me} note=${peopleNote} />

@@ -477,7 +477,7 @@ export function HubSide({ onPick } = {}) {
     ${/* M-3190 (Argon): 新對話 and 新房間 head the conversation list, not the primary rows. */ ""}
     <${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onPick=${onPick} quietEmpty=${home} foot=${roomsLive()}
       onNew=${() => { if (onPick) onPick(); navigate(NEW_CHAT_PATH); }} onNewRoom=${roomsLive() && rs.me?.canCreateRooms ? () => setNewRoom(true) : null} />
-    ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
+    ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant, purposeSupported: roomPurposeLive(),
       onClose: () => setNewRoom(false), onOpenRoom: (id) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(id)); } }} />` : null}`;
 }
 
@@ -524,7 +524,7 @@ function HubHomeList() {
   const filter = useRef(null);
   return html`<${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} home=${true} onNew=${() => navigate(NEW_CHAT_PATH)}
       onNewRoom=${roomsLive() && rs.me?.canCreateRooms ? () => setNewRoom(true) : null} />
-    ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
+    ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant, purposeSupported: roomPurposeLive(),
       onClose: () => setNewRoom(false), onOpenRoom: (id) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(id)); } }} />` : null}`;
 }
 
@@ -656,7 +656,7 @@ function ChatLauncher() {
       <div class="hub-launch-actions">${roomsLive() && rs.me?.canCreateRooms ? html`<button type="button" class="btn btn-primary hub-launch-pill" onClick=${() => setNewRoom(true)}><${Icon} name="room" size=${16} />${hc("launchNewRoom")}</button>` : null}
         <a class="btn hub-launch-pill" href="/ui/hub/exposures" onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); navigate("/ui/hub/exposures"); }}><${Icon} name="globe" size=${16} />${hc("launchShare")}</a></div></section>` : null}
     ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-    ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
+    ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant, purposeSupported: roomPurposeLive(),
       onClose: () => setNewRoom(false), onOpenRoom: (rid) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(rid)); } }} />` : null}`;
   return html`<div class="hub-launch">${groupPolicyOn(s, hubClient())
     ? html`<${LazyGroups} pick=${(m) => m.ChatLauncherFrame || (({ children }) => children)} props=${{ admin: s.admin === true, features: s.features, children: list }} />` : list}</div>`;
@@ -1179,6 +1179,7 @@ function LazyRoomPart({ load, name, props = {} }) {
   return C ? html`<${C} ...${props} />` : null;
 }
 const teamsLive = () => { const c = hubClient(); return typeof c.teamsLive === "function" && c.teamsLive() === true; };
+const roomPurposeLive=()=>session?.features?.includes("room-purpose-v1")&&hubClient().roomPurposeV1===true;
 const roomsLive = () => { const c = hubClient(); return typeof c.roomsLive === "function" && c.roomsLive() === true; };
 function LazyThisHub({ directory }) {
   const [C, setC] = useState(null);

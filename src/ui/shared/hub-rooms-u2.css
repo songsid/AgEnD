@@ -74,3 +74,8 @@
   .hub-source-trigger { min-height: var(--tap); min-width: var(--tap); }
   .hub-room-page .msg .meta { align-items: center; }
 }
+
+/* Purpose stays one line in the header; tapping reads the complete room content. */
+.hub-room-purpose-trigger{display:block;max-width:100%;min-height:24px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:start;border:0;background:none;padding:0;color:var(--text-3);font:inherit;font-size:var(--fs-xs);cursor:pointer}
+.hub-room-purpose-full,.hub-room-purpose-panel p{white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:640px),(pointer:coarse){.hub-room-purpose-trigger{min-height:var(--tap)}}

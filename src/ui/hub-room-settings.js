@@ -1,3 +1,4 @@
+import {RoomPurposeField,purposeCount} from "./hub-room-purpose.js";
 // Hub rooms, Room settings (docs/design/hub-rooms-ux.md section 7), opened from the room's header menu or the members
 // panel's 「房間設定」, for a room manager. Three parts:
 // - 基本: the name, 「成員可以 @所有 Agent」, 「新成員看得到」.
@@ -41,6 +42,9 @@ export function invitedLabel(row) {
 export function RoomSettings({ client = hubClient(), roomId, detail, onClose, onChanged, assistant } = {}) {
   const room = detail?.room ?? {}, settings = detail?.settings ?? {}, members = Array.isArray(detail?.members) ? detail.members : [];
   const invited = Array.isArray(detail?.invited) ? detail.invited : [];
+  const [purpose,setPurpose]=useState(room.purpose??"");
+  useEffect(()=>setPurpose(room.purpose??""),[roomId,room.purpose]);
+  const purposeSupported=client.roomPurposeV1===true&&typeof room.purpose==="string"&&detail?.me?.role==="manager";
   const [name, setName] = useState(room.name ?? ""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [allMention, setAllMention] = useState(settings.allMention !== false), [history, setHistory] = useState(settings.historyForNew === "all" ? "all" : "since-join");
   const [aiApps,setAiApps]=useState(settings.aiApps!==false);
@@ -65,6 +69,10 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
     if (r?.ok) onChanged?.();
     else { undo?.(); if (!refused?.(r)) setError(r?.status === 409 && r.code === "last-manager" ? hroom("lastManager") : hs("saveFailed")); }
     return r;
+  };
+  const savePurpose=()=>{
+    if(!purposeSupported||purposeCount(purpose)>200||purpose===(room.purpose??""))return;
+    void act(()=>client.updateRoom(roomId,{purpose}));
   };
   const saveName = () => {
     const title = name.trim();
@@ -110,6 +118,7 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
         <div class="field-row"><input id="hubRoomSettingsName" maxlength=${NAME_MAX} autocomplete="off" value=${name} onInput=${(e) => setName(e.target.value)} />
           <button type="button" class="btn" disabled=${busy || name.trim() === (room.name ?? "")} onClick=${saveName}>${hs("save")}</button></div>
       </form>
+      ${purposeSupported?html`<form class="form hub-room-purpose-form" onSubmit=${e=>{e.preventDefault();savePurpose();}}><${RoomPurposeField} id="hubRoomSettingsPurpose" value=${purpose} onValue=${setPurpose} disabled=${busy} /><div class="field-row"><button type="submit" class="btn" disabled=${busy||purposeCount(purpose)>200||purpose===(room.purpose??"")}>${hs("save")}</button></div></form>`:null}
       <label class="check"><input id="hubRoomAllMention" class="s-ui-toggle" type="checkbox" role="switch" checked=${allMention} disabled=${busy}
         onChange=${(e) => { const v = e.target.checked; setAllMention(v); void act(() => client.updateRoom(roomId, { allMention: v }), () => setAllMention(!v)); }} /><span>${hroom("membersCanAll")}</span></label>
       ${typeof settings.aiApps==="boolean"&&typeof client.setRoomAiApps==="function"?html`<label class="check"><input id="hubRoomAiApps" class="s-ui-toggle" type="checkbox" role="switch" checked=${aiApps} disabled=${busy}

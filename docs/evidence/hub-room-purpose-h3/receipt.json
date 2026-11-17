@@ -1,0 +1,33 @@
+{
+  "source": "c7dc806ff47bbf21a537833747056428d20b253c",
+  "baseline": false,
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "status": "PASS",
+      "checks": [
+        "create with optional purpose",
+        "header shows purpose",
+        "tap shows full text",
+        "members show purpose",
+        "manager edit saves",
+        "no nested forms or horizontal overflow"
+      ]
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "status": "PASS",
+      "checks": [
+        "create with optional purpose",
+        "header shows purpose",
+        "tap shows full text",
+        "members show purpose",
+        "manager edit saves",
+        "no nested forms or horizontal overflow"
+      ]
+    }
+  ],
+  "pageErrors": [],
+  "foreign": [],
+  "status": "PASS"
+}
