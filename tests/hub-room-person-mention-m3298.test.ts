@@ -66,7 +66,7 @@ it("a page that sends no person ids (an older open tab): the Hub reads \"@Name\"
   expect(notify.notifyKind({ type: "message.added", roomId: w.id, message }, { id: adminMe })).toBe("mention");
 });
 
-it("no one is reminded by code, an email address, an ambiguous name or oneself; agents are still routed only by what was sent", async () => {
+it("no one is reminded by code, an email address, an ambiguous name, oneself or an id the text does not name; agents are still routed only by what was sent", async () => {
   const w = await world(), asAlex = (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}`)).json;
   for (const text of ["`@Hub Admin` is the syntax", "write to alex@Hub Admin.example", "@Alex note to self"]) {
     expect((await post(w.a, w.id, text)).mentions, text).toEqual([]);
@@ -78,6 +78,14 @@ it("no one is reminded by code, an email address, an ambiguous name or oneself; 
   const twins = (await r!.call(w.admin, "POST", "/hub/v1/rooms", { name: "Twins", people: [personKeyString(sam1), personKeyString(sam2)] })).json.room.id as string;
   expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${twins}`)).json.members.filter((m: any) => m.name === "Sam")).toHaveLength(2);
   expect((await post(w.admin, twins, "@Sam which one?")).mentions).toEqual([]);
+  // #4132 review F1: neither the page's pick of one of them nor a crafted id makes it someone — the Hub reads the text.
+  const asAdminTwins = (await r!.call(w.admin, "GET", `/hub/v1/rooms/${twins}`)).json, sams = asAdminTwins.members.filter((m: any) => m.name === "Sam").map((m: any) => m.id);
+  expect(composer.mentionsIn("@Sam which one?", asAdminTwins)).toEqual([]);
+  expect((await post(w.admin, twins, "@Sam this one?", [sams[0]])).mentions).toEqual([]);
+  // A person id the text does not name is not stored (no @ mark, no ping for them).
+  const adminId = asAlex.members.find((m: any) => m.kind === "person" && m.name === "Hub Admin").id;
+  expect((await post(w.a, w.id, "nothing for anyone here", [adminId])).mentions).toEqual([]);
+  expect(await listed(w.admin)).toMatchObject({ mentioned: false });
   // A person @ never asks an agent; an agent @ still does (the routing is what the page sent).
   const before = r!.sent.filter(s => s.frame.type === "room.ask").length;
   await post(w.a, w.id, "@Hub Admin fyi");

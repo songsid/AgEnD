@@ -677,11 +677,15 @@ export class HubGroupRooms {
       if (old) { if (old.digest !== digest || old.sequence < member.joined_sequence) throw new HubRoomRefusal(409, "conflict"); return old; }
       if (body.replyTo && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(body.replyTo, id, member.joined_sequence)) throw new HubRoomRefusal(404, "not-found");
       const refs = files.length ? this.store().pending(db, id, me, files) : [];
-      // M-3298: an "@Name" a person types reminds that person (the room list's @, their page's ping) whichever page sent it —
-      // the people the text names are resolved here as an agent post's are (agentMentions), and kept with what was sent
-      // (an older page sends agents only). Not oneself; an ambiguous name, code and email addresses are no one (mentions.ts).
-      const people = resolveRoomMentions(body.text, this.mentionMembers(db, id), "").people.filter(p => p !== member.id && !body.mentions.includes(p));
-      const post = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name: this.name(db, me) }, body.text, [...body.mentions, ...people], body.idempotencyKey, digest, body.replyTo ?? null);
+      // M-3298: an "@Name" a person types reminds that person (the room list's @, their page's ping). The Hub alone says who:
+      // the people the text names, resolved as an agent post's are (agentMentions) — not oneself; an ambiguous name, code and
+      // email addresses are no one (mentions.ts). Of what the page sent only what routes is kept (@all, the assistant, the
+      // room's agents): a person id in it is never taken on trust (#4132 review F1: a page's pick of one of two same-named
+      // people, or a crafted id the text does not name, would remind someone the text did not).
+      const agentIds = new Set((db.prepare("SELECT subject FROM hub_room_members WHERE room_id=? AND kind='agent'").all(id) as { subject: string }[]).map(m => m.subject));
+      const routed = body.mentions.filter(m => m === "all" || m === "assistant" || agentIds.has(m));
+      const people = resolveRoomMentions(body.text, this.mentionMembers(db, id), "").people.filter(p => p !== member.id);
+      const post = this.insert(db, tx, id, { kind: "person", id: member.id, subject: me, name: this.name(db, me) }, body.text, [...new Set([...routed, ...people])], body.idempotencyKey, digest, body.replyTo ?? null);
       if(ctx.application)db.prepare("INSERT INTO hub_mcp_room_posts VALUES(?,?,?)").run(post.id,ctx.application.id,ctx.application.name);
       if (refs.length) this.store().bindPost(db, refs, post.id);
       if(ctx.application){if(!this.core.deps.content.bindMessage)throw new HubProtocolError("unavailable");this.core.deps.content.bindMessage(tx,post.content_ref,post.id);}

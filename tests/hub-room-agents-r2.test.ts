@@ -195,7 +195,8 @@ it("M-3260: an answer moves past a read of its waiting row; read by its own id, 
 
 it("keeps a person's @ reminder separate from agent routing", async () => {
   const w = await world(), detail = (await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}`)).json;
-  const me = detail.me.id; await send(w, "For you", [me]);
+  // M-3298 (#4132 review F1): the Hub reads who a person's @ reminds from the text; a person id the page sends is not trusted.
+  const me = detail.me.id; await send(w, "@Hub Admin for you", [me]);
   expect(asks()).toHaveLength(0);
   expect((await r!.call(w.admin, "GET", "/hub/v1/rooms?v=2")).json.rooms[0]).toMatchObject({ unread: 1, mentioned: true });
 });

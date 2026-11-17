@@ -54,7 +54,8 @@ const atName = (name, flags = "", person = false) =>
  * The mentions a text names (spec seam 1: "all", "assistant" or an agent's exposure id), read from the text as sent.
  * M-3298: and each person it @s (their member id) — the reminder the @ menu promises: their room list's @ and their page's
  * ping (hub-room-unread.js) read it from the message's mentions. A longer name is read first, so "@Alex Chen" is not also
- * "@Alex"; never me. (The Hub resolves "@Name" for people from the text too, for a page that does not send them.)
+ * "@Alex"; never me; a name two members share, no one. It is the page's preview: the Hub resolves who a person's @ reminds
+ * from the text itself (hub/rooms/service.ts post()), and keeps from what a page sends only what routes (@all, assistant, agents).
  */
 export function mentionsIn(text, detail) {
   const s = String(text || ""), out = [];
@@ -64,10 +65,13 @@ export function mentionsIn(text, detail) {
   const me = detail?.me?.id, named = [...agentsOf(detail).map((a) => ({ name: a.name, person: null })),
     ...(detail?.members || []).filter((m) => m.kind === "person" && m.name).map((m) => ({ name: m.name, person: m.id }))]
     .sort((x, y) => String(y.name).length - String(x.name).length);
+  // A name two members share names no one (as the Hub reads it, #4132 review F1): the Hub decides who is reminded.
+  const shared = new Map();
+  for (const n of named) { const k = String(n.name).toLocaleLowerCase("en-US"); shared.set(k, (shared.get(k) || 0) + 1); }
   let rest = s;
   for (const n of named) {
     if (!atName(n.name, "", !!n.person).test(rest)) continue;
-    if (n.person && n.person !== me) out.push(n.person);
+    if (n.person && n.person !== me && shared.get(String(n.name).toLocaleLowerCase("en-US")) === 1) out.push(n.person);
     rest = rest.replace(atName(n.name, "g", !!n.person), (hit) => " ".repeat(hit.length));
   }
   return [...new Set(out)];
