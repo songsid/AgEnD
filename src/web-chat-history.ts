@@ -1,3 +1,4 @@
+import { replyPreviews, type ReplyPreviewSpec } from "./reply-preview-spec.js";
 /**
  * What the web chat has said, kept so that a reload — or a dropped SSE stream — does not leave the chat empty.
  *
@@ -102,6 +103,8 @@ export interface WebChatMessage {
   attachments?: Array<WebChatAttachment | WebChatGoneAttachment>;
   /** #1266: an agent reply's buttons (agent messages only). */
   buttons?: WebChatButtons;
+  /** Inert relative file references, delivered by the agent; read only after an admin clicks. */
+  previews?: ReplyPreviewSpec[];
   /**
    * A person's click on a reply button (user messages only): the page shows the button's label as a chip instead of
    * `text` — the line the agent was given, value and all. `of`: the buttons' set id, to link to the reply (live only).
@@ -288,6 +291,7 @@ export interface WebChatHistoryOptions {
 
 /** #1565: a message as it is kept on disk — what was said, never the interactive state; files with their paths. */
 export interface StoredWebChatMessage {
+  previews?: ReplyPreviewSpec[];
   boot: string;
   id: number;
   instance: string;
@@ -409,7 +413,7 @@ export class WebChatHistory {
   private stored(m: WebChatMessage): StoredWebChatMessage {
     const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.anchor ? { anchor: m.anchor } : {}), ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
       ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
-      ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}) };
+      ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}), ...(m.role === "agent" && m.previews?.length ? { previews: m.previews } : {}) };
     if (nativeHistoryMessageId(m.messageId, m.role)) row.messageId = m.messageId;
     const posts = this.posts.get(m);
     if (posts?.length) row.posts = posts.map(p => ({ ...p }));
@@ -516,7 +520,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
     return this.recordEntry(msg);
   }
 
@@ -548,6 +552,8 @@ export class WebChatHistory {
     if (anchor && ANCHOR_ID.test(anchor)) entry.anchor = anchor.slice(0, 80);
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
+    const previews = entry.role === "agent" ? replyPreviews(msg.previews) : null;
+    if (previews?.length) entry.previews = previews;
     const click = entry.role === "user" ? webChatClick(msg.click) : undefined;
     if (click) entry.click = click;
     // #1990: only a status line (the server's own text) links; never an agent's or a person's message.
@@ -977,6 +983,8 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   // The role as stored — a person's message unless it is one of the three; never upgraded to `agent`.
   const role: WebChatRole = typeof r.role === "string" && ROLES.has(r.role) ? r.role as WebChatRole : "user";
   const message: WebChatMessage = { boot: r.boot, id: r.id, instance, role, sender: r.sender.slice(0, 256), text: r.text.slice(0, WEB_CHAT_TEXT_MAX), ts: r.ts.slice(0, 64) };
+  const previews = role === "agent" ? replyPreviews(r.previews) : null;
+  if (previews?.length) message.previews = previews;
   if (nativeHistoryMessageId(r.messageId,role)) message.messageId=r.messageId;
   // A click comes back as its label only (the link to its buttons belonged to the process that ended).
   const click = role === "user" ? webChatClick(r.click) : undefined;

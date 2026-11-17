@@ -74,6 +74,8 @@ import { PAGE_SHARE_LIMITS, htmlFences, htmlTitle } from "./page-share.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import { workspaceChanges, workspaceFile, workspaceFileDiff, workspaceImage, workspaceList, workspaceRoot, WorkspaceError } from "./agent-workspace.js";
+import { readReplyPreview, ReplyPreviewError } from "./reply-preview-files.js";
+import { REMOTE_PREVIEW_REFUSAL } from "./reply-preview-spec.js";
 import { resolveFollowSteps, type FollowStep } from "./workspace-follow.js";
 import { isGeneralInstance } from "./general-instance.js";
 import { resolveToolSet } from "./tool-permissions.js";
@@ -2531,6 +2533,35 @@ export function handleWebRequest(
       if (localAdmin()?.handle !== who.handle) { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
       json(res, 200, view);
     }, err => { ctx.logger.error({ err: (err as Error).message }, "Accounts view failed"); json(res, 500, { error: "could not read the accounts" }); });
+    return true;
+  }
+
+  // M-3283: one reply-linked file, for an admin session on any listener. No folder listing or gateway refusal.
+  if (method === "GET" && path === "/ui/reply-preview") {
+    res.setHeader("Cache-Control", "private, no-store"); res.setHeader("X-Content-Type-Options", "nosniff");
+    const admin = () => { const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false }); return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null; };
+    const who = admin(); if (!who) { json(res, 403, { error: "preview_needs_admin" }); return true; }
+    const p = url.searchParams, instance = p.get("instance") ?? "", op = p.get("op") ?? "meta";
+    const cfg = ctx.fleetConfig?.instances && Object.hasOwn(ctx.fleetConfig.instances, instance) ? ctx.fleetConfig.instances[instance] : undefined;
+    if (!cfg) { json(res, 404, { error: "not_found" }); return true; }
+    if (cfg.runtime === "windows" || cfg.machine_id) { json(res, 403, { error: "preview_remote_unavailable", message: REMOTE_PREVIEW_REFUSAL }); return true; }
+    if (op !== "meta" && op !== "raw") { json(res, 400, { error: "invalid" }); return true; }
+    const wd = String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
+    const current = () => admin()?.handle === who.handle && ctx.fleetConfig?.instances[instance] === cfg && String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~") === wd && cfg.runtime !== "windows" && !cfg.machine_id;
+    void (async () => {
+      try {
+        const r = await readReplyPreview(wd, getAgendHome(), p.get("path"), op === "raw", current, req.headers.range); if (!current()) throw new ReplyPreviewError("preview_changed");
+        if (r.kind === "meta") { json(res, 200, r.body); return; }
+        res.setHeader("Content-Security-Policy", r.mime === "application/pdf" ? "default-src 'none'" : "default-src 'none'; sandbox");
+        res.setHeader("Content-Type", r.mime); res.setHeader("Content-Length", String(r.bytes.length)); res.setHeader("Accept-Ranges", "bytes");
+        if (r.partial) res.setHeader("Content-Range", `bytes ${r.start}-${r.end}/${r.size}`);
+        res.writeHead(r.partial ? 206 : 200); res.end(r.bytes);
+      } catch (error) {
+        const e = error instanceof ReplyPreviewError ? error : new ReplyPreviewError("unavailable");
+        if (e.code === "range_not_satisfiable") res.setHeader("Content-Range", `bytes */${e.size}`);
+        json(res, e.code === "not_found" || e.code === "not_a_directory" ? 404 : e.code === "range_not_satisfiable" ? 416 : e.code === "too_large" ? 413 : e.code === "unavailable" ? 503 : 403, { error: e.code });
+      }
+    })();
     return true;
   }
 

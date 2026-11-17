@@ -128,12 +128,18 @@ async function main(): Promise<void> {
     // Channel
     case "reply": {
       // --sticker <id> (repeatable, up to 3; #1226) may come anywhere; the rest is <text> [files…].
-      const { flags, positional } = splitFlags(rest, ["--sticker"]);
+      const { flags, positional } = splitFlags(rest, ["--sticker", "--previews"]);
       const stickers = flags["--sticker"] ?? [];
+      let previews;
+      if (flags["--previews"]) {
+        try { previews = JSON.parse(flags["--previews"].at(-1)!); } catch { previews = null; }
+        if (!Array.isArray(previews)) throw new Error("--previews must be a JSON array of relative paths and valid line ranges");
+      }
       args = {
         text: positional[0] ?? "",
         ...(positional.length > 1 ? { files: positional.slice(1) } : {}),
         ...(stickers.length ? { stickers } : {}),
+        ...(previews ? { previews } : {}),
       };
       break;
     }

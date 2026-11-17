@@ -1,3 +1,4 @@
+import { replyPreviews } from "./reply-preview-spec.js";
 import { settingsSummary, translatedSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 import { readInstalledBuild } from "./build-provenance.js";
 import { buildNativeFleetInstructions } from "./instructions.js";
@@ -14354,6 +14355,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // still in flight and about to succeed. One real send, everyone gets its
     // outcome; a genuinely failed send clears the entry so a retry passes.
     if (tool === "reply") {
+      if (!replyPreviews(args.previews)) { respond(null, "reply: invalid previews"); return; }
       // Registered synchronously before a web message is handed to this CLI.
       // This waits only on display ordering, never on the web delivery itself.
       const echoTail = this.webChannelEchoTails.get(instanceName)?.tail;
@@ -14526,6 +14528,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
+  captureReplyPreview(instance: string, args: Record<string, unknown>): ((result: unknown) => void) | undefined {
+    if (!replyPreviews(args.previews)?.length) return undefined;
+    const identity = this.webChatIdentity(instance);
+    return result => { void this.afterReplyRouted(instance, args, instance, null, false, undefined, identity, result); };
+  }
+
   private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, sentAs?: { adapterId: string; result: unknown }, identity: WebChatIdentity = this.webChatIdentity(instanceName), replyResult: unknown = sentAs?.result): Promise<void> {
     // AGEND-181: the id the reply call returned (also on a fleet with no adapter: web-only), the row's anchor.
     const returned = replyResult && typeof replyResult === "object" ? (replyResult as { messageId?: unknown }).messageId : undefined;
@@ -14574,6 +14582,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ts,
         ...(attachments.length ? { attachments } : {}),
         ...(buttons ? { buttons } : {}),                 // #1266
+        ...(replyPreviews(args.previews)?.length ? { previews: replyPreviews(args.previews) } : {}),
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
         ...(post ? { posts: [post] } : {}),              // #2281
         ...(typeof returned === "string" && returned ? { anchor: returned } : {}),   // AGEND-181: what the reply call returned
@@ -23635,7 +23644,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -23643,6 +23652,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         anchor: typeof m.anchor === "string" ? m.anchor : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
+        previews: m.previews,
         click: m.click,
         links: m.links,
         channel: m.channel,

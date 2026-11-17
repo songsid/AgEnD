@@ -5,6 +5,7 @@
  * and JSON Schema generation for MCP tool listings (in channel/mcp-tools.ts).
  */
 import { z } from "zod";
+import { ReplyPreviewsSchema } from "./reply-preview-spec.js";
 
 // ── Shared field schemas ────────────────────────────────────────────────
 // Reused across multiple tools; declaring once avoids drift.
@@ -46,6 +47,7 @@ export const ReplyArgs = z.object({
     .describe("The message. Required unless you send stickers; with stickers it may be omitted."),
   reply_to: z.string().optional()
     .describe("Message ID to thread under. Use message_id from the inbound block."),
+  previews: ReplyPreviewsSchema.optional().describe("After editing code, add Preview buttons in the web chat: [{path:'src/app.ts',line:1000,endLine:1002}]. Paths are relative to your own working folder; no .., absolute paths or symlinks. Up to 10. Code/text opens at the highlighted line; images, Markdown and PDF use their viewers. Admin sessions only; Discord/Telegram show plain path:line. Files on a paired Windows computer are not supported yet."),
   files: z.array(z.string()).optional()
     .describe("Absolute file paths to attach (at most 20). Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that. For HTML the web chat should preview, attach a .html file (it previews at once up to 8 MB, after the person confirms up to 50 MB) rather than pasting the page into text: a long ```html block is split on Discord/Telegram; keep ```html blocks for short snippets. The preview has no network: inline libraries, unless the fleet allows CDN ones (web.preview_cdn: cdnjs /ajax/libs/, jsDelivr /npm/)."),
   format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),

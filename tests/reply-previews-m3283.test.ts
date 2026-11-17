@@ -1,0 +1,106 @@
+import { createServer, request, type Server } from "node:http";
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import * as fsAsync from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ReplyArgs } from "../src/outbound-schemas.js";
+import { handleWebRequest } from "../src/web-api.js";
+import { WebSessionStore, tokenEpoch } from "../src/web-session.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
+
+vi.mock("node:fs/promises", async original => { const fs = await original<typeof import("node:fs/promises")>(); return { ...fs, open: vi.fn(fs.open) }; });
+const token = "c".repeat(48), exposureId = "a".repeat(32), sessions = new WebSessionStore();
+let server: Server, port: number, dir: string, root: string, ctx: any;
+const session = (tier: "admin" | "read" | "guest", gateway: boolean) => sessions.create({ tier, surface: gateway ? "gateway" : "local", label: "fixture", tokenEpoch: tokenEpoch(token), ...(gateway ? { exposureId } : {}), ...(tier === "guest" ? { owner: { adapterId: "discord", userId: "900000000000000099" } } : {}) }).sessionId;
+async function get(path: string, opts: { tier?: "admin" | "read" | "guest"; gateway?: boolean; anonymous?: boolean; range?: string } = {}): Promise<{ status: number; body: Buffer; headers: Record<string, unknown> }> {
+  const gateway = opts.gateway === true;
+  return new Promise((resolve, reject) => {
+    const req = request({ host: "127.0.0.1", port, path, headers: { host: gateway ? "fleet.example.com" : `127.0.0.1:${port}`, ...(!opts.anonymous ? { cookie: `${gateway ? "__Host-" : ""}agend_session=${session(opts.tier ?? "admin", gateway)}` } : {}), ...(gateway ? { "x-rig-gateway": "1" } : {}), ...(opts.range ? { range: opts.range } : {}) } }, res => {
+      const chunks: Buffer[] = []; res.on("data", b => chunks.push(Buffer.from(b))); res.on("end", () => resolve({ status: res.statusCode!, body: Buffer.concat(chunks), headers: res.headers }));
+    }); req.on("error", reject); req.end();
+  });
+}
+const endpoint = (path: string, op = "meta") => "/ui/reply-preview?" + new URLSearchParams({ instance: "agent-alpha", path, op });
+beforeAll(async () => {
+  server = createServer((req, res) => {
+    if (req.headers["x-rig-gateway"] === "1") bindGatewayRequest(req, { surface: "gateway", exposureId, expectedOrigin: "https://fleet.example.com", isCurrent: () => true });
+    if (!handleWebRequest(req, res, new URL(req.url ?? "/", `http://127.0.0.1:${port}`), ctx)) { res.writeHead(404); res.end('{"error":"not_found"}'); }
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve)); port = (server.address() as { port: number }).port;
+});
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), "reply-preview-")); root = join(dir, "project"); mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(join(root, "src/app.ts"), "export const changed = true;\n"); writeFileSync(join(dir, "outside.txt"), "Outside fixture text");
+  ctx = { webToken: token, webSessions: sessions, fleetConfig: { instances: { "agent-alpha": { backend: "codex", working_directory: root } } }, daemons: new Map(), logger: { info() {}, debug() {}, warn() {}, error() {} } };
+});
+afterEach(() => { vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
+afterAll(async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); });
+
+describe("M-3283 reply preview arguments", () => {
+  it("keeps structured relative paths and inclusive line ranges", () => {
+    const previews = [{ path: "src/app.ts", line: 1000, endLine: 1002 }];
+    expect((ReplyArgs.parse({ text: "Changed the code.", previews }) as any).previews).toEqual(previews);
+  });
+  it.each(["../outside.txt", "/tmp/outside.txt", "C:/outside.txt", "src/../app.ts", "src\\app.ts", "file:///tmp/app.ts", "src/app.ts\u0000"])("refuses a non-relative or traversing preview path: %s", path => {
+    expect(ReplyArgs.safeParse({ text: "Changed.", previews: [{ path }] }).success).toBe(false);
+  });
+  it.each([{ line: 0 }, { line: -1 }, { line: 3, endLine: 2 }, { endLine: 5 }])("refuses an invalid line range %j", range => {
+    expect(ReplyArgs.safeParse({ text: "Changed.", previews: [{ path: "src/app.ts", ...range }] }).success).toBe(false);
+  });
+});
+describe("M-3283 the narrow preview read path", () => {
+  it.each([false, true])("reads only the agent's file for an admin session (gateway=%s)", async gateway => {
+    const r = await get(endpoint("src/app.ts"), { gateway });
+    expect(r.status).toBe(200); expect(JSON.parse(r.body.toString())).toMatchObject({ kind: "text", path: "src/app.ts", text: "export const changed = true;\n" });
+  });
+  it.each(["guest", "read"] as const)("refuses %s sessions on either listener", async tier => {
+    for (const gateway of [false, true]) { const r = await get(endpoint("src/app.ts"), { tier, gateway }); expect(r.status).toBeGreaterThanOrEqual(400); expect(r.body.toString()).not.toContain("export const"); }
+  });
+  it("refuses anonymous requests", async () => { expect((await get(endpoint("src/app.ts"), { anonymous: true })).status).toBeGreaterThanOrEqual(400); });
+  it.each(["../outside.txt", "src/../../outside.txt", "/etc/passwd", "C:/Windows/example.txt"])("does not read a path outside the folder: %s", async path => {
+    const r = await get(endpoint(path)); expect(r.status).toBeGreaterThanOrEqual(400); expect(r.body.toString()).not.toContain("Outside fixture text");
+  });
+  it.skipIf(process.platform === "win32")("refuses a final or parent symlink escape", async () => {
+    symlinkSync(join(dir, "outside.txt"), join(root, "linked.txt")); symlinkSync(dir, join(root, "linked-dir"));
+    for (const path of ["linked.txt", "linked-dir/outside.txt"]) { const r = await get(endpoint(path)); expect(r.status).toBeGreaterThanOrEqual(400); expect(r.body.toString()).not.toContain("Outside fixture text"); }
+  });
+  it("reports a missing file without exposing absolute host paths", async () => {
+    const r = await get(endpoint("missing.txt")); expect(r.status).toBe(404); expect(JSON.parse(r.body.toString()).error).toBe("not_found"); expect(r.body.toString()).not.toContain(root);
+  });
+});
+
+describe("asset and current-binding controls", () => {
+  it("serves a local image and bounded PDF byte ranges without exposing text as raw HTML", async () => {
+    writeFileSync(join(root, "picture.png"), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const pdf = "%PDF-1.4\nExample fixture\n"; writeFileSync(join(root, "example.pdf"), pdf);
+    expect(JSON.parse((await get(endpoint("picture.png"))).body.toString()).kind).toBe("image");
+    const image = await get(endpoint("picture.png", "raw")); expect(image.status).toBe(200); expect(image.headers["content-type"]).toBe("image/png"); expect(image.headers["cache-control"]).toContain("no-store");
+    const part = await get(endpoint("example.pdf", "raw"), { range: "bytes=0-4", gateway: true });
+    expect(part.status).toBe(206); expect(part.body.toString()).toBe("%PDF-"); expect(part.headers["content-range"]).toBe(`bytes 0-4/${Buffer.byteLength(pdf)}`);
+    expect((await get(endpoint("example.pdf", "raw"), { range: "bytes=999999-" })).status).toBe(416);
+    expect((await get(endpoint("src/app.ts", "raw"))).status).toBeGreaterThanOrEqual(400);
+  });
+  it("rejects fake PDFs and hidden credentials", async () => {
+    writeFileSync(join(root, "fake.pdf"), "ordinary text"); writeFileSync(join(root, ".env"), "EXAMPLE_SECRET=fixture");
+    for (const path of ["fake.pdf", ".env"]) expect((await get(endpoint(path))).status).toBeGreaterThanOrEqual(400);
+  });
+  it("returns the agreed explicit remote Windows limitation", async () => {
+    ctx.fleetConfig.instances["agent-alpha"].runtime = "windows";
+    const r = await get(endpoint("src/app.ts")); expect(r.status).toBe(403); expect(JSON.parse(r.body.toString()).message).toBe("previews of files on a paired Windows computer aren't available yet");
+  });
+});
+
+describe("async read fences", () => {
+  it("drops a read if the configured working folder changes while opening the file", async () => {
+    const realOpen = (await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")).open;
+    vi.mocked(fsAsync.open).mockImplementation((async (...args: Parameters<typeof fsAsync.open>) => {
+      const handle = await realOpen(...args);
+      ctx.fleetConfig.instances["agent-alpha"].working_directory = join(dir, "other-project");
+      return handle;
+    }) as typeof fsAsync.open);
+    const r = await get(endpoint("src/app.ts"));
+    expect(r.status).toBeGreaterThanOrEqual(400); expect(r.body.toString()).not.toContain("export const"); expect(JSON.parse(r.body.toString()).error).toBe("preview_changed");
+    vi.mocked(fsAsync.open).mockImplementation(realOpen);
+  });
+});
