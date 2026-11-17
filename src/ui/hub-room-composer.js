@@ -46,12 +46,34 @@ export function mentionOptions(detail, query = "") {
   return out;
 }
 
-/** The mentions a text names (spec seam 1: "all", "assistant" or an agent's exposure id), read from the text as sent. */
+// `@Name` not followed by an ASCII word character or `-` (as agents have always been read: "@研發助理幫我看" names it, no
+// space needed). `person`: also not after an ASCII letter, digit, `_`, `@` or `\` — an email address or an escaped @ names no one.
+const atName = (name, flags = "", person = false) =>
+  new RegExp(`${person ? "(?<![A-Za-z0-9_@\\\\])" : ""}@${String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`, flags);
+/**
+ * The mentions a text names (spec seam 1: "all", "assistant" or an agent's exposure id), read from the text as sent.
+ * M-3298: and each person it @s (their member id) — the reminder the @ menu promises: their room list's @ and their page's
+ * ping (hub-room-unread.js) read it from the message's mentions. A longer name is read first, so "@Alex Chen" is not also
+ * "@Alex"; never me; a name two members share, no one. It is the page's preview: the Hub resolves who a person's @ reminds
+ * from the text itself (hub/rooms/service.ts post()), and keeps from what a page sends only what routes (@all, assistant, agents).
+ */
 export function mentionsIn(text, detail) {
   const s = String(text || ""), out = [];
   if (s.includes(hroom("mentionAll"))) out.push("all");
   if (s.includes(hroom("mentionAssistant"))) out.push("assistant");
-  for (const a of agentsOf(detail)) if (new RegExp(`@${a.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(s)) out.push(a.id);
+  for (const a of agentsOf(detail)) if (atName(a.name).test(s)) out.push(a.id);
+  const me = detail?.me?.id, named = [...agentsOf(detail).map((a) => ({ name: a.name, person: null })),
+    ...(detail?.members || []).filter((m) => m.kind === "person" && m.name).map((m) => ({ name: m.name, person: m.id }))]
+    .sort((x, y) => String(y.name).length - String(x.name).length);
+  // A name two members share names no one (as the Hub reads it, #4132 review F1): the Hub decides who is reminded.
+  const shared = new Map();
+  for (const n of named) { const k = String(n.name).toLocaleLowerCase("en-US"); shared.set(k, (shared.get(k) || 0) + 1); }
+  let rest = s;
+  for (const n of named) {
+    if (!atName(n.name, "", !!n.person).test(rest)) continue;
+    if (n.person && n.person !== me && shared.get(String(n.name).toLocaleLowerCase("en-US")) === 1) out.push(n.person);
+    rest = rest.replace(atName(n.name, "g", !!n.person), (hit) => " ".repeat(hit.length));
+  }
   return [...new Set(out)];
 }
 
