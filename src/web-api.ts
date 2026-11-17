@@ -2567,7 +2567,8 @@ export function handleWebRequest(
       try {
         const r = await readReplyPreview(wd, getAgendHome(), p.get("path"), op === "raw", current, req.headers.range); if (!current()) throw new ReplyPreviewError("preview_changed");
         if (r.kind === "meta") { json(res, 200, r.body); return; }
-        res.setHeader("Content-Security-Policy", r.mime === "application/pdf" ? "default-src 'none'" : "default-src 'none'; sandbox");
+        if (r.mime === "application/pdf") res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        res.setHeader("Content-Security-Policy", r.mime === "application/pdf" ? "default-src 'none'; frame-ancestors 'self'" : "default-src 'none'; sandbox");
         res.setHeader("Content-Type", r.mime); res.setHeader("Content-Length", String(r.bytes.length)); res.setHeader("Accept-Ranges", "bytes");
         if (r.partial) res.setHeader("Content-Range", `bytes ${r.start}-${r.end}/${r.size}`);
         res.writeHead(r.partial ? 206 : 200); res.end(r.bytes);

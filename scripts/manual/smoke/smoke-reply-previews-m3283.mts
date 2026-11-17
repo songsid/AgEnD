@@ -66,6 +66,7 @@ try {
           }
           writeFileSync(join(process.env.OUT!, `pdf-diagnostic-${device}.json`), JSON.stringify(diagnostic, null, 2));
         }
+        if (diagnostic.some((row: any) => row.console && /Refused to (?:display|frame|load)/.test(row.console))) throw Error("Browser refused the PDF preview: " + JSON.stringify(diagnostic));
         await page.screenshot({ path: shotPath(tag, `${device}-${c.lang}`, "pdf") });
         await page.keyboard.press("Escape");
         if (!process.env.RETAKE) {

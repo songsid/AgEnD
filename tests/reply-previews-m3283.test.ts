@@ -24,6 +24,7 @@ async function get(path: string, opts: { tier?: "admin" | "read" | "guest"; gate
 const endpoint = (path: string, op = "meta") => "/ui/reply-preview?" + new URLSearchParams({ instance: "agent-alpha", path, op });
 beforeAll(async () => {
   server = createServer((req, res) => {
+    res.setHeader("X-Frame-Options", "DENY"); // The real dashboard host guard default.
     if (req.headers["x-rig-gateway"] === "1") bindGatewayRequest(req, { surface: "gateway", exposureId, expectedOrigin: "https://fleet.example.com", isCurrent: () => true });
     if (req.url === "/ui/rig-shell") { serveAppShell(req, res, ctx, "full"); return; }
     if (!handleWebRequest(req, res, new URL(req.url ?? "/", `http://127.0.0.1:${port}`), ctx)) { res.writeHead(404); res.end('{"error":"not_found"}'); }
@@ -79,6 +80,9 @@ describe("asset and current-binding controls", () => {
     const image = await get(endpoint("picture.png", "raw")); expect(image.status).toBe(200); expect(image.headers["content-type"]).toBe("image/png"); expect(image.headers["cache-control"]).toContain("no-store");
     const part = await get(endpoint("example.pdf", "raw"), { range: "bytes=0-4", gateway: true });
     expect(part.status).toBe(206); expect(part.body.toString()).toBe("%PDF-"); expect(part.headers["content-range"]).toBe(`bytes 0-4/${Buffer.byteLength(pdf)}`);
+    expect(part.headers["x-frame-options"]).toBe("SAMEORIGIN");
+    expect(part.headers["content-security-policy"]).toContain("frame-ancestors 'self'");
+    expect(image.headers["x-frame-options"]).toBe("DENY");
     expect((await get(endpoint("example.pdf", "raw"), { range: "bytes=999999-" })).status).toBe(416);
     expect((await get(endpoint("src/app.ts", "raw"))).status).toBeGreaterThanOrEqual(400);
   });
