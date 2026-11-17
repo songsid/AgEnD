@@ -1,0 +1,122 @@
+{
+ "cases": {
+  "desk-light-en": {
+   "mounted": true,
+   "toggle:shown": true,
+   "toggle:on by default": true,
+   "person found": {
+    "pass": true,
+    "detail": {
+     "x": 884,
+     "y": 446
+    }
+   },
+   "carried: someone is drawn at the pointer (the spot differs from before the drag)": true,
+   "drop: no card opens": true,
+   "they walk off the drop point": true,
+   "card: Pat and Feed": true,
+   "local only: no request but a GET while dragging, patting and feeding": {
+    "pass": true,
+    "detail": []
+   },
+   "tell: off by default": true,
+   "tell on: one POST /ui/office-tell per pat": {
+    "pass": true,
+    "detail": [
+     {
+      "method": "POST",
+      "url": "/ui/office-tell"
+     }
+    ]
+   },
+   "tell on: queued as [Office] … patted your head (for the next message)": {
+    "pass": true,
+    "detail": "[Office] Demo Person 1 patted your head"
+   },
+   "tell off again: nothing sent": true,
+   "toggle off: kept here": true,
+   "toggle off: no Pat/Feed": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-dark-zh-TW": {
+   "mounted": true,
+   "toggle:shown": true,
+   "toggle:on by default": true,
+   "person found": {
+    "pass": true,
+    "detail": {
+     "x": 884,
+     "y": 446
+    }
+   },
+   "carried: someone is drawn at the pointer (the spot differs from before the drag)": true,
+   "drop: no card opens": true,
+   "they walk off the drop point": true,
+   "card: Pat and Feed": true,
+   "local only: no request but a GET while dragging, patting and feeding": {
+    "pass": true,
+    "detail": []
+   },
+   "tell: off by default": true,
+   "tell on: one POST /ui/office-tell per pat": {
+    "pass": true,
+    "detail": [
+     {
+      "method": "POST",
+      "url": "/ui/office-tell"
+     }
+    ]
+   },
+   "tell on: queued as [Office] … patted your head (for the next message)": {
+    "pass": true,
+    "detail": "[Office] Demo Person 1 patted your head, Demo Person 2 patted your head"
+   },
+   "tell off again: nothing sent": true,
+   "toggle off: kept here": true,
+   "toggle off: no Pat/Feed": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-light-en-reduced": {
+   "mounted": true,
+   "toggle:shown": true,
+   "reduced:toggle off and locked": true,
+   "reduced:person found": true,
+   "reduced:card has no Pat/Feed": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-light-en": {
+   "mounted": true,
+   "toggle:on by default (none stored)": true,
+   "person found (tap)": {
+    "pass": true,
+    "detail": {
+     "x": 212,
+     "y": 424
+    }
+   },
+   "drop: no card opens": true,
+   "local only: no request but a GET": {
+    "pass": true,
+    "detail": []
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  }
+ },
+ "pass": true
+}
