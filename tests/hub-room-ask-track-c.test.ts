@@ -335,3 +335,8 @@ it("counts only handed-off room asks as private model work, avoiding a queued-in
  f.adapter.accept(f.ask,f.link);expect(f.adapter.hasOpenQuestion("existing-agent")).toBe(false);go.resolve(true);await f.adapter.settled();expect(f.adapter.hasOpenQuestion("existing-agent")).toBe(true);
  expect(await f.report()).toMatchObject({ok:true});expect(f.adapter.hasOpenQuestion("existing-agent")).toBe(false);
 });
+
+it("M3300 H7 adapter renders each ask with the current configured history limit",async()=>{
+ const f=member();let limit=512;f.options.maxCrossInstanceMessageBytes=()=>limit;f.ask.context=Array.from({length:10},(_,i)=>({author:"A colleague",text:String(i)+"x".repeat(1000),at:i+1}));
+ for(const expected of [512,4096]){limit=expected;f.adapter.accept({...f.ask,messageId:randomUUID()},f.link);await f.adapter.settled();const parsed=JSON.parse(f.inputs.at(-1)!.text.split("```json\n")[1]!.split("\n```")[0]!);expect(Buffer.byteLength(JSON.stringify({context:parsed.context},null,2))).toBeLessThanOrEqual(expected);expect(parsed.question.text).toBe(f.ask.text);}
+});

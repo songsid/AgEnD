@@ -1,0 +1,70 @@
+{
+  "baseline": "13abcddd878d801da8bb7c1cf352a3b84ac50929",
+  "head": "13abcddd878d801da8bb7c1cf352a3b84ac50929",
+  "dirty": true,
+  "tmuxVersion": "tmux 3.7b",
+  "mock": "Python raw-mode byte receiver; tmux LF-to-CR translation is normalized before logical comparison; no vendor process",
+  "socketScope": "per-run owned private socket only",
+  "sourceHashes": {
+    "src/hub/member/room-ask.ts": "fb3b5fd0a7fa4073f25b13c7eb05eda7272fb19e1a79da73b0ed5be7583fa337",
+    "src/hub/member/room-context-budget.ts": "3c07c85afd2a9e6ed29c4b51037b603c8ec9ee97f9d8109e2f21be9948582c68",
+    "src/hub/compose/member.ts": "270e8ae345d73e468b463f7ac132554d68cb4587640b75ba12bb3666b32632c2",
+    "src/hub/runtime.ts": "f25a100d4c2e9c3735be93539ab5a3aaa73e4f5c19fdf928eac55b6cacc25eec",
+    "src/fleet-manager.ts": "61d4c5699ee2b130634925d6ab0d8a823504f4376e0d876bc4cd4a168664abe5"
+  },
+  "cases": [
+    {
+      "tag": "before-en",
+      "tmuxAccepted": true,
+      "sentBytes": 66547,
+      "receivedBytes": 66547,
+      "rawHashEqual": false,
+      "logicalHashEqual": true,
+      "transportHashEqual": true,
+      "historyBytes": 65871,
+      "rows": 31,
+      "questionExact": true,
+      "over16000": true
+    },
+    {
+      "tag": "after-en",
+      "tmuxAccepted": true,
+      "sentBytes": 11353,
+      "receivedBytes": 11353,
+      "rawHashEqual": false,
+      "logicalHashEqual": true,
+      "transportHashEqual": true,
+      "historyBytes": 10641,
+      "rows": 5,
+      "questionExact": true,
+      "over16000": false
+    },
+    {
+      "tag": "before-zh-TW",
+      "tmuxAccepted": true,
+      "sentBytes": 66546,
+      "receivedBytes": 66546,
+      "rawHashEqual": false,
+      "logicalHashEqual": true,
+      "transportHashEqual": true,
+      "historyBytes": 65871,
+      "rows": 31,
+      "questionExact": true,
+      "over16000": true
+    },
+    {
+      "tag": "after-zh-TW",
+      "tmuxAccepted": true,
+      "sentBytes": 11361,
+      "receivedBytes": 11361,
+      "rawHashEqual": false,
+      "logicalHashEqual": true,
+      "transportHashEqual": true,
+      "historyBytes": 10641,
+      "rows": 5,
+      "questionExact": true,
+      "over16000": false
+    }
+  ],
+  "note": "Successful tmux/raw mock transfer is not proof of every vendor composer. No historical paste failure is claimed; the cap prevents the oversized history transfer."
+}

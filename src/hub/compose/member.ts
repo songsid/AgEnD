@@ -103,6 +103,8 @@ export interface HubMemberFactoryOptions {
   catalogAgents?(): MemberCatalogAgent[];
   sharingNotice?(notice: import("../../hub-sharing-notice.js").HubSharingNotice): Promise<boolean>;
   attachSharing?(controller: import("../../hub-sharing-notice.js").HubSharingController | null): void;
+  /** Current Fleet message-body limit, applied to room history rendering only. */
+  maxCrossInstanceMessageBytes?(): number | undefined;
   views?: HubViewSource;
   /** P1's representative mode: the fleet's ordinary delivery, the agent lifecycle token and the report_result hook. */
   representative: HubRepresentativeHost;
@@ -550,6 +552,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const receiveFeedback=feedback.receive.bind(feedback);
       const room = new HubRoomAskAdapter({ db, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
         locale: options.representative.locale, generation: options.roomConversationGeneration,feedback:receiveFeedback,
+        maxCrossInstanceMessageBytes: options.maxCrossInstanceMessageBytes,
         localExposure: id => {
           if (!roomCurrent()) return null;
           const local = exposures.localExposure(id);

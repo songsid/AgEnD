@@ -2548,6 +2548,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           catalogAgents: () => this.hubCatalogAgents(),
           sharingNotice: value => this.recordHubSharingNotice(value),
           attachSharing: controller => { this.hubSharingController = controller; },
+          maxCrossInstanceMessageBytes: () => this.fleetConfig?.defaults?.max_cross_instance_message_bytes,
           // P1 representative mode (docs/design/hub-representative-agent.md): ordinary delivery + the report_result hook.
           representative: {
             quota: agent => this.hubAgentQuota(agent),
