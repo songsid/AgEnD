@@ -1,3 +1,4 @@
+import { pipeline } from "node:stream/promises";
 import { buildAgentExport, parseAgentExport } from "./agent-export.js";
 import { STRUCTURED_PROFILE_BACKENDS } from "./structured-signin-transport.js";
 import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
@@ -2560,23 +2561,30 @@ export function handleWebRequest(
     const cfg = ctx.fleetConfig?.instances && Object.hasOwn(ctx.fleetConfig.instances, instance) ? ctx.fleetConfig.instances[instance] : undefined;
     if (!cfg) { json(res, 404, { error: "not_found" }); return true; }
     if (cfg.runtime === "windows" || cfg.machine_id) { json(res, 403, { error: "preview_remote_unavailable", message: REMOTE_PREVIEW_REFUSAL }); return true; }
+    const offered = () => !isGeneralInstance(ctx.fleetConfig as never, instance) && resolveToolSet(cfg as never, instance) !== "coordinator" && cfg.runtime !== "windows" && !cfg.machine_id;
+    if (!offered()) { json(res, 404, { error: "workspace_not_offered" }); return true; }
     if (op !== "meta" && op !== "raw") { json(res, 400, { error: "invalid" }); return true; }
     const wd = String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
-    const current = () => admin()?.handle === who.handle && ctx.fleetConfig?.instances[instance] === cfg && String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~") === wd && cfg.runtime !== "windows" && !cfg.machine_id;
+    const current = () => admin()?.handle === who.handle && ctx.fleetConfig?.instances[instance] === cfg && String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~") === wd && offered();
     void (async () => {
+      let closeRead: (() => Promise<void>) | undefined;
       try {
-        const r = await readReplyPreview(wd, getAgendHome(), p.get("path"), op === "raw", current, req.headers.range); if (!current()) throw new ReplyPreviewError("preview_changed");
+        const r = await readReplyPreview(wd, getAgendHome(), p.get("path"), op === "raw", current, req.headers.range);
+        if (r.kind === "raw") closeRead = r.close;
+        if (!current()) throw new ReplyPreviewError("preview_changed");
         if (r.kind === "meta") { json(res, 200, r.body); return; }
         if (r.mime === "application/pdf") res.setHeader("X-Frame-Options", "SAMEORIGIN");
         res.setHeader("Content-Security-Policy", r.mime === "application/pdf" ? "default-src 'none'; frame-ancestors 'self'" : "default-src 'none'; sandbox");
-        res.setHeader("Content-Type", r.mime); res.setHeader("Content-Length", String(r.bytes.length)); res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("Content-Type", r.mime); res.setHeader("Content-Length", String(r.length)); res.setHeader("Accept-Ranges", "bytes");
         if (r.partial) res.setHeader("Content-Range", `bytes ${r.start}-${r.end}/${r.size}`);
-        res.writeHead(r.partial ? 206 : 200); res.end(r.bytes);
+        res.writeHead(r.partial ? 206 : 200);
+        await pipeline(r.chunks, res, { end: false }); res.end();
       } catch (error) {
+        if (res.headersSent || res.destroyed) { res.destroy(); return; }
         const e = error instanceof ReplyPreviewError ? error : new ReplyPreviewError("unavailable");
         if (e.code === "range_not_satisfiable") res.setHeader("Content-Range", `bytes */${e.size}`);
         json(res, e.code === "not_found" || e.code === "not_a_directory" ? 404 : e.code === "range_not_satisfiable" ? 416 : e.code === "too_large" ? 413 : e.code === "unavailable" ? 503 : 403, { error: e.code });
-      }
+      } finally { if (closeRead) await closeRead().catch(() => {}); }
     })();
     return true;
   }

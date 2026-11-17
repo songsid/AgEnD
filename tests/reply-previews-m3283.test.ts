@@ -1,9 +1,10 @@
 import { createServer, request, type Server } from "node:http";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, truncateSync } from "node:fs";
 import * as fsAsync from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { readReplyPreview } from "../src/reply-preview-files.js";
 import { ReplyArgs } from "../src/outbound-schemas.js";
 import { handleWebRequest, serveAppShell } from "../src/web-api.js";
 import { WebSessionStore, tokenEpoch } from "../src/web-session.js";
@@ -122,5 +123,71 @@ describe("the app shell permits only the admin file frame", () => {
   });
   it.each(["read", "guest"] as const)("adds no file-frame source for a %s session", async tier => {
     for (const gateway of [false, true]) expect(String((await get("/ui/rig-shell", { tier, gateway })).headers["content-security-policy"])).not.toContain("/ui/reply-preview");
+  });
+});
+
+describe("R1 protected folders and raw memory bounds", () => {
+  it.each(["general", "coordinator"])("does not expose a %s folder on either listener", async kind => {
+    const cfg = ctx.fleetConfig.instances["agent-alpha"];
+    if (kind === "general") cfg.general_topic = true; else cfg.tool_set = "coordinator";
+    writeFileSync(join(root, "fleet.yaml"), "inline_fixture: " + "x".repeat(32));
+    for (const gateway of [false, true]) {
+      const r = await get(endpoint("fleet.yaml"), { gateway });
+      expect(r.status).toBe(404); expect(JSON.parse(r.body.toString()).error).toBe("workspace_not_offered");
+      expect(r.body.toString()).not.toContain("inline_fixture");
+    }
+  });
+  it("streams a 50 MiB unranged raw read without a whole-file allocation", async () => {
+    const size = 50 * 1024 * 1024, file = join(root, "large.pdf");
+    writeFileSync(file, "%PDF-1.4\n"); truncateSync(file, size);
+    const allocations = vi.spyOn(Buffer, "alloc");
+    const received = await new Promise<{ status: number; bytes: number }>((resolve, reject) => {
+      const req = request({ host: "127.0.0.1", port, path: endpoint("large.pdf", "raw"), headers: { cookie: `agend_session=${session("admin", false)}` } }, res => {
+        let bytes = 0; res.on("data", b => { bytes += b.length; }); res.on("end", () => resolve({ status: res.statusCode!, bytes })); res.on("error", reject);
+      }); req.on("error", reject); req.end();
+    });
+    expect(received).toEqual({ status: 200, bytes: size });
+    expect(Math.max(...allocations.mock.calls.map(args => Number(args[0])))).toBeLessThanOrEqual(64 * 1024);
+    const range = await get(endpoint("large.pdf", "raw"), { range: "bytes=0-6291455" });
+    expect(range.status).toBe(206); expect(range.body.length).toBe(4 * 1024 * 1024);
+    expect(range.headers["content-range"]).toBe(`bytes 0-4194303/${size}`);
+  }, 20_000);
+});
+
+describe("R1 stream ownership fences", () => {
+  it("stops a retired raw read and closes its opened descriptor", async () => {
+    const file = join(root, "stream.pdf"); writeFileSync(file, "%PDF-1.4\n"); truncateSync(file, 256 * 1024);
+    const realOpen = (await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")).open;
+    let opened: Awaited<ReturnType<typeof realOpen>> | undefined;
+    vi.mocked(fsAsync.open).mockImplementation((async (...args: Parameters<typeof fsAsync.open>) => opened = await realOpen(...args)) as typeof fsAsync.open);
+    let current = true;
+    const result = await readReplyPreview(root, join(dir, "state"), "stream.pdf", true, () => current);
+    if (result.kind !== "raw") throw Error("expected raw fixture");
+    const iterator = result.chunks[Symbol.asyncIterator](); expect((await iterator.next()).done).toBe(false);
+    current = false; await expect(iterator.next()).rejects.toMatchObject({ code: "preview_changed" });
+    expect(opened?.fd).toBe(-1); await result.close();
+    vi.mocked(fsAsync.open).mockImplementation(realOpen);
+  });
+  it("can close an opened raw read before iteration starts", async () => {
+    writeFileSync(join(root, "never-started.pdf"), "%PDF-1.4\nfixture");
+    const realOpen = (await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")).open;
+    let opened: Awaited<ReturnType<typeof realOpen>> | undefined;
+    vi.mocked(fsAsync.open).mockImplementation((async (...args: Parameters<typeof fsAsync.open>) => opened = await realOpen(...args)) as typeof fsAsync.open);
+    const result = await readReplyPreview(root, join(dir, "state"), "never-started.pdf", true, () => true);
+    if (result.kind !== "raw") throw Error("expected raw fixture");
+    await result.close(); expect(opened?.fd).toBe(-1); await result.close();
+    vi.mocked(fsAsync.open).mockImplementation(realOpen);
+  });
+});
+
+describe("R1 offered-role fence", () => {
+  it("refuses a role that becomes coordinator while the file is opening", async () => {
+    const realOpen = (await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")).open;
+    vi.mocked(fsAsync.open).mockImplementation((async (...args: Parameters<typeof fsAsync.open>) => {
+      const handle = await realOpen(...args); ctx.fleetConfig.instances["agent-alpha"].tool_set = "coordinator"; return handle;
+    }) as typeof fsAsync.open);
+    const r = await get(endpoint("src/app.ts")); expect(r.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.parse(r.body.toString()).error).toBe("preview_changed"); expect(r.body.toString()).not.toContain("export const");
+    vi.mocked(fsAsync.open).mockImplementation(realOpen);
   });
 });
